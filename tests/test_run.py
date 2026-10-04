@@ -26,6 +26,38 @@ def make_run(
     )
 
 
+@pytest.mark.parametrize("family", ["PRIMARY", "REMEDIATION", "REPAIR"])
+def test_all_execution_families_inherit_immutable_task_affinity(family):
+    from dataclasses import FrozenInstanceError, asdict
+    from aios_renew.task import validate_task
+    from aios_renew.return_affinity import OriginAffinity, require_same_affinity
+    task = validate_task(dict(task_id="TASK-affine", revision=1, goal="Bounded selector",
+        problem="Preserve lineage", assumptions=[], scope=dict(inspect=[], modify=[]),
+        non_goals=[], constraints=dict(hard=[]), acceptance=[dict(id="AC1", condition="Inherit")],
+        verification=dict(required=["git diff --check"]),
+        return_affinity=asdict(OriginAffinity("page-origin-v1:" + "a" * 64, 2))))
+    run = Run.from_task(run_id="RUN-affine-" + family, task=task, executor="codex",
+                        base_sha="a" * 40, workspace="fixture")
+    require_same_affinity(task, run)
+    assert run.return_affinity is task.return_affinity or run.return_affinity == task.return_affinity
+    with pytest.raises(FrozenInstanceError):
+        run.return_affinity = OriginAffinity("page-origin-v1:" + "b" * 64, 2)
+    changed = dict(asdict(run), return_affinity=asdict(OriginAffinity("page-origin-v1:" + "b" * 64, 2)))
+    changed["task"] = run.task
+    with pytest.raises(ValueError, match="conflicts"):
+        require_same_affinity(task, Run(**changed))
+
+
+def test_same_lease_holder_cannot_substitute_affinity():
+    from dataclasses import replace
+    from aios_renew.return_affinity import OriginAffinity
+    registry = RunLeaseRegistry()
+    run = make_run("RUN-003-001")
+    registry.acquire(run)
+    with pytest.raises(LeaseConflictError):
+        registry.acquire(replace(run, return_affinity=OriginAffinity("page-origin-v1:" + "a" * 64, 1)))
+
+
 def test_run_contains_task_reference_and_operational_metadata_only() -> None:
     run = make_run("RUN-003-001")
 

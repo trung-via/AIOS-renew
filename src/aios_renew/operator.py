@@ -129,6 +129,7 @@ from .review import (
     validate_remediation,
     validate_review,
 )
+from .return_affinity import document_affinity, require_same_affinity
 from .task import Task, TaskValidationError, parse_task
 from .verification import VerificationRunner
 
@@ -897,6 +898,7 @@ def _load_authoritative_prior_result(
                 run = _run_from_data(run_data)
                 if run.run_id != run_id:
                     raise ValueError("RESULT filename does not match RUN id")
+                require_same_affinity(task, run)
                 validate_result_package(
                     task=task,
                     run=run,
@@ -961,6 +963,7 @@ def _run_from_data(data: Any) -> Run:
         workspace=root["workspace"],
         head_sha=root.get("head_sha"),
         status=root["status"],
+        return_affinity=document_affinity(root),
     )
 
 
@@ -1002,6 +1005,7 @@ def _validate_persisted_remediation_result(
     """Validate persisted remediation lineage against its actual result contract."""
 
     run = execution.run
+    require_same_affinity(task, run)
     if run.task.id != task.task_id or run.task.revision != task.revision:
         raise ValueError("REMEDIATION RUN does not reference the supplied TASK")
     if run_document is not None and "execution_base" in run_document:
@@ -2121,6 +2125,8 @@ def _resolve_primary_recovery_admission(
             "revision": failed_run.task.revision,
         } != expected_task:
             raise ValueError("terminal TASK identity mismatch")
+        if source_run.return_affinity != failed_run.return_affinity:
+            raise ValueError("conflicting terminal RUN affinity")
         if source_run.base_sha != failed_run.base_sha:
             raise ValueError("conflicting terminal RUN base mismatch")
 
@@ -2147,6 +2153,7 @@ def _resolve_primary_recovery_admission(
             task_id=source_run.task.id,
         )
         task = parse_task(task_source.decode("utf-8", errors="strict"))
+        require_same_affinity(task, source_run)
         if task.task_id != source_run.task.id or task.revision != source_run.task.revision:
             raise ValueError("historical TASK identity or revision mismatch")
 
@@ -2245,6 +2252,7 @@ def _resolve_local_repair_remediation_origin(
                 execution = _remediation_execution_from_data(run_data["execution"])
                 if (
                     execution.run.run_id != current_run_id
+                    or execution.run.return_affinity != task.return_affinity
                     or execution.run.task.id != task.task_id
                     or execution.run.task.revision != task.revision
                     or not execution.remediation.affected_verification
@@ -2264,6 +2272,7 @@ def _resolve_local_repair_remediation_origin(
             run = _run_from_data(run_data)
             if (
                 run.run_id != current_run_id
+                or run.return_affinity != task.return_affinity
                 or run.task.id != task.task_id
                 or run.task.revision != task.revision
             ):
@@ -2859,6 +2868,7 @@ def _resolve_historical_repair_admission(
                 raise ValueError("unknown RUN kind")
         except (KeyError, TypeError, ValueError, ReviewValidationError) as exc:
             raise OperatorError(f"invalid historical RUN lineage: {exc}") from exc
+        require_same_affinity(task, run)
         if run.run_id != artifact.run_id:
             raise OperatorError("historical RUN identity mismatch")
         if {"id": run.task.id, "revision": run.task.revision} != expected_task:
@@ -3062,6 +3072,7 @@ def _repair_result_base_from_origin(
         raise OperatorError("integrated cumulative RESULT is invalid") from exc
     if (
         cumulative_run.run_id != base.cumulative_tip_run_id
+        or cumulative_run.return_affinity != task.return_affinity
         or cumulative_run.task.id != task.task_id
         or cumulative_run.task.revision != task.revision
         or cumulative_head != base.cumulative_tip_candidate_sha
@@ -3249,6 +3260,15 @@ def _validated_repair_remediation_source(
     from . import publication as pub
     from .review_transport import resolve_transport_remote, _read_remote_blob
 
+    # The persisted carrier is authoritative even for callers with historical
+    # RUN decoders that omit new selector fields from their operational view.
+    raw_run = run_data.get("execution", {}).get("run") if run_data.get("kind") == "REMEDIATION" else run_data
+    canonical_run = _run_from_data(raw_run)
+    if replace(run, return_affinity=canonical_run.return_affinity) != canonical_run:
+        raise ValueError("source RUN view conflicts with persisted carrier")
+    run = canonical_run
+    require_same_affinity(task, run)
+
     if remote is None:
         remote = resolve_transport_remote(repo)
     if repair is None:
@@ -3264,7 +3284,8 @@ def _validated_repair_remediation_source(
         return None
     if "kind" in run_data:
         raise ValueError("successful source has conflicting REMEDIATION/REPAIR lineage")
-    if run.status != "ACTIVE" or run.task.id != task.task_id or run.task.revision != task.revision:
+    if (run.status != "ACTIVE" or run.return_affinity != task.return_affinity
+            or run.task.id != task.task_id or run.task.revision != task.revision):
         raise ValueError("successful REPAIR RUN status or TASK identity mismatch")
     source_id = run.run_id
     if source_id in repair_sources:
@@ -3388,6 +3409,7 @@ def _derive_remediation_source_root(
                 source_run = _run_from_data(run_data)
             else:
                 raise ValueError("unknown source RUN kind")
+            require_same_affinity(task, source_run)
             if source_run.task.id != task.task_id:
                 continue
             if source_run.task.revision != task.revision:
@@ -7652,6 +7674,7 @@ def _parse_remote_direct_lineage_impl(
             raise ValueError("unknown source RUN kind")
         if source_run.run_id != remote.source_run_id:
             raise ValueError("remote ref source RUN mismatch")
+        require_same_affinity(task, source_run)
         if source_run.task.id != task.task_id:
             return None
         if source_run.task.revision != task.revision:

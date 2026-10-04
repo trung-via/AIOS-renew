@@ -19,6 +19,7 @@ import secrets
 import sys
 import time
 
+from .return_affinity import HANDLE_PREFIX, HANDLE, MAX_GENERATION
 from . import local_chat_wake as wake
 
 CONTRACT = "PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1"
@@ -33,14 +34,11 @@ PROOF_CATEGORIES = frozenset({
     "SLOT_OR_NONCE_BINDING", "PENDING_OR_CHALLENGE_BINDING", "ROUTE_EQUALITY",
     "DEADLINE", "SURFACE_PROOF",
 })
-HANDLE_PREFIX = "page-origin-v1:"
-HANDLE = re.compile(r"page-origin-v1:[0-9a-f]{64}")
 NONCE = re.compile(r"[0-9a-f]{64}")
 MAX_ROUTES = 256
 MAX_REGISTRY_BYTES = 262144
 MAX_PAGES = 32
 MAX_CONTEXTS = 8
-MAX_GENERATION = 2147483647
 CHALLENGE_TTL_MS = 30000
 MAX_DRAFT_CHARS = 65536
 MAX_ENVELOPE_BYTES = 384

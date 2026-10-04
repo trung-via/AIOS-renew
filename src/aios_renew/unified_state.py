@@ -7,6 +7,8 @@ mutating runtime state, or reconciling repository state.
 
 from __future__ import annotations
 
+from .return_affinity import document_affinity, require_same_affinity
+
 import hashlib
 import json
 import re
@@ -418,6 +420,7 @@ def _decode_remote_lifecycle(
                 )
             else:
                 execution_base_run_id = semantic_predecessor.source_run_id
+        require_same_affinity(task, run)
         if (
             run.run_id != item.run_id
             or run.task.id != task.task_id
@@ -465,6 +468,7 @@ def _decode_remote_lifecycle(
                 or not isinstance(correction_task, Mapping)
                 or correction_task.get("task_id") != task.task_id
                 or correction_task.get("revision") != task.revision
+                or document_affinity(correction_task) != task.return_affinity
             ):
                 raise ValueError("REPAIR execution lineage is invalid")
             family = "REPAIR"
@@ -901,6 +905,7 @@ def _local_pending_runs(
         run, family, review_id, finding_id = _decode_lifecycle_run(raw, run_id=run_id)
         if run.task.id != task.task_id or run.task.revision != task.revision:
             continue
+        require_same_affinity(task, run)
         if run.run_id != run_id or run.status != "ACTIVE":
             raise ValueError("persisted RUN identity is invalid")
         parent_run_id = None
@@ -941,6 +946,7 @@ def _local_pending_runs(
                 )
                 or not isinstance(embedded_run, Mapping)
                 or op._run_from_data(embedded_run) != run
+                or document_affinity(repair_execution.get("task", {})) != task.return_affinity
             ):
                 raise ValueError("persisted REPAIR execution lineage is invalid")
             family = "REPAIR"
@@ -1203,6 +1209,7 @@ def observe_unified_state(
                     )
                     if (
                         family != "PRIMARY"
+                        or recovered_run.return_affinity != task.return_affinity
                         or recovered_run.task.id != task.task_id
                         or recovered_run.task.revision != task.revision
                     ):

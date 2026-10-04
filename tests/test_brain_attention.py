@@ -986,3 +986,178 @@ def test_api_ceiling_and_remaining_subject_budget_are_preserved_with_fake_clock(
     with pytest.raises(brain.AttentionError):
         sources.request("/issues/2")
     assert timeouts == [10, 2]
+
+class AffinitySources:
+    """Self-contained exact refs/blobs with no lifecycle reducer or network."""
+    def __init__(self, kind="RESULT", selector=None):
+        from aios_renew.return_affinity import LEGACY
+        from dataclasses import asdict
+        self.selector = asdict(LEGACY) if selector is None else selector
+        self.task = dict(task_id="TASK-fixture", revision=1, goal="Affinity", problem="Lineage",
+                        assumptions=[], scope=dict(inspect=[], modify=[]), non_goals=[], constraints=dict(hard=[]),
+                        acceptance=[dict(id="AC1", condition="Selector")], verification=dict(required=["git diff --check"]),
+                        return_affinity=self.selector)
+        self.values, self.docs, self.reads, self.drift = {}, {}, 0, False
+        self.kind = kind
+        self.add_run(IDENTITY["run_id"], IDENTITY["artifact_sha"], IDENTITY["reviewed_sha"], "1" * 40, kind)
+        self.values["refs/heads/main"] = "d" * 40
+        self.values["refs/heads/aios/review-decision/" + IDENTITY["run_id"]] = IDENTITY["decision_sha"]
+        self.docs[("d" * 40, ".ai/tasks/TASK-fixture.yaml")] = copy.deepcopy(self.task)
+
+    def add_run(self, run_id, artifact, head, base, kind="RESULT"):
+        root = "refs/heads/aios/"
+        self.values[root + ("artifacts/" if kind == "RESULT" else "failure-artifacts/") + run_id] = artifact
+        self.values[root + ("review/" if kind == "RESULT" else "failure/") + run_id] = head
+        run = dict(run_id=run_id, task={"id": "TASK-fixture", "revision": 1}, executor="codex",
+                   base_sha=base, head_sha=None, workspace="synthetic", status="ACTIVE", return_affinity=copy.deepcopy(self.selector))
+        self.docs[artifact, ".ai/transport/run.json"] = run
+        self.docs[artifact, ".ai/transport/result.json"] = {"result": {"head_sha": head}, "evidence": []}
+        self.docs[artifact, ".ai/transport/failure.json"] = dict(run_id=run_id, task=run["task"], failed_head_sha=head)
+        for sha in (base, head):
+            self.docs[sha, ".ai/tasks/TASK-fixture.yaml"] = copy.deepcopy(self.task)
+        return run
+
+    def refs(self, *patterns):
+        self.reads += 1
+        values = {ref: sha for ref, sha in self.values.items() if any(fnmatchcase(ref, pattern) for pattern in patterns)}
+        if self.drift and self.reads > 1 and values:
+            values[next(iter(values))] = "e" * 40
+        return values
+
+    def document(self, sha, name):
+        return self.docs[sha, name]
+
+    def optional_document(self, sha, name):
+        return self.docs.get((sha, name))
+
+    def included(self, sha, head):
+        return True
+
+    def review(self, run_id, decision_sha=None):
+        if run_id == IDENTITY["run_id"]:
+            return dict(IDENTITY), {"verdict": self.verdict}
+        return {"reviewed_sha": "3" * 40}, dict(review_id="REVIEW-source-001", verdict="CHANGES_REQUIRED",
+                                              findings=[dict(id="F1", action="CODE_FIX")])
+
+
+@pytest.mark.parametrize("family", [brain.RESULT, brain.FAILURE, brain.REVIEW,
+                                    brain.PUBLICATION_SUCCESS, brain.PUBLICATION_FAILURE])
+def test_h4c1_exact_terminal_review_publication_lineage_and_recovery(family):
+    from aios_renew.return_affinity import OriginAffinity
+    from dataclasses import asdict
+    affinity = OriginAffinity("page-origin-v1:" + "a" * 64, 3)
+    sources = AffinitySources("FAILURE" if family == brain.FAILURE else "RESULT", asdict(affinity))
+    sources.verdict = "CHANGES_REQUIRED" if family == brain.REVIEW else "PASS"
+    artifact = None
+    if family in {brain.RESULT, brain.FAILURE}:
+        item = brain.attention(family, dict(run_id=IDENTITY["run_id"], artifact_sha=IDENTITY["artifact_sha"]))
+    elif family == brain.PUBLICATION_FAILURE:
+        item, source, _ = source_event(dict(boundary="PUBLICATION_FAILED", **IDENTITY, stage="EXECUTION"))
+        artifact = Artifacts(source)
+    else:
+        item = brain.attention(family, dict(IDENTITY, source_boundary="REVIEW_FOLLOWUP" if family == brain.REVIEW else "PUBLICATION_PROVEN",
+            **({"published_sha": IDENTITY["reviewed_sha"]} if family == brain.PUBLICATION_SUCCESS else {})))
+    event_id = item.event_id
+    assert brain.resolve_return_affinity(event_id, sources, artifact) == affinity
+    recovery = brain.attention(brain.RECOVERY, {"original_event_id": event_id})
+    assert brain.resolve_return_affinity(recovery.event_id, sources, artifact) == affinity
+    assert item.event_id == event_id and "page-origin" not in item.render()
+
+
+@pytest.mark.parametrize("defect", ["missing_task", "missing_run_affinity", "candidate_drift", "run_drift", "ref_drift", "opposite_terminal", "wrong_artifact"])
+def test_h4c1_unproved_or_conflicting_terminal_lineage_has_no_affinity(defect):
+    selector = dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "a" * 64, generation=1)
+    sources = AffinitySources(selector=selector)
+    run = sources.docs[IDENTITY["artifact_sha"], ".ai/transport/run.json"]
+    if defect == "missing_task":
+        del sources.docs[run["base_sha"], ".ai/tasks/TASK-fixture.yaml"]
+    elif defect == "missing_run_affinity":
+        del run["return_affinity"]
+    elif defect == "candidate_drift":
+        sources.docs[IDENTITY["reviewed_sha"], ".ai/tasks/TASK-fixture.yaml"]["return_affinity"] = {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}
+    elif defect == "run_drift":
+        run["return_affinity"]["generation"] = 2
+    elif defect == "ref_drift":
+        sources.drift = True
+    elif defect == "opposite_terminal":
+        sources.values["refs/heads/aios/failure-artifacts/" + IDENTITY["run_id"]] = "e" * 40
+    else:
+        sources.values["refs/heads/aios/artifacts/" + IDENTITY["run_id"]] = "e" * 40
+    item = brain.attention(brain.RESULT, {"run_id": IDENTITY["run_id"], "artifact_sha": IDENTITY["artifact_sha"]})
+    assert brain.resolve_return_affinity(item.event_id, sources) is None
+
+
+def test_h4c1_historical_missing_fields_resolve_only_as_legacy():
+    from aios_renew.return_affinity import LEGACY
+    sources = AffinitySources()
+    for doc in sources.docs.values():
+        if isinstance(doc, dict):
+            doc.pop("return_affinity", None)
+    item = brain.attention(brain.RESULT, {"run_id": IDENTITY["run_id"], "artifact_sha": IDENTITY["artifact_sha"]})
+    assert brain.resolve_return_affinity(item.event_id, sources) == LEGACY
+
+
+def test_h4c1_precanonical_author_task_uses_only_exact_admitted_payload():
+    affinity = dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "a" * 64, generation=1)
+    sources = AffinitySources(selector=affinity)
+    sources.docs.pop(("d" * 40, ".ai/tasks/TASK-fixture.yaml"))
+    body = json.dumps(dict(format="AIOS_INGRESS_ENVELOPE", version=1, operation="AUTHOR_TASK",
+        identity={"task_id": "TASK-fixture"}, expected_state={"expected_main_sha": "d" * 40}, payload=sources.task))
+    obs = rejection("AUTHOR_TASK")
+    obs.update(body_digest=hashlib.sha256(body.encode()).hexdigest(), subject_sha="0" * 40)
+    item, source, _ = source_event(obs)
+    artifacts = Artifacts(source)
+    artifacts.body = body
+    from aios_renew.return_affinity import parse_affinity
+    assert brain.resolve_return_affinity(item.event_id, sources, artifacts) == parse_affinity(affinity)
+    artifacts.body = body + " "
+    assert brain.resolve_return_affinity(item.event_id, sources, artifacts) is None
+
+
+@pytest.mark.parametrize("operation", ["PRIMARY", "REMEDIATION", "REPAIR"])
+def test_h4c1_dispatch_resolves_exact_task_or_source_run(operation):
+    from aios_renew.return_affinity import OriginAffinity
+    from dataclasses import asdict
+    selector = OriginAffinity("page-origin-v1:" + "a" * 64, 1)
+    sources = AffinitySources("FAILURE" if operation == "REPAIR" else "RESULT", asdict(selector))
+    observation = delivery(operation=operation)
+    if operation == "PRIMARY":
+        observation.update(subject_id="TASK-fixture", subject_sha="d" * 40)
+    elif operation == "REPAIR":
+        observation.update(subject_id=IDENTITY["run_id"], subject_sha="f" * 40)
+        sources.values["refs/heads/aios/repair/" + IDENTITY["run_id"]] = "f" * 40
+        sources.docs["f" * 40, ".ai/transport/repair.json"] = dict(failed_run_id=IDENTITY["run_id"], failed_head_sha=IDENTITY["reviewed_sha"])
+    else:
+        observation.update(subject_id=IDENTITY["run_id"], subject_sha=IDENTITY["reviewed_sha"])
+    item, source, _ = source_event(observation)
+    artifacts = Artifacts(source)
+    assert brain.resolve_return_affinity(item.event_id, sources, artifacts) == selector
+    artifacts.source = brain.source_document([])
+    assert brain.resolve_return_affinity(item.event_id, sources, artifacts) is None
+
+
+@pytest.mark.parametrize("family", ["REMEDIATION", "REPAIR"])
+def test_h4c1_descendant_affinity_must_match_exact_original_run(family):
+    from aios_renew.return_affinity import OriginAffinity
+    from dataclasses import asdict
+    selector = OriginAffinity("page-origin-v1:" + "a" * 64, 1)
+    sources = AffinitySources(selector=asdict(selector))
+    artifact = IDENTITY["artifact_sha"]
+    child = sources.docs[artifact, ".ai/transport/run.json"]
+    source_run_id, source_sha, source_head = "RUN-source-001", "2" * 40, "3" * 40
+    source = sources.add_run(source_run_id, source_sha, source_head, "4" * 40,
+                             "FAILURE" if family == "REPAIR" else "RESULT")
+    child["base_sha"] = source_head
+    if family == "REMEDIATION":
+        sources.docs[artifact, ".ai/transport/run.json"] = dict(kind=family, execution=dict(
+            run=child, review_id="REVIEW-source-001", finding=dict(id="F1"),
+            remediation=dict(finding_id="F1", action="CODE_FIX", reviewed_sha=source_head,
+                             modification_scope=[], affected_verification=[])))
+    else:
+        sources.docs[artifact, ".ai/transport/repair.json"] = dict(run=child, task=sources.task,
+            failed_run_id=source_run_id, failed_head_sha=source_head)
+    item = brain.attention(brain.RESULT, {"run_id": IDENTITY["run_id"], "artifact_sha": artifact})
+    assert brain.resolve_return_affinity(item.event_id, sources) == selector
+    source["return_affinity"]["generation"] = 2
+    assert brain.resolve_return_affinity(item.event_id, sources) is None
+

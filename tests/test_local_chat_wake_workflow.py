@@ -395,6 +395,7 @@ def test_timer_rechecks_only_admitted_local_work_under_human_gate(enabled, allow
     assert int(job["timeout-minutes"]) == 5
     command = job["steps"][-1]["run"]
     assert "--drain --compact --rechecks 4 --interval 15" in command
+    assert "--all-lanes" in command
     assert "--event-id" not in command
     assert "AIOS_WAKE_EVENT_ID" not in job["steps"][-1]["env"]
     assert job["permissions"] == {"contents": "read", "actions": "read"}
@@ -447,6 +448,9 @@ def test_admission_entries_offer_finite_follow_up_even_after_durable_intake_deli
     assert bool(eval(expression.replace("&&", " and "), {"__builtins__": {}}, {})) is allowed
     assert "--drain --rechecks 2 --interval 15" in follow_up["run"]
     assert "--event-id" not in follow_up["run"] and "brain_attention" not in follow_up["run"]
+    assert "--lane-event-id $env:AIOS_WAKE_LANE_EVENT_ID" in follow_up["run"]
+    assert follow_up["env"]["AIOS_WAKE_LANE_EVENT_ID"] == (
+        "${{ inputs.event_id }}" if entry == "deliver" else "${{ matrix.event_id }}")
     assert "AIOS_WAKE_EVENT_ID" not in follow_up["env"]
     assert follow_up["env"]["AIOS_LOCAL_CHAT_WAKE_ENABLED"] == "${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}"
     assert follow_up["env"]["AIOS_WAKE_REPOSITORY"] == (

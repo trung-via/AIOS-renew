@@ -59,7 +59,9 @@ from .run import (
     RunValidationError,
     SUPPORTED_EXECUTORS,
 )
-from .task import Task, TaskValidationError, parse_task
+from .return_affinity import (AffinityError, document_affinity, require_same_affinity,
+                              require_authored_affinity)
+from .task import Task, TaskValidationError, _TaskLoader, parse_task
 from .verification_contract import MINIMUM_SUFFICIENT_V1
 from .unified_state import observe_unified_state
 
@@ -190,8 +192,8 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
 
     if isinstance(raw, (str, bytes)):
         try:
-            data = yaml.safe_load(raw)
-        except yaml.YAMLError as exc:
+            data = yaml.load(raw, Loader=_TaskLoader)
+        except (yaml.YAMLError, TaskValidationError) as exc:
             raise AuthoringIngressError(f"invalid ingress envelope YAML/JSON: {exc}") from exc
     elif isinstance(raw, Mapping):
         data = dict(raw)
@@ -441,6 +443,13 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path) -> IngressResult
             f"{MINIMUM_SUFFICIENT_V1}"
         )
 
+    try:
+        require_authored_affinity(
+            yaml.safe_load(payload_str), existing_task if existing_bytes is not None else None
+        )
+    except AffinityError as exc:
+        raise AuthoringIngressError(str(exc)) from exc
+
     if current_main_sha != expected_main_sha:
         raise AuthoringIngressError(
             f"expected main SHA mismatch (stale predecessor): expected {expected_main_sha}, current is {current_main_sha}"
@@ -612,7 +621,8 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
     if run_data.get("kind") == "REMEDIATION":
         if "predecessor" in run_data:
             try:
-                run, remediation = _parse_remediation_run(run_data, run_id=run_id)
+                _, remediation = _parse_remediation_run(run_data, run_id=run_id)
+                run = _run_from_data(run_data["execution"]["run"])
             except (ValueError, TypeError, RunValidationError) as exc:
                 raise AuthoringIngressError(f"invalid canonical REMEDIATION RUN: {exc}") from exc
         else:
@@ -670,6 +680,11 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
         task = parse_task(task_bytes.decode("utf-8"))
     except TaskValidationError as exc:
         raise AuthoringIngressError(f"invalid canonical TASK contract: {exc}") from exc
+
+    try:
+        require_same_affinity(task, run)
+    except AffinityError as exc:
+        raise AuthoringIngressError(str(exc)) from exc
 
     if not isinstance(result_data, Mapping) or "result" not in result_data:
         raise AuthoringIngressError("canonical ResultPackage must contain 'result'")
@@ -1747,6 +1762,7 @@ def _run_from_data(data: Any, document: str = "RUN") -> Run:
             workspace=str(data.get("workspace") or ""),
             head_sha=data.get("head_sha"),
             status=str(data.get("status") or ""),
+            return_affinity=document_affinity(data),
         )
     except (RunValidationError, TypeError, ValueError) as exc:
         raise AuthoringIngressError(f"invalid canonical {document}: {exc}") from exc

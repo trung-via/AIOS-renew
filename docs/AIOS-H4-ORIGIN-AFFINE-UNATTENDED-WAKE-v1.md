@@ -6,6 +6,114 @@ Authority: HUMAN_BRAIN_PLANNING
 Parent track: `brain-runtime-semantic-handoff-hardening-v1`
 Production requirement: `ORIGIN_AFFINE_RETURN + UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5`
 
+## H4C1 implementation contract (TASK-301)
+
+The permitted candidate implements the following selector/lineage/lane contract.
+This section records implementation behavior; it does not record Runtime PASS,
+Reviewer verdict, publication, local migration/setup, live routing conformance,
+or H4C1 roadmap closure. Those facts belong to their downstream authorities.
+
+Canonical TASK has exactly one optional historical `return_affinity` carrier:
+
+```yaml
+return_affinity:
+  kind: ORIGIN_AFFINE
+  route_handle: page-origin-v1:<64 lowercase hexadecimal characters>
+  generation: 1
+```
+
+The only other form is `{kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}`. The origin
+form permits only these three fields and a positive integer generation bounded
+by H4C0's unchanged maximum, 2147483647. Null, booleans, unknown fields, raw
+identity/endpoint/path fields, malformed handles and duplicate YAML fields fail
+closed. A historical missing carrier reads as legacy, never as exact origin.
+After TASK-301's exact publication activates this authoring implementation, new
+AUTHOR_TASK identities and revisions require explicit classification. Historical
+identical revision replay remains readable. Ordinary revision authoring preserves
+the previous selector, including generation; changing ownership requires separate
+explicit Human authority and a future transfer contract. Runtime and transport
+cannot infer, authorize, increment or perform a transfer.
+
+PRIMARY, REMEDIATION and REPAIR allocations copy the TASK selector into the frozen
+RUN. REMEDIATION's carrier resides in `execution.run.return_affinity`; PRIMARY
+and REPAIR use `return_affinity` in their RUN record, with REPAIR's exact embedded
+RUN/TASK lineage retaining it. Lease identity, persisted lifecycle observations,
+decision material, review ingress, correction admission and terminal transport
+reject conflicting selectors. RESULT provides no selector-selection authority.
+No raw chat URL/UUID, endpoint, local path, registry, draft, transcript, assistant
+output or credential belongs in any canonical artifact.
+
+Attention event identities and selector schemas are unchanged. The read-only
+resolver binds exact terminal refs, artifact RUN, base/candidate TASK revision,
+and correction ancestors; review/publication events additionally bind their
+exact review identity (and proven main inclusion for publication success).
+Dispatch uses the exact authorized TASK commit or source RUN/REPAIR lineage.
+Parseable pre-canonical AUTHOR_TASK rejection uses only the exact trusted source
+artifact and issue payload bytes identified by the event's issue identity and
+body digest. Recovery resolves only its stored original event. Consulted refs
+are checked again, ancestry traversal is bounded to 32 RUNs, and missing,
+conflicting, changed or unprovable lineage produces no routable affinity.
+Unknown carriers and conflict events lacking reconstructible subject lineage
+remain blocked; repository identity never fills that gap.
+
+Machine-local routing configuration uses `AIOS_LOCAL_CHAT_WAKE_CONFIG` with this
+closed version-3 shape, outside every repository and bare Git store:
+
+```json
+{
+  "version": 3,
+  "origin_registry": "<absolute machine-local H4C0 registry file>",
+  "lane_directory": "<existing absolute machine-local directory>",
+  "repositories": ["<configured owner/repository>"],
+  "legacy_config": "<optional separate historical configuration file>"
+}
+```
+
+These placeholders describe a later Human-owned setup; this candidate performs
+no setup or migration. ORIGIN_AFFINE resolves only the exact H4C0 opaque handle
+and generation in the bounded registry. Missing/duplicate/conflicting handles,
+invalid state, stale generation, uncertain writes/locks or an unresolved
+bootstrap attempt block delivery. There is no legacy fallback. The raw normalized
+chat URL and loopback endpoint remain inside this local resolution/browser
+boundary. H4C0 allocation, gesture proof and single-submit semantics are unchanged;
+only its existing handle/generation grammar is shared.
+
+One handle owns one durable lane file and exclusive lock, independent of TASK
+and generation. Separate repository buckets preserve unchanged event identities
+even when one conversation carries flows from multiple repositories. Exact-event
+inboxes, binding snapshots, ambiguity records and dedupe belong to that lane.
+Distinct routes in the same repository have separate files/locks/inboxes and
+cannot consume, compact, reconcile or block each other's subjects. Legacy files
+remain separate and explicitly classified, and cannot occupy the origin directory.
+
+A possible click durably records its attempted generation before submission.
+AMBIGUOUS reconciliation uses only the original lane's stored URL/endpoint and
+generation snapshot and may prove the exact user turn or canonical resolution;
+it never submits. A new registry generation cannot redirect or replay that held
+attempt. Pending subjects cross fresh affinity, registry and canonical barriers
+before a possible click. Human draft/active-generation guards, bounded surface
+validation, event-local ambiguity and at-most-one submission per lane pass remain.
+
+Direct delivery resolves its exact event. The workflow's bounded follow-up uses
+`--drain --lane-event-id` with that same admitted event and never enumerates other
+routes. Scheduled `--drain --all-lanes` enumerates only bounded already configured/
+admitted local lanes, without canonical TASK search or browser acquisition.
+Independent lane workers preserve progress after another lane's error or hold;
+scheduled passes retain finite rechecks and a shared 180-second observation
+budget. Existing freshness, exact-event dedupe, proof-only reconciliation and
+no-blind-resend rules apply within every lane.
+
+Focused regression definitions cover strict TASK classification and revision
+transfer rejection, frozen RUN/lease propagation, persisted selector substitution,
+admitted ingress, terminal/review/publication/dispatch and descendant lineage,
+legacy separation, same-route multi-flow serialization, same-repository route
+isolation, cross-repository shared-handle locking, missing/stale/conflicting origin
+state, generation-change ambiguity and follow-up/scheduled scoping. Runtime owns
+their canonical execution and EVIDENCE. Reviewed exact publication precedes any
+local migration, live routing proof or Human/Brain H4C1 closure decision. H4D/H4E,
+unattended browser acquisition, final H4B/H5 and roadmap advancement remain
+downstream; this implementation does not authorize or perform them.
+
 ## 1. Human production objective
 
 Before H5 may close the Brain-Runtime semantic-handoff hardening track:

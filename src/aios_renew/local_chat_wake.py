@@ -18,6 +18,8 @@ import time
 from typing import Iterator
 from urllib.parse import urlsplit
 
+from .return_affinity import (LEGACY, OriginAffinity, parse_affinity)
+
 REPOSITORY = "trung-via/AIOS-renew"
 class _EventGrammar:
     """Strict shared registry grammar, including unchanged H4A4 terminal IDs."""
@@ -64,6 +66,7 @@ REASONS = frozenset({
     "CANONICAL_UNKNOWN", "BINDING_GENERATION_CHANGED", "LANE_IN_FLIGHT",
     "INVOCATION_LIMIT_REACHED",
     "REGISTRY_CONFLICT", "ENABLE_GATE_CLOSED",
+    "AFFINITY_UNPROVEN",
 })
 SURFACE_CAUSES = frozenset({
     "TARGET_URL_MISMATCH", "MAIN_NOT_UNIQUE",
@@ -167,18 +170,35 @@ class Binding:
     state_path: Path
     generation: int = 0
     repository: str = REPOSITORY
+    route_handle: str | None = None
+
+    @property
+    def return_affinity(self):
+        return LEGACY if self.route_handle is None else parse_affinity(
+            OriginAffinity(self.route_handle, self.generation))
 
 
 def load_binding(repository: str = REPOSITORY) -> Binding:
+    """Historical repository-default configuration, explicitly legacy-only."""
     location = os.environ.get("AIOS_LOCAL_CHAT_WAKE_CONFIG")
     if not location:
         raise WakeBlocked("BINDING_MISSING")
     config_path = external_path(location)
     data = read_json(config_path)
+    origin_directory = None
+    if data.get("version") == 3:
+        data, config_path = _route_config()
+        origin_directory = external_path(data["lane_directory"])
+        if "legacy_config" not in data:
+            raise WakeBlocked("BINDING_MISSING")
+        config_path = external_path(data["legacy_config"])
+        data = read_json(config_path)
     if set(data) == {"chat_url", "cdp_endpoint", "state_path"}:
         if repository != REPOSITORY:
             raise WakeBlocked("BINDING_MISSING")
-        return _binding(data, config_path, repository, 0)
+        binding = _binding(data, config_path, repository, 0)
+        _separate_legacy(binding, origin_directory)
+        return binding
     if (set(data) != {"version", "lanes"} or type(data["version"]) is not int
             or data["version"] != 2 or not isinstance(data["lanes"], dict)
             or not 1 <= len(data["lanes"]) <= MAX_EVENTS):
@@ -190,6 +210,7 @@ def load_binding(repository: str = REPOSITORY) -> Binding:
                 or type(item["generation"]) is not int or item["generation"] < 1):
             raise WakeBlocked("BINDING_MALFORMED")
         binding = _binding(item, config_path, key, item["generation"])
+        _separate_legacy(binding, origin_directory)
         # The conversation UUID is the identity even if a project prefix changes.
         chat = binding.chat_url.rsplit("/", 1)[-1]
         owned = {binding.state_path, binding.state_path.with_name(binding.state_path.name + ".lock"),
@@ -203,6 +224,111 @@ def load_binding(repository: str = REPOSITORY) -> Binding:
     if repository not in lanes:
         raise WakeBlocked("BINDING_MISSING")
     return lanes[repository]
+
+
+def _separate_legacy(binding, origin_directory):
+    if origin_directory is not None and (binding.state_path == origin_directory
+                                         or origin_directory in binding.state_path.parents):
+        raise WakeBlocked("REGISTRY_CONFLICT")
+
+
+def _route_config():
+    from .origin_bootstrap import registry_path
+    location = os.environ.get("AIOS_LOCAL_CHAT_WAKE_CONFIG")
+    if not location:
+        raise WakeBlocked("BINDING_MISSING")
+    path = registry_path(location)
+    data = read_json(path)
+    if (set(data) not in ({"version", "origin_registry", "lane_directory", "repositories"},
+                         {"version", "origin_registry", "lane_directory", "repositories", "legacy_config"})
+            or type(data["version"]) is not int or data["version"] != 3
+            or type(data["repositories"]) is not list or not 1 <= len(data["repositories"]) <= MAX_EVENTS
+            or any(type(repo) is not str or not REPOSITORY_PATTERN.fullmatch(repo) for repo in data["repositories"])
+            or len(set(data["repositories"])) != len(data["repositories"])):
+        raise WakeBlocked("BINDING_MALFORMED")
+    registry = registry_path(data["origin_registry"])
+    directory = registry_path(data["lane_directory"])
+    if not directory.is_dir() or path == registry or directory in registry.parents or directory in path.parents:
+        raise WakeBlocked("REGISTRY_CONFLICT")
+    if "legacy_config" in data:
+        legacy = registry_path(data["legacy_config"])
+        if legacy in {path, registry} or directory == legacy or directory in legacy.parents:
+            raise WakeBlocked("REGISTRY_CONFLICT")
+    return data, path
+
+
+def load_route_binding(repository, affinity):
+    """Resolve selectors only inside the machine-local H4C0 boundary."""
+    affinity = parse_affinity(affinity)
+    if affinity == LEGACY:
+        return load_binding(repository)
+    from .origin_bootstrap import BootstrapBlocked, OriginRegistry, registry_path
+    try:
+        config, _ = _route_config()
+        if repository not in config["repositories"]:
+            raise WakeBlocked("BINDING_MISSING")
+        registry = OriginRegistry(config["origin_registry"])
+        # No lock allocation, route allocation, generation bump, or registry write.
+        for suffix in (".lock", ".pending"):
+            if registry.path.with_name(registry.path.name + suffix).exists():
+                raise WakeBlocked("STATE_WRITE_UNCERTAIN")
+        before = registry.read()
+        matches = [item for item in before["routes"].values() if item["handle"] == affinity.route_handle]
+        if len(matches) != 1:
+            raise WakeBlocked("BINDING_MISSING" if not matches else "REGISTRY_CONFLICT")
+        item = matches[0]
+        if item["generation"] != affinity.generation:
+            raise WakeBlocked("BINDING_GENERATION_CHANGED")
+        if item["attempt"] is not None and item["attempt"]["status"] != "SUBMITTED":
+            raise WakeBlocked("ATTEMPT_REQUIRES_HUMAN")
+        directory = registry_path(config["lane_directory"])
+        lane_name = affinity.route_handle[15:] + ".json"
+        lane = registry_path(directory / lane_name)
+        if lane.parent != directory or lane.name != lane_name:
+            raise WakeBlocked("REGISTRY_CONFLICT")
+        binding = _binding(dict(chat_url=item["chat_url"], cdp_endpoint=item["cdp_endpoint"],
+                                state_path=str(lane)), registry.path, repository, affinity.generation)
+        if before != registry.read() or any(registry.path.with_name(registry.path.name + suffix).exists()
+                                            for suffix in (".lock", ".pending")):
+            raise WakeBlocked("REGISTRY_CONFLICT")
+        return Binding(binding.chat_url, binding.cdp_endpoint, lane, affinity.generation,
+                       repository, affinity.route_handle)
+    except BootstrapBlocked as exc:
+        raise WakeBlocked(str(exc)) from None
+
+
+def configured_lanes(repository):
+    """Enumerate only bounded configured/admitted local lanes, never TASK search."""
+    location = os.environ.get("AIOS_LOCAL_CHAT_WAKE_CONFIG")
+    if not location:
+        raise WakeBlocked("BINDING_MISSING")
+    data = read_json(external_path(location))
+    if data.get("version") != 3:
+        return [load_binding(repository)]  # Explicit historical legacy lane.
+    from .origin_bootstrap import OriginRegistry
+    config, _ = _route_config()
+    if repository not in config["repositories"]:
+        raise WakeBlocked("BINDING_MISSING")
+    registry = OriginRegistry(config["origin_registry"])
+    handles = sorted((item["handle"], item["generation"]) for item in registry.read()["routes"].values())
+    lanes = []
+    for handle, generation in handles:
+        path = Path(config["lane_directory"]) / (handle[15:] + ".json")
+        state = RouteState(path, repository, handle)
+        admitted = _inbox(state).exists()
+        if path.exists():
+            try:
+                admitted |= repository in state.validate(read_json(path))["repositories"]
+            except Exception:
+                # Report invalid state in its own lane worker; other routes progress.
+                admitted = True
+        if admitted:
+            lanes.append(OriginAffinity(handle, generation))
+    if "legacy_config" in config:
+        lanes.append(LEGACY)
+    if len(lanes) > MAX_EVENTS:
+        raise WakeBlocked("STATE_CAPACITY_REQUIRES_HUMAN")
+    return lanes
 
 
 def _binding(data, config_path, repository, generation):
@@ -325,12 +451,70 @@ def record(status="PENDING", generation=None, reason="NONE"):
     return dict(status=status, generation=generation, reason=reason)
 
 
+class RouteState(State):
+    """One handle, one lock and durable file, including cross-repository flows.
+
+    Repository buckets keep unchanged event IDs distinct. The shared file lock
+    serializes every pass for this conversation; no route shares that file.
+    """
+    def __init__(self, path, repository, route_handle):
+        super().__init__(path, repository)
+        self.route_handle = parse_affinity(OriginAffinity(route_handle, 1)).route_handle
+        self._root = None
+
+    def validate(self, data):
+        if (set(data) != {"version", "route_handle", "repositories"}
+                or type(data["version"]) is not int or data["version"] != 3
+                or data["route_handle"] != self.route_handle
+                or type(data["repositories"]) is not dict or len(data["repositories"]) > MAX_EVENTS):
+            raise WakeBlocked("STATE_AMBIGUOUS")
+        for repository, bucket in data["repositories"].items():
+            if (type(repository) is not str or not REPOSITORY_PATTERN.fullmatch(repository)
+                    or type(bucket) is not dict or bucket.get("version") != 2
+                    or any(not generation.isdigit() or int(generation) < 1 for generation in bucket.get("bindings", {}))):
+                raise WakeBlocked("STATE_AMBIGUOUS")
+            State(self.path, repository).validate(bucket)
+        return data
+
+    @contextmanager
+    def locked(self):
+        lock = self.path.with_name(self.path.name + ".lock")
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except OSError:
+            raise WakeBlocked("STATE_LOCKED_OR_UNAVAILABLE") from None
+        try:
+            os.close(fd)
+            if self.path.with_name(self.path.name + ".pending").exists():
+                raise WakeBlocked("STATE_WRITE_UNCERTAIN")
+            self._root = self.validate(read_json(self.path) if self.path.exists() else
+                                      dict(version=3, route_handle=self.route_handle, repositories={}))
+            if self.repository not in self._root["repositories"]:
+                if len(self._root["repositories"]) >= MAX_EVENTS:
+                    raise WakeBlocked("STATE_CAPACITY_REQUIRES_HUMAN")
+                self._root["repositories"][self.repository] = dict(
+                    version=2, repository=self.repository, bindings={}, events={}, flight=None, tombstones=[])
+            yield self._root["repositories"][self.repository]
+        finally:
+            self._root = None
+            lock.unlink()
+
+    def write(self, data):
+        if self._root is None:
+            raise WakeBlocked("STATE_LOCKED_OR_UNAVAILABLE")
+        self._root["repositories"][self.repository] = data
+        super().write(self._root)
+
+
 def event_digest(event_id):
     return hashlib.sha256(event_id.encode("ascii")).hexdigest()
 
 
 def _inbox(state):
-    return external_path(str(state.path.with_name(state.path.name + ".queue")))
+    directory = external_path(str(state.path.with_name(state.path.name + ".queue")))
+    if isinstance(state, RouteState):
+        directory /= hashlib.sha256(state.repository.encode("ascii")).hexdigest()
+    return directory
 
 
 def _admit_inbox(state, event_id):
@@ -340,7 +524,7 @@ def _admit_inbox(state, event_id):
     it is never overwritten. The inbox is part of the lane's unique state ownership.
     """
     directory = _inbox(state)
-    directory.mkdir(mode=0o700, exist_ok=True)
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     target = directory / (event_digest(event_id) + ".json")
     expected = dict(repository=state.repository, event_id=event_id)
     try:
@@ -386,6 +570,20 @@ class CanonicalFreshness:
     def __init__(self, repository):
         self.remote = "https://github.com/" + repository + ".git"
 
+    def affinity(self, event_id):
+        from .brain_attention import ArtifactSources, GitSources, resolve_return_affinity
+        self.deadline = min(time.monotonic() + 30, getattr(self, "budget_deadline", float("inf")))
+        try:
+            with tempfile.TemporaryDirectory(prefix="aios-affinity-observe-") as location:
+                path = Path(location)
+                self.git(path, "init", "--bare", "--quiet")
+                sources = GitSources(path, self.git, self.remote)
+                repository = self.remote.removeprefix("https://github.com/").removesuffix(".git")
+                affinity = resolve_return_affinity(event_id, sources, ArtifactSources(repository, self.deadline))
+                return affinity if time.monotonic() < self.deadline else None
+        except Exception:
+            return None
+
     def git(self, path, *args):
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
@@ -400,7 +598,7 @@ class CanonicalFreshness:
     def observe(self, event_id):
         # Lane passes and pre-send barriers use this reader sequentially. Each
         # exact observation starts afresh; prior subjects cannot spend its budget.
-        self.deadline = time.monotonic() + 30
+        self.deadline = min(time.monotonic() + 30, getattr(self, "budget_deadline", float("inf")))
         from .brain_attention import RECOVERY, parse_event_id
         try:
             item = parse_event_id(event_id)
@@ -930,10 +1128,34 @@ def _remember_binding(data, binding):
     data["bindings"][generation] = snapshot
 
 
-def _original_binding(data, item, repository):
+def _original_binding(data, item, repository, route_handle=None):
     snapshot = data["bindings"][str(item["generation"])]
     return Binding(snapshot["chat_url"], snapshot["cdp_endpoint"], Path(snapshot["state_path"]),
-                   item["generation"], repository)
+                   item["generation"], repository, route_handle)
+
+
+def _check_affinity(projection, event_id, binding):
+    # Production always uses CanonicalFreshness. Historical adapter-level callers
+    # may explicitly supply a legacy Binding and an observation-only test double.
+    resolver = getattr(projection, "affinity", None)
+    if resolver is None:
+        if binding.return_affinity != LEGACY:
+            raise WakeBlocked("AFFINITY_UNPROVEN")
+        return
+    affinity = resolver(event_id)
+    if affinity is None or affinity != binding.return_affinity:
+        raise WakeBlocked("AFFINITY_UNPROVEN")
+
+
+def _known_duplicate(state, event_id):
+    """Stored delivery/noop proof preserves dedupe when lineage is unavailable."""
+    if not state.path.exists() or state.path.with_name(state.path.name + ".pending").exists():
+        return False
+    data = state.validate(read_json(state.path))
+    if isinstance(state, RouteState):
+        data = data["repositories"].get(state.repository, {})
+    return (data.get("events", {}).get(event_id, {}).get("status") in {"SUBMITTED", "RESOLVED_NOOP"}
+            or event_digest(event_id) in data.get("tombstones", []))
 
 
 def _fresh(projection, event_id, *, allow_unknown=False):
@@ -955,9 +1177,13 @@ def _fresh(projection, event_id, *, allow_unknown=False):
 def _drain_locked(state, data, binding, adapter_factory, projection, binding_provider):
     """One finite admission-order pass, at most one submission; no new subjects."""
     receipts = []
+    def exhausted():
+        return time.monotonic() >= getattr(projection, "budget_deadline", float("inf"))
     # Reconcile exact held attempts first, without any new submission. Pending
     # subjects cross their own barriers; submitted history needs no lane release.
     for event_id, item in list(data["events"].items()):
+        if exhausted():
+            return receipts
         if item["status"] != "AMBIGUOUS":
             continue
         try:
@@ -969,13 +1195,15 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
             pass  # Uncertainty keeps this exact attempt held.
 
     for event_id, item in data["events"].items():
+        if exhausted():
+            return receipts
         if item["status"] != "AMBIGUOUS":
             continue
         if item["generation"] is None:
             receipts.append(dict(event_id=event_id, status="BLOCKED", reason="ATTEMPT_REQUIRES_HUMAN"))
             continue
         try:
-            with adapter_factory(_original_binding(data, item, binding.repository)) as adapter:
+            with adapter_factory(_original_binding(data, item, binding.repository, binding.route_handle)) as adapter:
                 adapter.prove(doorbell(event_id, binding.repository))
             item.update(status="SUBMITTED", reason="NONE")
             state.write(data)
@@ -989,6 +1217,8 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
     # invocation, never to durable lane state or a later independent invocation.
     invocation_attempted = False
     for event_id, item in data["events"].items():
+        if exhausted():
+            return receipts
         if item["status"] not in {"PENDING", "DEFERRED"}:
             continue
         receipt = dict(event_id=event_id, status="DEFERRED")
@@ -1013,6 +1243,7 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
                 data["events"][event_id] = record("RESOLVED_NOOP")
                 state.write(data)
                 raise _Resolved()
+            _check_affinity(projection, event_id, binding)
             if binding_provider() != binding:
                 raise WakeBlocked("BINDING_GENERATION_CHANGED")
 
@@ -1065,7 +1296,8 @@ def operate(repository, binding, event_id=None, adapter_factory=BrowserAdapter,
             projection=None, binding_provider=None, compact=False):
     projection = projection or CanonicalFreshness(repository)
     binding_provider = binding_provider or (lambda: binding)
-    state = State(external_path(str(binding.state_path)), repository)
+    state = (State(external_path(str(binding.state_path)), repository) if binding.route_handle is None else
+             RouteState(external_path(str(binding.state_path)), repository, binding.route_handle))
     if binding.repository != repository:
         raise WakeBlocked("REGISTRY_CONFLICT")
     from .brain_attention import RECOVERY, parse_event_id
@@ -1078,6 +1310,8 @@ def operate(repository, binding, event_id=None, adapter_factory=BrowserAdapter,
             event_id = recovery
     if event_id is not None:
         doorbell(event_id, repository)
+        if not _known_duplicate(state, event_id):
+            _check_affinity(projection, event_id, binding)
         if recovery is None:
             _admit_inbox(state, event_id)
     with state.locked() as data:
@@ -1152,45 +1386,99 @@ class _Parser(argparse.ArgumentParser):
         raise SystemExit(1)
 
 
+def recheck_lane(repository, affinity, *, rechecks=1, interval=15, compact=False, deadline=None):
+    provider = lambda: load_route_binding(repository, affinity)
+    receipts = []
+    for index in range(rechecks):
+        if deadline is not None and time.monotonic() >= deadline:
+            break
+        if os.environ.get("AIOS_LOCAL_CHAT_WAKE_ENABLED") != "true":
+            raise WakeBlocked("ENABLE_GATE_CLOSED")
+        options = {}
+        if deadline is not None:
+            projection = CanonicalFreshness(repository)
+            projection.budget_deadline = deadline
+            options["projection"] = projection
+        current = operate(repository, provider(), binding_provider=provider, compact=compact, **options)
+        receipts.extend(current)
+        if any(receipt["status"] in {"SUBMITTED", "BLOCKED"} for receipt in current):
+            break
+        if index + 1 < rechecks:
+            time.sleep(interval)
+    return receipts
+
+
+def recheck_lanes(repository, *, rechecks=1, interval=15, compact=False):
+    """Independent lane workers; one blocked/slow route cannot occupy others."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    lanes = configured_lanes(repository)
+    deadline = time.monotonic() + 180
+
+    def worker(affinity):
+        if isinstance(affinity, Binding):
+            affinity = affinity.return_affinity
+        try:
+            return recheck_lane(repository, affinity, rechecks=rechecks, interval=interval,
+                                compact=compact, deadline=deadline)
+        except WakeBlocked as exc:
+            return [dict(status="BLOCKED", reason=str(exc))]
+        except Exception:
+            return [dict(status="BLOCKED", reason="LOCAL_FAILURE")]
+
+    receipts = []
+    # Enumeration is bounded by MAX_EVENTS. A held lane never occupies the only
+    # worker available for another already admitted conversation.
+    with ThreadPoolExecutor(max_workers=max(1, len(lanes))) as pool:
+        for completed in as_completed([pool.submit(worker, affinity) for affinity in lanes]):
+            receipts.extend(completed.result())
+    return receipts
+
+
 def main(argv=None) -> int:
     parser = _Parser(description="Bounded local user doorbell", allow_abbrev=False)
     parser.add_argument("--event-id")
     parser.add_argument("--repository", required=True)
     parser.add_argument("--drain", action="store_true")
+    parser.add_argument("--lane-event-id")
+    parser.add_argument("--all-lanes", action="store_true")
     parser.add_argument("--compact", action="store_true")
     parser.add_argument("--rechecks", type=int, default=1)
     parser.add_argument("--interval", type=int, default=15)
     args = parser.parse_args(argv)
     try:
         if (args.drain == (args.event_id is not None) or (args.compact and not args.drain)
+                or (args.lane_event_id is not None and (not args.drain or args.all_lanes))
+                or (args.all_lanes and not args.drain)
                 or not 1 <= args.rechecks <= 8 or not 0 <= args.interval <= 30):
             raise WakeBlocked("INVALID_INPUT")
         if not REPOSITORY_PATTERN.fullmatch(args.repository):
             raise WakeBlocked("INVALID_INPUT")
         if args.event_id is not None:
             doorbell(args.event_id, args.repository)
+        if args.lane_event_id is not None:
+            doorbell(args.lane_event_id, args.repository)
     except WakeBlocked:
         print(json.dumps({"status": "BLOCKED", "reason": "INVALID_INPUT"}))
         return 1
     try:
         if os.environ.get("AIOS_LOCAL_CHAT_WAKE_ENABLED") != "true":
             raise WakeBlocked("ENABLE_GATE_CLOSED")
-        provider = lambda: load_binding(args.repository)
-        binding = provider()
+        if not os.environ.get("AIOS_LOCAL_CHAT_WAKE_CONFIG") and (args.event_id or args.lane_event_id):
+            raise WakeBlocked("BINDING_MISSING")
+        selector = args.event_id or args.lane_event_id
+        affinity = CanonicalFreshness(args.repository).affinity(selector) if selector is not None else LEGACY
+        if affinity is None:
+            raise WakeBlocked("AFFINITY_UNPROVEN")
         if args.drain:
-            for index in range(args.rechecks):
-                if os.environ.get("AIOS_LOCAL_CHAT_WAKE_ENABLED") != "true":
-                    raise WakeBlocked("ENABLE_GATE_CLOSED")
-                receipts = operate(args.repository, provider(), binding_provider=provider, compact=args.compact)
-                for receipt in receipts:
-                    print(json.dumps(receipt, sort_keys=True))
-                # One invocation gets at most one possible submission. A proof
-                # or ambiguity hold also ends rechecks; neither permits resend.
-                if any(receipt["status"] in {"SUBMITTED", "BLOCKED"} for receipt in receipts):
-                    break
-                if index + 1 < args.rechecks:
-                    time.sleep(args.interval)
+            runner = recheck_lanes if args.all_lanes else recheck_lane
+            options = dict(rechecks=args.rechecks, interval=args.interval, compact=args.compact)
+            receipts = (runner(args.repository, **options) if args.all_lanes else
+                        runner(args.repository, affinity, **options))
+            for receipt in receipts:
+                print(json.dumps(receipt, sort_keys=True))
             return 0  # Held work is reported, never converted into resend permission.
+        provider = lambda: load_route_binding(args.repository, affinity)
+        binding = provider()
         receipt = deliver(args.event_id, args.repository, binding, binding_provider=provider)
     except WakeBlocked as exc:
         receipt = {"status": "BLOCKED", "reason": str(exc)}

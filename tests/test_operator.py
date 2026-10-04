@@ -21,6 +21,7 @@ import aios_renew.operator as operator_module
 import aios_renew.publication as publication_module
 import aios_renew.runtime as runtime_module
 import aios_renew.review_transport as transport_module
+
 from aios_renew.codex_adapter import CodexAdapter
 from aios_renew.review_transport import (
     RemoteFailureArtifacts,
@@ -2225,7 +2226,7 @@ def test_git_output_preserves_utf8_nul_delimited_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     captured = {}
-    raw_output = "普通.txt\0emoji-🚀.txt\0"
+    raw_output = "æ™®é€š.txt\0emoji-ðŸš€.txt\0"
 
     def runner(command, **kwargs):
         captured.update(kwargs)
@@ -13971,3 +13972,26 @@ def test_primary_reviewed_result_rejects_different_review_blob_bytes_non_destruc
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
     assert not any(root == repo and args[0] == "reset" for root, args in calls)
     assert not list(runtime_paths(repo).runs.glob("RUN-269-*.json"))
+
+def test_h4c1_persisted_run_decoding_and_task_mismatch_fail_closed(monkeypatch):
+    from dataclasses import asdict
+    from aios_renew.return_affinity import OriginAffinity
+    from aios_renew.run import Run
+    from aios_renew.decision_packet import _run as packet_run
+    from aios_renew.unified_state import _decode_lifecycle_run
+    task = operator_module.parse_task(TASK_SOURCE + "\nreturn_affinity: " + json.dumps(
+        asdict(OriginAffinity("page-origin-v1:" + "a" * 64, 1))))
+    run = Run.from_task(run_id="RUN-101-001", task=task, executor="codex", base_sha="b" * 40, workspace="fixture")
+    document = asdict(run)
+    assert operator_module._run_from_data(document) == run
+    assert _decode_lifecycle_run(json.dumps(document).encode(), run_id=run.run_id)[0] == run
+    packet_run(document, task)
+    monkeypatch.setattr(transport_module, "_read_local_blob", lambda *args: (TASK_SOURCE + "\nreturn_affinity: " + json.dumps(asdict(task.return_affinity))).encode())
+    transport_module._validate_transport_affinity(Path("."), json.dumps(document).encode(), "c" * 40)
+    for changed in (dict(document, return_affinity={"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}),
+                    {key: value for key, value in document.items() if key != "return_affinity"},
+                    dict(document, return_affinity=asdict(OriginAffinity(task.return_affinity.route_handle, 2)))):
+        with pytest.raises(ValueError, match="affinity"):
+            packet_run(changed, task)
+        with pytest.raises(transport_module.ReviewTransportError, match="affinity"):
+            transport_module._validate_transport_affinity(Path("."), json.dumps(changed).encode(), "c" * 40)

@@ -22,6 +22,7 @@ from .review import (
     validate_remediation, validate_review,
 )
 from .task import TaskValidationError, validate_task
+from .return_affinity import document_affinity, require_same_affinity
 from .run import Run, RunTaskReference, RunValidationError
 from .review_transport import validate_runtime_failure_binding
 
@@ -137,7 +138,7 @@ def _task(value: Any, observed: Mapping[str, Any]) -> Any:
 
 
 def _run(value: Any, task: Any, *, expected_id: str | None = None) -> dict[str, Any]:
-    run = _mapping(value, "RUN", fields={"run_id", "task", "executor", "base_sha", "workspace", "head_sha", "status"},
+    run = _mapping(value, "RUN", fields={"run_id", "task", "executor", "base_sha", "workspace", "head_sha", "status", "return_affinity"},
                    required={"run_id", "task", "executor", "base_sha"})
     _identity(run["run_id"], "RUN id")
     _sha(run["base_sha"], "RUN base SHA")
@@ -149,12 +150,14 @@ def _run(value: Any, task: Any, *, expected_id: str | None = None) -> dict[str, 
         raise DecisionPacketError("RUN does not match canonical subject")
     if "head_sha" in run and run["head_sha"] is not None:
         _sha(run["head_sha"], "RUN head SHA")
-    Run(
+    canonical_run = Run(
+        return_affinity=document_affinity(run),
         run_id=run["run_id"], task=task_reference,
         executor=run["executor"], base_sha=run["base_sha"],
         workspace=run["workspace"], head_sha=run.get("head_sha"),
         status=run.get("status", "ACTIVE"),
     )
+    require_same_affinity(task, canonical_run)
     return run
 
 
@@ -353,6 +356,7 @@ def _semantic_review(material: dict[str, Any], observed: Mapping[str, Any]) -> t
         raise DecisionPacketError("invalid bounded EVIDENCE set")
     evidence = tuple(validate_evidence(item) for item in raw_evidence)
     canonical_run = Run(
+        return_affinity=document_affinity(run),
         run_id=run["run_id"], task=RunTaskReference(task.task_id, task.revision),
         executor=run["executor"], base_sha=run["base_sha"],
         workspace=run["workspace"], head_sha=run.get("head_sha"),

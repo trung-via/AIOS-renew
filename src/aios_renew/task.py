@@ -9,6 +9,8 @@ from typing import Any
 
 import yaml
 
+from .return_affinity import AffinityError, LEGACY, ReturnAffinity, document_affinity, parse_affinity
+
 from .verification_contract import (
     MINIMUM_SUFFICIENT_V1,
     VerificationContractError,
@@ -18,6 +20,25 @@ from .verification_contract import (
 
 class TaskValidationError(ValueError):
     """Raised when TASK input does not satisfy the canonical contract."""
+
+
+class _TaskLoader(yaml.SafeLoader):
+    pass
+
+
+def _unique_mapping(loader, node):
+    pairs = loader.construct_pairs(node, deep=True)
+    result = {}
+    for key, value in pairs:
+        if not isinstance(key, str):
+            raise TaskValidationError("TASK mapping fields must be strings")
+        if key in result:
+            raise TaskValidationError("duplicate TASK mapping field")
+        result[key] = value
+    return result
+
+
+_TaskLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
 
 
 @dataclass(frozen=True)
@@ -56,13 +77,20 @@ class Task:
     constraints: TaskConstraints
     acceptance: tuple[AcceptanceCriterion, ...]
     verification: TaskVerification
+    return_affinity: ReturnAffinity = LEGACY
+
+    def __post_init__(self):
+        try:
+            object.__setattr__(self, "return_affinity", parse_affinity(self.return_affinity))
+        except AffinityError as exc:
+            raise TaskValidationError(str(exc)) from exc
 
 
 def parse_task(source: str) -> Task:
     """Parse a YAML TASK document and validate its canonical fields."""
 
     try:
-        data = yaml.safe_load(source)
+        data = yaml.load(source, Loader=_TaskLoader)
     except yaml.YAMLError as exc:
         raise TaskValidationError(f"Invalid TASK YAML: {exc}") from exc
 
@@ -86,6 +114,7 @@ def validate_task(data: Any) -> Task:
             "constraints",
             "acceptance",
             "verification",
+            "return_affinity",
         },
         "TASK",
     )
@@ -179,7 +208,13 @@ def validate_task(data: Any) -> Task:
                 )
             seen_commands.add(command)
 
+    try:
+        affinity = document_affinity(root)
+    except AffinityError as exc:
+        raise TaskValidationError(str(exc)) from exc
+
     return Task(
+        return_affinity=affinity,
         task_id=_string(_required(root, "task_id", "TASK"), "task_id"),
         revision=revision,
         goal=_string(_required(root, "goal", "TASK"), "goal"),

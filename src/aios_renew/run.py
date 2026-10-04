@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from threading import Lock
 
 from .task import Task
+from .return_affinity import AffinityError, LEGACY, ReturnAffinity, parse_affinity
 
 
 ACTIVE = "ACTIVE"
@@ -44,8 +45,13 @@ class Run:
     workspace: str
     head_sha: str | None = None
     status: str = ACTIVE
+    return_affinity: ReturnAffinity = LEGACY
 
     def __post_init__(self) -> None:
+        try:
+            object.__setattr__(self, "return_affinity", parse_affinity(self.return_affinity))
+        except AffinityError as exc:
+            raise RunValidationError(str(exc)) from exc
         _non_empty(self.run_id, "run_id")
         if not isinstance(self.task, RunTaskReference):
             raise RunValidationError("task must be a RunTaskReference")
@@ -72,6 +78,7 @@ class Run:
         """Create an active RUN containing only a reference to its TASK."""
 
         return cls(
+            return_affinity=task.return_affinity,
             run_id=run_id,
             task=RunTaskReference(id=task.task_id, revision=task.revision),
             executor=executor,
@@ -88,6 +95,7 @@ class RunLease:
     executor: str
     base_sha: str
     workspace: str
+    return_affinity: ReturnAffinity = LEGACY
 
 
 class RunLeaseRegistry:
@@ -106,6 +114,7 @@ class RunLeaseRegistry:
         with self._lock:
             current = self._leases.get(run.task.id)
             requested = RunLease(
+                return_affinity=run.return_affinity,
                 task_id=run.task.id,
                 task_revision=run.task.revision,
                 run_id=run.run_id,

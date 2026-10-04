@@ -43,6 +43,43 @@ def test_parse_valid_task() -> None:
     assert [criterion.id for criterion in task.acceptance] == ["AC1", "AC2"]
 
 
+def test_return_affinity_historical_missing_is_explicitly_legacy_only():
+    from aios_renew.return_affinity import LEGACY, document_affinity
+    assert parse_task(VALID_TASK).return_affinity == LEGACY
+    assert document_affinity({}) == LEGACY
+    assert parse_task(VALID_TASK + "return_affinity: {kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}\n").return_affinity == LEGACY
+
+
+def test_origin_affinity_round_trips_only_opaque_selector():
+    from dataclasses import asdict
+    import yaml
+    from aios_renew.return_affinity import OriginAffinity
+    affinity = OriginAffinity("page-origin-v1:" + "a" * 64, 7)
+    task = parse_task(VALID_TASK + yaml.safe_dump({"return_affinity": asdict(affinity)}))
+    assert task.return_affinity == affinity
+    assert set(asdict(task)["return_affinity"]) == {"kind", "route_handle", "generation"}
+
+
+@pytest.mark.parametrize("selector", [
+    None, {}, {"kind": "UNKNOWN"},
+    {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE", "generation": 1},
+    *[{"kind": "ORIGIN_AFFINE", "route_handle": "page-origin-v1:" + "a" * 64, "generation": value}
+      for value in (True, 0, -1, "1", 1.0, 2147483648)],
+    {"kind": "ORIGIN_AFFINE", "route_handle": "page-origin-v1:" + "A" * 64, "generation": 1},
+    {"kind": "ORIGIN_AFFINE", "route_handle": "page-origin-v1:" + "a" * 64, "generation": 1, "chat_url": "private"},
+])
+def test_return_affinity_rejects_invalid_or_private_fields(selector):
+    import yaml
+    with pytest.raises(TaskValidationError, match="return_affinity"):
+        parse_task(VALID_TASK + yaml.safe_dump({"return_affinity": selector}))
+
+
+def test_duplicate_affinity_cannot_overwrite_exact_selector():
+    with pytest.raises(TaskValidationError, match="duplicate"):
+        parse_task(VALID_TASK + "return_affinity: {kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}\n"
+                   "return_affinity: {kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}\n")
+
+
 def test_rejects_missing_required_field() -> None:
     with pytest.raises(TaskValidationError, match=r"TASK\.task_id is required"):
         parse_task(VALID_TASK.replace("task_id: TASK-002\n", ""))

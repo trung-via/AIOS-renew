@@ -109,16 +109,18 @@ jobs:
           python -m aios_renew.local_chat_wake --event-id $env:AIOS_WAKE_EVENT_ID --repository $env:AIOS_WAKE_REPOSITORY
           exit $LASTEXITCODE
       - name: Bounded follow-up for admitted lane work
+        # The exact admitted event selects the same conversation lane.
         # Intake can persist in the inbox even when the lane lock is held or
         # delivery fails. Drain that existing work after either intake outcome.
         if: ${{ !cancelled() && steps.admit.outcome != 'skipped' }}
         env:
           AIOS_WAKE_REPOSITORY: ${{ github.repository }}
+          AIOS_WAKE_LANE_EVENT_ID: ${{ matrix.event_id }}
           AIOS_LOCAL_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
           GITHUB_TOKEN: ${{ github.token }}
         shell: powershell
         run: |
-          python -m aios_renew.local_chat_wake --drain --rechecks 2 --interval 15 --repository $env:AIOS_WAKE_REPOSITORY
+          python -m aios_renew.local_chat_wake --drain --rechecks 2 --interval 15 --lane-event-id $env:AIOS_WAKE_LANE_EVENT_ID --repository $env:AIOS_WAKE_REPOSITORY
           exit $LASTEXITCODE
 
   deliver:
@@ -164,11 +166,12 @@ jobs:
         if: ${{ !cancelled() && steps.admit.outcome != 'skipped' }}
         env:
           AIOS_WAKE_REPOSITORY: ${{ inputs.repository }}
+          AIOS_WAKE_LANE_EVENT_ID: ${{ inputs.event_id }}
           AIOS_LOCAL_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
           GITHUB_TOKEN: ${{ github.token }}
         shell: powershell
         run: |
-          python -m aios_renew.local_chat_wake --drain --rechecks 2 --interval 15 --repository $env:AIOS_WAKE_REPOSITORY
+          python -m aios_renew.local_chat_wake --drain --rechecks 2 --interval 15 --lane-event-id $env:AIOS_WAKE_LANE_EVENT_ID --repository $env:AIOS_WAKE_REPOSITORY
           exit $LASTEXITCODE
   recheck:
     # Best-effort fallback only: drains previously admitted machine-local subjects.
@@ -203,5 +206,5 @@ jobs:
           AIOS_LOCAL_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
         shell: powershell
         run: |
-          python -m aios_renew.local_chat_wake --drain --compact --rechecks 4 --interval 15 --repository $env:AIOS_WAKE_REPOSITORY
+          python -m aios_renew.local_chat_wake --drain --compact --rechecks 4 --interval 15 --all-lanes --repository $env:AIOS_WAKE_REPOSITORY
           exit $LASTEXITCODE

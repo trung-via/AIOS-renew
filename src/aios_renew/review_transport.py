@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .return_affinity import document_affinity
+
 import hashlib
 import json
 import re
@@ -583,6 +585,7 @@ def _bind_performance_terminal_identity(
             workspace=run_data["workspace"],
             head_sha=run_data.get("head_sha"),
             status=run_data["status"],
+            return_affinity=document_affinity(run_data),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ReviewTransportError(
@@ -1294,6 +1297,10 @@ def _decode_run_task_identity(run_bytes: bytes, ref: str) -> tuple[str, int, str
         raise ReviewTransportError(f"canonical RUN task.id at {ref} is invalid")
     if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
         raise ReviewTransportError(f"canonical RUN task.revision at {ref} is invalid")
+    try:
+        document_affinity(source_run if run_data.get("kind") == "REMEDIATION" else run_data)
+    except ValueError as exc:
+        raise ReviewTransportError("canonical RUN affinity is invalid") from exc
     return task_id, revision, run_id
 
 
@@ -2077,6 +2084,8 @@ def transport_failure(
     remote = resolve_transport_remote(repo)
     candidate_ref = f"refs/heads/aios/failure/{run_id}"
     artifacts_ref = f"refs/heads/aios/failure-artifacts/{run_id}"
+    _validate_transport_affinity(repo, run_path.read_bytes(), head_sha,
+                                 lineage_path.read_bytes() if lineage_path is not None else None)
     expected = {
         ".ai/transport/run.json": run_path.read_bytes(),
         ".ai/transport/failure.json": failure_path.read_bytes(),
@@ -2609,6 +2618,34 @@ def read_remote_repair(repo: Path, run_id: str, *, remote: str | None = None) ->
     return resolve_remote_repair_authorization(repo, run_id, remote=remote).repair
 
 
+def _validate_transport_affinity(repo, run_bytes, head_sha, lineage_bytes=None):
+    """Reject altered persisted selectors before any terminal ref write."""
+    from .return_affinity import LEGACY
+    from .terminal_attention import _load_yaml
+    try:
+        document = _performance_json_mapping(run_bytes, "RUN")
+        value = document["execution"]["run"] if document.get("kind") == "REMEDIATION" else document
+        affinity = document_affinity(value)
+        reference = value["task"]
+        name = f".ai/tasks/{reference['id']}.yaml"
+        for sha in (value["base_sha"], head_sha):
+            content = _read_local_blob(repo, sha, name)
+            if content is None:
+                if affinity != LEGACY:
+                    raise ValueError("origin TASK carrier missing")
+                continue  # Retain historical legacy-only transport readability.
+            task = _load_yaml(content, "transport TASK")
+            if ({"id": task.get("task_id"), "revision": task.get("revision")} != reference
+                    or document_affinity(task) != affinity):
+                raise ValueError("persisted RUN/TASK affinity mismatch")
+        if lineage_bytes is not None:
+            lineage = _performance_json_mapping(lineage_bytes, "REPAIR")
+            if lineage.get("run") != value or document_affinity(lineage["task"]) != affinity:
+                raise ValueError("persisted REPAIR affinity mismatch")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ReviewTransportError("canonical terminal affinity conflicts with TASK/RUN lineage") from exc
+
+
 def transport_post_pass(
     repo: Path,
     *,
@@ -2633,6 +2670,7 @@ def transport_post_pass(
     expected_run_bytes = run_path.read_bytes()
     expected_result_bytes = result_path.read_bytes()
     expected_lineage_bytes = lineage_path.read_bytes() if lineage_path is not None else None
+    _validate_transport_affinity(repo, expected_run_bytes, head_sha, expected_lineage_bytes)
     expected_observation_bytes = (
         observation_path.read_bytes() if observation_path is not None else None
     )

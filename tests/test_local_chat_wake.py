@@ -193,11 +193,15 @@ def canonical_fixture(monkeypatch, kind="RESULT"):
     terminal = root + ("artifacts/" if kind == "RESULT" else "failure-artifacts/") + run_id
     candidate = root + ("review/" if kind == "RESULT" else "failure/") + run_id
     refs = {terminal: artifact, candidate: head}
-    blobs = {(artifact, ".ai/transport/run.json"): dict(run_id=run_id, task=task, head_sha=None),
+    blobs = {(artifact, ".ai/transport/run.json"): dict(run_id=run_id, task=task, head_sha=None,
+                 executor="codex", base_sha="f" * 40, workspace="synthetic", status="ACTIVE"),
              (artifact, ".ai/transport/result.json"): {"result": {"head_sha": head}, "evidence": []},
              (artifact, ".ai/transport/failure.json"): dict(kind="FAILURE", run_id=run_id, task=task, failed_head_sha=head)}
     main, main_sha, task_path = "refs/heads/main", "e" * 40, ".ai/tasks/TASK-fixture.yaml"
     current_task = canonical_task()
+    import copy
+    for sha in ("f" * 40, head):
+        blobs[(sha, task_path)] = copy.deepcopy(current_task)
     if kind == "FAILURE":
         refs[main] = main_sha
         blobs[(main_sha, task_path)] = current_task
@@ -215,7 +219,12 @@ def canonical_fixture(monkeypatch, kind="RESULT"):
             value = blobs[(sha, name)]
             return value if isinstance(value, str) else json.dumps(value)
         if args[0] == "ls-tree":
-            return ".ai/reviews/REVIEW-fixture-001.yaml"
+            name = args[-1]
+            if name == ".ai/reviews":
+                return ".ai/reviews/REVIEW-fixture-001.yaml"
+            return name if (args[-3], name) in blobs else ""
+        if args[0] == "rev-list":
+            return ""
         if args[0] == "rev-parse":
             return successor
         assert args[0] in {"init", "fetch"}
@@ -3138,3 +3147,230 @@ def test_temporary_permissive_unknown_is_transport_only_and_dedupes(binding, unk
     wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter, projection=projection, compact=True)
     assert len(adapter.submits) == 1 and not stored(binding)["tombstones"]
     assert stored(binding)["events"][EVENT]["status"] == "SUBMITTED"
+
+def affine_setup(tmp_path, monkeypatch):
+    from aios_renew import origin_bootstrap as origin
+    from aios_renew.return_affinity import OriginAffinity
+    directory = tmp_path / "route-lanes"
+    directory.mkdir()
+    path = tmp_path / "origins.json"
+    selectors = [OriginAffinity("page-origin-v1:" + digit * 64, 1) for digit in ("a", "b")]
+    routes = {}
+    for index, affinity in enumerate(selectors, 1):
+        url = synthetic_url(index)
+        routes[origin.conversation_key(url)] = dict(handle=affinity.route_handle, generation=1,
+            chat_url=url, cdp_endpoint="http://127.0.0.1:9222", attempt=None)
+    path.write_text(json.dumps(dict(version=1, routes=routes)))
+    config = tmp_path / "routes-config.json"
+    config.write_text(json.dumps(dict(version=3, origin_registry=str(path), lane_directory=str(directory), repositories=[wake.REPOSITORY])))
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_CONFIG", str(config))
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_ENABLED", "true")
+    return path, selectors, [wake.load_route_binding(wake.REPOSITORY, affinity) for affinity in selectors]
+
+
+class AffineProjection:
+    def __init__(self, selector, freshness="UNRESOLVED"):
+        self.selector, self.freshness = selector, freshness
+
+    def affinity(self, event):
+        return self.selector
+
+    def observe(self, event):
+        return self.freshness
+
+
+class AffineAdapter:
+    def __init__(self, binding, block=None, proof=True, pause=None, release=None):
+        self.binding, self.block, self.proof = binding, block, proof
+        self.pause, self.release = pause, release
+        self.inserts, self.submits, self.proofs = [], [], []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def check(self, text):
+        if self.pause:
+            self.pause.set()
+            assert self.release.wait(5)
+        if self.block:
+            raise wake.WakeBlocked(self.block)
+
+    def submit(self, text, before_insert, before_click):
+        before_insert()
+        self.inserts.append(text)
+        before_click()
+        event = text.splitlines()[1].split(": ", 1)[1]
+        bucket = json.loads(self.binding.state_path.read_text())["repositories"][self.binding.repository]
+        assert bucket["events"][event]["status"] == "AMBIGUOUS"
+        assert bucket["events"][event]["generation"] == self.binding.generation
+        self.submits.append(text)
+
+    def prove(self, text):
+        self.proofs.append(text)
+        if not self.proof:
+            raise wake.WakeBlocked("SUBMISSION_UNPROVEN")
+
+
+def test_h4c1_same_route_serializes_multiflow_and_other_route_progresses(tmp_path, monkeypatch):
+    _, selectors, bindings = affine_setup(tmp_path, monkeypatch)
+    a, b = bindings
+    pause, release = ThreadEvent(), ThreadEvent()
+    held = AffineAdapter(a, pause=pause, release=release)
+    other = AffineAdapter(b)
+    event2 = EVENT.replace("001", "002")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(wake.deliver, EVENT, wake.REPOSITORY, a, lambda _: held, AffineProjection(selectors[0]))
+        assert pause.wait(5)
+        try:
+            # Same handle has one lock and durable inbox even across flow IDs.
+            receipt = wake.deliver(event2, wake.REPOSITORY, a, lambda _: pytest.fail("held lane cannot attach"), AffineProjection(selectors[0]))
+            assert receipt["reason"] == "STATE_LOCKED_OR_UNAVAILABLE"
+            assert wake.deliver(EVENT, wake.REPOSITORY, b, lambda _: other, AffineProjection(selectors[1]))["status"] == "SUBMITTED"
+            frozen_b = b.state_path.read_bytes()
+        finally:
+            release.set()
+        assert first.result()["status"] == "SUBMITTED"
+    pending = AffineAdapter(a)
+    wake.operate(wake.REPOSITORY, a, adapter_factory=lambda _: pending, projection=AffineProjection(selectors[0]))
+    assert len(held.submits) == len(other.submits) == len(pending.submits) == 1
+    assert event2 in json.loads(a.state_path.read_text())["repositories"][wake.REPOSITORY]["events"]
+    assert b.state_path.read_bytes() == frozen_b
+    assert wake.deliver(EVENT, wake.REPOSITORY, a, lambda _: pytest.fail("exact-event duplicate"), AffineProjection(selectors[0]))["status"] == "NOOP"
+
+
+@pytest.mark.parametrize("defect", ["missing", "stale", "duplicate", "invalid", "pending", "ambiguous"])
+def test_h4c1_origin_resolution_fails_closed_without_default_fallback(tmp_path, monkeypatch, defect):
+    path, selectors, _ = affine_setup(tmp_path, monkeypatch)
+    document = json.loads(path.read_text())
+    values = list(document["routes"].values())
+    if defect == "missing":
+        values[0]["handle"] = "page-origin-v1:" + "c" * 64
+    elif defect == "stale":
+        values[0]["generation"] = 2
+    elif defect == "duplicate":
+        values[1]["handle"] = values[0]["handle"]
+    elif defect == "invalid":
+        values[0]["cdp_endpoint"] = "http://192.0.2.1:9222"
+    elif defect == "pending":
+        path.with_name(path.name + ".pending").write_text("uncertain")
+    else:
+        values[0]["attempt"] = dict(id="d" * 64, status="AMBIGUOUS")
+    path.write_text(json.dumps(document))
+    monkeypatch.setattr(wake, "load_binding", lambda *_: pytest.fail("exact affinity cannot consult default"))
+    with pytest.raises(wake.WakeBlocked):
+        wake.load_route_binding(wake.REPOSITORY, selectors[0])
+
+
+def test_h4c1_lane_path_alias_is_not_an_independent_route(tmp_path, monkeypatch):
+    _, selectors, bindings = affine_setup(tmp_path, monkeypatch)
+    first, second = bindings
+    first.state_path.write_text("{}")
+    try:
+        second.state_path.symlink_to(first.state_path)
+    except OSError:
+        pytest.skip("Local symlink creation unavailable")
+    with pytest.raises(wake.WakeBlocked, match="REGISTRY_CONFLICT"):
+        wake.load_route_binding(wake.REPOSITORY, selectors[1])
+
+
+def test_h4c1_generation_change_never_redirects_ambiguous_attempt(tmp_path, monkeypatch):
+    path, selectors, bindings = affine_setup(tmp_path, monkeypatch)
+    old = bindings[0]
+    adapter = AffineAdapter(old, proof=False)
+    assert wake.deliver(EVENT, wake.REPOSITORY, old, lambda _: adapter, AffineProjection(selectors[0]))["status"] == "BLOCKED"
+    document = json.loads(path.read_text())
+    entry = next(item for item in document["routes"].values() if item["handle"] == selectors[0].route_handle)
+    entry["generation"] = 2
+    entry["cdp_endpoint"] = "http://127.0.0.1:9333"
+    path.write_text(json.dumps(document))
+    from aios_renew.return_affinity import OriginAffinity
+    newer = OriginAffinity(selectors[0].route_handle, 2)
+    current = wake.load_route_binding(wake.REPOSITORY, newer)
+    attempted_bindings = []
+    proof = AffineAdapter(old, proof=False)
+    def factory(binding):
+        attempted_bindings.append(binding)
+        return proof
+    wake.operate(wake.REPOSITORY, current, adapter_factory=factory, projection=AffineProjection(newer))
+    assert attempted_bindings == [old]
+    assert not proof.inserts and not proof.submits and len(proof.proofs) == 1
+    bucket = json.loads(old.state_path.read_text())["repositories"][wake.REPOSITORY]
+    assert bucket["events"][EVENT]["status"] == "AMBIGUOUS"
+    assert bucket["events"][EVENT]["generation"] == 1
+
+
+def test_h4c1_lane_drain_checks_each_exact_subject_affinity(tmp_path, monkeypatch):
+    _, selectors, bindings = affine_setup(tmp_path, monkeypatch)
+    a, b = bindings
+    blocked = AffineAdapter(a, block="DRAFT_PRESENT")
+    wake.deliver(EVENT, wake.REPOSITORY, a, lambda _: blocked, AffineProjection(selectors[0]))
+    before = a.state_path.read_bytes()
+    assert wake.deliver(EVENT, wake.REPOSITORY, b, lambda _: pytest.fail("wrong route"), AffineProjection(selectors[0]))["reason"] == "AFFINITY_UNPROVEN"
+    assert not b.state_path.exists() and a.state_path.read_bytes() == before
+    receipts = wake.operate(wake.REPOSITORY, a, adapter_factory=lambda _: pytest.fail("unproved route"), projection=AffineProjection(None))
+    assert receipts[0]["reason"] == "AFFINITY_UNPROVEN"
+
+
+def test_h4c1_scheduled_recheck_only_admitted_lanes_and_independent_errors(tmp_path, monkeypatch):
+    _, selectors, bindings = affine_setup(tmp_path, monkeypatch)
+    assert wake.configured_lanes(wake.REPOSITORY) == []
+    for selector, binding in zip(selectors, bindings):
+        wake.deliver(EVENT, wake.REPOSITORY, binding, lambda b: AffineAdapter(b, block="DRAFT_PRESENT"), AffineProjection(selector))
+    calls = []
+    def recheck(repository, selector, **options):
+        calls.append(selector)
+        assert options["rechecks"] == 2 and options["deadline"] > 0
+        if selector == selectors[0]:
+            raise wake.WakeBlocked("STATE_LOCKED_OR_UNAVAILABLE")
+        return [dict(event_id=EVENT, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")]
+    monkeypatch.setattr(wake, "recheck_lane", recheck)
+    receipts = wake.recheck_lanes(wake.REPOSITORY, rechecks=2, interval=0)
+    assert set(calls) == set(selectors)
+    assert {receipt["status"] for receipt in receipts} == {"BLOCKED", "SUBMITTED"}
+
+
+def test_h4c1_legacy_delivery_is_separate_and_never_origin_fallback(tmp_path, monkeypatch):
+    path, selectors, bindings = affine_setup(tmp_path, monkeypatch)
+    from aios_renew.return_affinity import LEGACY
+    legacy = wake.Binding(synthetic_url(9), bindings[0].cdp_endpoint, tmp_path / "legacy.json", 1)
+    adapter = RecoveryAdapter(legacy)
+    assert wake.deliver(EVENT, wake.REPOSITORY, legacy, lambda _: adapter, AffineProjection(LEGACY))["status"] == "SUBMITTED"
+    assert legacy.return_affinity == LEGACY and bindings[0].return_affinity == selectors[0]
+    frozen = legacy.state_path.read_bytes()
+    result = wake.deliver(EVENT.replace("001", "002"), wake.REPOSITORY, legacy, lambda _: pytest.fail("origin cannot select legacy"), AffineProjection(selectors[0]))
+    assert result["reason"] == "AFFINITY_UNPROVEN" and legacy.state_path.read_bytes() == frozen
+    registry_before = path.read_bytes()
+    assert wake.load_route_binding(wake.REPOSITORY, selectors[0]) == bindings[0]
+    assert path.read_bytes() == registry_before
+
+
+def test_h4c1_follow_up_cli_selects_only_the_admitted_event_lane(tmp_path, monkeypatch):
+    _, selectors, _ = affine_setup(tmp_path, monkeypatch)
+    seen = []
+    monkeypatch.setattr(wake.CanonicalFreshness, "affinity", lambda self, event: seen.append(event) or selectors[0])
+    monkeypatch.setattr(wake, "recheck_lane", lambda repository, selector, **options: seen.append(selector) or [])
+    monkeypatch.setattr(wake, "recheck_lanes", lambda *args, **kwargs: pytest.fail("follow-up cannot enumerate other routes"))
+    assert wake.main(["--drain", "--lane-event-id", EVENT, "--rechecks", "2", "--interval", "0", "--repository", wake.REPOSITORY]) == 0
+    assert seen == [EVENT, selectors[0]]
+    monkeypatch.setattr(wake.CanonicalFreshness, "affinity", lambda *args: None)
+    assert wake.main(["--event-id", EVENT, "--repository", wake.REPOSITORY]) == 1
+
+
+def test_h4c1_same_handle_cross_repository_shares_one_durable_lock(tmp_path, monkeypatch):
+    _, selectors, bindings = affine_setup(tmp_path, monkeypatch)
+    first = bindings[0]
+    other = wake.Binding(first.chat_url, first.cdp_endpoint, first.state_path, first.generation,
+                         "fixture/other", first.route_handle)
+    with wake.RouteState(first.state_path, wake.REPOSITORY, first.route_handle).locked():
+        receipt = wake.deliver(EVENT, other.repository, other, lambda _: pytest.fail("same handle lock"), AffineProjection(selectors[0]))
+        assert receipt["reason"] == "STATE_LOCKED_OR_UNAVAILABLE"
+    adapter = AffineAdapter(other)
+    assert wake.deliver(EVENT, other.repository, other, lambda _: adapter, AffineProjection(selectors[0]))["status"] == "SUBMITTED"
+    adapter2 = AffineAdapter(first)
+    assert wake.deliver(EVENT, wake.REPOSITORY, first, lambda _: adapter2, AffineProjection(selectors[0]))["status"] == "SUBMITTED"
+    data = json.loads(first.state_path.read_text())
+    assert set(data["repositories"]) == {wake.REPOSITORY, other.repository}
+    assert all(bucket["events"][EVENT]["status"] == "SUBMITTED" for bucket in data["repositories"].values())

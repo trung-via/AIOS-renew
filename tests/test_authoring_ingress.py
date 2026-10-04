@@ -44,6 +44,40 @@ def new_task_envelope(main_sha: str) -> IngressEnvelope:
     )
 
 
+def test_h4c1_new_authoring_without_explicit_classification_is_non_mutating(tmp_path):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = new_task_envelope(main_sha)
+    envelope = replace(envelope, payload=envelope.payload.replace(
+        "return_affinity: {kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}\n", ""))
+    with pytest.raises(AuthoringIngressError, match="explicit return_affinity"):
+        execute_ingress(envelope, repo=repo)
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+
+
+@pytest.mark.parametrize("change", ["route", "generation", "legacy", "missing"])
+def test_h4c1_revision_cannot_transfer_existing_affinity(change):
+    from aios_renew.return_affinity import require_authored_affinity
+    from aios_renew.task import parse_task
+    selector = dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "a" * 64, generation=1)
+    existing = parse_task(V1_TASK_105_SOURCE.replace(
+        "return_affinity: {kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}",
+        "return_affinity: " + json.dumps(selector)))
+    payload = yaml.safe_load(V1_TASK_105_R2_SOURCE)
+    payload["return_affinity"] = dict(selector)
+    require_authored_affinity(payload, existing)
+    if change == "route":
+        payload["return_affinity"]["route_handle"] = "page-origin-v1:" + "b" * 64
+    elif change == "generation":
+        payload["return_affinity"]["generation"] = 2
+    elif change == "legacy":
+        payload["return_affinity"] = {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}
+    else:
+        del payload["return_affinity"]
+    with pytest.raises(ValueError, match="return_affinity"):
+        require_authored_affinity(payload, existing)
+
+
 def test_audited_authoring_missing_handoff_is_non_mutating(tmp_path):
     repo, remote, main_sha = setup_test_repo(tmp_path)
     with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
@@ -344,10 +378,10 @@ verification:
 """
 
 V1_TASK_105_SOURCE = TASK_105_SOURCE.replace(
-    "verification:\n", "verification:\n  policy: minimum-sufficient-v1\n"
+    "verification:\n", "return_affinity: {kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}\nverification:\n  policy: minimum-sufficient-v1\n"
 )
 V1_TASK_105_R2_SOURCE = TASK_105_R2_SOURCE.replace(
-    "verification:\n", "verification:\n  policy: minimum-sufficient-v1\n"
+    "verification:\n", "return_affinity: {kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}\nverification:\n  policy: minimum-sufficient-v1\n"
 )
 
 

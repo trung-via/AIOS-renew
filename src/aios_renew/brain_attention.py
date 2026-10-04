@@ -595,6 +595,228 @@ def _review_patterns(run_id):
             ("artifacts", "failure-artifacts", "review", "failure", "review-decision")]
 
 
+def resolve_return_affinity(event_id, sources, artifacts=None):
+    """Read-only exact-lineage proof; uncertainty yields no routable selector.
+
+    Event grammar is unchanged. Every mutable ref consulted is checked again;
+    descendants can only inherit the exact TASK selector, never select a route.
+    """
+    from .return_affinity import document_affinity, require_same_affinity
+    from .run import Run, RunTaskReference
+    from .task import validate_task
+
+    snapshots, visited, proven = {}, set(), {}
+
+    def refs(*patterns):
+        key = tuple(patterns)
+        value = sources.refs(*patterns)
+        if key in snapshots and snapshots[key] != value:
+            raise AttentionError("AFFINITY_LINEAGE_MOVED")
+        snapshots[key] = value
+        return value
+
+    def task_at(sha, identity):
+        _value(sha, "sha")
+        task = validate_task(sources.document(sha, f".ai/tasks/{identity['id']}.yaml"))
+        if {"id": task.task_id, "revision": task.revision} != identity:
+            raise AttentionError("AFFINITY_TASK_MISMATCH")
+        return task
+
+    def run_affinity(run_id, artifact_sha=None, candidate_sha=None, kind=None, expected_task=None):
+        _value(run_id, "run")
+        if run_id in proven:
+            selector, artifact, candidate, family, reference = proven[run_id]
+            if (artifact_sha is not None and artifact_sha != artifact
+                    or candidate_sha is not None and candidate_sha != candidate
+                    or kind is not None and kind != family
+                    or expected_task is not None and expected_task != reference):
+                raise AttentionError("AFFINITY_SOURCE_SUBSTITUTION")
+            return selector
+        if run_id in visited or len(visited) + len(proven) >= 32:
+            raise AttentionError("AFFINITY_LINEAGE_BOUND")
+        visited.add(run_id)
+        root = "refs/heads/aios/"
+        current = refs(*_review_patterns(run_id))
+        success, failure = [current.get(root + namespace + "/" + run_id)
+                            for namespace in ("artifacts", "failure-artifacts")]
+        if bool(success) == bool(failure) or (kind == RESULT and not success) or (kind == FAILURE and not failure):
+            raise AttentionError("AFFINITY_TERMINAL_UNPROVEN")
+        sha = success or failure
+        _value(sha, "sha")
+        head = current.get(root + ("review/" if success else "failure/") + run_id)
+        _value(head, "sha")
+        if (artifact_sha is not None and artifact_sha != sha
+                or candidate_sha is not None and candidate_sha != head):
+            raise AttentionError("AFFINITY_SOURCE_SUBSTITUTION")
+        document = sources.document(sha, ".ai/transport/run.json")
+        if document.get("kind") == "REMEDIATION":
+            execution = document["execution"]
+            value = execution["run"]
+        elif "kind" not in document:
+            execution, value = None, document
+        else:
+            raise AttentionError("AFFINITY_RUN_KIND")
+        reference = value["task"]
+        if set(reference) != {"id", "revision"} or expected_task is not None and reference != expected_task:
+            raise AttentionError("AFFINITY_TASK_MISMATCH")
+        _value(reference["id"], "subject")
+        if not reference["id"].startswith("TASK-"):
+            raise AttentionError("AFFINITY_TASK_MISMATCH")
+        run = Run(run_id=value["run_id"], task=RunTaskReference(**reference),
+                  executor=value["executor"], base_sha=value["base_sha"],
+                  workspace=value["workspace"], head_sha=value.get("head_sha"),
+                  status=value["status"], return_affinity=document_affinity(value))
+        if run.run_id != run_id or run.status != "ACTIVE" or run.head_sha not in (None, head):
+            raise AttentionError("AFFINITY_RUN_MISMATCH")
+        terminal = sources.document(sha, ".ai/transport/" + ("result.json" if success else "failure.json"))
+        if success:
+            if terminal["result"]["head_sha"] != head:
+                raise AttentionError("AFFINITY_RESULT_MISMATCH")
+        elif terminal.get("run_id") != run_id or terminal.get("task") != reference or terminal.get("failed_head_sha") != head:
+            raise AttentionError("AFFINITY_FAILURE_MISMATCH")
+        task = task_at(run.base_sha, reference)
+        require_same_affinity(task, run)
+        if task_at(head, reference).return_affinity != task.return_affinity or not sources.included(run.base_sha, head):
+            raise AttentionError("AFFINITY_CANDIDATE_DRIFT")
+        if execution is not None:
+            from .review import parse_remediation
+            correction = parse_remediation(json.dumps(execution["remediation"]))
+            review_id = execution["review_id"]
+            if not isinstance(review_id, str) or not review_id.startswith("REVIEW-"):
+                raise AttentionError("AFFINITY_REMEDIATION_MISMATCH")
+            source_id = "RUN-" + review_id[7:]
+            predecessor = document.get("predecessor")
+            if predecessor is not None and predecessor != dict(source_run_id=source_id, review_id=review_id,
+                    finding_id=correction.finding_id, reviewed_sha=correction.reviewed_sha):
+                raise AttentionError("AFFINITY_REMEDIATION_MISMATCH")
+            if execution["finding"]["id"] != correction.finding_id:
+                raise AttentionError("AFFINITY_REMEDIATION_MISMATCH")
+            if run_affinity(source_id, candidate_sha=correction.reviewed_sha, kind=RESULT,
+                            expected_task=reference) != task.return_affinity:
+                raise AttentionError("AFFINITY_DESCENDANT_DRIFT")
+            identity, review = sources.review(source_id)
+            if (identity["reviewed_sha"] != correction.reviewed_sha or review.get("review_id") != review_id
+                    or review.get("verdict") != "CHANGES_REQUIRED"
+                    or not any(finding.get("id") == correction.finding_id and finding.get("action") == correction.action
+                               for finding in review.get("findings", []))):
+                raise AttentionError("AFFINITY_REMEDIATION_MISMATCH")
+            execution_base = document.get("execution_base")
+            if execution_base is not None:
+                base_id = execution_base.get("cumulative_tip_run_id", execution_base.get("run_id"))
+                base_head = execution_base.get("cumulative_tip_candidate_sha", execution_base.get("candidate_sha"))
+                if run_affinity(base_id, candidate_sha=base_head, kind=RESULT,
+                                expected_task=reference) != task.return_affinity:
+                    raise AttentionError("AFFINITY_DESCENDANT_DRIFT")
+            elif run.base_sha != correction.reviewed_sha:
+                raise AttentionError("AFFINITY_REMEDIATION_MISMATCH")
+        repair = sources.optional_document(sha, ".ai/transport/repair.json")
+        if repair is not None:
+            if (execution is not None or repair.get("run") != value
+                    or repair.get("failed_head_sha") != run.base_sha
+                    or document_affinity(repair["task"]) != task.return_affinity):
+                raise AttentionError("AFFINITY_REPAIR_MISMATCH")
+            for nested in ("failure", "repair"):
+                if nested in repair:
+                    original = repair[nested]
+                    identity_key = "run_id" if nested == "failure" else "failed_run_id"
+                    if (original.get(identity_key) != repair["failed_run_id"]
+                            or original.get("failed_head_sha") != repair["failed_head_sha"]
+                            or original.get("task") != reference):
+                        raise AttentionError("AFFINITY_REPAIR_MISMATCH")
+            if run_affinity(repair["failed_run_id"], candidate_sha=repair["failed_head_sha"], kind=FAILURE,
+                            expected_task=reference) != task.return_affinity:
+                raise AttentionError("AFFINITY_DESCENDANT_DRIFT")
+        visited.remove(run_id)
+        proven[run_id] = (task.return_affinity, sha, head, RESULT if success else FAILURE, reference)
+        return task.return_affinity
+
+    try:
+        item = parse_event_id(event_id)
+        if item.family == RECOVERY:
+            item = parse_event_id(item.selectors["original_event_id"])
+        s = dict(item.selectors)
+        if set(_POINTER).issubset(s):
+            pointer = {key: s[key] for key in _POINTER}
+            if artifacts is None or item.event_id not in {candidate.event_id for candidate in project_source(artifacts.artifact(pointer), pointer)}:
+                return None
+        if item.family in {RESULT, FAILURE}:
+            affinity = run_affinity(s["run_id"], s["artifact_sha"], kind=item.family)
+        elif item.family in {REVIEW, PUBLICATION_FAILURE, PUBLICATION_SUCCESS}:
+            refs(*_review_patterns(s["run_id"]))
+            identity, review = sources.review(s["run_id"], s["decision_sha"])
+            if any(s[key] != identity[key] for key in _REVIEW):
+                return None
+            if review["verdict"] not in ({"CHANGES_REQUIRED", "BLOCKED"} if item.family == REVIEW else {"PASS"}):
+                return None
+            affinity = run_affinity(s["run_id"], s["artifact_sha"], s["reviewed_sha"], RESULT)
+            if item.family == PUBLICATION_SUCCESS:
+                main = refs("refs/heads/main").get("refs/heads/main")
+                if not main or not sources.included(s["published_sha"], main):
+                    return None
+        elif item.family in {DISPATCH, PRE_AIOS}:
+            if s["subject_id"] == "NONE" or s["subject_sha"] == "0" * 40:
+                return None
+            if s["operation"] == "PRIMARY":
+                task_doc = sources.document(s["subject_sha"], f".ai/tasks/{s['subject_id']}.yaml")
+                task = validate_task(task_doc)
+                main = refs("refs/heads/main").get("refs/heads/main")
+                if task.task_id != s["subject_id"] or not main or not sources.included(s["subject_sha"], main):
+                    return None
+                affinity = task.return_affinity
+            elif s["operation"] == "REMEDIATION":
+                affinity = run_affinity(s["subject_id"], candidate_sha=s["subject_sha"], kind=RESULT)
+            else:
+                ref = "refs/heads/aios/repair/" + s["subject_id"]
+                if refs(ref).get(ref) != s["subject_sha"]:
+                    return None
+                repair = sources.document(s["subject_sha"], ".ai/transport/repair.json")
+                if repair.get("failed_run_id") != s["subject_id"]:
+                    return None
+                affinity = run_affinity(s["subject_id"], candidate_sha=repair["failed_head_sha"], kind=FAILURE)
+        elif item.family in {INGRESS, REVIEW_INGRESS, AUTHORING}:
+            issue = artifacts.request(f"/issues/{s['issue_number']}")
+            if issue.get("id") != s["issue_id"] or not isinstance(issue.get("body"), str) or hashlib.sha256(issue["body"].encode("utf-8")).hexdigest() != s["body_digest"]:
+                return None
+            from .authoring_ingress import parse_envelope
+            from .return_affinity import require_authored_affinity
+            envelope = parse_envelope(issue["body"])
+            if envelope.operation != s["operation"]:
+                return None
+            key = {"AUTHOR_TASK": "task_id", "SUBMIT_REVIEW": "run_id", "AUTHOR_REMEDIATION": "source_run_id", "AUTHOR_REPAIR": "failed_run_id"}[envelope.operation]
+            if envelope.identity[key] != s["subject_id"] or envelope.identity.get("finding_id", "NONE") != s["finding_id"]:
+                return None
+            if envelope.operation == "AUTHOR_TASK" and item.family == INGRESS and s["carrier"] == "INGRESS":
+                payload = envelope.payload if isinstance(envelope.payload, dict) else _load_yaml(envelope.payload, "admitted TASK")
+                if payload.get("task_id") != s["subject_id"] or type(payload.get("revision")) is not int or payload["revision"] < 1:
+                    return None
+                affinity = require_authored_affinity(payload)
+                main = refs("refs/heads/main").get("refs/heads/main")
+                if main is None:
+                    return None
+                existing = sources.optional_document(main, f".ai/tasks/{s['subject_id']}.yaml")
+                if existing is not None and document_affinity(existing) != affinity:
+                    return None
+            elif s["subject_sha"] != "0" * 40:
+                expected = envelope.expected_state
+                bound = next((expected[k] for k in ("expected_candidate_sha", "expected_reviewed_sha", "reviewed_sha", "expected_failed_head_sha") if k in expected), None)
+                if envelope.operation == "AUTHOR_REPAIR" and bound is None:
+                    payload = envelope.payload if isinstance(envelope.payload, dict) else _load_yaml(envelope.payload, "admitted repair")
+                    bound = payload.get("failed_head_sha")
+                if bound != s["subject_sha"]:
+                    return None
+                affinity = run_affinity(s["subject_id"], candidate_sha=bound,
+                                        kind=FAILURE if envelope.operation == "AUTHOR_REPAIR" else RESULT)
+            else:
+                return None
+        else:
+            return None  # No semantic inference for unbound conflict/unknown carriers.
+        if any(sources.refs(*patterns) != value for patterns, value in snapshots.items()):
+            return None
+        return affinity
+    except Exception:
+        return None  # No raw canonical or local data in transport diagnostics.
+
+
 # workflow_run must identify a trusted producer path, never just a display name.
 # Reusable carrier artifacts inherit their parent workflow identity.
 PRODUCERS = frozenset({

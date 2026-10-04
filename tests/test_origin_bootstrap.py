@@ -21,6 +21,18 @@ URL_B = "https://chatgpt.com/c/00000000-0000-0000-0000-000000000002"
 ENDPOINT = "http://127.0.0.1:9222"
 
 
+def test_h4c1_shared_opaque_selector_grammar_preserves_h4c0_contract():
+    from aios_renew import return_affinity as affinity
+    assert origin.HANDLE is affinity.HANDLE
+    assert origin.HANDLE_PREFIX == affinity.HANDLE_PREFIX
+    assert origin.MAX_GENERATION == affinity.MAX_GENERATION == 2147483647
+    handle = origin.HANDLE_PREFIX + "a" * 64
+    result = origin.BootstrapResult("SUBMITTED", "ACCEPTED", handle, 1).as_dict()
+    assert set(result) == {"contract", "status", "reason", "route_handle", "generation"}
+    assert result["contract"] == "PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1"
+    assert affinity.parse_affinity(dict(kind="ORIGIN_AFFINE", route_handle=handle, generation=1)).route_handle == handle
+
+
 @pytest.fixture
 def registry(tmp_path):
     return origin.OriginRegistry(tmp_path / "origin.json")
