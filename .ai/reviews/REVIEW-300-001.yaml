@@ -1,0 +1,49 @@
+review_id: REVIEW-300-001
+reviewed_sha: ad00bb370b6e46731d5b8ef1abbaf6536a22fb5b
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- 'RUN-300-001 is the canonical PRIMARY RESULT for TASK-300 r1. Runtime verification
+  is canonical PASS: 666 passed, 1091 skipped in 30.30s for tests/test_origin_bootstrap.py
+  plus tests/test_local_chat_wake.py; git diff --check passed; unresolved is empty.'
+- 'AC1: RESULT changed_files is exactly src/aios_renew/origin_bootstrap.py, tests/test_origin_bootstrap.py,
+  and docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md. No script, local_chat_wake
+  implementation/test, lifecycle artifact, registry state, or roadmap mutation is
+  part of the candidate.'
+- 'AC2: the legacy fully-empty post-submit success path remains textContent exactly
+  empty plus innerText exactly empty; it is preserved as the first branch and is not
+  structurally tightened.'
+- 'AC3/AC4: the only additional post-submit path requires outer textContent exactly
+  empty, innerText exactly one LF, one visible P root with empty textContent, and
+  one visible childless empty BR carrying exactly class="ProseMirror-trailingBreak".
+  DIV/text/other roots, root or child cardinality drift, bare/wrong/decorated/hidden
+  BRs, non-empty content, other whitespace, multiple LFs, and composer replacement
+  remain fail-closed. Root attributes are deliberately not treated as origin/content
+  authority.'
+- 'AC5: pre-submit exactText/readiness is unchanged. The existing spent/invalidated/staged/pending,
+  document/route, regular-surface, unique retained-composer and scoped Send count/enabledness
+  operands remain outside the new helper and unchanged; timing, click ordering, registry
+  attempt transitions and no-blind-resend semantics are not modified.'
+- 'AC6: focused DOM regressions execute the production api.submitted() closure for
+  both accepted empty representations, one-LF structural/content/whitespace near-misses,
+  and page/composer/scoped-Send guard failures. The required minimum-sufficient Runtime
+  suite passed.'
+- 'AC7: documentation preserves the bounded post-TASK-299 planning facts and their
+  limits: A1 remains AMBIGUOUS/SUBMISSION_UNPROVEN, D1 supplies same-attempt COMPOSER_NOT_EMPTY
+  only, and the later EMPTY/ONE_LF/sole-trailing-BR observation explicitly remains
+  1-of-2. Historical ambiguous attempts stay unresolved; H4C0 remains open and H4C1
+  blocked.'
+- 'AC8: Executor claims remain implementation claims only. Runtime verification, this
+  Reviewer verdict, Publisher publication, historical ambiguous-attempt disposition,
+  later live observation and H4C0 planning remain separately authority-owned; no automatic
+  TASK-301 or roadmap advance is introduced.'
