@@ -602,19 +602,20 @@ sequence:
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
-    task_id: TASK-293
-    task_revision: 1
-    task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "2e0a2e5cd4c1845e25023bcb1609799b3633e800"
-    task_blob_sha: "728869e1f056820968f0c421d37f43c45a52d093"
-    authoring_issue_number: 1451
-    audit_profile: brain-high-value-v3
-    audit_stages:
-      - CONSTRUCT
-      - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "c47b1e8f3937a3c093694417b5b788d275b7cbb5957f94655c559480f713816e"
-    construct_fingerprint: "b061abc4df6f3bb3ed039fe78e86ad8a7a06181b932b49a2bd27e644cde09f79"
-    reconciled_candidate_fingerprint: "699b31476485d033b86e100a8088662ceec12037431ca5e7fe20c9ab935d49b4"
+    task293_prior_authoring:
+      task_id: TASK-293
+      task_revision: 1
+      task_authoring_status: CANONICALIZED
+      task_author_commit_sha: "2e0a2e5cd4c1845e25023bcb1609799b3633e800"
+      task_blob_sha: "728869e1f056820968f0c421d37f43c45a52d093"
+      authoring_issue_number: 1451
+      audit_profile: brain-high-value-v3
+      audit_stages:
+        - CONSTRUCT
+        - ADVERSARIAL_AUDIT_AND_RECONCILE
+      packet_fingerprint: "c47b1e8f3937a3c093694417b5b788d275b7cbb5957f94655c559480f713816e"
+      construct_fingerprint: "b061abc4df6f3bb3ed039fe78e86ad8a7a06181b932b49a2bd27e644cde09f79"
+      reconciled_candidate_fingerprint: "699b31476485d033b86e100a8088662ceec12037431ca5e7fe20c9ab935d49b4"
     production_requirement:
       - ORIGIN_AFFINE_RETURN_REQUIRED_BEFORE_H5
       - UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5
@@ -709,7 +710,7 @@ sequence:
         - CREATE_NEW_PLANNER_RUNTIME_REVIEWER_PUBLISHER_OR_WAKE_QUEUE
         - REQUIRE_DEVELOPER_MODE_MCP_RESPONSES_API_OR_OPENAI_SESSION_METADATA
         - MAKE_ROUTE_HANDLE_AN_AUTHORIZATION_CAPABILITY
-    human_execution_delegation:
+    task293_prior_human_execution_delegation:
       selected_on: "2026-10-04"
       authority: HUMAN
       task_id: TASK-293
@@ -720,7 +721,7 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
       persistence: THROUGH_TASK_293_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
-    primary_dispatch_intent:
+    task293_prior_primary_dispatch_intent:
       dispatch_id: task293-r1-codex61-xhigh-20261004-001
       task_blob_sha: "728869e1f056820968f0c421d37f43c45a52d093"
       task_commit_sha: "2e0a2e5cd4c1845e25023bcb1609799b3633e800"
