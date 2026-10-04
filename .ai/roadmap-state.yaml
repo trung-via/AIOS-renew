@@ -459,11 +459,11 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - temporary-wake-first-cutover-v2
+  - brain-runtime-semantic-handoff-hardening-v1-h4c0-origin-capture-feasibility
 sequence:
 
   - id: temporary-wake-first-cutover-v2
-    status: NEXT
+    status: DONE
     phase: TEMPORARY_WAKE_FIRST_CUTOVER_V2
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-04"
@@ -535,8 +535,30 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: PENDING_CARRIER
-    next_action: AWAIT_CANONICAL_TASK_294_LIFECYCLE
+      status: DISPATCH_ACCEPTED
+      carrier_issue_number: 1457
+    engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-294
+      task_revision: 1
+      run_id: RUN-294-001
+      result_artifact_sha: "8a310e525218ea215347e5973b64ae57f68830dd"
+      candidate_sha: "4a5a1d1fda69ce6a566141388c98b4dba0799346"
+      verification_summary: "648 passed, 596 skipped in 65.48s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-294-001
+      review_decision_sha: "6062e653888056b0a115f0ff6430c41df007fe4a"
+      verdict: PASS
+      reviewed_sha: "4a5a1d1fda69ce6a566141388c98b4dba0799346"
+      published_sha: "4a5a1d1fda69ce6a566141388c98b4dba0799346"
+      publication_workflow_run_id: 37173037219
+      completed_on: "2026-10-04"
+      interpretation: >-
+        TEMPORARY_WAKE_FIRST_CUTOVER_V2 is reviewed and exactly published. Cross-event
+        LANE_IN_FLIGHT eligibility is retired under the Human wake-first risk acceptance,
+        while exact-event dedupe/no-blind-resend and exact destination/binding safety
+        remain required. This completes the temporary wake side-track and returns
+        planning control to the previously paused H4C0 checkpoint.
+    next_action: RETURN_TO_H4C0_CHECKPOINT
     mutation_freeze_after_dispatch: >-
       Do not write planning/bookkeeping commits to main while TASK-294 is executing,
       under review, or awaiting exact publication. Resume planning mutation only after
@@ -574,7 +596,7 @@ sequence:
     remaining_gate: NONE_ACCOUNT_SURFACE_DIAGNOSIS_SUPERSEDED
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c0-origin-capture-feasibility
-    status: PAUSED_BY_HUMAN_PRIORITY_WAKE_CUTOVER
+    status: NEXT
     phase: H4C0_ORIGIN_CAPTURE_FEASIBILITY_AND_CONTRACT_FREEZE
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-04"
@@ -781,10 +803,17 @@ sequence:
         changed main. This checkpoint does not fabricate publication success or H4C0
         closure and is intentionally paused by the Human wake-first priority.
     current_live_blocker:
-      code: H4C0_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_AND_LIVE_PROOF_PENDING
-      authority: HUMAN_BRAIN_PLANNING
+      code: TASK_293_REVIEWED_DELTA_INTEGRATION_AUTHORIZATION_PENDING
+      authority: HUMAN
       task_binding: TASK-293
-      next_action: AWAIT_CANONICAL_TASK_293_LIFECYCLE
+      next_action: HUMAN_AUTHORIZE_SEPARATE_INTEGRATION_CANDIDATE_FOR_EXACT_REVIEWED_TASK_293_DELTA
+      basis: >-
+        RUN-293-001 and REVIEW-293-001 remain valid, but publication failed closed
+        because reviewed candidate 0f6684a41bff0ff6e284185c29e246256009a013 diverged from
+        then-current main. TASK-294 wake-first publication is now complete, so H4C0
+        resumes at this checkpoint. Canonical state explicitly requires a separately
+        authorized integration candidate; Brain must not create or dispatch that
+        integration task from publication success alone.
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
@@ -792,6 +821,7 @@ sequence:
         - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_IDENTITY_INFERENCE
         - NO_ACTIVE_TAB_RECENT_CHAT_TIMESTAMP_HEURISTIC
         - NO_IMPLEMENTATION_OR_PUBLICATION_TREATED_AS_LIVE_TWO_CHAT_PROOF
+        - NO_UNAUTHORIZED_TASK293_INTEGRATION_AUTHORING
         - NO_AUTOMATIC_ROADMAP_ADVANCE
     prior_primary_dispatch_intent:
       dispatch_id: task292-r1-codex61-xhigh-20261004-001
