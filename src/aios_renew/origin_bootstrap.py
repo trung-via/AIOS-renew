@@ -428,6 +428,26 @@ INSTALL = r"""({slot, composer, send, stop, nonregular, login, ttl, maxDraft}) =
   const normalize = value => value.length <= 512 && /^https:\/\/chatgpt\.com(?:\/g\/g-[A-Za-z0-9-]*)?\/c\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/.test(value)
     ? value.replace(/\/$/, '') : null;
   const exactText = (""" + _EXACT_TEXT + r""");
+  const oneLfEmpty = box => {
+    // Post-submit compatibility only: no whitespace normalization or changes
+    // to the pre-submit exactText grammar. Root attributes confer no authority.
+    if (box.innerText !== '\n' || box.childNodes.length !== 1) return false;
+    const root = box.childNodes[0];
+    if (root.nodeType !== 1 || root.tagName !== 'P' || root.textContent !== '' ||
+        root.childNodes.length !== 1) return false;
+    const child = root.childNodes[0];
+    if (child.nodeType !== 1 || child.tagName !== 'BR' || child.textContent !== '' ||
+        child.childNodes.length !== 0 || child.attributes.length !== 1 ||
+        child.attributes[0].name !== 'class' ||
+        child.attributes[0].value !== 'ProseMirror-trailingBreak') return false;
+    const shown = node => {
+      const style = getComputedStyle(node);
+      return !node.hidden && node.getAttribute('aria-hidden') !== 'true' &&
+        node.getClientRects().length && style.visibility !== 'hidden' &&
+        style.visibility !== 'collapse' && style.display !== 'none' && style.opacity !== '0';
+    };
+    return !!shown(root) && !!shown(child);
+  };
   const surface = () => {
     const boxes = visible(composer);
     return normalize(location.href) && visible('main').length === 1 &&
@@ -550,7 +570,7 @@ INSTALL = r"""({slot, composer, send, stop, nonregular, login, ttl, maxDraft}) =
       normalize(location.href) === pending.chat_url && visible('main').length === 1 &&
       !visible(login).length && !visible(nonregular).length &&
       visible(composer).length === 1 && visible(composer)[0] === staged.box &&
-      staged.box.textContent === '' && staged.box.innerText === '' &&
+      staged.box.textContent === '' && (staged.box.innerText === '' || oneLfEmpty(staged.box)) &&
       (() => {const controls = sendControls(staged.box);
         return controls && controls.length <= 1 && (!controls.length || !enabled(controls[0]));})(),
     finish: () => {

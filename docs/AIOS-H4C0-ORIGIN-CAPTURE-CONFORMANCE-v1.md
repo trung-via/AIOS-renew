@@ -2,7 +2,7 @@
 
 Status: PAGE-SCOPED FALLBACK CONTRACT / LIVE OBSERVATION UNPROVED
 
-TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback); TASK-295 revision 2 (published insertion correction); TASK-296 revision 1 (published bounded editor-reconciliation correction); TASK-297 revision 1 (published literal-paste wrapper and insert-to-ready correction); TASK-298 revision 1 (published opt-in diagnostic attribution); TASK-299 revision 1 (exact marked empty-paragraph correction)
+TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback); TASK-295 revision 2 (published insertion correction); TASK-296 revision 1 (published bounded editor-reconciliation correction); TASK-297 revision 1 (published literal-paste wrapper and insert-to-ready correction); TASK-298 revision 1 (published opt-in diagnostic attribution); TASK-299 revision 1 (published exact marked empty-paragraph correction); TASK-300 revision 1 (one-LF empty-editor post-submit correction)
 Parent: [H4 Origin-Affine Return and Unattended Local Wake](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md)  
 Authority: Runtime verifies implementation; Human/Brain evaluates later live feasibility.
 
@@ -11,7 +11,7 @@ contract. Its accepted implementation, REVIEW/PASS, and exact publication remain
 valid evidence. The current Human-observed regular-Chat surface did not expose
 the Developer Mode/custom MCP entry for that candidate's planned live procedure;
 that availability observation does not invalidate its engineering lineage.
-Sections 6–12 define the selected page-scoped fallback, its bounded corrections,
+Sections 6–13 define the selected page-scoped fallback, its bounded corrections,
 and its later Human/Brain live gate.
 
 ## 1. Feasibility basis and limits
@@ -204,7 +204,19 @@ ephemeral in the selected document and are released on cleanup, never returned
 to Python or stored in the registry. Transcript and assistant output are not read.
 
 After submission, composer clearing and bounded scoped controls supply only a
-structural submission witness. An uncertain click, witness, completion write, or
+structural submission witness. The retained same composer must have `textContent`
+exactly empty. The existing `innerText` exactly empty case remains accepted.
+TASK-300 adds only `innerText` exactly one LF with exactly one visible P root,
+empty root `textContent`, and exactly one visible child BR carrying exactly
+`class="ProseMirror-trailingBreak"`, no children, and empty `textContent`.
+Root attributes are not origin or content authority for this post-submit check;
+the exact count/tag, empty logical content, sole BR grammar, and visibility close
+the structure. This does not broaden the pre-submit attributed-root allowlist.
+For the one-LF path, DIV, root text, multiple roots, missing/multiple children, bare/wrong/decorated/
+hidden BR, non-empty content, spaces or other whitespace, and multiple LFs fail
+closed. Every other post-submit operand is unchanged, including document/route,
+regular surface, unique retained composer, and scoped Send count/enabledness.
+An uncertain click, witness, completion write, or
 process crash leaves an `ATTEMPTING`/`AMBIGUOUS` local marker. There is no automatic
 resend, even on a new helper invocation or gesture. Human reconciliation is
 required; deleting markers blindly is not a recovery procedure. A pre-submit
@@ -292,8 +304,10 @@ transport queue. The finite local loop observes only document-owned pending gest
 ## 9. Required post-publication two-regular-chat Human/Brain procedure
 
 Preconditions: Runtime acceptance, a fresh independent Reviewer verdict, and
-Publisher publication of the exact reviewed TASK-299 correction. Human/Brain selects that SHA
-and authorizes the existing browser environment and each initial test handoff.
+Publisher publication of the exact reviewed TASK-300 correction. Human/Brain
+separately decides historical ambiguous-attempt disposition and whether a fresh
+bounded observation is authorized, as described in section 13. Human/Brain selects
+that published SHA and authorizes the existing environment and each initial handoff.
 These boundaries make the candidate available; they do not establish live conformance.
 
 The first bounded live observation against published TASK-295 revision 2
@@ -334,10 +348,11 @@ insert return. It supplies no generic SPAN/rich-text acceptance, normalization,
 manual-Send fallback, wake delivery, routing, or new authority. Runtime verification,
 a fresh Reviewer verdict, and exact reviewed publication completed for TASK-297 as
 recorded in section 11. The entire A/A/B/B comparison, continuity check, and ambiguity
-trial below remain pending. The next gate is the separately bounded post-TASK-299 A1
-and explicit Human/Brain interpretation in section 12; this numbered full procedure
-does not authorize retrying the currently unproved A1. H4C0 remains open and H4C1
-remains blocked.
+trial below remain pending. Section 13 records the post-TASK-299 observations and
+historical consumed ambiguous attempts. Before continuation, Human/Brain separately
+decides their disposition and whether a fresh bounded observation is authorized
+after TASK-300 publication. This numbered procedure does not authorize retrying
+A1 or D1. H4C0 remains open and H4C1 remains blocked.
 
 1. Open two distinct regular conversations **A** and **B** in the same repository/
    Project context. Identify the surfaces directly as Human observation labels;
@@ -419,8 +434,18 @@ the existing rich-DOM, byte/separator, wrapper visibility, traversal, control,
 page/challenge, binding, bounded-ready, and pre-intent/pre-click regressions.
 These are regression definitions; Runtime owns their canonical execution.
 
+TASK-300 adds focused post-click fixture definitions for both exactly empty
+rendered text and the sole one-LF P/trailing-BR shape, including roots with
+attributes that confer no origin or content authority. Negative definitions cover
+root/child count and node types, non-empty root/BR/composer text, wrong/decorated/
+child-bearing BRs, hidden or invisible roots/BRs, other whitespace and multiple
+LFs, document/route changes, composer ambiguity/replacement, and scoped Send/form
+failures. They retain the pre-submit exact-text/readiness regressions, single-click
+consumption, submission-unproven ambiguity, and no-blind-resend definitions.
+These definitions claim no Runtime verification or live conformance result.
+
 Runtime alone runs canonical verification and constructs EVIDENCE. Deterministic
-tests, Runtime PASS, Reviewer PASS, and publication of TASK-293, TASK-295, TASK-296, TASK-297, TASK-298, or TASK-299 alone do **not** close
+tests, Runtime PASS, Reviewer PASS, and publication of TASK-293, TASK-295, TASK-296, TASK-297, TASK-298, TASK-299, or TASK-300 alone do **not** close
 H4C0 or authorize H4C1. The real two-regular-chat procedure above is a later Human/
 Brain conformance decision. H4C0 remains the unique canonical NEXT, ahead of H4C1,
 H4D, H4E, final H4B production-shape proof, and H5; no phase advances automatically.
@@ -558,11 +583,59 @@ consume-before-single-click/no-blind-resend behavior. It authorizes no Executor
 live observation, operational-state reset, roadmap change, semantic review, or
 publication.
 
-Runtime verification and EVIDENCE, a fresh independent Reviewer verdict, and
-Publisher publication of the exact reviewed TASK-299 SHA remain downstream
-boundaries. After exact publication, Human/Brain alone may authorize one bounded
-A1 live proof and explicitly decide H4C0 continuation. Implementation, tests,
-review, and publication supply no live closure: **H4C0 stays open and H4C1 stays
-blocked**. The remaining two-chat comparison, continuity/ambiguity proof, and
-Human/Brain closure decision remain required. A new failure does not automatically
-authorize TASK-300 or any later phase.
+TASK-299 revision 1 completed RUN-299-001 Runtime PASS, REVIEW-299-001 PASS, and
+exact publication of `5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27`. The separately
+authorized post-publication A1 and later bounded observations are recorded in
+section 13. Implementation, tests, review, and publication supply no live closure:
+**H4C0 stays open and H4C1 stays blocked**. The remaining two-chat comparison,
+continuity/ambiguity proof, and Human/Brain closure decision remain required.
+These observations do not automatically authorize another execution or later phase.
+
+## 13. Post-TASK-299 bounded planning facts and one-LF TASK-300
+
+The single authorized post-TASK-299 A1 progressed beyond the submission-attempt
+boundary and ended `AMBIGUOUS/SUBMISSION_UNPROVEN`. Human observation confirmed
+that a sent user turn became present. That observation does not retroactively
+reclassify A1 as `SUBMITTED/ACCEPTED` or resolve its consumed ambiguous attempt.
+
+A separately authorized disposable D1 reproduced
+`AMBIGUOUS/SUBMISSION_UNPROVEN`. Its concurrent read-only observer stably reported
+only `COMPOSER_NOT_EMPTY` in the settled post-submit tail, with
+`STRUCTURAL_PASS_SEEN` false. This same-attempt attribution is a supplied bounded
+planning fact, not a production diagnostic enum, a Runtime result, or permission
+to retry.
+
+A later read-only probe over the already-consumed ambiguous routes observed two
+ambiguous routes but only one currently open page. That page's retained composer
+had `textContent` EMPTY, `innerText` ONE_LF, exactly one P root with empty text,
+and a sole BR child with exactly `class="ProseMirror-trailingBreak"`, no children,
+and empty text. This is a **1-of-2 observation**: it does not establish that both
+A1 and D1 had that final DOM shape, or that the shape was present throughout
+either earlier submission-proof window. The pre-TASK-300 predicate rejected this
+representation at its exact-empty `innerText` equality despite empty `textContent`.
+
+These are privacy-safe Human/Brain planning facts only. They supply the bounded
+prospective compatibility basis for TASK-300; they are not RUN, FAILURE, REVIEW,
+publication, Runtime verification, or live closure truth. No raw conversation
+URL/UUID, route handle, challenge/nonce, endpoint, registry contents, draft or
+bootstrap text, transcript, assistant output, or raw DOM payload is recorded here.
+
+TASK-300 adds only the exact one-LF post-submit shape defined in section 6. It
+preserves the fully-empty case and every pre-submit exactText/readiness rule,
+including TASK-299's attributed-root allowlist. All other post-submit proof
+operands, three-second submission and READY windows, 50 ms poll cadence,
+challenge TTL, selectors, scoped Send/form logic, consume-before-click ordering,
+registry generation and attempt transitions, and no-blind-resend behavior remain
+unchanged. It authorizes no Executor live observation, ambiguous-state reset,
+roadmap mutation, semantic review, or publication.
+
+Runtime owns canonical verification and EVIDENCE, Reviewer owns a fresh semantic
+verdict, and Publisher owns exact reviewed publication. After publication,
+Human/Brain separately decides disposition of the historical A1/D1 ambiguous
+attempts and whether a fresh bounded live observation is authorized. Those
+historical attempts remain unresolved pending that disposition; publication of
+TASK-300 alone cannot relabel, replay, resend, or convert them to `SUBMITTED`.
+**H4C0 remains open and H4C1 remains blocked.** H4C0 planning, its remaining
+two-chat/continuity/ambiguity proof and closure decision, any later live proof,
+and later lifecycle work remain downstream authority-owned facts. No automatic
+TASK-301 or roadmap advance follows this correction.

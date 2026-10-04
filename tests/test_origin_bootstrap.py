@@ -748,9 +748,93 @@ if (variant.startsWith('async_before_prove_')) changeAfterReady();
 const revalidated = proof ? api.prove(proof) : false;
 if (variant.startsWith('async_before_click_')) changeAfterReady();
 const sameScopedControl = controls.length === 1 && controls[0] === send && box.parentElement === form;
+function applySubmittedState(state) {
+  // Mutate only after the consumed click, keeping all pre-submit fixtures exact.
+  const root = paragraph(''); root.childNodes = [br(true)];
+  const child = root.childNodes[0];
+  box.innerText = '\n'; box.textContent = ''; box.childNodes = [root];
+  if (state === 'fully_empty') box.innerText = '';
+  if (state === 'fully_empty_no_nodes') {box.innerText = ''; box.childNodes = [];}
+  if (state === 'marked_root') root.attributes = [{name:'data-empty-paragraph', value:'true'}];
+  if (state === 'attributed_root') root.attributes = [
+    {name:'class', value:'editor-empty'}, {name:'data-empty-paragraph', value:'false'}];
+  if (state === 'root_div') root.tagName = 'DIV';
+  if (state === 'root_span') root.tagName = 'SPAN';
+  if (state === 'root_text') box.childNodes = [text('')];
+  if (state === 'root_comment') box.childNodes = [{nodeType:8, textContent:''}];
+  if (state === 'roots_absent') box.childNodes = [];
+  if (state === 'roots_multiple') box.childNodes.push(paragraph(''));
+  if (state === 'root_extra_text') box.childNodes.push(text(''));
+  if (state === 'children_absent') root.childNodes = [];
+  if (state === 'children_multiple') root.childNodes.push(br(true));
+  if (state === 'child_extra_text') root.childNodes.push(text(''));
+  if (state === 'child_text') root.childNodes = [text('')];
+  if (state === 'child_comment') root.childNodes = [{nodeType:8, textContent:''}];
+  if (state === 'child_span') child.tagName = 'SPAN';
+  if (state === 'bare_br') child.attributes = [];
+  if (state === 'br_wrong_attribute') child.attributes[0].name = 'data-class';
+  if (state === 'br_wrong_class') child.attributes[0].value = 'other';
+  if (state === 'br_extra_class') child.attributes[0].value += ' rich';
+  if (state === 'br_class_whitespace') child.attributes[0].value += ' ';
+  if (state === 'br_class_case') child.attributes[0].value = 'prosemirror-trailingBreak';
+  if (state === 'br_decorated') child.attributes.push({name:'title', value:''});
+  if (state === 'br_text_child') child.childNodes = [text('')];
+  if (state === 'br_element_child') child.childNodes = [br(true)];
+  if (state === 'br_comment_child') child.childNodes = [{nodeType:8, textContent:''}];
+  if (state === 'root_content') root.textContent = box.textContent = 'content';
+  if (state === 'br_content') child.textContent = root.textContent = box.textContent = 'content';
+  const whitespace = {inner_space:' ', inner_tab:'\t', inner_cr:'\r', inner_crlf:'\r\n',
+    inner_nbsp:'\u00a0', inner_two_lfs:'\n\n', inner_three_lfs:'\n\n\n',
+    inner_lf_space:'\n ', inner_space_lf:' \n', inner_line_separator:'\u2028'};
+  if (Object.hasOwn(whitespace, state)) box.innerText = whitespace[state];
+  if (state === 'text_space') box.textContent = ' ';
+  if (state === 'text_lf') box.textContent = '\n';
+  if (state === 'text_content') box.textContent = 'content';
+  for (const [prefix, node] of [['root_', root], ['br_', child]]) {
+    if (state === prefix + 'hidden') node.hidden = true;
+    if (state === prefix + 'aria_hidden') node.getAttribute = name => name === 'aria-hidden' ? 'true' : null;
+    if (state === prefix + 'no_rects') node.getClientRects = () => [];
+    if (state === prefix + 'invisible') node.css = {visibility:'hidden'};
+    if (state === prefix + 'collapsed') node.css = {visibility:'collapse'};
+    if (state === prefix + 'display_none') node.css = {display:'none'};
+    if (state === prefix + 'transparent') node.css = {opacity:'0'};
+  }
+  if (state === 'page_replaced') global.document = {...document};
+  if (state === 'route_changed') location.href = input.otherUrl;
+  if (state === 'route_roundtrip') {
+    history.pushState({}, '', input.otherUrl); history.replaceState({}, '', input.url);
+  }
+  if (state === 'main_absent') elements.main = [];
+  if (state === 'main_multiple') elements.main.push(element());
+  if (state === 'login') elements[args.login] = [element()];
+  if (state === 'nonregular') elements[args.nonregular] = [element()];
+  if (state === 'composer_absent') elements[args.composer] = [];
+  if (state === 'composer_multiple') elements[args.composer].push(element());
+  if (state === 'composer_replaced') elements[args.composer] = [{...box}];
+  if (state === 'composer_hidden') box.css = {visibility:'hidden'};
+  if (state === 'composer_no_rects') box.getClientRects = () => [];
+  if (state === 'send_enabled') send.disabled = false;
+  if (state === 'send_multiple') controls.push(Object.assign(element(), {disabled:true}));
+  if (state === 'send_absent') controls = [];
+  if (state === 'send_aria_disabled') {
+    send.disabled = false; send.getAttribute = () => 'true';
+  }
+  if (state === 'no_form') box.parentElement = null;
+  if (state === 'nested_forms') form.parentElement = {tagName:'FORM', parentElement:null};
+  if (state === 'finished') api.finish();
+}
+const witnessBeforeSubmit = input.submittedState ? api.submitted() : null;
 const submitted = ready ? api.submit(proof) : false;
 const duplicate = proof ? api.submit(proof) : false;
+if (input.submittedState) applySubmittedState(input.submittedState);
+const submittedFixture = input.submittedState ? {
+  textContent:box.textContent, innerText:box.innerText,
+  roots:box.childNodes.map(node => ({type:node.nodeType, tag:node.tagName, text:node.textContent,
+    attributes:node.attributes, children:node.childNodes?.map(child => ({type:child.nodeType,
+      tag:child.tagName, text:child.textContent, attributes:child.attributes, children:child.childNodes?.length}))})),
+} : null;
 const witnessed = api.submitted();
+const witnessedAgain = input.submittedState ? api.submitted() : null;
 api.finish(); const cleared = api.inspect() === null;
 elements[args.stop] = [];
 const nextApi = eval('(' + input.install + ')')(args), rearmed = !!nextApi;
@@ -759,6 +843,7 @@ const next = rearmed ? nextApi.inspect() : null;
 process.stdout.write(JSON.stringify({installed, proved, inserted, ready, submitted, duplicate, witnessed,
   clicks, inserts, notifications, staged, cleared, rearmed, beforeReconciliation, diverged, revalidated, sameScopedControl,
   readyPolls, productionGrammar, emptyParagraphFixture, renderedFixture, focuses, operations, readyDiagnostics,
+  witnessBeforeSubmit, witnessedAgain, submittedFixture,
   fresh:!!next && !!genuineProof && next.challenge !== genuineProof.challenge}));
 })().catch(error => {process.stderr.write(String(error)); process.exitCode=1;});
 """
@@ -797,7 +882,8 @@ def test_actual_page_gesture_edit_and_submit_scripts(scenario):
             assert result["staged"] == "Human authored draft\nsecond exact line   Human edit"
 
 
-def run_dom(scenario, draft=None, *, metadata=None, diagnostic=False, install=None, ready_state=None):
+def run_dom(scenario, draft=None, *, metadata=None, diagnostic=False, install=None, ready_state=None,
+            submitted_state=None):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is needed for the isolated JavaScript DOM harness")
@@ -808,9 +894,67 @@ def run_dom(scenario, draft=None, *, metadata=None, diagnostic=False, install=No
                      ttl=origin.CHALLENGE_TTL_MS, maxDraft=origin.MAX_DRAFT_CHARS)
     process = subprocess.run([node, "-e", DOM_HARNESS], input=json.dumps(dict(
         scenario=scenario, draft=draft, args=arguments, install=install or origin.INSTALL, metadata=metadata,
-        diagnostic=diagnostic, readyState=ready_state,
+        diagnostic=diagnostic, readyState=ready_state, submittedState=submitted_state,
         url=URL_A, otherUrl=URL_B)), capture_output=True, text=True, check=True, timeout=10)
     return json.loads(process.stdout), metadata
+
+
+@pytest.mark.parametrize("diagnostic", [False, True])
+@pytest.mark.parametrize("state", [
+    "fully_empty", "fully_empty_no_nodes", "one_lf",
+    "marked_root", "attributed_root", "send_absent", "send_aria_disabled",
+])
+def test_submitted_preserves_fully_empty_and_accepts_only_the_exact_one_lf_shape(state, diagnostic):
+    result, _ = run_dom("async_literal_empty_exact", diagnostic=diagnostic, submitted_state=state)
+    assert result["inserted"] and result["ready"] and result["revalidated"] and result["sameScopedControl"]
+    assert result["readyPolls"] == [False, False, True]
+    assert result["witnessBeforeSubmit"] is False
+    assert result["submitted"] and result["witnessed"] and result["witnessedAgain"]
+    assert result["clicks"] == result["inserts"] == result["notifications"] == 1
+    assert result["duplicate"] is False and result["cleared"] is True
+    fixture = result["submittedFixture"]
+    assert fixture["textContent"] == ""
+    assert fixture["innerText"] == ("" if state.startswith("fully_empty") else "\n")
+    if not state.startswith("fully_empty"):
+        root, = fixture["roots"]
+        assert root["type"] == 1 and root["tag"] == "P" and root["text"] == ""
+        assert root["children"] == [dict(type=1, tag="BR", text="",
+                                       attributes=[dict(name="class", value="ProseMirror-trailingBreak")],
+                                       children=0)]
+
+
+@pytest.mark.parametrize("state", [
+    "root_div", "root_span", "root_text", "root_comment", "roots_absent", "roots_multiple", "root_extra_text",
+    "children_absent", "children_multiple", "child_extra_text", "child_text", "child_comment", "child_span",
+    "bare_br", "br_wrong_attribute", "br_wrong_class", "br_extra_class", "br_class_whitespace", "br_class_case",
+    "br_decorated", "br_text_child", "br_element_child", "br_comment_child", "root_content", "br_content",
+    "root_hidden", "root_aria_hidden", "root_no_rects", "root_invisible", "root_collapsed", "root_display_none",
+    "root_transparent", "br_hidden", "br_aria_hidden", "br_no_rects", "br_invisible", "br_collapsed",
+    "br_display_none", "br_transparent", "inner_space", "inner_tab", "inner_cr", "inner_crlf", "inner_nbsp",
+    "inner_two_lfs", "inner_three_lfs", "inner_lf_space", "inner_space_lf", "inner_line_separator",
+    "text_space", "text_lf", "text_content",
+])
+def test_submitted_one_lf_shape_content_and_whitespace_near_misses_fail_closed(state):
+    result, _ = run_dom("async_literal_empty_exact", submitted_state=state)
+    assert result["inserted"] and result["ready"] and result["revalidated"] and result["submitted"]
+    assert result["sameScopedControl"] and result["witnessBeforeSubmit"] is False
+    assert result["witnessed"] is False and result["witnessedAgain"] is False
+    assert result["clicks"] == result["inserts"] == result["notifications"] == 1
+    assert result["duplicate"] is False and result["cleared"] is True
+
+
+@pytest.mark.parametrize("state", [
+    "page_replaced", "route_changed", "route_roundtrip", "main_absent", "main_multiple", "login", "nonregular",
+    "composer_absent", "composer_multiple", "composer_replaced", "composer_hidden", "composer_no_rects",
+    "send_enabled", "send_multiple", "no_form", "nested_forms", "finished",
+])
+def test_submitted_one_lf_keeps_page_composer_and_scoped_send_guards(state):
+    result, _ = run_dom("async_literal_empty_exact", submitted_state=state)
+    assert result["inserted"] and result["ready"] and result["revalidated"] and result["submitted"]
+    assert result["sameScopedControl"] and result["witnessBeforeSubmit"] is False
+    assert result["witnessed"] is False and result["witnessedAgain"] is False
+    assert result["clicks"] == result["inserts"] == result["notifications"] == 1
+    assert result["duplicate"] is False and result["cleared"] is True
 
 
 @pytest.mark.parametrize("scenario", ["async_exact", "async_div_exact", "async_inline_exact", "async_trailing_exact", "async_wait_exact"])
