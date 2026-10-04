@@ -414,6 +414,7 @@ def test_browser_inventory_is_bounded():
 # Execute the production page closure against a synthetic DOM. The fixture's
 # trusted event bit represents browser provenance; programmatic events lack it.
 DOM_HARNESS = r"""
+(async () => {
 const fs = require('fs'), input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const args = input.args, scenario = input.scenario;
 let clock = 0, randomCount = 0, clicks = 0, inserts = 0, notifications = 0, button;
@@ -422,10 +423,16 @@ global.crypto = {getRandomValues: bytes => {bytes.fill(++randomCount); return by
 global.location = {href: input.url}; global.window = {addEventListener() {}, removeEventListener() {}};
 global.history = {pushState(state, title, url) {location.href=url;},
   replaceState(state, title, url) {location.href=url;}};
-global.getComputedStyle = element => ({visibility: 'visible'});
-const element = () => ({getClientRects: () => [1], getAttribute: () => null});
-const humanDraft = 'Human authored draft\nsecond exact line  ';
-const box = Object.assign(element(), {innerText:humanDraft, textContent:humanDraft, childNodes:[],
+global.getComputedStyle = element => ({visibility:'visible', display:'block', opacity:'1', ...element.css});
+const element = () => ({attributes:[], childNodes:[], getClientRects: () => [1], getAttribute: () => null});
+const text = value => ({nodeType:3, textContent:value});
+const br = trailing => Object.assign(element(), {nodeType:1, tagName:'BR', textContent:'',
+  attributes:trailing ? [{name:'class', value:'ProseMirror-trailingBreak'}] : []});
+const paragraph = (line, tagName='P') => Object.assign(element(), {nodeType:1, tagName,
+  textContent:line, childNodes:line === '' ? [br(false)] : [text(line)]});
+const humanDraft = input.draft ?? 'Human authored draft\nsecond exact line  ';
+let reconciliation;
+const box = Object.assign(element(), {innerText:humanDraft, textContent:humanDraft, childNodes:[text(humanDraft)],
   focus() {document.activeElement = box;
     if (scenario === 'focus_route') location.href = input.otherUrl;
     if (scenario === 'focus_edit') box.innerText = box.textContent = humanDraft + ' Human edit';
@@ -435,6 +442,13 @@ const box = Object.assign(element(), {innerText:humanDraft, textContent:humanDra
     notifications++;
     if (scenario === 'input_edit') box.innerText = box.textContent += ' Human edit';
     if (scenario === 'input_route') location.href = input.otherUrl;
+    if (scenario.startsWith('async_')) {
+      // Native insertion returns first. The observed class retains the same
+      // enabled Send while the editor reconciles in a later microtask. A
+      // separate wait case also models delayed application Send enablement.
+      send.disabled = scenario === 'async_wait_exact';
+      reconciliation = Promise.resolve().then(reconcile);
+    }
   }});
 const send = Object.assign(element(), {disabled:false, click() {
   clicks++; box.innerText = box.textContent = ''; send.disabled = true;
@@ -463,10 +477,11 @@ global.document = {
     inserts++;
     if (scenario === 'native_false') return false;
     box.innerText = box.textContent += suffix;
+    box.childNodes = [text(box.textContent)];
     if (scenario === 'blocks_exact') {
       const lines = box.innerText.split('\n');
       box.childNodes = lines.map(line => Object.assign(element(), {nodeType:1, tagName:'P',
-        textContent:line, childNodes:[{nodeType:3, textContent:line}]}));
+        textContent:line, childNodes:[text(line)]}));
       box.textContent = lines.join(''); box.innerText = lines.join('\n\n');
     }
     if (scenario === 'native_edit') box.innerText = box.textContent += ' Human edit';
@@ -505,6 +520,86 @@ if (scenario === 'gesture_edit') box.innerText = box.textContent += ' Human edit
 const proved = proof ? api.prove(proof) : false;
 const inserted = proof ? api.insert({proof, metadata:input.metadata}) : false;
 const staged = box.textContent;
+const beforeReconciliation = scenario.startsWith('async_') ? api.ready(proof) : null;
+const expected = humanDraft + '\n\n' + input.metadata;
+function reconcile() {
+  let lines = expected.split('\n');
+  if (scenario === 'async_missing_separator') lines.splice(2, 1);
+  if (scenario === 'async_extra_separator') lines.splice(2, 0, '');
+  if (scenario === 'async_reordered_separator') lines.push(lines.splice(2, 1)[0]);
+  if (scenario === 'async_reordered_lines') [lines[0], lines[1]] = [lines[1], lines[0]];
+  if (scenario === 'async_altered_draft') lines[0] = 'h' + lines[0].slice(1);
+  if (scenario === 'async_altered_bootstrap') lines[lines.length - 2] = lines[lines.length - 2].replace('d'.repeat(64), 'e'.repeat(64));
+  if (scenario === 'async_trimmed_draft') lines[1] = lines[1].trimEnd();
+  if (scenario === 'async_unicode_normalized') lines = lines.map(line => line.normalize('NFC'));
+  if (scenario === 'async_crlf_collapsed') lines = lines.map(line => line.replaceAll('\r', ''));
+  if (scenario === 'async_duplicated_content' || scenario === 'async_hidden_duplicate') lines.push(lines[0]);
+  const tag = scenario === 'async_div_exact' ? 'DIV' : 'P';
+  box.childNodes = lines.map(line => paragraph(line, tag));
+  let rendered = lines.map(line => line === '' ? '\n' : line);
+  if (['async_inline_exact', 'async_trailing_exact', 'async_missing_inline_break', 'async_extra_inline_break'].includes(scenario)) {
+    const trailing = scenario === 'async_trailing_exact';
+    const count = trailing ? 3 : 2, group = lines.slice(0, count);
+    const children = [];
+    group.forEach((line, i) => {if (i) children.push(br(false)); if (line) children.push(text(line));});
+    if (trailing) children.push(br(true));
+    if (scenario === 'async_missing_inline_break') children.splice(1, 1);
+    if (scenario === 'async_extra_inline_break') children.splice(1, 0, br(false));
+    const combined = paragraph(group.join('\n'), tag);
+    combined.childNodes = children;
+    combined.textContent = children.map(child => child.textContent).join('');
+    box.childNodes.splice(0, count, combined);
+    rendered.splice(0, count, group.join('\n'));
+  }
+  if (scenario === 'async_hidden_block') box.childNodes[0].hidden = true;
+  if (scenario === 'async_hidden_br') box.childNodes[2].childNodes[0].css = {visibility:'hidden'};
+  if (scenario === 'async_hidden_duplicate') box.childNodes.at(-1).getClientRects = () => [];
+  if (scenario === 'async_transparent_block') box.childNodes[0].css = {opacity:'0'};
+  if (scenario === 'async_collapsed_block') box.childNodes[0].css = {display:'none'};
+  if (scenario === 'async_nested_rich') {
+    box.childNodes[0].childNodes = [Object.assign(element(), {nodeType:1, tagName:'SPAN',
+      textContent:lines[0], childNodes:[text(lines[0])]})];
+  }
+  if (scenario === 'async_unknown_node') box.childNodes[0].childNodes.push({nodeType:8, textContent:''});
+  if (scenario === 'async_decorated_block') box.childNodes[0].attributes = [{name:'class', value:'rich'}];
+  if (scenario === 'async_decorated_br') box.childNodes[2].childNodes[0].attributes = [{name:'data-rich', value:'true'}];
+  if (scenario === 'async_invalid_trailing_break') box.childNodes[0].childNodes.push(br(true));
+  if (scenario === 'async_overbound_nodes') box.childNodes[0].childNodes.push(...Array.from(
+    {length:2 * expected.length + 2}, () => text('')));
+  if (scenario === 'async_rich_equal_text') {
+    const rich = Object.assign(element(), {nodeType:1, tagName:'SPAN',
+      textContent:expected, childNodes:[text(expected)]});
+    const richBlock = paragraph(expected); richBlock.childNodes = [rich];
+    box.childNodes = [richBlock];
+  }
+  if (scenario === 'async_hidden_duplicate') rendered.pop();
+  box.textContent = box.childNodes.map(node => node.textContent).join('');
+  box.innerText = scenario === 'async_rich_equal_text' ? expected : rendered.join('\n\n');
+  if (scenario === 'async_extra_rendered_separator') box.innerText += '\n';
+  if (scenario === 'async_altered_rendered_text') box.innerText += ' altered';
+  send.disabled = scenario === 'async_send_disabled';
+  if (scenario === 'async_send_hidden') send.getClientRects = () => [];
+  if (scenario === 'async_send_aria_disabled') send.getAttribute = () => 'true';
+  if (scenario === 'async_send_multiple') controls.push(element());
+  if (scenario === 'async_send_replaced') controls = [Object.assign(element(), {disabled:false, click:send.click})];
+  if (scenario === 'async_form_replaced') box.parentElement = {tagName:'FORM', parentElement:null,
+    contains:form.contains, querySelectorAll:form.querySelectorAll};
+  if (scenario === 'async_no_form') box.parentElement = null;
+  if (scenario === 'async_nested_forms') form.parentElement = {tagName:'FORM', parentElement:null};
+  if (scenario === 'async_multiple_composers') elements[args.composer].push(element());
+  if (scenario === 'async_composer_replaced') elements[args.composer] = [element()];
+  if (scenario === 'async_page_replaced') global.document = {...document};
+  if (scenario === 'async_route_change') location.href = input.otherUrl;
+  if (scenario === 'async_route_roundtrip') {
+    history.pushState({}, '', input.otherUrl); history.replaceState({}, '', input.url);
+  }
+  if (scenario === 'async_expired') clock = args.ttl;
+  if (scenario === 'async_challenge_changed') proof = {...proof, challenge:'ff'.repeat(32)};
+  if (scenario === 'async_nonce_changed') proof = {...proof, document_nonce:'ff'.repeat(32)};
+}
+// Await only the scheduled application update, never use elapsed time as proof.
+if (reconciliation) await reconciliation;
+const diverged = box.innerText !== box.textContent;
 if (scenario === 'send_disabled') send.disabled = true;
 if (scenario === 'send_aria_disabled') send.getAttribute = () => 'true';
 if (scenario === 'send_absent') controls = [];
@@ -516,6 +611,22 @@ if (scenario === 'submit_route') location.href = input.otherUrl;
 if (scenario === 'submit_busy') elements[args.stop] = [element()];
 if (scenario === 'submit_composer') elements[args.composer] = [Object.assign(element(), {innerText:staged, textContent:staged})];
 const ready = proof ? api.ready(proof) : false;
+function changeAfterReady() {
+  if (scenario.endsWith('_draft')) box.childNodes[0].childNodes[0].textContent += ' edit';
+  if (scenario.endsWith('_send')) {
+    const replacement = Object.assign(element(), {disabled:false, click:send.click});
+    controls = [replacement];
+  }
+  if (scenario.endsWith('_form')) {
+    box.parentElement = {tagName:'FORM', parentElement:null, contains:form.contains,
+      querySelectorAll:form.querySelectorAll};
+  }
+  if (scenario.endsWith('_challenge')) proof = {...proof, challenge:'ff'.repeat(32)};
+}
+if (scenario.startsWith('async_before_prove_')) changeAfterReady();
+const revalidated = proof ? api.prove(proof) : false;
+if (scenario.startsWith('async_before_click_')) changeAfterReady();
+const sameScopedControl = controls.length === 1 && controls[0] === send && box.parentElement === form;
 const submitted = ready ? api.submit(proof) : false;
 const duplicate = proof ? api.submit(proof) : false;
 const witnessed = api.submitted();
@@ -525,8 +636,9 @@ const nextApi = eval('(' + input.install + ')')(args), rearmed = !!nextApi;
 if (rearmed) button.listener({isTrusted:true, currentTarget:button});
 const next = rearmed ? nextApi.inspect() : null;
 process.stdout.write(JSON.stringify({installed, proved, inserted, ready, submitted, duplicate, witnessed,
-  clicks, inserts, notifications, staged, cleared, rearmed,
+  clicks, inserts, notifications, staged, cleared, rearmed, beforeReconciliation, diverged, revalidated, sameScopedControl,
   fresh:!!next && !!genuineProof && next.challenge !== genuineProof.challenge}));
+})().catch(error => {process.stderr.write(String(error)); process.exitCode=1;});
 """
 
 
@@ -539,17 +651,7 @@ process.stdout.write(JSON.stringify({installed, proved, inserted, ready, submitt
     "submit_edit", "submit_route", "submit_busy", "submit_composer",
 ])
 def test_actual_page_gesture_edit_and_submit_scripts(scenario):
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("Node is needed for the isolated JavaScript DOM harness")
-    metadata = origin.envelope(origin.HANDLE_PREFIX + "d" * 64, 1)
-    arguments = dict(slot=origin.SLOT, composer=wake.COMPOSER, send=wake.SEND,
-                     stop=wake.STOP, login=wake.LOGIN, nonregular=wake.NONREGULAR,
-                     ttl=origin.CHALLENGE_TTL_MS, maxDraft=origin.MAX_DRAFT_CHARS)
-    process = subprocess.run([node, "-e", DOM_HARNESS], input=json.dumps(dict(
-        scenario=scenario, args=arguments, install=origin.INSTALL, metadata=metadata,
-        url=URL_A, otherUrl=URL_B)), capture_output=True, text=True, check=True, timeout=10)
-    result = json.loads(process.stdout)
+    result, metadata = run_dom(scenario)
     if scenario in {"valid", "blocks_exact"}:
         assert all(result[k] for k in ("installed", "proved", "inserted", "ready", "submitted", "witnessed"))
         assert result["clicks"] == result["inserts"] == result["notifications"] == 1
@@ -569,3 +671,125 @@ def test_actual_page_gesture_edit_and_submit_scripts(scenario):
             assert result["inserted"] is False
         if scenario == "focus_edit":
             assert result["staged"] == "Human authored draft\nsecond exact line   Human edit"
+
+
+def run_dom(scenario, draft=None):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is needed for the isolated JavaScript DOM harness")
+    metadata = origin.envelope(origin.HANDLE_PREFIX + "d" * 64, 1)
+    arguments = dict(slot=origin.SLOT, composer=wake.COMPOSER, send=wake.SEND,
+                     stop=wake.STOP, login=wake.LOGIN, nonregular=wake.NONREGULAR,
+                     ttl=origin.CHALLENGE_TTL_MS, maxDraft=origin.MAX_DRAFT_CHARS)
+    process = subprocess.run([node, "-e", DOM_HARNESS], input=json.dumps(dict(
+        scenario=scenario, draft=draft, args=arguments, install=origin.INSTALL, metadata=metadata,
+        url=URL_A, otherUrl=URL_B)), capture_output=True, text=True, check=True, timeout=10)
+    return json.loads(process.stdout), metadata
+
+
+@pytest.mark.parametrize("scenario", ["async_exact", "async_div_exact", "async_inline_exact", "async_trailing_exact", "async_wait_exact"])
+@pytest.mark.parametrize("draft", [None, "  exact e\u0301 \u00a0\nsecond line  ",
+                                  "Human CRLF draft\r\nsecond exact line  "])
+def test_async_plain_editor_reconciliation_preserves_exact_logical_draft(scenario, draft):
+    result, metadata = run_dom(scenario, draft)
+    assert result["installed"] and result["proved"] and result["inserted"]
+    assert result["beforeReconciliation"] is (scenario != "async_wait_exact")
+    assert result["diverged"] is True
+    assert result["ready"] and result["revalidated"] and result["submitted"] and result["witnessed"]
+    assert result["sameScopedControl"] is True
+    assert result["staged"] == (draft or "Human authored draft\nsecond exact line  ") + "\n\n" + metadata
+    assert result["clicks"] == result["inserts"] == result["notifications"] == 1
+    assert result["duplicate"] is False
+
+
+@pytest.mark.parametrize("draft", ["\nHuman exact draft\n\nsecond line  \n", "Human\n\n\n  \n"])
+def test_async_empty_blocks_preserve_human_leading_trailing_and_repeated_newlines(draft):
+    result, metadata = run_dom("async_exact", draft)
+    assert result["staged"] == draft + "\n\n" + metadata
+    assert result["inserted"] and result["ready"] and result["sameScopedControl"]
+    assert result["submitted"] and result["clicks"] == 1
+
+
+@pytest.mark.parametrize("scenario", [
+    "async_missing_separator", "async_extra_separator", "async_reordered_separator", "async_reordered_lines",
+    "async_missing_inline_break", "async_extra_inline_break", "async_altered_draft", "async_altered_bootstrap",
+    "async_trimmed_draft", "async_duplicated_content", "async_hidden_block", "async_hidden_br",
+    "async_hidden_duplicate", "async_transparent_block", "async_collapsed_block", "async_nested_rich",
+    "async_rich_equal_text", "async_unknown_node", "async_decorated_block", "async_decorated_br",
+    "async_invalid_trailing_break", "async_overbound_nodes", "async_extra_rendered_separator",
+    "async_altered_rendered_text", "async_send_disabled", "async_send_hidden", "async_send_aria_disabled",
+    "async_send_multiple", "async_send_replaced", "async_form_replaced", "async_no_form", "async_nested_forms", "async_multiple_composers",
+    "async_composer_replaced", "async_page_replaced", "async_route_change", "async_route_roundtrip",
+    "async_expired", "async_challenge_changed", "async_nonce_changed",
+])
+def test_async_nonexact_or_ambiguous_editor_reconciliation_blocks_submit(scenario):
+    result, _ = run_dom(scenario)
+    assert result["inserted"] and result["beforeReconciliation"] is True
+    assert result["ready"] is False and result["revalidated"] is False
+    assert result["submitted"] is False and result["clicks"] == 0
+    assert result["inserts"] == result["notifications"] == 1
+
+
+@pytest.mark.parametrize("scenario,draft", [
+    ("async_unicode_normalized", "Human e\u0301 draft\nsecond exact line  "),
+    ("async_crlf_collapsed", "Human CRLF draft\r\nsecond exact line  "),
+])
+def test_async_reconciliation_does_not_canonicalize_draft_bytes(scenario, draft):
+    result, _ = run_dom(scenario, draft)
+    assert result["inserted"] and result["ready"] is False and result["clicks"] == 0
+
+
+@pytest.mark.parametrize("boundary", ["prove", "click"])
+@pytest.mark.parametrize("change", ["draft", "send", "form", "challenge"])
+def test_reconciled_editor_and_same_scoped_control_revalidate_before_intent_and_click(boundary, change):
+    result, _ = run_dom("async_before_" + boundary + "_" + change)
+    assert result["inserted"] and result["ready"]
+    assert result["revalidated"] is (boundary == "click")
+    assert result["submitted"] is False and result["clicks"] == 0
+
+
+@pytest.mark.parametrize("boundary", [2, 3])
+@pytest.mark.parametrize("field", ["generation", "handle", "cdp_endpoint"])
+def test_binding_race_after_reconciled_readiness_still_prevents_attempt_click(registry, boundary, field):
+    class ReconciledAdapter(Adapter):
+        def ready(self, proof):
+            super().ready(proof)
+            result, _ = run_dom("async_inline_exact")
+            assert result["inserted"] and result["ready"] and result["revalidated"]
+
+    def race(stage, adapter):
+        if stage == "revalidate" and adapter.revalidations == boundary:
+            data = registry.read()
+            data["routes"][URL_A][field] = {
+                "generation": 2, "handle": origin.HANDLE_PREFIX + "c" * 64,
+                "cdp_endpoint": "http://127.0.0.1:9223",
+            }[field]
+            registry.write(data)
+
+    adapter = ReconciledAdapter(registry, race=race)
+    result = origin.bootstrap(registry, adapter)
+    assert result.status == "UNPROVED" and adapter.submits == 0
+    assert result.reason == ("BINDING_GENERATION_CHANGED" if field == "generation" else "REGISTRY_CONFLICT")
+    attempt = registry.read()["routes"][URL_A]["attempt"]
+    assert (attempt is None) is (boundary == 2)
+    if boundary == 3:
+        assert attempt["status"] == "ATTEMPTING"
+
+
+def test_readiness_wait_remains_bounded_and_rechecks_the_same_proof(monkeypatch):
+    adapter = browser([Page(observation=observation())])
+    proof = adapter.capture()
+    clock, calls = [0.0], []
+    monkeypatch.setattr(origin.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(origin.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    def pending(selected, method, value=None):
+        assert selected is proof and method == "ready" and value is None
+        calls.append(clock[0])
+        return False
+
+    monkeypatch.setattr(adapter, "call", pending)
+    with pytest.raises(origin.BootstrapBlocked, match="INSERT_BLOCKED"):
+        adapter.ready(proof)
+    assert calls and all(0 <= value < 3 for value in calls)
+    assert 3 <= clock[0] < 3.1

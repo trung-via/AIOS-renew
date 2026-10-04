@@ -2,7 +2,7 @@
 
 Status: PAGE-SCOPED FALLBACK CONTRACT / LIVE OBSERVATION UNPROVED
 
-TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback)
+TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback); TASK-295 revision 2 (published insertion correction); TASK-296 revision 1 (bounded editor-reconciliation correction)
 Parent: [H4 Origin-Affine Return and Unattended Local Wake](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md)  
 Authority: Runtime verifies implementation; Human/Brain evaluates later live feasibility.
 
@@ -11,7 +11,8 @@ contract. Its accepted implementation, REVIEW/PASS, and exact publication remain
 valid evidence. The current Human-observed regular-Chat surface did not expose
 the Developer Mode/custom MCP entry for that candidate's planned live procedure;
 that availability observation does not invalidate its engineering lineage.
-Sections 6–10 define the selected TASK-293 fallback and its later live gate.
+Sections 6–10 define the selected page-scoped fallback, its bounded corrections,
+and its later Human/Brain live gate.
 
 ## 1. Feasibility basis and limits
 
@@ -146,8 +147,37 @@ non-unique/disabled composers, unsupported rich draft representations, or
 ambiguous Send/form structure block the attempt. The supported draft shape is
 nonempty exact plaintext up to 65,536 characters, with identical rendered and
 DOM text. The gesture snapshots those bytes only for edit integrity; a later draft
-change blocks insertion and never changes origin identity. After append, the existing wake exact-line/block equivalence predicate
-also accepts its narrow P/DIV representation without changing logical bytes.
+change blocks insertion and never changes origin identity. After append, an
+origin-bootstrap-only predicate proves logical bytes from the selected composer's
+DOM. Its bounded allowlist consists of root plaintext nodes and flat P/DIV blocks
+whose only children are text or explicit BR leaves. Blocks carry no attributes;
+BR leaves are bare or carry exactly `class="ProseMirror-trailingBreak"`. Every
+block boundary contributes exactly one logical newline and every inline bare BR
+contributes one. A sole BR is an empty-block placeholder; the named trailing BR
+contributes no bytes only at the end of an empty block or after a proved newline.
+No other nesting, nodes, or attributes are accepted, including rich content whose
+aggregate text happens to match. Hidden, collapsed, or transparent block/BR
+content fails closed. Traversal is bounded by the staged logical draft length.
+
+The derived logical text must equal the immutable Human draft plus exactly two
+newline characters plus the bounded envelope. `textContent` must equal the
+allowlisted text leaves. `innerText` may differ only by one of six explicit block
+layout projections: uniformly zero, one, or two rendered newlines at proved block
+boundaries, with empty BR placeholders uniformly rendered as zero or one newline.
+Those display projections do not add, remove, or reorder logical separators.
+Literal CRLF, Unicode, and whitespace bytes within text leaves remain exact.
+Unknown or non-exact representations remain blocked even if visually similar.
+
+The application's input event may reconcile that same composer asynchronously.
+Readiness polls only within its existing three-second bound and re-evaluates the
+same staged composer, document, challenge, page, and exact logical draft. Waiting
+itself supplies no equivalence or origin authority. The first accepted readiness
+retains the unique visible enabled scoped Send and its enclosing form; replacing
+either blocks later revalidation. After insertion, the existing revalidation
+boundaries also re-prove exact draft equivalence and that retained control before
+durable attempt intent and again after its write. The final check and AIOS-owned
+click still share one browser event-loop turn. Send selection continues to use
+only the composer's unique enclosing form, never the document.
 Editing only appends two newlines plus metadata; it never replaces,
 clears, trims, normalizes, or semantically interprets the draft. Draft bytes remain
 ephemeral in the selected document and are released on cleanup, never returned
@@ -241,10 +271,28 @@ transport queue. The finite local loop observes only document-owned pending gest
 
 ## 9. Required post-publication two-regular-chat Human/Brain procedure
 
-Preconditions: TASK-293 Runtime acceptance, independent Reviewer verdict, and
-Publisher publication of the exact reviewed candidate. Human/Brain selects that SHA
+Preconditions: Runtime acceptance, a fresh independent Reviewer verdict, and
+Publisher publication of the exact reviewed TASK-296 correction. Human/Brain selects that SHA
 and authorizes the existing browser environment and each initial test handoff.
 These boundaries make the candidate available; they do not establish live conformance.
+
+The first bounded live observation against published TASK-295 revision 2
+(`49734b00e7fab8da35d56f3f802c09b8aabc8b75`) stopped at
+`UNPROVED/INSERT_BLOCKED`, with no generation in the bounded result and no
+AIOS-owned submit attempt. Page-scoped Human challenge proof and bounded envelope
+insertion had been reached. Read-only structural diagnostics found the same
+regular-Chat composer, its unique enclosing form, and exactly one visible enabled
+scoped Send; asynchronous editor reconciliation expanded the child structure and
+made `innerText` diverge from `textContent`.
+
+This is a bounded pre-submit Human/Brain conformance finding. It creates no
+canonical RUN failure, REVIEW finding, publication failure, or engineering terminal
+state. No raw draft, DOM diagnostic, conversation identity, endpoint, registry,
+transcript, or assistant output is recorded here. Manual Send is not a contract
+fallback or an authorized workaround. TASK-296 corrects production editor
+reconciliation only; it does not change wake delivery, origin authority, routing,
+or lifecycle authority. The full A/A/B/B comparison, continuity check, and ambiguity
+trial below remain pending after exact reviewed publication of the correction.
 
 1. Open two distinct regular conversations **A** and **B** in the same repository/
    Project context. Identify the surfaces directly as Human observation labels;
@@ -292,8 +340,20 @@ scoped Send controls, single-use click, cleanup, and fresh rearm. Node is requir
 that harness; absence is an explicit skip, not live proof. Existing local-wake tests
 remain the regression contract for its unchanged delivery primitives.
 
+TASK-296 adds an asynchronous synthetic editor update after successful native
+insertion/input notification. The regressions require exact allowlisted multi-node
+reconciliation with divergent rendered/DOM text before readiness succeeds. They
+cover P/DIV, inline BR, empty/trailing padding, literal whitespace/Unicode/CRLF,
+and fail-closed missing/extra/reordered separators, changed draft/envelope bytes,
+hidden/duplicated content, rich/unknown/decorated nodes, bounded traversal,
+ambiguous composer/form/Send, hidden/disabled Send, changed page/challenge, and
+binding/generation races. Revalidation regressions also cover draft, form, and
+Send replacement between accepted readiness, attempt intent, and click. These are
+implementation regression definitions; their canonical execution and EVIDENCE
+belong to Runtime.
+
 Runtime alone runs canonical verification and constructs EVIDENCE. Deterministic
-tests, Runtime PASS, Reviewer PASS, and TASK-293 publication alone do **not** close
+tests, Runtime PASS, Reviewer PASS, and publication of TASK-293, TASK-295, or TASK-296 alone do **not** close
 H4C0 or authorize H4C1. The real two-regular-chat procedure above is a later Human/
 Brain conformance decision. H4C0 remains the unique canonical NEXT, ahead of H4C1,
 H4D, H4E, final H4B production-shape proof, and H5; no phase advances automatically.

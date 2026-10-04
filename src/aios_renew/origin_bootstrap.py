@@ -266,16 +266,81 @@ def bootstrap(registry, adapter):
 # Reuse the existing visible/unique-enclosing-form/enabled-Send predicates.
 # The closure owns its gesture record; a copied challenge/handle is not an API
 # input that can establish origin. Draft text never crosses evaluate's return.
-_EXACT_TEXT = """({box, text, composer, send, stop, nonregular, login, url}) => {
-""" + wake._COMPOSER_GUARDS + """
-  return visible(composer).length === 1 && visible(composer)[0] === box && equivalent(box);
+_EXACT_TEXT = r"""(box, text) => {
+  // Origin-only post-insertion grammar. Never normalize draft bytes or accept
+  // an arbitrary rich tree just because its aggregate text happens to match.
+  const limit = 2 * text.length + 1;
+  let budget = limit, raw = '';
+  const shown = node => {
+    const style = getComputedStyle(node);
+    return !node.hidden && node.getAttribute('aria-hidden') !== 'true' &&
+      node.getClientRects().length && style.visibility !== 'hidden' &&
+      style.visibility !== 'collapse' && style.display !== 'none' && style.opacity !== '0';
+  };
+  const plain = node => node.attributes.length === 0;
+  const trailingBreak = node => {
+    const attrs = node.attributes;
+    return attrs.length === 1 && attrs[0].name === 'class' &&
+      attrs[0].value === 'ProseMirror-trailingBreak';
+  };
+  if (!box.childNodes.length || box.childNodes.length > limit || !shown(box)) return false;
+  const nodes = [...box.childNodes];
+  const parts = [];
+  for (const node of nodes) {
+    if (--budget < 0) return false;
+    if (node.nodeType === 3) {
+      raw += node.textContent;
+      if (raw.length > text.length) return false;
+      parts.push({text:node.textContent, block:false, placeholder:false});
+      continue;
+    }
+    if (node.nodeType !== 1 || !['P', 'DIV'].includes(node.tagName) ||
+        !plain(node) || !shown(node)) return false;
+    if (node.childNodes.length > budget) return false;
+    const children = [...node.childNodes];
+    let logical = '', placeholder = false;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (--budget < 0) return false;
+      if (child.nodeType === 3) {
+        logical += child.textContent; raw += child.textContent;
+      } else if (child.nodeType === 1 && child.tagName === 'BR' &&
+                 !child.childNodes.length && child.textContent === '' && shown(child)) {
+        // A sole BR is the empty-block placeholder. The editor's explicitly
+        // named trailing BR is padding only after a proved logical newline.
+        if (trailingBreak(child)) {
+          if (i !== children.length - 1 || (i !== 0 && !logical.endsWith('\n'))) return false;
+          placeholder = i === 0;
+        } else if (plain(child)) {
+          if (children.length === 1) placeholder = true;
+          else logical += '\n';
+        } else return false;
+      } else return false;
+      if (logical.length > text.length || raw.length > text.length) return false;
+    }
+    parts.push({text:logical, block:true, placeholder});
+  }
+  if (raw !== box.textContent) return false;
+  const project = (separator, placeholders) => parts.map((part, i) =>
+    (i && (part.block || parts[i - 1].block) ? separator : '') +
+    (placeholders && part.placeholder ? '\n' : part.text)).join('');
+  // Every block boundary contributes exactly one logical LF. Inline plain BRs
+  // contribute one LF; empty/trailing padding contributes none. Equality is
+  // against the immutable Human draft + exactly two LFs + bounded envelope.
+  if (project('\n', false) !== text) return false;
+  if (!parts.some(part => part.block)) return box.innerText === text;
+  // Explicit bounded render projections: browser block spacing can be zero,
+  // one, or two LFs, with empty BR placeholders rendered uniformly as 0/1 LF.
+  // These allowances affect rendered layout only, never the logical bytes.
+  return ['', '\n', '\n\n'].some(separator =>
+    [false, true].some(placeholders => project(separator, placeholders) === box.innerText));
 }"""
 
 INSTALL = r"""({slot, composer, send, stop, nonregular, login, ttl, maxDraft}) => {
 """ + wake._SEND_GUARDS + r"""
   const normalize = value => value.length <= 512 && /^https:\/\/chatgpt\.com(?:\/g\/g-[A-Za-z0-9-]*)?\/c\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/.test(value)
     ? value.replace(/\/$/, '') : null;
-  const exactText = (box, text) => (""" + _EXACT_TEXT + r""")({box, text, composer, send, stop, nonregular, login, url:normalize(location.href)});
+  const exactText = (""" + _EXACT_TEXT + r""");
   const surface = () => {
     const boxes = visible(composer);
     return normalize(location.href) && visible('main').length === 1 &&
@@ -314,7 +379,13 @@ INSTALL = r"""({slot, composer, send, stop, nonregular, login, ttl, maxDraft}) =
   const ready = p => {
     if (!proves(p) || !staged || surface() !== staged.box || !exactText(staged.box, staged.expected)) return null;
     const controls = sendControls(staged.box);
-    return controls && controls.length === 1 && enabled(controls[0]) ? controls[0] : null;
+    if (!controls || controls.length !== 1 || !enabled(controls[0])) return null;
+    let form = null;
+    for (let parent = staged.box.parentElement; parent; parent = parent.parentElement)
+      if (parent.tagName === 'FORM') form = parent;
+    if (staged.control && (staged.control !== controls[0] || staged.form !== form)) return null;
+    staged.control = controls[0]; staged.form = form;
+    return controls[0];
   };
   button.addEventListener('click', event => {
     if (event.isTrusted !== true || event.currentTarget !== button || pending || spent || invalidated) return;
@@ -327,7 +398,9 @@ INSTALL = r"""({slot, composer, send, stop, nonregular, login, ttl, maxDraft}) =
   });
   const api = Object.freeze({
     inspect: () => pending ? {challenge: pending.challenge, document_nonce: nonce, chat_url: pending.chat_url} : null,
-    prove: p => !!proves(p),
+    // Once staged, adapter revalidation also proves exact reconciliation and
+    // the retained scoped control, both before intent and after its write.
+    prove: p => !!proves(p) && (!staged || !!ready(p)),
     insert: ({proof, metadata}) => {
       if (!proves(proof) || staged || typeof metadata !== 'string' || metadata.length > 384 ||
           !metadata.startsWith('[AIOS ORIGIN BOOTSTRAP]\n') ||
