@@ -1,0 +1,179 @@
+task_id: TASK-298
+revision: 1
+goal: Add an opt-in, bounded, privacy-safe H4C0 origin-bootstrap readiness failure-attribution
+  contract that deterministically distinguishes insert-phase failure from ready-phase
+  timeout and identifies the exact existing readiness predicate category that blocked
+  progress, while leaving the default bootstrap result grammar, timing, fail-closed
+  behavior, submission authority, and H4C0/H4C1 semantics unchanged.
+problem: 'After TASK-297 r1 passed Runtime verification, REVIEW-297-001, and exact
+  publication, a fresh instrumented H4C0 A1 live attempt again terminated UNPROVED/INSERT_BLOCKED
+  with no submit attempt. Bounded Human/Brain diagnostics established that bootstrap
+  insertion was visible by approximately 111 ms; the same visible composer remained
+  unique and identity-stable; the enclosing form remained unique; one visible enabled
+  form-scoped Send control remained available; Stop was absent; the exact production
+  P > SPAN[data-prompt-literal-paste=""] > #text plus P > BR.ProseMirror-trailingBreak
+  grammar was present by approximately 111 ms; the rendered newline projection matched
+  the TASK-297 exactText allowlist; and the handshake was cleaned up only around 3161
+  ms, consistent with the Python ready polling window being entered and exhausting.
+  These observations eliminate timeout-by-late-editor-settle, selector drift, composer
+  replacement, Send readiness, wrapper grammar, wrapper visibility, and rendered newline
+  projection as primary explanations. The remaining live failure is hidden behind
+  the single generic INSERT_BLOCKED reason because the current helper does not attribute
+  whether ready() failed at proves(), surface/composer identity, exactText, Send scoping/enabledness,
+  or retained form/control identity. Behavioral correction would therefore be speculative.
+  TASK-298 adds diagnostic attribution only so the next bounded A1 can identify the
+  exact gate without changing behavior.'
+assumptions:
+- Canonical main at TASK-298 authoring is 14d14c36a42beac4ae00fb133c4c06749fe7b1ff.
+- 'TASK-297 r1 is canonically complete: RUN-297-001 Runtime PASS, REVIEW-297-001 PASS,
+  exact published source SHA 295b7ad63b7dd6a9417ec0d46d115013d2f3e10f, and post-publication
+  roadmap reconciliation.'
+- H4C0 remains open and H4C1 remains blocked. The current bounded A1 failure is Human/Brain
+  live-conformance planning evidence only and is not a RUN, FAILURE, REVIEW finding,
+  or publication failure.
+- The instrumented live timeline showed bootstrap_present and the observed production
+  DOM grammar by approximately 111 ms, with one identity-stable visible composer,
+  one enclosing form, one visible enabled scoped Send, no Stop, and cleanup around
+  3161 ms.
+- The final rendered innerText had length 271 with newline runs exactly at 47/5, 75/2,
+  and 245/2; this matches the current TASK-297 bounded render projection using two-LF
+  block separators with an empty-block placeholder.
+- Challenge TTL is 30000 ms, so the approximately three-second failure is not explained
+  by challenge expiry alone.
+- The current generic INSERT_BLOCKED reason is intentionally fail-closed but insufficient
+  to distinguish the remaining existing readiness gates. The diagnostic contract must
+  expose only fixed enums and booleans, never raw identity/content.
+- No behavioral root-cause fix is authorized in TASK-298. A later Human/Brain decision
+  may author a separate bounded correction only after diagnostic evidence identifies
+  the exact failing gate.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-297.yaml
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - src/aios_renew/origin_bootstrap.py
+  - scripts/aios_origin_bootstrap.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_origin_bootstrap.py
+  - tests/test_local_chat_wake.py
+  modify:
+  - src/aios_renew/origin_bootstrap.py
+  - scripts/aios_origin_bootstrap.py
+  - tests/test_origin_bootstrap.py
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+non_goals:
+- Change the three-second ready polling window, polling cadence, challenge TTL, or
+  introduce event-driven waiting, mutation observers, retries, or additional submission
+  attempts.
+- Change proves(), surface(), exactText(), literal-paste/BR grammar, Send selectors,
+  form scoping, enabledness rules, page/challenge binding, registry generation semantics,
+  route identity, or no-blind-resend behavior.
+- Fix, clear, weaken, or reinterpret sticky invalidation, route-change handling, pagehide
+  handling, or any existing fail-closed proof predicate.
+- Implement H4C1 origin-affine return routing, H4D unattended wake, H4E concurrency
+  conformance, final H4B proof, H5, or any wake-delivery behavior.
+- Emit or persist raw conversation URL/UUID, route handle, challenge, nonce, registry
+  contents, draft/bootstrap text, innerText/textContent, DOM fragments, transcript,
+  assistant output, timestamps with identity significance, or arbitrary exception
+  strings in diagnostic output.
+- Change the default non-diagnostic CLI stdout contract or existing BootstrapResult
+  status/reason semantics; in particular the current failure remains UNPROVED/INSERT_BLOCKED
+  on the default path.
+- Let diagnostic attribution create lifecycle truth, select a correction strategy
+  automatically, advance roadmap state, or substitute for Runtime verification, Reviewer
+  verdict, publication, or Human/Brain live closure.
+constraints:
+  hard:
+  - Diagnostics are opt-in only. The default helper invocation and default JSON result
+    grammar must remain behaviorally and structurally compatible with the published
+    TASK-297 contract.
+  - The diagnostic path must execute the same bootstrap attempt and the same existing
+    predicates in the same ordering and timing as the default path. Attribution may
+    observe/classify those predicate outcomes but must not make an additional DOM
+    mutation, click, retry, wait, navigation, focus change, registry mutation beyond
+    the ordinary attempt, or alternate acceptance decision.
+  - Attribution must deterministically distinguish at least INSERT phase failure from
+    READY phase exhaustion. READY attribution must use a closed repository-owned enum
+    that separates PROOF, SURFACE_OR_COMPOSER_IDENTITY, EXACT_TEXT, SEND_SCOPE_OR_COUNT,
+    SEND_ENABLED, and RETAINED_FORM_OR_CONTROL_IDENTITY; an UNKNOWN bounded enum is
+    permitted only for genuinely unclassified internal failure and must never cause
+    submission.
+  - When READY_PROOF is the blocking category, diagnostics must further classify the
+    existing proof predicates with a closed enum sufficient to distinguish sticky
+    invalidated state, document identity, helper button connectivity, slot/nonce binding,
+    pending/challenge binding, route equality, deadline, and surface proof, without
+    exporting the underlying values.
+  - A READY timeout may report the final blocking category and a bounded set of categories
+    observed during the existing poll window, but the set must contain only closed
+    enums and must have a fixed finite bound. It must not record per-poll timestamps,
+    raw logs, DOM content, or an unbounded event history.
+  - 'Diagnostic classification must be truth-table equivalent to the existing boolean
+    predicates: for every tested state, the aggregate diagnostic ''ready'' decision
+    must equal the existing ready() decision. The task must not relax or strengthen
+    acceptance as a side effect of classification.'
+  - 'The diagnostic contract must be privacy-safe and portable: only contract/version,
+    original bounded result fields, phase/category enums, and bounded booleans or
+    enum sets may leave the closure. No provider/session/account identity, URL, route
+    handle on failure, challenge/nonce, draft text, DOM text, or selector-matched
+    element content may be exposed.'
+  - Successful submission behavior remains unchanged. Diagnostics must not introduce
+    a second click or post-success resend path; if the ordinary attempt becomes ambiguous,
+    the existing no-blind-resend semantics remain authoritative.
+  - 'Focused regressions must cover at least: insert-phase rejection after no authorized
+    edit; ready proof invalidated; ready surface/composer identity failure; exactText
+    failure; Send scope/count failure; Send disabled; retained form/control identity
+    change; ready success; and never-ready timeout. Each diagnostic classification
+    must leave the underlying status/reason and mutation/click counts identical to
+    the non-diagnostic case.'
+  - Regression coverage must include the already observed production literal-paste/BR
+    grammar and newline projection as a ready-success fixture, proving TASK-298 does
+    not re-open or alter TASK-297 grammar.
+  - src/aios_renew/local_chat_wake.py and tests/test_local_chat_wake.py are inspect/regression
+    dependencies only. TASK-298 r1 may not modify them.
+  - Executor changes only scope.modify and performs no live H4C0 observation, no operational-state
+    reset, no roadmap mutation, no review, and no publication.
+  - Runtime owns canonical verification; Reviewer owns semantic verdict; Publisher
+    owns exact reviewed publication; Human/Brain alone interprets the later diagnostic
+    A1 and decides whether a behavioral correction is warranted.
+acceptance:
+- id: AC1
+  condition: The candidate changes only the four authorized scope.modify paths and
+    leaves local_chat_wake implementation/tests plus lifecycle/roadmap state unchanged.
+- id: AC2
+  condition: Default non-diagnostic invocation preserves the published TASK-297 bootstrap
+    timing, predicate ordering, status/reason semantics, stdout result grammar, registry/no-blind-resend
+    behavior, and single-click boundary.
+- id: AC3
+  condition: An explicit opt-in diagnostic invocation returns one bounded privacy-safe
+    diagnostic contract that embeds or binds the ordinary bootstrap result and distinguishes
+    INSERT-phase failure from READY-phase exhaustion without changing the underlying
+    attempt.
+- id: AC4
+  condition: READY diagnostics classify the existing blocking gate using only the
+    closed categories required by this TASK, including a bounded proof subcategory
+    when PROOF is blocking, and may include only a bounded enum set of gates observed
+    during the existing poll window; no raw values or unbounded traces are emitted.
+- id: AC5
+  condition: Deterministic tests prove diagnostic classification is behavior-equivalent
+    to the existing predicates and that diagnostic mode does not change waits, poll
+    cadence, DOM mutation/click counts, accepted/rejected cases, result status/reason,
+    or registry attempt semantics.
+- id: AC6
+  condition: Focused regressions cover insert rejection, each required READY category,
+    timeout, success, and the observed TASK-297 literal-paste/BR plus 47/5,75/2,245/2
+    rendered-newline fixture; no behavioral root-cause correction is included.
+- id: AC7
+  condition: H4C0 documentation records the post-TASK-297 instrumented evidence, explicitly
+    retracts timeout/DOM-selector fixes as unproven, defines TASK-298 as diagnostic-only,
+    and keeps H4C0 open/H4C1 blocked until a later Human/Brain live diagnostic observation
+    and explicit semantic decision.
+- id: AC8
+  condition: The Executor RESULT claims only pre-verification implementation properties
+    with unresolved empty and exact changed_files; Runtime verification, fresh Reviewer
+    verdict, exact Publisher publication, later live diagnostic interpretation, and
+    any subsequent correction strategy remain downstream facts.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_origin_bootstrap.py tests/test_local_chat_wake.py
+  - git diff --check
