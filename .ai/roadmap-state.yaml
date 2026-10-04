@@ -459,7 +459,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4c0-origin-capture-feasibility
+  - brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 sequence:
 
   - id: temporary-wake-first-cutover-v2
