@@ -866,7 +866,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: READY_FOR_ONE_BOUNDED_POST_TASK_299_A1
+      status: PAUSED_ON_POST_TASK_299_A1_AMBIGUOUS_SUBMISSION_PROOF
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -878,12 +878,37 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        TASK-299 is now reviewed and exactly published, so the prior ROOT_ATTRIBUTES
-        implementation blocker is cleared. H4C0 remains open and H4C1 remains blocked.
-        Human/Brain may now perform exactly one bounded A1 against published SHA
-        5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27. Only that live observation may
-        determine whether the remaining two-chat procedure can continue or whether a
-        new non-speculative blocker must be diagnosed; publication alone cannot decide it.
+        The single authorized post-TASK-299 A1 reached the submission attempt boundary
+        but returned AMBIGUOUS/SUBMISSION_UNPROVEN. Human observation confirms that a
+        sent user turn became present after the bounded click, so the live blocker is
+        now post-submit structural proof rather than the corrected EXACT_TEXT gate.
+        A1 is not counted as SUBMITTED/ACCEPTED under the frozen contract, must not be
+        blindly retried, and A2/B1/B2 remain unauthorized until Human/Brain either
+        establishes a non-speculative bounded proof basis or explicitly accepts a
+        separately canonicalized residual live-evidence exception. H4C0 remains open
+        and H4C1 remains blocked.
+    post_task299_a1_checkpoint:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      published_subject_sha: "5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27"
+      ordinary_result:
+        status: AMBIGUOUS
+        reason: SUBMISSION_UNPROVEN
+        route_handle_exposed_by_result: false
+        generation_exposed_by_result: false
+      bounded_human_observation:
+        sent_user_turn_present_after_click: true
+      interpretation: >-
+        TASK-299 cleared the prior pre-submit EXACT_TEXT/ROOT_ATTRIBUTES blocker and the
+        bounded A1 progressed through the submission-attempt boundary. The helper could
+        not prove its strict post-submit structural predicate within the existing bound,
+        so the canonical A1 result remains AMBIGUOUS and no retry is authorized. Human
+        observation of a sent turn narrows the issue to post-submit proof; it is not used
+        as origin identity, route comparison, Runtime evidence, or lifecycle truth.
+      privacy_boundary: >-
+        No raw conversation URL or UUID, route handle, challenge, nonce, endpoint,
+        registry contents, draft/bootstrap text, transcript content, assistant output,
+        or raw DOM payload is retained.
     post_task298_diagnostic_a1_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -1333,24 +1358,25 @@ sequence:
         remains only transport evidence; terminal lifecycle facts are established by
         the canonical RESULT, review decision and published main above.
     current_live_blocker:
-      code: H4C0_POST_TASK_299_A1_LIVE_PROOF_PENDING
+      code: H4C0_POST_SUBMIT_STRUCTURAL_PROOF_UNRESOLVED
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-299
       task_revision: 1
-      next_action: HUMAN_RUN_ONE_BOUNDED_A1_ON_EXACT_PUBLISHED_TASK_299_SHA
+      next_action: HUMAN_BRAIN_DECIDE_BOUNDED_POST_SUBMIT_PROOF_BASIS_OR_EXPLICIT_RESIDUAL_EXCEPTION
       basis: >-
-        TASK-299 engineering lifecycle is complete and exact publication is proven.
-        The next commitment is one bounded A1 using the published source, not another
-        implementation task. Human/Brain must observe the ordinary bounded result and
-        decide whether A1 succeeds sufficiently to continue the remaining H4C0 two-chat
-        conformance procedure. Any new failure must be classified from fresh bounded
-        evidence before another task is authorized.
+        The one authorized post-TASK-299 A1 returned AMBIGUOUS/SUBMISSION_UNPROVEN.
+        Human observation confirms a sent turn became present after the click, but the
+        frozen helper requires its own bounded structural post-submit proof before
+        returning SUBMITTED/ACCEPTED. The exact failed post-submit predicate was not
+        attributed by this attempt. Blind retry is forbidden because the attempt was
+        already consumed before click.
       prohibitions:
+        - NO_BLIND_A1_RETRY
+        - NO_A2_B1_B2_UNTIL_A1_DISPOSITION
         - NO_AUTOMATIC_TASK_300
-        - NO_REPEAT_DIAGNOSTIC_WITHOUT_NEW_BOUNDED_FAILURE_EVIDENCE
-        - NO_TIMEOUT_OR_POLLING_CHANGE_WITHOUT_NEW_EVIDENCE
-        - NO_GENERIC_DOM_OR_WHITESPACE_NORMALIZATION
-        - NO_SELECTOR_SEND_OR_ORIGIN_AUTHORITY_CHANGE
+        - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_AS_ORIGIN_AUTHORITY
+        - NO_TIMEOUT_CHANGE_WITHOUT_NEW_BOUNDED_EVIDENCE
+        - NO_GENERIC_POST_SUBMIT_DOM_WEAKENING
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_RAW_IDENTITY_OR_CONTENT_EXPORT
         - NO_AUTOMATIC_ROADMAP_ADVANCE
@@ -1363,7 +1389,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: ONE_BOUNDED_POST_TASK_299_A1_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: RESOLVE_POST_TASK_299_A1_AMBIGUOUS_SUBMISSION_PROOF_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
