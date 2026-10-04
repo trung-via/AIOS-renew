@@ -419,14 +419,18 @@ const fs = require('fs'), input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const args = input.args, scenario = input.scenario;
 const literal = scenario.startsWith('async_literal_');
 const variant = literal ? scenario.replace('async_literal_', 'async_') : scenario;
-let clock = 0, randomCount = 0, clicks = 0, inserts = 0, notifications = 0, button;
-global.performance = {now: () => clock};
+let clock = 0, randomCount = 0, clicks = 0, inserts = 0, notifications = 0, focuses = 0, button;
+const operations = [], readyDiagnostics = [];
+global.performance = {now: () => {operations.push('proof-clock'); return clock;}};
 global.crypto = {getRandomValues: bytes => {bytes.fill(++randomCount); return bytes;}};
 global.location = {href: input.url}; global.window = {addEventListener() {}, removeEventListener() {}};
 global.history = {pushState(state, title, url) {location.href=url;},
   replaceState(state, title, url) {location.href=url;}};
-global.getComputedStyle = element => ({visibility:'visible', display:'block', opacity:'1', ...element.css});
-const element = () => ({attributes:[], childNodes:[], getClientRects: () => [1], getAttribute: () => null});
+global.getComputedStyle = element => {operations.push('style');
+  return {visibility:'visible', display:'block', opacity:'1', ...element.css};};
+const element = () => ({attributes:[], childNodes:[],
+  getClientRects: () => {operations.push('rects'); return [1];},
+  getAttribute: () => {operations.push('attribute'); return null;}});
 const text = value => ({nodeType:3, textContent:value});
 const br = trailing => Object.assign(element(), {nodeType:1, tagName:'BR', textContent:'',
   attributes:trailing ? [{name:'class', value:'ProseMirror-trailingBreak'}] : []});
@@ -437,7 +441,7 @@ const literalSpan = value => Object.assign(element(), {nodeType:1, tagName:'SPAN
 const humanDraft = input.draft ?? (literal ? 'Human exact draft  ' : 'Human authored draft\nsecond exact line  ');
 let reconciliation;
 const box = Object.assign(element(), {innerText:humanDraft, textContent:humanDraft, childNodes:[text(humanDraft)],
-  focus() {document.activeElement = box;
+  focus() {focuses++; document.activeElement = box;
     if (scenario === 'focus_route') location.href = input.otherUrl;
     if (scenario === 'focus_edit') box.innerText = box.textContent = humanDraft + ' Human edit';
   }, dispatchEvent(event) {
@@ -468,12 +472,14 @@ const elements = {[args.composer]:[box], [args.stop]:[], [args.login]:[],
   [args.nonregular]:[], main:[element()]};
 let controls = [send];
 const form = {tagName:'FORM', parentElement:null, contains: e => e === box || controls.includes(e),
-  querySelectorAll: selector => {if (selector !== args.send) throw Error('bad form selector'); return controls;}};
+  querySelectorAll: selector => {operations.push('scoped-send');
+    if (selector !== args.send) throw Error('bad form selector'); return controls;}};
 box.parentElement = form;
 global.document = {
   activeElement:null,
   body:{appendChild(node) {node.isConnected = true; button = node;}},
-  querySelectorAll: selector => {if (selector === args.send) throw Error('global Send query');
+  querySelectorAll: selector => {operations.push('query:' + selector);
+    if (selector === args.send) throw Error('global Send query');
     return elements[selector] || [];},
   createElement: tag => {
     if (tag !== 'button') throw Error('unexpected UI surface');
@@ -530,7 +536,11 @@ if (scenario === 'gesture_edit') box.innerText = box.textContent += ' Human edit
 const proved = proof ? api.prove(proof) : false;
 const inserted = proof ? api.insert({proof, metadata:input.metadata}) : false;
 const staged = box.textContent;
-const beforeReconciliation = scenario.startsWith('async_') ? api.ready(proof) : null;
+const pollReady = p => {
+  if (!input.diagnostic) return api.ready(p);
+  const value = api.readyDiagnostic(p); readyDiagnostics.push(value); return value.ready;
+};
+const beforeReconciliation = scenario.startsWith('async_') ? pollReady(proof) : null;
 const expected = humanDraft + '\n\n' + input.metadata;
 function reconcile() {
   let lines = expected.split('\n');
@@ -665,11 +675,12 @@ if (scenario === 'submit_edit') box.innerText = box.textContent += ' Human edit'
 if (scenario === 'submit_route') location.href = input.otherUrl;
 if (scenario === 'submit_busy') elements[args.stop] = [element()];
 if (scenario === 'submit_composer') elements[args.composer] = [Object.assign(element(), {innerText:staged, textContent:staged})];
-const readyPolls = [proof ? api.ready(proof) : false];
+if (input.readyState) proof = applyReadyState(input.readyState, proof);
+const readyPolls = [proof ? pollReady(proof) : false];
 if (literal && reconciliation) {
-  readyPolls.push(api.ready(proof));
+  readyPolls.push(pollReady(proof));
   await reconciliation;
-  readyPolls.push(api.ready(proof));
+  readyPolls.push(pollReady(proof));
 }
 const ready = readyPolls.at(-1), diverged = box.innerText !== box.textContent;
 const productionGrammar = {
@@ -683,6 +694,8 @@ const productionGrammar = {
     node.childNodes[0].tagName === 'BR' && node.childNodes[0].attributes.length === 1 &&
     node.childNodes[0].attributes[0].value === 'ProseMirror-trailingBreak').length,
 };
+const renderedFixture = {length:box.innerText.length,
+  newlineRuns:[...box.innerText.matchAll(/\n+/g)].map(match => [match.index, match[0].length])};
 function changeAfterReady() {
   if (scenario.endsWith('_draft')) {
     const child = box.childNodes[0].childNodes[0];
@@ -712,7 +725,7 @@ if (rearmed) button.listener({isTrusted:true, currentTarget:button});
 const next = rearmed ? nextApi.inspect() : null;
 process.stdout.write(JSON.stringify({installed, proved, inserted, ready, submitted, duplicate, witnessed,
   clicks, inserts, notifications, staged, cleared, rearmed, beforeReconciliation, diverged, revalidated, sameScopedControl,
-  readyPolls, productionGrammar,
+  readyPolls, productionGrammar, renderedFixture, focuses, operations, readyDiagnostics,
   fresh:!!next && !!genuineProof && next.challenge !== genuineProof.challenge}));
 })().catch(error => {process.stderr.write(String(error)); process.exitCode=1;});
 """
@@ -751,7 +764,7 @@ def test_actual_page_gesture_edit_and_submit_scripts(scenario):
             assert result["staged"] == "Human authored draft\nsecond exact line   Human edit"
 
 
-def run_dom(scenario, draft=None, *, metadata=None):
+def run_dom(scenario, draft=None, *, metadata=None, diagnostic=False, install=None, ready_state=None):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is needed for the isolated JavaScript DOM harness")
@@ -761,7 +774,8 @@ def run_dom(scenario, draft=None, *, metadata=None):
                      stop=wake.STOP, login=wake.LOGIN, nonregular=wake.NONREGULAR,
                      ttl=origin.CHALLENGE_TTL_MS, maxDraft=origin.MAX_DRAFT_CHARS)
     process = subprocess.run([node, "-e", DOM_HARNESS], input=json.dumps(dict(
-        scenario=scenario, draft=draft, args=arguments, install=origin.INSTALL, metadata=metadata,
+        scenario=scenario, draft=draft, args=arguments, install=install or origin.INSTALL, metadata=metadata,
+        diagnostic=diagnostic, readyState=ready_state,
         url=URL_A, otherUrl=URL_B)), capture_output=True, text=True, check=True, timeout=10)
     return json.loads(process.stdout), metadata
 
@@ -916,24 +930,30 @@ def test_binding_race_after_reconciled_readiness_still_prevents_attempt_click(re
 
 
 @pytest.mark.parametrize("reconciles", [True, False])
-def test_literal_reconciliation_bounded_ready_gate_precedes_attempt_intent(registry, monkeypatch, reconciles):
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_literal_reconciliation_bounded_ready_gate_precedes_attempt_intent(registry, monkeypatch, reconciles, diagnostic):
     clock = [0.0]
     monkeypatch.setattr(origin.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(origin.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
 
     class DelayedAdapter(Adapter):
+        def __init__(self, registry):
+            super().__init__(registry)
+            self.diagnostic = origin.BootstrapDiagnostics() if diagnostic else None
+
         def insert(self, proof, metadata):
             super().insert(proof, metadata)
             scenario = "async_literal_exact" if reconciles else "async_literal_never_reconciled"
-            self.dom, _ = run_dom(scenario, metadata=metadata)
+            self.dom, _ = run_dom(scenario, metadata=metadata, diagnostic=diagnostic)
             assert self.dom["inserted"] and self.dom["beforeReconciliation"] is False
             self.polls, self.ready_returned = [], False
 
         def call(self, proof, method, value=None):
-            assert proof is self.proof and method == "ready" and value is None
+            assert proof is self.proof and method == ("readyDiagnostic" if diagnostic else "ready") and value is None
             assert registry.read()["routes"][URL_A]["attempt"] is None and self.submits == 0
             self.polls.append(clock[0])
-            states = self.dom["readyPolls"]
+            states = (self.dom["readyDiagnostics"][-len(self.dom["readyPolls"]):]
+                      if diagnostic else self.dom["readyPolls"])
             return states[min(len(self.polls) - 1, len(states) - 1)]
 
         def ready(self, proof):
@@ -957,6 +977,10 @@ def test_literal_reconciliation_bounded_ready_gate_precedes_attempt_intent(regis
         assert result.status == "UNPROVED" and result.reason == "INSERT_BLOCKED"
         assert adapter.submits == 0 and "submit" not in adapter.trace and attempt is None
         assert all(0 <= value < 3 for value in adapter.polls) and 3 <= clock[0] < 3.1
+    if diagnostic:
+        assert adapter.diagnostic.as_dict(result)["diagnostic"] == dict(
+            phase="READY", category=None if reconciles else "EXACT_TEXT", proof_category=None,
+            ready=reconciles, exhausted=not reconciles, observed_categories=["EXACT_TEXT"])
 
 
 def test_readiness_wait_remains_bounded_and_rechecks_the_same_proof(monkeypatch):
@@ -976,3 +1000,409 @@ def test_readiness_wait_remains_bounded_and_rechecks_the_same_proof(monkeypatch)
         adapter.ready(proof)
     assert calls and all(0 <= value < 3 for value in calls)
     assert 3 <= clock[0] < 3.1
+
+
+# Frozen TASK-297 predicates provide an independent short-circuit oracle for the
+# TASK-298 observation refactor. All other page code/grammar is shared unchanged.
+PUBLISHED_PREDICATES = r"""  const proves = p => !spent && !invalidated && doc === document && button.isConnected &&
+    window[slot] === nonce &&
+    pending && p.challenge === pending.challenge && p.document_nonce === nonce &&
+    p.chat_url === pending.chat_url && normalize(location.href) === pending.chat_url &&
+    performance.now() < pending.deadline && surface();
+  const ready = p => {
+    if (!proves(p) || !staged || surface() !== staged.box || !exactText(staged.box, staged.expected)) return null;
+    const controls = sendControls(staged.box);
+    if (!controls || controls.length !== 1 || !enabled(controls[0])) return null;
+    let form = null;
+    for (let parent = staged.box.parentElement; parent; parent = parent.parentElement)
+      if (parent.tagName === 'FORM') form = parent;
+    if (staged.control && (staged.control !== controls[0] || staged.form !== form)) return null;
+    staged.control = controls[0]; staged.form = form;
+    return controls[0];
+  };
+"""
+
+# Test-only lexical injection represents individual predicate inputs, including
+# otherwise inaccessible sticky state. It is never part of the production API.
+READY_STATE_INJECTION = r"""
+  globalThis.applyReadyState = (flags, p) => {
+    if (flags.includes('spent')) spent = true;
+    if (flags.includes('invalidated')) invalidated = true;
+    if (flags.includes('document')) global.document = {...document};
+    if (flags.includes('button')) button.isConnected = false;
+    if (flags.includes('slot')) delete window[slot];
+    if (flags.includes('pending')) pending = null;
+    if (flags.includes('challenge')) p = {...p, challenge:'ff'.repeat(32)};
+    if (flags.includes('nonce')) p = {...p, document_nonce:'ff'.repeat(32)};
+    if (flags.includes('proof_route')) p = {...p, chat_url:input.otherUrl};
+    if (flags.includes('location_route')) location.href = input.otherUrl;
+    if (flags.includes('deadline')) clock = args.ttl;
+    if (flags.includes('surface_proof')) elements[args.stop] = [element()];
+    if (flags.includes('unstaged')) staged = null;
+    if (flags.includes('composer_identity')) elements[args.composer] = [element()];
+    if (flags.includes('exact')) box.innerText += ' edit';
+    if (flags.includes('scope')) box.parentElement = null;
+    if (flags.includes('count')) controls = [];
+    if (flags.includes('multiple')) controls.push(element());
+    if (flags.includes('enabled')) send.disabled = true;
+    if (flags.includes('aria_enabled')) send.getAttribute = () => 'true';
+    if (flags.includes('retained_control') || flags.includes('retained_form')) {
+      staged.control = send; staged.form = form;
+      if (flags.includes('retained_control'))
+        controls = [Object.assign(element(), {disabled:false, click:send.click})];
+      if (flags.includes('retained_form')) box.parentElement = {tagName:'FORM', parentElement:null,
+        contains:form.contains, querySelectorAll:form.querySelectorAll};
+    }
+    return p;
+  };
+"""
+
+
+def predicate_install(*, published=False, injected=False):
+    script = origin.INSTALL
+    if published:
+        start = script.index("  // Observe only operands")
+        end = script.index("  button.addEventListener('click'")
+        script = script[:start] + PUBLISHED_PREDICATES + script[end:]
+    if injected:
+        script = script.replace("  const api = Object.freeze({", READY_STATE_INJECTION + "  const api = Object.freeze({")
+    return script
+
+
+READY_TRUTH_CASES = [
+    ([], None, None),
+    (["spent"], "PROOF", "SPENT"),
+    (["invalidated"], "PROOF", "INVALIDATED"),
+    (["document"], "PROOF", "DOCUMENT_IDENTITY"),
+    (["button"], "PROOF", "HELPER_BUTTON_CONNECTIVITY"),
+    (["slot"], "PROOF", "SLOT_OR_NONCE_BINDING"),
+    (["pending"], "PROOF", "PENDING_OR_CHALLENGE_BINDING"),
+    (["challenge"], "PROOF", "PENDING_OR_CHALLENGE_BINDING"),
+    (["nonce"], "PROOF", "SLOT_OR_NONCE_BINDING"),
+    (["proof_route"], "PROOF", "ROUTE_EQUALITY"),
+    (["location_route"], "PROOF", "ROUTE_EQUALITY"),
+    (["deadline"], "PROOF", "DEADLINE"),
+    (["surface_proof"], "PROOF", "SURFACE_PROOF"),
+    (["unstaged"], "SURFACE_OR_COMPOSER_IDENTITY", None),
+    (["composer_identity"], "SURFACE_OR_COMPOSER_IDENTITY", None),
+    (["exact"], "EXACT_TEXT", None),
+    (["scope"], "SEND_SCOPE_OR_COUNT", None),
+    (["count"], "SEND_SCOPE_OR_COUNT", None),
+    (["multiple"], "SEND_SCOPE_OR_COUNT", None),
+    (["enabled"], "SEND_ENABLED", None),
+    (["aria_enabled"], "SEND_ENABLED", None),
+    (["retained_control"], "RETAINED_FORM_OR_CONTROL_IDENTITY", None),
+    (["retained_form"], "RETAINED_FORM_OR_CONTROL_IDENTITY", None),
+    # Simultaneous failures establish first-blocking-gate attribution/order.
+    (["invalidated", "deadline", "exact"], "PROOF", "INVALIDATED"),
+    (["composer_identity", "exact", "enabled"], "SURFACE_OR_COMPOSER_IDENTITY", None),
+    (["exact", "count", "enabled"], "EXACT_TEXT", None),
+    (["count", "enabled"], "SEND_SCOPE_OR_COUNT", None),
+    (["enabled", "retained_form"], "SEND_ENABLED", None),
+]
+
+
+@pytest.mark.parametrize("flags,category,proof_category", READY_TRUTH_CASES)
+def test_diagnostic_ready_truth_table_and_predicate_order_match_published(flags, category, proof_category):
+    published, _ = run_dom("valid", install=predicate_install(published=True, injected=True), ready_state=flags)
+    ordinary, _ = run_dom("valid", install=predicate_install(injected=True), ready_state=flags)
+    diagnostic, _ = run_dom("valid", diagnostic=True, install=predicate_install(injected=True), ready_state=flags)
+    assert ordinary == published
+    observations = diagnostic.pop("readyDiagnostics")
+    assert diagnostic == {key: value for key, value in ordinary.items() if key != "readyDiagnostics"}
+    assert observations == [dict(ready=category is None, category=category, proof_category=proof_category)]
+    assert ordinary["ready"] is (category is None)
+    assert ordinary["clicks"] == (1 if category is None else 0)
+    assert ordinary["inserts"] == ordinary["notifications"] == ordinary["focuses"] == 1
+
+
+@pytest.mark.parametrize("scenario", [
+    "valid", "gesture_edit", "empty_draft", "rich_draft", "native_false",
+    "async_literal_exact", "async_literal_wait_exact", "async_literal_never_reconciled",
+    "async_literal_attr_multiple", "async_literal_children_split", "async_literal_span_hidden",
+    "async_literal_br_child", "async_literal_extra_rendered_separator", "async_literal_altered_bootstrap",
+    "async_literal_route_roundtrip", "async_literal_composer_replaced", "async_literal_send_multiple",
+    "async_literal_send_disabled", "async_literal_before_prove_form", "async_literal_before_click_send",
+])
+def test_diagnostic_mode_preserves_insert_grammar_reconciliation_and_single_click(scenario):
+    published, _ = run_dom(scenario, install=predicate_install(published=True))
+    ordinary, _ = run_dom(scenario)
+    diagnostic, _ = run_dom(scenario, diagnostic=True)
+    assert ordinary == published
+    observations = diagnostic.pop("readyDiagnostics")
+    assert diagnostic == {key: value for key, value in ordinary.items() if key != "readyDiagnostics"}
+    for value in observations:
+        assert set(value) == {"ready", "category", "proof_category"}
+        assert value["category"] is None or value["category"] in origin.READY_CATEGORIES
+        assert value["proof_category"] is None or value["proof_category"] in origin.PROOF_CATEGORIES
+    assert ordinary["clicks"] <= 1 and ordinary["duplicate"] is False
+
+
+def test_observed_271_character_literal_br_render_projection_is_still_ready_success():
+    # Synthetic 47-character draft reproduces the observed positions without
+    # recording any live handoff bytes or route handle.
+    draft = "Synthetic Human draft " + "x" * 25
+    assert len(draft) == 47
+    ordinary, _ = run_dom("async_literal_exact", draft)
+    diagnostic, _ = run_dom("async_literal_exact", draft, diagnostic=True)
+    assert ordinary["renderedFixture"] == dict(length=271, newlineRuns=[[47, 5], [75, 2], [245, 2]])
+    assert ordinary["productionGrammar"] == dict(blocks=5, literals=4, emptyTrailing=1)
+    assert ordinary["readyPolls"] == [False, False, True]
+    assert ordinary["ready"] and ordinary["submitted"] and ordinary["clicks"] == 1
+    assert diagnostic["readyPolls"] == ordinary["readyPolls"]
+    assert diagnostic["readyDiagnostics"][-1] == dict(ready=True, category=None, proof_category=None)
+
+
+@pytest.mark.parametrize("flags,category,proof_category", READY_TRUTH_CASES)
+def test_diagnostic_attempt_result_waits_and_registry_semantics_match_default(
+        tmp_path, monkeypatch, flags, category, proof_category):
+    clock, sleeps = [0.0], []
+    monkeypatch.setattr(origin.time, "monotonic", lambda: clock[0])
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        clock[0] += seconds
+
+    monkeypatch.setattr(origin.time, "sleep", sleep)
+    monkeypatch.setattr(origin.secrets, "token_hex", lambda size: "d" * 64)
+    receipts = []
+    for opt_in in (False, True):
+        clock[0], sleeps[:] = 0.0, []
+        registry = origin.OriginRegistry(tmp_path / ("diagnostic.json" if opt_in else "ordinary.json"))
+
+        class PollingAdapter(Adapter):
+            proof_value = staticmethod(origin.PageBootstrapBrowser.proof_value)
+
+            def __init__(self):
+                super().__init__(registry)
+                self.diagnostic = origin.BootstrapDiagnostics() if opt_in else None
+                self.polls, self.writes = [], []
+
+            def insert(self, proof, metadata):
+                self.step("insert")
+                origin.PageBootstrapBrowser.insert(self, proof, metadata)
+
+            def call(self, proof, method, value=None):
+                assert proof is self.proof
+                if method == "insert":
+                    self.metadata = value["metadata"]
+                    self.dom, _ = run_dom("valid", metadata=self.metadata, diagnostic=opt_in,
+                                          install=predicate_install(injected=True), ready_state=flags)
+                    return self.dom["inserted"]
+                assert method == ("readyDiagnostic" if opt_in else "ready") and value is None
+                assert registry.read()["routes"][URL_A]["attempt"] is None
+                self.polls.append(clock[0])
+                return self.dom["readyDiagnostics"][-1] if opt_in else self.dom["ready"]
+
+            def ready(self, proof):
+                self.step("ready")
+                origin.PageBootstrapBrowser.ready(self, proof)
+
+        adapter = PollingAdapter()
+        write = registry.write
+
+        def record_write(data):
+            adapter.writes.append(json.loads(json.dumps(data)))
+            write(data)
+
+        monkeypatch.setattr(registry, "write", record_write)
+        result = origin.bootstrap(registry, adapter)
+        receipts.append((result.as_dict(), registry.read(), adapter.trace, adapter.polls,
+                         list(sleeps), clock[0], adapter.writes, adapter.submits,
+                         adapter.dom["inserts"], adapter.dom["notifications"], adapter.dom["clicks"]))
+        if opt_in:
+            attribution = adapter.diagnostic.as_dict(result)["diagnostic"]
+            assert attribution == dict(phase="READY", category=category, proof_category=proof_category,
+                                       ready=category is None, exhausted=category is not None,
+                                       observed_categories=[] if category is None else [category])
+    assert receipts[0] == receipts[1]
+    result, state, trace, polls, waits, elapsed, writes, submits, inserts, notifications, clicks = receipts[0]
+    assert inserts == notifications == 1
+    if category is None:
+        assert result["status"] == "SUBMITTED" and result["reason"] == "ACCEPTED"
+        assert polls == [0.0] and waits == [] and elapsed == 0
+        assert submits == clicks == 1 and len(writes) == 3
+        assert state["routes"][URL_A]["attempt"]["status"] == "SUBMITTED"
+    else:
+        assert result["status"] == "UNPROVED" and result["reason"] == "INSERT_BLOCKED"
+        assert submits == clicks == 0 and len(writes) == 1
+        assert state["routes"][URL_A]["attempt"] is None
+        assert len(waits) == len(polls) and set(waits) == {0.05}
+        assert all(0 <= poll < 3 for poll in polls) and 3 <= elapsed < 3.1
+
+
+def test_diagnostic_insert_rejection_has_no_authorized_edit_or_ready_poll(tmp_path, monkeypatch):
+    monkeypatch.setattr(origin.secrets, "token_hex", lambda size: "d" * 64)
+    receipts = []
+    for opt_in in (False, True):
+        registry = origin.OriginRegistry(tmp_path / ("diagnostic.json" if opt_in else "ordinary.json"))
+
+        class RejectedAdapter(Adapter):
+            proof_value = staticmethod(origin.PageBootstrapBrowser.proof_value)
+
+            def insert(self, proof, metadata):
+                self.step("insert")
+                origin.PageBootstrapBrowser.insert(self, proof, metadata)
+
+            def call(self, proof, method, value=None):
+                assert method == "insert"  # No READY poll or alternate edit.
+                self.dom, _ = run_dom("gesture_edit", metadata=value["metadata"], diagnostic=opt_in)
+                return self.dom["inserted"]
+
+        adapter = RejectedAdapter(registry)
+        adapter.diagnostic = origin.BootstrapDiagnostics() if opt_in else None
+        result = origin.bootstrap(registry, adapter)
+        receipts.append((result.as_dict(), registry.read(), adapter.trace, adapter.submits, adapter.dom["inserts"],
+                         adapter.dom["notifications"], adapter.dom["clicks"], adapter.dom["focuses"]))
+        if opt_in:
+            assert adapter.diagnostic.as_dict(result)["diagnostic"] == dict(
+                phase="INSERT", category="INSERT_REJECTED", proof_category=None,
+                ready=False, exhausted=False, observed_categories=[])
+    assert receipts[0] == receipts[1]
+    assert receipts[0][0]["status"] == "UNPROVED" and receipts[0][0]["reason"] == "INSERT_BLOCKED"
+    assert receipts[0][3:] == (0, 0, 0, 0, 0)
+    assert "ready" not in receipts[0][2]
+
+
+def test_diagnostic_observed_set_is_finite_and_retains_only_closed_enums():
+    diagnostic = origin.BootstrapDiagnostics()
+    diagnostic.ready_started()
+    for _ in range(100):
+        for category in sorted(origin.READY_CATEGORIES):
+            diagnostic.ready_observed(dict(ready=False, category=category,
+                                           proof_category="INVALIDATED" if category == "PROOF" else None))
+    diagnostic.ready_observed(dict(ready=True, category=None, proof_category=None))
+    result = diagnostic.as_dict(origin.BootstrapResult("AMBIGUOUS", "SUBMISSION_UNPROVEN"))
+    assert result["diagnostic"]["observed_categories"] == sorted(origin.READY_CATEGORIES)
+    assert len(result["diagnostic"]["observed_categories"]) == 7
+    assert result["result"]["route_handle"] is None and result["result"]["generation"] is None
+    assert set(vars(diagnostic)) == {"phase", "category", "proof_category", "ready", "exhausted", "observed_categories"}
+
+
+@pytest.mark.parametrize("value", [
+    True, None, dict(ready=True, category="EXACT_TEXT", proof_category=None),
+    dict(ready=False, category="PROOF", proof_category=None),
+    dict(ready=False, category=URL_A, proof_category=None),
+    dict(ready=False, category="PROOF", proof_category="a" * 64),
+    dict(ready=False, category="EXACT_TEXT", proof_category="DEADLINE"),
+    dict(ready=False, category=["EXACT_TEXT"], proof_category=None),
+    dict(ready=True, category=None, proof_category=None, raw="secret draft"),
+])
+def test_malformed_diagnostic_output_cannot_authorize_submission_or_export_raw_values(value, monkeypatch):
+    diagnostic = origin.BootstrapDiagnostics()
+    adapter = browser([])
+    adapter.diagnostic = diagnostic
+    monkeypatch.setattr(adapter, "call", lambda *args: value)
+    with pytest.raises(origin.BootstrapBlocked, match="LOCAL_FAILURE"):
+        adapter.ready(object())
+    output = diagnostic.as_dict(origin.BootstrapResult("UNPROVED", "LOCAL_FAILURE"))
+    assert output["diagnostic"] == dict(phase="READY", category="UNKNOWN", proof_category=None,
+                                       ready=False, exhausted=False, observed_categories=["UNKNOWN"])
+    assert URL_A not in json.dumps(output) and "secret draft" not in json.dumps(output)
+
+
+@pytest.mark.parametrize("status,reason", [("SUBMITTED", "ACCEPTED"), ("UNPROVED", "INSERT_BLOCKED"),
+                                          ("AMBIGUOUS", "SUBMISSION_UNPROVEN")])
+def test_cli_diagnostic_is_explicit_one_result_wrapper_with_identical_exit_status(
+        registry, monkeypatch, capsys, status, reason):
+    monkeypatch.delenv("DEBUG", raising=False)
+    monkeypatch.delenv("PWDEBUG", raising=False)
+    receipt = origin.BootstrapResult(status, reason,
+                                    origin.HANDLE_PREFIX + "d" * 64 if status == "SUBMITTED" else None,
+                                    1 if status == "SUBMITTED" else None)
+    calls = []
+
+    class Session:
+        def __init__(self, endpoint, path, **options):
+            calls.append(options)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def observations(self):
+            return [object()]
+
+    monkeypatch.setattr(origin, "PageBootstrapBrowser", Session)
+    monkeypatch.setattr(origin, "bootstrap", lambda *args: receipt)
+    arguments = ["--state", str(registry.path), "--endpoint", ENDPOINT]
+    assert origin.main(arguments) == (0 if status == "SUBMITTED" else 1)
+    ordinary = capsys.readouterr()
+    assert ordinary.err == "" and json.loads(ordinary.out) == receipt.as_dict()
+    assert calls[-1] == {}
+    assert origin.main(arguments + ["--diagnostic"]) == (0 if status == "SUBMITTED" else 1)
+    diagnostic = capsys.readouterr()
+    assert diagnostic.err == "" and len(diagnostic.out.splitlines()) == 1
+    value = json.loads(diagnostic.out)
+    assert set(value) == {"contract", "result", "diagnostic"}
+    assert value["contract"] == origin.DIAGNOSTIC_CONTRACT and value["result"] == receipt.as_dict()
+    assert isinstance(calls[-1]["diagnostic"], origin.BootstrapDiagnostics)
+    assert URL_A not in diagnostic.out and ENDPOINT not in diagnostic.out and str(registry.path) not in diagnostic.out
+
+
+def test_cli_diagnostic_argument_failure_still_emits_only_the_bounded_contract(capsys):
+    assert origin.main(["--diagnostic", "--unknown", URL_A]) == 1
+    output = capsys.readouterr()
+    value = json.loads(output.out)
+    assert output.err == "" and value["contract"] == origin.DIAGNOSTIC_CONTRACT
+    assert value["result"] == origin.BootstrapResult("UNPROVED", "INVALID_INPUT").as_dict()
+    assert value["diagnostic"]["phase"] == "NOT_REACHED" and URL_A not in output.out
+
+
+def test_diagnostic_successful_ready_never_blind_resends_an_ambiguous_attempt(tmp_path, monkeypatch):
+    monkeypatch.setattr(origin.secrets, "token_hex", lambda size: "d" * 64)
+    outcomes = []
+    for opt_in in (False, True):
+        registry = origin.OriginRegistry(tmp_path / ("diagnostic.json" if opt_in else "ordinary.json"))
+
+        class AmbiguousAdapter(Adapter):
+            def __init__(self):
+                super().__init__(registry, blocked="prove_submission")
+                self.diagnostic = origin.BootstrapDiagnostics() if opt_in else None
+                self.calls = []
+
+            def ready(self, proof):
+                self.step("ready")
+                origin.PageBootstrapBrowser.ready(self, proof)
+
+            def call(self, proof, method, value=None):
+                self.calls.append(method)
+                return dict(ready=True, category=None, proof_category=None) if opt_in else True
+
+        first, second = AmbiguousAdapter(), AmbiguousAdapter()
+        receipt = origin.bootstrap(registry, first)
+        rejected = origin.bootstrap(registry, second)
+        outcomes.append((receipt.as_dict(), rejected.as_dict(), registry.read(), first.trace,
+                         second.trace, first.submits, second.submits))
+        assert len(first.calls) == 1 and second.calls == []
+        if opt_in:
+            assert first.diagnostic.ready and not first.diagnostic.exhausted
+            assert first.diagnostic.as_dict(receipt)["result"]["route_handle"] is None
+    assert outcomes[0] == outcomes[1]
+    assert outcomes[0][0]["status"] == "AMBIGUOUS" and outcomes[0][0]["reason"] == "SUBMISSION_UNPROVEN"
+    assert outcomes[0][1]["reason"] == "ATTEMPT_REQUIRES_HUMAN" and outcomes[0][-2:] == (1, 0)
+    assert outcomes[0][2]["routes"][URL_A]["attempt"]["status"] == "AMBIGUOUS"
+
+
+def test_diagnostic_internal_failure_is_unknown_and_preserves_the_ordinary_result(registry):
+    class BrokenAdapter(Adapter):
+        def ready(self, proof):
+            self.step("ready")
+            origin.PageBootstrapBrowser.ready(self, proof)
+
+        def call(self, *args):
+            raise RuntimeError(URL_A + " secret draft " + ENDPOINT)
+
+    ordinary = BrokenAdapter(registry)
+    receipt = origin.bootstrap(registry, ordinary)
+    diagnostic = BrokenAdapter(registry)
+    diagnostic.diagnostic = origin.BootstrapDiagnostics()
+    result = origin.bootstrap(registry, diagnostic)
+    assert result == receipt == origin.BootstrapResult("UNPROVED", "LOCAL_FAILURE")
+    assert ordinary.trace == diagnostic.trace and ordinary.submits == diagnostic.submits == 0
+    output = diagnostic.diagnostic.as_dict(result)
+    assert output["diagnostic"] == dict(phase="READY", category="UNKNOWN", proof_category=None,
+                                       ready=False, exhausted=False, observed_categories=["UNKNOWN"])
+    assert URL_A not in json.dumps(output) and ENDPOINT not in json.dumps(output)

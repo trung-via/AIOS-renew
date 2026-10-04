@@ -16,11 +16,23 @@ import logging
 import os
 import re
 import secrets
+import sys
 import time
 
 from . import local_chat_wake as wake
 
 CONTRACT = "PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1"
+DIAGNOSTIC_CONTRACT = "PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_DIAGNOSTIC_V1"
+READY_CATEGORIES = frozenset({
+    "PROOF", "SURFACE_OR_COMPOSER_IDENTITY", "EXACT_TEXT",
+    "SEND_SCOPE_OR_COUNT", "SEND_ENABLED", "RETAINED_FORM_OR_CONTROL_IDENTITY",
+    "UNKNOWN",
+})
+PROOF_CATEGORIES = frozenset({
+    "SPENT", "INVALIDATED", "DOCUMENT_IDENTITY", "HELPER_BUTTON_CONNECTIVITY",
+    "SLOT_OR_NONCE_BINDING", "PENDING_OR_CHALLENGE_BINDING", "ROUTE_EQUALITY",
+    "DEADLINE", "SURFACE_PROOF",
+})
 HANDLE_PREFIX = "page-origin-v1:"
 HANDLE = re.compile(r"page-origin-v1:[0-9a-f]{64}")
 NONCE = re.compile(r"[0-9a-f]{64}")
@@ -62,6 +74,64 @@ class BootstrapResult:
     def as_dict(self):
         return dict(contract=CONTRACT, status=self.status, reason=self.reason,
                     route_handle=self.route_handle, generation=self.generation)
+
+
+@dataclass
+class BootstrapDiagnostics:
+    """Ephemeral fixed-enum attribution, never an attempt or acceptance authority.
+
+    READY observations come from the same call that decides that poll. Retain only
+    the last decision and a set bounded by the seven repository-owned categories.
+    No identities, DOM values, exception strings, poll times or counts are stored.
+    """
+
+    phase: str = "NOT_REACHED"
+    category: str | None = None
+    proof_category: str | None = None
+    ready: bool = False
+    exhausted: bool = False
+    observed_categories: set[str] = field(default_factory=set, repr=False)
+
+    def insert_started(self):
+        self.phase, self.category = "INSERT", "UNKNOWN"
+
+    def insert_returned(self, accepted):
+        self.category = None if accepted else "INSERT_REJECTED"
+
+    def ready_started(self):
+        self.phase, self.category = "READY", "UNKNOWN"
+
+    def ready_observed(self, value):
+        # Validate the entire finite grammar before copying any browser output.
+        valid = (type(value) is dict and set(value) == {"ready", "category", "proof_category"}
+                 and type(value["ready"]) is bool
+                 and (value["category"] is None or
+                      type(value["category"]) is str and value["category"] in READY_CATEGORIES)
+                 and (value["proof_category"] is None or
+                      type(value["proof_category"]) is str and value["proof_category"] in PROOF_CATEGORIES))
+        if valid:
+            valid = ((value["ready"] and value["category"] is None and value["proof_category"] is None)
+                     or (not value["ready"] and value["category"] in READY_CATEGORIES
+                         and ((value["category"] == "PROOF" and value["proof_category"] in PROOF_CATEGORIES)
+                              or (value["category"] != "PROOF" and value["proof_category"] is None))))
+        if not valid:
+            self.ready_unknown()
+            raise BootstrapBlocked("LOCAL_FAILURE")
+        self.ready = value["ready"]
+        self.category, self.proof_category = value["category"], value["proof_category"]
+        if self.category is not None:
+            self.observed_categories.add(self.category)
+        return self.ready
+
+    def ready_unknown(self):
+        self.ready, self.category, self.proof_category = False, "UNKNOWN", None
+        self.observed_categories.add("UNKNOWN")
+
+    def as_dict(self, result):
+        return dict(contract=DIAGNOSTIC_CONTRACT, result=result.as_dict(), diagnostic=dict(
+            phase=self.phase, category=self.category, proof_category=self.proof_category,
+            ready=self.ready, exhausted=self.exhausted,
+            observed_categories=sorted(self.observed_categories)))
 
 
 @dataclass(frozen=True)
@@ -381,19 +451,41 @@ INSTALL = r"""({slot, composer, send, stop, nonregular, login, ttl, maxDraft}) =
   button.type = 'button'; button.textContent = 'Connect this chat to AIOS and send draft';
   button.setAttribute('data-aios-origin-bootstrap', 'v1');
   button.style.cssText = 'position:fixed;bottom:100px;right:24px;z-index:2147483647;padding:12px;background:#154a32;color:white;border:2px solid white;border-radius:8px';
-  const proves = p => !spent && !invalidated && doc === document && button.isConnected &&
-    window[slot] === nonce &&
-    pending && p.challenge === pending.challenge && p.document_nonce === nonce &&
-    p.chat_url === pending.chat_url && normalize(location.href) === pending.chat_url &&
-    performance.now() < pending.deadline && surface();
-  const ready = p => {
-    if (!proves(p) || !staged || surface() !== staged.box || !exactText(staged.box, staged.expected)) return null;
+  // Observe only operands already evaluated by the published short-circuit
+  // predicates. Returning the operand preserves their truthiness and ordering.
+  const gate = (value, attribution, category, proofCategory = null) => {
+    if (!value && attribution) {
+      attribution.category = category; attribution.proof_category = proofCategory;
+    }
+    return value;
+  };
+  const proves = (p, attribution = null) =>
+    gate(!spent, attribution, 'PROOF', 'SPENT') &&
+    gate(!invalidated, attribution, 'PROOF', 'INVALIDATED') &&
+    gate(doc === document, attribution, 'PROOF', 'DOCUMENT_IDENTITY') &&
+    gate(button.isConnected, attribution, 'PROOF', 'HELPER_BUTTON_CONNECTIVITY') &&
+    gate(window[slot] === nonce, attribution, 'PROOF', 'SLOT_OR_NONCE_BINDING') &&
+    gate(pending, attribution, 'PROOF', 'PENDING_OR_CHALLENGE_BINDING') &&
+    gate(p.challenge === pending.challenge, attribution, 'PROOF', 'PENDING_OR_CHALLENGE_BINDING') &&
+    gate(p.document_nonce === nonce, attribution, 'PROOF', 'SLOT_OR_NONCE_BINDING') &&
+    gate(p.chat_url === pending.chat_url, attribution, 'PROOF', 'ROUTE_EQUALITY') &&
+    gate(normalize(location.href) === pending.chat_url, attribution, 'PROOF', 'ROUTE_EQUALITY') &&
+    gate(performance.now() < pending.deadline, attribution, 'PROOF', 'DEADLINE') &&
+    gate(surface(), attribution, 'PROOF', 'SURFACE_PROOF');
+  const ready = (p, attribution = null) => {
+    if (!proves(p, attribution) ||
+        !gate(staged, attribution, 'SURFACE_OR_COMPOSER_IDENTITY') ||
+        !gate(surface() === staged.box, attribution, 'SURFACE_OR_COMPOSER_IDENTITY') ||
+        !gate(exactText(staged.box, staged.expected), attribution, 'EXACT_TEXT')) return null;
     const controls = sendControls(staged.box);
-    if (!controls || controls.length !== 1 || !enabled(controls[0])) return null;
+    if (!gate(controls, attribution, 'SEND_SCOPE_OR_COUNT') ||
+        !gate(controls.length === 1, attribution, 'SEND_SCOPE_OR_COUNT') ||
+        !gate(enabled(controls[0]), attribution, 'SEND_ENABLED')) return null;
     let form = null;
     for (let parent = staged.box.parentElement; parent; parent = parent.parentElement)
       if (parent.tagName === 'FORM') form = parent;
-    if (staged.control && (staged.control !== controls[0] || staged.form !== form)) return null;
+    if (staged.control && !gate(staged.control === controls[0] && staged.form === form,
+        attribution, 'RETAINED_FORM_OR_CONTROL_IDENTITY')) return null;
     staged.control = controls[0]; staged.form = form;
     return controls[0];
   };
@@ -436,6 +528,11 @@ INSTALL = r"""({slot, composer, send, stop, nonregular, login, ttl, maxDraft}) =
       return !!proves(proof) && surface() === box;
     },
     ready: p => !!ready(p),
+    readyDiagnostic: p => {
+      const attribution = {ready:false, category:null, proof_category:null};
+      attribution.ready = !!ready(p, attribution);
+      return attribution;
+    },
     submit: p => {
       const control = ready(p);
       if (!control) return false;
@@ -474,8 +571,9 @@ CALL = "(api, {method, value}) => api[method](value)"
 class PageBootstrapBrowser:
     """Attach to an existing authorized browser; never navigate/select focus."""
 
-    def __init__(self, endpoint, state_path):
+    def __init__(self, endpoint, state_path, *, diagnostic=None):
         self.endpoint = local_endpoint(endpoint, wake.external_path(str(state_path)))
+        self.diagnostic = diagnostic
         self.driver = None
         self.installed = []
         self.epochs = {}
@@ -597,15 +695,34 @@ class PageBootstrapBrowser:
             raise BootstrapBlocked("TARGET_PAGE_CHANGED")
 
     def insert(self, proof, metadata):
-        if self.call(proof, "insert", dict(proof=self.proof_value(proof), metadata=metadata)) is not True:
+        diagnostic = getattr(self, "diagnostic", None)
+        if diagnostic is not None:
+            diagnostic.insert_started()
+        accepted = self.call(proof, "insert", dict(proof=self.proof_value(proof), metadata=metadata)) is True
+        if diagnostic is not None:
+            diagnostic.insert_returned(accepted)
+        if not accepted:
             raise BootstrapBlocked("INSERT_BLOCKED")
 
     def ready(self, proof):
+        diagnostic = getattr(self, "diagnostic", None)
+        if diagnostic is not None:
+            diagnostic.ready_started()
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
-            if self.call(proof, "ready") is True:
+            if diagnostic is None:
+                accepted = self.call(proof, "ready") is True
+            else:
+                try:
+                    accepted = diagnostic.ready_observed(self.call(proof, "readyDiagnostic"))
+                except Exception:
+                    diagnostic.ready_unknown()
+                    raise
+            if accepted:
                 return
             time.sleep(0.05)
+        if diagnostic is not None:
+            diagnostic.exhausted = True
         raise BootstrapBlocked("INSERT_BLOCKED")
 
     def submit(self, proof):
@@ -643,14 +760,25 @@ def main(argv=None):
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--seconds", type=int, default=120)
     parser.add_argument("--proof-delay-ms", type=int, default=0)
+    parser.add_argument("--diagnostic", action="store_true",
+                        help="Wrap the ordinary result with bounded readiness attribution.")
+    diagnostic = None
     try:
-        args = parser.parse_args(argv)
+        # Materialize once, as argparse does, including for iterable callers.
+        # Preserve the opt-in envelope even when argument parsing itself rejects.
+        arguments = sys.argv[1:] if argv is None else list(argv)
+        if "--diagnostic" in arguments:
+            diagnostic = BootstrapDiagnostics()
+        args = parser.parse_args(arguments)
+        if args.diagnostic and diagnostic is None:
+            diagnostic = BootstrapDiagnostics()
         if (not 1 <= args.seconds <= 300 or not 0 <= args.proof_delay_ms <= 5000
                 or os.environ.get("DEBUG") or os.environ.get("PWDEBUG")):
             raise BootstrapBlocked("INVALID_INPUT")
         logging.disable(logging.CRITICAL)
         registry = OriginRegistry(args.state)
-        with PageBootstrapBrowser(args.endpoint, registry.path) as adapter:
+        options = dict(diagnostic=diagnostic) if diagnostic is not None else {}
+        with PageBootstrapBrowser(args.endpoint, registry.path, **options) as adapter:
             deadline = time.monotonic() + args.seconds
             while time.monotonic() < deadline:
                 if adapter.observations():
@@ -659,7 +787,7 @@ def main(argv=None):
                     if args.proof_delay_ms:
                         time.sleep(args.proof_delay_ms / 1000)
                     result = bootstrap(registry, adapter)
-                    print(json.dumps(result.as_dict()))
+                    print(json.dumps(diagnostic.as_dict(result) if diagnostic is not None else result.as_dict()))
                     return 0 if result.status == "SUBMITTED" else 1
                 time.sleep(0.1)
         result = BootstrapResult("UNPROVED", "CHALLENGE_UNPROVED")
@@ -667,5 +795,5 @@ def main(argv=None):
         result = BootstrapResult("UNPROVED", str(error) if str(error) in REASONS else "LOCAL_FAILURE")
     except Exception:
         result = BootstrapResult("UNPROVED", "LOCAL_FAILURE")
-    print(json.dumps(result.as_dict()))
+    print(json.dumps(diagnostic.as_dict(result) if diagnostic is not None else result.as_dict()))
     return 1

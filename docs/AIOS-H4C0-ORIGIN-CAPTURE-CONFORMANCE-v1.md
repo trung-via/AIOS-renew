@@ -2,7 +2,7 @@
 
 Status: PAGE-SCOPED FALLBACK CONTRACT / LIVE OBSERVATION UNPROVED
 
-TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback); TASK-295 revision 2 (published insertion correction); TASK-296 revision 1 (published bounded editor-reconciliation correction); TASK-297 revision 1 (literal-paste wrapper and insert-to-ready correction)
+TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback); TASK-295 revision 2 (published insertion correction); TASK-296 revision 1 (published bounded editor-reconciliation correction); TASK-297 revision 1 (published literal-paste wrapper and insert-to-ready correction); TASK-298 revision 1 (opt-in diagnostic attribution only)
 Parent: [H4 Origin-Affine Return and Unattended Local Wake](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md)  
 Authority: Runtime verifies implementation; Human/Brain evaluates later live feasibility.
 
@@ -11,7 +11,7 @@ contract. Its accepted implementation, REVIEW/PASS, and exact publication remain
 valid evidence. The current Human-observed regular-Chat surface did not expose
 the Developer Mode/custom MCP entry for that candidate's planned live procedure;
 that availability observation does not invalidate its engineering lineage.
-Sections 6–10 define the selected page-scoped fallback, its bounded corrections,
+Sections 6–11 define the selected page-scoped fallback, its bounded corrections,
 and its later Human/Brain live gate.
 
 ## 1. Feasibility basis and limits
@@ -239,7 +239,7 @@ The appended envelope is at most 384 ASCII bytes:
 [/AIOS ORIGIN BOOTSTRAP]
 ```
 
-Console results contain only `contract`, `status`, `reason`, `route_handle`, and
+Default console results contain only `contract`, `status`, `reason`, `route_handle`, and
 `generation`. Status is `SUBMITTED`, `UNPROVED`, or `AMBIGUOUS`; rejected/ambiguous
 results expose null handle/generation and fixed reason codes. Raw URLs/UUIDs,
 endpoints, local paths, challenge bytes, drafts, exceptions, and browser diagnostics
@@ -286,7 +286,7 @@ transport queue. The finite local loop observes only document-owned pending gest
 ## 9. Required post-publication two-regular-chat Human/Brain procedure
 
 Preconditions: Runtime acceptance, a fresh independent Reviewer verdict, and
-Publisher publication of the exact reviewed TASK-297 correction. Human/Brain selects that SHA
+Publisher publication of the exact reviewed TASK-298 diagnostic candidate. Human/Brain selects that SHA
 and authorizes the existing browser environment and each initial test handoff.
 These boundaries make the candidate available; they do not establish live conformance.
 
@@ -326,10 +326,12 @@ endpoint, registry, transcript, or assistant output. TASK-297 addresses only thi
 exact wrapper grammar and the premature synchronous reconciliation check at
 insert return. It supplies no generic SPAN/rich-text acceptance, normalization,
 manual-Send fallback, wake delivery, routing, or new authority. Runtime verification,
-a fresh Reviewer verdict, and exact reviewed TASK-297 publication remain downstream
-boundaries. The entire A/A/B/B comparison, continuity check, and ambiguity trial
-below remain pending after that publication; Human/Brain must rerun and explicitly
-evaluate them. H4C0 remains open and H4C1 remains blocked.
+a fresh Reviewer verdict, and exact reviewed publication completed for TASK-297 as
+recorded in section 11. The entire A/A/B/B comparison, continuity check, and ambiguity
+trial below remain pending. The next gate is the separately bounded diagnostic A1
+and explicit Human/Brain interpretation in section 11; this numbered full procedure
+does not authorize retrying the currently unproved A1. H4C0 remains open and H4C1
+remains blocked.
 
 1. Open two distinct regular conversations **A** and **B** in the same repository/
    Project context. Identify the surfaces directly as Human observation labels;
@@ -402,7 +404,115 @@ control remain revalidated before `ATTEMPTING` and immediately before click.
 These definitions claim no canonical verification or live conformance result.
 
 Runtime alone runs canonical verification and constructs EVIDENCE. Deterministic
-tests, Runtime PASS, Reviewer PASS, and publication of TASK-293, TASK-295, TASK-296, or TASK-297 alone do **not** close
+tests, Runtime PASS, Reviewer PASS, and publication of TASK-293, TASK-295, TASK-296, TASK-297, or TASK-298 alone do **not** close
 H4C0 or authorize H4C1. The real two-regular-chat procedure above is a later Human/
 Brain conformance decision. H4C0 remains the unique canonical NEXT, ahead of H4C1,
 H4D, H4E, final H4B production-shape proof, and H5; no phase advances automatically.
+
+## 11. Post-TASK-297 evidence and diagnostic-only TASK-298
+
+TASK-297 revision 1 completed RUN-297-001 Runtime PASS, REVIEW-297-001 PASS,
+exact publication of `295b7ad63b7dd6a9417ec0d46d115013d2f3e10f`, and subsequent
+Human/Brain roadmap reconciliation. A fresh instrumented A1 on that published
+subject still ended `UNPROVED/INSERT_BLOCKED`, with no AIOS-owned submission.
+This is Human/Brain live-conformance planning evidence only: it is not a RUN,
+FAILURE, REVIEW finding, publication failure, or engineering terminal state.
+
+The bounded observations were:
+
+- Bootstrap insertion and the production DOM grammar were present by approximately
+  111 ms. One visible composer retained its identity, with one enclosing form and
+  one visible enabled form-scoped Send. Stop was absent.
+- Four branches had the exact `P > SPAN[data-prompt-literal-paste=""] > #text`
+  grammar; the empty branch had `P > BR.ProseMirror-trailingBreak`. The wrappers
+  were visible and had layout rectangles.
+- Final rendered text had length 271, with newline runs at offset/length
+  `47/5`, `75/2`, and `245/2`. This matches TASK-297's two-LF block-boundary
+  projection with the empty-block placeholder; no text or raw DOM is retained here.
+- Handshake cleanup occurred around 3161 ms, consistent with entry into and
+  exhaustion of the existing three-second READY polling window. The challenge
+  TTL is 30000 ms, so challenge expiry alone does not explain that failure.
+
+These observations rule out late editor settlement, selector drift, composer
+replacement, Send readiness, wrapper grammar/visibility, and rendered newline
+projection as primary explanations for this bounded attempt. They do not reveal
+the internal first failing readiness operand, including sticky invalidation.
+**Timeout-extension and DOM-selector fixes are explicitly retracted as unproven.**
+No root-cause correction, invalidation reset, predicate weakening, longer wait,
+retry, manual Send fallback, or alternative acceptance is authorized by TASK-298.
+
+The explicit opt-in entry is the same development helper with `--diagnostic`:
+
+```powershell
+python scripts/aios_origin_bootstrap.py --state $originRegistry --endpoint http://127.0.0.1:9222 --seconds 120 --diagnostic
+```
+
+This example is for a later Human-authorized observation against exact reviewed
+publication, using the already authorized local environment from section 8.
+It does not authorize an Executor live observation or operational-state reset.
+The default invocation continues to emit exactly the ordinary five-field
+`PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1` result. Diagnostic mode emits one JSON
+object under `PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_DIAGNOSTIC_V1`, containing
+`contract`, `result` (the unchanged ordinary result), and `diagnostic`:
+
+| Field | Closed meaning |
+| --- | --- |
+| `phase` | `NOT_REACHED`, `INSERT`, or `READY`; the last reached attribution phase |
+| `category` | null before attribution or after an accepted operation, `INSERT_REJECTED` on an ordinary false insert return, or a READY gate below; `UNKNOWN` only for unclassified internal failure |
+| `proof_category` | null except when READY's `PROOF` gate blocks; then one proof subcategory below |
+| `ready` | Whether the last existing READY poll accepted; false before READY |
+| `exhausted` | Whether the existing three-second READY window exhausted; no extension or extra poll |
+| `observed_categories` | Sorted distinct blocking READY gate enums observed during those existing polls, bounded to seven entries |
+
+The first blocking READY category is one of `PROOF`,
+`SURFACE_OR_COMPOSER_IDENTITY`, `EXACT_TEXT`, `SEND_SCOPE_OR_COUNT`,
+`SEND_ENABLED`, or `RETAINED_FORM_OR_CONTROL_IDENTITY`. The seventh enum,
+`UNKNOWN`, covers an inaccessible/internal failure or malformed diagnostic return
+and never permits submission. `PROOF` (the READY_PROOF gate) is further classified
+as `SPENT`, `INVALIDATED`, `DOCUMENT_IDENTITY`, `HELPER_BUTTON_CONNECTIVITY`,
+`SLOT_OR_NONCE_BINDING`, `PENDING_OR_CHALLENGE_BINDING`, `ROUTE_EQUALITY`,
+`DEADLINE`, or `SURFACE_PROOF`. Both route equalities retain their original order;
+nonce/slot checks and pending/challenge checks share only their bounded label.
+The proof's surface check can block before the later surface/composer identity
+gate; external DOM observations do not override that original ordering.
+
+The browser classification observes the operands already evaluated by the
+published short-circuit predicates. That same call supplies the boolean poll
+decision. There is no second diagnostic predicate pass, DOM mutation, focus
+change, click, retry, navigation, extra wait, or registry operation. The three-second
+window, 50 ms poll cadence, challenge TTL, exact-text grammar, Send/form guards,
+retained identities, and consume-before-single-click boundary are preserved.
+INSERT rejection and READY exhaustion retain ordinary `UNPROVED/INSERT_BLOCKED`.
+If readiness succeeds but a subsequent proof/intent/click/witness fails, `result`
+remains authoritative; `ready: true` describes only the completed READY polling
+phase. Ambiguous attempts still require Human reconciliation and cannot resend.
+
+Only the contract identifier, original bounded result fields, fixed phase/gate
+enums, two booleans, and the seven-member-bounded enum set leave the diagnostic
+boundary. Failure/ambiguity keeps the ordinary route handle and generation null.
+No URL/UUID, endpoint, provider/session/account identity, nonce, challenge, draft,
+DOM text/content, selector-matched content, registry dump, per-poll time/count,
+arbitrary exception string, or event trace is emitted or persisted. The diagnostic
+state is ephemeral and does not enter the local registry. Historical timing and
+newline positions above are supplied planning observations, not diagnostic fields.
+
+Focused regression definitions compare both modes to frozen TASK-297 predicates,
+including every proof subcategory, every READY category, simultaneous failures
+and first-gate ordering, INSERT rejection before authorized edit, success, and
+never-ready exhaustion. They compare predicate-call order, focus/edit/input/click
+counts, waits and poll cadence, ordinary status/reason, durable registry writes,
+attempt markers, and no-blind-resend behavior. The literal-paste/BR success fixture
+reproduces length 271 and exactly `47/5`, `75/2`, `245/2` using synthetic bytes;
+the production grammar is unchanged. These are regression definitions, not
+Executor canonical verification or live conformance EVIDENCE.
+
+Runtime verification and EVIDENCE, a fresh independent Reviewer verdict, and
+Publisher publication of the exact reviewed TASK-298 SHA remain downstream
+boundaries. After those boundaries, Human/Brain may authorize one bounded
+diagnostic A1, inspect only this bounded contract, and explicitly decide its
+semantic meaning. No automated interpretation or correction strategy follows.
+Only a later separately authored bounded TASK may correct an identified gate if
+Human/Brain warrants it. The complete two-chat comparison, continuity/ambiguity
+proof, and explicit Human/Brain live closure remain required: **H4C0 stays open
+and H4C1 stays blocked**. TASK-298 changes no lifecycle or roadmap state and
+provides no H4C1 routing, wake delivery, later phase, or publication authority.
