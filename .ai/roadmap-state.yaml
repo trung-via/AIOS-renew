@@ -623,7 +623,14 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: PENDING_CARRIER
+      status: DISPATCH_ACCEPTED
+      carrier_issue_number: 1452
+      carrier_workflow_run_id: 37167631782
+      primary_workflow_run_id: 37167648867
+      interpretation: >-
+        GitHub accepted the exact fixed primary dispatch for TASK-293 r1. This is a
+        subordinate transport signal only and does not prove RUN creation, execution,
+        Runtime verification, semantic review, publication, or TASK completion.
     prior_human_execution_delegation:
       selected_on: "2026-10-04"
       authority: HUMAN
@@ -676,7 +683,7 @@ sequence:
       code: H4C0_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_AND_LIVE_PROOF_PENDING
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-293
-      next_action: DISPATCH_TASK_293_WITH_SELECTED_EXECUTOR
+      next_action: AWAIT_CANONICAL_TASK_293_LIFECYCLE
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
