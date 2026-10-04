@@ -498,7 +498,19 @@ sequence:
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
-    task_authoring_status: PENDING_FALLBACK_TASK
+    task_id: TASK-293
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "2e0a2e5cd4c1845e25023bcb1609799b3633e800"
+    task_blob_sha: "728869e1f056820968f0c421d37f43c45a52d093"
+    authoring_issue_number: 1451
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "c47b1e8f3937a3c093694417b5b788d275b7cbb5957f94655c559480f713816e"
+    construct_fingerprint: "b061abc4df6f3bb3ed039fe78e86ad8a7a06181b932b49a2bd27e644cde09f79"
+    reconciled_candidate_fingerprint: "699b31476485d033b86e100a8088662ceec12037431ca5e7fe20c9ab935d49b4"
     production_requirement:
       - ORIGIN_AFFINE_RETURN_REQUIRED_BEFORE_H5
       - UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5
@@ -644,8 +656,8 @@ sequence:
     current_live_blocker:
       code: H4C0_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_AND_LIVE_PROOF_PENDING
       authority: HUMAN_BRAIN_PLANNING
-      task_binding: NONE_AUTHORED_YET
-      next_action: BRAIN_AUTHOR_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_TASK
+      task_binding: TASK-293
+      next_action: HUMAN_SELECT_EXECUTOR_FOR_TASK_293
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
