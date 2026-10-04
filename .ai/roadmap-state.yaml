@@ -459,8 +459,54 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4c0-origin-capture-feasibility
+  - temporary-wake-first-cutover-v2
 sequence:
+
+  - id: temporary-wake-first-cutover-v2
+    status: NEXT
+    phase: TEMPORARY_WAKE_FIRST_CUTOVER_V2
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-04"
+    objective: >-
+      Before returning to the H4 roadmap, remove legacy local-Chat wake policy blockers
+      that can indefinitely suppress a new valid Brain doorbell. Retire lane-wide
+      serialization as cross-event eligibility, keep event-local duplicate/no-blind-resend
+      protection and exact destination/binding safety, and stop turning residual transport
+      conditions into new Brain architecture investigations.
+    human_priority:
+      decision: FIX_WAKE_BEFORE_RETURNING_TO_ROADMAP
+      risk_acceptance: WAKE_FIRST_TEMPORARY_PERMISSIVE_CUTOVER
+      supersedes_for_current_priority: TEMPORARY_PERMISSIVE_WAKE_V1
+      no_more_boundary_audits:
+        - LANE_IN_FLIGHT_ROOT_CAUSE_HARDENING
+        - ACCOUNT_SELECTOR_HARDENING
+        - PER_BOUNDARY_ARCHITECTURE_INVESTIGATION
+    selected_contract: TEMPORARY_WAKE_FIRST_CUTOVER_V2
+    audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR_WITH_MANDATORY_REFINEMENTS
+      outcome: CANDIDATE_APPROVED_BY_HUMAN
+    required_properties:
+      - LANE_IN_FLIGHT_NOT_A_CROSS_EVENT_ELIGIBILITY_GATE
+      - AMBIGUOUS_OR_SUBMITTED_STATE_BLOCKS_ONLY_THE_SAME_EVENT_FROM_RESEND
+      - DISTINCT_NEW_EVENT_MAY_ATTEMPT_WAKE_DESPITE_OLDER_FLIGHT_OR_AMBIGUOUS_EVENT
+      - AT_MOST_ONE_ACTUAL_SUBMISSION_ATTEMPT_PER_FINITE_INVOCATION
+      - EXACT_TARGET_AND_CURRENT_BINDING_IDENTITY_RETAINED
+      - PERMANENT_EXACT_EVENT_DEDUPE_RETAINED
+      - NO_BLIND_RESEND_OF_AMBIGUOUS_SAME_EVENT
+      - RESIDUAL_UI_OR_TRANSPORT_CONDITIONS_DO_NOT_CREATE_NEW_ROADMAP_OR_BRAIN_BLOCKERS
+      - NO_NEW_PLANNER_ROUTER_REVIEWER_PUBLISHER_OR_RUNTIME_AUTHORITY
+    accepted_tradeoff: >-
+      The Human explicitly prefers forward Brain wake progress over conservative
+      lane-wide serialization. An earlier submitted or ambiguous doorbell may coexist
+      with a later distinct doorbell attempt. Exact-event dedupe and ambiguous same-event
+      no-resend remain mandatory; wrong-destination selection remains forbidden.
+    task_authoring_status: PENDING
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4c0-origin-capture-feasibility
+
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-account-surface-diagnosis
     status: SUPERSEDED_BY_HUMAN_RISK_ACCEPTANCE
@@ -492,7 +538,7 @@ sequence:
     remaining_gate: NONE_ACCOUNT_SURFACE_DIAGNOSIS_SUPERSEDED
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c0-origin-capture-feasibility
-    status: NEXT
+    status: PAUSED_BY_HUMAN_PRIORITY_WAKE_CUTOVER
     phase: H4C0_ORIGIN_CAPTURE_FEASIBILITY_AND_CONTRACT_FREEZE
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-04"
@@ -679,6 +725,25 @@ sequence:
         The Human approved the page-scoped bootstrap as the selected H4C0 fallback.
         Architecture approval alone does not implement it, prove the two-chat cases,
         close H4C0, or authorize H4C1.
+    interrupted_lifecycle_checkpoint:
+      authority: RUNTIME_REVIEWER_PUBLISHER_OBSERVATION
+      task_id: TASK-293
+      task_revision: 1
+      run_id: RUN-293-001
+      result_artifact_sha: "8860ace7b41ba41e45f4688c887168aeede44005"
+      candidate_sha: "0f6684a41bff0ff6e284185c29e246256009a013"
+      runtime_verification: PASS
+      review_id: REVIEW-293-001
+      review_decision_sha: "69f2da75569198da3d33b4f1a3a1dc009a08d38c"
+      review_verdict: PASS
+      publication_workflow_run_id: 37170416065
+      publication_status: FAILED_DIVERGED_MAIN_REQUIRES_SEPARATELY_AUTHORIZED_INTEGRATION_CANDIDATE
+      resume_after_wake_cutover: INTEGRATE_EXACT_REVIEWED_TASK_293_DELTA_WITH_THEN_CURRENT_MAIN
+      interpretation: >-
+        TASK-293 execution and semantic review passed. Publication failed closed because
+        the reviewed candidate and current main diverged after planning bookkeeping
+        changed main. This checkpoint does not fabricate publication success or H4C0
+        closure and is intentionally paused by the Human wake-first priority.
     current_live_blocker:
       code: H4C0_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_AND_LIVE_PROOF_PENDING
       authority: HUMAN_BRAIN_PLANNING
