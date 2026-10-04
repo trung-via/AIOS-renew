@@ -1936,8 +1936,18 @@ sequence:
         No automatic H4E advancement follows.
     live_exit_gate:
       authority: HUMAN_BRAIN_PLANNING
-      status: PENDING
+      status: AUTHORIZED_WAITING_FOR_NATURAL_ORIGIN_AFFINE_SUBJECT
       contract: H4D_UNATTENDED_EXACT_TARGET_LIVE_EXIT_V1
+      human_authorization:
+        authorized_on: "2026-10-05"
+        instruction: CONTINUE_AFTER_TASK_302_REVIEWED_PUBLICATION
+        scope: ONE_BOUNDED_H4D_LIVE_EXIT_PROBE
+        risk_boundary: USE_ONLY_REAL_UNRESOLVED_ORIGIN_AFFINE_ATTENTION
+        prohibitions:
+          - NO_FABRICATED_ATTENTION_SUBJECT
+          - NO_REPLAY_OF_RESOLVED_ATTENTION
+          - NO_LEGACY_ROUTE_AS_ORIGIN_AFFINE_PROOF
+          - NO_H4E_ADVANCE_BEFORE_OBSERVED_EXIT_PASS
       published_subject_sha: "8832e24edb1cd471a8a7f653a622ef5e1776920f"
       required_observation:
         - TARGET_CONVERSATION_NOT_PREOPENED_OR_PREPARED_BY_HUMAN
@@ -1954,9 +1964,14 @@ sequence:
         and observe one real unattended target-not-preopened delivery before H4D can
         close. H4E remains queued and owns the broader multi-lane production live suite.
     current_live_blocker:
-      code: H4D_UNATTENDED_TARGET_NOT_PREOPENED_LIVE_PROOF_PENDING
-      authority: HUMAN
-      next_action: HUMAN_AUTHORIZE_AND_OBSERVE_ONE_BOUNDED_H4D_LIVE_EXIT_PROBE
+      code: H4D_WAITING_FOR_NATURAL_ORIGIN_AFFINE_ATTENTION_SUBJECT
+      authority: HUMAN_BRAIN_PLANNING
+      next_action: OBSERVE_FIRST_ELIGIBLE_REAL_UNRESOLVED_ORIGIN_AFFINE_SUBJECT_WITH_TARGET_NOT_PREOPENED
+      interpretation: >-
+        Human authorization is satisfied. H4D cannot fabricate or replay a subject.
+        The next qualifying naturally occurring unresolved origin-affine attention
+        subject is the only eligible live-exit carrier. Until one exists, H4E remains
+        blocked and no additional diagnostic or implementation TASK is justified.
       prohibitions:
         - NO_H4D_DONE_FROM_SYNTHETIC_TESTS_REVIEW_OR_PUBLICATION
         - NO_H4E_ADVANCE_BEFORE_H4D_LIVE_EXIT_CLOSURE
