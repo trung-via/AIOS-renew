@@ -802,18 +802,29 @@ sequence:
         the reviewed candidate and current main diverged after planning bookkeeping
         changed main. This checkpoint does not fabricate publication success or H4C0
         closure and is intentionally paused by the Human wake-first priority.
-    current_live_blocker:
-      code: TASK_293_REVIEWED_DELTA_INTEGRATION_AUTHORIZATION_PENDING
+    integration_authorization:
+      authorized_on: "2026-10-04"
       authority: HUMAN
+      decision: AUTHORIZE_SEPARATE_EXACT_TASK293_INTEGRATION_CANDIDATE
+      source_review_id: REVIEW-293-001
+      source_reviewed_sha: "0f6684a41bff0ff6e284185c29e246256009a013"
+      preservation_rule: EXACT_REVIEWED_BLOBS_ONLY_UNLESS_SEPARATE_REMEDIATION_IS_REQUIRED
+      interpretation: >-
+        Human continuation explicitly authorizes Brain to author one bounded integration
+        candidate for the already reviewed TASK-293 delta. This authorization does not
+        reuse the prior execution delegation, does not permit semantic rewrites inside
+        the integration candidate, and does not close H4C0 or authorize H4C1.
+    current_live_blocker:
+      code: TASK_293_REVIEWED_DELTA_INTEGRATION_TASK_PENDING
+      authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-293
-      next_action: HUMAN_AUTHORIZE_SEPARATE_INTEGRATION_CANDIDATE_FOR_EXACT_REVIEWED_TASK_293_DELTA
+      next_action: BRAIN_AUTHOR_EXACT_TASK293_INTEGRATION_TASK
       basis: >-
         RUN-293-001 and REVIEW-293-001 remain valid, but publication failed closed
         because reviewed candidate 0f6684a41bff0ff6e284185c29e246256009a013 diverged from
-        then-current main. TASK-294 wake-first publication is now complete, so H4C0
-        resumes at this checkpoint. Canonical state explicitly requires a separately
-        authorized integration candidate; Brain must not create or dispatch that
-        integration task from publication success alone.
+        then-current main. TASK-294 wake-first publication is now complete and Human has
+        authorized one separately reviewed integration candidate that must preserve the
+        exact reviewed TASK-293 blobs while proving compatibility with current main.
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
