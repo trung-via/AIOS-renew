@@ -602,31 +602,48 @@ sequence:
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
-    task_id: TASK-299
+    task_id: TASK-300
     task_revision: 1
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "e00e0f13e8838ed137dd21ce7f911cb20c8de4da"
-    task_blob_sha: "1e72662496bd41232b9c84c8d3f09bc83c7fd323"
-    authoring_issue_number: 1481
+    task_author_commit_sha: "e010b1dad7467b7832f33b9e78ce46d570e0505f"
+    task_blob_sha: "f680a1faca5f013c86402fd8cba6ca30245017ff"
+    authoring_issue_number: 1485
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
       - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "9299503fc6aff2e93823837cfcd23f9af39016a077ce01914f6e6a661b4f4438"
-    construct_fingerprint: "bfa37d0cf2537c95e5cfb6aa7c17931fc3e4fa5d6a8d4c36903e39fe4161d5e6"
-    reconciled_candidate_fingerprint: "9a20911b66e514fdbf097fc8a9d52ba8a2f87ef2b2b8d9e74201140522aa0317"
+    packet_fingerprint: "b807de3888d00bd5f1bf6572bffb626535b0239171181c6d9554505967342184"
+    construct_fingerprint: "f572af7847f49254851970479a04c4371c4fdda8214eeb5b8bd5c50240f81ad1"
+    reconciled_candidate_fingerprint: "85405ad0e7e02171e236b4cb31c9765979952c644430beba266fd5524e7837b2"
     mutation_freeze_after_dispatch: >-
-      After TASK-299 dispatch, do not write planning or bookkeeping commits to main
-      until terminal publication outcome. The next bounded H4C0 A1 live proof may run
-      only after exact reviewed publication of the bounded empty-paragraph correction.
-    mutation_freeze_resolution:
-      status: SATISFIED
-      terminal_publication_sha: "5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27"
-      publication_workflow_run_id: 37198166829
-      interpretation: >-
-        TASK-299 reached exact reviewed publication before this planning reconciliation.
-        The freeze is therefore released for Human/Brain live-conformance planning only;
-        publication does not itself prove A1 or close H4C0.
+      After TASK-300 dispatch, do not write planning or bookkeeping commits to main
+      until terminal publication outcome. Exact reviewed publication does not reset,
+      relabel, replay or resend the consumed A1/D1 ambiguous attempts; Human/Brain
+      separately decides their disposition and whether a fresh bounded live proof is
+      authorized.
+    task299_prior_authoring:
+      task_id: TASK-299
+      task_revision: 1
+      task_authoring_status: CANONICALIZED
+      task_author_commit_sha: "e00e0f13e8838ed137dd21ce7f911cb20c8de4da"
+      task_blob_sha: "1e72662496bd41232b9c84c8d3f09bc83c7fd323"
+      authoring_issue_number: 1481
+      audit_profile: brain-high-value-v3
+      audit_stages:
+        - CONSTRUCT
+        - ADVERSARIAL_AUDIT_AND_RECONCILE
+      packet_fingerprint: "9299503fc6aff2e93823837cfcd23f9af39016a077ce01914f6e6a661b4f4438"
+      construct_fingerprint: "bfa37d0cf2537c95e5cfb6aa7c17931fc3e4fa5d6a8d4c36903e39fe4161d5e6"
+      reconciled_candidate_fingerprint: "9a20911b66e514fdbf097fc8a9d52ba8a2f87ef2b2b8d9e74201140522aa0317"
+      mutation_freeze_resolution:
+        status: SATISFIED
+        terminal_publication_sha: "5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27"
+        publication_workflow_run_id: 37198166829
+        interpretation: >-
+          TASK-299 reached exact reviewed publication. Later Human/Brain live planning
+          established the separate bounded post-submit empty-render basis for TASK-300;
+          this does not rewrite TASK-299 engineering lineage or historical ambiguous
+          attempt state.
     task298_prior_authoring:
       task_id: TASK-298
       task_revision: 1
@@ -866,7 +883,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PAUSED_ON_POST_TASK_299_A1_AMBIGUOUS_SUBMISSION_PROOF
+      status: PAUSED_FOR_TASK_300_BOUNDED_POST_SUBMIT_EMPTY_RENDER_CORRECTION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -878,15 +895,14 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        The single authorized post-TASK-299 A1 reached the submission attempt boundary
-        but returned AMBIGUOUS/SUBMISSION_UNPROVEN. Human observation confirms that a
-        sent user turn became present after the bounded click, so the live blocker is
-        now post-submit structural proof rather than the corrected EXACT_TEXT gate.
-        A1 is not counted as SUBMITTED/ACCEPTED under the frozen contract, must not be
-        blindly retried, and A2/B1/B2 remain unauthorized until Human/Brain either
-        establishes a non-speculative bounded proof basis or explicitly accepts a
-        separately canonicalized residual live-evidence exception. H4C0 remains open
-        and H4C1 remains blocked.
+        The post-TASK-299 A1 remains AMBIGUOUS/SUBMISSION_UNPROVEN and is not
+        retroactively reclassified or eligible for blind retry. Human/Brain later
+        established a bounded prospective correction basis for the live one-LF empty
+        ProseMirror render, authored TASK-300 through two-stage audit, and explicitly
+        delegated Codex GPT-6.1 Sol xhigh for TASK-300. H4C0 remains open and H4C1
+        blocked. Engineering completion/publication of TASK-300 will only make a later
+        Human/Brain disposition decision eligible; it cannot reset historical attempts
+        or automatically authorize A2/B1/B2.
     post_task299_a1_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -1332,7 +1348,7 @@ sequence:
         completed. This planning record preserves the original Human delegation and
         dispatch identity; downstream completion is established only by the canonical
         lifecycle evidence recorded above.
-    human_execution_delegation:
+    task299_prior_human_execution_delegation:
       selected_on: "2026-10-04"
       authority: HUMAN
       task_id: TASK-299
@@ -1343,7 +1359,7 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
       persistence: THROUGH_TASK_299_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
-    primary_dispatch_intent:
+    task299_prior_primary_dispatch_intent:
       dispatch_id: task299-r1-codex61-xhigh-20261004-001
       task_blob_sha: "1e72662496bd41232b9c84c8d3f09bc83c7fd323"
       task_commit_sha: "e00e0f13e8838ed137dd21ce7f911cb20c8de4da"
@@ -1357,32 +1373,50 @@ sequence:
         verification, REVIEW-299-001 PASS and exact publication. The dispatch receipt
         remains only transport evidence; terminal lifecycle facts are established by
         the canonical RESULT, review decision and published main above.
+    human_execution_delegation:
+      selected_on: "2026-10-04"
+      authority: HUMAN
+      task_id: TASK-300
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_300_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task300-r1-codex61-xhigh-20261004-001
+      task_blob_sha: "f680a1faca5f013c86402fd8cba6ca30245017ff"
+      task_commit_sha: "e010b1dad7467b7832f33b9e78ce46d570e0505f"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: AUTHORIZED_PENDING_DISPATCH
+      interpretation: >-
+        Human explicitly selected Codex GPT-6.1 Sol xhigh for the entire TASK-300
+        lifecycle. This records execution intent only; carrier acceptance, RUN
+        creation, Runtime verification, semantic review and publication remain separate
+        downstream facts.
     current_live_blocker:
-      code: H4C0_POST_SUBMIT_EMPTY_RENDER_COMPATIBILITY_CORRECTION_AUTHORIZATION_PENDING
-      authority: HUMAN_BRAIN_PLANNING
-      task_binding: TASK-299
+      code: TASK_300_R1_EXECUTION_AUTHORIZED_PENDING_DISPATCH
+      authority: HUMAN
+      task_binding: TASK-300
       task_revision: 1
-      next_action: HUMAN_AUTHORIZE_BOUNDED_POST_SUBMIT_EMPTY_RENDER_CORRECTION_OR_EXPLICIT_RESIDUAL_EXCEPTION
+      next_action: DISPATCH_TASK_300
       basis: >-
-        D1 reproduced AMBIGUOUS/SUBMISSION_UNPROVEN with same-attempt stable
-        COMPOSER_NOT_EMPTY and no structural pass. A later read-only inspection over
-        already-consumed ambiguous registry routes found one currently open ambiguous
-        page with textContent EMPTY, innerText exactly ONE_LF, and an empty P containing
-        a sole ProseMirror-trailingBreak BR. Only one of two ambiguous registry routes
-        was open, so this does not claim both A1 and D1 shared the exact final shape.
-        It does independently prove that the frozen submitted() predicate rejects a
-        live semantically-empty editor representation solely because innerText is one
-        LF. A bounded compatibility correction may admit only that exact empty render
-        shape while preserving all other post-submit guards.
+        Human/Brain planning evidence proved a bounded prospective post-submit
+        empty-render compatibility basis without resetting historical ambiguous
+        attempts. TASK-300 r1 passed the required two-stage Brain semantic audit and is
+        canonically authored. Human explicitly selected Codex GPT-6.1 Sol xhigh for
+        the full TASK-300 lifecycle.
       prohibitions:
         - NO_BLIND_A1_OR_D1_RETRY
-        - NO_NEW_SEND_FOR_SHAPE_CLASSIFICATION
-        - NO_A2_B1_B2_UNTIL_A1_DISPOSITION
-        - NO_AUTOMATIC_TASK_300
+        - NO_A2_B1_B2_UNTIL_POST_TASK_300_HUMAN_BRAIN_DISPOSITION
         - NO_GENERIC_WHITESPACE_NORMALIZATION
         - NO_GENERIC_POST_SUBMIT_DOM_WEAKENING
-        - NO_TIMEOUT_CHANGE_FROM_THIS_EVIDENCE
-        - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_AS_ORIGIN_AUTHORITY
+        - NO_TIMEOUT_OR_POLLING_CHANGE
+        - NO_EXACTTEXT_OR_PRE_SUBMIT_GRAMMAR_CHANGE
+        - NO_AMBIGUOUS_STATE_RESET_BY_EXECUTOR
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_RAW_IDENTITY_OR_CONTENT_EXPORT
         - NO_AUTOMATIC_ROADMAP_ADVANCE
@@ -1432,7 +1466,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: AUTHORIZE_AND_COMPLETE_BOUNDED_POST_SUBMIT_EMPTY_RENDER_CORRECTION_OR_ACCEPT_RESIDUAL_THEN_RESOLVE_A1_DISPOSITION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: TASK_300_REVIEWED_PUBLICATION_THEN_HUMAN_BRAIN_AMBIGUOUS_ATTEMPT_DISPOSITION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
