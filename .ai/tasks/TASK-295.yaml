@@ -1,35 +1,42 @@
 task_id: TASK-295
-revision: 1
+revision: 2
 goal: Integrate the exact already-reviewed TASK-293 PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1
   delta onto current main after the reviewed/published TASK-294 wake-first cutover,
   preserving the five TASK-293 reviewed file blobs byte-for-byte and proving compatibility
-  with current wake V2 before a new semantic review/publication.
-problem: RUN-293-001 and REVIEW-293-001 passed on reviewed candidate 0f6684a41bff0ff6e284185c29e246256009a013,
-  but publication failed closed because main diverged. Human has now explicitly authorized
-  one separate integration candidate. Current main contains the reviewed/published
-  TASK-294 TEMPORARY_WAKE_FIRST_CUTOVER_V2 and the five TASK-293 changed files remain
-  exactly at their pre-TASK-293 state. The integration must therefore transplant the
-  exact reviewed TASK-293 blobs without semantic edits and verify they remain compatible
-  with current wake V2. If exact reviewed blobs are incompatible, this task must fail
-  closed rather than silently rewrite the reviewed implementation.
+  through Runtime-owned verification before a fresh semantic review/publication.
+problem: 'TASK-295 r1 preserved the correct exact-blob integration objective but encoded
+  AC3 and AC7 as future Runtime/Reviewer facts. RUN-295-001 therefore terminated at
+  COMPLETION_GATE before Runtime verification with ''RESULT does not satisfy acceptance
+  criteria: AC3, AC7'' and verification_seconds=null. The failed candidate 80944c607d696787e7f65d6e83d65d81135e7c1c
+  is clean, descends from base 25a271626046a1cf2134ddd111496b366c22531a, changes exactly
+  the five authorized files, and every changed file has exactly the reviewed TASK-293
+  blob identity. This is a TASK-contract ordering defect, not evidence that the integration
+  implementation or required compatibility tests failed. Revision 2 preserves the
+  r1 integration semantics, source blobs, scope and verification commands while making
+  every acceptance criterion truthfully claimable from the Executor-produced candidate
+  before Runtime verification.'
 assumptions:
-- Canonical main at TASK-295 authoring is 6abccab1f01a617151a787d86a2023b2e4c65103.
-- Human authorization AUTHORIZE_SEPARATE_EXACT_TASK293_INTEGRATION_CANDIDATE is canonical
-  in H4C0 planning state.
-- Source engineering lineage is TASK-293 r1 / RUN-293-001 / REVIEW-293-001 PASS with
-  source reviewed SHA 0f6684a41bff0ff6e284185c29e246256009a013 and review decision
-  SHA 69f2da75569198da3d33b4f1a3a1dc009a08d38c.
-- TASK-294 wake-first cutover is reviewed and exactly published on current main lineage;
-  its local-wake implementation and policy must remain unchanged by this integration.
-- 'The five TASK-293 reviewed file blobs are: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md=f5c1121886139c8dc8c7755b5338d386d94eb2c5,
-  docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md=9e49e118017fb12da527d92c557e60f2bef97135,
-  scripts/aios_origin_bootstrap.py=31dd8c1a09cbf4807bd3f7cb815803465909fe82, src/aios_renew/origin_bootstrap.py=667a0d9332d1e7941c43f48adab3b53cd01b603e,
-  tests/test_origin_bootstrap.py=426a433e92a01bee2dae35bb54f8d7ea6eee0ff5.'
-- Current main's src/aios_renew/local_chat_wake.py is the TASK-294 wake-first implementation
-  and is an inspect-only compatibility dependency for TASK-295.
-- TASK-295 requires its own Runtime verification, semantic review and exact publication
-  despite reusing already-reviewed source blobs; the prior REVIEW-293-001 does not
-  automatically review the new integration SHA.
+- Canonical main at TASK-295 r2 authoring is 25a271626046a1cf2134ddd111496b366c22531a.
+- RUN-295-001 is the canonical r1 FAILURE at COMPLETION_GATE with failed candidate
+  80944c607d696787e7f65d6e83d65d81135e7c1c and FAILURE artifact 049cb4fa60988ce112c11a8930aefe153fafe1ba.
+- RUN-295-001 Runtime verification did not run; verification_seconds is null. No r1
+  RESULT or REVIEW exists.
+- The r1 failed candidate is clean, descends from its admitted base, changes exactly
+  docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md, docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md,
+  scripts/aios_origin_bootstrap.py, src/aios_renew/origin_bootstrap.py and tests/test_origin_bootstrap.py,
+  and outside_task_scope is empty.
+- 'The five r1 candidate blobs exactly equal the reviewed TASK-293 source blobs: f5c1121886139c8dc8c7755b5338d386d94eb2c5,
+  9e49e118017fb12da527d92c557e60f2bef97135, 31dd8c1a09cbf4807bd3f7cb815803465909fe82,
+  667a0d9332d1e7941c43f48adab3b53cd01b603e and 426a433e92a01bee2dae35bb54f8d7ea6eee0ff5
+  respectively.'
+- Source engineering lineage remains TASK-293 r1 / RUN-293-001 / REVIEW-293-001 PASS
+  at reviewed SHA 0f6684a41bff0ff6e284185c29e246256009a013 and review decision SHA
+  69f2da75569198da3d33b4f1a3a1dc009a08d38c; that review is provenance only, not the
+  TASK-295 verdict.
+- TASK-294 wake-first cutover remains reviewed/published current-main behavior and
+  must remain unchanged by this integration.
+- Human selected Codex GPT-6.1 Sol xhigh for TASK-295; that same TASK delegation persists
+  through revisions and correction continuations unless Human changes it.
 - Publication of TASK-295 still does not close H4C0; the separately Human/Brain-owned
   two-chat live conformance gate remains pending.
 scope:
@@ -37,6 +44,7 @@ scope:
   - .ai/roadmap-state.yaml
   - .ai/tasks/TASK-293.yaml
   - .ai/tasks/TASK-294.yaml
+  - .ai/tasks/TASK-295.yaml
   - src/aios_renew/local_chat_wake.py
   - tests/test_local_chat_wake.py
   - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
@@ -48,78 +56,92 @@ scope:
   - src/aios_renew/origin_bootstrap.py
   - tests/test_origin_bootstrap.py
 non_goals:
-- Modify, reinterpret, optimize, refactor, or otherwise change the reviewed TASK-293
-  semantics while integrating them.
+- Treat RUN-295-001 completion-gate failure as proof that the exact-blob integration
+  implementation or required compatibility tests failed.
+- Require the Executor RESULT to claim Runtime verification success, canonical EVIDENCE
+  creation, Reviewer verdict, publication, H4C0 closure or any fact that can exist
+  only after Runtime accepts the structural RESULT.
+- Modify, reinterpret, optimize, refactor or otherwise change the reviewed TASK-293
+  semantics or any of the five reviewed source blobs.
 - Modify src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py, TASK-294
-  wake-first policy/docs, or reintroduce LANE_IN_FLIGHT cross-event gating.
+  wake-first behavior/docs, or reintroduce LANE_IN_FLIGHT cross-event gating.
 - Implement H4C1 return routing, H4D unattended target acquisition, H4E concurrency
-  conformance, or close H4C0.
-- Perform the two-chat live origin-capture observation, a live local wake, browser-state
-  reset, or operational-state cleanup during Executor execution.
-- Rewrite TASK-293/RUN-293/REVIEW-293 history or claim its failed publication became
-  successful retroactively.
-- Treat prior REVIEW-293-001 as the semantic verdict for the new integration candidate
-  SHA.
+  conformance, or perform/claim the two-chat live H4C0 observation.
+- Rewrite TASK-293/RUN-293/REVIEW-293 history, reinterpret its failed publication,
+  or reuse REVIEW-293-001 as TASK-295 verdict.
 - Create a new Planner, Runtime, Reviewer, Publisher, generic router, retry authority,
-  or lifecycle reducer.
+  lifecycle reducer or publication shortcut.
 - Modify roadmap state from Executor execution.
 constraints:
   hard:
+  - The r2 implementation candidate must be produced from the admitted r2 current-main
+    execution base. RUN-295-001 failed candidate may be inspected as bounded implementation
+    reference only and is not publication or verification authority.
   - 'The resulting content of every scope.modify path must match the corresponding
     reviewed TASK-293 blob exactly: f5c1121886139c8dc8c7755b5338d386d94eb2c5, 9e49e118017fb12da527d92c557e60f2bef97135,
     31dd8c1a09cbf4807bd3f7cb815803465909fe82, 667a0d9332d1e7941c43f48adab3b53cd01b603e
     and 426a433e92a01bee2dae35bb54f8d7ea6eee0ff5 respectively.'
   - The candidate may change exactly the five scope.modify files and no others. Current
-    TASK-294 wake-first files remain byte-for-byte inherited from the TASK-295 base.
-  - Integration must use the exact reviewed source candidate 0f6684a41bff0ff6e284185c29e246256009a013
-    as provenance. Executor may choose HOW to materialize those blobs but may not
-    author semantic edits inside them.
-  - Compatibility with current main must be tested after exact blob integration, including
-    origin-bootstrap focused tests plus current local-chat-wake/H4B regression coverage.
-  - If exact reviewed blobs fail compatibility verification on current main, Executor
-    must surface canonical verification failure; it must not modify any reviewed blob
-    or wake-V2 file to make tests pass inside TASK-295.
-  - The integrated docs must continue to state that TASK-293/TASK-295 implementation
-    or publication alone is not the required two-chat live proof and that H4C1 remains
-    blocked until Human/Brain H4C0 live closure.
+    TASK-294 wake-first implementation, tests and policy documentation remain byte-for-byte
+    inherited from the r2 execution base.
+  - Integration provenance remains exact reviewed source candidate 0f6684a41bff0ff6e284185c29e246256009a013.
+    Executor may choose HOW to materialize those blobs but may not author semantic
+    edits inside them.
+  - Every r2 acceptance criterion must be claimable from the Executor-produced repository/result
+    structure before Runtime verification starts. Runtime alone executes the verification
+    commands and attaches canonical EVIDENCE after the completion gate.
+  - Keep the r1 verification policy and required commands unchanged. Do not weaken,
+    skip, xfail, replace or reinterpret the origin-bootstrap, local-chat-wake or H4B
+    regression suites to obtain a pass.
+  - If exact reviewed blobs are incompatible with current main, Runtime verification
+    must surface canonical failure; Executor must not modify reviewed blobs or TASK-294
+    wake files inside TASK-295 to force compatibility.
+  - The integrated docs must continue to state that TASK-293/TASK-295 implementation,
+    verification, review or publication alone is not the required two-chat live proof
+    and H4C1 remains blocked until Human/Brain H4C0 live closure.
   - Raw conversation URL, prompt/transcript/assistant content and machine-local binding
     state remain outside canonical engineering artifacts exactly as in the reviewed
     TASK-293 contract.
-  - 'TASK-294''s reviewed/published wake-first safety boundary remains intact: distinct-event
-    progress, same-event dedupe/no-blind-resend, exact destination/binding safety
-    and global enable rollback are not changed by this integration.'
-  - Runtime owns canonical verification of the new integration SHA, Reviewer owns
-    a fresh semantic verdict for that SHA, Publisher owns exact publication, and Human/Brain
-    alone owns later H4C0 live closure/roadmap advancement.
+  - Runtime owns canonical verification and changed-file enforcement; Reviewer owns
+    a fresh semantic verdict for the r2 candidate; Publisher owns exact publication;
+    Human/Brain alone owns later H4C0 live closure and roadmap advancement.
   - Executor changes only scope.modify and performs no live wake, operational-state
-    rewrite, roadmap mutation, review, or publication.
+    rewrite, roadmap mutation, review or publication.
 acceptance:
 - id: AC1
-  condition: All five scope.modify paths in the candidate have exactly the reviewed
-    TASK-293 blob identities declared in the task, with no semantic or byte-level
-    drift.
+  condition: The Executor-produced TASK-295 r2 candidate descends from its admitted
+    current-main execution base, changes only the five authorized integration paths,
+    and preserves every inherited file outside scope.modify.
 - id: AC2
-  condition: The candidate changed-file set is exactly the five TASK-293 integration
-    paths and excludes all TASK-294 wake-first implementation, tests and documentation.
+  condition: All five scope.modify paths in the candidate have exactly the reviewed
+    TASK-293 blob identities declared by the task, with no semantic or byte-level
+    drift.
 - id: AC3
-  condition: 'Focused compatibility verification passes on the integrated candidate
-    against current main: origin-bootstrap tests and current local-chat-wake/H4B regression
-    suites all pass with the exact reviewed blobs unchanged.'
+  condition: 'The candidate preserves the complete compatibility-verification surface
+    without claiming its future outcome: tests/test_origin_bootstrap.py is the exact
+    reviewed source blob, tests/test_local_chat_wake.py and tests/test_h4b_regular_chat_brain_resume.py
+    remain inherited and unmodified, and the unchanged minimum-sufficient verification
+    commands remain delegated to Runtime.'
 - id: AC4
-  condition: A deterministic source comparison proves the five integrated paths are
-    identical to reviewed source candidate 0f6684a41bff0ff6e284185c29e246256009a013.
+  condition: The candidate's five integration paths are byte-identical to reviewed
+    source candidate 0f6684a41bff0ff6e284185c29e246256009a013 and preserve that candidate
+    solely as immutable provenance rather than as the new TASK-295 verdict.
 - id: AC5
-  condition: Documentation still preserves the separate two-chat live H4C0 gate, keeps
-    H4C1 blocked, and does not reinterpret TASK-293 publication failure or TASK-294
-    completion.
+  condition: The integrated documentation preserves the separate two-chat live H4C0
+    gate, keeps H4C1 blocked, preserves TASK-293 failed-publication history and TASK-294
+    completion, and introduces no automatic roadmap advancement.
 - id: AC6
-  condition: No raw conversation identity/canonicalization, new semantic/lifecycle
-    authority, return routing, wake delivery behavior, live wake, operational reset,
-    or roadmap advancement is introduced by the integration.
+  condition: The candidate introduces no raw conversation identity canonicalization,
+    new semantic/lifecycle authority, return routing, wake-delivery behavior, live
+    wake, operational reset, TASK-294 wake-policy change or mutation outside the five
+    authorized files.
 - id: AC7
-  condition: The new integration candidate receives independent Runtime verification
-    and remains eligible only for a fresh Reviewer verdict and exact Publisher action;
-    prior REVIEW-293-001 is provenance, not the new verdict.
+  condition: 'The Executor structural RESULT is complete before Runtime verification:
+    unresolved is empty, changed_files names exactly the authorized candidate delta,
+    AC1-AC7 are claimed only as pre-verification implementation/result properties,
+    prior REVIEW-293-001 is provenance only, and Runtime verification, fresh Reviewer
+    verdict and exact Publisher action remain downstream authorities rather than claimed
+    completed facts.'
 verification:
   policy: minimum-sufficient-v1
   required:
