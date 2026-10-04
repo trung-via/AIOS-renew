@@ -619,6 +619,14 @@ sequence:
       After TASK-297 dispatch, do not write planning or bookkeeping commits to main
       until terminal publication outcome. The bounded H4C0 live observation resumes
       only after exact reviewed publication of the literal-paste/order correction.
+    mutation_freeze_resolution:
+      status: SATISFIED
+      terminal_publication_sha: "295b7ad63b7dd6a9417ec0d46d115013d2f3e10f"
+      publication_workflow_run_id: 37183392473
+      interpretation: >-
+        The freeze ended only after exact reviewed TASK-297 publication completed.
+        This roadmap reconciliation is the first planning mutation after that terminal
+        publication outcome.
     task296_prior_authoring:
       task_id: TASK-296
       task_revision: 1
@@ -818,7 +826,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PAUSED_FOR_TASK_297_LITERAL_PASTE_WRAPPER_CORRECTION
+      status: PENDING_TWO_CHAT_LIVE_PROOF_AFTER_TASK_297_REVIEWED_PUBLICATION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -830,13 +838,12 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        TASK-296 was reviewed and exactly published, but the first fresh A1 live attempt
-        against that source again failed closed pre-submit. Bounded structural diagnostics
-        proved the current production editor wraps non-empty logical lines as
-        P > SPAN[data-prompt-literal-paste=""] > #text while the empty separator uses
-        P > BR.ProseMirror-trailingBreak. TASK-297 is the bounded literal-paste and
-        insert-to-ready ordering correction. The full two-chat procedure remains pending
-        after its reviewed publication and H4C1 remains blocked.
+        TASK-297 corrected the exact production literal-paste wrapper grammar and the
+        premature insert-to-ready ordering gap, passed Runtime verification and fresh
+        semantic review, and was exactly published as
+        295b7ad63b7dd6a9417ec0d46d115013d2f3e10f. The complete bounded two-chat
+        procedure must now be rerun against that published source. Publication alone
+        does not close H4C0 or authorize H4C1.
     post_task296_live_observation_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -929,6 +936,42 @@ sequence:
         downstream Runtime/Reviewer facts at the Executor completion gate. The failed
         candidate nevertheless preserved the exact five reviewed TASK-293 blobs and
         this checkpoint is not evidence of implementation or compatibility-test failure.
+    task297_engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-297
+      task_revision: 1
+      run_id: RUN-297-001
+      result_artifact_sha: "0729e439a8b19f5337c1ad30edfba23be217096f"
+      candidate_sha: "295b7ad63b7dd6a9417ec0d46d115013d2f3e10f"
+      verification_summary: "650 passed, 801 skipped in 29.62s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-297-001
+      review_decision_sha: "7f54389990f15e8ea17689e5c37e289065bfbcc5"
+      verdict: PASS
+      reviewed_sha: "295b7ad63b7dd6a9417ec0d46d115013d2f3e10f"
+      published_sha: "295b7ad63b7dd6a9417ec0d46d115013d2f3e10f"
+      publication_workflow_run_id: 37183392473
+      completed_on: "2026-10-04"
+      interpretation: >-
+        TASK-297 corrected only the bounded production literal-paste wrapper grammar
+        and insert-to-ready reconciliation ordering exposed by the post-TASK-296
+        Human/Brain live observation. Runtime verification and REVIEW-297-001 passed
+        and Publisher advanced main to the exact reviewed candidate. This completion
+        makes the corrected source eligible for a fresh H4C0 live observation; it is
+        not itself H4C0 live proof or H4C1 authorization.
+    task297_primary_dispatch_intent:
+      dispatch_id: task297-r1-codex61-xhigh-20261004-001
+      task_blob_sha: "c9ba56a3f84a11becc910a22976682f46293b737"
+      task_commit_sha: "b9f91dddfa707b110ca199d67907a784d44e85a1"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      carrier_issue_number: 1474
+      primary_workflow_run_id: 37182411465
+      status: TERMINAL_REVIEWED_PUBLISHED
+      interpretation: >-
+        Dispatch transport, admitted execution, Runtime verification, semantic review,
+        and exact publication each reached their own canonical terminal evidence.
+        The dispatch receipt alone was not used as proof of later lifecycle states.
     task296_engineering_completion:
       authority: RUNTIME_REVIEWER_PUBLISHER
       task_id: TASK-296
@@ -1021,18 +1064,18 @@ sequence:
       expires_on_task_change: true
       persistence: THROUGH_TASK_297_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
     current_live_blocker:
-      code: TASK_297_R1_EXECUTION_AUTHORIZED_PENDING_DISPATCH
-      authority: HUMAN
+      code: H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_PENDING
+      authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-297
       task_revision: 1
-      next_action: DISPATCH_TASK_297
+      published_sha: "295b7ad63b7dd6a9417ec0d46d115013d2f3e10f"
+      next_action: RUN_BOUNDED_TWO_CHAT_PAGE_SCOPED_ORIGIN_BOOTSTRAP_OBSERVATION
       basis: >-
-        TASK-297 r1 is the canonical two-stage-audited bounded correction for the exact
-        production literal-paste wrapper and insert-to-ready ordering gap exposed after
-        TASK-296 publication. Human explicitly selected Codex GPT-6.1 Sol xhigh for the
-        entire TASK-297 lifecycle unless changed. After reviewed exact publication,
-        Human/Brain must restart the bounded two-chat H4C0 live procedure; publication
-        alone cannot close H4C0.
+        TASK-297 r1 engineering, Runtime verification, fresh semantic review and exact
+        publication are complete. The remaining H4C0 gate is the separately
+        Human/Brain-owned bounded live conformance procedure against the corrected
+        PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 implementation. Synthetic tests,
+        Runtime PASS, Reviewer PASS and publication cannot substitute for this gate.
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_GENERIC_SPAN_OR_RICH_TEXT_ACCEPTANCE
@@ -1054,7 +1097,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: TASK_297_REVIEWED_PUBLICATION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
