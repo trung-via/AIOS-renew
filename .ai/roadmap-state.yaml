@@ -892,7 +892,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: FRESH_A1_A2_B1_B2_PASS_READY_FOR_CONTINUITY_A
+      status: FRESH_A1_A2_B1_B2_CONTINUITY_PASS_READY_FOR_AMBIGUITY_TRIAL
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -905,13 +905,13 @@ sequence:
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
         TASK-300 is exactly published. Fresh A1/A2 and B1/B2 all returned
-        SUBMITTED/ACCEPTED. Within-chat route stability holds for A and B, generation
-        remained 1 in both conversations, and the transient A and B routes are distinct.
-        The A/A/B/B base sequence is therefore complete. The unique next live action is
-        one separately bounded continuity check on conversation A after a valid reload
-        or reopen; it must preserve A's transient route and generation. The ambiguity
-        trial remains blocked until continuity passes. H4C0 remains open and H4C1
-        remains blocked.
+        SUBMITTED/ACCEPTED with stable per-conversation routes, distinct A/B routes and
+        unchanged generation 1. The separately bounded continuity check on A after a
+        valid reload also returned SUBMITTED/ACCEPTED with the same transient A route
+        and generation 1. The unique next live action is one separately authorized
+        ambiguity trial using --proof-delay-ms 3000 on a disposable regular chat; the
+        selected document must be invalidated before proof so the result is UNPROVED
+        with no submission. H4C0 remains open and H4C1 remains blocked.
     fresh_post_task300_a1_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -1002,6 +1002,28 @@ sequence:
         with the prior A1/A2 equality and A/B distinction, this completes the A/A/B/B
         base sequence. The opaque route handles remain transient comparison values and
         are intentionally absent from canonical planning state.
+      privacy_boundary: >-
+        No raw route handle, conversation URL or UUID, endpoint, registry contents,
+        draft/bootstrap text, transcript, assistant output, or raw DOM payload is retained.
+    fresh_post_task300_continuity_a_checkpoint:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      published_subject_sha: "ad00bb370b6e46731d5b8ef1abbaf6536a22fb5b"
+      observation_label: CONTINUITY_A
+      operation: RELOAD_EXISTING_A_TAB_THEN_FRESH_BOOTSTRAP
+      ordinary_result:
+        status: SUBMITTED
+        reason: ACCEPTED
+        route_handle_present: true
+        generation: 1
+      comparison:
+        route_equal_to_a: true
+        generation_equal_to_a: true
+        continuity_pass: true
+      interpretation: >-
+        Reloading the existing A tab did not create a competing conversation route or
+        new generation. The fresh post-reload bootstrap independently confirmed the
+        same transient A route and generation, satisfying the continuity gate.
       privacy_boundary: >-
         No raw route handle, conversation URL or UUID, endpoint, registry contents,
         draft/bootstrap text, transcript, assistant output, or raw DOM payload is retained.
@@ -1550,24 +1572,24 @@ sequence:
         The dispatch receipt remains transport evidence only; terminal lifecycle truth
         comes from canonical RESULT, review decision and published main.
     current_live_blocker:
-      code: H4C0_CONTINUITY_A_REQUIRED
+      code: H4C0_AMBIGUITY_TRIAL_REQUIRED
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-300
       task_revision: 1
-      next_action: RUN_ONE_RELOAD_OR_REOPEN_CONTINUITY_BOOTSTRAP_ON_A
+      next_action: RUN_ONE_SEPARATELY_AUTHORIZED_AMBIGUITY_TRIAL
       basis: >-
-        The fresh A1/A2/B1/B2 sequence is complete: all four observations returned
-        SUBMITTED/ACCEPTED, A1=A2, B1=B2, A differs from B, and all generations remain
-        1. The next required H4C0 gate is one separately bounded continuity observation
-        on conversation A after a valid reload or reopen. It must return
-        SUBMITTED/ACCEPTED with the same transient A route and unchanged generation.
+        The A/A/B/B base sequence and A continuity check all passed. The remaining live
+        safety gate is one ambiguity/provenance fail-closed trial. Use a disposable
+        regular chat and --proof-delay-ms 3000, click that document's in-page button,
+        then invalidate that exact document before the delayed proof. Success for this
+        trial is a fixed UNPROVED result with no submission and null route/generation;
+        any submission keeps H4C0 open.
       prohibitions:
-        - NO_NEW_CONVERSATION_FOR_CONTINUITY_A
-        - NO_AMBIGUITY_TRIAL_BEFORE_CONTINUITY_PASS
-        - NO_RAW_ROUTE_HANDLE_IN_CANONICAL_ARTIFACTS
-        - NO_RESET_REPLAY_OR_RELABEL_OF_HISTORICAL_A1_D1
+        - NO_USE_OF_A_OR_B_FOR_AMBIGUITY_TRIAL
+        - NO_SECOND_ATTEMPT_IF_TRIAL_PRODUCES_AMBIGUOUS_POST_SUBMIT_STATE
+        - NO_RAW_ROUTE_HANDLE_OR_CONVERSATION_IDENTITY_IN_CANONICAL_ARTIFACTS
         - NO_AUTOMATIC_TASK_301
-        - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
+        - NO_H4C1_BEFORE_EXPLICIT_HUMAN_BRAIN_CLOSURE
         - NO_AUTOMATIC_ROADMAP_ADVANCE
     post_task299_consumed_ambiguous_empty_shape_probe:
       authority: HUMAN_BRAIN_PLANNING
@@ -1615,7 +1637,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: CONTINUITY_A_THEN_AMBIGUITY_TRIAL_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: AMBIGUITY_TRIAL_THEN_EXPLICIT_HUMAN_BRAIN_H4C0_CLOSURE_DECISION
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
