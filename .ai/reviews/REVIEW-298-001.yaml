@@ -1,0 +1,63 @@
+review_id: REVIEW-298-001
+reviewed_sha: 8d2bf871f559e5d021c42e5c5765d0e8a7600017
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- RUN-298-001 is the canonical PRIMARY RESULT for TASK-298 revision 1. Candidate 8d2bf871f559e5d021c42e5c5765d0e8a7600017
+  descends directly from admitted base b1df5d4c6eedce9827112c8a0ac180f561660dd5 and
+  changes exactly the four TASK-authorized paths.
+- 'Runtime verification is canonical PASS: tests/test_origin_bootstrap.py plus tests/test_local_chat_wake.py
+  report 666 passed, 881 skipped in 27.25s; git diff --check exited 0; RESULT unresolved
+  is empty.'
+- 'AC1: exact Git comparison confirms only docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md,
+  scripts/aios_origin_bootstrap.py, src/aios_renew/origin_bootstrap.py, and tests/test_origin_bootstrap.py
+  changed. local_chat_wake implementation/tests and roadmap/lifecycle state are unchanged
+  by the candidate.'
+- 'AC2: default non-diagnostic CLI still emits the ordinary five-field PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1
+  result. The shared JS predicates retain the published TASK-297 evaluation order
+  and truthiness; gate(value, null, ...) returns the same operand without adding an
+  alternate decision. The Python default path still uses ready(), the same three-second
+  deadline, 50 ms sleep cadence, challenge TTL, registry ordering, consume-before-single-click
+  boundary, status/reason grammar, and no-blind-resend behavior.'
+- 'AC3: --diagnostic is explicit opt-in and wraps the same ordinary BootstrapResult
+  in PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_DIAGNOSTIC_V1. INSERT attribution is attached
+  to the same insert call; READY attribution is produced by readyDiagnostic from the
+  same ready/proves predicate evaluation and does not execute an additional DOM predicate
+  pass, mutation, focus change, click, retry, navigation, registry mutation, or extra
+  wait.'
+- 'AC4: READY attribution uses a closed repository-owned category grammar: PROOF,
+  SURFACE_OR_COMPOSER_IDENTITY, EXACT_TEXT, SEND_SCOPE_OR_COUNT, SEND_ENABLED, RETAINED_FORM_OR_CONTROL_IDENTITY,
+  and bounded UNKNOWN. PROOF further uses only SPENT, INVALIDATED, DOCUMENT_IDENTITY,
+  HELPER_BUTTON_CONNECTIVITY, SLOT_OR_NONCE_BINDING, PENDING_OR_CHALLENGE_BINDING,
+  ROUTE_EQUALITY, DEADLINE, and SURFACE_PROOF. observed_categories is a finite set
+  bounded by the seven READY categories; no per-poll timestamps, raw logs, DOM content,
+  URL, nonce, challenge, arbitrary exception string, or unbounded trace is exported.'
+- 'AC5: deterministic equivalence tests compare the candidate against frozen TASK-297
+  predicates and assert ordinary/diagnostic parity for readiness decisions, predicate
+  short-circuit order, focus/edit/input/click counts, waits/poll cadence, result status/reason,
+  registry writes/attempt semantics, and no-blind-resend. Malformed diagnostic material
+  fails closed as UNKNOWN/LOCAL_FAILURE and cannot authorize submission.'
+- 'AC6: focused tests cover insert rejection, every required proof subcategory, every
+  READY category, simultaneous-failure first-gate ordering, never-ready timeout, success,
+  ambiguous post-submit/no-resend behavior, and the observed synthetic production
+  grammar with rendered length 271 and newline runs 47/5, 75/2, 245/2. No timeout,
+  DOM grammar, Send selector, invalidation, or root-cause behavior correction is included.'
+- 'AC7: H4C0 documentation records the post-TASK-297 bounded evidence as Human/Brain
+  planning evidence only, explicitly retracts timeout-extension and DOM-selector fixes
+  as unproven, defines TASK-298 as diagnostic-only, and keeps H4C0 open/H4C1 blocked
+  pending later reviewed publication, Human-authorized diagnostic A1, and explicit
+  Brain interpretation.'
+- 'AC8: RESULT claims are implementation properties only. Runtime verification, this
+  fresh Reviewer verdict, exact Publisher publication, later live diagnostic interpretation,
+  and any future behavioral correction remain separate downstream authorities. PASS
+  does not identify the production root cause and does not authorize H4C1.'
