@@ -602,31 +602,45 @@ sequence:
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
-    task_id: TASK-298
+    task_id: TASK-299
     task_revision: 1
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "fce983234c6722239d4b86df4a9cb04f0cee3c17"
-    task_blob_sha: "4b75423f4e8b68523e934ab1eb1fb816810d8fa7"
-    authoring_issue_number: 1477
+    task_author_commit_sha: "e00e0f13e8838ed137dd21ce7f911cb20c8de4da"
+    task_blob_sha: "1e72662496bd41232b9c84c8d3f09bc83c7fd323"
+    authoring_issue_number: 1481
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
       - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "ee00dfc7905aee82b079cef03a00fe879c0c2c8b82b2229a0322418e6845c141"
-    construct_fingerprint: "c5cfa557629c2170a0a39ef620ff7808debe472875d6b03c97d300cbd272fe1d"
-    reconciled_candidate_fingerprint: "3ad93462212b7e65359895773db524ea9f9fb3005d1255f2f1ef2c5e97af6214"
+    packet_fingerprint: "9299503fc6aff2e93823837cfcd23f9af39016a077ce01914f6e6a661b4f4438"
+    construct_fingerprint: "bfa37d0cf2537c95e5cfb6aa7c17931fc3e4fa5d6a8d4c36903e39fe4161d5e6"
+    reconciled_candidate_fingerprint: "9a20911b66e514fdbf097fc8a9d52ba8a2f87ef2b2b8d9e74201140522aa0317"
     mutation_freeze_after_dispatch: >-
-      After TASK-298 dispatch, do not write planning or bookkeeping commits to main
-      until terminal publication outcome. The next bounded H4C0 diagnostic A1 may run
-      only after exact reviewed publication of the diagnostic-only implementation.
-    mutation_freeze_resolution:
-      status: SATISFIED
-      terminal_publication_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
-      publication_workflow_run_id: 37189709869
-      interpretation: >-
-        The freeze ended only after exact reviewed TASK-298 publication completed.
-        This roadmap reconciliation is the first planning mutation after that terminal
-        publication outcome.
+      After TASK-299 dispatch, do not write planning or bookkeeping commits to main
+      until terminal publication outcome. The next bounded H4C0 A1 live proof may run
+      only after exact reviewed publication of the bounded empty-paragraph correction.
+    task298_prior_authoring:
+      task_id: TASK-298
+      task_revision: 1
+      task_authoring_status: CANONICALIZED
+      task_author_commit_sha: "fce983234c6722239d4b86df4a9cb04f0cee3c17"
+      task_blob_sha: "4b75423f4e8b68523e934ab1eb1fb816810d8fa7"
+      authoring_issue_number: 1477
+      audit_profile: brain-high-value-v3
+      audit_stages:
+        - CONSTRUCT
+        - ADVERSARIAL_AUDIT_AND_RECONCILE
+      packet_fingerprint: "ee00dfc7905aee82b079cef03a00fe879c0c2c8b82b2229a0322418e6845c141"
+      construct_fingerprint: "c5cfa557629c2170a0a39ef620ff7808debe472875d6b03c97d300cbd272fe1d"
+      reconciled_candidate_fingerprint: "3ad93462212b7e65359895773db524ea9f9fb3005d1255f2f1ef2c5e97af6214"
+      mutation_freeze_resolution:
+        status: SATISFIED
+        terminal_publication_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
+        publication_workflow_run_id: 37189709869
+        interpretation: >-
+          TASK-298's dispatch freeze ended after exact reviewed publication. Later
+          Human/Brain read-only probes established the separate non-speculative basis
+          for TASK-299; they do not rewrite TASK-298 engineering lineage.
     task297_prior_authoring:
       task_id: TASK-297
       task_revision: 1
@@ -844,7 +858,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PAUSED_FOR_EXACT_TEXT_SUBGATE_DECISION_AFTER_TASK_298_DIAGNOSTIC_A1
+      status: PAUSED_FOR_TASK_299_BOUNDED_EMPTY_PARAGRAPH_CORRECTION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -856,15 +870,14 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        TASK-298 diagnostic-only attribution was exactly published and one bounded A1
-        was executed against that source. The ordinary result remained
-        UNPROVED/INSERT_BLOCKED with no submit attempt, while diagnostic attribution
-        deterministically identified phase READY, category EXACT_TEXT, ready false and
-        exhausted true. This closes the prior top-level readiness ambiguity but does
-        not identify which internal exactText subcondition failed. Behavioral correction
-        remains unauthorized until Human/Brain either accepts a bounded sub-attribution
-        task or establishes another non-speculative basis. H4C0 remains open and H4C1
-        remains blocked.
+        TASK-298's bounded A1 proved READY/EXACT_TEXT exhaustion with no submit attempt.
+        A fresh same-attempt read-only retry then stably attributed the internal exactText
+        failure to ROOT_ATTRIBUTES, and inspection of that same failed composer proved
+        exactly one offending root shape: P[data-empty-paragraph="true"] with empty
+        textContent and a sole BR.ProseMirror-trailingBreak child. This establishes a
+        non-speculative basis for the narrowly authored TASK-299 correction. H4C0 remains
+        open and H4C1 blocked; reviewed publication still requires one bounded Human/Brain
+        A1 live proof before the remaining two-chat procedure continues.
     post_task298_diagnostic_a1_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -893,6 +906,40 @@ sequence:
         retained. No raw conversation URL or UUID, route handle, challenge, nonce,
         endpoint, registry contents, draft/bootstrap text, transcript, assistant output,
         or raw DOM payload is recorded.
+    post_task298_exact_text_root_attribute_checkpoint:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      published_subject_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
+      same_attempt_diagnostic:
+        phase: READY
+        category: EXACT_TEXT
+        ready: false
+        exhausted: true
+        observed_categories:
+          - EXACT_TEXT
+      read_only_subgate:
+        category: ROOT_ATTRIBUTES
+        stable_over_settled_ready_tail: true
+      bounded_root_shape:
+        root_tag: P
+        attribute_name: data-empty-paragraph
+        attribute_value_class: EXACT_TRUE
+        attribute_count: 1
+        text_empty: true
+        child_shape: SOLE_PROSEMIRROR_TRAILING_BREAK
+      interpretation: >-
+        The same fresh A1 that remained blocked at EXACT_TEXT was independently observed
+        read-only as ROOT_ATTRIBUTES. The surviving failed composer then proved the exact
+        bounded production root grammar above. Current exactText requires root P/DIV
+        blocks to be attribute-free, so this shape is rejected before the already-bounded
+        trailing-break child grammar. This is sufficient non-speculative planning basis
+        for TASK-299 and authorizes no broader root attributes, normalization, timeout,
+        selector, Send, retry, or lifecycle change.
+      privacy_boundary: >-
+        Only closed categories and bounded structural facts are retained. No raw
+        conversation URL or UUID, route handle, challenge, nonce, endpoint, registry
+        contents, draft/bootstrap text, transcript, assistant output, or raw DOM payload
+        is recorded.
     post_task297_instrumented_live_observation_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -1204,7 +1251,7 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
       persistence: THROUGH_TASK_297_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
-    human_execution_delegation:
+    task298_prior_human_execution_delegation:
       selected_on: "2026-10-04"
       authority: HUMAN
       task_id: TASK-298
@@ -1215,7 +1262,7 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
       persistence: THROUGH_TASK_298_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
-    primary_dispatch_intent:
+    task298_prior_primary_dispatch_intent:
       dispatch_id: task298-r1-codex61-xhigh-20261004-001
       task_blob_sha: "4b75423f4e8b68523e934ab1eb1fb816810d8fa7"
       task_commit_sha: "fce983234c6722239d4b86df4a9cb04f0cee3c17"
@@ -1231,29 +1278,52 @@ sequence:
         completed. This planning record preserves the original Human delegation and
         dispatch identity; downstream completion is established only by the canonical
         lifecycle evidence recorded above.
+    human_execution_delegation:
+      selected_on: "2026-10-04"
+      authority: HUMAN
+      task_id: TASK-299
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_299_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task299-r1-codex61-xhigh-20261004-001
+      task_blob_sha: "1e72662496bd41232b9c84c8d3f09bc83c7fd323"
+      task_commit_sha: "e00e0f13e8838ed137dd21ce7f911cb20c8de4da"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: AUTHORIZED_PENDING_DISPATCH
+      interpretation: >-
+        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-299 lifecycle.
+        This is execution intent only; carrier acceptance, RUN creation, Runtime
+        verification, semantic review and publication remain separate downstream facts.
     current_live_blocker:
-      code: H4C0_EXACT_TEXT_INTERNAL_SUBGATE_UNRESOLVED
-      authority: HUMAN_BRAIN_PLANNING
-      task_binding: TASK-298
+      code: TASK_299_R1_EXECUTION_AUTHORIZED_PENDING_DISPATCH
+      authority: HUMAN
+      task_binding: TASK-299
       task_revision: 1
-      published_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
-      next_action: HUMAN_BRAIN_DECIDE_EXACT_TEXT_SUBATTRIBUTION_OR_NON_SPECULATIVE_CORRECTION_BASIS
+      next_action: DISPATCH_TASK_299
       basis: >-
-        The bounded TASK-298 A1 attributed the full READY exhaustion to EXACT_TEXT.
-        Prior external probes make several exactText branches unlikely, but they were
-        taken after helper cleanup and do not identify which internal exactText
-        predicate was false during the live poll. A behavioral fix selected now would
-        still be speculative. Human/Brain must decide whether to authorize one bounded
-        exactText sub-attribution task or provide another evidence basis before any
-        behavior change.
+        Same-attempt READY/EXACT_TEXT plus stable ROOT_ATTRIBUTES attribution and exact
+        failed-composer inspection proved the production root shape
+        P[data-empty-paragraph="true"] with empty textContent and a sole
+        BR.ProseMirror-trailingBreak child. TASK-299 r1 passed the required two-stage
+        Brain semantic audit and is canonically authored. Human explicitly selected
+        Codex GPT-6.1 Sol xhigh for this task lifecycle.
       prohibitions:
-        - NO_SPECULATIVE_EXACT_TEXT_BEHAVIOR_FIX
+        - NO_GENERIC_ROOT_ATTRIBUTE_ACCEPTANCE
+        - NO_DIV_EMPTY_PARAGRAPH_EXCEPTION
+        - NO_NON_TRUE_OR_EXTRA_ATTRIBUTE_ACCEPTANCE
+        - NO_NON_EMPTY_OR_ALTERNATE_CHILD_EXCEPTION
         - NO_TIMEOUT_OR_POLLING_CHANGE
         - NO_GENERIC_DOM_OR_WHITESPACE_NORMALIZATION
+        - NO_SELECTOR_SEND_OR_ORIGIN_AUTHORITY_CHANGE
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_RAW_IDENTITY_OR_CONTENT_EXPORT
-        - NO_DIAGNOSTIC_LIFECYCLE_AUTHORITY
-        - NO_AUTOMATIC_CORRECTION_SELECTION
         - NO_AUTOMATIC_ROADMAP_ADVANCE
     prior_primary_dispatch_intent:
       dispatch_id: task292-r1-codex61-xhigh-20261004-001
@@ -1264,7 +1334,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: EXACT_TEXT_SUBGATE_DECISION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: TASK_299_REVIEWED_PUBLICATION_THEN_ONE_BOUNDED_A1_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
