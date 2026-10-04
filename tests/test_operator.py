@@ -2226,7 +2226,7 @@ def test_git_output_preserves_utf8_nul_delimited_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     captured = {}
-    raw_output = "æ™®é€š.txt\0emoji-ðŸš€.txt\0"
+    raw_output = "普通.txt\0emoji-🚀.txt\0"
 
     def runner(command, **kwargs):
         captured.update(kwargs)
@@ -2568,7 +2568,7 @@ def test_fetch_failure_fails_before_run_persistence(tmp_path: Path) -> None:
     diagnostic = admission_failure_records(repo)[0]
     assert diagnostic["operation"] == "PRIMARY"
     assert diagnostic["phase"] == "PRIMARY_SYNCHRONIZATION"
-    assert diagnostic["reason_code"] == "PRIMARY_SYNCHRONIZATION_REJECTED"
+    assert diagnostic["reason_code"] == "REMOTE_TRANSPORT_UNAVAILABLE"
 
 
 def test_wakeup_preflight_admission_failure_retains_dispatch_id(
@@ -6200,6 +6200,9 @@ def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
 ) -> None:
     repo = make_repo(tmp_path)
     task_source = TASK_SOURCE.replace("TASK-101", "TASK-125")
+    # Genuine historical lineage uses the explicit repository-default class.
+    legacy = {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}
+    task_source += "\nreturn_affinity: " + json.dumps(legacy) + "\n"
     task_ref = {"id": "TASK-125", "revision": 1}
     root_base_sha = "d47ed9c048cacd152452cf2a7054c662e1043c82"
     reviewed_sha = "11fa6d596434f6fd3ee100b2bb481c4a2093b8bd"
@@ -6314,10 +6317,11 @@ def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
         "run_id": "RUN-125-005",
         "task": task_ref,
         "executor": "codex",
-        "base_sha": "source-failed-head",
+        "base_sha": "f" * 40,
         "workspace": "legacy",
         "head_sha": None,
         "status": "ACTIVE",
+        "return_affinity": legacy,
     }
     review = {
         "review_id": "REVIEW-125-001",
@@ -6340,6 +6344,25 @@ def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
             "raw": {"path": ".ai/evidence/E-125-005.log"},
         }
     ]
+    source_failure_run = dict(source_run, run_id="RUN-125-004", base_sha=root_base_sha)
+    source_failure = {
+        "kind": "FAILURE", "run_id": "RUN-125-004", "task": task_ref,
+        "executor": "codex", "base_sha": root_base_sha, "failed_head_sha": source_run["base_sha"],
+        "candidate": {"transportable": True, "repairable": True, "dirty": False,
+                      "descends_from_base": True, "changed_files": ["OUTPUT.txt"], "outside_task_scope": []},
+    }
+    source_authorization = {
+        "repair_id": "REPAIR-RUN-125-004", "failed_run_id": "RUN-125-004",
+        "failed_head_sha": source_run["base_sha"], "task": task_ref, "action": "CODE_FIX",
+        "modification_scope": ["OUTPUT.txt"], "instructions": ["Correct the committed output."],
+        "constraints": ["Commit the output."],
+    }
+    source_repair = json.dumps({
+        "failed_run_id": "RUN-125-004", "root_base_sha": root_base_sha,
+        "failed_head_sha": source_run["base_sha"], "run": source_run,
+        "task": {"task_id": "TASK-125", "revision": 1, "return_affinity": legacy},
+        "failure": source_failure, "repair": source_authorization,
+    }).encode()
     source_lineage = RemoteRemediationLineage(
         ref="refs/heads/aios/remediation/RUN-125-005-F-125-001",
         source_run_id="RUN-125-005",
@@ -6347,28 +6370,56 @@ def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
         remediation=json.dumps(remediation).encode(),
         run=json.dumps(source_run).encode(),
         result=json.dumps(source_result).encode(),
-        repair=json.dumps(
-            {
-                "failed_run_id": "RUN-125-004",
-                "root_base_sha": root_base_sha,
-                "failed_head_sha": "source-failed-head",
-                "run": source_run,
-                "task": {"task_id": "TASK-125", "revision": 1},
-                "failure": {
-                    "kind": "FAILURE",
-                    "run_id": "RUN-125-004",
-                    "task": task_ref,
-                    "failed_head_sha": "source-failed-head",
-                },
-                "repair": {
-                    "repair_id": "REPAIR-RUN-125-004",
-                    "failed_run_id": "RUN-125-004",
-                    "failed_head_sha": "source-failed-head",
-                    "task": task_ref,
-                },
-            }
-        ).encode(),
+        repair=source_repair,
     )
+    # Supply the exact canonical transport, decision and predecessor provenance
+    # at the Git boundary; keep the production lineage validators in the path.
+    refs = {
+        "refs/heads/aios/artifacts/RUN-125-005": "a" * 40,
+        "refs/heads/aios/review/RUN-125-005": reviewed_sha,
+        "refs/heads/aios/review-decision/RUN-125-005": "b" * 40,
+        "refs/heads/aios/failure-artifacts/RUN-125-004": "c" * 40,
+        "refs/heads/aios/failure/RUN-125-004": source_run["base_sha"],
+        "refs/heads/aios/repair/RUN-125-004": "e" * 40,
+    }
+    review_path = ".ai/reviews/REVIEW-125-001.yaml"
+    blobs = {
+        (refs["refs/heads/aios/artifacts/RUN-125-005"], ".ai/transport/run.json"): json.dumps(source_run).encode(),
+        (refs["refs/heads/aios/artifacts/RUN-125-005"], ".ai/transport/result.json"): json.dumps(source_result).encode(),
+        (refs["refs/heads/aios/artifacts/RUN-125-005"], ".ai/transport/repair.json"): source_repair,
+        (refs["refs/heads/aios/review-decision/RUN-125-005"], review_path): json.dumps(review).encode(),
+        (refs["refs/heads/aios/failure-artifacts/RUN-125-004"], ".ai/transport/run.json"): json.dumps(source_failure_run).encode(),
+        (refs["refs/heads/aios/failure-artifacts/RUN-125-004"], ".ai/transport/failure.json"): json.dumps(source_failure).encode(),
+    }
+    ancestors = {(root_base_sha, source_run["base_sha"]), (root_base_sha, reviewed_sha)}
+    deltas = ancestors | {(source_run["base_sha"], reviewed_sha)}
+
+    def canonical_git(root, *args, **kwargs):
+        assert root == repo
+        if args[0] == "ls-remote":
+            ref = args[-1]
+            return 0, f"{refs[ref]}\t{ref}" if ref in refs else "", ""
+        if args[0] in {"fetch", "cat-file"}:
+            assert args[-1] in set(refs.values())
+            return 0, "commit" if args[0] == "cat-file" else "", ""
+        if args[0] == "show":
+            key = tuple(args[1].split(":", 1))
+            return (0, blobs[key].decode(), "") if key in blobs else (1, "", "missing")
+        if args[0] == "ls-tree":
+            assert args[3] == refs["refs/heads/aios/review-decision/RUN-125-005"]
+            return 0, review_path, ""
+        if args[0] == "merge-base":
+            assert tuple(args[-2:]) in ancestors
+            return 0, "", ""
+        if args[0] == "diff":
+            assert tuple(args[-2:]) in deltas
+            return 0, "OUTPUT.txt\0", ""
+        raise AssertionError(f"unexpected canonical provenance operation: {args}")
+
+    monkeypatch.setattr(publication_module, "_git", canonical_git)
+    monkeypatch.setattr(transport_module, "_read_remote_blob", lambda root, remote, sha, path: blobs.get((sha, path)))
+    monkeypatch.setattr(publication_module, "resolve_remote_repair_authorization", lambda *args, **kwargs: SimpleNamespace(
+        commit_sha=refs["refs/heads/aios/repair/RUN-125-004"], repair=json.dumps(source_authorization).encode()))
     monkeypatch.setattr(
         operator_module,
         "resolve_remote_remediation_lineages",
@@ -12277,12 +12328,17 @@ def test_continue_json_selection_survives_existing_restart_argv_path(
 
 
 def test_operator_cli_ingress_and_ingest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo = make_repo(tmp_path)
+    from dataclasses import asdict
+    from aios_renew.authoring_ingress import parse_envelope
+    from tests.test_authoring_ingress import audited_envelope, setup_test_repo
+
+    repo, _, _ = setup_test_repo(tmp_path, task_id="TASK-200")
     main_sha = git(repo, "rev-parse", "HEAD")
 
     task_payload = """\
 task_id: TASK-200
 revision: 1
+return_affinity: {kind: ORIGIN_AFFINE, route_handle: 'page-origin-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', generation: 1}
 goal: CLI ingress test.
 problem: Test operator CLI.
 assumptions:
@@ -12310,6 +12366,7 @@ verification:
         "expected_state": {"expected_main_sha": main_sha},
         "payload": task_payload,
     }
+    envelope = asdict(audited_envelope(parse_envelope(envelope), repo))
 
     envelope_file = tmp_path / "envelope.json"
     envelope_file.write_text(json.dumps(envelope), encoding="utf-8")
@@ -13145,6 +13202,9 @@ def test_primary_reconciles_exact_canonical_failure_and_all_local_only_ancestry(
     repo, remote, failed, target, _ = _transported_diverged_failure(
         tmp_path, candidate_changes={"EARLIER.txt": "earlier local commit\n"},
     )
+    # Materialize the upstream object without changing refs or FETCH_HEAD before
+    # the snapshot; the ancestry assertion below requires both commits locally.
+    git(repo, "fetch", "--quiet", "--no-write-fetch-head", "origin", target)
     before = _reconciliation_snapshot(repo)
     remote_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
     local_only = git(repo, "rev-list", failed, "--not", target).splitlines()

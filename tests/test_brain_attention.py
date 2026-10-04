@@ -402,7 +402,7 @@ def test_direct_and_fan_in_publication_share_durable_dedupe_and_no_resend(tmp_pa
 
 
 @pytest.mark.parametrize("family", [brain.PUBLICATION_FAILURE, brain.CONFLICT])
-def test_direct_pointer_outcome_is_retained_until_existing_completed_source_guard_allows_recheck(tmp_path, family):
+def test_direct_pointer_outcome_unknown_reaches_browser_guard_and_completed_source_rechecks(tmp_path, family):
     observation = (dict(boundary="PUBLICATION_FAILED", **IDENTITY, stage="EXECUTION")
         if family == brain.PUBLICATION_FAILURE else dict(boundary="CANONICAL_CONFLICT",
             prepared_sha=IDENTITY["reviewed_sha"], prepared_digest=brain.digest(IDENTITY),
@@ -446,15 +446,17 @@ def test_direct_pointer_outcome_is_retained_until_existing_completed_source_guar
 
     binding = wake.Binding("https://chatgpt.com/c/11111111-1111-1111-1111-111111111111",
                            "http://127.0.0.1:9222", tmp_path / "lane.json", 1)
-    projection = SimpleNamespace(observe=observe)
+    from aios_renew.return_affinity import LEGACY
+    projection = SimpleNamespace(observe=observe, affinity=lambda _: LEGACY)
     first = wake.deliver(event_id, brain.REPOSITORY, binding, DraftAdapter, projection)
-    assert first["status"] == "DEFERRED" and first["reason"] == "CANONICAL_UNKNOWN"
-    assert checked == []
+    assert observe(event_id) == "UNKNOWN"
+    assert first["status"] == "DEFERRED" and first["reason"] == "DRAFT_PRESENT"
+    assert checked == [wake.doorbell(event_id, brain.REPOSITORY)]
     completed[0] = True
     assert brain.collect(100, 2, artifacts=reader) == [event_id]
     receipts = wake.operate(brain.REPOSITORY, binding, adapter_factory=DraftAdapter, projection=projection)
     assert receipts == [dict(event_id=event_id, status="DEFERRED", reason="DRAFT_PRESENT")]
-    assert checked == [wake.doorbell(event_id, brain.REPOSITORY)]
+    assert checked == [wake.doorbell(event_id, brain.REPOSITORY)] * 2
     assert list(wake.read_json(binding.state_path)["events"]) == [event_id]
 
 
@@ -1160,4 +1162,3 @@ def test_h4c1_descendant_affinity_must_match_exact_original_run(family):
     assert brain.resolve_return_affinity(item.event_id, sources) == selector
     source["return_affinity"]["generation"] = 2
     assert brain.resolve_return_affinity(item.event_id, sources) is None
-

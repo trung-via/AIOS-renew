@@ -2624,24 +2624,46 @@ def _validate_transport_affinity(repo, run_bytes, head_sha, lineage_bytes=None):
     from .terminal_attention import _load_yaml
     try:
         document = _performance_json_mapping(run_bytes, "RUN")
-        value = document["execution"]["run"] if document.get("kind") == "REMEDIATION" else document
-        affinity = document_affinity(value)
-        reference = value["task"]
+        if document.get("kind") == "REMEDIATION":
+            execution = document.get("execution")
+            if not isinstance(execution, Mapping) or not isinstance(execution.get("run"), Mapping):
+                return  # The canonical structural validator owns malformed wrappers.
+            value = execution["run"]
+        elif "kind" in document:
+            return
+        else:
+            value = document
+        reference = value.get("task")
+        base_sha = value.get("base_sha")
+        if (not isinstance(reference, Mapping) or not isinstance(reference.get("id"), str)
+                or type(reference.get("revision")) is not int or reference["revision"] < 1
+                or not isinstance(base_sha, str) or re.fullmatch(r"[0-9a-f]{40}", base_sha) is None):
+            return  # Do not replace existing RUN identity/base diagnostics with affinity errors.
+        carriers, missing_task = [], False
         name = f".ai/tasks/{reference['id']}.yaml"
-        for sha in (value["base_sha"], head_sha):
+        for sha in (base_sha, head_sha):
             content = _read_local_blob(repo, sha, name)
             if content is None:
-                if affinity != LEGACY:
-                    raise ValueError("origin TASK carrier missing")
-                continue  # Retain historical legacy-only transport readability.
+                missing_task = True
+                continue
             task = _load_yaml(content, "transport TASK")
-            if ({"id": task.get("task_id"), "revision": task.get("revision")} != reference
-                    or document_affinity(task) != affinity):
-                raise ValueError("persisted RUN/TASK affinity mismatch")
+            if {"id": task.get("task_id"), "revision": task.get("revision")} != reference:
+                return  # TASK identity/revision validation remains the canonical owner's job.
+            carriers.append(task)
         if lineage_bytes is not None:
             lineage = _performance_json_mapping(lineage_bytes, "REPAIR")
-            if lineage.get("run") != value or document_affinity(lineage["task"]) != affinity:
-                raise ValueError("persisted REPAIR affinity mismatch")
+            lineage_run, lineage_task = lineage.get("run"), lineage.get("task")
+            if not isinstance(lineage_run, Mapping) or not isinstance(lineage_task, Mapping):
+                return
+            if (lineage_run.get("task") != reference
+                    or {"id": lineage_task.get("task_id"), "revision": lineage_task.get("revision")} != reference):
+                return
+            carriers.extend((lineage_run, lineage_task))
+        affinity = document_affinity(value)
+        if missing_task and affinity != LEGACY:
+            raise ValueError("origin TASK carrier missing")
+        if any(document_affinity(carrier) != affinity for carrier in carriers):
+            raise ValueError("persisted TASK/RUN/REPAIR affinity mismatch")
     except (KeyError, TypeError, ValueError) as exc:
         raise ReviewTransportError("canonical terminal affinity conflicts with TASK/RUN lineage") from exc
 

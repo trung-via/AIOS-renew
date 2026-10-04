@@ -199,6 +199,7 @@ def test_reusable_freshness_token_is_current_run_and_step_local_only():
     follow_up = steps[-1]
     assert follow_up["env"] == {
         "AIOS_WAKE_REPOSITORY": "${{ inputs.repository }}",
+        "AIOS_WAKE_LANE_EVENT_ID": "${{ inputs.event_id }}",
         "AIOS_LOCAL_CHAT_WAKE_ENABLED": "${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}",
         "GITHUB_TOKEN": "${{ github.token }}",
     }
@@ -209,6 +210,7 @@ def test_reusable_freshness_token_is_current_run_and_step_local_only():
     )
     assert follow_up["run"] == (
         "python -m aios_renew.local_chat_wake --drain --rechecks 2 --interval 15 "
+        "--lane-event-id $env:AIOS_WAKE_LANE_EVENT_ID "
         "--repository $env:AIOS_WAKE_REPOSITORY\nexit $LASTEXITCODE\n"
     )
     for step in steps:
@@ -226,13 +228,15 @@ def test_reusable_freshness_token_is_current_run_and_step_local_only():
     ("draft", "DRAFT_PRESENT"),
     ("generation", "GENERATION_ACTIVE"),
     ("binding-change", "BINDING_GENERATION_CHANGED"),
-    ("unknown", "CANONICAL_UNKNOWN"),
+    ("unknown", "DRAFT_PRESENT"),
     ("resolved", "CANONICALLY_RESOLVED"),
 ])
 def test_authenticated_reusable_commands_preserve_local_submission_guards(
     step_index, guard, reason, tmp_path, monkeypatch, capsys,
 ):
     from aios_renew import local_chat_wake as wake
+    from aios_renew import origin_bootstrap as origin
+    from aios_renew.return_affinity import OriginAffinity
 
     parsed, _ = workflow()
     step = parsed["jobs"]["deliver"]["steps"][step_index]
@@ -251,19 +255,35 @@ def test_authenticated_reusable_commands_preserve_local_submission_guards(
     assert command[:3] == ["python", "-m", "aios_renew.local_chat_wake"]
     arguments = [{"$env:" + key: value for key, value in environment.items()}.get(arg, arg)
                  for arg in command[3:]]
-    binding = wake.Binding(
-        "https://chatgpt.com/c/00000000-0000-0000-0000-000000000284",
-        "http://127.0.0.1:9222", tmp_path / "lane.json", 1,
-    )
+    selector = OriginAffinity("page-origin-v1:" + "a" * 64, 1)
+    chat = "https://chatgpt.com/c/00000000-0000-0000-0000-000000000284"
+    lanes = tmp_path / "lanes"
+    lanes.mkdir()
+    registry = tmp_path / "origins.json"
+    registry.write_text(json.dumps(dict(version=1, routes={origin.conversation_key(chat): dict(
+        handle=selector.route_handle, generation=1, chat_url=chat,
+        cdp_endpoint="http://127.0.0.1:9222", attempt=None)})), encoding="utf-8")
+    config = tmp_path / "routes.json"
+    config.write_text(json.dumps(dict(version=3, origin_registry=str(registry),
+                                     lane_directory=str(lanes), repositories=[wake.REPOSITORY])), encoding="utf-8")
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_CONFIG", str(config))
+    binding = wake.load_route_binding(wake.REPOSITORY, selector)
+    real_load = wake.load_route_binding
     binding_reads = []
     submissions = []
 
-    def local_binding(repository):
+    def local_binding(repository, affinity):
         assert repository == binding.repository
+        assert affinity == selector
+        assert real_load(repository, affinity) == binding
         binding_reads.append(repository)
         return replace(binding, generation=len(binding_reads)) if guard == "binding-change" else binding
 
     class Freshness:
+        def affinity(self, observed):
+            assert observed == event_id
+            return selector
+
         def observe(self, observed):
             assert observed == event_id
             return "UNKNOWN" if guard == "unknown" else "RESOLVED" if guard == "resolved" else "UNRESOLVED"
@@ -271,6 +291,7 @@ def test_authenticated_reusable_commands_preserve_local_submission_guards(
     class LocalSurface:
         # Exercise the production draft/generation check over an inert surface.
         check = wake.BrowserAdapter.check
+        _observe_surface = wake.BrowserAdapter._observe_surface
 
         def __init__(self, selected_binding):
             self.binding = selected_binding
@@ -287,10 +308,10 @@ def test_authenticated_reusable_commands_preserve_local_submission_guards(
             return self.page
 
         def visible(self, selector):
-            count = int(selector in {"main", wake.ACCOUNT, wake.COMPOSER}
+            count = int(selector in {"main", wake.COMPOSER}
                         or selector == wake.STOP and guard == "generation")
             return SimpleNamespace(count=lambda: count, get_attribute=lambda name: None,
-                                   text_content=lambda: "Human draft" if guard == "draft" else "")
+                                   text_content=lambda: "Human draft" if guard in {"draft", "unknown"} else "")
 
         def user_turn(self, text):
             return "ABSENT"
@@ -306,11 +327,12 @@ def test_authenticated_reusable_commands_preserve_local_submission_guards(
         return real_operate(repository, selected_binding, event_id, LocalSurface,
                             Freshness(), binding_provider, compact)
 
-    monkeypatch.setattr(wake, "load_binding", local_binding)
+    monkeypatch.setattr(wake.CanonicalFreshness, "affinity", lambda self, observed: Freshness().affinity(observed))
+    monkeypatch.setattr(wake, "load_route_binding", local_binding)
     monkeypatch.setattr(wake, "operate", isolated_operate)
     monkeypatch.setattr(wake.time, "sleep", lambda seconds: None)
     if "--drain" in arguments:
-        wake._admit_inbox(wake.State(binding.state_path), event_id)
+        wake._admit_inbox(wake.RouteState(binding.state_path, wake.REPOSITORY, selector.route_handle), event_id)
     assert wake.main(arguments) == (1 if guard == "disabled" else 0)
     output = capsys.readouterr().out
     assert {json.loads(line)["reason"] for line in output.splitlines()} == {reason}
@@ -319,7 +341,7 @@ def test_authenticated_reusable_commands_preserve_local_submission_guards(
     if binding.state_path.exists():
         state_text = binding.state_path.read_text(encoding="utf-8")
         assert token not in state_text
-        assert set(json.loads(state_text)["events"]) == {event_id}
+        assert set(json.loads(state_text)["repositories"][wake.REPOSITORY]["events"]) == {event_id}
 
 
 @pytest.mark.parametrize("caller_name", ["aios-auto-publish.yml", "aios-terminal-attention.yml"])

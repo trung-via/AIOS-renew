@@ -3088,6 +3088,27 @@ def test_author_repair_failed_remediation_production_topology_ac1_to_ac6(tmp_pat
     assert current.commit_sha == rev2_res.canonical_sha
 
 
+@pytest.mark.parametrize("carrier", ["run", "base_task", "head_task", "lineage_run", "lineage_task"])
+def test_transport_affinity_rejects_exact_carrier_drift(monkeypatch, carrier):
+    from copy import deepcopy
+    from aios_renew import review_transport as transport
+    import yaml
+
+    selector = {"kind": "ORIGIN_AFFINE", "route_handle": "page-origin-v1:" + "a" * 64, "generation": 1}
+    task = dict(yaml.safe_load(TASK_105_SOURCE), return_affinity=selector)
+    run = {"run_id": "RUN-105-001", "task": {"id": "TASK-105", "revision": 1},
+           "base_sha": "b" * 40, "return_affinity": selector}
+    lineage = {"task": deepcopy(task), "run": deepcopy(run)}
+    tasks = {"b" * 40: deepcopy(task), "c" * 40: deepcopy(task)}
+    target = {"run": run, "base_task": tasks["b" * 40], "head_task": tasks["c" * 40],
+              "lineage_run": lineage["run"], "lineage_task": lineage["task"]}[carrier]
+    target["return_affinity"] = dict(selector, generation=2)
+    monkeypatch.setattr(transport, "_read_local_blob", lambda repo, sha, name: json.dumps(tasks[sha]).encode())
+    with pytest.raises(transport.ReviewTransportError, match="affinity"):
+        transport._validate_transport_affinity(Path("."), json.dumps(run).encode(), "c" * 40,
+                                               json.dumps(lineage).encode())
+
+
 def test_author_repair_failed_remediation_malformed_negatives(tmp_path):
     repo, remote, base_sha = setup_test_repo(tmp_path)
     task_dir = repo / ".ai" / "tasks"

@@ -1147,15 +1147,35 @@ def _check_affinity(projection, event_id, binding):
         raise WakeBlocked("AFFINITY_UNPROVEN")
 
 
-def _known_duplicate(state, event_id):
-    """Stored delivery/noop proof preserves dedupe when lineage is unavailable."""
-    if not state.path.exists() or state.path.with_name(state.path.name + ".pending").exists():
-        return False
-    data = state.validate(read_json(state.path))
-    if isinstance(state, RouteState):
-        data = data["repositories"].get(state.repository, {})
+def _known_duplicate(data, event_id):
+    """Use only validated, locked lane data for stored delivery/noop proof."""
     return (data.get("events", {}).get(event_id, {}).get("status") in {"SUBMITTED", "RESOLVED_NOOP"}
             or event_digest(event_id) in data.get("tombstones", []))
+
+
+@contextmanager
+def _intake_locked(state, event_id, recovery, projection, binding):
+    entered = False
+    try:
+        with state.locked() as data:
+            entered = True
+            if event_id is not None:
+                if not _known_duplicate(data, event_id):
+                    _check_affinity(projection, event_id, binding)
+                if recovery is None:
+                    _admit_inbox(state, event_id)
+            yield data
+    except WakeBlocked as exc:
+        if (not entered and str(exc) == "STATE_LOCKED_OR_UNAVAILABLE"
+                and event_id is not None and recovery is None):
+            # Keep intake durable while another pass owns the lane, but neither
+            # read that pass's state nor infer duplicate proof without its lock.
+            try:
+                _check_affinity(projection, event_id, binding)
+                _admit_inbox(state, event_id)
+            except (WakeBlocked, OSError):
+                pass  # Lock uncertainty takes precedence; unproved intake is not admitted.
+        raise
 
 
 def _fresh(projection, event_id, *, allow_unknown=False):
@@ -1308,13 +1328,7 @@ def operate(repository, binding, event_id=None, adapter_factory=BrowserAdapter,
         if requested.family == RECOVERY:
             recovery = requested.selectors["original_event_id"]
             event_id = recovery
-    if event_id is not None:
-        doorbell(event_id, repository)
-        if not _known_duplicate(state, event_id):
-            _check_affinity(projection, event_id, binding)
-        if recovery is None:
-            _admit_inbox(state, event_id)
-    with state.locked() as data:
+    with _intake_locked(state, event_id, recovery, projection, binding) as data:
         if recovery is not None:
             original = data["events"].get(recovery)
             if original is None or original["status"] not in {"PENDING", "DEFERRED", "AMBIGUOUS"}:

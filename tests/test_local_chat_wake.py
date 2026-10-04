@@ -1077,6 +1077,9 @@ def test_queued_generic_subjects_and_later_barriers_have_independent_bounded_obs
     now, windows = [100.0], []
     monkeypatch.setattr(wake.time, "monotonic", lambda: now[0])
     projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    # This historical repository-default fixture isolates observation budgets.
+    from aios_renew.return_affinity import LEGACY
+    monkeypatch.setattr(projection, "affinity", lambda _: LEGACY)
     now[0] += 100  # Idle time after construction must not consume an observation.
     monkeypatch.setattr(projection, "git", lambda *_: "")
     def freshness(item, sources, artifacts):
@@ -3239,6 +3242,36 @@ def test_h4c1_same_route_serializes_multiflow_and_other_route_progresses(tmp_pat
     assert event2 in json.loads(a.state_path.read_text())["repositories"][wake.REPOSITORY]["events"]
     assert b.state_path.read_bytes() == frozen_b
     assert wake.deliver(EVENT, wake.REPOSITORY, a, lambda _: pytest.fail("exact-event duplicate"), AffineProjection(selectors[0]))["status"] == "NOOP"
+
+
+@pytest.mark.parametrize("compact", [False, True])
+def test_h4c1_duplicate_proof_requires_lane_lock(tmp_path, monkeypatch, compact):
+    _, selectors, bindings = affine_setup(tmp_path, monkeypatch)
+    binding = bindings[0]
+    adapter = AffineAdapter(binding)
+    projection = AffineProjection(selectors[0])
+    assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter, projection)["status"] == "SUBMITTED"
+    if compact:
+        wake.operate(wake.REPOSITORY, binding, projection=AffineProjection(selectors[0], "RESOLVED"), compact=True)
+    frozen = binding.state_path.read_bytes()
+    lock = binding.state_path.with_name(binding.state_path.name + ".lock")
+    lock.touch()
+    real_read = wake.read_json
+
+    def locked_read(path):
+        assert path != binding.state_path, "durable lane state must not be read before acquiring its lock"
+        return real_read(path)
+
+    monkeypatch.setattr(wake, "read_json", locked_read)
+    unavailable = AffineProjection(None)
+    assert wake.deliver(EVENT, wake.REPOSITORY, binding,
+                        lambda _: pytest.fail("locked duplicate cannot attach"), unavailable)["reason"] == "STATE_LOCKED_OR_UNAVAILABLE"
+    assert binding.state_path.read_bytes() == frozen
+    monkeypatch.setattr(wake, "read_json", real_read)
+    lock.unlink()
+    assert wake.deliver(EVENT, wake.REPOSITORY, binding,
+                        lambda _: pytest.fail("locked proof prevents a second submission"), unavailable)["status"] == "NOOP"
+    assert len(adapter.submits) == 1
 
 
 @pytest.mark.parametrize("defect", ["missing", "stale", "duplicate", "invalid", "pending", "ambiguous"])
