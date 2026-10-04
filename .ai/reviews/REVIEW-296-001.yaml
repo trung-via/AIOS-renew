@@ -1,0 +1,47 @@
+review_id: REVIEW-296-001
+reviewed_sha: 7037ce457471c230536749cf8e591e21720c0782
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- RUN-296-001 is the canonical PRIMARY RESULT for TASK-296 revision 1. Candidate 7037ce457471c230536749cf8e591e21720c0782
+  descends directly from admitted base 80174838891619db836aa7fe032db3ea5c3e4d84 and
+  changes exactly the three TASK-authorized paths.
+- 'Runtime verification is canonical PASS: tests/test_origin_bootstrap.py plus tests/test_local_chat_wake.py
+  report 650 passed, 709 skipped in 29.62s; git diff --check exited 0; RESULT unresolved
+  is empty.'
+- 'AC1: exact Git comparison confirms only docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md,
+  src/aios_renew/origin_bootstrap.py, and tests/test_origin_bootstrap.py changed;
+  local_chat_wake implementation/tests and roadmap/lifecycle state are unchanged by
+  the candidate.'
+- 'AC2/AC3: the origin-bootstrap-only post-insertion predicate derives a bounded logical
+  projection from explicit plaintext/P/DIV/BR structures, requires equality with the
+  immutable staged draft, retains the same composer plus unique visible enabled form-scoped
+  Send, and readiness remains bounded to the existing three-second window. Focused
+  regressions model asynchronous multi-node reconciliation with innerText/textContent
+  divergence and require exact readiness before submit.'
+- 'AC4: negative regressions cover missing/extra/reordered separators, changed draft/bootstrap
+  bytes, Unicode/CRLF normalization, hidden/transparent/collapsed or duplicated content,
+  unsupported nested/rich/decorated nodes, ambiguous/replaced/disabled Send or form/composer,
+  route/page/challenge changes, and binding/generation races; these remain fail-closed
+  before click.'
+- 'AC5: semantic delta adds no manual-Send fallback, active-tab/focus/recent-chat
+  inference, document-global Send lookup, transcript or assistant-output reading,
+  raw conversation/draft canonicalization, H4C1 routing, wake-delivery change, or
+  new lifecycle authority.'
+- 'AC6: H4C0 documentation records the prior UNPROVED/INSERT_BLOCKED observation as
+  pre-submit bounded live-conformance evidence, describes TASK-296 as editor-reconciliation
+  compatibility only, and explicitly leaves the full A/A/B/B, continuity, ambiguity,
+  and Human/Brain live closure procedure pending after reviewed publication.'
+- 'AC7: RESULT claims are limited to implementation properties and regression definitions;
+  Runtime verification, this fresh Reviewer verdict, Publisher publication, and later
+  Human/Brain live H4C0 closure remain separate downstream authorities. PASS does
+  not itself prove production live conformance or authorize H4C1.'
