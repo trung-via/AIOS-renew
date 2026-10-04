@@ -603,18 +603,18 @@ sequence:
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
     task_id: TASK-295
-    task_revision: 1
+    task_revision: 2
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "2a6541c821c64b54a83275da0db6281f1eb02960"
-    task_blob_sha: "4ad5d80806f042d2db09ba9898b6443f86981a4d"
-    authoring_issue_number: 1461
+    task_author_commit_sha: "41b6c3b2a2103e68c18ddc2c3780f2e648b3ce41"
+    task_blob_sha: "dedf18eeb4bc962d3cbd89f5571975ff26b08fb1"
+    authoring_issue_number: 1464
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
       - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "dcb9865b8379a9794db2c903ea1045a15114a7bd062dd62fdc2fa9bcebdb680c"
-    construct_fingerprint: "8b1cfda777eff0e95aad9daa0bdf39bc5506cd1f456acf48685a1f9a57fe8c70"
-    reconciled_candidate_fingerprint: "1aa733471f224a7f2febffe8c6bc4255fd2b16eafa0a481eb72c9b1f83b83d94"
+    packet_fingerprint: "dcca752e58c25c7c03bf0f39b0571ba9162918d31f8a6719eea84652cb18b647"
+    construct_fingerprint: "c9b149beac6dcb2b7fdf51efe147eaec3d21bdedbe8c097f54df61e3cd1d34cf"
+    reconciled_candidate_fingerprint: "870f6156c5713c939bf5008d1cb93fce88cea68af7b36b5c466b4bac701603db"
     mutation_freeze_after_dispatch: >-
       After TASK-295 dispatch, do not write planning or bookkeeping commits to main
       until terminal publication outcome. This preserves exact integration/publication
@@ -832,17 +832,43 @@ sequence:
         candidate for the already reviewed TASK-293 delta. This authorization does not
         reuse the prior execution delegation, does not permit semantic rewrites inside
         the integration candidate, and does not close H4C0 or authorize H4C1.
+    task295_r1_terminal_checkpoint:
+      authority: RUNTIME
+      task_id: TASK-295
+      task_revision: 1
+      run_id: RUN-295-001
+      terminal_kind: FAILURE
+      failure_artifact_sha: "049cb4fa60988ce112c11a8930aefe153fafe1ba"
+      candidate_sha: "80944c607d696787e7f65d6e83d65d81135e7c1c"
+      phase: COMPLETION_GATE
+      runtime_verification: NOT_RUN
+      verification_seconds: null
+      interpretation: >-
+        Revision 1 failed before Runtime verification because AC3 and AC7 required
+        downstream Runtime/Reviewer facts at the Executor completion gate. The failed
+        candidate nevertheless preserved the exact five reviewed TASK-293 blobs and
+        this checkpoint is not evidence of implementation or compatibility-test failure.
+    human_execution_delegation:
+      selected_on: "2026-10-04"
+      authority: HUMAN
+      task_id: TASK-295
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_295_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
     current_live_blocker:
-      code: TASK_295_EXECUTOR_SELECTION_PENDING
+      code: TASK_295_R2_EXECUTION_PENDING
       authority: HUMAN
       task_binding: TASK-295
-      next_action: HUMAN_SELECT_EXECUTOR_FOR_TASK_295
+      task_revision: 2
+      next_action: DISPATCH_TASK_295_R2
       basis: >-
-        TASK-295 r1 is the canonical exact-blob integration task authorized by Human.
-        It preserves REVIEW-293-001 source bytes and verifies compatibility with the
-        reviewed/published TASK-294 wake-first current main. Execution requires a fresh
-        Human executor/model/effort selection because TASK-294 delegation expired on
-        task change.
+        TASK-295 r2 is canonical and supersedes r1 for prospective execution while
+        preserving RUN-295-001 as immutable failed lineage. Human has explicitly
+        authorized continued Codex GPT-6.1 Sol xhigh execution for TASK-295 r2.
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
