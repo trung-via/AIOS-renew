@@ -1,0 +1,172 @@
+task_id: TASK-302
+revision: 1
+goal: Implement H4D unattended local wake transport so an eligible AIOS attention
+  event can make its exact machine-local bound regular-Chat target available and deliver
+  one bounded doorbell without Human browser preparation or navigation, while preserving
+  H4C1 affinity and all existing pre-send safety barriers.
+problem: TASK-301 made return affinity deterministic and route-lane scoped, but the
+  production BrowserAdapter remains attach-only and requires the exact target conversation
+  page to already be open on the configured CDP endpoint. H4D must remove that Human-prepared-page
+  requirement without turning browser acquisition into a semantic router, account
+  selector, retry controller, or alternate lifecycle authority.
+assumptions:
+- H4C1 is DONE after RUN-301-002, REVIEW-301-002 PASS and exact publication of 5118e43af25cb14fb4206dab73e9aa0205367f84.
+- H4D is the unique reconciled roadmap NEXT on main ba68c9dfe649fb4b6568eb40090933a3b6ed5c46.
+- H4C1 local route resolution already yields an exact machine-local chat_url, CDP
+  endpoint, route handle/generation and durable lane binding without exposing raw
+  conversation identity to canonical artifacts.
+- The current BrowserAdapter is attach-only and fails when the exact target page is
+  absent; its downstream surface, draft, generation, outbound, submission-proof and
+  ambiguity guards remain valid primitives to preserve.
+- H4D availability is bounded to a running host with a Human-authorized authenticated
+  local browser environment; powered-off-host remote or cloud wake is outside this
+  milestone.
+- H4E retains production multi-lane live conformance. TASK-302 implementation and
+  deterministic verification do not themselves prove H4E or final H4B/H5.
+- TASK-302 is authored from the same historical pre-H4C1 Human/Brain conversation
+  and is explicitly classified LEGACY_REPOSITORY_DEFAULT_ROUTE only for this task-authoring
+  return path; that classification is not origin-affine proof or a fallback for new
+  origin-affine flows.
+scope:
+  inspect:
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/origin_bootstrap.py
+  - src/aios_renew/return_affinity.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_origin_bootstrap.py
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/unattended_chat_wake.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_unattended_chat_wake.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+non_goals:
+- Perform H4E same-repository multi-chat, cross-repository, concurrency, Human-supersession,
+  generation-change or production live conformance.
+- Require true headless Chromium as the only implementation; a bounded visible or
+  background local browser is permitted when it satisfies the same contract.
+- Provide powered-off-host remote/cloud wake, ChatGPT Work fallback, external orchestration
+  service, or a second wake queue.
+- Infer an account, browser profile, conversation or target from active/recent tabs,
+  timestamps, repository identity, transcript text, assistant output, cookies, model
+  memory or provider metadata.
+- Change TASK/RUN return-affinity semantics, attention event identity, H4C0 route
+  allocation, route transfer rules, Reviewer/Publisher/Runtime authority or roadmap
+  lifecycle reduction.
+- Kill, steal, rebind or silently reuse an unproved Human browser/profile merely to
+  make delivery succeed.
+- Relax canonical freshness, binding-generation, exact-event dedupe, Human draft,
+  active-generation, regular-surface, exact-target, post-send ambiguity or no-blind-resend
+  safeguards.
+- Mutate roadmap state or claim H4D closure, H4E authorization, semantic PASS or publication
+  from Executor implementation.
+constraints:
+  hard:
+  - Unattended acquisition may begin only after the event has resolved to one exact
+    existing local Binding through the H4C1 affinity path. Acquisition receives that
+    Binding as input and gains no authority to select event lineage, repository, route
+    affinity, TASK/RUN, next_action or destination.
+  - The exact Binding.chat_url is the only navigation target. The transport must never
+    navigate to a repository/project landing page, recent chat, active tab, search
+    result or inferred conversation and must never substitute legacy routing for missing
+    or stale ORIGIN_AFFINE state.
+  - Any browser executable, user-data/profile location or launch permission required
+    for unattended acquisition must be explicitly Human-configured machine-local state
+    outside the repository and bare Git store. No executable/profile/account auto-discovery
+    or credential extraction is permitted.
+  - One delivery invocation may perform at most one bounded acquisition/restoration
+    attempt before returning a fixed fail-closed reason. It may use bounded waits
+    inside that attempt but must not create an independent retry/failover controller,
+    background daemon or recursive workflow dispatch.
+  - If the configured CDP endpoint is already available, preserve and attach to that
+    authorized environment. If it is unavailable, launch only the explicitly configured
+    environment; do not terminate or rebind an existing unproved browser/profile.
+    Launch uncertainty, profile lock, endpoint mismatch or authentication uncertainty
+    fails closed.
+  - When the endpoint is available but the exact target page is absent, acquisition
+    may create at most one page in one proved authorized browser context and navigate
+    it only to the exact bound chat_url. Existing multiple exact-target pages, ambiguous
+    contexts or target drift fail closed rather than choosing one.
+  - After acquisition and before any insertion/click, re-run the existing affinity/binding-generation
+    and canonical freshness barriers against the original event and Binding. A moved
+    route, changed generation, resolved subject or changed binding aborts without
+    submission.
+  - Preserve the existing BrowserAdapter regular-Chat surface proof, Human draft and
+    active-generation protection, outbound duplicate proof, durable pre-click ambiguity
+    write, at-most-one submission per lane pass, exact user-turn proof and no-blind-resend
+    behavior.
+  - Acquisition may use raw chat URL, endpoint, executable/profile paths and local
+    process identifiers only inside the machine-local transport boundary. They must
+    never appear in TASK/RUN/RESULT/REVIEW/publication artifacts, GitHub workflow
+    inputs/outputs, attention event identities or bounded public receipts.
+  - The GitHub workflow remains a selector-only transport trigger with read-only repository/actions
+    permissions; Human machine-local configuration is inherited on the self-hosted
+    runner and no new secret, raw URL, endpoint or profile path is supplied by GitHub.
+  - Synthetic tests must cover attach-existing, endpoint-unavailable launch, exact-target-absent
+    single-page acquisition, ambiguous/multiple target failure, invalid or locked
+    profile/config failure, route/generation change during acquisition, canonical
+    resolution during acquisition, draft/generation preservation and post-send ambiguity
+    no-resend.
+  - Executor changes only scope.modify, performs no live ChatGPT wake/conformance
+    experiment, and does not mutate roadmap or claim Runtime verification, Reviewer
+    verdict, publication or H4D/H4E closure.
+acceptance:
+- id: AC1
+  condition: The candidate changes only scope.modify and introduces no H4E live-conformance,
+    lifecycle, Reviewer/Publisher/Runtime or roadmap behavior.
+- id: AC2
+  condition: For an eligible exact Binding whose authorized browser endpoint and target
+    page are already available, delivery preserves the existing attach path and does
+    not launch, navigate or create a duplicate page.
+- id: AC3
+  condition: For an eligible exact Binding whose authorized machine-local browser
+    environment is not yet available, one bounded acquisition attempt can launch only
+    the explicitly configured environment, connect to the exact endpoint and make
+    the exact bound chat_url available without Human browser launch or navigation.
+- id: AC4
+  condition: When the authorized endpoint is available but the exact target page is
+    absent, acquisition creates at most one page in one proved authorized context
+    and navigates only to Binding.chat_url; multiple exact targets, ambiguous contexts,
+    route drift or wrong target fail closed without selecting an alternative.
+- id: AC5
+  condition: Invalid/missing acquisition configuration, executable/profile auto-discovery,
+    profile lock, endpoint mismatch, authentication/surface uncertainty and unproved
+    browser ownership all fail closed with no kill, rebind, account selection, repository-default
+    fallback or submission.
+- id: AC6
+  condition: Canonical freshness plus exact H4C1 affinity/binding generation are proved
+    before acquisition can lead to submission and are revalidated after acquisition
+    before insertion/click; any resolved subject or moved binding prevents submission.
+- id: AC7
+  condition: Existing exact-target surface validation, Human draft/active-generation
+    guards, exact-event dedupe, durable ambiguity, at-most-one submission per lane
+    pass, exact user-turn proof and no-blind-resend semantics remain regression-equivalent
+    after unattended acquisition.
+- id: AC8
+  condition: Workflow integration requires no Human-preopened tab or navigation and
+    passes no raw chat URL, endpoint, executable/profile path, credential or account
+    selector through GitHub; machine-local configuration remains outside canonical
+    state.
+- id: AC9
+  condition: Deterministic regressions cover attach-existing, bounded launch, exact-page
+    creation/navigation, ambiguous contexts/pages, invalid/locked configuration, route/generation
+    and canonical-state races, draft/generation guards, successful exact submission
+    and ambiguous no-resend without live ChatGPT access.
+- id: AC10
+  condition: Documentation records the bounded H4D acquisition contract, local availability/privacy
+    boundary and failure cases, and explicitly leaves H4E production multi-lane live
+    conformance plus H4D roadmap closure downstream of reviewed publication and separate
+    Human/Brain live proof.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_local_chat_wake_workflow.py
+    tests/test_unattended_chat_wake.py tests/test_origin_bootstrap.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
