@@ -1358,20 +1358,24 @@ sequence:
         remains only transport evidence; terminal lifecycle facts are established by
         the canonical RESULT, review decision and published main above.
     current_live_blocker:
-      code: H4C0_POST_SUBMIT_STRUCTURAL_PROOF_UNRESOLVED
+      code: H4C0_POST_SUBMIT_COMPOSER_NONEMPTY_PROOF_GAP
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-299
       task_revision: 1
-      next_action: HUMAN_BRAIN_DECIDE_BOUNDED_POST_SUBMIT_PROOF_BASIS_OR_EXPLICIT_RESIDUAL_EXCEPTION
+      next_action: READ_ONLY_CLASSIFY_POST_SUBMIT_COMPOSER_EMPTY_SHAPE_FROM_EXISTING_AMBIGUOUS_ATTEMPTS
       basis: >-
-        The one authorized post-TASK-299 A1 returned AMBIGUOUS/SUBMISSION_UNPROVEN.
-        Human observation confirms a sent turn became present after the click, but the
-        frozen helper requires its own bounded structural post-submit proof before
-        returning SUBMITTED/ACCEPTED. The exact failed post-submit predicate was not
-        attributed by this attempt. Blind retry is forbidden because the attempt was
-        already consumed before click.
+        A separately authorized disposable D1 live probe reproduced the production
+        helper result AMBIGUOUS/SUBMISSION_UNPROVEN. A concurrent read-only observer on
+        the same attempt reported COMPOSER_NOT_EMPTY throughout the settled post-submit
+        tail, STRUCTURAL_PASS_SEEN false, and no other observed category. This proves
+        that the published submitted() emptiness conjunction
+        textContent === '' && innerText === '' is false on that live attempt. No blind
+        retry, new task, timeout change, or generic DOM weakening is authorized. The
+        next bounded step is read-only classification of the exact empty-editor shape
+        using already-consumed AMBIGUOUS routes only.
       prohibitions:
-        - NO_BLIND_A1_RETRY
+        - NO_BLIND_A1_OR_D1_RETRY
+        - NO_NEW_SEND_FOR_SHAPE_CLASSIFICATION
         - NO_A2_B1_B2_UNTIL_A1_DISPOSITION
         - NO_AUTOMATIC_TASK_300
         - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_AS_ORIGIN_AUTHORITY
@@ -1380,6 +1384,27 @@ sequence:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_RAW_IDENTITY_OR_CONTENT_EXPORT
         - NO_AUTOMATIC_ROADMAP_ADVANCE
+    post_task299_disposable_d1_post_submit_probe:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      ordinary_result:
+        status: AMBIGUOUS
+        reason: SUBMISSION_UNPROVEN
+      same_attempt_read_only_observer:
+        settled_category: COMPOSER_NOT_EMPTY
+        structural_pass_seen: false
+        observed_categories:
+          - COMPOSER_NOT_EMPTY
+      interpretation: >-
+        D1 was a disposable diagnostic conversation, not A2/B1/B2. The same-attempt
+        observer mirrored the externally visible post-submit operands and found the
+        retained composer stayed non-empty throughout the settled proof tail. This is
+        bounded evidence for the emptiness predicate only; it does not establish route
+        identity, Runtime truth, semantic success, or permission to resend.
+      privacy_boundary: >-
+        No raw conversation URL or UUID, route handle, challenge, nonce, endpoint,
+        registry contents, draft/bootstrap text, transcript content, assistant output,
+        or raw DOM payload is retained.
     prior_primary_dispatch_intent:
       dispatch_id: task292-r1-codex61-xhigh-20261004-001
       task_blob_sha: "602baebd63fa109dab2536df88162131b4606db3"
@@ -1389,7 +1414,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: RESOLVE_POST_TASK_299_A1_AMBIGUOUS_SUBMISSION_PROOF_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: CLASSIFY_EXISTING_AMBIGUOUS_POST_SUBMIT_EMPTY_EDITOR_SHAPE_THEN_RESOLVE_A1_DISPOSITION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
