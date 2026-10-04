@@ -1187,6 +1187,7 @@ def test_follow_up_drain_retries_unknown_without_schedule_and_stops_after_one_su
     original_operate, passes, sleeps = wake.operate, [], []
     def operate(*args, **kwargs):
         passes.append(len(passes))
+        kwargs.pop("projection", None)  # Production rechecks now carry an acquisition budget.
         # Freshness becomes available at the finite second opportunity.
         value = "UNKNOWN" if len(passes) == 1 else "UNRESOLVED"
         if len(passes) == 2:
@@ -3180,6 +3181,18 @@ class AffineProjection:
 
     def observe(self, event):
         return self.freshness
+
+
+def test_production_delivery_selects_acquisition_only_for_an_existing_exact_origin_binding(tmp_path, monkeypatch):
+    from aios_renew.unattended_chat_wake import UnattendedBrowserAdapter
+    _, _, bindings = affine_setup(tmp_path, monkeypatch)
+    exact = wake.delivery_adapter(bindings[0])
+    assert isinstance(exact, UnattendedBrowserAdapter)
+    assert exact.binding == bindings[0] and exact.before_acquire is None
+    # No lane barrier means proof-only callers cannot acquire the missing target.
+    legacy = wake.delivery_adapter(wake.Binding(
+        bindings[0].chat_url, bindings[0].cdp_endpoint, tmp_path / "legacy.json"))
+    assert type(legacy) is wake.BrowserAdapter
 
 
 class AffineAdapter:

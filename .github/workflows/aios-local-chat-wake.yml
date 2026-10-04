@@ -92,7 +92,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install attach-only transport dependency
+      - name: Install bounded local transport dependency
         shell: powershell
         run: |
           python -m pip install --disable-pip-version-check '.[local-chat-wake]'
@@ -144,7 +144,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install attach-only transport dependency
+      - name: Install bounded local transport dependency
         shell: powershell
         run: |
           python -m pip install --disable-pip-version-check '.[local-chat-wake]'
@@ -152,7 +152,8 @@ jobs:
       - name: Deliver bounded local doorbell
         id: admit
         # AIOS_LOCAL_CHAT_WAKE_CONFIG is inherited from the runner machine.
-        # Binding, endpoint and persistent state are never GitHub inputs.
+        # AIOS_UNATTENDED_CHAT_WAKE_CONFIG is also inherited locally.
+        # Browser authorization/configuration and state are never GitHub inputs.
         env:
           AIOS_WAKE_EVENT_ID: ${{ inputs.event_id }}
           AIOS_WAKE_REPOSITORY: ${{ inputs.repository }}
@@ -194,7 +195,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install attach-only transport dependency
+      - name: Install bounded local transport dependency
         shell: powershell
         run: |
           python -m pip install --disable-pip-version-check '.[local-chat-wake]'

@@ -190,6 +190,25 @@ def test_binding_is_machine_local_and_dependency_is_isolated():
     assert project["optional-dependencies"]["local-chat-wake"] == ["playwright>=1.51,<2"]
 
 
+def test_unattended_configuration_is_inherited_without_expanding_workflow_authority():
+    parsed, text = workflow()
+    assert set(parsed["on"]["workflow_call"]["inputs"]) == {"event_id", "repository"}
+    assert "AIOS_UNATTENDED_CHAT_WAKE_CONFIG" in text  # Local inheritance comment only.
+    for name in ("deliver", "deliver-projected", "recheck"):
+        job = parsed["jobs"][name]
+        assert job["permissions"] == READ_PERMISSIONS
+        assert "env" not in job
+        for step in job["steps"]:
+            environment = step.get("env", {})
+            assert not {"AIOS_LOCAL_CHAT_WAKE_CONFIG", "AIOS_UNATTENDED_CHAT_WAKE_CONFIG"} & environment.keys()
+            assert not any(field in step.get("run", "") for field in (
+                "AIOS_UNATTENDED_CHAT_WAKE_CONFIG", "--chat-url", "--cdp-endpoint",
+                "--executable", "--user-data-dir", "--profile-directory"))
+    for private in ("cdp_endpoint", "chat_url", "user_data_dir", "profile_directory", "executable", "secrets."):
+        assert private not in text
+    assert "playwright install" not in text and "createWorkflowDispatch" not in text
+
+
 def test_reusable_freshness_token_is_current_run_and_step_local_only():
     parsed, text = workflow()
     job = parsed["jobs"]["deliver"]

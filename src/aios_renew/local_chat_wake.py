@@ -1,4 +1,4 @@
-"""Durable machine-local, attach-only selector doorbells; no lifecycle authority."""
+"""Durable machine-local selector doorbells; no lifecycle authority."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ import sys
 import subprocess
 import tempfile
 import time
+from threading import Lock
 from typing import Iterator
 from urllib.parse import urlsplit
 
@@ -67,6 +68,10 @@ REASONS = frozenset({
     "INVOCATION_LIMIT_REACHED",
     "REGISTRY_CONFLICT", "ENABLE_GATE_CLOSED",
     "AFFINITY_UNPROVEN",
+    "ACQUISITION_CONFIG_INVALID", "ACQUISITION_LIMIT_REACHED",
+    "ACQUISITION_TIMED_OUT", "LAUNCH_NOT_AUTHORIZED", "PROFILE_LOCKED",
+    "BROWSER_OWNERSHIP_UNPROVEN", "ENDPOINT_MISMATCH", "LAUNCH_UNCERTAIN",
+    "BROWSER_CONTEXT_UNPROVEN",
 })
 SURFACE_CAUSES = frozenset({
     "TARGET_URL_MISMATCH", "MAIN_NOT_UNIQUE",
@@ -1194,6 +1199,30 @@ def _fresh(projection, event_id, *, allow_unknown=False):
     return value
 
 
+def delivery_adapter(binding):
+    # Legacy delivery and proof-only reconciliation retain attach-only behavior.
+    # Acquisition is available solely to exact H4C1 origin bindings, and only
+    # when the lane pass supplies its fresh pre-acquisition authorization.
+    if binding.route_handle is None:
+        return BrowserAdapter(binding)
+    from .unattended_chat_wake import UnattendedBrowserAdapter
+    return UnattendedBrowserAdapter(binding)
+
+
+class AcquisitionBudget:
+    """One attempt shared by finite rechecks/lanes of a delivery invocation."""
+
+    def __init__(self):
+        self.lock = Lock()
+        self.attempted = False
+
+    def claim(self):
+        with self.lock:
+            if self.attempted:
+                raise WakeBlocked("ACQUISITION_LIMIT_REACHED")
+            self.attempted = True
+
+
 def _drain_locked(state, data, binding, adapter_factory, projection, binding_provider):
     """One finite admission-order pass, at most one submission; no new subjects."""
     receipts = []
@@ -1236,6 +1265,7 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
     # V2 uncertainty is event-local. This limit belongs only to this finite
     # invocation, never to durable lane state or a later independent invocation.
     invocation_attempted = False
+    acquisition_budget = getattr(projection, "acquisition_budget", None) or AcquisitionBudget()
     for event_id, item in data["events"].items():
         if exhausted():
             return receipts
@@ -1254,18 +1284,27 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
             receipts.append(receipt)
             continue
         attempted = False
+        acquiring = False
 
         def barrier():
             current = binding_provider()
             if current != binding:
                 raise WakeBlocked("BINDING_GENERATION_CHANGED")
-            if _fresh(projection, event_id, allow_unknown=True) == "RESOLVED":
+            if _fresh(projection, event_id, allow_unknown=not acquiring) == "RESOLVED":
                 data["events"][event_id] = record("RESOLVED_NOOP")
                 state.write(data)
                 raise _Resolved()
             _check_affinity(projection, event_id, binding)
             if binding_provider() != binding:
                 raise WakeBlocked("BINDING_GENERATION_CHANGED")
+
+        def before_acquire():
+            nonlocal acquiring
+            acquisition_budget.claim()
+            acquiring = True
+            # Unlike the historical attach path, acquisition requires positively
+            # unresolved canonical state as well as the exact original affinity.
+            barrier()
 
         def before_click():
             nonlocal attempted, invocation_attempted
@@ -1279,7 +1318,13 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
 
         try:
             barrier()
-            with adapter_factory(binding) as adapter:
+            candidate = adapter_factory(binding)
+            authorize = getattr(candidate, "authorize_acquisition", None)
+            if authorize is not None:
+                authorize(before_acquire)
+            with candidate as adapter:
+                if acquiring:
+                    barrier()  # Revalidate acquisition races before any editing.
                 text = doorbell(event_id, binding.repository)
                 adapter.check(text)
                 adapter.submit(text, before_insert=barrier, before_click=before_click)
@@ -1312,7 +1357,7 @@ class _Resolved(Exception):
     pass
 
 
-def operate(repository, binding, event_id=None, adapter_factory=BrowserAdapter,
+def operate(repository, binding, event_id=None, adapter_factory=delivery_adapter,
             projection=None, binding_provider=None, compact=False):
     projection = projection or CanonicalFreshness(repository)
     binding_provider = binding_provider or (lambda: binding)
@@ -1377,7 +1422,7 @@ def operate(repository, binding, event_id=None, adapter_factory=BrowserAdapter,
         return receipts
 
 
-def deliver(event_id: str, repository: str, binding: Binding, adapter_factory=BrowserAdapter,
+def deliver(event_id: str, repository: str, binding: Binding, adapter_factory=delivery_adapter,
             projection=None, binding_provider=None) -> dict:
     doorbell(event_id, repository)
     receipt = dict(event_id=event_id, status="BLOCKED", reason="LOCAL_FAILURE")
@@ -1400,22 +1445,24 @@ class _Parser(argparse.ArgumentParser):
         raise SystemExit(1)
 
 
-def recheck_lane(repository, affinity, *, rechecks=1, interval=15, compact=False, deadline=None):
+def recheck_lane(repository, affinity, *, rechecks=1, interval=15, compact=False, deadline=None,
+                 acquisition_budget=None):
     provider = lambda: load_route_binding(repository, affinity)
     receipts = []
+    acquisition_budget = acquisition_budget or AcquisitionBudget()
     for index in range(rechecks):
         if deadline is not None and time.monotonic() >= deadline:
             break
         if os.environ.get("AIOS_LOCAL_CHAT_WAKE_ENABLED") != "true":
             raise WakeBlocked("ENABLE_GATE_CLOSED")
-        options = {}
+        projection = CanonicalFreshness(repository)
+        projection.acquisition_budget = acquisition_budget
         if deadline is not None:
-            projection = CanonicalFreshness(repository)
             projection.budget_deadline = deadline
-            options["projection"] = projection
-        current = operate(repository, provider(), binding_provider=provider, compact=compact, **options)
+        current = operate(repository, provider(), binding_provider=provider, compact=compact,
+                          projection=projection)
         receipts.extend(current)
-        if any(receipt["status"] in {"SUBMITTED", "BLOCKED"} for receipt in current):
+        if acquisition_budget.attempted or any(receipt["status"] in {"SUBMITTED", "BLOCKED"} for receipt in current):
             break
         if index + 1 < rechecks:
             time.sleep(interval)
@@ -1427,13 +1474,14 @@ def recheck_lanes(repository, *, rechecks=1, interval=15, compact=False):
     from concurrent.futures import ThreadPoolExecutor, as_completed
     lanes = configured_lanes(repository)
     deadline = time.monotonic() + 180
+    acquisition_budget = AcquisitionBudget()
 
     def worker(affinity):
         if isinstance(affinity, Binding):
             affinity = affinity.return_affinity
         try:
             return recheck_lane(repository, affinity, rechecks=rechecks, interval=interval,
-                                compact=compact, deadline=deadline)
+                                compact=compact, deadline=deadline, acquisition_budget=acquisition_budget)
         except WakeBlocked as exc:
             return [dict(status="BLOCKED", reason=str(exc))]
         except Exception:

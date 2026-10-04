@@ -382,6 +382,123 @@ Failure to prove authentication/surface/route/target must fail closed. Transport
 
 Live exit gate: with the target conversation not pre-opened or prepared by the Human, the transport obtains/restores the authorized delivery environment, reaches the exact target, proves all required safety gates, and submits exactly one doorbell without Human UI preparation.
 
+### TASK-302 bounded H4D acquisition contract
+
+`src/aios_renew/unattended_chat_wake.py` is a transport primitive under the
+existing durable lane pass, with no standalone launcher, router, queue, dispatch,
+account selector, lifecycle reducer, or retry service. Only an existing exact
+H4C1 origin Binding can receive acquisition authorization. Historical explicitly
+legacy delivery remains attach-only; absent/stale origin affinity never consults
+that legacy route. Proof-only reconciliation of an ambiguous attempt also remains
+attach-only and cannot launch, create, navigate, insert, or click.
+
+The fast path attaches to the Binding's endpoint and preserves its one exact
+existing target page. It does not inspect acquisition configuration, launch,
+navigate, select another tab, or create a duplicate. If availability is missing,
+the lane must positively prove canonical `UNRESOLVED`, the original event's exact
+affinity, and unchanged Binding before starting acquisition. Canonical `UNKNOWN`
+cannot authorize acquisition. After acquisition, these same barriers run again
+before surface inspection/editing, before insertion, and before the durable
+pre-click ambiguity write. A resolved subject becomes `RESOLVED_NOOP`; uncertainty
+or changed affinity/Binding cannot submit. Existing attach-path freshness policy,
+exact regular-Chat surface checks, Human draft/active-generation guards, outbound
+dedupe, exact user-turn proof, and ambiguity/no-blind-resend rules are preserved.
+
+Human authorization is an external machine-local JSON file named by the runner's
+inherited `AIOS_UNATTENDED_CHAT_WAKE_CONFIG`. It is separate from the H4C1
+`AIOS_LOCAL_CHAT_WAKE_CONFIG` registry/lanes. Its schema is exactly:
+
+```json
+{
+  "version": 1,
+  "environments": [
+    {
+      "cdp_endpoint": "<exact authorized IPv4 loopback HTTP endpoint>",
+      "executable": "<absolute path to the authorized Chromium executable>",
+      "user_data_dir": "<absolute path to the dedicated authorized user-data directory>",
+      "profile_directory": "<explicit existing profile directory name>",
+      "allow_launch": true,
+      "exclusive_user_data": true
+    }
+  ]
+}
+```
+
+Placeholders describe required local values and are not usable configuration.
+There are at most eight environments, each with one distinct endpoint and a
+nonoverlapping user-data directory. The endpoint must be an exact
+`http://127.0.0.1:<port>` binding (optional root slash); it is never derived from
+the executable or a listening browser. Executable, user-data directory, and named
+profile must already exist. The supported production acquisition boundary is
+the Windows self-hosted runner and an explicitly configured Chromium `.exe`.
+UNC/network paths, repository/bare-store paths, path aliases into those stores,
+arbitrary extra launch arguments, duplicate environments, and inferred profiles
+are rejected. `exclusive_user_data: true` records Human authorization of a
+dedicated environment; it does not replace the OS ownership/occupancy checks.
+`allow_launch: false` permits owned-endpoint page acquisition but never launch.
+
+The Human configures and authenticates this dedicated environment beforehand;
+delivery requires no per-event Human browser launch, tab preparation, foreground
+selection, navigation, or Send action. Authentication expiry is a fail-closed
+surface condition requiring Human restoration, never credential extraction or
+account selection. The host and runner must be running. This contract provides
+no powered-off-host wake, remote/cloud environment, or ChatGPT Work fallback.
+
+If attachment fails, only a bounded refused-socket observation permits launch.
+An accepting socket, timeout, or uncertain connection cannot authorize stealing
+or rebinding the endpoint. Conservative singleton/lock/DevTools markers and OS
+process command lines establish profile availability; stale markers remain for
+Human reconciliation. Launch uses only the configured executable/user-data/profile
+and fixed loopback CDP/no-startup-window switches, with no conversation URL
+or workflow freshness token passed to the process. An exited launcher or listener
+whose PID, executable, profile, user-data directory, address, or port differs
+fails closed. The transport never terminates a browser or removes profile locks.
+An exclusive local `.aios-unattended-acquisition.lock` serializes acquisition
+across invocations sharing the environment; it never serializes ordinary attached
+delivery. A preexisting or stale acquisition lock also fails closed and remains
+for Human reconciliation.
+
+For an owned available endpoint with no exact page, creation requires exactly one
+attached context and CDP proof that no non-default contexts exist. It issues at
+most one page-creation request in that default authorized profile context and
+navigates only to the original `Binding.chat_url`. Multiple exact pages, context
+ambiguity, an unexpected new-page URL, an intervening exact target, redirects,
+or target/context drift fail closed. No alternate page/context is selected.
+OS listener ownership is checked again before returning the acquired page.
+
+One delivery invocation shares one acquisition budget across its existing finite
+lane rechecks and, for an all-lanes drain, across its lane workers. The finite
+recheck stops after acquisition was attempted. Endpoint restoration waits inside
+that attempt have a 20-second acquisition deadline, with individually bounded
+connection, OS-helper, page-creation, and navigation operations. The initial
+attach attempt retains its existing ten-second bound; canonical barriers retain their own
+existing bounded read budgets. Playwright methods without public timeout
+arguments use its existing sync loop/implementation mapping with timed async
+cancellation. An unavailable bridge or timeout fails closed with no unbounded
+fallback or second creation request. Failure only disconnects the client; any
+uncertain created page/process is preserved and no submission is inferred.
+
+Fixed bounded failures include `ACQUISITION_CONFIG_INVALID`,
+`ACQUISITION_LIMIT_REACHED`, `ACQUISITION_TIMED_OUT`, `LAUNCH_NOT_AUTHORIZED`,
+`PROFILE_LOCKED`, `BROWSER_OWNERSHIP_UNPROVEN`, `ENDPOINT_MISMATCH`,
+`LAUNCH_UNCERTAIN`, and `BROWSER_CONTEXT_UNPROVEN`, alongside the existing exact
+target, affinity, canonical-state, draft, generation, and surface failure codes.
+Dependency/browser/OS exception text never enters a public receipt. Raw chat URLs,
+endpoints, executable/profile paths, command lines, and process IDs remain in the
+machine-local transport boundary and never enter attention identities or canonical
+TASK/RUN/RESULT/REVIEW/publication state. The GitHub workflow still passes only
+selectors and the existing step-local read credential, with read-only
+repository/actions permissions. It inherits local configuration and adds no
+GitHub input, output, secret, browser download, or account selector.
+
+Deterministic regressions use inert CDP, OS/process, and regular-Chat surface
+fixtures, including exact acquisition/submission and durable ambiguity without
+live ChatGPT access. Implementation and those regressions do not close H4D.
+H4D roadmap closure remains downstream of reviewed publication and separate
+Human/Brain live proof of the unprepared-target exit gate. H4E production
+multi-lane live conformance, final H4B semantic resume, and H5 closure remain
+separate downstream work; this implementation does not authorize or claim them.
+
 ## 7. H4E — Production Routing & Concurrency Live Conformance
 
 Objective: prove H4C + H4D under real production multi-lane conditions and close the existing H4A4 second-live-lane residual.
