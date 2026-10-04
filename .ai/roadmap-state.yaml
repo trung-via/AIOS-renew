@@ -473,6 +473,29 @@ sequence:
     task_author_commit_sha: "c87686758c31dd3920c06b925ac55d01a7a1b94c"
     task_blob_sha: "81c992ca741a9a6df89457526056f4e89b3e2675"
     authoring_issue_number: 1501
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-05"
+      task_id: TASK-303
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_303_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task303-r1-codex61-xhigh-20261005-001
+      task_blob_sha: "81c992ca741a9a6df89457526056f4e89b3e2675"
+      task_commit_sha: "c87686758c31dd3920c06b925ac55d01a7a1b94c"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: AUTHORIZED_NOT_YET_DISPATCHED
+      interpretation: >-
+        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-303 lifecycle.
+        This is planning/delegation intent only; Runtime admission and RUN creation
+        remain authoritative and have not yet occurred.
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
