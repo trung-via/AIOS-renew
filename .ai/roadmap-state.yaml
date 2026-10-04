@@ -504,7 +504,24 @@ sequence:
       lane-wide serialization. An earlier submitted or ambiguous doorbell may coexist
       with a later distinct doorbell attempt. Exact-event dedupe and ambiguous same-event
       no-resend remain mandatory; wrong-destination selection remains forbidden.
-    task_authoring_status: PENDING
+    task_id: TASK-294
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "02ed6d01adc0a05baacbc47990fdb32f010b036d"
+    task_blob_sha: "551eefe11afabe95de17c4cfa06c9116ce67a85f"
+    authoring_issue_number: 1456
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "1fcb0d260aa9ba830acc4d46a4d6c503f9b79ca35b5a18186be8b1a7da9224f4"
+    construct_fingerprint: "f89896908c3359db35b65a6a7346a02a4d88b00e30b2ba25e53deb3a74a36ec3"
+    reconciled_candidate_fingerprint: "4f02802ec8281c0a73160bb4f3404fc2af456e6a241f0e16e967fb96463afeb1"
+    next_action: HUMAN_SELECT_EXECUTOR_FOR_TASK_294
+    mutation_freeze_after_dispatch: >-
+      Do not write planning/bookkeeping commits to main while TASK-294 is executing,
+      under review, or awaiting exact publication. Resume planning mutation only after
+      terminal publication outcome to avoid repeating TASK-293 divergence.
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c0-origin-capture-feasibility
 
 
