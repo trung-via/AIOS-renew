@@ -1864,7 +1864,17 @@ sequence:
           that carried TASK-301. The explicit legacy classification is used only for
           this historical task-authoring return path; it is not origin-affine proof,
           is not a fallback for any new origin-affine flow, and cannot satisfy H4E.
-      executor_delegation: NONE_TASK301_DELEGATION_EXPIRED_ON_TASK_CHANGE
+      executor_delegation:
+        authority: HUMAN
+        selected_on: "2026-10-05"
+        task_id: TASK-302
+        executor: codex
+        model: gpt-6.1-sol
+        reasoning_effort: xhigh
+        scope: ENTIRE_TASK_LIFECYCLE
+        override_authority: HUMAN_ONLY
+        expires_on_task_change: true
+        persistence: THROUGH_TASK_302_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
     objective: >-
