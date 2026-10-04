@@ -1,0 +1,53 @@
+review_id: REVIEW-297-001
+reviewed_sha: 295b7ad63b7dd6a9417ec0d46d115013d2f3e10f
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- RUN-297-001 is the canonical PRIMARY RESULT for TASK-297 revision 1. Candidate 295b7ad63b7dd6a9417ec0d46d115013d2f3e10f
+  descends directly from admitted base 4ac274c963908e9a9b62670a6c308a40e05e9c24 and
+  changes exactly the three TASK-authorized paths.
+- 'Runtime verification is canonical PASS: tests/test_origin_bootstrap.py plus tests/test_local_chat_wake.py
+  report 650 passed, 801 skipped in 29.62s; git diff --check exited 0; RESULT unresolved
+  is empty.'
+- 'AC1: exact Git comparison confirms only docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md,
+  src/aios_renew/origin_bootstrap.py, and tests/test_origin_bootstrap.py changed;
+  local_chat_wake implementation/tests and lifecycle/roadmap state are unchanged by
+  the candidate.'
+- 'AC2: exactText admits the production wrapper only as a direct P/DIV child SPAN
+  having exactly one data-prompt-literal-paste attribute with empty value, exactly
+  one text-node child, and visible geometry/style; the wrapper text leaf is separately
+  traversal-bounded. Arbitrary SPAN, other/additional attributes, non-empty values,
+  nested/rich/non-text children, invisible wrappers, root SPAN, unsupported BRs, and
+  decorated blocks remain fail-closed while logical bytes remain exact.'
+- 'AC3: insert now proves only successful bounded native append on the same proved
+  surface. PageBootstrapBrowser.ready retains the existing three-second bounded polling
+  and exactText plus unique visible enabled form-scoped Send proof. bootstrap() calls
+  ready before ATTEMPTING, revalidates before intent, persists no-blind-resend intent,
+  then revalidates again before submit; never-reconciled state remains pre-submit
+  INSERT_BLOCKED.'
+- 'AC4: focused regressions model the observed production five-block grammar P > SPAN[data-prompt-literal-paste=""]
+  > #text plus P > BR.ProseMirror-trailingBreak, including a transient unallowlisted
+  immediate post-input shape that becomes exact only during later ready polling. Negative
+  regressions cover wrapper attribute/value/child/tag/root deviations, hidden/rich/decorated
+  content, exact byte/separator failures, unsupported BRs, ambiguous/disabled/hidden/replaced
+  controls and forms/composers, page/challenge changes, and binding/generation races.'
+- 'AC5: the candidate introduces no generic rich-text or normalization path, manual-Send
+  fallback, document-global Send lookup, local_chat_wake behavior change, origin heuristic,
+  raw identity/content canonicalization, H4C1 routing, or new lifecycle/semantic authority.'
+- 'AC6: H4C0 documentation preserves the post-TASK-296 UNPROVED/INSERT_BLOCKED observation
+  as bounded pre-submit Human/Brain planning evidence only, records the exact literal-paste
+  wrapper grammar, and leaves the full A/A/B/B continuity plus ambiguity procedure
+  pending after reviewed publication; H4C0 remains open and H4C1 blocked.'
+- 'AC7: RESULT claims are implementation properties only. Runtime verification, this
+  fresh Reviewer verdict, exact Publisher publication, and later Human/Brain H4C0
+  live closure remain separate downstream authorities. PASS does not itself prove
+  live production conformance or authorize H4C1.'
