@@ -1,0 +1,161 @@
+task_id: TASK-297
+revision: 1
+goal: Correct H4C0 PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 for the exact production
+  regular-Chat literal-paste DOM wrapper and ensure asynchronous post-input reconciliation
+  is proved only at the bounded readiness gate before any submit intent, without weakening
+  draft-byte exactness, page-scoped origin proof, scoped Send safety, no-blind-resend,
+  or H4C0/H4C1 authority boundaries.
+problem: 'After TASK-296 r1 passed Runtime verification, REVIEW-296-001, and exact
+  publication, the first fresh H4C0 A1 live observation still terminated pre-submit
+  as UNPROVED/INSERT_BLOCKED. Read-only structural diagnostics on the exact visible
+  regular-Chat composer established one visible composer, one enclosing form, one
+  visible enabled scoped Send control, five attribute-free P blocks, and the production
+  child grammar: non-empty blocks are SPAN elements with exactly one attribute data-prompt-literal-paste=""
+  and exactly one #text child; the empty separator block is BR class="ProseMirror-trailingBreak".
+  The published TASK-296 exactText predicate admits direct text children and the trailing
+  BR but rejects the observed literal-paste SPAN wrapper. The same source also requires
+  exactText synchronously at the end of insert() even though the bounded ready() phase
+  is the contractually intended place to wait for asynchronous editor reconciliation.
+  This second observation created no canonical RUN/FAILURE and no submit attempt;
+  it is bounded Human/Brain live-conformance evidence for one prospective correction.'
+assumptions:
+- Canonical main at TASK-297 authoring is 6acf5886d02eb0705a70c00d48c29131d3ff7370.
+- 'TASK-296 r1 is canonically complete: RUN-296-001 Runtime PASS, REVIEW-296-001 PASS,
+  exact published source SHA 7037ce457471c230536749cf8e591e21720c0782, and roadmap
+  reconciliation after publication.'
+- H4C0 remains open and H4C1 remains blocked. The bounded two-chat live observation
+  resumed after TASK-296 publication but A1 again failed closed before submit with
+  UNPROVED/INSERT_BLOCKED.
+- 'The post-TASK-296 live observation proved one visible composer, one enclosing form,
+  one visible enabled scoped Send, five attribute-free P root blocks, four non-empty
+  P > SPAN[data-prompt-literal-paste=""] > #text branches, and one empty P > BR.ProseMirror-trailingBreak
+  branch.'
+- The production wrapper evidence is structural only. Raw conversation URL/UUID, route
+  handle, endpoint, registry contents, raw draft text, transcript, assistant output,
+  and raw DOM payload are not task inputs and must not enter canonical artifacts.
+- The correction may change only origin-bootstrap post-insertion representation proof
+  and insert-to-ready ordering. It does not alter the Human gesture, challenge ownership,
+  durable binding, route identity, generation, scoped Send selection, or no-blind-resend
+  state machine.
+- Runtime verification, Reviewer PASS, and publication of TASK-297 still do not close
+  H4C0 or authorize H4C1; Human/Brain must rerun and explicitly evaluate the bounded
+  two-chat live procedure afterward.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-296.yaml
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - src/aios_renew/origin_bootstrap.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_origin_bootstrap.py
+  - tests/test_local_chat_wake.py
+  modify:
+  - src/aios_renew/origin_bootstrap.py
+  - tests/test_origin_bootstrap.py
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+non_goals:
+- Implement H4C1 origin-affine return routing, H4D unattended local wake, H4E concurrency
+  conformance, final H4B production-shape proof, or H5.
+- Change page-scoped Human attestation, challenge generation/ownership, route-handle
+  identity, registry generation semantics, binding durability, raw-route privacy,
+  or conversation-origin selection.
+- Change local_chat_wake delivery semantics, selector policy, wake queue/dedupe/recovery
+  behavior, TASK-294 wake-first semantics, or any repository-level lane policy.
+- Add manual-Send fallback, document-global Send lookup, active-tab/focus/recent-chat
+  inference, generic retry, or any blind resend path.
+- Allow arbitrary SPAN, arbitrary attributes, arbitrary nested/rich DOM, generic whitespace
+  normalization, rendered-text-only equivalence, or semantic text interpretation.
+- Persist or export raw draft content, raw conversation identity, route handle, endpoint,
+  registry contents, transcript, assistant output, or raw diagnostic DOM into canonical
+  engineering artifacts.
+- Treat either bounded live UNPROVED observation as a RUN failure, REVIEW finding,
+  publication failure, or canonical engineering terminal state.
+- Treat deterministic tests, Runtime PASS, Reviewer PASS, or publication of TASK-297
+  as the required H4C0 two-chat live proof or automatic roadmap advancement.
+constraints:
+  hard:
+  - 'The production literal-paste wrapper allowlist is exact: only SPAN with exactly
+    one attribute named data-prompt-literal-paste whose value is the empty string,
+    exactly one child node, and that child exactly a text node may contribute logical
+    draft bytes.'
+  - Any literal-paste SPAN with an additional/different attribute, non-empty attribute
+    value, zero or multiple children, nested element, hidden/aria-hidden/style/class
+    decoration, or non-text child must fail closed before submit.
+  - The existing P/DIV root allowlist and BR class="ProseMirror-trailingBreak" empty/trailing-padding
+    rule remain bounded. TASK-297 must not turn arbitrary block/inline markup into
+    accepted plaintext.
+  - Logical reconstruction must remain byte-exact against the immutable staged Human
+    draft plus exactly two LF bytes plus the bounded bootstrap envelope; no trim,
+    Unicode normalization, CRLF rewriting, whitespace collapsing, or rendered-appearance
+    substitution is allowed.
+  - insert() may prove only that the exact page/challenge/surface is still valid and
+    that the native bounded edit operation was issued successfully. It must not require
+    the asynchronously reconciled final representation synchronously if doing so can
+    preempt the existing bounded readiness window.
+  - ready() remains bounded by the existing three-second adapter window and must establish
+    the exact reconciled logical draft, same selected composer, unique enclosing form,
+    and exactly one visible enabled form-scoped Send control before any ATTEMPTING
+    intent is persisted.
+  - 'The existing revalidation ordering remains mandatory: exact page/challenge/binding/generation
+    and reconciled readiness are revalidated before ATTEMPTING is written and again
+    after that write immediately before the AIOS-owned click.'
+  - If reconciliation never reaches the exact allowlisted representation inside the
+    bounded readiness window, the operation remains UNPROVED/INSERT_BLOCKED with no
+    submit attempt. Elapsed time never grants equivalence or authority.
+  - 'Focused regression coverage must reproduce the observed production grammar P
+    > SPAN[data-prompt-literal-paste=""] > #text plus P > BR.ProseMirror-trailingBreak
+    and a transient immediate post-input shape that becomes exact only during bounded
+    ready polling.'
+  - Negative regressions must reject wrong/multiple SPAN attributes, non-empty data-prompt-literal-paste
+    values, nested/rich/hidden/decorated SPANs, duplicated or altered bytes, unsupported
+    BRs, missing/extra/reordered separators, ambiguous composer/form/Send, disabled/hidden
+    Send, route/page/challenge changes, and binding/generation changes.
+  - src/aios_renew/local_chat_wake.py and tests/test_local_chat_wake.py are inspect/regression
+    dependencies only unless a separate semantic need is discovered and Brain authorizes
+    a revised TASK. TASK-297 r1 may not modify them.
+  - Executor changes only scope.modify and performs no live H4C0 observation, manual
+    browser reconciliation, operational-state reset, roadmap mutation, review, or
+    publication.
+  - Runtime owns canonical verification; Reviewer owns semantic verdict; Publisher
+    owns exact eligible reviewed source publication; Human/Brain alone reruns and
+    evaluates H4C0 live conformance and explicitly authorizes any later H4C1 progression.
+acceptance:
+- id: AC1
+  condition: The candidate changes only the three authorized scope.modify paths and
+    leaves local_chat_wake implementation/tests plus lifecycle/roadmap state unchanged.
+- id: AC2
+  condition: 'The exactText/readiness path admits only the observed production literal-paste
+    wrapper SPAN[data-prompt-literal-paste=""] with exactly one #text child, while
+    preserving the existing bounded P/DIV/BR grammar and exact logical draft-byte
+    equality.'
+- id: AC3
+  condition: The insert-to-ready ordering no longer requires final asynchronously
+    reconciled exactText synchronously at insert return; the bounded ready phase proves
+    exact reconciliation before ATTEMPTING and submit, and a never-reconciled edit
+    remains pre-submit INSERT_BLOCKED.
+- id: AC4
+  condition: Focused positive regressions reproduce the production five-block grammar
+    and delayed reconciliation; focused negative regressions fail closed for wrapper
+    attribute/value/child deviations, nested/rich/hidden content, byte/separator changes,
+    control ambiguity, page/challenge changes, and generation/binding races.
+- id: AC5
+  condition: The candidate adds no generic SPAN/rich-text acceptance, normalization,
+    manual-send fallback, global Send lookup, wake-delivery behavior, origin heuristic,
+    raw identity/content canonicalization, H4C1 routing, or new semantic/lifecycle
+    authority.
+- id: AC6
+  condition: H4C0 documentation records the second post-TASK-296 UNPROVED/INSERT_BLOCKED
+    live observation as pre-submit bounded planning evidence, names the exact literal-paste
+    wrapper grammar, and keeps the entire A/A/B/B continuity and ambiguity live procedure
+    pending after reviewed publication.
+- id: AC7
+  condition: The Executor RESULT claims only pre-verification implementation properties
+    with unresolved empty and exact changed_files; Runtime verification, fresh Reviewer
+    verdict, exact publication, and later Human/Brain H4C0 closure remain downstream
+    facts.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_origin_bootstrap.py tests/test_local_chat_wake.py
+  - git diff --check
