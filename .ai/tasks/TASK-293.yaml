@@ -1,0 +1,177 @@
+task_id: TASK-293
+revision: 1
+goal: 'Implement the H4C0 PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 fallback: a bounded
+  local page-scoped bootstrap that uses one explicit in-page Human gesture to establish
+  or reuse an opaque conversation-scoped return-route handle before the initial authorized
+  AIOS handoff, with durable machine-local binding and deterministic fail-closed behavior,
+  without implementing H4C1 return routing or wake delivery.'
+problem: TASK-292 remains valid reviewed and published engineering evidence, but the
+  current Human-observed regular Chat surface does not expose the Developer Mode/custom
+  MCP entry required for its planned two-chat live observation. The existing repository-keyed
+  local wake binding cannot distinguish multiple conversations in the same repository,
+  and a copyable token by itself does not prove which regular Chat initiated a flow.
+  H4C0 therefore needs a provider-independent page-scoped Human attestation that proves
+  the exact conversation at the initial handoff while keeping raw conversation identity
+  outside canonical engineering state.
+assumptions:
+- Canonical main at TASK-293 authoring is 1899233a1bf31f79f696439ea045f65a9a43e3e7.
+- The Human approved PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 as the selected H4C0
+  fallback, and H4C0 remains the unique canonical NEXT before H4C1, H4D, H4E, final
+  H4B production-shape proof, and H5.
+- TASK-292 and its REVIEW/PASS/publication remain immutable valid evidence for the
+  prior OpenAI-session feasibility candidate; TASK-293 must not rewrite or reinterpret
+  that lineage.
+- The selected fallback uses a one-time explicit in-page Human attestation per regular-Chat
+  conversation. Subsequent messages and long TASK/RUN/review/repair/publication continuations
+  reuse the established conversation route unless an explicit later Human rebind/transfer
+  changes its generation.
+- Raw normalized conversation identity and sensitive browser binding data may exist
+  only in bounded machine-local operational state outside the repository and canonical
+  TASK/RUN/RESULT/FAILURE/REVIEW/roadmap artifacts.
+- Existing local regular-Chat surface validation, URL normalization, durable-state,
+  generation, ambiguity, and no-blind-resend primitives should be reused where semantically
+  applicable; the exact implementation structure remains Executor-owned.
+- The fallback must not require ChatGPT Developer Mode, MCP, Responses API credit,
+  or host-provided openai/session metadata.
+- TASK-293 acceptance covers deterministic implementation and focused verification
+  only. The real two-regular-chat observation remains a later Human/Brain H4C0 conformance
+  step after reviewed publication and cannot be claimed by Runtime PASS alone.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/origin_capture.py
+  - tests/test_local_chat_wake.py
+  - tests/test_origin_capture.py
+  - pyproject.toml
+  modify:
+  - src/aios_renew/origin_bootstrap.py
+  - scripts/aios_origin_bootstrap.py
+  - tests/test_origin_bootstrap.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+non_goals:
+- Implement H4C1 generic return routing, route-based wake delivery, H4D unattended
+  target acquisition, or H4E concurrency conformance.
+- Automatically infer origin from the active tab, browser focus, most-recent chat,
+  timestamps, prompt text, transcript content, assistant output, model memory, account
+  identity, or repository identity.
+- Use a browser toolbar/global shortcut that first queries the active tab as origin
+  authority, or accept a copied opaque token by itself as proof of the current conversation.
+- Persist raw conversation URL, Human prompt content, transcript content, assistant
+  output, or sensitive browser binding data in repository files, canonical lifecycle
+  artifacts, Runtime evidence, or semantic reasoning state.
+- Make the opaque route handle an authentication secret, execution capability, lifecycle
+  authority, route-transfer authority, or substitute for Human/Brain/Runtime/Reviewer/Publisher
+  authority.
+- Create a second Planner, Runtime, Reviewer, Publisher, lifecycle reducer, generic
+  routing service, or independent wake queue.
+- Require or reintroduce ChatGPT Developer Mode, MCP, Responses API, ChatGPT Work,
+  or openai/session as a production dependency for the fallback.
+- Treat synthetic/focused tests, Runtime PASS, semantic review, or publication of
+  TASK-293 as the required real two-chat H4C0 exit proof.
+- Modify TASK-292 historical artifacts or reopen its reviewed implementation scope.
+constraints:
+  hard:
+  - A new origin binding may be established only from an explicit Human gesture emitted
+    inside the exact regular-Chat document being selected. Browser-toolbar selection,
+    global active-tab lookup, recent-chat selection, timestamps, transcript contents,
+    assistant output, model memory, and repository identity cannot substitute for
+    this attestation.
+  - The page-scoped gesture must create a bounded ephemeral challenge whose proof
+    establishes exactly one eligible regular-Chat document and an exact normalized
+    conversation route. Zero matches, multiple matches, non-regular surfaces, malformed
+    identity, page replacement, or route change during proof fails closed.
+  - For one normalized regular-Chat conversation, bootstrap must mint or reuse one
+    stable opaque conversation-scoped route handle; distinct conversations must not
+    share a handle. Multiple tabs for the same conversation remain one conversation
+    route, while the ephemeral challenge identifies the exact document on which the
+    Human acted.
+  - The opaque route handle is a bounded selector only, not a credential or authority.
+    Its existence or value must not allocate TASK/RUN identity, select next_action,
+    authorize execution/review/publication, transfer route ownership, or advance roadmap
+    state.
+  - The exact normalized conversation route and any sensitive browser/profile binding
+    required for return delivery must remain in bounded machine-local state outside
+    the repository. The raw route must not be emitted into the bounded bootstrap envelope
+    or placed in canonical TASK/RUN/RESULT/FAILURE/REVIEW/roadmap artifacts.
+  - Durable machine-local binding must complete before the initial AIOS handoff is
+    submitted. The mandatory order is exact-page challenge proof, mint-or-reuse route
+    handle, durable local binding, same-page and same-route revalidation, bounded
+    opaque bootstrap-envelope insertion, then the Human-authorized initial submission.
+  - If the local binding write is uncertain, challenge/page identity changes, binding
+    generation conflicts, envelope insertion is unproved, or pre-submit safety is
+    ambiguous, the initial handoff must not be submitted. If submission has been attempted
+    and its outcome is ambiguous, no automatic resend is allowed.
+  - Prompt/transcript/assistant content must not participate in origin identity and
+    must not be persisted by the origin registry. Any draft manipulation needed to
+    insert bounded bootstrap metadata must preserve the Human-authored draft except
+    for that bounded metadata and must not semantically interpret the draft.
+  - 'The bootstrap implementation must remain origin-capture-only: it may establish/reuse
+    machine-local route identity and produce the bounded initial envelope, but it
+    must not implement H4C1 route resolution for later attention, deliver wakes, choose
+    semantic lineage, or create a second transport queue.'
+  - Reuse existing local regular-Chat safety, normalization, durability, generation,
+    and ambiguity primitives where semantically applicable rather than creating duplicate
+    authority. Any refactor of local_chat_wake.py must preserve existing wake behavior
+    and keep wake delivery semantics unchanged.
+  - Executor changes only scope.modify. Runtime owns canonical verification, Reviewer
+    owns semantic verdict, Publisher owns publication of the exact eligible reviewed
+    candidate, and Human/Brain alone evaluates the later two-chat live observation
+    and decides H4C0 closure or architecture fallback.
+acceptance:
+- id: AC1
+  condition: The candidate implements one bounded page-scoped origin-bootstrap contract
+    in which origin establishment starts only from an explicit Human gesture inside
+    the selected regular-Chat document, uses a bounded ephemeral page challenge, and
+    never treats active-tab/recent-chat/browser-focus/repository identity or a caller-copied
+    token as equivalent origin proof.
+- id: AC2
+  condition: Focused deterministic tests prove one normalized conversation reuses
+    one stable opaque route handle, two distinct conversations receive distinct handles,
+    multiple tabs of the same conversation do not create competing conversation routes,
+    and route handles grant no semantic or lifecycle authority.
+- id: AC3
+  condition: The candidate durably stores raw normalized conversation identity and
+    required sensitive binding data only in bounded machine-local state, emits only
+    opaque bounded bootstrap metadata toward the initial handoff, and tests prove
+    raw conversation identity is absent from repository/canonical outputs produced
+    by the bootstrap path.
+- id: AC4
+  condition: Focused tests prove the required ordering of exact-page proof, durable
+    local binding, same-page/re-route revalidation, bounded envelope insertion, and
+    initial submission; uncertain write, non-unique/absent challenge, non-regular
+    surface, page/route change, registry conflict, generation conflict, or unproved
+    insertion fails closed before submission, while ambiguous post-submit state never
+    triggers automatic resend.
+- id: AC5
+  condition: The candidate provides one bounded local operator/development surface
+    that can expose the page-scoped Human bootstrap gesture and exercise the origin
+    handshake using the existing authorized regular-Chat browser environment without
+    requiring Developer Mode, MCP, Responses API, ChatGPT Work, or openai/session
+    metadata.
+- id: AC6
+  condition: The candidate does not implement H4C1 return routing or wake delivery,
+    creates no new semantic/lifecycle authority or independent wake queue, and focused
+    regression verification proves any touched local-chat-wake primitives retain their
+    existing safety and delivery behavior.
+- id: AC7
+  condition: 'H4C0 documentation defines the post-publication Human/Brain live procedure
+    for two distinct regular chats: two bootstraps in Chat A resolve to the same route
+    A, two in Chat B resolve to the same route B, A differs from B, same-repository
+    chats remain distinct, valid reload/reopen preserves the conversation route, page/challenge
+    ambiguity fails closed, and TASK-293 acceptance/publication alone does not close
+    H4C0 or authorize H4C1.'
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_origin_bootstrap.py tests/test_local_chat_wake.py
+  - git diff --check
