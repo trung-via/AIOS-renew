@@ -467,6 +467,19 @@ sequence:
     phase: REPOSITORY_CLEANUP_CONSOLIDATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
+    task_id: TASK-303
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "c87686758c31dd3920c06b925ac55d01a7a1b94c"
+    task_blob_sha: "81c992ca741a9a6df89457526056f4e89b3e2675"
+    authoring_issue_number: 1501
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "16dd515da5795672750b6951b46141e10028e1d18e41437f6d8ed05585e6bca5"
+    construct_fingerprint: "ef84ee0fcc430111ccac66ac1bdafa110471720586a67f22a58dca16a627affa"
+    reconciled_candidate_fingerprint: "417d47932091a528d29c2b8eb5e658bcb5870e68b8ce58d43fbb9c431ea1dd4d"
     objective: >-
       Execute one bounded cleanup/consolidation task that removes only proven-temporary
       diagnostic scaffolding and dependency-proven superseded surfaces, consolidates
