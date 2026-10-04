@@ -1,0 +1,56 @@
+review_id: REVIEW-302-001
+reviewed_sha: 8832e24edb1cd471a8a7f653a622ef5e1776920f
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings: []
+notes:
+- RUN-302-001 is the canonical PRIMARY RESULT for TASK-302 r1. Candidate 8832e24edb1cd471a8a7f653a622ef5e1776920f
+  descends from base 955713232457fe70c32248cf1478375a6955e567 and changes exactly
+  the seven TASK-authorized files.
+- 'Runtime verification is canonical PASS: the required focused suite reports 822
+  passed, 1091 skipped in 46.82s; git diff --check passed; RESULT unresolved is empty.
+  The soft execution budget exceeded 1800s, but this is an observation rather than
+  an acceptance failure and Runtime still produced a valid RESULT.'
+- 'AC1/AC8: workflow and source changes remain inside the seven-file scope. GitHub
+  remains selector-only with read-only repository/actions permissions; unattended
+  browser configuration is inherited solely from machine-local environment and raw
+  chat URL, endpoint, executable/profile paths and credentials are not added to workflow
+  inputs/outputs.'
+- 'AC2/AC3/AC4: existing exact-target attachment remains the fast path and does not
+  inspect acquisition config, launch or navigate. Acquisition is available only for
+  an origin-affine Binding, claims one invocation-scoped budget, uses the exact Binding
+  endpoint/chat URL, launches only the explicitly configured environment after a separate
+  refused-socket proof, and creates at most one page in one proved default context.'
+- 'AC5: invalid/missing configuration, profile occupancy/locks, endpoint/listener
+  ownership mismatch, ambiguous contexts/pages, redirect/target drift and launch uncertainty
+  fail closed. The implementation performs no executable/profile/account discovery,
+  kill, rebind, alternate target selection or repository-default fallback for origin-affine
+  acquisition.'
+- 'AC6: acquisition authorization first switches canonical freshness from the historical
+  allow-UNKNOWN attach policy to strict UNRESOLVED, then proves exact affinity and
+  unchanged Binding. The same barrier is repeated after acquisition and is also used
+  before insertion and immediately before click, so canonical resolution, affinity
+  drift or binding-generation change prevents submission.'
+- 'AC7: existing surface, Human draft, active-generation, exact-event dedupe, durable
+  pre-click ambiguity, one-submission-per-pass, exact user-turn proof and no-blind-resend
+  semantics remain authoritative. Ambiguous/proof-only reconciliation cannot authorize
+  acquisition or resend.'
+- 'AC9: deterministic tests exercise attach-existing, unavailable-endpoint launch,
+  exact-page creation, ownership/config/profile/context failures, route/generation/canonical
+  races, Human/surface guards, successful exact submission, ambiguity/no-resend and
+  bounded-call timeout behavior without live ChatGPT access.'
+- 'AC10: documentation keeps H4D implementation/review/publication distinct from the
+  later Human/Brain live exit gate and leaves H4E production multi-lane conformance
+  downstream. No H4D closure, H4E authorization or roadmap advance is claimed by the
+  candidate.'
