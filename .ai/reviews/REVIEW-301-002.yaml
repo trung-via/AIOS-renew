@@ -1,0 +1,51 @@
+review_id: REVIEW-301-002
+reviewed_sha: 5118e43af25cb14fb4206dab73e9aa0205367f84
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+  AC11: PASS
+  AC12: PASS
+findings: []
+notes:
+- RUN-301-002 is the canonical REPAIR descendant of failed RUN-301-001 for TASK-301
+  r1. Candidate 5118e43af25cb14fb4206dab73e9aa0205367f84 is one commit ahead of failed
+  candidate ba1f70b2417ad99ec210ac1f2ff65c4c099623e4 and the REPAIR delta changes
+  exactly the seven REPAIR-authorized files.
+- 'Runtime verification is canonical PASS: the required focused suite reports 1612
+  passed and 1091 skipped in 2997.31s; git diff --check exited 0; RESULT unresolved
+  is empty. The complete TASK candidate changes exactly the 21 TASK-authorized paths.'
+- 'AC1: exact Git comparison shows the repair modifies only src/aios_renew/local_chat_wake.py,
+  src/aios_renew/review_transport.py and the five authorized regression files; it
+  does not modify operator.py, brain_attention.py, workflow YAML, roadmap state, H4D/H4E
+  behavior, or any other unauthorized path.'
+- 'AC2/AC3/AC4: the H4C1 selector and immutable TASK/RUN lineage architecture remains
+  intact. review_transport now defers malformed wrapper, TASK identity/revision and
+  base diagnostics to their existing canonical validators while still rejecting exact
+  TASK/RUN/REPAIR affinity drift and missing origin carriers fail-closed.'
+- 'AC5/AC6/AC7: local origin resolution and generation safety remain unchanged. Duplicate
+  proof now reads durable lane state only while holding the route-lane lock; lock
+  uncertainty cannot consume or infer duplicate state, same-route serialization is
+  preserved, and distinct-route progress remains independent.'
+- 'AC8/AC9: historical tests explicitly classify legacy routing while origin-affine
+  workflow tests supply exact selector and machine-local registry context. Direct
+  delivery, follow-up drain, recovery and scheduled lane enumeration keep the H4C1
+  lane-scoped contract without repository-default fallback for unproved origin affinity.'
+- 'AC10: focused regressions cover exact carrier drift, lock-owned duplicate proof,
+  explicit legacy fixtures, origin-affine workflow guards, canonical provenance and
+  the prior failing operator cases. The required TASK verification suite is fully
+  green; H4C0 bootstrap behavior remains regression-clean.'
+- 'AC11/AC12: H4C1 documentation and privacy/transfer boundaries from the original
+  candidate remain unchanged by the repair. The restored Unicode path fixture confirms
+  no accidental mojibake remains. Runtime verification, this Reviewer verdict, Publisher
+  publication, live conformance and roadmap closure remain separately authority-owned
+  downstream facts.'
