@@ -1,0 +1,43 @@
+review_id: REVIEW-299-001
+reviewed_sha: 5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- 'RUN-299-001 is the canonical PRIMARY RESULT for TASK-299 r1. Runtime verification
+  is canonical PASS: 666 passed, 1008 skipped in 32.60s for tests/test_origin_bootstrap.py
+  plus tests/test_local_chat_wake.py; git diff --check passed; unresolved is empty.'
+- 'AC1: RESULT changed_files is exactly src/aios_renew/origin_bootstrap.py, tests/test_origin_bootstrap.py,
+  and docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md. No local_chat_wake implementation/test,
+  diagnostic script, lifecycle artifact, or roadmap mutation is part of the candidate.'
+- 'AC2/AC3: the new attributed-root exception is exact: P, one data-empty-paragraph
+  attribute with exact value true, empty root textContent, and one BR child with exact
+  ProseMirror-trailingBreak class. The ordinary child loop still independently requires
+  the BR to be childless, empty, visible, trailing, and grammar-valid. DIV, wrong/missing/case/whitespace
+  marker values, extra attributes, non-empty marked P, wrong/multiple/absent children,
+  decorated BRs, and invisible roots/BRs remain fail-closed.'
+- 'AC4: ordinary attribute-free P/DIV, literal-paste SPAN allowlist, raw/textContent
+  equality, logical and rendered projections, visibility, traversal budget, page/challenge/origin
+  proof, scoped Send/form checks, timing, diagnostic ordering, consume-before-click
+  and no-blind-resend behavior remain structurally unchanged except for the single
+  proved root predicate.'
+- 'AC5/AC6: focused regression coverage includes the production-like marked empty
+  paragraph beside existing literal-paste blocks in ordinary and diagnostic paths,
+  plus the required negative root/marker/child variants and retained rich-DOM, byte/separator,
+  visibility, control, page/challenge and binding regressions.'
+- 'AC7: H4C0 documentation records only the bounded TASK-298 READY/EXACT_TEXT exhaustion,
+  same-attempt ROOT_ATTRIBUTES attribution and exact observed root shape. It explicitly
+  keeps H4C0 open and H4C1 blocked pending post-publication Human/Brain A1 and later
+  live closure.'
+- 'AC8: Executor claims remain pre-verification implementation claims; Runtime verification,
+  Reviewer verdict, publication, live A1 and H4C0 planning remain downstream authority-owned
+  facts. No automatic TASK-300 or roadmap advance is introduced.'
