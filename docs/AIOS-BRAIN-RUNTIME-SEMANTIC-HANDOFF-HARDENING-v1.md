@@ -547,3 +547,121 @@ are feasible. No deterministic code infers correction strategy, semantic verdict
 publication eligibility, roadmap successor or Human risk acceptance. Runtime
 verification, Reviewer verdict and Publisher publication remain with their
 existing owners. No Planner, lifecycle router or automatic selector is added.
+
+## 13. Active Brain Sync projection and conservative cleanup (TASK-303)
+
+`observe_brain_sync(repo=...)` reads `.ai/roadmap-state.yaml` as its sole planning
+input. Its default roadmap projection contains the active track/status, NEXT ids,
+one uniquely identified `active_item`, at most two explicit `return_to` item
+projections, and a bounded relevant publication pointer. If there is no NEXT, a
+unique declared live/blocked gate can be exposed without selecting its completed
+engineering TASK for execution; this gate view includes only its direct return
+item's body. A blocker field on another milestone does not independently declare
+an active gate. This observation does not change Unified State's
+lifecycle or next-action authority. Multiple NEXT pointers still block selection;
+missing, conflicting or ambiguous active identities fail closed.
+
+Item projections allow only identity, phase, objective, parent/document/return
+pointers, exact authoring pointers, and compact declared gate/blocker/publication
+fields. Objectives are limited to 2048 UTF-8 bytes, other text to 256 bytes, NEXT
+ids to 16, and task revisions to positive 32-bit integers. A DONE item explicitly
+referenced by the active return path exposes identity/publication pointers rather
+than its historical body. `return_path_truncated` marks a further explicit edge;
+that boundary identifier is checked for uniqueness without hydrating its body.
+No successor is inferred from sequence order and no projection is persisted.
+
+Default hydration checks ancestry only for these relevant publication/authoring
+pointers. Declared task revision, blob and author-commit identities are reconciled
+against the current canonical task and main. The selected task still goes through
+the existing Unified State observation, including its ambiguity and lifecycle
+fail-close checks. An ancestry observation error remains an error, not proof of a
+lineage conflict. The projection deliberately reads the YAML authority document;
+it does not introduce another history store or planning index.
+
+`publication.status` is `RELEVANT_ACTIVE_LINEAGE` only for an ancestry-checked
+publication explicitly attached to the active item or its bounded return path.
+The compatibility field `last_published_task` then names that relevant task, not
+the globally latest publication. With no such pointer it is `null`, publication
+status is `UNAVAILABLE`, and the checkpoint prints `LAST PUBLISHED: unavailable`.
+Historical DONE sequence position supplies no recency information.
+
+Explicit audit/review/repair or Human-required historical context can call
+`observe_brain_sync(repo=..., include_history=True)`. This opt-in returns complete
+DONE mappings under `roadmap.history` and checks their publication ancestry,
+preserving historical conflict and Git-observation-error diagnostics. It does not
+turn that enumeration into a publication-recency guess. The original roadmap,
+canonical artifacts, immutable refs and published Git objects remain retrievable
+in their original stores; this cleanup does not delete or rewrite them.
+
+### 13.1 Retention decisions and deterministic dependency inspection
+
+No diagnostic script, diagnostic test, production wake module, workflow, carrier
+policy, package entrypoint or export is deleted. Closure of an old diagnostic
+question is insufficient to delete its callers or its unique regression controls.
+The following positive dependency witnesses require retention; the table is an
+inspection manifest, not canonical verification EVIDENCE or a lifecycle verdict.
+
+| Candidate retained | Statically discoverable dependency witness |
+| --- | --- |
+| `scripts/aios_origin_capture_probe.py` | `tests/test_origin_capture.py` loads the entry file; `docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md` requires the MCP probe entry. |
+| `scripts/bp_v4_parallel_diagnostic.py` | Full-suite contention, stable-failure cause and stable-failure detail diagnostics import its shared contracts; `tests/test_bp_v4_parallel_diagnostic.py` retains its controls. |
+| `scripts/aios_full_suite_contention_diagnostic.py` | Serial-context and residual-context diagnostics import it; its named diagnostic suite retains controls. |
+| `scripts/aios_serial_context_diagnostic.py` | Residual-context historical-target derivation imports `_targets`; its named diagnostic suite retains controls. |
+| `scripts/aios_stable_failure_cause_diagnostic.py`, `scripts/aios_stable_failure_detail_diagnostic.py` | Each named diagnostic suite imports its source and retains distinct bounded/redaction/error controls. |
+| `scripts/aios_ingress_metadata_identity_diagnostic.py` | Its named diagnostic suite imports it; the source imports the retained ingress probe plugin's contract. |
+| `scripts/aios_parallel_git_fixture_push_diagnostic.py` | Residual-context diagnosis imports `subject_identity`; its probe plugin and named suite import the contract. |
+| `scripts/aios_residual_context_attribution_diagnostic.py` | Its probe plugin and named suite import the contract, including exact historical population-drift controls. |
+| `scripts/aios_git_fixture_push_threshold_diagnostic.py`, `scripts/aios_git_fixture_push_root_decomposition_diagnostic.py` | Their probe modules and named diagnostic suites import each contract. |
+| `.github/workflows/aios-issue-carrier.yml` | Retained Issue-demultiplexer tests and the production attention source allowlist depend on it. It has an opened-Issue production trigger. |
+| `.github/workflows/aios-brain-wakeup.yml`, `.github/workflows/aios-brain-repair-wakeup.yml` | Issue-carrier reusable-workflow `uses` edges, wake-carrier policy and bridge source registries, plus retained permission/provenance tests depend on them. |
+| `.github/workflows/aios-self-hosted-wakeup.yml` | PRIMARY carrier REST dispatch, wake policy/bridge registry, README manual entrypoint and retained self-hosted tests depend on it. |
+| `.github/workflows/aios-self-hosted-repair-wakeup.yml` | REPAIR carrier nested reusable-workflow `uses`, ingress dispatch, wake policy/bridge registry and retained repair tests depend on it. |
+
+All associated tests and modules remain present, including H4C0 bootstrap,
+H4C1 route/generation and H4D unattended acquisition/delivery controls. Local-chat,
+unattended-chat and terminal-attention production workflows are unchanged. The
+H4D live exit gate, queued H4E commitment and immutable roadmap remain unchanged.
+The queued return to verification-performance work supplies an additional reason
+not to infer that older performance diagnostic controls are disposable.
+
+Runtime can reproduce the dependency witnesses with these deterministic repository
+queries; package metadata, exports, nested workflow calls, carrier registries,
+retained tests and documentation contracts are included in the inspected surface:
+
+```powershell
+rg -n 'aios_(origin_capture_probe|full_suite_contention_diagnostic|serial_context_diagnostic|stable_failure_cause_diagnostic|stable_failure_detail_diagnostic|ingress_metadata_identity_diagnostic|parallel_git_fixture_push_diagnostic|residual_context_attribution_diagnostic|git_fixture_push_threshold_diagnostic|git_fixture_push_root_decomposition_diagnostic)|bp_v4_parallel_diagnostic' .ai/roadmap-state.yaml .ai/brain-wake-carriers.yaml .ai/brain-wakeup-carriers.yaml .ai/brain-repair-wakeup-carriers.yaml pyproject.toml src scripts tests .github docs README.md
+rg -n 'aios-(issue-carrier|brain-wakeup|brain-repair-wakeup|self-hosted-wakeup|self-hosted-repair-wakeup)|github_issue_(repair_)?wakeup|brain_wake_bridge|origin_(bootstrap|capture)' .ai/roadmap-state.yaml .ai/brain-wake-carriers.yaml .ai/brain-wakeup-carriers.yaml .ai/brain-repair-wakeup-carriers.yaml pyproject.toml src scripts tests .github docs README.md
+git diff --name-status c3b9dd4cc4d9230f1bfb2cf374bf328f74b29d81 HEAD
+```
+
+The last query makes the absence of deleted paths and unchanged production callers
+inspectable. No deletion or supersession proof is asserted for an uncertain
+candidate, and no contract is edited to erase a dependency witness.
+
+### 13.2 Fixture consolidation and semantic coverage mapping
+
+Only the repeated three-line roadmap fixture writer in `tests/test_brain_sync.py`
+is consolidated into `_write_roadmap`: the same path, `mkdir(parents=True,
+exist_ok=True)`, `yaml.safe_dump`, and UTF-8 write remain in the same test-order
+position. Git setup, remote topology, fault injection and scenario assertions stay
+in their owning cases. Every pre-existing test function is retained.
+
+| Existing test suffix (`test_brain_sync_...`) | Retained semantic invariant / explicit change |
+| --- | --- |
+| `ready_single_next_rehydration` | Exact selected task/revision, Unified State delegation, checkpoint, JSON serialization and no mutation flags. |
+| `completed_no_next` | COMPLETE with no executable task; publication now explicitly unavailable without active lineage. Explicit history returns the original DONE body. |
+| `missing_roadmap`, `ambiguous_next_multiple_items`, `unauthored_next` | Distinct missing, ambiguity and unauthored fail-close cases retain their assertions. |
+| `roadmap_lineage_conflict_done_sha` | The original divergent-DONE conflict assertions remain on `include_history=True`; default hydration additionally proves unrelated history cannot block current work. |
+| `roadmap_ancestry_observation_error_fails_closed` | Original Git exception cause, item/SHA diagnostic binding and distinction from a proved conflict remain on the explicit history path. |
+| `roadmap_lifecycle_conflict_next_already_done` | Existing canonical-DONE-versus-NEXT conflict still prevents execution. |
+| `observation_is_strictly_read_only` | Original status/HEAD/refs/runtime-state assertions apply to both default and explicit history, with exact roadmap-byte preservation added. |
+| `exact_detached_candidate_observes_published_main`, `detached_remote_identity_fails_closed` | Exact detached identity, config/index/remote-ref isolation, missing and ambiguous transport topology remain distinct and unchanged. |
+| `live_repository_smoke` | Existing live-repository selection/authority/read-only assertions remain present for Runtime. |
+
+Added cases cover both orders of real older/newer historical publications,
+bounded active-gate/queued-return hydration, absence of historical Git reads,
+complete on-demand bodies, publication conflicts and ancestry errors, exact
+task/author/main identity, and missing/duplicate/cyclic/bounded return pointers.
+None of the wake success, race, ambiguity, provenance, privacy, permission or
+regression suites is consolidated or removed. Runtime owns execution of these
+tests and construction of verification EVIDENCE.
