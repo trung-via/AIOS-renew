@@ -1,0 +1,159 @@
+task_id: TASK-294
+revision: 1
+goal: Implement TEMPORARY_WAKE_FIRST_CUTOVER_V2 so a stale, submitted, or ambiguous
+  older local-Chat wake event can no longer suppress a distinct newer Brain doorbell
+  through lane-wide LANE_IN_FLIGHT serialization, while preserving exact-destination/binding
+  safety and same-event permanent dedupe/no-blind-resend.
+problem: 'The Human explicitly directed AIOS to stop spending time hardening individual
+  wake blockers and to fix wake before returning to the H4 roadmap. TASK-291 TEMPORARY_PERMISSIVE_WAKE_V1
+  retired ACCOUNT_NOT_UNIQUE and other false-negative suppressors but deliberately
+  retained real durable flight/AMBIGUOUS state as a lane-wide eligibility gate. RUN-293-001
+  produced a canonical terminal RESULT and the terminal-attention/local-wake path
+  ran, yet the exact event terminal:RESULT:RUN-293-001:8860ace7b41ba41e45f4688c887168aeede44005
+  was DEFERRED repeatedly with LANE_IN_FLIGHT and no prompt reached H4A3. This is
+  a wake transport policy gap, not a TASK-293 semantic defect. The Human accepts a
+  temporary wake-first tradeoff: prior event uncertainty may not block a distinct
+  later event; same-event duplicate/no-blind-resend and wrong-destination protections
+  remain mandatory.'
+assumptions:
+- Canonical main at TASK-294 authoring is 3941414f009ad0f1b3e72ce75b89da68b01b16b1.
+- Canonical planning item temporary-wake-first-cutover-v2 is the unique NEXT and H4C0
+  is paused by explicit Human priority until this wake fix is complete.
+- TASK-293 RUN-293-001 Runtime verification and REVIEW-293-001 PASS remain valid;
+  its publication integration is separately checkpointed and must not be changed by
+  TASK-294.
+- GitHub workflow run 37169241505 is subordinate operational evidence that the RUN-293
+  terminal event reached local_chat_wake and was repeatedly returned DEFERRED/LANE_IN_FLIGHT;
+  it is not lifecycle truth.
+- TEMPORARY_WAKE_FIRST_CUTOVER_V2 prospectively supersedes TEMPORARY_PERMISSIVE_WAKE_V1
+  for local wake eligibility under explicit Human risk acceptance.
+- 'The new rule is event-local uncertainty: an AMBIGUOUS or SUBMITTED event may block
+  only resend of that exact event; it must not serialize a distinct event.'
+- Exact target conversation/binding identity and exact-event duplicate/no-blind-resend
+  protections remain non-negotiable because bypassing them could wake the wrong chat
+  or duplicate the same doorbell.
+- Other browser/UI transport conditions may remain bounded event-local transient outcomes,
+  but they must not create a durable cross-event lane blocker, a new Brain architecture
+  investigation, or roadmap truth.
+- TASK acceptance is deterministic implementation/regression verification only; Executor
+  must not perform a live wake, clear the Human's operational state, or claim H4 closure.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-291.yaml
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+  - .github/workflows/aios-local-chat-wake.yml
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+non_goals:
+- Investigate or repair the historical root cause of each individual LANE_IN_FLIGHT,
+  account-selector, UI-selector, draft, generation, or surface boundary before applying
+  the Human-approved cutover.
+- Modify TASK-293 source, review decision, publication failure, origin-bootstrap contract,
+  H4C0/H4C1 routing semantics, or advance the H4 roadmap.
+- Allow an AMBIGUOUS exact event to be resent blindly, allow an already SUBMITTED/RESOLVED_NOOP/tombstoned
+  exact event to be submitted again, or weaken permanent exact-event dedupe.
+- Infer or switch the destination conversation from active tab, recent chat, timestamps,
+  transcript, assistant output, repository identity, or model memory.
+- Remove exact target URL/page identity, current binding identity/generation safety,
+  login/non-regular rejection, state integrity, or the bounded requirement that the
+  actual Send target be uniquely accepted by the application.
+- Create a new Planner, generic router, retry daemon, wake queue, semantic priority
+  selector, Runtime, Reviewer, or Publisher authority.
+- Perform a live drain, delete/clear the user's current local wake state, tombstones,
+  held attempts, or historical event records from Executor execution.
+- Turn a transient browser/UI transport condition into semantic lifecycle truth or
+  a new planning blocker.
+constraints:
+  hard:
+  - LANE_IN_FLIGHT must cease to be a cross-event eligibility reason. The existence
+    of data.flight, a SUBMITTED older event, or an AMBIGUOUS older event must not
+    cause a distinct PENDING/DEFERRED event to be stored or returned as LANE_IN_FLIGHT.
+  - 'Same-event protection remains strict: an exact event already SUBMITTED, RESOLVED_NOOP,
+    compacted/tombstoned, or held AMBIGUOUS after a possible click may not be submitted
+    again without the existing exact proof/canonical-resolution rules. V2 must not
+    convert ambiguity into resend permission.'
+  - Legacy durable flight state from V1 must be handled idempotently and boundedly
+    so it cannot keep suppressing distinct events. Migration/normalization must preserve
+    event records, permanent dedupe/tombstones, generation metadata and ambiguous
+    same-event holds; it must not fabricate completion or canonical resolution.
+  - A finite operate/deliver invocation may attempt at most one actual user-turn submission.
+    After one possible click boundary is crossed, the invocation stops attempting
+    additional events, but it must not persist a lane-wide blocker that prevents a
+    distinct event in a later invocation.
+  - A distinct newer event must cross its own fresh canonical, binding and browser
+    checks even when an older event is SUBMITTED or AMBIGUOUS. Canonically RESOLVED
+    events still NOOP deterministically; CANONICAL_UNKNOWN remains transport uncertainty
+    and does not become lifecycle truth.
+  - Pre-submit browser/UI failures such as DRAFT_PRESENT, GENERATION_ACTIVE, SURFACE_UNPROVEN,
+    TARGET_PAGE_NOT_UNIQUE, INSERT_BLOCKED or SEND_BLOCKED may remain event-local
+    bounded transport outcomes where required for safe application interaction, but
+    they may not propagate to independent events, create lane-wide flight, or become
+    a reason for a new Brain architecture/roadmap investigation.
+  - 'Exact destination safety remains: current binding must still match the authorized
+    repository lane, exact target URL/page identity must remain bounded, binding generation
+    changes fail closed for that event, and login/non-regular/wrong-surface conditions
+    must not be bypassed into an arbitrary send.'
+  - Outbound exact-event dedupe and application send acceptance/proof remain mandatory.
+    The cutover prefers progress between distinct events, not duplicate submission
+    of one event or sending into an unproven destination.
+  - 'Focused regression must include the observed RUN-293 shape: an older submitted/ambiguous
+    holder with durable flight exists, then a distinct fresh event arrives; the fresh
+    event must never receive LANE_IN_FLIGHT solely because of the older holder and,
+    when otherwise eligible, may become SUBMITTED in a later finite invocation.'
+  - TEMPORARY_WAKE_FIRST_CUTOVER_V2 must be documented as explicit Human risk acceptance
+    that prospectively supersedes V1 eligibility serialization, with a clear rollback
+    boundary through the existing global enable gate rather than reintroducing per-boundary
+    investigations.
+  - Executor changes only scope.modify. Runtime owns canonical verification; Reviewer
+    owns semantic verdict; Publisher owns exact reviewed publication. No roadmap mutation,
+    live wake replay, operational-state deletion, or publication is performed by Executor.
+acceptance:
+- id: AC1
+  condition: Focused deterministic tests prove a distinct fresh event is not DEFERRED/BLOCKED
+    as LANE_IN_FLIGHT solely because an older event is SUBMITTED, AMBIGUOUS, or referenced
+    by legacy data.flight.
+- id: AC2
+  condition: Same-event permanent dedupe/no-blind-resend remains intact for SUBMITTED,
+    RESOLVED_NOOP, tombstoned/compacted and AMBIGUOUS-after-attempt cases, with no
+    new path that converts an ambiguous exact event into resend permission.
+- id: AC3
+  condition: Legacy V1 flight state is normalized or ignored idempotently without
+    deleting event/tombstone history or fabricating completion, and a regression fixture
+    matching the RUN-293 stale-flight shape allows a distinct otherwise-eligible event
+    to progress.
+- id: AC4
+  condition: At most one actual submission attempt occurs per finite invocation; after
+    one possible click the invocation makes no second send attempt, while a later
+    invocation can independently attempt a different event without a persisted lane-wide
+    flight gate.
+- id: AC5
+  condition: Exact destination/binding safety, canonical RESOLVED NOOP, permanent
+    exact-event dedupe, application send acceptance/proof, state integrity and event-local
+    fail-closed handling remain covered by focused regression tests; retained transient
+    browser/UI failures do not propagate across events.
+- id: AC6
+  condition: No H4C0/H4C1 semantics, TASK-293 artifacts, Reviewer/Publisher/Runtime
+    authority, generic router/queue, or roadmap advancement is introduced, and Executor
+    performs no live wake or operational-state reset.
+- id: AC7
+  condition: Local-wake and H4B documentation define TEMPORARY_WAKE_FIRST_CUTOVER_V2,
+    explicitly record the Human wake-first risk acceptance, state that LANE_IN_FLIGHT
+    is retired as cross-event eligibility, preserve same-event no-resend/wrong-target
+    protections, and direct rollback to the global wake enable gate rather than another
+    per-boundary hardening cycle.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_h4b_regular_chat_brain_resume.py
+  - git diff --check
