@@ -602,6 +602,23 @@ sequence:
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+    task_id: TASK-295
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "2a6541c821c64b54a83275da0db6281f1eb02960"
+    task_blob_sha: "4ad5d80806f042d2db09ba9898b6443f86981a4d"
+    authoring_issue_number: 1461
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "dcb9865b8379a9794db2c903ea1045a15114a7bd062dd62fdc2fa9bcebdb680c"
+    construct_fingerprint: "8b1cfda777eff0e95aad9daa0bdf39bc5506cd1f456acf48685a1f9a57fe8c70"
+    reconciled_candidate_fingerprint: "1aa733471f224a7f2febffe8c6bc4255fd2b16eafa0a481eb72c9b1f83b83d94"
+    mutation_freeze_after_dispatch: >-
+      After TASK-295 dispatch, do not write planning or bookkeeping commits to main
+      until terminal publication outcome. This preserves exact integration/publication
+      eligibility and avoids repeating the TASK-293 divergence incident.
     task293_prior_authoring:
       task_id: TASK-293
       task_revision: 1
@@ -816,16 +833,16 @@ sequence:
         reuse the prior execution delegation, does not permit semantic rewrites inside
         the integration candidate, and does not close H4C0 or authorize H4C1.
     current_live_blocker:
-      code: TASK_293_REVIEWED_DELTA_INTEGRATION_TASK_PENDING
-      authority: HUMAN_BRAIN_PLANNING
-      task_binding: TASK-293
-      next_action: BRAIN_AUTHOR_EXACT_TASK293_INTEGRATION_TASK
+      code: TASK_295_EXECUTOR_SELECTION_PENDING
+      authority: HUMAN
+      task_binding: TASK-295
+      next_action: HUMAN_SELECT_EXECUTOR_FOR_TASK_295
       basis: >-
-        RUN-293-001 and REVIEW-293-001 remain valid, but publication failed closed
-        because reviewed candidate 0f6684a41bff0ff6e284185c29e246256009a013 diverged from
-        then-current main. TASK-294 wake-first publication is now complete and Human has
-        authorized one separately reviewed integration candidate that must preserve the
-        exact reviewed TASK-293 blobs while proving compatibility with current main.
+        TASK-295 r1 is the canonical exact-blob integration task authorized by Human.
+        It preserves REVIEW-293-001 source bytes and verifies compatibility with the
+        reviewed/published TASK-294 wake-first current main. Execution requires a fresh
+        Human executor/model/effort selection because TASK-294 delegation expired on
+        task change.
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
