@@ -1,0 +1,131 @@
+task_id: TASK-295
+revision: 1
+goal: Integrate the exact already-reviewed TASK-293 PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1
+  delta onto current main after the reviewed/published TASK-294 wake-first cutover,
+  preserving the five TASK-293 reviewed file blobs byte-for-byte and proving compatibility
+  with current wake V2 before a new semantic review/publication.
+problem: RUN-293-001 and REVIEW-293-001 passed on reviewed candidate 0f6684a41bff0ff6e284185c29e246256009a013,
+  but publication failed closed because main diverged. Human has now explicitly authorized
+  one separate integration candidate. Current main contains the reviewed/published
+  TASK-294 TEMPORARY_WAKE_FIRST_CUTOVER_V2 and the five TASK-293 changed files remain
+  exactly at their pre-TASK-293 state. The integration must therefore transplant the
+  exact reviewed TASK-293 blobs without semantic edits and verify they remain compatible
+  with current wake V2. If exact reviewed blobs are incompatible, this task must fail
+  closed rather than silently rewrite the reviewed implementation.
+assumptions:
+- Canonical main at TASK-295 authoring is 6abccab1f01a617151a787d86a2023b2e4c65103.
+- Human authorization AUTHORIZE_SEPARATE_EXACT_TASK293_INTEGRATION_CANDIDATE is canonical
+  in H4C0 planning state.
+- Source engineering lineage is TASK-293 r1 / RUN-293-001 / REVIEW-293-001 PASS with
+  source reviewed SHA 0f6684a41bff0ff6e284185c29e246256009a013 and review decision
+  SHA 69f2da75569198da3d33b4f1a3a1dc009a08d38c.
+- TASK-294 wake-first cutover is reviewed and exactly published on current main lineage;
+  its local-wake implementation and policy must remain unchanged by this integration.
+- 'The five TASK-293 reviewed file blobs are: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md=f5c1121886139c8dc8c7755b5338d386d94eb2c5,
+  docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md=9e49e118017fb12da527d92c557e60f2bef97135,
+  scripts/aios_origin_bootstrap.py=31dd8c1a09cbf4807bd3f7cb815803465909fe82, src/aios_renew/origin_bootstrap.py=667a0d9332d1e7941c43f48adab3b53cd01b603e,
+  tests/test_origin_bootstrap.py=426a433e92a01bee2dae35bb54f8d7ea6eee0ff5.'
+- Current main's src/aios_renew/local_chat_wake.py is the TASK-294 wake-first implementation
+  and is an inspect-only compatibility dependency for TASK-295.
+- TASK-295 requires its own Runtime verification, semantic review and exact publication
+  despite reusing already-reviewed source blobs; the prior REVIEW-293-001 does not
+  automatically review the new integration SHA.
+- Publication of TASK-295 still does not close H4C0; the separately Human/Brain-owned
+  two-chat live conformance gate remains pending.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-293.yaml
+  - .ai/tasks/TASK-294.yaml
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+  modify:
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - scripts/aios_origin_bootstrap.py
+  - src/aios_renew/origin_bootstrap.py
+  - tests/test_origin_bootstrap.py
+non_goals:
+- Modify, reinterpret, optimize, refactor, or otherwise change the reviewed TASK-293
+  semantics while integrating them.
+- Modify src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py, TASK-294
+  wake-first policy/docs, or reintroduce LANE_IN_FLIGHT cross-event gating.
+- Implement H4C1 return routing, H4D unattended target acquisition, H4E concurrency
+  conformance, or close H4C0.
+- Perform the two-chat live origin-capture observation, a live local wake, browser-state
+  reset, or operational-state cleanup during Executor execution.
+- Rewrite TASK-293/RUN-293/REVIEW-293 history or claim its failed publication became
+  successful retroactively.
+- Treat prior REVIEW-293-001 as the semantic verdict for the new integration candidate
+  SHA.
+- Create a new Planner, Runtime, Reviewer, Publisher, generic router, retry authority,
+  or lifecycle reducer.
+- Modify roadmap state from Executor execution.
+constraints:
+  hard:
+  - 'The resulting content of every scope.modify path must match the corresponding
+    reviewed TASK-293 blob exactly: f5c1121886139c8dc8c7755b5338d386d94eb2c5, 9e49e118017fb12da527d92c557e60f2bef97135,
+    31dd8c1a09cbf4807bd3f7cb815803465909fe82, 667a0d9332d1e7941c43f48adab3b53cd01b603e
+    and 426a433e92a01bee2dae35bb54f8d7ea6eee0ff5 respectively.'
+  - The candidate may change exactly the five scope.modify files and no others. Current
+    TASK-294 wake-first files remain byte-for-byte inherited from the TASK-295 base.
+  - Integration must use the exact reviewed source candidate 0f6684a41bff0ff6e284185c29e246256009a013
+    as provenance. Executor may choose HOW to materialize those blobs but may not
+    author semantic edits inside them.
+  - Compatibility with current main must be tested after exact blob integration, including
+    origin-bootstrap focused tests plus current local-chat-wake/H4B regression coverage.
+  - If exact reviewed blobs fail compatibility verification on current main, Executor
+    must surface canonical verification failure; it must not modify any reviewed blob
+    or wake-V2 file to make tests pass inside TASK-295.
+  - The integrated docs must continue to state that TASK-293/TASK-295 implementation
+    or publication alone is not the required two-chat live proof and that H4C1 remains
+    blocked until Human/Brain H4C0 live closure.
+  - Raw conversation URL, prompt/transcript/assistant content and machine-local binding
+    state remain outside canonical engineering artifacts exactly as in the reviewed
+    TASK-293 contract.
+  - 'TASK-294''s reviewed/published wake-first safety boundary remains intact: distinct-event
+    progress, same-event dedupe/no-blind-resend, exact destination/binding safety
+    and global enable rollback are not changed by this integration.'
+  - Runtime owns canonical verification of the new integration SHA, Reviewer owns
+    a fresh semantic verdict for that SHA, Publisher owns exact publication, and Human/Brain
+    alone owns later H4C0 live closure/roadmap advancement.
+  - Executor changes only scope.modify and performs no live wake, operational-state
+    rewrite, roadmap mutation, review, or publication.
+acceptance:
+- id: AC1
+  condition: All five scope.modify paths in the candidate have exactly the reviewed
+    TASK-293 blob identities declared in the task, with no semantic or byte-level
+    drift.
+- id: AC2
+  condition: The candidate changed-file set is exactly the five TASK-293 integration
+    paths and excludes all TASK-294 wake-first implementation, tests and documentation.
+- id: AC3
+  condition: 'Focused compatibility verification passes on the integrated candidate
+    against current main: origin-bootstrap tests and current local-chat-wake/H4B regression
+    suites all pass with the exact reviewed blobs unchanged.'
+- id: AC4
+  condition: A deterministic source comparison proves the five integrated paths are
+    identical to reviewed source candidate 0f6684a41bff0ff6e284185c29e246256009a013.
+- id: AC5
+  condition: Documentation still preserves the separate two-chat live H4C0 gate, keeps
+    H4C1 blocked, and does not reinterpret TASK-293 publication failure or TASK-294
+    completion.
+- id: AC6
+  condition: No raw conversation identity/canonicalization, new semantic/lifecycle
+    authority, return routing, wake delivery behavior, live wake, operational reset,
+    or roadmap advancement is introduced by the integration.
+- id: AC7
+  condition: The new integration candidate receives independent Runtime verification
+    and remains eligible only for a fresh Reviewer verdict and exact Publisher action;
+    prior REVIEW-293-001 is provenance, not the new verdict.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - git diff --exit-code 0f6684a41bff0ff6e284185c29e246256009a013 -- docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+    docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md scripts/aios_origin_bootstrap.py
+    src/aios_renew/origin_bootstrap.py tests/test_origin_bootstrap.py
+  - python -m pytest -q tests/test_origin_bootstrap.py tests/test_local_chat_wake.py
+    tests/test_h4b_regular_chat_brain_resume.py
+  - git diff --check
