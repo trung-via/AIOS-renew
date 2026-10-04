@@ -1,0 +1,143 @@
+task_id: TASK-299
+revision: 1
+goal: Correct H4C0 PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 so exactText admits only
+  the live-proved ProseMirror empty-paragraph root shape P[data-empty-paragraph="true"]
+  > BR.ProseMirror-trailingBreak, while preserving all existing byte-exact, visibility,
+  origin, scoped-Send, timing, and no-blind-resend safeguards.
+problem: 'After exact publication of TASK-298, a bounded A1 again ended pre-submit
+  as UNPROVED/INSERT_BLOCKED. The same-attempt diagnostic remained READY/EXACT_TEXT
+  through exhaustion, while a concurrent read-only observer classified the stable
+  internal failure as ROOT_ATTRIBUTES. Read-only inspection of that same failed composer
+  then established exactly one offending root block: P with exactly one attribute
+  data-empty-paragraph="true", empty textContent, and exactly one child BR.ProseMirror-trailingBreak.
+  Current exactText rejects every attributed P/DIV root at plain(node) before reaching
+  the already bounded trailing-break grammar. This supplies a non-speculative correction
+  basis: admit only that exact production empty-paragraph root shape, not arbitrary
+  root attributes or rich DOM.'
+assumptions:
+- Canonical main at TASK-299 authoring is 6334f2c503d84511517666cac6668180928c2cd2.
+- 'TASK-298 r1 is canonically complete: RUN-298-001 Runtime PASS, REVIEW-298-001 PASS,
+  exact published source SHA 8d2bf871f559e5d021c42e5c5765d0e8a7600017, and the roadmap
+  records its bounded A1 as READY/EXACT_TEXT with exhausted true and no submit attempt.'
+- H4C0 remains open and H4C1 remains blocked; the live probes are Human/Brain planning
+  evidence, not a RUN, FAILURE, REVIEW finding, publication failure, or Runtime verification.
+- 'One fresh A1 retry produced matching same-attempt evidence: the production helper
+  remained READY/EXACT_TEXT through the existing READY window and the concurrent read-only
+  observer stably classified the exactText root subgate as ROOT_ATTRIBUTES.'
+- Read-only inspection of the same failed composer established one root P offender
+  with exactly one data-empty-paragraph attribute whose exact value is true, empty
+  textContent, and a sole BR.ProseMirror-trailingBreak child.
+- The current exactText root predicate requires all P/DIV roots to have zero attributes,
+  so the observed valid empty paragraph is rejected before its existing trailing-break
+  child grammar can be evaluated.
+- No evidence authorizes changing timeout, polling, selectors, Send scope, visibility
+  semantics, logical/rendered projection, literal-paste wrapper grammar, origin proof,
+  or no-blind-resend behavior.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-297.yaml
+  - .ai/tasks/TASK-298.yaml
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - src/aios_renew/origin_bootstrap.py
+  - scripts/aios_origin_bootstrap.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_origin_bootstrap.py
+  - tests/test_local_chat_wake.py
+  modify:
+  - src/aios_renew/origin_bootstrap.py
+  - tests/test_origin_bootstrap.py
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+non_goals:
+- Permit arbitrary attributes on P/DIV roots, arbitrary data-* attributes, arbitrary
+  empty-paragraph markers, or generic rich-text equivalence.
+- Permit data-empty-paragraph on DIV, accept a value other than the exact string true,
+  accept additional root attributes, accept the marker on a non-empty paragraph, or
+  accept any child shape other than the exact sole trailing BR.
+- Change the literal-paste SPAN allowlist, BR trailing-break semantics outside the
+  exact observed empty paragraph, logical byte reconstruction, rendered projection,
+  visibility rules, or traversal budget.
+- Change the three-second READY window, poll cadence, challenge TTL, page/composer
+  selectors, scoped Send selection/enabledness, route/challenge binding, registry
+  generation, or no-blind-resend state machine.
+- Change diagnostic output semantics, add another diagnostic task/path, add retries,
+  manual Send, alternate acceptance, or operational wake behavior.
+- Implement H4C1, H4D, H4E, final H4B proof, H5, or advance roadmap semantics automatically.
+- Persist or export raw conversation identity, route handle, challenge/nonce, registry
+  contents, draft/bootstrap text, transcript, assistant output, or raw DOM payload
+  into canonical engineering artifacts.
+- Treat the live planning probes as canonical Runtime evidence or claim H4C0 closure
+  from implementation/tests/review/publication alone.
+constraints:
+  hard:
+  - The only new accepted attributed-root grammar is exactly P with one attribute
+    data-empty-paragraph="true", empty textContent, and exactly one child BR with
+    exactly class="ProseMirror-trailingBreak", no children and empty textContent;
+    the existing visibility and trailing-break checks still apply.
+  - Ordinary root text nodes and existing attribute-free P/DIV grammar remain unchanged.
+    DIV[data-empty-paragraph], missing/wrong/non-true value, any extra root attribute,
+    non-empty marked P, wrong/multiple/absent child, or any other decorated root must
+    fail closed.
+  - The correction must not infer equivalence from rendered text alone and must preserve
+    byte-exact raw/textContent and logical projection equality against staged.expected.
+  - The production literal-paste SPAN allowlist remains exact and unchanged; no arbitrary
+    SPAN, nesting, style/class decoration, or generic normalization is introduced.
+  - ready(), proves(), surface(), Send/form guards, diagnostic attribution ordering,
+    the three-second polling bound, challenge TTL, and consume-before-single-click/no-blind-resend
+    semantics remain unchanged except that exactText may accept the single proved
+    root shape.
+  - Focused tests must include a positive fixture for the exact marked empty P plus
+    existing literal-paste blocks and negative fixtures for DIV marker, wrong/missing
+    value, extra attribute, non-empty marked P, and wrong/multiple/absent child, while
+    retaining existing negative rich-DOM/byte/separator/control cases.
+  - Executor changes only scope.modify and performs no live H4C0 observation, no operational-state
+    reset, no roadmap mutation, no semantic review, and no publication.
+  - Runtime owns canonical verification; Reviewer owns semantic verdict; Publisher
+    owns exact reviewed publication. After publication, Human/Brain alone performs
+    one bounded A1 live proof and decides H4C0 continuation; a new failure does not
+    automatically authorize TASK-300.
+acceptance:
+- id: AC1
+  condition: The candidate changes only src/aios_renew/origin_bootstrap.py, tests/test_origin_bootstrap.py,
+    and docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md; diagnostic script, local_chat_wake
+    implementation/tests, lifecycle artifacts, and roadmap state remain unchanged.
+- id: AC2
+  condition: exactText accepts the exact observed empty-paragraph root only when the
+    root is P with exactly data-empty-paragraph="true", empty textContent, and exactly
+    one child BR.ProseMirror-trailingBreak satisfying the existing childless/empty/visible
+    trailing-break grammar.
+- id: AC3
+  condition: exactText still rejects DIV[data-empty-paragraph], wrong or missing marker
+    value, any additional root attribute, marked non-empty P, and wrong, multiple,
+    or absent children; arbitrary decorated roots and rich DOM remain fail-closed.
+- id: AC4
+  condition: The correction preserves existing literal-paste SPAN grammar, raw/textContent
+    equality, logical byte projection, rendered projection, visibility, traversal
+    budget, page/challenge/origin proof, scoped Send/form checks, timing, and no-blind-resend
+    semantics.
+- id: AC5
+  condition: Focused positive regression reproduces the observed production shape
+    with literal-paste blocks plus P[data-empty-paragraph="true"] > BR.ProseMirror-trailingBreak
+    and reaches readiness under the existing contract without weakening any other
+    gate.
+- id: AC6
+  condition: Focused negative regressions cover wrong root tag, wrong/missing value,
+    extra root attribute, non-empty marked paragraph, wrong/multiple/absent child,
+    and preserve existing rich-DOM, byte/separator, visibility, control, page/challenge,
+    and binding fail-closed cases.
+- id: AC7
+  condition: 'H4C0 documentation records only privacy-safe bounded planning facts:
+    TASK-298 READY/EXACT_TEXT exhaustion, same-attempt ROOT_ATTRIBUTES attribution,
+    and the exact P[data-empty-paragraph="true"] empty sole-trailing-BR production
+    shape; it keeps H4C0 open and H4C1 blocked pending one post-publication Human/Brain
+    A1 live proof.'
+- id: AC8
+  condition: The Executor RESULT claims only pre-verification implementation properties
+    with unresolved empty and exact changed_files; Runtime verification, fresh Reviewer
+    verdict, exact publication, post-publication A1, and any later H4C0 decision remain
+    downstream facts.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_origin_bootstrap.py tests/test_local_chat_wake.py
+  - git diff --check
