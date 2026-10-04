@@ -605,6 +605,25 @@ sequence:
         - CREATE_NEW_PLANNER_RUNTIME_REVIEWER_PUBLISHER_OR_WAKE_QUEUE
         - REQUIRE_DEVELOPER_MODE_MCP_RESPONSES_API_OR_OPENAI_SESSION_METADATA
         - MAKE_ROUTE_HANDLE_AN_AUTHORIZATION_CAPABILITY
+    human_execution_delegation:
+      selected_on: "2026-10-04"
+      authority: HUMAN
+      task_id: TASK-293
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_293_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task293-r1-codex61-xhigh-20261004-001
+      task_blob_sha: "728869e1f056820968f0c421d37f43c45a52d093"
+      task_commit_sha: "2e0a2e5cd4c1845e25023bcb1609799b3633e800"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: PENDING_CARRIER
     prior_human_execution_delegation:
       selected_on: "2026-10-04"
       authority: HUMAN
@@ -657,7 +676,7 @@ sequence:
       code: H4C0_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_AND_LIVE_PROOF_PENDING
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-293
-      next_action: HUMAN_SELECT_EXECUTOR_FOR_TASK_293
+      next_action: DISPATCH_TASK_293_WITH_SELECTED_EXECUTOR
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
