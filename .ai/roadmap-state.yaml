@@ -602,23 +602,37 @@ sequence:
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
-    task_id: TASK-295
-    task_revision: 2
+    task_id: TASK-296
+    task_revision: 1
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "41b6c3b2a2103e68c18ddc2c3780f2e648b3ce41"
-    task_blob_sha: "dedf18eeb4bc962d3cbd89f5571975ff26b08fb1"
-    authoring_issue_number: 1464
+    task_author_commit_sha: "61771ecb2fa2d3af2eb76f970e530169da173286"
+    task_blob_sha: "a35ab639d857fdddfc85d428ee3d5efa77fe5bb0"
+    authoring_issue_number: 1469
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
       - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "dcca752e58c25c7c03bf0f39b0571ba9162918d31f8a6719eea84652cb18b647"
-    construct_fingerprint: "c9b149beac6dcb2b7fdf51efe147eaec3d21bdedbe8c097f54df61e3cd1d34cf"
-    reconciled_candidate_fingerprint: "870f6156c5713c939bf5008d1cb93fce88cea68af7b36b5c466b4bac701603db"
+    packet_fingerprint: "4cb3702e2f5af86216cb863b438ddb1413aed52dc255f24b19c42865ef449a86"
+    construct_fingerprint: "ec9d087ceec47e4daf8b32dec3376d69f9a69352ae1f7f01e9b594d72a754dab"
+    reconciled_candidate_fingerprint: "8281a2b5597697c1e37d2eddac7c51e40b40ae0467a21f2d107f23034c4d0102"
     mutation_freeze_after_dispatch: >-
-      After TASK-295 dispatch, do not write planning or bookkeeping commits to main
-      until terminal publication outcome. This preserves exact integration/publication
-      eligibility and avoids repeating the TASK-293 divergence incident.
+      After TASK-296 dispatch, do not write planning or bookkeeping commits to main
+      until terminal publication outcome. The bounded live H4C0 observation resumes
+      only after exact reviewed publication of the correction candidate.
+    task295_prior_authoring:
+      task_id: TASK-295
+      task_revision: 2
+      task_authoring_status: CANONICALIZED
+      task_author_commit_sha: "41b6c3b2a2103e68c18ddc2c3780f2e648b3ce41"
+      task_blob_sha: "dedf18eeb4bc962d3cbd89f5571975ff26b08fb1"
+      authoring_issue_number: 1464
+      audit_profile: brain-high-value-v3
+      audit_stages:
+        - CONSTRUCT
+        - ADVERSARIAL_AUDIT_AND_RECONCILE
+      packet_fingerprint: "dcca752e58c25c7c03bf0f39b0571ba9162918d31f8a6719eea84652cb18b647"
+      construct_fingerprint: "c9b149beac6dcb2b7fdf51efe147eaec3d21bdedbe8c097f54df61e3cd1d34cf"
+      reconciled_candidate_fingerprint: "870f6156c5713c939bf5008d1cb93fce88cea68af7b36b5c466b4bac701603db"
     task293_prior_authoring:
       task_id: TASK-293
       task_revision: 1
@@ -786,7 +800,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PENDING_TWO_CHAT_LIVE_PROOF_AFTER_REVIEWED_PUBLICATION
+      status: PAUSED_FOR_TASK_296_EDITOR_RECONCILIATION_CORRECTION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -798,9 +812,34 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        The Human approved the page-scoped bootstrap as the selected H4C0 fallback.
-        Architecture approval alone does not implement it, prove the two-chat cases,
-        close H4C0, or authorize H4C1.
+        The first bounded post-publication live attempt reached exact page-scoped
+        Human challenge proof and bootstrap-envelope insertion, then failed closed
+        before any submit attempt because the current regular-Chat editor reconciled
+        the inserted multiline draft into a representation rejected by the existing
+        exact-text readiness guard. TASK-296 is the bounded correction. The full
+        two-chat procedure remains pending after its reviewed publication; this
+        observation does not close H4C0 or authorize H4C1.
+    bounded_live_observation_checkpoint:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      contract: PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1
+      published_subject_sha: "49734b00e7fab8da35d56f3f802c09b8aabc8b75"
+      status: UNPROVED
+      reason: INSERT_BLOCKED
+      submission_attempted: false
+      bounded_structural_facts:
+        - EXACT_ONE_VISIBLE_REGULAR_CHAT_COMPOSER
+        - EXACT_ONE_ENCLOSING_FORM
+        - EXACT_ONE_MATCHING_VISIBLE_ENABLED_SCOPED_SEND
+        - INSERTION_REACHED_POST_INSERTION_READINESS
+        - EDITOR_ASYNC_RECONCILIATION_CHANGED_COMPOSER_STRUCTURE
+        - FINAL_INNER_TEXT_AND_TEXT_CONTENT_DIVERGED
+      privacy_boundary: >-
+        No raw conversation URL or UUID, route handle, endpoint, registry contents,
+        draft contents, transcript, assistant output, or raw DOM payload is recorded.
+      interpretation: >-
+        This is bounded Human/Brain live-conformance planning evidence only. It is
+        not a RUN, FAILURE, EVIDENCE, REVIEW finding, or publication failure.
     interrupted_lifecycle_checkpoint:
       authority: RUNTIME_REVIEWER_PUBLISHER_OBSERVATION
       task_id: TASK-293
@@ -870,7 +909,7 @@ sequence:
         the integration engineering lifecycle only. It does not constitute the required
         two-regular-chat H4C0 live observation, does not close H4C0, and does not
         authorize H4C1.
-    human_execution_delegation:
+    task295_prior_human_execution_delegation:
       selected_on: "2026-10-04"
       authority: HUMAN
       task_id: TASK-295
@@ -882,20 +921,23 @@ sequence:
       expires_on_task_change: true
       persistence: THROUGH_TASK_295_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
     current_live_blocker:
-      code: H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_PENDING
-      authority: HUMAN_BRAIN_PLANNING
-      task_binding: TASK-295
-      task_revision: 2
-      published_sha: "49734b00e7fab8da35d56f3f802c09b8aabc8b75"
-      next_action: RUN_BOUNDED_TWO_CHAT_PAGE_SCOPED_ORIGIN_BOOTSTRAP_OBSERVATION
+      code: TASK_296_EXECUTOR_SELECTION_PENDING
+      authority: HUMAN
+      task_binding: TASK-296
+      task_revision: 1
+      next_action: HUMAN_SELECT_EXECUTOR_FOR_TASK_296
       basis: >-
-        TASK-295 r2 engineering, Runtime verification, fresh semantic review and exact
-        publication are complete. The only remaining H4C0 gate is the separately
-        Human/Brain-owned live conformance procedure against the reviewed/published
-        PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 implementation. Synthetic tests,
-        Runtime PASS, Reviewer PASS and publication cannot substitute for this gate.
+        TASK-296 r1 is the canonical two-stage-audited bounded correction for the
+        production editor-reconciliation gap exposed by the H4C0 live observation.
+        TASK-295 execution delegation expired on task change. Execution therefore
+        requires a fresh Human executor/model/effort selection. After reviewed exact
+        publication, Human/Brain must restart the bounded two-chat live procedure;
+        publication alone cannot close H4C0.
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
+        - NO_MANUAL_SEND_FALLBACK
+        - NO_DOCUMENT_GLOBAL_SEND_LOOKUP
+        - NO_GENERIC_WHITESPACE_OR_RICH_TEXT_NORMALIZATION
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
         - NO_RAW_CONVERSATION_URL_IN_CANONICAL_STATE
         - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_IDENTITY_INFERENCE
@@ -911,7 +953,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: TASK_296_REVIEWED_PUBLICATION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
