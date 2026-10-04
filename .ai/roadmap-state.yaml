@@ -892,7 +892,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: READY_FOR_FRESH_POST_TASK_300_A1_ON_NEW_REGULAR_CHAT
+      status: FRESH_A1_PASS_READY_FOR_A2_SAME_CONVERSATION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -905,13 +905,36 @@ sequence:
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
         TASK-300 is Runtime-verified, REVIEW-300-001 PASS and exactly published at
-        ad00bb370b6e46731d5b8ef1abbaf6536a22fb5b. Human/Brain disposition keeps the
-        earlier A1 and D1 attempts as consumed historical AMBIGUOUS observations:
-        neither is replayed, reset, relabeled, nor counted toward the fresh H4C0 proof.
-        The unique next live action is one ordinary bounded A1 on a different regular
-        chat conversation that has no prior AIOS bootstrap attempt. Only a
-        SUBMITTED/ACCEPTED result may make A2 eligible. H4C0 remains open and H4C1
+        ad00bb370b6e46731d5b8ef1abbaf6536a22fb5b. Historical A1/D1 remain consumed
+        AMBIGUOUS and excluded from this fresh series. Fresh post-TASK-300 A1 on a new
+        regular conversation returned SUBMITTED/ACCEPTED with positive generation 1.
+        The opaque route itself remains transient and is not canonicalized. The unique
+        next live action is A2 on that exact same conversation after it is idle; A2
+        must also return SUBMITTED/ACCEPTED with the same transient route handle and
+        the same generation before B1 becomes eligible. H4C0 remains open and H4C1
         remains blocked.
+    fresh_post_task300_a1_checkpoint:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      published_subject_sha: "ad00bb370b6e46731d5b8ef1abbaf6536a22fb5b"
+      observation_label: A1
+      ordinary_result:
+        status: SUBMITTED
+        reason: ACCEPTED
+        route_handle_present: true
+        generation: 1
+      comparison_state:
+        route_handle_storage: TRANSIENT_ONLY
+        route_equality_to_a2: PENDING
+        generation_equality_to_a2: PENDING
+      interpretation: >-
+        Fresh A1 is a live Human/Brain conformance observation, not Runtime engineering
+        evidence. Its bounded result satisfies the first submission gate. The opaque
+        route remains transient solely for A1/A2/B1/B2 comparison and is intentionally
+        absent from canonical roadmap state.
+      privacy_boundary: >-
+        No raw route handle, conversation URL or UUID, endpoint, registry contents,
+        draft/bootstrap text, transcript, assistant output, or raw DOM payload is retained.
     post_task299_a1_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -1457,28 +1480,26 @@ sequence:
         The dispatch receipt remains transport evidence only; terminal lifecycle truth
         comes from canonical RESULT, review decision and published main.
     current_live_blocker:
-      code: H4C0_FRESH_POST_TASK_300_A1_REQUIRED
+      code: H4C0_FRESH_POST_TASK_300_A2_REQUIRED
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-300
       task_revision: 1
-      next_action: RUN_ONE_FRESH_A1_ON_NEW_REGULAR_CHAT
+      next_action: RUN_A2_ON_SAME_FRESH_A1_CONVERSATION
       basis: >-
-        TASK-300 reached exact reviewed publication. Human instructed continuation.
-        Human/Brain therefore dispositions A1 and D1 as consumed historical AMBIGUOUS
-        attempts that remain immutable and are excluded from the fresh proof sequence.
-        A new regular conversation with no prior AIOS bootstrap attempt avoids blind
-        resend and provides the only eligible A1. A2/B1/B2 remain blocked until this
-        fresh A1 returns SUBMITTED/ACCEPTED.
+        Fresh post-TASK-300 A1 returned SUBMITTED/ACCEPTED with positive generation 1.
+        The opaque route handle is retained only transiently for comparison and is not
+        written to canonical planning state. A2 must use the same regular conversation
+        and independently return SUBMITTED/ACCEPTED with both route equality to A1 and
+        unchanged generation before any B-series observation is authorized.
       prohibitions:
+        - NO_DIFFERENT_CONVERSATION_FOR_A2
+        - NO_B1_B2_BEFORE_A2_SAME_ROUTE_AND_GENERATION_PASS
+        - NO_RAW_ROUTE_HANDLE_IN_CANONICAL_ARTIFACTS
         - NO_RESET_REPLAY_OR_RELABEL_OF_HISTORICAL_A1_D1
-        - NO_USE_OF_HISTORICAL_A1_D1_AS_FRESH_PASS_EVIDENCE
-        - NO_A2_B1_B2_BEFORE_FRESH_A1_SUBMITTED_ACCEPTED
-        - NO_DIAGNOSTIC_OR_OBSERVER_UNLESS_FRESH_A1_FAILS_AND_HUMAN_BRAIN_AUTHORIZES
+        - NO_DIAGNOSTIC_OR_OBSERVER_UNLESS_A2_FAILS_AND_HUMAN_BRAIN_AUTHORIZES
         - NO_AUTOMATIC_TASK_301
-        - NO_GENERIC_WHITESPACE_OR_DOM_WEAKENING
         - NO_TIMEOUT_OR_POLLING_CHANGE
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
-        - NO_RAW_IDENTITY_OR_CONTENT_EXPORT
         - NO_AUTOMATIC_ROADMAP_ADVANCE
     post_task299_consumed_ambiguous_empty_shape_probe:
       authority: HUMAN_BRAIN_PLANNING
@@ -1526,7 +1547,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: FRESH_POST_TASK_300_A1_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: FRESH_POST_TASK_300_A2_SAME_ROUTE_AND_GENERATION_THEN_B1_B2_CONTINUITY_AMBIGUITY_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
