@@ -1,0 +1,155 @@
+task_id: TASK-300
+revision: 1
+goal: Correct H4C0 PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 post-submit proof so
+  submitted() recognizes only the live-proved one-LF ProseMirror empty-editor representation
+  in addition to the existing fully-empty representation, while preserving all origin,
+  composer-identity, scoped-Send, timing, registry, and no-blind-resend safeguards.
+problem: After exact reviewed publication of TASK-299, the single authorized A1 progressed
+  through the submission attempt and a sent user turn became present, but the helper
+  returned AMBIGUOUS/SUBMISSION_UNPROVEN. A disposable D1 reproduced the same bounded
+  helper result while a concurrent read-only observer stably reported COMPOSER_NOT_EMPTY
+  throughout the settled post-submit tail with no structural pass. A later read-only
+  inspection over already-consumed ambiguous registry routes found one currently open
+  ambiguous page whose retained composer had textContent exactly empty, innerText
+  exactly one LF, exactly one P root with empty text, and a sole ProseMirror-trailingBreak
+  BR child. The frozen submitted() predicate currently requires both textContent and
+  innerText to be exactly empty, so it rejects this live semantically-empty editor
+  representation. This supplies a non-speculative prospective compatibility correction
+  basis without authorizing retry, state reset, generic whitespace normalization,
+  or broader DOM acceptance.
+assumptions:
+- Canonical main at TASK-300 authoring is 56b6f30ddb72d1f104d153dc2fe3c005a0990955.
+- 'TASK-299 r1 is canonically complete: RUN-299-001 Runtime PASS, REVIEW-299-001 PASS,
+  and exact published source SHA 5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27.'
+- H4C0 remains open and H4C1 remains blocked; A1, D1, and the read-only shape inspection
+  are Human/Brain planning evidence, not RUN, FAILURE, REVIEW, publication, or Runtime
+  verification truth.
+- The single authorized post-TASK-299 A1 returned AMBIGUOUS/SUBMISSION_UNPROVEN after
+  the submission-attempt boundary; Human observation confirmed a sent user turn became
+  present, but A1 is not retroactively reclassified as SUBMITTED/ACCEPTED.
+- A separately authorized disposable D1 reproduced AMBIGUOUS/SUBMISSION_UNPROVEN and
+  its concurrent read-only observer stably reported only COMPOSER_NOT_EMPTY in the
+  settled post-submit tail with STRUCTURAL_PASS_SEEN false.
+- A later read-only probe over already-consumed ambiguous registry routes observed
+  two ambiguous routes but only one currently open page; that page had textContent
+  EMPTY, innerText ONE_LF, exactly one P root with empty text, and a sole ProseMirror-trailingBreak
+  BR child. This observation does not claim both A1 and D1 had the same final DOM
+  shape.
+- The current submitted() predicate requires staged.box.textContent === '' and staged.box.innerText
+  === '', so the observed one-LF empty-editor representation is rejected at the innerText
+  equality even though textContent is empty.
+- No evidence authorizes changing proof timeout, polling cadence, challenge TTL, page/composer
+  selectors, scoped Send logic, exactText/readiness grammar, route/challenge binding,
+  registry generation, attempt-state semantics, or no-blind-resend behavior.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-299.yaml
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - src/aios_renew/origin_bootstrap.py
+  - scripts/aios_origin_bootstrap.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_origin_bootstrap.py
+  - tests/test_local_chat_wake.py
+  modify:
+  - src/aios_renew/origin_bootstrap.py
+  - tests/test_origin_bootstrap.py
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+non_goals:
+- Trim, normalize, collapse, or generically accept post-submit whitespace, newlines,
+  rendered text, or arbitrary rich DOM.
+- Accept DIV, root text, multiple root nodes, multiple or missing children, a bare
+  BR, a BR with any class other than exactly ProseMirror-trailingBreak, decorated/child-bearing/non-empty
+  BR content, hidden nodes, non-empty textContent, or innerText other than exactly
+  empty or exactly one LF.
+- Use root attributes as origin identity, content authority, transcript evidence,
+  or a reason to broaden pre-submit exactText grammar; TASK-299 exactText behavior
+  remains unchanged.
+- Change the three-second submission proof window, READY window, poll cadence, challenge
+  TTL, page/composer selectors, scoped Send/form selection or enabledness, route/challenge
+  binding, registry generation, or attempt lifecycle.
+- Reset, delete, relabel, replay, or resend the consumed A1 or D1 AMBIGUOUS attempts;
+  publication of TASK-300 alone does not convert historical ambiguous attempts to
+  SUBMITTED.
+- Add a new diagnostic subsystem, retry path, manual-Send fallback, transcript/assistant-output
+  proof, second Planner/router, lifecycle reducer, Reviewer, Publisher, or Runtime
+  authority.
+- Implement H4C1, H4D, H4E, final H4B proof, H5, or automatically advance roadmap
+  semantics.
+- Persist or export raw conversation URL/UUID, route handle, challenge/nonce, endpoint,
+  registry contents, draft/bootstrap text, transcript content, assistant output, or
+  raw DOM payload into canonical engineering artifacts.
+constraints:
+  hard:
+  - Preserve the current successful fully-empty post-submit case where the retained
+    composer has textContent exactly empty and innerText exactly empty.
+  - The only additional eligible empty-render case is the retained same composer with
+    textContent exactly empty, innerText exactly one LF, exactly one visible P root
+    whose textContent is empty, and exactly one visible child BR with exactly class="ProseMirror-trailingBreak",
+    no children, and empty textContent.
+  - Root attributes are not origin/content authority for this post-submit emptiness
+    proof; acceptance of the one-LF case must still be structurally closed by exact
+    root count/tag, empty logical content, exact sole BR child grammar, and visibility.
+    It must not modify TASK-299 pre-submit exactText attributed-root allowlist.
+  - 'All other submitted() operands remain unchanged: spent, invalidated, staged/pending
+    presence, document identity, exact route equality, one regular main surface, no
+    login/nonregular surface, unique retained composer identity, and scoped Send count/enabledness.'
+  - The correction must not change submission timing bounds, polling, challenge TTL,
+    Send click behavior, consume-before-click ordering, registry ATTEMPTING/AMBIGUOUS/SUBMITTED
+    transitions, or no-blind-resend semantics.
+  - Focused tests must prove both accepted empty representations and reject one-LF
+    near-misses including DIV, root text, multiple roots, no/multiple children, bare/wrong/decorated/hidden
+    trailing BR, non-empty root/BR text, other whitespace, and multiple LFs, while
+    retaining existing route/composer/Send fail-closed cases.
+  - Executor changes only scope.modify and performs no live H4C0 observation, no ambiguous-state
+    reset, no roadmap mutation, no semantic review, and no publication.
+  - Runtime owns canonical verification; Reviewer owns semantic verdict; Publisher
+    owns exact reviewed publication. After publication, Human/Brain separately decides
+    disposition of historical A1/D1 ambiguous attempts and whether a fresh bounded
+    live observation is authorized; no automatic TASK-301 or roadmap advance follows.
+acceptance:
+- id: AC1
+  condition: The candidate changes only src/aios_renew/origin_bootstrap.py, tests/test_origin_bootstrap.py,
+    and docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md; scripts, local_chat_wake
+    implementation/tests, lifecycle artifacts, registry state, and roadmap state remain
+    unchanged.
+- id: AC2
+  condition: submitted() preserves the existing fully-empty retained-composer success
+    case with textContent exactly empty and innerText exactly empty.
+- id: AC3
+  condition: 'submitted() additionally accepts only the live-proved one-LF empty-editor
+    representation: retained same composer, textContent exactly empty, innerText exactly
+    one LF, exactly one visible P root with empty textContent, and exactly one visible
+    child BR with exactly class="ProseMirror-trailingBreak", no children, and empty
+    textContent.'
+- id: AC4
+  condition: The one-LF compatibility path fails closed for DIV or root text, multiple
+    roots, missing/multiple children, bare or wrong/decorated/hidden BR, non-empty
+    root/BR content, spaces or other whitespace, multiple LFs, non-empty textContent,
+    composer replacement, or any otherwise unsupported DOM shape.
+- id: AC5
+  condition: All pre-submit exactText/readiness behavior and every other post-submit
+    proof operand remain unchanged, including page/route/document checks, unique retained
+    composer identity, regular-surface checks, scoped Send count/enabledness, proof
+    windows, click ordering, registry attempt states, and no-blind-resend behavior.
+- id: AC6
+  condition: Focused regressions model both accepted empty representations and all
+    required one-LF negative near-misses while preserving existing submission-unproven,
+    route, composer, control, ambiguity, and no-resend regressions.
+- id: AC7
+  condition: 'H4C0 documentation records only privacy-safe bounded planning facts:
+    post-TASK-299 A1 AMBIGUOUS/SUBMISSION_UNPROVEN with a Human-observed sent turn,
+    D1 same-attempt stable COMPOSER_NOT_EMPTY with no structural pass, and the later
+    consumed-route one-open-page EMPTY/ONE_LF/sole-trailing-BR shape with its 1-of-2
+    limitation. It keeps H4C0 open, H4C1 blocked, and historical ambiguous attempts
+    unresolved pending later Human/Brain disposition.'
+- id: AC8
+  condition: The Executor RESULT claims only pre-verification implementation properties
+    with unresolved empty and exact changed_files; Runtime verification, fresh Reviewer
+    verdict, exact publication, ambiguous-attempt disposition, any later live proof,
+    and H4C0 planning remain downstream authority-owned facts.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_origin_bootstrap.py tests/test_local_chat_wake.py
+  - git diff --check
