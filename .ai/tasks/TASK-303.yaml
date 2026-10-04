@@ -1,0 +1,276 @@
+task_id: TASK-303
+revision: 1
+goal: Consolidate transient diagnostic scaffolding, duplicate regression coverage,
+  and default Brain roadmap hydration, and remove only caller/dependency-proven superseded
+  code or workflows, while preserving lifecycle semantics and immutable historical
+  evidence.
+problem: AIOS-renew has accumulated bounded diagnostic helpers, overlapping regression
+  cases, superseded wake-era surfaces, and a roadmap representation whose default
+  Brain Sync path still parses and validates broad historical material. The cleanup
+  must reduce maintenance and hydration cost without deleting evidence, weakening
+  unique regression coverage, creating a second planning/lifecycle truth, or removing
+  any surface whose current or queued dependency is not positively disproven.
+assumptions:
+- Canonical planning baseline for TASK-303 authoring is main f73b9e7448dd11c9857a43a385326d822ad82301;
+  TASK-302 remains reviewed and exactly published at 8832e24edb1cd471a8a7f653a622ef5e1776920f.
+- H4D remains LIVE_EXIT_GATE_PENDING and H4E remains queued; this cleanup is an explicit
+  Human-priority side-track and must return to the unchanged H4D live-exit gate after
+  its own lifecycle completes.
+- The current default Brain Sync summary is bounded on output but still loads the
+  full roadmap and scans historical DONE entries, and its positional last_published_task
+  derivation can report an older task when sequence order is not publication order.
+- Historical TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR refs and published
+  Git objects remain authoritative engineering evidence and must not be rewritten,
+  deleted, compacted into a substitute store, or required in default Brain hydration
+  unless the active decision needs them.
+- Some diagnostic scripts, wake code, workflows, and tests may still be referenced
+  by queued roadmap work or active carriers; file names, age, or a superseded label
+  alone are insufficient deletion proof.
+- This TASK originates from an H4C1 post-cutover regular-Chat flow and therefore carries
+  the exact Human/Brain-established ORIGIN_AFFINE selector supplied for this conversation.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/brain-wake-carriers.yaml
+  - .ai/brain-wakeup-carriers.yaml
+  - .ai/brain-repair-wakeup-carriers.yaml
+  - pyproject.toml
+  - src/aios_renew/__init__.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/origin_bootstrap.py
+  - src/aios_renew/origin_capture.py
+  - src/aios_renew/brain_wake_bridge.py
+  - src/aios_renew/github_issue_wakeup.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/unattended_chat_wake.py
+  - scripts/aios_origin_capture_probe.py
+  - scripts/aios_full_suite_contention_diagnostic.py
+  - scripts/aios_git_fixture_push_root_decomposition_diagnostic.py
+  - scripts/aios_git_fixture_push_threshold_diagnostic.py
+  - scripts/aios_ingress_metadata_identity_diagnostic.py
+  - scripts/aios_parallel_git_fixture_push_diagnostic.py
+  - scripts/aios_residual_context_attribution_diagnostic.py
+  - scripts/aios_serial_context_diagnostic.py
+  - scripts/aios_stable_failure_cause_diagnostic.py
+  - scripts/aios_stable_failure_detail_diagnostic.py
+  - scripts/bp_v4_parallel_diagnostic.py
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-issue-carrier.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - tests/conftest.py
+  - tests/test_brain_sync.py
+  - tests/test_origin_bootstrap.py
+  - tests/test_origin_capture.py
+  - tests/test_brain_wake_bridge.py
+  - tests/test_brain_wake_bridge_workflow.py
+  - tests/test_github_issue_wakeup.py
+  - tests/test_github_issue_wakeup_workflow.py
+  - tests/test_github_issue_repair_wakeup.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_unattended_chat_wake.py
+  - tests/test_aios_full_suite_contention_diagnostic.py
+  - tests/test_aios_git_fixture_push_root_decomposition_diagnostic.py
+  - tests/test_aios_git_fixture_push_threshold_diagnostic.py
+  - tests/test_aios_ingress_metadata_identity_diagnostic.py
+  - tests/test_aios_parallel_git_fixture_push_diagnostic.py
+  - tests/test_aios_residual_context_attribution_diagnostic.py
+  - tests/test_aios_serial_context_diagnostic.py
+  - tests/test_aios_stable_failure_cause_diagnostic.py
+  - tests/test_aios_stable_failure_detail_diagnostic.py
+  - tests/test_bp_v4_parallel_diagnostic.py
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  modify:
+  - .ai/brain-wake-carriers.yaml
+  - .ai/brain-wakeup-carriers.yaml
+  - .ai/brain-repair-wakeup-carriers.yaml
+  - pyproject.toml
+  - src/aios_renew/__init__.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/origin_bootstrap.py
+  - src/aios_renew/origin_capture.py
+  - src/aios_renew/brain_wake_bridge.py
+  - src/aios_renew/github_issue_wakeup.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - scripts/aios_origin_capture_probe.py
+  - scripts/aios_full_suite_contention_diagnostic.py
+  - scripts/aios_git_fixture_push_root_decomposition_diagnostic.py
+  - scripts/aios_git_fixture_push_threshold_diagnostic.py
+  - scripts/aios_ingress_metadata_identity_diagnostic.py
+  - scripts/aios_parallel_git_fixture_push_diagnostic.py
+  - scripts/aios_residual_context_attribution_diagnostic.py
+  - scripts/aios_serial_context_diagnostic.py
+  - scripts/aios_stable_failure_cause_diagnostic.py
+  - scripts/aios_stable_failure_detail_diagnostic.py
+  - scripts/bp_v4_parallel_diagnostic.py
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-issue-carrier.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - tests/conftest.py
+  - tests/test_brain_sync.py
+  - tests/test_origin_bootstrap.py
+  - tests/test_origin_capture.py
+  - tests/test_brain_wake_bridge.py
+  - tests/test_brain_wake_bridge_workflow.py
+  - tests/test_github_issue_wakeup.py
+  - tests/test_github_issue_wakeup_workflow.py
+  - tests/test_github_issue_repair_wakeup.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_unattended_chat_wake.py
+  - tests/test_aios_full_suite_contention_diagnostic.py
+  - tests/test_aios_git_fixture_push_root_decomposition_diagnostic.py
+  - tests/test_aios_git_fixture_push_threshold_diagnostic.py
+  - tests/test_aios_ingress_metadata_identity_diagnostic.py
+  - tests/test_aios_parallel_git_fixture_push_diagnostic.py
+  - tests/test_aios_residual_context_attribution_diagnostic.py
+  - tests/test_aios_serial_context_diagnostic.py
+  - tests/test_aios_stable_failure_cause_diagnostic.py
+  - tests/test_aios_stable_failure_detail_diagnostic.py
+  - tests/test_bp_v4_parallel_diagnostic.py
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+non_goals:
+- Change, advance, close, or reinterpret H4D, H4E, final H4B, H5, or any other roadmap
+  semantic commitment.
+- Delete, rewrite, squash, migrate, or synthesize canonical TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR
+  artifacts or their immutable refs.
+- Create a roadmap-history database, archive ledger, second lifecycle reducer, planner,
+  router, persistent Brain memory, or another source of planning truth.
+- Remove a diagnostic, code path, workflow, test, registry entry, or package surface
+  merely because it appears old, temporary, duplicated, or superseded.
+- Change wake routing, return-affinity, acquisition, freshness, dedupe, ambiguity,
+  Reviewer, Publisher, Runtime, or execution semantics.
+- Use test-count reduction as a success metric when unique behavioral or failure-mode
+  coverage would be lost.
+- Perform unrelated refactors, performance tuning, style cleanup, dependency upgrades,
+  or downstream Python Agent changes.
+constraints:
+  hard:
+  - Treat `.ai/roadmap-state.yaml` and exact canonical lineage as authority inputs
+    only; default Brain Sync may expose a smaller deterministic active projection
+    but must not create or persist an independent planning-state authority.
+  - Default Brain hydration must include only current active track/status, the current
+    active gate or unique NEXT/blocked commitment, directly queued successors needed
+    to interpret return-to sequencing, and bounded current publication/lineage pointers.
+    Historical completed bodies and unrelated historical evidence are on-demand context,
+    not default hydration.
+  - Any replacement for the current broad historical DONE scan must preserve fail-closed
+    checks for every active pointer used to select or block current work. Historical
+    lineage is checked on demand when an active pointer, ambiguity, conflict, review,
+    repair, audit, or explicit Human request requires it.
+  - Do not derive `last_published_task` from sequence position. Report a latest/relevant
+    publication pointer only when it is deterministically justified by current active
+    lineage; otherwise omit or mark it unavailable rather than guessing.
+  - Temporary diagnostic removal is eligible only when the owning diagnostic question
+    is closed or superseded and a deterministic repository dependency audit finds
+    no current/queued roadmap dependency, import, package export, CLI entrypoint,
+    workflow invocation, reusable-workflow `uses`, carrier/registry reference, or
+    required test/doc contract. Unproved candidates remain unchanged.
+  - Superseded production code or workflow removal uses the same proof gate as diagnostics
+    and additionally requires proof that current production triggers, permissions,
+    caller chains, and publication/repair/wake paths do not depend on it. A superseded
+    label alone is insufficient.
+  - Test consolidation may merge parametrized cases, fixtures, helpers, or duplicated
+    assertions only after mapping old cases to retained semantic invariants. Every
+    unique success, fail-close, race, ambiguity, provenance, privacy, workflow-permission,
+    and regression case must remain covered; uncertain equivalence means retain the
+    case.
+  - Deletion proof and coverage-equivalence proof must be captured as Runtime-consumable
+    evidence from deterministic repository commands/tests, not only stated in Executor
+    prose. The RESULT may summarize the proof but does not become verification truth.
+  - Do not modify `.ai/roadmap-state.yaml`, immutable refs, historical documentation
+    solely to erase history, or current local-chat/unattended wake production behavior.
+    This TASK changes the default projection/read surface and safely removable implementation/test
+    scaffolding only.
+  - 'Preserve exact H4C0 bootstrap production behavior after diagnostic-only cleanup:
+    normal bootstrap output, route allocation/reuse, generation, ambiguity fail-close,
+    and live H4C1/H4D integration remain unchanged.'
+  - Executor may delete a file only if the final changed-file set contains no dangling
+    import, entrypoint, workflow, carrier, registry, test, or active-roadmap reference
+    to that file. If proof is mixed, incomplete, or dynamic, retain the file.
+  - Executor changes only scope.modify, performs no live ChatGPT wake experiment,
+    makes no roadmap-state mutation, and does not claim H4D closure, semantic PASS,
+    publication, or historical-evidence deletion.
+acceptance:
+- id: AC1
+  condition: The candidate changes only scope.modify and introduces no new planner,
+    router, lifecycle reducer, persistent reasoning/history store, roadmap authority,
+    or wake/lifecycle semantic behavior.
+- id: AC2
+  condition: Brain Sync exposes a deterministic bounded active-roadmap projection
+    sufficient to identify the current active gate or unique NEXT/blocked commitment
+    and its directly relevant queued return path without projecting completed historical
+    bodies by default.
+- id: AC3
+  condition: Default Brain Sync no longer requires a full historical DONE-item ancestry
+    sweep for ordinary current-flow rehydration; active pointers still fail closed
+    on stale/conflicting canonical identity, and explicit/on-demand historical hydration
+    remains available when the current decision requires it.
+- id: AC4
+  condition: The Brain Sync publication summary no longer infers recency from roadmap
+    sequence position; it either reports a deterministically current/relevant publication
+    pointer or an explicit unavailable value, with regressions covering reordered
+    historical DONE items.
+- id: AC5
+  condition: Every removed diagnostic-only source or test is backed by deterministic
+    proof that its diagnostic question is closed/superseded and that no current or
+    queued roadmap, import, export, CLI, workflow, carrier/registry, documentation
+    contract, or retained test depends on it; any candidate lacking proof remains
+    present.
+- id: AC6
+  condition: Every removed superseded production code or workflow has deterministic
+    caller/dependency proof showing no current production trigger or continuation
+    path depends on it, including nested reusable-workflow and package/entrypoint
+    references; uncertain candidates are retained.
+- id: AC7
+  condition: Duplicate tests are consolidated only where old-to-new semantic coverage
+    equivalence is explicit, while every unique success, fail-close, ambiguity, race,
+    provenance, privacy, permission, and regression invariant represented by the changed
+    tests remains covered.
+- id: AC8
+  condition: No canonical TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR ref or
+    artifact is deleted or rewritten, and historical material remains exactly retrievable
+    on demand even though ordinary Brain hydration does not enumerate it.
+- id: AC9
+  condition: 'The changed implementation preserves H4C0 origin-bootstrap normal behavior
+    and the current H4C1/H4D wake contracts: diagnostic removal does not intentionally
+    alter route/generation, fail-close, freshness, dedupe, ambiguity, or unattended-delivery
+    semantics.'
+- id: AC10
+  condition: All deleted paths are removed from every statically discoverable import,
+    package/entrypoint, workflow `uses`/invocation, carrier/registry, documentation-contract,
+    and retained-test reference within the inspected dependency surface, and affected
+    retained callers are updated coherently.
+- id: AC11
+  condition: Executor RESULT reports exact changed_files and an unresolved list that
+    is empty; removal/retention and consolidation claims cite the deterministic evidence
+    produced for AC5-AC10 without claiming Runtime verification, Reviewer verdict,
+    publication, or roadmap advancement.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python scripts/aios_parallel_full_suite.py
+  - git diff --check
+  full_suite_reason: This cleanup may delete cross-cutting Python modules, workflows
+    and tests; only the selected canonical full-suite wrapper can expose collection/import/caller
+    regressions outside the locally consolidated test files.
+return_affinity:
+  kind: ORIGIN_AFFINE
+  route_handle: page-origin-v1:45cfef72f6ec40b0143c8515368962a866207800be8f7ddba3f08702c7184f6b
+  generation: 1
