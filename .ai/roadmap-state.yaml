@@ -458,8 +458,7 @@ human_priority_sequence:
         - DOWNSTREAM_BRAIN_SYNC_REQUIRED
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
-next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
+next_items: []
 sequence:
 
   - id: temporary-wake-first-cutover-v2
@@ -1817,7 +1816,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
-    status: NEXT
+    status: LIVE_EXIT_GATE_PENDING
     phase: H4D_UNATTENDED_LOCAL_WAKE
     entry_basis:
       authority: HUMAN_BRAIN_PLANNING
@@ -1895,17 +1894,76 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: AUTHORIZED_PENDING_DISPATCH
+      status: COMPLETED_BY_RUN_302_001
       interpretation: >-
         Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-302 lifecycle.
-        Carrier acceptance, RUN creation, Runtime verification, semantic review and
-        publication remain separate downstream facts.
+        RUN-302-001 subsequently reached canonical RESULT, independent Reviewer PASS
+        and exact publication; this dispatch record remains subordinate transport
+        history rather than lifecycle authority.
     mutation_freeze_after_dispatch: >-
       After TASK-302 dispatch, do not write planning or bookkeeping commits to main
       until a terminal publication outcome or a Human/Brain-authorized failure
       reconciliation boundary. H4D remains open until reviewed publication and its
       separate Human/Brain live exit gate are reconciled; implementation cannot
       automatically advance H4E.
+    engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-302
+      task_revision: 1
+      run_id: RUN-302-001
+      result_artifact_sha: "c7849c57dc4df73f713420c444ac655a9bca0b83"
+      candidate_sha: "8832e24edb1cd471a8a7f653a622ef5e1776920f"
+      runtime_verification: "822 passed, 1091 skipped in 46.82s; git diff --check passed; unresolved empty."
+      soft_budget_status: EXCEEDED
+      review_id: REVIEW-302-001
+      review_decision_sha: "4b1cf00962824f4e84c7b743750fab8e621da4b9"
+      review_verdict: PASS
+      reviewed_sha: "8832e24edb1cd471a8a7f653a622ef5e1776920f"
+      published_sha: "8832e24edb1cd471a8a7f653a622ef5e1776920f"
+      publication_workflow_run_id: 37222783452
+      completed_on: "2026-10-05"
+      interpretation: >-
+        TASK-302 engineering is complete and exactly published. The soft execution
+        budget exceedance is observational only and did not invalidate Runtime RESULT
+        or Reviewer PASS. Publication proves implementation availability, not the
+        separately Human/Brain-owned H4D live exit gate.
+    mutation_freeze_resolution:
+      status: SATISFIED
+      terminal_publication_sha: "8832e24edb1cd471a8a7f653a622ef5e1776920f"
+      publication_workflow_run_id: 37222783452
+      interpretation: >-
+        Exact reviewed publication is terminal, so planning mutation is re-enabled.
+        No automatic H4E advancement follows.
+    live_exit_gate:
+      authority: HUMAN_BRAIN_PLANNING
+      status: PENDING
+      contract: H4D_UNATTENDED_EXACT_TARGET_LIVE_EXIT_V1
+      published_subject_sha: "8832e24edb1cd471a8a7f653a622ef5e1776920f"
+      required_observation:
+        - TARGET_CONVERSATION_NOT_PREOPENED_OR_PREPARED_BY_HUMAN
+        - AUTHORIZED_AUTHENTICATED_MACHINE_LOCAL_ENVIRONMENT_ALREADY_CONFIGURED
+        - TRANSPORT_OBTAINS_OR_RESTORES_DELIVERY_ENVIRONMENT_WITHOUT_HUMAN_UI_PREPARATION
+        - EXACT_ORIGIN_ROUTE_AND_TARGET_REACHED
+        - REGULAR_CHAT_SURFACE_AND_ALL_EXISTING_SAFETY_GATES_PROVED
+        - EXACTLY_ONE_BOUNDED_DOORBELL_SUBMITTED
+        - NO_HUMAN_NAVIGATION_FOREGROUND_SELECTION_OR_SEND_ACTION
+        - NO_ALTERNATE_CHAT_ACCOUNT_OR_REPOSITORY_DEFAULT_FALLBACK
+      interpretation: >-
+        Deterministic tests, Runtime PASS, Reviewer PASS and exact publication do not
+        satisfy this live production observation. Human/Brain must separately authorize
+        and observe one real unattended target-not-preopened delivery before H4D can
+        close. H4E remains queued and owns the broader multi-lane production live suite.
+    current_live_blocker:
+      code: H4D_UNATTENDED_TARGET_NOT_PREOPENED_LIVE_PROOF_PENDING
+      authority: HUMAN
+      next_action: HUMAN_AUTHORIZE_AND_OBSERVE_ONE_BOUNDED_H4D_LIVE_EXIT_PROBE
+      prohibitions:
+        - NO_H4D_DONE_FROM_SYNTHETIC_TESTS_REVIEW_OR_PUBLICATION
+        - NO_H4E_ADVANCE_BEFORE_H4D_LIVE_EXIT_CLOSURE
+        - NO_FABRICATED_OR_REPLAYED_ATTENTION_SUBJECT
+        - NO_REPOSITORY_DEFAULT_OR_ALTERNATE_CHAT_FALLBACK
+        - NO_RAW_CHAT_URL_ENDPOINT_PROFILE_PATH_CREDENTIAL_OR_TRANSCRIPT_CANONICALIZATION
+        - NO_AUTOMATIC_ROADMAP_ADVANCE
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
     objective: >-
