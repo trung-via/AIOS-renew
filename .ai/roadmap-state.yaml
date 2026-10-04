@@ -1709,6 +1709,19 @@ sequence:
         forward from TASK-300 because that delegation expires on task change.
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-04"
+    next_task_execution_preference:
+      authority: HUMAN
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: NEXT_H4C1_TASK_ENTIRE_LIFECYCLE
+      persistence: THROUGH_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+      expires_on_task_change_after_completion: true
+      interpretation: >-
+        Human explicitly replaced the prior high preference with Codex GPT-6.1 Sol
+        xhigh for the next H4C1 task. This is planning delegation intent only until a
+        concrete TASK is canonically authored; it grants no implementation authority
+        before that task exists.
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
     objective: >-
