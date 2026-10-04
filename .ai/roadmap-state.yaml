@@ -1358,49 +1358,67 @@ sequence:
         remains only transport evidence; terminal lifecycle facts are established by
         the canonical RESULT, review decision and published main above.
     current_live_blocker:
-      code: H4C0_POST_SUBMIT_COMPOSER_NONEMPTY_PROOF_GAP
+      code: H4C0_POST_SUBMIT_EMPTY_RENDER_COMPATIBILITY_CORRECTION_AUTHORIZATION_PENDING
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-299
       task_revision: 1
-      next_action: READ_ONLY_CLASSIFY_POST_SUBMIT_COMPOSER_EMPTY_SHAPE_FROM_EXISTING_AMBIGUOUS_ATTEMPTS
+      next_action: HUMAN_AUTHORIZE_BOUNDED_POST_SUBMIT_EMPTY_RENDER_CORRECTION_OR_EXPLICIT_RESIDUAL_EXCEPTION
       basis: >-
-        A separately authorized disposable D1 live probe reproduced the production
-        helper result AMBIGUOUS/SUBMISSION_UNPROVEN. A concurrent read-only observer on
-        the same attempt reported COMPOSER_NOT_EMPTY throughout the settled post-submit
-        tail, STRUCTURAL_PASS_SEEN false, and no other observed category. This proves
-        that the published submitted() emptiness conjunction
-        textContent === '' && innerText === '' is false on that live attempt. No blind
-        retry, new task, timeout change, or generic DOM weakening is authorized. The
-        next bounded step is read-only classification of the exact empty-editor shape
-        using already-consumed AMBIGUOUS routes only.
+        D1 reproduced AMBIGUOUS/SUBMISSION_UNPROVEN with same-attempt stable
+        COMPOSER_NOT_EMPTY and no structural pass. A later read-only inspection over
+        already-consumed ambiguous registry routes found one currently open ambiguous
+        page with textContent EMPTY, innerText exactly ONE_LF, and an empty P containing
+        a sole ProseMirror-trailingBreak BR. Only one of two ambiguous registry routes
+        was open, so this does not claim both A1 and D1 shared the exact final shape.
+        It does independently prove that the frozen submitted() predicate rejects a
+        live semantically-empty editor representation solely because innerText is one
+        LF. A bounded compatibility correction may admit only that exact empty render
+        shape while preserving all other post-submit guards.
       prohibitions:
         - NO_BLIND_A1_OR_D1_RETRY
         - NO_NEW_SEND_FOR_SHAPE_CLASSIFICATION
         - NO_A2_B1_B2_UNTIL_A1_DISPOSITION
         - NO_AUTOMATIC_TASK_300
-        - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_AS_ORIGIN_AUTHORITY
-        - NO_TIMEOUT_CHANGE_WITHOUT_NEW_BOUNDED_EVIDENCE
+        - NO_GENERIC_WHITESPACE_NORMALIZATION
         - NO_GENERIC_POST_SUBMIT_DOM_WEAKENING
+        - NO_TIMEOUT_CHANGE_FROM_THIS_EVIDENCE
+        - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_AS_ORIGIN_AUTHORITY
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_RAW_IDENTITY_OR_CONTENT_EXPORT
         - NO_AUTOMATIC_ROADMAP_ADVANCE
-    post_task299_disposable_d1_post_submit_probe:
+    post_task299_consumed_ambiguous_empty_shape_probe:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
-      ordinary_result:
-        status: AMBIGUOUS
-        reason: SUBMISSION_UNPROVEN
-      same_attempt_read_only_observer:
-        settled_category: COMPOSER_NOT_EMPTY
-        structural_pass_seen: false
-        observed_categories:
-          - COMPOSER_NOT_EMPTY
+      ambiguous_registry_route_count: 2
+      matched_open_page_count: 1
+      matched_shape:
+        text_content_class: EMPTY
+        inner_text_class: ONE_LF
+        root_tag: P
+        root_attribute_class: OTHER
+        child_shape: SOLE_PROSEMIRROR_TRAILING_BREAK
+        root_text_empty: true
+      audit:
+        stage1: CONSTRUCT
+        outcome: BOUNDED_CORRECTION_BASIS_FOUND
+        stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+        closure: CLEAR_WITH_MANDATORY_NARROWING
+      correction_boundary: >-
+        Preserve the existing fully-empty representation. The only additional eligible
+        post-submit empty representation is retained same composer with textContent
+        exactly empty, innerText exactly one LF, exactly one P root, and exactly one
+        child BR.ProseMirror-trailingBreak that is childless, text-empty and visible.
+        Do not use root attributes as origin/content authority and do not accept DIV,
+        multiple roots/children, plain or decorated alternative BRs, hidden nodes,
+        other whitespace, multiple LFs, non-empty text, normalization, or timeout
+        expansion.
       interpretation: >-
-        D1 was a disposable diagnostic conversation, not A2/B1/B2. The same-attempt
-        observer mirrored the externally visible post-submit operands and found the
-        retained composer stayed non-empty throughout the settled proof tail. This is
-        bounded evidence for the emptiness predicate only; it does not establish route
-        identity, Runtime truth, semantic success, or permission to resend.
+        Because only one of two consumed ambiguous routes was currently open, this probe
+        does not attribute the exact final shape to both A1 and D1. It does prove a live
+        semantically-empty editor representation that the current submitted() predicate
+        rejects solely on innerText equality. This supports one prospective bounded
+        compatibility correction but does not prove that correction alone will make a
+        later live attempt pass and does not authorize automatic TASK-300 creation.
       privacy_boundary: >-
         No raw conversation URL or UUID, route handle, challenge, nonce, endpoint,
         registry contents, draft/bootstrap text, transcript content, assistant output,
@@ -1414,7 +1432,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: CLASSIFY_EXISTING_AMBIGUOUS_POST_SUBMIT_EMPTY_EDITOR_SHAPE_THEN_RESOLVE_A1_DISPOSITION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: AUTHORIZE_AND_COMPLETE_BOUNDED_POST_SUBMIT_EMPTY_RENDER_CORRECTION_OR_ACCEPT_RESIDUAL_THEN_RESOLVE_A1_DISPOSITION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
