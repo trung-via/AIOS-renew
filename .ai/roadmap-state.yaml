@@ -1722,6 +1722,47 @@ sequence:
         xhigh for the next H4C1 task. This is planning delegation intent only until a
         concrete TASK is canonically authored; it grants no implementation authority
         before that task exists.
+    task_id: TASK-301
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "1931e6bcdb3330990153fe662b79eca78b75c994"
+    task_blob_sha: "601cf2f9df5665431c66ad3563e66f4056045d93"
+    authoring_issue_number: 1490
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "cf83eea443e089665eaa39d353651a03661d061e18638c884da8f5085138afe9"
+    construct_fingerprint: "8ed8737cbe4a0ab8cb8855736f6d0e42217b2d5d11f7ea5c436e035fd1cb8b98"
+    reconciled_candidate_fingerprint: "1c53cf1cd4652234ee69a2e543bec665b1b83d57b1137fbfdbc241b16e1713f8"
+    human_execution_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-04"
+      task_id: TASK-301
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_301_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task301-r1-codex61-xhigh-20261004-001
+      task_blob_sha: "601cf2f9df5665431c66ad3563e66f4056045d93"
+      task_commit_sha: "1931e6bcdb3330990153fe662b79eca78b75c994"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: AUTHORIZED_PENDING_DISPATCH
+      interpretation: >-
+        Human explicitly selected Codex GPT-6.1 Sol xhigh for the full TASK-301
+        lifecycle. Carrier acceptance, RUN creation, Runtime verification, semantic
+        review and publication remain separate downstream facts.
+    mutation_freeze_after_dispatch: >-
+      After TASK-301 dispatch, do not write planning or bookkeeping commits to main
+      until a terminal publication outcome or a Human/Brain-authorized failure
+      reconciliation boundary. H4C1 remains open until reviewed publication is
+      separately reconciled; implementation cannot advance H4D.
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
     objective: >-
