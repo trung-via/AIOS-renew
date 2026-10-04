@@ -1114,19 +1114,41 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
       persistence: THROUGH_TASK_297_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    human_execution_delegation:
+      selected_on: "2026-10-04"
+      authority: HUMAN
+      task_id: TASK-298
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_298_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task298-r1-codex61-xhigh-20261004-001
+      task_blob_sha: "4b75423f4e8b68523e934ab1eb1fb816810d8fa7"
+      task_commit_sha: "fce983234c6722239d4b86df4a9cb04f0cee3c17"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: AUTHORIZED_PENDING_DISPATCH
+      interpretation: >-
+        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-298 lifecycle.
+        This records execution intent only. Carrier acceptance, RUN creation,
+        Runtime verification, semantic review, and publication remain separate
+        downstream facts and must not be inferred from this planning record.
     current_live_blocker:
-      code: TASK_298_EXECUTOR_SELECTION_PENDING
+      code: TASK_298_R1_DISPATCH_PENDING
       authority: HUMAN
       task_binding: TASK-298
       task_revision: 1
-      next_action: HUMAN_SELECT_EXECUTOR_FOR_TASK_298
+      next_action: DISPATCH_TASK_298
       basis: >-
-        TASK-298 r1 is the canonical two-stage-audited diagnostic-only contract for
-        attributing the remaining post-TASK-297 readiness failure without changing
-        bootstrap behavior. TASK-297 execution delegation expired on task change.
-        Execution therefore requires a fresh Human executor/model/effort selection.
-        After reviewed exact publication, Human/Brain will run one bounded diagnostic
-        A1 and decide separately whether any behavioral correction is warranted.
+        TASK-298 r1 is canonical and Human selected Codex GPT-6.1 Sol xhigh for the
+        entire task lifecycle. The only authorized prospective action is one exact
+        primary dispatch using the canonical TASK-298 r1 blob and author commit.
+        After dispatch, planning mutation is frozen until terminal publication outcome.
       prohibitions:
         - NO_BEHAVIORAL_ROOT_CAUSE_FIX_IN_TASK_298
         - NO_TIMEOUT_OR_POLLING_CHANGE
