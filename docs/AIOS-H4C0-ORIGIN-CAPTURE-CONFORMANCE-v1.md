@@ -2,7 +2,7 @@
 
 Status: PAGE-SCOPED FALLBACK CONTRACT / LIVE OBSERVATION UNPROVED
 
-TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback); TASK-295 revision 2 (published insertion correction); TASK-296 revision 1 (published bounded editor-reconciliation correction); TASK-297 revision 1 (published literal-paste wrapper and insert-to-ready correction); TASK-298 revision 1 (opt-in diagnostic attribution only)
+TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback); TASK-295 revision 2 (published insertion correction); TASK-296 revision 1 (published bounded editor-reconciliation correction); TASK-297 revision 1 (published literal-paste wrapper and insert-to-ready correction); TASK-298 revision 1 (published opt-in diagnostic attribution); TASK-299 revision 1 (exact marked empty-paragraph correction)
 Parent: [H4 Origin-Affine Return and Unattended Local Wake](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md)  
 Authority: Runtime verifies implementation; Human/Brain evaluates later live feasibility.
 
@@ -11,7 +11,7 @@ contract. Its accepted implementation, REVIEW/PASS, and exact publication remain
 valid evidence. The current Human-observed regular-Chat surface did not expose
 the Developer Mode/custom MCP entry for that candidate's planned live procedure;
 that availability observation does not invalidate its engineering lineage.
-Sections 6–11 define the selected page-scoped fallback, its bounded corrections,
+Sections 6–12 define the selected page-scoped fallback, its bounded corrections,
 and its later Human/Brain live gate.
 
 ## 1. Feasibility basis and limits
@@ -158,7 +158,13 @@ of a bounded P/DIV block, never as a root or nested/rich inline grammar. Wrong o
 additional attributes, non-empty values, zero/multiple children, non-text children,
 nesting, hidden/aria-hidden/style/class decoration, or invisible wrapper content
 fail closed. Each wrapper and its text leaf count against the traversal bound.
-Blocks carry no attributes;
+Blocks carry no attributes except the exact observed empty-paragraph root:
+`P[data-empty-paragraph="true"]` with exactly that one attribute, empty
+`textContent`, and exactly one child `BR` with exactly
+`class="ProseMirror-trailingBreak"`. The existing BR checks still require no
+children, empty `textContent`, and visibility; the marked P must also be visible.
+This exception never applies to DIV, non-empty P, a missing/non-`true` marker
+value, additional root attributes, or wrong/multiple/absent children.
 BR leaves are bare or carry exactly `class="ProseMirror-trailingBreak"`. Every
 block boundary contributes exactly one logical newline and every inline bare BR
 contributes one. A sole BR is an empty-block placeholder; the named trailing BR
@@ -286,7 +292,7 @@ transport queue. The finite local loop observes only document-owned pending gest
 ## 9. Required post-publication two-regular-chat Human/Brain procedure
 
 Preconditions: Runtime acceptance, a fresh independent Reviewer verdict, and
-Publisher publication of the exact reviewed TASK-298 diagnostic candidate. Human/Brain selects that SHA
+Publisher publication of the exact reviewed TASK-299 correction. Human/Brain selects that SHA
 and authorizes the existing browser environment and each initial test handoff.
 These boundaries make the candidate available; they do not establish live conformance.
 
@@ -328,8 +334,8 @@ insert return. It supplies no generic SPAN/rich-text acceptance, normalization,
 manual-Send fallback, wake delivery, routing, or new authority. Runtime verification,
 a fresh Reviewer verdict, and exact reviewed publication completed for TASK-297 as
 recorded in section 11. The entire A/A/B/B comparison, continuity check, and ambiguity
-trial below remain pending. The next gate is the separately bounded diagnostic A1
-and explicit Human/Brain interpretation in section 11; this numbered full procedure
+trial below remain pending. The next gate is the separately bounded post-TASK-299 A1
+and explicit Human/Brain interpretation in section 12; this numbered full procedure
 does not authorize retrying the currently unproved A1. H4C0 remains open and H4C1
 remains blocked.
 
@@ -403,8 +409,18 @@ changes, and binding/generation races. The reconciled draft and retained scoped
 control remain revalidated before `ATTEMPTING` and immediately before click.
 These definitions claim no canonical verification or live conformance result.
 
+TASK-299 adds the exact marked empty P beside the existing four literal-paste
+branches. Its focused positive regression requires readiness, retained scoped
+controls, and a single consumed click in both ordinary and diagnostic modes.
+Negative definitions cover DIV/other tags, wrong marker name, missing/wrong value,
+extra root attributes, non-empty marked P, wrong/multiple/absent children, BR
+decoration/children, and invisible roots or BRs. The marked fixture also exercises
+the existing rich-DOM, byte/separator, wrapper visibility, traversal, control,
+page/challenge, binding, bounded-ready, and pre-intent/pre-click regressions.
+These are regression definitions; Runtime owns their canonical execution.
+
 Runtime alone runs canonical verification and constructs EVIDENCE. Deterministic
-tests, Runtime PASS, Reviewer PASS, and publication of TASK-293, TASK-295, TASK-296, TASK-297, or TASK-298 alone do **not** close
+tests, Runtime PASS, Reviewer PASS, and publication of TASK-293, TASK-295, TASK-296, TASK-297, TASK-298, or TASK-299 alone do **not** close
 H4C0 or authorize H4C1. The real two-regular-chat procedure above is a later Human/
 Brain conformance decision. H4C0 remains the unique canonical NEXT, ahead of H4C1,
 H4D, H4E, final H4B production-shape proof, and H5; no phase advances automatically.
@@ -506,13 +522,47 @@ reproduces length 271 and exactly `47/5`, `75/2`, `245/2` using synthetic bytes;
 the production grammar is unchanged. These are regression definitions, not
 Executor canonical verification or live conformance EVIDENCE.
 
+TASK-298 revision 1 completed RUN-298-001 Runtime PASS, REVIEW-298-001 PASS, and
+exact publication of `8d2bf871f559e5d021c42e5c5765d0e8a7600017`. Its bounded
+post-publication A1 and the supplied same-attempt planning attribution are
+recorded in section 12. TASK-298 changed no lifecycle or roadmap state and
+provided no H4C1 routing, wake delivery, later phase, or publication authority.
+
+## 12. Post-TASK-298 planning facts and exact-root TASK-299
+
+The bounded A1 against published TASK-298 ended pre-submit as
+`UNPROVED/INSERT_BLOCKED`: diagnostic phase `READY`, category `EXACT_TEXT`,
+`exhausted: true`, and no AIOS-owned submit attempt. One fresh bounded A1 retry
+supplied matching same-attempt observations: the production helper remained
+`READY/EXACT_TEXT` through the existing window, while a concurrent read-only
+observer stably attributed the internal exact-text root subgate to
+`ROOT_ATTRIBUTES`. That observer attribution is a supplied planning fact, not a
+new production diagnostic enum or output field.
+
+Read-only inspection of that same failed composer established exactly one root
+offender: `P` with exactly one attribute `data-empty-paragraph="true"`, empty
+`textContent`, and exactly one child `BR.ProseMirror-trailingBreak`. The BR had
+exactly `class="ProseMirror-trailingBreak"`, no children, and empty `textContent`.
+The attribute-free root predicate rejected this P before reaching its existing
+trailing-BR grammar. These bounded structural facts supply TASK-299's correction
+basis; no raw identity, route handle, challenge/nonce, draft, DOM payload, endpoint,
+registry, transcript, or assistant output is retained here.
+
+These probes are Human/Brain planning evidence only, not a RUN, FAILURE, REVIEW
+finding, publication failure, or Runtime verification. TASK-299 admits only that
+exact marked empty P and retains the existing literal-paste wrapper grammar,
+raw/textContent and logical-byte equality, rendered projection, visibility,
+traversal budget, page/challenge/origin proof, scoped Send/form checks, diagnostic
+ordering, three-second window, 50 ms cadence, challenge TTL, and
+consume-before-single-click/no-blind-resend behavior. It authorizes no Executor
+live observation, operational-state reset, roadmap change, semantic review, or
+publication.
+
 Runtime verification and EVIDENCE, a fresh independent Reviewer verdict, and
-Publisher publication of the exact reviewed TASK-298 SHA remain downstream
-boundaries. After those boundaries, Human/Brain may authorize one bounded
-diagnostic A1, inspect only this bounded contract, and explicitly decide its
-semantic meaning. No automated interpretation or correction strategy follows.
-Only a later separately authored bounded TASK may correct an identified gate if
-Human/Brain warrants it. The complete two-chat comparison, continuity/ambiguity
-proof, and explicit Human/Brain live closure remain required: **H4C0 stays open
-and H4C1 stays blocked**. TASK-298 changes no lifecycle or roadmap state and
-provides no H4C1 routing, wake delivery, later phase, or publication authority.
+Publisher publication of the exact reviewed TASK-299 SHA remain downstream
+boundaries. After exact publication, Human/Brain alone may authorize one bounded
+A1 live proof and explicitly decide H4C0 continuation. Implementation, tests,
+review, and publication supply no live closure: **H4C0 stays open and H4C1 stays
+blocked**. The remaining two-chat comparison, continuity/ambiguity proof, and
+Human/Brain closure decision remain required. A new failure does not automatically
+authorize TASK-300 or any later phase.

@@ -353,6 +353,13 @@ _EXACT_TEXT = r"""(box, text) => {
     return attrs.length === 1 && attrs[0].name === 'class' &&
       attrs[0].value === 'ProseMirror-trailingBreak';
   };
+  // The sole attributed root shape; its BR leaf and visibility are still
+  // proved by the existing child grammar below.
+  const markedEmptyParagraph = node => node.tagName === 'P' &&
+    node.attributes.length === 1 && node.attributes[0].name === 'data-empty-paragraph' &&
+    node.attributes[0].value === 'true' && node.textContent === '' &&
+    node.childNodes.length === 1 && node.childNodes[0].nodeType === 1 &&
+    node.childNodes[0].tagName === 'BR' && trailingBreak(node.childNodes[0]);
   if (!box.childNodes.length || box.childNodes.length > limit || !shown(box)) return false;
   const nodes = [...box.childNodes];
   const parts = [];
@@ -365,7 +372,7 @@ _EXACT_TEXT = r"""(box, text) => {
       continue;
     }
     if (node.nodeType !== 1 || !['P', 'DIV'].includes(node.tagName) ||
-        !plain(node) || !shown(node)) return false;
+        (!plain(node) && !markedEmptyParagraph(node)) || !shown(node)) return false;
     if (node.childNodes.length > budget) return false;
     const children = [...node.childNodes];
     let logical = '', placeholder = false;

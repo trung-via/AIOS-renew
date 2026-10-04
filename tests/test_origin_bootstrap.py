@@ -418,7 +418,9 @@ DOM_HARNESS = r"""
 const fs = require('fs'), input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const args = input.args, scenario = input.scenario;
 const literal = scenario.startsWith('async_literal_');
-const variant = literal ? scenario.replace('async_literal_', 'async_') : scenario;
+const markedEmpty = scenario.startsWith('async_literal_empty_');
+const variant = markedEmpty ? scenario.replace('async_literal_empty_', 'async_') :
+  literal ? scenario.replace('async_literal_', 'async_') : scenario;
 let clock = 0, randomCount = 0, clicks = 0, inserts = 0, notifications = 0, focuses = 0, button;
 const operations = [], readyDiagnostics = [];
 global.performance = {now: () => {operations.push('proof-clock'); return clock;}};
@@ -559,6 +561,8 @@ function reconcile() {
   box.childNodes = lines.map(line => paragraph(line, tag));
   if (literal) box.childNodes.forEach((block, i) => {
     block.childNodes = lines[i] === '' ? [br(true)] : [literalSpan(lines[i])];
+    if (markedEmpty && lines[i] === '')
+      block.attributes = [{name:'data-empty-paragraph', value:'true'}];
   });
   let rendered = lines.map(line => line === '' ? '\n' : line);
   if (['async_inline_exact', 'async_trailing_exact', 'async_missing_inline_break', 'async_extra_inline_break'].includes(variant)) {
@@ -576,7 +580,32 @@ function reconcile() {
     rendered.splice(0, count, group.join('\n'));
   }
   if (variant === 'async_hidden_block') box.childNodes[0].hidden = true;
-  const emptyBreak = box.childNodes.find(node => node.textContent === '')?.childNodes[0];
+  const emptyBlock = box.childNodes.find(node => node.textContent === '');
+  const emptyBreak = emptyBlock?.childNodes[0];
+  if (markedEmpty) {
+    if (variant === 'async_root_div') emptyBlock.tagName = 'DIV';
+    if (variant === 'async_root_wrong_tag') emptyBlock.tagName = 'SECTION';
+    if (variant === 'async_marker_wrong_name') emptyBlock.attributes[0].name = 'data-empty';
+    if (variant === 'async_marker_wrong_value') emptyBlock.attributes[0].value = 'false';
+    if (variant === 'async_marker_missing_value') emptyBlock.attributes[0].value = '';
+    if (variant === 'async_marker_case') emptyBlock.attributes[0].value = 'True';
+    if (variant === 'async_marker_whitespace') emptyBlock.attributes[0].value = 'true ';
+    if (variant === 'async_root_extra_attribute') emptyBlock.attributes.push({name:'data-extra', value:''});
+    if (variant === 'async_marked_nonempty')
+      box.childNodes[0].attributes = [{name:'data-empty-paragraph', value:'true'}];
+    if (variant === 'async_empty_child_plain_br') emptyBlock.childNodes = [br(false)];
+    if (variant === 'async_empty_child_wrong_tag') emptyBreak.tagName = 'SPAN';
+    if (variant === 'async_empty_child_text') emptyBlock.childNodes = [text('')];
+    if (variant === 'async_empty_child_comment') emptyBlock.childNodes = [{nodeType:8, textContent:''}];
+    if (variant === 'async_empty_children_multiple') emptyBlock.childNodes.push(br(true));
+    if (variant === 'async_empty_children_absent') emptyBlock.childNodes = [];
+    if (variant === 'async_empty_root_hidden') emptyBlock.hidden = true;
+    if (variant === 'async_empty_root_no_rects') emptyBlock.getClientRects = () => [];
+    if (variant === 'async_empty_root_invisible') emptyBlock.css = {visibility:'hidden'};
+    if (variant === 'async_empty_root_collapsed') emptyBlock.css = {visibility:'collapse'};
+    if (variant === 'async_empty_root_display_none') emptyBlock.css = {display:'none'};
+    if (variant === 'async_empty_root_transparent') emptyBlock.css = {opacity:'0'};
+  }
   if (variant === 'async_hidden_br') emptyBreak.css = {visibility:'hidden'};
   if (variant === 'async_hidden_duplicate') box.childNodes.at(-1).getClientRects = () => [];
   if (variant === 'async_transparent_block') box.childNodes[0].css = {opacity:'0'};
@@ -694,6 +723,10 @@ const productionGrammar = {
     node.childNodes[0].tagName === 'BR' && node.childNodes[0].attributes.length === 1 &&
     node.childNodes[0].attributes[0].value === 'ProseMirror-trailingBreak').length,
 };
+const emptyRoot = box.childNodes.find(node => node.textContent === '');
+const emptyParagraphFixture = emptyRoot ? {tag:emptyRoot.tagName, attributes:emptyRoot.attributes,
+  text:emptyRoot.textContent, children:emptyRoot.childNodes.map(child => ({tag:child.tagName,
+    attributes:child.attributes, text:child.textContent, children:child.childNodes?.length}))} : null;
 const renderedFixture = {length:box.innerText.length,
   newlineRuns:[...box.innerText.matchAll(/\n+/g)].map(match => [match.index, match[0].length])};
 function changeAfterReady() {
@@ -725,7 +758,7 @@ if (rearmed) button.listener({isTrusted:true, currentTarget:button});
 const next = rearmed ? nextApi.inspect() : null;
 process.stdout.write(JSON.stringify({installed, proved, inserted, ready, submitted, duplicate, witnessed,
   clicks, inserts, notifications, staged, cleared, rearmed, beforeReconciliation, diverged, revalidated, sameScopedControl,
-  readyPolls, productionGrammar, renderedFixture, focuses, operations, readyDiagnostics,
+  readyPolls, productionGrammar, emptyParagraphFixture, renderedFixture, focuses, operations, readyDiagnostics,
   fresh:!!next && !!genuineProof && next.challenge !== genuineProof.challenge}));
 })().catch(error => {process.stderr.write(String(error)); process.exitCode=1;});
 """
@@ -808,7 +841,46 @@ def test_production_five_block_literal_paste_reconciles_only_during_ready_pollin
     assert result["duplicate"] is False
 
 
-@pytest.mark.parametrize("scenario", ["async_literal_exact", "async_literal_div_exact", "async_literal_wait_exact"])
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_production_marked_empty_paragraph_reaches_readiness_with_literal_paste(diagnostic):
+    result, metadata = run_dom("async_literal_empty_exact", diagnostic=diagnostic)
+    assert result["installed"] and result["proved"] and result["inserted"]
+    assert result["beforeReconciliation"] is False
+    assert result["readyPolls"] == [False, False, True]
+    assert result["productionGrammar"] == {"blocks": 4, "literals": 4, "emptyTrailing": 1}
+    assert result["emptyParagraphFixture"] == dict(
+        tag="P", attributes=[dict(name="data-empty-paragraph", value="true")], text="",
+        children=[dict(tag="BR", attributes=[dict(name="class", value="ProseMirror-trailingBreak")],
+                       text="", children=0)])
+    assert result["staged"] == "Human exact draft  \n\n" + metadata
+    assert result["diverged"] and result["ready"] and result["revalidated"]
+    assert result["sameScopedControl"] and result["submitted"] and result["witnessed"]
+    assert result["clicks"] == result["inserts"] == result["notifications"] == 1
+    assert result["duplicate"] is False
+    if diagnostic:
+        assert result["readyDiagnostics"][-1] == dict(ready=True, category=None, proof_category=None)
+
+
+@pytest.mark.parametrize("variant", [
+    "root_div", "root_wrong_tag", "marker_wrong_name", "marker_wrong_value", "marker_missing_value",
+    "marker_case", "marker_whitespace", "root_extra_attribute", "marked_nonempty",
+    "empty_child_plain_br", "empty_child_wrong_tag", "empty_child_text", "empty_child_comment",
+    "empty_children_multiple", "empty_children_absent", "br_wrong_class", "br_extra_class",
+    "br_multiple_attrs", "br_child", "hidden_br", "empty_root_hidden", "empty_root_no_rects",
+    "empty_root_invisible", "empty_root_collapsed", "empty_root_display_none", "empty_root_transparent",
+])
+def test_marked_empty_paragraph_shape_and_visibility_deviations_fail_closed(variant):
+    result, _ = run_dom("async_literal_empty_" + variant, diagnostic=True)
+    assert result["inserted"] and result["beforeReconciliation"] is False
+    assert not any(result["readyPolls"])
+    assert result["readyDiagnostics"][-1] == dict(ready=False, category="EXACT_TEXT", proof_category=None)
+    assert result["ready"] is False and result["revalidated"] is False
+    assert result["submitted"] is False and result["duplicate"] is False and result["clicks"] == 0
+    assert result["inserts"] == result["notifications"] == 1
+
+
+@pytest.mark.parametrize("scenario", ["async_literal_exact", "async_literal_div_exact", "async_literal_wait_exact",
+                                      "async_literal_empty_exact", "async_literal_empty_wait_exact"])
 @pytest.mark.parametrize("draft", ["  exact e\u0301 \u00a0\nsecond line  ",
                                   "Human CRLF draft\r\nsecond exact line  ",
                                   "\nHuman exact draft\n\nsecond line  \n"])
@@ -836,8 +908,9 @@ def test_literal_paste_preserves_exact_unicode_whitespace_and_logical_separators
     "route_change", "route_roundtrip", "expired", "challenge_changed", "nonce_changed",
     "busy", "nonregular", "login", "never_reconciled",
 ])
-def test_literal_paste_deviations_or_unproved_readiness_block_submit(variant):
-    result, _ = run_dom("async_literal_" + variant)
+@pytest.mark.parametrize("representation", ["async_literal_", "async_literal_empty_"])
+def test_literal_paste_deviations_or_unproved_readiness_block_submit(variant, representation):
+    result, _ = run_dom(representation + variant)
     assert result["inserted"] and result["beforeReconciliation"] is False
     assert not any(result["readyPolls"])
     assert result["ready"] is False and result["revalidated"] is False
@@ -849,8 +922,9 @@ def test_literal_paste_deviations_or_unproved_readiness_block_submit(variant):
     ("unicode_normalized", "Human e\u0301 draft"),
     ("crlf_collapsed", "Human CRLF draft\r\nsecond exact line  "),
 ])
-def test_literal_paste_never_normalizes_human_draft_bytes(variant, draft):
-    result, _ = run_dom("async_literal_" + variant, draft)
+@pytest.mark.parametrize("representation", ["async_literal_", "async_literal_empty_"])
+def test_literal_paste_never_normalizes_human_draft_bytes(variant, draft, representation):
+    result, _ = run_dom(representation + variant, draft)
     assert result["inserted"] and result["ready"] is False and result["clicks"] == 0
 
 
@@ -893,7 +967,7 @@ def test_async_reconciliation_does_not_canonicalize_draft_bytes(scenario, draft)
 
 @pytest.mark.parametrize("boundary", ["prove", "click"])
 @pytest.mark.parametrize("change", ["draft", "send", "form", "challenge"])
-@pytest.mark.parametrize("representation", ["async_", "async_literal_"])
+@pytest.mark.parametrize("representation", ["async_", "async_literal_", "async_literal_empty_"])
 def test_reconciled_editor_and_same_scoped_control_revalidate_before_intent_and_click(boundary, change, representation):
     result, _ = run_dom(representation + "before_" + boundary + "_" + change)
     assert result["inserted"] and result["ready"]
@@ -903,11 +977,12 @@ def test_reconciled_editor_and_same_scoped_control_revalidate_before_intent_and_
 
 @pytest.mark.parametrize("boundary", [2, 3])
 @pytest.mark.parametrize("field", ["generation", "handle", "cdp_endpoint"])
-def test_binding_race_after_reconciled_readiness_still_prevents_attempt_click(registry, boundary, field):
+@pytest.mark.parametrize("representation", ["async_literal_exact", "async_literal_empty_exact"])
+def test_binding_race_after_reconciled_readiness_still_prevents_attempt_click(registry, boundary, field, representation):
     class ReconciledAdapter(Adapter):
         def ready(self, proof):
             super().ready(proof)
-            result, _ = run_dom("async_literal_exact")
+            result, _ = run_dom(representation)
             assert result["inserted"] and result["ready"] and result["revalidated"]
 
     def race(stage, adapter):
@@ -931,7 +1006,9 @@ def test_binding_race_after_reconciled_readiness_still_prevents_attempt_click(re
 
 @pytest.mark.parametrize("reconciles", [True, False])
 @pytest.mark.parametrize("diagnostic", [False, True])
-def test_literal_reconciliation_bounded_ready_gate_precedes_attempt_intent(registry, monkeypatch, reconciles, diagnostic):
+@pytest.mark.parametrize("representation", ["async_literal_", "async_literal_empty_"])
+def test_literal_reconciliation_bounded_ready_gate_precedes_attempt_intent(
+        registry, monkeypatch, reconciles, diagnostic, representation):
     clock = [0.0]
     monkeypatch.setattr(origin.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(origin.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
@@ -943,7 +1020,7 @@ def test_literal_reconciliation_bounded_ready_gate_precedes_attempt_intent(regis
 
         def insert(self, proof, metadata):
             super().insert(proof, metadata)
-            scenario = "async_literal_exact" if reconciles else "async_literal_never_reconciled"
+            scenario = representation + ("exact" if reconciles else "never_reconciled")
             self.dom, _ = run_dom(scenario, metadata=metadata, diagnostic=diagnostic)
             assert self.dom["inserted"] and self.dom["beforeReconciliation"] is False
             self.polls, self.ready_returned = [], False
@@ -1119,6 +1196,7 @@ def test_diagnostic_ready_truth_table_and_predicate_order_match_published(flags,
 @pytest.mark.parametrize("scenario", [
     "valid", "gesture_edit", "empty_draft", "rich_draft", "native_false",
     "async_literal_exact", "async_literal_wait_exact", "async_literal_never_reconciled",
+    "async_literal_empty_exact", "async_literal_empty_marker_missing_value", "async_literal_empty_root_div",
     "async_literal_attr_multiple", "async_literal_children_split", "async_literal_span_hidden",
     "async_literal_br_child", "async_literal_extra_rendered_separator", "async_literal_altered_bootstrap",
     "async_literal_route_roundtrip", "async_literal_composer_replaced", "async_literal_send_multiple",
