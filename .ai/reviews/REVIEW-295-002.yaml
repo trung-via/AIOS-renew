@@ -1,0 +1,45 @@
+review_id: REVIEW-295-002
+reviewed_sha: 49734b00e7fab8da35d56f3f802c09b8aabc8b75
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- RUN-295-002 is the canonical PRIMARY RESULT for TASK-295 revision 2. Candidate 49734b00e7fab8da35d56f3f802c09b8aabc8b75
+  descends from admitted base 310b6db57f214c0db3a93ef93a8386725a0dbb9d and changes
+  exactly the five TASK-authorized integration paths.
+- 'Runtime verification is canonical PASS: exact source comparison against reviewed
+  TASK-293 candidate 0f6684a41bff0ff6e284185c29e246256009a013 exited 0; focused compatibility
+  suite reports 692 passed, 636 skipped in 69.33s; git diff --check exited 0; RESULT
+  unresolved is empty.'
+- 'AC1/AC2/AC4: direct repository blob comparison confirms all five scope.modify paths
+  on the TASK-295 r2 candidate are byte-identical to the exact reviewed TASK-293 source
+  blobs f5c1121886139c8dc8c7755b5338d386d94eb2c5, 9e49e118017fb12da527d92c557e60f2bef97135,
+  31dd8c1a09cbf4807bd3f7cb815803465909fe82, 667a0d9332d1e7941c43f48adab3b53cd01b603e,
+  and 426a433e92a01bee2dae35bb54f8d7ea6eee0ff5. REVIEW-293-001 is provenance only;
+  this verdict independently binds the integration SHA.'
+- 'AC3: TASK-295 r2 corrected the r1 completion-gate ordering defect without weakening
+  verification. tests/test_origin_bootstrap.py remains the exact reviewed source blob;
+  tests/test_local_chat_wake.py and tests/test_h4b_regular_chat_brain_resume.py are
+  byte-identical to the admitted base; Runtime executed the unchanged minimum-sufficient
+  verification commands successfully.'
+- 'AC5: integrated documentation preserves TASK-293 publication-failure history, TASK-294
+  completion, the separate Human/Brain-owned two-chat H4C0 live conformance gate,
+  H4C1 blocking, and the no-automatic-roadmap-advance boundary. Implementation, verification,
+  review, or publication of TASK-295 alone is not H4C0 live closure.'
+- 'AC6: candidate introduces no changes to local_chat_wake, wake/H4B tests or wake
+  policy docs, no new return router/lifecycle authority, no raw conversation identity
+  canonicalization, no live wake or operational reset, and no roadmap mutation.'
+- 'AC7: r2 RESULT claims only pre-verification implementation/result properties; Runtime
+  owns verification/EVIDENCE, this fresh Reviewer verdict owns semantic acceptance
+  of 49734b00e7fab8da35d56f3f802c09b8aabc8b75, Publisher owns exact publication, and
+  Human/Brain retains later H4C0 live closure authority. RUN-295-001 remains a canonical
+  completion-gate TASK-contract-ordering failure and is not reinterpreted as implementation/test
+  failure.'
