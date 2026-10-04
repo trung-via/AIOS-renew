@@ -60,7 +60,9 @@ REASONS = frozenset({
     "OUTBOUND_ALREADY_PRESENT", "INSERT_BLOCKED", "SEND_BLOCKED",
     "SUBMISSION_UNPROVEN", "ATTEMPT_REQUIRES_HUMAN", "STATE_CAPACITY_REQUIRES_HUMAN",
     "LOCAL_FAILURE",
+    # LANE_IN_FLIGHT is accepted only when reading historical receipts/state.
     "CANONICAL_UNKNOWN", "BINDING_GENERATION_CHANGED", "LANE_IN_FLIGHT",
+    "INVOCATION_LIMIT_REACHED",
     "REGISTRY_CONFLICT", "ENABLE_GATE_CLOSED",
 })
 SURFACE_CAUSES = frozenset({
@@ -290,13 +292,16 @@ class State:
                 raise WakeBlocked("STATE_AMBIGUOUS")
         flight = data["flight"]
         if flight is not None and (not isinstance(flight, dict) or set(flight) != {"event_id", "seen_busy"}
-                or type(flight["seen_busy"]) is not bool or flight["event_id"] not in data["events"]
+                or type(flight["seen_busy"]) is not bool or not isinstance(flight["event_id"], str)
+                or flight["event_id"] not in data["events"]
                 or data["events"][flight["event_id"]]["status"] not in {"AMBIGUOUS", "SUBMITTED"}
                 or data["events"][flight["event_id"]]["generation"] is None):
             raise WakeBlocked("STATE_AMBIGUOUS")
-        attempts = [k for k, v in data["events"].items() if v["status"] == "AMBIGUOUS" and v["generation"] is not None]
-        if len(attempts) > 1 or (attempts and (flight is None or flight["event_id"] != attempts[0])):
-            raise WakeBlocked("STATE_AMBIGUOUS")
+        # TEMPORARY_WAKE_FIRST_CUTOVER_V2: validate legacy V1 policy metadata,
+        # then retire only its pointer. Exact-event records, original binding
+        # generations and tombstones retain all dedupe/uncertainty authority.
+        # Multiple held attempts are valid; none grants permission to resend.
+        data["flight"] = None
         return data
 
     def write(self, data: dict) -> None:
@@ -940,7 +945,7 @@ def _fresh(projection, event_id, *, allow_unknown=False):
         value = "UNKNOWN"
     if value not in {"UNRESOLVED", "RESOLVED"}:
         if allow_unknown:
-            # TEMPORARY_PERMISSIVE_WAKE_V1: transport uncertainty only. Never
+            # V1 UNKNOWN policy retained by V2: transport uncertainty only. Never
             # rewrite UNKNOWN as canonical UNRESOLVED or persist lifecycle truth.
             return "UNKNOWN"
         raise WakeBlocked("CANONICAL_UNKNOWN")
@@ -950,23 +955,18 @@ def _fresh(projection, event_id, *, allow_unknown=False):
 def _drain_locked(state, data, binding, adapter_factory, projection, binding_provider):
     """One finite admission-order pass, at most one submission; no new subjects."""
     receipts = []
-    # Reconcile held attempts first. Pending FIFO subjects cross their own fresh
-    # barrier below; old submitted history must not starve their observation budget.
+    # Reconcile exact held attempts first, without any new submission. Pending
+    # subjects cross their own barriers; submitted history needs no lane release.
     for event_id, item in list(data["events"].items()):
-        if item["status"] != "AMBIGUOUS" and not (data["flight"] and data["flight"]["event_id"] == event_id):
+        if item["status"] != "AMBIGUOUS":
             continue
         try:
             if _fresh(projection, event_id) == "RESOLVED":
                 data["events"][event_id] = record("RESOLVED_NOOP")
-                if data["flight"] and data["flight"]["event_id"] == event_id:
-                    data["flight"] = None
                 state.write(data)
                 receipts.append(dict(event_id=event_id, status="NOOP", reason="CANONICALLY_RESOLVED"))
         except WakeBlocked:
-            # Uncertainty is a hold; never infer resolution from unrelated activity.
-            if item["status"] in {"PENDING", "DEFERRED"}:
-                item.update(status="DEFERRED", reason="CANONICAL_UNKNOWN")
-                state.write(data)
+            pass  # Uncertainty keeps this exact attempt held.
 
     for event_id, item in data["events"].items():
         if item["status"] != "AMBIGUOUS":
@@ -985,31 +985,15 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
             state.write(data)
             receipts.append(dict(event_id=event_id, status="BLOCKED", reason="ATTEMPT_REQUIRES_HUMAN"))
 
-    flight = data["flight"]
-    if flight and data["events"][flight["event_id"]]["status"] == "SUBMITTED":
-        try:
-            with adapter_factory(_original_binding(data, data["events"][flight["event_id"]], binding.repository)) as adapter:
-                generation = adapter.generation_state()
-                if generation == "BUSY":
-                    flight["seen_busy"] = True
-                elif generation == "IDLE" and (flight["seen_busy"] or
-                        adapter.completed_wake(doorbell(flight["event_id"], binding.repository)) is True):
-                    # Preserve the SUBMITTED holder and its dedupe identity.
-                    # The next subject still crosses every fresh send barrier.
-                    data["flight"] = None
-            state.write(data)
-        except Exception:
-            pass
-    # TEMPORARY_PERMISSIVE_WAKE_V1: each subject crosses its own barriers.
-    # Only durable flight/attempt state can serialize independent subjects.
+    # V2 uncertainty is event-local. This limit belongs only to this finite
+    # invocation, never to durable lane state or a later independent invocation.
+    invocation_attempted = False
     for event_id, item in data["events"].items():
         if item["status"] not in {"PENDING", "DEFERRED"}:
             continue
         receipt = dict(event_id=event_id, status="DEFERRED")
-        lane_in_flight = data["flight"] is not None or any(
-            v["status"] == "AMBIGUOUS" for v in data["events"].values())
-        if lane_in_flight:
-            receipt["reason"] = "LANE_IN_FLIGHT"
+        if invocation_attempted:
+            receipt["reason"] = "INVOCATION_LIMIT_REACHED"
             if _fresh(projection, event_id, allow_unknown=True) == "RESOLVED":
                 data["events"][event_id] = record("RESOLVED_NOOP")
                 state.write(data)
@@ -1033,12 +1017,14 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
                 raise WakeBlocked("BINDING_GENERATION_CHANGED")
 
         def before_click():
-            nonlocal attempted
+            nonlocal attempted, invocation_attempted
+            if invocation_attempted:
+                raise WakeBlocked("INVOCATION_LIMIT_REACHED")
             barrier()
             item.update(status="AMBIGUOUS", generation=binding.generation, reason="ATTEMPT_REQUIRES_HUMAN")
-            data["flight"] = dict(event_id=event_id, seen_busy=False)
             state.write(data)  # Durable uncertainty precedes the possible click.
             attempted = True
+            invocation_attempted = True
 
         try:
             barrier()
@@ -1104,8 +1090,6 @@ def operate(repository, binding, event_id=None, adapter_factory=BrowserAdapter,
             if _fresh(projection, recovery,
                       allow_unknown=original["status"] in {"PENDING", "DEFERRED"}) == "RESOLVED":
                 data["events"][recovery] = record("RESOLVED_NOOP")
-                if data["flight"] and data["flight"]["event_id"] == recovery:
-                    data["flight"] = None
                 state.write(data)
                 return [dict(event_id=recovery, status="NOOP", reason="CANONICALLY_RESOLVED")]
         _remember_binding(data, binding)
@@ -1135,15 +1119,13 @@ def operate(repository, binding, event_id=None, adapter_factory=BrowserAdapter,
                             if len(data["tombstones"]) >= MAX_TOMBSTONES:
                                 continue  # Capacity never evicts operational attention.
                             data["tombstones"].append(digest)
-                        if data["flight"] and data["flight"]["event_id"] == key:
-                            data["flight"] = None
                         del data["events"][key]
                 except WakeBlocked:
                     pass
             state.write(data)
         if event_id is not None and not any(r["event_id"] == event_id for r in receipts):
             item = data["events"].get(event_id)
-            receipts.append(dict(event_id=event_id, status="BLOCKED", reason="ATTEMPT_REQUIRES_HUMAN" if item and item["status"] == "AMBIGUOUS" else "LANE_IN_FLIGHT"))
+            receipts.append(dict(event_id=event_id, status="BLOCKED", reason="ATTEMPT_REQUIRES_HUMAN" if item and item["status"] == "AMBIGUOUS" else "LOCAL_FAILURE"))
         return receipts
 
 

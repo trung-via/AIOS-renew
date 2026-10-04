@@ -161,7 +161,7 @@ class RecoveryAdapter:
         snapshot = stored(self.binding)
         assert snapshot["events"][event_id]["status"] == "AMBIGUOUS"
         assert snapshot["events"][event_id]["generation"] == self.binding.generation
-        assert snapshot["flight"] == dict(event_id=event_id, seen_busy=False)
+        assert snapshot["flight"] is None
         self.submits.append(text)
 
     def prove(self, text):
@@ -521,14 +521,14 @@ def test_failure_task_revision_drain_preserves_unrelated_freshness_and_once_per_
     assert all(fixture.event not in text for text in adapter.inserts)
     data = stored(binding)
     if block in {None, "canonical", "ambiguous"}:
-        assert data["events"][others[1]] == wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
+        assert data["events"][others[1]] == wake.record("DEFERRED", reason="INVOCATION_LIMIT_REACHED")
         assert adapter.submits == [wake.doorbell(others[0], wake.REPOSITORY)]
         assert data["events"][others[0]]["status"] == ("AMBIGUOUS" if block == "ambiguous" else "SUBMITTED")
-        assert data["flight"]["event_id"] == others[0]
+        assert data["flight"] is None
         deliver(others[0], wake.REPOSITORY, binding, factory, projection=projection)
         wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection)
-        assert len(adapter.submits) == 1
-        assert stored(binding)["events"][others[1]]["status"] == "DEFERRED"
+        assert len(adapter.submits) == 2
+        assert stored(binding)["events"][others[1]]["status"] == ("AMBIGUOUS" if block == "ambiguous" else "SUBMITTED")
     else:
         assert data["flight"] is None
         reason = {"binding": "BINDING_GENERATION_CHANGED", "draft": "DRAFT_PRESENT"}[block]
@@ -647,7 +647,7 @@ def test_generation_reuse_and_rollback_fail_closed(binding):
 
 
 @pytest.mark.parametrize("proof", [True, False])
-def test_unknown_event_is_eligible_and_real_flight_serializes_later_subjects(binding, proof):
+def test_unknown_event_is_eligible_and_invocation_limit_does_not_serialize_later_invocations(binding, proof):
     first, second, third = generic_event(), EVENT.replace("001", "002"), EVENT.replace("001", "003")
     state = wake.State(binding.state_path)
     with state.locked() as data:
@@ -660,19 +660,172 @@ def test_unknown_event_is_eligible_and_real_flight_serializes_later_subjects(bin
     assert receipts == [
         dict(event_id=first, status="SUBMITTED" if proof else "BLOCKED",
              reason="EXACT_USER_TURN_PROVEN" if proof else "SUBMISSION_UNPROVEN"),
-        dict(event_id=second, status="DEFERRED", reason="LANE_IN_FLIGHT"),
-        dict(event_id=third, status="DEFERRED", reason="LANE_IN_FLIGHT"),
+        dict(event_id=second, status="DEFERRED", reason="INVOCATION_LIMIT_REACHED"),
+        dict(event_id=third, status="DEFERRED", reason="INVOCATION_LIMIT_REACHED"),
     ]
     assert projection.calls == [first, first, first, second, third]
     assert adapter.inserts == adapter.submits == [wake.doorbell(first, wake.REPOSITORY)]
-    assert stored(binding)["flight"] == dict(event_id=first, seen_busy=False)
+    assert stored(binding)["flight"] is None
     assert stored(binding)["events"][first] == wake.record(
         "SUBMITTED" if proof else "AMBIGUOUS", binding.generation,
         "NONE" if proof else "ATTEMPT_REQUIRES_HUMAN")
     deliver(first, wake.REPOSITORY, binding, lambda _: adapter, projection=projection)
     wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=projection)
-    assert len(adapter.submits) == 1
-    assert stored(binding)["events"][third] == wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
+    # Proof-only reconciliation of first does not count as a new click; second
+    # and third each get one independent opportunity in subsequent invocations.
+    if proof:
+        wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=projection)
+    assert len(adapter.submits) == 3
+    assert adapter.submits == [wake.doorbell(event, wake.REPOSITORY) for event in (first, second, third)]
+    assert stored(binding)["events"][third]["status"] == ("SUBMITTED" if proof else "AMBIGUOUS")
+    assert stored(binding)["flight"] is None
+
+
+@pytest.mark.parametrize("status", ["SUBMITTED", "AMBIGUOUS"])
+@pytest.mark.parametrize("seen_busy", [None, False, True])
+@pytest.mark.parametrize("freshness", ["UNRESOLVED", "UNKNOWN"])
+def test_wake_first_run293_stale_flight_shape_allows_distinct_event(binding, status, seen_busy, freshness):
+    # RUN-293's reported event selector with synthetic local bindings/history;
+    # this fixture neither reads nor clears the Human's operational state.
+    fresh = "terminal:RESULT:RUN-293-001:8860ace7b41ba41e45f4688c887168aeede44005"
+    retired = EVENT.replace("RUN-fixture-001", "RUN-fixture-retired")
+    compacted = EVENT.replace("RUN-fixture-001", "RUN-fixture-compacted")
+    old = wake.Binding(binding.chat_url, binding.cdp_endpoint, binding.state_path, 1)
+    current = wake.Binding(synthetic_url(99), binding.cdp_endpoint, binding.state_path, 2)
+    state = wake.State(binding.state_path)
+    with state.locked() as data:
+        wake._remember_binding(data, old)
+        data["events"][EVENT] = wake.record(status, old.generation,
+                                            "ATTEMPT_REQUIRES_HUMAN" if status == "AMBIGUOUS" else "NONE")
+        data["events"][fresh] = wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
+        data["events"][retired] = wake.record("RESOLVED_NOOP")
+        data["tombstones"].append(wake.event_digest(compacted))
+        state.write(data)
+    legacy = stored(binding)
+    if seen_busy is not None:
+        legacy["flight"] = dict(event_id=EVENT, seen_busy=seen_busy)
+    binding.state_path.write_text(json.dumps(legacy))
+    holder, pending, attachments = RecoveryAdapter(old, proof=False), RecoveryAdapter(current), []
+    def factory(bound):
+        attachments.append(bound)
+        assert bound in (old, current)
+        return holder if bound == old else pending
+    projection = Projection(lambda event: freshness if event == fresh else "UNKNOWN")
+    assert deliver(fresh, wake.REPOSITORY, current, factory, projection=projection) == dict(
+        event_id=fresh, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")
+    after = stored(binding)
+    assert after["flight"] is None
+    assert after["events"][EVENT] == legacy["events"][EVENT]
+    assert after["events"][retired] == legacy["events"][retired]
+    assert after["tombstones"] == legacy["tombstones"]
+    assert after["bindings"]["1"] == legacy["bindings"]["1"]
+    assert after["events"][fresh] == wake.record("SUBMITTED", current.generation)
+    assert projection.calls.count(fresh) == 3
+    assert attachments == ([old, current] if status == "AMBIGUOUS" else [current])
+    assert not holder.inserts and not holder.submits
+    assert pending.submits == [wake.doorbell(fresh, wake.REPOSITORY)]
+    for duplicate, reason in [(fresh, "ALREADY_SUBMITTED"), (retired, "CANONICALLY_RESOLVED"),
+                              (compacted, "COMPACTED_DUPLICATE")]:
+        assert deliver(duplicate, wake.REPOSITORY, current,
+                       lambda _: pytest.fail("permanent duplicate must not attach"),
+                       projection=Projection("UNKNOWN"))["reason"] == reason
+    frozen = binding.state_path.read_bytes()
+    wake.operate(wake.REPOSITORY, current, adapter_factory=factory, projection=projection)
+    assert binding.state_path.read_bytes() == frozen
+    assert len(pending.submits) == 1 and not holder.submits
+
+
+def test_wake_first_legacy_normalization_is_idempotent_and_preserves_multiple_exact_holds(binding):
+    state = wake.State(binding.state_path)
+    second = EVENT.replace("001", "002")
+    with state.locked() as data:
+        wake._remember_binding(data, binding)
+        data["events"][EVENT] = wake.record("AMBIGUOUS", binding.generation, "ATTEMPT_REQUIRES_HUMAN")
+        data["events"][second] = wake.record("AMBIGUOUS", binding.generation, "ATTEMPT_REQUIRES_HUMAN")
+        data["tombstones"].append(wake.event_digest(EVENT.replace("001", "003")))
+        state.write(data)
+    legacy = stored(binding)
+    legacy["flight"] = dict(event_id=EVENT, seen_busy=True)
+    normalized = state.validate(json.loads(json.dumps(legacy)))
+    assert normalized == dict(legacy, flight=None)
+    assert state.validate(json.loads(json.dumps(normalized))) == normalized
+    adapter = RecoveryAdapter(binding, proof=False)
+    for event in (EVENT, second):
+        assert deliver(event, binding.repository, binding, lambda _: adapter)["reason"] == "ATTEMPT_REQUIRES_HUMAN"
+    assert stored(binding) == normalized
+    assert not adapter.inserts and not adapter.submits
+
+
+@pytest.mark.parametrize("historical", ["ATTEMPTING", "SUBMITTED"])
+def test_wake_first_version1_history_keeps_exact_dedupe_without_holding_distinct_event(binding, historical):
+    binding.state_path.write_text(json.dumps({"version": 1, "events": {EVENT: historical}}))
+    fresh = EVENT.replace("001", "002")
+    adapter = RecoveryAdapter(binding)
+    assert deliver(fresh, binding.repository, binding, lambda _: adapter)["status"] == "SUBMITTED"
+    after = stored(binding)
+    assert after["version"] == 2 and after["flight"] is None
+    assert after["events"][EVENT] == wake.record("AMBIGUOUS" if historical == "ATTEMPTING" else "SUBMITTED")
+    reason = "ATTEMPT_REQUIRES_HUMAN" if historical == "ATTEMPTING" else "ALREADY_SUBMITTED"
+    assert deliver(EVENT, binding.repository, binding, lambda _: pytest.fail("historical duplicate must not attach"))["reason"] == reason
+    assert adapter.submits == [wake.doorbell(fresh, binding.repository)]
+
+
+@pytest.mark.parametrize("fault", ["unknown_event", "pending_holder", "missing_generation", "bad_busy", "bad_id", "extra"])
+def test_wake_first_normalization_rejects_invalid_legacy_state_without_losing_history(binding, fault):
+    state = wake.State(binding.state_path)
+    with state.locked() as data:
+        wake._remember_binding(data, binding)
+        data["events"][EVENT] = wake.record("SUBMITTED", binding.generation)
+        state.write(data)
+    legacy = stored(binding)
+    legacy["flight"] = dict(event_id=EVENT, seen_busy=False)
+    if fault == "unknown_event": legacy["flight"]["event_id"] = EVENT.replace("001", "002")
+    if fault == "pending_holder": legacy["events"][EVENT] = wake.record()
+    if fault == "missing_generation": legacy["events"][EVENT]["generation"] = None
+    if fault == "bad_busy": legacy["flight"]["seen_busy"] = 1
+    if fault == "bad_id": legacy["flight"]["event_id"] = []
+    if fault == "extra": legacy["flight"]["completion"] = True
+    binding.state_path.write_text(json.dumps(legacy))
+    frozen = binding.state_path.read_bytes()
+    assert deliver(EVENT, binding.repository, binding,
+                   lambda _: pytest.fail("invalid state must not attach"))["reason"] == "STATE_AMBIGUOUS"
+    assert binding.state_path.read_bytes() == frozen
+
+
+@pytest.mark.parametrize("failure", ["submit", "proof", "exit"])
+def test_wake_first_possible_click_ends_send_attempts_for_invocation_only(binding, failure):
+    second, resolved = EVENT.replace("001", "002"), EVENT.replace("001", "003")
+    state = wake.State(binding.state_path)
+    with state.locked() as data:
+        for event in (EVENT, second, resolved):
+            data["events"][event] = wake.record()
+        state.write(data)
+    class PossibleClickAdapter(RecoveryAdapter):
+        def submit(self, *args, **kwargs):
+            super().submit(*args, **kwargs)
+            if failure == "submit":
+                raise RuntimeError("synthetic uncertainty after possible click")
+        def __exit__(self, *args):
+            if failure == "exit":
+                raise RuntimeError("synthetic disconnect uncertainty")
+    first = PossibleClickAdapter(binding, proof=failure != "proof")
+    later = RecoveryAdapter(binding)
+    projection = Projection(lambda event: "RESOLVED" if event == resolved else "UNRESOLVED")
+    receipts = wake.operate(binding.repository, binding, adapter_factory=lambda _: first, projection=projection)
+    assert receipts[0]["status"] == "BLOCKED"
+    assert receipts[1] == dict(event_id=second, status="DEFERRED", reason="INVOCATION_LIMIT_REACHED")
+    assert receipts[2] == dict(event_id=resolved, status="NOOP", reason="CANONICALLY_RESOLVED")
+    assert first.submits == [wake.doorbell(EVENT, binding.repository)]
+    assert stored(binding)["flight"] is None
+    attachments = []
+    def factory(bound):
+        attachments.append(bound)
+        return first if len(attachments) == 1 and stored(binding)["events"][EVENT]["status"] == "AMBIGUOUS" else later
+    wake.operate(binding.repository, binding, adapter_factory=factory, projection=projection)
+    assert len(first.submits) == 1
+    assert later.submits == [wake.doorbell(second, binding.repository)]
+    assert stored(binding)["events"][second]["status"] == "SUBMITTED"
+    assert stored(binding)["flight"] is None
 
 
 @pytest.mark.parametrize("compact", [False, True])
@@ -768,39 +921,32 @@ def test_pre_submit_blocker_is_not_propagated_to_independent_later_subject(bindi
         dict(event_id=resolved, status="NOOP", reason="CANONICALLY_RESOLVED")]
     assert not blocked.submits
     assert healthy.submits == [wake.doorbell(second, wake.REPOSITORY)]
-    assert stored(binding)["flight"] == dict(event_id=second, seen_busy=False)
+    assert stored(binding)["flight"] is None
     assert stored(binding)["events"][first] == wake.record("DEFERRED", reason=reason)
     assert stored(binding)["events"][resolved] == wake.record("RESOLVED_NOOP")
 
 
-def test_fifo_flight_preserves_distinct_subjects_and_revalidates_after_completion(binding):
+def test_distinct_invocations_preserve_order_without_waiting_for_completion(binding):
     second = EVENT.replace("RUN-fixture-001", "RUN-fixture-002")
     third = EVENT.replace("RESULT:RUN-fixture-001", "FAILURE:RUN-fixture-003")
     adapter = RecoveryAdapter(binding)
-    deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)
-    assert deliver(second, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "DEFERRED"
-    assert deliver(third, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "DEFERRED"
-    assert len(adapter.submits) == 1
+    for event in (EVENT, second, third):
+        assert deliver(event, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "SUBMITTED"
+    assert adapter.submits == [wake.doorbell(event, wake.REPOSITORY) for event in (EVENT, second, third)]
     assert list(stored(binding)["events"]) == [EVENT, second, third]
-    assert stored(binding)["flight"]["event_id"] == EVENT
-    assert all(stored(binding)["events"][event] == wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
-               for event in (second, third))
-    adapter.generation = "IDLE"
-    projection = Projection(lambda key: "RESOLVED" if key == second else "UNRESOLVED")
-    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=projection)
-    assert stored(binding)["events"][second]["status"] == "RESOLVED_NOOP"
-    assert stored(binding)["events"][third]["status"] == "SUBMITTED"
-    assert len(adapter.submits) == 2
+    assert stored(binding)["flight"] is None
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: pytest.fail("history needs no release probe"),
+                 projection=Projection())
+    assert len(adapter.submits) == 3
 
 
-def test_unobserved_generation_completion_does_not_release_lane(binding):
+def test_unobserved_generation_completion_cannot_hold_a_distinct_event(binding):
     adapter = RecoveryAdapter(binding, generation="IDLE")
     deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)
     second = EVENT.replace("001", "002")
-    deliver(second, wake.REPOSITORY, binding, lambda _: adapter)
-    assert len(adapter.submits) == 1
-    assert stored(binding)["flight"]["seen_busy"] is False
-    assert stored(binding)["events"][second]["status"] == "DEFERRED"
+    assert deliver(second, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "SUBMITTED"
+    assert len(adapter.submits) == 2
+    assert stored(binding)["flight"] is None
 
 
 def test_busy_lock_preserves_intake_in_lane_inbox_and_other_lane_progresses(binding):
@@ -1040,7 +1186,7 @@ def test_follow_up_drain_retries_unknown_without_schedule_and_stops_after_one_su
     assert len(passes) == 2 and sleeps == [15]
     assert len(adapter.submits) == 1 and first in adapter.submits[0]
     assert stored(binding)["events"][second]["status"] == "DEFERRED"
-    assert stored(binding)["flight"]["event_id"] == first
+    assert stored(binding)["flight"] is None
 
 
 @pytest.mark.parametrize("proof", [True, False])
@@ -1086,10 +1232,10 @@ def test_duplicate_direct_fallback_concurrent_follow_ups_and_optional_schedule_n
         assert first_drain.result(timeout=5) == 0
     # An optional later scheduled invocation uses exactly the same drain.
     assert wake.main(command) == 0
-    assert len(adapter.submits) == 1 and direct in adapter.submits[0]
+    assert len(adapter.submits) == 2 and direct in adapter.submits[0] and second in adapter.submits[1]
     assert stored(binding)["events"][direct]["status"] == ("SUBMITTED" if proof else "AMBIGUOUS")
-    assert stored(binding)["events"][second]["status"] == "DEFERRED"
-    assert stored(binding)["flight"]["event_id"] == direct
+    assert stored(binding)["events"][second]["status"] == ("SUBMITTED" if proof else "AMBIGUOUS")
+    assert stored(binding)["flight"] is None
 
 
 def synthetic_url(number=1):
@@ -1490,6 +1636,43 @@ class LocalSurfaceAdapter(wake.BrowserAdapter):
         pass
 
 
+@pytest.mark.parametrize("condition,reason", [
+    ("draft", "DRAFT_PRESENT"), ("generation", "GENERATION_ACTIVE"),
+    ("login", "SURFACE_UNPROVEN"), ("nonregular", "SURFACE_UNPROVEN"),
+    ("disabled", "SURFACE_UNPROVEN"), ("wrong_target", "TARGET_PAGE_NOT_UNIQUE"),
+    ("duplicate_target", "TARGET_PAGE_NOT_UNIQUE"),
+])
+def test_wake_first_stale_flight_cannot_bypass_fresh_production_browser_checks(binding, condition, reason):
+    holder = RecoveryAdapter(binding)
+    assert deliver(EVENT, binding.repository, binding, lambda _: holder)["status"] == "SUBMITTED"
+    legacy = stored(binding)
+    legacy["flight"] = dict(event_id=EVENT, seen_busy=False)
+    binding.state_path.write_text(json.dumps(legacy))
+    fresh = EVENT.replace("001", "002")
+    page = Page(binding.chat_url)
+    page.payload = page.outbound = wake.doorbell(fresh, binding.repository)
+    pending = LocalSurfaceAdapter(binding, page)
+    if condition == "draft": page.draft = "Synthetic Human draft"
+    if condition == "generation": page.counts[wake.STOP] = 1
+    if condition == "login": page.counts[wake.LOGIN] = 1
+    if condition == "nonregular": page.counts[wake.NONREGULAR] = 1
+    if condition == "disabled": page.disabled = True
+    if condition == "wrong_target": page.url = synthetic_url(66)
+    if condition == "duplicate_target": pending.browser.contexts[0].pages.append(Page(binding.chat_url))
+    receipt = deliver(fresh, binding.repository, binding, lambda _: pending)
+    assert receipt["status"] == "DEFERRED" and receipt["reason"] == reason
+    assert not page.evaluations
+    after = stored(binding)
+    assert after["flight"] is None and after["events"][EVENT] == legacy["events"][EVENT]
+    assert after["events"][fresh] == wake.record("DEFERRED", reason=reason)
+    healthy = Page(binding.chat_url)
+    healthy.payload = healthy.outbound = page.payload
+    assert deliver(fresh, binding.repository, binding,
+                   lambda _: LocalSurfaceAdapter(binding, healthy))["status"] == "SUBMITTED"
+    assert healthy.evaluations.count(wake.INSERT) == healthy.evaluations.count(wake.CLICK) == 1
+    assert len(holder.submits) == 1 and stored(binding)["flight"] is None
+
+
 def test_failed_insertion_leaves_draft_checked_independently_for_later_subjects(binding):
     second, third, resolved = (EVENT.replace("001", number) for number in ("002", "003", "004"))
     state = wake.State(binding.state_path)
@@ -1718,37 +1901,29 @@ def submitted_with_pending(binding, scenario="complete", proof=True):
     with state.locked() as data:
         data["events"][second] = wake.record()
         state.write(data)
-    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=False)
+    assert stored(binding)["flight"] is None
     return page, holder, second
 
 
 @pytest.mark.parametrize("scenario", ["complete", "legacy", "both"])
-def test_exact_completed_wake_releases_only_pointer_and_sends_fresh_second_once(binding, scenario):
+def test_distinct_event_needs_no_older_completion_witness_and_keeps_dedupe(binding, scenario):
     page, holder, second = submitted_with_pending(binding, scenario)
     before = stored(binding)
-    projection, next_adapter, attachments = Projection(), RecoveryAdapter(binding), []
-
-    def factory(bound):
-        assert bound == binding
-        attachments.append(bound)
-        return holder if len(attachments) == 1 else next_adapter
-
-    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection)
+    projection, next_adapter = Projection(), RecoveryAdapter(binding)
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: next_adapter, projection=projection)
     after = stored(binding)
     assert receipts == [dict(event_id=second, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")]
-    assert page.completions == [wake.PROVE_WAKE_COMPLETION]
-    assert page.evaluations.count(wake.CLICK) == 1  # The first wake is never resent.
+    assert not page.completions and page.evaluations.count(wake.CLICK) == 1
     assert next_adapter.submits == [wake.doorbell(second, wake.REPOSITORY)]
-    assert projection.calls == [EVENT, second, second, second]
+    assert projection.calls == [second, second, second]
     assert after["events"][EVENT] == before["events"][EVENT] == wake.record("SUBMITTED", binding.generation)
     assert after["bindings"] == before["bindings"] and after["tombstones"] == before["tombstones"]
     assert set(after) == set(before) and after["version"] == before["version"] == 2
-    assert after["flight"] == dict(event_id=second, seen_busy=False)
-    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: pytest.fail("dedupe must not attach"))["reason"] == "ALREADY_SUBMITTED"
-    assert deliver(second, wake.REPOSITORY, binding, lambda _: pytest.fail("dedupe must not attach"))["reason"] == "ALREADY_SUBMITTED"
-    next_adapter.generation = "IDLE"  # IDLE alone still cannot release the new flight.
-    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: next_adapter, projection=projection)
-    assert len(next_adapter.submits) == 1 and stored(binding)["flight"]["event_id"] == second
+    assert after["flight"] is None
+    for event in (EVENT, second):
+        assert deliver(event, wake.REPOSITORY, binding, lambda _: pytest.fail("dedupe must not attach"))["reason"] == "ALREADY_SUBMITTED"
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: pytest.fail("no release probe"), projection=projection)
+    assert len(next_adapter.submits) == 1
 
 
 @pytest.mark.parametrize("scenario", [
@@ -1760,20 +1935,22 @@ def test_exact_completed_wake_releases_only_pointer_and_sends_fresh_second_once(
     "user_marker_in_assistant", "intervening_user", "virtualized_gap", "placeholder", "later_user",
     "missing_ordinal", "missing_turn_key", "outside_main", "duplicate_main", "identity_bound",
 ])
-def test_idle_without_unambiguous_exact_completion_holds_pending_without_send(binding, scenario):
+def test_missing_older_completion_does_not_suppress_distinct_event(binding, scenario):
     assert completion_dom_result(binding, scenario) is False
     page, holder, second = submitted_with_pending(binding, scenario)
     before = stored(binding)
-    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: holder, projection=Projection())
+    next_adapter = RecoveryAdapter(binding)
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: next_adapter, projection=Projection())
     after = stored(binding)
-    assert receipts == [dict(event_id=second, status="DEFERRED", reason="LANE_IN_FLIGHT")]
-    assert after["flight"] == before["flight"] == dict(event_id=EVENT, seen_busy=False)
+    assert receipts == [dict(event_id=second, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")]
+    assert after["flight"] is None
     assert after["events"][EVENT] == before["events"][EVENT]
-    assert page.evaluations.count(wake.CLICK) == 1 and len(page.completions) == 1
+    assert not page.completions and page.evaluations.count(wake.CLICK) == 1
+    assert len(next_adapter.submits) == 1
 
 
 @pytest.mark.parametrize("fault", ["busy", "draft", "disabled", "login", "nonregular", "target", "duplicate_target", "adapter_error"])
-def test_completion_target_surface_and_generation_uncertainty_never_sends_pending(binding, fault):
+def test_older_submitted_browser_failures_do_not_propagate_to_distinct_event(binding, fault):
     page, holder, second = submitted_with_pending(binding)
     if fault == "busy": page.counts[wake.STOP] = 1
     if fault == "draft": page.draft = "Synthetic Human draft"
@@ -1783,34 +1960,40 @@ def test_completion_target_surface_and_generation_uncertainty_never_sends_pendin
     if fault == "target": page.url = synthetic_url(50)
     if fault == "duplicate_target": holder.browser.contexts[0].pages.append(Page(binding.chat_url))
     if fault == "adapter_error":
-        holder.completed_wake = lambda _: (_ for _ in ()).throw(RuntimeError("adapter unavailable"))
-    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: holder, projection=Projection())
-    assert receipts[-1]["reason"] == "LANE_IN_FLIGHT"
-    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=fault == "busy")
+        holder.completed_wake = lambda _: pytest.fail("older completion must not be consulted")
+    next_adapter = RecoveryAdapter(binding)
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: next_adapter, projection=Projection())
+    assert receipts == [dict(event_id=second, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")]
+    assert stored(binding)["flight"] is None
+    assert stored(binding)["events"][EVENT] == wake.record("SUBMITTED", binding.generation)
     assert not page.completions and page.evaluations.count(wake.CLICK) == 1
+    assert len(next_adapter.submits) == 1
 
 
 @pytest.mark.parametrize("movement", ["generation", "target", "surface", "draft"])
-def test_completion_rechecks_exact_idle_target_after_structural_witness(binding, movement):
+def test_optional_completion_helper_rechecks_exact_idle_target_after_structural_witness(binding, movement):
     page, holder, second = submitted_with_pending(binding)
+    before = binding.state_path.read_bytes()
     def race(target):
         if movement == "generation": target.counts[wake.STOP] = 1
         if movement == "target": target.url = synthetic_url(50)
         if movement == "surface": target.counts[wake.LOGIN] = 1
         if movement == "draft": target.draft = "Synthetic Human draft"
     page.completion_race = race
-    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: holder, projection=Projection())
-    assert receipts[-1]["reason"] == "LANE_IN_FLIGHT"
-    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=False)
+    if movement == "generation":
+        assert holder.completed_wake(page.payload) is False
+    else:
+        reason = {"target": "TARGET_PAGE_NOT_UNIQUE", "surface": "SURFACE_UNPROVEN", "draft": "DRAFT_PRESENT"}[movement]
+        with pytest.raises(wake.WakeBlocked, match=reason):
+            holder.completed_wake(page.payload)
+    assert binding.state_path.read_bytes() == before
     assert page.evaluations.count(wake.CLICK) == 1 and len(page.completions) == 1
 
 
 @pytest.mark.parametrize("boundary", ["insert", "click", "binding", "draft", "generation"])
-def test_completion_release_cannot_bypass_second_subject_fresh_send_barriers(binding, boundary):
+def test_distinct_subject_still_crosses_its_own_fresh_send_barriers(binding, boundary):
     page, holder, second = submitted_with_pending(binding)
-    projection = Projection()
-    selected = [binding]
-    calls = []
+    projection, selected = Projection(), [binding]
     def race(stage):
         if stage == boundary:
             projection.value = lambda event: "RESOLVED" if event == second else "UNRESOLVED"
@@ -1818,10 +2001,7 @@ def test_completion_release_cannot_bypass_second_subject_fresh_send_barriers(bin
             selected[0] = wake.Binding(binding.chat_url, binding.cdp_endpoint, binding.state_path, 1)
     block = {"draft": "DRAFT_PRESENT", "generation": "GENERATION_ACTIVE"}.get(boundary)
     next_adapter = RecoveryAdapter(binding, block=block, race=race)
-    def factory(bound):
-        calls.append(bound)
-        return holder if len(calls) == 1 else next_adapter
-    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection,
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: next_adapter, projection=projection,
                             binding_provider=lambda: selected[0])
     assert not next_adapter.submits and page.evaluations.count(wake.CLICK) == 1
     assert stored(binding)["flight"] is None
@@ -1829,25 +2009,30 @@ def test_completion_release_cannot_bypass_second_subject_fresh_send_barriers(bin
     assert receipts[-1]["status"] == ("NOOP" if boundary in {"insert", "click"} else "DEFERRED")
 
 
-def test_canonical_resolution_retires_stale_holder_without_completion_or_browser(binding):
+def test_canonical_resolution_noops_pending_and_compacts_submitted_history_without_browser(binding):
     page, holder, second = submitted_with_pending(binding)
     receipts = wake.operate(wake.REPOSITORY, binding,
                             adapter_factory=lambda _: pytest.fail("canonical resolution requires no browser"),
-                            projection=Projection("RESOLVED"))
-    assert all(receipt["reason"] == "CANONICALLY_RESOLVED" for receipt in receipts)
-    assert stored(binding)["flight"] is None
-    assert stored(binding)["events"][EVENT]["status"] == "RESOLVED_NOOP"
-    assert stored(binding)["events"][second]["status"] == "RESOLVED_NOOP"
+                            projection=Projection("RESOLVED"), compact=True)
+    assert receipts == [dict(event_id=second, status="NOOP", reason="CANONICALLY_RESOLVED")]
+    assert stored(binding)["flight"] is None and not stored(binding)["events"]
+    assert set(stored(binding)["tombstones"]) == {wake.event_digest(EVENT), wake.event_digest(second)}
     assert not page.completions and page.evaluations.count(wake.CLICK) == 1
 
 
-def test_ambiguous_attempt_cannot_use_completion_witness_or_automatically_resend(binding):
+def test_ambiguous_attempt_stays_proof_only_while_distinct_event_can_submit(binding):
     page, holder, second = submitted_with_pending(binding, proof=False)
-    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: holder, projection=Projection())
-    assert receipts[-1]["reason"] == "LANE_IN_FLIGHT"
+    next_adapter, attachments = RecoveryAdapter(binding), []
+    def factory(bound):
+        attachments.append(bound)
+        return holder if len(attachments) == 1 else next_adapter
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=Projection())
+    assert receipts == [dict(event_id=EVENT, status="BLOCKED", reason="ATTEMPT_REQUIRES_HUMAN"),
+                        dict(event_id=second, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")]
     assert stored(binding)["events"][EVENT]["status"] == "AMBIGUOUS"
-    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=False)
+    assert stored(binding)["flight"] is None
     assert not page.completions and page.evaluations.count(wake.CLICK) == 1
+    assert len(next_adapter.submits) == 1
 
 
 class SurfaceURLRacePage(Page):
@@ -2005,20 +2190,15 @@ def test_surface_cause_deferred_subject_resolves_without_retry_or_insertion(bind
     assert not page.evaluations
 
 
-def test_surface_cause_disabled_generation_preserves_busy_then_idle_lane_release(binding):
+def test_submitted_history_requires_no_disabled_busy_or_idle_release_probe(binding):
     page = Page(binding.chat_url)
     adapter = LocalSurfaceAdapter(binding, page)
     assert deliver(EVENT, binding.repository, binding, lambda _: adapter)["status"] == "SUBMITTED"
-    page.disabled = True
-    page.counts[wake.STOP] = 1
-    assert wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter,
-                        projection=Projection()) == []
-    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=True)
-    page.disabled = False
-    page.counts[wake.STOP] = 0
-    assert wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter,
-                        projection=Projection()) == []
-    assert stored(binding)["flight"] is None
+    for disabled, busy in [(True, 1), (False, 0)]:
+        page.disabled, page.counts[wake.STOP] = disabled, busy
+        assert wake.operate(binding.repository, binding, adapter_factory=lambda _: pytest.fail("no submitted release probe"),
+                            projection=Projection()) == []
+        assert stored(binding)["flight"] is None
     assert page.evaluations.count(wake.INSERT) == page.evaluations.count(wake.CLICK) == 1
 
 

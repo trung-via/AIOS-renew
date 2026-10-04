@@ -6,6 +6,9 @@ Audit profile: `brain-high-value-v2`
 Scope: GitHub/AIOS semantic attention -> exact existing regular ChatGPT Project conversation
 Supersedes for production wake: `HUMAN_WAKE_RELAY_V1`
 Preserves as historical evidence only: ChatGPT Work wake/ACK conformance
+Current eligibility policy: `TEMPORARY_WAKE_FIRST_CUTOVER_V2` (section 17),
+explicit Human wake-first risk acceptance on 2026-10-04. Earlier lane-flight
+serialization/release policies below are historical and prospectively superseded.
 
 ## 1. Human objective
 
@@ -254,17 +257,16 @@ A binding change during preflight aborts that attempt and re-resolves the new ge
 An ambiguous post-submit attempt remains bound to the generation on which it was
 attempted until exact proof, canonical resolution or Human reconciliation closes it.
 
-Within one lane, only one wake may be in submission/Brain-generation flight at a time.
-Additional events remain pending. After each completion the transport revalidates every
-pending subject, discards stale/resolved subjects as NOOP, and submits only the next
-send-eligible event in stable admission order. Under the Human risk-accepted
-`TEMPORARY_PERMISSIVE_WAKE_V1` policy in section 16, UNKNOWN is transport uncertainty
-and may proceed through browser barriers; exact RESOLVED remains a NOOP. Each
-independent subject receives its own observation and browser checks. It must not semantically
-coalesce unrelated attention subjects.
-For a proven submitted flight whose transient BUSY state was missed, the exact-turn-bound
-structural completion contract in section 13 supplies an additional fail-closed release
-mechanism. IDLE alone never supplies that proof.
+Under `TEMPORARY_WAKE_FIRST_CUTOVER_V2` in section 17, an older SUBMITTED or AMBIGUOUS
+event cannot suppress a distinct event. `LANE_IN_FLIGHT` is retired as cross-event
+eligibility. Each finite invocation attempts at most one user-turn submission;
+remaining subjects can independently progress in a later invocation without waiting
+for an older completion witness. UNKNOWN remains transport uncertainty and may
+proceed through browser barriers; exact RESOLVED remains a NOOP. Each independent
+subject receives its own canonical, current-binding and browser checks, including
+actual current draft/generation protection. Subjects are never semantically coalesced.
+The historical completion helper in section 13 supplies no eligibility or resend
+permission under V2. Exact-event ambiguity and permanent dedupe remain mandatory.
 
 This milestone must preserve project independence even when multiple target chats share
 one authenticated browser/CDP session. Page-state checks are scoped to the exact target
@@ -432,6 +434,10 @@ Outcome: **CANDIDATE** for roadmap insertion as H4A.4 then H4A.5 before H4B.
 
 ## 13. TASK-287 exact-turn-bound completion hardening
 
+Historical policy: section 17 retires durable flight and its completion-release
+prerequisite for distinct events. The structural helper remains bounded, but is
+not consulted for V2 eligibility and cannot resolve or resend an ambiguous event.
+
 ### Observed stale flight and bounded recovery
 
 RUN-285-001 publication-success attention was proven
@@ -566,7 +572,8 @@ drain, local-state recovery, H4B evidence manufacture or roadmap advancement.
 ## 15. TASK-290 non-blocking per-event wake
 
 Historical TASK-290 policy: section 16 supersedes its UNKNOWN suppression and
-pass-blocker propagation. Its durable-flight and no-resend guarantees remain.
+pass-blocker propagation; section 17 supersedes durable-flight serialization.
+Exact-event no-resend guarantees remain.
 
 `NON_BLOCKING_PER_EVENT_WAKE_V1` separates an individual canonical deferral from
 durable lane flight and from a safety blocker that lasts for one finite pass.
@@ -642,6 +649,11 @@ rewrite, manufactured semantic proof, H4B closure or H5 start.
 
 ## 16. TASK-291 TEMPORARY_PERMISSIVE_WAKE_V1
 
+Historical V1 policy: section 17 prospectively supersedes its durable-flight
+serialization and rollback/retightening policy under explicit Human risk acceptance.
+Account-presence retirement, UNKNOWN transport eligibility and independent pre-submit
+checks remain, together with exact-event no-resend and destination safety.
+
 `TEMPORARY_PERMISSIVE_WAKE_V1` is an explicit Human risk-accepted temporary transport
 policy. The supplied TASK-291 context records five repeated exact-target snapshots
 with one main and one composer but zero matches for every bounded account/profile
@@ -708,3 +720,81 @@ owns any later live observation, risk retightening and roadmap decision. Executo
 changes only the four TASK-291 files and commits the candidate without live drain,
 wake replay, operational-state rewrite or publication. H4B remains **UNPROVED**;
 this policy supplies no semantic-resume proof, H4B closure, H5 start or roadmap advance.
+
+## 17. TASK-294 TEMPORARY_WAKE_FIRST_CUTOVER_V2
+
+`TEMPORARY_WAKE_FIRST_CUTOVER_V2` records explicit Human wake-first risk acceptance
+on 2026-10-04. Human prioritizes fixing wake before returning to the H4 roadmap and
+accepts that an older submitted or ambiguous doorbell may coexist with a later
+distinct doorbell attempt. This prospectively supersedes V1 eligibility serialization;
+it does not require another LANE_IN_FLIGHT root-cause, account-selector or individual
+UI-boundary hardening cycle before making progress.
+
+The supplied TASK-294 context reports that
+`terminal:RESULT:RUN-293-001:8860ace7b41ba41e45f4688c887168aeede44005`
+repeatedly reached local wake as `DEFERRED/LANE_IN_FLIGHT` while an older holder
+remained. Workflow run 37169241505 is subordinate operational context, not lifecycle
+truth. TASK-293's RESULT, Runtime verification, REVIEW-293-001 PASS and separately
+checkpointed publication integration remain unchanged. No historical artifact is
+rewritten and this candidate creates no live observation.
+
+V2 applies these bounded rules:
+
+- `LANE_IN_FLIGHT` is retired as cross-event eligibility. A distinct PENDING or
+  DEFERRED subject receives its own fresh canonical, current-binding and browser
+  checks regardless of older SUBMITTED or AMBIGUOUS events or legacy `data.flight`.
+  Old `DEFERRED/LANE_IN_FLIGHT` records remain readable and are independently retried.
+- The version-2 storage envelope retains its `flight` key for compatibility, always
+  normalized to `null` after validating legacy pointer integrity. Only the obsolete
+  pointer is retired: event/tombstone history, binding generations, exact held
+  attempts and reasons are preserved. Normalization is bounded and idempotent;
+  malformed state still fails closed. Multiple event-local ambiguous attempts are
+  valid without a flight pointer. No completion or canonical resolution is fabricated.
+- Exact SUBMITTED, RESOLVED_NOOP and compacted/tombstoned events remain permanent
+  duplicates. An AMBIGUOUS exact event cannot be resent: only its exact outbound
+  user-turn proof on its original binding generation, or existing exact canonical
+  resolution, may reconcile it. Missing proof retains that event's hold, never
+  permission to resend. Recovery retains the same original-event rules.
+- A finite operate/deliver invocation may cross at most one possible-click boundary.
+  The selected event's AMBIGUOUS record and original binding generation are durably
+  written before that boundary, without creating flight. A local invocation flag
+  then stops all additional send attempts even if click, proof, disconnect or final
+  persistence is uncertain. Later unresolved/unknown subjects receive
+  `DEFERRED/INVOCATION_LIMIT_REACHED`; later exactly RESOLVED subjects still NOOP
+  without browser attachment. This reason is a receipt for that invocation, not a
+  durable eligibility gate. A later invocation may attempt a different event.
+- Current binding must match the authorized repository lane; identity reuse/rollback
+  and generation changes fail closed. Exact full target URL, page uniqueness and
+  immediate identity rechecks, login/non-regular rejection, usable unique main and
+  composer, draft/active-generation protection, exact outbound dedupe, application
+  insertion/Send acceptance and exact submission proof remain mandatory. No tab,
+  recent chat, transcript, model memory or repository name can infer a destination.
+- Pre-submit DRAFT_PRESENT, GENERATION_ACTIVE, SURFACE_UNPROVEN,
+  TARGET_PAGE_NOT_UNIQUE, INSERT_BLOCKED, SEND_BLOCKED and other bounded browser/UI
+  outcomes stay event-local. A later subject may independently encounter the same
+  real condition, but does not inherit an earlier receipt or a lane-wide blocker.
+  CANONICAL_UNKNOWN stays transport uncertainty, never lifecycle truth. Brain still
+  performs fresh canonical Brain Sync before semantic continuation.
+
+Rollback means closing the existing global `AIOS_LOCAL_CHAT_WAKE_ENABLED` enable
+gate to pause wake transport. It does not mean restarting a per-boundary investigation
+or restoring cross-event lane-flight serialization. No rollback clears operational
+state, tombstones or ambiguity, authorizes blind replay, or changes historical lineage.
+Any later policy change requires explicit Human intent and the ordinary lifecycle
+owners; V2 grants no automatic risk waiver for destination or exact-event duplication.
+
+Focused synthetic regressions include the RUN-293 stale-flight shape, submitted and
+ambiguous older holders with/without legacy flight, UNKNOWN eligibility, idempotent
+normalization preserving history, multiple exact holds, invalid-state rejection,
+single-attempt invocation limits and subsequent distinct-event progress. Retained
+regressions cover canonical NOOP, permanent dedupe/compaction, original-generation
+proof-only recovery, exact target/binding safety, application acceptance/proof and
+independent transient UI failures. They use temporary fixture state and no live Chat.
+
+Executor changes only the four TASK-294 permitted files and commits implementation;
+it performs no live wake/drain/replay, operational-state reset, publication or roadmap
+mutation. Runtime owns canonical verification and EVIDENCE, Reviewer owns semantic
+verdict and Publisher owns exact reviewed publication. There is no new generic
+router/queue, retry daemon, Planner or lifecycle authority. H4C0/H4C1 semantics are
+unchanged. H4B remains **UNPROVED**; no semantic-resume proof, H4 closure, H5 start or
+roadmap advancement follows from deterministic implementation acceptance.
