@@ -1,0 +1,168 @@
+task_id: TASK-296
+revision: 1
+goal: Correct H4C0 PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 so the bounded bootstrap
+  remains exact and fail-closed when the current regular-Chat editor asynchronously
+  reconciles an already-inserted multiline bootstrap draft into an equivalent production
+  DOM representation, without weakening origin proof, exact draft preservation, send
+  scoping, no-blind-resend, or H4C0/H4C1 authority boundaries.
+problem: The first bounded post-publication H4C0 live observation against published
+  TASK-295 r2 reached page-scoped Human challenge proof and bootstrap-envelope insertion
+  but terminated before any submit attempt with UNPROVED/INSERT_BLOCKED. Bounded read-only
+  structural diagnostics on the same regular Chat surface showed the composer, exactly
+  one enclosing form, and exactly one visible enabled Send control remained valid,
+  while the editor asynchronously changed from a one-node exact-text representation
+  to a multi-node representation in which innerText no longer equaled textContent.
+  This demonstrates a production editor-reconciliation compatibility gap in the current
+  exactText post-insertion readiness guard. The observation created no canonical RUN/FAILURE
+  and no attempted submission; it is Human/Brain live-conformance evidence for a prospective
+  bounded correction, not Runtime engineering truth. The correction therefore targets
+  only deterministic equivalence proof for the post-insertion reconciled composer
+  representation; it does not change Send selection or introduce a retry/fallback
+  path.
+assumptions:
+- Canonical main at TASK-296 authoring is 86bb6248bc8b8b3c657ab0407243fd7048802eb7.
+- 'TASK-295 r2 is canonically complete: RUN-295-002 Runtime PASS, REVIEW-295-002 PASS,
+  and exact published source SHA 49734b00e7fab8da35d56f3f802c09b8aabc8b75.'
+- H4C0 remains open and H4C1 remains blocked. The current canonical NEXT is the bounded
+  two-regular-chat page-scoped live observation, which cannot complete until this
+  observed production editor-reconciliation gap is corrected and re-published.
+- 'The observed live failure is pre-submit: status UNPROVED with reason INSERT_BLOCKED,
+  generation absent from the bounded result, and no AIOS-owned submit attempt occurred.
+  Manual Send is not part of the accepted contract and is not an authorized workaround.'
+- Bounded diagnostics established that, after insertion, the regular-Chat composer
+  and its unique enclosing form remained present; exactly one Send control still matched
+  the existing selector, was visible, and was enabled. The editor representation changed
+  asynchronously so innerText and textContent diverged and the composer child structure
+  expanded from the initial simple representation.
+- The diagnostic evidence is structural only. Raw conversation URL/UUID, route handle,
+  draft contents beyond bounded test labels, endpoint details, registry contents,
+  transcript text, and assistant output are not task inputs and must not enter canonical
+  artifacts.
+- The correction must preserve the Human/Brain-owned live H4C0 gate. Runtime verification,
+  Reviewer PASS, and publication of TASK-296 still do not close H4C0 or authorize
+  H4C1.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-293.yaml
+  - .ai/tasks/TASK-295.yaml
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - src/aios_renew/origin_bootstrap.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_origin_bootstrap.py
+  - tests/test_local_chat_wake.py
+  modify:
+  - src/aios_renew/origin_bootstrap.py
+  - tests/test_origin_bootstrap.py
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+non_goals:
+- Implement H4C1 origin-affine return routing, H4D unattended target acquisition,
+  H4E concurrency conformance, final H4B production-shape proof, or H5.
+- Change page-scoped Human attestation, challenge ownership, route-handle identity,
+  registry generation semantics, raw-route privacy, binding durability, or conversation-origin
+  selection rules.
+- Change local_chat_wake delivery semantics, selector policy, queue/dedupe/recovery
+  state, or TASK-294 wake-first behavior merely because its helper predicates are
+  reused.
+- Add a manual-Send fallback, programmatically click a document-global control, infer
+  a Send target from active/focused/recent UI state, or relax unique-enclosing-form
+  and visible-enabled-control requirements.
+- Accept arbitrary rich-text DOM, trim or normalize draft text generically, compare
+  only rendered appearance, ignore unknown nodes/attributes, or treat any innerText/textContent
+  mismatch as equivalent.
+- Persist or export raw draft text, conversation URL/UUID, route handle, endpoint,
+  registry state, transcript, assistant output, or diagnostic DOM content into canonical
+  engineering artifacts or Runtime evidence.
+- Treat the previous live UNPROVED observation as a RUN failure, REVIEW finding, publication
+  failure, or canonical engineering terminal state.
+- Treat deterministic tests, Runtime PASS, Reviewer PASS, or publication of TASK-296
+  as the required two-chat H4C0 live proof or automatic roadmap advancement.
+constraints:
+  hard:
+  - The correction must be bounded to post-insertion editor representation acceptance.
+    All pre-insertion origin/challenge proof, durable binding, generation revalidation,
+    exact-page continuity, and pre-submit ordering remain unchanged.
+  - 'Acceptance of an asynchronously reconciled composer must still prove exact logical
+    draft bytes: the Human-authored draft plus exactly two newline characters plus
+    the bounded bootstrap envelope, with no trimming, Unicode normalization, whitespace
+    collapsing, semantic interpretation, or content substitution.'
+  - The implementation may recognize only an explicit bounded allowlist of structurally
+    equivalent editor representations. Unknown, nested-rich, duplicated, hidden, reordered,
+    semantically decorated, or otherwise ambiguous structures must fail closed before
+    submit.
+  - Reconciliation may occur asynchronously after the native insert/input event. Readiness
+    may wait only within the existing bounded readiness window and must re-evaluate
+    the same selected composer; elapsed time itself grants no equivalence or origin
+    authority.
+  - Exactness must be established from the selected composer's DOM structure only
+    and must not read transcript turns, assistant output, account identity, browser
+    focus, active tab, recent-chat state, or repository identity.
+  - The unique-enclosing-form rule and exactly-one visible enabled Send-control rule
+    remain mandatory. TASK-296 must not broaden Send selection or introduce document-global
+    Send lookup.
+  - Any accepted reconciled representation must preserve the same draft object/document/page
+    proof and must be revalidated immediately before attempt intent and again before
+    the AIOS-owned click exactly as in the existing contract.
+  - No submission may occur when post-insertion equivalence is unproved. If a submit
+    attempt is ever made and its outcome is ambiguous, the existing no-blind-resend
+    rule remains unchanged.
+  - 'The correction must add deterministic regression coverage for the observed production
+    class: insertion initially succeeds, the editor asynchronously reconciles to a
+    bounded multi-node representation where innerText differs from textContent, the
+    exact logical draft remains provable, the same scoped Send remains unique/visible/enabled,
+    and readiness succeeds only for that exact equivalent representation.'
+  - Negative regressions must prove visually similar but non-exact or ambiguous representations
+    remain blocked, including extra/missing/reordered logical separators, unexpected
+    rich/nested nodes, hidden content, duplicated content, or altered Human draft/bootstrap
+    bytes.
+  - src/aios_renew/local_chat_wake.py and tests/test_local_chat_wake.py are inspect/regression
+    dependencies only unless a separate semantic need is discovered and Brain authorizes
+    a revised TASK. TASK-296 r1 may not modify them.
+  - Executor changes only scope.modify and performs no live H4C0 observation, no manual
+    browser reconciliation, no operational-state reset, no roadmap mutation, no review,
+    and no publication.
+  - Runtime owns canonical verification; Reviewer owns semantic verdict; Publisher
+    owns exact eligible reviewed source publication; Human/Brain alone reruns and
+    evaluates the later live two-chat observation and explicitly decides H4C0 closure.
+acceptance:
+- id: AC1
+  condition: The candidate changes only the three authorized scope.modify paths and
+    leaves local_chat_wake implementation/tests and all lifecycle/roadmap state unchanged.
+- id: AC2
+  condition: The origin-bootstrap readiness path supports a bounded explicitly validated
+    asynchronous post-insertion editor-reconciliation representation while preserving
+    exact logical draft bytes and all existing page/challenge/binding/generation/send-scope
+    ordering.
+- id: AC3
+  condition: 'Focused regression tests reproduce the observed live failure class:
+    after successful bounded insertion, an asynchronous multi-node editor reconciliation
+    with innerText/textContent divergence is accepted only when it deterministically
+    represents exactly the staged logical draft and the same unique visible enabled
+    scoped Send control.'
+- id: AC4
+  condition: Negative focused tests fail closed for non-exact or ambiguous reconciliations,
+    including missing/extra/reordered separators, altered draft/bootstrap bytes, hidden
+    or duplicated content, unsupported nested/rich structure, non-unique composer/form/Send,
+    disabled/hidden Send, page/challenge change, and generation/binding change.
+- id: AC5
+  condition: The candidate adds no manual-send fallback, active-tab/focus/recent-chat
+    inference, document-global Send lookup, transcript/assistant-output read, raw
+    conversation/draft canonicalization, H4C1 routing, wake-delivery behavior, or
+    new semantic/lifecycle authority.
+- id: AC6
+  condition: H4C0 documentation records the live UNPROVED/INSERT_BLOCKED observation
+    as a bounded pre-submit conformance finding, explains that TASK-296 corrects production
+    editor reconciliation only, and keeps the full two-chat A/A/B/B continuity and
+    ambiguity procedure pending after reviewed publication.
+- id: AC7
+  condition: The Executor structural RESULT claims only implementation properties
+    available before Runtime verification, with unresolved empty and exact changed_files;
+    Runtime verification, fresh Reviewer verdict, exact Publisher publication, and
+    later Human/Brain live closure remain downstream facts rather than claimed completed
+    facts.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_origin_bootstrap.py tests/test_local_chat_wake.py
+  - git diff --check
