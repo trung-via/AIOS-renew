@@ -786,7 +786,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PENDING_FALLBACK_IMPLEMENTATION_AND_LIVE_PROOF
+      status: PENDING_TWO_CHAT_LIVE_PROOF_AFTER_REVIEWED_PUBLICATION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -848,6 +848,28 @@ sequence:
         downstream Runtime/Reviewer facts at the Executor completion gate. The failed
         candidate nevertheless preserved the exact five reviewed TASK-293 blobs and
         this checkpoint is not evidence of implementation or compatibility-test failure.
+    task295_r2_engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-295
+      task_revision: 2
+      run_id: RUN-295-002
+      result_artifact_sha: "4df84ca58b0e94c594ac015a351489579d32c5de"
+      candidate_sha: "49734b00e7fab8da35d56f3f802c09b8aabc8b75"
+      verification_summary: "Exact reviewed-source diff passed; 692 passed, 636 skipped in 69.33s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-295-002
+      review_decision_sha: "c03b73c910cf8f97280c61dc547a90fb16213228"
+      verdict: PASS
+      reviewed_sha: "49734b00e7fab8da35d56f3f802c09b8aabc8b75"
+      published_sha: "49734b00e7fab8da35d56f3f802c09b8aabc8b75"
+      publication_workflow_run_id: 37175506131
+      completed_on: "2026-10-04"
+      interpretation: >-
+        TASK-295 r2 exactly integrated the five already-reviewed TASK-293 blobs onto
+        the current TASK-294 wake-first lineage, passed independent Runtime verification,
+        received a fresh REVIEW-295-002 PASS, and was exactly published. This closes
+        the integration engineering lifecycle only. It does not constitute the required
+        two-regular-chat H4C0 live observation, does not close H4C0, and does not
+        authorize H4C1.
     human_execution_delegation:
       selected_on: "2026-10-04"
       authority: HUMAN
@@ -860,15 +882,18 @@ sequence:
       expires_on_task_change: true
       persistence: THROUGH_TASK_295_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
     current_live_blocker:
-      code: TASK_295_R2_EXECUTION_PENDING
-      authority: HUMAN
+      code: H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_PENDING
+      authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-295
       task_revision: 2
-      next_action: DISPATCH_TASK_295_R2
+      published_sha: "49734b00e7fab8da35d56f3f802c09b8aabc8b75"
+      next_action: RUN_BOUNDED_TWO_CHAT_PAGE_SCOPED_ORIGIN_BOOTSTRAP_OBSERVATION
       basis: >-
-        TASK-295 r2 is canonical and supersedes r1 for prospective execution while
-        preserving RUN-295-001 as immutable failed lineage. Human has explicitly
-        authorized continued Codex GPT-6.1 Sol xhigh execution for TASK-295 r2.
+        TASK-295 r2 engineering, Runtime verification, fresh semantic review and exact
+        publication are complete. The only remaining H4C0 gate is the separately
+        Human/Brain-owned live conformance procedure against the reviewed/published
+        PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 implementation. Synthetic tests,
+        Runtime PASS, Reviewer PASS and publication cannot substitute for this gate.
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
@@ -876,7 +901,6 @@ sequence:
         - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_IDENTITY_INFERENCE
         - NO_ACTIVE_TAB_RECENT_CHAT_TIMESTAMP_HEURISTIC
         - NO_IMPLEMENTATION_OR_PUBLICATION_TREATED_AS_LIVE_TWO_CHAT_PROOF
-        - NO_UNAUTHORIZED_TASK293_INTEGRATION_AUTHORING
         - NO_AUTOMATIC_ROADMAP_ADVANCE
     prior_primary_dispatch_intent:
       dispatch_id: task292-r1-codex61-xhigh-20261004-001
@@ -887,7 +911,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: H4C0_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_TWO_CHAT_LIVE_PROOF_AND_CLOSURE
+    remaining_gate: H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
