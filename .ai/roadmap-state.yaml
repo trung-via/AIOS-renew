@@ -602,30 +602,41 @@ sequence:
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
-    task_id: TASK-296
+    task_id: TASK-297
     task_revision: 1
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "61771ecb2fa2d3af2eb76f970e530169da173286"
-    task_blob_sha: "a35ab639d857fdddfc85d428ee3d5efa77fe5bb0"
-    authoring_issue_number: 1469
+    task_author_commit_sha: "b9f91dddfa707b110ca199d67907a784d44e85a1"
+    task_blob_sha: "c9ba56a3f84a11becc910a22976682f46293b737"
+    authoring_issue_number: 1473
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
       - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "4cb3702e2f5af86216cb863b438ddb1413aed52dc255f24b19c42865ef449a86"
-    construct_fingerprint: "ec9d087ceec47e4daf8b32dec3376d69f9a69352ae1f7f01e9b594d72a754dab"
-    reconciled_candidate_fingerprint: "8281a2b5597697c1e37d2eddac7c51e40b40ae0467a21f2d107f23034c4d0102"
+    packet_fingerprint: "82ed71f85712e6278bee33d9e068f3281aa437ed22a49a609a4c11909dd9a3d0"
+    construct_fingerprint: "7cf32407561993b86cf91bc01097abed084c2132fdacd79a98729503ac065704"
+    reconciled_candidate_fingerprint: "ad7ce00b919746c062bcf8c20bf1b96aca013b4720c12c79642d5023b331cc66"
     mutation_freeze_after_dispatch: >-
-      After TASK-296 dispatch, do not write planning or bookkeeping commits to main
-      until terminal publication outcome. The bounded live H4C0 observation resumes
-      only after exact reviewed publication of the correction candidate.
-    mutation_freeze_resolution:
-      status: SATISFIED
-      terminal_publication_sha: "7037ce457471c230536749cf8e591e21720c0782"
-      publication_workflow_run_id: 37180210110
-      interpretation: >-
-        The freeze ended only after exact reviewed publication completed. This roadmap
-        reconciliation is the first planning mutation after that terminal outcome.
+      After TASK-297 dispatch, do not write planning or bookkeeping commits to main
+      until terminal publication outcome. The bounded H4C0 live observation resumes
+      only after exact reviewed publication of the literal-paste/order correction.
+    task296_prior_authoring:
+      task_id: TASK-296
+      task_revision: 1
+      task_authoring_status: CANONICALIZED
+      task_author_commit_sha: "61771ecb2fa2d3af2eb76f970e530169da173286"
+      task_blob_sha: "a35ab639d857fdddfc85d428ee3d5efa77fe5bb0"
+      authoring_issue_number: 1469
+      audit_profile: brain-high-value-v3
+      audit_stages:
+        - CONSTRUCT
+        - ADVERSARIAL_AUDIT_AND_RECONCILE
+      packet_fingerprint: "4cb3702e2f5af86216cb863b438ddb1413aed52dc255f24b19c42865ef449a86"
+      construct_fingerprint: "ec9d087ceec47e4daf8b32dec3376d69f9a69352ae1f7f01e9b594d72a754dab"
+      reconciled_candidate_fingerprint: "8281a2b5597697c1e37d2eddac7c51e40b40ae0467a21f2d107f23034c4d0102"
+      mutation_freeze_resolution:
+        status: SATISFIED
+        terminal_publication_sha: "7037ce457471c230536749cf8e591e21720c0782"
+        publication_workflow_run_id: 37180210110
     task295_prior_authoring:
       task_id: TASK-295
       task_revision: 2
@@ -807,7 +818,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PENDING_TWO_CHAT_LIVE_PROOF_AFTER_TASK_296_REVIEWED_PUBLICATION
+      status: PAUSED_FOR_TASK_297_LITERAL_PASTE_WRAPPER_CORRECTION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -819,12 +830,37 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        The first bounded post-TASK-295 live attempt exposed the pre-submit editor-
-        reconciliation gap recorded below. TASK-296 corrected that bounded compatibility
-        gap, passed Runtime verification and fresh semantic review, and was exactly
-        published as 7037ce457471c230536749cf8e591e21720c0782. The full two-chat
-        procedure must now be rerun against that published source. Publication alone
-        does not close H4C0 or authorize H4C1.
+        TASK-296 was reviewed and exactly published, but the first fresh A1 live attempt
+        against that source again failed closed pre-submit. Bounded structural diagnostics
+        proved the current production editor wraps non-empty logical lines as
+        P > SPAN[data-prompt-literal-paste=""] > #text while the empty separator uses
+        P > BR.ProseMirror-trailingBreak. TASK-297 is the bounded literal-paste and
+        insert-to-ready ordering correction. The full two-chat procedure remains pending
+        after its reviewed publication and H4C1 remains blocked.
+    post_task296_live_observation_checkpoint:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      contract: PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1
+      published_subject_sha: "7037ce457471c230536749cf8e591e21720c0782"
+      status: UNPROVED
+      reason: INSERT_BLOCKED
+      submission_attempted: false
+      bounded_structural_facts:
+        - EXACT_ONE_VISIBLE_REGULAR_CHAT_COMPOSER
+        - EXACT_ONE_ENCLOSING_FORM
+        - EXACT_ONE_VISIBLE_ENABLED_FORM_SCOPED_SEND
+        - FIVE_ATTRIBUTE_FREE_P_ROOT_BLOCKS
+        - FOUR_P_LITERAL_PASTE_SPAN_TEXT_WRAPPERS
+        - EXACT_LITERAL_PASTE_ATTRIBUTE_IS_DATA_PROMPT_LITERAL_PASTE_EMPTY
+        - EMPTY_BLOCK_IS_PROSEMIRROR_TRAILING_BREAK
+        - PUBLISHED_TASK_296_EXACT_TEXT_REJECTS_LITERAL_PASTE_SPAN
+      privacy_boundary: >-
+        No raw conversation URL or UUID, route handle, endpoint, registry contents,
+        raw draft text, transcript, assistant output, or raw DOM payload is recorded.
+      interpretation: >-
+        This is bounded Human/Brain live-conformance planning evidence only. It is not
+        a RUN, FAILURE, EVIDENCE, REVIEW finding, or publication failure. It authorizes
+        only the prospectively bounded TASK-297 correction.
     bounded_live_observation_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -973,24 +1009,36 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
       persistence: THROUGH_TASK_295_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    human_execution_delegation:
+      selected_on: "2026-10-04"
+      authority: HUMAN
+      task_id: TASK-297
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_297_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
     current_live_blocker:
-      code: H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_PENDING
-      authority: HUMAN_BRAIN_PLANNING
-      task_binding: TASK-296
+      code: TASK_297_R1_EXECUTION_AUTHORIZED_PENDING_DISPATCH
+      authority: HUMAN
+      task_binding: TASK-297
       task_revision: 1
-      published_sha: "7037ce457471c230536749cf8e591e21720c0782"
-      next_action: RUN_BOUNDED_TWO_CHAT_PAGE_SCOPED_ORIGIN_BOOTSTRAP_OBSERVATION
+      next_action: DISPATCH_TASK_297
       basis: >-
-        TASK-296 r1 engineering, Runtime verification, fresh semantic review and exact
-        publication are complete. The remaining H4C0 gate is the separately
-        Human/Brain-owned bounded live conformance procedure against the corrected
-        PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 implementation. Synthetic tests,
-        Runtime PASS, Reviewer PASS and publication cannot substitute for this gate.
+        TASK-297 r1 is the canonical two-stage-audited bounded correction for the exact
+        production literal-paste wrapper and insert-to-ready ordering gap exposed after
+        TASK-296 publication. Human explicitly selected Codex GPT-6.1 Sol xhigh for the
+        entire TASK-297 lifecycle unless changed. After reviewed exact publication,
+        Human/Brain must restart the bounded two-chat H4C0 live procedure; publication
+        alone cannot close H4C0.
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
+        - NO_GENERIC_SPAN_OR_RICH_TEXT_ACCEPTANCE
         - NO_MANUAL_SEND_FALLBACK
         - NO_DOCUMENT_GLOBAL_SEND_LOOKUP
-        - NO_GENERIC_WHITESPACE_OR_RICH_TEXT_NORMALIZATION
+        - NO_GENERIC_WHITESPACE_OR_UNICODE_NORMALIZATION
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
         - NO_RAW_CONVERSATION_URL_IN_CANONICAL_STATE
         - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_IDENTITY_INFERENCE
@@ -1006,7 +1054,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: TASK_297_REVIEWED_PUBLICATION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
