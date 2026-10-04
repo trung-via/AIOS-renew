@@ -619,6 +619,14 @@ sequence:
       After TASK-298 dispatch, do not write planning or bookkeeping commits to main
       until terminal publication outcome. The next bounded H4C0 diagnostic A1 may run
       only after exact reviewed publication of the diagnostic-only implementation.
+    mutation_freeze_resolution:
+      status: SATISFIED
+      terminal_publication_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
+      publication_workflow_run_id: 37189709869
+      interpretation: >-
+        The freeze ended only after exact reviewed TASK-298 publication completed.
+        This roadmap reconciliation is the first planning mutation after that terminal
+        publication outcome.
     task297_prior_authoring:
       task_id: TASK-297
       task_revision: 1
@@ -836,7 +844,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PAUSED_FOR_TASK_298_READINESS_FAILURE_ATTRIBUTION
+      status: PENDING_BOUNDED_DIAGNOSTIC_A1_AFTER_TASK_298_REVIEWED_PUBLICATION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -848,15 +856,13 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        TASK-297 was reviewed and exactly published, but a fresh instrumented A1 still
-        failed closed as UNPROVED/INSERT_BLOCKED with no submit attempt. Bounded
-        diagnostics eliminated late DOM convergence, composer/form/Send instability,
-        production literal-paste/BR grammar, wrapper visibility, rendered-newline
-        projection, and challenge TTL as primary explanations. The remaining failure
-        is hidden behind the generic INSERT_BLOCKED reason. TASK-298 therefore adds
-        opt-in bounded failure attribution only; it is not authorized to change
-        readiness behavior. The full two-chat proof remains pending after diagnostic
-        publication and Human/Brain interpretation.
+        TASK-298 diagnostic-only attribution passed Runtime verification and fresh
+        semantic review and was exactly published as
+        8d2bf871f559e5d021c42e5c5765d0e8a7600017. The next Human/Brain gate is one
+        bounded A1 using explicit --diagnostic against that exact published source.
+        The diagnostic result may identify a blocking readiness predicate but cannot
+        itself select or authorize a behavioral correction. H4C0 remains open and
+        H4C1 remains blocked until later explicit Human/Brain closure.
     post_task297_instrumented_live_observation_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -987,6 +993,60 @@ sequence:
         downstream Runtime/Reviewer facts at the Executor completion gate. The failed
         candidate nevertheless preserved the exact five reviewed TASK-293 blobs and
         this checkpoint is not evidence of implementation or compatibility-test failure.
+    task298_engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-298
+      task_revision: 1
+      run_id: RUN-298-001
+      result_artifact_sha: "dcd9c480cf2874b596a9a7f1fccca452baeb6ba7"
+      candidate_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
+      verification_summary: "666 passed, 881 skipped in 27.25s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-298-001
+      review_decision_sha: "47c339c903674a98b731a04fbedbf72a00f12cfe"
+      verdict: PASS
+      reviewed_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
+      published_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
+      publication_workflow_run_id: 37189709869
+      completed_on: "2026-10-04"
+      interpretation: >-
+        TASK-298 added opt-in bounded readiness failure attribution only. Runtime
+        verification and REVIEW-298-001 passed and Publisher advanced main to the exact
+        reviewed candidate. This completion makes one Human/Brain-authorized diagnostic
+        A1 eligible; it does not identify the production root cause, close H4C0, or
+        authorize H4C1 or any behavioral correction.
+    task298_terminal_wake_operational_observation:
+      authority: HUMAN_BRAIN_PLANNING
+      run_id: RUN-298-001
+      terminal_attention_workflow_run_id: 37189108625
+      terminal_event: "terminal:RESULT:RUN-298-001:dcd9c480cf2874b596a9a7f1fccca452baeb6ba7"
+      terminal_delivery_status: DEFERRED
+      terminal_delivery_reason: TARGET_PAGE_NOT_UNIQUE
+      bounded_rechecks: 2
+      later_publication_wake_status: SUBMITTED
+      later_publication_wake_reason: EXACT_USER_TURN_PROVEN
+      interpretation: >-
+        Terminal RESULT attention was admitted and local-chat-wake transport ran, but
+        delivery remained deferred because the currently bound conversation was not a
+        unique browser page. A later publication wake delivered successfully. This is
+        an operational wake-availability gap, not lifecycle truth and not a TASK-298
+        semantic finding. The mandatory H4D unattended-local-wake milestone already
+        owns removal of the Human-preopened/unique-target-page dependency; do not fork
+        the current H4C0 diagnostic gate into a separate wake fix.
+    task298_primary_dispatch_intent:
+      dispatch_id: task298-r1-codex61-xhigh-20261004-001
+      task_blob_sha: "4b75423f4e8b68523e934ab1eb1fb816810d8fa7"
+      task_commit_sha: "fce983234c6722239d4b86df4a9cb04f0cee3c17"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      carrier_issue_number: 1478
+      carrier_workflow_run_id: 37188155704
+      primary_workflow_run_id: 37188169530
+      status: TERMINAL_REVIEWED_PUBLISHED
+      interpretation: >-
+        Dispatch transport, admitted execution, Runtime verification, semantic review,
+        and exact publication each reached their own canonical evidence. Carrier or
+        workflow success alone was not used to infer downstream lifecycle completion.
     task297_engineering_completion:
       authority: RUNTIME_REVIEWER_PUBLISHER
       task_id: TASK-297
@@ -1132,30 +1192,36 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: AUTHORIZED_PENDING_DISPATCH
+      status: TERMINAL_REVIEWED_PUBLISHED
+      carrier_issue_number: 1478
+      carrier_workflow_run_id: 37188155704
+      primary_workflow_run_id: 37188169530
       interpretation: >-
-        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-298 lifecycle.
-        This records execution intent only. Carrier acceptance, RUN creation,
-        Runtime verification, semantic review, and publication remain separate
-        downstream facts and must not be inferred from this planning record.
+        TASK-298 execution, Runtime verification, semantic review, and exact publication
+        completed. This planning record preserves the original Human delegation and
+        dispatch identity; downstream completion is established only by the canonical
+        lifecycle evidence recorded above.
     current_live_blocker:
-      code: TASK_298_R1_DISPATCH_PENDING
-      authority: HUMAN
+      code: H4C0_BOUNDED_DIAGNOSTIC_A1_PENDING
+      authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-298
       task_revision: 1
-      next_action: DISPATCH_TASK_298
+      published_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
+      next_action: RUN_ONE_BOUNDED_TASK_298_DIAGNOSTIC_A1
       basis: >-
-        TASK-298 r1 is canonical and Human selected Codex GPT-6.1 Sol xhigh for the
-        entire task lifecycle. The only authorized prospective action is one exact
-        primary dispatch using the canonical TASK-298 r1 blob and author commit.
-        After dispatch, planning mutation is frozen until terminal publication outcome.
+        TASK-298 r1 engineering, Runtime verification, fresh semantic review and exact
+        publication are complete. The next gate is exactly one Human-authorized A1
+        using --diagnostic against the published source. Its fixed-enum attribution is
+        planning evidence only and may justify a separately authored correction after
+        Human/Brain interpretation; it cannot itself change bootstrap behavior or close
+        H4C0.
       prohibitions:
-        - NO_BEHAVIORAL_ROOT_CAUSE_FIX_IN_TASK_298
+        - NO_BEHAVIORAL_FIX_BEFORE_DIAGNOSTIC_INTERPRETATION
         - NO_TIMEOUT_OR_POLLING_CHANGE
         - NO_DOM_GRAMMAR_OR_SEND_SELECTOR_CHANGE
         - NO_INVALIDATION_SEMANTICS_CHANGE
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
-        - NO_RAW_IDENTITY_OR_CONTENT_IN_DIAGNOSTICS
+        - NO_RAW_IDENTITY_OR_CONTENT_EXPORT
         - NO_DIAGNOSTIC_LIFECYCLE_AUTHORITY
         - NO_AUTOMATIC_CORRECTION_SELECTION
         - NO_AUTOMATIC_ROADMAP_ADVANCE
@@ -1168,7 +1234,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: TASK_298_REVIEWED_PUBLICATION_THEN_BOUNDED_DIAGNOSTIC_A1_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: BOUNDED_DIAGNOSTIC_A1_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
