@@ -844,7 +844,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PENDING_BOUNDED_DIAGNOSTIC_A1_AFTER_TASK_298_REVIEWED_PUBLICATION
+      status: PAUSED_FOR_EXACT_TEXT_SUBGATE_DECISION_AFTER_TASK_298_DIAGNOSTIC_A1
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -856,13 +856,43 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        TASK-298 diagnostic-only attribution passed Runtime verification and fresh
-        semantic review and was exactly published as
-        8d2bf871f559e5d021c42e5c5765d0e8a7600017. The next Human/Brain gate is one
-        bounded A1 using explicit --diagnostic against that exact published source.
-        The diagnostic result may identify a blocking readiness predicate but cannot
-        itself select or authorize a behavioral correction. H4C0 remains open and
-        H4C1 remains blocked until later explicit Human/Brain closure.
+        TASK-298 diagnostic-only attribution was exactly published and one bounded A1
+        was executed against that source. The ordinary result remained
+        UNPROVED/INSERT_BLOCKED with no submit attempt, while diagnostic attribution
+        deterministically identified phase READY, category EXACT_TEXT, ready false and
+        exhausted true. This closes the prior top-level readiness ambiguity but does
+        not identify which internal exactText subcondition failed. Behavioral correction
+        remains unauthorized until Human/Brain either accepts a bounded sub-attribution
+        task or establishes another non-speculative basis. H4C0 remains open and H4C1
+        remains blocked.
+    post_task298_diagnostic_a1_checkpoint:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      contract: PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_DIAGNOSTIC_V1
+      published_subject_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
+      ordinary_result:
+        status: UNPROVED
+        reason: INSERT_BLOCKED
+        submission_attempted: false
+      diagnostic:
+        phase: READY
+        category: EXACT_TEXT
+        proof_category: null
+        ready: false
+        exhausted: true
+      interpretation: >-
+        The bounded diagnostic has eliminated the remaining top-level readiness
+        categories for this A1: PROOF, SURFACE_OR_COMPOSER_IDENTITY,
+        SEND_SCOPE_OR_COUNT, SEND_ENABLED and RETAINED_FORM_OR_CONTROL_IDENTITY were
+        not the final blocking category. EXACT_TEXT remained blocking through exhaustion.
+        The exactText implementation still contains multiple internal structural,
+        logical-byte and rendered-projection predicates, so this observation does not
+        by itself authorize any one behavioral correction.
+      privacy_boundary: >-
+        Only fixed diagnostic enums/booleans and the ordinary bounded result are
+        retained. No raw conversation URL or UUID, route handle, challenge, nonce,
+        endpoint, registry contents, draft/bootstrap text, transcript, assistant output,
+        or raw DOM payload is recorded.
     post_task297_instrumented_live_observation_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -1202,24 +1232,24 @@ sequence:
         dispatch identity; downstream completion is established only by the canonical
         lifecycle evidence recorded above.
     current_live_blocker:
-      code: H4C0_BOUNDED_DIAGNOSTIC_A1_PENDING
+      code: H4C0_EXACT_TEXT_INTERNAL_SUBGATE_UNRESOLVED
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-298
       task_revision: 1
       published_sha: "8d2bf871f559e5d021c42e5c5765d0e8a7600017"
-      next_action: RUN_ONE_BOUNDED_TASK_298_DIAGNOSTIC_A1
+      next_action: HUMAN_BRAIN_DECIDE_EXACT_TEXT_SUBATTRIBUTION_OR_NON_SPECULATIVE_CORRECTION_BASIS
       basis: >-
-        TASK-298 r1 engineering, Runtime verification, fresh semantic review and exact
-        publication are complete. The next gate is exactly one Human-authorized A1
-        using --diagnostic against the published source. Its fixed-enum attribution is
-        planning evidence only and may justify a separately authored correction after
-        Human/Brain interpretation; it cannot itself change bootstrap behavior or close
-        H4C0.
+        The bounded TASK-298 A1 attributed the full READY exhaustion to EXACT_TEXT.
+        Prior external probes make several exactText branches unlikely, but they were
+        taken after helper cleanup and do not identify which internal exactText
+        predicate was false during the live poll. A behavioral fix selected now would
+        still be speculative. Human/Brain must decide whether to authorize one bounded
+        exactText sub-attribution task or provide another evidence basis before any
+        behavior change.
       prohibitions:
-        - NO_BEHAVIORAL_FIX_BEFORE_DIAGNOSTIC_INTERPRETATION
+        - NO_SPECULATIVE_EXACT_TEXT_BEHAVIOR_FIX
         - NO_TIMEOUT_OR_POLLING_CHANGE
-        - NO_DOM_GRAMMAR_OR_SEND_SELECTOR_CHANGE
-        - NO_INVALIDATION_SEMANTICS_CHANGE
+        - NO_GENERIC_DOM_OR_WHITESPACE_NORMALIZATION
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_RAW_IDENTITY_OR_CONTENT_EXPORT
         - NO_DIAGNOSTIC_LIFECYCLE_AUTHORITY
@@ -1234,7 +1264,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: BOUNDED_DIAGNOSTIC_A1_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: EXACT_TEXT_SUBGATE_DECISION_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
