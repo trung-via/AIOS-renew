@@ -1832,6 +1832,39 @@ sequence:
         so H4D may implement unattended exact-target acquisition without reopening H4C1.
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-04"
+    task_design_checkpoint:
+      authority: BRAIN
+      candidate_task_id: TASK-302
+      status: AUDITED_READY_FOR_AUTHORING
+      audit_profile: brain-high-value-v3
+      stage1:
+        stage: CONSTRUCT
+        outcome: RISK_FOUND
+      stage2:
+        stage: ADVERSARIAL_AUDIT_AND_RECONCILE
+        closure: CLEAR_WITH_MANDATORY_REFINEMENTS
+      semantic_boundary: >-
+        Implement only bounded machine-local exact-target acquisition/restoration in
+        front of the existing local-chat delivery barriers. Acquisition receives an
+        already resolved local binding and gains no event, lifecycle, routing, review,
+        publication or roadmap authority.
+      mandatory_refinements:
+        - ONE_BOUNDED_ACQUISITION_ATTEMPT_PER_DELIVERY_INVOCATION
+        - NO_ACCOUNT_PROFILE_OR_RECENT_TAB_HEURISTIC
+        - HUMAN_CONFIGURED_MACHINE_LOCAL_AUTHENTICATED_PROFILE_ONLY
+        - EXACT_BOUND_CHAT_URL_IS_THE_ONLY_NAVIGATION_TARGET
+        - NO_KILL_OR_REBIND_OF_UNPROVEN_EXISTING_BROWSER_PROFILE
+        - H4C1_AFFINITY_FRESHNESS_DRAFT_GENERATION_AND_NO_RESEND_BARRIERS_REMAIN_AUTHORITATIVE
+        - LOCAL_PATH_ENDPOINT_PROFILE_AND_CREDENTIAL_MATERIAL_NEVER_ENTER_CANONICAL_ARTIFACTS
+        - H4E_RETAINS_MULTI_LANE_PRODUCTION_LIVE_CONFORMANCE
+      authoring_affinity_classification:
+        kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
+        basis: >-
+          This Human continuation is the same historical pre-H4C1 semantic conversation
+          that carried TASK-301. The explicit legacy classification is used only for
+          this historical task-authoring return path; it is not origin-affine proof,
+          is not a fallback for any new origin-affine flow, and cannot satisfy H4E.
+      executor_delegation: NONE_TASK301_DELEGATION_EXPIRED_ON_TASK_CHANGE
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
     objective: >-
