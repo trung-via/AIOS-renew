@@ -1,0 +1,50 @@
+review_id: REVIEW-293-001
+reviewed_sha: 0f6684a41bff0ff6e284185c29e246256009a013
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- 'RUN-293-001 is the canonical PRIMARY RESULT for TASK-293 r1. Candidate 0f6684a41bff0ff6e284185c29e246256009a013
+  descends from base 7c1c7c712e76c63bec562317f844b6cf802f0a2f and changes only five
+  TASK-authorized files: the origin bootstrap implementation, bounded operator script,
+  focused bootstrap tests, and the two H4C0/H4 origin-affinity documents.'
+- 'Runtime verification is canonical PASS: python -m pytest -q tests/test_origin_bootstrap.py
+  tests/test_local_chat_wake.py => 571 passed, 652 skipped in 21.63s; git diff --check
+  => PASS; unresolved is empty. Skips are environment-dependent test cases and are
+  not treated as the later two-chat live conformance proof.'
+- 'AC1/AC2: production code requires an isTrusted in-document Human click, generates
+  a private 256-bit challenge and document nonce, scans bounded attached regular-Chat
+  documents rather than active/recent focus, proves exactly one pending document,
+  rejects copied/public tokens, and uses conversation-keyed durable bindings with
+  stable opaque handles and collision checks.'
+- 'AC3: raw normalized chat route and loopback endpoint terminate in the bounded external
+  registry; PageProof suppresses repr identity, bounded console outputs expose only
+  contract/status/reason/opaque handle/generation, and tests cover repository-path
+  rejection plus raw-identity output exclusion. Prompt/transcript/assistant text is
+  not registry state or identity input.'
+- 'AC4: bootstrap ordering is proof -> durable bind -> page/registry revalidation
+  -> bounded envelope insertion -> readiness/revalidation -> durable ATTEMPTING marker
+  -> submit -> bounded structural submission witness. Pre-submit uncertainty fails
+  closed; after the attempt marker is persisted, submit/witness uncertainty becomes
+  AMBIGUOUS and automatic resend is blocked.'
+- 'AC5: the bounded development surface is attach-only over the existing loopback
+  CDP browser environment, installs an in-page Connect-this-chat gesture, starts/navigates/selects
+  no browser page, and requires no Developer Mode, MCP, Responses API, ChatGPT Work,
+  or openai/session metadata.'
+- 'AC6: the candidate imports existing local-chat-wake safety/normalization/durability
+  helpers but does not modify local_chat_wake.py, does not call wake delivery/canonical
+  freshness from bootstrap, adds no generic return resolver/queue/lifecycle reducer,
+  and leaves H4C1/wake delivery outside this implementation.'
+- 'AC7: documentation preserves TASK-292 as prior valid evidence, defines the TASK-293
+  A1=A2/B1=B2/A!=B live procedure including same-repository distinction, reload/reopen
+  continuity, ambiguity fail-close and confidentiality constraints, and explicitly
+  keeps H4C1 blocked until separate Human/Brain H4C0 live closure. Review PASS/publication
+  alone does not close H4C0.'
