@@ -159,6 +159,32 @@ H4C0 live closure still requires real two-chat evidence. The selected fallback p
 
 **H4C1 remains blocked until the fallback implementation is reviewed/published and the Human/Brain-owned two-chat live conformance gate closes.** No automatic roadmap advancement follows from implementation, review, publication, or live transport success.
 
+### TASK-293 bounded implementation and live-procedure binding
+
+The selected contract is `PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1`, implemented
+by `src/aios_renew/origin_bootstrap.py` with one bounded attach-only development
+entry, `scripts/aios_origin_bootstrap.py`. The [H4C0 conformance contract, sections
+6–10](AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md#6-selected-page-scoped-origin-bootstrap-contract)
+defines the in-document trusted Human gesture, 30-second ephemeral challenge,
+exclusive durable machine-local conversation registry, opaque envelope, exact
+pre-submit ordering, fail-closed cases, and no automatic ambiguous resend.
+
+The development surface uses the existing authorized regular-Chat browser through
+its loopback CDP attachment. It does not select an active/recent tab, navigate,
+start a browser, or depend on Developer Mode/MCP/Responses API/ChatGPT Work/session
+metadata. Raw conversation identity and sensitive endpoint binding remain bounded
+machine-local state; the initial envelope contains only contract, opaque route
+handle, and generation. Existing local-wake safety/normalization/durability
+primitives are reused without changing wake delivery or creating a queue/router.
+
+After reviewed publication, Human/Brain must observe A1 = A2, B1 = B2, A1 != B1
+for two distinct regular chats in the same repository, valid reload/reopen route
+continuity, and page/challenge ambiguity failing closed. TASK-293 acceptance,
+synthetic tests, review, and publication alone are not that live observation and
+neither close H4C0 nor authorize H4C1. TASK-292's prior accepted/published lineage
+remains immutable valid evidence. Human/Brain alone decides closure/fallback;
+Runtime, Reviewer, Publisher, and this helper gain no roadmap or semantic authority.
+
 ## 5. H4C1 — Origin-Affine Return Routing
 
 Objective: bind downstream Brain-attention delivery for one semantic flow to the exact route established at flow origin.
