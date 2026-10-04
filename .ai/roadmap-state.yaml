@@ -459,7 +459,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
+  - brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
 sequence:
 
   - id: temporary-wake-first-cutover-v2
@@ -1696,7 +1696,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
-    status: NEXT
+    status: DONE
     phase: H4C1_ORIGIN_AFFINE_RETURN_ROUTING
     entry_basis:
       authority: HUMAN_BRAIN_PLANNING
@@ -1763,6 +1763,40 @@ sequence:
       until a terminal publication outcome or a Human/Brain-authorized failure
       reconciliation boundary. H4C1 remains open until reviewed publication is
       separately reconciled; implementation cannot advance H4D.
+    engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-301
+      task_revision: 1
+      initial_failed_run_id: RUN-301-001
+      initial_failed_candidate_sha: "ba1f70b2417ad99ec210ac1f2ff65c4c099623e4"
+      initial_failure_artifact_sha: "4a4f8fae7706fc256d2fc73e868f387fe127dcf7"
+      repair_id: REPAIR-301-001
+      repair_authorization_sha: "7cbd44d876dae348342feffdc63cc7ffb5d70a18"
+      successful_run_id: RUN-301-002
+      result_artifact_sha: "b039fab44b82cafa0990d1a385128d5c96fe2e72"
+      candidate_sha: "5118e43af25cb14fb4206dab73e9aa0205367f84"
+      verification_summary: "1612 passed, 1091 skipped in 2997.31s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-301-002
+      review_decision_sha: "3b2f0de0b2d3dcb4992182559cca133d553778b5"
+      verdict: PASS
+      reviewed_sha: "5118e43af25cb14fb4206dab73e9aa0205367f84"
+      published_sha: "5118e43af25cb14fb4206dab73e9aa0205367f84"
+      publication_workflow_run_id: 37218883470
+      completed_on: "2026-10-04"
+      interpretation: >-
+        TASK-301 H4C1 origin-affine return routing passed Runtime verification,
+        semantic review and exact Publisher publication after one bounded REPAIR.
+        Exact selector/lineage/lane behavior is now canonical on main. H4E retains
+        production multi-lane live conformance; H4C1 does not consume that downstream
+        live-proof authority.
+    mutation_freeze_resolution:
+      status: SATISFIED
+      terminal_publication_sha: "5118e43af25cb14fb4206dab73e9aa0205367f84"
+      publication_workflow_run_id: 37218883470
+      interpretation: >-
+        Exact reviewed publication is terminal and the publication workflow completed
+        successfully. Human/Brain may therefore reconcile H4C1 and move planning to H4D.
+    next_action: RETURN_TO_H4D_UNATTENDED_LOCAL_WAKE
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
     objective: >-
@@ -1783,8 +1817,19 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
-    status: QUEUED_AFTER_H4C1
+    status: NEXT
     phase: H4D_UNATTENDED_LOCAL_WAKE
+    entry_basis:
+      authority: HUMAN_BRAIN_PLANNING
+      h4c1_status: DONE
+      h4c1_task_id: TASK-301
+      h4c1_run_id: RUN-301-002
+      h4c1_review_id: REVIEW-301-002
+      h4c1_published_sha: "5118e43af25cb14fb4206dab73e9aa0205367f84"
+      interpretation: >-
+        H4C1 engineering is reviewed and exactly published. H4D is now the unique
+        roadmap NEXT. H4E remains the owner of production multi-lane live conformance,
+        so H4D may implement unattended exact-target acquisition without reopening H4C1.
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
