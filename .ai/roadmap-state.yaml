@@ -467,8 +467,6 @@ sequence:
     phase: REPOSITORY_CLEANUP_CONSOLIDATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
-    task_id: TASK-303
-    task_revision: 1
     objective: >-
       Execute one bounded cleanup/consolidation task that removes only proven-temporary
       diagnostic scaffolding and dependency-proven superseded surfaces, consolidates
