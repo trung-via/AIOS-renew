@@ -1,0 +1,212 @@
+task_id: TASK-301
+revision: 1
+goal: Implement H4C1 origin-affine return routing so every post-cutover semantic flow
+  carries one bounded opaque return-affinity selector from its Human/Brain-established
+  origin through canonical TASK/RUN lineage into Brain-attention delivery, and local
+  wake resolves that selector only through machine-local origin state into one conversation-scoped
+  serialized lane.
+problem: 'H4C0 proved PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 can establish stable
+  distinct opaque conversation routes and fail closed. The current production wake
+  path remains repository-scoped: canonical TASK/RUN contracts carry no return affinity,
+  local_chat_wake resolves one repository binding/state lane, and direct/follow-up/scheduled
+  drain can therefore select only the repository-default destination. H4C1 must make
+  affinity deterministically reconstructible from canonical lineage without raw chat
+  identity, content heuristics, a second router, or a second lifecycle/state authority.'
+assumptions:
+- Canonical H4C0 is DONE/CLOSED_PASS and H4C1 is the unique reconciled roadmap NEXT
+  on main 7835ce58e025b0968e2672558a5b8812eb15244e.
+- H4C0 selected contract PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 emits an opaque
+  page-origin-v1:<64 lowercase hex> route handle plus a positive binding generation;
+  raw normalized chat URL and loopback endpoint remain machine-local in the origin
+  registry.
+- An opaque route handle is a selector only. Its presence or value grants no authority
+  to allocate TASK/RUN, select next_action, execute, review, publish, transfer ownership,
+  or advance roadmap state.
+- Current canonical attention event identities remain valid and need not embed the
+  route selector. Exact affinity may be reconstructed read-only from their already-bound
+  TASK/RUN/review/publication or admitted ingress lineage.
+- Current local wake durability, canonical freshness, dedupe, ambiguous-attempt generation
+  binding, and no-blind-resend behavior are valid primitives to preserve rather than
+  replace.
+- TASK-301 itself is a pre-cutover task and therefore may lack the new canonical return_affinity
+  field; after exact publication, historical missing affinity is classified only as
+  legacy, never synthesized as exact origin affinity.
+scope:
+  inspect:
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - src/aios_renew/task.py
+  - src/aios_renew/run.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/origin_bootstrap.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_task.py
+  - tests/test_run.py
+  - tests/test_operator.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_attention.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_origin_bootstrap.py
+  modify:
+  - src/aios_renew/task.py
+  - src/aios_renew/run.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/origin_bootstrap.py
+  - src/aios_renew/return_affinity.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_task.py
+  - tests/test_run.py
+  - tests/test_operator.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_attention.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_origin_bootstrap.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+non_goals:
+- Store raw chat URL/UUID, browser endpoint, local path, draft, transcript, assistant
+  output, registry contents, or credentials in canonical TASK/RUN/attention/review/publication
+  artifacts.
+- Create a generic semantic router, Planner, second wake queue, second lifecycle reducer,
+  persistent reasoning store, or transport authority that decides semantic flow membership.
+- Infer route affinity from repository identity, active/recent tab, timestamps, transcript/content,
+  assistant output, account/provider metadata, or model memory.
+- Change existing attention event-id grammar merely to carry affinity when exact canonical
+  lineage can reconstruct it.
+- Automatically transfer route ownership, increment origin generation, repair/rebind
+  missing affinity, or silently redirect an existing ambiguous attempt to a newer
+  generation.
+- Implement unattended target acquisition/browser launch/navigation from H4D, H4E
+  production live conformance, or final H4B/H5 closure.
+- Change H4C0 bootstrap submission semantics except a behavior-preserving extraction
+  of shared machine-local route grammar if required to avoid duplicate authority.
+- Treat legacy repository-default routing as exact origin affinity or silently fall
+  back to it for a post-cutover origin-affine flow.
+- Automatically advance H4C1 or any downstream roadmap item after implementation,
+  verification, review, or publication.
+constraints:
+  hard:
+  - Introduce one strict bounded return-affinity contract with an ORIGIN_AFFINE form
+    containing only the H4C0 opaque route handle and positive generation, plus an
+    explicitly distinguishable LEGACY_REPOSITORY_DEFAULT_ROUTE form. Historical TASKs
+    lacking the field remain readable but are legacy-only.
+  - After TASK-301 publication, AUTHOR_TASK for a new TASK or revision must require
+    an explicit return-affinity classification; ordinary revision authoring must not
+    silently change an existing exact affinity. Any future route transfer requires
+    separate explicit Human authority and is not inferred by Runtime or transport.
+  - PRIMARY RUN and all normal REMEDIATION/REPAIR descendants must copy the TASK return
+    affinity immutably. Executor output cannot choose or rewrite affinity, and canonical
+    lifecycle verification must reject conflicting persisted affinity.
+  - 'Keep existing attention event identities stable. Resolve event-to-affinity deterministically
+    and read-only from exact canonical lineage: terminal/review/publication from their
+    RUN lineage, execution/dispatch from exact TASK or source RUN lineage, recovery
+    from its exact original event, and parseable pre-canonical AUTHOR_TASK rejection
+    only from the exact admitted payload. Unprovable or conflicting affinity fails
+    closed.'
+  - For ORIGIN_AFFINE, local delivery may resolve the opaque handle/generation only
+    through bounded machine-local origin state. The resolved raw chat URL/endpoint
+    never crosses into GitHub or canonical artifacts. Missing route, duplicate/conflicting
+    handle, stale generation, invalid registry, or uncertain local state must block
+    without repository-default fallback.
+  - One opaque conversation route owns one serialized durable local wake lane shared
+    by all flows using that route. Distinct routes in the same repository use independent
+    lane locks/state and cannot block or consume each other's subjects.
+  - 'Preserve generation safety: a possible click durably binds the exact attempted
+    generation before submission; ambiguous reconciliation uses only that original
+    generation. A later registry generation/change cannot redirect or resend the held
+    attempt.'
+  - Legacy repository-default behavior may remain available only behind the explicit
+    LEGACY_REPOSITORY_DEFAULT_ROUTE classification for historical/pre-cutover flows.
+    It cannot satisfy ORIGIN_AFFINE checks and cannot be selected when exact affinity
+    is missing or stale.
+  - Direct event delivery, post-admission follow-up drain, recovery and scheduled
+    recheck must respect route-lane ownership. Recheck may boundedly enumerate already
+    configured/admitted machine-local lanes, but must not infer a route semantically
+    or collapse independent routes back into one repository lane.
+  - Preserve canonical freshness checks, exact-event dedupe, Human draft/active-generation
+    protections, bounded surface validation, at-most-one submission per lane pass,
+    event-local ambiguity, no-blind-resend, and current Reviewer/Publisher/Runtime
+    authority boundaries.
+  - Do not require a new canonical state store. TASK/RUN lineage is the canonical
+    affinity carrier; the H4C0 origin registry and route-lane wake files are operational
+    machine-local state only.
+  - Executor changes only scope.modify, performs no live H4C1/H4E experiment, does
+    not mutate roadmap state, and does not claim semantic review, publication, H4C1
+    closure, or downstream authorization.
+acceptance:
+- id: AC1
+  condition: The candidate changes only scope.modify and introduces no unrelated lifecycle,
+    H4D/H4E, browser-acquisition, or roadmap behavior.
+- id: AC2
+  condition: 'TASK parsing/authoring supports a strict selector-only return-affinity
+    contract: exact ORIGIN_AFFINE handle plus positive generation or explicit LEGACY_REPOSITORY_DEFAULT_ROUTE;
+    historical missing fields remain readable as legacy, while post-cutover new TASK/revision
+    authoring requires explicit classification and cannot silently change an existing
+    exact affinity.'
+- id: AC3
+  condition: PRIMARY, REMEDIATION and REPAIR RUN representations deterministically
+    and immutably propagate the TASK affinity; persisted mismatch, executor-supplied
+    substitution, or descendant affinity drift fails closed.
+- id: AC4
+  condition: A read-only deterministic resolver reconstructs affinity for eligible
+    attention families from exact admitted/canonical TASK/RUN/review/publication lineage
+    while preserving existing event-id grammar; recovery follows only its exact original
+    event, and missing/conflicting/unprovable lineage returns no routable affinity.
+- id: AC5
+  condition: ORIGIN_AFFINE local resolution matches the exact opaque handle and generation
+    against bounded machine-local H4C0 origin state, yields raw chat/endpoint only
+    inside the local boundary, and fails closed on missing/duplicate/conflicting/stale/invalid
+    state with no repository-default fallback.
+- id: AC6
+  condition: All flows sharing one opaque route share one serialized durable wake
+    lane, while two distinct routes in the same repository use independent locks/state
+    and cannot head-of-line block, drain, dedupe, or reconcile one another's events.
+- id: AC7
+  condition: Possible-click uncertainty remains bound to the exact attempted route
+    generation; later route/generation change cannot redirect, silently replay, or
+    authorize resend of an AMBIGUOUS attempt, and proof-only reconciliation uses the
+    stored attempted-generation binding.
+- id: AC8
+  condition: Legacy repository-default delivery is explicitly classified and regression-covered
+    as legacy-only; it is never represented as exact affinity and is never a fallback
+    for a post-cutover ORIGIN_AFFINE or unproved affinity.
+- id: AC9
+  condition: Direct delivery, same-route follow-up drain/recovery and scheduled bounded
+    recheck are route-lane scoped; scheduled enumeration processes only already configured/admitted
+    local lanes and preserves independent-route progress plus existing canonical freshness,
+    dedupe, surface, invocation-limit and no-blind-resend safeguards.
+- id: AC10
+  condition: Focused regressions cover TASK/RUN propagation, admitted ingress and
+    terminal/review/publication affinity reconstruction, same-route multi-flow serialization,
+    same-repository distinct-route isolation, legacy separation, missing/stale/conflict
+    fail-close, generation-change ambiguity, and workflow drain/recheck scoping; H4C0
+    bootstrap behavior remains regression-clean.
+- id: AC11
+  condition: Documentation records the H4C1 selector/lineage/lane contract, machine-local
+    privacy boundary and explicit transfer rule, and keeps H4D/H4E plus any live production
+    conformance and H4C1 roadmap closure downstream of reviewed publication.
+- id: AC12
+  condition: Executor RESULT claims only pre-verification implementation properties
+    with exact changed_files and unresolved empty; Runtime verification, Reviewer
+    verdict, Publisher publication, any local migration/setup, live routing proof
+    and roadmap closure remain authority-owned downstream facts.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_task.py tests/test_run.py tests/test_authoring_ingress.py
+    tests/test_operator.py tests/test_brain_attention.py tests/test_local_chat_wake.py
+    tests/test_local_chat_wake_workflow.py tests/test_origin_bootstrap.py
+  - git diff --check
