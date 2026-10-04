@@ -619,6 +619,14 @@ sequence:
       After TASK-299 dispatch, do not write planning or bookkeeping commits to main
       until terminal publication outcome. The next bounded H4C0 A1 live proof may run
       only after exact reviewed publication of the bounded empty-paragraph correction.
+    mutation_freeze_resolution:
+      status: SATISFIED
+      terminal_publication_sha: "5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27"
+      publication_workflow_run_id: 37198166829
+      interpretation: >-
+        TASK-299 reached exact reviewed publication before this planning reconciliation.
+        The freeze is therefore released for Human/Brain live-conformance planning only;
+        publication does not itself prove A1 or close H4C0.
     task298_prior_authoring:
       task_id: TASK-298
       task_revision: 1
@@ -858,7 +866,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PAUSED_FOR_TASK_299_BOUNDED_EMPTY_PARAGRAPH_CORRECTION
+      status: READY_FOR_ONE_BOUNDED_POST_TASK_299_A1
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -870,14 +878,12 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        TASK-298's bounded A1 proved READY/EXACT_TEXT exhaustion with no submit attempt.
-        A fresh same-attempt read-only retry then stably attributed the internal exactText
-        failure to ROOT_ATTRIBUTES, and inspection of that same failed composer proved
-        exactly one offending root shape: P[data-empty-paragraph="true"] with empty
-        textContent and a sole BR.ProseMirror-trailingBreak child. This establishes a
-        non-speculative basis for the narrowly authored TASK-299 correction. H4C0 remains
-        open and H4C1 blocked; reviewed publication still requires one bounded Human/Brain
-        A1 live proof before the remaining two-chat procedure continues.
+        TASK-299 is now reviewed and exactly published, so the prior ROOT_ATTRIBUTES
+        implementation blocker is cleared. H4C0 remains open and H4C1 remains blocked.
+        Human/Brain may now perform exactly one bounded A1 against published SHA
+        5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27. Only that live observation may
+        determine whether the remaining two-chat procedure can continue or whether a
+        new non-speculative blocker must be diagnosed; publication alone cannot decide it.
     post_task298_diagnostic_a1_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -1070,6 +1076,29 @@ sequence:
         downstream Runtime/Reviewer facts at the Executor completion gate. The failed
         candidate nevertheless preserved the exact five reviewed TASK-293 blobs and
         this checkpoint is not evidence of implementation or compatibility-test failure.
+    task299_engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-299
+      task_revision: 1
+      run_id: RUN-299-001
+      result_artifact_sha: "530f84254576a76800e18ee57005822b811d09d1"
+      candidate_sha: "5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27"
+      verification_summary: "666 passed, 1008 skipped in 32.60s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-299-001
+      review_decision_sha: "4dbddc98907a68219f57836096761b6ae52de774"
+      verdict: PASS
+      reviewed_sha: "5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27"
+      published_sha: "5f5fbdabd0f77d5d0d8a9e2309b1472d19744b27"
+      publication_workflow_run_id: 37198166829
+      completed_on: "2026-10-04"
+      interpretation: >-
+        TASK-299 narrowly admits only the live-proved
+        P[data-empty-paragraph="true"] > BR.ProseMirror-trailingBreak root shape.
+        Runtime verification and REVIEW-299-001 passed and Publisher advanced main to
+        the exact reviewed candidate. This engineering completion makes one bounded
+        post-publication A1 live proof eligible; it is not itself A1 evidence, H4C0
+        closure, H4C1 authorization, or authority to create TASK-300.
+
     task298_engineering_completion:
       authority: RUNTIME_REVIEWER_PUBLISHER
       task_id: TASK-298
@@ -1296,30 +1325,30 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: AUTHORIZED_PENDING_DISPATCH
+      status: TERMINAL_REVIEWED_PUBLISHED
+      carrier_issue_number: 1482
       interpretation: >-
-        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-299 lifecycle.
-        This is execution intent only; carrier acceptance, RUN creation, Runtime
-        verification, semantic review and publication remain separate downstream facts.
+        Human-selected execution completed through admitted RUN-299-001, Runtime
+        verification, REVIEW-299-001 PASS and exact publication. The dispatch receipt
+        remains only transport evidence; terminal lifecycle facts are established by
+        the canonical RESULT, review decision and published main above.
     current_live_blocker:
-      code: TASK_299_R1_EXECUTION_AUTHORIZED_PENDING_DISPATCH
-      authority: HUMAN
+      code: H4C0_POST_TASK_299_A1_LIVE_PROOF_PENDING
+      authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-299
       task_revision: 1
-      next_action: DISPATCH_TASK_299
+      next_action: HUMAN_RUN_ONE_BOUNDED_A1_ON_EXACT_PUBLISHED_TASK_299_SHA
       basis: >-
-        Same-attempt READY/EXACT_TEXT plus stable ROOT_ATTRIBUTES attribution and exact
-        failed-composer inspection proved the production root shape
-        P[data-empty-paragraph="true"] with empty textContent and a sole
-        BR.ProseMirror-trailingBreak child. TASK-299 r1 passed the required two-stage
-        Brain semantic audit and is canonically authored. Human explicitly selected
-        Codex GPT-6.1 Sol xhigh for this task lifecycle.
+        TASK-299 engineering lifecycle is complete and exact publication is proven.
+        The next commitment is one bounded A1 using the published source, not another
+        implementation task. Human/Brain must observe the ordinary bounded result and
+        decide whether A1 succeeds sufficiently to continue the remaining H4C0 two-chat
+        conformance procedure. Any new failure must be classified from fresh bounded
+        evidence before another task is authorized.
       prohibitions:
-        - NO_GENERIC_ROOT_ATTRIBUTE_ACCEPTANCE
-        - NO_DIV_EMPTY_PARAGRAPH_EXCEPTION
-        - NO_NON_TRUE_OR_EXTRA_ATTRIBUTE_ACCEPTANCE
-        - NO_NON_EMPTY_OR_ALTERNATE_CHILD_EXCEPTION
-        - NO_TIMEOUT_OR_POLLING_CHANGE
+        - NO_AUTOMATIC_TASK_300
+        - NO_REPEAT_DIAGNOSTIC_WITHOUT_NEW_BOUNDED_FAILURE_EVIDENCE
+        - NO_TIMEOUT_OR_POLLING_CHANGE_WITHOUT_NEW_EVIDENCE
         - NO_GENERIC_DOM_OR_WHITESPACE_NORMALIZATION
         - NO_SELECTOR_SEND_OR_ORIGIN_AUTHORITY_CHANGE
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
@@ -1334,7 +1363,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: TASK_299_REVIEWED_PUBLICATION_THEN_ONE_BOUNDED_A1_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: ONE_BOUNDED_POST_TASK_299_A1_THEN_H4C0_PAGE_SCOPED_TWO_CHAT_LIVE_PROOF_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
