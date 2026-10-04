@@ -1,9 +1,17 @@
 # AIOS H4C0 Origin Capture Conformance v1
 
-Status: IMPLEMENTATION CONTRACT / LIVE OBSERVATION UNPROVED  
-TASK binding: TASK-292 revision 1  
+Status: PAGE-SCOPED FALLBACK CONTRACT / LIVE OBSERVATION UNPROVED
+
+TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback)
 Parent: [H4 Origin-Affine Return and Unattended Local Wake](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md)  
 Authority: Runtime verifies implementation; Human/Brain evaluates later live feasibility.
+
+Sections 1–5 preserve the TASK-292 OpenAI-session candidate and its historical
+contract. Its accepted implementation, REVIEW/PASS, and exact publication remain
+valid evidence. The current Human-observed regular-Chat surface did not expose
+the Developer Mode/custom MCP entry for that candidate's planned live procedure;
+that availability observation does not invalidate its engineering lineage.
+Sections 6–10 define the selected TASK-293 fallback and its later live gate.
 
 ## 1. Feasibility basis and limits
 
@@ -74,3 +82,218 @@ H4C1 remains **BLOCKED UNTIL H4C0 LIVE CLOSURE**. TASK-292 acceptance, reviewed 
 This candidate adds no return routing, route database/registry/ownership, mapping to a chat URL, browser automation, wake delivery, local-wake changes, second transport, Work/MCP-Events dependency, transcript scraping, or assistant-output interpretation. It allocates no TASK/RUN, chooses no semantic flow or `next_action`, mutates no canonical engineering state, and changes no lifecycle, Runtime, Reviewer, Publisher, or roadmap authority. TASK-291's permissive local-wake state is not origin proof and is untouched.
 
 Runtime owns canonical verification and EVIDENCE. Reviewer owns the semantic verdict. Publisher owns exact reviewed publication. Human/Brain alone evaluates this later live observation and decides H4C0 closure or architecture fallback; later routing and wake phases require their own authorized contracts.
+
+## 6. Selected page-scoped origin-bootstrap contract
+
+Contract: `PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1`. Implementation:
+`src/aios_renew/origin_bootstrap.py`; one local development entry:
+`scripts/aios_origin_bootstrap.py`.
+
+The entry attaches to an existing Human-authorized regular-Chat Chromium browser
+through its existing loopback CDP endpoint. It neither starts a browser nor opens,
+navigates, focuses, or chooses a tab. It exposes **Connect this chat to AIOS and
+send draft** inside eligible regular-Chat documents. The Human writes and approves
+the initial handoff, then clicks that document's button. This click authorizes
+only that initial submission; the helper never interprets the draft or dispatches
+an AIOS execution itself. Developer Mode, MCP, Responses API, ChatGPT Work, account
+metadata, and `openai/session` are not dependencies.
+
+A browser-trusted click on the installed button creates a random 256-bit challenge
+in a document-owned closure, with a 30-second monotonic expiry. Programmatic clicks
+and copied tokens cannot create a pending attestation. A separate random document
+nonce distinguishes exact documents, including multiple tabs of one conversation.
+The trusted local adapter retains a private document JSHandle to the attestation
+closure; the page exposes only an installation collision guard, never a challenge
+API. A caller-created page object or copied guard cannot establish origin. Neither
+challenge nor document nonce is durable. Scanning is bounded to 8 browser
+contexts and 32 total documents; absent, multiple, inaccessible, malformed, expired,
+or replaced challenge-bearing documents fail closed. The adapter never asks for
+the active tab, recent chat, focus, timestamps, repository identity, or content as
+origin authority. Clock values bound freshness only.
+
+The existing local-wake HTTPS/regular-Chat URL grammar is reused. An exact normalized
+route may include a Project prefix; its final conversation UUID is the conversation
+key, consistent with the existing wake binding grammar. Trailing slash and valid
+Project location changes on a later explicit bootstrap preserve that conversation's
+route. During one bootstrap the exact normalized location must remain unchanged;
+main-frame navigation epochs and temporary page-history listeners/hooks also
+invalidate a route-change-and-return during proof. Cleanup removes its listeners
+and restores only history functions that still belong to that closure.
+One document can prove while another tab shows the same conversation: those tabs
+share a conversation route, rather than competing routes. Two pending attestations
+are ambiguity and are rejected together by this bounded one-gesture session.
+
+Mandatory order:
+
+1. Prove exactly one eligible document owns the fresh Human challenge.
+2. Mint or reuse its conversation-scoped opaque handle under the exclusive local
+   registry lock.
+3. Durably write the local binding using the existing exclusive pending-file,
+   fsync, write-through replacement, and directory-sync primitives.
+4. Revalidate the same document, challenge, exact route, registry contents, and
+   binding generation.
+5. Append the bounded opaque envelope to that same Human-authored draft, then
+   prove exact draft preservation and the application's scoped Send readiness.
+6. Revalidate again; durably record attempt intent; revalidate the page and
+   generation once more; click the unique enabled Send in the composer's unique
+   enclosing form. Final page/draft/surface checks and click share one browser
+   event-loop turn. The challenge is consumed before the click.
+
+No submission occurs if binding durability, challenge uniqueness, page continuity,
+regular surface eligibility, registry consistency, generation, or insertion is
+unproved. Login, Work/team/business/enterprise markers, active generation,
+non-unique/disabled composers, unsupported rich draft representations, or
+ambiguous Send/form structure block the attempt. The supported draft shape is
+nonempty exact plaintext up to 65,536 characters, with identical rendered and
+DOM text. The gesture snapshots those bytes only for edit integrity; a later draft
+change blocks insertion and never changes origin identity. After append, the existing wake exact-line/block equivalence predicate
+also accepts its narrow P/DIV representation without changing logical bytes.
+Editing only appends two newlines plus metadata; it never replaces,
+clears, trims, normalizes, or semantically interprets the draft. Draft bytes remain
+ephemeral in the selected document and are released on cleanup, never returned
+to Python or stored in the registry. Transcript and assistant output are not read.
+
+After submission, composer clearing and bounded scoped controls supply only a
+structural submission witness. An uncertain click, witness, completion write, or
+process crash leaves an `ATTEMPTING`/`AMBIGUOUS` local marker. There is no automatic
+resend, even on a new helper invocation or gesture. Human reconciliation is
+required; deleting markers blindly is not a recovery procedure. A pre-submit
+failure may leave appended metadata in the draft; the Human must inspect it.
+The helper never rolls back or retries an uncertain edit, and an existing bootstrap
+marker prevents duplicate metadata insertion.
+
+## 7. Local registry and bounded output
+
+The registry path and its `.lock`/`.pending` siblings must resolve outside every
+Git working tree or bare Git store. Use one fixed registry for this authorized
+browser environment; parallel helpers must use the same path, never independent
+registry copies. Its parent directory must already exist with appropriate local
+access controls. State is bounded to 256 conversations and 262,144 encoded bytes;
+duplicate JSON keys, malformed records, duplicate handles, generation conflict,
+capacity exhaustion, stale locks, and pending writes fail closed. It stores only
+normalized conversation identity, last explicitly proved location, loopback browser
+endpoint, opaque route handle, generation, and one bounded submission-attempt marker.
+It stores no repository/TASK/RUN, prompt, transcript, assistant text, credentials,
+challenge, semantic decision, or wake payload. The endpoint refers to the already
+authorized browser/profile; changing it requires explicit later Human ownership
+handling and is rejected by this contract. Generation is a positive bounded integer;
+this helper does not implement rebind/transfer or increment generation automatically.
+
+Handles have the grammar `page-origin-v1:` plus 64 lowercase hexadecimal digits,
+minted randomly and collision-checked. Repeated flows and long TASK/RUN/review/repair/
+publication continuations reuse the established handle and generation. A new Human
+gesture is for initial binding or a deliberate development bootstrap, not every
+subsequent message. Valid reload/reopen uses a fresh page challenge to find the same
+durable conversation record. Losing local state is a blocker for continuity, not
+permission to guess a prior route.
+
+The appended envelope is at most 384 ASCII bytes:
+
+```text
+[AIOS ORIGIN BOOTSTRAP]
+{"contract":"PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1","route_handle":"page-origin-v1:<64 lowercase hex digits>","generation":1}
+[/AIOS ORIGIN BOOTSTRAP]
+```
+
+Console results contain only `contract`, `status`, `reason`, `route_handle`, and
+`generation`. Status is `SUBMITTED`, `UNPROVED`, or `AMBIGUOUS`; rejected/ambiguous
+results expose null handle/generation and fixed reason codes. Raw URLs/UUIDs,
+endpoints, local paths, challenge bytes, drafts, exceptions, and browser diagnostics
+must not enter repository/canonical outputs or Runtime EVIDENCE. The entry disables
+Python logging and rejects enabled `DEBUG`/`PWDEBUG` environments before attaching.
+Do not enable external browser/CDP tracing, request-body logs, or transcript exports.
+
+The handle is a bounded selector, not a credential or authority. Its presence or
+value cannot allocate TASK/RUN, select `next_action`, authorize execution, review,
+publication, transfer ownership, or advance roadmap state. The registry exposes no
+H4C1 return-resolution/delivery API and its attempt marker is not a wake queue.
+Existing local-chat-wake delivery code, state, dedupe, recovery, and lane semantics
+are unchanged; only its safety/normalization/durability primitives are reused.
+
+## 8. One bounded local development surface
+
+After exact reviewed publication, Human/Brain may authorize this local procedure
+against that published checkout. Use the existing authenticated regular-Chat
+browser and its authorized loopback CDP endpoint. If that environment is unavailable
+or its authorization/profile provenance is uncertain, stop with `UNPROVED`.
+The helper does not acquire an account, create a new profile, or launch a browser.
+
+```powershell
+python -m pip install -e '.[local-chat-wake]'
+$originRegistry = Join-Path $env:LOCALAPPDATA 'AIOS\origin-bootstrap\registry.json'
+New-Item -ItemType Directory -Force -Path (Split-Path $originRegistry) | Out-Null
+python scripts/aios_origin_bootstrap.py --state $originRegistry --endpoint http://127.0.0.1:9222 --seconds 120
+```
+
+The endpoint above is an illustrative loopback value; use only the already
+authorized environment's endpoint. Protect the state directory machine-locally.
+The gesture-wait phase lasts at most 300 seconds; the session handles at most one pending gesture/attempt,
+prints one bounded JSON result, removes its buttons, and disconnects without closing
+the browser. Open the intended chats before starting the session. A new session
+installs a fresh private closure after cleanup and always requires a new trusted
+Human click. Reload/reopen invalidates the old document handle. The optional bounded
+`--proof-delay-ms 3000` (0–5000) lets the Human arrange a page-change/ambiguity trial
+before proof; waiting supplies no origin authority and cannot extend the challenge.
+
+This is a development origin-handshake surface, not an AIOS operator/worker launcher.
+There is no daemon, generic service, return router, polling wake consumer, or second
+transport queue. The finite local loop observes only document-owned pending gestures.
+
+## 9. Required post-publication two-regular-chat Human/Brain procedure
+
+Preconditions: TASK-293 Runtime acceptance, independent Reviewer verdict, and
+Publisher publication of the exact reviewed candidate. Human/Brain selects that SHA
+and authorizes the existing browser environment and each initial test handoff.
+These boundaries make the candidate available; they do not establish live conformance.
+
+1. Open two distinct regular conversations **A** and **B** in the same repository/
+   Project context. Identify the surfaces directly as Human observation labels;
+   keep raw URLs, UUIDs, profile/endpoint details, and transcripts machine-locally.
+2. In A, prepare a bounded Human-approved initial handoff. Start one helper session
+   and click A's in-page button. Read its actual bounded JSON result as **A1**;
+   require `SUBMITTED/ACCEPTED`, a valid route handle, and positive generation.
+   No assistant prose supplies the comparison. After the surface is idle, prepare
+   a second deliberate approved handoff, start a new session, and click A again:
+   record **A2**. Require the same handle and generation.
+3. Repeat those two deliberate bootstraps in B to obtain **B1**, **B2**. Require
+   B1 = B2 and A1 != B1. A and B remain distinct despite their same repository.
+   No repository-default binding is consulted.
+4. In a separately bounded continuity check, validly reload/reopen A (and, if
+   authorized, open another tab of A), then bootstrap once with a fresh in-page
+   gesture. Require route A and its unchanged generation. A second tab never
+   creates a competing conversation route or substitutes for the selected document.
+5. In one separately authorized ambiguity trial, start with
+   `--proof-delay-ms 3000`; click the selected document's button and replace/navigate
+   that page before proof, or click buttons in two eligible documents during that
+   delay. Require a fixed `UNPROVED` outcome and no submission. Challenge absence,
+   expiration, non-regular surfaces, or unclear provenance likewise leave the gate
+   unproved. Do not retry until a desired comparison appears. Ambiguous post-submit
+   state requires Human reconciliation and never triggers automatic resend.
+6. Inspect only machine-local binding state for confidentiality, without exporting
+   raw values. Record canonically only the exact published SHA, contract version,
+   A/B labels, bounded statuses, generation/equality/difference booleans, continuity
+   and ambiguity booleans, and Human/Brain's bounded conformance decision. No raw
+   conversation identity, endpoint, local path, draft, transcript, screenshots of
+   raw state, or request dumps enter TASK/RUN/RESULT/FAILURE/REVIEW/roadmap/EVIDENCE.
+7. Human/Brain reconciles this real observation with the two-stage architecture
+   audit and explicitly decides H4C0 closure or fallback. Any missing comparison,
+   unstable route, shared A/B handle, unproved continuity, ambiguous provenance,
+   or failed confidentiality/safety observation keeps H4C0 open.
+
+## 10. Implementation verification and closure limits
+
+`tests/test_origin_bootstrap.py` defines focused deterministic coverage for stable/
+distinct conversation handles, same-conversation tabs, exclusive local binding,
+reload/Project-location continuity, exact ordering, uncertain writes, generation/
+registry races, raw-identity output exclusion, and no lifecycle/wake calls. Its
+synthetic DOM harness executes the actual page closure for trusted/untrusted gesture,
+copied challenge, expiry, changed document/route, non-regular surface, edit integrity,
+scoped Send controls, single-use click, cleanup, and fresh rearm. Node is required for
+that harness; absence is an explicit skip, not live proof. Existing local-wake tests
+remain the regression contract for its unchanged delivery primitives.
+
+Runtime alone runs canonical verification and constructs EVIDENCE. Deterministic
+tests, Runtime PASS, Reviewer PASS, and TASK-293 publication alone do **not** close
+H4C0 or authorize H4C1. The real two-regular-chat procedure above is a later Human/
+Brain conformance decision. H4C0 remains the unique canonical NEXT, ahead of H4C1,
+H4D, H4E, final H4B production-shape proof, and H5; no phase advances automatically.
