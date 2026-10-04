@@ -304,6 +304,16 @@ _EXACT_TEXT = r"""(box, text) => {
       if (--budget < 0) return false;
       if (child.nodeType === 3) {
         logical += child.textContent; raw += child.textContent;
+      } else if (child.nodeType === 1 && child.tagName === 'SPAN' &&
+                 child.attributes.length === 1 &&
+                 child.attributes[0].name === 'data-prompt-literal-paste' &&
+                 child.attributes[0].value === '' && child.childNodes.length === 1 &&
+                 child.childNodes[0].nodeType === 3 && shown(child)) {
+        // Only the observed literal-paste wrapper may expose one text leaf.
+        // Count that leaf too; no other inline or nested grammar is admitted.
+        if (--budget < 0) return false;
+        const value = child.childNodes[0].textContent;
+        logical += value; raw += value;
       } else if (child.nodeType === 1 && child.tagName === 'BR' &&
                  !child.childNodes.length && child.textContent === '' && shown(child)) {
         // A sole BR is the empty-block placeholder. The editor's explicitly
@@ -421,8 +431,9 @@ INSTALL = r"""({slot, composer, send, stop, nonregular, login, ttl, maxDraft}) =
       staged = {box, expected: draft + suffix};
       if (!document.execCommand('insertText', false, suffix)) return false;
       box.dispatchEvent(new InputEvent('input', {bubbles:true, composed:true, inputType:'insertText', data:suffix}));
-      return !!proves(proof) && surface() === box &&
-        exactText(box, staged.expected);
+      // The native edit was issued on the still-proved surface. Final logical
+      // bytes may reconcile asynchronously; only bounded ready() proves them.
+      return !!proves(proof) && surface() === box;
     },
     ready: p => !!ready(p),
     submit: p => {

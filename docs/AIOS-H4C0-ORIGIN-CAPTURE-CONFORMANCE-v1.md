@@ -2,7 +2,7 @@
 
 Status: PAGE-SCOPED FALLBACK CONTRACT / LIVE OBSERVATION UNPROVED
 
-TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback); TASK-295 revision 2 (published insertion correction); TASK-296 revision 1 (bounded editor-reconciliation correction)
+TASK bindings: TASK-292 revision 1 (preserved prior candidate); TASK-293 revision 1 (selected fallback); TASK-295 revision 2 (published insertion correction); TASK-296 revision 1 (published bounded editor-reconciliation correction); TASK-297 revision 1 (literal-paste wrapper and insert-to-ready correction)
 Parent: [H4 Origin-Affine Return and Unattended Local Wake](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md)  
 Authority: Runtime verifies implementation; Human/Brain evaluates later live feasibility.
 
@@ -150,14 +150,23 @@ DOM text. The gesture snapshots those bytes only for edit integrity; a later dra
 change blocks insertion and never changes origin identity. After append, an
 origin-bootstrap-only predicate proves logical bytes from the selected composer's
 DOM. Its bounded allowlist consists of root plaintext nodes and flat P/DIV blocks
-whose only children are text or explicit BR leaves. Blocks carry no attributes;
+whose only children are text, the exact literal-paste wrapper, or explicit BR leaves.
+The wrapper is only `SPAN[data-prompt-literal-paste=""]`: exactly one attribute
+named `data-prompt-literal-paste` with the empty string value, exactly one child
+node, and that child exactly a `#text` node. It is accepted only as a direct child
+of a bounded P/DIV block, never as a root or nested/rich inline grammar. Wrong or
+additional attributes, non-empty values, zero/multiple children, non-text children,
+nesting, hidden/aria-hidden/style/class decoration, or invisible wrapper content
+fail closed. Each wrapper and its text leaf count against the traversal bound.
+Blocks carry no attributes;
 BR leaves are bare or carry exactly `class="ProseMirror-trailingBreak"`. Every
 block boundary contributes exactly one logical newline and every inline bare BR
 contributes one. A sole BR is an empty-block placeholder; the named trailing BR
 contributes no bytes only at the end of an empty block or after a proved newline.
 No other nesting, nodes, or attributes are accepted, including rich content whose
 aggregate text happens to match. Hidden, collapsed, or transparent block/BR
-content fails closed. Traversal is bounded by the staged logical draft length.
+or literal-paste wrapper content fails closed. Traversal is bounded by the staged
+logical draft length.
 
 The derived logical text must equal the immutable Human draft plus exactly two
 newline characters plus the bounded envelope. `textContent` must equal the
@@ -169,9 +178,14 @@ Literal CRLF, Unicode, and whitespace bytes within text leaves remain exact.
 Unknown or non-exact representations remain blocked even if visually similar.
 
 The application's input event may reconcile that same composer asynchronously.
+`insert()` establishes that the bounded native append succeeded and the exact
+page/challenge/surface still holds. It does not require the final reconciled
+representation synchronously at native insertion return.
 Readiness polls only within its existing three-second bound and re-evaluates the
 same staged composer, document, challenge, page, and exact logical draft. Waiting
-itself supplies no equivalence or origin authority. The first accepted readiness
+itself supplies no equivalence or origin authority. A representation that never
+reconciles exactly inside that window remains pre-submit `UNPROVED/INSERT_BLOCKED`;
+no `ATTEMPTING` intent is written and no Send click occurs. The first accepted readiness
 retains the unique visible enabled scoped Send and its enclosing form; replacing
 either blocks later revalidation. After insertion, the existing revalidation
 boundaries also re-prove exact draft equivalence and that retained control before
@@ -272,7 +286,7 @@ transport queue. The finite local loop observes only document-owned pending gest
 ## 9. Required post-publication two-regular-chat Human/Brain procedure
 
 Preconditions: Runtime acceptance, a fresh independent Reviewer verdict, and
-Publisher publication of the exact reviewed TASK-296 correction. Human/Brain selects that SHA
+Publisher publication of the exact reviewed TASK-297 correction. Human/Brain selects that SHA
 and authorizes the existing browser environment and each initial test handoff.
 These boundaries make the candidate available; they do not establish live conformance.
 
@@ -293,6 +307,29 @@ fallback or an authorized workaround. TASK-296 corrects production editor
 reconciliation only; it does not change wake delivery, origin authority, routing,
 or lifecycle authority. The full A/A/B/B comparison, continuity check, and ambiguity
 trial below remain pending after exact reviewed publication of the correction.
+
+After TASK-296 revision 1 completed RUN-296-001 Runtime PASS, REVIEW-296-001 PASS,
+and exact publication of `7037ce457471c230536749cf8e591e21720c0782`, the resumed
+bounded A1 observation again stopped pre-submit at `UNPROVED/INSERT_BLOCKED` with
+no AIOS-owned submit attempt. Read-only structural diagnostics established one
+visible composer, one enclosing form, one visible enabled form-scoped Send, and
+five attribute-free P root blocks. Four non-empty branches were exactly
+`P > SPAN[data-prompt-literal-paste=""] > #text`; each SPAN had only that one
+empty-valued attribute and exactly one text child. The remaining empty separator
+branch was `P > BR.ProseMirror-trailingBreak`, with exactly
+`class="ProseMirror-trailingBreak"` on the childless BR.
+
+This second observation is bounded pre-submit Human/Brain planning evidence for
+TASK-297. It creates no canonical RUN failure, REVIEW finding, publication failure,
+or engineering terminal state and records no raw identity, draft, DOM payload,
+endpoint, registry, transcript, or assistant output. TASK-297 addresses only this
+exact wrapper grammar and the premature synchronous reconciliation check at
+insert return. It supplies no generic SPAN/rich-text acceptance, normalization,
+manual-Send fallback, wake delivery, routing, or new authority. Runtime verification,
+a fresh Reviewer verdict, and exact reviewed TASK-297 publication remain downstream
+boundaries. The entire A/A/B/B comparison, continuity check, and ambiguity trial
+below remain pending after that publication; Human/Brain must rerun and explicitly
+evaluate them. H4C0 remains open and H4C1 remains blocked.
 
 1. Open two distinct regular conversations **A** and **B** in the same repository/
    Project context. Identify the surfaces directly as Human observation labels;
@@ -352,8 +389,20 @@ Send replacement between accepted readiness, attempt intent, and click. These ar
 implementation regression definitions; their canonical execution and EVIDENCE
 belong to Runtime.
 
+TASK-297 adds the observed five-block production fixture: four exact literal-paste
+SPAN/text branches and one empty P/trailing-BR branch. A transient unallowlisted
+immediate post-input shape is rejected by readiness and becomes exact only during
+later ready polling. Focused regression definitions cover successful delayed
+reconciliation before intent, a never-reconciled edit reaching the existing
+three-second `INSERT_BLOCKED` bound without intent or submit, and rejection of
+wrapper attribute/value/child deviations, nested/rich/hidden/decorated content,
+unsupported BRs, byte or separator changes, control ambiguity, page/challenge
+changes, and binding/generation races. The reconciled draft and retained scoped
+control remain revalidated before `ATTEMPTING` and immediately before click.
+These definitions claim no canonical verification or live conformance result.
+
 Runtime alone runs canonical verification and constructs EVIDENCE. Deterministic
-tests, Runtime PASS, Reviewer PASS, and publication of TASK-293, TASK-295, or TASK-296 alone do **not** close
+tests, Runtime PASS, Reviewer PASS, and publication of TASK-293, TASK-295, TASK-296, or TASK-297 alone do **not** close
 H4C0 or authorize H4C1. The real two-regular-chat procedure above is a later Human/
 Brain conformance decision. H4C0 remains the unique canonical NEXT, ahead of H4C1,
 H4D, H4E, final H4B production-shape proof, and H5; no phase advances automatically.

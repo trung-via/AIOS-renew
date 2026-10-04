@@ -417,6 +417,8 @@ DOM_HARNESS = r"""
 (async () => {
 const fs = require('fs'), input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const args = input.args, scenario = input.scenario;
+const literal = scenario.startsWith('async_literal_');
+const variant = literal ? scenario.replace('async_literal_', 'async_') : scenario;
 let clock = 0, randomCount = 0, clicks = 0, inserts = 0, notifications = 0, button;
 global.performance = {now: () => clock};
 global.crypto = {getRandomValues: bytes => {bytes.fill(++randomCount); return bytes;}};
@@ -430,7 +432,9 @@ const br = trailing => Object.assign(element(), {nodeType:1, tagName:'BR', textC
   attributes:trailing ? [{name:'class', value:'ProseMirror-trailingBreak'}] : []});
 const paragraph = (line, tagName='P') => Object.assign(element(), {nodeType:1, tagName,
   textContent:line, childNodes:line === '' ? [br(false)] : [text(line)]});
-const humanDraft = input.draft ?? 'Human authored draft\nsecond exact line  ';
+const literalSpan = value => Object.assign(element(), {nodeType:1, tagName:'SPAN', textContent:value,
+  attributes:[{name:'data-prompt-literal-paste', value:''}], childNodes:[text(value)]});
+const humanDraft = input.draft ?? (literal ? 'Human exact draft  ' : 'Human authored draft\nsecond exact line  ');
 let reconciliation;
 const box = Object.assign(element(), {innerText:humanDraft, textContent:humanDraft, childNodes:[text(humanDraft)],
   focus() {document.activeElement = box;
@@ -446,8 +450,14 @@ const box = Object.assign(element(), {innerText:humanDraft, textContent:humanDra
       // Native insertion returns first. The observed class retains the same
       // enabled Send while the editor reconciles in a later microtask. A
       // separate wait case also models delayed application Send enablement.
-      send.disabled = scenario === 'async_wait_exact';
-      reconciliation = Promise.resolve().then(reconcile);
+      send.disabled = variant === 'async_wait_exact';
+      if (literal) {
+        // A transient, unallowlisted representation at native insert return.
+        // The final production wrapper arrives only during later ready polls.
+        box.childNodes = [Object.assign(element(), {nodeType:1, tagName:'SPAN',
+          textContent:box.textContent, childNodes:[text(box.textContent)]})];
+      }
+      if (variant !== 'async_never_reconciled') reconciliation = Promise.resolve().then(reconcile);
     }
   }});
 const send = Object.assign(element(), {disabled:false, click() {
@@ -524,82 +534,127 @@ const beforeReconciliation = scenario.startsWith('async_') ? api.ready(proof) : 
 const expected = humanDraft + '\n\n' + input.metadata;
 function reconcile() {
   let lines = expected.split('\n');
-  if (scenario === 'async_missing_separator') lines.splice(2, 1);
-  if (scenario === 'async_extra_separator') lines.splice(2, 0, '');
-  if (scenario === 'async_reordered_separator') lines.push(lines.splice(2, 1)[0]);
-  if (scenario === 'async_reordered_lines') [lines[0], lines[1]] = [lines[1], lines[0]];
-  if (scenario === 'async_altered_draft') lines[0] = 'h' + lines[0].slice(1);
-  if (scenario === 'async_altered_bootstrap') lines[lines.length - 2] = lines[lines.length - 2].replace('d'.repeat(64), 'e'.repeat(64));
-  if (scenario === 'async_trimmed_draft') lines[1] = lines[1].trimEnd();
-  if (scenario === 'async_unicode_normalized') lines = lines.map(line => line.normalize('NFC'));
-  if (scenario === 'async_crlf_collapsed') lines = lines.map(line => line.replaceAll('\r', ''));
-  if (scenario === 'async_duplicated_content' || scenario === 'async_hidden_duplicate') lines.push(lines[0]);
-  const tag = scenario === 'async_div_exact' ? 'DIV' : 'P';
+  const separator = literal ? 1 : 2;
+  if (variant === 'async_missing_separator') lines.splice(separator, 1);
+  if (variant === 'async_extra_separator') lines.splice(separator, 0, '');
+  if (variant === 'async_reordered_separator') lines.push(lines.splice(separator, 1)[0]);
+  if (variant === 'async_reordered_lines') [lines[0], lines[1]] = [lines[1], lines[0]];
+  if (variant === 'async_altered_draft') lines[0] = 'h' + lines[0].slice(1);
+  if (variant === 'async_altered_bootstrap') lines[lines.length - 2] += ' altered';
+  if (variant === 'async_trimmed_draft') lines[literal ? 0 : 1] = lines[literal ? 0 : 1].trimEnd();
+  if (variant === 'async_unicode_normalized') lines = lines.map(line => line.normalize('NFC'));
+  if (variant === 'async_crlf_collapsed') lines = lines.map(line => line.replaceAll('\r', ''));
+  if (variant === 'async_duplicated_content' || variant === 'async_hidden_duplicate') lines.push(lines[0]);
+  const tag = variant === 'async_div_exact' ? 'DIV' : 'P';
   box.childNodes = lines.map(line => paragraph(line, tag));
+  if (literal) box.childNodes.forEach((block, i) => {
+    block.childNodes = lines[i] === '' ? [br(true)] : [literalSpan(lines[i])];
+  });
   let rendered = lines.map(line => line === '' ? '\n' : line);
-  if (['async_inline_exact', 'async_trailing_exact', 'async_missing_inline_break', 'async_extra_inline_break'].includes(scenario)) {
-    const trailing = scenario === 'async_trailing_exact';
+  if (['async_inline_exact', 'async_trailing_exact', 'async_missing_inline_break', 'async_extra_inline_break'].includes(variant)) {
+    const trailing = variant === 'async_trailing_exact';
     const count = trailing ? 3 : 2, group = lines.slice(0, count);
     const children = [];
     group.forEach((line, i) => {if (i) children.push(br(false)); if (line) children.push(text(line));});
     if (trailing) children.push(br(true));
-    if (scenario === 'async_missing_inline_break') children.splice(1, 1);
-    if (scenario === 'async_extra_inline_break') children.splice(1, 0, br(false));
+    if (variant === 'async_missing_inline_break') children.splice(1, 1);
+    if (variant === 'async_extra_inline_break') children.splice(1, 0, br(false));
     const combined = paragraph(group.join('\n'), tag);
     combined.childNodes = children;
     combined.textContent = children.map(child => child.textContent).join('');
     box.childNodes.splice(0, count, combined);
     rendered.splice(0, count, group.join('\n'));
   }
-  if (scenario === 'async_hidden_block') box.childNodes[0].hidden = true;
-  if (scenario === 'async_hidden_br') box.childNodes[2].childNodes[0].css = {visibility:'hidden'};
-  if (scenario === 'async_hidden_duplicate') box.childNodes.at(-1).getClientRects = () => [];
-  if (scenario === 'async_transparent_block') box.childNodes[0].css = {opacity:'0'};
-  if (scenario === 'async_collapsed_block') box.childNodes[0].css = {display:'none'};
-  if (scenario === 'async_nested_rich') {
+  if (variant === 'async_hidden_block') box.childNodes[0].hidden = true;
+  const emptyBreak = box.childNodes.find(node => node.textContent === '')?.childNodes[0];
+  if (variant === 'async_hidden_br') emptyBreak.css = {visibility:'hidden'};
+  if (variant === 'async_hidden_duplicate') box.childNodes.at(-1).getClientRects = () => [];
+  if (variant === 'async_transparent_block') box.childNodes[0].css = {opacity:'0'};
+  if (variant === 'async_collapsed_block') box.childNodes[0].css = {display:'none'};
+  if (variant === 'async_nested_rich') {
     box.childNodes[0].childNodes = [Object.assign(element(), {nodeType:1, tagName:'SPAN',
       textContent:lines[0], childNodes:[text(lines[0])]})];
   }
-  if (scenario === 'async_unknown_node') box.childNodes[0].childNodes.push({nodeType:8, textContent:''});
-  if (scenario === 'async_decorated_block') box.childNodes[0].attributes = [{name:'class', value:'rich'}];
-  if (scenario === 'async_decorated_br') box.childNodes[2].childNodes[0].attributes = [{name:'data-rich', value:'true'}];
-  if (scenario === 'async_invalid_trailing_break') box.childNodes[0].childNodes.push(br(true));
-  if (scenario === 'async_overbound_nodes') box.childNodes[0].childNodes.push(...Array.from(
+  if (variant === 'async_unknown_node') box.childNodes[0].childNodes.push({nodeType:8, textContent:''});
+  if (variant === 'async_decorated_block') box.childNodes[0].attributes = [{name:'class', value:'rich'}];
+  if (variant === 'async_decorated_br') emptyBreak.attributes = [{name:'data-rich', value:'true'}];
+  if (literal) {
+    const span = box.childNodes[0].childNodes[0];
+    if (variant === 'async_attr_missing') span.attributes = [];
+    if (variant === 'async_attr_wrong') span.attributes[0].name = 'data-prompt-paste';
+    if (variant === 'async_attr_case') span.attributes[0].name = 'DATA-PROMPT-LITERAL-PASTE';
+    if (variant === 'async_attr_multiple') span.attributes.push({name:'data-extra', value:''});
+    if (variant === 'async_value_nonempty') span.attributes[0].value = 'true';
+    if (variant === 'async_value_whitespace') span.attributes[0].value = ' ';
+    if (variant === 'async_span_class') span.attributes.push({name:'class', value:'rich'});
+    if (variant === 'async_span_style') span.attributes.push({name:'style', value:'color:red'});
+    if (variant === 'async_span_aria_hidden') span.attributes.push({name:'aria-hidden', value:'true'});
+    if (variant === 'async_span_hidden_attr') span.attributes.push({name:'hidden', value:''});
+    if (variant === 'async_span_hidden') span.hidden = true;
+    if (variant === 'async_span_no_rects') span.getClientRects = () => [];
+    if (variant === 'async_span_invisible') span.css = {visibility:'hidden'};
+    if (variant === 'async_span_collapsed') span.css = {visibility:'collapse'};
+    if (variant === 'async_span_display_none') span.css = {display:'none'};
+    if (variant === 'async_span_transparent') span.css = {opacity:'0'};
+    if (variant === 'async_children_zero') span.childNodes = [];
+    if (variant === 'async_children_multiple') span.childNodes.push(text(''));
+    if (variant === 'async_children_split') span.childNodes = [text(lines[0].slice(0, 1)), text(lines[0].slice(1))];
+    if (variant === 'async_child_nested') span.childNodes = [literalSpan(lines[0])];
+    if (variant === 'async_child_rich') span.childNodes = [Object.assign(element(), {
+      nodeType:1, tagName:'B', childNodes:[text(lines[0])], textContent:lines[0]})];
+    if (variant === 'async_child_comment') span.childNodes = [{nodeType:8, textContent:lines[0]}];
+    if (variant === 'async_child_br') span.childNodes = [br(false)];
+    if (variant === 'async_span_wrong_tag') span.tagName = 'EM';
+    if (variant === 'async_root_span') box.childNodes[0] = span;
+    if (variant === 'async_leaf_duplicate') span.childNodes[0].textContent += lines[0];
+    if (variant === 'async_leaf_altered') span.childNodes[0].textContent += ' edit';
+    if (variant === 'async_br_wrong_class') emptyBreak.attributes[0].value = 'other';
+    if (variant === 'async_br_extra_class') emptyBreak.attributes[0].value += ' rich';
+    if (variant === 'async_br_multiple_attrs') emptyBreak.attributes.push({name:'data-extra', value:''});
+    if (variant === 'async_br_child') emptyBreak.childNodes = [text('')];
+  }
+  if (variant === 'async_invalid_trailing_break') box.childNodes[0].childNodes.push(br(true));
+  if (variant === 'async_overbound_nodes') box.childNodes[0].childNodes.push(...Array.from(
     {length:2 * expected.length + 2}, () => text('')));
-  if (scenario === 'async_rich_equal_text') {
+  if (variant === 'async_rich_equal_text') {
     const rich = Object.assign(element(), {nodeType:1, tagName:'SPAN',
       textContent:expected, childNodes:[text(expected)]});
     const richBlock = paragraph(expected); richBlock.childNodes = [rich];
     box.childNodes = [richBlock];
   }
-  if (scenario === 'async_hidden_duplicate') rendered.pop();
-  box.textContent = box.childNodes.map(node => node.textContent).join('');
-  box.innerText = scenario === 'async_rich_equal_text' ? expected : rendered.join('\n\n');
-  if (scenario === 'async_extra_rendered_separator') box.innerText += '\n';
-  if (scenario === 'async_altered_rendered_text') box.innerText += ' altered';
-  send.disabled = scenario === 'async_send_disabled';
-  if (scenario === 'async_send_hidden') send.getClientRects = () => [];
-  if (scenario === 'async_send_aria_disabled') send.getAttribute = () => 'true';
-  if (scenario === 'async_send_multiple') controls.push(element());
-  if (scenario === 'async_send_replaced') controls = [Object.assign(element(), {disabled:false, click:send.click})];
-  if (scenario === 'async_form_replaced') box.parentElement = {tagName:'FORM', parentElement:null,
+  if (variant === 'async_hidden_duplicate') rendered.pop();
+  const treeText = node => node.nodeType === 3 || node.nodeType === 8 ? node.textContent :
+    (node.textContent = node.childNodes.map(treeText).join(''));
+  box.textContent = box.childNodes.map(treeText).join('');
+  box.innerText = variant === 'async_rich_equal_text' ? expected : rendered.join('\n\n');
+  if (variant === 'async_extra_rendered_separator') box.innerText += '\n';
+  if (variant === 'async_altered_rendered_text') box.innerText += ' altered';
+  send.disabled = variant === 'async_send_disabled';
+  if (variant === 'async_send_hidden') send.getClientRects = () => [];
+  if (variant === 'async_send_aria_disabled') send.getAttribute = () => 'true';
+  if (variant === 'async_send_multiple') controls.push(element());
+  if (variant === 'async_send_absent') controls = [];
+  if (variant === 'async_send_replaced') controls = [Object.assign(element(), {disabled:false, click:send.click})];
+  if (variant === 'async_form_replaced') box.parentElement = {tagName:'FORM', parentElement:null,
     contains:form.contains, querySelectorAll:form.querySelectorAll};
-  if (scenario === 'async_no_form') box.parentElement = null;
-  if (scenario === 'async_nested_forms') form.parentElement = {tagName:'FORM', parentElement:null};
-  if (scenario === 'async_multiple_composers') elements[args.composer].push(element());
-  if (scenario === 'async_composer_replaced') elements[args.composer] = [element()];
-  if (scenario === 'async_page_replaced') global.document = {...document};
-  if (scenario === 'async_route_change') location.href = input.otherUrl;
-  if (scenario === 'async_route_roundtrip') {
+  if (variant === 'async_no_form') box.parentElement = null;
+  if (variant === 'async_nested_forms') form.parentElement = {tagName:'FORM', parentElement:null};
+  if (variant === 'async_multiple_composers') elements[args.composer].push(element());
+  if (variant === 'async_composer_replaced') elements[args.composer] = [element()];
+  if (variant === 'async_page_replaced') global.document = {...document};
+  if (variant === 'async_route_change') location.href = input.otherUrl;
+  if (variant === 'async_route_roundtrip') {
     history.pushState({}, '', input.otherUrl); history.replaceState({}, '', input.url);
   }
-  if (scenario === 'async_expired') clock = args.ttl;
-  if (scenario === 'async_challenge_changed') proof = {...proof, challenge:'ff'.repeat(32)};
-  if (scenario === 'async_nonce_changed') proof = {...proof, document_nonce:'ff'.repeat(32)};
+  if (variant === 'async_expired') clock = args.ttl;
+  if (variant === 'async_challenge_changed') proof = {...proof, challenge:'ff'.repeat(32)};
+  if (variant === 'async_nonce_changed') proof = {...proof, document_nonce:'ff'.repeat(32)};
+  if (variant === 'async_busy') elements[args.stop] = [element()];
+  if (variant === 'async_nonregular') elements[args.nonregular] = [element()];
+  if (variant === 'async_login') elements[args.login] = [element()];
 }
 // Await only the scheduled application update, never use elapsed time as proof.
-if (reconciliation) await reconciliation;
-const diverged = box.innerText !== box.textContent;
+if (!literal && reconciliation) await reconciliation;
 if (scenario === 'send_disabled') send.disabled = true;
 if (scenario === 'send_aria_disabled') send.getAttribute = () => 'true';
 if (scenario === 'send_absent') controls = [];
@@ -610,9 +665,29 @@ if (scenario === 'submit_edit') box.innerText = box.textContent += ' Human edit'
 if (scenario === 'submit_route') location.href = input.otherUrl;
 if (scenario === 'submit_busy') elements[args.stop] = [element()];
 if (scenario === 'submit_composer') elements[args.composer] = [Object.assign(element(), {innerText:staged, textContent:staged})];
-const ready = proof ? api.ready(proof) : false;
+const readyPolls = [proof ? api.ready(proof) : false];
+if (literal && reconciliation) {
+  readyPolls.push(api.ready(proof));
+  await reconciliation;
+  readyPolls.push(api.ready(proof));
+}
+const ready = readyPolls.at(-1), diverged = box.innerText !== box.textContent;
+const productionGrammar = {
+  blocks:box.childNodes.filter(node => node.nodeType === 1 && node.tagName === 'P' && !node.attributes.length).length,
+  literals:box.childNodes.filter(node => node.childNodes?.length === 1 &&
+    node.childNodes[0].tagName === 'SPAN' && node.childNodes[0].attributes.length === 1 &&
+    node.childNodes[0].attributes[0].name === 'data-prompt-literal-paste' &&
+    node.childNodes[0].attributes[0].value === '' && node.childNodes[0].childNodes.length === 1 &&
+    node.childNodes[0].childNodes[0].nodeType === 3).length,
+  emptyTrailing:box.childNodes.filter(node => node.childNodes?.length === 1 &&
+    node.childNodes[0].tagName === 'BR' && node.childNodes[0].attributes.length === 1 &&
+    node.childNodes[0].attributes[0].value === 'ProseMirror-trailingBreak').length,
+};
 function changeAfterReady() {
-  if (scenario.endsWith('_draft')) box.childNodes[0].childNodes[0].textContent += ' edit';
+  if (scenario.endsWith('_draft')) {
+    const child = box.childNodes[0].childNodes[0];
+    (literal ? child.childNodes[0] : child).textContent += ' edit';
+  }
   if (scenario.endsWith('_send')) {
     const replacement = Object.assign(element(), {disabled:false, click:send.click});
     controls = [replacement];
@@ -623,9 +698,9 @@ function changeAfterReady() {
   }
   if (scenario.endsWith('_challenge')) proof = {...proof, challenge:'ff'.repeat(32)};
 }
-if (scenario.startsWith('async_before_prove_')) changeAfterReady();
+if (variant.startsWith('async_before_prove_')) changeAfterReady();
 const revalidated = proof ? api.prove(proof) : false;
-if (scenario.startsWith('async_before_click_')) changeAfterReady();
+if (variant.startsWith('async_before_click_')) changeAfterReady();
 const sameScopedControl = controls.length === 1 && controls[0] === send && box.parentElement === form;
 const submitted = ready ? api.submit(proof) : false;
 const duplicate = proof ? api.submit(proof) : false;
@@ -637,6 +712,7 @@ if (rearmed) button.listener({isTrusted:true, currentTarget:button});
 const next = rearmed ? nextApi.inspect() : null;
 process.stdout.write(JSON.stringify({installed, proved, inserted, ready, submitted, duplicate, witnessed,
   clicks, inserts, notifications, staged, cleared, rearmed, beforeReconciliation, diverged, revalidated, sameScopedControl,
+  readyPolls, productionGrammar,
   fresh:!!next && !!genuineProof && next.challenge !== genuineProof.challenge}));
 })().catch(error => {process.stderr.write(String(error)); process.exitCode=1;});
 """
@@ -667,17 +743,20 @@ def test_actual_page_gesture_edit_and_submit_scripts(scenario):
         if scenario in {"focus_route", "focus_edit", "selection_absent", "empty_draft", "rich_draft",
                         "overbound_draft", "existing_envelope", "gesture_edit"}:
             assert result["inserts"] == 0
-        if scenario in {"native_false", "native_edit", "input_edit", "input_route"}:
+        if scenario in {"native_false", "input_route"}:
             assert result["inserted"] is False
+        if scenario in {"native_edit", "input_edit"}:
+            assert result["inserted"] is True and result["ready"] is False
         if scenario == "focus_edit":
             assert result["staged"] == "Human authored draft\nsecond exact line   Human edit"
 
 
-def run_dom(scenario, draft=None):
+def run_dom(scenario, draft=None, *, metadata=None):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is needed for the isolated JavaScript DOM harness")
-    metadata = origin.envelope(origin.HANDLE_PREFIX + "d" * 64, 1)
+    if metadata is None:
+        metadata = origin.envelope(origin.HANDLE_PREFIX + "d" * 64, 1)
     arguments = dict(slot=origin.SLOT, composer=wake.COMPOSER, send=wake.SEND,
                      stop=wake.STOP, login=wake.LOGIN, nonregular=wake.NONREGULAR,
                      ttl=origin.CHALLENGE_TTL_MS, maxDraft=origin.MAX_DRAFT_CHARS)
@@ -700,6 +779,65 @@ def test_async_plain_editor_reconciliation_preserves_exact_logical_draft(scenari
     assert result["staged"] == (draft or "Human authored draft\nsecond exact line  ") + "\n\n" + metadata
     assert result["clicks"] == result["inserts"] == result["notifications"] == 1
     assert result["duplicate"] is False
+
+
+def test_production_five_block_literal_paste_reconciles_only_during_ready_polling():
+    result, metadata = run_dom("async_literal_exact")
+    assert result["installed"] and result["proved"] and result["inserted"]
+    assert result["beforeReconciliation"] is False
+    assert result["readyPolls"] == [False, False, True]
+    assert result["productionGrammar"] == {"blocks": 5, "literals": 4, "emptyTrailing": 1}
+    assert result["staged"] == "Human exact draft  \n\n" + metadata
+    assert result["diverged"] and result["ready"] and result["revalidated"]
+    assert result["sameScopedControl"] and result["submitted"] and result["witnessed"]
+    assert result["clicks"] == result["inserts"] == result["notifications"] == 1
+    assert result["duplicate"] is False
+
+
+@pytest.mark.parametrize("scenario", ["async_literal_exact", "async_literal_div_exact", "async_literal_wait_exact"])
+@pytest.mark.parametrize("draft", ["  exact e\u0301 \u00a0\nsecond line  ",
+                                  "Human CRLF draft\r\nsecond exact line  ",
+                                  "\nHuman exact draft\n\nsecond line  \n"])
+def test_literal_paste_preserves_exact_unicode_whitespace_and_logical_separators(scenario, draft):
+    result, metadata = run_dom(scenario, draft)
+    assert result["inserted"] and result["beforeReconciliation"] is False
+    assert result["staged"] == draft + "\n\n" + metadata
+    assert result["ready"] and result["revalidated"] and result["sameScopedControl"]
+    assert result["submitted"] and result["clicks"] == 1
+
+
+@pytest.mark.parametrize("variant", [
+    "attr_missing", "attr_wrong", "attr_case", "attr_multiple", "value_nonempty", "value_whitespace",
+    "span_class", "span_style", "span_aria_hidden", "span_hidden_attr", "span_hidden", "span_no_rects",
+    "span_invisible", "span_collapsed", "span_display_none", "span_transparent",
+    "children_zero", "children_multiple", "children_split", "child_nested", "child_rich", "child_comment",
+    "child_br", "span_wrong_tag", "root_span", "leaf_duplicate", "leaf_altered",
+    "br_wrong_class", "br_extra_class", "br_multiple_attrs", "br_child", "decorated_br", "hidden_br",
+    "missing_separator", "extra_separator", "reordered_separator", "reordered_lines", "altered_draft",
+    "altered_bootstrap", "trimmed_draft", "duplicated_content", "hidden_duplicate", "hidden_block",
+    "decorated_block", "nested_rich", "rich_equal_text", "unknown_node", "invalid_trailing_break",
+    "overbound_nodes", "extra_rendered_separator", "altered_rendered_text",
+    "send_disabled", "send_hidden", "send_aria_disabled", "send_absent", "send_multiple",
+    "no_form", "nested_forms", "multiple_composers", "composer_replaced", "page_replaced",
+    "route_change", "route_roundtrip", "expired", "challenge_changed", "nonce_changed",
+    "busy", "nonregular", "login", "never_reconciled",
+])
+def test_literal_paste_deviations_or_unproved_readiness_block_submit(variant):
+    result, _ = run_dom("async_literal_" + variant)
+    assert result["inserted"] and result["beforeReconciliation"] is False
+    assert not any(result["readyPolls"])
+    assert result["ready"] is False and result["revalidated"] is False
+    assert result["submitted"] is False and result["duplicate"] is False and result["clicks"] == 0
+    assert result["inserts"] == result["notifications"] == 1
+
+
+@pytest.mark.parametrize("variant,draft", [
+    ("unicode_normalized", "Human e\u0301 draft"),
+    ("crlf_collapsed", "Human CRLF draft\r\nsecond exact line  "),
+])
+def test_literal_paste_never_normalizes_human_draft_bytes(variant, draft):
+    result, _ = run_dom("async_literal_" + variant, draft)
+    assert result["inserted"] and result["ready"] is False and result["clicks"] == 0
 
 
 @pytest.mark.parametrize("draft", ["\nHuman exact draft\n\nsecond line  \n", "Human\n\n\n  \n"])
@@ -741,8 +879,9 @@ def test_async_reconciliation_does_not_canonicalize_draft_bytes(scenario, draft)
 
 @pytest.mark.parametrize("boundary", ["prove", "click"])
 @pytest.mark.parametrize("change", ["draft", "send", "form", "challenge"])
-def test_reconciled_editor_and_same_scoped_control_revalidate_before_intent_and_click(boundary, change):
-    result, _ = run_dom("async_before_" + boundary + "_" + change)
+@pytest.mark.parametrize("representation", ["async_", "async_literal_"])
+def test_reconciled_editor_and_same_scoped_control_revalidate_before_intent_and_click(boundary, change, representation):
+    result, _ = run_dom(representation + "before_" + boundary + "_" + change)
     assert result["inserted"] and result["ready"]
     assert result["revalidated"] is (boundary == "click")
     assert result["submitted"] is False and result["clicks"] == 0
@@ -754,7 +893,7 @@ def test_binding_race_after_reconciled_readiness_still_prevents_attempt_click(re
     class ReconciledAdapter(Adapter):
         def ready(self, proof):
             super().ready(proof)
-            result, _ = run_dom("async_inline_exact")
+            result, _ = run_dom("async_literal_exact")
             assert result["inserted"] and result["ready"] and result["revalidated"]
 
     def race(stage, adapter):
@@ -774,6 +913,50 @@ def test_binding_race_after_reconciled_readiness_still_prevents_attempt_click(re
     assert (attempt is None) is (boundary == 2)
     if boundary == 3:
         assert attempt["status"] == "ATTEMPTING"
+
+
+@pytest.mark.parametrize("reconciles", [True, False])
+def test_literal_reconciliation_bounded_ready_gate_precedes_attempt_intent(registry, monkeypatch, reconciles):
+    clock = [0.0]
+    monkeypatch.setattr(origin.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(origin.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    class DelayedAdapter(Adapter):
+        def insert(self, proof, metadata):
+            super().insert(proof, metadata)
+            scenario = "async_literal_exact" if reconciles else "async_literal_never_reconciled"
+            self.dom, _ = run_dom(scenario, metadata=metadata)
+            assert self.dom["inserted"] and self.dom["beforeReconciliation"] is False
+            self.polls, self.ready_returned = [], False
+
+        def call(self, proof, method, value=None):
+            assert proof is self.proof and method == "ready" and value is None
+            assert registry.read()["routes"][URL_A]["attempt"] is None and self.submits == 0
+            self.polls.append(clock[0])
+            states = self.dom["readyPolls"]
+            return states[min(len(self.polls) - 1, len(states) - 1)]
+
+        def ready(self, proof):
+            super().ready(proof)
+            origin.PageBootstrapBrowser.ready(self, proof)
+            self.ready_returned = True
+
+        def revalidate(self, proof):
+            super().revalidate(proof)
+            if self.revalidations >= 2:
+                assert self.ready_returned and self.dom["revalidated"]
+
+    adapter = DelayedAdapter(registry)
+    result = origin.bootstrap(registry, adapter)
+    attempt = registry.read()["routes"][URL_A]["attempt"]
+    if reconciles:
+        assert adapter.polls == [0.0, 0.05, 0.1]
+        assert result.status == "SUBMITTED" and adapter.submits == 1
+        assert adapter.revalidations == 3 and attempt["status"] == "SUBMITTED"
+    else:
+        assert result.status == "UNPROVED" and result.reason == "INSERT_BLOCKED"
+        assert adapter.submits == 0 and "submit" not in adapter.trace and attempt is None
+        assert all(0 <= value < 3 for value in adapter.polls) and 3 <= clock[0] < 3.1
 
 
 def test_readiness_wait_remains_bounded_and_rechecks_the_same_proof(monkeypatch):
