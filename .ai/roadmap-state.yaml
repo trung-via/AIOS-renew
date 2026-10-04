@@ -892,7 +892,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: FRESH_A1_PASS_READY_FOR_A2_SAME_CONVERSATION
+      status: FRESH_A1_A2_PASS_READY_FOR_B1_NEW_CONVERSATION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -904,15 +904,14 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        TASK-300 is Runtime-verified, REVIEW-300-001 PASS and exactly published at
-        ad00bb370b6e46731d5b8ef1abbaf6536a22fb5b. Historical A1/D1 remain consumed
-        AMBIGUOUS and excluded from this fresh series. Fresh post-TASK-300 A1 on a new
-        regular conversation returned SUBMITTED/ACCEPTED with positive generation 1.
-        The opaque route itself remains transient and is not canonicalized. The unique
-        next live action is A2 on that exact same conversation after it is idle; A2
-        must also return SUBMITTED/ACCEPTED with the same transient route handle and
-        the same generation before B1 becomes eligible. H4C0 remains open and H4C1
-        remains blocked.
+        TASK-300 is exactly published. Historical A1/D1 remain consumed AMBIGUOUS and
+        excluded from this fresh series. Fresh A1 and A2 both returned
+        SUBMITTED/ACCEPTED on the same regular conversation, with the same transient
+        route handle and unchanged positive generation 1. A2 was correctly performed
+        on the existing A tab; opening a second tab is not required for A2 and belongs
+        only to the later separately bounded continuity check. The unique next live
+        action is B1 on a different regular conversation with no prior AIOS bootstrap
+        attempt. H4C0 remains open and H4C1 remains blocked.
     fresh_post_task300_a1_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -932,6 +931,29 @@ sequence:
         evidence. Its bounded result satisfies the first submission gate. The opaque
         route remains transient solely for A1/A2/B1/B2 comparison and is intentionally
         absent from canonical roadmap state.
+      privacy_boundary: >-
+        No raw route handle, conversation URL or UUID, endpoint, registry contents,
+        draft/bootstrap text, transcript, assistant output, or raw DOM payload is retained.
+    fresh_post_task300_a2_checkpoint:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      published_subject_sha: "ad00bb370b6e46731d5b8ef1abbaf6536a22fb5b"
+      observation_label: A2
+      same_conversation_as_a1: true
+      same_browser_tab_as_a1: true
+      ordinary_result:
+        status: SUBMITTED
+        reason: ACCEPTED
+        route_handle_present: true
+        generation: 1
+      comparison:
+        route_equal_to_a1: true
+        generation_equal_to_a1: true
+      interpretation: >-
+        A2 used the same existing regular-Chat tab/conversation as A1 and independently
+        returned SUBMITTED/ACCEPTED. Same route and generation satisfy the within-A
+        stability requirement. No second tab was required; reload/reopen or another tab
+        is reserved for the later continuity check.
       privacy_boundary: >-
         No raw route handle, conversation URL or UUID, endpoint, registry contents,
         draft/bootstrap text, transcript, assistant output, or raw DOM payload is retained.
@@ -1480,25 +1502,24 @@ sequence:
         The dispatch receipt remains transport evidence only; terminal lifecycle truth
         comes from canonical RESULT, review decision and published main.
     current_live_blocker:
-      code: H4C0_FRESH_POST_TASK_300_A2_REQUIRED
+      code: H4C0_FRESH_POST_TASK_300_B1_REQUIRED
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-300
       task_revision: 1
-      next_action: RUN_A2_ON_SAME_FRESH_A1_CONVERSATION
+      next_action: RUN_B1_ON_NEW_DISTINCT_REGULAR_CHAT
       basis: >-
-        Fresh post-TASK-300 A1 returned SUBMITTED/ACCEPTED with positive generation 1.
-        The opaque route handle is retained only transiently for comparison and is not
-        written to canonical planning state. A2 must use the same regular conversation
-        and independently return SUBMITTED/ACCEPTED with both route equality to A1 and
-        unchanged generation before any B-series observation is authorized.
+        Fresh A1 and A2 both returned SUBMITTED/ACCEPTED on the same regular
+        conversation. The transient route handles were equal and generation remained
+        1, satisfying the within-A stability gate. B1 must now use a distinct regular
+        conversation with no prior AIOS bootstrap attempt. B2 remains blocked until B1
+        passes, and cross-chat distinction is evaluated only after B1/B2.
       prohibitions:
-        - NO_DIFFERENT_CONVERSATION_FOR_A2
-        - NO_B1_B2_BEFORE_A2_SAME_ROUTE_AND_GENERATION_PASS
+        - NO_REUSE_OF_A_CONVERSATION_FOR_B1
+        - NO_B2_BEFORE_B1_SUBMITTED_ACCEPTED
         - NO_RAW_ROUTE_HANDLE_IN_CANONICAL_ARTIFACTS
+        - NO_CONTINUITY_CHECK_BEFORE_A_A_B_B_BASE_SEQUENCE_COMPLETES
         - NO_RESET_REPLAY_OR_RELABEL_OF_HISTORICAL_A1_D1
-        - NO_DIAGNOSTIC_OR_OBSERVER_UNLESS_A2_FAILS_AND_HUMAN_BRAIN_AUTHORIZES
         - NO_AUTOMATIC_TASK_301
-        - NO_TIMEOUT_OR_POLLING_CHANGE
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_AUTOMATIC_ROADMAP_ADVANCE
     post_task299_consumed_ambiguous_empty_shape_probe:
@@ -1547,7 +1568,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: FRESH_POST_TASK_300_A2_SAME_ROUTE_AND_GENERATION_THEN_B1_B2_CONTINUITY_AMBIGUITY_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: FRESH_POST_TASK_300_B1_B2_THEN_CONTINUITY_AMBIGUITY_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
