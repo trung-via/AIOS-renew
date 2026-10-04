@@ -1875,6 +1875,37 @@ sequence:
         override_authority: HUMAN_ONLY
         expires_on_task_change: true
         persistence: THROUGH_TASK_302_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    task_id: TASK-302
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "642e1ee648e9ea1aacc1184d55a2672714326eed"
+    task_blob_sha: "ff86bf16fc5880215f8ece31421c80481a2d34ad"
+    authoring_issue_number: 1497
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "f63b35521bca047963d24b705f35d38ee260ab52a55303077c1ac5c3d8ba54b5"
+    construct_fingerprint: "a39814472d2ff9ed0bed0be546e8dfe9acda010ec4fd6bd3bc4d14ef9d0fb3ad"
+    reconciled_candidate_fingerprint: "55f54efdc2e07a0a3f3156a38195b51a4105874a1d87e41a41cb2d31ee76d90c"
+    primary_dispatch_intent:
+      dispatch_id: task302-r1-codex61-xhigh-20261005-001
+      task_blob_sha: "ff86bf16fc5880215f8ece31421c80481a2d34ad"
+      task_commit_sha: "642e1ee648e9ea1aacc1184d55a2672714326eed"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: AUTHORIZED_PENDING_DISPATCH
+      interpretation: >-
+        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-302 lifecycle.
+        Carrier acceptance, RUN creation, Runtime verification, semantic review and
+        publication remain separate downstream facts.
+    mutation_freeze_after_dispatch: >-
+      After TASK-302 dispatch, do not write planning or bookkeeping commits to main
+      until a terminal publication outcome or a Human/Brain-authorized failure
+      reconciliation boundary. H4D remains open until reviewed publication and its
+      separate Human/Brain live exit gate are reconciled; implementation cannot
+      automatically advance H4E.
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
     objective: >-
