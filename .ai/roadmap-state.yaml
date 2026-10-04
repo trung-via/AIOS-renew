@@ -892,7 +892,7 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: FRESH_A1_A2_PASS_READY_FOR_B1_NEW_CONVERSATION
+      status: FRESH_A1_A2_B1_PASS_READY_FOR_B2_SAME_CONVERSATION
       contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
@@ -904,14 +904,13 @@ sequence:
         - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
         - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        TASK-300 is exactly published. Historical A1/D1 remain consumed AMBIGUOUS and
-        excluded from this fresh series. Fresh A1 and A2 both returned
-        SUBMITTED/ACCEPTED on the same regular conversation, with the same transient
-        route handle and unchanged positive generation 1. A2 was correctly performed
-        on the existing A tab; opening a second tab is not required for A2 and belongs
-        only to the later separately bounded continuity check. The unique next live
-        action is B1 on a different regular conversation with no prior AIOS bootstrap
-        attempt. H4C0 remains open and H4C1 remains blocked.
+        TASK-300 is exactly published. Fresh A1/A2 passed on conversation A with stable
+        route and generation 1. Fresh B1 on a distinct regular conversation returned
+        SUBMITTED/ACCEPTED with positive generation 1, and its transient route differs
+        from A. The opaque handles remain transient and are not canonicalized. The
+        unique next live action is B2 on that exact same B conversation; B2 must return
+        SUBMITTED/ACCEPTED with the same B route and unchanged generation before the
+        A/B base sequence is complete. H4C0 remains open and H4C1 remains blocked.
     fresh_post_task300_a1_checkpoint:
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-04"
@@ -954,6 +953,29 @@ sequence:
         returned SUBMITTED/ACCEPTED. Same route and generation satisfy the within-A
         stability requirement. No second tab was required; reload/reopen or another tab
         is reserved for the later continuity check.
+      privacy_boundary: >-
+        No raw route handle, conversation URL or UUID, endpoint, registry contents,
+        draft/bootstrap text, transcript, assistant output, or raw DOM payload is retained.
+    fresh_post_task300_b1_checkpoint:
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-04"
+      published_subject_sha: "ad00bb370b6e46731d5b8ef1abbaf6536a22fb5b"
+      observation_label: B1
+      distinct_conversation_from_a: true
+      ordinary_result:
+        status: SUBMITTED
+        reason: ACCEPTED
+        route_handle_present: true
+        generation: 1
+      comparison:
+        route_distinct_from_a: true
+        route_equal_to_b2: PENDING
+        generation_equal_to_b2: PENDING
+      interpretation: >-
+        B1 is the first bounded observation on conversation B. It passed the submission
+        gate and its transient route differs from A. This establishes only provisional
+        cross-chat distinction; within-B stability still requires B2 on the same B
+        conversation.
       privacy_boundary: >-
         No raw route handle, conversation URL or UUID, endpoint, registry contents,
         draft/bootstrap text, transcript, assistant output, or raw DOM payload is retained.
@@ -1502,23 +1524,24 @@ sequence:
         The dispatch receipt remains transport evidence only; terminal lifecycle truth
         comes from canonical RESULT, review decision and published main.
     current_live_blocker:
-      code: H4C0_FRESH_POST_TASK_300_B1_REQUIRED
+      code: H4C0_FRESH_POST_TASK_300_B2_REQUIRED
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-300
       task_revision: 1
-      next_action: RUN_B1_ON_NEW_DISTINCT_REGULAR_CHAT
+      next_action: RUN_B2_ON_SAME_B1_CONVERSATION
       basis: >-
-        Fresh A1 and A2 both returned SUBMITTED/ACCEPTED on the same regular
-        conversation. The transient route handles were equal and generation remained
-        1, satisfying the within-A stability gate. B1 must now use a distinct regular
-        conversation with no prior AIOS bootstrap attempt. B2 remains blocked until B1
-        passes, and cross-chat distinction is evaluated only after B1/B2.
+        Fresh B1 returned SUBMITTED/ACCEPTED with generation 1 on a distinct regular
+        conversation. Its transient route differs from A, satisfying the provisional
+        cross-chat distinction check. B2 must now use the same B conversation and
+        independently return SUBMITTED/ACCEPTED with both route equality to B1 and
+        unchanged generation. Continuity and ambiguity trials remain blocked until the
+        A1/A2/B1/B2 base sequence completes.
       prohibitions:
-        - NO_REUSE_OF_A_CONVERSATION_FOR_B1
-        - NO_B2_BEFORE_B1_SUBMITTED_ACCEPTED
+        - NO_DIFFERENT_CONVERSATION_FOR_B2
+        - NO_CONTINUITY_OR_AMBIGUITY_TRIAL_BEFORE_B2_PASS
         - NO_RAW_ROUTE_HANDLE_IN_CANONICAL_ARTIFACTS
-        - NO_CONTINUITY_CHECK_BEFORE_A_A_B_B_BASE_SEQUENCE_COMPLETES
         - NO_RESET_REPLAY_OR_RELABEL_OF_HISTORICAL_A1_D1
+        - NO_DIAGNOSTIC_OR_OBSERVER_UNLESS_B2_FAILS_AND_HUMAN_BRAIN_AUTHORIZES
         - NO_AUTOMATIC_TASK_301
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_AUTOMATIC_ROADMAP_ADVANCE
@@ -1568,7 +1591,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: FRESH_POST_TASK_300_B1_B2_THEN_CONTINUITY_AMBIGUITY_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
+    remaining_gate: FRESH_POST_TASK_300_B2_SAME_ROUTE_AND_GENERATION_THEN_CONTINUITY_AMBIGUITY_AND_EXPLICIT_HUMAN_BRAIN_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
