@@ -517,7 +517,26 @@ sequence:
     packet_fingerprint: "1fcb0d260aa9ba830acc4d46a4d6c503f9b79ca35b5a18186be8b1a7da9224f4"
     construct_fingerprint: "f89896908c3359db35b65a6a7346a02a4d88b00e30b2ba25e53deb3a74a36ec3"
     reconciled_candidate_fingerprint: "4f02802ec8281c0a73160bb4f3404fc2af456e6a241f0e16e967fb96463afeb1"
-    next_action: HUMAN_SELECT_EXECUTOR_FOR_TASK_294
+    human_execution_delegation:
+      selected_on: "2026-10-04"
+      authority: HUMAN
+      task_id: TASK-294
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_294_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task294-r1-codex61-xhigh-20261004-001
+      task_blob_sha: "551eefe11afabe95de17c4cfa06c9116ce67a85f"
+      task_commit_sha: "02ed6d01adc0a05baacbc47990fdb32f010b036d"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: PENDING_CARRIER
+    next_action: AWAIT_CANONICAL_TASK_294_LIFECYCLE
     mutation_freeze_after_dispatch: >-
       Do not write planning/bookkeeping commits to main while TASK-294 is executing,
       under review, or awaiting exact publication. Resume planning mutation only after
