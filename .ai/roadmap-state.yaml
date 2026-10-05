@@ -746,8 +746,44 @@ sequence:
             H4D exact-route wake remains the return mechanism after route establishment;
             this candidate replaces only new-conversation origin discovery.
         closure: CLEAR_FOR_BOUNDED_LIVE_FEASIBILITY_PROBE
+    post_ready_brain_audit:
+      profile: brain-high-value-v3
+      audited_on: "2026-10-06"
+      stage1:
+        stage: CONSTRUCT
+        outcome: CANDIDATE_CONFIRMED
+      stage2:
+        stage: ADVERSARIAL_AUDIT_AND_RECONCILE
+        outcome: CLEAR_FOR_LIVE_PROBE_CONTINUATION
+      production_adoption: NOT_YET_CLEAR
+      reconciliation:
+        - >-
+          Exact full-token discovery is necessary but not sufficient. The resolver must
+          prove that the bounded search result set is complete enough to establish exactly
+          one candidate; a first or top result is never uniqueness proof.
+        - >-
+          Every candidate must be opened and the exact precommitted token re-proven inside
+          that same regular-Chat conversation before route allocation or reuse.
+        - >-
+          Zero candidates, more than one candidate, incomplete or ambiguous search
+          enumeration, unavailable history/search, account/profile mismatch, deletion,
+          route movement or re-proof uncertainty fail closed without recent/active/default
+          chat, timestamp, partial-match or semantic fallback.
+        - >-
+          The origin marker belongs in an assistant turn so the initiating Human message
+          remains the only Human gesture. The marker may establish transport origin only
+          and must never select lifecycle action.
+        - >-
+          Normal history-backed regular Chat is the supported candidate surface.
+          Temporary/history-off conversations that cannot be found and re-proven through
+          the bounded account search surface remain unsupported and fail closed.
+        - >-
+          Raw conversation URL and raw rendezvous marker remain operational-only; canonical
+          engineering lineage carries only the bounded route handle/generation after proof.
+          Replay must be bounded and route rediscovery must reuse one stable
+          conversation-scoped route rather than silently minting a new owner.
     live_probe:
-      status: READY
+      status: PARTIAL_EVIDENCE
       authority: HUMAN_BRAIN_PLANNING
       production_mutation: false
       objective: >-
@@ -755,18 +791,31 @@ sequence:
         through the authenticated ChatGPT account on the self-host machine and re-proven
         inside the same regular Chat, first for this conversation and then for a fresh
         conversation initiated from another device.
+      human_operational_observation:
+        observed_on: "2026-10-06"
+        result: TOKEN_DISCOVERABILITY_OBSERVED
+        interpretation: >-
+          Human reports that the exact rendezvous token was found in the live feasibility
+          probe. This is positive evidence for token discoverability only. It does not by
+          itself prove exhaustive unique resolution, opened-chat re-proof, cross-device
+          origin capture, zero-match fail-closed behavior or multiple-match rejection.
+        engineering_truth: false
       required_cases:
         - CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
         - PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
         - ZERO_MATCH_FAILS_CLOSED
         - MULTIPLE_MATCH_FAILS_CLOSED
+      uniqueness_refinement:
+        - SEARCH_RESULT_SET_COMPLETENESS_MUST_BE_PROVED_OR_FAIL_CLOSED
+        - FIRST_OR_TOP_RESULT_IS_NOT_UNIQUENESS_PROOF
+        - OPENED_CONVERSATION_MUST_REPROVE_EXACT_FULL_TOKEN
       prohibitions:
         - NO_TASK_AUTHORING_FROM_PROBE
         - NO_ROUTE_FALLBACK
         - NO_SEMANTIC_TEXT_MATCHING
         - NO_PARTIAL_TOKEN_MATCH
         - NO_PRODUCTION_WAKE_CHANGE
-    architecture_status: HUMAN_APPROVED_LIVE_PROBE_PENDING
+    architecture_status: HUMAN_APPROVED_LIVE_PROBE_PARTIAL_EVIDENCE_PENDING
     blocks:
       - task308-origin-correct-replacement-v1
     return_to: task308-origin-correct-replacement-v1
