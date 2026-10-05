@@ -341,6 +341,56 @@ Accordingly, OPAQUE_ORIGIN_RENDEZVOUS_V1 remains non-production until its implem
 is Runtime-verified, semantically reviewed PASS and published. Only then may a later new
 TASK identity rely on it as production exact-origin authority.
 
+### Human continuation transfer when the current Chat is exhausted
+
+A separate two-stage Brain audit on 2026-10-06 identified an additional production
+requirement that is not satisfied by new-conversation origin capture alone. If conversation
+A reaches its product/context limit while an AIOS subject originating from A can still emit
+later attention, and the Human deliberately continues that same uniquely reconstructible
+subject in fresh conversation B, later wake delivery must target B rather than returning
+to exhausted conversation A.
+
+This is an explicit Human-authorized transport transfer, not semantic chat matching and
+not mutation of historical TASK/RUN affinity. The new Human message in B is transfer intent
+only when fresh canonical reconstruction identifies exactly one continuing semantic
+subject and exactly one source route. If source subject or route is ambiguous, transfer
+fails closed and Human disambiguation is required.
+
+The selected transfer candidate preserves the source route handle as the continuing lane
+identity and advances its operational generation monotonically under compare-and-swap
+against the exact current generation. Conversation B must first be independently proven
+by OPAQUE_ORIGIN_RENDEZVOUS_V1. No recent/active tab, timestamp, transcript similarity,
+model memory, repository default or partial-token inference may identify either endpoint.
+
+Transfer behavior is state-sensitive:
+
+- pending or deferred attention that has not crossed a possible-submit boundary may follow
+  the explicitly transferred current generation after fresh canonical and binding checks;
+- an old-generation event already SUBMITTED or AMBIGUOUS remains pinned to the old
+  generation for dedupe or proof-only reconciliation and is never blindly resent to B;
+- future distinct attention may target the new generation after transfer;
+- historical TASK/RUN return_affinity is immutable and is not rewritten by transport;
+- a new revision-1 TASK identity authored after transfer uses the current generation and
+  a current-destination authoring proof, while ordinary revisions preserve their historical
+  selector exactly;
+- competing B/C transfers use expected-generation CAS so at most one succeeds;
+- repeated A->B->C continuation must be bounded, monotonic and cycle-free;
+- an already incompatibly bound destination, shared-handle/cross-repository uncertainty,
+  stale predecessor generation, overflow, incomplete prior-generation evidence or any
+  ownership conflict fails closed.
+
+The operational transfer mechanism may retain only the minimum bounded prior-generation
+target evidence required to reconcile an old ambiguous attempt. Raw Chat URLs remain
+machine-local and noncanonical. Transfer must reuse the existing H4A4 dedupe, deferred,
+ambiguity, Human-supersession and generation protections rather than creating a second
+wake queue, generic router or lifecycle store.
+
+This transfer capability is not yet production authority. TASK-310 is sequenced first to
+implement exact device-independent destination resolution. A later dedicated TASK-311 is
+reserved for the explicit Human continuation-transfer capability. The previously staged
+TASK-308 replacement therefore moves to TASK-312 and remains blocked until both TASK-310
+and TASK-311 are reviewed, published and available as production authority.
+
 ### Human-approved H4C0 fallback — page-scoped origin bootstrap
 
 On 2026-10-04 the Human stopped the optional Responses API smoke test and approved an architecture fallback after the current regular-Chat account surface did not expose the Developer Mode/custom MCP entry needed for the planned TASK-292 two-chat observation. This is an operational availability observation for the current surface, not a claim that OpenAI session metadata is invalid or unavailable on every account.
