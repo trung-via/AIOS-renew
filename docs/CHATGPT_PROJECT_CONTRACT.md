@@ -246,14 +246,20 @@ Do not audit the entire repository indiscriminately.
 
 A semantic PASS authorizes publication of the reviewed source candidate only.
 
-After semantic PASS, always use the canonical publication-continuation surface (`TASK-110`) and observe publication outcome before manual fallback. Review branches and review-decision commits are metadata, not product implementation; never substitute manual Git pushes, cherry-picks, or ad-hoc publication steps for canonical publication continuation.
+After semantic PASS, always use the canonical publication-continuation surface (`TASK-110`), preserving exact Publisher authority. Review branches and review-decision commits are metadata, not product implementation; never substitute manual Git pushes, cherry-picks, or ad-hoc publication steps for canonical publication continuation.
+
+Positive canonical publication dispatch acceptance is the terminal boundary of the current Brain turn. Emit only a concise handoff/status response and terminate that turn. Do not poll publication workflow state or local wake delivery, inspect publication-driven main/ref changes, perform manual fallback, or make another semantic decision in that turn. Dispatch acceptance is non-terminal transport evidence only: it is not publication success, lifecycle completion, review truth, or roadmap advancement.
+
+Publication success/failure attention or later explicit Human continuation resumes in a new turn that begins with fresh Brain Sync. Inspect canonical publication outcome refs and artifacts in that new turn before any semantic continuation, manual fallback, roadmap decision, or downstream work; observe publication outcome before considering manual fallback. If dispatch is immediately rejected or not accepted, accepted publication continuation has not been established: Brain may diagnose that immediate dispatch failure in the current turn under existing fail-closed/manual-fallback authority.
+
+This handoff keeps the origin-affine chat available for bounded publication attention. It changes Brain turn discipline only; local wake active-generation, Human-draft, exact-target, dedupe, ambiguity, and no-blind-resend guards remain intact. No transport, Runtime, Reviewer, Publisher, or Flow Card change or new lifecycle, routing, retry, verification, review, publication, or planning authority is introduced. Do not create `WAIT_FOR_PUBLICATION`, `PUBLICATION_PENDING`, or any equivalent persistent lifecycle, Unified State, or roadmap engineering state. Dispatch acceptance, conversational turn termination, and wake delivery are not canonical engineering truth.
 
 Fast-forward is preferred.  
 Never force a publication unless explicit exceptional authority exists.
 
 ## 13. Brain Sync Protocol
 
-At the beginning of a fresh ChatGPT work context:
+At the beginning of a fresh ChatGPT work context, including every new turn resuming publication attention or explicit Human continuation after accepted publication dispatch:
 
 1. Read this contract.
 2. Rehydrate canonical facts deterministically using `AIOS_BRAIN_SYNC_SNAPSHOT` (`aios_renew.brain_sync.observe_brain_sync`). The snapshot establishes repository and main identity, roadmap planning status, selected exact TASK identity when uniquely justified, existing Unified State lifecycle next_action and authority, and explicit blockers from canonical repository facts without using chat or model memory.
@@ -261,8 +267,9 @@ At the beginning of a fresh ChatGPT work context:
 4. Verify canonical rehydration against durable ordering and authority guards:
    - **AUTHOR_TASK before PRIMARY**: Confirm that `AUTHOR_TASK` has been canonically committed and published into the canonical repository and refs before dispatching PRIMARY execution. Never dispatch PRIMARY against an unconfirmed or uncanonicalized TASK.
    - **Addressed vs. Non-Target Carrier Receipts**: Interpret addressed carrier receipts strictly by family (e.g., wakeup, remediation intent, ingress). Non-target carrier `REJECTED` comments and receipts from other workflow runs or carriers are transport fan-out noise, not engineering lifecycle truth; ignore non-target REJECTED comments when evaluating TASK lifecycle.
-   - **Dispatch Acceptance vs. Terminal Engineering State**: Workflow dispatch or carrier acceptance acknowledges delivery only; it is NOT execution start, RUN creation, verification pass, review verdict, or publication outcome. Always inspect canonical terminal refs and artifacts before acting again.
-   - **Automatic PASS Publication Continuation**: After semantic PASS, invoke and observe the canonical publication-continuation surface (`TASK-110`) before considering manual fallback.
+   - **Dispatch Acceptance vs. Terminal Engineering State**: Workflow dispatch or carrier acceptance acknowledges delivery only; it is NOT execution start, RUN creation, verification pass, review verdict, or publication outcome. Inspect canonical terminal refs and artifacts before subsequent semantic action. For accepted publication dispatch, this inspection must occur in a new turn after fresh Brain Sync, never through same-turn polling.
+   - **Automatic PASS Publication Continuation**: After semantic PASS, invoke the canonical publication-continuation surface (`TASK-110`) with exact Publisher authority. Positive dispatch acceptance requires only a concise handoff/status response and termination of the current Brain turn under section 12: no publication outcome or wake polling, publication-driven main/ref inspection, manual fallback, or further semantic decision in that turn. Publication success/failure attention or explicit Human continuation resumes in a new turn with fresh Brain Sync and canonical outcome observation before semantic continuation, fallback, roadmap decisions, or downstream work. Acceptance and turn termination do not establish publication success or create a persistent publication-wait state.
+   - **Immediate Publication Dispatch Failure**: Rejection or non-acceptance permits diagnosis of that immediate dispatch failure in the current turn because accepted publication continuation was not established. Existing fail-closed/manual-fallback authority and wake safety guards remain unchanged.
    - **Admission Failure vs. RUN Failure**: Keep admission failures separate from RUN failures; never convert admission failure into RUN repair.
    - **Evidence Reuse**: Verification is progressive and evidence-preserving; never rerun unchanged verification for ceremony.
    - **Prohibition of Mutation-Only Capability Probes**: Never probe GitHub or repository write capability by creating, modifying, or deleting product or source files, branches, commits, refs, Issues, or other canonical mutations. Capability discovery must be read-only or derived from explicit permissions.
