@@ -497,16 +497,32 @@ sequence:
     task_blob_sha: "2869fe8c11375e1151ca3012fe5f77cffed75338"
     authoring_issue_number: 1547
     primary_dispatch_intent:
-      dispatch_id: task309-r1-codex61-xhigh-20261005-001
+      dispatch_id: task309-r1-codex61-xhigh-20261005-002
       task_blob_sha: "2869fe8c11375e1151ca3012fe5f77cffed75338"
       task_commit_sha: "1e1ecb8e6d052f3ab89e8c732a68af6ba79ba15e"
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
       status: AUTHORIZED_NOT_YET_DISPATCHED
+      predecessor_attempt:
+        dispatch_id: task309-r1-codex61-xhigh-20261005-001
+        status: PRE_AIOS_ADMISSION_REJECTED_NO_RUN
+        workflow_run_ids:
+          - 37336305591
+          - 37338644244
+        cause: PRIMARY_SYNCHRONIZATION_REJECTED_THEN_TERMINAL_DISPATCH_REPLAY
+        run_created: false
+        executor_invoked: false
+        operational_recovery: >-
+          Human-executed fail-closed recovery reset the persistent self-host checkout
+          from the canonically preserved REVIEW-308 BLOCKED candidate to exact canonical
+          main 9435962dff037d3bf4755fa02d663b96ddd7d9ed. Reusing the same dispatch_id
+          correctly replayed its terminal FAILED journal; attempt 2 therefore uses a
+          fresh operational dispatch identity for the same authorized TASK revision.
       interpretation: >-
-        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-309 lifecycle.
-        This planning/delegation record does not create a RUN or prove execution.
+        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-309 lifecycle and
+        explicitly instructed Brain to fix the current TASK-309 flow. This new dispatch
+        attempt does not create a RUN or prove execution until AIOS admission does so.
     objective: >-
       Close the post-H4C1 new-TASK origin-provenance gap so an ORIGIN_AFFINE
       return selector is admitted only after a bounded exact-page bootstrap proof
