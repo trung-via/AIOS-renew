@@ -310,14 +310,20 @@ must still reconstruct semantics from canonical state after delivery. The origin
 may observe only the exact precommitted rendezvous marker needed to establish the
 conversation route.
 
-The candidate is not yet production authority. A 2026-10-06 Human operational
-observation established only that the exact marker was discoverable in the live account
-search surface. That is positive partial feasibility evidence, not proof of exhaustive
-unique resolution, opened-conversation re-proof, cross-device origin capture, zero-match
-failure or multiple-match rejection. Before TASK authoring the bounded live probe must
-close those remaining cases, including a conversation initiated from another device.
-Failure of that live probe returns an architecture blocker rather than authorizing
-heuristic fallback.
+The candidate is not yet production authority. 2026-10-06 Human live observations
+now establish both same-conversation and cross-device positive feasibility: an exact
+assistant-emitted marker was uniquely found and re-proven in the originating conversation,
+and a fresh conversation initiated from another device was likewise resolved by the same
+exact-token method. The cross-device search first returned zero results and, after one
+bounded wait using the same token, returned exactly one correct result. This demonstrates
+that account search may be eventually consistent and requires a bounded indexing
+wait/retry policy before a zero result becomes terminal. Exhaustion must still fail closed
+and must never authorize recent/active/default-chat fallback.
+
+These observations remain Human operational evidence, not Runtime engineering truth. Before
+TASK authoring the bounded live probe must still prove the zero-match and multiple-match
+negative cases. Failure of either negative case returns an architecture blocker rather than
+authorizing heuristic fallback.
 
 ### Human-approved H4C0 fallback — page-scoped origin bootstrap
 
