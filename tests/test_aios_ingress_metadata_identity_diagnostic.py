@@ -6,7 +6,7 @@ from copy import deepcopy
 
 from aios_renew.authoring_ingress import IngressEnvelope, execute_ingress
 from scripts import aios_ingress_metadata_identity_diagnostic as diagnostic
-from test_authoring_ingress import setup_candidate_lineage
+from test_authoring_ingress import execute_audited_ingress, setup_candidate_lineage
 
 
 def test_ordinary_author_remediation_control(tmp_path):
@@ -37,8 +37,9 @@ modification_scope: [src/sample.py]
 affected_verification: [git diff --check]
 constraints:
   hard: [Bounded mutation authority only.]
+return_affinity: {{kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}}
 """
-    result = execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REMEDIATION",
+    result = execute_audited_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REMEDIATION",
                                              {"source_run_id": run_id, "finding_id": "F1"},
                                              {"expected_reviewed_sha": candidate_sha}, payload), repo=repo)
     assert result.status == "CANONICALIZED"
