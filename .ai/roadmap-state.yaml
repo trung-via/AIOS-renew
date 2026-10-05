@@ -696,7 +696,64 @@ sequence:
       - PRESERVE_HUMAN_AUTHORITY_WITHOUT_SECOND_GESTURE
       - PRESERVE_EXACT_ORIGIN_AFFINITY_AND_GENERATION_SAFETY
       - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
-    architecture_status: UNSOLVED_REQUIRES_BRAIN_AUDIT
+    research_assurance:
+      profile: research-high-value-v1
+      brief_snapshot_sha: "8622ad1c03a7e0ec3ae364f0d1c6370b386f5c01"
+      current_as_of: "2026-10-06"
+      pass1: EVIDENCE_CONSTRUCT
+      pass2: ADVERSARIAL_RESEARCH_AUDIT_AND_RECONCILE
+      closure: RESEARCH_CANDIDATE
+      material_claims:
+        - OPENAI_PLUGIN_TOOL_CALLS_EXPOSE_ANONYMIZED_CONVERSATION_ID_VIA_OPENAI_SESSION
+        - INSTALLED_PLUGINS_CAN_AUTO_ACTIVATE_WHEN_RELEVANT_AND_PLUGIN_DIRECTORY_IS_AVAILABLE_ON_MOBILE
+        - OPENAI_SESSION_IS_AN_ORIGIN_IDENTITY_CANDIDATE_NOT_A_DOCUMENTED_RETURN_ADDRESS
+        - MCP_EVENTS_CAN_DELIVER_SERVER_EVENTS_INTO_THE_SUBSCRIBED_CHAT_BUT_CURRENTLY_ONLY_WORK_CHAT_SURFACES
+        - NO_DOCUMENTED_REGULAR_CHAT_SERVER_PUSH_OR_SESSION_TO_CHAT_URL_MAPPING_EXISTS
+        - CURRENT_PUBLIC_SUPPORTED_APIS_DO_NOT_COMPLETE_ZERO_TOUCH_REGULAR_CHAT_RETURN_FOR_A_NEW_MOBILE_ONLY_CONVERSATION
+      counterevidence_reconciliation: >-
+        The January 2026 OpenAI session metadata closes the earlier absence of a
+        conversation-scoped tool-call identifier and materially changes H4C0 feasibility.
+        It does not close the return channel. MCP transport session-id instability is a
+        separate protocol identifier and does not invalidate openai/session. Widget
+        sendFollowUpMessage is client/widget scoped and is not a durable server-initiated
+        wake. MCP Events supplies the desired native callback shape, but current OpenAI
+        documentation limits it to Work chats rather than ordinary Chat.
+    brain_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      stage2_outcome: CANDIDATE_WITH_EXTERNAL_CAPABILITY_BLOCKER
+      reconciled_architecture: >-
+        Split exact origin identity from return transport. Prefer a ChatGPT-native plugin
+        capture tool whose server consumes host-provided openai/session and emits only a
+        bounded opaque signed origin proof; the initiating Human message remains the sole
+        Human intent event. Do not require page-local Connect, dummy draft, active-tab
+        inference or transcript search. For return, require a host-supported session-bound
+        native callback/event channel. Current local route wake may remain a compatibility
+        path only for conversations already independently bound; it is not a solution for
+        a new conversation initiated solely on another device.
+      external_blocker: >-
+        ChatGPT currently documents MCP Events only for Work chats and documents no API
+        that targets an ordinary Chat conversation by openai/session or converts that
+        anonymized identifier into a chat URL. Therefore the full any-browser/phone
+        regular-Chat zero-touch contract cannot yet be claimed complete from supported
+        public interfaces alone.
+    next_research_gate:
+      status: LIVE_PROBE_REQUIRED_BEFORE_TASK_AUTHORING
+      required_cases:
+        - SAME_REGULAR_CHAT_WEB_AND_MOBILE_YIELD_SAME_OPAQUE_OPENAI_SESSION_FINGERPRINT
+        - TWO_DISTINCT_REGULAR_CHATS_YIELD_DISTINCT_OPENAI_SESSION_FINGERPRINTS
+        - INSTALLED_AIOS_PLUGIN_AUTO_ACTIVATES_FROM_AN_INDIRECT_NORMAL_FLOW_PROMPT_WITHOUT_AT_MENTION
+        - NO_UI_COMPONENT_REQUIRED_FOR_ORIGIN_CAPTURE
+        - REGULAR_CHAT_NATIVE_EVENT_RETURN_REMAINS_UNAVAILABLE_OR_IS_POSITIVELY_PROVED_AVAILABLE
+      interpretation: >-
+        A bounded private research probe may test host metadata and activation behavior.
+        It must not mutate production AIOS semantics or claim H4 closure. If regular-Chat
+        native event return remains unavailable, keep the full production requirement
+        blocked rather than reintroducing laptop-local Human ceremony or unsupported
+        private ChatGPT APIs.
+    architecture_status: RESEARCH_CANDIDATE_WITH_NATIVE_RETURN_CHANNEL_BLOCKER
     blocks:
       - task308-origin-correct-replacement-v1
     return_to: task308-origin-correct-replacement-v1
