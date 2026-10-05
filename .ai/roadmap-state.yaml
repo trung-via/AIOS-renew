@@ -459,11 +459,74 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - cleanup-consolidation-v1
+  - h4d-task307-automation-flag-correction-v1
 sequence:
 
-  - id: cleanup-consolidation-v1
+  - id: h4d-task307-automation-flag-correction-v1
     status: NEXT
+    phase: H4D_UNATTENDED_LAUNCH_AUTOMATION_FLAG_CORRECTION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-05"
+    task_id: TASK-307
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "fe0a11369e0d5472912b52a20bb8d71c291b5455"
+    task_blob_sha: "89b761acc90aaaaaa354743194fa6e61badddeb5"
+    authoring_issue_number: 1533
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-05"
+      task_id: TASK-307
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_307_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task307-r1-codex61-xhigh-20261005-001
+      task_blob_sha: "89b761acc90aaaaaa354743194fa6e61badddeb5"
+      task_commit_sha: "fe0a11369e0d5472912b52a20bb8d71c291b5455"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: AUTHORIZED_NOT_YET_DISPATCHED
+      interpretation: >-
+        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-307 lifecycle.
+        This planning/delegation record does not itself create a RUN or prove execution.
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "f720c7005819e5412e94cb930c61bc4fe816a6743f5d5754e4dd7c679e6d57df"
+    construct_fingerprint: "f0ce2170ea1a04b6b9dadc65ec2dfc2f5c3ed3310c403f29f4d57c971ea25c78"
+    reconciled_candidate_fingerprint: "89d6a0b04059bc49d53f9fe289d1ee93711ab016c075f09f927f9fd9f21d68e6"
+    objective: >-
+      Remove only the explicit --enable-automation opt-in from H4D unattended
+      Chromium launch, preserve all other reviewed acquisition/safety semantics,
+      then return to the existing real RUN-303-003 H4D carrier for live proof.
+    human_priority:
+      authority: HUMAN
+      decision: CORRECT_H4D_LAUNCH_BEFORE_RESUMING_TASK303
+      explicit_override: true
+      interpretation: >-
+        The Human explicitly prioritized TASK-307 after the bounded diagnostic.
+        TASK-303 remains paused and its RUN-303-003 FAILURE/terminal attention remain
+        immutable engineering lineage and the intended real live carrier.
+    boundaries:
+      - ISOLATED_REMOVE_ENABLE_AUTOMATION_ONLY
+      - PRESERVE_ALL_OTHER_H4D_LAUNCH_SWITCHES
+      - NO_CAPTCHA_OR_ANTIBOT_BYPASS
+      - PRESERVE_RUN_303_003_REAL_CARRIER
+      - NO_TASK_303_REVISION_CHANGE
+      - NO_SYNTHETIC_REPLACEMENT_CARRIER
+      - NO_AUTOMATIC_H4D_H4E_OR_H5_ADVANCE
+      - RUNTIME_REVIEWER_PUBLISHER_AUTHORITY_UNCHANGED
+    return_to: cleanup-consolidation-v1
+
+  - id: cleanup-consolidation-v1
+    status: PAUSED_FOR_H4D_TASK307
     phase: REPOSITORY_CLEANUP_CONSOLIDATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
