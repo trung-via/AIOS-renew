@@ -341,55 +341,133 @@ Accordingly, OPAQUE_ORIGIN_RENDEZVOUS_V1 remains non-production until its implem
 is Runtime-verified, semantically reviewed PASS and published. Only then may a later new
 TASK identity rely on it as production exact-origin authority.
 
-### Human continuation transfer when the current Chat is exhausted
+### Subject-scoped Human continuation across chat exhaustion and task detours
 
-A separate two-stage Brain audit on 2026-10-06 identified an additional production
-requirement that is not satisfied by new-conversation origin capture alone. If conversation
-A reaches its product/context limit while an AIOS subject originating from A can still emit
-later attention, and the Human deliberately continues that same uniquely reconstructible
-subject in fresh conversation B, later wake delivery must target B rather than returning
-to exhausted conversation A.
+A second two-stage audit on 2026-10-06 supersedes the earlier route-wide transfer
+candidate. Conversation routes are intentionally conversation-scoped and may carry
+multiple independent TASK flows. Repointing one route handle from Chat A to Chat B would
+therefore redirect unrelated TASK-2/TASK-3 wakes when the Human intended to continue only
+TASK-1. That model is rejected.
 
-This is an explicit Human-authorized transport transfer, not semantic chat matching and
-not mutation of historical TASK/RUN affinity. The new Human message in B is transfer intent
-only when fresh canonical reconstruction identifies exactly one continuing semantic
-subject and exactly one source route. If source subject or route is ambiguous, transfer
-fails closed and Human disambiguation is required.
+The corrected contract is `SUBJECT_SCOPED_CONTINUATION_BINDING_V1`.
 
-The selected transfer candidate preserves the source route handle as the continuing lane
-identity and advances its operational generation monotonically under compare-and-swap
-against the exact current generation. Conversation B must first be independently proven
-by OPAQUE_ORIGIN_RENDEZVOUS_V1. No recent/active tab, timestamp, transcript similarity,
-model memory, repository default or partial-token inference may identify either endpoint.
+The rendezvous marker never follows a TASK. It is one-time operational evidence used only
+to prove one exact destination conversation. Once TASK-310 resolves Chat B, the marker may
+expire. Durable continuation is instead a bounded machine-local binding keyed by
+repository + canonical TASK id:
 
-Transfer behavior is state-sensitive:
+```text
+canonical TASK-1 base affinity -> Chat A route
+subject continuation binding  -> Chat B route
+```
 
-- pending or deferred attention that has not crossed a possible-submit boundary may follow
-  the explicitly transferred current generation after fresh canonical and binding checks;
-- an old-generation event already SUBMITTED or AMBIGUOUS remains pinned to the old
-  generation for dedupe or proof-only reconciliation and is never blindly resent to B;
-- future distinct attention may target the new generation after transfer;
-- historical TASK/RUN return_affinity is immutable and is not rewritten by transport;
-- a new revision-1 TASK identity authored after transfer uses the current generation and
-  a current-destination authoring proof, while ordinary revisions preserve their historical
-  selector exactly;
-- competing B/C transfers use expected-generation CAS so at most one succeeds;
-- repeated A->B->C continuation must be bounded, monotonic and cycle-free;
-- an already incompatibly bound destination, shared-handle/cross-repository uncertainty,
-  stale predecessor generation, overflow, incomplete prior-generation evidence or any
-  ownership conflict fails closed.
+The canonical TASK/RUN affinity remains unchanged. Existing Brain Attention logic first
+reconstructs the exact event family, immutable lineage, root TASK id and base
+return_affinity. Only after that proof may local wake consult an explicitly
+Human-authorized continuation binding for that exact repository + TASK id. If the root
+TASK cannot be proven, no override is allowed.
 
-The operational transfer mechanism may retain only the minimum bounded prior-generation
-target evidence required to reconcile an old ambiguous attempt. Raw Chat URLs remain
-machine-local and noncanonical. Transfer must reuse the existing H4A4 dedupe, deferred,
-ambiguity, Human-supersession and generation protections rather than creating a second
-wake queue, generic router or lifecycle store.
+A continuation record is transport state only. It may contain bounded opaque selectors
+such as repository, TASK id, immutable base affinity, current destination affinity and a
+monotonic continuation epoch. It contains no raw rendezvous marker, raw Chat URL,
+transcript, lifecycle status, next_action, priority or semantic reasoning. Raw destination
+identity stays inside the existing route registry. The continuation store must be
+versioned, bounded and integrity-coupled to the configured origin-registry boundary; once
+the feature is enabled, missing, malformed or uncertain continuation state fails closed
+rather than silently reverting transferred TASKs to their historical base Chat.
 
-This transfer capability is not yet production authority. TASK-310 is sequenced first to
-implement exact device-independent destination resolution. A later dedicated TASK-311 is
-reserved for the explicit Human continuation-transfer capability. The previously staged
-TASK-308 replacement therefore moves to TASK-312 and remains blocked until both TASK-310
-and TASK-311 are reviewed, published and available as production authority.
+Route generation and continuation epoch are distinct. Route generation continues to
+protect conversation-route ownership. Moving TASK-1 from A to B does not mutate either
+conversation route and does not increment route generation merely because a TASK changed
+destination. The subject binding uses its own expected-epoch compare-and-swap, so
+competing B/C continuation requests cannot both win.
+
+The Human continuation rule is:
+
+1. A fresh Chat message expresses continuation intent.
+2. Brain performs fresh canonical reconstruction.
+3. Exactly one TASK subject must be selected by explicit Human intent or a unique
+   canonical planning/lineage state. Generic `continue` is insufficient when multiple
+   TASKs are plausible; Brain asks the Human to disambiguate.
+4. TASK-310 proves the fresh Chat's exact conversation route with a new one-time
+   rendezvous marker.
+5. The continuation layer CAS-updates only that repository + TASK binding to the proved
+   destination route.
+6. TASKs that share the old or new conversation route remain independent unless the Human
+   separately authorizes their own continuation bindings.
+
+Priority changes, opening another Chat, mentioning the repository, or starting TASK-2 and
+TASK-3 never implicitly move TASK-1.
+
+Attention delivery remains event-safe. A new event resolves the current subject
+destination before lane intake. Multiple TASKs mapped to one destination use that
+conversation route's existing lane lock, queue, draft/generation barriers and composer
+serialization; no task-scoped browser lock or second wake queue is created.
+
+An event already admitted to an older destination is handled by submit-boundary state:
+
+- PENDING or DEFERRED and proven pre-submit may be moved exactly once to the new
+  destination lane under bounded reconciliation;
+- AMBIGUOUS or SUBMITTED remains pinned to the original destination/binding for exact
+  dedupe or proof-only reconciliation and is never resent to the new Chat;
+- a transfer racing event arrival is linearizable: the event either enters under the old
+  continuation epoch and is included in safe pre-submit movement, or observes the new
+  epoch and enters the new destination directly;
+- any continuation-epoch change after the possible-submit barrier cannot redirect that
+  attempt.
+
+TASK revisions with the same TASK id retain the continuation binding. RESULT, FAILURE,
+REVIEW, REMEDIATION, REPAIR, publication and recovery attention inherit it only after
+their exact canonical lineage proves the same root TASK id. A distinct replacement/new
+TASK identity never inherits automatically. A fresh unauthored roadmap item has no
+subject binding; when resumed from a new Chat it uses TASK-310 origin capture to author
+its new TASK there.
+
+This directly covers priority detours. If TASK-1 is queued or paused while TASK-2 and
+TASK-3 progress, TASK-1's binding does not move merely because those tasks become current.
+When the Human later returns to TASK-1 from Chat D, a fresh TASK-310 marker proves D and
+only TASK-1's continuation binding moves to D. TASK-2/TASK-3 keep their own destinations.
+The old marker for TASK-1 is irrelevant and need not survive.
+
+Repeated moves A->B->C, or an explicit return to a previously used route, are allowed only
+with a fresh destination proof and the current continuation epoch. Safety comes from
+monotonic epoch/CAS, exact subject reconstruction and event-local old-attempt pinning,
+not from storing marker history or forbidding route revisits.
+
+Binding keys include repository identity, so equal TASK ids in different repositories
+cannot collide. A destination route already valid for the same conversation is reused;
+multiple repositories/subjects sharing that route retain the existing cross-repository
+lane lock and repository-bucket isolation.
+
+The continuation mechanism owns no lifecycle routing. Human/Brain selects the exact
+subject under existing authority; deterministic support only validates that subject and
+changes bounded transport configuration. It cannot choose TASK priority, NEXT,
+correction strategy, Executor, review verdict or publication, and it cannot become a
+Planner, generic router, failover manager, persistent semantic memory or second
+engineering-state store.
+
+Required regression/live cases include at minimum:
+
+- TASK-1/TASK-2/TASK-3 share Chat A; continuing only TASK-1 elsewhere leaves TASK-2/3 on A;
+- TASK-1 paused while TASK-2/3 complete, then TASK-1 resumed from Chat D;
+- TASK-1 moved while Executor/runner is queued and while a RUN is active;
+- RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR/publication/recovery all resolve the same root;
+- same TASK revision continuity vs distinct replacement TASK non-inheritance;
+- generic `continue` with multiple unresolved subjects fails closed;
+- two competing destination Chats admit exactly one continuation CAS;
+- pre-submit pending/deferred event moves with no loss/duplicate;
+- ambiguous/submitted old-destination attempt never resends;
+- multiple subjects targeting one destination serialize through one conversation lane;
+- continuation-state loss/corruption never silently reverts to the base Chat;
+- cross-repository TASK-id collision cannot cross-bind;
+- delayed/zero/multiple/unavailable destination rendezvous cases remain fail closed;
+- an event without a provable root TASK cannot receive a subject override;
+- canonical resolved/superseded events remain NOOP after transfer revalidation.
+
+TASK-310 remains the prerequisite exact-destination mechanism. TASK-311 is reserved for
+this subject-scoped continuation capability. The staged TASK-308 replacement remains
+TASK-312 and stays blocked until both TASK-310 and TASK-311 are reviewed, published and
+available as production authority.
 
 ### Human-approved H4C0 fallback — page-scoped origin bootstrap
 
