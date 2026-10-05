@@ -382,7 +382,7 @@ Failure to prove authentication/surface/route/target must fail closed. Transport
 
 Live exit gate: with the target conversation not pre-opened or prepared by the Human, the transport obtains/restores the authorized delivery environment, reaches the exact target, proves all required safety gates, and submits exactly one doorbell without Human UI preparation.
 
-### TASK-302 bounded H4D acquisition contract, corrected by TASK-304 and TASK-305
+### TASK-302 bounded H4D acquisition contract, corrected by TASK-304, TASK-305, and TASK-306
 
 `src/aios_renew/unattended_chat_wake.py` is a transport primitive under the
 existing durable lane pass, with no standalone launcher, router, queue, dispatch,
@@ -500,12 +500,24 @@ delivery. A preexisting or stale acquisition lock also fails closed and remains
 for Human reconciliation.
 
 For an owned available endpoint with no exact page, creation requires exactly one
-attached context and CDP proof that no non-default contexts exist. It issues at
-most one page-creation request in that default authorized profile context and
-navigates only to the original `Binding.chat_url`. Multiple exact pages, context
+attached Playwright context and bounded browser-CDP proof that no non-default
+contexts exist. TASK-306 permits exactly two `Target.getBrowserContexts` response
+keysets: `browserContextIds` alone, or `browserContextIds` plus
+`defaultBrowserContextId`. In both shapes, `browserContextIds` must be a list
+and exactly empty. The optional default ID must be a non-empty string; it is
+opaque compatibility metadata only and is never used to select or identify a
+context, account, profile, route, or target. Unknown keys, missing or malformed
+fields, and any non-default context remain `BROWSER_CONTEXT_UNPROVEN`.
+The exact one-context list must match the supplied snapshot before proof and
+remain stable after bounded CDP-session detach, within the acquisition deadline.
+The transport issues at most one page-creation request in that proved context,
+requires the returned page to begin as `about:blank` in that same context alongside
+the unchanged prior page list, and navigates only to the original
+`Binding.chat_url`. Multiple exact pages, context
 ambiguity, an unexpected new-page URL, an intervening exact target, redirects,
 or target/context drift fail closed. No alternate page/context is selected.
-OS listener ownership is checked again before returning the acquired page.
+Page/context stability is checked after detach, creation, navigation, and the
+repeated exact OS listener-owner proof before returning the page for editing.
 
 One delivery invocation shares one acquisition budget across its existing finite
 lane rechecks and, for an all-lanes drain, across its lane workers. The finite
@@ -515,8 +527,14 @@ CDP connection, OS-helper, page-creation, and navigation operations. The initial
 attach attempt retains its existing ten-second bound; canonical barriers retain their own
 existing bounded read budgets. Playwright methods without public timeout
 arguments use its existing sync loop/implementation mapping with timed async
-cancellation. An unavailable bridge or timeout fails closed with no unbounded
-fallback or second creation request. Failure only disconnects the client; any
+cancellation. Expected operational failures in context/session/page bridge
+calls, result mapping, or bounded page navigation are contained inside the
+acquisition boundary: timeouts remain `ACQUISITION_TIMED_OUT`; unavailable or
+otherwise unproved bridge operations, including cancellation and uncertain page
+creation, become `BROWSER_CONTEXT_UNPROVEN`. Existing fixed ownership and target
+failure reasons are preserved. A failed disconnect cannot replace an acquisition
+reason with generic `LOCAL_FAILURE`. These failures grant no retry, unbounded
+fallback, or second creation request. Failure only disconnects the client; any
 uncertain created page/process is preserved and no submission is inferred.
 
 Fixed bounded failures include `ACQUISITION_CONFIG_INVALID`,
@@ -524,7 +542,8 @@ Fixed bounded failures include `ACQUISITION_CONFIG_INVALID`,
 `PROFILE_LOCKED`, `BROWSER_OWNERSHIP_UNPROVEN`, `ENDPOINT_MISMATCH`,
 `LAUNCH_UNCERTAIN`, and `BROWSER_CONTEXT_UNPROVEN`, alongside the existing exact
 target, affinity, canonical-state, draft, generation, and surface failure codes.
-Dependency/browser/OS exception text never enters a public receipt. Raw chat URLs,
+Dependency/browser/OS exception text and default browser context ID values never
+enter a public receipt. Raw chat URLs,
 endpoints, executable/profile paths, command lines, and process IDs remain in the
 machine-local transport boundary and never enter attention identities or canonical
 TASK/RUN/RESULT/REVIEW/publication state. The GitHub workflow still passes only
@@ -544,6 +563,16 @@ They cover exact configured occupancy rejection, split/duplicate/empty/relative
 or malformed explicit claims, parse failure, unreadable/malformed metadata, and
 invalid/excessive process observations. Configured marker precedence and the
 existing listener-race/exact-owner barriers remain covered without live access.
+TASK-306 adds a production-shaped inert launched acquisition through attach,
+exact owner proof, both accepted CDP context shapes, bounded detach, one blank
+page creation, exact navigation, second owner proof, and the existing pre-submit
+surface checks. That regression stops before editing or Send and opens no live
+ChatGPT connection. Negative cases include unsupported response shapes, malformed
+default IDs, non-default contexts, detach drift, operational bridge failures and
+timeouts, page-result/mapping uncertainty, cleanup failure, and page/context or
+owner races. The existing listener/profile, v3 origin-affinity, freshness, dedupe,
+draft/generation, submission-limit, ambiguity, and no-blind-resend barriers retain
+their regression coverage and authority.
 Implementation and those regressions do not close H4D.
 H4D roadmap closure remains downstream of reviewed publication and separate
 Human/Brain live proof of the unprepared-target exit gate. H4E production
