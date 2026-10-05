@@ -467,7 +467,23 @@ sequence:
     phase: BRAIN_PUBLICATION_TURN_HANDOFF_CORRECTION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
-    task_authoring_status: UNAUTHORED
+    task_id: TASK-308
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "84d4ed1fd9237396ff1608572d8c3ece270f9281"
+    task_blob_sha: "d329c1e283e83fd7bcc5d768cd50af7ad954677e"
+    authoring_issue_number: 1542
+    primary_dispatch_intent:
+      dispatch_id: task308-r1-codex61-high-20261005-001
+      task_blob_sha: "d329c1e283e83fd7bcc5d768cd50af7ad954677e"
+      task_commit_sha: "84d4ed1fd9237396ff1608572d8c3ece270f9281"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      status: AUTHORIZED_NOT_YET_DISPATCHED
+      interpretation: >-
+        Human selected Codex GPT-6.1 Sol high for the entire TASK-308 lifecycle.
+        This planning/delegation record does not create a RUN or prove execution.
     objective: >-
       Make positive canonical publication-dispatch acceptance the terminal boundary
       of the current Brain turn, then resume only in a fresh Brain Sync turn after
