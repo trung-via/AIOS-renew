@@ -1,0 +1,34 @@
+review_id: REVIEW-308-001
+reviewed_sha: 2a2830e3898caabbc39ee98046bdb57d7e5e598c
+mode: PRIMARY
+verdict: BLOCKED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- The exact RUN-308-001 candidate changes only docs/CHATGPT_PROJECT_CONTRACT.md and,
+  as an implementation candidate, satisfies AC1-AC7. Runtime verification git diff
+  --check passed and RESULT unresolved is empty.
+- Semantic publication is BLOCKED by an upstream return-affinity provenance conflict,
+  not by an Executor implementation defect. Canonical TASK-308 carries ORIGIN_AFFINE
+  route_handle page-origin-v1:45cfef72f6ec40b0143c8515368962a866207800be8f7ddba3f08702c7184f6b
+  generation 1.
+- Human observation establishes that TASK-308 was initiated from a different regular-Chat
+  conversation than the H4D route encoded in the TASK. The H4C1 production contract
+  requires each semantic flow to return to its exact originating conversation, requires
+  independent affinities for distinct same-repository conversations, and forbids silent
+  fallback to the historical/fixed H4D route.
+- brain_attention.resolve_return_affinity correctly inherits the frozen TASK selector
+  into terminal/review/publication attention; therefore a PASS here would knowingly
+  publish and wake the non-origin conversation. The transport is behaving deterministically
+  from an incorrectly authored selector.
+- This blocker is outside RUN-308-001 candidate scope and must not be represented
+  as CHANGES_REQUIRED remediation against the Executor. Resolve origin-affinity authoring/provenance
+  before publication or re-execution. TASK-303/RUN-303-004 lineage remains unrelated
+  and paused by Human priority.
