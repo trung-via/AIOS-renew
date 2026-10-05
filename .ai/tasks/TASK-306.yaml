@@ -1,5 +1,5 @@
 task_id: TASK-306
-revision: 2
+revision: 3
 goal: Correct and harden the remaining H4D browser-context acquisition boundary so
   the real production Target.getBrowserContexts response shape is accepted without
   weakening fail-closed context ownership, and exercise the full bounded acquisition
@@ -21,15 +21,14 @@ problem: 'After TASK-304 and TASK-305 were reviewed and published, the same real
   rather than escaping as a generic local failure.
 
 
-  TASK-306 revision 1 subsequently entered PRIMARY RUN-306-001 and failed Runtime
-  verification because two inert regression-harness expectations did not match the
-  bounded bridge behavior. A later local recovery attempt, RUN-306-002, materialized
-  source candidate e4f4a07344d3aa9d1a1b07c71c47ec200560e820 and passed the authored
-  focused verification commands, but no canonical REPAIR authorization exists for
-  RUN-306-001. Therefore that RUN cannot establish review-eligible correction lineage.
-  Revision 2 authorizes a fresh PRIMARY implementation of the same H4D semantics.
-  The prior candidate is only the Brain-selected desired source end-state; r2 requires
-  fresh Runtime verification and fresh semantic review.'
+  TASK-306 r2 reached canonical RESULT RUN-306-004 at 84dc07f0dea3839f89db6e660033d5e51a3ecd90;
+  Runtime verification and REVIEW-306-004 PASS cover AC1-AC9. Publication then failed
+  closed with INTEGRATION_REQUIRED because planning commit 7f062749c1fdbd561de70a9604351e13944b29df
+  advanced current main on a sibling branch. Revision 3 authorizes a fresh PRIMARY
+  from that current main to materialize the same reviewed source end-state. After
+  r3 authoring, the active recovery bookmark must be planning-only repinned from revision
+  2 to 3 before PRIMARY admission; no further planning mutation is authorized until
+  the r3 publication attempt terminalizes.'
 assumptions:
 - TASK-304 and TASK-305 are reviewed and exactly published; their Windows listener-table
   absence proof, dedicated-profile occupancy proof, and exact post-launch owner proof
@@ -47,11 +46,13 @@ assumptions:
 - TASK-303 RUN-303-001 remains separate pending correction lineage; using its unresolved
   attention carrier for H4D live conformance does not repair, resolve, supersede,
   or rewrite that engineering failure.
-- TASK-306 revision 2 is a fresh successor authorization; RUN-306-001 and RUN-306-002
-  remain immutable historical lineage and are not rewritten.
-- The immutable source candidate e4f4a07344d3aa9d1a1b07c71c47ec200560e820 represents
-  the Brain-selected desired source end-state for the three scope.modify files, but
-  its prior RESULT/evidence supplies no r2 verification or review authority.
+- RUN-306-004 candidate 84dc07f0dea3839f89db6e660033d5e51a3ecd90 and review decision
+  03b2b16032fce76b306867b22dc0577f466b27ee are immutable r2 reference evidence, not
+  r3 verification or review authority.
+- Current main 7f062749c1fdbd561de70a9604351e13944b29df contains the planning-only
+  recovery bookmark; no TASK-306 r2 source publication occurred.
+- All prior TASK-306 RUN/FAILURE/REPAIR/RESULT lineage remains immutable and is not
+  rewritten by r3.
 scope:
   inspect:
   - src/aios_renew/unattended_chat_wake.py
@@ -82,12 +83,12 @@ non_goals:
 - Perform a live ChatGPT wake inside Executor verification, fabricate/replay a carrier,
   claim H4D closure from tests/publication, or advance H4E automatically.
 - Modify TASK-303 or RUN-303-001 engineering lineage or perform REPAIR-303-001.
-- Fabricate, retroactively create, or otherwise reconstruct REPAIR authority for RUN-306-001
-  or reinterpret RUN-306-002 as canonical r2 correction lineage.
-- Create TASK-307, a separate exact-integration TASK, or modify roadmap planning state
-  as part of this recovery.
-- Perform a semantic redesign of TASK-306 or broaden its H4D architecture beyond the
-  already selected source end-state.
+- Bypass Publisher ancestry with correction integration, cherry-pick, manual merge,
+  force publication, direct main push, TASK-307, or a separate integration task.
+- Change the H4D implementation semantics already reviewed PASS in r2 or reuse the
+  r2 REVIEW as the r3 verdict.
+- Mutate roadmap planning after r3 PRIMARY admission and before its reviewed publication
+  attempt.
 constraints:
   hard:
   - 'Target.getBrowserContexts proof accepts only two canonical response keysets:
@@ -125,16 +126,17 @@ constraints:
   - Executor changes only scope.modify, mutates no roadmap/lifecycle state, performs
     no live H4D experiment, and does not claim Runtime verification, Reviewer PASS,
     publication, H4D closure, or H4E authorization.
-  - 'The final Executor candidate preserves the exact selected source end-state represented
-    by e4f4a07344d3aa9d1a1b07c71c47ec200560e820 for all three scope.modify files:
-    docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md blob 8179436c743808298ed6ac1e80583f8d4a99bcd7;
-    src/aios_renew/unattended_chat_wake.py blob 98228b777bf600c8cea6bba54072aabe874b8a92;
-    and tests/test_unattended_chat_wake.py blob 9eeb324d4b1755b0701597bd73900303f989d953.
-    This constrains the authorized end-state only; implementation mechanics remain
-    Executor-owned.'
-  - RUN-306-002 verification evidence is historical diagnostic support only. Runtime
-    must execute revision 2 verification freshly, and Reviewer/Publisher authority
-    remains unchanged.
+  - 'r3 must end with exactly these scope.modify blobs: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+    8179436c743808298ed6ac1e80583f8d4a99bcd7; src/aios_renew/unattended_chat_wake.py
+    98228b777bf600c8cea6bba54072aabe874b8a92; tests/test_unattended_chat_wake.py 9eeb324d4b1755b0701597bd73900303f989d953.'
+  - Immediately after r3 authoring and before PRIMARY admission, Human/Brain planning
+    may change only the active recovery bookmark task_revision from 2 to 3, preserving
+    TASK-303 as PAUSED and the same return_to; that commit must precede the execution
+    base.
+  - PRIMARY must use the repository self-host wake path with executor codex, model
+    gpt-6.1-sol, reasoning effort xhigh, and explicit model/effort selection.
+  - Runtime must verify r3 freshly; Reviewer must issue a fresh r3 verdict; Publisher
+    alone may publish the exact eligible reviewed source.
 acceptance:
 - id: AC1
   condition: _prove_context accepts the legacy browserContextIds-only empty-list response
@@ -170,9 +172,8 @@ acceptance:
     and deterministic bridge-failure boundary while preserving machine-local privacy
     and the separate Human/Brain H4D live exit gate.
 - id: AC9
-  condition: The completed implementation has exactly the selected source contents
-    for all three scope.modify files identified by the immutable blobs in constraints.hard,
-    with no Executor modification outside scope.modify.
+  condition: The completed implementation has exactly the three immutable scope.modify
+    blobs named in constraints.hard and no Executor modification outside scope.modify.
 verification:
   policy: minimum-sufficient-v1
   required:
