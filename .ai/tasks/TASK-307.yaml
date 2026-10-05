@@ -1,0 +1,144 @@
+task_id: TASK-307
+revision: 1
+goal: Remove the explicit Chromium --enable-automation launch opt-in from H4D unattended
+  acquisition while preserving the existing exact-environment ownership, bounded launch,
+  fail-closed, and delivery semantics, so the next Human/Brain live probe can test
+  the same production wake path without that unnecessary automation marker.
+problem: Current H4D Environment.command() explicitly adds --enable-automation. The
+  latest bounded Human diagnostic used the same dedicated authorized profile and fixed
+  loopback CDP endpoint without that switch, reached the exact ChatGPT conversation
+  successfully, and observed navigator.webdriver as false; the preceding production
+  live attempt using the current command had deferred while a human-verification interstitial
+  looped. That diagnostic is planning input rather than Runtime evidence and it also
+  used a Human-visible startup path, so this TASK does not claim a proven anti-bot
+  root cause. It isolates the production correction to removal of --enable-automation
+  only, preserving every other H4D acquisition and safety contract before the unresolved
+  RUN-303-003 carrier is retried.
+assumptions:
+- Canonical main at authoring is f3d82a98bf2cece03ed23038b193b1834410b6e3; TASK-302
+  plus TASK-304, TASK-305 and TASK-306 are the reviewed/published H4D acquisition
+  baseline.
+- Canonical RUN-303-003 remains an unresolved repairable and transportable TASK-303
+  revision-3 FAILURE with failure-artifacts SHA 8be8fb3679da4ca17af2f846d653b6e9bb884b5f
+  and failed head 9f64f35969ba26b5acc97d1cc9b989919b5a7012; this TASK does not repair
+  or supersede that lineage.
+- Current Environment.command() adds --enable-automation in addition to the explicit
+  user-data directory, profile, loopback CDP address/port, no-first-run, no-default-browser-check
+  and no-startup-window launch arguments.
+- Current browser-owner proof binds executable, user-data directory, profile directory,
+  loopback address and port and does not require --enable-automation for ownership
+  identity.
+- The Human diagnostic is noncanonical planning input only; Runtime verification,
+  Reviewer verdict, publication and the separate H4D live exit observation retain
+  their existing authorities.
+- After exact reviewed publication of this correction, the existing unresolved origin-affine
+  RUN-303-003 attention subject remains the intended real H4D live carrier unless
+  canonical freshness says otherwise.
+scope:
+  inspect:
+  - src/aios_renew/unattended_chat_wake.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_unattended_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - .ai/tasks/TASK-302.yaml
+  - .ai/tasks/TASK-304.yaml
+  - .ai/tasks/TASK-305.yaml
+  - .ai/tasks/TASK-306.yaml
+  modify:
+  - src/aios_renew/unattended_chat_wake.py
+  - tests/test_unattended_chat_wake.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+non_goals:
+- Bypass, solve, auto-click, spoof or otherwise evade Cloudflare or any human-verification,
+  CAPTCHA, anti-bot, browser-fingerprint or account-security mechanism.
+- Add stealth plugins, navigator.webdriver patches, user-agent spoofing, automation-hiding
+  feature flags, extensions, proxy/VPN behavior, cookie manipulation or alternate
+  authentication paths.
+- Change any production Chromium launch switch or configured environment field other
+  than removing the exact --enable-automation argument from the existing unattended
+  launch command.
+- Change listener absence proof, dedicated-profile occupancy proof, browser-owner
+  proof, context proof, page creation/navigation, exact-target selection, acquisition
+  deadlines or machine-local configuration schema.
+- Change H4C1 origin affinity, canonical freshness, binding-generation safety, draft/generation
+  guards, exact-event dedupe, durable ambiguity, exact user-turn proof or no-blind-resend
+  behavior.
+- Perform a live ChatGPT wake inside Executor or Runtime deterministic verification,
+  fabricate/replay a carrier, or treat the prior Human diagnostic as H4D live-exit
+  proof.
+- Modify TASK-303, RUN-303-003, its failure/attention refs, or author TASK-303 revision
+  4 as part of this correction.
+- Advance H4D, H4E, final H4B or H5 roadmap semantics automatically, or create a new
+  planner, router, retry/failover authority, Reviewer, Publisher or Runtime.
+constraints:
+  hard:
+  - The production unattended launch command must preserve its existing explicitly
+    configured executable, user-data directory, profile directory, IPv4 loopback remote-debugging
+    address/port, --no-first-run, --no-default-browser-check and --no-startup-window
+    semantics; the authorized production launch delta is removal of --enable-automation
+    only.
+  - No replacement switch, JavaScript patch, browser preference, extension or other
+    mechanism may be introduced for the purpose of concealing automation or defeating
+    human-verification/anti-bot controls.
+  - Exact browser ownership must remain proved from the existing executable, user-data
+    directory, profile directory, loopback address and port facts without adding --enable-automation
+    as an ownership requirement and without weakening any mismatch/race failure.
+  - Existing launch environment sanitization, one-attempt acquisition budget, profile/listener
+    checks, context/page proof, exact bound-chat navigation and post-acquisition owner
+    re-proof remain unchanged in authority and fail-closed behavior.
+  - Existing local-chat freshness, affinity, binding-generation, surface, Human-draft,
+    active-generation, outbound-dedupe, ambiguity and no-blind-resend gates remain
+    regression-equivalent.
+  - Focused deterministic regression must prove the configured launch command excludes
+    --enable-automation, retains the required existing launch arguments, and remains
+    compatible with exact owner proof while malformed/wrong ownership still fails
+    closed.
+  - Documentation must record that removing the explicit automation opt-in is a bounded
+    H4D launch correction motivated by the Human diagnostic but does not claim CAPTCHA
+    bypass, anti-bot evasion, Runtime evidence or H4D live-exit closure.
+  - No machine-local path, PID, raw conversation URL, account/session material or
+    diagnostic transcript may be added to canonical/public artifacts.
+  - Executor changes only scope.modify, performs no roadmap/lifecycle mutation or
+    live ChatGPT experiment, and does not claim Runtime verification, Reviewer PASS,
+    publication or H4D/H4E closure.
+acceptance:
+- id: AC1
+  condition: The candidate changes only scope.modify and introduces no new semantic,
+    lifecycle, routing, retry, verification, review, publication or planning authority.
+- id: AC2
+  condition: The unattended Chromium command no longer contains --enable-automation,
+    adds no automation-concealment or human-verification-bypass mechanism, and preserves
+    the other existing configured launch arguments required by the H4D acquisition
+    contract.
+- id: AC3
+  condition: Exact owner proof remains based on the configured executable, user-data
+    directory, profile directory and loopback CDP address/port and accepts the corrected
+    command without requiring --enable-automation, while existing mismatch and race
+    cases remain fail closed.
+- id: AC4
+  condition: Listener/profile/context/page acquisition plus canonical freshness, affinity,
+    exact-target, draft/generation, dedupe, ambiguity and no-blind-resend behavior
+    remain regression-equivalent to the reviewed H4D baseline.
+- id: AC5
+  condition: Focused deterministic regression covers exclusion of --enable-automation,
+    retention of the required launch arguments, successful corrected launch/owner
+    compatibility, and existing invalid/ambiguous ownership failures without contacting
+    live ChatGPT.
+- id: AC6
+  condition: H4D documentation records the bounded launch correction, explicitly rejects
+    CAPTCHA/anti-bot bypass or stealth behavior, and keeps reviewed publication separate
+    from the later Human/Brain live exit gate.
+- id: AC7
+  condition: The implementation neither modifies nor semantically resolves TASK-303/RUN-303-003
+    lineage and creates no synthetic replacement attention subject for the later live
+    probe.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_unattended_chat_wake.py tests/test_local_chat_wake.py
+  - git diff --check
+return_affinity:
+  kind: ORIGIN_AFFINE
+  route_handle: page-origin-v1:45cfef72f6ec40b0143c8515368962a866207800be8f7ddba3f08702c7184f6b
+  generation: 1
