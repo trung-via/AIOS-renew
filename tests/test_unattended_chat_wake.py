@@ -10,6 +10,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from playwright._impl._errors import Error as BridgeError, TimeoutError as BridgeTimeout
 
 from aios_renew import local_chat_wake as wake
 from aios_renew import unattended_chat_wake as unattended
@@ -58,6 +59,7 @@ class Context:
     def new_page(self):
         self.harness.created += 1
         page = AcquiredPage(self.harness, "about:blank")
+        page.context = self
         self.pages.append(page)
         self.harness.page = page
         self.harness.hook("created")
@@ -108,6 +110,7 @@ def harness(tmp_path, monkeypatch):
 
     driver = SimpleNamespace(chromium=SimpleNamespace(connect_over_cdp=connect),
                              stop=lambda: h.stops.append("disconnect"))
+    h.driver = driver
     module = SimpleNamespace(sync_playwright=lambda: SimpleNamespace(start=lambda: driver))
     monkeypatch.setitem(sys.modules, "playwright.sync_api", module)
 
@@ -161,8 +164,70 @@ def harness(tmp_path, monkeypatch):
     return h
 
 
+@pytest.fixture
+def production_bridge(harness, monkeypatch):
+    """Use the real bounded bridge/mapping with inert async implementations."""
+    h = harness
+    h.context_response = {"browserContextIds": [], "defaultBrowserContextId": "opaque-fixture-metadata"}
+    h.bridge_calls, h.bridge_failures = [], {}
+    context = h.browser.contexts[0]
+
+    def observe(method):
+        h.bridge_calls.append(method)
+        if method in h.bridge_failures:
+            raise h.bridge_failures[method]
+        h.hook(method)
+
+    async def send(command):
+        assert command == "Target.getBrowserContexts"
+        observe("send")
+        return h.context_response
+
+    async def detach():
+        observe("detach")
+
+    session = SimpleNamespace(_impl_obj=SimpleNamespace(send=send, detach=detach), _sync=asyncio.run)
+
+    async def new_browser_cdp_session():
+        observe("new_browser_cdp_session")
+        return session
+
+    async def new_page():
+        observe("new_page")
+        page = context.new_page()
+        if "new_page_result" in h.bridge_failures:
+            raise h.bridge_failures["new_page_result"]
+        return page
+
+    h.browser._impl_obj = SimpleNamespace(new_browser_cdp_session=new_browser_cdp_session)
+    h.browser._sync = asyncio.run
+    context._impl_obj = SimpleNamespace(new_page=new_page)
+    context._sync = asyncio.run
+    monkeypatch.setattr(unattended, "_bounded_call", BOUNDED_CALL)
+
+    # Exercise the exact production owner classifier before creation and again
+    # after navigation, using only synthetic OS observations and arguments.
+    environment = unattended.load_environment(h.binding)
+    h.owner = dict(ProcessId=h.process.pid, ExecutablePath=str(environment.executable),
+                   CommandLine="private-fixture-owner-command")
+    synthetic_query = unattended.LocalEnvironment._query
+
+    def query(local, script):
+        if "Win32_Process -Filter" in script:
+            h.checks.append("owner")
+            h.hook("owner")
+            return h.owner
+        return synthetic_query(local, script)
+
+    monkeypatch.setattr(unattended.LocalEnvironment, "_query", query)
+    monkeypatch.setattr(unattended.LocalEnvironment, "prove_owner", LOCAL_ENVIRONMENT.prove_owner)
+    monkeypatch.setattr(unattended, "_windows_arguments", lambda command: environment.command())
+    return h
+
+
 def existing_page(h):
     page = AcquiredPage(h, h.binding.chat_url)
+    page.context = h.browser.contexts[0]
     h.browser.contexts[0].pages.append(page)
     h.page = page
     return page
@@ -619,6 +684,196 @@ def test_single_nondefault_context_is_not_an_authorized_profile_context(harness)
     h.nondefault_contexts = ["private-incognito-identifier"]
     assert h.deliver()["reason"] == "BROWSER_CONTEXT_UNPROVEN"
     assert not h.created and not h.navigations
+
+
+@pytest.mark.parametrize("shape", ["legacy", "production"])
+def test_production_shaped_launch_reaches_existing_presubmit_checks_without_edit_or_send(production_bridge, monkeypatch, shape):
+    h = production_bridge
+    h.available = False
+    if shape == "legacy":
+        h.context_response = {"browserContextIds": []}
+    reached = []
+
+    def stop_before_edit(adapter, text, **barriers):
+        # Delivery has already run its unchanged check; repeat it before this
+        # inert stop. No insertion, click, live connection, or Send is possible.
+        adapter.check(text)
+        reached.append(adapter.page)
+        raise wake.WakeBlocked("INSERT_BLOCKED")
+
+    monkeypatch.setattr(unattended.UnattendedBrowserAdapter, "submit", stop_before_edit)
+    receipt = h.deliver()
+    assert receipt["status"] == "DEFERRED" and receipt["reason"] == "INSERT_BLOCKED"
+    assert len(h.launches) == h.created == 1
+    assert h.connects == [10000, 1000] and len(h.listener_queries) == 2
+    assert h.bridge_calls == ["new_browser_cdp_session", "send", "detach", "new_page"]
+    assert h.checks == ["profile", "owner", "owner"]
+    assert h.navigations == [h.binding.chat_url] and reached == [h.page]
+    assert h.page.url == h.binding.chat_url and not h.page.evaluations
+    assert h.page.resolutions == [wake.RESOLVE_USER_TURN, wake.RESOLVE_USER_TURN]
+    assert h.stored()["events"][EVENT]["status"] == "DEFERRED"
+    assert h.stops == ["disconnect"]
+    for sensitive in (h.binding.chat_url, h.binding.cdp_endpoint, str(h.config),
+                      h.owner["ExecutablePath"], h.owner["CommandLine"],
+                      "opaque-fixture-metadata", "fixture-private-freshness-token"):
+        assert sensitive not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("response", [
+    None, [], {}, {"defaultBrowserContextId": "opaque-fixture-metadata"},
+    {"browserContextIds": None}, {"browserContextIds": ""},
+    {"browserContextIds": ()}, {"browserContextIds": {}},
+    {"browserContextIds": False}, {"browserContextIds": ["opaque-nondefault-context"]},
+    {"browserContextIds": [], "unknown": None},
+    {"browserContextIds": [], "defaultBrowserContextId": "opaque-fixture-metadata", "unknown": []},
+    *[{"browserContextIds": [], "defaultBrowserContextId": value}
+      for value in ("", None, False, 1, [], {}, b"opaque-fixture-metadata")],
+])
+def test_unsupported_context_response_cannot_authorize_creation(production_bridge, response):
+    h = production_bridge
+    h.context_response = response
+    receipt = h.deliver()
+    assert receipt["status"] == "DEFERRED" and receipt["reason"] == "BROWSER_CONTEXT_UNPROVEN"
+    assert h.bridge_calls == ["new_browser_cdp_session", "send"]
+    assert not h.created and not h.navigations and not h.launches
+    assert h.stored()["events"][EVENT]["status"] == "DEFERRED"
+    assert h.stops == ["disconnect"]
+    assert "opaque" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("drift", ["removed", "added", "replaced"])
+def test_context_list_must_remain_identical_after_bounded_detach(production_bridge, drift):
+    h = production_bridge
+    def changed(stage):
+        if stage != "detach": return
+        if drift == "removed": h.browser.contexts.clear()
+        if drift == "added": h.browser.contexts.append(Context(h))
+        if drift == "replaced": h.browser.contexts[:] = [Context(h)]
+    h.hook = changed
+    assert h.deliver()["reason"] == "BROWSER_CONTEXT_UNPROVEN"
+    assert h.bridge_calls == ["new_browser_cdp_session", "send", "detach"]
+    assert not h.created and not h.navigations
+
+
+def test_context_snapshot_must_match_before_cdp_proof(production_bridge):
+    h = production_bridge
+    stale_contexts = [Context(h)]
+    local = SimpleNamespace(remaining_ms=lambda: 1000)
+    with pytest.raises(wake.WakeBlocked, match="^BROWSER_CONTEXT_UNPROVEN$"):
+        unattended._prove_context(h.browser, stale_contexts, local)
+    assert not h.bridge_calls and not h.created
+
+
+@pytest.mark.parametrize("stage", ["new_browser_cdp_session", "send", "detach", "new_page", "new_page_result"])
+@pytest.mark.parametrize("failure,reason", [
+    (BridgeError, "BROWSER_CONTEXT_UNPROVEN"),
+    (RuntimeError, "BROWSER_CONTEXT_UNPROVEN"),
+    (OSError, "BROWSER_CONTEXT_UNPROVEN"),
+    (TypeError, "BROWSER_CONTEXT_UNPROVEN"),
+    (AttributeError, "BROWSER_CONTEXT_UNPROVEN"),
+    (ValueError, "BROWSER_CONTEXT_UNPROVEN"),
+    (asyncio.CancelledError, "BROWSER_CONTEXT_UNPROVEN"),
+    (TimeoutError, "ACQUISITION_TIMED_OUT"),
+    (BridgeTimeout, "ACQUISITION_TIMED_OUT"),
+])
+def test_operational_bridge_failures_stay_deterministic_without_retry(production_bridge, stage, failure, reason):
+    h = production_bridge
+    h.bridge_failures[stage] = failure("private-fixture-bridge-detail")
+    state = wake.RouteState(h.binding.state_path, wake.REPOSITORY, h.binding.route_handle)
+    with state.locked() as data:
+        for event in (EVENT, EVENT.replace("001", "002")):
+            data["events"][event] = wake.record()
+        state.write(data)
+    receipts = wake.operate(wake.REPOSITORY, h.binding, projection=h.projection, binding_provider=h.provider)
+    receipt = receipts[0]
+    assert receipt["status"] == "DEFERRED" and receipt["reason"] == reason
+    assert [item["reason"] for item in receipts] == [reason, "ACQUISITION_LIMIT_REACHED"]
+    assert h.created == (1 if stage == "new_page_result" else 0)
+    assert h.bridge_calls.count("new_page") <= 1 and not h.navigations
+    assert not h.sleeps and not h.launches
+    assert h.stored()["events"][EVENT]["status"] == "DEFERRED"
+    assert h.stops == ["disconnect"] and "private" not in json.dumps(receipt)
+    assert not (unattended.load_environment(h.binding).user_data_dir / ".aios-unattended-acquisition.lock").exists()
+
+
+@pytest.mark.parametrize("stage", ["created", "navigate"])
+@pytest.mark.parametrize("failure,reason", [(BridgeError, "BROWSER_CONTEXT_UNPROVEN"),
+                                          (BridgeTimeout, "ACQUISITION_TIMED_OUT")])
+def test_page_bridge_failures_cannot_expose_a_page_for_editing(production_bridge, stage, failure, reason):
+    h = production_bridge
+    def failed(current):
+        if current == stage: raise failure("private-fixture-page-detail")
+    h.hook = failed
+    assert h.deliver()["reason"] == reason
+    assert h.created == 1 and h.bridge_calls.count("new_page") == 1
+    assert len(h.navigations) == (1 if stage == "navigate" else 0)
+    assert not h.page.evaluations
+
+
+def test_mapping_failure_after_page_creation_is_uncertainty_without_a_second_request(production_bridge, monkeypatch):
+    from playwright._impl._sync_base import mapping
+    h = production_bridge
+    original = mapping.from_maybe_impl
+    def failed(result):
+        if h.page is not None and result is h.page:
+            raise RuntimeError("private-fixture-mapping-detail")
+        return original(result)
+    monkeypatch.setattr(mapping, "from_maybe_impl", failed)
+    assert h.deliver()["reason"] == "BROWSER_CONTEXT_UNPROVEN"
+    assert h.created == h.bridge_calls.count("new_page") == 1
+    assert not h.navigations and not h.page.evaluations
+
+
+def test_created_page_must_belong_to_the_proved_context(production_bridge):
+    h = production_bridge
+    def changed(stage):
+        if stage == "created": h.page.context = Context(h)
+    h.hook = changed
+    assert h.deliver()["reason"] == "TARGET_PAGE_CHANGED"
+    assert h.created == h.bridge_calls.count("new_page") == 1
+    assert not h.navigations and not h.page.evaluations
+
+
+def test_failed_disconnect_does_not_mask_the_fixed_acquisition_reason(production_bridge):
+    h = production_bridge
+    h.bridge_failures["detach"] = BridgeError("private-fixture-session-detail")
+    def failed_stop():
+        h.stops.append("disconnect")
+        raise BridgeError("private-fixture-disconnect-detail")
+    h.driver.stop = failed_stop
+    assert h.deliver()["reason"] == "BROWSER_CONTEXT_UNPROVEN"
+    assert h.stops == ["disconnect"] and not h.created and not h.navigations
+
+
+@pytest.mark.parametrize("stage", ["launched", "navigate"])
+def test_production_context_shape_keeps_exact_postlaunch_owner_races_closed(production_bridge, stage):
+    h = production_bridge
+    h.available = False
+    def changed(current):
+        if current == stage: h.owner["ProcessId"] = 456
+    h.hook = changed
+    assert h.deliver()["reason"] == "LAUNCH_UNCERTAIN"
+    assert len(h.launches) == 1 and len(h.listener_queries) == 2
+    assert h.created == (1 if stage == "navigate" else 0)
+    assert all(not page.evaluations for context in h.browser.contexts for page in context.pages)
+
+
+@pytest.mark.parametrize("stage", ["detach", "created", "navigate", "second-owner"])
+@pytest.mark.parametrize("drift", ["exact-target", "other-page", "context"])
+def test_production_bridge_rejects_page_and_context_races_before_editing(production_bridge, stage, drift):
+    h = production_bridge
+    def changed(current):
+        if stage == "second-owner":
+            if current != "owner" or h.checks.count("owner") != 2: return
+        elif current != stage: return
+        if drift == "context": h.browser.contexts.append(Context(h))
+        elif drift == "exact-target": existing_page(h)
+        else: h.browser.contexts[0].pages.append(AcquiredPage(h, "about:blank"))
+    h.hook = changed
+    assert h.deliver()["reason"] in {"BROWSER_CONTEXT_UNPROVEN", "TARGET_PAGE_CHANGED", "TARGET_PAGE_NOT_UNIQUE"}
+    assert h.created == (0 if stage == "detach" else 1)
+    assert h.bridge_calls.count("new_page") <= 1 and len(h.navigations) <= 1
+    assert all(not page.evaluations for context in h.browser.contexts for page in context.pages)
 
 
 def test_page_creation_bridge_times_out_once_without_an_unbounded_fallback():
