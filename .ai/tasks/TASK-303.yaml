@@ -1,31 +1,40 @@
 task_id: TASK-303
-revision: 3
-goal: Finish the TASK-303 cleanup on current canonical main by completing bounded
-  Brain Sync hydration, preserving retained diagnostic/wake surfaces, and correcting
-  the two provider/reviewer compatibility gaps exposed by RUN-303-002.
-problem: 'RUN-303-002 is a canonical COMPLETION_GATE FAILURE before Runtime verification.
-  Its clean candidate left two unresolved AC12 compatibility conflicts: reviewer_provider_protocol.py
-  rejects canonical TASK return_affinity from its closed TASK projection, and test_brain_provider_protocol.py
-  uses brain-high-value-v3 while its shared Stage-2 fixture omits the required cross_authority_context,
-  canonical_shape, and terminal_lifecycle sections. Both correction surfaces are outside
-  r2 scope.modify and failed_changed_files, so ordinary REPAIR cannot lawfully modify
-  them. Revision 3 narrowly corrects TASK authority and starts a fresh PRIMARY from
-  current main; RUN-303-001 and RUN-303-002 remain immutable diagnostic history.'
+revision: 4
+goal: Finish the single TASK-303 cleanup from current canonical main by preserving
+  the reviewed TASK-307 launch correction, carrying forward the validated r3 cleanup/provider-reviewer
+  compatibility work, and authorizing only the remaining brain-provider protocol compatibility
+  surface required to complete the existing v3 audit round trip.
+problem: 'RUN-303-003 is a canonical COMPLETION_GATE FAILURE for TASK-303 r3. Its
+  candidate is clean, repairable, transportable, and changed only r3-authorized files,
+  but RESULT unresolved identified one remaining material TASK-contract conflict:
+  src/aios_renew/brain_provider_protocol.py is outside r3 scope.modify while its closed
+  provider response/decision projection does not preserve the brain-high-value-v3
+  cross_authority_context, canonical_shape, and terminal_lifecycle sections needed
+  by the retained provider round-trip assertions. Ordinary REPAIR cannot expand TASK
+  scope. TASK-307 subsequently reached exact reviewed publication on current main
+  and must remain preserved. Revision 4 therefore authorizes a fresh current-main
+  PRIMARY for the same cleanup TASK, adding only the missing brain-provider protocol
+  surface and retaining all prior immutable failure lineage.'
 assumptions:
-- Canonical main at r3 authoring is bfd93a2fc7b337fc95368a5c758868ae55529d15; RUN-303-002
-  FAILURE artifact is 164ab06812b3b8b125f50f3f84cd565bb4d1ecc8 and failed head is
-  1cbf46760e4623ba7f1b95a11ce4f4abe04bd75d.
-- RUN-303-002 is clean, descends from base, repairable and transportable, but its
-  two required compatibility files are outside canonical REPAIR correction authority.
-- The r2 candidate is implementation/diagnostic input only and carries no r3 verification,
-  review, publication, or planning authority.
-- The r2 inspection found positive retention witnesses for the examined diagnostic
-  and wake surfaces; r3 therefore authorizes no diagnostic, workflow, wake-module,
-  or carrier deletion.
-- 'Human delegation persists for TASK-303: Codex gpt-6.1-sol xhigh unless Human changes
-  it.'
-- H4D remains LIVE_EXIT_GATE_PENDING and is resumed only after exact reviewed publication
-  of TASK-303.
+- Canonical main at r4 authoring is 6c1f9ee762b693075f7088b9e75002d0f740ef71; TASK-307
+  is reviewed/published at 7b9a9d62b3bf9fff78a93f0b3cbe068b17beed3d and its bounded
+  removal of --enable-automation must remain unchanged.
+- RUN-303-003 FAILURE artifact is 8be8fb3679da4ca17af2f846d653b6e9bb884b5f, failed
+  head is 9f64f35969ba26b5acc97d1cc9b989919b5a7012, phase is COMPLETION_GATE, and
+  its sole unresolved item identifies src/aios_renew/brain_provider_protocol.py as
+  the missing authorized compatibility surface.
+- RUN-303-003 is clean, repairable and transportable, but changing a file outside
+  r3 scope.modify is not lawful REPAIR; r4 is a fresh PRIMARY from current main and
+  prior candidate content is diagnostic/implementation input only.
+- RUN-303-001, RUN-303-002 and RUN-303-003 remain immutable FAILURE history and carry
+  no r4 Runtime verification, Reviewer verdict, publication or planning authority.
+- The r2 retention audit found positive callers/dependencies for examined diagnostic
+  and wake surfaces; r3/r4 therefore authorize no diagnostic, wake-module, carrier
+  or workflow deletion.
+- 'Human delegation persists for TASK-303 across revisions: Codex gpt-6.1-sol xhigh
+  unless Human changes it.'
+- H4D live exit remains separately Human/Brain-owned and is not proven merely by TASK-307
+  publication or by this cleanup revision.
 scope:
   inspect:
   - .ai/roadmap-state.yaml
@@ -41,8 +50,11 @@ scope:
   - tests/test_aios_ingress_metadata_identity_diagnostic.py
   - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
   - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - src/aios_renew/unattended_chat_wake.py
+  - tests/test_unattended_chat_wake.py
   modify:
   - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_provider_protocol.py
   - src/aios_renew/reviewer_provider_protocol.py
   - tests/test_brain_sync.py
   - tests/test_brain_provider_protocol.py
@@ -51,52 +63,62 @@ scope:
   - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
 non_goals:
 - Delete or modify diagnostic scripts, wake modules, workflows, carrier registries,
-  package entrypoints, or canonical lifecycle artifacts in r3.
-- Change H4D, H4E, final H4B, H5, origin-affine routing, wake acquisition, freshness,
-  dedupe, ambiguity, no-blind-resend, or reviewed TASK-304/305/306 behavior.
-- Create a planner, router, retry authority, lifecycle reducer, persistent Brain/history
-  store, or second planning truth.
+  package entrypoints, canonical lifecycle artifacts, or TASK-307 launch-correction
+  files.
+- Change H4D, H4E, final H4B, H5, origin-affine routing, unattended acquisition, freshness,
+  dedupe, ambiguity, no-blind-resend, browser ownership, or reviewed TASK-304/305/306/307
+  behavior.
+- Create a planner, router, retry/failover authority, lifecycle reducer, persistent
+  Brain/history store, or second planning truth.
 - Change Reviewer verdict/procedure authority, Runtime verification authority, Publisher
   authority, or execution authority.
 - Infer, default, dereference, or operationalize TASK return_affinity for chat/account/session
   routing.
 - Relax brain-high-value-v3 validation, make required conformance sections optional,
-  skip/xfail failing tests, or remove negative/tamper coverage.
-- Publish, cherry-pick, merge, or repair RUN-303-002 failed candidate as a substitute
-  for a fresh r3 PRIMARY.
+  skip or xfail failing tests, or remove negative/tamper coverage.
+- Repair, cherry-pick, merge, force-integrate, or publish RUN-303-003 failed candidate
+  as a substitute for a fresh r4 PRIMARY.
+- Use TASK-307 publication or any wake message as automatic H4D live-exit closure.
 - Perform unrelated refactors, performance work, dependency upgrades, downstream changes,
   or live ChatGPT wake tests.
 constraints:
   hard:
-  - r3 is a fresh PRIMARY rooted in exact canonical main at admission; prior TASK-303
-    failures remain immutable and diagnostic-only.
-  - Reviewer provider compatibility may only extend its closed TASK projection to
-    preserve exact validated return_affinity value and shape; it must not infer, default,
-    resolve, mutate, route, or acquire semantic/lifecycle authority.
-  - The brain provider test fixture must supply complete current brain-high-value-v3
-    TASK_AUTHORING conformance sections bound to the exact packet and reconciled candidate;
-    production validation is not weakened.
-  - Default Brain Sync hydration is bounded to current active planning context and
-    directly relevant return sequencing; completed historical bodies remain on-demand.
-  - Ordinary Brain Sync does not sweep unrelated historical DONE ancestry, while active
-    pointers and explicit historical hydration still fail closed on canonical conflict.
-  - Publication reporting never guesses recency from roadmap sequence position; it
-    reports only deterministically relevant lineage or explicit unavailability.
-  - r3 deletes no diagnostic, workflow, wake, carrier, package, or canonical lifecycle
-    path; the r2 retention conclusion is preserved rather than converted into speculative
-    deletion.
-  - Test consolidation may remove only duplicated setup/helper structure and must
-    preserve every named unique semantic/failure-mode assertion.
-  - Executor changes only scope.modify and performs no roadmap mutation, review, publication,
-    lifecycle advancement, or live wake experiment.
+  - r4 is a fresh PRIMARY rooted in exact canonical main at admission; all prior TASK-303
+    failures remain immutable diagnostic-only lineage.
+  - Executor may use RUN-303-003 candidate and unresolved diagnostics to reconstruct
+    intended changes, but must reconcile every change against current main and preserve
+    reviewed TASK-307 behavior.
+  - brain_provider_protocol.py may change only to preserve and revalidate the exact
+    required brain-high-value-v3 TASK_AUTHORING conformance sections through the closed
+    provider response and serialized Brain-decision round trip; it must not add lifecycle,
+    routing, provider-memory, review or publication authority.
+  - Reviewer provider compatibility remains limited to exact validated return_affinity
+    projection; neither reviewer nor brain provider may infer, default, resolve, mutate
+    or operationalize route/account/session identity.
+  - The brain provider Stage-2 path must forward cross_authority_context, canonical_shape
+    and terminal_lifecycle exactly into validate_stage2 and preserve the validated
+    result through revalidate_decision; missing, substituted, malformed or tampered
+    sections must still fail closed.
+  - Default Brain Sync hydration remains bounded to current active planning context
+    and directly relevant return sequencing; completed historical bodies remain on-demand
+    and ordinary sync must not sweep unrelated historical DONE ancestry.
+  - Publication reporting must not guess recency from roadmap sequence order; report
+    only a deterministically relevant publication pointer or explicit unavailability.
+  - No diagnostic, workflow, wake, carrier, package or canonical lifecycle path may
+    be deleted in r4.
+  - Test consolidation may remove only duplicated setup/helper structure while preserving
+    every unique success, fail-close, ambiguity, race, provenance, privacy, permission,
+    negative and regression assertion.
+  - Executor changes only scope.modify and performs no roadmap mutation, lifecycle
+    advancement, review, publication or live wake experiment.
   - Runtime must freshly execute python scripts/aios_parallel_full_suite.py and git
-    diff --check on the r3 candidate; prior RUN evidence cannot satisfy r3.
-  - After r3 authoring, exactly one Human/Brain planning repin may bind cleanup-consolidation-v1
-    to the r3 task/audit/delegation/dispatch identity before execution.
+    diff --check on the r4 candidate; prior RUN evidence cannot satisfy r4.
+  - Exact ORIGIN_AFFINE return_affinity for TASK-303 is preserved unchanged across
+    revision 4.
 acceptance:
 - id: AC1
   condition: The candidate changes only scope.modify and creates no new semantic,
-    lifecycle, execution, verification, review, publication, retry, routing, or planning
+    lifecycle, execution, verification, review, publication, retry, routing or planning
     authority.
 - id: AC2
   condition: Brain Sync provides a deterministic bounded active-roadmap projection
@@ -107,11 +129,11 @@ acceptance:
     sweep; explicit/on-demand historical hydration remains available and active pointers
     fail closed on conflict.
 - id: AC4
-  condition: Brain Sync publication reporting is independent of roadmap sequence order
+  condition: Brain Sync publication reporting is independent of roadmap sequence position
     and yields only a deterministically relevant publication pointer or explicit unavailability.
 - id: AC5
   condition: No diagnostic script, wake module, workflow, carrier registry, package
-    entrypoint, or canonical lifecycle artifact is deleted by r3.
+    entrypoint or canonical lifecycle artifact is deleted by r4.
 - id: AC6
   condition: Test consolidation removes only duplicated setup/helper structure and
     preserves unique success, fail-close, ambiguity, race, provenance, privacy, permission,
@@ -120,30 +142,36 @@ acceptance:
   condition: Historical TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR material
     remains unchanged and exactly retrievable on demand.
 - id: AC8
-  condition: H4C0/H4C1/H4D routing, acquisition, freshness, dedupe, ambiguity, ownership
-    and no-blind-resend semantics remain unchanged.
+  condition: H4C0/H4C1/H4D routing, acquisition, browser-owner, freshness, dedupe,
+    ambiguity and no-blind-resend semantics, including reviewed TASK-307 launch behavior,
+    remain unchanged.
 - id: AC9
   condition: Reviewer provider reconstruction accepts canonical TASK return_affinity
     as an exact closed projected field without inference, defaulting, route resolution,
-    account/session selection, mutation, or new Reviewer authority.
+    account/session selection, mutation or new Reviewer authority.
 - id: AC10
   condition: The retained brain provider TASK_AUTHORING Stage-2 fixture supplies complete
-    brain-high-value-v3 cross_authority_context, canonical_shape, and terminal_lifecycle
-    sections with exact packet/candidate binding while negative/tamper validation
+    brain-high-value-v3 cross_authority_context, canonical_shape and terminal_lifecycle
+    sections with exact packet/candidate binding while negative and tamper validation
     remains effective.
 - id: AC11
-  condition: The fresh r3 RESULT has exact changed_files and empty unresolved, descends
-    from current canonical base, preserves TASK-304/305/306 behavior, and Runtime
-    passes the required selected full suite plus diff check without reusing prior
-    RUN authority.
+  condition: brain_provider_protocol.py accepts only the closed AUDIT_RECONCILE response
+    shape including the three required v3 conformance sections, forwards them exactly
+    to validate_stage2, and revalidates serialized decisions without dropping or fabricating
+    those sections.
+- id: AC12
+  condition: The fresh r4 RESULT has exact changed_files and empty unresolved, descends
+    from the current canonical base, preserves reviewed TASK-304/305/306/307 behavior,
+    and is internally ready for Runtime to execute the required selected full suite
+    and diff check without reusing prior RUN authority.
 verification:
   policy: minimum-sufficient-v1
   required:
   - python scripts/aios_parallel_full_suite.py
   - git diff --check
-  full_suite_reason: Brain Sync plus provider/reviewer compatibility are cross-cutting
-    retained contracts; the selected full-suite wrapper is required to expose regressions
-    outside the focused files.
+  full_suite_reason: Brain Sync plus brain-provider/reviewer protocol compatibility
+    are cross-cutting retained contracts; the selected full-suite wrapper is required
+    to expose regressions outside the focused files.
 return_affinity:
   kind: ORIGIN_AFFINE
   route_handle: page-origin-v1:45cfef72f6ec40b0143c8515368962a866207800be8f7ddba3f08702c7184f6b
