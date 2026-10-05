@@ -1,0 +1,44 @@
+review_id: REVIEW-306-004
+reviewed_sha: 84dc07f0dea3839f89db6e660033d5e51a3ecd90
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings: []
+notes:
+- RUN-306-004 is the canonical FINALIZE_CANDIDATE REPAIR RESULT for TASK-306 r2, preserving
+  failed candidate 84dc07f0dea3839f89db6e660033d5e51a3ecd90 exactly with no new repository
+  mutation.
+- 'Runtime verification is canonical PASS: python -m pytest -q tests/test_unattended_chat_wake.py
+  tests/test_local_chat_wake.py reports 859 passed and 597 skipped in 36.49s; git
+  diff --check passed; RESULT unresolved is empty.'
+- 'First semantic pass ??? contract coverage: AC1-AC3 pass because the candidate accepts
+  only the two authorized Target.getBrowserContexts keysets, rejects malformed or
+  unknown shapes, treats defaultBrowserContextId as opaque compatibility metadata,
+  requires exactly one Playwright context, and proves context stability across bounded
+  CDP detach.'
+- 'First semantic pass ??? acquisition and safety coverage: AC4-AC6 pass because expected
+  bridge and page failures map to fixed fail-closed reasons without retry, page creation
+  is at most once and bound to the proved context, exact navigation and owner re-proof
+  remain mandatory, and the inert production-shaped regression reaches existing pre-submit
+  checks without editing or Send.'
+- 'Second semantic pass ??? adversarial preservation: AC7 passes because TASK-304
+  listener proof, TASK-305 profile occupancy/owner proof, local_chat_wake v3 origin-affinity,
+  canonical freshness, dedupe, generation/draft barriers, at-most-one submission,
+  ambiguity handling and no-blind-resend behavior are not modified; focused regressions
+  remain green.'
+- 'Second semantic pass ??? privacy and lifecycle closure: AC8 passes because documentation
+  preserves machine-local privacy and explicitly leaves H4D closure to separate Human/Brain
+  live proof. AC9 passes because the exact required blobs are present: docs 8179436c743808298ed6ac1e80583f8d4a99bcd7,
+  production 98228b777bf600c8cea6bba54072aabe874b8a92, tests 9eeb324d4b1755b0701597bd73900303f989d953.'
+- No material semantic defect was found in the exact reviewed subject. All nine acceptance
+  criteria PASS and there are no findings. Publication itself does not close H4D or
+  authorize H4E.
