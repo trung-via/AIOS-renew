@@ -1,0 +1,118 @@
+task_id: TASK-308
+revision: 1
+goal: Make positive canonical publication-dispatch acceptance the terminal boundary
+  of the current Brain turn, then resume publication outcome handling only in a fresh
+  Brain Sync turn, without changing publication or wake safety authority.
+problem: 'The canonical ChatGPT Project Contract still requires Brain to invoke and
+  observe publication outcome in the same turn after semantic PASS. Publication itself
+  emits bounded attention back to the origin-affine chat, so same-turn polling can
+  contend with that wake path. The TASK-307 publication path demonstrated this operational
+  risk: publication succeeded, the first bounded local delivery did not submit, and
+  a later follow-up submitted after the chat became available. This task corrects
+  Brain handoff discipline only; it does not reinterpret dispatch acceptance as publication
+  success and does not weaken active-generation or other wake guards.'
+assumptions:
+- Canonical main at authoring is afd7488dffacf50219ee39833a727872920c8bea; TASK-307
+  is reviewed and exactly published.
+- TASK-303 r4 and RUN-303-004 are immutable canonical lineage; RUN-303-004 terminalized
+  as a repairable/transportable EXECUTION FAILURE after the Human canceled the in-flight
+  execution.
+- Canonical roadmap now makes TASK-308 the unique unauthored NEXT and records Human
+  delegation to Codex gpt-6.1-sol high for the entire TASK-308 lifecycle.
+- Human explicitly prioritizes TASK-308 before any TASK-303 r4 REPAIR authoring or
+  continuation.
+- Publication dispatch acceptance is subordinate transport evidence only, never publication
+  success, lifecycle completion, review truth, or roadmap advancement.
+- Local wake active-generation, Human-draft, exact-target, dedupe, ambiguity and no-blind-resend
+  guards remain correct and unchanged.
+scope:
+  inspect:
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - src/aios_renew/local_chat_wake.py
+  - .ai/flow-cards.yaml
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-303.yaml
+  modify:
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+non_goals:
+- Change publication.py, publication workflow implementation, Runtime, Reviewer, Publisher,
+  local wake, unattended wake, Flow Cards, retries, rechecks, invocation limits, acquisition
+  limits or wake guards.
+- Create WAIT_FOR_PUBLICATION, PUBLICATION_PENDING or any other new lifecycle, Unified
+  State or roadmap engineering-state value.
+- Create a Planner, router, scheduler, retry/failover authority, Reviewer, Publisher
+  or Runtime component.
+- Treat publication dispatch acceptance, Brain turn termination or wake delivery as
+  publication success or canonical engineering truth.
+- Poll publication workflow state, canonical main, publication refs or local wake
+  delivery after positive publication dispatch acceptance in the same Brain turn.
+- Modify RUN-303-004 or prior TASK-303 lineage, author or execute TASK-303 r4 REPAIR,
+  or otherwise continue TASK-303 as part of TASK-308.
+constraints:
+  hard:
+  - After semantic PASS Brain must continue to use the canonical publication-continuation
+    surface and preserve exact Publisher authority.
+  - Once canonical publication dispatch is positively accepted, Brain must emit only
+    a concise handoff/status response and terminate the current turn; it must not
+    poll publication outcome, inspect publication-driven main/ref changes, perform
+    manual fallback, or make another semantic decision in that turn.
+  - Positive dispatch acceptance must remain explicitly non-terminal transport evidence
+    and must not be described as publication success or lifecycle truth.
+  - Publication success/failure attention or later explicit Human continuation must
+    resume in a new turn that begins with fresh Brain Sync before any semantic continuation,
+    fallback, roadmap decision, or downstream work.
+  - If publication dispatch is rejected or not accepted, Brain may diagnose that immediate
+    dispatch failure in the current turn because accepted publication continuation
+    was not established; existing fail-closed/manual-fallback authority remains unchanged.
+  - Update Section 12 Publication and the Brain Sync Protocol publication clauses
+    consistently so they no longer require same-turn observation after accepted publication
+    dispatch.
+  - No source outside docs/CHATGPT_PROJECT_CONTRACT.md may change; production transport,
+    Runtime, Reviewer, Publisher, Flow Cards and wake safety behavior remain untouched.
+  - The contract must preserve active-generation, Human-draft, exact-target, dedupe,
+    ambiguity and no-blind-resend safety rather than solving the collision by weakening
+    those guards.
+  - The contract must not introduce a persistent publication-wait state or claim that
+    conversational turn termination itself is canonical engineering evidence.
+  - The rationale must remain generic and must not encode machine-local paths, PIDs,
+    raw conversation identifiers, account/session details, exact event IDs or workflow-run-specific
+    values.
+  - RUN-303-004 and all TASK-303 lineage remain immutable; Human priority pauses TASK-303
+    correction authoring/execution until TASK-308 completes.
+acceptance:
+- id: AC1
+  condition: The candidate changes only docs/CHATGPT_PROJECT_CONTRACT.md and introduces
+    no new lifecycle, routing, retry, verification, review, publication or planning
+    authority.
+- id: AC2
+  condition: Section 12 preserves canonical publication continuation after semantic
+    PASS and states that positive publication dispatch acceptance ends the current
+    Brain turn while remaining explicitly distinct from publication success.
+- id: AC3
+  condition: The Brain Sync Protocol forbids same-turn publication polling after accepted
+    dispatch and requires publication attention or explicit Human continuation to
+    resume in a new turn with fresh Brain Sync.
+- id: AC4
+  condition: Immediate publication dispatch rejection/non-acceptance remains diagnosable
+    in the current turn under existing fail-closed/manual-fallback authority.
+- id: AC5
+  condition: The contract preserves local wake active-generation, Human-draft, exact-target,
+    dedupe, ambiguity and no-blind-resend safety and requires no transport, Runtime,
+    Reviewer, Publisher or Flow Card change.
+- id: AC6
+  condition: No WAIT_FOR_PUBLICATION or equivalent persistent state is created, and
+    dispatch acceptance, turn termination and wake delivery are not promoted to canonical
+    engineering truth.
+- id: AC7
+  condition: RUN-303-004 and all TASK-303 lineage remain unchanged; TASK-308 performs
+    no TASK-303 repair authoring or execution.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - git diff --check
+return_affinity:
+  kind: ORIGIN_AFFINE
+  route_handle: page-origin-v1:45cfef72f6ec40b0143c8515368962a866207800be8f7ddba3f08702c7184f6b
+  generation: 1
