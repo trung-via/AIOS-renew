@@ -533,7 +533,7 @@ sequence:
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
     task_id: TASK-306
-    task_revision: 2
+    task_revision: 3
     objective: >-
       Complete the exact canonical TASK-306 revision-2 recovery from RUN-306-003
       through a FINALIZE_CANDIDATE REPAIR, fresh Runtime verification, semantic
