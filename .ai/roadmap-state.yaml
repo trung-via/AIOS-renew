@@ -20,6 +20,9 @@ production_wake_amendment:
   planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
   production_requirements:
     - ORIGIN_AFFINE_RETURN_REQUIRED_BEFORE_H5
+    - DEVICE_INDEPENDENT_ORIGIN_CAPTURE_REQUIRED
+    - NORMAL_HUMAN_CHAT_MESSAGE_IS_SUFFICIENT_FLOW_INITIATION
+    - NO_LAPTOP_LOCAL_CONNECT_GESTURE_REQUIRED_FOR_FLOW_INITIATION
     - UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5
     - SAME_REPOSITORY_MULTI_CHAT_ISOLATION_REQUIRED
     - PRODUCTION_MULTI_LANE_LIVE_PROOF_REQUIRED
@@ -653,8 +656,53 @@ sequence:
         route reaches the exact chat; it is not unattended H4D/H4E live-exit proof.
     return_to: task308-origin-correct-replacement-v1
 
-  - id: task308-origin-correct-replacement-v1
+  - id: h4-device-independent-origin-capture-correction-v1
     status: NEXT
+    phase: H4_ORIGIN_CAPTURE_DEVICE_INDEPENDENCE_CORRECTION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-06"
+    task_authoring_status: UNAUTHORED
+    objective: >-
+      Replace the laptop-local page-scoped Connect dependency as the production origin
+      authority so a normal Human message can initiate an AIOS flow from any regular
+      Chat surface, including another browser or phone, while preserving exact
+      conversation return affinity and fail-closed provenance.
+    human_requirement:
+      authority: HUMAN
+      statement: >-
+        Human must not need to remain at or return to the AIOS laptop merely to press a
+        Connect button. A flow started in a regular Chat from any browser or phone must
+        be able to establish the exact return origin automatically.
+      intent_boundary: >-
+        The initiating Human chat message is the Human intent event; no second synthetic
+        or laptop-local Human gesture may be required for ordinary flow initiation.
+    diagnosed_gap:
+      current_contract: PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1
+      limitation: >-
+        Current origin bootstrap requires event.isTrusted in a CDP-attached local page
+        and therefore only proves pages present on that machine. H4D unattended wake can
+        reacquire an already bound destination but does not create exact origin binding
+        for a conversation initiated solely on another device.
+      consequence: >-
+        Current H4C0/TASK-309 provenance path does not satisfy the standing cross-device
+        zero-touch origin requirement.
+    constraints:
+      - NO_ACTIVE_OR_RECENT_TAB_HEURISTIC
+      - NO_TIMESTAMP_OR_TRANSCRIPT_MATCHING
+      - NO_MODEL_MEMORY_AS_ORIGIN_AUTHORITY
+      - NO_SILENT_DEFAULT_CHAT
+      - NO_SYNTHETIC_HUMAN_CLICK_OR_DUMMY_DRAFT
+      - NO_RAW_CHAT_IDENTITY_IN_CANONICAL_ENGINEERING_STATE
+      - PRESERVE_HUMAN_AUTHORITY_WITHOUT_SECOND_GESTURE
+      - PRESERVE_EXACT_ORIGIN_AFFINITY_AND_GENERATION_SAFETY
+      - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
+    architecture_status: UNSOLVED_REQUIRES_BRAIN_AUDIT
+    blocks:
+      - task308-origin-correct-replacement-v1
+    return_to: task308-origin-correct-replacement-v1
+
+  - id: task308-origin-correct-replacement-v1
+    status: BLOCKED_FOR_DEVICE_INDEPENDENT_ORIGIN_CAPTURE
     phase: BRAIN_PUBLICATION_TURN_HANDOFF_CORRECTION_REPLACEMENT
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
@@ -678,14 +726,21 @@ sequence:
       review_id: REVIEW-309-001
       published_sha: "6d400f015f68944aa1b50b7f2a77decfe0251c39"
     authoring_gate:
-      status: FRESH_POST_TASK309_ORIGIN_BOOTSTRAP_REQUIRED
-      intended_route_handle: "page-origin-v1:daea771dcc0c97b21f655fb82d3d2ac03cfd430a1872158439f255a0f9a37665"
-      intended_generation: 1
-      requirement: >-
-        A fresh PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 proof must be minted from this
-        exact chat using the same production machine-local origin registry now shared by
-        bootstrap, wake and TASK-309 provenance admission. The route selector alone is
-        insufficient.
+      status: SUPERSEDED_BY_HUMAN_DEVICE_INDEPENDENT_ORIGIN_REQUIREMENT
+      prior_route_handle: "page-origin-v1:daea771dcc0c97b21f655fb82d3d2ac03cfd430a1872158439f255a0f9a37665"
+      prior_generation: 1
+      blocker: >-
+        The post-TASK-309 page-scoped proof path requires a Human gesture in a
+        machine-local CDP-attached Chat page and therefore cannot satisfy the Human's
+        standing requirement that a normal flow initiated from any regular Chat surface,
+        including another browser or phone, can continue without the Human returning to
+        the laptop to press Connect.
+      required_replacement_contract: >-
+        The Human's normal chat message that initiates the AIOS flow is sufficient Human
+        intent. Exact origin capture/provenance must be automatic and device-independent,
+        must not require a second laptop-local gesture, and must still fail closed rather
+        than infer origin from active/recent tabs, timestamps, transcript similarity or
+        Brain memory.
     semantic_reuse:
       source_task: TASK-308
       source_review: REVIEW-308-001
