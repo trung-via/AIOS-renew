@@ -102,6 +102,38 @@ production_wake_amendment:
         - REGISTRY_MISMATCH_FAILS_EARLY_WITH_BOUNDED_DIAGNOSTIC
         - NO_RAW_CHAT_IDENTITY_OR_ENDPOINT_IN_CANONICAL_STATE
         - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
+    - id: h4-origin-authoring-proof-human-gesture-coupling
+      status: DEFERRED_TO_NEXT_WAKE_ORIGIN_FIX_BATCH
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-06"
+      evidence:
+        contract: PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1
+        observation: >-
+          The current bootstrap can accept the trusted Connect gesture on an empty
+          composer, but its subsequent insert stage rejects an empty authorized draft.
+          Therefore a fresh origin-authoring proof cannot complete unless the Human has
+          entered non-empty draft text and performs the explicit in-page Connect gesture.
+        implementation_constraints:
+          - CONNECT_GESTURE_REQUIRES_EVENT_ISTRUSTED_TRUE
+          - INSERT_STAGE_REJECTS_EMPTY_DRAFT
+          - TASK309_AUTHORING_PROOF_IS_BOUNDED_SINGLE_CARRIER_ADMISSION
+      impact: >-
+        Current post-TASK-309 revision-1 ORIGIN_AFFINE task authoring may require the
+        Human to be present again even for a conversation whose stable route was already
+        established. This blocks the intended zero-touch task-to-task continuation.
+      disposition: >-
+        Preserve explicit Human authority for initial conversation-route establishment,
+        but decouple that one-time connect from later bounded authoring-proof refresh.
+        Future proof refresh must not fabricate Human draft text or silently auto-click
+        the Connect gesture under the current contract; it should reuse the already
+        established exact route through a separately audited machine-local proof refresh
+        mechanism that cannot change route ownership or generation.
+      required_outcomes:
+        - INITIAL_CHAT_CONNECT_REMAINS_EXPLICIT_HUMAN_ATTESTATION
+        - LATER_AUTHORING_PROOF_REFRESH_DOES_NOT_REQUIRE_DUMMY_DRAFT_TEXT
+        - LATER_AUTHORING_PROOF_REFRESH_DOES_NOT_REQUIRE_HUMAN_STANDING_BY_PER_TASK
+        - NO_SYNTHETIC_HUMAN_INTENT_OR_IMPLICIT_ROUTE_TRANSFER
+        - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
 
 verification_foundation_audit:
   id: ta-0-ta-1-verification-foundation
