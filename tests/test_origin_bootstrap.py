@@ -28,7 +28,7 @@ def test_h4c1_shared_opaque_selector_grammar_preserves_h4c0_contract():
     assert origin.MAX_GENERATION == affinity.MAX_GENERATION == 2147483647
     handle = origin.HANDLE_PREFIX + "a" * 64
     result = origin.BootstrapResult("SUBMITTED", "ACCEPTED", handle, 1).as_dict()
-    assert set(result) == {"contract", "status", "reason", "route_handle", "generation"}
+    assert set(result) == {"contract", "status", "reason", "route_handle", "generation", "authoring_proof"}
     assert result["contract"] == "PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1"
     assert affinity.parse_affinity(dict(kind="ORIGIN_AFFINE", route_handle=handle, generation=1)).route_handle == handle
 
@@ -111,7 +111,7 @@ def test_durable_order_and_bounded_opaque_envelope(registry, monkeypatch):
     assert result.generation == 1 and origin.HANDLE.fullmatch(result.route_handle)
     assert len(adapter.metadata.encode("ascii")) <= origin.MAX_ENVELOPE_BYTES
     assert result.route_handle in adapter.metadata
-    assert set(result.as_dict()) == {"contract", "status", "reason", "route_handle", "generation"}
+    assert set(result.as_dict()) == {"contract", "status", "reason", "route_handle", "generation", "authoring_proof"}
 
 
 def test_repeat_distinct_same_repository_and_reload_reopen_routes(registry):
@@ -129,6 +129,111 @@ def test_repeat_distinct_same_repository_and_reload_reopen_routes(registry):
     reopened = origin.bootstrap(registry, Adapter(registry, project_url))
     assert reopened.route_handle == a1.route_handle and reopened.generation == a1.generation
     assert registry.read()["routes"][origin.conversation_key(URL_A)]["chat_url"] == project_url
+
+
+def authoring_binding(result, *, attempt=1):
+    return dict(carrier_attempt=f"github-issue:trung-via/AIOS-renew#107@trung-via/run:900/attempt:{attempt}",
+                task_id="TASK-309", expected_main_sha="a" * 40,
+                route_handle=result.route_handle, generation=result.generation,
+                proof=result.authoring_proof, envelope_sha256="b" * 64)
+
+
+def test_h4c0_authoring_proof_is_page_bound_bounded_and_only_ready_after_submission(registry):
+    from aios_renew import origin_authoring_proof as proofs
+    a = Adapter(registry, URL_A)
+    first = origin.bootstrap(registry, a)
+    assert proofs.PROOF.fullmatch(first.authoring_proof)
+    assert first.authoring_proof in a.metadata
+    b = Adapter(registry, URL_B)
+    second = origin.bootstrap(registry, b)
+    assert first.authoring_proof != second.authoring_proof
+    assert first.route_handle != second.route_handle
+    state = proofs.ProofStore(registry).read()
+    external = json.dumps(state) + a.metadata + b.metadata + json.dumps(first.as_dict())
+    for sensitive in (URL_A, URL_B, ENDPOINT, str(registry.path)):
+        assert sensitive not in external
+    assert set(state) == {"version", "proofs"} and len(state["proofs"]) == 2
+    assert set(registry.read()) == {"version", "routes"}  # Wake registry shape preserved.
+    for record in state["proofs"].values():
+        assert record["admission"] is None
+        assert not {"task", "run", "next_action", "queue", "chat_url", "cdp_endpoint"} & set(record)
+
+
+@pytest.mark.parametrize("route", (URL_A, URL_B))
+def test_authoring_proof_a_to_a_b_to_b_and_same_attempt_is_idempotent(registry, route):
+    from aios_renew import origin_authoring_proof as proofs
+    result = origin.bootstrap(registry, Adapter(registry, route))
+    binding, key = authoring_binding(result), "c" * 64
+    receipt = proofs.admit_local(registry, binding, key)
+    before = proofs.ProofStore(registry).path.read_bytes()
+    assert proofs.admit_local(registry, binding, key) == receipt
+    assert proofs.ProofStore(registry).path.read_bytes() == before
+    assert proofs.authenticate_receipt(receipt, binding, key).receipt == receipt
+    with pytest.raises(proofs.OriginProofError):
+        proofs.admit_local(registry, dict(binding, carrier_attempt=authoring_binding(result, attempt=2)["carrier_attempt"]), key)
+
+
+@pytest.mark.parametrize("fault", (
+    "a_proof_for_b", "a_selector_for_b", "missing", "stale", "generation",
+    "registry_generation", "ambiguous", "new_bootstrap", "pending", "duplicate_handle",
+    "task", "main", "body", "attempt", "signature",
+))
+def test_authoring_proof_missing_stale_mismatch_ambiguity_and_reuse_fail_closed(registry, monkeypatch, fault):
+    from aios_renew import origin_authoring_proof as proofs
+    a = origin.bootstrap(registry, Adapter(registry, URL_A))
+    b = origin.bootstrap(registry, Adapter(registry, URL_B))
+    binding, key = authoring_binding(b), "c" * 64
+    if fault == "a_proof_for_b":
+        binding["proof"] = a.authoring_proof
+    elif fault == "a_selector_for_b":
+        binding["route_handle"] = a.route_handle
+    elif fault == "missing":
+        binding["proof"] = proofs.PROOF_PREFIX + "0" * 64
+    elif fault == "stale":
+        now = proofs._clock()
+        monkeypatch.setattr(proofs, "_clock", lambda: now + proofs.TTL_SECONDS)
+    elif fault == "generation":
+        binding["generation"] = 2
+    elif fault in {"registry_generation", "ambiguous", "duplicate_handle"}:
+        data = registry.read()
+        if fault == "registry_generation":
+            data["routes"][URL_B]["generation"] = 2
+        elif fault == "ambiguous":
+            data["routes"][URL_B]["attempt"]["status"] = "AMBIGUOUS"
+        else:
+            data["routes"][URL_A]["handle"] = b.route_handle
+        # Write a deliberately invalid duplicate fixture without the production validator.
+        registry.path.write_text(json.dumps(data), encoding="utf-8")
+    elif fault == "new_bootstrap":
+        origin.bootstrap(registry, Adapter(registry, URL_B))
+    elif fault == "pending":
+        registry.path.with_name(registry.path.name + ".pending").write_text("uncertain", encoding="utf-8")
+    else:
+        receipt = proofs.admit_local(registry, binding, key)
+        if fault == "signature":
+            receipt["signature"] = "0" * 64
+            with pytest.raises(proofs.OriginProofError):
+                proofs.authenticate_receipt(receipt, binding, key)
+            return
+        replacements = {"task": ("task_id", "TASK-310"), "main": ("expected_main_sha", "d" * 40),
+                        "body": ("envelope_sha256", "d" * 64),
+                        "attempt": ("carrier_attempt", authoring_binding(b, attempt=2)["carrier_attempt"])}
+        field, value = replacements[fault]
+        binding[field] = value
+    with pytest.raises((proofs.OriginProofError, origin.BootstrapBlocked, wake.WakeBlocked)):
+        proofs.admit_local(registry, binding, key)
+
+
+def test_unsubmitted_or_ambiguous_page_metadata_cannot_be_admitted(registry):
+    from aios_renew import origin_authoring_proof as proofs
+    adapter = Adapter(registry, blocked="prove_submission")
+    result = origin.bootstrap(registry, adapter)
+    assert result.authoring_proof is None and result.status == "AMBIGUOUS"
+    metadata = json.loads(adapter.metadata.splitlines()[1])
+    binding = authoring_binding(origin.BootstrapResult("SUBMITTED", "ACCEPTED",
+        metadata["route_handle"], metadata["generation"], metadata["authoring_proof"]))
+    with pytest.raises(proofs.OriginProofError):
+        proofs.admit_local(registry, binding, "c" * 64)
 
 
 def test_overlapping_same_conversation_tabs_cannot_compete(registry):
@@ -265,7 +370,7 @@ def test_local_only_identity_and_no_lifecycle_or_wake_authority(registry, monkey
     assert data["routes"][URL_A]["cdp_endpoint"] == ENDPOINT
     assert set(data) == {"version", "routes"}
     assert not {"repository", "task", "run", "next_action", "wake", "queue", "prompt", "transcript"} & set(data)
-    assert {p.name for p in tmp_path.iterdir()} == {"origin.json", "canonical-result.json"}
+    assert {p.name for p in tmp_path.iterdir()} == {"origin.json", "origin.json.authoring", "canonical-result.json"}
     # A handle alone is not an origin-proof argument to either entry.
     assert origin.main(["--route-handle", result.route_handle]) == 1
 
@@ -307,7 +412,7 @@ def test_raw_exception_debug_and_copied_identity_arguments_are_not_output(regist
     adapter.capture = raw_failure
     assert origin.bootstrap(registry, adapter).as_dict() == dict(
         contract=origin.CONTRACT, status="UNPROVED", reason="LOCAL_FAILURE",
-        route_handle=None, generation=None)
+        route_handle=None, generation=None, authoring_proof=None)
     monkeypatch.setenv("DEBUG", "pw:api")
     assert origin.main(["--state", str(registry.path), "--endpoint", ENDPOINT]) == 1
     assert "INVALID_INPUT" in capsys.readouterr().out

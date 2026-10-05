@@ -41,7 +41,7 @@ MAX_PAGES = 32
 MAX_CONTEXTS = 8
 CHALLENGE_TTL_MS = 30000
 MAX_DRAFT_CHARS = 65536
-MAX_ENVELOPE_BYTES = 384
+MAX_ENVELOPE_BYTES = 512
 MAX_ROUTE_CHARS = 512
 MAX_ENDPOINT_CHARS = 128
 SLOT = "__aiosPageOriginBootstrapV1"
@@ -68,10 +68,12 @@ class BootstrapResult:
     reason: str
     route_handle: str | None = None
     generation: int | None = None
+    authoring_proof: str | None = None
 
     def as_dict(self):
         return dict(contract=CONTRACT, status=self.status, reason=self.reason,
-                    route_handle=self.route_handle, generation=self.generation)
+                    route_handle=self.route_handle, generation=self.generation,
+                    authoring_proof=self.authoring_proof)
 
 
 @dataclass
@@ -272,12 +274,18 @@ class OriginRegistry(wake.State):
             raise BootstrapBlocked("REGISTRY_CONFLICT")
 
 
-def envelope(handle, generation):
+def envelope(handle, generation, authoring_proof=None):
     if (type(handle) is not str or not HANDLE.fullmatch(handle)
             or type(generation) is not int or not 1 <= generation <= MAX_GENERATION):
         raise BootstrapBlocked("INVALID_INPUT")
+    metadata = dict(contract=CONTRACT, route_handle=handle, generation=generation)
+    if authoring_proof is not None:
+        from .origin_authoring_proof import PROOF
+        if type(authoring_proof) is not str or not PROOF.fullmatch(authoring_proof):
+            raise BootstrapBlocked("INVALID_INPUT")
+        metadata["authoring_proof"] = authoring_proof
     value = ("[AIOS ORIGIN BOOTSTRAP]\n" + json.dumps(
-        dict(contract=CONTRACT, route_handle=handle, generation=generation),
+        metadata,
         separators=(",", ":")) + "\n[/AIOS ORIGIN BOOTSTRAP]")
     if len(value.encode("ascii")) > MAX_ENVELOPE_BYTES:
         raise BootstrapBlocked("INVALID_INPUT")
@@ -294,14 +302,17 @@ def bootstrap(registry, adapter):
             key, item = registry.bind(data, proof)
             adapter.revalidate(proof)
             registry.current(data, key)
-            metadata = envelope(item["handle"], item["generation"])
+            from .origin_authoring_proof import issue_page_proof
+            bootstrap_attempt = secrets.token_hex(32)
+            authoring_proof = issue_page_proof(registry, item, bootstrap_attempt)
+            metadata = envelope(item["handle"], item["generation"], authoring_proof)
             adapter.insert(proof, metadata)
             adapter.ready(proof)
             adapter.revalidate(proof)
             registry.current(data, key)
             # Persist no-blind-resend intent before the click boundary. A crash
             # here is conservative ambiguity, never permission to resend.
-            item["attempt"] = dict(id=secrets.token_hex(32), status="ATTEMPTING")
+            item["attempt"] = dict(id=bootstrap_attempt, status="ATTEMPTING")
             registry.write(data)
             adapter.revalidate(proof)
             registry.current(data, key)
@@ -317,7 +328,7 @@ def bootstrap(registry, adapter):
             registry.current(data, key)
             item["attempt"]["status"] = "SUBMITTED"
             registry.write(data)
-            return BootstrapResult("SUBMITTED", "ACCEPTED", item["handle"], item["generation"])
+            return BootstrapResult("SUBMITTED", "ACCEPTED", item["handle"], item["generation"], authoring_proof)
     except (BootstrapBlocked, wake.WakeBlocked) as error:
         reason = str(error) if str(error) in REASONS else "LOCAL_FAILURE"
         return BootstrapResult("AMBIGUOUS" if attempted else "UNPROVED", reason)
@@ -529,7 +540,7 @@ INSTALL = r"""({slot, composer, send, stop, nonregular, login, ttl, maxDraft}) =
     // the retained scoped control, both before intent and after its write.
     prove: p => !!proves(p) && (!staged || !!ready(p)),
     insert: ({proof, metadata}) => {
-      if (!proves(proof) || staged || typeof metadata !== 'string' || metadata.length > 384 ||
+      if (!proves(proof) || staged || typeof metadata !== 'string' || metadata.length > 512 ||
           !metadata.startsWith('[AIOS ORIGIN BOOTSTRAP]\n') ||
           !metadata.endsWith('\n[/AIOS ORIGIN BOOTSTRAP]')) return false;
       const box = surface(), draft = box.innerText;

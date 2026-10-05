@@ -63,6 +63,25 @@ ChatGPT Brain owns:
 
 Brain does not implement production code.
 
+New revision-1 `ORIGIN_AFFINE` TASK authoring must carry the bounded opaque
+`origin_authoring_proof` emitted by this exact page's H4C0 bootstrap, alongside
+the audited ingress handoff. The proof stays in the operational ingress envelope,
+outside the TASK payload. Copying a selector, an old TASK, another chat's proof,
+or an assistant/transcript assertion does not establish this chat's provenance.
+The production carrier must admit the proof against machine-local H4C0 state on
+a bounded self-hosted runner before hosted AUTHOR_TASK mutation. Admission binds
+the exact Issue/run attempt, TASK id, expected main, final route/generation and
+envelope digest. Missing, stale, conflicting or reused proof fails closed.
+
+Ordinary revisions preserve the existing affinity exactly and do not consume a
+current-chat proof. Legacy routing is explicitly separate. Brain cannot infer
+origin from recent chat, repository defaults, prior artifacts or memory, and
+cannot put a self-certified admission into TASK or canonical lifecycle records.
+Deployment-owned key/registry configuration remains operational setup outside
+canonical artifacts. See [the TASK-309 provenance gate](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md#new-task-origin-provenance-gate-task-309).
+This changes no Runtime verification, Reviewer verdict, Publisher publication,
+TASK-308 disposition, TASK-303 pause, or Human/Brain phase-closure authority.
+
 ## 4. Executor Responsibilities
 
 Exactly one active Executor owns HOW.

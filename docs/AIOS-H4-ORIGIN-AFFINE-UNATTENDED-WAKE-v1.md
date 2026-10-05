@@ -8,6 +8,61 @@ Production requirement: `ORIGIN_AFFINE_RETURN + UNATTENDED_LOCAL_WAKE_REQUIRED_B
 
 ## H4C1 implementation contract (TASK-301)
 
+### New-TASK origin provenance gate (TASK-309)
+
+Prospective revision-1 `ORIGIN_AFFINE` AUTHOR_TASK now requires an independently
+admitted `origin_authoring_proof` in the operational ingress envelope. A selector
+alone cannot establish provenance. H4C0 appends a random
+`origin-authoring-v1:<64 lowercase hex digits>` proof to the exact proved page's
+bootstrap envelope. An external `.authoring` sidecar binds its digest to that
+route, generation and successful bootstrap attempt, with a one-hour lifetime.
+Issuance precedes insertion; admission requires the registry's exact `SUBMITTED`
+attempt. Unsubmitted, ambiguous, replaced, expired, wrong-generation, missing
+or conflicting local state fails closed. No raw chat identity or endpoint leaves
+the local boundary. The proof is operational provenance, never TASK/RUN truth.
+
+The reusable Brain ingress workflow frames the immutable authorized Issue on a
+hosted runner, then runs a bounded provenance job on the existing self-hosted
+Windows `aios-renew` runner only for an origin revision-1 request. That job reads
+the machine-owned `AIOS_ORIGIN_REGISTRY` environment setting and its sidecar;
+hosted code cannot read or claim to validate that local state. Under exclusive
+registry/sidecar locks it consumes the proof for exactly one carrier binding:
+repository/Issue/actor, GitHub run id and run attempt, TASK id, expected main SHA,
+route handle, generation, and parsed ingress-envelope digest (including the
+audited handoff). The same binding returns the same receipt without another
+state mutation. Any different attempt, subject, predecessor or envelope fails.
+
+The self-hosted job signs only those bounded selectors and proof validity times
+with HMAC-SHA256 using the deployment-owned `AIOS_ORIGIN_ADMISSION_KEY` secret
+(64 lowercase hexadecimal characters, independently provisioned). Its one-day
+operational artifact is named for the current workflow attempt. Hosted delivery
+downloads only that run's artifact, authenticates its signature and entire
+binding, and passes the authenticated context outside the semantic payload.
+AUTHOR_TASK authenticates again using the deployment key, matches the admitted
+route/generation to the final parsed TASK, and rechecks validity before object
+creation and canonical publication. Missing setup, failed local admission,
+missing artifact, signature/body/attempt mismatch or expiry blocks mutation;
+the existing hosted FAIL receipt and attention path remain available. There is
+no hosted-only substitute or Issue-supplied admission flag.
+
+Revision-1 origin replay also requires its original admitted attempt and complete
+envelope. Ordinary revisions use no current-chat proof and must preserve the
+existing affinity exactly. Supplying a proof on a revision or explicit legacy
+request is rejected; historical legacy replay remains separate. No provenance
+is inferred from a TASK, prior TASK, default/recent chat, transcript or Brain
+memory. Proofs are not appended to canonical TASK, RUN, RESULT or review records.
+The sidecar is bounded to 256 proofs and 262,144 bytes; uncertain writes, stale
+locks, malformed/duplicate state and exhaustion require Human handling, without
+automatic eviction, retry or transfer. A fresh bootstrap invalidates a prior
+proof for that route by changing its local bootstrap attempt, never generation.
+
+This gate changes no RUN/attention propagation, wake event identity, lane
+ownership, exact-target/generation/draft checks, dedupe or no-blind-resend rule.
+It changes no TASK-308/REVIEW-308-001 or TASK-303/RUN-303-004 lineage or disposition.
+Runtime owns canonical verification and EVIDENCE; Reviewer owns verdict; Publisher
+owns exact publication; Human/Brain owns later TASK-308 disposition and phase
+closure. Implementation and regression definitions claim none of those outcomes.
+
 The permitted candidate implements the following selector/lineage/lane contract.
 This section records implementation behavior; it does not record Runtime PASS,
 Reviewer verdict, publication, local migration/setup, live routing conformance,
@@ -29,7 +84,8 @@ identity/endpoint/path fields, malformed handles and duplicate YAML fields fail
 closed. A historical missing carrier reads as legacy, never as exact origin.
 After TASK-301's exact publication activates this authoring implementation, new
 AUTHOR_TASK identities and revisions require explicit classification. Historical
-identical revision replay remains readable. Ordinary revision authoring preserves
+legacy identical revision replay remains readable; origin revision-1 replay follows
+TASK-309's admitted-attempt gate above. Ordinary revision authoring preserves
 the previous selector, including generation; changing ownership requires separate
 explicit Human authority and a future transfer contract. Runtime and transport
 cannot infer, authorize, increment or perform a transfer.
@@ -76,7 +132,7 @@ invalid state, stale generation, uncertain writes/locks or an unresolved
 bootstrap attempt block delivery. There is no legacy fallback. The raw normalized
 chat URL and loopback endpoint remain inside this local resolution/browser
 boundary. H4C0 allocation, gesture proof and single-submit semantics are unchanged;
-only its existing handle/generation grammar is shared.
+TASK-309 adds only the bounded authoring proof alongside that existing boundary.
 
 One handle owns one durable lane file and exclusive lock, independent of TASK
 and generation. Separate repository buckets preserve unchanged event identities

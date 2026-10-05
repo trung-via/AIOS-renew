@@ -14,7 +14,12 @@ from typing import Any
 
 import yaml
 
-from .authoring_ingress import AuthoringIngressError, IngressResult, ingest_carrier
+from .authoring_ingress import (AuthoringIngressError, IngressResult, ingest_carrier,
+                               parse_envelope, _payload_to_str)
+from .origin_authoring_proof import (OriginProofError, authenticate_receipt, binding_for,
+                                    admit_local, read_receipt)
+from .return_affinity import OriginAffinity
+from .task import TaskValidationError, parse_task
 from .repair_dispatch import (
     FAILED_RUN_ID_PATTERN,
     REPAIR_DISPATCH_ID_PATTERN,
@@ -307,13 +312,74 @@ def deliver_event(
     policy_path: str | Path,
     *,
     repo: str | Path,
+    origin_admission_path: str | Path | None = None,
+    carrier_attempt: str | None = None,
+    admission_key: str | None = None,
 ) -> IssueDelivery:
     """Admit one event and delegate its opaque body to semantic ingress exactly once."""
 
     policy = load_policy(policy_path)
     issue = admit_event(event_path, policy)
-    result = ingest_carrier("-", repo=Path(repo), stdin_bytes=issue.body_bytes)
+    admission = None
+    if origin_admission_path is not None:
+        envelope, required = _origin_request(issue)
+        if required:
+            try:
+                admission = authenticate_receipt(read_receipt(origin_admission_path),
+                    binding_for(envelope, carrier_attempt or _carrier_attempt(issue)),
+                    admission_key or os.environ.get("AIOS_ORIGIN_ADMISSION_KEY"))
+            except OriginProofError as exc:
+                raise GitHubIssueIngressError(str(exc)) from None
+    kwargs = {"origin_admission": admission} if admission is not None else {}
+    result = ingest_carrier("-", repo=Path(repo), stdin_bytes=issue.body_bytes, **kwargs)
     return IssueDelivery(carrier_identity=issue.identity, ingress_result=result)
+
+
+def _origin_request(issue):
+    """Frame only; no semantic ingress, canonical writes or selector inference."""
+    envelope = parse_envelope(issue.body_bytes)
+    required = False
+    if envelope.operation == "AUTHOR_TASK":
+        try:
+            task = parse_task(_payload_to_str(envelope.payload))
+        except TaskValidationError:
+            raise GitHubIssueIngressError("invalid TASK origin proof request") from None
+        required = task.revision == 1 and isinstance(task.return_affinity, OriginAffinity)
+    if envelope.origin_authoring_proof is not None and not required:
+        raise GitHubIssueIngressError("legacy and revision authoring do not consume origin proof")
+    return envelope, required
+
+
+def _carrier_attempt(issue):
+    run_id, attempt = os.environ.get("GITHUB_RUN_ID", ""), os.environ.get("GITHUB_RUN_ATTEMPT", "")
+    if (os.environ.get("GITHUB_REPOSITORY") != issue.repository
+            or not re.fullmatch(r"[1-9][0-9]{0,19}", run_id)
+            or not re.fullmatch(r"[1-9][0-9]{0,9}", attempt)):
+        raise GitHubIssueIngressError("origin proof requires exact GitHub carrier attempt")
+    return f"{issue.identity}/run:{run_id}/attempt:{attempt}"
+
+
+def prepare_origin_admission(event_path, policy_path, receipt_path):
+    """Production self-hosted pre-mutation gate. Never invokes semantic ingress."""
+    if os.environ.get("RUNNER_ENVIRONMENT") != "self-hosted":
+        raise GitHubIssueIngressError("origin proof admission requires self-hosted local state")
+    issue = admit_event(event_path, load_policy(policy_path))
+    envelope, required = _origin_request(issue)
+    if not required:
+        raise GitHubIssueIngressError("origin proof admission requires new ORIGIN_AFFINE TASK")
+    try:
+        from .origin_bootstrap import OriginRegistry, BootstrapBlocked
+        from .local_chat_wake import WakeBlocked
+        registry_path = os.environ.get("AIOS_ORIGIN_REGISTRY")
+        if not registry_path:
+            raise OriginProofError("machine-local origin registry is required")
+        receipt = admit_local(OriginRegistry(registry_path), binding_for(envelope, _carrier_attempt(issue)),
+                             os.environ.get("AIOS_ORIGIN_ADMISSION_KEY"))
+        path = Path(receipt_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(receipt, sort_keys=True), encoding="utf-8")
+    except (OriginProofError, OSError, ValueError, BootstrapBlocked, WakeBlocked):
+        raise GitHubIssueIngressError("origin authoring proof admission failed closed") from None
 
 
 def _bounded_text(value: str) -> str:
@@ -344,6 +410,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--policy", default=".ai/brain-ingress-carriers.yaml")
     parser.add_argument("--repo", default=".")
     parser.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
+    parser.add_argument("--mode", choices=("deliver", "frame", "admit-origin"), default="deliver")
+    parser.add_argument("--origin-admission")
     return parser
 
 
@@ -353,14 +421,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(render_failure(GitHubIssueIngressError("GITHUB_EVENT_PATH is required")))
         return 1
     try:
-        delivery = deliver_event(args.event, args.policy, repo=args.repo)
+        if args.mode == "frame":
+            issue = admit_event(args.event, load_policy(args.policy))
+            _, required = _origin_request(issue)
+            if args.output:
+                _write_outputs(args.output, f"origin_proof_required={str(required).lower()}\n")
+            print("AIOS origin provenance request framed")
+            return 0
+        if args.mode == "admit-origin":
+            if not args.origin_admission:
+                raise GitHubIssueIngressError("origin admission output is required")
+            prepare_origin_admission(args.event, args.policy, args.origin_admission)
+            print("AIOS origin provenance admitted")
+            return 0
+        delivery = deliver_event(args.event, args.policy, repo=args.repo,
+                                origin_admission_path=args.origin_admission)
         if args.output:
             outputs = delivery.github_outputs()
             if outputs:
                 _write_outputs(args.output, outputs)
-    except (GitHubIssueIngressError, AuthoringIngressError, OSError) as exc:
+    except (GitHubIssueIngressError, AuthoringIngressError, OriginProofError, OSError) as exc:
         from .brain_attention import observe_carrier_rejection
-        observe_carrier_rejection(args.event, "INGRESS")
+        if args.mode == "deliver":
+            observe_carrier_rejection(args.event, "INGRESS")
         print(render_failure(exc))
         return 1
     from .brain_attention import observe_ingress_success

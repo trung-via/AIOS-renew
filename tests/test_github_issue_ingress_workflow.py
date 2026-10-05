@@ -20,7 +20,7 @@ def test_workflow_is_reusable_only_and_retains_exact_marker_gate() -> None:
     workflow, _ = _workflow()
     assert workflow["on"] == {"workflow_call": ""}
     job = workflow["jobs"]["deliver"]
-    assert job["if"] == "github.event.issue.title == '[AIOS BRAIN INGRESS]'"
+    assert job["if"] == "always() && github.event.issue.title == '[AIOS BRAIN INGRESS]'"
     assert "issue_comment" not in workflow["on"]
     assert "workflow_dispatch" not in workflow["on"]
 
@@ -43,6 +43,52 @@ def test_workflow_checks_out_canonical_main_with_full_history() -> None:
     checkout = workflow["jobs"]["deliver"]["steps"][0]
     assert checkout["uses"] == "actions/checkout@v4"
     assert checkout["with"] == {"ref": "main", "fetch-depth": "0"}
+
+
+def test_origin_provenance_is_self_hosted_bounded_and_precedes_hosted_canonicalization() -> None:
+    workflow, text = _workflow()
+    jobs = workflow["jobs"]
+    frame, admission, delivery = jobs["origin_request"], jobs["origin_provenance"], jobs["deliver"]
+    assert frame["runs-on"] == delivery["runs-on"] == "ubuntu-latest"
+    assert admission["runs-on"] == ["self-hosted", "windows", "x64", "aios-renew"]
+    assert admission["needs"] == "origin_request"
+    assert admission["if"] == "needs.origin_request.outputs.required == 'true'"
+    assert delivery["needs"] == ["origin_request", "origin_provenance"]
+    assert frame["permissions"] == admission["permissions"] == {"contents": "read"}
+    assert frame["timeout-minutes"] == admission["timeout-minutes"] == "5"
+    framing = next(s for s in frame["steps"] if s.get("id") == "frame")
+    assert "--mode frame" in framing["run"]
+    gate = next(s for s in admission["steps"] if s.get("name", "").startswith("Admit exact attempt"))
+    assert "--mode admit-origin" in gate["run"] and "--event" in gate["run"]
+    assert "$LASTEXITCODE" in gate["run"]
+    assert gate["env"]["AIOS_ORIGIN_ADMISSION_KEY"] == "${{ secrets.AIOS_ORIGIN_ADMISSION_KEY }}"
+    assert "continue-on-error" not in gate
+    # Admission never calls deliver/default ingress or an execution launcher.
+    assert all("--mode admit-origin" in s["run"] for s in admission["steps"]
+               if "aios_renew.github_issue_ingress" in s.get("run", ""))
+    for forbidden in ("aios run", "aios repair", "aios remediate", "createWorkflowDispatch"):
+        assert all(forbidden not in s.get("run", "") for s in admission["steps"])
+    assert "github.event.issue.body" not in text
+    # Local registry location comes only from the self-hosted machine environment.
+    assert "AIOS_ORIGIN_REGISTRY" not in text
+
+
+def test_origin_admission_artifact_and_delivery_are_bound_to_this_attempt_and_fail_closed() -> None:
+    workflow, _ = _workflow()
+    jobs = workflow["jobs"]
+    upload = next(s for s in jobs["origin_provenance"]["steps"] if s.get("uses") == "actions/upload-artifact@v4")
+    download = next(s for s in jobs["deliver"]["steps"] if s.get("uses") == "actions/download-artifact@v4")
+    assert upload["with"]["name"] == download["with"]["name"] == "aios-origin-admission-v1-attempt-${{ github.run_attempt }}"
+    assert upload["with"]["retention-days"] == "1" and upload["with"]["if-no-files-found"] == "error"
+    assert download["if"] == "needs.origin_provenance.result == 'success'"
+    assert not {"run-id", "repository", "github-token"} & set(download["with"])
+    ingress = next(s for s in jobs["deliver"]["steps"] if s.get("id") == "ingress")
+    assert '--origin-admission "$AIOS_ORIGIN_ADMISSION_PATH"' in ingress["run"]
+    assert "github.run_attempt" in ingress["env"]["AIOS_ORIGIN_ADMISSION_PATH"]
+    assert ingress["env"]["AIOS_ORIGIN_ADMISSION_KEY"] == "${{ secrets.AIOS_ORIGIN_ADMISSION_KEY }}"
+    # A failed provenance job still reaches the existing FAIL receipt/attention
+    # path; missing authenticated admission blocks before semantic ingress.
+    assert jobs["deliver"]["if"].startswith("always() &&")
 
 
 def test_workflow_has_one_event_file_carrier_invocation_and_no_body_interpolation() -> None:

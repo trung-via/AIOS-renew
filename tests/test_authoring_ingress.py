@@ -44,6 +44,145 @@ def new_task_envelope(main_sha: str) -> IngressEnvelope:
     )
 
 
+def origin_authoring_fixture(tmp_path, repo, main_sha, *, route=None):
+    from aios_renew import origin_authoring_proof as proofs, origin_bootstrap as origin
+    from tests.test_origin_bootstrap import Adapter, URL_A
+    registry = origin.OriginRegistry(tmp_path / "authoring-origin.json")
+    result = origin.bootstrap(registry, Adapter(registry, route or URL_A))
+    selector = dict(kind="ORIGIN_AFFINE", route_handle=result.route_handle, generation=result.generation)
+    envelope = replace(new_task_envelope(main_sha),
+        payload=V1_TASK_105_SOURCE.replace("{kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}", json.dumps(selector)),
+        origin_authoring_proof=result.authoring_proof)
+    envelope = audited_envelope(envelope, repo)
+    attempt = "github-issue:trung-via/AIOS-renew#107@trung-via/run:900/attempt:1"
+    binding = proofs.binding_for(envelope, attempt)
+    receipt = proofs.admit_local(registry, binding, "c" * 64)
+    admission = proofs.authenticate_receipt(receipt, binding, "c" * 64)
+    return registry, envelope, admission
+
+
+@pytest.fixture
+def origin_admission_key(monkeypatch):
+    monkeypatch.setenv("AIOS_ORIGIN_ADMISSION_KEY", "c" * 64)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "trung-via/AIOS-renew")
+    monkeypatch.setenv("GITHUB_RUN_ID", "900")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+
+
+@pytest.mark.parametrize("route", ("A", "B"))
+def test_origin_task_admitted_before_mutation_and_same_attempt_replay(tmp_path, route, origin_admission_key):
+    from aios_renew import origin_authoring_proof as proofs
+    from tests.test_origin_bootstrap import URL_A, URL_B
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    registry, envelope, admission = origin_authoring_fixture(tmp_path, repo, main_sha,
+                                                           route=URL_A if route == "A" else URL_B)
+    result = execute_ingress(envelope, repo=repo, origin_admission=admission)
+    assert result.status == "CANONICALIZED"
+    replay = execute_ingress(envelope, repo=repo, origin_admission=admission)
+    assert replay.status == "IDEMPOTENT" and replay.canonical_sha == result.canonical_sha
+    task = yaml.safe_load(git(repo, "show", f"{result.canonical_sha}:.ai/tasks/TASK-105.yaml"))
+    assert task["return_affinity"]["route_handle"] == admission.receipt["route_handle"]
+    assert task["return_affinity"]["generation"] == admission.receipt["generation"]
+    assert not {"origin_authoring_proof", "origin_admission", "carrier_attempt", "signature"} & set(task)
+    assert git(remote, "rev-parse", "refs/heads/main") == result.canonical_sha
+    changed = proofs.binding_for(envelope, admission.receipt["carrier_attempt"].replace("attempt:1", "attempt:2"))
+    with pytest.raises(proofs.OriginProofError):
+        proofs.admit_local(registry, changed, "c" * 64)
+    # Semantic equality on an existing rev-1 TASK does not bypass admission.
+    with pytest.raises(AuthoringIngressError, match="admitted origin"):
+        execute_ingress(envelope, repo=repo)
+
+
+@pytest.mark.parametrize("fault", ("absent_admission", "payload_selector_only", "missing_proof",
+                                    "copied_selector", "generation", "task", "main", "body", "stale",
+                                    "cross_attempt", "missing_key", "forged_signature", "ambiguous_main"))
+def test_origin_author_task_provenance_failure_precedes_all_git_mutation(tmp_path, monkeypatch, fault, origin_admission_key):
+    from aios_renew import origin_authoring_proof as proofs
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    _, envelope, admission = origin_authoring_fixture(tmp_path, repo, main_sha)
+    if fault in {"absent_admission", "payload_selector_only"}:
+        admission = None
+        if fault == "payload_selector_only":
+            envelope = replace(envelope, origin_authoring_proof=None)
+    elif fault == "missing_proof":
+        envelope = replace(envelope, origin_authoring_proof=None)
+    elif fault in {"copied_selector", "generation", "task", "body"}:
+        body = yaml.safe_load(envelope.payload)
+        if fault == "copied_selector":
+            body["return_affinity"]["route_handle"] = "page-origin-v1:" + "0" * 64
+        elif fault == "generation":
+            body["return_affinity"]["generation"] = 2
+        elif fault == "task":
+            body["task_id"] = "TASK-106"
+            envelope = replace(envelope, identity={"task_id": "TASK-106"})
+        else:
+            body["goal"] = "A substituted goal."
+        envelope = replace(envelope, payload=body)
+    elif fault == "main":
+        envelope = replace(envelope, expected_state={"expected_main_sha": "0" * 40})
+    elif fault == "ambiguous_main":
+        envelope = replace(envelope, expected_state={"expected_main_sha": main_sha, "main_sha": "0" * 40})
+    elif fault == "cross_attempt":
+        monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    elif fault == "missing_key":
+        monkeypatch.delenv("AIOS_ORIGIN_ADMISSION_KEY")
+    elif fault == "forged_signature":
+        receipt = dict(admission.receipt, signature="0" * 64)
+        admission = proofs.AdmittedOrigin(json.dumps(receipt))
+    else:
+        monkeypatch.setattr(proofs, "_clock", lambda: admission.receipt["expires_at"])
+    for name in ("_hash_blob", "_git_env", "_commit_tree", "_publish_ingress_ref"):
+        monkeypatch.setattr(authoring_ingress_module, name, lambda *a, **k: pytest.fail("premature Git mutation"))
+    with pytest.raises(AuthoringIngressError, match="origin"):
+        execute_ingress(envelope, repo=repo, origin_admission=admission)
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+
+
+def test_origin_revision_preserves_selector_without_current_chat_proof(tmp_path, origin_admission_key):
+    repo, _, main_sha = setup_test_repo(tmp_path)
+    _, envelope, admission = origin_authoring_fixture(tmp_path, repo, main_sha)
+    first = execute_ingress(envelope, repo=repo, origin_admission=admission)
+    selector = yaml.safe_load(envelope.payload)["return_affinity"]
+    revised = replace(envelope, expected_state={"expected_main_sha": first.canonical_sha},
+        payload=V1_TASK_105_R2_SOURCE.replace("{kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}", json.dumps(selector)),
+        origin_authoring_proof=None, audited_handoff=None)
+    revised = audited_envelope(revised, repo)
+    # A new chat's proof is never an implicit ownership or generation transfer.
+    with pytest.raises(AuthoringIngressError, match="revisions"):
+        execute_ingress(replace(revised, origin_authoring_proof=envelope.origin_authoring_proof), repo=repo)
+    for change in (dict(selector, generation=2), dict(selector, route_handle="page-origin-v1:" + "0" * 64),
+                   {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}):
+        payload = dict(yaml.safe_load(revised.payload), return_affinity=change)
+        with pytest.raises(AuthoringIngressError, match="transfer return_affinity"):
+            execute_ingress(replace(revised, payload=payload), repo=repo)
+    result = execute_ingress(revised, repo=repo)
+    assert yaml.safe_load(git(repo, "show", f"{result.canonical_sha}:.ai/tasks/TASK-105.yaml"))["return_affinity"] == selector
+
+
+def test_explicit_legacy_authoring_stays_separate_from_origin_proofs(tmp_path):
+    repo, _, main_sha = setup_test_repo(tmp_path)
+    legacy = audited_envelope(new_task_envelope(main_sha), repo)
+    with pytest.raises(AuthoringIngressError, match="legacy"):
+        execute_ingress(replace(legacy, origin_authoring_proof="origin-authoring-v1:" + "0" * 64), repo=repo)
+    result = execute_ingress(legacy, repo=repo)
+    assert yaml.safe_load(git(repo, "show", f"{result.canonical_sha}:.ai/tasks/TASK-105.yaml"))["return_affinity"] == {
+        "kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}
+
+
+def test_origin_admission_is_not_an_envelope_or_task_authority_field():
+    raw = {"format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_TASK",
+           "identity": {"task_id": "TASK-105"}, "expected_state": {"expected_main_sha": "a" * 40},
+           "payload": V1_TASK_105_SOURCE, "origin_admission": {"status": "ADMITTED"}}
+    with pytest.raises(AuthoringIngressError, match="unknown field"):
+        parse_envelope(raw)
+    del raw["origin_admission"]
+    for invalid in (None, {}, "page-origin-v1:" + "a" * 64, "origin-authoring-v1:" + "a" * 65):
+        with pytest.raises(AuthoringIngressError, match="origin_authoring_proof"):
+            parse_envelope(dict(raw, origin_authoring_proof=invalid))
+
+
 def test_h4c1_new_authoring_without_explicit_classification_is_non_mutating(tmp_path):
     repo, remote, main_sha = setup_test_repo(tmp_path)
     envelope = new_task_envelope(main_sha)

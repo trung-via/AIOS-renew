@@ -249,17 +249,17 @@ subsequent message. Valid reload/reopen uses a fresh page challenge to find the 
 durable conversation record. Losing local state is a blocker for continuity, not
 permission to guess a prior route.
 
-The appended envelope is at most 384 ASCII bytes:
+The appended envelope is at most 512 ASCII bytes after TASK-309's bounded proof addition:
 
 ```text
 [AIOS ORIGIN BOOTSTRAP]
-{"contract":"PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1","route_handle":"page-origin-v1:<64 lowercase hex digits>","generation":1}
+{"contract":"PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1","route_handle":"page-origin-v1:<64 lowercase hex digits>","generation":1,"authoring_proof":"origin-authoring-v1:<64 lowercase hex digits>"}
 [/AIOS ORIGIN BOOTSTRAP]
 ```
 
-Default console results contain only `contract`, `status`, `reason`, `route_handle`, and
-`generation`. Status is `SUBMITTED`, `UNPROVED`, or `AMBIGUOUS`; rejected/ambiguous
-results expose null handle/generation and fixed reason codes. Raw URLs/UUIDs,
+Default console results contain only `contract`, `status`, `reason`, `route_handle`,
+`generation`, and `authoring_proof`. Status is `SUBMITTED`, `UNPROVED`, or `AMBIGUOUS`; rejected/ambiguous
+results expose null handle/generation/proof and fixed reason codes. Raw URLs/UUIDs,
 endpoints, local paths, challenge bytes, drafts, exceptions, and browser diagnostics
 must not enter repository/canonical outputs or Runtime EVIDENCE. The entry disables
 Python logging and rejects enabled `DEBUG`/`PWDEBUG` environments before attaching.
@@ -639,3 +639,55 @@ TASK-300 alone cannot relabel, replay, resend, or convert them to `SUBMITTED`.
 two-chat/continuity/ambiguity proof and closure decision, any later live proof,
 and later lifecycle work remain downstream authority-owned facts. No automatic
 TASK-301 or roadmap advance follows this correction.
+
+## 14. Bounded authoring proof addition (TASK-309)
+
+H4C0 now emits `authoring_proof` with grammar
+`origin-authoring-v1:<64 lowercase hexadecimal digits>`. It is a fresh random
+capability from the already proved exact-document bootstrap boundary, not a
+derived chat identity or a caller-supplied selector. After registry durability
+and the first exact-page revalidation, bootstrap creates the proof's external
+record before appending metadata. The record binds the opaque route handle,
+generation, planned bootstrap-attempt id and a fixed one-hour validity interval.
+The same id is used for the existing pre-Send `ATTEMPTING` marker. Admission
+requires that exact attempt to have completed as `SUBMITTED`; a staged token in
+an unsubmitted/ambiguous draft is unusable. No successful authoring proof is
+returned on a rejected or ambiguous bootstrap. Existing in-document challenge,
+draft, unique retained form/Send, navigation, generation and single-click checks
+are unchanged. The browser metadata bound alone increases from 384 to 512 ASCII
+bytes to carry the proof; draft interpretation and rich-editor grammar do not grow.
+
+The sidecar is the fixed sibling `<registry file>.authoring`, with its own
+exclusive `.lock` and `.pending` barriers, outside Git stores and working trees.
+It uses the existing durable state replacement primitive. The original origin
+registry's schema and wake attempt markers are unchanged. The sidecar stores at
+most 256 proof digests and 262,144 bytes; it stores no URL/UUID, endpoint, raw
+draft, transcript, challenge or account credential. A consumed record holds only
+bounded operational admission selectors and their signature. A new successful
+bootstrap supersedes the old proof by replacing the bootstrap-attempt marker,
+without changing route ownership or generation. Exhaustion, stale locks,
+uncertain writes or malformed/duplicate state fail closed and require Human
+handling; there is no automatic pruning or resend.
+
+`src/aios_renew/origin_authoring_proof.py` implements local proof admission.
+The production self-hosted provenance job reads only the machine-owned
+`AIOS_ORIGIN_REGISTRY` setting and that sidecar, and validates the unique exact
+route/generation plus successful attempt while holding both locks. It consumes
+the proof for the exact carrier attempt, TASK id, expected main and envelope
+digest. Same-attempt replay is idempotent; mismatch or another attempt fails.
+The authenticated receipt exports only bounded opaque operational selectors,
+validity times and an HMAC signature. The deployment-owned 256-bit key is
+provisioned as `AIOS_ORIGIN_ADMISSION_KEY` for the self-hosted admission and hosted
+consumption steps; neither the key nor local registry contents are exported.
+The hosted ingress job authenticates the receipt, never pretends to validate
+machine-local state, and fails before TASK mutation if admission is unavailable.
+See [TASK-309's H4C1 gate](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md#new-task-origin-provenance-gate-task-309)
+for the exact production carrier and revision/legacy boundaries.
+
+Regression definitions cover A-to-A and B-to-B, crossed proof/selector rejection,
+missing/expired/wrong-generation/ambiguous proof, changed bootstrap, exact-attempt
+replay and reuse rejection, authenticated hosted consumption, pre-mutation
+failure, revision preservation and explicit legacy separation. Runtime owns
+their canonical execution and EVIDENCE. This addition records no Runtime PASS,
+Reviewer verdict, publication, TASK-308 resolution, TASK-303 resume, H4/H5 closure,
+or roadmap advancement, and changes no historical TASK/RUN lineage.

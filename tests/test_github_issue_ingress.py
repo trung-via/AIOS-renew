@@ -52,6 +52,121 @@ def _write_event(tmp_path: Path, event: object) -> Path:
     return path
 
 
+def origin_carrier_fixture(tmp_path, monkeypatch):
+    from dataclasses import asdict
+    from tests.test_authoring_ingress import setup_test_repo, origin_authoring_fixture
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    registry, envelope, admission = origin_authoring_fixture(tmp_path, repo, main_sha)
+    for key, value in {"GITHUB_REPOSITORY": "trung-via/AIOS-renew", "GITHUB_RUN_ID": "900",
+                       "GITHUB_RUN_ATTEMPT": "1", "RUNNER_ENVIRONMENT": "self-hosted",
+                       "AIOS_ORIGIN_REGISTRY": str(registry.path), "AIOS_ORIGIN_ADMISSION_KEY": "c" * 64}.items():
+        monkeypatch.setenv(key, value)
+    event = _write_event(tmp_path, _event(json.dumps(asdict(envelope))))
+    policy = _write_policy(tmp_path)
+    receipt = tmp_path / "admission.json"
+    return repo, remote, main_sha, registry, envelope, admission, event, policy, receipt
+
+
+def test_production_origin_carrier_uses_local_admission_then_authenticated_hosted_delivery(tmp_path, monkeypatch):
+    from tests.test_authoring_ingress import git
+    repo, remote, main_sha, registry, envelope, _, event, policy, receipt = origin_carrier_fixture(tmp_path, monkeypatch)
+    carrier.prepare_origin_admission(event, policy, receipt)
+    before = receipt.read_bytes()
+    carrier.prepare_origin_admission(event, policy, receipt)
+    assert receipt.read_bytes() == before  # Same attempt is byte-stable.
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+    # Hosted delivery authenticates the artifact; it never reads the local registry.
+    monkeypatch.setenv("RUNNER_ENVIRONMENT", "github-hosted")
+    monkeypatch.delenv("AIOS_ORIGIN_REGISTRY")
+    monkeypatch.setattr(carrier, "admit_local", lambda *a, **k: pytest.fail("hosted local-origin validation"))
+    delivery = carrier.deliver_event(event, policy, repo=repo, origin_admission_path=receipt)
+    assert delivery.ingress_result.status == "CANONICALIZED"
+    replay = carrier.deliver_event(event, policy, repo=repo, origin_admission_path=receipt)
+    assert replay.ingress_result.status == "IDEMPOTENT"
+    task = yaml.safe_load(git(repo, "show", f"{delivery.ingress_result.canonical_sha}:.ai/tasks/TASK-105.yaml"))
+    assert task["return_affinity"] == yaml.safe_load(envelope.payload)["return_affinity"]
+    exported = receipt.read_text(encoding="utf-8")
+    from tests.test_origin_bootstrap import URL_A, ENDPOINT
+    assert all(secret not in exported for secret in (URL_A, ENDPOINT, str(registry.path), "c" * 64))
+
+
+@pytest.mark.parametrize("fault", ("missing", "stale", "wrong_generation", "selector", "forged",
+                                    "cross_attempt", "other_issue", "body", "duplicate", "wrong_key"))
+def test_origin_carrier_bad_admission_fails_before_semantic_ingress(tmp_path, monkeypatch, fault):
+    from aios_renew import origin_authoring_proof as proofs
+    from tests.test_authoring_ingress import git
+    repo, remote, main_sha, _, _, _, event_path, policy, receipt_path = origin_carrier_fixture(tmp_path, monkeypatch)
+    carrier.prepare_origin_admission(event_path, policy, receipt_path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if fault == "missing":
+        receipt_path.unlink()
+    elif fault == "stale":
+        monkeypatch.setattr(proofs, "_clock", lambda: receipt["expires_at"])
+    elif fault in {"wrong_generation", "selector", "forged"}:
+        field, value = {"wrong_generation": ("generation", 2),
+                        "selector": ("route_handle", "page-origin-v1:" + "0" * 64),
+                        "forged": ("signature", "0" * 64)}[fault]
+        receipt[field] = value
+        receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    elif fault == "cross_attempt":
+        monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    elif fault == "wrong_key":
+        monkeypatch.setenv("AIOS_ORIGIN_ADMISSION_KEY", "d" * 64)
+    elif fault == "duplicate":
+        receipt_path.write_text(json.dumps(receipt)[:-1] + ',"generation":1}', encoding="utf-8")
+    else:
+        event = json.loads(event_path.read_text(encoding="utf-8"))
+        if fault == "other_issue":
+            event["issue"]["number"] = 108
+        else:
+            body = json.loads(event["issue"]["body"])
+            body["payload"] = body["payload"].replace("Implement generic", "Substitute generic")
+            event["issue"]["body"] = json.dumps(body)
+        event_path.write_text(json.dumps(event), encoding="utf-8")
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **k: pytest.fail("premature semantic ingress"))
+    with pytest.raises(carrier.GitHubIssueIngressError, match="origin"):
+        carrier.deliver_event(event_path, policy, repo=repo, origin_admission_path=receipt_path)
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+
+
+@pytest.mark.parametrize("fault", ("hosted", "missing_registry", "stale", "cross_attempt", "ambiguous"))
+def test_self_hosted_provenance_failure_exports_no_admission_or_canonical_mutation(tmp_path, monkeypatch, fault):
+    from aios_renew import origin_authoring_proof as proofs
+    from tests.test_authoring_ingress import git
+    repo, remote, main_sha, registry, _, admission, event, policy, receipt = origin_carrier_fixture(tmp_path, monkeypatch)
+    if fault == "hosted":
+        monkeypatch.setenv("RUNNER_ENVIRONMENT", "github-hosted")
+    elif fault == "missing_registry":
+        monkeypatch.delenv("AIOS_ORIGIN_REGISTRY")
+    elif fault == "stale":
+        monkeypatch.setattr(proofs, "_clock", lambda: admission.receipt["expires_at"])
+    elif fault == "cross_attempt":
+        monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    else:
+        data = registry.read()
+        for route in data["routes"].values():
+            route["attempt"]["status"] = "AMBIGUOUS"
+        registry.write(data)
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **k: pytest.fail("admission is not semantic ingress"))
+    with pytest.raises(carrier.GitHubIssueIngressError, match="origin"):
+        carrier.prepare_origin_admission(event, policy, receipt)
+    assert not receipt.exists()
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+
+
+def test_hosted_origin_request_framing_has_no_local_state_or_mutation(tmp_path, monkeypatch, capsys):
+    _, _, _, _, _, _, event, policy, _ = origin_carrier_fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("RUNNER_ENVIRONMENT", "github-hosted")
+    monkeypatch.delenv("AIOS_ORIGIN_REGISTRY")
+    monkeypatch.setattr(carrier, "admit_local", lambda *a, **k: pytest.fail("hosted cannot admit local proof"))
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **k: pytest.fail("framing cannot canonicalize"))
+    output = tmp_path / "frame-output"
+    assert carrier.main(["--mode", "frame", "--event", str(event), "--policy", str(policy), "--output", str(output)]) == 0
+    assert output.read_text(encoding="utf-8") == "origin_proof_required=true\n"
+    assert "origin-authoring-v1:" not in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     "operation",
     ["AUTHOR_TASK", "SUBMIT_REVIEW", "AUTHOR_REMEDIATION", "AUTHOR_REPAIR"],

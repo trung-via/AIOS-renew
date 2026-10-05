@@ -60,7 +60,8 @@ from .run import (
     SUPPORTED_EXECUTORS,
 )
 from .return_affinity import (AffinityError, document_affinity, require_same_affinity,
-                              require_authored_affinity)
+                              require_authored_affinity, OriginAffinity)
+from .origin_authoring_proof import AdmittedOrigin, OriginProofError, PROOF
 from .task import Task, TaskValidationError, _TaskLoader, parse_task
 from .verification_contract import MINIMUM_SUFFICIENT_V1
 from .unified_state import observe_unified_state
@@ -122,6 +123,7 @@ _ALLOWED_TOP_LEVEL_KEYS = frozenset(
         "expected_state",
         "payload",
         "audited_handoff",
+        "origin_authoring_proof",
     }
 )
 
@@ -148,6 +150,7 @@ class IngressEnvelope:
     expected_state: Mapping[str, Any]
     payload: str | Mapping[str, Any]
     audited_handoff: Mapping[str, Any] | None = None
+    origin_authoring_proof: str | None = None
 
 
 @dataclass(frozen=True)
@@ -253,6 +256,11 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
         if operation == "SUBMIT_REVIEW":
             raise AuthoringIngressError("SUBMIT_REVIEW does not accept Brain audited handoff")
 
+    origin_proof = data.get("origin_authoring_proof")
+    if "origin_authoring_proof" in data and (
+            operation != "AUTHOR_TASK" or type(origin_proof) is not str or not PROOF.fullmatch(origin_proof)):
+        raise AuthoringIngressError("invalid origin_authoring_proof carrier")
+
     return IngressEnvelope(
         format=envelope_format,
         version=version,
@@ -261,6 +269,7 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
         expected_state=dict(expected_state),
         payload=payload,
         audited_handoff=handoff,
+        origin_authoring_proof=origin_proof,
     )
 
 
@@ -345,14 +354,16 @@ def ingest_carrier(
     *,
     repo: Path,
     stdin_bytes: bytes | None = None,
+    origin_admission: AdmittedOrigin | None = None,
 ) -> IngressResult:
     """Convenience entry point reading from carrier and executing semantic ingress."""
 
     envelope = read_carrier_input(source, stdin_bytes=stdin_bytes)
-    return execute_ingress(envelope, repo=repo)
+    return execute_ingress(envelope, repo=repo, origin_admission=origin_admission)
 
 
-def execute_ingress(envelope: IngressEnvelope, *, repo: Path) -> IngressResult:
+def execute_ingress(envelope: IngressEnvelope, *, repo: Path,
+                    origin_admission: AdmittedOrigin | None = None) -> IngressResult:
     """Execute one carrier-neutral ingress envelope against the target repository."""
 
     repo_root = Path(repo).resolve()
@@ -364,8 +375,10 @@ def execute_ingress(envelope: IngressEnvelope, *, repo: Path) -> IngressResult:
         # Caller-owned mappings cannot change the audited payload mid-ingress.
         envelope = copy.deepcopy(envelope)
     if operation == "AUTHOR_TASK":
-        return _execute_author_task(envelope, repo_root)
-    elif operation == "SUBMIT_REVIEW":
+        return _execute_author_task(envelope, repo_root, origin_admission)
+    if envelope.origin_authoring_proof is not None or origin_admission is not None:
+        raise AuthoringIngressError("origin admission is only valid for AUTHOR_TASK")
+    if operation == "SUBMIT_REVIEW":
         return _execute_submit_review(envelope, repo_root)
     elif operation == "AUTHOR_REMEDIATION":
         return _execute_author_remediation(envelope, repo_root)
@@ -379,7 +392,8 @@ def execute_ingress(envelope: IngressEnvelope, *, repo: Path) -> IngressResult:
 # Operation: AUTHOR_TASK
 # ---------------------------------------------------------------------------
 
-def _execute_author_task(envelope: IngressEnvelope, repo: Path) -> IngressResult:
+def _execute_author_task(envelope: IngressEnvelope, repo: Path,
+                         origin_admission: AdmittedOrigin | None = None) -> IngressResult:
     task_id = envelope.identity["task_id"]
     payload_str = _payload_to_str(envelope.payload)
 
@@ -392,6 +406,22 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path) -> IngressResult
         raise AuthoringIngressError(
             f"TASK task_id mismatch: identity specified {task_id}, payload contains {task.task_id}"
         )
+
+    needs_origin = isinstance(task.return_affinity, OriginAffinity) and task.revision == 1
+    def recheck_origin():
+        try:
+            if needs_origin:
+                if not isinstance(origin_admission, AdmittedOrigin):
+                    raise OriginProofError("new ORIGIN_AFFINE TASK requires admitted origin authoring proof")
+                origin_admission.require_envelope(envelope)
+            elif envelope.origin_authoring_proof is not None or origin_admission is not None:
+                raise OriginProofError("revisions and legacy TASKs cannot consume current-chat origin proof")
+        except OriginProofError as exc:
+            raise AuthoringIngressError(str(exc)) from exc
+
+    # This gate also precedes identical revision-1 replay: another carrier
+    # attempt cannot use semantic equality to bypass proof admission.
+    recheck_origin()
 
     expected_main_sha = _get_expected_sha(envelope.expected_state, "expected_main_sha", "main_sha")
     remote = _resolve_remote(repo)
@@ -467,6 +497,7 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path) -> IngressResult
 
     # Create new tree using temporary index
     _recheck_authoring_binding(envelope, repo, audit_binding)
+    recheck_origin()
     with tempfile.TemporaryDirectory(prefix="aios-ingress-") as tmp_dir:
         temp_index = Path(tmp_dir) / "index"
         env = dict(os.environ)
@@ -507,6 +538,7 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path) -> IngressResult
     )
 
     _recheck_authoring_binding(envelope, repo, audit_binding)
+    recheck_origin()
     _publish_ingress_ref(
         repo,
         remote,
