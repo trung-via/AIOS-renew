@@ -382,7 +382,7 @@ Failure to prove authentication/surface/route/target must fail closed. Transport
 
 Live exit gate: with the target conversation not pre-opened or prepared by the Human, the transport obtains/restores the authorized delivery environment, reaches the exact target, proves all required safety gates, and submits exactly one doorbell without Human UI preparation.
 
-### TASK-302 bounded H4D acquisition contract, corrected by TASK-304, TASK-305, and TASK-306
+### TASK-302 bounded H4D acquisition contract, corrected by TASK-304, TASK-305, TASK-306, and TASK-307
 
 `src/aios_renew/unattended_chat_wake.py` is a transport primitive under the
 existing durable lane pass, with no standalone launcher, router, queue, dispatch,
@@ -578,6 +578,45 @@ H4D roadmap closure remains downstream of reviewed publication and separate
 Human/Brain live proof of the unprepared-target exit gate. H4E production
 multi-lane live conformance, final H4B semantic resume, and H5 closure remain
 separate downstream work; this implementation does not authorize or claim them.
+
+### TASK-307 bounded unattended launch correction
+
+TASK-307 removes only the explicit `--enable-automation` argument from
+`Environment.command()`. The configured executable, explicit `--user-data-dir`
+and `--profile-directory`, IPv4 loopback `--remote-debugging-address=127.0.0.1`,
+configured `--remote-debugging-port`, `--no-first-run`,
+`--no-default-browser-check`, and `--no-startup-window` remain unchanged.
+Exact owner proof still binds the executable, user-data directory, profile,
+loopback address/port, and launched-process identity; it never requires
+`--enable-automation`. Listener/profile checks, launch environment sanitization,
+one-attempt budget, context/page proof, exact navigation, repeated owner proof,
+and all freshness, affinity, generation, draft, dedupe, ambiguity, and
+no-blind-resend barriers keep their existing authority and fail-closed behavior.
+
+The bounded Human diagnostic motivates this correction but is noncanonical
+planning input. Its Human-visible startup path differs from unattended launch,
+so it establishes neither an anti-bot root cause nor H4D live-exit success.
+Removing the explicit automation opt-in introduces no replacement switch,
+JavaScript patch, browser preference, extension, spoofing, or stealth mechanism.
+CAPTCHA solving, human-verification bypass, anti-bot evasion, and automation
+concealment remain outside this contract; a verification interstitial still
+fails closed and requires Human handling.
+
+Focused deterministic regressions assert the exact retained launch arguments
+and exclusion of `--enable-automation`, pass the captured corrected launch
+through the existing exact owner classifier (with native argument parsing on
+Windows), and retain invalid/ambiguous ownership and launched-owner race
+failures. They use inert OS/CDP/page fixtures without contacting live ChatGPT.
+These regressions supply no Runtime evidence or live-exit proof. Runtime
+verification, Reviewer judgment, and exact reviewed publication remain separate
+from the later Human/Brain observation of the unprepared-target live exit gate.
+
+This correction does not repair, resolve, supersede, or rewrite TASK-303 or
+RUN-303-003 lineage or its failure/attention references. After exact reviewed
+publication, the existing unresolved origin-affine RUN-303-003 attention subject
+remains the intended real live carrier unless canonical freshness says
+otherwise. No synthetic replacement subject or replay is authorized, and no
+H4D, H4E, final H4B, or H5 advancement follows from this implementation.
 
 ## 7. H4E — Production Routing & Concurrency Live Conformance
 

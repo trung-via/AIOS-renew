@@ -210,18 +210,24 @@ def production_bridge(harness, monkeypatch):
     environment = unattended.load_environment(h.binding)
     h.owner = dict(ProcessId=h.process.pid, ExecutablePath=str(environment.executable),
                    CommandLine="private-fixture-owner-command")
+    parsed = {}
     synthetic_query = unattended.LocalEnvironment._query
 
     def query(local, script):
         if "Win32_Process -Filter" in script:
             h.checks.append("owner")
             h.hook("owner")
+            arguments = h.launches[0] if h.launches else environment.command()
+            h.owner["CommandLine"] = unattended.subprocess.list2cmdline(arguments)
+            parsed[h.owner["CommandLine"]] = arguments
             return h.owner
         return synthetic_query(local, script)
 
     monkeypatch.setattr(unattended.LocalEnvironment, "_query", query)
     monkeypatch.setattr(unattended.LocalEnvironment, "prove_owner", LOCAL_ENVIRONMENT.prove_owner)
-    monkeypatch.setattr(unattended, "_windows_arguments", lambda command: environment.command())
+    # Round-trip the captured launch through the native parser on Windows.
+    if unattended.os.name != "nt":
+        monkeypatch.setattr(unattended, "_windows_arguments", lambda command: parsed[command])
     return h
 
 
@@ -261,6 +267,20 @@ def test_available_owned_endpoint_creates_one_exact_page_and_submits(harness):
                       str(h.config), str(unattended.load_environment(h.binding).executable),
                       "fixture-private-freshness-token"):
         assert sensitive not in serialized
+
+
+def test_unattended_command_excludes_automation_and_retains_required_arguments(harness):
+    environment = unattended.load_environment(harness.binding)
+    command = environment.command()
+    assert "--enable-automation" not in command
+    assert command == [
+        str(environment.executable),
+        "--user-data-dir=" + str(environment.user_data_dir),
+        "--profile-directory=" + environment.profile_directory,
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=" + str(environment.port),
+        "--no-first-run", "--no-default-browser-check", "--no-startup-window",
+    ]
 
 
 def test_unavailable_endpoint_launches_only_configured_environment_once(harness):
@@ -656,7 +676,9 @@ def test_post_observation_port_owner_race_cannot_acquire_or_edit_the_target(harn
         assert sensitive not in json.dumps(receipt)
 
 
-@pytest.mark.parametrize("drift", ["executable", "profile", "user-data", "port", "address", "duplicate", "pid", "exit"])
+@pytest.mark.parametrize("drift", ["executable", "argument-executable", "profile", "user-data",
+                                   "port", "address", "duplicate", "split", "missing",
+                                   "empty", "relative", "child", "pid", "exit"])
 def test_os_listener_owner_must_match_every_explicit_environment_field(harness, monkeypatch, drift):
     h = harness
     environment = unattended.load_environment(h.binding)
@@ -664,18 +686,27 @@ def test_os_listener_owner_must_match_every_explicit_environment_field(harness, 
     arguments = environment.command()
     owner = dict(ProcessId=123, ExecutablePath=str(environment.executable), CommandLine="private-local-only")
     if drift == "executable": owner["ExecutablePath"] = str(environment.executable.with_name("other.exe"))
+    if drift == "argument-executable": arguments[0] = str(environment.executable.with_name("other.exe"))
     if drift == "profile": arguments[2] = "--profile-directory=Other"
     if drift == "user-data": arguments[1] += "-other"
     if drift == "port": arguments[4] = "--remote-debugging-port=9333"
     if drift == "address": arguments[3] = "--remote-debugging-address=0.0.0.0"
     if drift == "duplicate": arguments.append(arguments[1])
+    if drift == "split": arguments[1:2] = ["--user-data-dir", str(environment.user_data_dir)]
+    if drift == "missing": arguments.pop(2)
+    if drift == "empty": arguments[1] = "--user-data-dir="
+    if drift == "relative": arguments[1] = "--user-data-dir=relative-user-data"
+    if drift == "child": arguments.append("--type=renderer")
     if drift == "pid":
         local.process = h.process
         owner["ProcessId"] = 456
     if drift == "exit": local.process = SimpleNamespace(pid=123, poll=lambda: 1)
+    owner["CommandLine"] = unattended.subprocess.list2cmdline(arguments)
     monkeypatch.setattr(local, "_query", lambda script: owner)
-    monkeypatch.setattr(unattended, "_windows_arguments", lambda command: arguments)
-    with pytest.raises(wake.WakeBlocked):
+    if unattended.os.name != "nt":
+        monkeypatch.setattr(unattended, "_windows_arguments", lambda command: {owner["CommandLine"]: arguments}[command])
+    reason = "LAUNCH_UNCERTAIN" if drift in {"pid", "exit"} else "BROWSER_OWNERSHIP_UNPROVEN"
+    with pytest.raises(wake.WakeBlocked, match=reason):
         LOCAL_ENVIRONMENT.prove_owner(local)
 
 
@@ -705,6 +736,8 @@ def test_production_shaped_launch_reaches_existing_presubmit_checks_without_edit
     receipt = h.deliver()
     assert receipt["status"] == "DEFERRED" and receipt["reason"] == "INSERT_BLOCKED"
     assert len(h.launches) == h.created == 1
+    assert "--enable-automation" not in h.launches[0]
+    assert h.owner["CommandLine"] == unattended.subprocess.list2cmdline(h.launches[0])
     assert h.connects == [10000, 1000] and len(h.listener_queries) == 2
     assert h.bridge_calls == ["new_browser_cdp_session", "send", "detach", "new_page"]
     assert h.checks == ["profile", "owner", "owner"]
@@ -907,9 +940,13 @@ def test_valid_os_listener_owner_uses_the_exact_configured_environment(harness, 
     environment = unattended.load_environment(h.binding)
     local = unattended.LocalEnvironment(environment, unattended.time.monotonic() + 20)
     local.process = h.process
-    owner = dict(ProcessId=123, ExecutablePath=str(environment.executable), CommandLine="private-local-only")
+    arguments = environment.command()
+    assert "--enable-automation" not in arguments
+    owner = dict(ProcessId=123, ExecutablePath=str(environment.executable),
+                 CommandLine=unattended.subprocess.list2cmdline(arguments))
     monkeypatch.setattr(local, "_query", lambda script: owner)
-    monkeypatch.setattr(unattended, "_windows_arguments", lambda command: environment.command())
+    if unattended.os.name != "nt":
+        monkeypatch.setattr(unattended, "_windows_arguments", lambda command: {owner["CommandLine"]: arguments}[command])
     LOCAL_ENVIRONMENT.prove_owner(local)
 
 

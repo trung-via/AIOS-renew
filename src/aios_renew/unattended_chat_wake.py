@@ -42,7 +42,7 @@ class Environment:
                 "--profile-directory=" + self.profile_directory,
                 "--remote-debugging-address=127.0.0.1",
                 "--remote-debugging-port=" + str(self.port),
-                "--enable-automation", "--no-first-run",
+                "--no-first-run",
                 "--no-default-browser-check", "--no-startup-window"]
 
 
