@@ -55,6 +55,29 @@ production_wake_amendment:
     Human-risk-accepted TASK-291 temporary permissive source change; that source state
     supersedes the prior account-selector diagnosis as a planning blocker without this
     roadmap fabricating missing lifecycle artifacts.
+  deferred_followups:
+    - id: h4-wake-recheck-self-host-runner-starvation
+      status: DEFERRED_TO_NEXT_WAKE_FIX_BATCH
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-05"
+      evidence:
+        scheduled_workflow_run_id: 37336259035
+        blocked_primary_workflow_run_id: 37336305591
+        scheduled_source: "aios-local-chat-wake.yml cron */5 * * * *"
+        shared_runner_class: "[self-hosted, windows, x64, aios-renew]"
+        observation: >-
+          The scheduled all-lanes recheck occupied the same self-hosted runner from
+          15:51:57Z until cancellation at 15:55:18Z while the TASK-309 PRIMARY workflow
+          created at 15:52:17Z remained queued and only entered the runner at 15:55:22Z.
+      disposition: >-
+        Preserve durable deferred-wake recovery semantics, but remove periodic background
+        recovery from the PRIMARY/REPAIR/REMEDIATION critical runner path. Address this
+        with the next wake-focused correction batch rather than expanding TASK-309.
+      required_outcomes:
+        - BACKGROUND_WAKE_RECOVERY_MUST_NOT_STARVE_ENGINEERING_EXECUTION
+        - PRESERVE_DURABLE_DEFERRED_WAKE_RECOVERY
+        - PREFER_EVENT_DRIVEN_OR_SEPARATE_NONBLOCKING_RECOVERY_CAPACITY
+        - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
 
 verification_foundation_audit:
   id: ta-0-ta-1-verification-foundation
