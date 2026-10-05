@@ -331,6 +331,111 @@ roadmap sequence or unrelated architecture material merely for ceremony. It must
 never let the wake payload, chat history, provider/session identity or cached semantic
 judgment substitute for canonical truth.
 
+#### Default Brain Sync roadmap projection (TASK-303 r4)
+
+`observe_brain_sync()` reads the authoritative roadmap YAML and exposes a bounded
+`active_item` plus at most two items along explicit `return_to` edges. When no NEXT
+exists, one unambiguous `BLOCKED` or `LIVE_EXIT_GATE_PENDING` item can supply the
+active planning observation; this does not authorize execution or change the existing
+no-NEXT lifecycle boundary. A further return edge remains an exact id with
+`return_path_truncated: true`. No successor is inferred from sequence position.
+
+The projection includes current track/status, up to sixteen NEXT identities, exact
+active TASK authoring pointers, bounded gate/blocker fields and relevant publication
+identity. Text fields are limited to 256 UTF-8 bytes (2048 for an objective); revisions
+are bounded positive integers. Duplicate/conflicting NEXT identities, missing or
+cyclic return edges, ambiguous gates, stale exact TASK blobs/revisions/authoring
+commits, conflicting publication identities and off-main active publications fail
+closed. Git observation errors remain observation errors, rather than fabricated
+lineage conflicts. Selected TASK loading and Unified State continue to own the
+existing lifecycle/action projection.
+
+Historical DONE bodies are absent by default. The YAML is still parsed as one
+authority input; default observation performs no ancestry sweep of unrelated DONE
+publications and creates no archive, cache, planning authority or persisted history.
+Explicit Python callers can request `observe_brain_sync(repo=repo,
+include_history=True)` to retrieve the retained DONE bodies and check their declared
+publication ancestry. Exact original YAML and immutable Git artifacts remain directly
+retrievable through their existing paths and refs. Reviews, repairs, audits and Human
+requests hydrate the additional exact historical material their decision needs.
+
+`publication.status` is `RELEVANT_ACTIVE_LINEAGE` only for a proven publication on
+the explicit active/return path. Its `item_id` states the relevance basis. The legacy
+`last_published_task` key mirrors that pointer's task id; it makes no global recency
+claim. Otherwise the pointer is `UNAVAILABLE`, the legacy value is null, and the
+checkpoint prints `LAST PUBLISHED: unavailable`. Reordering historical DONE entries
+cannot alter this value, including during explicit historical hydration.
+
+#### Cleanup retention and coverage map
+
+No source, test, workflow, package/entrypoint or carrier path is deleted by this
+candidate. The positive dependencies below prohibit deletion without a separate
+complete proof, regardless of a diagnostic question's historical closure. These are
+repository witnesses for Runtime to inspect, not Executor verification EVIDENCE.
+
+| Candidate group | Retention witness |
+| --- | --- |
+| All ten retained `*_diagnostic.py` scripts examined in r2 | Each corresponding retained `tests/test_<module>.py` imports the script. |
+| Contention, serial, residual and stable-failure diagnostics | Cross-imports also retain `bp_v4_parallel_diagnostic`, `aios_full_suite_contention_diagnostic`, `aios_parallel_git_fixture_push_diagnostic` and `aios_serial_context_diagnostic`. |
+| Origin capture probe | `AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md` specifies its path and MCP invocation contract. |
+| Primary/repair Brain and self-hosted wake workflows | `.ai/brain-wake-carriers.yaml` lists their production paths. |
+| Issue carrier and nested repair continuation | `aios-issue-carrier.yml` uses both Brain reusable workflows; `aios-brain-repair-wakeup.yml` uses `aios-self-hosted-repair-wakeup.yml`. Primary Brain wake also dispatches the self-hosted primary workflow. |
+| Wake/bootstrap production modules and their tests | Retained with their package, workflow and test callers; no production removal or behavior adaptation is attempted. |
+
+Runtime can obtain deterministic dependency observations with `rg -n` over these
+exact module/workflow names in `scripts`, `tests`, `.github/workflows`, the existing
+carrier registries, `pyproject.toml`, `src/aios_renew/__init__.py` and the retained
+wake/origin documents. `test_cleanup_retention_dependency_witnesses` provides
+executable positive witnesses for every diagnostic candidate and the retained carrier
+chain. Because the deletion set is empty, no caller update or dangling deletion
+reference is introduced. Question closure, dynamic dependency uncertainty and queued
+roadmap dependence never become grounds for speculative deletion.
+
+The only consolidation is `_write_roadmap` in `tests/test_brain_sync.py`, replacing
+identical path creation/YAML-writing setup. Every pre-existing named test and its
+success, ambiguity, missing/unauthored selection, lifecycle-conflict, read-only,
+detached-main and remote-identity assertions remains. The completed-track test now
+asserts publication unavailability. Historical off-main and ancestry-error cases
+retain their exact assertions through explicit `include_history=True`; new default
+and active-gate cases distinguish unrelated history from decision-relevant lineage.
+No wake race, provenance, privacy, permission, freshness or dedupe case is removed.
+
+The retained ingress metadata diagnostic control now calls the existing audited
+authoring fixture with explicit legacy return affinity, matching its source fixture.
+It still submits the same review, authors the same bounded remediation, and requires
+`CANONICALIZED`; production audited ingress and origin-affinity enforcement remain
+unchanged.
+
+RUN-303-001, RUN-303-002 and RUN-303-003 remain immutable diagnostic history. The Reviewer
+compatibility extension adds only the required `return_affinity` field to the closed
+projected TASK contract. Existing `validate_task` and exact canonical serialization
+validate and preserve its value and shape. Missing or malformed affinity fails closed;
+the Reviewer does not infer, default, resolve or dereference a route, choose an account
+or session, mutate affinity, or acquire any routing or lifecycle authority. Legacy and
+origin-affine projections retain the existing PRIMARY/DELTA review paths.
+
+The retained `test_brain_provider_protocol.py` Stage-2 fixture now supplies complete
+`brain-high-value-v3` TASK_AUTHORING `cross_authority_context`, `canonical_shape` and
+`terminal_lifecycle` sections. Each section binds the exact packet and normalized
+reconciled candidate fingerprints; shape/path coverage follows the selected profile.
+All pre-existing provider success and negative/tamper assertions remain, with added
+section-binding, coverage and fail-close assertions against the unchanged audit
+validator. No required section is made optional and no validation is weakened.
+
+Revision 4 authorizes the compatibility surface in
+`src/aios_renew/brain_provider_protocol.py`. For v3 TASK_AUTHORING,
+`validate_response` requires the three conformance sections in its exact closed
+AUDIT_RECONCILE response and forwards their supplied values to `validate_stage2`.
+`revalidate_decision` requires the same sections in the closed serialized semantic
+result and reconstructs them exactly for Stage-2 validation. Missing, malformed,
+substituted or tampered sections fail closed, including after rehashing the outer
+decision. Required sections are neither synthesized nor defaulted. Other audited
+flows and the retained v2 profile preserve their existing shapes. The change creates
+no lifecycle, routing, provider-memory, review or publication authority. The reviewed
+TASK-307 launch correction remains untouched, and H4D live exit remains separately
+Human/Brain-owned. These implementation observations do not replace fresh Runtime
+verification for RUN-303-004.
+
 Human observability comes from the Brain response appearing directly in the same
 conversation. Conversation/session identity never becomes engineering truth.
 

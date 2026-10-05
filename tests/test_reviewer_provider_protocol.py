@@ -23,6 +23,9 @@ from aios_renew.reviewer_provider_protocol import (
 
 ROOT = Path(__file__).resolve().parents[1]
 A, B, C = "a" * 40, "b" * 40, "c" * 40
+LEGACY_AFFINITY = {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}
+ORIGIN_AFFINITY = {"kind": "ORIGIN_AFFINE", "route_handle": "page-origin-v1:" + "d" * 64,
+                   "generation": 7}
 
 
 def digest(value):
@@ -30,8 +33,8 @@ def digest(value):
                                      ensure_ascii=False).encode()).hexdigest()
 
 
-def task():
-    return {
+def task(affinity=None):
+    value = {
         "task_id": "TASK-188", "revision": 1, "goal": "Review", "problem": "Review needed",
         "assumptions": [], "scope": {"inspect": [], "modify": ["src/example.py"]},
         "non_goals": [], "constraints": {"hard": []},
@@ -39,9 +42,12 @@ def task():
                        {"id": "AC2", "condition": "Two"}],
         "verification": {"required": ["pytest tests/test_example.py"]},
     }
+    if affinity is not None:
+        value["return_affinity"] = deepcopy(affinity)
+    return value
 
 
-def packet():
+def packet(affinity=None):
     snapshot = BrainSyncSnapshot(
         repository={"root": str(ROOT), "name": "AIOS-renew", "main_sha": B},
         main_sha=B, roadmap={"next_items": []}, selection_status="SELECTED",
@@ -52,7 +58,7 @@ def packet():
     )
     context = compose_brain_work_context(snapshot, None)
     material = {
-        "kind": "SEMANTIC_REVIEW", "task": task(),
+        "kind": "SEMANTIC_REVIEW", "task": task(affinity),
         "run": {"run_id": "RUN-188-001", "task": {"id": "TASK-188", "revision": 1},
                 "executor": "codex", "base_sha": B, "workspace": "C:/work",
                 "head_sha": A, "status": "COMPLETE"},
@@ -65,6 +71,8 @@ def packet():
                       "result": {"exit_code": 0, "summary": "passed"},
                       "raw": {"path": "C:/runtime/evidence.txt"}}],
     }
+    if affinity is not None:
+        material["run"]["return_affinity"] = deepcopy(affinity)
     return compile_decision_packet(context, resolve_flow(context), material)
 
 
@@ -108,14 +116,14 @@ def prior():
     }
 
 
-def request(mode="PRIMARY"):
+def request(mode="PRIMARY", *, affinity=None):
     selected_scope = scope(mode)
     procedure = select_reviewer_procedure(
         (ROOT / ".ai/reviewer-procedure-profiles.yaml").read_bytes(), mode)
     returns = select_reviewer_return_contract(
         (ROOT / ".ai/reviewer-return-contracts.yaml").read_bytes())
     return construct_request(
-        packet(), selected_scope, material(selected_scope), procedure, returns,
+        packet(affinity), selected_scope, material(selected_scope), procedure, returns,
         {"review_id": "REVIEW-188-001",
          "finding_id_slots": [f"F-{i:02d}" for i in range(32)]},
         prior_review=prior() if mode == "DELTA" else None,
@@ -152,6 +160,58 @@ def test_primary_decision_round_trip(verdict, fail, findings):
     assert made["review_candidate"]["review_id"] == "REVIEW-188-001"
     assert made["review_candidate"]["reviewed_sha"] == A
     assert [f["id"] for f in made["review_candidate"]["findings"]] == (["F-00"] if findings else [])
+
+
+@pytest.mark.parametrize("mode", ["PRIMARY", "DELTA"])
+@pytest.mark.parametrize("affinity", [LEGACY_AFFINITY, ORIGIN_AFFINITY], ids=["legacy", "origin"])
+def test_task_affinity_is_exact_closed_context_only(mode, affinity):
+    req = request(mode, affinity=affinity)
+    before = deepcopy(req)
+    assert req["decision_packet"]["canonical_facts"]["task_contract"]["return_affinity"] == affinity
+    assert revalidate_request(json.dumps(req)) == req
+    made = decision(req, body(delta=mode == "DELTA"))
+    assert revalidate_decision(made, req) == made
+    assert req == before
+    assert "return_affinity" not in made["review_candidate"]
+
+
+@pytest.mark.parametrize("affinity", [
+    None, {}, {"kind": "UNKNOWN"}, {**LEGACY_AFFINITY, "generation": 1},
+    {"kind": "ORIGIN_AFFINE"}, {**ORIGIN_AFFINITY, "generation": True},
+    {**ORIGIN_AFFINITY, "generation": 0}, {**ORIGIN_AFFINITY, "generation": 2147483648},
+    {**ORIGIN_AFFINITY, "route_handle": "page-origin-v1:" + "D" * 64},
+    {**ORIGIN_AFFINITY, "chat_url": "https://example.invalid/chat"},
+])
+def test_malformed_projected_task_affinity_fails_after_rehash(affinity):
+    req = request(affinity=ORIGIN_AFFINITY)
+    changed = deepcopy(req)
+    packet_value = changed["decision_packet"]
+    packet_value["canonical_facts"]["task_contract"]["return_affinity"] = affinity
+    packet_value["packet_fingerprint"] = digest({
+        k: v for k, v in packet_value.items() if k != "packet_fingerprint"})
+    changed["request_fingerprint"] = digest({k: v for k, v in changed.items()
+                                              if k != "request_fingerprint"})
+    with pytest.raises(ReviewerProviderProtocolError):
+        revalidate_request(changed)
+
+
+def test_missing_projected_affinity_cannot_default_and_changed_affinity_cannot_replay():
+    req = request(affinity=ORIGIN_AFFINITY)
+    made = decision(req, body())
+    missing = deepcopy(req)
+    packet_value = missing["decision_packet"]
+    del packet_value["canonical_facts"]["task_contract"]["return_affinity"]
+    packet_value["packet_fingerprint"] = digest({
+        k: v for k, v in packet_value.items() if k != "packet_fingerprint"})
+    missing["request_fingerprint"] = digest({k: v for k, v in missing.items()
+                                              if k != "request_fingerprint"})
+    with pytest.raises(ReviewerProviderProtocolError):
+        revalidate_request(missing)
+    changed = request(affinity={**ORIGIN_AFFINITY, "generation": 8})
+    assert revalidate_request(changed) == changed
+    assert changed["request_fingerprint"] != req["request_fingerprint"]
+    with pytest.raises(ReviewerProviderProtocolError):
+        revalidate_decision(made, changed)
 
 
 def test_delta_exact_prior_finding_and_text():

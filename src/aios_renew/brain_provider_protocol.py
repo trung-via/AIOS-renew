@@ -42,6 +42,9 @@ _DECISION_FIELDS = frozenset({
 _STAGE1_LINEAGE_FIELDS = frozenset({
     "stage1_request_fingerprint", "stage1_decision_fingerprint", "construct",
 })
+_V3_TASK_SECTIONS = (
+    "cross_authority_context", "canonical_shape", "terminal_lifecycle",
+)
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 _AUDITED = frozenset({
     "ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING",
@@ -340,6 +343,16 @@ def _diagnostic(candidate: Any) -> dict[str, Any]:
     return body
 
 
+def _stage2_task_fields(packet: dict[str, Any], profile: dict[str, Any]) -> set[str]:
+    """Project only the TASK fields required by the validated audit profile."""
+    if packet["selected_flow"] != "TASK_AUTHORING":
+        return set()
+    fields = {"acceptance_phase_ledger"}
+    if profile["version"] == 3:
+        fields.update(_V3_TASK_SECTIONS)
+    return fields
+
+
 def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str, Any]) -> dict[str, Any]:
     """Validate one provider semantic response; return a transient Brain decision."""
     try:
@@ -349,8 +362,8 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
         mode, packet = req["request_mode"], req["decision_packet"]
         expected = ({"request_fingerprint", "construct_audit", "reconciled_candidate", "closure", "outcome"}
                     if mode == "AUDIT_RECONCILE" else {"request_fingerprint", "candidate"})
-        if mode == "AUDIT_RECONCILE" and packet["selected_flow"] == "TASK_AUTHORING":
-            expected = expected | {"acceptance_phase_ledger"}
+        if mode == "AUDIT_RECONCILE":
+            expected |= _stage2_task_fields(packet, req["audit_profile_package"]["profile"])
         _exact(response, expected, "provider semantic response")
         if response["request_fingerprint"] != req["request_fingerprint"]:
             raise BrainProviderProtocolError("request echo mismatch")
@@ -370,8 +383,8 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
                 "construct_fingerprint": first["construct_fingerprint"],
                 **{key: response[key] for key in ("construct_audit", "reconciled_candidate", "closure", "outcome")},
             }
-            if "acceptance_phase_ledger" in response:
-                material["acceptance_phase_ledger"] = response["acceptance_phase_ledger"]
+            material.update({key: response[key] for key in
+                             _stage2_task_fields(packet, req["audit_profile_package"]["profile"])})
             semantic = validate_stage2(packet, req["audit_profile_package"]["profile"], first, material)
         return _decision(req, semantic)
     except (BrainAuditError, BrainReturnContractError, KeyError, TypeError, RecursionError, UnicodeError) as exc:
@@ -395,11 +408,12 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
             _enforce_bindings(validated["construct_candidate"], req["external_bindings"])
         else:
             first = req["stage1_lineage"]["construct"]
+            profile = req["audit_profile_package"]["profile"]
+            task_fields = _stage2_task_fields(req["decision_packet"], profile)
             fields = {"format", "version", "stage", "packet_fingerprint", "audit_profile_ref", "selected_flow",
                       "construct_fingerprint", "construct_audit", "closure", "outcome",
                       "reconciled_candidate_fingerprint", "handoff_candidate", "stage2_fingerprint"}
-            if req["decision_packet"]["selected_flow"] == "TASK_AUTHORING":
-                fields = fields | {"acceptance_phase_ledger"}
+            fields |= task_fields
             _exact(semantic, fields, "Stage-2 semantic result")
             if (semantic["format"] != "AIOS_BRAIN_SEMANTIC_AUDIT" or type(semantic["version"]) is not int or
                 semantic["version"] != 1 or semantic["stage"] != "ADVERSARIAL_AUDIT_AND_RECONCILE" or
@@ -407,7 +421,6 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
                 raise BrainProviderProtocolError("Stage-2 semantic lineage mismatch")
             for key in ("stage2_fingerprint", "reconciled_candidate_fingerprint"):
                 _fingerprint(semantic[key], key)
-            profile = req["audit_profile_package"]["profile"]
             _ordered_lenses(semantic["construct_audit"], profile, closure=False)
             closure = _ordered_lenses(semantic["closure"], profile, closure=True)
             expected_outcome = "NO_DECISION" if any(item["outcome"] == "BLOCKER" for item in closure) else "CANDIDATE"
@@ -433,8 +446,7 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
                                          else first["construct_candidate"]),
                 "closure": semantic["closure"], "outcome": semantic["outcome"],
             }
-            if "acceptance_phase_ledger" in semantic:
-                material["acceptance_phase_ledger"] = semantic["acceptance_phase_ledger"]
+            material.update({key: semantic[key] for key in task_fields})
             if validate_stage2(req["decision_packet"], profile, first, material) != semantic:
                 raise BrainProviderProtocolError("Stage-2 result does not match BP-4A semantics")
             validated = semantic
