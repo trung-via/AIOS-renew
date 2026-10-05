@@ -1,0 +1,128 @@
+task_id: TASK-309
+revision: 1
+goal: Close the H4C1 new-TASK origin-provenance gap so a new ORIGIN_AFFINE TASK cannot
+  be canonicalized with a copied, stale, or wrong-chat selector.
+problem: REVIEW-308-001 blocked publication because TASK-308 carried an ORIGIN_AFFINE
+  selector for a different regular Chat even though its implementation passed. Current
+  AUTHOR_TASK validates selector shape and revision continuity but does not independently
+  prove that a new TASK selector came from the exact chat performing authoring. H4C0
+  already proves exact page origin machine-locally; AUTHOR_TASK must consume a bounded
+  proof of that fact without leaking raw chat identity or creating new semantic/lifecycle
+  authority.
+assumptions:
+- Canonical main at authoring is 1d7a75777f49fc2076d127de34969658e4f03b84 and TASK-309
+  is the unique unauthored NEXT.
+- This chat was bootstrapped with PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 route_handle
+  page-origin-v1:daea771dcc0c97b21f655fb82d3d2ac03cfd430a1872158439f255a0f9a37665
+  generation 1.
+- REVIEW-308-001 remains BLOCKED and TASK-308 remains unpublished; TASK-303/RUN-303-004
+  remains paused.
+- The GitHub Brain ingress job is hosted and cannot directly read the machine-local
+  H4C0 origin registry; any production proof path must therefore include a bounded
+  self-hosted provenance admission step before canonical AUTHOR_TASK mutation.
+scope:
+  inspect:
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - src/aios_renew/origin_bootstrap.py
+  - src/aios_renew/return_affinity.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - .github/workflows/aios-brain-ingress.yml
+  - tests/test_origin_bootstrap.py
+  - tests/test_authoring_ingress.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_ingress_workflow.py
+  modify:
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - src/aios_renew/origin_bootstrap.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/origin_authoring_proof.py
+  - .github/workflows/aios-brain-ingress.yml
+  - tests/test_origin_bootstrap.py
+  - tests/test_authoring_ingress.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_ingress_workflow.py
+non_goals:
+- Change or publish TASK-308/RUN-308-001/REVIEW-308-001, resume TASK-303, or mutate
+  historical affinity.
+- Infer origin from active/recent chat, timestamps, transcript, repository defaults,
+  prior TASK selectors, or Brain memory.
+- Store raw chat URL/UUID, CDP endpoint, transcript, draft, credentials, or registry
+  contents in canonical artifacts or GitHub.
+- Create a Planner, generic router, scheduler, retry authority, lifecycle state store,
+  Reviewer, Publisher, or Runtime replacement.
+- Implement implicit route transfer for existing TASK revisions or weaken generation,
+  exact-target, dedupe, ambiguity, Human-draft, or no-blind-resend protections.
+constraints:
+  hard:
+  - For a post-fix new ORIGIN_AFFINE TASK identity, canonical AUTHOR_TASK mutation
+    must require an independently admitted bounded origin proof whose route_handle
+    and generation exactly match the final TASK return_affinity.
+  - The proof must originate from the exact-page H4C0 bootstrap boundary and must
+    not be self-certified by the TASK payload.
+  - Because machine-local origin state is unavailable to the hosted ingress runner,
+    the production carrier must use a bounded self-hosted provenance admission step
+    before canonicalization; hosted-only code must not pretend to validate local origin
+    state.
+  - Bind proof admission to the exact carrier attempt, TASK id, expected main, route_handle
+    and generation; missing, stale, mismatched, ambiguous or cross-attempt reuse fails
+    closed before canonical mutation.
+  - Ordinary revisions preserve their existing affinity exactly; current-chat proof
+    must not implicitly transfer ownership or generation.
+  - Proof/admission state is operational only and must not become semantic or lifecycle
+    truth.
+  - Preserve existing TASK/RUN affinity propagation, attention routing, local wake
+    lane ownership, canonical freshness, exact-event dedupe, active-generation, Human-draft,
+    ambiguity and no-blind-resend semantics.
+  - Executor changes only scope.modify, does not mutate roadmap state, and does not
+    claim Runtime verification, review, publication, TASK-308 resolution, or H4/H5
+    closure.
+acceptance:
+- id: AC1
+  condition: Candidate changes only scope.modify and introduces no new semantic/lifecycle
+    authority.
+- id: AC2
+  condition: H4C0 produces or exposes a bounded opaque authoring proof tied to the
+    exact page-scoped route/generation without exposing raw chat identity or endpoint.
+- id: AC3
+  condition: Production AUTHOR_TASK for a new ORIGIN_AFFINE identity cannot canonicalize
+    unless a self-hosted provenance step validates the proof against machine-local
+    H4C0 state before mutation.
+- id: AC4
+  condition: Proof admission is bound to exact carrier attempt, TASK id, expected
+    main, route_handle and generation; missing/stale/mismatch/ambiguity/cross-attempt
+    reuse fails closed and same-attempt replay is idempotent.
+- id: AC5
+  condition: AUTHOR_TASK verifies admitted route_handle/generation equals final TASK
+    return_affinity and cannot derive provenance from the TASK payload, prior TASK,
+    repository default, recent chat, transcript, or Brain memory.
+- id: AC6
+  condition: Ordinary TASK revisions retain existing affinity with no implicit route
+    transfer or generation change; legacy routing remains explicitly distinct.
+- id: AC7
+  condition: Existing H4C1 RUN/attention propagation and local wake exact-target,
+    generation, draft, dedupe, ambiguity and no-blind-resend behavior remain unchanged.
+- id: AC8
+  condition: Focused regressions cover A->A, B->B, B using A proof/selector rejection,
+    missing/stale/wrong-generation proof, cross-attempt replay rejection, same-attempt
+    idempotence, revision preservation, legacy separation, and pre-mutation workflow
+    failure.
+- id: AC9
+  condition: TASK-308 and TASK-303 lineages remain unchanged; Executor RESULT leaves
+    Runtime verification, Reviewer verdict, Publisher publication and later TASK-308
+    disposition to their owning authorities.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_origin_bootstrap.py tests/test_authoring_ingress.py
+    tests/test_github_issue_ingress.py tests/test_github_issue_ingress_workflow.py
+  - git diff --check
+return_affinity:
+  kind: ORIGIN_AFFINE
+  route_handle: page-origin-v1:daea771dcc0c97b21f655fb82d3d2ac03cfd430a1872158439f255a0f9a37665
+  generation: 1
