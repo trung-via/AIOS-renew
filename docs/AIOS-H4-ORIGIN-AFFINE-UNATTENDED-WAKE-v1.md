@@ -382,7 +382,7 @@ Failure to prove authentication/surface/route/target must fail closed. Transport
 
 Live exit gate: with the target conversation not pre-opened or prepared by the Human, the transport obtains/restores the authorized delivery environment, reaches the exact target, proves all required safety gates, and submits exactly one doorbell without Human UI preparation.
 
-### TASK-302 bounded H4D acquisition contract
+### TASK-302 bounded H4D acquisition contract, corrected by TASK-304
 
 `src/aios_renew/unattended_chat_wake.py` is a transport primitive under the
 existing durable lane pass, with no standalone launcher, router, queue, dispatch,
@@ -444,15 +444,30 @@ surface condition requiring Human restoration, never credential extraction or
 account selection. The host and runner must be running. This contract provides
 no powered-off-host wake, remote/cloud environment, or ChatGPT Work fallback.
 
-If attachment fails, only a bounded refused-socket observation permits launch.
-An accepting socket, timeout, or uncertain connection cannot authorize stealing
-or rebinding the endpoint. Conservative singleton/lock/DevTools markers and OS
-process command lines establish profile availability; stale markers remain for
-Human reconciliation. Launch uses only the configured executable/user-data/profile
+If attachment fails, launch permission requires a successful bounded Windows OS
+listener-table query proving zero listening sockets on the exact configured local
+port, across all local addresses including wildcard and IPv6 listeners. The query
+enumerates the table before filtering for listening sockets on that port, so zero
+matches are an explicit empty-array observation rather than a suppressed query
+error. Query failure, malformed/non-array output, ambiguous/multiple observations,
+or any listener on that port fails closed before launch. TCP refusal, timeout,
+acceptance, or any other connection outcome alone never authorizes launch; no
+cause of a timeout is inferred or changed. A zero-listener observation permits
+only the existing one bounded acquisition attempt under explicit `allow_launch`.
+
+Listener absence does not establish profile availability. The independent
+conservative singleton/lock/DevTools markers and OS process command-line checks
+remain required before launch; stale markers remain for Human reconciliation.
+Launch uses only the configured executable/user-data/profile
 and fixed loopback CDP/no-startup-window switches, with no conversation URL
 or workflow freshness token passed to the process. An exited launcher or listener
 whose PID, executable, profile, user-data directory, address, or port differs
-fails closed. The transport never terminates a browser or removes profile locks.
+fails closed. Exact post-launch ownership proof remains authoritative before page
+acquisition and is repeated before returning the acquired page for editing. If
+another process acquires the port after the zero-listener observation, it cannot
+authorize editing or submission: an ownership mismatch fails closed at the
+initial or repeated check, with the initial check preceding page acquisition.
+The transport never terminates a browser or removes profile locks.
 An exclusive local `.aios-unattended-acquisition.lock` serializes acquisition
 across invocations sharing the environment; it never serializes ordinary attached
 delivery. A preexisting or stale acquisition lock also fails closed and remains
@@ -470,7 +485,7 @@ One delivery invocation shares one acquisition budget across its existing finite
 lane rechecks and, for an all-lanes drain, across its lane workers. The finite
 recheck stops after acquisition was attempted. Endpoint restoration waits inside
 that attempt have a 20-second acquisition deadline, with individually bounded
-connection, OS-helper, page-creation, and navigation operations. The initial
+CDP connection, OS-helper, page-creation, and navigation operations. The initial
 attach attempt retains its existing ten-second bound; canonical barriers retain their own
 existing bounded read budgets. Playwright methods without public timeout
 arguments use its existing sync loop/implementation mapping with timed async
@@ -493,7 +508,10 @@ GitHub input, output, secret, browser download, or account selector.
 
 Deterministic regressions use inert CDP, OS/process, and regular-Chat surface
 fixtures, including exact acquisition/submission and durable ambiguity without
-live ChatGPT access. Implementation and those regressions do not close H4D.
+live ChatGPT access. Listener-proof regressions cover zero-listener authorization,
+occupied/query-failure/malformed rejection, non-authoritative socket outcomes,
+independent profile occupancy, and a post-observation port-ownership race.
+Implementation and those regressions do not close H4D.
 H4D roadmap closure remains downstream of reviewed publication and separate
 Human/Brain live proof of the unprepared-target exit gate. H4E production
 multi-lane live conformance, final H4B semantic resume, and H5 closure remain

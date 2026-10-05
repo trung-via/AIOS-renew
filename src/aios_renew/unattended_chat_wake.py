@@ -9,12 +9,10 @@ from __future__ import annotations
 import asyncio
 from contextlib import contextmanager
 from dataclasses import dataclass
-import errno
 import json
 import os
 from pathlib import Path
 import re
-import socket
 import subprocess
 import time
 from urllib.parse import urlsplit
@@ -189,15 +187,22 @@ class LocalEnvironment:
             path.unlink()  # Never remove a preexisting/stale lock.
 
     def endpoint_absent(self):
-        """Only a proved connection refusal permits launch, never timeout/error."""
-        try:
-            with socket.create_connection(("127.0.0.1", self.environment.port),
-                                          timeout=self.remaining_ms(1000) / 1000):
-                return False
-        except OSError as exc:
-            if exc.errno in {errno.ECONNREFUSED, 10061} or getattr(exc, "winerror", None) == 10061:
-                return True
+        """Only a successful Windows zero-listener observation permits launch."""
+        # Enumerate first: a filtered Get-NetTCPConnection query reports no
+        # matches as an error. A successful full table can prove an empty set
+        # for this exact port, on any local address (including wildcard/IPv6).
+        listeners = self._query(
+            "[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); "
+            "$listeners=@(Get-NetTCPConnection -ErrorAction Stop | Where-Object { "
+            "$_.State -eq 'Listen' -and "
+            "$_.LocalPort -eq ([int]$env:AIOS_ACQUISITION_PORT) } | "
+            "Select-Object LocalAddress,LocalPort,OwningProcess); "
+            "ConvertTo-Json -InputObject $listeners -Compress")
+        if type(listeners) is not list:
             raise wake.WakeBlocked("BROWSER_OWNERSHIP_UNPROVEN") from None
+        # No socket outcome is consulted. Only the empty array proves absence;
+        # any row, including malformed or ambiguous rows, blocks launch.
+        return not listeners
 
     def _query(self, script):
         if os.name != "nt":
@@ -421,7 +426,7 @@ class UnattendedBrowserAdapter(wake.BrowserAdapter):
             try:
                 browser = self.driver.chromium.connect_over_cdp(self.binding.cdp_endpoint, timeout=10000)
             except Exception:
-                pass  # A separate refused-socket proof is required before launch.
+                pass  # A separate Windows listener-table proof is required before launch.
             if browser is not None:
                 _, targets = self._targets(browser, self.binding.chat_url)
                 if targets:

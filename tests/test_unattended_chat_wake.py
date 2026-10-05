@@ -2,8 +2,10 @@
 
 import asyncio
 from dataclasses import replace
+import errno
 import json
 from pathlib import Path
+import socket
 import sys
 from types import SimpleNamespace
 
@@ -81,6 +83,7 @@ def harness(tmp_path, monkeypatch):
     h = SimpleNamespace(binding=binding, registry=registry, selector=selectors[0],
                         projection=AffineProjection(selectors[0]), config=config, document=document,
                         available=True, owned=True, ambiguous=False, connect_failure=False,
+                        connect_error=RuntimeError("private CDP connection detail"), listener_queries=[],
                         created=0, navigations=[], launches=[], connects=[], timeouts=[],
                         checks=[], stops=[], processes=[], sleeps=[], timeout_after=None,
                         hook=lambda stage: None, page=None, moved=None, nondefault_contexts=[])
@@ -88,6 +91,10 @@ def harness(tmp_path, monkeypatch):
     h.process = SimpleNamespace(pid=123, poll=lambda: None)
     h.stored = lambda: json.loads(binding.state_path.read_text())["repositories"][wake.REPOSITORY]
     h.provider = lambda: h.moved or wake.load_route_binding(wake.REPOSITORY, h.selector)
+    port = unattended.load_environment(binding).port
+    h.listener_observation = lambda: ([dict(LocalAddress="127.0.0.1",
+                                           LocalPort=port,
+                                           OwningProcess=h.process.pid)] if h.available else [])
     h.deliver = lambda: wake.deliver(EVENT, binding.repository, binding,
                                     projection=h.projection, binding_provider=h.provider)
 
@@ -96,7 +103,7 @@ def harness(tmp_path, monkeypatch):
         h.connects.append(timeout)
         h.hook("connect")
         if not h.available or h.connect_failure:
-            raise RuntimeError("private CDP connection detail")
+            raise h.connect_error
         return h.browser
 
     driver = SimpleNamespace(chromium=SimpleNamespace(connect_over_cdp=connect),
@@ -110,11 +117,11 @@ def harness(tmp_path, monkeypatch):
                 raise wake.WakeBlocked("ACQUISITION_TIMED_OUT")
             return super().remaining_ms(ceiling)
 
-        def endpoint_absent(self):
-            self.remaining_ms()
-            return not h.available
-
         def _query(self, script):
+            if "Get-NetTCPConnection" in script:
+                h.listener_queries.append(script)
+                self.remaining_ms()
+                return h.listener_observation()
             h.checks.append("profile")
             return h.processes
 
@@ -167,7 +174,7 @@ def test_attach_existing_never_reads_acquisition_config_or_owns_launch(harness, 
     monkeypatch.delenv(unattended.CONFIG_ENV)
     assert h.deliver()["status"] == "SUBMITTED"
     assert page.evaluations.count(wake.INSERT) == page.evaluations.count(wake.CLICK) == 1
-    assert not h.launches and not h.navigations and not h.created and not h.checks
+    assert not h.launches and not h.navigations and not h.created and not h.checks and not h.listener_queries
     assert h.connects == [10000] and h.stops == ["disconnect"]
     assert h.deliver()["status"] == "NOOP"
     assert h.connects == [10000]
@@ -198,6 +205,7 @@ def test_unavailable_endpoint_launches_only_configured_environment_once(harness)
     assert len(h.launches) == 1 and h.created == 1 and h.navigations == [h.binding.chat_url]
     assert h.launches[0][-1] == "--no-startup-window" and h.binding.chat_url not in h.launches[0]
     assert h.checks == ["profile", "owner", "owner"]
+    assert len(h.listener_queries) == 2
     assert h.connects == [10000, 1000]
     assert h.stops == ["disconnect"]
 
@@ -275,6 +283,7 @@ def test_locked_or_stale_profile_is_preserved_without_launch(harness, marker):
     path.write_text("Human-owned or uncertain", encoding="utf-8")
     assert h.deliver()["reason"] == "PROFILE_LOCKED"
     assert path.read_text() == "Human-owned or uncertain"
+    assert len(h.listener_queries) == (0 if marker == ".aios-unattended-acquisition.lock" else 1)
     assert not h.launches and not h.navigations and not h.created
 
 
@@ -444,18 +453,141 @@ def test_configuration_rejects_worktrees_and_bare_stores(harness, tmp_path, monk
             unattended.load_environment(h.binding)
 
 
-def test_refusal_is_required_for_launch_not_timeout_or_an_occupied_socket(monkeypatch, harness):
+@pytest.mark.parametrize("outcome", ["timeout", "refusal", "would-block", "error", "accepting-unusable-cdp"])
+@pytest.mark.parametrize("observation", ["zero", "occupied", "query-failure", "malformed"])
+def test_listener_table_alone_controls_launch_after_a_connection_failure(harness, monkeypatch, outcome, observation):
+    h = harness
+    h.available = False
+    h.connect_error = {"timeout": TimeoutError("private TCP timeout"),
+                       "refusal": ConnectionRefusedError(errno.ECONNREFUSED, "private TCP refusal"),
+                       "would-block": OSError(10035, "private socket would-block"),
+                       "error": OSError("private connection uncertainty"),
+                       "accepting-unusable-cdp": RuntimeError("private CDP failure on an accepting socket")}[outcome]
+    # Even explicit refusal is not consulted as launch permission. These socket
+    # outcomes cannot bypass an occupied, failed or malformed OS observation.
+    monkeypatch.setattr(socket, "create_connection", lambda *args, **kwargs: pytest.fail("Socket proof consulted"))
+    if observation == "occupied":
+        port = unattended.load_environment(h.binding).port
+        h.listener_observation = lambda: [dict(LocalAddress="127.0.0.1", LocalPort=port, OwningProcess=456)]
+    if observation == "query-failure":
+        def failed_query(): raise wake.WakeBlocked("BROWSER_OWNERSHIP_UNPROVEN")
+        h.listener_observation = failed_query
+    if observation == "malformed": h.listener_observation = lambda: None
+    receipt = h.deliver()
+    if observation == "zero":
+        assert receipt["status"] == "SUBMITTED"
+        assert len(h.launches) == h.created == 1 and len(h.listener_queries) == 2
+        assert h.page.evaluations.count(wake.INSERT) == h.page.evaluations.count(wake.CLICK) == 1
+        assert h.deliver()["status"] == "NOOP" and len(h.launches) == 1
+    else:
+        assert receipt["reason"] == "BROWSER_OWNERSHIP_UNPROVEN"
+        assert not h.launches and not h.created and not h.navigations
+    assert "private" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("address,count", [("127.0.0.1", 1), ("0.0.0.0", 1), ("::", 1), ("::1", 1), ("127.0.0.1", 2)])
+def test_any_listener_on_the_configured_port_blocks_launch(harness, address, count):
+    h = harness
+    h.available = False
+    environment = unattended.load_environment(h.binding)
+    h.listener_observation = lambda: [dict(LocalAddress=address, LocalPort=environment.port,
+                                         OwningProcess=456)] * count
+    assert h.deliver()["reason"] == "BROWSER_OWNERSHIP_UNPROVEN"
+    assert len(h.listener_queries) == 1 and not h.launches and not h.created and not h.navigations
+
+
+@pytest.mark.parametrize("observation", [None, False, 0, "[]", {}, {"listeners": []}, [None], [[]], [{"LocalPort": 1}]])
+def test_malformed_or_ambiguous_listener_observations_never_launch(harness, observation):
+    h = harness
+    h.available = False
+    h.listener_observation = lambda: observation
+    assert h.deliver()["reason"] == "BROWSER_OWNERSHIP_UNPROVEN"
+    assert not h.launches and not h.created and not h.navigations
+
+
+@pytest.mark.parametrize("output", ["zero", "bom-zero", "exit-failure", "timeout", "os-error", "malformed-json", "multiple-json", "non-array", "oversized"])
+def test_windows_listener_query_requires_a_successful_bounded_empty_array(harness, tmp_path, monkeypatch, output):
     environment = unattended.load_environment(harness.binding)
-    # Use the real OS-boundary method with a synthetic socket, never the network.
-    method = LOCAL_ENVIRONMENT.endpoint_absent
-    local = unattended.LocalEnvironment(environment, unattended.time.monotonic() + 20)
-    def refused(*args, **kwargs): raise ConnectionRefusedError(unattended.errno.ECONNREFUSED, "private")
-    monkeypatch.setattr(unattended.socket, "create_connection", refused)
-    assert method(local) is True
-    def timeout(*args, **kwargs): raise TimeoutError("private")
-    monkeypatch.setattr(unattended.socket, "create_connection", timeout)
-    with pytest.raises(wake.WakeBlocked, match="BROWSER_OWNERSHIP_UNPROVEN"):
-        method(local)
+    local = LOCAL_ENVIRONMENT(environment, unattended.time.monotonic() + 20)
+    # Exercise the real Windows helper/decoder with inert subprocess output.
+    helper = tmp_path / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    helper.parent.mkdir(parents=True)
+    helper.touch()
+    monkeypatch.setattr(unattended, "os", SimpleNamespace(name="nt", environ={"SystemRoot": str(tmp_path)}))
+    monkeypatch.setattr(unattended.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    calls = []
+    def query(command, **kwargs):
+        calls.append(command)
+        assert command[:4] == [str(helper), "-NoProfile", "-NonInteractive", "-Command"]
+        script = command[4]
+        assert "$ErrorActionPreference='Stop'" in script
+        assert "Get-NetTCPConnection -ErrorAction Stop | Where-Object" in script
+        assert "$_.State -eq 'Listen'" in script
+        assert "$_.LocalPort -eq ([int]$env:AIOS_ACQUISITION_PORT)" in script
+        assert "-LocalPort" not in script  # Zero matches must not be a suppressed query error.
+        assert kwargs["env"]["AIOS_ACQUISITION_PORT"] == str(environment.port)
+        assert 0 < kwargs["timeout"] <= 3 and kwargs["capture_output"] is True
+        assert kwargs["check"] is False and kwargs["creationflags"] == 0x08000000
+        if output == "timeout": raise unattended.subprocess.TimeoutExpired(command, kwargs["timeout"])
+        if output == "os-error": raise OSError("private OS query detail")
+        raw = {"zero": b"[]", "bom-zero": b"\xef\xbb\xbf[]", "exit-failure": b"[]",
+               "malformed-json": b"private invalid output", "multiple-json": b"[]\n[]",
+               "non-array": b'{"listeners":[]}', "oversized": b" " * (wake.MAX_BYTES + 1)}[output]
+        return SimpleNamespace(returncode=1 if output == "exit-failure" else 0, stdout=raw)
+    monkeypatch.setattr(unattended.subprocess, "run", query)
+    monkeypatch.setattr(socket, "create_connection", lambda *args, **kwargs: pytest.fail("Socket proof consulted"))
+    if output in {"zero", "bom-zero"}:
+        assert local.endpoint_absent() is True
+    else:
+        with pytest.raises(wake.WakeBlocked, match="^BROWSER_OWNERSHIP_UNPROVEN$"):
+            local.endpoint_absent()
+    assert len(calls) == 1
+
+
+def test_listener_appearing_before_the_final_launch_check_blocks_launch(harness):
+    h = harness
+    h.available = False
+    environment = unattended.load_environment(h.binding)
+    h.listener_observation = lambda: ([] if len(h.listener_queries) == 1 else
+                                     [dict(LocalAddress="127.0.0.1", LocalPort=environment.port, OwningProcess=456)])
+    assert h.deliver()["reason"] == "BROWSER_OWNERSHIP_UNPROVEN"
+    assert len(h.listener_queries) == 2 and h.checks == ["profile"]
+    assert not h.launches and not h.created and not h.navigations
+
+
+@pytest.mark.parametrize("stage", ["launched", "navigate"])
+def test_post_observation_port_owner_race_cannot_acquire_or_edit_the_target(harness, monkeypatch, stage):
+    h = harness
+    h.available = False
+    environment = unattended.load_environment(h.binding)
+    owner = dict(ProcessId=h.process.pid, ExecutablePath=str(environment.executable), CommandLine="private-local-only")
+    synthetic_query = unattended.LocalEnvironment._query
+    def query(local, script):
+        if "Win32_Process -Filter" in script:
+            h.checks.append("owner")
+            assert "-State Listen" in script and "-LocalPort ([int]$env:AIOS_ACQUISITION_PORT)" in script
+            assert "$listeners.Count -ne 1" in script and "$listeners[0].LocalAddress -ne '127.0.0.1'" in script
+            return owner
+        return synthetic_query(local, script)
+    # The raced owner even matches every configured field: launched PID identity
+    # must still reject it using the actual production ownership method.
+    monkeypatch.setattr(unattended.LocalEnvironment, "_query", query)
+    monkeypatch.setattr(unattended.LocalEnvironment, "prove_owner", LOCAL_ENVIRONMENT.prove_owner)
+    monkeypatch.setattr(unattended, "_windows_arguments", lambda command: environment.command())
+    def changed(current):
+        if current == stage: owner["ProcessId"] = 456
+    h.hook = changed
+    receipt = h.deliver()
+    assert receipt["status"] == "DEFERRED" and receipt["reason"] == "LAUNCH_UNCERTAIN"
+    assert len(h.launches) == 1 and len(h.listener_queries) == 2
+    if stage == "launched":
+        assert not h.created and not h.navigations
+    else:
+        assert h.created == 1 and h.navigations == [h.binding.chat_url]
+    assert all(not page.evaluations for context in h.browser.contexts for page in context.pages)
+    assert h.stored()["events"][EVENT]["status"] == "DEFERRED"
+    for sensitive in (owner["CommandLine"], owner["ExecutablePath"], str(owner["ProcessId"])):
+        assert sensitive not in json.dumps(receipt)
 
 
 @pytest.mark.parametrize("drift", ["executable", "profile", "user-data", "port", "address", "duplicate", "pid", "exit"])
@@ -526,6 +658,7 @@ def test_process_occupancy_cannot_be_reinterpreted_as_a_free_profile(harness, mo
     if occupancy == "implicit-profile": arguments = [arguments[0]]
     monkeypatch.setattr(unattended, "_windows_arguments", lambda command: arguments)
     assert h.deliver()["reason"] in {"PROFILE_LOCKED", "BROWSER_OWNERSHIP_UNPROVEN"}
+    assert len(h.listener_queries) == 1
     assert not h.launches and not h.created
 
 
