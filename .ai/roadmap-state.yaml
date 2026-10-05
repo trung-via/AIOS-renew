@@ -459,11 +459,11 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - h4d-task307-automation-flag-correction-v1
+  - cleanup-consolidation-v1
 sequence:
 
   - id: h4d-task307-automation-flag-correction-v1
-    status: NEXT
+    status: DONE
     phase: H4D_UNATTENDED_LAUNCH_AUTOMATION_FLAG_CORRECTION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
@@ -491,10 +491,31 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: AUTHORIZED_NOT_YET_DISPATCHED
+      status: COMPLETED_BY_RUN_307_001
       interpretation: >-
         Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-307 lifecycle.
-        This planning/delegation record does not itself create a RUN or prove execution.
+        RUN-307-001 subsequently reached canonical RESULT, independent Reviewer PASS
+        and exact eligible publication; this dispatch record remains subordinate
+        transport history rather than lifecycle authority.
+    engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-307
+      task_revision: 1
+      run_id: RUN-307-001
+      result_artifact_sha: "32cb5522eb4278e1dbee868f60efb7c3a610ba4a"
+      candidate_sha: "7b9a9d62b3bf9fff78a93f0b3cbe068b17beed3d"
+      runtime_verification: "867 passed, 596 skipped in 50.33s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-307-001
+      review_decision_sha: "54166df5831f1441bb740496e4bffb848ac9d7a7"
+      review_verdict: PASS
+      reviewed_sha: "7b9a9d62b3bf9fff78a93f0b3cbe068b17beed3d"
+      published_sha: "7b9a9d62b3bf9fff78a93f0b3cbe068b17beed3d"
+      publication_workflow_run_id: 37316022533
+      completed_on: "2026-10-05"
+      interpretation: >-
+        TASK-307 is exactly reviewed and published. This proves the bounded launch
+        correction only; it does not itself satisfy the separate H4D Human/Brain
+        target-not-preopened live-exit observation.
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
@@ -526,7 +547,7 @@ sequence:
     return_to: cleanup-consolidation-v1
 
   - id: cleanup-consolidation-v1
-    status: PAUSED_FOR_H4D_TASK307
+    status: REVISION_REQUIRED_AFTER_RUN_303_003
     phase: REPOSITORY_CLEANUP_CONSOLIDATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
@@ -598,6 +619,21 @@ sequence:
         Runtime verification because RESULT unresolved identified two required compatibility
         surfaces outside r2 correction authority. Revision 3 preserves that FAILURE as
         immutable diagnostic evidence and authorizes a fresh current-main PRIMARY only.
+    latest_failure_checkpoint:
+      failed_run_id: RUN-303-003
+      failure_artifacts_sha: "8be8fb3679da4ca17af2f846d653b6e9bb884b5f"
+      failed_head_sha: "9f64f35969ba26b5acc97d1cc9b989919b5a7012"
+      phase: COMPLETION_GATE
+      unresolved_surface: src/aios_renew/brain_provider_protocol.py
+      disposition: TASK_REVISION_REQUIRED
+      next_action: AUTHOR_TASK_303_REVISION_4_FROM_CURRENT_MAIN
+      interpretation: >-
+        RUN-303-003 produced a clean repairable/transportable r3 candidate but could
+        not complete because the remaining provider-envelope compatibility correction
+        requires modifying brain_provider_protocol.py outside r3 scope.modify.
+        Ordinary REPAIR cannot expand TASK scope. The next lawful continuation is a
+        narrowly revised TASK-303 r4 fresh PRIMARY from current canonical main,
+        preserving all prior failure lineage and reviewed TASK-307 behavior.
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
 
 
