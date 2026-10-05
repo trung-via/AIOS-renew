@@ -459,11 +459,11 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - cleanup-consolidation-v1
+  - h4d-task306-r2-recovery-v1
 sequence:
 
   - id: cleanup-consolidation-v1
-    status: NEXT
+    status: PAUSED
     phase: REPOSITORY_CLEANUP_CONSOLIDATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
@@ -526,6 +526,47 @@ sequence:
       - NO_NEW_PLANNER_ROUTER_LIFECYCLE_STORE_OR_REASONING_MEMORY
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
 
+
+  - id: h4d-task306-r2-recovery-v1
+    status: NEXT
+    phase: H4D_TASK306_R2_RECOVERY
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-05"
+    task_id: TASK-306
+    task_revision: 2
+    objective: >-
+      Complete the exact canonical TASK-306 revision-2 recovery from RUN-306-003
+      through a FINALIZE_CANDIDATE REPAIR, fresh Runtime verification, semantic
+      review, and exact eligible publication before returning to the paused
+      cleanup-consolidation side-track.
+    human_priority:
+      authority: HUMAN
+      decision: COMPLETE_TASK306_R2_RECOVERY_BEFORE_RESUMING_TASK303
+      explicit_override: true
+      interpretation: >-
+        This current Human priority prospectively overrides the older cleanup
+        bookmark only until TASK-306 revision 2 reaches its exact reviewed
+        publication terminal. It does not mark TASK-303 complete and does not
+        reinterpret prior TASK-306 RUNs.
+    repair_authorization_intent:
+      failed_run_id: RUN-306-003
+      failed_head_sha: "84dc07f0dea3839f89db6e660033d5e51a3ecd90"
+      failure_artifacts_sha: "03c94903b00f6d3e10292a8663d7deb2aa87f35c"
+      action: FINALIZE_CANDIDATE
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: HUMAN_AUTHORIZED_PENDING_CANONICAL_INGRESS
+    boundaries:
+      - PRESERVE_RUN_306_003_FAILED_CANDIDATE_EXACTLY
+      - FINALIZE_CANDIDATE_HAS_EMPTY_MODIFICATION_SCOPE
+      - RUNTIME_REVERIFIES_FRESH
+      - REVIEWER_RETAINS_SEMANTIC_VERDICT
+      - PUBLISHER_RETAINS_EXACT_ELIGIBLE_PUBLICATION
+      - NO_TASK_307
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+      - TASK_303_REMAINS_PAUSED_NOT_COMPLETED
+    return_to: cleanup-consolidation-v1
 
   - id: temporary-wake-first-cutover-v2
     status: DONE
