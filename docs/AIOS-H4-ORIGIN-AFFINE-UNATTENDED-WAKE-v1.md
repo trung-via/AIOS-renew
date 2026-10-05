@@ -310,20 +310,36 @@ must still reconstruct semantics from canonical state after delivery. The origin
 may observe only the exact precommitted rendezvous marker needed to establish the
 conversation route.
 
-The candidate is not yet production authority. 2026-10-06 Human live observations
-now establish both same-conversation and cross-device positive feasibility: an exact
-assistant-emitted marker was uniquely found and re-proven in the originating conversation,
-and a fresh conversation initiated from another device was likewise resolved by the same
-exact-token method. The cross-device search first returned zero results and, after one
-bounded wait using the same token, returned exactly one correct result. This demonstrates
-that account search may be eventually consistent and requires a bounded indexing
-wait/retry policy before a zero result becomes terminal. Exhaustion must still fail closed
-and must never authorize recent/active/default-chat fallback.
+The bounded live feasibility probe is closed PASS for architecture selection. 2026-10-06
+Human live observations establish all four required cases:
 
-These observations remain Human operational evidence, not Runtime engineering truth. Before
-TASK authoring the bounded live probe must still prove the zero-match and multiple-match
-negative cases. Failure of either negative case returns an architecture blocker rather than
-authorizing heuristic fallback.
+- same-conversation exact-token search produced one result and opening it re-proved the
+  originating conversation;
+- a fresh conversation initiated from another device first produced zero results and,
+  after one bounded wait using the same token, produced exactly one correct result;
+- a deliberately absent full token produced zero matches and no fallback selection;
+- copying the original marker into a second test conversation produced more than one
+  match, making ambiguity externally observable.
+
+The cross-device zero-then-one sequence demonstrates that account search may be eventually
+consistent. Production resolution therefore requires a bounded same-token indexing
+wait/retry policy before a zero result becomes terminal. Exhaustion, more than one match,
+incomplete enumeration, account/search unavailability, route movement, or opened-chat
+re-proof failure must fail closed and must never authorize recent/active/default-chat,
+timestamp, semantic or partial-token fallback.
+
+These observations are Human operational evidence sufficient for Brain architecture
+selection, not Runtime engineering truth and not production conformance. The selected
+architecture is now clear for a dedicated production implementation TASK. That TASK must
+automate marker transport, exact account search, bounded indexing retry, sole-result
+opening and re-proof, stable route allocation/reuse, and an independently admitted
+origin-authoring proof compatible with the TASK-309 provenance boundary. It must not
+weaken new revision-1 ORIGIN_AFFINE authoring admission or bypass it with the legacy
+repository-default route.
+
+Accordingly, OPAQUE_ORIGIN_RENDEZVOUS_V1 remains non-production until its implementation
+is Runtime-verified, semantically reviewed PASS and published. Only then may a later new
+TASK identity rely on it as production exact-origin authority.
 
 ### Human-approved H4C0 fallback — page-scoped origin bootstrap
 
