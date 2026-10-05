@@ -78,6 +78,55 @@ human_priority_side_track:
   planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
   sequence:
 
+  - id: TASK-309
+    status: NEXT
+    phase: ORIGIN_AFFINE_AUTHORING_PROVENANCE_BINDING
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-05"
+    task_authoring_status: UNAUTHORED
+    objective: >-
+      Close the post-H4C1 new-TASK origin-provenance gap so an ORIGIN_AFFINE
+      return selector is admitted only after a bounded exact-page bootstrap proof
+      is independently validated against machine-local origin state and bound to
+      the exact TASK identity and expected canonical main before AUTHOR_TASK
+      canonicalization.
+    human_priority:
+      authority: HUMAN
+      decision: TASK_309_BEFORE_ANY_TASK_308_PUBLICATION_OR_TASK_303_RESUME
+      explicit_override: true
+      interpretation: >-
+        Human explicitly selected TASK-309 to correct the upstream origin-affinity
+        authoring provenance blocker found by REVIEW-308-001. TASK-308 remains
+        semantically BLOCKED and unpublished; TASK-303/RUN-303-004 remains paused.
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-05"
+      task_id: TASK-309
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_309_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    boundaries:
+      - ORIGIN_PROVENANCE_AUTHORING_GATE_ONLY
+      - EXACT_PAGE_PROOF_MUST_BE_INDEPENDENT_OF_TASK_PAYLOAD
+      - MACHINE_LOCAL_PROOF_IS_OPERATIONAL_NOT_LIFECYCLE_TRUTH
+      - HOSTED_INGRESS_MUST_NOT_PRETEND_TO_READ_LOCAL_ORIGIN_STATE
+      - SELF_HOSTED_PROVENANCE_ADMISSION_ONLY
+      - ORDINARY_REVISION_AFFINITY_REMAINS_IMMUTABLE
+      - NO_IMPLICIT_ROUTE_TRANSFER_OR_GENERATION_CHANGE
+      - NO_NEW_ROUTER_PLANNER_OR_LIFECYCLE_STATE
+      - NO_WAKE_GUARD_WEAKENING
+      - PRESERVE_TASK_308_REVIEW_BLOCKED_LINEAGE
+      - PRESERVE_TASK_303_R4_AND_RUN_303_004_LINEAGE
+    return_to: TASK-308
+
     - TASK-195
   return_to: bp-9-downstream-adoption
   target:
@@ -459,11 +508,11 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - TASK-308
+  - TASK-309
 sequence:
 
   - id: TASK-308
-    status: NEXT
+    status: PAUSED_FOR_TASK309_ORIGIN_PROVENANCE
     phase: BRAIN_PUBLICATION_TURN_HANDOFF_CORRECTION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
