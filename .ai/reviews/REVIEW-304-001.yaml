@@ -1,0 +1,50 @@
+review_id: REVIEW-304-001
+reviewed_sha: f95f033e94bb46ab007739dca941ea43420e69e1
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- 'RUN-304-001 is the canonical PRIMARY RESULT for TASK-304 r1. Candidate f95f033e94bb46ab007739dca941ea43420e69e1
+  is exactly one commit ahead of base 169993e18fbd0b3588a93950d883479d92025ba0 and
+  changes only the three TASK-authorized paths: src/aios_renew/unattended_chat_wake.py,
+  tests/test_unattended_chat_wake.py, and docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md.'
+- 'Runtime verification is canonical PASS: python -m pytest -q tests/test_unattended_chat_wake.py
+  tests/test_local_chat_wake.py reports 737 passed and 596 skipped in 37.90s; git
+  diff --check passed; RESULT unresolved is empty.'
+- "First semantic pass \u2014 contract coverage: AC1/AC2 are satisfied by replacing\
+  \ refusal-based permission with one bounded Windows Get-NetTCPConnection listener-table\
+  \ observation for the exact configured port, requiring strict list output and authorizing\
+  \ only an empty list. TCP timeout, refusal, acceptance, would-block, generic error,\
+  \ malformed output, query failure, or any listener cannot authorize launch."
+- "First semantic pass \u2014 preserved safeguards: AC3 remains independently enforced\
+  \ by conservative marker/process profile-occupancy checks. AC4/AC5 remain enforced\
+  \ by exact post-launch owner proof that binds executable, user-data directory, profile\
+  \ directory, loopback address, configured port, and launched PID before page acquisition\
+  \ and again before returning the page for editing."
+- "First semantic pass \u2014 unchanged H4C1 behavior: AC6 is preserved because the\
+  \ candidate does not modify local_chat_wake.py or the existing affinity, freshness,\
+  \ generation, exact-target/context, draft, active-generation, dedupe, at-most-one\
+  \ submission, exact-user-turn, or no-blind-resend machinery."
+- "Second semantic pass \u2014 adversarial closure: regression coverage explicitly\
+  \ exercises zero-listener success, wildcard/IPv6/duplicate listeners, listener-query\
+  \ failure, malformed and oversized output, socket timeout/refusal/would-block/error/accepting-but-unusable\
+  \ CDP outcomes as non-authoritative, independent profile occupancy, listener appearance\
+  \ before launch, and post-observation owner races. All tested uncertainty paths\
+  \ fail closed without editing or submission."
+- "Second semantic pass \u2014 scope/privacy/lifecycle closure: the implementation\
+  \ adds no launcher/router/account discovery/kill/rebind behavior, does not alter\
+  \ TASK-303 or RUN-303-001 lineage, keeps raw local endpoint/path/process/command-line\
+  \ details machine-local, and documentation explicitly preserves the separate reviewed-publication\
+  \ then Human/Brain H4D live exit gate. No H4D closure or H4E authorization is claimed\
+  \ by this candidate."
+- No material semantic defect was found within the exact TASK-304 review subject;
+  all eight acceptance criteria pass and there are no findings.
