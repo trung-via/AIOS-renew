@@ -547,16 +547,16 @@ sequence:
     return_to: cleanup-consolidation-v1
 
   - id: cleanup-consolidation-v1
-    status: REVISION_REQUIRED_AFTER_RUN_303_003
+    status: NEXT
     phase: REPOSITORY_CLEANUP_CONSOLIDATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
     task_id: TASK-303
-    task_revision: 3
+    task_revision: 4
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "e7c55f3981e176382cd93baf20ccf422a4efb200"
-    task_blob_sha: "ca72c61aa159b47168156046895fa50ec35ae5b0"
-    authoring_issue_number: 1530
+    task_author_commit_sha: "05c8aacc5beb6674dbd8023037eda32dca2885e3"
+    task_blob_sha: "f0414dc5a5f3dde411ecba7c309533620f5f2d13"
+    authoring_issue_number: 1537
     executor_delegation:
       authority: HUMAN
       selected_on: "2026-10-05"
@@ -569,24 +569,24 @@ sequence:
       expires_on_task_change: true
       persistence: THROUGH_TASK_303_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
     primary_dispatch_intent:
-      dispatch_id: task303-r3-codex61-xhigh-20261005-001
-      task_blob_sha: "ca72c61aa159b47168156046895fa50ec35ae5b0"
-      task_commit_sha: "e7c55f3981e176382cd93baf20ccf422a4efb200"
+      dispatch_id: task303-r4-codex61-xhigh-20261005-001
+      task_blob_sha: "f0414dc5a5f3dde411ecba7c309533620f5f2d13"
+      task_commit_sha: "05c8aacc5beb6674dbd8023037eda32dca2885e3"
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
       status: AUTHORIZED_NOT_YET_DISPATCHED
       interpretation: >-
-        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-303 lifecycle.
-        This is planning/delegation intent only; Runtime admission and RUN creation
-        remain authoritative and have not yet occurred.
+        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-303 lifecycle,
+        including revision 4. Runtime admission and RUN creation remain authoritative
+        and have not yet occurred for r4.
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
       - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "09899a9cd49819650f88d5b85d10b2c66aa44aab13a13b8dfdb75a194ebf296e"
-    construct_fingerprint: "b1587c9d806270fe036cc003ca27c6ae8b11e83ca967fbbc21590cdd63309a66"
-    reconciled_candidate_fingerprint: "4d88662baf43b43fa5c16fa02e4c9ccb8c5c00f2c4934b0691fc8383d3002c88"
+    packet_fingerprint: "3c1c89294b4a9379b6e1c5b46a27319c4c33b1411bc3861b606c45778f5c3a1b"
+    construct_fingerprint: "8ca0f75fa9b997e19f94140a2025d5e7845bf694012f8f4548e93fa33833513b"
+    reconciled_candidate_fingerprint: "a6af29ea6f4778eb48504b71fb4a43cd31080ecd9889c91ab019e218e76f0962"
     objective: >-
       Finish the bounded TASK-303 cleanup from current canonical main: make default Brain
       roadmap hydration active-context bounded, preserve retained diagnostic/wake surfaces,
@@ -625,8 +625,8 @@ sequence:
       failed_head_sha: "9f64f35969ba26b5acc97d1cc9b989919b5a7012"
       phase: COMPLETION_GATE
       unresolved_surface: src/aios_renew/brain_provider_protocol.py
-      disposition: TASK_REVISION_REQUIRED
-      next_action: AUTHOR_TASK_303_REVISION_4_FROM_CURRENT_MAIN
+      disposition: TASK_REVISION_4_CANONICALIZED
+      next_action: EXECUTE_TASK_303_REVISION_4_PRIMARY
       interpretation: >-
         RUN-303-003 produced a clean repairable/transportable r3 candidate but could
         not complete because the remaining provider-envelope compatibility correction
