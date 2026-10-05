@@ -1,0 +1,122 @@
+task_id: TASK-304
+revision: 1
+goal: Correct H4D pre-launch browser-availability proof so one bounded unattended
+  acquisition may launch the explicitly authorized Windows browser environment when
+  the configured loopback CDP endpoint has no listening socket, without treating socket
+  timeout as proof of absence or weakening exact post-launch ownership checks.
+problem: 'The reviewed and published TASK-302 contract intentionally authorizes launch
+  only after a bounded TCP connection attempt returns explicit refusal. A real H4D
+  origin-affine live attempt on the supported Windows self-host class proved a different
+  production state: the OS listener table reported no listening socket on the configured
+  loopback CDP port while the bounded TCP connection attempt timed out. The current
+  refusal-only predicate therefore returns BROWSER_OWNERSHIP_UNPROVEN before launch
+  even though no listener is present. This correction must change the pre-launch availability
+  proof itself, not reinterpret timeout as permission and not speculate about firewall,
+  security software, or other causes of the timeout.'
+assumptions:
+- TASK-302 remains reviewed and exactly published; this task is a new H4D live-conformance
+  correction, not a REPAIR of RUN-302-001.
+- The live H4D carrier remains unresolved/deferred and can be retried only after reviewed
+  publication of this correction; no fabricated attention subject is needed.
+- The supported production acquisition boundary remains a Windows self-hosted runner
+  with an explicitly Human-configured authenticated Chromium environment.
+- The observed evidence is limited to a successful OS query showing zero listening
+  sockets on the configured loopback CDP port together with a bounded TCP connect
+  timeout; the cause of that timeout is unknown and is not part of this task.
+- TASK-303 RUN-303-001 failure is separate lineage and remains untouched by this H4D
+  correction.
+scope:
+  inspect:
+  - src/aios_renew/unattended_chat_wake.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_unattended_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  modify:
+  - src/aios_renew/unattended_chat_wake.py
+  - tests/test_unattended_chat_wake.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+non_goals:
+- Treat socket timeout, WSAEWOULDBLOCK, connection error text, or any other network
+  outcome as proof that the endpoint is free.
+- Diagnose or change Windows firewall, Defender, VPN, endpoint-security, routing,
+  TCP stack, or host network policy.
+- Change origin affinity, route binding, canonical freshness, lane dedupe, draft/generation
+  guards, exact-target selection, post-send ambiguity, Reviewer, Publisher, Runtime,
+  or roadmap lifecycle semantics.
+- Kill, terminate, steal, rebind, or silently reuse an unproved browser, profile,
+  process, listener, or endpoint.
+- Add a background daemon, retry controller, alternate launcher, account selector,
+  browser/profile discovery, or repository-default fallback.
+- Modify TASK-303 implementation, RUN-303-001 FAILURE lineage, or perform REPAIR-303-001.
+- Claim H4D closure or advance H4E from deterministic tests or implementation alone.
+constraints:
+  hard:
+  - Pre-launch permission must come from a successful bounded Windows OS listener-table
+    observation for the exact configured local port, not from interpreting a TCP timeout
+    or generic connection failure as endpoint absence.
+  - Launch is permitted only when the listener-table observation deterministically
+    proves zero listening sockets for the configured port. Query failure, malformed
+    output, ambiguous/multiple observations, or any listener on that port fails closed
+    before launch.
+  - The existing dedicated-profile occupancy checks remain required before launch;
+    zero listeners do not prove that the configured profile is free.
+  - After launch, existing exact owner proof remains authoritative and must still
+    bind the listener to the exact configured executable, user-data directory, profile
+    directory, loopback address, port, and launched process identity. A race in which
+    another process acquires the port must fail closed.
+  - 'Do not widen the authorized environment: executable, user-data/profile, allow_launch,
+    exclusive_user_data, exact Binding.chat_url, exact H4C1 affinity, and existing
+    acquisition budget/deadline remain unchanged.'
+  - Preserve one bounded acquisition attempt per delivery invocation, no kill/rebind
+    behavior, exact-target/context proof, canonical freshness and generation barriers,
+    draft/active-generation guards, at-most-one submission, exact user-turn proof,
+    and no-blind-resend semantics.
+  - Raw local endpoints, paths, process identifiers, command lines, account/session
+    material, and dependency exception text remain machine-local and must not enter
+    TASK/RUN/RESULT/REVIEW/publication artifacts or public wake receipts.
+  - Tests must cover zero-listener authorization, occupied-listener rejection, listener-query
+    failure/malformed output rejection, timeout remaining non-authoritative, and a
+    post-observation port-ownership race failing closed.
+  - Executor changes only scope.modify, performs no live ChatGPT wake experiment,
+    does not mutate roadmap state, and does not claim Runtime verification, semantic
+    PASS, publication, H4D closure, or H4E authorization.
+acceptance:
+- id: AC1
+  condition: The unattended pre-launch path can authorize one bounded launch from
+    a successful Windows listener-table proof of zero listeners on the exact configured
+    port without requiring an explicit TCP refusal.
+- id: AC2
+  condition: A TCP timeout or other connection outcome alone never authorizes launch;
+    listener-table query failure, malformed output, or any listener on the configured
+    port fails closed before launch.
+- id: AC3
+  condition: Existing profile-occupancy checks still gate launch independently of
+    listener absence, so a configured profile already in use remains fail-closed.
+- id: AC4
+  condition: After launch, exact browser ownership proof still validates the configured
+    executable, user-data directory, profile directory, loopback address, port, and
+    launched process identity before page acquisition can proceed.
+- id: AC5
+  condition: A race where another process acquires the configured port after the zero-listener
+    observation cannot authorize editing or submission and fails closed under the
+    existing ownership checks.
+- id: AC6
+  condition: Existing H4C1 affinity/freshness/generation barriers, exact-target/context
+    proof, draft and active-generation guards, dedupe, at-most-one submission, exact
+    user-turn proof, and no-blind-resend behavior remain unchanged.
+- id: AC7
+  condition: Regression coverage distinguishes listener-table authority from non-authoritative
+    socket outcomes and covers zero-listener success, occupied/query-failure/malformed
+    fail-close, profile occupancy, and post-observation ownership race cases.
+- id: AC8
+  condition: Documentation replaces the refusal-only pre-launch statement with the
+    bounded Windows listener-proof contract while retaining the machine-local privacy
+    boundary, fail-closed uncertainty policy, and separate H4D live exit gate.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_unattended_chat_wake.py tests/test_local_chat_wake.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
