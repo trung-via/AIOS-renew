@@ -468,11 +468,11 @@ sequence:
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
     task_id: TASK-303
-    task_revision: 2
+    task_revision: 3
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "c55b2415c68b680b3b735dd118229b476dec4881"
-    task_blob_sha: "e2f265eac7f5ab6625cbc5cf4a589573bffa9daf"
-    authoring_issue_number: 1527
+    task_author_commit_sha: "e7c55f3981e176382cd93baf20ccf422a4efb200"
+    task_blob_sha: "ca72c61aa159b47168156046895fa50ec35ae5b0"
+    authoring_issue_number: 1530
     executor_delegation:
       authority: HUMAN
       selected_on: "2026-10-05"
@@ -485,9 +485,9 @@ sequence:
       expires_on_task_change: true
       persistence: THROUGH_TASK_303_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
     primary_dispatch_intent:
-      dispatch_id: task303-r2-codex61-xhigh-20261005-001
-      task_blob_sha: "e2f265eac7f5ab6625cbc5cf4a589573bffa9daf"
-      task_commit_sha: "c55b2415c68b680b3b735dd118229b476dec4881"
+      dispatch_id: task303-r3-codex61-xhigh-20261005-001
+      task_blob_sha: "ca72c61aa159b47168156046895fa50ec35ae5b0"
+      task_commit_sha: "e7c55f3981e176382cd93baf20ccf422a4efb200"
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
@@ -500,15 +500,14 @@ sequence:
     audit_stages:
       - CONSTRUCT
       - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "a345908c33418ef9af0911f0649436d58013de76056d9a5fe827cf6a6cb2a51c"
-    construct_fingerprint: "5b07557c8ebbf03257f2a405e11cef238eb69a3d66adf58357ef36689d381455"
-    reconciled_candidate_fingerprint: "3a39f6201f2d4903e93bc9dfcf16fbc34dd6a47ae4947b014fd5bc12148f871c"
+    packet_fingerprint: "09899a9cd49819650f88d5b85d10b2c66aa44aab13a13b8dfdb75a194ebf296e"
+    construct_fingerprint: "b1587c9d806270fe036cc003ca27c6ae8b11e83ca967fbbc21590cdd63309a66"
+    reconciled_candidate_fingerprint: "4d88662baf43b43fa5c16fa02e4c9ccb8c5c00f2c4934b0691fc8383d3002c88"
     objective: >-
-      Execute one bounded cleanup/consolidation task that removes only proven-temporary
-      diagnostic scaffolding and dependency-proven superseded surfaces, consolidates
-      duplicate tests without losing unique regression coverage, and makes default Brain
-      roadmap hydration bounded to active planning context while preserving immutable
-      historical engineering evidence for on-demand reconstruction.
+      Finish the bounded TASK-303 cleanup from current canonical main: make default Brain
+      roadmap hydration active-context bounded, preserve retained diagnostic/wake surfaces,
+      consolidate only duplicate test setup, and correct the exact Reviewer/Brain-provider
+      compatibility gaps exposed by RUN-303-002 without changing lifecycle authority.
     human_priority:
       authority: HUMAN
       decision: CLEANUP_CONSOLIDATION_BEFORE_RESUMING_H4D
@@ -521,17 +520,21 @@ sequence:
       - NO_ROADMAP_SEMANTIC_ADVANCE_BY_EXECUTOR
       - NO_IMMUTABLE_ENGINEERING_EVIDENCE_DELETION
       - DEFAULT_BRAIN_HYDRATION_ACTIVE_CONTEXT_ONLY
-      - REMOVE_SUPERSEDED_SURFACES_ONLY_WITH_CALLER_DEPENDENCY_PROOF
+      - NO_DIAGNOSTIC_WAKE_WORKFLOW_DELETION_R3
+      - REVIEWER_RETURN_AFFINITY_PROJECTION_COMPATIBILITY_ONLY
+      - BRAIN_HIGH_VALUE_V3_FIXTURE_CONFORMANCE_REQUIRED
       - CONSOLIDATE_TESTS_ONLY_WITH_UNIQUE_COVERAGE_PRESERVED
       - NO_NEW_PLANNER_ROUTER_LIFECYCLE_STORE_OR_REASONING_MEMORY
     lineage_checkpoint:
-      failed_run_id: RUN-303-001
-      failure_artifacts_sha: "5f0eef8df717c993e1d750c7bea49db7f5feda90"
-      failed_head_sha: "7f9415fa2d23b98bfd0dff611f3c1b255275dd87"
-      phase: VERIFICATION
+      failed_run_id: RUN-303-002
+      failure_artifacts_sha: "164ab06812b3b8b125f50f3f84cd565bb4d1ecc8"
+      failed_head_sha: "1cbf46760e4623ba7f1b95a11ce4f4abe04bd75d"
+      phase: COMPLETION_GATE
       interpretation: >-
-        Historical TASK-303 r1 PRIMARY failed Runtime verification. Its candidate remains
-        immutable diagnostic evidence only; continuation must reconcile against current main.
+        TASK-303 r2 PRIMARY produced a clean transportable candidate but failed before
+        Runtime verification because RESULT unresolved identified two required compatibility
+        surfaces outside r2 correction authority. Revision 3 preserves that FAILURE as
+        immutable diagnostic evidence and authorizes a fresh current-main PRIMARY only.
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
 
 
