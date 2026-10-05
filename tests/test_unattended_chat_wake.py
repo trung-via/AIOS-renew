@@ -275,16 +275,17 @@ def test_invalid_configuration_never_discovers_launches_or_navigates(harness, mo
     assert not h.launches and not h.created and not h.navigations and not h.checks
 
 
-@pytest.mark.parametrize("marker", ["SingletonLock", "SingletonCookie", "lockfile", "DevToolsActivePort", ".aios-unattended-acquisition.lock"])
+@pytest.mark.parametrize("marker", ["SingletonLock", "SingletonSocket", "SingletonCookie", "lockfile", "DevToolsActivePort", ".aios-unattended-acquisition.lock"])
 def test_locked_or_stale_profile_is_preserved_without_launch(harness, marker):
     h = harness
     h.available = False
+    h.processes = [None]  # Directory markers are authoritative before classification.
     path = Path(h.document["environments"][0]["user_data_dir"]) / marker
     path.write_text("Human-owned or uncertain", encoding="utf-8")
     assert h.deliver()["reason"] == "PROFILE_LOCKED"
     assert path.read_text() == "Human-owned or uncertain"
     assert len(h.listener_queries) == (0 if marker == ".aios-unattended-acquisition.lock" else 1)
-    assert not h.launches and not h.navigations and not h.created
+    assert not h.launches and not h.navigations and not h.created and not h.checks
 
 
 def test_launch_permission_can_only_be_disabled_by_local_configuration(harness):
@@ -647,19 +648,121 @@ def test_valid_os_listener_owner_uses_the_exact_configured_environment(harness, 
     LOCAL_ENVIRONMENT.prove_owner(local)
 
 
-@pytest.mark.parametrize("occupancy", ["configured-profile", "missing-commandline", "implicit-profile"])
-def test_process_occupancy_cannot_be_reinterpreted_as_a_free_profile(harness, monkeypatch, occupancy):
+@pytest.fixture
+def process_rows(harness, monkeypatch):
+    """Inert OS rows; use the native command-line parser on production Windows."""
+    environment = unattended.load_environment(harness.binding)
+    parsed = {}
+    if unattended.os.name != "nt":
+        monkeypatch.setattr(unattended, "_windows_arguments", lambda command: parsed[command])
+
+    def add(arguments):
+        command = unattended.subprocess.list2cmdline(arguments)
+        parsed[command] = arguments
+        row = dict(ExecutablePath=str(environment.executable), CommandLine=command)
+        harness.processes.append(row)
+        return row
+    return add
+
+
+@pytest.mark.parametrize("occupancy", ["no-switch", "other-directory", "production-pair",
+                                     "production-pair-reversed", "configured-directory",
+                                     "configured-after-no-switch", "configured-after-other"])
+def test_dedicated_directory_occupancy_uses_only_explicit_claims(harness, process_rows, occupancy):
     h = harness
     h.available = False
     environment = unattended.load_environment(h.binding)
-    h.processes = [dict(ExecutablePath=str(environment.executable), CommandLine="private-local-only")]
-    if occupancy == "missing-commandline": h.processes[0]["CommandLine"] = None
-    arguments = environment.command()
-    if occupancy == "implicit-profile": arguments = [arguments[0]]
-    monkeypatch.setattr(unattended, "_windows_arguments", lambda command: arguments)
-    assert h.deliver()["reason"] in {"PROFILE_LOCKED", "BROWSER_OWNERSHIP_UNPROVEN"}
+    executable = str(environment.executable)
+    other = [executable, "--user-data-dir=" + str(environment.user_data_dir.with_name("other-user-data"))]
+    no_switch = [executable, "--no-first-run"]
+    configured = [executable, "--user-data-dir=" + str(environment.user_data_dir)]
+    observations = {
+        "no-switch": [no_switch], "other-directory": [other],
+        "production-pair": [no_switch, other], "production-pair-reversed": [other, no_switch],
+        "configured-directory": [configured], "configured-after-no-switch": [no_switch, configured],
+        "configured-after-other": [other, configured],
+    }
+    for arguments in observations[occupancy]: process_rows(arguments)
+    # SyntheticLocal inherits the real production profile_available classifier.
+    receipt = h.deliver()
+    if occupancy.startswith("configured"):
+        assert receipt["reason"] == "PROFILE_LOCKED"
+        assert len(h.listener_queries) == 1 and h.checks == ["profile"]
+        assert not h.launches and not h.created and not h.navigations
+    else:
+        assert receipt["status"] == "SUBMITTED"
+        assert len(h.launches) == h.created == 1 and h.navigations == [h.binding.chat_url]
+        assert len(h.listener_queries) == 2 and h.checks == ["profile", "owner", "owner"]
+        assert h.page.evaluations.count(wake.INSERT) == h.page.evaluations.count(wake.CLICK) == 1
+    for row in h.processes:
+        for sensitive in row.values(): assert sensitive not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("defect", ["split", "duplicate", "empty", "relative", "malformed-token",
+                                  "extra-malformed-token", "parse-failure", "empty-executable-argument"])
+def test_explicit_or_unparseable_process_claims_fail_closed(harness, process_rows, monkeypatch, defect):
+    h = harness
+    h.available = False
+    environment = unattended.load_environment(h.binding)
+    executable, directory = str(environment.executable), str(environment.user_data_dir)
+    explicit = "--user-data-dir=" + directory
+    arguments = {
+        "split": [executable, "--user-data-dir", directory],
+        "duplicate": [executable, explicit, explicit],
+        "empty": [executable, "--user-data-dir="],
+        "relative": [executable, "--user-data-dir=relative-profile"],
+        "malformed-token": [executable, "--user-data-directory=" + directory],
+        "extra-malformed-token": [executable, explicit, "--user-data-dir-other=" + directory],
+        "parse-failure": [executable], "empty-executable-argument": [""],
+    }[defect]
+    process_rows(arguments)
+    if defect == "parse-failure":
+        def failed_parse(command):
+            raise wake.WakeBlocked("BROWSER_OWNERSHIP_UNPROVEN")
+        monkeypatch.setattr(unattended, "_windows_arguments", failed_parse)
+    assert h.deliver()["reason"] == "BROWSER_OWNERSHIP_UNPROVEN"
     assert len(h.listener_queries) == 1
-    assert not h.launches and not h.created
+    assert not h.launches and not h.created and not h.navigations
+
+
+@pytest.mark.parametrize("defect", ["missing-executable", "unreadable-executable", "relative-executable",
+                                  "invalid-executable", "missing-commandline", "unreadable-commandline",
+                                  "empty-commandline", "blank-commandline", "invalid-commandline"])
+def test_required_process_metadata_cannot_be_replaced_by_no_switch_permission(harness, process_rows, defect):
+    h = harness
+    h.available = False
+    environment = unattended.load_environment(h.binding)
+    row = process_rows([str(environment.executable)])
+    if defect == "missing-executable": row.pop("ExecutablePath")
+    if defect == "unreadable-executable": row["ExecutablePath"] = None
+    if defect == "relative-executable": row["ExecutablePath"] = "browser.exe"
+    if defect == "invalid-executable": row["ExecutablePath"] += "\0"
+    if defect == "missing-commandline": row.pop("CommandLine")
+    if defect == "unreadable-commandline": row["CommandLine"] = None
+    if defect == "empty-commandline": row["CommandLine"] = ""
+    if defect == "blank-commandline": row["CommandLine"] = "   "
+    if defect == "invalid-commandline": row["CommandLine"] += "\0--user-data-dir=hidden"
+    assert h.deliver()["reason"] == "BROWSER_OWNERSHIP_UNPROVEN"
+    assert len(h.listener_queries) == 1 and not h.launches and not h.created and not h.navigations
+
+
+@pytest.mark.parametrize("observation", [None, False, 0, "[]", {}, [None], [[]], [{}],
+                                       [{"ExecutablePath": 1, "CommandLine": 2}]])
+def test_invalid_process_observations_cannot_authorize_launch(harness, observation):
+    h = harness
+    h.available = False
+    h.processes = observation
+    assert h.deliver()["reason"] == "BROWSER_OWNERSHIP_UNPROVEN"
+    assert len(h.listener_queries) == 1 and not h.launches and not h.created and not h.navigations
+
+
+def test_excessive_readable_no_switch_process_observations_cannot_authorize_launch(harness, process_rows):
+    h = harness
+    h.available = False
+    row = process_rows([str(unattended.load_environment(h.binding).executable)])
+    h.processes = [row] * 257
+    assert h.deliver()["reason"] == "BROWSER_OWNERSHIP_UNPROVEN"
+    assert len(h.listener_queries) == 1 and not h.launches and not h.created and not h.navigations
 
 
 def test_exact_target_appearing_during_missing_page_acquisition_is_not_substituted(harness):

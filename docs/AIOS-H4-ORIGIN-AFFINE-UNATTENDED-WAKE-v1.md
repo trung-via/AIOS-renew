@@ -382,7 +382,7 @@ Failure to prove authentication/surface/route/target must fail closed. Transport
 
 Live exit gate: with the target conversation not pre-opened or prepared by the Human, the transport obtains/restores the authorized delivery environment, reaches the exact target, proves all required safety gates, and submits exactly one doorbell without Human UI preparation.
 
-### TASK-302 bounded H4D acquisition contract, corrected by TASK-304
+### TASK-302 bounded H4D acquisition contract, corrected by TASK-304 and TASK-305
 
 `src/aios_renew/unattended_chat_wake.py` is a transport primitive under the
 existing durable lane pass, with no standalone launcher, router, queue, dispatch,
@@ -458,6 +458,32 @@ only the existing one bounded acquisition attempt under explicit `allow_launch`.
 Listener absence does not establish profile availability. The independent
 conservative singleton/lock/DevTools markers and OS process command-line checks
 remain required before launch; stale markers remain for Human reconciliation.
+TASK-305 narrows process occupancy proof to the exact Human-configured dedicated
+`user_data_dir`. Configured-directory `SingletonLock`, `SingletonSocket`,
+`SingletonCookie`, `lockfile`, and `DevToolsActivePort` markers remain authoritative
+before process classification. A readable non-child process with exactly one
+non-empty absolute explicit `--user-data-dir=<value>` resolving to that directory
+is `PROFILE_LOCKED`, regardless of executable identity. A well-formed explicit
+different directory is not occupancy of the configured directory. A readable
+same-executable main process with no `--user-data-dir` token supplies no
+deterministic occupancy proof for that dedicated directory and does not by
+itself block acquisition. No conclusion is drawn about its implicit profile;
+there is no default-profile inference, profile/account discovery, or browser
+policy lookup. The observed combination of that no-switch process and a second
+main process explicitly naming a different directory is subject to the same
+exact-directory rule.
+
+Explicit user-data-dir evidence remains fail-closed: split spelling, duplicate
+or malformed mentions, empty/relative values, and argument parsing failure are
+`BROWSER_OWNERSHIP_UNPROVEN`. Unreadable/missing required metadata, empty or
+invalid metadata, malformed process rows, invalid/non-array observations, or
+more than 256 process observations cannot authorize launch. The existing child
+process exclusion remains unchanged. A lack of exact configured-directory
+occupancy signals permits continuation only through the existing bounded
+acquisition path under `exclusive_user_data: true` and `allow_launch`; Human
+authorization substitutes for neither occupancy nor listener/owner proof.
+It grants no authority to select another profile, target, or fallback route.
+
 Launch uses only the configured executable/user-data/profile
 and fixed loopback CDP/no-startup-window switches, with no conversation URL
 or workflow freshness token passed to the process. An exited launcher or listener
@@ -511,6 +537,13 @@ fixtures, including exact acquisition/submission and durable ambiguity without
 live ChatGPT access. Listener-proof regressions cover zero-listener authorization,
 occupied/query-failure/malformed rejection, non-authoritative socket outcomes,
 independent profile occupancy, and a post-observation port-ownership race.
+Dedicated-directory regressions exercise the production process classifier,
+including the native Windows argument parser on Windows, with a same-executable
+no-switch main process plus a second explicit different-directory process.
+They cover exact configured occupancy rejection, split/duplicate/empty/relative
+or malformed explicit claims, parse failure, unreadable/malformed metadata, and
+invalid/excessive process observations. Configured marker precedence and the
+existing listener-race/exact-owner barriers remain covered without live access.
 Implementation and those regressions do not close H4D.
 H4D roadmap closure remains downstream of reviewed publication and separate
 Human/Brain live proof of the unprepared-target exit gate. H4E production

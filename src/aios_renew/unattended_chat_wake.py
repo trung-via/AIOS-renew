@@ -244,11 +244,23 @@ class LocalEnvironment:
         for process in processes:
             if (type(process) is not dict or type(process.get("ExecutablePath")) is not str
                     or not Path(process["ExecutablePath"]).is_absolute()
-                    or type(process.get("CommandLine")) is not str):
+                    or "\0" in process["ExecutablePath"]
+                    or type(process.get("CommandLine")) is not str
+                    or not process["CommandLine"].strip() or "\0" in process["CommandLine"]):
                 raise wake.WakeBlocked("BROWSER_OWNERSHIP_UNPROVEN")
             arguments = _windows_arguments(process["CommandLine"])
+            if not arguments[0]:
+                raise wake.WakeBlocked("BROWSER_OWNERSHIP_UNPROVEN")
             if any(arg.startswith("--type=") for arg in arguments):
                 continue  # Child process, never the profile-owning main process.
+            user_data_arguments = [arg for arg in arguments if "--user-data-dir" in arg]
+            if not user_data_arguments:
+                # No explicit claim on the dedicated configured directory. This
+                # record proves nothing about which implicit profile is in use.
+                continue
+            if (len(user_data_arguments) != 1
+                    or not user_data_arguments[0].startswith("--user-data-dir=")):
+                raise wake.WakeBlocked("BROWSER_OWNERSHIP_UNPROVEN")
             configured_path = Path(_switch(arguments, "--user-data-dir"))
             if not configured_path.is_absolute():
                 raise wake.WakeBlocked("BROWSER_OWNERSHIP_UNPROVEN")
