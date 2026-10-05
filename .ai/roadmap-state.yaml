@@ -901,6 +901,168 @@ sequence:
         TASK-310 implements and proves production origin capture first. Only after its
         reviewed publication and a fresh Brain Sync may the unchanged TASK-308 objective
         be re-authored under a new identity using that production authority.
+      human_authorization:
+        authority: HUMAN
+        approved_on: "2026-10-06"
+        decision: APPROVE_TASK_310_DIRECTION_AUDIT_BEFORE_AUTHORING
+      task_design_audit:
+        profile: brain-high-value-v3
+        frozen_kernel_impact: NONE
+        classification: NEW_OPERATIONAL_CAPABILITY
+        exact_authority: >-
+          Establish one bounded device-independent operational origin route and
+          independently admitted authoring provenance from an exact precommitted opaque
+          rendezvous marker. This authority ends before semantic TASK/lifecycle selection
+          and before H4D return delivery.
+        existing_authority_reuse:
+          - ORIGIN_BOOTSTRAP_ROUTE_REGISTRY_NORMALIZATION_GENERATION_AND_STABLE_ROUTE_REUSE
+          - ORIGIN_AUTHORING_PROOF_SELF_HOSTED_ADMISSION_AND_SIGNED_RECEIPT
+          - H4D_BROWSER_ACQUISITION_AND_EXACT_ROUTE_WAKE_AFTER_BINDING
+          - GITHUB_SELF_HOSTED_SUBORDINATE_TRANSPORT_BOUNDARY
+        duplicate_authority_rejected:
+          - NO_NEW_PLANNER
+          - NO_GENERIC_LIFECYCLE_ROUTER
+          - NO_SECOND_WAKE_QUEUE
+          - NO_NEW_RUNTIME_REVIEWER_OR_PUBLISHER
+          - NO_LEGACY_REPOSITORY_DEFAULT_ROUTE_BYPASS
+        stage1:
+          stage: CONSTRUCT
+          outcome: RISK_FOUND
+          risks:
+            - MODEL_GENERATED_MARKER_MUST_NOT_BE_TREATED_AS_AUTHENTICATION
+            - RAW_MARKER_OR_CHAT_URL_CAN_LEAK_IN_LOGS_OR_CANONICAL_ARTIFACTS
+            - EVENTUAL_SEARCH_INDEXING_CAN_CREATE_TRANSIENT_ZERO_RESULTS
+            - FIRST_RESULT_OR_TRUNCATED_RESULT_SET_CAN_FAKE_UNIQUENESS
+            - DUPLICATE_MARKER_CAN_APPEAR_BEFORE_FINAL_ROUTE_BIND
+            - SEARCH_UI_OR_ACCOUNT_SESSION_CAN_CHANGE_OR_BECOME_UNAVAILABLE
+            - PROVIDER_SPECIFIC_GITHUB_CONNECTOR_DEPENDENCY_WOULD_BREAK_BRAIN_PORTABILITY
+            - ORIGIN_PROOF_ISSUANCE_MUST_NOT_BECOME_SELF_CERTIFYING
+            - TASK310_AUTHORING_ITSELF_STILL_REQUIRES_CURRENT_PAGE_SCOPED_PROOF
+        stage2:
+          stage: ADVERSARIAL_AUDIT_AND_RECONCILE
+          outcome: CANDIDATE
+          closure: CLEAR_WITH_MANDATORY_REFINEMENTS
+          reconciled_candidate:
+            - >-
+              The rendezvous marker is correlation evidence only, never credential,
+              lifecycle authority or authoring authority. Uniqueness is established by
+              exact account search plus opened-chat re-proof, not by trusting marker
+              entropy or assistant prose.
+            - >-
+              Marker generation/transport must be bounded, versioned and operational-only.
+              A provider/control-plane adapter may mint or carry it, but core semantics
+              must not require a specific model's direct GitHub connector. Current GitHub
+              transport remains a replaceable subordinate adapter.
+            - >-
+              Search uses exact full-token matching only. Transient zero may use a fixed
+              bounded same-token retry budget. Permanent zero, more than one candidate,
+              incomplete result enumeration, unsupported search, account mismatch or any
+              uncertainty fails closed.
+            - >-
+              A sole candidate is opened and validated as a regular Chat; the exact full
+              marker must be re-proven in the originating assistant turn. Before route
+              allocation/reuse, the resolver performs a bounded final uniqueness
+              recheck/stability gate so eventual indexing cannot be silently treated as
+              durable uniqueness. Failure remains fail closed.
+            - >-
+              Successful resolution reuses the existing OriginRegistry conversation key,
+              stable route_handle and generation semantics. Existing route endpoint,
+              generation, pending-attempt and ownership conflicts retain their current
+              fail-closed behavior; no implicit route transfer is introduced.
+            - >-
+              The resolver may issue the existing bounded origin-authoring proof only
+              after exact origin resolution under the machine-local registry boundary.
+              TASK-309 admission binding to carrier attempt, TASK id, expected main,
+              route/generation and envelope digest remains unchanged and cannot be
+              bypassed or self-certified in TASK bytes.
+            - >-
+              Raw marker, raw chat URL, transcript content and search result text remain
+              outside canonical TASK/RUN/RESULT/REVIEW/roadmap engineering semantics.
+              Durable operational state should retain only minimum bounded metadata or
+              marker digest needed for expiry/replay safety.
+            - >-
+              H4D exact-route wake begins only after route establishment and preserves
+              existing exact-target, draft, dedupe, generation, ambiguity and
+              no-blind-resend semantics.
+          acceptance_phase_ledger:
+            AC1: CLAIM_NOW
+            AC2: CLAIM_NOW
+            AC3: CLAIM_NOW
+            AC4: CLAIM_NOW
+            AC5: CLAIM_NOW
+            AC6: CLAIM_NOW
+            AC7: CLAIM_NOW
+            AC8: CLAIM_NOW
+            AC9: CLAIM_NOW
+            AC10: CLAIM_NOW
+          proof_later_reconciled_out: >-
+            Post-publication live conformance from an actual phone/other-browser origin is
+            not TASK acceptance. It remains a later Human/Brain live-exit observation and
+            must not be claimed by Executor or Runtime before publication.
+        candidate_acceptance:
+          AC1: >-
+            Candidate adds only bounded operational origin-capture/provenance capability
+            and introduces no semantic, lifecycle, Runtime, Reviewer, Publisher, Planner
+            or generic routing authority.
+          AC2: >-
+            Rendezvous marker/carrier state is bounded, versioned, expiring and
+            operational-only; raw marker, raw chat URL, transcript/search text and
+            credentials never enter canonical engineering artifacts or ordinary logs.
+          AC3: >-
+            Resolver discovers origin only through exact full-token account search with a
+            finite same-token indexing retry budget; zero after exhaustion, more than one
+            result, incomplete enumeration, unavailable search/history, account mismatch
+            or partial/fuzzy matching fails closed with no recent/active/default/timestamp
+            fallback.
+          AC4: >-
+            A sole candidate is opened as a regular Chat, exact marker presence is
+            re-proven in the originating assistant turn, normalized route remains stable,
+            and a bounded final uniqueness/stability recheck succeeds before route
+            allocation or reuse.
+          AC5: >-
+            Successful resolution composes the existing machine-local OriginRegistry:
+            same conversation reuses one stable route_handle/generation, distinct
+            conversations remain distinct, and endpoint/generation/pending/conflicting
+            ownership retains fail-closed behavior without implicit transfer.
+          AC6: >-
+            Exact resolved origin can issue the existing bounded authoring-proof family
+            only after successful resolver proof, and existing TASK-309 self-hosted
+            admission still binds exact carrier attempt, TASK id, expected main,
+            route/generation and envelope digest before AUTHOR_TASK mutation.
+          AC7: >-
+            Missing/stale/replayed/cross-attempt/mismatched rendezvous or authoring proof
+            cannot mutate canonical TASK state; same-attempt replay is idempotent where
+            existing admission semantics permit it.
+          AC8: >-
+            Existing H4D exact-route wake behavior remains semantically unchanged after
+            binding, including regular-surface validation, active generation, Human draft,
+            exact-event dedupe, ambiguity and no-blind-resend protections.
+          AC9: >-
+            Transport/provider integration remains replaceable: current GitHub/self-host
+            carrier may implement delivery but TASK semantics do not require direct
+            provider GitHub access, model memory or provider-specific lifecycle behavior.
+          AC10: >-
+            Deterministic regressions cover same-chat resolution, delayed cross-device
+            indexing, permanent zero, duplicate/multiple match, partial marker, incomplete
+            search, wrong account/surface, route movement/conflict, proof mismatch/replay,
+            raw-marker non-persistence and preserved H4D/authoring behavior.
+        verification_candidate:
+          policy: minimum-sufficient-v1
+          focused:
+            - python -m pytest -q tests/test_origin_rendezvous.py tests/test_origin_bootstrap.py tests/test_authoring_ingress.py tests/test_github_issue_ingress.py tests/test_github_issue_ingress_workflow.py tests/test_local_chat_wake.py
+          full_suite:
+            command: python scripts/aios_parallel_full_suite.py
+            reason: >-
+              TASK-310 composes shared origin registry, authoring provenance and H4D
+              browser/wake boundaries; focused tests prove local semantics but cannot
+              establish absence of cross-control-plane regressions.
+      authoring_preconditions:
+        executor_selection: PENDING_HUMAN
+        current_page_origin_authoring_proof: REQUIRED_BY_CURRENT_TASK309_GATE
+        interpretation: >-
+          TASK-310 must not bypass its own predecessor gate. Until OPAQUE_ORIGIN_RENDEZVOUS_V1
+          is published, authoring TASK-310 itself still needs one lawful current-page
+          page-scoped origin proof under the existing TASK-309 contract.
       executor_delegation:
         status: REQUIRES_FRESH_HUMAN_SELECTION
         reason: NEW_TASK_IDENTITY_REQUIRES_HUMAN_DELEGATION
