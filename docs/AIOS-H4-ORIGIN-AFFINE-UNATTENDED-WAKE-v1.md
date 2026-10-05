@@ -292,8 +292,10 @@ model interpretation.
 
 A successful resolution requires at minimum:
 
-1. exactly one search result for the full rendezvous marker;
-2. opening that result yields exactly one regular-Chat conversation;
+1. the bounded account-search result set is complete enough to establish exactly one
+   result for the full rendezvous marker; the first/top result alone is never uniqueness
+   proof, and incomplete/ambiguous enumeration fails closed;
+2. opening that sole result yields exactly one regular-Chat conversation;
 3. the exact full marker is re-proven in that same conversation after navigation;
 4. the normalized conversation route is stable across proof;
 5. route allocation/reuse is performed only after that proof;
@@ -308,11 +310,14 @@ must still reconstruct semantics from canonical state after delivery. The origin
 may observe only the exact precommitted rendezvous marker needed to establish the
 conversation route.
 
-The candidate is not yet production authority. Before TASK authoring it requires bounded
-live feasibility evidence that a marker emitted in an assistant turn is discoverable and
-uniquely resolvable through the authenticated account on the self-host machine, including
-a conversation initiated from another device. Failure of that live probe returns an
-architecture blocker rather than authorizing heuristic fallback.
+The candidate is not yet production authority. A 2026-10-06 Human operational
+observation established only that the exact marker was discoverable in the live account
+search surface. That is positive partial feasibility evidence, not proof of exhaustive
+unique resolution, opened-conversation re-proof, cross-device origin capture, zero-match
+failure or multiple-match rejection. Before TASK authoring the bounded live probe must
+close those remaining cases, including a conversation initiated from another device.
+Failure of that live probe returns an architecture blocker rather than authorizing
+heuristic fallback.
 
 ### Human-approved H4C0 fallback — page-scoped origin bootstrap
 
