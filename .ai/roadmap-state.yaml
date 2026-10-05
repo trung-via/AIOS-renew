@@ -783,7 +783,7 @@ sequence:
           Replay must be bounded and route rediscovery must reuse one stable
           conversation-scoped route rather than silently minting a new owner.
     live_probe:
-      status: POSITIVE_CASES_PASS_NEGATIVE_CASES_PENDING
+      status: CLOSED_FEASIBILITY_PASS
       authority: HUMAN_BRAIN_PLANNING
       production_mutation: false
       objective: >-
@@ -791,77 +791,129 @@ sequence:
         through the authenticated ChatGPT account on the self-host machine and re-proven
         inside the same regular Chat, first for this conversation and then for a fresh
         conversation initiated from another device.
-      human_operational_observation:
-        observed_on: "2026-10-06"
-        result: CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF_PASS
-        interpretation: >-
-          Human searched the exact full rendezvous marker on the authenticated ChatGPT
-          account, observed exactly one matching conversation, opened that result and
-          confirmed it was the exact originating conversation. The raw marker remains
-          operational-only and is not persisted in canonical state.
-        engineering_truth: false
       case_results:
         CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF: PASS_HUMAN_LIVE_OBSERVATION
         PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF: PASS_AFTER_BOUNDED_INDEXING_RETRY
-        ZERO_MATCH_FAILS_CLOSED: PENDING
-        MULTIPLE_MATCH_FAILS_CLOSED: PENDING
-      cross_device_observations:
-        initial:
-          observed_on: "2026-10-06"
-          result: ZERO_MATCH
-          source: HUMAN_LIVE_OBSERVATION
-        bounded_retry:
-          observed_on: "2026-10-06"
-          result: ONE_MATCH_EXACT_ORIGIN
-          source: HUMAN_LIVE_OBSERVATION
-          interpretation: >-
-            Repeating exact full-token search after the single bounded wait returned
-            exactly one result; opening it confirmed the fresh conversation initiated
-            from the other device.
-        reconciliation: >-
-          The same-token zero-then-one sequence is positive evidence for cross-device
-          rendezvous feasibility and for eventual search-index convergence. Production
-          design must therefore distinguish transient pre-index zero from terminal zero
-          using a bounded wait/retry policy. Exhaustion still fails closed and grants no
-          recent/active/default-chat fallback.
+        ZERO_MATCH_FAILS_CLOSED: PASS_HUMAN_LIVE_OBSERVATION
+        MULTIPLE_MATCH_FAILS_CLOSED: PASS_HUMAN_LIVE_OBSERVATION
+      observations:
+        current_chat: >-
+          Exact full-token account search returned one result and opening it confirmed
+          the exact originating conversation.
+        cross_device: >-
+          A fresh conversation initiated from another device first returned zero results,
+          then the same exact token returned one correct result after the single bounded
+          indexing wait. Production design must model account search as eventually
+          consistent and use bounded retry before terminal zero.
+        zero_match: >-
+          Human altered one token character so the exact full token was known absent;
+          account search returned zero matches and selected no fallback conversation.
+        multiple_match: >-
+          Human intentionally copied the original cross-device token into a second test
+          conversation; exact search then returned more than one match, proving the
+          ambiguity case is externally observable and can fail closed.
+        evidence_class: HUMAN_OPERATIONAL_LIVE_EVIDENCE
         engineering_truth: false
-      next_probe:
-        case: ZERO_MATCH_FAILS_CLOSED
-        mode: NEGATIVE_EXACT_TOKEN_SEARCH
-        live_probe_only: true
-        human_manual_search_allowed_for_measurement: true
-        objective: >-
-          Search for a full high-entropy token value that is known not to have been emitted
-          into any Chat conversation and confirm that the account search surface returns
-          zero candidates without selecting another conversation.
-        success: ZERO_CANDIDATES
-        prohibition: NO_FALLBACK_SELECTION
-      required_cases:
-        - CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
-        - PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
-        - ZERO_MATCH_FAILS_CLOSED
-        - MULTIPLE_MATCH_FAILS_CLOSED
-      uniqueness_refinement:
-        - SEARCH_RESULT_SET_COMPLETENESS_MUST_BE_PROVED_OR_FAIL_CLOSED
-        - FIRST_OR_TOP_RESULT_IS_NOT_UNIQUENESS_PROOF
-        - OPENED_CONVERSATION_MUST_REPROVE_EXACT_FULL_TOKEN
+        raw_marker_persisted_canonically: false
+      final_brain_audit:
+        profile: brain-high-value-v3
+        stage1:
+          stage: CONSTRUCT
+          outcome: ARCHITECTURE_CANDIDATE_CONFIRMED
+        stage2:
+          stage: ADVERSARIAL_AUDIT_AND_RECONCILE
+          outcome: CLEAR_FOR_IMPLEMENTATION_TASK_AUTHORING
+        closure: CLEAR
+        reconciliation:
+          - >-
+            The four required live cases are satisfied. Exact high-entropy marker
+            equality can establish origin without semantic transcript inference,
+            timestamp inference, active/recent selection or model memory.
+          - >-
+            Search/index propagation is eventually consistent; the production resolver
+            needs a bounded wait/retry budget on the same marker. Exhaustion remains a
+            terminal fail-closed outcome and never permits a heuristic fallback.
+          - >-
+            More than one exact marker match is observable and must be treated as
+            ambiguity. The resolver must enumerate the bounded result set sufficiently
+            to prove exactly one candidate, open that candidate and re-prove the exact
+            full marker before route allocation or reuse.
+          - >-
+            The raw marker and raw chat URL remain operational-only. Canonical
+            engineering state receives only bounded route_handle/generation after
+            successful proof. Marker transport may use a subordinate operational
+            carrier but must not place the raw marker into canonical TASK/RUN/RESULT/
+            REVIEW/roadmap semantics.
+          - >-
+            Assistant output may contain the marker only for origin rendezvous. Neither
+            the marker nor assistant text may select lifecycle action; wake semantics
+            remain reconstructed from canonical state.
+          - >-
+            Existing TASK-309 self-hosted authoring-proof admission remains the
+            provenance boundary to preserve. The new resolver must supply an equivalent
+            independently admitted exact-origin proof automatically, rather than
+            weakening AUTHOR_TASK admission or self-certifying provenance in a TASK.
+        residual_risks:
+          - ACCOUNT_SEARCH_UI_OR_TRANSPORT_CHANGE_MUST_FAIL_CLOSED
+          - AUTHENTICATION_OR_HISTORY_UNAVAILABLE_MUST_FAIL_CLOSED
+          - TEMPORARY_OR_HISTORY_OFF_CHAT_REMAINS_UNSUPPORTED_WITHOUT_PROOF
+          - OPERATIONAL_MARKER_CARRIER_MUST_BE_BOUNDED_AND_NONCANONICAL
       prohibitions:
-        - NO_TASK_AUTHORING_FROM_PROBE
         - NO_ROUTE_FALLBACK
         - NO_SEMANTIC_TEXT_MATCHING
         - NO_PARTIAL_TOKEN_MATCH
-        - NO_PRODUCTION_WAKE_CHANGE
-    architecture_status: HUMAN_APPROVED_LIVE_PROBE_PARTIAL_EVIDENCE_PENDING
-    blocks:
-      - task308-origin-correct-replacement-v1
-    return_to: task308-origin-correct-replacement-v1
+        - NO_PRODUCTION_WAKE_CHANGE_FROM_PROBE
+      architecture_status: LIVE_FEASIBILITY_PASS_IMPLEMENTATION_REQUIRED
+    implementation_next:
+      id: h4-opaque-origin-rendezvous-implementation-v1
+      status: NEXT
+      phase: H4_ORIGIN_CAPTURE_DEVICE_INDEPENDENCE_IMPLEMENTATION
+      authority: HUMAN_BRAIN_PLANNING
+      candidate_task_id: TASK-310
+      task_authoring_status: UNAUTHORED
+      selected_contract: OPAQUE_ORIGIN_RENDEZVOUS_V1
+      objective: >-
+        Implement the Human-approved opaque cross-device origin rendezvous as a bounded
+        self-hosted origin-capture/provenance mechanism so one ordinary Human message in
+        any supported regular Chat can establish the exact return route without a
+        laptop-local Connect gesture.
+      required_semantics:
+        - ASSISTANT_EMITS_ONE_TIME_HIGH_ENTROPY_NONSEMANTIC_MARKER
+        - SAME_MARKER_REACHES_SELF_HOST_ONLY_THROUGH_BOUNDED_OPERATIONAL_CARRIER
+        - SELF_HOST_SEARCHES_EXACT_FULL_MARKER_ONLY
+        - BOUNDED_EVENTUAL_INDEX_WAIT_RETRY_ON_SAME_MARKER
+        - EXACTLY_ONE_RESULT_REQUIRED
+        - OPEN_AND_REPROVE_EXACT_MARKER_IN_SAME_REGULAR_CHAT
+        - NORMALIZE_AND_ALLOCATE_OR_REUSE_STABLE_CONVERSATION_ROUTE_ONLY_AFTER_PROOF
+        - ZERO_OR_MULTIPLE_MATCHES_FAIL_CLOSED
+        - NO_RECENT_ACTIVE_TIMESTAMP_SEMANTIC_OR_DEFAULT_CHAT_FALLBACK
+        - RAW_MARKER_AND_RAW_CHAT_URL_NEVER_ENTER_CANONICAL_ENGINEERING_STATE
+        - PRODUCE_BOUNDED_INDEPENDENT_ORIGIN_AUTHORING_PROOF_COMPATIBLE_WITH_TASK309_ADMISSION
+        - PRESERVE_H4D_EXACT_ROUTE_WAKE_AFTER_ROUTE_ESTABLISHMENT
+        - WAKE_TRANSPORT_MUST_NOT_READ_ASSISTANT_OUTPUT_TO_SELECT_LIFECYCLE_ACTION
+      non_goals:
+        - CREATE_NEW_LIFECYCLE_OR_SEMANTIC_AUTHORITY
+        - CHANGE_REVIEWER_PUBLISHER_RUNTIME_AUTHORITY
+        - AUTO_ADVANCE_ROADMAP_FROM_EXECUTION
+        - REOPEN_OR_MUTATE_TASK308_LINEAGE
+        - IMPLEMENT_HEURISTIC_OR_FUZZY_CHAT_DISCOVERY
+      sequencing: >-
+        TASK-310 implements and proves production origin capture first. Only after its
+        reviewed publication and a fresh Brain Sync may the unchanged TASK-308 objective
+        be re-authored under a new identity using that production authority.
+      executor_delegation:
+        status: REQUIRES_FRESH_HUMAN_SELECTION
+        reason: NEW_TASK_IDENTITY_REQUIRES_HUMAN_DELEGATION
+      blocks:
+        - task308-origin-correct-replacement-v1
+      return_to: task308-origin-correct-replacement-v1
 
-  - id: task308-origin-correct-replacement-v1
-    status: BLOCKED_FOR_DEVICE_INDEPENDENT_ORIGIN_CAPTURE
+  - id: task308-origin-correct-replacement-v1  - id: task308-origin-correct-replacement-v1
+    status: BLOCKED_FOR_TASK310_ORIGIN_RENDEZVOUS_IMPLEMENTATION
     phase: BRAIN_PUBLICATION_TURN_HANDOFF_CORRECTION_REPLACEMENT
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
-    candidate_task_id: TASK-310
+    candidate_task_id: TASK-311
     task_authoring_status: UNAUTHORED
     objective: >-
       Re-author the unchanged TASK-308 publication-turn handoff correction under a new
@@ -880,6 +932,13 @@ sequence:
       run_id: RUN-309-001
       review_id: REVIEW-309-001
       published_sha: "6d400f015f68944aa1b50b7f2a77decfe0251c39"
+    device_independent_dependency:
+      task_id: TASK-310
+      status: UNAUTHORED
+      requirement: >-
+        OPAQUE_ORIGIN_RENDEZVOUS_V1 must be implemented, Runtime-verified,
+        semantically reviewed PASS and published before TASK-311 authoring may rely on it
+        as production exact-origin authority.
     authoring_gate:
       status: SUPERSEDED_BY_HUMAN_DEVICE_INDEPENDENT_ORIGIN_REQUIREMENT
       prior_route_handle: "page-origin-v1:daea771dcc0c97b21f655fb82d3d2ac03cfd430a1872158439f255a0f9a37665"
@@ -921,7 +980,7 @@ sequence:
         not a new priority over unrelated work.
     executor_delegation:
       status: REQUIRES_FRESH_HUMAN_SELECTION
-      reason: TASK_308_DELEGATION_EXPIRED_ON_TASK_IDENTITY_CHANGE
+      reason: TASK_308_DELEGATION_EXPIRED_ON_TASK_IDENTITY_CHANGE_AND_TASK311_REQUIRES_FRESH_HUMAN_SELECTION
     return_to: cleanup-consolidation-v1
 
   - id: TASK-308
