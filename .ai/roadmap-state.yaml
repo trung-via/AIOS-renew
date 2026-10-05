@@ -459,8 +459,50 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - cleanup-consolidation-v1
+  - TASK-308
 sequence:
+
+  - id: TASK-308
+    status: NEXT
+    phase: BRAIN_PUBLICATION_TURN_HANDOFF_CORRECTION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-05"
+    task_authoring_status: UNAUTHORED
+    objective: >-
+      Make positive canonical publication-dispatch acceptance the terminal boundary
+      of the current Brain turn, then resume only in a fresh Brain Sync turn after
+      publication attention or explicit Human continuation.
+    human_priority:
+      authority: HUMAN
+      decision: TASK_308_BEFORE_RESUMING_TASK_303_R4
+      explicit_override: true
+      interpretation: >-
+        Human explicitly canceled the in-flight TASK-303 r4 execution and selected
+        TASK-308 as the immediate priority. TASK-303 r4 and RUN-303-004 remain
+        immutable canonical lineage but must not be executed or repaired before
+        TASK-308 unless Human changes priority.
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-05"
+      task_id: TASK-308
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_308_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    boundaries:
+      - CONTRACT_ONLY_CORRECTION
+      - PUBLICATION_DISPATCH_ACCEPTANCE_IS_NOT_PUBLICATION_SUCCESS
+      - END_CURRENT_BRAIN_TURN_AFTER_ACCEPTED_PUBLICATION_DISPATCH
+      - FRESH_BRAIN_SYNC_ON_NEXT_TURN
+      - NO_PUBLICATION_POLLING_IN_ACCEPTED_DISPATCH_TURN
+      - NO_WAKE_GUARD_WEAKENING
+      - NO_NEW_LIFECYCLE_STATE_OR_ROUTER
+      - PRESERVE_TASK_303_R4_AND_RUN_303_004_LINEAGE
+    return_to: cleanup-consolidation-v1
+
 
   - id: h4d-task307-automation-flag-correction-v1
     status: DONE
@@ -547,7 +589,7 @@ sequence:
     return_to: cleanup-consolidation-v1
 
   - id: cleanup-consolidation-v1
-    status: NEXT
+    status: PAUSED_FOR_TASK308
     phase: REPOSITORY_CLEANUP_CONSOLIDATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
@@ -575,11 +617,12 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: AUTHORIZED_NOT_YET_DISPATCHED
+      status: INTERRUPTED_BY_RUN_303_004
       interpretation: >-
-        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-303 lifecycle,
-        including revision 4. Runtime admission and RUN creation remain authoritative
-        and have not yet occurred for r4.
+        The dispatch was accepted and created RUN-303-004 before the later Human
+        cancellation. The Human cancellation interrupted native execution; canonical
+        FAILURE RUN-303-004 is preserved and no repair or retry is authorized while
+        TASK-308 is the explicit Human priority.
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
@@ -634,6 +677,19 @@ sequence:
         Ordinary REPAIR cannot expand TASK scope. The next lawful continuation is a
         narrowly revised TASK-303 r4 fresh PRIMARY from current canonical main,
         preserving all prior failure lineage and reviewed TASK-307 behavior.
+    interrupted_execution_checkpoint:
+      run_id: RUN-303-004
+      terminal_kind: FAILURE
+      failure_artifacts_sha: "225b572011d6c9ea391d1e2453f7dcd0ca704a62"
+      failed_head_sha: "38d34a9d5f65687b36c0b6219872e17a24507831"
+      phase: EXECUTION
+      reason: HUMAN_INTERRUPTED_NATIVE_EXECUTION
+      disposition: PAUSED_BY_HUMAN_PRIORITY_TASK_308
+      interpretation: >-
+        RUN-303-004 had already been created and Executor execution had started before
+        Human cancellation. Cancellation produced a canonical FAILURE rather than
+        erasing the RUN. No repair/retry of RUN-303-004 is authorized while TASK-308
+        is the explicit Human priority.
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
 
 
