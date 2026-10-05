@@ -323,6 +323,22 @@ class LocalEnvironment:
         self.remaining_ms()
 
 
+@contextmanager
+def _bridge_boundary():
+    """Keep expected bridge failures local, fixed-code, and fail closed."""
+    try:
+        from playwright._impl._errors import Error, TimeoutError as BridgeTimeout
+    except ImportError:
+        raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN") from None
+    try:
+        yield
+    except (asyncio.TimeoutError, BridgeTimeout):
+        raise wake.WakeBlocked("ACQUISITION_TIMED_OUT") from None
+    except (Error, asyncio.CancelledError, OSError, RuntimeError,
+            AttributeError, TypeError, ValueError):
+        raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN") from None
+
+
 def _bounded_call(api, method, local, *args):
     """Bound API methods whose public sync signatures have no timeout.
 
@@ -331,36 +347,43 @@ def _bounded_call(api, method, local, *args):
     the unbounded public method as a fallback. Cancellation is uncertainty, not
     permission to issue a second page-creation request.
     """
-    try:
-        from playwright._impl._sync_base import mapping
-    except ImportError:
-        raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN") from None
-    implementation = getattr(api, "_impl_obj", None)
-    operation = getattr(implementation, method, None)
-    sync = getattr(api, "_sync", None)
-    if (not callable(operation) or not callable(sync)
-            or not callable(getattr(mapping, "from_maybe_impl", None))):
-        raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN")
-    timeout = local.remaining_ms() / 1000
-    try:
+    with _bridge_boundary():
+        try:
+            from playwright._impl._sync_base import mapping
+        except ImportError:
+            raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN") from None
+        implementation = getattr(api, "_impl_obj", None)
+        operation = getattr(implementation, method, None)
+        sync = getattr(api, "_sync", None)
+        if (not callable(operation) or not callable(sync)
+                or not callable(getattr(mapping, "from_maybe_impl", None))):
+            raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN")
+        timeout = local.remaining_ms() / 1000
         result = sync(asyncio.wait_for(operation(*args), timeout=timeout))
+        local.remaining_ms()
         return mapping.from_maybe_impl(result)
-    except asyncio.TimeoutError:
-        raise wake.WakeBlocked("ACQUISITION_TIMED_OUT") from None
 
 
 def _prove_context(browser, contexts, local):
-    if len(contexts) != 1:
-        raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN")
-    session = _bounded_call(browser, "new_browser_cdp_session", local)
-    result = _bounded_call(session, "send", local, "Target.getBrowserContexts")
-    # CDP lists non-default contexts. Zero proves the sole attached context is
-    # the configured profile's default, without choosing an incognito/account.
-    if type(result) is not dict or result != {"browserContextIds": []}:
-        raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN")
-    _bounded_call(session, "detach", local)
-    if list(browser.contexts) != contexts:
-        raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN")
+    with _bridge_boundary():
+        if len(contexts) != 1 or list(browser.contexts) != contexts:
+            raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN")
+        session = _bounded_call(browser, "new_browser_cdp_session", local)
+        result = _bounded_call(session, "send", local, "Target.getBrowserContexts")
+        # CDP lists non-default contexts. Accept only the two known keysets;
+        # the optional default ID is opaque metadata, never identity/authority.
+        if (type(result) is not dict or set(result) not in (
+                {"browserContextIds"}, {"browserContextIds", "defaultBrowserContextId"})
+                or type(result["browserContextIds"]) is not list
+                or result["browserContextIds"]
+                or ("defaultBrowserContextId" in result and (
+                    type(result["defaultBrowserContextId"]) is not str
+                    or not result["defaultBrowserContextId"]))):
+            raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN")
+        _bounded_call(session, "detach", local)
+        if list(browser.contexts) != contexts:
+            raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN")
+        local.remaining_ms()
 
 
 class UnattendedBrowserAdapter(wake.BrowserAdapter):
@@ -408,27 +431,41 @@ class UnattendedBrowserAdapter(wake.BrowserAdapter):
                     local.remaining_ms()
                     time.sleep(min(0.2, local.remaining_ms() / 1000))
         local.prove_owner()
-        contexts, targets = self._targets(browser, self.binding.chat_url, bounded=True)
-        _prove_context(browser, contexts, local)
-        if targets and not restoring:
-            raise wake.WakeBlocked("TARGET_PAGE_CHANGED")
-        if not targets:
+        with _bridge_boundary():
+            contexts, targets = self._targets(browser, self.binding.chat_url, bounded=True)
+            if len(contexts) != 1:
+                raise wake.WakeBlocked("BROWSER_CONTEXT_UNPROVEN")
             context = contexts[0]
-            page = _bounded_call(context, "new_page", local)  # At most one request.
+            pages = list(context.pages)
+            _prove_context(browser, contexts, local)
             current_contexts, current_targets = self._targets(browser, self.binding.chat_url, bounded=True)
-            if (current_contexts != contexts or current_targets or page.url != "about:blank"
-                    or page not in context.pages):
+            if (current_contexts != contexts or current_targets != targets
+                    or list(context.pages) != pages or (targets and not restoring)):
                 raise wake.WakeBlocked("TARGET_PAGE_CHANGED")
-            page.goto(self.binding.chat_url, wait_until="domcontentloaded", timeout=local.remaining_ms(8000))
+            if not targets:
+                page = _bounded_call(context, "new_page", local)  # At most one request.
+                current_contexts, current_targets = self._targets(browser, self.binding.chat_url, bounded=True)
+                pages.append(page)
+                if (current_contexts != contexts or current_targets or page.url != "about:blank"
+                        or page.context is not context
+                        or list(context.pages) != pages):
+                    raise wake.WakeBlocked("TARGET_PAGE_CHANGED")
+                page.goto(self.binding.chat_url, wait_until="domcontentloaded", timeout=local.remaining_ms(8000))
+                if (list(browser.contexts) != contexts or list(context.pages) != pages
+                        or self.select_page(browser, self.binding.chat_url) is not page):
+                    raise wake.WakeBlocked("TARGET_PAGE_CHANGED")
+            else:
+                page = targets[0]
+        local.prove_owner()  # Endpoint/profile replacement cannot authorize editing.
+        with _bridge_boundary():
             if (list(browser.contexts) != contexts
+                    or list(context.pages) != pages
+                    or page.context is not context
                     or self.select_page(browser, self.binding.chat_url) is not page):
                 raise wake.WakeBlocked("TARGET_PAGE_CHANGED")
-        else:
-            page = targets[0]
-        local.prove_owner()  # Endpoint/profile replacement cannot authorize editing.
-        local.remaining_ms()
-        self.browser, self.page = browser, page
-        self.page.set_default_timeout(3000)
+            local.remaining_ms()
+            page.set_default_timeout(3000)
+            self.browser, self.page = browser, page
 
     def __enter__(self):
         from playwright.sync_api import sync_playwright
@@ -453,8 +490,11 @@ class UnattendedBrowserAdapter(wake.BrowserAdapter):
             with local.locked():
                 self._acquire(browser, local)
             return self
-        except Exception as exc:
-            self.driver.stop()  # Disconnect only, including any failed launch/navigation.
+        except (Exception, asyncio.CancelledError) as exc:
+            try:
+                self.driver.stop()  # Disconnect only; never mask the acquisition reason.
+            except (Exception, asyncio.CancelledError):
+                pass
             if isinstance(exc, (wake.WakeBlocked, wake._Resolved)):
                 raise
             raise wake.WakeBlocked("LAUNCH_UNCERTAIN") from None
