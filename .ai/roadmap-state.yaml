@@ -467,7 +467,23 @@ sequence:
     phase: ORIGIN_AFFINE_AUTHORING_PROVENANCE_BINDING
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
-    task_authoring_status: UNAUTHORED
+    task_id: TASK-309
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "1e1ecb8e6d052f3ab89e8c732a68af6ba79ba15e"
+    task_blob_sha: "2869fe8c11375e1151ca3012fe5f77cffed75338"
+    authoring_issue_number: 1547
+    primary_dispatch_intent:
+      dispatch_id: task309-r1-codex61-xhigh-20261005-001
+      task_blob_sha: "2869fe8c11375e1151ca3012fe5f77cffed75338"
+      task_commit_sha: "1e1ecb8e6d052f3ab89e8c732a68af6ba79ba15e"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: AUTHORIZED_NOT_YET_DISPATCHED
+      interpretation: >-
+        Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-309 lifecycle.
+        This planning/delegation record does not create a RUN or prove execution.
     objective: >-
       Close the post-H4C1 new-TASK origin-provenance gap so an ORIGIN_AFFINE
       return selector is admitted only after a bounded exact-page bootstrap proof
