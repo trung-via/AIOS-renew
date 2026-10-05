@@ -1,0 +1,159 @@
+task_id: TASK-305
+revision: 1
+goal: Correct H4D dedicated-profile occupancy proof so unrelated Chromium main processes
+  that do not explicitly claim the configured dedicated user-data directory cannot
+  by themselves force BROWSER_OWNERSHIP_UNPROVEN, while preserving fail-closed exact-profile
+  occupancy checks, TASK-304 listener proof, and exact post-launch ownership proof.
+problem: 'After reviewed publication of TASK-304, a read-only retry diagnostic on
+  the real H4D origin-affine environment progressed through exact v3 route resolution
+  and the TASK-304 zero-listener proof, then stopped in LocalEnvironment.profile_available()
+  with BROWSER_OWNERSHIP_UNPROVEN. Bounded local observation showed two Chromium main
+  processes: one explicitly declared a different user-data directory, while another
+  used the exact configured executable but had no explicit --user-data-dir switch.
+  The configured AIOS user-data directory is dedicated and is not the Chrome default
+  directory. Current profile_available() queries processes by same executable name
+  OR presence of --user-data-dir, but then requires every non-child record to contain
+  exactly one explicit --user-data-dir. The same-executable process without that switch
+  therefore becomes ownership uncertainty even though it supplies no deterministic
+  evidence that the exact configured dedicated user-data directory is occupied.'
+assumptions:
+- TASK-304 r1 is reviewed and exactly published at f95f033e94bb46ab007739dca941ea43420e69e1;
+  its Windows listener-table absence proof remains correct and is not reopened by
+  this task.
+- The real H4D origin-affine carrier remains unresolved/deferred and must not be retried
+  until this correction, if implemented, is Runtime-verified, semantically reviewed,
+  and exactly published.
+- Read-only production evidence established exact origin-route resolution, ENDPOINT_ABSENT=true,
+  no profile-marker branch firing before the observed BROWSER_OWNERSHIP_UNPROVEN,
+  two readable main Chromium process records, one explicit user-data directory that
+  is not the configured AIOS directory, and one same-executable main process with
+  no explicit --user-data-dir.
+- The configured AIOS user-data directory is a dedicated Human-authorized directory
+  with exclusive_user_data=true and is not the ordinary Chrome default User Data directory.
+- No conclusion is drawn about which profile an implicit no-switch browser process
+  actually uses; the correction is limited to what that process record can and cannot
+  prove about occupancy of the exact configured dedicated directory.
+- TASK-303 RUN-303-001 remains separate pending correction lineage and is not modified,
+  resolved, superseded, or redirected by this H4D live-conformance correction.
+scope:
+  inspect:
+  - src/aios_renew/unattended_chat_wake.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_unattended_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  modify:
+  - src/aios_renew/unattended_chat_wake.py
+  - tests/test_unattended_chat_wake.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+non_goals:
+- Infer that a Chromium process without --user-data-dir uses the browser default profile,
+  the configured AIOS profile, or any other profile from executable name, active window,
+  timestamps, account state, policy assumptions, or model reasoning.
+- Hard-code Google Chrome default paths, inspect browser policy/registry to select
+  a profile, discover accounts/profiles, or convert machine policy into a new routing
+  or launch authority.
+- Relax or remove exact configured-directory singleton/lock/DevTools marker checks,
+  explicit configured-user-data occupancy rejection, malformed process fail-close
+  behavior, or the acquisition lock.
+- Change TASK-304 listener-table authority, configured CDP endpoint semantics, post-launch
+  listener/owner proof, launched PID identity, exact executable/user-data/profile/address/port
+  checks, or port-race handling.
+- Change H4C1 v3 origin registry, ORIGIN_AFFINE/LEGACY semantics, lane selection,
+  canonical freshness, dedupe, draft/generation guards, exact target/context proof,
+  post-send ambiguity, or no-blind-resend behavior.
+- Kill, terminate, steal, rebind, migrate, or silently reuse an unproved browser/profile/process;
+  add a retry controller, daemon, alternate launcher, repository-default fallback,
+  or second wake path.
+- Modify TASK-303 or RUN-303-001 lineage, perform REPAIR-303-001, claim H4D closure,
+  or advance H4E from implementation/tests/publication alone.
+constraints:
+  hard:
+  - Profile availability remains scoped to the exact Human-configured dedicated user_data_dir.
+    Absence of a configured-directory occupancy signal may permit continuation only
+    through the existing bounded acquisition path; it grants no authority to choose
+    or infer any other profile.
+  - Existing configured-directory marker checks remain authoritative before process
+    classification. Any configured SingletonLock, SingletonSocket, SingletonCookie,
+    lockfile, DevToolsActivePort, or acquisition lock condition continues to fail
+    closed exactly as before.
+  - A readable non-child process with one well-formed absolute explicit --user-data-dir
+    equal to the configured dedicated directory must remain PROFILE_LOCKED. A well-formed
+    absolute explicit --user-data-dir for a different directory is not occupancy of
+    the configured directory.
+  - A process record that explicitly mentions --user-data-dir but cannot be parsed
+    unambiguously as exactly one non-empty absolute --user-data-dir=<value>, or whose
+    required process metadata is malformed/unreadable, must remain fail-closed as
+    BROWSER_OWNERSHIP_UNPROVEN; split spelling, duplicates, relative values, parse
+    failure, or malformed records cannot become permission.
+  - A readable non-child same-executable process that contains no --user-data-dir
+    token at all is not deterministic evidence that the exact configured dedicated
+    directory is occupied and must not by itself produce BROWSER_OWNERSHIP_UNPROVEN.
+    The implementation must not infer or assert which implicit profile that process
+    uses.
+  - TASK-304 Windows zero-listener proof and all post-launch exact owner checks remain
+    unchanged and authoritative. Any listener race, wrong owner PID, wrong executable,
+    wrong configured user_data_dir/profile, wrong loopback address/port, launched-process
+    exit, or context/target uncertainty still fails closed before editing/submission.
+  - Preserve exclusive_user_data=true, allow_launch, the exact H4C1 Binding, one bounded
+    acquisition attempt, deadlines, canonical freshness/generation barriers, draft/active-generation
+    protection, at-most-one submission, exact user-turn proof, and no-blind-resend
+    semantics.
+  - Raw local process lists, executable paths, user-data paths, command lines, PIDs,
+    endpoint details, account/session material, and diagnostic exception text remain
+    machine-local and must not enter canonical/public lifecycle artifacts or wake
+    receipts.
+  - 'Regression coverage must include the observed production shape: same configured
+    executable with no user-data-dir plus a second main process with an explicit different
+    user-data-dir must not block solely because of the no-switch process; exact configured
+    explicit UDD must still lock; malformed/split/duplicate/relative explicit UDD
+    and unreadable records must fail closed; existing marker, listener, owner-race
+    and exact-owner regressions must remain green.'
+  - Executor changes only scope.modify, performs no live ChatGPT wake experiment,
+    does not mutate roadmap state, and does not claim Runtime verification, semantic
+    PASS, publication, H4D closure, or H4E authorization.
+acceptance:
+- id: AC1
+  condition: With configured-directory markers absent and the TASK-304 listener proof
+    showing zero listeners, a readable same-executable Chromium main process that
+    has no --user-data-dir token does not by itself cause BROWSER_OWNERSHIP_UNPROVEN
+    or PROFILE_LOCKED.
+- id: AC2
+  condition: A readable process with exactly one absolute explicit --user-data-dir
+    equal to the configured dedicated directory still produces PROFILE_LOCKED, while
+    a different well-formed absolute explicit user-data directory is not treated as
+    occupancy of the configured directory.
+- id: AC3
+  condition: 'Explicit user-data-dir ambiguity or malformedness remains fail-closed:
+    split spelling, duplicate switches, empty/relative values, argument parse failure,
+    unreadable required metadata, malformed process rows, or excessive/invalid process
+    observations cannot authorize launch.'
+- id: AC4
+  condition: Configured-directory singleton/lock/DevTools markers and the acquisition
+    lock retain their existing fail-closed behavior; exclusive_user_data remains Human
+    authorization rather than a substitute for OS occupancy proof.
+- id: AC5
+  condition: TASK-304 listener-table zero-listener authority and post-launch exact
+    owner proof are unchanged and still bind executable, configured user_data_dir,
+    profile directory, loopback address, port, and launched PID before page acquisition/editing
+    can proceed.
+- id: AC6
+  condition: The correction introduces no implicit-profile/default-profile inference,
+    no browser-policy/account discovery, no kill/rebind/retry behavior, no v3/affinity/legacy
+    change, and no alternate target or repository-default fallback.
+- id: AC7
+  condition: Regression coverage reproduces the real production classification and
+    proves the no-switch same-executable process is non-authoritative for exact configured-directory
+    occupancy while configured explicit occupancy and malformed/ambiguous evidence
+    remain fail-closed.
+- id: AC8
+  condition: Documentation defines the narrowed dedicated-profile occupancy proof
+    without weakening machine-local privacy, listener/owner race checks, exact-target
+    delivery barriers, or the separate Human/Brain H4D live exit gate.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_unattended_chat_wake.py tests/test_local_chat_wake.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
