@@ -1,15 +1,26 @@
 task_id: TASK-303
-revision: 1
+revision: 2
 goal: Consolidate transient diagnostic scaffolding, duplicate regression coverage,
   and default Brain roadmap hydration, and remove only caller/dependency-proven superseded
   code or workflows, while preserving lifecycle semantics and immutable historical
   evidence.
-problem: AIOS-renew has accumulated bounded diagnostic helpers, overlapping regression
+problem: 'AIOS-renew has accumulated bounded diagnostic helpers, overlapping regression
   cases, superseded wake-era surfaces, and a roadmap representation whose default
   Brain Sync path still parses and validates broad historical material. The cleanup
   must reduce maintenance and hydration cost without deleting evidence, weakening
   unique regression coverage, creating a second planning/lifecycle truth, or removing
   any surface whose current or queued dependency is not positively disproven.
+
+
+  RUN-303-001 later produced a clean, repairable candidate but failed canonical Runtime
+  verification in the required selected full suite with 69 reported failures across
+  cross-cutting provider/reviewer/ingress tests. That candidate never reached semantic
+  review or publication. Canonical main subsequently advanced through reviewed TASK-304,
+  TASK-305, and TASK-306 publication. Revision 2 therefore authorizes a fresh PRIMARY
+  from current main rather than repairing or transplanting the stale RUN-303-001 branch.
+  The r1 candidate and failure evidence are diagnostic inputs only; r2 must preserve
+  current published behavior and resolve the cleanup against the current repository
+  state with fresh Runtime verification.'
 assumptions:
 - Canonical planning baseline for TASK-303 authoring is main f73b9e7448dd11c9857a43a385326d822ad82301;
   TASK-302 remains reviewed and exactly published at 8832e24edb1cd471a8a7f653a622ef5e1776920f.
@@ -28,6 +39,19 @@ assumptions:
   alone are insufficient deletion proof.
 - This TASK originates from an H4C1 post-cutover regular-Chat flow and therefore carries
   the exact Human/Brain-established ORIGIN_AFFINE selector supplied for this conversation.
+- Canonical main at TASK-303 r2 authoring is ffa0481cb6725df602be12f55a7d715dda02244c,
+  containing the completed TASK-306 r3 publication and the corrected Human/Brain return
+  to cleanup-consolidation-v1.
+- 'RUN-303-001 remains immutable historical FAILURE: failed head 7f9415fa2d23b98bfd0dff611f3c1b255275dd87,
+  failure artifacts 5f0eef8df717c993e1d750c7bea49db7f5feda90, phase VERIFICATION.
+  Its candidate changed only the hardening doc, brain_sync.py, and test_brain_sync.py,
+  but the selected full suite reported 69 failures and therefore supplies no review
+  or publication authority.'
+- The old r1 candidate is a bounded diagnostic reference for intent and failure reproduction
+  only. Executor must reason from current main and current callers/tests rather than
+  mechanically transplanting that candidate.
+- 'The Human-selected execution delegation persists across TASK-303 revisions: Codex
+  gpt-6.1-sol with xhigh reasoning effort unless Human changes it.'
 scope:
   inspect:
   - .ai/roadmap-state.yaml
@@ -160,6 +184,12 @@ non_goals:
   coverage would be lost.
 - Perform unrelated refactors, performance tuning, style cleanup, dependency upgrades,
   or downstream Python Agent changes.
+- Repair, cherry-pick, merge, force-integrate, or otherwise publish RUN-303-001's
+  stale candidate as a shortcut around a fresh current-main PRIMARY.
+- Treat the 69 full-suite failures as automatically environmental or automatically
+  caused by one file without reproducing and resolving the current compatibility surface.
+- Undo, weaken, or reinterpret the reviewed TASK-304, TASK-305, or TASK-306 H4D behavior
+  now present on canonical main.
 constraints:
   hard:
   - Treat `.ai/roadmap-state.yaml` and exact canonical lineage as authority inputs
@@ -207,6 +237,21 @@ constraints:
   - Executor changes only scope.modify, performs no live ChatGPT wake experiment,
     makes no roadmap-state mutation, and does not claim H4D closure, semantic PASS,
     publication, or historical-evidence deletion.
+  - Revision 2 is a fresh PRIMARY rooted in the current canonical main at admission.
+    RUN-303-001 remains immutable historical failure lineage and must not be rewritten
+    or adopted as r2 verification/review evidence.
+  - Executor must use RUN-303-001 failure diagnostics to identify compatibility breakage,
+    but any implementation must be reconciled against current canonical callers and
+    tests and remain within scope.modify.
+  - Preserve all reviewed/published TASK-304, TASK-305, and TASK-306 wake/acquisition
+    safety behavior unless an exact TASK-303 acceptance criterion requires an in-scope
+    compatibility adaptation; no H4D semantic rollback is authorized.
+  - The required selected full-suite verification must run freshly on the r2 candidate.
+    Prior RUN-303-001 verification output is diagnostic evidence only and cannot satisfy
+    r2 Runtime verification.
+  - After r2 TASK authoring and the single planning repin from task_revision 1 to
+    2, no further roadmap/planning mutation is authorized until the r2 publication
+    attempt terminalizes.
 acceptance:
 - id: AC1
   condition: The candidate changes only scope.modify and introduces no new planner,
@@ -262,6 +307,11 @@ acceptance:
     is empty; removal/retention and consolidation claims cite the deterministic evidence
     produced for AC5-AC10 without claiming Runtime verification, Reviewer verdict,
     publication, or roadmap advancement.
+- id: AC12
+  condition: The r2 candidate descends from the current canonical execution base,
+    preserves reviewed TASK-304/305/306 behavior, and passes the required fresh selected
+    full-suite verification without relying on RUN-303-001 verification or review
+    authority.
 verification:
   policy: minimum-sufficient-v1
   required:
