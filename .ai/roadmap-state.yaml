@@ -783,7 +783,7 @@ sequence:
           Replay must be bounded and route rediscovery must reuse one stable
           conversation-scoped route rather than silently minting a new owner.
     live_probe:
-      status: PARTIAL_EVIDENCE
+      status: CURRENT_CHAT_PASS_CROSS_DEVICE_PENDING
       authority: HUMAN_BRAIN_PLANNING
       production_mutation: false
       objective: >-
@@ -793,13 +793,32 @@ sequence:
         conversation initiated from another device.
       human_operational_observation:
         observed_on: "2026-10-06"
-        result: TOKEN_DISCOVERABILITY_OBSERVED
+        result: CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF_PASS
         interpretation: >-
-          Human reports that the exact rendezvous token was found in the live feasibility
-          probe. This is positive evidence for token discoverability only. It does not by
-          itself prove exhaustive unique resolution, opened-chat re-proof, cross-device
-          origin capture, zero-match fail-closed behavior or multiple-match rejection.
+          Human searched the exact full rendezvous marker on the authenticated ChatGPT
+          account, observed exactly one matching conversation, opened that result and
+          confirmed it was the exact originating conversation. The raw marker remains
+          operational-only and is not persisted in canonical state.
         engineering_truth: false
+      case_results:
+        CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF: PASS_HUMAN_LIVE_OBSERVATION
+        PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF: PENDING
+        ZERO_MATCH_FAILS_CLOSED: PENDING
+        MULTIPLE_MATCH_FAILS_CLOSED: PENDING
+      next_probe:
+        case: PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
+        initiation: >-
+          From a phone or another browser, start a fresh regular Chat in this AIOS-Renew
+          Project and send one ordinary continuation message. Fresh Brain Sync must recover
+          this canonical probe state and emit a new one-time high-entropy non-semantic
+          rendezvous marker in the assistant turn without requiring the Human to echo,
+          paste or pre-supply that marker.
+        live_probe_only: true
+        human_manual_search_allowed_for_measurement: true
+        interpretation: >-
+          Manual account search on the self-host machine is allowed only to measure this
+          bounded live feasibility case. It is not accepted as the final production
+          zero-touch transport or as a second required Human gesture in the architecture.
       required_cases:
         - CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
         - PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
