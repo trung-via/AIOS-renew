@@ -908,7 +908,7 @@ sequence:
         - task308-origin-correct-replacement-v1
       return_to: task308-origin-correct-replacement-v1
 
-  - id: task308-origin-correct-replacement-v1  - id: task308-origin-correct-replacement-v1
+  - id: task308-origin-correct-replacement-v1
     status: BLOCKED_FOR_TASK310_ORIGIN_RENDEZVOUS_IMPLEMENTATION
     phase: BRAIN_PUBLICATION_TURN_HANDOFF_CORRECTION_REPLACEMENT
     authority: HUMAN_BRAIN_PLANNING
