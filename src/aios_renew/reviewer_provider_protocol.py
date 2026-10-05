@@ -183,8 +183,10 @@ def _packet(value: Any) -> tuple[dict[str, Any], Any, Any]:
     subject = _closed(packet["subject"], _SUBJECT_FIELDS, "packet subject")
     task_contract = _closed(facts["task_contract"], {
         "task_id", "revision", "goal", "problem", "assumptions", "scope",
-        "non_goals", "constraints", "acceptance", "verification",
+        "non_goals", "constraints", "acceptance", "verification", "return_affinity",
     }, "packet Task")
+    # Affinity is required projected context. Existing TASK validation and the
+    # exact round trip below preserve its closed shape without resolving a route.
     task_input = json.loads(_json(task_contract))
     verification = _closed(task_input["verification"],
                            {"required", "policy", "full_suite_reason"},

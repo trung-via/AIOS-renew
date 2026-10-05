@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from aios_renew.brain_audit import parse_profile_registry, profile_ref
+from aios_renew.brain_audit import (
+    BrainAuditError, parse_profile_registry, profile_ref, validate_stage2,
+)
 from aios_renew.brain_provider_protocol import (
     BrainProviderProtocolError, construct_request, revalidate_request,
     revalidate_decision, validate_response,
@@ -75,6 +77,53 @@ def response(req, candidate):
     return {"request_fingerprint": req["request_fingerprint"], "candidate": candidate}
 
 
+def task_conformance(req, candidate):
+    """Complete v3 declarations bound to the supplied packet and final candidate."""
+    policy = req["audit_profile_package"]["profile"]["conformance"]
+    binding = {
+        "packet_fingerprint": req["decision_packet"]["packet_fingerprint"],
+        "reconciled_candidate_fingerprint": digest(_normal(candidate)),
+        "status": "CLEAR",
+    }
+    return {
+        "cross_authority_context": {
+            **binding, "basis": "Brain proposes the TASK; Runtime retains admission and verification.",
+            "entries": [{
+                "id": "TASK_PROPOSAL_HANDOFF", "status": "COVERED", "candidate_anchor": "task_id",
+                "basis": "The explicit TASK identity is carried through existing family validation.",
+                "caller_authority": "BRAIN", "consumer_authority": "RUNTIME",
+                "context_role": "Bounded TASK contract proposal",
+                "propagation": "Exact packet and candidate binding; no execution authority is transferred.",
+            }],
+        },
+        "canonical_shape": {
+            **binding, "basis": "Existing lifecycle artifact shapes remain separate from the TASK proposal.",
+            "entries": [{
+                "id": identity, "status": "COVERED", "candidate_anchor": "task_id",
+                "basis": "Existing canonical family validation retains exact TASK and RUN lineage.",
+                "shape": shape,
+            } for identity, shape in zip(policy["shape_ids"], (
+                "PRIMARY RESULT: exact head_sha, claims, changed_files and unresolved; Runtime owns EVIDENCE.",
+                "FAILURE: exact failed RUN and candidate identity with the Runtime-owned failure boundary.",
+                "Reviewed RESULT: exact reviewed SHA and Reviewer acceptance and finding identities.",
+                "REMEDIATION RESULT: exact source RUN, REVIEW and finding with bounded correction scope.",
+                "REPAIR RESULT: exact failed RUN and REPAIR authorization with bounded correction scope.",
+            ))],
+        },
+        "terminal_lifecycle": {
+            **binding, "basis": "Each supported path retains Runtime, Reviewer and Publisher boundaries.",
+            "entries": [{
+                "id": identity, "status": "FEASIBLE", "candidate_anchor": "task_id",
+                "basis": basis,
+            } for identity, basis in zip(policy["path_ids"], (
+                "PRIMARY completes through fresh Runtime verification, Reviewer PASS and exact publication.",
+                "CHANGES_REQUIRED proceeds only through authorized remediation, DELTA PASS and publication.",
+                "FAILURE proceeds only through authorized repair, fresh verification, PASS and publication.",
+            ))],
+        },
+    }
+
+
 def stage2_response(req, candidate, *, blocker=False):
     lenses = [item["id"] for item in req["audit_profile_package"]["profile"]["lenses"]]
     closure = [{"lens": lens, "outcome": "CLEAR"} for lens in lenses]
@@ -90,7 +139,71 @@ def stage2_response(req, candidate, *, blocker=False):
         material["acceptance_phase_ledger"] = [
             {"id": entry["id"], "phase": "CLAIM_NOW"} for entry in candidate.get("acceptance", [])
         ]
+        if req["audit_profile_package"]["profile"]["version"] == 3:
+            material.update(task_conformance(req, candidate))
     return material
+
+
+def audit_material(req, supplied):
+    """Add the exact existing Stage-1 lineage to caller-supplied Stage-2 fields."""
+    first = req["stage1_lineage"]["construct"]
+    return {
+        **{key: first[key] for key in (
+            "packet_fingerprint", "audit_profile_ref", "selected_flow",
+            "construct_candidate", "construct_fingerprint")},
+        **{key: value for key, value in supplied.items() if key != "request_fingerprint"},
+    }
+
+
+@pytest.mark.parametrize("blocker", [False, True])
+def test_v3_task_fixture_has_complete_exact_conformance(registry, profile_package, blocker):
+    first = request(registry, profile_package)
+    assert first["audit_profile_package"]["profile"]["id"] == "brain-high-value-v3"
+    candidate = {"task_id": "TASK-999", "revision": 1}
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]),
+                               first["return_contract_package"], first["external_bindings"],
+                               first["audit_profile_package"], request_mode="AUDIT_RECONCILE",
+                               stage1_decision=stage1)
+    supplied = stage2_response(second, candidate, blocker=blocker)
+    final = validate_stage2(second["decision_packet"], second["audit_profile_package"]["profile"],
+                            second["stage1_lineage"]["construct"], audit_material(second, supplied))
+    policy = second["audit_profile_package"]["profile"]["conformance"]
+    for name in policy["sections"]:
+        assert final[name] == supplied[name]
+        assert final[name]["packet_fingerprint"] == second["decision_packet"]["packet_fingerprint"]
+        assert final[name]["reconciled_candidate_fingerprint"] == digest(candidate)
+    assert [entry["id"] for entry in final["canonical_shape"]["entries"]] == policy["shape_ids"]
+    assert [entry["id"] for entry in final["terminal_lifecycle"]["entries"]] == policy["path_ids"]
+    assert (final["handoff_candidate"] is None) == blocker
+
+
+@pytest.mark.parametrize("section", ["cross_authority_context", "canonical_shape", "terminal_lifecycle"])
+@pytest.mark.parametrize("fault", ["missing", "packet", "candidate", "unknown-field", "coverage", "blocked"])
+def test_v3_task_fixture_conformance_tampering_fails(registry, profile_package, section, fault):
+    first = request(registry, profile_package)
+    candidate = {"task_id": "TASK-999", "revision": 1}
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]),
+                               first["return_contract_package"], first["external_bindings"],
+                               first["audit_profile_package"], request_mode="AUDIT_RECONCILE",
+                               stage1_decision=stage1)
+    supplied = stage2_response(second, candidate)
+    if fault == "missing":
+        del supplied[section]
+    elif fault in ("packet", "candidate"):
+        key = "packet_fingerprint" if fault == "packet" else "reconciled_candidate_fingerprint"
+        supplied[section][key] = "0" * 64
+    elif fault == "unknown-field":
+        supplied[section]["extra"] = True
+    elif fault == "coverage":
+        supplied[section]["entries"].pop()
+    else:
+        supplied[section]["status"] = "BLOCKED"
+        supplied[section]["entries"][0]["status"] = "BLOCKED"
+    with pytest.raises(BrainAuditError):
+        validate_stage2(second["decision_packet"], second["audit_profile_package"]["profile"],
+                        second["stage1_lineage"]["construct"], audit_material(second, supplied))
 
 
 def test_audited_round_trip_and_stale_stage2(registry, profile_package):
