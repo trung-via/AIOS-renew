@@ -510,7 +510,7 @@ next_items:
 sequence:
 
   - id: TASK-309
-    status: NEXT
+    status: DONE
     phase: ORIGIN_AFFINE_AUTHORING_PROVENANCE_BINDING
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
@@ -527,7 +527,9 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: AUTHORIZED_NOT_YET_DISPATCHED
+      status: COMPLETED_BY_RUN_309_001
+      wakeup_issue_number: 1550
+      run_id: RUN-309-001
       predecessor_attempt:
         dispatch_id: task309-r1-codex61-xhigh-20261005-001
         status: PRE_AIOS_ADMISSION_REJECTED_NO_RUN
@@ -588,10 +590,100 @@ sequence:
       - NO_WAKE_GUARD_WEAKENING
       - PRESERVE_TASK_308_REVIEW_BLOCKED_LINEAGE
       - PRESERVE_TASK_303_R4_AND_RUN_303_004_LINEAGE
-    return_to: TASK-308
+    engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      run_id: RUN-309-001
+      artifact_sha: "ea6ad311fbbd2b8eb3a380185e7f9da31c2e5cd2"
+      candidate_sha: "6d400f015f68944aa1b50b7f2a77decfe0251c39"
+      review_id: REVIEW-309-001
+      review_decision_sha: "5a856983f919c44b852798d40476e160efe40056"
+      review_verdict: PASS
+      published_sha: "6d400f015f68944aa1b50b7f2a77decfe0251c39"
+      publication_workflow_run_id: 37346735929
+      publication_job_status: SUCCESS
+      workflow_terminal_status: POST_PUBLICATION_WAKE_FAILURE
+      interpretation: >-
+        Exact reviewed candidate publication succeeded. The enclosing workflow later
+        failed only in local-chat wake delivery and therefore does not invalidate
+        publication engineering truth.
+    post_publication_wake_observation:
+      authority: HUMAN_BRAIN_OPERATIONAL_OBSERVATION
+      initial_result_wake_reason: BINDING_MISSING
+      initial_publication_wake_reason: BINDING_MISSING
+      diagnosed_root_cause: BOOTSTRAP_AND_LOCAL_WAKE_USED_DIFFERENT_MACHINE_LOCAL_ORIGIN_REGISTRIES
+      recovery: >-
+        Human merged the exact generation-1 SUBMITTED daea route into the production
+        wake registry, aligned AIOS_ORIGIN_REGISTRY with that production registry,
+        then proved affinity, binding, CDP attachment and surface checks PASS.
+      exact_chat_recovery_observed: true
+      caveat: >-
+        This successful Human-triggered drain is operational evidence that the repaired
+        route reaches the exact chat; it is not unattended H4D/H4E live-exit proof.
+    return_to: task308-origin-correct-replacement-v1
+
+  - id: task308-origin-correct-replacement-v1
+    status: NEXT
+    phase: BRAIN_PUBLICATION_TURN_HANDOFF_CORRECTION_REPLACEMENT
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-06"
+    candidate_task_id: TASK-310
+    task_authoring_status: UNAUTHORED
+    objective: >-
+      Re-author the unchanged TASK-308 publication-turn handoff correction under a new
+      TASK identity whose ORIGIN_AFFINE selector is independently admitted by the
+      post-TASK-309 exact-page provenance gate, because TASK-308 revision affinity is
+      immutable and REVIEW-308-001 is permanently BLOCKED on the wrong origin selector.
+    predecessor:
+      task_id: TASK-308
+      run_id: RUN-308-001
+      review_id: REVIEW-308-001
+      review_verdict: BLOCKED
+      reviewed_candidate_sha: "2a2830e3898caabbc39ee98046bdb57d7e5e598c"
+      blocker: WRONG_ORIGIN_AFFINITY_UPSTREAM_AUTHORING_PROVENANCE
+    enabling_fix:
+      task_id: TASK-309
+      run_id: RUN-309-001
+      review_id: REVIEW-309-001
+      published_sha: "6d400f015f68944aa1b50b7f2a77decfe0251c39"
+    authoring_gate:
+      status: FRESH_POST_TASK309_ORIGIN_BOOTSTRAP_REQUIRED
+      intended_route_handle: "page-origin-v1:daea771dcc0c97b21f655fb82d3d2ac03cfd430a1872158439f255a0f9a37665"
+      intended_generation: 1
+      requirement: >-
+        A fresh PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1 proof must be minted from this
+        exact chat using the same production machine-local origin registry now shared by
+        bootstrap, wake and TASK-309 provenance admission. The route selector alone is
+        insufficient.
+    semantic_reuse:
+      source_task: TASK-308
+      source_review: REVIEW-308-001
+      implementation_acceptance: AC1_THROUGH_AC7_ALL_PASS
+      delta: >-
+        No objective, production scope, non-goal or acceptance behavior changes. The new
+        identity exists solely to obtain lawful exact-origin authoring provenance.
+    audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: CANDIDATE
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      stage2_outcome: CLEAR
+      reconciliation: >-
+        Reusing the TASK-308 identity or revising its affinity would violate immutable
+        provenance. A new identity with fresh exact-page proof is the minimum correction;
+        it adds no new production scope or lifecycle authority.
+    human_priority:
+      authority: HUMAN
+      decision: PRESERVE_TASK_308_OBJECTIVE_BEFORE_RESUMING_TASK_303_R4
+      basis: >-
+        This is the lawful continuation of the existing Human priority for TASK-308,
+        not a new priority over unrelated work.
+    executor_delegation:
+      status: REQUIRES_FRESH_HUMAN_SELECTION
+      reason: TASK_308_DELEGATION_EXPIRED_ON_TASK_IDENTITY_CHANGE
+    return_to: cleanup-consolidation-v1
 
   - id: TASK-308
-    status: PAUSED_FOR_TASK309_ORIGIN_PROVENANCE
+    status: BLOCKED_IMMUTABLE_ORIGIN_AFFINITY_REPLACEMENT_REQUIRED
     phase: BRAIN_PUBLICATION_TURN_HANDOFF_CORRECTION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-05"
