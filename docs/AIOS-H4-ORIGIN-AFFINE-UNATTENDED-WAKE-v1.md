@@ -215,7 +215,7 @@ Reconciled findings:
 
 - current repository-keyed binding is insufficient for same-repository multi-chat flows;
 - origin capture must be separately proven before generic return routing implementation;
-- origin must never be inferred from timestamps, active tab, most-recent conversation, chat memory, or transcript scraping;
+- origin must never be inferred from timestamps, active tab, most-recent conversation, chat memory, semantic transcript similarity, or free-form assistant-output interpretation; exact matching of a precommitted machine-generated opaque rendezvous token is permitted only inside the bounded origin-capture boundary and grants no semantic or lifecycle authority;
 - raw chat URL remains noncanonical; any return selector exposed to lineage is bounded and opaque;
 - lane identity is conversation/return-route scoped, not TASK scoped;
 - route transfer requires explicit Human authority;
@@ -238,8 +238,8 @@ Required properties:
 - distinguish two conversations belonging to the same repository/project;
 - establish origin at or before the semantic flow's initial authorized handoff;
 - produce only a bounded operational route identity;
-- remain independent of chat transcript contents;
-- never infer origin from the active tab, most-recent chat, timestamps, model memory, provider/account identity, or other heuristic correlation; host-supplied tool-call session metadata may be evaluated only as a replaceable transport-origin input, not canonical identity;
+- remain independent of semantic chat meaning: Human/assistant prose, topic similarity and inferred intent must not select origin; a precommitted high-entropy opaque rendezvous token may be searched and exactly matched as operational transport evidence only;
+- never infer origin from the active tab, most-recent chat, timestamps, model memory, provider/account identity, semantic transcript similarity, or other heuristic correlation; exact full-token rendezvous matching and host-supplied tool-call session metadata may be evaluated only as replaceable transport-origin inputs, not canonical identity;
 - keep raw conversation URL outside canonical TASK/RUN semantics;
 - fail closed when origin is missing, stale, conflicting, or ambiguous;
 - create no semantic or lifecycle authority.
@@ -262,6 +262,57 @@ The [H4C0 conformance contract](AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md) free
 
 TASK-292 acceptance and synthetic tests do not prove that future live observation or close H4C0. Reviewed publication makes the candidate available for the later Human/Brain observation; Human/Brain alone decides H4C0 live closure or architecture fallback. **H4C1 remains blocked until H4C0 live closure**, including the required architecture audit. No local-wake, lifecycle, Reviewer, Publisher, Runtime, or roadmap authority changes follow from this probe.
 
+
+### Human-approved 2026-10-06 correction — opaque cross-device origin rendezvous
+
+The Human explicitly superseded the broad `NO_TIMESTAMP_OR_TRANSCRIPT_MATCHING`
+planning prohibition for origin capture after two-stage Brain architecture audit found
+that it unnecessarily blocks a deterministic cross-device rendezvous mechanism. This
+does **not** authorize semantic transcript inference, recent-chat selection, active-tab
+selection, timestamp correlation, model-memory correlation, or assistant-output parsing
+for lifecycle or roadmap action.
+
+The selected architecture candidate is:
+
+`OPAQUE_ORIGIN_RENDEZVOUS_V1`
+
+Its intent is to make the Human's ordinary initiating ChatGPT message the only Human
+gesture required for a new AIOS flow, including when that message originates from a
+phone or another browser. Brain may emit one bounded machine-generated high-entropy
+rendezvous marker in the exact originating conversation and carry the same marker over
+a subordinate operational channel to the self-host transport. The local origin resolver
+may search the authenticated ChatGPT account only for the exact full marker and must
+fail closed unless exactly one regular-Chat conversation is proven to contain it.
+
+The marker is operational transport evidence only. It must be random/high-entropy,
+single-purpose, bounded, expiring, and non-semantic. It must not encode TASK, RUN,
+roadmap, user text, repository secrets, chat URL, account identity, lifecycle state or
+semantic instructions. Matching is byte/exact-token matching, not similarity search or
+model interpretation.
+
+A successful resolution requires at minimum:
+
+1. exactly one search result for the full rendezvous marker;
+2. opening that result yields exactly one regular-Chat conversation;
+3. the exact full marker is re-proven in that same conversation after navigation;
+4. the normalized conversation route is stable across proof;
+5. route allocation/reuse is performed only after that proof;
+6. zero or multiple matches, unavailable history/search, deleted/unsynced conversation,
+   account/profile mismatch, route movement, or proof uncertainty fail closed;
+7. no fallback to recent chat, active tab, repository default, timestamp, semantic text
+   or partial token match is permitted.
+
+This origin-only exception does not weaken the production wake rule that assistant
+output must not select lifecycle action. Wake transport remains a bounded doorbell and
+must still reconstruct semantics from canonical state after delivery. The origin resolver
+may observe only the exact precommitted rendezvous marker needed to establish the
+conversation route.
+
+The candidate is not yet production authority. Before TASK authoring it requires bounded
+live feasibility evidence that a marker emitted in an assistant turn is discoverable and
+uniquely resolvable through the authenticated account on the self-host machine, including
+a conversation initiated from another device. Failure of that live probe returns an
+architecture blocker rather than authorizing heuristic fallback.
 
 ### Human-approved H4C0 fallback — page-scoped origin bootstrap
 
