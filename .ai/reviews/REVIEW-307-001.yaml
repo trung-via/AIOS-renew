@@ -1,0 +1,43 @@
+review_id: REVIEW-307-001
+reviewed_sha: 7b9a9d62b3bf9fff78a93f0b3cbe068b17beed3d
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- 'RUN-307-001 is the canonical PRIMARY RESULT for TASK-307 r1. Candidate 7b9a9d62b3bf9fff78a93f0b3cbe068b17beed3d
+  is exactly one commit ahead of admitted base d95696b161baaa5cee6bab1debe0d2556aac47aa
+  and changes only the three TASK-authorized paths: src/aios_renew/unattended_chat_wake.py,
+  tests/test_unattended_chat_wake.py, and docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md.'
+- 'Runtime verification is canonical PASS: python -m pytest -q tests/test_unattended_chat_wake.py
+  tests/test_local_chat_wake.py reports 867 passed and 596 skipped in 50.33s; git
+  diff --check passed; RESULT unresolved is empty.'
+- "First semantic pass \u2014 bounded correction: AC1-AC3 PASS. Environment.command()\
+  \ removes exactly --enable-automation and preserves user-data-dir, profile-directory,\
+  \ 127.0.0.1 CDP address/port, --no-first-run, --no-default-browser-check and --no-startup-window.\
+  \ No replacement concealment, stealth, spoofing or human-verification bypass behavior\
+  \ is introduced. Exact owner proof remains based on executable, user-data directory,\
+  \ profile, loopback address/port and launched process identity."
+- "First semantic pass \u2014 regression preservation: AC4-AC5 PASS. Production acquisition\
+  \ and local-chat safety code outside the single launch-token removal is unchanged;\
+  \ focused inert regressions assert corrected command identity, owner compatibility,\
+  \ malformed/mismatched ownership and owner-race fail-close behavior without contacting\
+  \ live ChatGPT."
+- "Second semantic pass \u2014 adversarial authority/privacy check: AC6 PASS. Documentation\
+  \ explicitly classifies the prior Human browser observation as noncanonical planning\
+  \ input, declines a proven anti-bot root-cause claim, forbids CAPTCHA/anti-bot bypass\
+  \ and automation concealment, and keeps Runtime verification, Reviewer judgment,\
+  \ publication and the later Human/Brain H4D live-exit observation separate."
+- "Second semantic pass \u2014 lineage isolation: AC7 PASS. Candidate changes no TASK-303\
+  \ artifact, no RUN-303-003 failure/attention lineage, and creates no synthetic replacement\
+  \ carrier. H4D/H4E/final-H4B/H5 planning state is not advanced by the implementation."
+- No material semantic defect was found in the exact reviewed subject. All seven acceptance
+  criteria PASS and findings are empty. Publication remains Publisher-owned; reviewed
+  publication does not itself prove H4D live exit.
