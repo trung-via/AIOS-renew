@@ -1,0 +1,146 @@
+task_id: TASK-306
+revision: 1
+goal: Correct and harden the remaining H4D browser-context acquisition boundary so
+  the real production Target.getBrowserContexts response shape is accepted without
+  weakening fail-closed context ownership, and exercise the full bounded acquisition
+  path through exact navigation and pre-submit surface readiness before another live
+  retry.
+problem: After TASK-304 and TASK-305 were reviewed and published, the same real unresolved
+  origin-affine H4D carrier advanced through listener absence proof, dedicated-profile
+  occupancy proof, browser launch, exact OS owner proof, and one Playwright context,
+  then deferred before page creation. Read-only diagnosis proved Target.getBrowserContexts
+  returns a dictionary with browserContextIds=[] plus an optional non-empty defaultBrowserContextId.
+  Current _prove_context() requires exact dictionary equality with only browserContextIds=[],
+  so the valid production shape is rejected as BROWSER_CONTEXT_UNPROVEN. Additional
+  read-only checks proved zero non-default contexts, one stable Playwright context
+  before/after CDP session detach, bounded new_page bridge availability, acquisition-lock
+  cleanup, canonical carrier freshness UNRESOLVED, exact origin-affinity match, and
+  clean Playwright shutdown even with an open browser CDP session. The prior live
+  retry surfaced LOCAL_FAILURE externally, so expected operational exceptions inside
+  the bounded context/page bridge also require deterministic fail-closed classification
+  rather than escaping as a generic local failure.
+assumptions:
+- TASK-304 and TASK-305 are reviewed and exactly published; their Windows listener-table
+  absence proof, dedicated-profile occupancy proof, and exact post-launch owner proof
+  remain authoritative and are not reopened.
+- The real H4D carrier terminal:FAILURE:RUN-303-001 remains canonically UNRESOLVED
+  and resolves to the exact existing ORIGIN_AFFINE route/generation; no synthetic
+  or replacement attention subject is authorized.
+- Read-only production evidence established one Playwright context, zero pages, zero
+  non-default CDP browser contexts, a non-empty defaultBrowserContextId field, stable
+  context identity across CDP detach, and a supported bounded private new_page bridge.
+- Read-only production evidence established exact owner proof PASS and no stale AIOS
+  acquisition lock after the failed live attempt.
+- The live attempt did not reach page creation or Send; event state remained DEFERRED,
+  so no blind-resend ambiguity was created.
+- TASK-303 RUN-303-001 remains separate pending correction lineage; using its unresolved
+  attention carrier for H4D live conformance does not repair, resolve, supersede,
+  or rewrite that engineering failure.
+scope:
+  inspect:
+  - src/aios_renew/unattended_chat_wake.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_unattended_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  modify:
+  - src/aios_renew/unattended_chat_wake.py
+  - tests/test_unattended_chat_wake.py
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+non_goals:
+- Accept arbitrary or future unknown fields from Target.getBrowserContexts, infer
+  account/profile identity from defaultBrowserContextId, or use that identifier for
+  routing, target selection, lifecycle authority, or persistent state.
+- Relax the requirement for exactly one Playwright browser context, zero non-default
+  CDP browser contexts, stable context identity across proof, exact configured browser
+  ownership, exact target navigation, or post-navigation owner re-proof.
+- Change TASK-304 listener-table absence authority, TASK-305 dedicated-profile occupancy
+  semantics, executable/user-data/profile/address/port/PID owner proof, or acquisition-lock
+  behavior.
+- Change H4C1 v3 origin registry, ORIGIN_AFFINE/LEGACY semantics, lane selection,
+  canonical freshness, dedupe, draft/generation barriers, exact user-turn proof, or
+  no-blind-resend behavior.
+- Create a second browser controller, retry loop, alternate endpoint, account/profile
+  discovery path, page-selection heuristic, kill/rebind behavior, or repository-default
+  fallback.
+- Perform a live ChatGPT wake inside Executor verification, fabricate/replay a carrier,
+  claim H4D closure from tests/publication, or advance H4E automatically.
+- Modify TASK-303 or RUN-303-001 engineering lineage or perform REPAIR-303-001.
+constraints:
+  hard:
+  - 'Target.getBrowserContexts proof accepts only two canonical response keysets:
+    browserContextIds alone, or browserContextIds plus defaultBrowserContextId. browserContextIds
+    must exist, be a list, and be exactly empty.'
+  - When defaultBrowserContextId is present it must be a non-empty string and is treated
+    as opaque compatibility metadata only; it cannot select, identify, or authorize
+    a browser context, account, profile, route, or target.
+  - Any unknown extra key, missing browserContextIds, non-list browserContextIds,
+    non-empty browserContextIds, malformed/empty defaultBrowserContextId, or otherwise
+    unsupported response shape remains BROWSER_CONTEXT_UNPROVEN.
+  - Exactly one Playwright browser context must exist before CDP context proof and
+    the exact context list must remain stable after session detach. The proof must
+    remain bounded by the existing acquisition deadline.
+  - Expected operational failures from bounded Playwright/CDP bridge operations used
+    for context proof or one-page creation must convert to deterministic fail-closed
+    transport reasons inside the acquisition boundary rather than escape as generic
+    LOCAL_FAILURE; timeout remains ACQUISITION_TIMED_OUT, while other unproved bridge/context
+    operations must not grant retry or permission.
+  - The bounded path must still issue at most one new_page request, require the created
+    page to begin as about:blank in the same proved context, reject context/target/page
+    races, navigate only to the exact bound chat URL, and re-prove exact browser owner
+    before exposing the page to delivery editing.
+  - Focused regression must exercise a production-shaped launched acquisition end-to-end
+    through context proof, one page creation, exact navigation, post-navigation owner
+    re-proof, and entry into existing pre-submit surface checks without performing
+    a real ChatGPT connection or live Send.
+  - Regression must also cover legacy accepted CDP shape, production optional-default-ID
+    shape, unknown keys, malformed default ID, non-empty non-default contexts, detach/context
+    drift, bridge operational failure, page-creation uncertainty, and existing listener/profile/owner
+    race failures.
+  - No raw local path, command line, PID, endpoint, defaultBrowserContextId value,
+    account/session material, chat URL, or transcript content may enter canonical/public
+    artifacts or wake receipts.
+  - Executor changes only scope.modify, mutates no roadmap/lifecycle state, performs
+    no live H4D experiment, and does not claim Runtime verification, Reviewer PASS,
+    publication, H4D closure, or H4E authorization.
+acceptance:
+- id: AC1
+  condition: _prove_context accepts the legacy browserContextIds-only empty-list response
+    and the real production response containing exactly browserContextIds=[] plus
+    a non-empty string defaultBrowserContextId.
+- id: AC2
+  condition: _prove_context rejects missing/malformed/non-empty browserContextIds,
+    empty or non-string defaultBrowserContextId, and any unknown extra response key
+    without inferring context/account/profile identity.
+- id: AC3
+  condition: The proof still requires exactly one Playwright context and proves the
+    same context list remains stable after bounded browser-CDP-session detach.
+- id: AC4
+  condition: Expected operational failures in bounded context/session/page bridge
+    calls fail deterministically inside the acquisition boundary and do not escape
+    as generic LOCAL_FAILURE, grant retry, or authorize page creation.
+- id: AC5
+  condition: At most one page is created; it must be about:blank in the proved context
+    before exact navigation, no competing exact target/context may appear, only the
+    bound chat URL is navigated, and exact owner proof is repeated before editing
+    can begin.
+- id: AC6
+  condition: A production-shaped inert regression traverses launch/attach, exact owner
+    proof, context proof with optional defaultBrowserContextId, one page creation,
+    exact navigation, second owner proof, and existing pre-submit surface validation
+    while issuing no live network ChatGPT wake or Send.
+- id: AC7
+  condition: TASK-304 listener proof, TASK-305 profile occupancy proof, v3/origin-affinity,
+    canonical freshness, dedupe, draft/generation, at-most-one submission, ambiguity
+    and no-blind-resend behavior remain unchanged and regression-green.
+- id: AC8
+  condition: Documentation records the bounded production-compatible context proof
+    and deterministic bridge-failure boundary while preserving machine-local privacy
+    and the separate Human/Brain H4D live exit gate.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_unattended_chat_wake.py tests/test_local_chat_wake.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
