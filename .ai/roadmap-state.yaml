@@ -78,6 +78,30 @@ production_wake_amendment:
         - PRESERVE_DURABLE_DEFERRED_WAKE_RECOVERY
         - PREFER_EVENT_DRIVEN_OR_SEPARATE_NONBLOCKING_RECOVERY_CAPACITY
         - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
+    - id: h4-origin-registry-bootstrap-wake-split
+      status: DEFERRED_TO_NEXT_WAKE_FIX_BATCH
+      authority: HUMAN_BRAIN_PLANNING
+      observed_on: "2026-10-05"
+      evidence:
+        affected_run_id: RUN-309-001
+        route_handle: "page-origin-v1:daea771dcc0c97b21f655fb82d3d2ac03cfd430a1872158439f255a0f9a37665"
+        result_wake_reason: BINDING_MISSING
+        publication_wake_reason: BINDING_MISSING
+        local_observation: >-
+          AIOS_LOCAL_CHAT_WAKE_CONFIG.origin_registry and the H4C0 bootstrap registry
+          used for this chat were different files. The configured wake registry contained
+          zero matches for the TASK-309 route while the bootstrap registry contained exactly
+          one generation-1 SUBMITTED route.
+      disposition: >-
+        Unify bootstrap, local wake, and post-TASK-309 origin-authoring provenance on one
+        machine-local H4C0 registry source. Preserve existing routes during migration and
+        remove setup/documentation paths that permit silent registry divergence.
+      required_outcomes:
+        - ONE_MACHINE_LOCAL_ORIGIN_REGISTRY_SOURCE_FOR_BOOTSTRAP_WAKE_AND_AUTHORING_PROVENANCE
+        - MIGRATION_PRESERVES_EXISTING_ROUTE_BINDINGS_AND_GENERATIONS
+        - REGISTRY_MISMATCH_FAILS_EARLY_WITH_BOUNDED_DIAGNOSTIC
+        - NO_RAW_CHAT_IDENTITY_OR_ENDPOINT_IN_CANONICAL_STATE
+        - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
 
 verification_foundation_audit:
   id: ta-0-ta-1-verification-foundation
