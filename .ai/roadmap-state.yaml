@@ -688,72 +688,85 @@ sequence:
         zero-touch origin requirement.
     constraints:
       - NO_ACTIVE_OR_RECENT_TAB_HEURISTIC
-      - NO_TIMESTAMP_OR_TRANSCRIPT_MATCHING
+      - NO_SEMANTIC_TRANSCRIPT_OR_ASSISTANT_OUTPUT_INFERENCE_FOR_ORIGIN
+      - EXACT_PRECOMMITTED_OPAQUE_RENDEZVOUS_TOKEN_MATCHING_ALLOWED
       - NO_MODEL_MEMORY_AS_ORIGIN_AUTHORITY
       - NO_SILENT_DEFAULT_CHAT
       - NO_SYNTHETIC_HUMAN_CLICK_OR_DUMMY_DRAFT
       - NO_RAW_CHAT_IDENTITY_IN_CANONICAL_ENGINEERING_STATE
       - PRESERVE_HUMAN_AUTHORITY_WITHOUT_SECOND_GESTURE
       - PRESERVE_EXACT_ORIGIN_AFFINITY_AND_GENERATION_SAFETY
+      - WAKE_TRANSPORT_STILL_MUST_NOT_READ_ASSISTANT_OUTPUT_TO_SELECT_LIFECYCLE_ACTION
       - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
-    research_assurance:
-      profile: research-high-value-v1
-      brief_snapshot_sha: "8622ad1c03a7e0ec3ae364f0d1c6370b386f5c01"
-      current_as_of: "2026-10-06"
-      pass1: EVIDENCE_CONSTRUCT
-      pass2: ADVERSARIAL_RESEARCH_AUDIT_AND_RECONCILE
-      closure: RESEARCH_CANDIDATE
-      material_claims:
-        - OPENAI_PLUGIN_TOOL_CALLS_EXPOSE_ANONYMIZED_CONVERSATION_ID_VIA_OPENAI_SESSION
-        - INSTALLED_PLUGINS_CAN_AUTO_ACTIVATE_WHEN_RELEVANT_AND_PLUGIN_DIRECTORY_IS_AVAILABLE_ON_MOBILE
-        - OPENAI_SESSION_IS_AN_ORIGIN_IDENTITY_CANDIDATE_NOT_A_DOCUMENTED_RETURN_ADDRESS
-        - MCP_EVENTS_CAN_DELIVER_SERVER_EVENTS_INTO_THE_SUBSCRIBED_CHAT_BUT_CURRENTLY_ONLY_WORK_CHAT_SURFACES
-        - NO_DOCUMENTED_REGULAR_CHAT_SERVER_PUSH_OR_SESSION_TO_CHAT_URL_MAPPING_EXISTS
-        - CURRENT_PUBLIC_SUPPORTED_APIS_DO_NOT_COMPLETE_ZERO_TOUCH_REGULAR_CHAT_RETURN_FOR_A_NEW_MOBILE_ONLY_CONVERSATION
-      counterevidence_reconciliation: >-
-        The January 2026 OpenAI session metadata closes the earlier absence of a
-        conversation-scoped tool-call identifier and materially changes H4C0 feasibility.
-        It does not close the return channel. MCP transport session-id instability is a
-        separate protocol identifier and does not invalidate openai/session. Widget
-        sendFollowUpMessage is client/widget scoped and is not a durable server-initiated
-        wake. MCP Events supplies the desired native callback shape, but current OpenAI
-        documentation limits it to Work chats rather than ordinary Chat.
+    human_override:
+      authority: HUMAN
+      approved_on: "2026-10-06"
+      decision: NARROW_TRANSCRIPT_PROHIBITION_TO_ENABLE_EXACT_OPAQUE_RENDEZVOUS
+      interpretation: >-
+        Human explicitly accepts removing the broad NO_TIMESTAMP_OR_TRANSCRIPT_MATCHING
+        prohibition so long as origin correlation remains deterministic and bounded.
+        This does not authorize semantic transcript matching, recent-chat inference,
+        active-tab inference, timestamp selection, partial-text similarity, or assistant
+        output as lifecycle authority.
+    prior_research_assurance:
+      status: SUPERSEDED_BY_HUMAN_DIRECTION
+      basis: >-
+        Human explicitly stopped RA for this architecture problem and directed return
+        to the ordinary two-stage Brain audit. Prior RA material remains historical
+        planning context only and must not select the current architecture.
+    selected_contract: OPAQUE_ORIGIN_RENDEZVOUS_V1
     brain_audit:
       profile: brain-high-value-v3
-      stage1: CONSTRUCT
-      stage1_outcome: RISK_FOUND
-      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
-      stage2_outcome: CANDIDATE_WITH_EXTERNAL_CAPABILITY_BLOCKER
-      reconciled_architecture: >-
-        Split exact origin identity from return transport. Prefer a ChatGPT-native plugin
-        capture tool whose server consumes host-provided openai/session and emits only a
-        bounded opaque signed origin proof; the initiating Human message remains the sole
-        Human intent event. Do not require page-local Connect, dummy draft, active-tab
-        inference or transcript search. For return, require a host-supported session-bound
-        native callback/event channel. Current local route wake may remain a compatibility
-        path only for conversations already independently bound; it is not a solution for
-        a new conversation initiated solely on another device.
-      external_blocker: >-
-        ChatGPT currently documents MCP Events only for Work chats and documents no API
-        that targets an ordinary Chat conversation by openai/session or converts that
-        anonymized identifier into a chat URL. Therefore the full any-browser/phone
-        regular-Chat zero-touch contract cannot yet be claimed complete from supported
-        public interfaces alone.
-    next_research_gate:
-      status: LIVE_PROBE_REQUIRED_BEFORE_TASK_AUTHORING
+      stage1:
+        stage: CONSTRUCT
+        outcome: RISK_FOUND
+        candidate: >-
+          Use an exact high-entropy rendezvous token emitted in the originating Chat
+          and carried independently to the self-host resolver. Resolve only by exact
+          full-token account search, then re-prove the token inside the opened regular
+          Chat before allocating or reusing the route.
+      stage2:
+        stage: ADVERSARIAL_AUDIT_AND_RECONCILE
+        outcome: CANDIDATE
+        risks_reconciled:
+          - >-
+            Semantic transcript matching remains forbidden; the allowed observation is
+            only an exact precommitted non-semantic token known before account search.
+          - >-
+            Zero or multiple matches, search/history unavailability, sync lag, account
+            mismatch, deletion, partial match, route movement or revalidation failure
+            fail closed and never fall back to recent/active/default chat.
+          - >-
+            The token is operational only, bounded and expiring; it carries no TASK,
+            RUN, roadmap, user prompt, lifecycle, credential, account or chat-URL data.
+          - >-
+            Assistant output may expose the token for rendezvous but cannot select
+            lifecycle action; Brain still reconstructs exact canonical state after wake.
+          - >-
+            H4D exact-route wake remains the return mechanism after route establishment;
+            this candidate replaces only new-conversation origin discovery.
+        closure: CLEAR_FOR_BOUNDED_LIVE_FEASIBILITY_PROBE
+    live_probe:
+      status: READY
+      authority: HUMAN_BRAIN_PLANNING
+      production_mutation: false
+      objective: >-
+        Prove whether one exact assistant-emitted rendezvous token can be found uniquely
+        through the authenticated ChatGPT account on the self-host machine and re-proven
+        inside the same regular Chat, first for this conversation and then for a fresh
+        conversation initiated from another device.
       required_cases:
-        - SAME_REGULAR_CHAT_WEB_AND_MOBILE_YIELD_SAME_OPAQUE_OPENAI_SESSION_FINGERPRINT
-        - TWO_DISTINCT_REGULAR_CHATS_YIELD_DISTINCT_OPENAI_SESSION_FINGERPRINTS
-        - INSTALLED_AIOS_PLUGIN_AUTO_ACTIVATES_FROM_AN_INDIRECT_NORMAL_FLOW_PROMPT_WITHOUT_AT_MENTION
-        - NO_UI_COMPONENT_REQUIRED_FOR_ORIGIN_CAPTURE
-        - REGULAR_CHAT_NATIVE_EVENT_RETURN_REMAINS_UNAVAILABLE_OR_IS_POSITIVELY_PROVED_AVAILABLE
-      interpretation: >-
-        A bounded private research probe may test host metadata and activation behavior.
-        It must not mutate production AIOS semantics or claim H4 closure. If regular-Chat
-        native event return remains unavailable, keep the full production requirement
-        blocked rather than reintroducing laptop-local Human ceremony or unsupported
-        private ChatGPT APIs.
-    architecture_status: RESEARCH_CANDIDATE_WITH_NATIVE_RETURN_CHANNEL_BLOCKER
+        - CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
+        - PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
+        - ZERO_MATCH_FAILS_CLOSED
+        - MULTIPLE_MATCH_FAILS_CLOSED
+      prohibitions:
+        - NO_TASK_AUTHORING_FROM_PROBE
+        - NO_ROUTE_FALLBACK
+        - NO_SEMANTIC_TEXT_MATCHING
+        - NO_PARTIAL_TOKEN_MATCH
+        - NO_PRODUCTION_WAKE_CHANGE
+    architecture_status: HUMAN_APPROVED_LIVE_PROBE_PENDING
     blocks:
       - task308-origin-correct-replacement-v1
     return_to: task308-origin-correct-replacement-v1
