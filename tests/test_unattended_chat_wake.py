@@ -790,9 +790,12 @@ def test_operational_bridge_failures_stay_deterministic_without_retry(production
     assert [item["reason"] for item in receipts] == [reason, "ACQUISITION_LIMIT_REACHED"]
     assert h.created == (1 if stage == "new_page_result" else 0)
     assert h.bridge_calls.count("new_page") <= 1 and not h.navigations
+    assert h.bridge_calls.count("new_browser_cdp_session") == 1 and h.checks == ["owner"]
+    # Each event opens a client; the shared budget rejects the second before acquisition.
+    assert h.connects == [10000, 10000]
     assert not h.sleeps and not h.launches
     assert h.stored()["events"][EVENT]["status"] == "DEFERRED"
-    assert h.stops == ["disconnect"] and "private" not in json.dumps(receipt)
+    assert h.stops == ["disconnect", "disconnect"] and "private" not in json.dumps(receipt)
     assert not (unattended.load_environment(h.binding).user_data_dir / ".aios-unattended-acquisition.lock").exists()
 
 
@@ -814,13 +817,20 @@ def test_mapping_failure_after_page_creation_is_uncertainty_without_a_second_req
     from playwright._impl._sync_base import mapping
     h = production_bridge
     original = mapping.from_maybe_impl
-    def failed(result):
-        if h.page is not None and result is h.page:
+    failed_mappings = []
+    def failed(result, visited=None):
+        if result is h.page:
+            failed_mappings.append(result)
             raise RuntimeError("private-fixture-mapping-detail")
-        return original(result)
-    monkeypatch.setattr(mapping, "from_maybe_impl", failed)
+        return original(result, visited)
+    def inject_after_creation(stage):
+        if stage == "created":
+            monkeypatch.setattr(mapping, "from_maybe_impl", failed)
+    h.hook = inject_after_creation
     assert h.deliver()["reason"] == "BROWSER_CONTEXT_UNPROVEN"
     assert h.created == h.bridge_calls.count("new_page") == 1
+    assert h.bridge_calls == ["new_browser_cdp_session", "send", "detach", "new_page"]
+    assert failed_mappings == [h.page]
     assert not h.navigations and not h.page.evaluations
 
 
