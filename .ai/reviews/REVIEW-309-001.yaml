@@ -1,0 +1,47 @@
+review_id: REVIEW-309-001
+reviewed_sha: 6d400f015f68944aa1b50b7f2a77decfe0251c39
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings: []
+notes:
+- RUN-309-001 is the canonical PRIMARY RESULT for TASK-309 r1. Candidate 6d400f015f68944aa1b50b7f2a77decfe0251c39
+  is exactly one commit ahead of admitted base 1a9da1f7c9795b2807713fd79b774d9d51c0d52a
+  and changes only TASK-authorized paths.
+- 'Runtime verification is canonical PASS: focused pytest reports 279 passed and 495
+  skipped in 1431.75s; git diff --check passed; RESULT unresolved is empty.'
+- "First semantic pass \u2014 provenance boundary: AC1-AC5 PASS. H4C0 issues a fresh\
+  \ bounded opaque proof at the exact-page bootstrap boundary; the proof is external\
+  \ to the TASK payload. Self-hosted admission validates machine-local route/generation/submitted-attempt\
+  \ state and binds repository/Issue/run-attempt, TASK id, expected main and envelope\
+  \ digest. Hosted delivery authenticates only the bounded admission receipt, and\
+  \ AUTHOR_TASK rechecks the admitted envelope before replay handling, tree construction\
+  \ and canonical publication."
+- "First semantic pass \u2014 revision and transport preservation: AC6-AC7 PASS. Ordinary\
+  \ revisions and explicit legacy authoring cannot consume a current-chat proof; existing\
+  \ affinity continuity remains enforced. RUN affinity propagation and local wake\
+  \ exact-target/generation/draft/dedupe/ambiguity/no-blind-resend implementation\
+  \ are outside the modified runtime transport path and remain unchanged."
+- "Second semantic pass \u2014 adversarial regression coverage: AC8 PASS. Focused\
+  \ tests cover distinct A/B routes, crossed proof/selector rejection, missing/expired/wrong-generation/ambiguous\
+  \ state, changed bootstrap, exact-attempt idempotence versus cross-attempt reuse,\
+  \ authenticated hosted consumption, pre-mutation failure, revision preservation\
+  \ and legacy separation."
+- "Second semantic pass \u2014 authority and lineage isolation: AC9 PASS. Proof/admission\
+  \ state is explicitly operational rather than lifecycle truth; TASK-308/RUN-308-001/REVIEW-308-001\
+  \ and TASK-303/RUN-303-004 are not rewritten or published. Runtime verification,\
+  \ Reviewer verdict, Publisher publication and later Human/Brain TASK-308 disposition\
+  \ remain separate authorities."
+- 'Deployment note, not a semantic finding: production admission intentionally fails
+  closed unless the deployment-owned AIOS_ORIGIN_ADMISSION_KEY secret and machine-local
+  AIOS_ORIGIN_REGISTRY setting are provisioned. This review does not claim live post-publication
+  authoring conformance.'
