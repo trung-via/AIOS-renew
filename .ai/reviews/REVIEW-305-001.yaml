@@ -1,0 +1,59 @@
+review_id: REVIEW-305-001
+reviewed_sha: 73f6df9423cd1052631ae49f8da28f0ae3030421
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- 'RUN-305-001 is the canonical PRIMARY RESULT for TASK-305 r1. Candidate 73f6df9423cd1052631ae49f8da28f0ae3030421
+  is exactly one commit ahead of base 1e2ed8a044db635a0029797e60079b5a3f39bc98 and
+  changes only the three TASK-authorized paths: src/aios_renew/unattended_chat_wake.py,
+  tests/test_unattended_chat_wake.py, and docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md.'
+- 'Runtime verification is canonical PASS: python -m pytest -q tests/test_unattended_chat_wake.py
+  tests/test_local_chat_wake.py reports 769 passed and 596 skipped in 40.25s; git
+  diff --check passed; RESULT unresolved is empty.'
+- "First semantic pass \u2014 contract coverage: AC1/AC2 are satisfied by narrowing\
+  \ process occupancy to deterministic explicit user-data-dir claims. A readable non-child\
+  \ same-executable process with no user-data-dir token is treated as non-authoritative\
+  \ for exact configured-directory occupancy, while exactly one absolute explicit\
+  \ matching user-data-dir remains PROFILE_LOCKED and a different well-formed absolute\
+  \ directory is not configured-directory occupancy."
+- "First semantic pass \u2014 fail-closed evidence handling: AC3/AC4 remain satisfied\
+  \ because malformed or unreadable process metadata, NUL-containing fields, empty\
+  \ command lines, argument parse failure, split/duplicate/empty/relative or otherwise\
+  \ malformed explicit user-data-dir claims, invalid/non-array or excessive process\
+  \ observations, and configured-directory marker/acquisition-lock conditions still\
+  \ fail closed before launch."
+- "First semantic pass \u2014 preserved H4D safeguards: AC5/AC6 are satisfied because\
+  \ TASK-304 listener-table absence authority and post-launch exact owner proof are\
+  \ unchanged; no v3 origin-affinity/legacy semantics, routing, target selection,\
+  \ retry, kill/rebind, account/profile discovery, default-profile inference, freshness,\
+  \ generation, draft, dedupe, submission-proof or no-blind-resend behavior is modified."
+- "Second semantic pass \u2014 adversarial closure: the implementation deliberately\
+  \ distinguishes absence of any user-data-dir token from explicit-but-ambiguous claims.\
+  \ Tokens containing user-data-dir but not exactly one equals-form claim are rejected,\
+  \ preventing split spelling or near-match options from being silently reclassified\
+  \ as no-claim permission. Explicit configured-directory occupancy remains blocking\
+  \ regardless of executable identity, and child-process exclusion remains before\
+  \ occupancy classification."
+- "Second semantic pass \u2014 regression and privacy closure: new regressions reproduce\
+  \ the observed production pair in both orders, exact configured occupancy, malformed\
+  \ explicit claims, unreadable metadata, invalid/excessive observations, and marker\
+  \ precedence while existing listener-race and exact-owner tests remain green. Raw\
+  \ process paths, command lines, PIDs and endpoint details remain machine-local and\
+  \ no live ChatGPT wake experiment is part of the candidate."
+- "Second semantic pass \u2014 lifecycle closure: publication of this correction,\
+  \ if performed by the Publisher, does not itself close H4D or authorize H4E. The\
+  \ real unresolved origin-affine carrier remains a separate Human/Brain live-exit\
+  \ obligation. TASK-303 RUN-303-001 remains separate pending correction lineage and\
+  \ is not modified or resolved."
+- No material semantic defect was found within the exact TASK-305 review subject;
+  all eight acceptance criteria pass and there are no findings.
