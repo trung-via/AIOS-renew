@@ -1089,7 +1089,7 @@ sequence:
     phase: H4_EXPLICIT_HUMAN_CHAT_CONTINUATION_ROUTE_TRANSFER
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
-    candidate_task_id: TASK-312
+    candidate_task_id: TASK-311
     task_authoring_status: UNAUTHORED
     objective: >-
       When the current regular Chat is exhausted or the Human deliberately continues the
@@ -1204,7 +1204,7 @@ sequence:
     phase: BRAIN_PUBLICATION_TURN_HANDOFF_CORRECTION_REPLACEMENT
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
-    candidate_task_id: TASK-311
+    candidate_task_id: TASK-312
     task_authoring_status: UNAUTHORED
     objective: >-
       Re-author the unchanged TASK-308 publication-turn handoff correction under a new
