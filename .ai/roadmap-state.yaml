@@ -783,7 +783,7 @@ sequence:
           Replay must be bounded and route rediscovery must reuse one stable
           conversation-scoped route rather than silently minting a new owner.
     live_probe:
-      status: CROSS_DEVICE_INITIAL_ZERO_MATCH_BOUNDED_RETRY_PENDING
+      status: POSITIVE_CASES_PASS_NEGATIVE_CASES_PENDING
       authority: HUMAN_BRAIN_PLANNING
       production_mutation: false
       objective: >-
@@ -802,41 +802,40 @@ sequence:
         engineering_truth: false
       case_results:
         CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF: PASS_HUMAN_LIVE_OBSERVATION
-        PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF: INITIAL_ZERO_MATCH_RETRY_PENDING
+        PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF: PASS_AFTER_BOUNDED_INDEXING_RETRY
         ZERO_MATCH_FAILS_CLOSED: PENDING
         MULTIPLE_MATCH_FAILS_CLOSED: PENDING
-      cross_device_initial_observation:
-        observed_on: "2026-10-06"
-        result: ZERO_MATCH
-        source: HUMAN_LIVE_OBSERVATION
-        interpretation: >-
-          Human reports that exact full-token account search for the fresh conversation
-          initiated from another device returned zero matches. This proves neither
-          cross-device success nor permanent architecture failure because bounded
-          search/indexing lag remains an explicitly audited ambiguity.
+      cross_device_observations:
+        initial:
+          observed_on: "2026-10-06"
+          result: ZERO_MATCH
+          source: HUMAN_LIVE_OBSERVATION
+        bounded_retry:
+          observed_on: "2026-10-06"
+          result: ONE_MATCH_EXACT_ORIGIN
+          source: HUMAN_LIVE_OBSERVATION
+          interpretation: >-
+            Repeating exact full-token search after the single bounded wait returned
+            exactly one result; opening it confirmed the fresh conversation initiated
+            from the other device.
+        reconciliation: >-
+          The same-token zero-then-one sequence is positive evidence for cross-device
+          rendezvous feasibility and for eventual search-index convergence. Production
+          design must therefore distinguish transient pre-index zero from terminal zero
+          using a bounded wait/retry policy. Exhaustion still fails closed and grants no
+          recent/active/default-chat fallback.
         engineering_truth: false
       next_probe:
-        case: PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
-        mode: SAME_TOKEN_BOUNDED_INDEXING_RETRY
-        retry_policy:
-          retry_count: 1
-          minimum_delay_seconds_from_initial_search: 120
-          token: SAME_EXISTING_CROSS_DEVICE_RENDEZVOUS_MARKER
-          new_token_forbidden: true
-          new_chat_forbidden: true
-        success: >-
-          The same exact token yields exactly one result; opening it proves the exact
-          fresh conversation initiated from the other device and the exact full marker
-          is present there.
-        failure: >-
-          If the one bounded retry still yields zero matches, mark the cross-device
-          feasibility case BLOCKED_SEARCH_DISCOVERY and return to Brain architecture
-          reconciliation. Do not add heuristic fallback or author TASK-310.
-        ambiguity: >-
-          More than one match or any inability to determine the exact result set fails
-          closed and proceeds to architecture reconciliation.
+        case: ZERO_MATCH_FAILS_CLOSED
+        mode: NEGATIVE_EXACT_TOKEN_SEARCH
         live_probe_only: true
         human_manual_search_allowed_for_measurement: true
+        objective: >-
+          Search for a full high-entropy token value that is known not to have been emitted
+          into any Chat conversation and confirm that the account search surface returns
+          zero candidates without selecting another conversation.
+        success: ZERO_CANDIDATES
+        prohibition: NO_FALLBACK_SELECTION
       required_cases:
         - CURRENT_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
         - PHONE_OR_OTHER_BROWSER_NEW_CHAT_EXACT_TOKEN_UNIQUE_SEARCH_AND_REPROOF
