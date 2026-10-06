@@ -12338,7 +12338,7 @@ def test_operator_cli_ingress_and_ingest(tmp_path: Path, capsys: pytest.CaptureF
     task_payload = """\
 task_id: TASK-200
 revision: 1
-return_affinity: {kind: ORIGIN_AFFINE, route_handle: 'page-origin-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', generation: 1}
+return_affinity: {kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}
 goal: CLI ingress test.
 problem: Test operator CLI.
 assumptions:
@@ -12367,6 +12367,8 @@ verification:
         "payload": task_payload,
     }
     envelope = asdict(audited_envelope(parse_envelope(envelope), repo))
+    # Optional proof carriers must be absent, rather than serialized as null.
+    assert envelope.pop("origin_authoring_proof") is None
 
     envelope_file = tmp_path / "envelope.json"
     envelope_file.write_text(json.dumps(envelope), encoding="utf-8")

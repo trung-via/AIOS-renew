@@ -1655,7 +1655,12 @@ def publish_finalize_lineage(repo: Path, *, include_source: bool = True) -> None
 
 
 @pytest.mark.parametrize("historical", [False, True])
-def test_finalize_reuses_nearest_canonical_same_head_structure(tmp_path, historical):
+def test_finalize_reuses_nearest_canonical_same_head_structure(tmp_path, historical, monkeypatch):
+    import os
+    from contextlib import contextmanager
+    from aios_renew import runtime as runtime_module
+    from aios_renew.verification import _shell_command
+
     repo, failure = same_head_finalize_lineage(tmp_path)
     publish_finalize_lineage(repo)
     if historical:
@@ -1668,6 +1673,19 @@ def test_finalize_reuses_nearest_canonical_same_head_structure(tmp_path, histori
         repo = clone
     control_head = git(repo, "rev-parse", "HEAD")
     calls = []
+    configured_commands = load_task(repo, "TASK-101").verification.required
+    assert tuple(configured_commands) == ("git status --porcelain",)
+    subjects = []
+    materialize = runtime_module.materialize_verification_subject
+
+    @contextmanager
+    def observe_subject(repository, *, run_id, subject_sha):
+        assert subject_sha == failure["failed_head_sha"]
+        with materialize(repository, run_id=run_id, subject_sha=subject_sha) as subject:
+            subjects.append(subject.resolve())
+            yield subject
+
+    monkeypatch.setattr(runtime_module, "materialize_verification_subject", observe_subject)
 
     def forbidden_executor(*args, **kwargs):
         calls.append("executor")
@@ -1675,7 +1693,8 @@ def test_finalize_reuses_nearest_canonical_same_head_structure(tmp_path, histori
 
     def verify(command, **kwargs):
         calls.append(command)
-        assert tuple(command) == ("git", "status", "--porcelain")
+        assert tuple(command) == _shell_command(configured_commands[0], platform=os.name)
+        assert Path(kwargs["cwd"]).resolve() == subjects[-1]
         assert git(Path(kwargs["cwd"]), "rev-parse", "HEAD") == failure["failed_head_sha"]
         return subprocess.CompletedProcess(command, 0, b"fresh verification\n", b"")
 
@@ -1689,6 +1708,7 @@ def test_finalize_reuses_nearest_canonical_same_head_structure(tmp_path, histori
     structural = json.loads((state.preverification / f"{summary.run_id}.json").read_text(encoding="utf-8"))
     continuation = json.loads((state.repairs / f"{summary.run_id}.json").read_text(encoding="utf-8"))
     assert len(calls) == 1 and "executor" not in calls
+    assert len(subjects) == 1
     assert summary.run_id == "RUN-101-004"
     assert summary.head_sha == failure["failed_head_sha"]
     assert git(repo, "rev-parse", "HEAD") == control_head
@@ -1701,6 +1721,7 @@ def test_finalize_reuses_nearest_canonical_same_head_structure(tmp_path, histori
     assert structural["package"]["result"]["claims"][0]["evidence"] == []
     assert record["result"]["changed_files"] == ["OUTPUT.txt"]
     assert record["evidence"]
+    assert [item["source"]["command"] for item in record["evidence"]] == list(configured_commands)
     assert {item["run_id"] for item in record["evidence"]} == {summary.run_id}
     assert {item["subject_sha"] for item in record["evidence"]} == {summary.head_sha}
 
