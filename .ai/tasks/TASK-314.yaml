@@ -1,0 +1,146 @@
+task_id: TASK-314
+revision: 1
+goal: Preserve and deterministically reuse an exact canonical same-head structural
+  pre-verification ResultPackage across eligible REPAIR continuation lineage so a
+  Brain-authorized FINALIZE_CANDIDATE can reach Runtime verification without asking
+  an Executor to regenerate unchanged acceptance claims.
+problem: 'Runtime currently admits reusable pre-verification state only for NO_CHANGE
+  on a direct VERIFICATION failure. FINALIZE_CANDIDATE on EXECUTION or COMPLETION_GATE
+  failures never acquires reusable-package authority, even when an earlier canonical
+  RUN in the same contiguous correction lineage already persisted a complete structural
+  ResultPackage for the exact unchanged candidate head. TASK-313 exposed the resulting
+  loop: RUN-313-001 persisted complete AC1-AC8 structural state for head dd287d11eeaed3ba4bccabcd992fcb1b831bc0a3,
+  but later same-head completion-gate continuations forced Codex to regenerate those
+  claims and RUN-313-003/RUN-313-004 failed before verification with all acceptance
+  IDs uncovered. The correction path needs bounded structural-state preservation,
+  not another semantic retry.'
+assumptions:
+- Canonical main at authoring is a11100786c7b14ded062c36130eb1dabaa346a36 and the
+  Human-approved BO-1R same-head structural package preservation item is the unique
+  roadmap NEXT.
+- Human selected Codex GPT-6.1 Sol high for the entire TASK-314 lifecycle unless Human
+  changes it.
+- TASK-313/RUN-313-004 is the motivating blocked lineage, but TASK-314 implements
+  a generic correction-kernel rule and must not special-case TASK-313, RUN ids, acceptance
+  ids, or one repository state.
+- 'A PRE_VERIFICATION_CANDIDATE is Runtime-owned structural state only: its Executor
+  claims are not canonical verification evidence, Reviewer judgment, publication authority,
+  or roadmap truth.'
+- After TASK-314 is reviewed and published, resuming TASK-313 remains a separate Brain-authorized
+  correction decision against fresh canonical lineage; TASK-314 must not auto-author
+  or auto-dispatch that repair.
+scope:
+  inspect:
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/codex_adapter.py
+  - tests/test_repair_preverification_eligibility.py
+  - tests/test_operator.py
+  - tests/test_review_transport.py
+  - tests/test_runtime.py
+  modify:
+  - src/aios_renew/operator.py
+  - tests/test_repair_preverification_eligibility.py
+  - tests/test_operator.py
+  - tests/test_review_transport.py
+  - tests/test_runtime.py
+non_goals:
+- Change the semantic meaning or eligibility of FINALIZE_CANDIDATE, NO_CHANGE, CODE_FIX,
+  or CONTINUE_IMPLEMENTATION beyond deterministic structural-package reuse after Brain
+  has already selected FINALIZE_CANDIDATE.
+- Let Runtime, transport, an Executor, or a deterministic helper choose a correction
+  strategy, retry policy, roadmap step, Reviewer verdict, or publication action.
+- Treat structural Executor claims as Runtime verification evidence, reuse prior verification
+  results, skip configured verification commands, or claim verification success before
+  Runtime executes them.
+- Reuse a package across a candidate HEAD change, TASK id/revision change, broken
+  or ambiguous continuation lineage, changed root-to-head file authority, unresolved
+  implementation state, or incomplete acceptance coverage.
+- Rewrite, delete, rewind, or relabel existing TASK-313 RUN/FAILURE/REPAIR lineage,
+  or directly repair TASK-313 inside this TASK.
+- Implement BO-2 through BO-9, TASK-310/H4 work, correction-authoring handoff simplification,
+  sticky-profile implementation, or a generic retry/failover/router mechanism.
+constraints:
+  hard:
+  - Reuse is considered only after an exact Brain-authored FINALIZE_CANDIDATE authorization
+    has been canonically admitted; deterministic Runtime code may validate reuse eligibility
+    but must not select FINALIZE_CANDIDATE.
+  - The reusable source must be the nearest canonical predecessor pre-verification
+    package within the contiguous correction-lineage suffix whose failed_head_sha
+    equals the current failed head; traversal stops at any HEAD change and never crosses
+    it.
+  - The source package must bind the same TASK id/revision and exact subject HEAD,
+    contain no evidence or claim evidence references, contain no unresolved items,
+    cover every current TASK acceptance id, and bind changed_files to current root-to-head
+    Git truth within TASK scope.
+  - Historical recovery must derive reusable state only from canonical transported
+    failure-artifact lineage; local cache or workspace state cannot substitute for
+    missing canonical remote state, and conflicting local/canonical representations
+    fail closed.
+  - A present candidate source that is malformed, stale, ambiguously bound, incomplete,
+    out of scope, or lineage-inconsistent must fail closed before Executor invocation
+    or verification rather than being silently ignored.
+  - If no eligible same-head ancestor pre-verification package exists, preserve the
+    existing FINALIZE_CANDIDATE Executor path; do not invent structural claims or
+    create a synthetic repository delta.
+  - NO_CHANGE retains its existing direct VERIFICATION-failure reusable-package contract;
+    CODE_FIX and CONTINUE_IMPLEMENTATION must not acquire ancestor structural-package
+    reuse authority from this TASK.
+  - Eligible reuse may elide the coding Executor only for the already-authorized FINALIZE_CANDIDATE
+    continuation; the continuation RUN, exact lineage, completion gates, configured
+    Runtime verification, evidence attachment, Reviewer and Publisher boundaries remain
+    unchanged.
+  - Executor changes only scope.modify. No roadmap advancement, TASK-313 repair authorization,
+    semantic review verdict, or publication may be produced by Executor output.
+acceptance:
+- id: AC1
+  condition: For an authorized FINALIZE_CANDIDATE on a clean transportable EXECUTION
+    or COMPLETION_GATE failure, repair admission can locate the nearest canonical
+    predecessor PRE_VERIFICATION_CANDIDATE in the exact contiguous same-head correction
+    lineage and expose it as reusable structural state only when all required bindings
+    remain valid.
+- id: AC2
+  condition: An eligible preserved package is used as the structural ResultPackage
+    for the new FINALIZE_CANDIDATE continuation without invoking the coding Executor
+    and without changing repository HEAD, while still creating the ordinary continuation
+    RUN and preserving its canonical REPAIR lineage.
+- id: AC3
+  condition: 'Preserved structural claims remain evidence-free Executor structure:
+    Runtime still executes the TASK''s configured verification commands for the exact
+    candidate head and only Runtime-produced evidence can enter the canonical ResultPackage.'
+- id: AC4
+  condition: Historical REPAIR recovery can obtain the eligible source package from
+    canonical transported failure artifacts across the same-head continuation chain,
+    with no dependence on an old local runtime cache or workspace.
+- id: AC5
+  condition: Reuse fails closed before Executor invocation or verification when a
+    present source package or its lineage mismatches TASK id/revision, subject head,
+    contiguous same-head ancestry, changed-files authority, scope, unresolved-state
+    requirement, acceptance coverage, or structural evidence emptiness.
+- id: AC6
+  condition: Same-head traversal never crosses a predecessor whose failed head differs
+    from the current failed head, so a package from before CODE_FIX or any other candidate
+    mutation cannot be reused for a later candidate.
+- id: AC7
+  condition: 'Existing action isolation remains intact: NO_CHANGE keeps its current
+    direct VERIFICATION-failure reuse semantics, CODE_FIX and CONTINUE_IMPLEMENTATION
+    never consume preserved ancestor packages, and FINALIZE_CANDIDATE falls back to
+    its existing Executor path only when no eligible ancestor package exists.'
+- id: AC8
+  condition: "Regression coverage includes a multi-continuation topology equivalent\
+    \ to the observed TASK-313 failure shape\u2014complete pre-verification structural\
+    \ state followed by same-head completion-gate failures\u2014and proves deterministic\
+    \ FINALIZE_CANDIDATE reuse plus negative cases for head change, malformed/conflicting\
+    \ package, incomplete coverage, unresolved items, wrong TASK binding, and out-of-scope\
+    \ changed-files authority."
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest tests/test_repair_preverification_eligibility.py tests/test_operator.py
+    tests/test_review_transport.py tests/test_runtime.py -q
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
