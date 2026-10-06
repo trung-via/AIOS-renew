@@ -815,7 +815,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-bo1-author-task-mutation-path-simplification
+  - brain-optimization-v1-bo1r-same-head-structural-package-preservation
 sequence:
 
   - id: TASK-309
@@ -931,14 +931,17 @@ sequence:
     return_to: task308-origin-correct-replacement-v1
 
   - id: brain-optimization-v1-bo1-author-task-mutation-path-simplification
-    status: NEXT
+    status: BLOCKED_ON_BO1R_TASK314
     phase: BO1_AUTHOR_TASK_MUTATION_PATH_SIMPLIFICATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-313
     task_revision: 1
-    task_authoring_status: READY_FOR_AUTHORING
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "3dfa7aade80f7237b9999062ffb6ed403e52abbc"
+    latest_failure_run_id: RUN-313-004
+    blocker: SAME_HEAD_STRUCTURAL_PACKAGE_PRESERVATION_GAP
     executor_delegation:
       authority: HUMAN
       selected_on: "2026-10-06"
@@ -957,6 +960,47 @@ sequence:
       normative authoring documentation in the same reviewed transition.
     exit: AUTHOR_TASK_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE
     blocks: [brain-optimization-v1-bo2-bounded-active-roadmap-projection, h4-device-independent-origin-capture-correction-v1]
+
+  - id: brain-optimization-v1-bo1r-same-head-structural-package-preservation
+    status: NEXT
+    phase: BO1R_SAME_HEAD_STRUCTURAL_PACKAGE_PRESERVATION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-06"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    task_id: TASK-314
+    task_revision: 1
+    task_authoring_status: READY_FOR_AUTHORING
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-06"
+      task_id: TASK-314
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_314_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    predecessor:
+      task_id: TASK-313
+      failed_run_id: RUN-313-004
+      failed_head_sha: "dd287d11eeaed3ba4bccabcd992fcb1b831bc0a3"
+      failure_phase: COMPLETION_GATE
+    objective: >-
+      Preserve and deterministically reuse an exact canonical same-head structural
+      pre-verification ResultPackage across eligible correction lineage so a
+      Brain-authorized FINALIZE_CANDIDATE can reach Runtime verification without
+      requiring an Executor to regenerate unchanged acceptance claims.
+    boundaries:
+      - BRAIN_STILL_SELECTS_CORRECTION_STRATEGY
+      - RUNTIME_ONLY_VALIDATES_EXACT_REUSE_BINDINGS
+      - STRUCTURAL_CLAIMS_ARE_NOT_VERIFICATION_EVIDENCE
+      - NO_SYNTHETIC_MUTATION
+      - NO_LINEAGE_REWIND_OR_REWRITE
+      - NO_GENERIC_RETRY_OR_CORRECTION_ROUTER
+      - EXACT_TASK_REVISION_HEAD_CHANGED_FILES_AND_COMPLETENESS_BINDING_REQUIRED
+    exit: SAME_HEAD_STRUCTURAL_PACKAGE_PRESERVATION_ACTIVE
+    unblocks: [brain-optimization-v1-bo1-author-task-mutation-path-simplification]
 
   - id: brain-optimization-v1-bo2-bounded-active-roadmap-projection
     status: QUEUED_AFTER_BO1
