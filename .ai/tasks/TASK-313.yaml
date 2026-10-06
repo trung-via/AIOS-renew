@@ -1,0 +1,131 @@
+task_id: TASK-313
+revision: 1
+goal: Simplify AUTHOR_TASK canonical mutation so Runtime admits the final TASK contract
+  directly without serialized Brain audit handoff plumbing, while preserving all canonical
+  validation, provenance, CAS, replay, and mutation-safety guarantees.
+problem: The Human-approved BO-1 architecture has retired AIOS_AUDITED_AUTHORING_HANDOFF,
+  Decision Packet/audit fingerprints, Stage-1/Stage-2 serialized material, acceptance_phase_ledger
+  transport, and repeated audit-support reconstruction as AUTHOR_TASK mutation prerequisites.
+  The published Runtime still reconstructs and validates that cognitive-support material
+  before every AUTHOR_TASK mutation, and current authoring documentation still contains
+  contradictory normative requirements. This transition must remove that duplicate
+  mutation path without weakening Runtime authority or changing REMEDIATION/REPAIR
+  authoring semantics.
+assumptions:
+- Canonical main at authoring is 361513aaabc84682cdccc3d487ca5c2c130af651, BO-1 is
+  the unique NEXT, and Human explicitly bound BO-1 to TASK-313.
+- Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-313 lifecycle unless
+  Human changes it.
+- This TASK is the one bounded transition that may use the legacy audited AUTHOR_TASK
+  ingress for the final time; subsequent AUTHOR_TASK mutation must use the reviewed
+  direct-final-contract path.
+- Brain two-stage semantic audit remains mandatory as CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE,
+  but its transient support material is not canonical engineering truth or a second
+  Runtime mutation credential.
+scope:
+  inspect:
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+  - .ai/brain-return-contracts.yaml
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/origin_authoring_proof.py
+  - src/aios_renew/github_issue_ingress.py
+  - tests/test_authoring_ingress.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_origin_bootstrap.py
+  modify:
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_authoring_ingress.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_origin_bootstrap.py
+non_goals:
+- Reduce or remove the Brain two-stage semantic audit procedure itself.
+- Change AUTHOR_REMEDIATION or AUTHOR_REPAIR audited-handoff requirements; BO-7 owns
+  that separate audit.
+- Implement BO-2 through BO-9, TASK-310, H4 rendezvous/continuation behavior, Reviewer
+  changes, Publisher changes, or provider-payload optimization.
+- Weaken TASK schema/revision validation, verification policy, return-affinity preservation,
+  expected-main CAS, origin-authoring provenance, carrier/envelope binding, replay/idempotence,
+  unrelated-delta rejection, or mutation conflict fail-close.
+- Create a Planner, generic lifecycle router, automatic correction selector, retry/failover
+  authority, second semantic state store, or direct TASK-file mutation bypass.
+- Advance roadmap phase status or claim BO-1 closure, Runtime verification, semantic
+  Review PASS, or publication from Executor output.
+constraints:
+  hard:
+  - After the candidate is published, AUTHOR_TASK canonical mutation must not require,
+    reconstruct, validate, fingerprint, or freshness-recheck AIOS_AUDITED_AUTHORING_HANDOFF,
+    Decision Packet, Stage-1/Stage-2 material, acceptance_phase_ledger, or TASK_AUTHORING
+    audit-support sections.
+  - 'AUTHOR_TASK must have one unambiguous production ingress path: a supplied audited_handoff
+    is rejected rather than silently accepted or ignored.'
+  - AUTHOR_TASK must continue to validate the final TASK payload directly, including
+    exact identity/revision continuity, minimum-sufficient verification policy, authored
+    return-affinity rules, expected-main currentness, and unrelated-delta constraints.
+  - New revision-1 ORIGIN_AFFINE TASKs must still require independently admitted origin_authoring_proof
+    with existing exact carrier-attempt, TASK id, expected-main, route/generation,
+    envelope-digest, HMAC, freshness, replay and same-attempt-idempotence semantics;
+    legacy and revisions retain their existing separation.
+  - Final canonical publication must remain guarded by expected-old-main compare-and-swap
+    and must fail closed on concurrent mutation or any direct validation/provenance
+    conflict.
+  - AUTHOR_REMEDIATION and AUTHOR_REPAIR retain their current audited handoff, canonical
+    reconstruction, correction-lineage and freshness validation in this TASK.
+  - 'Normative documentation must converge on one rule: two-stage Brain audit remains
+    semantic authoring discipline, while AUTHOR_TASK Runtime mutation authority validates
+    the final TASK contract and canonical/provenance bindings directly; historical
+    H1/H3 statements are marked superseded for AUTHOR_TASK only, not silently rewritten
+    as historical fact.'
+  - Executor changes only scope.modify and leaves BO-2+, TASK-310/H4, roadmap progression,
+    Reviewer verdict and Publisher publication to their owning authorities.
+acceptance:
+- id: AC1
+  condition: AUTHOR_TASK canonicalization succeeds for a valid new or revised TASK
+    envelope without audited_handoff and reaches mutation using only direct final
+    TASK validation plus existing canonical/provenance guards.
+- id: AC2
+  condition: AUTHOR_TASK rejects a supplied audited_handoff so the post-transition
+    Runtime exposes one direct-final-contract production mutation path instead of
+    a legacy dual path.
+- id: AC3
+  condition: AUTHOR_TASK no longer calls or depends on Decision Packet composition,
+    Stage-1/Stage-2 validation, audit fingerprints, acceptance_phase_ledger validation,
+    or audited authoring freshness reconstruction.
+- id: AC4
+  condition: 'Direct TASK safeguards remain effective: malformed contract, identity/revision
+    conflict, non-minimum verification policy, affinity violation, stale expected
+    main, unrelated delta, and concurrent main mutation continue to fail closed.'
+- id: AC5
+  condition: ORIGIN_AFFINE new-TASK provenance remains independently admitted and
+    bound to exact carrier attempt, TASK id, expected main, route/generation and envelope
+    digest, with legacy/revision separation and replay protections unchanged.
+- id: AC6
+  condition: AUTHOR_REMEDIATION and AUTHOR_REPAIR continue to require and freshness-check
+    their existing audited handoffs; BO-1 introduces no correction-authoring simplification.
+- id: AC7
+  condition: Project Contract, Brain TASK Authoring Contract and semantic-handoff
+    hardening documentation state a consistent post-BO-1 AUTHOR_TASK rule and preserve
+    two-stage Brain audit as cognitive/semantic discipline rather than Runtime mutation
+    authority.
+- id: AC8
+  condition: Focused regression tests cover handoff-free AUTHOR_TASK success, AUTHOR_TASK
+    handoff rejection, preserved direct safety/provenance failures, and unchanged
+    REMEDIATION/REPAIR audited-handoff enforcement.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python scripts/aios_parallel_full_suite.py
+  - git diff --check
+  full_suite_reason: AUTHOR_TASK is a shared canonical mutation boundary; BO-1 changes
+    its admission path while preserving correction and origin-provenance behavior,
+    so the selected full suite is required to exclude cross-control-plane regression.
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
