@@ -246,11 +246,13 @@ The transport must distinguish retry-safe **pre-submit deferral** from uncertain
   reconciliation makes later source redelivery safe to classify as NOOP; unresolved
   records are never silently evicted.
 
-Wake delivery becomes lane-scoped. A machine-local Human-owned registry maps each
-supported project/repository lane to one exact regular-Chat conversation, local state
-and lock. Active mappings must reject duplicate chat identity or state ownership across
-independent lanes. Busy state in one exact chat never creates a global `BRAIN_BUSY`
-condition for another lane.
+Wake delivery becomes lane-scoped. Historical H4A4 initially modeled each
+project/repository lane as owning one exact regular-Chat conversation, local state and
+lock. Later reviewed route-scoped state supersedes only the ownership detail: one exact
+conversation route owns one shared lock/state file, and multiple repositories may use
+isolated buckets inside that route. What remains forbidden is duplicate/competing route or
+state ownership for the same conversation. Busy state in one exact chat never creates a
+global `BRAIN_BUSY` condition for a different conversation route.
 
 A pending pre-submit event follows the current explicitly Human-owned binding generation.
 A binding change during preflight aborts that attempt and re-resolves the new generation.
@@ -333,9 +335,11 @@ Hardening integration cannot close until live evidence proves:
 - Human/Brain canonical continuation while a wake is deferred causes pre-send
   reconciliation to close that exact event as `RESOLVED_NOOP`, while unrelated Human
   chat activity leaves it pending;
-- two independently bound project lanes can progress concurrently: busy/generation in
-  one target chat does not block an idle target chat in another lane;
-- same-chat or same-state multi-project binding is rejected before delivery;
+- two independently bound conversation routes can progress concurrently:
+  busy/generation in one target chat does not block an idle target chat in another route;
+- multiple repositories targeting the same exact proved conversation converge on one
+  route-scoped lock/state with repository-bucket isolation; competing duplicate route/state
+  ownership for that same Chat is rejected before delivery;
 - wrong chat, logged-out state, existing draft and active generation fail closed;
 - uncertain post-submit state never auto-resends and may only close automatically by
   exact outbound proof or fresh canonical resolution;
@@ -417,9 +421,11 @@ The candidate is reconciled by five authority-preserving contracts:
 3. `AMBIGUOUS_SUBMISSION_PROOF_ONLY_V1` — once send acceptance is uncertain, never
    auto-resend. Reconciliation may prove the exact outbound user turn or observe
    canonical resolution, otherwise the event remains held for Human attention.
-4. `MULTI_PROJECT_WAKE_ISOLATION_V1` — Human-owned machine-local unique lane bindings,
-   per-lane queue/state/lock and exact-page checks prevent one busy project/chat from
-   blocking or receiving another project's wake.
+4. `MULTI_PROJECT_WAKE_ISOLATION_V1` — current route-scoped machine-local state
+   uses one lock per exact conversation route with isolated repository buckets. Independent
+   conversation routes do not block or receive one another's wake, while repositories that
+   intentionally share one destination serialize the same composer instead of creating
+   duplicate state ownership.
 5. `ATTENTION_FAMILY_COVERAGE_V1` — a later bounded H4A.5 generalizes selectors across
    the approved attention matrix without turning transport into a lifecycle router.
 
