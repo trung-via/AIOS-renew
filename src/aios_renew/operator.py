@@ -3250,6 +3250,38 @@ def _nearest_same_head_repair_package(
             contents[3],
         )
 
+    if transported_failures:
+        # Historical admission has already validated the canonical correction
+        # chain. Genuine absence needs no reusable-package admission: retain
+        # the explicit Executor path even for legacy execution records that
+        # lack the richer metadata required to reuse structural state. Still
+        # compare local representations so they cannot substitute for, or
+        # conflict with, an absent canonical sidecar.
+        absent_id = failure["run_id"]
+        absent_seen: set[str] = set()
+        while True:
+            if absent_id in absent_seen:
+                raise OperatorError("cyclic same-head correction lineage")
+            absent_seen.add(absent_id)
+            absent_failure, _, _, absent_content = read(absent_id)
+            if (
+                absent_id == failure["run_id"]
+                and dict(absent_failure) != dict(failure)
+            ):
+                raise OperatorError("conflicting same-head target FAILURE")
+            if absent_content is not None:
+                break
+            predecessor_id = absent_failure.get("continuation_of")
+            if predecessor_id is None:
+                return None
+            predecessor = remote.get(predecessor_id)
+            if predecessor is None:
+                raise OperatorError("canonical same-head predecessor is missing")
+            predecessor_failure = mapping(predecessor.failure, "predecessor FAILURE")
+            if predecessor_failure.get("failed_head_sha") != failure["failed_head_sha"]:
+                return None
+            absent_id = predecessor_id
+
     current_id = failure["run_id"]
     current, run_data, lineage, content = read(current_id)
     if dict(current) != dict(failure):

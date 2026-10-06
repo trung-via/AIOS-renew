@@ -466,6 +466,104 @@ def test_correction_preflight_module_boundary_and_operator_compatibility() -> No
     assert correction_preflight_module.preflight_repair is operator_module.preflight_repair
 
 
+@pytest.mark.parametrize("state_kind", [
+    "absent", "legacy_absent", "eligible", "legacy_present", "malformed", "stale",
+    "incomplete", "unresolved", "duplicate", "conflict",
+])
+def test_historical_finalize_distinguishes_absent_and_invalid_reusable_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state_kind: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "failed candidate")
+    head = git(repo, "rev-parse", "HEAD")
+    source_id, target_id = "RUN-101-001", "RUN-101-002"
+    task_ref = {"id": "TASK-101", "revision": 1}
+    source_run = {
+        "run_id": source_id, "task": task_ref, "executor": "codex",
+        "base_sha": base, "workspace": "old-workspace", "head_sha": None, "status": "ACTIVE",
+    }
+    source_failure = {
+        "kind": "FAILURE", "run_id": source_id, "task": task_ref,
+        "executor": "codex", "base_sha": base, "failed_head_sha": head,
+        "phase": "COMPLETION_GATE", "candidate": {
+            "transportable": True, "repairable": True, "dirty": False,
+            "descends_from_base": True, "changed_files": ["OUTPUT.txt"], "outside_task_scope": [],
+        },
+    }
+    target_run = {**source_run, "run_id": target_id, "base_sha": head}
+    target_failure = {
+        **source_failure, "run_id": target_id, "base_sha": head, "continuation_of": source_id,
+        "candidate": {**source_failure["candidate"], "changed_files": []},
+    }
+    prior_repair = {
+        "repair_id": "REPAIR-101-001", "failed_run_id": source_id, "failed_head_sha": head,
+        "task": task_ref, "action": "FINALIZE_CANDIDATE", "modification_scope": [],
+        "instructions": ["Finalize this candidate."], "constraints": ["Commit the output."],
+    }
+    lineage = {
+        "failed_run_id": source_id, "failed_head_sha": head,
+        "root_base_sha": base, "result_base_sha": base,
+        "run": target_run, "failure": source_failure, "repair": prior_repair,
+    }
+    if state_kind not in {"legacy_absent", "legacy_present"}:
+        lineage["task"] = {"task_id": "TASK-101", "revision": 1}
+    sidecar = {
+        "kind": "PRE_VERIFICATION_CANDIDATE", "run_id": source_id,
+        "task": task_ref, "subject_sha": head, "package": {
+            "result": {"head_sha": head, "changed_files": ["OUTPUT.txt"], "unresolved": [],
+                       "claims": [{"id": "C1", "satisfies": ["AC1"],
+                                   "claim": "OUTPUT.txt is committed.", "evidence": []}]},
+            "evidence": [],
+        },
+    }
+    if state_kind == "stale":
+        sidecar["subject_sha"] = base
+    elif state_kind == "incomplete":
+        sidecar["package"]["result"]["claims"] = []
+    elif state_kind == "unresolved":
+        sidecar["package"]["result"]["unresolved"] = ["Finish OUTPUT.txt"]
+    content = None if state_kind in {"absent", "legacy_absent", "conflict"} else json.dumps(sidecar).encode()
+    if state_kind == "malformed":
+        content = b"not-json"
+    elif state_kind == "duplicate":
+        content = content.replace(b'{"kind":', b'{"kind":"CONFLICT","kind":', 1)
+    artifacts = (
+        RemoteFailureArtifacts(target_id, head, json.dumps(target_run).encode(),
+                               json.dumps(target_failure).encode(), json.dumps(lineage).encode()),
+        RemoteFailureArtifacts(source_id, head, json.dumps(source_run).encode(),
+                               json.dumps(source_failure).encode(), None, preverification=content),
+    )
+    monkeypatch.setattr(operator_module, "resolve_remote_repair_recovery",
+                        lambda repo, *, failed_run_id: RemoteRepairRecovery(artifacts, (source_id, target_id)))
+    monkeypatch.setattr(operator_module, "read_remote_task",
+                        lambda repo, *, commit_sha, task_id: TASK_SOURCE.encode())
+    (repo / "README.md").write_text("advanced control\n", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "--quiet", "-m", "advance control")
+    state = runtime_paths(repo)
+    if state_kind == "conflict":
+        (state.preverification / f"{source_id}.json").write_text(json.dumps(sidecar), encoding="utf-8")
+    before = _control_repository_snapshot(repo)
+    authorization = {**prior_repair, "repair_id": "REPAIR-101-002", "failed_run_id": target_id}
+
+    observed = preflight_repair(target_id, repo=repo, repair=authorization)
+
+    if state_kind in {"absent", "legacy_absent", "eligible"}:
+        assert observed.status == "READY", observed.as_dict()
+        assert observed.subject_mode == "HISTORICAL"
+        assert observed.executor_required is (state_kind != "eligible")
+    else:
+        assert observed.status == "BLOCKED", observed.as_dict()
+        assert observed.phase == "REUSABLE_STATE_ADMISSION"
+        assert observed.reason_code == "REUSABLE_STATE_REJECTED"
+    assert observed.as_dict()["run_created"] is False
+    assert observed.as_dict()["executor_invoked"] is False
+    assert _control_repository_snapshot(repo) == before
+
+
 def test_correction_preflight_remediation_resolves_cumulative_sibling_execution_base_ac2_ac7(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

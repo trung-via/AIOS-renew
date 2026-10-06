@@ -135,7 +135,7 @@ def _write_index(repo: Path, files: Mapping[str, str | bytes]) -> None:
         entries.extend(entry)
         entries.extend(b"\0" * (-len(entry) % 8))
     content = b"DIRC" + struct.pack("!2L", 2, len(files)) + entries
-    (repo / ".git" / "index").write_bytes(content + hashlib.sha1(content).digest())
+    (_git_dir(repo) / "index").write_bytes(content + hashlib.sha1(content).digest())
 
 
 def _repo_config(remote: Path, user_name: str, user_email: str) -> str:
@@ -258,13 +258,45 @@ def _validated_loose_object(path: Path, object_id: str) -> bytes:
 
 def _git_dir(repo: Path) -> Path:
     candidate = repo / ".git"
-    return candidate if candidate.is_dir() else repo
+    if candidate.is_dir():
+        return candidate
+    if candidate.is_file():
+        marker = candidate.read_text(encoding="utf-8").strip()
+        if not marker.startswith("gitdir: ") or not marker[8:].strip():
+            raise ValueError("invalid Git directory indirection")
+        target = Path(marker[8:].strip())
+        return (target if target.is_absolute() else repo / target).resolve()
+    return repo
+
+
+def _git_common_dir(repo: Path) -> Path:
+    git_dir = _git_dir(repo)
+    marker = git_dir / "commondir"
+    if not marker.is_file():
+        return git_dir
+    target = Path(marker.read_text(encoding="utf-8").strip())
+    return (target if target.is_absolute() else git_dir / target).resolve()
+
+
+def _ref_path(repo: Path, ref: str) -> Path:
+    # HEAD and these namespaces belong to a worktree; ordinary refs are shared.
+    per_worktree = ref == "HEAD" or ref.startswith((
+        "refs/bisect/", "refs/worktree/", "refs/rewritten/",
+    ))
+    return (_git_dir(repo) if per_worktree else _git_common_dir(repo)) / ref
 
 
 def _read_ref(repo: Path, name: str = "HEAD") -> str:
     """Resolve a loose or packed ref without starting a short-lived Git process."""
 
     git_dir = _git_dir(repo)
+    packed = _git_common_dir(repo) / "packed-refs"
+    packed_refs = {}
+    if packed.is_file():
+        for line in packed.read_text(encoding="ascii").splitlines():
+            if line and not line.startswith(("#", "^")):
+                object_id, ref_name = line.split(" ", 1)
+                packed_refs[ref_name] = object_id
     ref = name
     if name == "HEAD":
         head = (git_dir / "HEAD").read_text(encoding="ascii").strip()
@@ -277,19 +309,15 @@ def _read_ref(repo: Path, name: str = "HEAD") -> str:
             f"refs/remotes/{name}",
             f"refs/tags/{name}",
         ):
-            if (git_dir / candidate).is_file():
+            if _ref_path(repo, candidate).is_file() or candidate in packed_refs:
                 ref = candidate
                 break
 
-    loose = git_dir / ref
+    loose = _ref_path(repo, ref)
     if loose.is_file():
         return loose.read_text(encoding="ascii").strip()
-    packed = git_dir / "packed-refs"
-    if packed.is_file():
-        suffix = f" {ref}"
-        for line in packed.read_text(encoding="ascii").splitlines():
-            if line and not line.startswith(("#", "^")) and line.endswith(suffix):
-                return line.split(" ", 1)[0]
+    if ref in packed_refs:
+        return packed_refs[ref]
     raise ValueError(f"unknown Git ref: {name}")
 
 
@@ -300,7 +328,7 @@ def read_git_ref(repo: Path, name: str = "HEAD") -> str:
 
 
 def _object_roots(repo: Path) -> tuple[Path, ...]:
-    objects = _git_dir(repo) / "objects"
+    objects = _git_common_dir(repo) / "objects"
     roots = [objects]
     alternates = objects / "info" / "alternates"
     if alternates.is_file():
@@ -481,7 +509,7 @@ def commit_fixture_state(
         else:
             files[name] = content
 
-    objects = _git_dir(repo) / "objects"
+    objects = _git_common_dir(repo) / "objects"
     tree: dict[str, object] = {}
     for name, content in files.items():
         node = tree
@@ -506,7 +534,7 @@ def commit_fixture_state(
 
     git_dir = _git_dir(repo)
     head = (git_dir / "HEAD").read_text(encoding="ascii").strip()
-    head_path = git_dir / head[5:] if head.startswith("ref: ") else git_dir / "HEAD"
+    head_path = _ref_path(repo, head[5:]) if head.startswith("ref: ") else git_dir / "HEAD"
     head_path.parent.mkdir(parents=True, exist_ok=True)
     head_path.write_text(f"{head_sha}\n", encoding="ascii")
     _write_index(repo, files)
@@ -514,9 +542,9 @@ def commit_fixture_state(
     if remote is not None or remote_ref is not None:
         if remote is None or remote_ref is None:
             raise ValueError("remote and remote_ref must be supplied together")
-        remote_objects = _git_dir(remote) / "objects"
+        remote_objects = _git_common_dir(remote) / "objects"
         _copy_loose_objects(objects, remote_objects)
-        ref_path = _git_dir(remote) / remote_ref
+        ref_path = _ref_path(remote, remote_ref)
         ref_path.parent.mkdir(parents=True, exist_ok=True)
         ref_path.write_text(f"{head_sha}\n", encoding="ascii")
     return head_sha
