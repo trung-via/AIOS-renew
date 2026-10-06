@@ -229,7 +229,7 @@ production_wake_amendment:
       - H5_H4_CONFORMANCE_CLOSURE
       - TASK312_RETURN_TO_BLOCKED_TASK308_OBJECTIVE
     task_authoring_state:
-      TASK-310: READY_FOR_AUTHORING_PENDING_HUMAN_EXECUTOR_SELECTION
+      TASK-310: READY_FOR_AUTHORING
       TASK-311: BLOCKED_ON_TASK310_AND_FUTURE_HUMAN_EXECUTOR_SELECTION
       TASK-312: BLOCKED_ON_TASK310_TASK311_H4_H5_SEQUENCE
       recovery_retirement_task: UNASSIGNED_PENDING_PHASE4_AUDIT_AND_HUMAN_REVIEW
@@ -1067,7 +1067,7 @@ sequence:
       architecture_status: LIVE_FEASIBILITY_PASS_IMPLEMENTATION_REQUIRED
     implementation_next:
       id: h4-opaque-origin-rendezvous-implementation-v1
-      status: READY_FOR_AUTHORING_PENDING_HUMAN_EXECUTOR_SELECTION
+      status: READY_FOR_AUTHORING
       phase: H4_ORIGIN_CAPTURE_DEVICE_INDEPENDENCE_IMPLEMENTATION
       authority: HUMAN_BRAIN_PLANNING
       candidate_task_id: TASK-310
@@ -1320,7 +1320,7 @@ sequence:
               browser/wake boundaries; focused tests prove local semantics but cannot
               establish absence of cross-control-plane regressions.
       authoring_preconditions:
-        executor_selection: PENDING_HUMAN
+        executor_selection: HUMAN_SELECTED_CODEX_GPT_6_1_SOL_XHIGH
         detailed_h4_execution_roadmap: HUMAN_APPROVED
         proof_issuer_contract_transition: APPROVED_AND_CONTRACT_UPDATED
         contract_transition_commit: "ab6aa57b1e281daf46b492aa6a3a559e2e2ea23e"
@@ -1331,8 +1331,14 @@ sequence:
           requirement is already retired prospectively, but TASK-310 remains prohibited
           from authoring until the Human approves docs/AIOS-H4-EXECUTION-ROADMAP-v1.md.
       executor_delegation:
-        status: REQUIRES_FRESH_HUMAN_SELECTION
-        reason: NEW_TASK_IDENTITY_REQUIRES_HUMAN_DELEGATION
+        status: HUMAN_SELECTED
+        selected_on: "2026-10-06"
+        executor: codex
+        model: gpt-6.1-sol
+        reasoning_effort: xhigh
+        provenance: HUMAN_EXPLICIT_SELECTION
+        persistence: TASK_310_THROUGH_COMPLETION_UNLESS_HUMAN_CHANGES
+        reason: HUMAN_SELECTED_AFTER_H4_EXECUTION_ROADMAP_APPROVAL
       blocks:
         - h4-subject-scoped-chat-continuation-binding-v1
         - task308-origin-correct-replacement-v1
