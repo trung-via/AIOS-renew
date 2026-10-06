@@ -787,7 +787,17 @@ recheck stops after acquisition was attempted. Endpoint restoration waits inside
 that attempt have a 20-second acquisition deadline, with individually bounded
 CDP connection, OS-helper, page-creation, and navigation operations. The initial
 attach attempt retains its existing ten-second bound; canonical barriers retain their own
-existing bounded read budgets. Playwright methods without public timeout
+existing bounded read budgets.
+
+This shared acquisition budget is an H4D invocation-safety bound, not an H4E
+production-concurrency law. H4E may change scheduling/composition so independent eligible
+lanes receive bounded opportunities to progress. H4D owns only safe acquisition and
+delivery to one already resolved exact effective destination. It does not own the rule
+that canonical TASK base affinity must always equal that effective destination. A later
+subject-scoped continuation layer may prove immutable base affinity separately, compose a
+Human-authorized current destination, revalidate both, and then hand H4D the exact binding.
+Exact-target checks, Human draft/generation barriers, conversation-lane serialization,
+dedupe and ambiguous no-resend remain mandatory across that refactor. Playwright methods without public timeout
 arguments use its existing sync loop/implementation mapping with timed async
 cancellation. Expected operational failures in context/session/page bridge
 calls, result mapping, or bounded page navigation are contained inside the
@@ -882,52 +892,188 @@ H4D, H4E, final H4B, or H5 advancement follows from this implementation.
 
 ## 7. H4E — Production Routing & Concurrency Live Conformance
 
-Objective: prove H4C + H4D under real production multi-lane conditions and close the existing H4A4 second-live-lane residual.
+H4E is the integrated production-conformance target. Its architecture was audited
+prospectively on 2026-10-06 before H4D live closure so H4D would not accidentally freeze a
+single-lane implementation assumption that later blocks device-independent origin,
+subject-scoped continuation or multi-lane fairness.
 
-Required live cases:
+This does **not** advance H4E execution ahead of H4D. H4D must still pass its exact-target
+unattended live-exit gate, and TASK-310/TASK-311 must be reviewed and published before
+H4E can claim production/live closure. The earlier audit only fixes the target shape.
 
-### A. Same repository, different chats
+### 7.1 Target composition
+
+The production path is:
 
 ```text
-AIOS-renew / Chat A -> Flow X
-AIOS-renew / Chat B -> Flow Y
+exact attention identity
+        ↓
+exact canonical lineage + root TASK proof
+        ↓
+immutable canonical base return_affinity
+        ↓
+optional Human-authorized subject continuation proof
+        ↓
+effective delivery destination
+        ↓
+conversation route lane
+        ↓
+H4D unattended exact-target acquisition/delivery
 ```
 
-Both become eligible for attention.
+Canonical base affinity remains historical lineage truth. It need not equal the effective
+delivery destination after an explicit subject continuation. Transport must prove both the
+base lineage and any current continuation before selecting a lane. Without a valid
+continuation record, effective destination is the base route. After the continuation
+feature is enabled, missing/corrupt/uncertain continuation state fails closed rather than
+silently returning a moved TASK to its historical chat.
 
-Required: X -> A exactly once; Y -> B exactly once; no cross-delivery.
+H4D therefore keeps only these invariant responsibilities:
 
-### B. Different repositories
+- receive one already resolved exact effective destination;
+- prove the exact regular-Chat target and authenticated local environment;
+- preserve canonical freshness before possible send;
+- preserve Human draft and active-generation safety;
+- serialize the conversation lane and retain exact-event dedupe;
+- never blindly resend an ambiguous post-submit attempt;
+- keep raw browser/chat/account/credential state machine-local;
+- own no semantic, lifecycle, review, publication, roadmap or routing judgment.
 
-Project A is busy/generating while Project B is idle.
+The following current H4D implementation details are explicitly **not** frozen as H4E
+architecture:
 
-Required: B remains independently deliverable; no global `BRAIN_BUSY`.
+- direct equality between canonical base affinity and delivery binding;
+- direct event-affinity-to-route loading before subject continuation composition;
+- one shared acquisition budget across all lanes as a production fairness policy;
+- periodic all-lanes drain as the required recovery/scheduling mechanism;
+- current operational state schema/enumeration details.
 
-### C. Same chat, multiple pending subjects
+TASK-311/H4E may refactor those details while preserving every safety invariant above.
 
-Required: one in-flight Brain wake per conversation lane; later subjects remain durable; canonical state is freshly revalidated after completion; resolved/stale subjects become NOOP; only still-unresolved subjects may send.
+### 7.2 Two-stage preemptive audit
 
-### D. Human supersession
+Stage 1 — CONSTRUCT: **RISK_FOUND**.
 
-A wake is deferred and Human/Brain handles that exact canonical subject manually.
+Material risks:
 
-Required: fresh canonical reconciliation -> `RESOLVED_NOOP`; no duplicate Chat turn. Unrelated Human chat activity does not consume the event.
+- base-affinity equality in current H4D can block lawful subject-scoped continuation;
+- route-wide transfer redirects unrelated TASKs sharing one conversation;
+- a shared all-lanes acquisition budget can become cross-lane starvation if elevated from
+  one-invocation safety to durable policy;
+- periodic recovery can contend with PRIMARY/REPAIR/REMEDIATION on the self-host runner;
+- same-chat multi-subject and cross-repository use require one shared conversation lock,
+  not task-scoped browser locks;
+- pre-submit rehome and post-submit ambiguity require different behavior;
+- event arrival can race a continuation CAS;
+- ChatGPT account search is eventually consistent;
+- continuation-state loss can silently revert a moved TASK if fail-close is not explicit;
+- generic `continue` can be ambiguous when multiple canonical subjects are unresolved;
+- one H4D live success can be mistaken for full H4E production conformance.
 
-### E. Missing/stale origin route
+Stage 2 — ADVERSARIAL_AUDIT_AND_RECONCILE:
+**CLEAR_WITH_H4D_DECOUPLING_AND_EXPANDED_LIVE_MATRIX**.
 
-Required: fail closed; never fallback to repository-default/H4A3 chat.
+Reconciliation:
 
-### F. Route generation change
+- route identity remains conversation-scoped; TASK continuation remains repository+TASK
+  scoped;
+- exact canonical lineage/root TASK/base affinity is reconstructed first; continuation
+  never substitutes for or rewrites that truth;
+- H4D acquisition receives only a fully resolved effective destination and gains no
+  routing authority;
+- per-conversation-lane at-most-one possible submission, draft/generation protection,
+  dedupe and ambiguous no-resend remain mandatory;
+- H4E requires bounded fairness/eventual progress between independent eligible lanes, not
+  simultaneous physical clicks;
+- a busy, blocked, unavailable or acquisition-needing lane cannot create a global
+  `BRAIN_BUSY` or indefinitely starve an unrelated eligible lane;
+- background recovery is replaceable transport HOW and must not monopolize execution-
+  critical self-host capacity;
+- rendezvous remains exact-token destination proof only; zero/multiple/incomplete/
+  unavailable search fails closed;
+- H4D live evidence may be reused for unchanged acquisition behavior, but cannot replace
+  the integrated H4E live suite;
+- Frozen Kernel v0.1 is unchanged; no Planner, Router, Message broker, lifecycle store or
+  semantic retry authority is introduced.
 
-Required: no redirect of ambiguous attempts; generation-safe pre-submit re-resolution.
+### 7.3 Required production live matrix
 
-### G. Unattended target acquisition
+#### A. Origin and destination integrity
 
-The exact target chat is not pre-opened/prepared.
+1. Same repository, Chat A/Flow X and Chat B/Flow Y: X wakes only A; Y wakes only B.
+2. A flow started from another browser/phone is origin-proved without local Connect.
+3. Initial rendezvous zero followed by bounded same-token index convergence reaches the
+   correct one match.
+4. Permanent zero, multiple, incomplete enumeration, account/history/search unavailability
+   or final uniqueness uncertainty fails closed.
+5. Missing/stale/conflicting route never falls back to repository-default/H4A3 chat.
+6. A target not pre-opened by the Human still delivers unattended.
 
-Required: unattended delivery succeeds without Human navigation.
+#### B. Subject-scoped continuation
 
-The historical H4A5 residual `SECOND_SEPARATELY_AUTHORIZED_DEPLOYED_LIVE_LANE_UNAVAILABLE` must be proven closed for production H5 closure; it is no longer waivable under this approved production requirement.
+1. TASK-1/TASK-2/TASK-3 share Chat A; moving only TASK-1 leaves TASK-2/TASK-3 on A.
+2. TASK-1 is paused or queued while TASK-2/TASK-3 progress; later Human resume of TASK-1
+   from Chat D moves only TASK-1.
+3. An active TASK-1 RUN may acquire a new destination for future safe attention without
+   mutating historical TASK/RUN affinity.
+4. Same TASK revisions retain subject continuation; a distinct replacement TASK does not
+   inherit automatically.
+5. Generic `continue` with multiple plausible unresolved TASKs fails closed for Human
+   disambiguation.
+6. Two competing destination chats for the same TASK admit exactly one expected-epoch CAS.
+7. Old-chat activity after continuation does not reclaim the TASK.
+8. A->B->C continuation and explicit return to a previously used route use a monotonic
+   continuation epoch and fresh destination proof.
+9. Missing/corrupt/uncertain continuation state fails closed; no silent historical-chat
+   reversion.
+
+#### C. Event races and exact lineage
+
+1. RESULT, FAILURE, REVIEW, REMEDIATION, REPAIR, publication and wake recovery all prove
+   the same root TASK before subject continuation is consulted.
+2. PENDING/DEFERRED pre-submit attention may be rehomed once without loss or duplicate.
+3. AMBIGUOUS/SUBMITTED old-destination attempts remain pinned for dedupe/proof-only
+   reconciliation and are never resent to the new chat.
+4. Event arrival racing continuation is linearizable to exactly the old or new epoch.
+5. Canonically resolved/superseded attention becomes NOOP after destination change.
+6. An event without a provable root TASK cannot receive a subject continuation override.
+7. Base affinity A plus authorized effective destination D delivers only to D while base
+   affinity remains unchanged.
+
+#### D. Lane and repository concurrency
+
+1. Same chat, multiple pending subjects serialize through one conversation lane and
+   revalidate after each Brain turn.
+2. Multiple subjects mapped to one destination use one existing conversation lock.
+3. Different chats retain independent lanes even inside one repository.
+4. Busy/generating Project/Chat A does not block idle B.
+5. The same destination chat used by multiple repositories serializes one composer while
+   repository buckets keep event identity/dedupe isolated.
+6. A blocked or acquisition-needing lane A cannot permanently starve eligible lane B.
+7. Two unprepared target lanes receive bounded opportunities for eventual progress; a
+   global acquisition budget has no routing or starvation authority.
+8. Human draft/active generation in one chat does not block other chat lanes.
+
+#### E. Recovery, capacity and host contention
+
+1. Human canonical supersession closes only the exact deferred subject as
+   `RESOLVED_NOOP`.
+2. Route-generation change cannot redirect an ambiguous old attempt.
+3. Subject-continuation epoch change cannot redirect an ambiguous old attempt.
+4. Background wake recovery does not starve PRIMARY/REPAIR/REMEDIATION runner capacity.
+5. Queue/continuation capacity exhaustion never silently evicts unresolved state.
+6. Process restart preserves dedupe, queue, route and continuation safety state.
+7. Registry/config split-brain fails early and cannot cross-deliver.
+
+H4E liveness does not require unbounded retry or simultaneous submissions. It requires
+bounded opportunities for independent eligible lanes to progress across invocations and
+for no unrelated lane, global busy flag, acquisition budget, scheduled recovery job or
+stale held event to suppress them indefinitely.
+
+The historical residual
+`SECOND_SEPARATELY_AUTHORIZED_DEPLOYED_LIVE_LANE_UNAVAILABLE` remains mandatory to close.
+The previously observed scheduled-recovery/shared-runner starvation risk is also part of
+H4E closure rather than an H4D architectural constraint.
 
 ## 8. Final H4B semantic-resume proof
 
@@ -970,11 +1116,14 @@ Add:
 25. `ORIGIN_CAPTURE_INTEGRITY` — a new origin-affine flow cannot enter production return routing without exact route affinity established through H4C0.
 26. `SAME_REPOSITORY_MULTI_CHAT_ISOLATION` — flows from separate conversations in one repository cannot cross-deliver or consume one another.
 27. `NO_SILENT_DEFAULT_ROUTE_FALLBACK` — missing/stale/ambiguous/conflicting affinity never redirects to H4A3/repository default.
-28. `EXPLICIT_ROUTE_TRANSFER_SAFETY` — only Human-authorized route transfer moves future affinity; pending/ambiguous attempts obey generation safety.
+28. `SUBJECT_SCOPED_CONTINUATION_SAFETY` — only Human-authorized repository+TASK continuation changes an effective future destination; unrelated TASKs sharing a conversation do not move, and pending/ambiguous attempts obey submit-boundary safety.
 29. `UNATTENDED_DELIVERY` — Human is not required to pre-open or navigate to the target conversation.
 30. `TRANSPORT_INDEPENDENCE` — browser/session acquisition and restoration remain delivery mechanisms only and cannot select semantic/lifecycle action.
 31. `PRODUCTION_MULTI_LANE_LIVE_PROOF` — at least two independently authorized deployed live lanes prove isolation under real busy/generation conditions.
 32. `PRODUCTION_SHAPE_SEMANTIC_RESUME` — final H4B unresolved semantic-resume proof uses the origin-affine unattended production path.
+33. `BASE_AFFINITY_EFFECTIVE_DESTINATION_SEPARATION` — immutable canonical base affinity remains provable even when a Human-authorized subject continuation selects a different current destination.
+34. `MULTI_LANE_FAIRNESS_NO_GLOBAL_ACQUISITION_LOCK_IN` — independent eligible lanes retain bounded progress opportunities and cannot be indefinitely suppressed by another lane, a global acquisition budget or recovery job.
+35. `CONTINUATION_STATE_FAIL_CLOSED` — missing/corrupt/uncertain subject-continuation state never silently falls back to the historical chat.
 
 H5 is blocked until these conditions and the original H5 matrix are satisfied.
 
@@ -1013,6 +1162,10 @@ H4B FINAL REAL SEMANTIC RESUME PROOF
         ↓
 H5 INTEGRATION / CONFORMANCE CLOSURE
         ↓
+
+Architecture audit of H4E may occur prospectively before H4D live closure to prevent
+upstream implementation lock-in. This does not reorder execution authority: H4E live
+execution/closure still waits for H4D plus its explicit production prerequisites.
 existing post-hardening roadmap
 ```
 
