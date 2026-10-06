@@ -212,7 +212,8 @@ def test_correction_preflight_finalize_candidate_requires_executor_without_reuse
     authorization["action"] = "FINALIZE_CANDIDATE"
     authorization["modification_scope"] = []
     state = runtime_paths(repo)
-    (state.preverification / f"{failed_run_id}.json").write_bytes(b"not-json")
+    assert not (state.preverification / f"{failed_run_id}.json").exists()
+    assert not (state.results / f"{failed_run_id}.json").exists()
     before_runtime = _runtime_bytes(repo)
 
     ready = preflight_repair(
@@ -224,7 +225,34 @@ def test_correction_preflight_finalize_candidate_requires_executor_without_reuse
     assert ready.executor_required is True
     assert ready.failed_head_sha == authorization["failed_head_sha"]
     assert ready.subject_mode == "CURRENT"
+    assert ready.as_dict()["run_created"] is False
     assert ready.as_dict()["executor_invoked"] is False
+    assert _runtime_bytes(repo) == before_runtime
+
+
+def test_correction_preflight_finalize_candidate_blocks_malformed_present_package(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, authorization = repair_contract(
+        repo, action="CONTINUE_IMPLEMENTATION"
+    )
+    authorization["action"] = "FINALIZE_CANDIDATE"
+    authorization["modification_scope"] = []
+    state = runtime_paths(repo)
+    (state.preverification / f"{failed_run_id}.json").write_bytes(b"not-json")
+    before_runtime = _runtime_bytes(repo)
+
+    blocked = preflight_repair(
+        failed_run_id, repo=repo, repair=authorization
+    )
+
+    assert blocked.status == "BLOCKED", blocked.as_dict()
+    assert blocked.phase == "REUSABLE_STATE_ADMISSION"
+    assert blocked.reason_code == "REUSABLE_STATE_REJECTED"
+    assert blocked.action == "FINALIZE_CANDIDATE"
+    assert blocked.as_dict()["run_created"] is False
+    assert blocked.as_dict()["executor_invoked"] is False
     assert _runtime_bytes(repo) == before_runtime
 
 
