@@ -1,14 +1,15 @@
 # AIOS H4 Execution Roadmap v1
 
-Status: **PENDING_HUMAN_APPROVAL**  
+Status: **HUMAN_APPROVED**  
 Authority: Human / Brain planning  
 Prepared: 2026-10-06  
+Approved: 2026-10-06  
 Repository: `trung-via/AIOS-renew`
 
-This roadmap is the execution gate for the audited H4 architecture. It does not author a
-TASK, select an Executor, create a RUN, claim verification, advance H4/H5, or mutate
-historical engineering lineage. No implementation TASK described below may be authored
-until the Human explicitly approves this roadmap.
+This roadmap is the Human-approved execution gate for the audited H4 architecture. Its
+approval does not itself author a TASK, select an Executor, create a RUN, claim
+verification, advance H4/H5, or mutate historical engineering lineage. Each new TASK
+identity still requires the explicit Human delegation gate stated below.
 
 ## 1. Goal
 
@@ -447,14 +448,11 @@ lineage and existing authority unless a genuine Human risk/intent decision is re
 
 ## 6. No-authoring gate
 
-Until this document is explicitly Human-approved:
+This document was explicitly approved by Human on 2026-10-06 with
+`APPROVE H4 EXECUTION ROADMAP V1`.
 
-- TASK-310 remains UNAUTHORED;
-- TASK-311 remains UNAUTHORED;
-- TASK-312 remains UNAUTHORED;
-- the runner-recovery correction has no TASK identity;
-- no Executor is selected;
-- no production implementation is dispatched.
-
-Human approval may be given as `APPROVE H4 EXECUTION ROADMAP V1` or with requested
-modifications.
+Approval releases only the roadmap gate. It does not release the per-TASK Human delegation
+gate. TASK-310, TASK-311 and TASK-312 remain UNAUTHORED until their own authoring
+preconditions and Human Executor/model/effort selections are satisfied. The
+runner-recovery correction still has no TASK identity and requires fresh phase-specific
+audit plus Human review before authoring.
