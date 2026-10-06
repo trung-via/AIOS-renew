@@ -205,7 +205,7 @@ class UnchangedContinuationRunner:
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
 
 
-def test_finalize_candidate_never_elides_executor_for_reusable_sidecar(
+def test_finalize_candidate_reuses_complete_direct_sidecar(
     tmp_path: Path,
 ) -> None:
     repo = make_repo(tmp_path)
@@ -230,9 +230,10 @@ def test_finalize_candidate_never_elides_executor_for_reusable_sidecar(
         repo=repo,
         repair=repair(failure, action="FINALIZE_CANDIDATE"),
         native_runner=runner,
+        verification_runner=passing_verification,
     )
 
-    assert runner.calls == 1
+    assert runner.calls == 0
     assert summary.head_sha == failure["failed_head_sha"]
 
 
@@ -1574,7 +1575,283 @@ def test_h2_projection_matches_authoritative_no_change_reuse(defect, tmp_path):
         "committed_deltas": {"candidate": ["OUTPUT.txt"], "result": ["OUTPUT.txt"]}})
     assert facts["action_structural_eligibility"]["NO_CHANGE"] == ("ELIGIBLE" if eligible else "INELIGIBLE")
     assert eligible == (defect == "valid")
-    # Mutation actions and FINALIZE never acquire reusable-package authority.
+    # Mutation actions never reuse; FINALIZE cannot reuse a VERIFICATION target.
     for action in ("CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"):
         assert _eligible_reusable_repair_package(content, task=task, failed_run_id="RUN-101-001",
             failure=failure, action=action, scope=[], repo=repo, root_base_sha=base) is None
+
+
+def same_head_finalize_lineage(tmp_path: Path) -> tuple[Path, dict]:
+    """Complete structure followed by two claimless same-head gate failures."""
+    from aios_renew.operator import _executor_task_data
+
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("complete candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "candidate")
+    head = git(repo, "rev-parse", "HEAD")
+    task_data = _executor_task_data(load_task(repo, "TASK-101"))
+    previous = None
+    for number in (1, 2, 3):
+        run_id = f"RUN-101-{number:03d}"
+        run = {
+            "run_id": run_id, "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex", "base_sha": base if previous is None else head,
+            "workspace": str(repo), "head_sha": None, "status": "ACTIVE",
+        }
+        failure = {
+            "kind": "FAILURE", "run_id": run_id, "task": run["task"],
+            "executor": "codex", "base_sha": run["base_sha"],
+            "failed_head_sha": head,
+            "phase": "VERIFICATION" if previous is None else "COMPLETION_GATE",
+            "candidate": {
+                "transportable": True, "repairable": True, "dirty": False,
+                "descends_from_base": True, "outside_task_scope": [],
+                "changed_files": ["OUTPUT.txt"] if previous is None else [],
+            },
+        }
+        if previous is not None:
+            failure["continuation_of"] = previous["run_id"]
+            execution = {
+                "failed_run_id": previous["run_id"], "failed_head_sha": head,
+                "root_base_sha": base, "result_base_sha": base,
+                "task": task_data, "failure": previous, "run": run,
+                "repair": repair(previous, action=(
+                    "CODE_FIX" if previous["phase"] == "VERIFICATION" else "FINALIZE_CANDIDATE"
+                )),
+            }
+            (state.repairs / f"{run_id}.json").write_text(json.dumps(execution), encoding="utf-8")
+        (state.runs / f"{run_id}.json").write_text(json.dumps(run), encoding="utf-8")
+        persist_failure(repo, run_id, failure)
+        previous = failure
+    sidecar = {
+        "kind": "PRE_VERIFICATION_CANDIDATE", "run_id": "RUN-101-001",
+        "task": {"id": "TASK-101", "revision": 1}, "subject_sha": head,
+        "package": {"result": {
+            "head_sha": head, "changed_files": ["OUTPUT.txt"], "unresolved": [],
+            "claims": [{"id": "PRESERVED", "satisfies": ["AC1"],
+                        "claim": "The candidate is complete.", "evidence": []}],
+        }, "evidence": []},
+    }
+    (state.preverification / "RUN-101-001.json").write_text(json.dumps(sidecar), encoding="utf-8")
+    return repo, failure
+
+
+def publish_finalize_lineage(repo: Path, *, include_source: bool = True) -> None:
+    state = runtime_paths(repo)
+    for number in (1, 2, 3):
+        run_id = f"RUN-101-{number:03d}"
+        failure = json.loads((state.failures / f"{run_id}.json").read_text(encoding="utf-8"))
+        transport_failure(
+            repo, run_id=run_id, head_sha=failure["failed_head_sha"],
+            run_path=state.runs / f"{run_id}.json",
+            failure_path=state.failures / f"{run_id}.json", publish_candidate=True,
+            lineage_path=None if number == 1 else state.repairs / f"{run_id}.json",
+            preverification_path=(state.preverification / f"{run_id}.json")
+            if number == 1 and include_source else None,
+        )
+
+
+@pytest.mark.parametrize("historical", [False, True])
+def test_finalize_reuses_nearest_canonical_same_head_structure(tmp_path, historical):
+    repo, failure = same_head_finalize_lineage(tmp_path)
+    publish_finalize_lineage(repo)
+    if historical:
+        # A fresh control checkout has no old runtime cache or workspace.
+        clone = tmp_path / "fresh"
+        subprocess.run(("git", "clone", "--quiet", "--branch", "main",
+                        str(tmp_path / "upstream.git"), str(clone)), check=True)
+        git(clone, "config", "user.name", "Fresh Runtime")
+        git(clone, "config", "user.email", "fresh@example.invalid")
+        repo = clone
+    control_head = git(repo, "rev-parse", "HEAD")
+    calls = []
+
+    def forbidden_executor(*args, **kwargs):
+        calls.append("executor")
+        raise AssertionError("eligible FINALIZE must elide the Executor")
+
+    def verify(command, **kwargs):
+        calls.append(command)
+        assert tuple(command) == ("git", "status", "--porcelain")
+        assert git(Path(kwargs["cwd"]), "rev-parse", "HEAD") == failure["failed_head_sha"]
+        return subprocess.CompletedProcess(command, 0, b"fresh verification\n", b"")
+
+    summary = run_repair(
+        failure["run_id"], executor=None, repo=repo,
+        repair=repair(failure, action="FINALIZE_CANDIDATE"),
+        native_runner=forbidden_executor, verification_runner=verify,
+    )
+    state = runtime_paths(repo)
+    record = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    structural = json.loads((state.preverification / f"{summary.run_id}.json").read_text(encoding="utf-8"))
+    continuation = json.loads((state.repairs / f"{summary.run_id}.json").read_text(encoding="utf-8"))
+    assert len(calls) == 1 and "executor" not in calls
+    assert summary.run_id == "RUN-101-004"
+    assert summary.head_sha == failure["failed_head_sha"]
+    assert git(repo, "rev-parse", "HEAD") == control_head
+    assert continuation["failed_run_id"] == "RUN-101-003"
+    assert continuation["failure"] == failure
+    assert continuation["repair"]["action"] == "FINALIZE_CANDIDATE"
+    assert continuation["root_base_sha"] == continuation["result_base_sha"]
+    assert structural["package"]["evidence"] == []
+    assert structural["package"]["result"]["claims"][0]["id"] == "PRESERVED"
+    assert structural["package"]["result"]["claims"][0]["evidence"] == []
+    assert record["result"]["changed_files"] == ["OUTPUT.txt"]
+    assert record["evidence"]
+    assert {item["run_id"] for item in record["evidence"]} == {summary.run_id}
+    assert {item["subject_sha"] for item in record["evidence"]} == {summary.head_sha}
+
+
+@pytest.mark.parametrize("defect", [
+    "malformed", "duplicate", "task", "revision", "boolean_revision", "run", "subject", "head",
+    "coverage", "unresolved", "files", "scope", "evidence", "claim_evidence",
+    "lineage", "canonical_conflict", "canonical_missing",
+])
+def test_finalize_present_ancestor_fails_closed_before_execution(tmp_path, defect):
+    repo, failure = same_head_finalize_lineage(tmp_path)
+    state = runtime_paths(repo)
+    path = state.preverification / "RUN-101-001.json"
+    if defect in ("canonical_conflict", "canonical_missing"):
+        publish_finalize_lineage(repo, include_source=defect != "canonical_missing")
+        if defect == "canonical_conflict":
+            path.write_bytes(b"{conflicting local state")
+    elif defect == "malformed":
+        path.write_bytes(b"{malformed")
+    elif defect == "duplicate":
+        path.write_bytes(path.read_bytes().replace(b'{"kind":', b'{"kind":"CONFLICT","kind":', 1))
+    elif defect == "lineage":
+        lineage_path = state.repairs / "RUN-101-002.json"
+        data = json.loads(lineage_path.read_text(encoding="utf-8"))
+        data["failure"]["failed_head_sha"] = "0" * 40
+        lineage_path.write_text(json.dumps(data), encoding="utf-8")
+    else:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        result = data["package"]["result"]
+        if defect == "task":
+            data["task"]["id"] = "TASK-999"
+        elif defect == "revision":
+            data["task"]["revision"] = 2
+        elif defect == "boolean_revision":
+            data["task"]["revision"] = True
+        elif defect == "run":
+            data["run_id"] = "RUN-101-999"
+        elif defect == "subject":
+            data["subject_sha"] = "0" * 40
+        elif defect == "head":
+            result["head_sha"] = "0" * 40
+        elif defect == "coverage":
+            result["claims"] = []
+        elif defect == "unresolved":
+            result["unresolved"] = ["remaining implementation"]
+        elif defect == "files":
+            result["changed_files"] = []
+        elif defect == "scope":
+            result["changed_files"] = ["OUTPUT.txt", "FOREIGN.txt"]
+        elif defect == "evidence":
+            data["package"]["evidence"] = [{"evidence_id": "EXECUTOR-EVIDENCE"}]
+        elif defect == "claim_evidence":
+            result["claims"][0]["evidence"] = ["OLD-EVIDENCE"]
+        path.write_text(json.dumps(data), encoding="utf-8")
+    calls = []
+    with pytest.raises(OperatorError):
+        run_repair(
+            failure["run_id"], executor="codex", repo=repo,
+            repair=repair(failure, action="FINALIZE_CANDIDATE"),
+            native_runner=lambda *args, **kwargs: calls.append("executor"),
+            verification_runner=lambda *args, **kwargs: calls.append("verification"),
+        )
+    assert calls == []
+    assert not (state.runs / "RUN-101-004.json").exists()
+
+
+def test_finalize_nearest_present_package_cannot_be_skipped(tmp_path):
+    repo, failure = same_head_finalize_lineage(tmp_path)
+    state = runtime_paths(repo)
+    (state.preverification / "RUN-101-002.json").write_bytes(b"{malformed nearer package")
+    calls = []
+    with pytest.raises(OperatorError, match="pre-verification candidate"):
+        run_repair(
+            failure["run_id"], executor="codex", repo=repo,
+            repair=repair(failure, action="FINALIZE_CANDIDATE"),
+            native_runner=lambda *args, **kwargs: calls.append("executor"),
+            verification_runner=lambda *args, **kwargs: calls.append("verification"),
+        )
+    assert calls == []
+
+
+def test_finalize_selects_nearest_valid_structure(tmp_path):
+    repo, failure = same_head_finalize_lineage(tmp_path)
+    state = runtime_paths(repo)
+    old_path = state.preverification / "RUN-101-001.json"
+    nearer = json.loads(old_path.read_text(encoding="utf-8"))
+    nearer["run_id"] = "RUN-101-002"
+    nearer["package"]["result"]["claims"][0]["id"] = "NEAREST"
+    (state.preverification / "RUN-101-002.json").write_text(json.dumps(nearer), encoding="utf-8")
+    old_path.write_bytes(b"{older state must not be read")
+    summary = run_repair(
+        failure["run_id"], executor=None, repo=repo,
+        repair=repair(failure, action="FINALIZE_CANDIDATE"),
+        native_runner=lambda *args, **kwargs: pytest.fail("Executor invoked"),
+        verification_runner=passing_verification,
+    )
+    result = json.loads(summary.result_path.read_text(encoding="utf-8"))["result"]
+    assert result["claims"][0]["id"] == "NEAREST"
+
+
+@pytest.mark.parametrize("action", ["CODE_FIX", "CONTINUE_IMPLEMENTATION", "NO_CHANGE"])
+def test_other_actions_never_read_preserved_ancestor_structure(tmp_path, action):
+    repo, failure = same_head_finalize_lineage(tmp_path)
+    state = runtime_paths(repo)
+    (state.preverification / "RUN-101-001.json").write_bytes(b"{unusable ancestor structure")
+    if action == "NO_CHANGE":
+        failure["phase"] = "VERIFICATION"
+        persist_failure(repo, failure["run_id"], failure)
+        runner = UnchangedContinuationRunner(repo)
+    else:
+        runner = CodeFixRunner(repo, expected_action=action)
+    summary = run_repair(
+        failure["run_id"], executor="codex", repo=repo,
+        repair=repair(failure, action=action), native_runner=runner,
+        verification_runner=passing_verification,
+    )
+    assert runner.calls == 1
+    assert summary.run_id == "RUN-101-004"
+
+
+def test_finalize_stops_at_candidate_mutation_and_uses_executor_fallback(tmp_path):
+    repo, failure = same_head_finalize_lineage(tmp_path)
+    state = runtime_paths(repo)
+    # RUN-002 changed the candidate. RUN-003 is a same-head gate failure.
+    (repo / "OUTPUT.txt").write_text("mutated candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "candidate mutation")
+    mutated = git(repo, "rev-parse", "HEAD")
+    second_path = state.failures / "RUN-101-002.json"
+    second = json.loads(second_path.read_text(encoding="utf-8"))
+    second["failed_head_sha"] = mutated
+    second["candidate"]["changed_files"] = ["OUTPUT.txt"]
+    second_path.write_text(json.dumps(second), encoding="utf-8")
+    third_run_path = state.runs / "RUN-101-003.json"
+    third_run = json.loads(third_run_path.read_text(encoding="utf-8"))
+    third_run["base_sha"] = mutated
+    third_run_path.write_text(json.dumps(third_run), encoding="utf-8")
+    failure["base_sha"] = failure["failed_head_sha"] = mutated
+    persist_failure(repo, failure["run_id"], failure)
+    third_lineage_path = state.repairs / "RUN-101-003.json"
+    third = json.loads(third_lineage_path.read_text(encoding="utf-8"))
+    third.update(run=third_run, failure=second, failed_head_sha=mutated)
+    third["repair"]["failed_head_sha"] = mutated
+    third_lineage_path.write_text(json.dumps(third), encoding="utf-8")
+    # Crossing the boundary would incorrectly reject this older malformed source.
+    (state.preverification / "RUN-101-001.json").write_bytes(b"{old malformed package")
+    runner = UnchangedContinuationRunner(repo)
+    summary = run_repair(
+        failure["run_id"], executor="codex", repo=repo,
+        repair=repair(failure, action="FINALIZE_CANDIDATE"),
+        native_runner=runner, verification_runner=passing_verification,
+    )
+    assert runner.calls == 1
+    assert summary.head_sha == mutated == git(repo, "rev-parse", "HEAD")

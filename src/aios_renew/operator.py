@@ -407,6 +407,7 @@ class _HistoricalRepairAdmission:
     remote_run_ids: tuple[str, ...]
     preverification: bytes | None
     origin_affected_verification: tuple[str, ...]
+    failures: tuple[RemoteFailureArtifacts, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2350,6 +2351,7 @@ def _resolve_repair_admission(
     )
     remote_run_ids: tuple[str, ...] = ()
     transported_preverification: bytes | None = None
+    transported_failures: tuple[RemoteFailureArtifacts, ...] = ()
     if historical:
         _set_admission_boundary(
             admission, "FAILED_RUN_RESOLUTION", "CANONICAL_LINEAGE_MISSING"
@@ -2363,6 +2365,7 @@ def _resolve_repair_admission(
         result_base_sha = resolved_admission.result_base_sha
         remote_run_ids = resolved_admission.remote_run_ids
         transported_preverification = resolved_admission.preverification
+        transported_failures = resolved_admission.failures
         origin_affected_verification = (
             resolved_admission.origin_affected_verification
         )
@@ -2556,6 +2559,45 @@ def _resolve_repair_admission(
             root_base_sha=root_base_sha,
             result_base_sha=result_base_sha,
         )
+    elif action == "FINALIZE_CANDIDATE":
+        _set_admission_boundary(
+            admission, "REUSABLE_STATE_ADMISSION", "REUSABLE_STATE_REJECTED"
+        )
+        source_repo = remote_repo or repo
+        if not historical:
+            # When transported state exists it is canonical, even if the local
+            # candidate is still checked out. Never prefer a local sidecar to it.
+            from .review_transport import resolve_transport_remote
+
+            try:
+                refs = _exact_remote_refs(
+                    source_repo, resolve_transport_remote(source_repo),
+                    f"refs/heads/aios/failure/{failed_run_id}",
+                    f"refs/heads/aios/failure-artifacts/{failed_run_id}",
+                )
+            except ReviewTransportError as exc:
+                raise OperatorError(f"canonical reusable lineage rejected: {exc}") from exc
+            _record_observed_refs(admission, tuple(refs.items()))
+            if refs:
+                canonical = _resolve_historical_repair_admission(
+                    source_repo, failed_run_id, admission=admission
+                )
+                if (
+                    dict(canonical.failure) != dict(failure)
+                    or canonical.task != task
+                    or canonical.root_base_sha != root_base_sha
+                    or canonical.result_base_sha != result_base_sha
+                ):
+                    raise OperatorError("local and canonical remote REPAIR lineage conflict")
+                transported_failures = canonical.failures
+        _set_admission_boundary(
+            admission, "REUSABLE_STATE_ADMISSION", "REUSABLE_STATE_REJECTED"
+        )
+        reusable_package = _nearest_same_head_repair_package(
+            state=state, task=task, failure=failure, repo=source_repo,
+            root_base_sha=root_base_sha, result_base_sha=result_base_sha,
+            transported_failures=transported_failures,
+        )
 
     return _RepairAdmission(
         failure=failure,
@@ -2627,7 +2669,7 @@ def _run_repair_impl(
     origin_affected_verification = resolved.origin_affected_verification
     if executor is None and reusable_package is None:
         raise OperatorError("coding Executor is required for REPAIR")
-    # TASK-064 reusable verification state bypasses dispatcher invocation.  Its
+    # Admitted reusable structural state bypasses dispatcher invocation. Its
     # schema-compatible RUN label preserves the frozen failed-RUN lineage; it is
     # not a defaulted, selected, or invoked coding Executor.
     inherited_executor = failure.get("executor")
@@ -2996,6 +3038,7 @@ def _resolve_historical_repair_admission(
             if terminal_execution is None
             else terminal_execution.remediation.affected_verification
         ),
+        tuple(recovery.failures),
     )
 
 
@@ -3116,8 +3159,8 @@ def _read_optional_bytes(path: Path) -> bytes | None:
 def _repair_action_structure(failure: Mapping[str, Any]) -> dict[str, bool]:
     """Action-neutral prerequisites shared by authoring and execution admission.
 
-    Authorization, nonempty mutation scope and exact NO_CHANGE reuse are separate
-    admission gates. These facts grant no execution authority.
+    Authorization, nonempty mutation scope and exact structural-package reuse
+    are separate admission gates. These facts grant no execution authority.
     """
     candidate = failure.get("candidate", {})
     repairable = candidate.get("repairable") is True
@@ -3136,6 +3179,182 @@ def _repair_action_structure(failure: Mapping[str, Any]) -> dict[str, bool]:
     }
 
 
+def _nearest_same_head_repair_package(
+    *,
+    state: RuntimePaths,
+    task: Task,
+    failure: Mapping[str, Any],
+    repo: Path,
+    root_base_sha: str,
+    result_base_sha: str,
+    transported_failures: tuple[RemoteFailureArtifacts, ...] = (),
+) -> ResultPackage | None:
+    """Select structure only inside an already-authorized FINALIZE admission.
+
+    Transported lineage is the sole source in remote recovery. Local persisted
+    state may establish a current, untransported lineage, but can never replace
+    an absent or conflicting sidecar in canonical transported state.
+    """
+    from .publication import _json_no_duplicates
+
+    def mapping(content: bytes | None, name: str) -> Mapping[str, Any]:
+        if content is None:
+            raise OperatorError(f"same-head {name} lineage is missing")
+        try:
+            value = _json_no_duplicates(content, document=name)
+        except ValueError as exc:
+            raise OperatorError(f"invalid same-head {name}: {exc}") from exc
+        if not isinstance(value, Mapping):
+            raise OperatorError(f"invalid same-head {name} mapping")
+        return value
+
+    remote = {artifact.run_id: artifact for artifact in transported_failures}
+    if len(remote) != len(transported_failures):
+        raise OperatorError("ambiguous canonical same-head RUN lineage")
+    expected_task = {"id": task.task_id, "revision": task.revision}
+
+    def read(run_id: str) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any] | None, bytes | None]:
+        if not isinstance(run_id, str) or _RUN_ID_PATTERN.fullmatch(run_id) is None:
+            raise OperatorError("invalid same-head predecessor RUN identity")
+        local_contents = (
+            _read_optional_bytes(state.failures / f"{run_id}.json"),
+            _read_optional_bytes(state.runs / f"{run_id}.json"),
+            _read_optional_bytes(state.repairs / f"{run_id}.json"),
+            _read_optional_bytes(state.preverification / f"{run_id}.json"),
+        )
+        if transported_failures:
+            artifact = remote.get(run_id)
+            if artifact is None:
+                raise OperatorError("canonical same-head predecessor is missing")
+            contents = (artifact.failure, artifact.run, artifact.repair, artifact.preverification)
+            for index, (local, canonical) in enumerate(zip(local_contents, contents)):
+                if local is None:
+                    continue
+                if index == 3:
+                    equal = local == canonical
+                else:
+                    equal = canonical is not None and mapping(local, "local lineage") == mapping(canonical, "canonical lineage")
+                if not equal:
+                    raise OperatorError("local and canonical remote same-head lineage conflict")
+        else:
+            contents = local_contents
+        return (
+            mapping(contents[0], "FAILURE"), mapping(contents[1], "RUN"),
+            None if contents[2] is None else mapping(contents[2], "REPAIR"),
+            contents[3],
+        )
+
+    current_id = failure["run_id"]
+    current, run_data, lineage, content = read(current_id)
+    if dict(current) != dict(failure):
+        raise OperatorError("conflicting same-head target FAILURE")
+    subject = failure["failed_head_sha"]
+    seen: set[str] = set()
+    while True:
+        if current_id in seen:
+            raise OperatorError("cyclic same-head correction lineage")
+        seen.add(current_id)
+        try:
+            if "kind" in run_data and run_data.get("kind") != "REMEDIATION":
+                raise ValueError("unknown same-head RUN kind")
+            run = (
+                _remediation_execution_from_data(run_data["execution"]).run
+                if run_data.get("kind") == "REMEDIATION"
+                else _run_from_data(run_data)
+            )
+            require_same_affinity(task, run)
+            failure_task = current.get("task")
+            if (
+                run.run_id != current_id
+                or failure_task != expected_task
+                or not isinstance(failure_task, Mapping)
+                or type(failure_task.get("revision")) is not int
+            ):
+                raise ValueError("same-head RUN or TASK mismatch")
+            if (
+                run.task.id != task.task_id or run.task.revision != task.revision
+                or type(run.task.revision) is not int
+            ):
+                raise ValueError("same-head RUN TASK mismatch")
+            validate_runtime_failure_binding(
+                current, run_id=current_id, task_id=task.task_id,
+                task_revision=task.revision, executor=run.executor,
+                base_sha=run.base_sha, candidate_sha=subject,
+                modification_scope=task.scope.modify,
+                actual_descends_from_base=_git_is_ancestor(repo, run.base_sha, subject),
+                actual_changed_files=_committed_changed_files(repo, run.base_sha, subject),
+            )
+        except (KeyError, TypeError, ValueError, ReviewValidationError) as exc:
+            raise OperatorError(f"invalid same-head failed lineage: {exc}") from exc
+        predecessor_id = current.get("continuation_of")
+        if predecessor_id is None:
+            if lineage is not None:
+                raise OperatorError("conflicting same-head terminal REPAIR lineage")
+            predecessor = None
+        else:
+            if not isinstance(predecessor_id, str) or _RUN_ID_PATTERN.fullmatch(predecessor_id) is None:
+                raise OperatorError("invalid same-head predecessor RUN identity")
+            # Inspect only the predecessor FAILURE at the boundary; never read
+            # a structural package from the other side of a candidate mutation.
+            if transported_failures:
+                artifact = remote.get(predecessor_id)
+                predecessor_bytes = None if artifact is None else artifact.failure
+            else:
+                predecessor_bytes = _read_optional_bytes(state.failures / f"{predecessor_id}.json")
+            predecessor = mapping(predecessor_bytes, "predecessor FAILURE")
+            if run_data.get("kind") == "REMEDIATION":
+                raise OperatorError("REMEDIATION cannot contain same-head REPAIR lineage")
+            if lineage is None:
+                if not transported_failures:
+                    raise OperatorError("same-head REPAIR execution lineage is missing")
+                # Legacy canonical transport may carry authorization separately.
+                try:
+                    authorization = mapping(read_remote_repair(repo, predecessor_id), "REPAIR authorization")
+                except ReviewTransportError as exc:
+                    raise OperatorError(f"canonical same-head authorization rejected: {exc}") from exc
+            else:
+                authorization = lineage.get("repair")
+                task_data = lineage.get("task")
+                if (
+                    lineage.get("run") != dict(run_data)
+                    or lineage.get("failure") != dict(predecessor)
+                    or lineage.get("failed_run_id") != predecessor_id
+                    or lineage.get("failed_head_sha") != predecessor.get("failed_head_sha")
+                    or lineage.get("root_base_sha") != root_base_sha
+                    or lineage.get("result_base_sha", root_base_sha) != result_base_sha
+                    or not isinstance(task_data, Mapping)
+                    or task_data.get("task_id") != task.task_id
+                    or task_data.get("revision") != task.revision
+                ):
+                    raise OperatorError("conflicting same-head REPAIR execution lineage")
+            if (
+                predecessor.get("run_id") != predecessor_id
+                or predecessor.get("task") != expected_task
+                or run.base_sha != predecessor.get("failed_head_sha")
+                or not isinstance(authorization, Mapping)
+                or authorization.get("task") != expected_task
+                or authorization.get("failed_run_id") != predecessor_id
+                or authorization.get("failed_head_sha") != run.base_sha
+            ):
+                raise OperatorError("conflicting same-head REPAIR authorization lineage")
+        if content is not None:
+            # The source's failure may be VERIFICATION while the admitted target
+            # is EXECUTION/COMPLETION_GATE. No failure phase is rewritten.
+            source_action = "NO_CHANGE" if current.get("phase") == "VERIFICATION" else "FINALIZE_CANDIDATE"
+            package = _eligible_reusable_repair_package(
+                content, task=task, failed_run_id=current_id, failure=current,
+                action=source_action, scope=[], repo=repo,
+                root_base_sha=root_base_sha, result_base_sha=result_base_sha,
+            )
+            if package is None:
+                raise OperatorError("present same-head pre-verification candidate is ineligible")
+            return package
+        if predecessor is None or predecessor.get("failed_head_sha") != subject:
+            return None
+        current_id = predecessor_id
+        current, run_data, lineage, content = read(current_id)
+
+
 def _eligible_reusable_repair_package(
     content: bytes | None,
     *,
@@ -3150,9 +3369,13 @@ def _eligible_reusable_repair_package(
     result_base_sha: str | None = None,
     committed_deltas: Mapping[str, list[str]] | None = None,
 ) -> ResultPackage | None:
-    """Fail closed on present state and admit only exact verification reuse."""
+    """Fail closed on present structure for one explicitly admitted reuse action."""
 
-    if action != "NO_CHANGE" or scope:
+    if action not in ("NO_CHANGE", "FINALIZE_CANDIDATE") or scope:
+        return None
+    if action == "FINALIZE_CANDIDATE" and failure.get("phase") not in (
+        "EXECUTION", "COMPLETION_GATE"
+    ):
         return None
 
     if local_content is not None and local_content != content:
@@ -3166,7 +3389,10 @@ def _eligible_reusable_repair_package(
         raise OperatorError("invalid failed subject for pre-verification candidate")
     try:
         from .publication import _json_no_duplicates
-        _json_no_duplicates(content, document="pre-verification candidate")
+        data = _json_no_duplicates(content, document="pre-verification candidate")
+        task_binding = data.get("task") if isinstance(data, Mapping) else None
+        if not isinstance(task_binding, Mapping) or type(task_binding.get("revision")) is not int:
+            raise ArtifactValidationError("pre-verification candidate TASK binding is malformed")
         package = validate_preverification_candidate(
             content,
             task=task,
@@ -3226,7 +3452,7 @@ def _eligible_reusable_repair_package(
         ):
             if list(package.result.changed_files) != changed_files:
                 raise OperatorError("pre-verification candidate changed-files mismatch")
-    if not _repair_action_structure(failure)["NO_CHANGE"]:
+    if not _repair_action_structure(failure)[action]:
         return None
     if package.result.unresolved:
         raise OperatorError("pre-verification candidate is incomplete")
