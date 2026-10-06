@@ -529,8 +529,10 @@ TASK provenance.
 Two additional retirement candidates are operational rather than constitutional:
 
 - the current `*/5` all-lanes recovery schedule on the execution-critical self-host
-  runner has already delayed PRIMARY. Durable deferred recovery remains required, but that
-  scheduler should leave the critical runner path before H4E live conformance;
+  runner has already delayed PRIMARY. Human explicitly approved retiring this scheduler
+  from the critical runner path on 2026-10-06. Durable deferred recovery remains required;
+  implementation of a reviewed nonblocking/event-driven or separately isolated
+  replacement must close before H4E live conformance;
 - the standalone H4D natural-event live gate is kept for now. If TASK-310 and TASK-311 both
   publish without producing a qualifying natural unattended-target observation, Brain
   should ask Human whether to fold that same evidence obligation into H4E rather than wait
@@ -547,10 +549,11 @@ Historical contradictions are explicitly superseded prospectively:
 - an all-lanes shared acquisition budget may bound one finite H4D invocation but cannot
   become global routing authority or indefinite cross-lane starvation policy.
 
-Architecture freeze for TASK-310 therefore waits only on the Human decision about retiring
-page-scoped bootstrap as the sole normative proof issuer. The runner scheduling retirement
-must close before H4E live conformance; the H4D standalone-gate retirement remains
-conditional.
+The proof-issuer retirement decision is closed APPROVED. H4 architecture is not yet
+released for TASK authoring because Human additionally requires review and approval of the
+detailed H4 execution roadmap before any TASK is authored. The runner scheduling
+retirement must be implemented before H4E live conformance; the H4D standalone-gate
+retirement remains conditional.
 
 ### Historical/transition H4C0 fallback — page-scoped origin bootstrap
 
@@ -563,9 +566,11 @@ The historically selected fallback architecture candidate was:
 `PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1`
 
 It remains the lawful current bootstrap mechanism and may be used once to author TASK-310
-under the existing Project Contract. It is no longer the target production origin UX.
-Whether it remains the sole normative authoring-proof issuer is explicitly pending Human
-retirement approval from the integrated H4 audit above.
+during transition. It is no longer the target production origin UX and, by Human decision
+on 2026-10-06, is no longer the permanent sole normative authoring-proof issuer. A
+device-independent replacement issuer is not active merely because this decision exists;
+activation still requires reviewed/published implementation and explicit canonical
+activation.
 
 Two-stage architecture audit used `brain-high-value-v3`:
 
