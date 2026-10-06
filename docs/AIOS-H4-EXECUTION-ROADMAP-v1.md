@@ -11,6 +11,19 @@ approval does not itself author a TASK, select an Executor, create a RUN, claim
 verification, advance H4/H5, or mutate historical engineering lineage. Each new TASK
 identity still requires the explicit Human delegation gate stated below.
 
+
+## Pre-H4 Brain optimization preemption — approved 2026-10-06
+
+The Human explicitly moved the complete Brain Optimization Roadmap v1 ahead of TASK-310.
+This H4 roadmap remains authoritative for H4 semantics and sequencing after optimization,
+but TASK-310 and all remaining H4 implementation are paused until
+`BRAIN_OPTIMIZATION_V1_CLOSED_RETURN_TO_TASK310`.
+
+The optimization program is defined in
+`docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md`. It does not alter TASK-310/TASK-311/TASK-312
+objectives or H4 safety invariants. Any optimization defect or architecture change is resolved
+inside the optimization program before H4 resumes.
+
 ## 1. Goal
 
 Reach the final H4 production shape in which:
@@ -99,7 +112,7 @@ evidence into H4E. Evidence is never waived.
 
 ### Phase 0A — AUTHOR_TASK ingress simplification transition
 
-Status: **PENDING_HUMAN_APPROVAL OF THIS AMENDMENT**
+Status: **MOVED TO BRAIN OPTIMIZATION ROADMAP BO-1; H4 PAUSED**
 
 Human decision already approved:
 
@@ -217,6 +230,7 @@ Mandatory properties:
 
 Authoring precondition:
 
+- Brain Optimization Roadmap v1 closure PASS;
 - roadmap P0 PASS;
 - fresh Human Executor/model/effort selection;
 - one lawful transition page-scoped proof may bootstrap TASK-310 itself.
@@ -513,7 +527,8 @@ This document was explicitly approved by Human on 2026-10-06 with
 `APPROVE H4 EXECUTION ROADMAP V1`.
 
 Approval releases only the roadmap gate. It does not release the per-TASK Human delegation
-gate. TASK-310, TASK-311 and TASK-312 remain UNAUTHORED until their own authoring
-preconditions and Human Executor/model/effort selections are satisfied. The
+gate. TASK-310, TASK-311 and TASK-312 remain UNAUTHORED. In addition, TASK-310 is explicitly
+blocked until Brain Optimization Roadmap v1 closes. After that closure, their own authoring
+preconditions and Human Executor/model/effort delegation rules still apply. The
 runner-recovery correction still has no TASK identity and requires fresh phase-specific
 audit plus Human review before authoring.

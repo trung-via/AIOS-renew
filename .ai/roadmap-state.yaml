@@ -12,6 +12,41 @@ planning_baseline:
     BP-0 is the Human-approved architecture and roadmap planning baseline. It does
     not claim implementation completion for BP-1 through BP-9, does not create RUN
     or verification truth, and does not alter frozen Kernel v0.1 semantics.
+brain_optimization_preemption:
+  id: brain-optimization-v1
+  status: HUMAN_APPROVED_ACTIVE_PRE_H4
+  approved_on: "2026-10-06"
+  authority: HUMAN_BRAIN_PLANNING
+  planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+  human_instruction: >-
+    Move the complete Brain optimization program ahead of TASK-310 and decisively
+    optimize Brain/control-plane cost before returning to H4.
+  priority: PREEMPTS_TASK_310_AND_REMAINING_H4_IMPLEMENTATION
+  h4_resume_gate: BRAIN_OPTIMIZATION_V1_CLOSED_RETURN_TO_TASK310
+  preserved_authorities:
+    - HUMAN_INTENT_PRIORITY_RISK_AND_EXECUTION_DELEGATION
+    - BRAIN_WHAT_WHY_AND_TWO_STAGE_SEMANTIC_AUDIT
+    - EXECUTOR_HOW
+    - RUNTIME_ADMISSION_VERIFICATION_LIFECYCLE_AND_EVIDENCE
+    - REVIEWER_VERDICT
+    - PUBLISHER_EXACT_REVIEWED_SOURCE
+  planning_audit:
+    stage1: CONSTRUCT_RISK_FOUND
+    stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+    closure: CLEAR_WITH_PHASE_GATES
+  phases:
+    - BO-0_PRIORITY_PREEMPTION_AND_CANONICAL_SEQUENCING
+    - BO-1_AUTHOR_TASK_MUTATION_PATH_SIMPLIFICATION
+    - BO-2_BOUNDED_ACTIVE_ROADMAP_PROJECTION
+    - BO-3_MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_FAST_PATH
+    - BO-4_TASK_SCOPED_STICKY_EXECUTION_PROFILE
+    - BO-5_AUTHOR_TASK_TO_PRIMARY_EXACT_CONTINUATION
+    - BO-6_TASK_SPECIFIC_DELTA_SEMANTIC_AUDIT
+    - BO-7_CORRECTION_AUTHORING_DUPLICATION_AUDIT
+    - BO-8_PLANNING_TRANSACTION_BATCHING
+    - BO-9_CONDITIONAL_PROVIDER_CONTEXT_SERIALIZATION_OPTIMIZATION
+  task310_status: BLOCKED_ON_BRAIN_OPTIMIZATION_V1_CLOSURE
+
 production_wake_amendment:
   id: h4-origin-affine-unattended-wake-v1
   status: HUMAN_APPROVED
@@ -235,16 +270,17 @@ production_wake_amendment:
     roadmap_amendment:
       document: docs/AIOS-H4-EXECUTION-ROADMAP-v1.md
       commit: "78161476f503f4cd3fe20cffeae161d30f73eb6c"
-      status: PENDING_HUMAN_APPROVAL
+      status: HUMAN_APPROVED_AND_SUPERSEDED_BY_BRAIN_OPTIMIZATION_V1_PRIORITY
     transition_rule: >-
       Current published Runtime still enforces the retired gate. Preserve Runtime
       mutation authority: do not create TASK files directly. One bounded transition
       implementation TASK may use the old audited-handoff ingress for the final time,
       then TASK-310 must use the simplified reviewed ingress.
     transition_task:
-      id: UNASSIGNED
-      status: PROHIBITED_PENDING_HUMAN_ROADMAP_AMENDMENT_APPROVAL
-      executor_selection: PENDING_HUMAN
+      id: UNASSIGNED_BRAIN_OPTIMIZATION_BO1
+      status: READY_FOR_AUTHORING_PENDING_FRESH_HUMAN_EXECUTOR_SELECTION
+      executor_selection: REQUIRES_FRESH_HUMAN_SELECTION
+      planning_program: brain-optimization-v1
   execution_roadmap_review:
     document: docs/AIOS-H4-EXECUTION-ROADMAP-v1.md
     version: 1
@@ -266,7 +302,7 @@ production_wake_amendment:
       - H5_H4_CONFORMANCE_CLOSURE
       - TASK312_RETURN_TO_BLOCKED_TASK308_OBJECTIVE
     task_authoring_state:
-      TASK-310: BLOCKED_ON_AUTHORING_HANDOFF_SIMPLIFICATION_TRANSITION
+      TASK-310: BLOCKED_ON_BRAIN_OPTIMIZATION_V1_CLOSURE
       TASK-311: BLOCKED_ON_TASK310_AND_FUTURE_HUMAN_EXECUTOR_SELECTION
       TASK-312: BLOCKED_ON_TASK310_TASK311_H4_H5_SEQUENCE
       recovery_retirement_task: UNASSIGNED_PENDING_PHASE4_AUDIT_AND_HUMAN_REVIEW
@@ -779,7 +815,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - h4-device-independent-origin-capture-correction-v1
+  - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 sequence:
 
   - id: TASK-309
@@ -894,8 +930,106 @@ sequence:
         route reaches the exact chat; it is not unattended H4D/H4E live-exit proof.
     return_to: task308-origin-correct-replacement-v1
 
-  - id: h4-device-independent-origin-capture-correction-v1
+  - id: brain-optimization-v1-bo1-author-task-mutation-path-simplification
     status: NEXT
+    phase: BO1_AUTHOR_TASK_MUTATION_PATH_SIMPLIFICATION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-06"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    task_id: null
+    task_authoring_status: UNAUTHORED
+    executor_delegation: REQUIRES_FRESH_HUMAN_SELECTION
+    objective: >-
+      Retire serialized audited-handoff plumbing from AUTHOR_TASK while preserving
+      direct final TASK validation, expected-main CAS, origin provenance, carrier
+      binding, replay safety and Runtime mutation authority; converge contradictory
+      normative authoring documentation in the same reviewed transition.
+    exit: AUTHOR_TASK_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE
+    blocks: [brain-optimization-v1-bo2-bounded-active-roadmap-projection, h4-device-independent-origin-capture-correction-v1]
+
+  - id: brain-optimization-v1-bo2-bounded-active-roadmap-projection
+    status: QUEUED_AFTER_BO1
+    phase: BO2_BOUNDED_ACTIVE_ROADMAP_PROJECTION
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Bound normal planning hydration and historical validation so Brain Sync does
+      not parse/scan the full monolithic roadmap history for ordinary continuation.
+    exit: BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE
+
+  - id: brain-optimization-v1-bo3-minimum-fresh-brain-sync
+    status: QUEUED_AFTER_BO2
+    phase: BO3_MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_FAST_PATH
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Productionize MINIMUM_FRESH_BRAIN_SYNC_V1 with flow-scoped hydration and
+      deterministic digest-bound reuse of unchanged context.
+    exit: MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE
+
+  - id: brain-optimization-v1-bo4-sticky-execution-profile
+    status: QUEUED_AFTER_BO3
+    phase: BO4_TASK_SCOPED_STICKY_EXECUTION_PROFILE
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Reuse one exact Human-selected Executor/model/effort profile throughout the
+      same TASK lifecycle, with Human-only override and expiry on TASK-id change.
+    exit: TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE
+
+  - id: brain-optimization-v1-bo5-author-task-primary-continuation
+    status: QUEUED_AFTER_BO4
+    phase: BO5_AUTHOR_TASK_TO_PRIMARY_EXACT_CONTINUATION
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Carry exact canonical TASK identity from successful AUTHOR_TASK into PRIMARY
+      transport under existing Human delegation without Brain canonical reread/glue.
+    exit: AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE
+
+  - id: brain-optimization-v1-bo6-delta-semantic-audit
+    status: QUEUED_AFTER_BO5
+    phase: BO6_TASK_SPECIFIC_DELTA_SEMANTIC_AUDIT
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Keep two-stage Brain audit while binding settled architecture/governance by
+      exact fingerprint and re-reasoning only task-specific/new risks.
+    exit: TASK_SPECIFIC_DELTA_AUDIT_ACTIVE
+
+  - id: brain-optimization-v1-bo7-correction-authoring-duplication-audit
+    status: QUEUED_AFTER_BO6
+    phase: BO7_CORRECTION_AUTHORING_DUPLICATION_AUDIT
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Audit AUTHOR_REMEDIATION and AUTHOR_REPAIR for redundant semantic recomposition;
+      simplify only where distinct correction-lineage invariants remain fail-closed.
+    exit: CORRECTION_AUTHORING_DUPLICATION_RESOLVED
+
+  - id: brain-optimization-v1-bo8-planning-transaction-batching
+    status: QUEUED_AFTER_BO7
+    phase: BO8_PLANNING_TRANSACTION_BATCHING
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Canonicalize one already-made Human planning decision atomically when possible
+      to reduce main churn without merging distinct approval or risk decisions.
+    exit: PLANNING_MUTATION_BATCHING_ACTIVE
+
+  - id: brain-optimization-v1-bo9-provider-context-serialization
+    status: QUEUED_AFTER_BO8
+    phase: BO9_CONDITIONAL_PROVIDER_CONTEXT_SERIALIZATION_OPTIMIZATION
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Measure residual provider/Brain/Reviewer/RA serialization cost and optimize
+      only material duplication while preserving self-contained stateless requests.
+    exit: BRAIN_PROVIDER_PAYLOAD_COST_RESOLVED
+    return_to: h4-device-independent-origin-capture-correction-v1
+
+  - id: h4-device-independent-origin-capture-correction-v1
+    status: BLOCKED_ON_BRAIN_OPTIMIZATION_V1_CLOSURE
     phase: H4_ORIGIN_CAPTURE_DEVICE_INDEPENDENCE_CORRECTION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
@@ -1104,7 +1238,7 @@ sequence:
       architecture_status: LIVE_FEASIBILITY_PASS_IMPLEMENTATION_REQUIRED
     implementation_next:
       id: h4-opaque-origin-rendezvous-implementation-v1
-      status: BLOCKED_ON_AUTHORING_HANDOFF_SIMPLIFICATION_TRANSITION
+      status: BLOCKED_ON_BRAIN_OPTIMIZATION_V1_CLOSURE
       phase: H4_ORIGIN_CAPTURE_DEVICE_INDEPENDENCE_IMPLEMENTATION
       authority: HUMAN_BRAIN_PLANNING
       candidate_task_id: TASK-310
