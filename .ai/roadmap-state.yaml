@@ -34,6 +34,176 @@ production_wake_amendment:
     stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
     closure: CLEAR_WITH_MANDATORY_REFINEMENTS
     outcome: CANDIDATE_APPROVED_BY_HUMAN
+  integrated_h4_audit_2026_10_06:
+    authority: HUMAN_BRAIN_PLANNING
+    human_instruction: >-
+      Audit H4 end to end before further implementation. Surface any bottleneck and
+      propose retirement rather than preserving a historical mechanism merely because
+      earlier work depended on it.
+    scope:
+      - H4C0_ORIGIN_CAPTURE_AND_PROVENANCE
+      - H4C1_IMMUTABLE_BASE_RETURN_AFFINITY
+      - H4D_UNATTENDED_EXACT_TARGET_DELIVERY
+      - TASK310_DEVICE_INDEPENDENT_RENDEZVOUS
+      - TASK311_SUBJECT_SCOPED_CONTINUATION
+      - H4E_MULTI_LANE_PRODUCTION_CONFORMANCE
+      - H4B_FINAL_SEMANTIC_RESUME
+      - H5_H4_RELATED_CONFORMANCE_GATES
+      - TASK312_POST_ORIGIN_CONTINUATION_REPLACEMENT
+    stage1:
+      stage: CONSTRUCT
+      outcome: RISK_FOUND
+      findings:
+        - id: H4-I1-PAGE-PROOF-SOLE-ISSUER
+          severity: BLOCKS_TARGET_ARCHITECTURE
+          finding: >-
+            Project Contract and origin_authoring_proof v1 currently require the authoring
+            proof to originate from the exact-page H4C0 bootstrap. TASK-310 cannot replace
+            laptop Connect for future new TASK authoring while that issuer coupling remains
+            normative, even if rendezvous origin resolution itself works.
+        - id: H4-I2-RENDEZVOUS-HALF-HANDSHAKE
+          severity: BLOCKS_ZERO_TOUCH_END_TO_END
+          finding: >-
+            The existing TASK-310 design proves marker transport and exact destination
+            discovery but does not yet close the return half of the handshake. After the
+            self-host proves the Chat, Brain must be resumed automatically in that exact
+            Chat so it can fresh-sync and continue authoring/continuation without a second
+            Human gesture.
+        - id: H4-I3-STALE-ROUTE-TRANSFER-LANGUAGE
+          severity: CONTRACT_CONTRADICTION
+          finding: >-
+            Earlier H4 text still describes Human route transfer/generation movement while
+            the corrected architecture keeps routes conversation-scoped and moves only
+            repository+TASK subject continuation.
+        - id: H4-I4-HISTORICAL-MULTIPROJECT-SAMECHAT-REJECTION
+          severity: CONTRACT_CONTRADICTION
+          finding: >-
+            Historical H4A4 text rejects same-chat multi-project binding, while current
+            RouteState and H4E intentionally share one conversation lock across repository
+            buckets. Duplicate route/state ownership must be rejected; shared use of the
+            same proven route must not be.
+        - id: H4-I5-STALE-ROADMAP-BOOKMARK
+          severity: DETERMINISTIC_CONTINUATION_CONFLICT
+          finding: >-
+            roadmap next_items still names completed TASK-309 while the sole top-level
+            NEXT planning item is the device-independent origin correction. Generic Brain
+            Sync can therefore report conflicting or stale continuation.
+        - id: H4-I6-H4D-BASE-AFFINITY-EQUALITY
+          severity: IMPLEMENTATION_LOCK_IN
+          finding: >-
+            Current H4D local wake directly equates canonical base return_affinity with
+            the delivery binding. H4E/TASK-311 require immutable base affinity plus a
+            separately authorized effective subject destination.
+        - id: H4-I7-SHARED-RUNNER-RECOVERY-STARVATION
+          severity: OBSERVED_LIVENESS_BOTTLENECK
+          finding: >-
+            The existing periodic all-lanes recovery workflow has already occupied the
+            same self-hosted runner while PRIMARY waited. Durable recovery semantics are
+            valid; this scheduling mechanism is not.
+        - id: H4-I8-H4D-STANDALONE-NATURAL-LIVE-GATE
+          severity: POTENTIAL_DUPLICATE_SEQUENCE_GATE
+          finding: >-
+            H4D requires one naturally occurring target-not-preopened live observation,
+            while H4E already requires the same capability inside a stricter integrated
+            production matrix. The separate gate is not currently blocking TASK-310/311,
+            but can become an indefinite sequencing wait if no qualifying event occurs.
+    stage2:
+      stage: ADVERSARIAL_AUDIT_AND_RECONCILE
+      outcome: HUMAN_DECISION_REQUIRED_FOR_ONE_NORMATIVE_RETIREMENT
+      closure: CLEAR_EXCEPT_PENDING_RETIREMENT_DECISIONS
+      reconciled_architecture:
+        - >-
+          Frozen Kernel v0.1, Human/Brain/Runtime/Reviewer/Publisher authority boundaries,
+          immutable TASK/RUN base affinity, exact canonical attention identity, H4D
+          delivery safety, dedupe and no-blind-resend remain unchanged.
+        - >-
+          Conversation routes are stable conversation-scoped transport identities. TASK
+          continuation is a separate repository+TASK operational overlay with its own
+          monotonic continuation epoch; route-wide TASK movement is rejected.
+        - >-
+          H4D receives only an already resolved effective destination. Proof of immutable
+          canonical base affinity and proof of any subject continuation occur before H4D
+          acquisition, and both are revalidated before possible send.
+        - >-
+          TASK-310 must close a full zero-Human-followup rendezvous handshake rather than
+          stop at destination discovery: precommit one marker through a bounded operational
+          carrier, render the exact marker in the originating assistant turn, resolve and
+          re-prove the exact Chat, allocate/reuse its route, then deliver one bounded
+          transport-only rendezvous-completion signal back to that exact Chat. The signal
+          carries no lifecycle choice and only causes a fresh Brain Sync.
+        - >-
+          A rendezvous-completion signal is not Brain Attention, RUN/RESULT truth or a new
+          lifecycle event family. Duplicate/stale completion is idempotent; newer explicit
+          Human intent may supersede the old pending semantic action after fresh sync.
+        - >-
+          Carrier-precommitted-but-not-rendered, rendered-but-unreceived-carrier,
+          unresolved/duplicate search, route proof failure, completion-delivery failure,
+          Chat becoming non-writable, or provider-adapter uncertainty cannot mutate TASK,
+          continuation or lifecycle state. They expire or remain bounded operational holds.
+        - >-
+          Rendezvous search/index waiting and deferred-wake recovery must not monopolize
+          PRIMARY/REPAIR/REMEDIATION critical runner capacity. Scheduling/capacity is
+          replaceable transport HOW; liveness isolation is the contract.
+        - >-
+          Historical H4A4 same-chat multi-project rejection is superseded by one
+          conversation-route lock with per-repository buckets. Two independently owned
+          route/state objects for the same Chat remain invalid.
+        - >-
+          H4B and H5 consume the final production shape only; neither creates an additional
+          origin resolver, route transfer mechanism, semantic router or continuation store.
+      retirement_proposals:
+        - id: RETIRE-PAGE-SCOPED-PROOF-SOLE-ISSUER
+          recommendation: RETIRE_SOLE_SOURCE_REQUIREMENT_PRESERVE_ADMISSION_SAFETY
+          blocks_task310_target: true
+          human_decision: PENDING
+          retire: >-
+            Retire the normative requirement that origin_authoring_proof can be issued
+            only by PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1.
+          preserve:
+            - SELF_HOSTED_MACHINE_LOCAL_ORIGIN_ADMISSION
+            - EXACT_ROUTE_HANDLE_AND_GENERATION_PROOF
+            - CARRIER_ATTEMPT_BINDING
+            - TASK_ID_AND_EXPECTED_MAIN_BINDING
+            - ENVELOPE_DIGEST_BINDING
+            - HMAC_SIGNED_RECEIPT
+            - TTL_REPLAY_AND_SAME_ATTEMPT_IDEMPOTENCE
+            - NO_SELF_CERTIFIED_TASK_PROVENANCE
+          transition: >-
+            Keep page-scoped proof as the lawful one-time bootstrap issuer for authoring
+            TASK-310 and as bounded manual diagnostic/recovery compatibility until the
+            reviewed TASK-310 source is published. After publication, ordinary production
+            new-flow authoring uses the reviewed rendezvous exact-origin issuer; Connect is
+            no longer a normal production prerequisite.
+        - id: RETIRE-SHARED-RUNNER-PERIODIC-ALL-LANES-CRON
+          recommendation: RETIRE_FROM_EXECUTION_CRITICAL_RUNNER_PATH
+          blocks_task310_target: false
+          required_before: H4E_LIVE_CONFORMANCE
+          human_decision: PENDING
+          retire: >-
+            Retire the current */5 all-lanes recovery scheduling from the same
+            execution-critical self-host runner class.
+          preserve:
+            - DURABLE_DEFERRED_WAKE_RECOVERY
+            - EXACT_CANONICAL_REVALIDATION
+            - EVENT_LOCAL_AMBIGUITY_AND_DEDUPE
+          replacement_boundary: >-
+            Use event-driven bounded recovery, separately isolated capacity, or another
+            reviewed nonblocking mechanism. No generic retry daemon or lifecycle router.
+        - id: RETIRE-H4D-STANDALONE-NATURAL-LIVE-GATE-IF-IT-BECOMES-IDLE-WAIT
+          recommendation: KEEP_FOR_NOW_CONDITIONAL_FOLD_INTO_H4E
+          blocks_task310_target: false
+          human_decision: PENDING_CONDITIONAL
+          rule: >-
+            Reuse the first natural eligible TASK-310/TASK-311 attention if it satisfies
+            H4D. If both prerequisites publish without such an observation, do not wait
+            indefinitely for a separate synthetic/natural carrier; propose retiring H4D as
+            a standalone roadmap closure gate while preserving its exact target-not-
+            preopened live evidence as a mandatory H4E case.
+      architecture_freeze_gate: >-
+        H4 origin/wake/continuation architecture may freeze for implementation after the
+        Human decides the normative page-proof sole-issuer retirement. The runner-cron
+        retirement must be resolved before H4E live conformance. The H4D standalone gate
+        remains conditional and need not block TASK-310/TASK-311 implementation.
   sequencing:
     - H4C0_ORIGIN_CAPTURE_FEASIBILITY_AND_CONTRACT_FREEZE
     - H4C1_ORIGIN_AFFINE_RETURN_ROUTING
@@ -46,7 +216,7 @@ production_wake_amendment:
     - NO_ORIGIN_HEURISTIC_FROM_ACTIVE_TAB_TIMESTAMP_RECENT_CHAT_OR_MODEL_MEMORY
     - NO_SILENT_DEFAULT_CHAT_FALLBACK
     - CONVERSATION_ROUTE_OWNS_LANE_NOT_TASK
-    - HUMAN_EXPLICIT_ROUTE_TRANSFER_ONLY
+    - HUMAN_EXPLICIT_SUBJECT_CONTINUATION_ONLY_ROUTE_OWNERSHIP_REMAINS_CONVERSATION_SCOPED
     - UNATTENDED_IS_CAPABILITY_NOT_HEADLESS_IMPLEMENTATION_MANDATE
     - NO_POWERED_OFF_HOST_REMOTE_WAKE_CLAIM
     - REUSE_H4A4_QUEUE_DEDUPE_RECOVERY_AND_AMBIGUITY_CONTRACTS
@@ -106,7 +276,7 @@ production_wake_amendment:
         - NO_RAW_CHAT_IDENTITY_OR_ENDPOINT_IN_CANONICAL_STATE
         - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
     - id: h4-origin-authoring-proof-human-gesture-coupling
-      status: DEFERRED_TO_NEXT_WAKE_ORIGIN_FIX_BATCH
+      status: SUPERSEDED_AS_PRODUCTION_TARGET_PENDING_HUMAN_PROOF_ISSUER_DECISION
       authority: HUMAN_BRAIN_PLANNING
       observed_on: "2026-10-06"
       evidence:
@@ -125,17 +295,15 @@ production_wake_amendment:
         Human to be present again even for a conversation whose stable route was already
         established. This blocks the intended zero-touch task-to-task continuation.
       disposition: >-
-        Preserve explicit Human authority for initial conversation-route establishment,
-        but decouple that one-time connect from later bounded authoring-proof refresh.
-        Future proof refresh must not fabricate Human draft text or silently auto-click
-        the Connect gesture under the current contract; it should reuse the already
-        established exact route through a separately audited machine-local proof refresh
-        mechanism that cannot change route ownership or generation.
+        Preserve this observation as historical evidence for the current bootstrap, but
+        do not preserve Connect as the target production authority. The integrated H4
+        audit proposes retiring page-scoped bootstrap as the sole proof issuer while
+        preserving self-hosted exact-origin admission. Human decision remains pending.
       required_outcomes:
-        - INITIAL_CHAT_CONNECT_REMAINS_EXPLICIT_HUMAN_ATTESTATION
-        - LATER_AUTHORING_PROOF_REFRESH_DOES_NOT_REQUIRE_DUMMY_DRAFT_TEXT
-        - LATER_AUTHORING_PROOF_REFRESH_DOES_NOT_REQUIRE_HUMAN_STANDING_BY_PER_TASK
-        - NO_SYNTHETIC_HUMAN_INTENT_OR_IMPLICIT_ROUTE_TRANSFER
+        - TASK310_BOOTSTRAP_MAY_STILL_USE_ONE_LAWFUL_PAGE_SCOPED_PROOF_DURING_TRANSITION
+        - ORDINARY_POST_TASK310_PRODUCTION_ORIGIN_MUST_NOT_REQUIRE_CONNECT
+        - LATER_AUTHORING_PROOF_DOES_NOT_REQUIRE_DUMMY_DRAFT_TEXT_OR_HUMAN_STANDING_BY
+        - NO_SYNTHETIC_HUMAN_INTENT_OR_IMPLICIT_TASK_OR_ROUTE_TRANSFER
         - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
 
 verification_foundation_audit:
@@ -541,7 +709,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - TASK-309
+  - h4-device-independent-origin-capture-correction-v1
 sequence:
 
   - id: TASK-309
@@ -866,7 +1034,7 @@ sequence:
       architecture_status: LIVE_FEASIBILITY_PASS_IMPLEMENTATION_REQUIRED
     implementation_next:
       id: h4-opaque-origin-rendezvous-implementation-v1
-      status: NEXT
+      status: BLOCKED_PENDING_HUMAN_PROOF_ISSUER_RETIREMENT_DECISION
       phase: H4_ORIGIN_CAPTURE_DEVICE_INDEPENDENCE_IMPLEMENTATION
       authority: HUMAN_BRAIN_PLANNING
       candidate_task_id: TASK-310
@@ -889,6 +1057,11 @@ sequence:
         - ZERO_OR_MULTIPLE_MATCHES_FAIL_CLOSED
         - NO_RECENT_ACTIVE_TIMESTAMP_SEMANTIC_OR_DEFAULT_CHAT_FALLBACK
         - RAW_MARKER_AND_RAW_CHAT_URL_NEVER_ENTER_CANONICAL_ENGINEERING_STATE
+        - RENDEZVOUS_PRECOMMIT_RENDER_RESOLVE_AND_COMPLETION_RESUME_IS_ONE_BOUNDED_HANDSHAKE
+        - EXACT_RESOLUTION_EMITS_ONE_TRANSPORT_ONLY_COMPLETION_SIGNAL_TO_THE_PROVED_CHAT
+        - COMPLETION_SIGNAL_CAUSES_FRESH_BRAIN_SYNC_BUT_SELECTS_NO_LIFECYCLE_ACTION
+        - HUMAN_DOES_NOT_SEND_A_SECOND_MESSAGE_FOR_NORMAL_RENDEZVOUS_COMPLETION
+        - RENDEZVOUS_INDEX_WAIT_MUST_NOT_MONOPOLIZE_EXECUTION_CRITICAL_RUNNER_CAPACITY
         - PRODUCE_BOUNDED_INDEPENDENT_ORIGIN_AUTHORING_PROOF_COMPATIBLE_WITH_TASK309_ADMISSION
         - PRESERVE_H4D_EXACT_ROUTE_WAKE_AFTER_ROUTE_ESTABLISHMENT
         - WAKE_TRANSPORT_MUST_NOT_READ_ASSISTANT_OUTPUT_TO_SELECT_LIFECYCLE_ACTION
@@ -941,6 +1114,11 @@ sequence:
             - SEARCH_UI_OR_ACCOUNT_SESSION_CAN_CHANGE_OR_BECOME_UNAVAILABLE
             - PROVIDER_SPECIFIC_GITHUB_CONNECTOR_DEPENDENCY_WOULD_BREAK_BRAIN_PORTABILITY
             - ORIGIN_PROOF_ISSUANCE_MUST_NOT_BECOME_SELF_CERTIFYING
+            - DESTINATION_RESOLUTION_WITHOUT_AUTOMATED_BRAIN_RESUME_WOULD_STILL_REQUIRE_A_SECOND_HUMAN_GESTURE
+            - CARRIER_AND_ASSISTANT_RENDER_CAN_PARTIALLY_SUCCEED_IN_EITHER_ORDER
+            - RENDEZVOUS_INDEX_WAIT_ON_CRITICAL_SELF_HOST_RUNNER_CAN_STARVE_EXECUTION
+            - CHAT_CAN_BECOME_NONWRITABLE_BETWEEN_MARKER_RENDER_AND_COMPLETION_WAKE
+            - NEWER_HUMAN_INTENT_CAN_SUPERSEDE_A_PENDING_RENDEZVOUS_SEMANTIC_ACTION
             - NEW_CHAT_CONTINUATION_TRANSFER_IS_DISTINCT_FROM_NEW_ORIGIN_CAPTURE
             - TASK310_AUTHORING_ITSELF_STILL_REQUIRES_CURRENT_PAGE_SCOPED_PROOF
         stage2:
@@ -989,6 +1167,25 @@ sequence:
               Durable operational state should retain only minimum bounded metadata or
               marker digest needed for expiry/replay safety.
             - >-
+              Rendezvous is one two-way bounded handshake. A provider/control-plane
+              adapter precommits the opaque marker to subordinate transport, the assistant
+              renders that exact marker in the originating turn, self-host resolves and
+              re-proves the Chat, then one transport-only completion signal is submitted
+              to that exact route. The completion signal is not Brain Attention and owns
+              no lifecycle semantics; it requests fresh Brain Sync only.
+            - >-
+              Partial handshake outcomes fail closed. Carrier-without-render,
+              render-without-carrier, zero/multiple/incomplete search, route instability,
+              non-writable completion target, duplicate/stale completion, or uncertain
+              transport cannot create a TASK/RUN or subject continuation. Newer explicit
+              Human intent is reconciled after the completion fresh sync and can supersede
+              the older pending action.
+            - >-
+              Search/index waits and completion recovery cannot hold execution-critical
+              self-host capacity in a way that starves PRIMARY/REPAIR/REMEDIATION.
+              Scheduling and provider integration remain replaceable HOW; bounded
+              nonblocking liveness is required.
+            - >-
               H4D exact-route wake begins only after route establishment and preserves
               existing exact-target, draft, dedupe, generation, ambiguity and
               no-blind-resend semantics.
@@ -1004,6 +1201,9 @@ sequence:
             AC9: CLAIM_NOW
             AC10: CLAIM_NOW
             AC11: CLAIM_NOW
+            AC12: CLAIM_NOW
+            AC13: CLAIM_NOW
+            AC14: CLAIM_NOW
           proof_later_reconciled_out: >-
             Post-publication live conformance from an actual phone/other-browser origin is
             not TASK acceptance. It remains a later Human/Brain live-exit observation and
@@ -1060,6 +1260,22 @@ sequence:
             that can be used for normal new-flow route allocation/reuse or as input to a
             separately authorized subject-scoped continuation binding without changing the
             ownership of unrelated subjects already using another conversation route.
+          AC12: >-
+            One ordinary Human message is sufficient for the normal rendezvous cycle:
+            bounded carrier precommit, exact assistant marker render, exact self-host
+            resolution/re-proof, route allocation/reuse, and exactly one transport-only
+            completion signal back to that proved Chat. Human does not press Connect or
+            send a second message merely to finish origin capture.
+          AC13: >-
+            Rendezvous completion is non-semantic and idempotent. Duplicate/stale
+            completion cannot duplicate TASK authoring; a newer explicit Human message
+            may supersede the pending action after fresh Brain Sync. Carrier/render/search/
+            completion partial failures remain bounded operational state and cannot mutate
+            canonical TASK/RUN or continuation state.
+          AC14: >-
+            Bounded indexing wait/retry and completion recovery do not monopolize the
+            execution-critical self-host runner such that unrelated PRIMARY, REPAIR,
+            REMEDIATION or another eligible route can be indefinitely starved.
         verification_candidate:
           policy: minimum-sufficient-v1
           focused:
@@ -1072,11 +1288,14 @@ sequence:
               establish absence of cross-control-plane regressions.
       authoring_preconditions:
         executor_selection: PENDING_HUMAN
-        current_page_origin_authoring_proof: REQUIRED_BY_CURRENT_TASK309_GATE
+        proof_issuer_contract_transition: PENDING_HUMAN_DECISION
+        current_page_origin_authoring_proof: REQUIRED_FOR_TASK310_BOOTSTRAP_UNDER_CURRENT_TASK309_GATE
         interpretation: >-
-          TASK-310 must not bypass its own predecessor gate. Until OPAQUE_ORIGIN_RENDEZVOUS_V1
-          is published, authoring TASK-310 itself still needs one lawful current-page
-          page-scoped origin proof under the existing TASK-309 contract.
+          TASK-310 must not bypass its own predecessor gate. Its own authoring may still
+          use one lawful current-page page-scoped proof. However, the Human must decide
+          whether to retire page-scoped bootstrap as the sole normative proof issuer for
+          post-TASK-310 production; without that transition, TASK-310 cannot satisfy the
+          standing no-Connect objective for future new TASK authoring.
       executor_delegation:
         status: REQUIRES_FRESH_HUMAN_SELECTION
         reason: NEW_TASK_IDENTITY_REQUIRES_HUMAN_DELEGATION
