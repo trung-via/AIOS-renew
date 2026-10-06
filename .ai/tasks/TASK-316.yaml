@@ -1,5 +1,5 @@
 task_id: TASK-316
-revision: 1
+revision: 2
 goal: Restore a trustworthy verification baseline required to resume BO-1 by repairing
   stale regression fixtures and test-harness assumptions exposed by RUN-313-005, and
   by restoring the published historical FINALIZE_CANDIDATE absent-reuse Executor fallback
@@ -18,9 +18,14 @@ problem: 'RUN-313-005 reached Runtime verification on the unchanged TASK-313 can
   contradicting the published TASK-314/TASK-315 invariant that absence uses the coding-Executor
   fallback while present invalid state fails closed. Until these baseline defects
   are corrected, TASK-313 full-suite verification cannot reliably discriminate BO-1
-  regressions from pre-existing verification debt.'
+  regressions from pre-existing verification debt. RUN-316-001 then failed canonically
+  at COMPLETION_GATE on candidate 43f9bdd022cee5752447e5fb3b1e05da351d59b5 because
+  the required v3 provider/protocol baseline repair needs src/aios_renew/brain_provider_protocol.py,
+  which revision 1 allowed only for inspection. Revision 2 corrects only that mutation-authority
+  omission; it does not reinterpret the failure as an implementation defect or widen
+  the baseline-recovery objective.'
 assumptions:
-- Canonical main at authoring is ecc5313ac0693b7471a551baa37874058435018c.
+- Canonical main at TASK-316 revision-2 authoring is 1985beae7e866b3e60e4d9295703f038a81f07f4.
 - RUN-313-005 is the current canonical TASK-313 verification failure and its failed
   candidate remains dd287d11eeaed3ba4bccabcd992fcb1b831bc0a3; TASK-316 does not rewrite,
   repair, supersede, or execute that lineage.
@@ -33,6 +38,9 @@ assumptions:
 - TASK-316 is a prerequisite baseline-recovery task. BO-1/TASK-313 resumes only after
   ordinary Runtime verification, semantic Review PASS and exact publication of the
   eligible TASK-316 candidate.
+- RUN-316-001 canonically failed at COMPLETION_GATE because src/aios_renew/brain_provider_protocol.py
+  is required to reconcile the current brain-high-value-v3 Stage-2 protocol contract
+  but was outside revision-1 scope.modify; revision 2 changes only that scope authority.
 scope:
   inspect:
   - .ai/tasks/TASK-313.yaml
@@ -63,6 +71,7 @@ scope:
   - tests/test_operator_correction_preflight.py
   - tests/test_authoring_ingress.py
   - tests/test_aios_ingress_metadata_identity_diagnostic.py
+  - src/aios_renew/brain_provider_protocol.py
   - tests/test_brain_provider.py
   - tests/test_brain_provider_protocol.py
   - tests/test_brain_sync.py
