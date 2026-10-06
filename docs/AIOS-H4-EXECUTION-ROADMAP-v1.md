@@ -97,6 +97,67 @@ evidence into H4E. Evidence is never waived.
 
 ## 4. Detailed execution sequence
 
+### Phase 0A — AUTHOR_TASK ingress simplification transition
+
+Status: **PENDING_HUMAN_APPROVAL OF THIS AMENDMENT**
+
+Human decision already approved:
+
+- retire mandatory serialized `AIOS_AUDITED_AUTHORING_HANDOFF` as an AUTHOR_TASK
+  mutation prerequisite;
+- keep the two-stage Brain audit as semantic authoring discipline;
+- preserve Runtime ownership of canonical mutation and all exact provenance gates.
+
+Reason:
+
+The current ingress requires Brain to reconstruct a full deterministic Decision Packet,
+Stage-1/Stage-2 audit envelope, packet fingerprints and acceptance-phase ledger merely to
+submit a final TASK contract. That cognitive-support plumbing is not canonical engineering
+truth and is duplicative once Human/Brain planning has already fixed TASK semantics.
+
+Target production shape after this transition:
+
+```text
+Human-approved roadmap + Human Executor selection
+  -> Brain two-stage semantic audit
+  -> final TASK contract
+  -> AUTHOR_TASK carrier
+  -> Runtime validates:
+       exact task identity
+       expected canonical main
+       final TASK schema/scope/verification contract
+       exact ORIGIN_AFFINE provenance where applicable
+       carrier attempt / envelope digest / replay safety
+  -> canonical TASK
+```
+
+AUTHOR_TASK must no longer require:
+
+- serialized Decision Packet;
+- `packet_fingerprint`;
+- `construct_fingerprint`;
+- Stage-1/Stage-2 audit envelope;
+- `acceptance_phase_ledger` as ingress transport material;
+- deterministic reconstruction of Brain audit support sections.
+
+The Runtime must still fail closed on invalid TASK contract, stale expected-main,
+origin-proof mismatch, carrier-attempt mismatch, replay conflict or mutation conflict.
+
+Bootstrap paradox and transition:
+
+- the currently published Runtime still enforces the old audited-handoff gate;
+- Brain must not bypass Runtime by committing a TASK file directly;
+- therefore exactly one transition implementation TASK may need to pass through the old
+  gate one final time;
+- after that reviewed implementation is published and activated, TASK-310 is authored
+  through the simplified ingress;
+- do not widen TASK-310 itself with this control-plane cleanup.
+
+No transition TASK may be authored until Human approves this roadmap amendment and selects
+its Executor/model/effort.
+
+Exit: `AUTHOR_TASK_SERIALIZED_AUDIT_HANDOFF_RETIRED_IN_RUNTIME`.
+
 ### Phase 0 — Governance transition and roadmap approval
 
 Status at roadmap creation:
