@@ -208,6 +208,43 @@ production_wake_amendment:
         TASK may nevertheless be authored until Human separately approves
         docs/AIOS-H4-EXECUTION-ROADMAP-v1.md. The cron retirement implementation must close
         before H4E live conformance. The H4D standalone gate remains conditional.
+  authoring_handoff_simplification:
+    decision: RETIRE_MANDATORY_SERIALIZED_AUDITED_HANDOFF_FOR_AUTHOR_TASK
+    human_decision: APPROVED_2026_10_06
+    contract_transition_commit: "12480b04577037807aa5118d0ff810b3effb3bb1"
+    rationale: >-
+      Two-stage Brain audit remains semantic authoring discipline, but serialized
+      Decision Packet / Stage-1 / Stage-2 / acceptance-phase-ledger reconstruction is
+      cognitive-support plumbing rather than canonical engineering truth and must not
+      remain an AUTHOR_TASK mutation prerequisite.
+    preserve:
+      - BRAIN_TWO_STAGE_TASK_DESIGN_AUDIT
+      - RUNTIME_CANONICAL_MUTATION_AUTHORITY
+      - FINAL_TASK_SCHEMA_SCOPE_AND_VERIFICATION_VALIDATION
+      - EXPECTED_MAIN_BINDING
+      - ORIGIN_AFFINE_EXACT_PROVENANCE_ADMISSION
+      - CARRIER_ATTEMPT_AND_ENVELOPE_DIGEST_BINDING
+      - REPLAY_IDEMPOTENCE_AND_MUTATION_CONFLICT_FAIL_CLOSE
+    retire_from_author_task_ingress:
+      - AIOS_AUDITED_AUTHORING_HANDOFF_REQUIRED
+      - DECISION_PACKET_FINGERPRINT_REQUIRED
+      - STAGE1_STAGE2_AUDIT_ENVELOPE_REQUIRED
+      - ACCEPTANCE_PHASE_LEDGER_REQUIRED_AS_INGRESS_TRANSPORT
+      - AUDIT_SUPPORT_SECTION_RECONSTRUCTION_REQUIRED
+    implementation_status: NOT_IMPLEMENTED
+    roadmap_amendment:
+      document: docs/AIOS-H4-EXECUTION-ROADMAP-v1.md
+      commit: "78161476f503f4cd3fe20cffeae161d30f73eb6c"
+      status: PENDING_HUMAN_APPROVAL
+    transition_rule: >-
+      Current published Runtime still enforces the retired gate. Preserve Runtime
+      mutation authority: do not create TASK files directly. One bounded transition
+      implementation TASK may use the old audited-handoff ingress for the final time,
+      then TASK-310 must use the simplified reviewed ingress.
+    transition_task:
+      id: UNASSIGNED
+      status: PROHIBITED_PENDING_HUMAN_ROADMAP_AMENDMENT_APPROVAL
+      executor_selection: PENDING_HUMAN
   execution_roadmap_review:
     document: docs/AIOS-H4-EXECUTION-ROADMAP-v1.md
     version: 1
@@ -229,7 +266,7 @@ production_wake_amendment:
       - H5_H4_CONFORMANCE_CLOSURE
       - TASK312_RETURN_TO_BLOCKED_TASK308_OBJECTIVE
     task_authoring_state:
-      TASK-310: READY_FOR_AUTHORING
+      TASK-310: BLOCKED_ON_AUTHORING_HANDOFF_SIMPLIFICATION_TRANSITION
       TASK-311: BLOCKED_ON_TASK310_AND_FUTURE_HUMAN_EXECUTOR_SELECTION
       TASK-312: BLOCKED_ON_TASK310_TASK311_H4_H5_SEQUENCE
       recovery_retirement_task: UNASSIGNED_PENDING_PHASE4_AUDIT_AND_HUMAN_REVIEW
@@ -1067,7 +1104,7 @@ sequence:
       architecture_status: LIVE_FEASIBILITY_PASS_IMPLEMENTATION_REQUIRED
     implementation_next:
       id: h4-opaque-origin-rendezvous-implementation-v1
-      status: READY_FOR_AUTHORING
+      status: BLOCKED_ON_AUTHORING_HANDOFF_SIMPLIFICATION_TRANSITION
       phase: H4_ORIGIN_CAPTURE_DEVICE_INDEPENDENCE_IMPLEMENTATION
       authority: HUMAN_BRAIN_PLANNING
       candidate_task_id: TASK-310
