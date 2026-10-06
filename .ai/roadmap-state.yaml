@@ -1147,6 +1147,7 @@ sequence:
           - HISTORICAL_TASK_AND_RUN_AFFINITY_IS_IMMUTABLE
           - TASK1_CAN_BE_PAUSED_OR_QUEUED_WHILE_TASK2_TASK3_PROGRESS
           - FUTURE_ATTENTION_FAMILIES_MUST_RESOLVE_THE_SAME_TASK_ROOT_DETERMINISTICALLY
+          - H4D_DIRECT_BASE_AFFINITY_EQUALS_DELIVERY_BINDING_MUST_NOT_BLOCK_EFFECTIVE_DESTINATION_COMPOSITION
           - PRE_SUBMIT_AND_POST_SUBMIT_ATTENTION_REQUIRE_DIFFERENT_MOVE_BEHAVIOR
           - TRANSFER_AND_NEW_EVENT_ARRIVAL_CAN_RACE
           - TWO_NEW_CHATS_CAN_COMPETE_TO_CONTINUE_THE_SAME_TASK
@@ -1179,6 +1180,14 @@ sequence:
             proof. Only after that proof may the operational continuation layer consult a
             Human-authorized binding for that exact repository + TASK id. Events whose
             root TASK cannot be proven receive no continuation override.
+          - >-
+            H4D's current direct equality check between canonical event affinity and the
+            route binding is not a permanent architecture invariant. TASK-311 must
+            preserve exact base-affinity proof while composing a separately proven
+            effective destination. Immediately before intake and possible send, both the
+            canonical lineage basis and current continuation epoch/destination must be
+            revalidated. H4D acquisition then receives only that already resolved exact
+            effective binding and retains no routing authority.
           - >-
             The continuation record contains only bounded operational selectors such as
             repository, TASK id, immutable canonical base affinity, current destination
@@ -1300,6 +1309,8 @@ sequence:
         - A_TO_B_TO_C_AND_EXPLICIT_RETURN_TO_PRIOR_ROUTE_USE_MONOTONIC_CONTINUATION_EPOCH
         - DESTINATION_RENDEZVOUS_ZERO_MULTIPLE_DELAYED_AND_UNAVAILABLE_CASES_FAIL_CLOSED
         - EVENT_WITHOUT_EXACT_ROOT_TASK_CANNOT_USE_SUBJECT_OVERRIDE
+        - BASE_AFFINITY_A_WITH_AUTHORIZED_EFFECTIVE_DESTINATION_D_DELIVERS_ONLY_D_WITHOUT_MUTATING_BASE
+        - H4D_ACQUISITION_RECEIVES_EFFECTIVE_BINDING_ONLY_AFTER_BASE_AND_CONTINUATION_REVALIDATION
         - RESOLVED_SUPERSEDED_EVENT_NOOPS_AFTER_TRANSFER_REVALIDATION
       non_goals:
         - MUTATE_HISTORICAL_TASK_OR_RUN_RETURN_AFFINITY
