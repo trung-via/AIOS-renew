@@ -166,8 +166,10 @@ Bootstrap paradox and transition:
   through the simplified ingress;
 - do not widen TASK-310 itself with this control-plane cleanup.
 
-No transition TASK may be authored until Human approves this roadmap amendment and selects
-its Executor/model/effort.
+The roadmap-approval prerequisite for this transition is satisfied. The transition now
+belongs to Brain Optimization Roadmap v1 BO-1 and remains unauthored only until its own fresh
+Human Executor/model/effort delegation is supplied; TASK-310 remains blocked until the complete
+Brain Optimization Roadmap v1 closes.
 
 Exit: `AUTHOR_TASK_SERIALIZED_AUDIT_HANDOFF_RETIRED_IN_RUNTIME`.
 
