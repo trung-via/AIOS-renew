@@ -1,0 +1,53 @@
+review_id: REVIEW-314-002
+reviewed_sha: 6671a2724b5b1b7fe03ac66468e79ef209bf876d
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- 'RUN-314-002 is the canonical successful REPAIR RESULT for TASK-314 r1. Candidate
+  6671a2724b5b1b7fe03ac66468e79ef209bf876d is two commits ahead of TASK-314 authoring
+  base ac155edb3a992a390eee4af72a4feeddba1ad65e and changes only TASK-authorized paths:
+  src/aios_renew/operator.py, tests/test_repair_preverification_eligibility.py, and
+  tests/test_operator.py.'
+- 'Runtime-owned verification is PASS on the exact reviewed candidate: focused pytest
+  reports 692 passed in 2181.55s and git diff --check passed; RESULT unresolved is
+  empty.'
+- "Semantic pass 1 \u2014 AC1/AC2/AC4: FINALIZE_CANDIDATE reuse is considered only\
+  \ after canonical repair authorization already selects that action. The implementation\
+  \ locates the nearest present structural package within the contiguous same-head\
+  \ REPAIR lineage, validates canonical transported failure/run/repair state for historical\
+  \ recovery, elides Executor invocation only when the package is eligible, preserves\
+  \ ordinary continuation RUN/REPAIR lineage, and otherwise retains Executor fallback\
+  \ when no eligible source exists."
+- "Semantic pass 1 \u2014 AC3: preserved claims remain structural only. Reused packages\
+  \ are evidence-free; RuntimeCompletion.complete still executes the TASK verification\
+  \ commands on the exact candidate and attaches fresh Runtime evidence for the new\
+  \ RUN."
+- "Semantic pass 2 \u2014 AC5/AC6: adversarial fail-closed behavior is covered for\
+  \ malformed/duplicate package, wrong TASK or revision, wrong run/subject/head, incomplete\
+  \ coverage, unresolved state, changed-files/scope mismatch, structural evidence\
+  \ or claim-evidence presence, lineage conflict, canonical/local conflict, and canonical\
+  \ missing state. Traversal inspects predecessor FAILURE at the boundary and stops\
+  \ before reading structural state across a candidate HEAD change."
+- "Semantic pass 2 \u2014 AC7: action isolation remains intact. Existing NO_CHANGE\
+  \ direct VERIFICATION-failure reuse is preserved; CODE_FIX and CONTINUE_IMPLEMENTATION\
+  \ do not consume ancestor structural packages; FINALIZE_CANDIDATE is the only action\
+  \ acquiring the new ancestor reuse path."
+- "Semantic pass 2 \u2014 AC8 and closure: regression coverage includes local and\
+  \ fresh historical control checkouts, two same-head completion-gate continuations,\
+  \ nearest-package selection, fail-closed nearest-present behavior, candidate-mutation\
+  \ boundary, and the Windows canonical verification command wrapper. The repair also\
+  \ corrects the stale CLI ingress fixture without weakening production origin-authoring\
+  \ provenance."
+- 'Authority closure: Runtime does not choose correction strategy, structural claims
+  do not become verification truth, Reviewer and Publisher remain separate, TASK-313
+  lineage is not rewritten, and no roadmap advancement is performed by this review.'
