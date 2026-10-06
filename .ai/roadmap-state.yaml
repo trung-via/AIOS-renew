@@ -839,7 +839,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-bo1-author-task-mutation-path-simplification
+  - brain-optimization-v1-task316-verification-baseline-recovery
 sequence:
 
   - id: TASK-309
@@ -955,7 +955,7 @@ sequence:
     return_to: task308-origin-correct-replacement-v1
 
   - id: brain-optimization-v1-bo1-author-task-mutation-path-simplification
-    status: NEXT
+    status: BLOCKED_BY_TASK316_VERIFICATION_BASELINE_RECOVERY
     phase: BO1_AUTHOR_TASK_MUTATION_PATH_SIMPLIFICATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
@@ -1097,6 +1097,59 @@ sequence:
         Canonical Publisher replay subsequently proved the reviewed source candidate
         was included in main. This is bounded recovery evidence, not a standing bypass.
     unblocks: [brain-optimization-v1-bo1-author-task-mutation-path-simplification]
+
+  - id: brain-optimization-v1-task316-verification-baseline-recovery
+    status: NEXT
+    phase: BO1_VERIFICATION_BASELINE_RECOVERY
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-07"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    task_id: TASK-316
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "ab7bae284370d9c959bad758a326e778e6dabb0a"
+    triggered_by:
+      task_id: TASK-313
+      run_id: RUN-313-005
+      terminal_kind: FAILURE
+      phase: VERIFICATION
+      failed_candidate_sha: "dd287d11eeaed3ba4bccabcd992fcb1b831bc0a3"
+      interpretation: >-
+        Exact-candidate diagnostics show the selected full-suite failure population is
+        materially contaminated by stale verification fixtures and test-harness assumptions
+        outside BO-1 semantics, while current main also exposes the published
+        FINALIZE_CANDIDATE absent-reuse Executor-fallback invariant as a bounded baseline
+        regression. TASK-316 repairs that verification baseline without rewriting TASK-313.
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-07"
+      task_id: TASK-316
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_316_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    objective: >-
+      Restore a trustworthy verification baseline required to resume BO-1 by repairing
+      stale regression fixtures and test-harness assumptions exposed by RUN-313-005,
+      including the current published correction-fallback invariant, without weakening
+      current production contracts or changing BO-1 semantics.
+    recovery_rule: >-
+      TASK-316 is a bounded prerequisite recovery overlay inside BO-1. It does not
+      replace or complete BO-1, alter TASK-313 lineage, or advance BO-2+. After exact
+      Runtime verification, semantic Review PASS and publication of TASK-316, restore
+      brain-optimization-v1-bo1-author-task-mutation-path-simplification as the unique NEXT.
+    return_to: brain-optimization-v1-bo1-author-task-mutation-path-simplification
+    blocks:
+      - brain-optimization-v1-bo1-author-task-mutation-path-simplification
+    boundaries:
+      - TEST_BASELINE_RECOVERY_NOT_BO1_SEMANTIC_CHANGE
+      - NO_WEAKENING_CURRENT_PRODUCTION_CONTRACTS_TO_SATISFY_STALE_TESTS
+      - NO_TASK313_LINEAGE_REWRITE
+      - RUNTIME_OWNS_CANONICAL_VERIFICATION
+      - REVIEWER_AND_PUBLISHER_BOUNDARIES_UNCHANGED
 
   - id: brain-optimization-v1-bo2-bounded-active-roadmap-projection
     status: QUEUED_AFTER_BO1
