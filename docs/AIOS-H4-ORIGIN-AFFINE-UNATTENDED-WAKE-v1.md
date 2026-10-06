@@ -218,7 +218,7 @@ Reconciled findings:
 - origin must never be inferred from timestamps, active tab, most-recent conversation, chat memory, semantic transcript similarity, or free-form assistant-output interpretation; exact matching of a precommitted machine-generated opaque rendezvous token is permitted only inside the bounded origin-capture boundary and grants no semantic or lifecycle authority;
 - raw chat URL remains noncanonical; any return selector exposed to lineage is bounded and opaque;
 - lane identity is conversation/return-route scoped, not TASK scoped;
-- route transfer requires explicit Human authority;
+- TASK/subject destination continuation requires explicit Human authority; conversation-route ownership/generation change is a separate transport-maintenance action and is never inferred from TASK continuation;
 - origin-affine flows never silently fall back to the historical repository-default H4A3 chat;
 - unattended delivery is the capability requirement; `true headless` is not a roadmap-mandated HOW;
 - a local unattended transport requires the host and authorized authenticated environment to be available; powered-off-host remote wake is out of scope;
@@ -309,6 +309,28 @@ output must not select lifecycle action. Wake transport remains a bounded doorbe
 must still reconstruct semantics from canonical state after delivery. The origin resolver
 may observe only the exact precommitted rendezvous marker needed to establish the
 conversation route.
+
+The production rendezvous is a two-way bounded handshake, not destination discovery alone.
+A provider/control-plane adapter first precommits the exact opaque marker to subordinate
+operational transport. The assistant then renders that exact marker in the originating
+assistant turn. Self-host resolves/re-proves the conversation and allocates or reuses its
+route. Finally, one bounded **transport-only rendezvous-completion signal** is delivered to
+that exact proved Chat so Brain can perform a fresh canonical sync and continue without a
+second Human message.
+
+The completion signal is not a Brain Attention family, RUN/RESULT fact, roadmap action or
+lifecycle instruction. It may carry only bounded correlation/receipt selectors sufficient
+for the Brain/provider adapter to consume the already proved origin. It cannot choose
+AUTHOR_TASK, continuation, correction, review, publication or NEXT. Those decisions remain
+Human/Brain decisions after fresh sync.
+
+Partial handshake outcomes fail closed. Carrier precommit without assistant render, render
+without admitted carrier state, zero/multiple/incomplete search, route movement, account or
+history unavailability, Chat becoming non-writable before completion, duplicate/stale
+completion or uncertain completion delivery cannot create TASK/RUN/continuation state.
+A newer explicit Human turn may supersede the pending semantic action; the old rendezvous
+still grants no lifecycle authority. Bounded search/index waits and completion recovery
+must not monopolize execution-critical self-host capacity.
 
 The bounded live feasibility probe is closed PASS for architecture selection. 2026-10-06
 Human live observations establish all four required cases:
@@ -469,15 +491,81 @@ this subject-scoped continuation capability. The staged TASK-308 replacement rem
 TASK-312 and stays blocked until both TASK-310 and TASK-311 are reviewed, published and
 available as production authority.
 
-### Human-approved H4C0 fallback — page-scoped origin bootstrap
+### Integrated H4 architecture audit — 2026-10-06
+
+After the device-independent rendezvous, subject-scoped continuation and preemptive H4E
+audit changed the target shape, Human authorized one end-to-end H4 integration audit before
+TASK-310 authoring. Stage 1 found historical mechanisms and wording that would otherwise
+lock the new target back to older assumptions. Stage 2 reconciled all non-normative
+contradictions and isolated the remaining Human retirement decisions.
+
+The audit preserves Frozen Kernel v0.1 and all Human/Brain/Runtime/Reviewer/Publisher
+authority boundaries. It preserves immutable TASK/RUN base affinity, exact canonical
+attention reconstruction, H4D exact-target safety, Human draft/generation protection,
+conversation-lane serialization, dedupe and ambiguous no-resend.
+
+The principal normative blocker is narrower: current Project Contract and
+`origin_authoring_proof.py` treat the page-scoped H4C0 bootstrap as the **only proof
+issuer**. That issuer coupling is incompatible with the approved post-TASK-310 goal. The
+audit therefore proposes retiring only the *sole-source requirement*, not origin
+provenance admission itself.
+
+If Human approves that retirement, transition is:
+
+```text
+TASK-310 authoring bootstrap
+  -> one lawful existing page-scoped proof may still be used
+  -> TASK-310 reviewed + published
+  -> rendezvous exact-origin issuer becomes normal production source
+  -> self-host carrier-attempt/TASK/main/envelope admission stays mandatory
+  -> Connect leaves the normal production path
+```
+
+The following safety remains non-retirable: exact machine-local route/generation proof,
+self-hosted admission, carrier-attempt binding, TASK id, expected-main binding, envelope
+digest, HMAC receipt, bounded freshness/replay behavior and prohibition on self-certified
+TASK provenance.
+
+Two additional retirement candidates are operational rather than constitutional:
+
+- the current `*/5` all-lanes recovery schedule on the execution-critical self-host
+  runner has already delayed PRIMARY. Durable deferred recovery remains required, but that
+  scheduler should leave the critical runner path before H4E live conformance;
+- the standalone H4D natural-event live gate is kept for now. If TASK-310 and TASK-311 both
+  publish without producing a qualifying natural unattended-target observation, Brain
+  should ask Human whether to fold that same evidence obligation into H4E rather than wait
+  indefinitely. No unattended-delivery evidence would be waived.
+
+Historical contradictions are explicitly superseded prospectively:
+
+- same exact conversation may be shared by multiple repository buckets through one
+  conversation-route lock; what remains forbidden is competing ownership through duplicate
+  route/state objects;
+- TASK continuation never repoints a conversation route;
+- current H4D direct `base affinity == delivery binding` is an implementation detail,
+  not an H4E invariant;
+- an all-lanes shared acquisition budget may bound one finite H4D invocation but cannot
+  become global routing authority or indefinite cross-lane starvation policy.
+
+Architecture freeze for TASK-310 therefore waits only on the Human decision about retiring
+page-scoped bootstrap as the sole normative proof issuer. The runner scheduling retirement
+must close before H4E live conformance; the H4D standalone-gate retirement remains
+conditional.
+
+### Historical/transition H4C0 fallback — page-scoped origin bootstrap
 
 On 2026-10-04 the Human stopped the optional Responses API smoke test and approved an architecture fallback after the current regular-Chat account surface did not expose the Developer Mode/custom MCP entry needed for the planned TASK-292 two-chat observation. This is an operational availability observation for the current surface, not a claim that OpenAI session metadata is invalid or unavailable on every account.
 
 TASK-292 remains immutable engineering evidence: its bounded `OPENAI_SESSION_ORIGIN_CAPTURE_V1` implementation, Runtime verification, semantic PASS, and exact publication remain valid. Its task acceptance and publication never closed H4C0, and the unavailable current-surface live path does not retroactively invalidate that work.
 
-The selected fallback architecture candidate is:
+The historically selected fallback architecture candidate was:
 
 `PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1`
+
+It remains the lawful current bootstrap mechanism and may be used once to author TASK-310
+under the existing Project Contract. It is no longer the target production origin UX.
+Whether it remains the sole normative authoring-proof issuer is explicitly pending Human
+retirement approval from the integrated H4 audit above.
 
 Two-stage architecture audit used `brain-high-value-v3`:
 
@@ -515,9 +603,9 @@ bounded bootstrap envelope
 initial authorized AIOS handoff
 ```
 
-Sending first and attempting to recover origin afterward is forbidden. A route handle is a bounded selector only; possession of it grants no TASK, execution, review, publication, roadmap, or route-transfer authority. The raw conversation URL remains noncanonical and must not enter TASK/RUN/RESULT/REVIEW semantics.
+Sending first and attempting to recover origin afterward is forbidden for this historical page-scoped bootstrap. A route handle is a bounded selector only; possession of it grants no TASK, execution, review, publication, roadmap, subject-continuation or route-maintenance authority. The raw conversation URL remains noncanonical and must not enter TASK/RUN/RESULT/REVIEW semantics.
 
-One regular-Chat conversation reuses one stable return-route handle across multiple flows unless an explicit Human-authorized rebind/transfer later changes its generation. Two distinct conversations in the same repository must receive distinct handles. Multiple tabs showing the same conversation do not create multiple conversation routes; the ephemeral challenge identifies the exact document on which the Human acted while the durable route remains conversation-scoped.
+One regular-Chat conversation reuses one stable return-route handle across multiple flows. TASK/subject continuation never repoints that handle. Two distinct conversations in the same repository must receive distinct handles. Multiple tabs showing the same conversation do not create multiple conversation routes; the ephemeral challenge identifies the exact document on which the Human acted while the durable route remains conversation-scoped. Any true route ownership/generation maintenance is a separate explicitly authorized transport operation, not TASK continuation.
 
 The origin subsystem does not inspect the Human prompt, transcript, or assistant response and must not become a Planner, Runtime, Reviewer, Publisher, generic router, or second wake queue. Existing bounded surface validation, URL normalization, durable-state, generation, ambiguity, and no-blind-resend primitives should be reused where semantically applicable rather than duplicated.
 
@@ -586,8 +674,9 @@ Rules:
 - distinct chat lanes may progress independently;
 - normal descendants of one semantic flow preserve its return affinity where applicable;
 - transport cannot semantically decide lineage membership;
-- route ownership moves only through explicit Human-authorized transfer;
-- ambiguous post-submit attempts remain bound to the generation on which they were attempted;
+- TASK/subject destination moves only through explicit Human-authorized subject continuation and do not repoint conversation-route ownership;
+- any actual route generation/ownership maintenance remains a separate transport concern;
+- ambiguous post-submit attempts remain bound to the generation/destination on which they were attempted;
 - missing/stale/conflicting affinity fails closed or requires Human rebind;
 - no silent fallback to H4A3/repository-default chat.
 
@@ -597,7 +686,8 @@ Required conformance:
 
 - same repository, Chat A/Flow X and Chat B/Flow Y: X wakes only A; Y wakes only B;
 - same Chat A, multiple flows: one lane, no simultaneous composer race, fresh pending-subject revalidation after each completed Brain turn;
-- explicit route-generation change: no silent redirect and post-submit ambiguity stays bound to its attempted generation.
+- explicit route-generation maintenance: no silent redirect and post-submit ambiguity stays bound to its attempted generation;
+- subject-continuation destination change: unrelated flows sharing the source route do not move, and ambiguous/submitted attempts stay pinned to their attempted destination.
 
 ## 6. H4D — Unattended Local Wake Transport
 
@@ -1140,7 +1230,7 @@ This plan does not authorize:
 - assistant-output parsing to select completion or next action;
 - ChatGPT Work as production wake fallback;
 - remote/cloud wake while the local host is powered off;
-- automatic route migration between conversations;
+- automatic TASK/subject destination migration or route ownership migration between conversations;
 - rebuilding valid H4A4 queue/dedupe/recovery semantics.
 
 ## 11. Approved sequencing
