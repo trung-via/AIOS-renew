@@ -1105,9 +1105,19 @@ sequence:
     approved_on: "2026-10-07"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-316
-    task_revision: 1
+    task_revision: 2
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "ab7bae284370d9c959bad758a326e778e6dabb0a"
+    task_author_commit_sha: "18088cb42a7f19c350661e068e6420c794fc0ed9"
+    predecessor_failure:
+      run_id: RUN-316-001
+      terminal_kind: FAILURE
+      phase: COMPLETION_GATE
+      failed_candidate_sha: "43f9bdd022cee5752447e5fb3b1e05da351d59b5"
+      disposition: TASK_CONTRACT_REVISION_REQUIRED
+      resolution: >-
+        Revision 2 adds only src/aios_renew/brain_provider_protocol.py to scope.modify
+        so the current brain-high-value-v3 Stage-2 protocol conflict can be corrected
+        without widening the baseline-recovery objective or changing BO-1 semantics.
     triggered_by:
       task_id: TASK-313
       run_id: RUN-313-005
