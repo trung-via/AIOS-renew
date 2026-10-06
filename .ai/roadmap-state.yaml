@@ -3288,6 +3288,12 @@ sequence:
       - MISSING_STALE_OR_CONFLICTING_AFFINITY_FAILS_CLOSED
       - NO_SILENT_H4A3_OR_REPOSITORY_DEFAULT_FALLBACK
       - LEGACY_REPOSITORY_DEFAULT_ROUTE_EXPLICITLY_CLASSIFIED_ONLY
+    prospective_supersession_note_2026_10_06: >-
+      HUMAN_EXPLICIT_ROUTE_TRANSFER_ONLY is preserved here as historical H4C1 acceptance
+      language. It does not govern post-H4 integration design. H4C1's enduring result is
+      immutable canonical base return_affinity and generation-safe route identity.
+      Current TASK destination movement is SUBJECT_SCOPED_CONTINUATION_BINDING_V1 and
+      never repoints a conversation route merely to move a TASK.
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
