@@ -839,7 +839,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-bo1-author-task-mutation-path-simplification
+  - brain-optimization-v1-task315-durable-repair-boundary-hotfix
 sequence:
 
   - id: TASK-309
@@ -955,7 +955,7 @@ sequence:
     return_to: task308-origin-correct-replacement-v1
 
   - id: brain-optimization-v1-bo1-author-task-mutation-path-simplification
-    status: NEXT
+    status: BLOCKED_ON_TASK315_DURABLE_REPAIR_BOUNDARY_HOTFIX
     phase: BO1_AUTHOR_TASK_MUTATION_PATH_SIMPLIFICATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
@@ -1041,6 +1041,40 @@ sequence:
       reviewed_sha: "6671a2724b5b1b7fe03ac66468e79ef209bf876d"
       published_sha: "6671a2724b5b1b7fe03ac66468e79ef209bf876d"
     unblocks: [brain-optimization-v1-bo1-author-task-mutation-path-simplification]
+
+  - id: brain-optimization-v1-task315-durable-repair-boundary-hotfix
+    status: NEXT
+    phase: BO1R_DURABLE_REPAIR_BOUNDARY_HOTFIX_RECOVERY
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-06"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    task_id: TASK-315
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "0096082cdc2d777a25ace2d0ec5f318a288847ed"
+    latest_failure_run_id: RUN-315-001
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-06"
+      task_id: TASK-315
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_315_ALL_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    objective: >-
+      Close only the durable REPAIR wakeup/dispatch integration defect exposed while
+      resuming TASK-313. RUN-315-001 failed Runtime verification because a regression
+      fixture modeled a malformed present pre-verification package while asserting the
+      absent-package Executor fallback. Repair that bounded fixture without weakening
+      TASK-314 fail-closed malformed-package semantics or widening TASK-315 production scope.
+    recovery_rule: >-
+      This is a bounded Human-requested recovery overlay inside BO-1. It does not replace
+      BO-1, BO-1R, BO-7 or H4. After exact reviewed publication of TASK-315, restore
+      brain-optimization-v1-bo1-author-task-mutation-path-simplification as the unique NEXT.
+    return_to: brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
   - id: brain-optimization-v1-bo2-bounded-active-roadmap-projection
     status: QUEUED_AFTER_BO1
