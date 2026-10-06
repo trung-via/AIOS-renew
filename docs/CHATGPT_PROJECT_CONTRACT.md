@@ -63,22 +63,44 @@ ChatGPT Brain owns:
 
 Brain does not implement production code.
 
-New revision-1 `ORIGIN_AFFINE` TASK authoring must carry the bounded opaque
-`origin_authoring_proof` emitted by this exact page's H4C0 bootstrap, alongside
+New revision-1 `ORIGIN_AFFINE` TASK authoring must carry a bounded opaque
+`origin_authoring_proof` from an **active reviewed exact-origin issuer**, alongside
 the audited ingress handoff. The proof stays in the operational ingress envelope,
 outside the TASK payload. Copying a selector, an old TASK, another chat's proof,
-or an assistant/transcript assertion does not establish this chat's provenance.
-The production carrier must admit the proof against machine-local H4C0 state on
-a bounded self-hosted runner before hosted AUTHOR_TASK mutation. Admission binds
-the exact Issue/run attempt, TASK id, expected main, final route/generation and
-envelope digest. Missing, stale, conflicting or reused proof fails closed.
+a rendezvous marker by itself, or an assistant/transcript assertion does not
+establish provenance.
 
-Ordinary revisions preserve the existing affinity exactly and do not consume a
-current-chat proof. Legacy routing is explicitly separate. Brain cannot infer
-origin from recent chat, repository defaults, prior artifacts or memory, and
-cannot put a self-certified admission into TASK or canonical lifecycle records.
-Deployment-owned key/registry configuration remains operational setup outside
-canonical artifacts. See [the TASK-309 provenance gate](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md#new-task-origin-provenance-gate-task-309).
+The production carrier must admit the proof against machine-local exact-origin
+state on a bounded self-hosted runner before hosted AUTHOR_TASK mutation.
+Admission binds the exact carrier/run attempt, TASK id, expected main,
+final route/generation and envelope digest. Missing, stale, conflicting,
+cross-attempt, mismatched or already-consumed proof fails closed except for
+the existing same-attempt idempotent replay semantics.
+
+The historical `PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1` issuer remains an
+active reviewed issuer during transition and may lawfully bootstrap TASK-310.
+It is **not** a permanent sole-source requirement. A replacement issuer becomes
+active only after its exact implementation is Runtime-verified, semantically
+reviewed PASS and published under the ordinary Publisher boundary, with explicit
+canonical activation. Until that activation, page-scoped bootstrap remains the
+only active production issuer. After activation, ordinary production authoring
+may use the reviewed device-independent exact-origin issuer without a Human
+Connect gesture, while page-scoped bootstrap may remain only as bounded
+manual diagnostic/recovery compatibility if the active architecture retains it.
+
+Changing proof issuer never weakens the provenance boundary: exact
+route/generation proof, self-hosted admission, carrier-attempt binding, TASK id,
+expected-main binding, envelope digest binding, deployment-owned HMAC receipt,
+bounded freshness/replay protection and no self-certified TASK provenance remain
+mandatory. Issuer selection is not lifecycle, roadmap, Reviewer, Publisher or
+Runtime authority.
+
+Ordinary revisions preserve the existing canonical base affinity exactly and do
+not consume a fresh origin proof. Legacy routing is explicitly separate. Brain
+cannot infer origin from recent chat, repository defaults, prior artifacts or
+memory, and cannot put a self-certified admission into TASK or canonical lifecycle
+records. Deployment-owned key/registry configuration remains operational setup
+outside canonical artifacts. See [the TASK-309 provenance gate](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md#new-task-origin-provenance-gate-task-309).
 This changes no Runtime verification, Reviewer verdict, Publisher publication,
 TASK-308 disposition, TASK-303 pause, or Human/Brain phase-closure authority.
 
