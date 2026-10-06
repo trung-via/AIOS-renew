@@ -1,0 +1,55 @@
+review_id: REVIEW-315-002
+reviewed_sha: 27dcd0021af61e42fbf3f2b988965ec4444a1033
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- 'RUN-315-002 is the canonical successful REPAIR RESULT for TASK-315 r1. Candidate
+  27dcd0021af61e42fbf3f2b988965ec4444a1033 is exactly two commits ahead of TASK authoring
+  commit 0096082cdc2d777a25ace2d0ec5f318a288847ed and changes only TASK-authorized
+  paths: src/aios_renew/operator.py, src/aios_renew/repair_dispatch.py, tests/test_operator.py,
+  tests/test_operator_correction_preflight.py, and tests/test_repair_dispatch.py.'
+- 'Runtime-owned verification is PASS on the exact reviewed candidate: focused pytest
+  reports 576 passed in 2345.32s and git diff --check passed; RESULT unresolved is
+  empty.'
+- "Semantic pass 1 \u2014 AC1/AC4: run_repair_wakeup obtains executor_required from\
+  \ canonical correction preflight, cross-checks it against Unified State, and durable\
+  \ dispatch validates the requirement instead of inferring Executor authority solely\
+  \ from the action label. CODE_FIX and CONTINUE_IMPLEMENTATION remain Executor-required,\
+  \ NO_CHANGE remains executorless, non-reusable FINALIZE_CANDIDATE retains the explicit-Executor\
+  \ path, and supplied Executor input is rejected when canonical preflight says executor_required=false."
+- "Semantic pass 1 \u2014 AC2/AC5: executor-elided FINALIZE_CANDIDATE still creates\
+  \ the ordinary continuation RUN bound to exact failed_run_id, repair authorization\
+  \ SHA, TASK and action. The admitted reusable structural package bypasses coding/native\
+  \ dispatch and execution-profile persistence only; RuntimeCompletion still runs\
+  \ the TASK verification commands and attaches fresh Runtime evidence before RESULT."
+- "Semantic pass 1 \u2014 AC3: repair-dispatch record v3 persists executor_required\
+  \ while retaining v1/v2 read compatibility. Replay/collision/RUN binding and terminal\
+  \ reconciliation bind exact selectors; an executorless continuation may inherit\
+  \ the failed RUN Executor label only as lineage and is explicitly rejected if an\
+  \ execution-profile file exists."
+- "Semantic pass 2 \u2014 adversarial authority check: no new Brain/Runtime/router/retry\
+  \ authority is introduced. Brain remains the correction-strategy owner, Runtime\
+  \ preflight owns deterministic reuse/Executor requirement, durable transport only\
+  \ enforces that fact, and Reviewer/Publisher boundaries remain downstream."
+- "Semantic pass 2 \u2014 fail-closed negative paths: malformed-present reusable state\
+  \ remains BLOCKED with REUSABLE_STATE_ADMISSION / REUSABLE_STATE_REJECTED, while\
+  \ genuine absence falls back to executor_required=true. Explicit Executor on an\
+  \ executor-elided reusable FINALIZE is rejected before RUN creation; CODE_FIX, CONTINUE_IMPLEMENTATION,\
+  \ NO_CHANGE and non-reusable FINALIZE isolation are covered by regression tests."
+- 'Repair closure: REPAIR-315-001-001 changes only tests/test_operator_correction_preflight.py,
+  separating ABSENT reusable state from PRESENT malformed state without modifying
+  TASK-315 production implementation or weakening TASK-314 same-head structural-package
+  fail-closed semantics.'
+- 'Authority closure: TASK-313 artifacts and BO-1/BO-7/H4 semantics are not mutated
+  by the candidate or this review. Roadmap restoration to TASK-313 is a later Human/Brain
+  planning reconciliation after exact reviewed publication of TASK-315, not a Reviewer
+  side effect.'
