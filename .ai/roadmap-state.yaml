@@ -1000,7 +1000,7 @@ sequence:
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-314
     task_revision: 1
-    task_authoring_status: READY_FOR_AUTHORING
+    task_authoring_status: CANONICALIZED
     executor_delegation:
       authority: HUMAN
       selected_on: "2026-10-06"
