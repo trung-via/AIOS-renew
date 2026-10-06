@@ -211,11 +211,13 @@ production_wake_amendment:
   execution_roadmap_review:
     document: docs/AIOS-H4-EXECUTION-ROADMAP-v1.md
     version: 1
-    status: PENDING_HUMAN_APPROVAL
+    status: HUMAN_APPROVED
     proposed_on: "2026-10-06"
+    approved_on: "2026-10-06"
     authority: HUMAN_BRAIN_PLANNING
-    commit: "ffee3ba95524fbb719907ab2ffaa5ee7d77369d7"
-    hard_gate: NO_TASK_AUTHORING_BEFORE_HUMAN_APPROVAL
+    approval: APPROVE_H4_EXECUTION_ROADMAP_V1
+    document_commit: "796343ca5093a49729b2aa6c91f3b1515399b0fd"
+    hard_gate: RELEASED
     covers:
       - TASK310_DEVICE_INDEPENDENT_RENDEZVOUS
       - TASK310_REVIEWED_ISSUER_ACTIVATION_AND_LIVE_HANDSHAKE
@@ -227,10 +229,10 @@ production_wake_amendment:
       - H5_H4_CONFORMANCE_CLOSURE
       - TASK312_RETURN_TO_BLOCKED_TASK308_OBJECTIVE
     task_authoring_state:
-      TASK-310: PROHIBITED_PENDING_ROADMAP_APPROVAL
-      TASK-311: PROHIBITED_PENDING_ROADMAP_APPROVAL
-      TASK-312: PROHIBITED_PENDING_ROADMAP_APPROVAL
-      recovery_retirement_task: UNASSIGNED_AND_PROHIBITED_PENDING_ROADMAP_APPROVAL
+      TASK-310: READY_FOR_AUTHORING_PENDING_HUMAN_EXECUTOR_SELECTION
+      TASK-311: BLOCKED_ON_TASK310_AND_FUTURE_HUMAN_EXECUTOR_SELECTION
+      TASK-312: BLOCKED_ON_TASK310_TASK311_H4_H5_SEQUENCE
+      recovery_retirement_task: UNASSIGNED_PENDING_PHASE4_AUDIT_AND_HUMAN_REVIEW
     human_review_choices:
       - APPROVE_H4_EXECUTION_ROADMAP_V1
       - REQUEST_MODIFICATIONS
@@ -1065,7 +1067,7 @@ sequence:
       architecture_status: LIVE_FEASIBILITY_PASS_IMPLEMENTATION_REQUIRED
     implementation_next:
       id: h4-opaque-origin-rendezvous-implementation-v1
-      status: BLOCKED_PENDING_HUMAN_H4_EXECUTION_ROADMAP_APPROVAL
+      status: READY_FOR_AUTHORING_PENDING_HUMAN_EXECUTOR_SELECTION
       phase: H4_ORIGIN_CAPTURE_DEVICE_INDEPENDENCE_IMPLEMENTATION
       authority: HUMAN_BRAIN_PLANNING
       candidate_task_id: TASK-310
@@ -1319,7 +1321,7 @@ sequence:
               establish absence of cross-control-plane regressions.
       authoring_preconditions:
         executor_selection: PENDING_HUMAN
-        detailed_h4_execution_roadmap: PENDING_HUMAN_APPROVAL
+        detailed_h4_execution_roadmap: HUMAN_APPROVED
         proof_issuer_contract_transition: APPROVED_AND_CONTRACT_UPDATED
         contract_transition_commit: "ab6aa57b1e281daf46b492aa6a3a559e2e2ea23e"
         current_page_origin_authoring_proof: REQUIRED_FOR_TASK310_BOOTSTRAP_UNDER_CURRENT_TASK309_GATE
