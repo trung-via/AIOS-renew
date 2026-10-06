@@ -1092,12 +1092,24 @@ Reconciliation:
 
 1. Same repository, Chat A/Flow X and Chat B/Flow Y: X wakes only A; Y wakes only B.
 2. A flow started from another browser/phone is origin-proved without local Connect.
-3. Initial rendezvous zero followed by bounded same-token index convergence reaches the
+3. The full precommit -> assistant render -> self-host resolve/re-proof -> completion-resume
+   handshake requires only the initiating Human message.
+4. The completion signal returns to the exact proved Chat and causes fresh Brain Sync
+   without carrying a lifecycle action.
+5. Duplicate or stale completion is idempotent and cannot duplicate TASK authoring or
+   subject continuation.
+6. A newer explicit Human message arriving before completion may supersede the older
+   pending semantic action after fresh sync; the rendezvous itself cannot force it.
+7. Carrier-without-render, render-without-carrier, and a Chat that becomes non-writable
+   before completion fail closed without fallback or canonical mutation.
+8. Initial rendezvous zero followed by bounded same-token index convergence reaches the
    correct one match.
-4. Permanent zero, multiple, incomplete enumeration, account/history/search unavailability
+9. Permanent zero, multiple, incomplete enumeration, account/history/search unavailability
    or final uniqueness uncertainty fails closed.
-5. Missing/stale/conflicting route never falls back to repository-default/H4A3 chat.
-6. A target not pre-opened by the Human still delivers unattended.
+10. Rendezvous wait/recovery does not starve execution-critical self-host work or unrelated
+    eligible conversation lanes.
+11. Missing/stale/conflicting route never falls back to repository-default/H4A3 chat.
+12. A target not pre-opened by the Human still delivers unattended.
 
 #### B. Subject-scoped continuation
 
@@ -1214,6 +1226,7 @@ Add:
 33. `BASE_AFFINITY_EFFECTIVE_DESTINATION_SEPARATION` — immutable canonical base affinity remains provable even when a Human-authorized subject continuation selects a different current destination.
 34. `MULTI_LANE_FAIRNESS_NO_GLOBAL_ACQUISITION_LOCK_IN` — independent eligible lanes retain bounded progress opportunities and cannot be indefinitely suppressed by another lane, a global acquisition budget or recovery job.
 35. `CONTINUATION_STATE_FAIL_CLOSED` — missing/corrupt/uncertain subject-continuation state never silently falls back to the historical chat.
+36. `ZERO_HUMAN_FOLLOWUP_RENDEZVOUS_HANDSHAKE` — normal device-independent origin capture completes precommit, exact marker render, exact self-host resolution and one transport-only completion resume with no second Human message; partial handshake outcomes fail closed and cannot mutate lifecycle state.
 
 H5 is blocked until these conditions and the original H5 matrix are satisfied.
 
