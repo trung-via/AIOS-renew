@@ -61,7 +61,9 @@ def origin_carrier_fixture(tmp_path, monkeypatch):
                        "GITHUB_RUN_ATTEMPT": "1", "RUNNER_ENVIRONMENT": "self-hosted",
                        "AIOS_ORIGIN_REGISTRY": str(registry.path), "AIOS_ORIGIN_ADMISSION_KEY": "c" * 64}.items():
         monkeypatch.setenv(key, value)
-    event = _write_event(tmp_path, _event(json.dumps(asdict(envelope))))
+    body = asdict(envelope)
+    del body["audited_handoff"]
+    event = _write_event(tmp_path, _event(json.dumps(body)))
     policy = _write_policy(tmp_path)
     receipt = tmp_path / "admission.json"
     return repo, remote, main_sha, registry, envelope, admission, event, policy, receipt
@@ -70,6 +72,8 @@ def origin_carrier_fixture(tmp_path, monkeypatch):
 def test_production_origin_carrier_uses_local_admission_then_authenticated_hosted_delivery(tmp_path, monkeypatch):
     from tests.test_authoring_ingress import git
     repo, remote, main_sha, registry, envelope, _, event, policy, receipt = origin_carrier_fixture(tmp_path, monkeypatch)
+    assert envelope.audited_handoff is None
+    assert "audited_handoff" not in json.loads(json.loads(event.read_text(encoding="utf-8"))["issue"]["body"])
     carrier.prepare_origin_admission(event, policy, receipt)
     before = receipt.read_bytes()
     carrier.prepare_origin_admission(event, policy, receipt)
@@ -306,7 +310,7 @@ payload:
     assert not (tmp_path / "owned").exists()
 
 
-@pytest.mark.parametrize("operation", ["AUTHOR_TASK", "AUTHOR_REPAIR"])
+@pytest.mark.parametrize("operation", ["AUTHOR_REMEDIATION", "AUTHOR_REPAIR"])
 def test_audited_handoff_remains_opaque_and_semantic_rejection_has_no_success_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], operation: str
 ) -> None:
@@ -333,6 +337,57 @@ def test_audited_handoff_remains_opaque_and_semantic_rejection_has_no_success_ou
     assert "CANDIDATE" in receipt
     assert "status: PASS" not in receipt
     assert not output.exists()
+
+
+def test_production_task_carrier_canonicalizes_direct_new_and_revision(tmp_path):
+    from dataclasses import asdict, replace
+    from tests.test_authoring_ingress import (
+        git, new_task_envelope, setup_test_repo, V1_TASK_105_R2_SOURCE,
+    )
+
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = new_task_envelope(main_sha)
+    policy = _write_policy(tmp_path)
+    for revision in (1, 2):
+        if revision == 2:
+            envelope = replace(envelope, expected_state={"expected_main_sha": main_sha},
+                               payload=V1_TASK_105_R2_SOURCE)
+        body = asdict(envelope)
+        del body["audited_handoff"]
+        del body["origin_authoring_proof"]
+        event = _write_event(tmp_path, _event(json.dumps(body)))
+        result = carrier.deliver_event(event, policy, repo=repo).ingress_result
+        assert result.status == "CANONICALIZED"
+        main_sha = result.canonical_sha
+        assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+        task = yaml.safe_load(git(repo, "show", f"{main_sha}:.ai/tasks/TASK-105.yaml"))
+        assert task["revision"] == revision
+        assert carrier.deliver_event(event, policy, repo=repo).ingress_result.status == "IDEMPOTENT"
+
+
+@pytest.mark.parametrize("handoff", [None, {
+    "format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1, "stage1": {}, "stage2": {},
+}])
+def test_production_task_carrier_rejects_handoff_without_success_receipt(tmp_path, capsys, handoff):
+    from dataclasses import asdict
+    from tests.test_authoring_ingress import git, new_task_envelope, setup_test_repo
+
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    body = asdict(new_task_envelope(main_sha))
+    del body["origin_authoring_proof"]
+    body["audited_handoff"] = handoff
+    event = _write_event(tmp_path, _event(json.dumps(body)))
+    policy = _write_policy(tmp_path)
+    output = tmp_path / "github-output"
+    assert carrier.main(["--event", str(event), "--policy", str(policy),
+                         "--repo", str(repo), "--output", str(output)]) == 1
+    receipt = capsys.readouterr().out
+    assert "status: FAIL" in receipt
+    assert "AUTHOR_TASK does not accept audited_handoff" in receipt
+    assert "status: PASS" not in receipt
+    assert not output.exists()
+    assert git(repo, "rev-parse", "refs/heads/main") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
 
 
 def test_receipts_are_bounded() -> None:

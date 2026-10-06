@@ -26,7 +26,35 @@ Acceptance criteria must be atomic, observable, and collectively complete. Each 
 
 For every newly authored TASK, each acceptance criterion must be truthfully claimable by an admitted Executor as a concrete implementation property before Runtime verification. Author the criterion around what the completed implementation establishes, not a future verification outcome or lifecycle event. Runtime verification timing and results, canonical EVIDENCE, Reviewer judgment, publication, roadmap advancement, and other later lifecycle facts remain with their existing authorities. Brain and Human own this semantic authoring judgment; structural validation does not classify acceptance prose.
 
-## Declare acceptance proof phase in Stage 2
+## Runtime AUTHOR_TASK admission
+
+After publication of the reviewed BO-1 transition, AUTHOR_TASK has one production
+mutation path: Runtime validates the final TASK contract and its canonical/provenance
+bindings directly. The operational envelope must omit `audited_handoff`; supplying it,
+including an explicit null field, is rejected for new identities, revisions and replay.
+Runtime does not require, reconstruct, validate, fingerprint or freshness-recheck a
+Decision Packet, Stage-1/Stage-2 material, `acceptance_phase_ledger` or TASK_AUTHORING
+audit-support sections for AUTHOR_TASK mutation.
+
+Direct admission preserves schema validation, exact payload/identity agreement and
+revision continuity, `minimum-sufficient-v1`, authored return-affinity preservation,
+expected-main currentness, unrelated-delta rejection and expected-old-main
+compare-and-swap. Any conflicting direct contract or provenance binding fails closed.
+Identical historical replay remains read-only under its existing identity rules.
+
+New revision-1 `ORIGIN_AFFINE` TASKs still require independently admitted
+`origin_authoring_proof` in the operational envelope, outside the TASK payload.
+Admission binds exact carrier attempt, TASK id, expected main, route/generation and
+envelope digest, with existing HMAC, freshness, replay and same-attempt-idempotence
+guards. Legacy TASKs and revisions cannot consume a current-chat origin proof;
+revisions preserve their existing authored affinity.
+
+Brain must still perform `CONSTRUCT -> ADVERSARIAL_AUDIT_AND_RECONCILE`. Its
+transient semantic support remains a cognitive discipline, not a Runtime mutation
+credential. AUTHOR_REMEDIATION and AUTHOR_REPAIR retain their existing audited
+handoffs, canonical reconstruction, correction-lineage and freshness validation.
+
+## Declare acceptance proof phase during the Brain audit
 
 For prospective `TASK_AUTHORING`, Brain alone classifies acceptance proof phase
 during the existing adversarial audit and reconciliation:
@@ -44,26 +72,26 @@ exactly `id` (non-empty text, at most 256 UTF-8 bytes) and `phase` (`CLAIM_NOW` 
 It is normalized and bound into `stage2_fingerprint` and serialized Brain decision
 identity. Substituting the ledger changes that identity.
 
-Before final `CANDIDATE` handoff, reconcile every `PROOF_LATER` requirement out of
+Before the final `CANDIDATE`, reconcile every `PROOF_LATER` requirement out of
 final acceptance and retain its intent on existing verification, constraint or
 non-goal surfaces as semantically appropriate. If reconciliation cannot close the
 risk, return a closure `BLOCKER` and `NO_DECISION`. A valid final ledger covers the
 reconciled candidate's acceptance ids exactly once, all `CLAIM_NOW`.
 
-AUTHOR_TASK ingress requires this ledger for every new identity or revision and
-rejects missing, duplicate, extra, substituted or `PROOF_LATER` entries before
-mutation. BP-4A only validates bounded declared shape and fingerprints it; final
-acceptance coverage and the all-`CLAIM_NOW` gate belong to ingress. Runtime,
-provider protocol and ingress never infer phase from acceptance prose.
+Brain's semantic audit must establish exact final acceptance coverage and all
+`CLAIM_NOW` entries. BP-4A retains its bounded declared-shape and fingerprint
+validation within that audit protocol. The historical H3 AUTHOR_TASK ingress
+ledger gate is superseded by BO-1: Runtime neither receives nor validates this
+ledger as mutation authority. Runtime, provider protocol and ingress never infer
+phase from acceptance prose.
 
 The ledger is transient cognitive support, never lifecycle truth, evidence or a
 persistent reasoning record. Do not add it to the TASK candidate or canonical TASK
 bytes; frozen acceptance entries still contain only `id` and `condition`.
 REMEDIATION_AUTHORING, REPAIR_AUTHORING and other flows retain their existing
-contracts and reject this TASK-only material. Identical historical TASK replay
-remains non-mutating and does not require a ledger; prospective changes cannot
-bypass the gate. This contract creates no RUN, execution, verification, verdict,
-publication or roadmap advancement.
+contracts and reject this TASK-only material. TASK authoring and historical
+read-only replay both omit this material from Runtime ingress. This contract
+creates no RUN, execution, verification, verdict, publication or roadmap advancement.
 
 ## Specify verification once
 

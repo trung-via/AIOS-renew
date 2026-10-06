@@ -6,6 +6,35 @@ Architecture subject main: `a77cb976ed70f9e066a94abc3a1e0c78db680cd2`
 Audit profile: `brain-high-value-v2`  
 Scope: prospective control-plane hardening only; no engineering completion claim
 
+## Post-BO-1 AUTHOR_TASK boundary
+
+Human approved the BO-1 architecture on 2026-10-06. On publication of the reviewed
+transition implementation, AUTHOR_TASK has one production mutation path: Runtime
+validates the final TASK contract and canonical/provenance bindings directly, and
+rejects any supplied `audited_handoff`, including an explicit null field. TASK-313
+is the one bounded transition permitted to use the legacy audited ingress for the
+final time; this document does not assert review, publication or roadmap closure.
+
+AUTHOR_TASK must not require, reconstruct, validate, fingerprint or freshness-recheck
+`AIOS_AUDITED_AUTHORING_HANDOFF`, Decision Packet, Stage-1/Stage-2 material,
+`acceptance_phase_ledger` or TASK_AUTHORING audit-support sections as mutation
+prerequisites. Brain's mandatory `CONSTRUCT -> ADVERSARIAL_AUDIT_AND_RECONCILE`
+remains cognitive/semantic authoring discipline, not a second mutation credential.
+
+Runtime preserves direct TASK schema and identity/revision validation, minimum-sufficient
+verification policy, authored return affinity, expected-main currentness, unrelated-delta
+rejection and expected-old-main compare-and-swap, including concurrent-mutation fail-close.
+New revision-1 ORIGIN_AFFINE provenance remains independently admitted and bound to exact
+carrier attempt, TASK id, expected main, route/generation and envelope digest, with existing
+HMAC, freshness, replay and same-attempt-idempotence semantics. Legacy/revision separation
+and affinity preservation remain in force.
+
+The H1 and H3 AUTHOR_TASK mutation requirements and their TASK-specific H5/v3 ingress
+conformance statements below are historical and superseded for AUTHOR_TASK only.
+AUTHOR_REMEDIATION and AUTHOR_REPAIR retain their existing audited handoffs, canonical
+reconstruction, correction-lineage and freshness checks. The original historical baseline
+and audit identities remain recorded below; BO-1 does not simplify correction authoring.
+
 ## 1. Purpose
 
 This track closes demonstrated continuity gaps between canonical AIOS state, Brain
@@ -19,7 +48,8 @@ remember an unstated procedural obligation.
 
 ## 2. Evidence basis
 
-The architecture is grounded in current AIOS-renew and fresh downstream observations:
+The historical architecture baseline is grounded in AIOS-renew at the recorded
+architecture subject main and the then-fresh downstream observations:
 
 - BP-4A already implements a real two-stage `CONSTRUCT -> ADVERSARIAL_AUDIT_AND_RECONCILE`
   protocol for ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING and
@@ -67,9 +97,10 @@ Kernel v0.1 freezes the canonical TASK/RUN/RESULT/EVIDENCE/REVIEW contract famil
 This track therefore does **not** add a field to the canonical TASK acceptance schema
 and does not redefine RESULT claims.
 
-The acceptance deadlock is closed prospectively by hardening the audited authoring
-handoff: before a new TASK/revision is canonically mutated, Brain must explicitly
-classify acceptance statements by proof phase inside a transient audited handoff.
+Brain must classify acceptance statements by proof phase during its semantic audit
+before finalizing a new TASK/revision. Historical H3 transported that classification
+in an audited authoring handoff; BO-1 supersedes that Runtime prerequisite while
+preserving Brain's reconciliation obligation.
 A condition whose truth belongs only after Runtime verification must be reconciled
 out of canonical `acceptance` and represented by the existing Runtime-owned
 `verification.required` contract (plus ordinary constraints/non-goals where
@@ -78,6 +109,10 @@ needed). The final frozen TASK candidate still uses the existing schema.
 Historical TASKs and immutable lineage are never rewritten.
 
 ## 5. H1 — Audited Authoring Gate
+
+Historical H1 is retained here as the approved baseline. Its AUTHOR_TASK handoff,
+packet reconstruction and freshness requirements are superseded by the post-BO-1
+boundary above. Sections 5.1–5.3 continue to govern correction authoring only.
 
 ### 5.1 Boundary
 
@@ -175,6 +210,10 @@ This is a compatibility correction, not a generic correction router.
 
 ## 7. H3 — Acceptance proof-phase authoring contract
 
+The historical Runtime ledger gate described here is superseded for AUTHOR_TASK
+by BO-1. Classification, exact coverage and reconciliation remain Brain semantic
+audit obligations; the ledger is not transported to AUTHOR_TASK ingress.
+
 Preserve the frozen TASK schema while making proof ownership explicit before
 canonical authoring.
 
@@ -199,12 +238,13 @@ moved to the existing verification/constraint surface as appropriate. Therefore 
 final handoff ledger for a valid frozen TASK contains every final acceptance id as
 `CLAIM_NOW`.
 
-Ingress checks exact ledger coverage and rejects any final TASK handoff containing a
-`PROOF_LATER` acceptance entry.
+Historical H3 required ingress to check exact ledger coverage and reject a final TASK
+handoff containing a `PROOF_LATER` acceptance entry. Post-BO-1, Brain owns that
+semantic coverage check and Runtime admits the final TASK contract directly.
 
 This does not make Runtime interpret natural-language acceptance criteria. The Brain
-performs the semantic classification during the already-required two-stage audit;
-ingress only enforces complete declared coverage and the no-PROOF_LATER invariant.
+performs semantic classification and reconciliation during the already-required
+two-stage audit. The historical ingress coverage gate is no longer mutation authority.
 
 ## 8. H4 — Local Regular Chat wake and Brain resume
 
@@ -336,7 +376,13 @@ conversation. Conversation/session identity never becomes engineering truth.
 
 ## 9. H5 — Integration/conformance closure
 
-Before the hardening track closes, minimum conformance must cover:
+The original hardening baseline required the following minimum conformance:
+
+This historical list retains the original H1/H3 requirements. For post-BO-1
+AUTHOR_TASK, items 1–4 and 9 are superseded by handoff-free final-contract success,
+supplied-handoff rejection, direct safety/provenance failures and concurrent-main
+fail-close coverage. Item 5 continues to require correction audited-handoff enforcement
+and freshness. Brain's proof-phase reconciliation remains semantic discipline.
 
 1. new unaudited TASK mutation is rejected;
 2. valid two-stage audited TASK candidate is accepted;
@@ -462,8 +508,10 @@ AIOS-renew generation, including Research Assurance and this hardening generatio
 
 ## 12. Prospective Brain Audit v3 conformance (TASK-267)
 
-The current registry selects `brain-high-value-v3` first for new canonical
-TASK, REMEDIATION and REPAIR authoring. Historical `brain-high-value-v2` remains
+The current registry selects `brain-high-value-v3` first for new Brain semantic
+TASK, REMEDIATION and REPAIR audits. Runtime correction authoring retains that
+profile validation; post-BO-1 AUTHOR_TASK mutation does not consult the registry
+or require these serialized audit sections. Historical `brain-high-value-v2` remains
 parseable and directly validatable with its original profile digest and Stage-2
 grammar; it is not converted to v3. Identical canonical replay remains read-only.
 The architecture baseline and historical audit statements above retain their v2
@@ -527,9 +575,11 @@ Any blocked entry requires a blocked section. Any blocked section requires a
 Stage-2 closure `BLOCKER` on its corresponding existing lens: `AUTHORITY_BOUNDARY`
 for context, `FAILURE_MODE_COUNTEREXAMPLES` for shape, or
 `AC_CONSISTENCY_COMPLETENESS` for terminal feasibility. Closure must be
-`NO_DECISION`, with no candidate handoff. Ingress still validates fresh packet
-lineage, exact candidate/payload identity and CAS before constructing any authoring
-blob, index, commit or ref update.
+`NO_DECISION`, with no candidate handoff. This remains a Brain semantic audit rule.
+Correction ingress still validates fresh packet lineage, exact candidate/payload
+identity and CAS before constructing authoring blobs, indexes, commits or ref updates.
+Post-BO-1 AUTHOR_TASK instead validates the final TASK and canonical/provenance
+bindings directly, without these sections or an audit handoff.
 
 ### 12.4 Authority and privacy
 

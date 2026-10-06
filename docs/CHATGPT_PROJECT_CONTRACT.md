@@ -75,13 +75,24 @@ Brain audit itself remains a semantic authoring obligation: Brain must still aud
 TASK design before handoff, but cognitive-support/audit plumbing is not canonical
 engineering truth and must not be required as a second mutation authority.
 
-This retirement is prospective. Until a reviewed implementation removes the old ingress
-gate, the currently published Runtime may continue to require the legacy audited handoff
-for the one transition TASK needed to remove it. After activation, AUTHOR_TASK admission
-must validate the final TASK contract and canonical/provenance bindings directly, without
-requiring reconstruction of Brain audit fingerprints. Copying a selector, an old TASK, another chat's proof,
-a rendezvous marker by itself, or an assistant/transcript assertion does not
-establish provenance.
+The post-BO-1 rule takes effect when the reviewed transition implementation is published.
+TASK-313 is the one bounded transition permitted to use the legacy audited AUTHOR_TASK
+ingress for the final time. Subsequent AUTHOR_TASK mutation has one production path:
+validate the final TASK contract and canonical/provenance bindings directly. Reject any
+supplied `audited_handoff`, including an explicit null field. Do not require, reconstruct,
+validate, fingerprint or freshness-recheck Decision Packet, Stage-1/Stage-2 material,
+`acceptance_phase_ledger` or TASK_AUTHORING audit-support sections for that mutation.
+
+Brain still performs `CONSTRUCT -> ADVERSARIAL_AUDIT_AND_RECONCILE` as mandatory
+semantic authoring discipline. Runtime directly enforces TASK schema, exact identity and
+revision continuity, minimum-sufficient verification policy, authored return affinity,
+expected-main currentness, unrelated-delta rejection and expected-old-main compare-and-swap.
+Origin admission remains independent of the Brain audit. AUTHOR_REMEDIATION and
+AUTHOR_REPAIR retain their audited handoffs, canonical reconstruction, correction-lineage
+and freshness checks; BO-1 does not simplify correction authoring.
+
+Copying a selector, an old TASK, another chat's proof, a rendezvous marker by itself,
+or an assistant/transcript assertion does not establish provenance.
 
 The production carrier must admit the proof against machine-local exact-origin
 state on a bounded self-hosted runner before hosted AUTHOR_TASK mutation.
