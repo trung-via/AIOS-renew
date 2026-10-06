@@ -839,7 +839,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-task315-durable-repair-boundary-hotfix
+  - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 sequence:
 
   - id: TASK-309
@@ -955,7 +955,7 @@ sequence:
     return_to: task308-origin-correct-replacement-v1
 
   - id: brain-optimization-v1-bo1-author-task-mutation-path-simplification
-    status: BLOCKED_ON_TASK315_DURABLE_REPAIR_BOUNDARY_HOTFIX
+    status: NEXT
     phase: BO1_AUTHOR_TASK_MUTATION_PATH_SIMPLIFICATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
@@ -1043,7 +1043,7 @@ sequence:
     unblocks: [brain-optimization-v1-bo1-author-task-mutation-path-simplification]
 
   - id: brain-optimization-v1-task315-durable-repair-boundary-hotfix
-    status: NEXT
+    status: DONE
     phase: BO1R_DURABLE_REPAIR_BOUNDARY_HOTFIX_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
@@ -1075,6 +1075,28 @@ sequence:
       BO-1, BO-1R, BO-7 or H4. After exact reviewed publication of TASK-315, restore
       brain-optimization-v1-bo1-author-task-mutation-path-simplification as the unique NEXT.
     return_to: brain-optimization-v1-bo1-author-task-mutation-path-simplification
+    completed_by:
+      task_id: TASK-315
+      primary_failed_run_id: RUN-315-001
+      repair_run_id: RUN-315-002
+      repair_id: REPAIR-315-001-001
+      review_id: REVIEW-315-002
+      verdict: PASS
+      reviewed_sha: "27dcd0021af61e42fbf3f2b988965ec4444a1033"
+      integration_id: "08ae9b225585622a813abfe8b9b9e184b67cb55bc12fe40ee34929d2c7460ead"
+      integration_candidate_sha: "ecb97d83c0ee85d38a699730a1afc8ad19f63134"
+      publication_boundary: PUBLICATION_PROVEN
+      publication_replay_workflow_run_id: 37484479138
+      publication_replay_attempt: 2
+      publication_replay_interpretation: ALREADY_INCLUDED
+      exceptional_manual_publication_authority: >-
+        Human explicitly granted one-time exceptional publication authority after the
+        canonical Publisher reported INTEGRATION_REQUIRED. Runtime first created the
+        exact content-addressed integration candidate; Human then fast-forwarded main
+        from the authorized main SHA to that integration candidate without force.
+        Canonical Publisher replay subsequently proved the reviewed source candidate
+        was included in main. This is bounded recovery evidence, not a standing bypass.
+    unblocks: [brain-optimization-v1-bo1-author-task-mutation-path-simplification]
 
   - id: brain-optimization-v1-bo2-bounded-active-roadmap-projection
     status: QUEUED_AFTER_BO1
