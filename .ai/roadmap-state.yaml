@@ -936,9 +936,20 @@ sequence:
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
-    task_id: null
-    task_authoring_status: UNAUTHORED
-    executor_delegation: REQUIRES_FRESH_HUMAN_SELECTION
+    task_id: TASK-313
+    task_revision: 1
+    task_authoring_status: READY_FOR_AUTHORING
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-06"
+      task_id: TASK-313
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_313_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
     objective: >-
       Retire serialized audited-handoff plumbing from AUTHOR_TASK while preserving
       direct final TASK validation, expected-main CAS, origin provenance, carrier
