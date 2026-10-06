@@ -2669,6 +2669,12 @@ def _run_repair_impl(
     origin_affected_verification = resolved.origin_affected_verification
     if executor is None and reusable_package is None:
         raise OperatorError("coding Executor is required for REPAIR")
+    if (
+        repair_dispatch_id is not None
+        and executor is not None
+        and reusable_package is not None
+    ):
+        raise OperatorError("executorless REPAIR forbids a coding Executor")
     # Admitted reusable structural state bypasses dispatcher invocation. Its
     # schema-compatible RUN label preserves the frozen failed-RUN lineage; it is
     # not a defaulted, selected, or invoked coding Executor.
@@ -8422,6 +8428,7 @@ def run_repair_wakeup(
         existing_repair_profile,
         reject_existing_selector_collision,
         replay_existing_repair_dispatch,
+        validate_repair_executor_requirement,
     )
 
     try:
@@ -8504,23 +8511,15 @@ def run_repair_wakeup(
         ):
             raise OperatorError("canonical REPAIR action is invalid")
         correction = observation.correction
-        executor_required = (
+        observed_executor_required = (
             correction.get("executor_required")
             if isinstance(correction, Mapping)
             else None
         )
-        if action in (
-            "CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"
-        ):
-            if executor is None:
-                raise OperatorError("coding REPAIR requires an explicit Executor")
-            if executor_required is not True:
-                raise OperatorError("canonical coding REPAIR authority is inconsistent")
-        else:
-            if executor is not None:
-                raise OperatorError("NO_CHANGE REPAIR forbids a coding Executor")
-            if executor_required is not False:
-                raise OperatorError("NO_CHANGE REPAIR lacks reusable verification state")
+        executor_required = preflight.executor_required
+        if observed_executor_required is not executor_required:
+            raise OperatorError("canonical REPAIR Executor requirement is inconsistent")
+        validate_repair_executor_requirement(action, executor_required, executor)
 
         def invoke_repair() -> RepairInvocation:
             try:
@@ -8560,6 +8559,7 @@ def run_repair_wakeup(
             executor=executor,
             task_id=observation.task_id,
             action=action,
+            executor_required=executor_required,
             invoke_repair=invoke_repair,
             execution_profile=remote_profile,
             source_repair_policy=source_repair_policy,

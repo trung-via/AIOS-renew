@@ -12442,9 +12442,10 @@ def test_performance_cli_rejects_duplicate_and_revision_qualified_selectors(
     assert "AIOS ERROR:" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("action", ["CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"])
 def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], action: str,
 ) -> None:
     from aios_renew.repair_dispatch import bind_repair_run
 
@@ -12454,7 +12455,7 @@ def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
     state = root / ".git" / "aios"
     repair_document = {
         "failed_run_id": "RUN-111-001",
-        "action": "CODE_FIX",
+        "action": action,
     }
     observation = SimpleNamespace(
         next_action="EXECUTE_REPAIR",
@@ -12477,7 +12478,7 @@ def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
             task_id="TASK-111",
             task_revision=2,
             failed_run_id=failed_run_id,
-            action="CODE_FIX",
+            action=action,
             executor_required=True,
         ),
     )
@@ -12630,6 +12631,8 @@ def test_repair_wakeup_rejects_executor_authority_inconsistent_with_action(
             reason_code="READY",
             task_id="TASK-111",
             task_revision=2,
+            action="NO_CHANGE",
+            executor_required=False,
         ),
     )
     monkeypatch.setattr(
@@ -12655,6 +12658,159 @@ def test_repair_wakeup_rejects_executor_authority_inconsistent_with_action(
             executor="codex",
             repo=root,
         )
+
+
+@pytest.mark.parametrize("executor, verification_exit", [(None, 0), (None, 9), ("codex", 0)])
+def test_finalize_wakeup_reuses_admitted_package_through_durable_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    executor: str | None, verification_exit: int,
+) -> None:
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
+    state = runtime_paths(repo)
+    # Runtime preserves complete structural state before attempting verification.
+    with pytest.raises(OperatorError, match="exit code 8"):
+        run_task(
+            "TASK-101", executor="antigravity", repo=repo,
+            native_runner=StaticResultRunner(repo, static_payload()),
+            verification_runner=lambda command, **kwargs: subprocess.CompletedProcess(
+                command, 8, stdout=b"", stderr=b"prior verification unavailable",
+            ),
+        )
+    failed_run_id = "RUN-101-001"
+    failure_path = state.failures / f"{failed_run_id}.json"
+    failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    # Model a same-head completion failure with preserved Runtime structure.
+    failure["phase"] = "COMPLETION_GATE"
+    failure["error"] = {"type": "OperatorError", "message": "completion interrupted"}
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    preserved_path = state.preverification / f"{failed_run_id}.json"
+    preserved = preserved_path.read_bytes()
+    repair = {
+        "repair_id": "REPAIR-101-FINALIZE", "failed_run_id": failed_run_id,
+        "failed_head_sha": failure["failed_head_sha"], "task": failure["task"],
+        "action": "FINALIZE_CANDIDATE", "modification_scope": [],
+        "instructions": ["Finalize the unchanged candidate."], "constraints": ["Commit the output."],
+    }
+    repair_sha = git(repo, "rev-parse", "HEAD")
+    monkeypatch.setattr(operator_module, "resolve_remote_repair_authorization", lambda *args: SimpleNamespace(
+        ref=f"refs/heads/aios/repair/{failed_run_id}", commit_sha=repair_sha,
+        repair=json.dumps(repair).encode(),
+    ))
+    # This fixture exercises current local admission; remote lineage is covered separately.
+    monkeypatch.setattr(operator_module, "_exact_remote_refs", lambda *args: {})
+    ready = preflight_repair(failed_run_id, repo=repo, required_repair_sha=repair_sha)
+    assert ready.status == "READY" and ready.executor_required is False
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *args, **kwargs: SimpleNamespace(
+        task_id="TASK-101", next_action="EXECUTE_REPAIR", failed_run_id=failed_run_id,
+        correction_sha=repair_sha, correction_document=repair,
+        correction={"executor_required": False},
+    ))
+    monkeypatch.setattr(operator_module, "repair_dispatcher", lambda **kwargs: pytest.fail("reuse dispatched Executor"))
+    verification_calls = []
+
+    def verify(command, **kwargs):
+        verification_calls.append(command)
+        assert git(kwargs["cwd"], "rev-parse", "HEAD") == failure["failed_head_sha"]
+        return subprocess.CompletedProcess(command, verification_exit, stdout=b"fresh verification", stderr=b"")
+
+    request = dict(executor=executor, repo=repo,
+                   native_runner=lambda *args, **kwargs: pytest.fail("reuse invoked native Executor"),
+                   verification_runner=verify)
+    if executor is not None:
+        before_runs = {path.name: path.read_bytes() for path in state.runs.glob("*.json")}
+        with pytest.raises(OperatorError, match="forbids a coding Executor"):
+            run_repair_wakeup("repair-elided-101", failed_run_id, repair_sha, **request)
+        assert {path.name: path.read_bytes() for path in state.runs.glob("*.json")} == before_runs
+        assert not (state.root / "repair-dispatches").exists()
+        assert verification_calls == []
+        return
+
+    outcome = run_repair_wakeup("repair-elided-101", failed_run_id, repair_sha, **request)
+    assert outcome.status == ("SUCCEEDED" if verification_exit == 0 else "FAILED")
+    assert outcome.action == "FINALIZE_CANDIDATE" and outcome.executor is None
+    assert outcome.run_id == "RUN-101-002" and verification_calls
+    assert preserved_path.read_bytes() == preserved
+    run = json.loads((state.runs / "RUN-101-002.json").read_text(encoding="utf-8"))
+    lineage = json.loads((state.repairs / "RUN-101-002.json").read_text(encoding="utf-8"))
+    observation = json.loads((state.observations / "RUN-101-002.json").read_text(encoding="utf-8"))
+    assert run["executor"] == failure["executor"] == "antigravity"
+    assert run["task"] == failure["task"]
+    assert lineage["failed_run_id"] == failed_run_id
+    assert lineage["repair_authorization_sha"] == repair_sha and lineage["repair"] == repair
+    assert not (state.execution_profiles / "RUN-101-002.json").exists()
+    assert observation["executor_invoked"] is False
+    assert observation["durations"]["executor_seconds"] is None
+    if verification_exit == 0:
+        result = json.loads((state.results / "RUN-101-002.json").read_text(encoding="utf-8"))
+        assert result["evidence"]
+        assert {item["run_id"] for item in result["evidence"]} == {"RUN-101-002"}
+        assert {item["subject_sha"] for item in result["evidence"]} == {failure["failed_head_sha"]}
+        assert len(result["evidence"]) == len(verification_calls)
+        package = operator_module.validate_preverification_candidate(
+            preserved, task=load_task(repo, "TASK-101"), run_id=failed_run_id,
+            subject_sha=failure["failed_head_sha"],
+        )
+        assert [(claim["id"], claim["claim"], claim["satisfies"]) for claim in result["result"]["claims"]] == [
+            (claim.id, claim.claim, list(claim.satisfies)) for claim in package.result.claims
+        ]
+    else:
+        assert (state.failures / "RUN-101-002.json").exists()
+        assert not (state.results / "RUN-101-002.json").exists()
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *args, **kwargs: pytest.fail("replay repeated admission"))
+    replay = run_repair_wakeup("repair-elided-101", failed_run_id, repair_sha, **request)
+    assert replay.replayed and replay.run_id == outcome.run_id and replay.status == outcome.status
+
+
+@pytest.mark.parametrize("action, required, executor", [
+    ("FINALIZE_CANDIDATE", True, None), ("CODE_FIX", True, None),
+    ("CONTINUE_IMPLEMENTATION", True, None), ("NO_CHANGE", False, "codex"),
+    ("CODE_FIX", False, None), ("CONTINUE_IMPLEMENTATION", False, None),
+    ("NO_CHANGE", True, "codex"),
+])
+def test_repair_wakeup_requirement_is_fail_closed_before_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    action: str, required: bool, executor: str | None,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _write_external_governed_policy(repo)
+    state = repo / ".git" / "aios"
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: repo)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *args, **kwargs: CorrectionPreflightResult(
+        family="REPAIR", status="READY", phase="READY", reason_code="READY",
+        task_id="TASK-111", task_revision=2, action=action, executor_required=required,
+    ))
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *args, **kwargs: SimpleNamespace(
+        task_id="TASK-111", next_action="EXECUTE_REPAIR", failed_run_id="RUN-111-001",
+        correction_sha="a" * 40, correction_document={"action": action},
+        correction={"executor_required": required},
+    ))
+    monkeypatch.setattr(operator_module, "run_repair", lambda *args, **kwargs: pytest.fail("invalid requirement created RUN"))
+    with pytest.raises(OperatorError):
+        run_repair_wakeup("invalid-111", "RUN-111-001", "a" * 40, executor=executor, repo=repo)
+    assert not (state / "runs").exists() and not (state / "repair-dispatches").exists()
+
+
+def test_repair_wakeup_rejects_disagreement_with_preflight_requirement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / ".git" / "aios"
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *args, **kwargs: CorrectionPreflightResult(
+        family="REPAIR", status="READY", phase="READY", reason_code="READY",
+        task_id="TASK-111", task_revision=2, action="FINALIZE_CANDIDATE", executor_required=False,
+    ))
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *args, **kwargs: SimpleNamespace(
+        task_id="TASK-111", next_action="EXECUTE_REPAIR", failed_run_id="RUN-111-001",
+        correction_sha="a" * 40, correction_document={"action": "FINALIZE_CANDIDATE"},
+        correction={"executor_required": True},
+    ))
+    monkeypatch.setattr(operator_module, "run_repair", lambda *args, **kwargs: pytest.fail("disagreement created RUN"))
+    with pytest.raises(OperatorError, match="requirement is inconsistent"):
+        run_repair_wakeup("inconsistent-111", "RUN-111-001", "a" * 40, executor=None, repo=tmp_path)
+    assert not (state / "runs").exists() and not (state / "repair-dispatches").exists()
 
 
 def test_operator_persists_execution_profile_before_native_runner(tmp_path: Path) -> None:

@@ -49,6 +49,7 @@ _V1_RECORD_KEYS = frozenset(
     }
 )
 _V2_RECORD_KEYS = _V1_RECORD_KEYS | frozenset(PROFILE_IDENTITY_FIELDS[1:])
+_V3_RECORD_KEYS = _V2_RECORD_KEYS | {"executor_required"}
 
 
 def _profile_binding(
@@ -56,7 +57,7 @@ def _profile_binding(
 ) -> dict[str, str | None]:
     if executor is None:
         if execution_profile is not None:
-            raise RepairDispatchError("NO_CHANGE REPAIR forbids an execution profile")
+            raise RepairDispatchError("executorless REPAIR forbids an execution profile")
         return {field: None for field in PROFILE_IDENTITY_FIELDS[1:]}
     if execution_profile is None:
         raise RepairDispatchError("coding REPAIR requires a resolved execution profile")
@@ -162,7 +163,7 @@ def reject_existing_selector_collision(
             repair_sha=repair_sha,
             executor=executor,
         )
-        if record["version"] == 2 and any(
+        if record["version"] >= 2 and any(
             record[field] != value
             for field, value in _profile_binding(executor, execution_profile).items()
         ):
@@ -198,7 +199,7 @@ def replay_existing_repair_dispatch(
             repair_sha=repair_sha,
             executor=executor,
         )
-        if record["version"] == 2 and any(
+        if record["version"] >= 2 and any(
             record[field] != value
             for field, value in _profile_binding(executor, execution_profile).items()
         ):
@@ -232,6 +233,7 @@ def execute_repair_dispatch(
     executor: str | None,
     task_id: str,
     action: str,
+    executor_required: bool,
     invoke_repair: Callable[[], RepairInvocation],
     execution_profile: ResolvedExecutionProfile | None = None,
     source_repair_policy: ExecutionProfilePolicy | None = None,
@@ -239,7 +241,8 @@ def execute_repair_dispatch(
     """Invoke ``run_repair`` at most once, or reconcile its exact bound RUN."""
 
     _validate_binding(
-        repair_dispatch_id, failed_run_id, repair_sha, executor, task_id, action
+        repair_dispatch_id, failed_run_id, repair_sha, executor, task_id, action,
+        executor_required,
     )
     profile = (
         _profile_binding(executor, execution_profile)
@@ -263,6 +266,7 @@ def execute_repair_dispatch(
                 executor=executor,
                 task_id=task_id,
                 action=action,
+                **({"executor_required": executor_required} if record["version"] >= 3 else {}),
                 **(profile or {}),
             )
             if record["status"] in _TERMINAL:
@@ -284,13 +288,14 @@ def execute_repair_dispatch(
         if profile is None:
             raise RepairDispatchError("coding REPAIR requires a resolved execution profile")
         record = {
-            "version": 2,
+            "version": 3,
             "repair_dispatch_id": repair_dispatch_id,
             "failed_run_id": failed_run_id,
             "repair_sha": repair_sha,
             "executor": executor,
             "task_id": task_id,
             "action": action,
+            "executor_required": executor_required,
             **profile,
             "status": "STARTED",
             "run_id": None,
@@ -341,7 +346,7 @@ def bind_repair_run(
             raise RepairDispatchError("repair dispatch is not awaiting a RUN")
         if not _run_matches_record(state_root, run_id, record):
             raise RepairDispatchError("admitted REPAIR RUN does not match dispatch")
-        if record["version"] == 2 and any(
+        if record["version"] >= 2 and any(
             record[field] != value
             for field, value in _profile_binding(
                 record["executor"], execution_profile
@@ -387,18 +392,31 @@ def _validate_binding(
     executor: str | None,
     task_id: str,
     action: str,
+    executor_required: bool,
 ) -> None:
     _validate_selectors(repair_dispatch_id, failed_run_id, repair_sha, executor)
     if not isinstance(task_id, str) or not re.fullmatch(r"TASK-[A-Za-z0-9_-]+", task_id):
         raise RepairDispatchError("invalid canonical TASK identity")
     if action not in REPAIR_ACTIONS:
         raise RepairDispatchError("invalid canonical REPAIR action")
-    if action in {
-        "CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"
-    } and executor is None:
+    validate_repair_executor_requirement(action, executor_required, executor)
+
+
+def validate_repair_executor_requirement(
+    action: str, executor_required: bool, executor: str | None
+) -> None:
+    """Consume canonical preflight authority without selecting a repair strategy."""
+
+    if type(executor_required) is not bool:
+        raise RepairDispatchError("canonical REPAIR Executor requirement is invalid")
+    if action in {"CODE_FIX", "CONTINUE_IMPLEMENTATION"} and not executor_required:
+        raise RepairDispatchError("canonical coding REPAIR authority is inconsistent")
+    if action == "NO_CHANGE" and executor_required:
+        raise RepairDispatchError("NO_CHANGE REPAIR lacks reusable verification state")
+    if executor_required and executor is None:
         raise RepairDispatchError("coding REPAIR requires an explicit Executor")
-    if action == "NO_CHANGE" and executor is not None:
-        raise RepairDispatchError("NO_CHANGE REPAIR forbids a coding Executor")
+    if not executor_required and executor is not None:
+        raise RepairDispatchError(f"{action} executorless REPAIR forbids a coding Executor")
 
 
 def _require_same_selectors(record: Mapping[str, Any], **expected: Any) -> None:
@@ -410,7 +428,7 @@ def _require_same_selectors(record: Mapping[str, Any], **expected: Any) -> None:
 
 def _require_same_binding(record: Mapping[str, Any], **expected: Any) -> None:
     _require_same_selectors(record, **expected)
-    if record["version"] == 2 and any(
+    if record["version"] >= 2 and any(
         field not in expected or record[field] != expected[field]
         for field in PROFILE_IDENTITY_FIELDS[1:]
     ):
@@ -449,10 +467,12 @@ def _read_record(
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise RepairDispatchError("invalid repair dispatch record") from exc
     version = data.get("version") if isinstance(data, dict) else None
-    expected_keys = _V1_RECORD_KEYS if version == 1 else _V2_RECORD_KEYS
+    if type(version) is not int:
+        raise RepairDispatchError("invalid repair dispatch record version")
+    expected_keys = {1: _V1_RECORD_KEYS, 2: _V2_RECORD_KEYS, 3: _V3_RECORD_KEYS}.get(version)
     if not isinstance(data, dict) or set(data) != expected_keys:
         raise RepairDispatchError("invalid repair dispatch record shape")
-    if version not in (1, 2) or data.get("status") not in _TERMINAL | _NONTERMINAL:
+    if version not in (1, 2, 3) or data.get("status") not in _TERMINAL | _NONTERMINAL:
         raise RepairDispatchError("invalid repair dispatch record state")
     try:
         _validate_binding(
@@ -462,13 +482,15 @@ def _read_record(
             data["executor"],
             data["task_id"],
             data["action"],
+            # Old records admitted FINALIZE only with a coding Executor.
+            data["executor_required"] if version == 3 else data["action"] != "NO_CHANGE",
         )
     except (KeyError, RepairDispatchError) as exc:
         raise RepairDispatchError("invalid repair dispatch binding") from exc
-    if version == 2:
+    if version >= 2:
         if data["executor"] is None:
             if any(data[field] is not None for field in PROFILE_IDENTITY_FIELDS[1:]):
-                raise RepairDispatchError("NO_CHANGE dispatch has a profile binding")
+                raise RepairDispatchError("executorless dispatch has a profile binding")
         else:
             _validate_profile(data, repo_root, source_repair_policy)
     run_id = data.get("run_id")
@@ -530,8 +552,19 @@ def _run_matches_record(
         and authorization.get("action") == record["action"]
         and (expected_executor is None or run.get("executor") == expected_executor)
     )
-    if not matches or record["version"] == 1 or expected_executor is None:
+    if not matches or record["version"] == 1:
         return matches
+    if expected_executor is None:
+        # An inherited RUN label is lineage, never an execution profile.
+        failure = execution.get("failure")
+        return (
+            isinstance(failure, Mapping)
+            and failure.get("run_id") == record["failed_run_id"]
+            and failure.get("executor") in {"codex", "antigravity", "antigravity-minimax"}
+            and run.get("executor") == failure.get("executor")
+            and task == failure.get("task") == authorization.get("task")
+            and not (state_root / "execution-profiles" / f"{run_id}.json").exists()
+        )
     try:
         profile = parse_execution_profile(
             (state_root / "execution-profiles" / f"{run_id}.json").read_text(

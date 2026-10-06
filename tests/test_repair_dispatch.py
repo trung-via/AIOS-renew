@@ -66,7 +66,8 @@ def test_external_policy_governs_existing_repair_paths(tmp_path: Path) -> None:
     request = dict(
         state_root=state, repo_root=repo, repair_dispatch_id="external-repair",
         failed_run_id="RUN-111-001", repair_sha="a" * 40, executor="codex",
-        task_id="TASK-111", action="CODE_FIX", execution_profile=external_only,
+        task_id="TASK-111", action="CODE_FIX", executor_required=True,
+        execution_profile=external_only,
     )
     first = execute_repair_dispatch(
         **request, invoke_repair=lambda: (called.append("once"), RepairInvocation(1))[1]
@@ -133,6 +134,7 @@ def test_exact_source_repair_policy_admits_policyless_control_and_replays(
         state_root=state, repo_root=repo, repair_dispatch_id="repair-source-111",
         failed_run_id="RUN-111-001", repair_sha="a" * 40,
         executor="codex", task_id="TASK-111", action="CODE_FIX",
+        executor_required=True,
         execution_profile=profile,
     )
     called: list[str] = []
@@ -181,6 +183,7 @@ def _write_run(
     executor: str = "codex",
     terminal: str | None = None,
     repair_sha: str = "a" * 40,
+    executor_required: bool = True,
 ) -> None:
     (state / "runs").mkdir(parents=True, exist_ok=True)
     (state / "repairs").mkdir(parents=True, exist_ok=True)
@@ -192,8 +195,9 @@ def _write_run(
     execution = {
         "failed_run_id": "RUN-111-001",
         "repair_authorization_sha": repair_sha,
-        "repair": {"failed_run_id": "RUN-111-001", "action": action},
+        "repair": {"failed_run_id": "RUN-111-001", "action": action, "task": run["task"]},
         "run": run,
+        "failure": {"run_id": "RUN-111-001", "executor": executor, "task": run["task"]},
     }
     (state / "runs" / f"{run_id}.json").write_text(
         json.dumps(run), encoding="utf-8"
@@ -201,7 +205,7 @@ def _write_run(
     (state / "repairs" / f"{run_id}.json").write_text(
         json.dumps(execution), encoding="utf-8"
     )
-    if action != "NO_CHANGE":
+    if executor_required and action != "NO_CHANGE":
         persist_execution_profile(
             state / "execution-profiles" / f"{run_id}.json",
             profile_for(run_id, executor),
@@ -219,6 +223,7 @@ def _execute(
     repair_sha: str = "a" * 40,
     executor: str | None = "codex",
     action: str = "CODE_FIX",
+    executor_required: bool | None = None,
 ):
     return execute_repair_dispatch(
         state_root=state,
@@ -229,6 +234,7 @@ def _execute(
         executor=executor,
         task_id="TASK-111",
         action=action,
+        executor_required=(action != "NO_CHANGE" if executor_required is None else executor_required),
         invoke_repair=invoke,
         execution_profile=(
             profile_for("AUTHORIZATION", executor)
@@ -296,6 +302,7 @@ def test_conflicting_dispatch_id_reuse_fails_without_invocation(tmp_path: Path) 
             executor="codex",
             task_id="TASK-111",
             action="CODE_FIX",
+            executor_required=True,
             execution_profile=changed_profile,
             invoke_repair=lambda: pytest.fail("profile collision invoked REPAIR"),
         )
@@ -386,7 +393,7 @@ def test_no_change_requires_absent_executor_and_uses_same_dispatch_family(
         )
 
 
-def test_finalize_candidate_requires_executor_and_remains_at_most_once(
+def test_nonreusable_finalize_candidate_requires_executor_and_remains_at_most_once(
     tmp_path: Path,
 ) -> None:
     state = tmp_path / ".git" / "aios"
@@ -434,8 +441,139 @@ def test_finalize_candidate_requires_executor_and_remains_at_most_once(
         )
 
 
-def test_historical_v1_terminal_replay_never_acquires_current_profile(
+@pytest.mark.parametrize("terminal", ["results", "failures"])
+def test_executorless_finalize_binds_and_reconciles_exact_run(
+    tmp_path: Path, terminal: str,
+) -> None:
+    state = tmp_path / ".git" / "aios"
+
+    def bind_then_crash() -> RepairInvocation:
+        _write_run(
+            state, "RUN-111-002", action="FINALIZE_CANDIDATE",
+            executor="antigravity-minimax", executor_required=False, terminal=terminal,
+        )
+        bind_repair_run(
+            state_root=state, repo_root=tmp_path,
+            repair_dispatch_id="repair-elided-111", run_id="RUN-111-002",
+        )
+        raise RuntimeError("interrupted after binding")
+
+    request = dict(
+        dispatch_id="repair-elided-111", action="FINALIZE_CANDIDATE",
+        executor=None, executor_required=False,
+    )
+    with pytest.raises(RuntimeError, match="after binding"):
+        _execute(state, bind_then_crash, **request)
+    replay = _execute(state, lambda: pytest.fail("replay invoked REPAIR"), **request)
+    assert replay.status == ("SUCCEEDED" if terminal == "results" else "FAILED")
+    assert replay.replayed and replay.run_id == "RUN-111-002"
+    assert replay.executor is None and replay.action == "FINALIZE_CANDIDATE"
+    exists, profile = existing_repair_profile(
+        state_root=state, repo_root=tmp_path, repair_dispatch_id="repair-elided-111",
+    )
+    assert exists and profile is None
+    record_path = next((state / "repair-dispatches").glob("*.json"))
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert record["version"] == 3 and record["executor_required"] is False
+    assert record["model"] is None and record["reasoning_effort"] is None
+    assert not (state / "execution-profiles").exists()
+    before = record_path.read_bytes()
+    for changes in (
+        {"repair_sha": "b" * 40}, {"action": "NO_CHANGE"},
+        {"executor": "codex", "executor_required": True},
+    ):
+        with pytest.raises(RepairDispatchError, match="collision"):
+            _execute(state, lambda: pytest.fail("collision invoked"), **(request | changes))
+    assert record_path.read_bytes() == before
+    replay = replay_existing_repair_dispatch(
+        state_root=state, repo_root=tmp_path, repair_dispatch_id="repair-elided-111",
+        failed_run_id="RUN-111-001", repair_sha="a" * 40, executor=None,
+    )
+    assert replay is not None and replay.replayed
+
+
+@pytest.mark.parametrize("tamper", ["sha", "action", "executor", "profile"])
+def test_executorless_finalize_rejects_invalid_run_attribution(
+    tmp_path: Path, tamper: str,
+) -> None:
+    state = tmp_path / ".git" / "aios"
+
+    def invoke() -> RepairInvocation:
+        _write_run(
+            state, "RUN-111-002", action="FINALIZE_CANDIDATE",
+            executor_required=False, terminal="results",
+        )
+        if tamper == "profile":
+            persist_execution_profile(
+                state / "execution-profiles/RUN-111-002.json", profile_for("RUN-111-002"),
+            )
+        elif tamper == "executor":
+            path = state / "runs/RUN-111-002.json"
+            run = json.loads(path.read_text(encoding="utf-8"))
+            path.write_text(json.dumps(run | {"executor": "antigravity"}), encoding="utf-8")
+        else:
+            path = state / "repairs/RUN-111-002.json"
+            execution = json.loads(path.read_text(encoding="utf-8"))
+            if tamper == "sha":
+                execution["repair_authorization_sha"] = "b" * 40
+            else:
+                execution["repair"]["action"] = "NO_CHANGE"
+            path.write_text(json.dumps(execution), encoding="utf-8")
+        with pytest.raises(RepairDispatchError, match="does not match dispatch"):
+            bind_repair_run(
+                state_root=state, repo_root=tmp_path,
+                repair_dispatch_id="repair-111", run_id="RUN-111-002",
+            )
+        return RepairInvocation(0, "RUN-111-002")
+
+    outcome = _execute(
+        state, invoke, action="FINALIZE_CANDIDATE", executor=None, executor_required=False,
+    )
+    assert outcome.status == "RECONCILIATION_BLOCKED" and outcome.run_id is None
+
+
+@pytest.mark.parametrize("action, required, executor", [
+    ("CODE_FIX", True, None), ("CONTINUE_IMPLEMENTATION", True, None),
+    ("FINALIZE_CANDIDATE", True, None), ("FINALIZE_CANDIDATE", False, "codex"),
+    ("CODE_FIX", False, None), ("CONTINUE_IMPLEMENTATION", False, None),
+    ("NO_CHANGE", False, "codex"), ("NO_CHANGE", True, "codex"),
+    ("FINALIZE_CANDIDATE", None, None),
+])
+def test_dispatch_requirement_inconsistency_never_admits(
+    tmp_path: Path, action: str, required: bool | None, executor: str | None,
+) -> None:
+    state = tmp_path / ".git" / "aios"
+    with pytest.raises(RepairDispatchError):
+        execute_repair_dispatch(
+            state_root=state, repo_root=tmp_path, repair_dispatch_id="invalid-111",
+            failed_run_id="RUN-111-001", repair_sha="a" * 40, task_id="TASK-111",
+            action=action, executor=executor, executor_required=required,
+            invoke_repair=lambda: pytest.fail("invalid requirement invoked REPAIR"),
+        )
+    assert not (state / "repair-dispatches").exists()
+    assert not (state / "runs").exists()
+
+
+def test_executorless_finalize_forbids_profile_and_coding_finalize_requires_profile(
     tmp_path: Path,
+) -> None:
+    state = tmp_path / ".git" / "aios"
+    for executor, required, profile in (
+        (None, False, profile_for("AUTHORIZATION")), ("codex", True, None),
+    ):
+        with pytest.raises(RepairDispatchError, match="profile"):
+            execute_repair_dispatch(
+                state_root=state, repo_root=tmp_path, repair_dispatch_id="profile-111",
+                failed_run_id="RUN-111-001", repair_sha="a" * 40, task_id="TASK-111",
+                action="FINALIZE_CANDIDATE", executor=executor, executor_required=required,
+                execution_profile=profile, invoke_repair=lambda: pytest.fail("invalid profile invoked"),
+            )
+    assert not (state / "repair-dispatches").exists()
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_historical_terminal_replay_preserves_record_version(
+    tmp_path: Path, version: int,
 ) -> None:
     state = tmp_path / ".git" / "aios"
     dispatch_id = "historical-repair-111"
@@ -444,7 +582,7 @@ def test_historical_v1_terminal_replay_never_acquires_current_profile(
     )
     record_path.parent.mkdir(parents=True)
     legacy = {
-        "version": 1,
+        "version": version,
         "repair_dispatch_id": dispatch_id,
         "failed_run_id": "RUN-111-001",
         "repair_sha": "a" * 40,
@@ -456,6 +594,11 @@ def test_historical_v1_terminal_replay_never_acquires_current_profile(
         "exit_code": 1,
         "detail": "historical terminal failure",
     }
+    if version == 2:
+        legacy.update(
+            model="test/codex-future-v1", reasoning_effort="low",
+            model_source="EXPLICIT", effort_source="EXPLICIT",
+        )
     record_path.write_text(json.dumps(legacy), encoding="utf-8")
 
     outcome = execute_repair_dispatch(
@@ -467,6 +610,8 @@ def test_historical_v1_terminal_replay_never_acquires_current_profile(
         executor="codex",
         task_id="TASK-111",
         action="CODE_FIX",
+        executor_required=True,
+        execution_profile=profile_for("AUTHORIZATION") if version == 2 else None,
         invoke_repair=lambda: pytest.fail("legacy replay invoked REPAIR"),
     )
 
