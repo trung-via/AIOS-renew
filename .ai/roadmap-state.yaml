@@ -42,10 +42,34 @@ brain_optimization_preemption:
     - BO-4_TASK_SCOPED_STICKY_EXECUTION_PROFILE
     - BO-5_AUTHOR_TASK_TO_PRIMARY_EXACT_CONTINUATION
     - BO-6_TASK_SPECIFIC_DELTA_SEMANTIC_AUDIT
-    - BO-7_CORRECTION_AUTHORING_DUPLICATION_AUDIT
+    - BO-7_CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS
     - BO-8_PLANNING_TRANSACTION_BATCHING
     - BO-9_CONDITIONAL_PROVIDER_CONTEXT_SERIALIZATION_OPTIMIZATION
   task310_status: BLOCKED_ON_BRAIN_OPTIMIZATION_V1_CLOSURE
+  authoring_family_optimization_contract:
+    contract: NO_BRAIN_DERIVABLE_MATERIAL_REJECTION_V1
+    human_decision: APPROVED_2026_10_06
+    requirement: >-
+      AUTHOR_TASK, AUTHOR_REMEDIATION and AUTHOR_REPAIR must not reject an otherwise
+      valid final family contract solely because Brain serialized, normalized, packaged
+      or hashed support material differently when Runtime can deterministically
+      reconstruct that material from canonical state plus the final contract.
+    preserve_fail_closed_on:
+      - INVALID_FINAL_FAMILY_CONTRACT
+      - WRONG_OR_STALE_CANONICAL_SUBJECT
+      - EXPECTED_MAIN_OR_SEMANTIC_STALENESS_WITNESS_MISMATCH
+      - ORIGIN_PROVENANCE_FAILURE
+      - CORRECTION_LINEAGE_OR_SCOPE_VIOLATION
+      - REPLAY_OR_MUTATION_CONFLICT
+      - CONCURRENT_CANONICAL_MOVEMENT
+    combined_exit: AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE
+    requires:
+      - AUTHOR_TASK_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE
+      - CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE
+    non_overlap:
+      - BO1R_OWNS_POST_AUTHORIZATION_STRUCTURAL_PACKAGE_REUSE
+      - BO7_OWNS_PRE_AUTHORIZATION_DIRECT_FINAL_CONTRACT_INGRESS
+      - NO_DUPLICATE_IMPLEMENTATION_BETWEEN_BO1R_AND_BO7
 
 production_wake_amendment:
   id: h4-origin-affine-unattended-wake-v1
@@ -815,7 +839,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-bo1r-same-head-structural-package-preservation
+  - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 sequence:
 
   - id: TASK-309
@@ -931,7 +955,7 @@ sequence:
     return_to: task308-origin-correct-replacement-v1
 
   - id: brain-optimization-v1-bo1-author-task-mutation-path-simplification
-    status: BLOCKED_ON_BO1R_TASK314
+    status: NEXT
     phase: BO1_AUTHOR_TASK_MUTATION_PATH_SIMPLIFICATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
@@ -941,7 +965,14 @@ sequence:
     task_authoring_status: CANONICALIZED
     task_author_commit_sha: "3dfa7aade80f7237b9999062ffb6ed403e52abbc"
     latest_failure_run_id: RUN-313-004
-    blocker: SAME_HEAD_STRUCTURAL_PACKAGE_PRESERVATION_GAP
+    bo1r_unblock:
+      task_id: TASK-314
+      run_id: RUN-314-002
+      review_id: REVIEW-314-002
+      verdict: PASS
+      reviewed_published_sha: "6671a2724b5b1b7fe03ac66468e79ef209bf876d"
+      runtime_verification: "692 passed plus git diff --check"
+      effect: SAME_HEAD_STRUCTURAL_PACKAGE_PRESERVATION_ACTIVE
     executor_delegation:
       authority: HUMAN
       selected_on: "2026-10-06"
@@ -962,7 +993,7 @@ sequence:
     blocks: [brain-optimization-v1-bo2-bounded-active-roadmap-projection, h4-device-independent-origin-capture-correction-v1]
 
   - id: brain-optimization-v1-bo1r-same-head-structural-package-preservation
-    status: NEXT
+    status: DONE
     phase: BO1R_SAME_HEAD_STRUCTURAL_PACKAGE_PRESERVATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
@@ -1000,6 +1031,15 @@ sequence:
       - NO_GENERIC_RETRY_OR_CORRECTION_ROUTER
       - EXACT_TASK_REVISION_HEAD_CHANGED_FILES_AND_COMPLETENESS_BINDING_REQUIRED
     exit: SAME_HEAD_STRUCTURAL_PACKAGE_PRESERVATION_ACTIVE
+    completed_by:
+      task_id: TASK-314
+      primary_failed_run_id: RUN-314-001
+      repair_run_id: RUN-314-002
+      review_id: REVIEW-314-002
+      verdict: PASS
+      evidence_id: RUN-314-002-V001
+      reviewed_sha: "6671a2724b5b1b7fe03ac66468e79ef209bf876d"
+      published_sha: "6671a2724b5b1b7fe03ac66468e79ef209bf876d"
     unblocks: [brain-optimization-v1-bo1-author-task-mutation-path-simplification]
 
   - id: brain-optimization-v1-bo2-bounded-active-roadmap-projection
@@ -1052,15 +1092,41 @@ sequence:
       exact fingerprint and re-reasoning only task-specific/new risks.
     exit: TASK_SPECIFIC_DELTA_AUDIT_ACTIVE
 
-  - id: brain-optimization-v1-bo7-correction-authoring-duplication-audit
+  - id: brain-optimization-v1-bo7-correction-authoring-direct-final-contract-ingress
     status: QUEUED_AFTER_BO6
-    phase: BO7_CORRECTION_AUTHORING_DUPLICATION_AUDIT
+    phase: BO7_CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS
     authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-06"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    human_upgrade: >-
+      Upgrade BO-7 from an audit-only simplification candidate into a required direct
+      final-contract ingress implementation for AUTHOR_REMEDIATION and AUTHOR_REPAIR.
     objective: >-
-      Audit AUTHOR_REMEDIATION and AUTHOR_REPAIR for redundant semantic recomposition;
-      simplify only where distinct correction-lineage invariants remain fail-closed.
-    exit: CORRECTION_AUTHORING_DUPLICATION_RESOLVED
+      Remove Brain-derived serialized audit/support material as mutation authority for
+      AUTHOR_REMEDIATION and AUTHOR_REPAIR. Runtime reconstructs deterministic correction
+      lineage and support facts from canonical TASK/RUN/RESULT/FAILURE/REVIEW/current
+      correction state, validates the final REMEDIATION or REPAIR contract directly,
+      and preserves only minimal semantic-staleness witnesses/CAS that prove what state
+      the Brain decision was authorized against.
+    required_contract: NO_BRAIN_DERIVABLE_MATERIAL_REJECTION_V1
+    remove_from_correction_mutation_authority:
+      - AIOS_AUDITED_AUTHORING_HANDOFF
+      - DECISION_PACKET_FINGERPRINT
+      - STAGE1_STAGE2_SERIALIZED_AUDIT_SUPPORT
+      - DERIVED_SUPPORT_SECTION_HASHES
+      - FULL_PACKET_RECOMPOSITION_AS_FRESHNESS_GATE
+    preserve:
+      - BRAIN_TWO_STAGE_SEMANTIC_CORRECTION_AUDIT
+      - FINAL_REMEDIATION_AND_REPAIR_CONTRACT_VALIDATION
+      - EXACT_TASK_RUN_FAILURE_REVIEW_FINDING_LINEAGE
+      - OUTSTANDING_OR_UNRESOLVED_CORRECTION_STATE
+      - CORRECTION_SCOPE_AND_STRATEGY_AUTHORITY
+      - MINIMAL_SEMANTIC_STALENESS_WITNESS
+      - CAS_REPLAY_AND_MUTATION_CONFLICT_FAIL_CLOSE
+    non_overlap:
+      - BO1R_OWNS_POST_AUTHORIZATION_STRUCTURAL_PACKAGE_REUSE
+      - BO7_OWNS_PRE_AUTHORIZATION_DIRECT_FINAL_CONTRACT_INGRESS
+    exit: CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE
 
   - id: brain-optimization-v1-bo8-planning-transaction-batching
     status: QUEUED_AFTER_BO7

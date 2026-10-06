@@ -59,6 +59,12 @@ Optimization must preserve:
 8. no chat memory, transcript similarity, recent-tab, timestamp or repository-default authority.
 9. no automatic roadmap advancement or semantic routing by deterministic transport.
 10. two-stage Brain audit remains semantic discipline even where serialized audit plumbing is retired.
+11. `NO_BRAIN_DERIVABLE_MATERIAL_REJECTION_V1`: AUTHOR_TASK, AUTHOR_REMEDIATION and
+    AUTHOR_REPAIR must not fail solely because Brain serialized, normalized, packaged or
+    hashed support material differently when Runtime can deterministically reconstruct that
+    material from canonical state plus the final family contract.
+12. BO-1R and BO-7 are non-overlapping: BO-1R owns post-authorization same-head structural
+    ResultPackage reuse; BO-7 owns pre-authorization direct-final-contract correction ingress.
 
 ## 4. Two-stage planning audit
 
@@ -94,8 +100,11 @@ Reconciliation:
   choose roadmap work, TASK meaning, Executor/model/effort, review verdict or correction strategy;
 - delta audit reuses only fingerprinted settled architecture; every TASK still receives two-stage
   task-specific audit and must expand context on ambiguity/conflict;
-- BO-7 is audit-first and may retain existing REMEDIATION/REPAIR handoff where a distinct invariant
-  is proven necessary;
+- BO-7 is upgraded by explicit Human decision to a required direct-final-contract ingress
+  implementation for AUTHOR_REMEDIATION and AUTHOR_REPAIR; Brain-derived serialized
+  audit/support material must not remain mutation authority where Runtime can reconstruct it
+  deterministically. Distinct semantic staleness witnesses remain only where they prove the
+  exact canonical state against which Brain authorized the correction;
 - planning batching combines only one already-made Human planning decision and cannot merge separate
   approval/risk decisions;
 - BO-9 is conditional on measurement and must preserve self-contained stateless provider requests.
@@ -196,17 +205,75 @@ Any architecture fingerprint movement, ambiguity or conflict forces expanded fre
 
 Exit: `TASK_SPECIFIC_DELTA_AUDIT_ACTIVE`.
 
-### BO-7 — REMEDIATION/REPAIR authoring duplication audit
+### BO-7 — Correction Authoring Direct Final Contract Ingress
 
-Purpose: determine whether serialized audited-handoff plumbing remains necessary for
-AUTHOR_REMEDIATION and AUTHOR_REPAIR.
+Status: **HUMAN_UPGRADED — IMPLEMENTATION REQUIRED**
 
-This phase is audit-first. It must distinguish semantic authority from direct canonical
-family validation/currentness/CAS. Remove only proven redundant recomposition. Preserve any
-distinct correction-lineage or strategy invariant that cannot be enforced by direct bounded
-validation.
+Purpose: make AUTHOR_REMEDIATION and AUTHOR_REPAIR obey the same final-contract mutation
+principle as BO-1 applies to AUTHOR_TASK.
 
-Exit: `CORRECTION_AUTHORING_DUPLICATION_RESOLVED` (retained or simplified with bounded basis).
+Target flow:
+
+```text
+canonical correction subject
+ -> Brain semantic correction decision
+ -> two-stage Brain audit
+ -> final REMEDIATION or REPAIR contract
+ -> correction ingress
+ -> Runtime reconstructs canonical correction lineage and deterministic support facts
+ -> Runtime directly validates the final family contract
+ -> minimal semantic-staleness witness + CAS/replay/currentness checks
+ -> canonical mutation
+```
+
+The mutation boundary must not require Brain to serialize or hash Decision Packet material,
+Stage-1/Stage-2 audit-support envelopes, derived support sections or other material Runtime
+can deterministically reconstruct from canonical TASK/RUN/RESULT/FAILURE/REVIEW/current
+correction state.
+
+For AUTHOR_REMEDIATION, Runtime directly reconstructs and validates at minimum the exact
+source RUN, REVIEW, finding, reviewed SHA, TASK, ResultPackage/Evidence lineage and whether
+the finding remains canonically outstanding.
+
+For AUTHOR_REPAIR, Runtime directly reconstructs and validates at minimum the failed RUN,
+FAILURE, failed head, TASK/revision, repairability/candidate facts, current repair
+authorization/supersession, continuation state and correction scope.
+
+#### Required invariant — `NO_BRAIN_DERIVABLE_MATERIAL_REJECTION_V1`
+
+An otherwise valid AUTHOR_TASK, AUTHOR_REMEDIATION or AUTHOR_REPAIR mutation must not fail
+solely because Brain serialized, normalized, packaged or hashed support material differently
+when Runtime can deterministically reconstruct that material from canonical state plus the
+final family contract.
+
+This does **not** remove meaningful semantic freshness. A minimal selector/hash/CAS remains
+when it proves what canonical state the Brain decision was authorized against and a later
+state must make that decision stale. Runtime must still fail closed on invalid final contract,
+wrong/stale subject, resolved finding, invalid correction action/scope, wrong failed head or
+predecessor, origin-provenance failure, replay conflict or concurrent canonical movement.
+
+Legacy `audited_handoff`, if accepted temporarily for compatibility, has no mutation authority:
+changing only its derivable fingerprints/support sections cannot make an otherwise identical
+valid final contract fail, and the production carrier should stop sending it after transition.
+
+Required regression proof includes:
+- valid final REMEDIATION and REPAIR canonicalize without `audited_handoff`;
+- legacy handoff fingerprint/support-section differences do not alter the result for the same
+  final contract and canonical state;
+- serialization/normalization differences in derivable support material do not alter admission;
+- real semantic stale/CAS/lineage/scope/replay conflicts still fail closed.
+
+Non-overlap with BO-1R:
+- BO-1R/TASK-314 owns **post-authorization** same-head structural ResultPackage preservation;
+- BO-7 owns **pre-authorization** direct-final-contract correction ingress;
+- neither phase reimplements the other's boundary.
+
+Exit: `CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`.
+
+Program-level combined exit after BO-1 and BO-7:
+`AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`, requiring both
+`AUTHOR_TASK_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE` and
+`CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`.
 
 ### BO-8 — Planning transaction batching / main-churn reduction
 
@@ -235,6 +302,8 @@ TASK-310 and all remaining H4 implementation stay blocked until BO-1 through BO-
 
 Before returning to TASK-310:
 
+- prove `AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE` so all Brain-owned
+  authoring families are free of derivable-material ingress rejection;
 - fresh Brain Sync using the optimized path;
 - prove the H4 roadmap/objective is still current;
 - confirm TASK-310 remains unauthored and required;
