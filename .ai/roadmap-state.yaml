@@ -3192,7 +3192,8 @@ sequence:
           - NO_FABRICATED_ATTENTION_SUBJECT
           - NO_REPLAY_OF_RESOLVED_ATTENTION
           - NO_LEGACY_ROUTE_AS_ORIGIN_AFFINE_PROOF
-          - NO_H4E_ADVANCE_BEFORE_OBSERVED_EXIT_PASS
+          - NO_H4E_EXECUTION_OR_LIVE_CLOSURE_BEFORE_OBSERVED_EXIT_PASS
+          - H4E_ARCHITECTURE_AUDIT_MAY_PROCEED_BEFORE_H4D_LIVE_EXIT
       published_subject_sha: "8832e24edb1cd471a8a7f653a622ef5e1776920f"
       required_observation:
         - TARGET_CONVERSATION_NOT_PREOPENED_OR_PREPARED_BY_HUMAN
@@ -3215,11 +3216,14 @@ sequence:
       interpretation: >-
         Human authorization is satisfied. H4D cannot fabricate or replay a subject.
         The next qualifying naturally occurring unresolved origin-affine attention
-        subject is the only eligible live-exit carrier. Until one exists, H4E remains
-        blocked and no additional diagnostic or implementation TASK is justified.
+        subject remains the only eligible H4D live-exit carrier. H4D live closure and
+        H4E production/live execution remain blocked until that observation passes.
+        This gate does not prohibit Human/Brain H4E architecture audit or separately
+        Human-authorized prerequisite implementation such as TASK-310/TASK-311; those
+        activities may proceed prospectively without claiming H4D completion.
       prohibitions:
         - NO_H4D_DONE_FROM_SYNTHETIC_TESTS_REVIEW_OR_PUBLICATION
-        - NO_H4E_ADVANCE_BEFORE_H4D_LIVE_EXIT_CLOSURE
+        - NO_H4E_PRODUCTION_EXECUTION_OR_LIVE_CLOSURE_BEFORE_H4D_LIVE_EXIT_CLOSURE
         - NO_FABRICATED_OR_REPLAYED_ATTENTION_SUBJECT
         - NO_REPOSITORY_DEFAULT_OR_ALTERNATE_CHAT_FALLBACK
         - NO_RAW_CHAT_URL_ENDPOINT_PROFILE_PATH_CREDENTIAL_OR_TRANSCRIPT_CANONICALIZATION
@@ -3246,30 +3250,196 @@ sequence:
       - REQUIRE_TRUE_HEADLESS_AS_THE_ONLY_IMPLEMENTATION
       - POWERED_OFF_HOST_REMOTE_OR_CLOUD_WAKE
       - CHATGPT_WORK_PRODUCTION_FALLBACK
+    h4e_compatibility_boundary:
+      purpose: >-
+        H4D proves bounded unattended acquisition/delivery to one already resolved exact
+        destination. It must not freeze upstream routing/composition assumptions that H4E
+        needs for device-independent origin and subject-scoped continuation.
+      preserved_safety_invariants:
+        - EXACT_EFFECTIVE_DESTINATION_MUST_BE_RESOLVED_BEFORE_ACQUISITION
+        - REGULAR_CHAT_EXACT_TARGET_VALIDATION
+        - CANONICAL_EVENT_FRESHNESS_BEFORE_POSSIBLE_SEND
+        - HUMAN_DRAFT_AND_ACTIVE_GENERATION_PROTECTION
+        - CONVERSATION_LANE_SERIALIZATION_AND_DEDUPE
+        - AMBIGUOUS_POST_SEND_NO_BLIND_RESEND
+        - RAW_CHAT_BROWSER_AND_CREDENTIAL_STATE_REMAINS_MACHINE_LOCAL
+        - ACQUISITION_AND_DELIVERY_HAVE_NO_SEMANTIC_OR_LIFECYCLE_AUTHORITY
+      not_frozen_as_h4e_architecture:
+        - BASE_TASK_RETURN_AFFINITY_EQUALS_EFFECTIVE_DELIVERY_DESTINATION
+        - DIRECT_EVENT_AFFINITY_TO_ROUTE_BINDING_WITHOUT_SUBJECT_CONTINUATION_COMPOSITION
+        - ONE_SHARED_ACQUISITION_BUDGET_ACROSS_ALL_LANES_AS_A_PRODUCTION_FAIRNESS_RULE
+        - PERIODIC_ALL_LANES_DRAIN_AS_THE_REQUIRED_RECOVERY_OR_SCHEDULING_MECHANISM
+        - CURRENT_LOCAL_STATE_SCHEMA_AS_A_PERMANENT_H4E_INTERFACE
+      interpretation: >-
+        Current H4D implementation may embody these narrower assumptions, including exact
+        base-affinity equality and a shared bounded acquisition budget. TASK-311/H4E may
+        refactor composition and scheduling while preserving every safety invariant above.
+        H4D capability evidence may be reused until relevant acquisition/safety behavior is
+        changed; H4E still owns the final integrated production live proof.
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4e-production-routing-concurrency-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4e-production-routing-concurrency-conformance
-    status: QUEUED_AFTER_H4D
+    status: ARCHITECTURE_AUDITED_BLOCKED_ON_H4D_TASK310_TASK311
     phase: H4E_PRODUCTION_ROUTING_AND_CONCURRENCY_LIVE_CONFORMANCE
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-04"
+    preemptive_audit_on: "2026-10-06"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
     objective: >-
-      Prove the production origin-affine unattended wake shape across same-repository
-      multi-chat routing, cross-project isolation, same-chat serialization, Human
-      supersession, route-generation changes, missing/stale affinity fail-close, and
-      an unattended target that was not pre-opened by the Human.
+      Prove the final production wake composition across device-independent exact
+      destination capture, immutable canonical base affinity, Human-authorized
+      subject-scoped continuation, shared conversation lanes, unattended acquisition and
+      multi-lane concurrency without cross-delivery, starvation, duplicate wake or new
+      semantic/lifecycle authority.
+    execution_prerequisites:
+      h4d_live_exit: PASS_REQUIRED
+      task310_origin_rendezvous: REVIEWED_PUBLISHED_REQUIRED
+      task311_subject_continuation: REVIEWED_PUBLISHED_REQUIRED
+      note: >-
+        H4E architecture may be audited before these prerequisites. Production execution
+        and live closure may not claim PASS until all are satisfied.
+    target_composition:
+      sequence:
+        - EXACT_ATTENTION_IDENTITY
+        - EXACT_CANONICAL_LINEAGE_AND_ROOT_TASK_PROOF
+        - IMMUTABLE_BASE_RETURN_AFFINITY_PROOF
+        - OPTIONAL_HUMAN_AUTHORIZED_SUBJECT_CONTINUATION_PROOF
+        - EFFECTIVE_DESTINATION_AFFINITY
+        - CONVERSATION_ROUTE_LANE
+        - H4D_UNATTENDED_EXACT_TARGET_ACQUISITION_AND_DELIVERY
+      law: >-
+        Canonical base return_affinity is historical lineage truth. After an explicit
+        subject continuation it need not equal the current effective delivery destination.
+        Deterministic transport must prove both the immutable base lineage and the current
+        authorized subject continuation before selecting the effective conversation lane.
+      no_override_case: >-
+        Without a valid subject continuation record, effective destination equals the
+        exact canonical base affinity; missing or uncertain continuation state after the
+        continuation feature is enabled fails closed rather than silently reverting a
+        previously moved subject.
+    preemptive_two_stage_audit:
+      profile: brain-high-value-v3
+      stage1:
+        stage: CONSTRUCT
+        outcome: RISK_FOUND
+        risks:
+          - H4D_BASE_AFFINITY_EQUALITY_COULD_BLOCK_SUBJECT_SCOPED_CONTINUATION
+          - ROUTE_WIDE_TRANSFER_WOULD_REDIRECT_UNRELATED_TASKS
+          - GLOBAL_ALL_LANES_ACQUISITION_BUDGET_COULD_CREATE_CROSS_LANE_STARVATION
+          - PERIODIC_ALL_LANES_RECOVERY_CAN_COMPETE_WITH_EXECUTION_CRITICAL_RUNNER_CAPACITY
+          - SAME_CHAT_MULTI_SUBJECT_AND_CROSS_REPOSITORY_USE_NEEDS_ONE_SHARED_CONVERSATION_LOCK
+          - PRE_SUBMIT_EVENT_REHOME_AND_POST_SUBMIT_AMBIGUITY_REQUIRE_DIFFERENT_BEHAVIOR
+          - EVENT_ARRIVAL_CAN_RACE_SUBJECT_CONTINUATION_CAS
+          - DEVICE_INDEPENDENT_SEARCH_INDEXING_IS_EVENTUALLY_CONSISTENT
+          - CONTINUATION_STATE_LOSS_COULD_SILENTLY_REVERT_TO_HISTORICAL_CHAT
+          - GENERIC_CONTINUE_CAN_BE_AMBIGUOUS_WITH_MULTIPLE_UNRESOLVED_TASKS
+          - H4D_LIVE_PASS_COULD_BE_MISTAKEN_FOR_FULL_H4E_PRODUCTION_CONFORMANCE
+      stage2:
+        stage: ADVERSARIAL_AUDIT_AND_RECONCILE
+        outcome: CANDIDATE
+        closure: CLEAR_WITH_H4D_DECOUPLING_AND_EXPANDED_LIVE_MATRIX
+        reconciliation:
+          - >-
+            H4D owns exact-target acquisition/delivery safety only. It does not own the
+            choice of effective destination. The current direct equality between canonical
+            event affinity and delivery binding is an implementation detail that TASK-311
+            may replace with separate proof of base affinity plus subject continuation.
+          - >-
+            Conversation routes remain conversation-scoped and own the shared browser
+            lane/lock. Subject continuation is repository+TASK scoped and may map many
+            independent subjects to one existing destination route without creating
+            task-scoped composer locks.
+          - >-
+            Per-lane at-most-one possible submission, draft/generation protection, exact
+            dedupe and ambiguous no-resend remain mandatory. A process-wide or all-lanes
+            acquisition budget may bound one invocation but cannot become durable routing
+            authority or permit indefinite starvation of another eligible lane.
+          - >-
+            H4E requires bounded fairness/eventual progress between independent eligible
+            lanes, not simultaneous clicks. A blocked/busy/unavailable lane cannot create a
+            global BRAIN_BUSY or permanently suppress an independently eligible lane.
+          - >-
+            Background deferred-wake recovery must not monopolize the same execution-
+            critical runner capacity long enough to starve PRIMARY/REPAIR/REMEDIATION.
+            Recovery mechanism and scheduling are replaceable transport HOW, not H4D law.
+          - >-
+            Device-independent rendezvous is destination proof only. Marker search delay,
+            zero/multiple results, account/history unavailability and final uniqueness
+            uncertainty remain fail closed and cannot be replaced by active/recent/default
+            chat heuristics.
+          - >-
+            H4D live evidence proves unattended acquisition capability for one exact target.
+            It is reusable evidence for unchanged acquisition behavior but never substitutes
+            for H4E integrated multi-lane/subject-continuation production proof.
+          - >-
+            Frozen Kernel v0.1 is unchanged. H4E adds no Planner, Router, Message broker,
+            lifecycle state, Reviewer, Publisher or semantic retry authority.
+    h4d_constraints_that_must_remain_refactorable:
+      - CURRENT_CHECK_AFFINITY_BASE_EQUALS_DELIVERY_BINDING
+      - CURRENT_DIRECT_CANONICAL_AFFINITY_TO_LOAD_ROUTE_BINDING_PATH
+      - CURRENT_SHARED_ACQUISITION_BUDGET_FOR_ALL_LANES_INVOCATION
+      - CURRENT_PERIODIC_ALL_LANES_RECOVERY_SCHEDULING
+      - CURRENT_OPERATIONAL_STATE_SCHEMA_AND_ENUMERATION_DETAILS
     required_live_cases:
-      - SAME_REPOSITORY_CHAT_A_FLOW_X_AND_CHAT_B_FLOW_Y_NO_CROSS_DELIVERY
-      - DIFFERENT_REPOSITORIES_BUSY_A_DOES_NOT_BLOCK_IDLE_B
-      - SAME_CHAT_MULTIPLE_PENDING_SUBJECTS_SERIALIZE_AND_REVALIDATE
-      - HUMAN_SUPERSESSION_CLOSES_EXACT_DEFERRED_SUBJECT_AS_RESOLVED_NOOP
-      - MISSING_OR_STALE_ORIGIN_ROUTE_FAILS_CLOSED_WITHOUT_DEFAULT_FALLBACK
-      - ROUTE_GENERATION_CHANGE_CANNOT_REDIRECT_AMBIGUOUS_ATTEMPT
-      - TARGET_NOT_PREOPENED_STILL_DELIVERS_UNATTENDED
+      origin_and_destination:
+        - SAME_REPOSITORY_CHAT_A_FLOW_X_AND_CHAT_B_FLOW_Y_NO_CROSS_DELIVERY
+        - DEVICE_OTHER_BROWSER_OR_PHONE_NEW_CHAT_ORIGIN_PROVED_WITHOUT_CONNECT
+        - RENDEZVOUS_INITIAL_ZERO_THEN_BOUNDED_SAME_TOKEN_SUCCESS
+        - RENDEZVOUS_PERMANENT_ZERO_MULTIPLE_INCOMPLETE_OR_UNAVAILABLE_FAILS_CLOSED
+        - MISSING_STALE_OR_CONFLICTING_ORIGIN_ROUTE_FAILS_CLOSED_WITHOUT_DEFAULT_FALLBACK
+        - TARGET_NOT_PREOPENED_STILL_DELIVERS_UNATTENDED
+      subject_continuation:
+        - TASK1_TASK2_TASK3_SHARE_CHAT_A_MOVE_TASK1_ONLY_OTHERS_STAY_A
+        - TASK1_PAUSED_OR_QUEUED_WHILE_TASK2_TASK3_PROGRESS_THEN_RESUME_TASK1_IN_CHAT_D
+        - ACTIVE_RUN_TASK1_CONTINUATION_CHANGES_ONLY_FUTURE_SAFE_DELIVERY_DESTINATION
+        - SAME_TASK_REVISION_RETAINS_BINDING_DISTINCT_REPLACEMENT_TASK_DOES_NOT_INHERIT
+        - GENERIC_CONTINUE_WITH_MULTIPLE_PLAUSIBLE_TASKS_FAILS_CLOSED_FOR_HUMAN_DISAMBIGUATION
+        - TWO_COMPETING_DESTINATION_CHATS_EXACTLY_ONE_CONTINUATION_EPOCH_CAS_WINS
+        - OLD_CHAT_ACTIVITY_AFTER_MOVE_DOES_NOT_RECLAIM_TASK
+        - A_TO_B_TO_C_AND_EXPLICIT_ROUTE_REVISIT_USE_MONOTONIC_CONTINUATION_EPOCH
+        - CONTINUATION_STATE_MISSING_CORRUPT_OR_UNCERTAIN_FAILS_CLOSED_NO_HISTORICAL_CHAT_REVERSION
+      event_races_and_lineage:
+        - RESULT_FAILURE_REVIEW_REMEDIATION_REPAIR_PUBLICATION_RECOVERY_ALL_RESOLVE_SAME_ROOT_TASK
+        - PENDING_OR_DEFERRED_PRE_SUBMIT_EVENT_CAN_REHOME_WITHOUT_LOSS_OR_DUPLICATE
+        - AMBIGUOUS_OR_SUBMITTED_OLD_DESTINATION_EVENT_REMAINS_PINNED_AND_NEVER_RESENDS
+        - EVENT_ARRIVAL_RACING_CONTINUATION_IS_LINEARIZABLE_TO_OLD_OR_NEW_EPOCH
+        - RESOLVED_OR_SUPERSEDED_EVENT_NOOPS_AFTER_DESTINATION_CHANGE
+        - EVENT_WITHOUT_EXACT_ROOT_TASK_CANNOT_USE_SUBJECT_CONTINUATION_OVERRIDE
+      lane_and_repository_concurrency:
+        - SAME_CHAT_MULTIPLE_PENDING_SUBJECTS_SERIALIZE_AND_REVALIDATE
+        - MULTIPLE_SUBJECTS_MAPPED_TO_ONE_DESTINATION_SHARE_ONE_CONVERSATION_LANE_LOCK
+        - DIFFERENT_CHATS_HAVE_INDEPENDENT_LANES_EVEN_IN_SAME_REPOSITORY
+        - DIFFERENT_REPOSITORIES_BUSY_A_DOES_NOT_BLOCK_IDLE_B
+        - SAME_DESTINATION_CHAT_ACROSS_REPOSITORIES_SERIALIZES_ONE_COMPOSER_WITH_REPOSITORY_BUCKET_ISOLATION
+        - BLOCKED_OR_ACQUISITION_NEEDED_LANE_A_CANNOT_PERMANENTLY_STARVE_ELIGIBLE_LANE_B
+        - TWO_UNPREPARED_TARGET_LANES_REACH_BOUNDED_EVENTUAL_PROGRESS_WITHOUT_GLOBAL_ACQUISITION_AUTHORITY
+        - HUMAN_DRAFT_OR_ACTIVE_GENERATION_IN_ONE_CHAT_DOES_NOT_BLOCK_OTHER_CHAT_LANES
+      operational_recovery_and_capacity:
+        - HUMAN_SUPERSESSION_CLOSES_EXACT_DEFERRED_SUBJECT_AS_RESOLVED_NOOP
+        - ROUTE_GENERATION_CHANGE_CANNOT_REDIRECT_AMBIGUOUS_ATTEMPT
+        - SUBJECT_CONTINUATION_EPOCH_CHANGE_CANNOT_REDIRECT_AMBIGUOUS_ATTEMPT
+        - BACKGROUND_WAKE_RECOVERY_DOES_NOT_STARVE_EXECUTION_CRITICAL_RUNNER_CAPACITY
+        - UNRESOLVED_QUEUE_OR_CONTINUATION_CAPACITY_EXHAUSTION_NEVER_SILENTLY_EVICTS
+        - PROCESS_RESTART_PRESERVES_DEDUPE_QUEUE_ROUTE_AND_SUBJECT_CONTINUATION_STATE
+        - REGISTRY_OR_CONFIG_SPLIT_BRAIN_FAILS_EARLY_WITHOUT_CROSS_DELIVERY
+    liveness_definition: >-
+      H4E does not require unbounded retries or simultaneous physical submissions. It
+      requires that independent eligible lanes retain bounded opportunities to progress
+      across invocations and that no unrelated lane, global busy flag, acquisition budget,
+      scheduled recovery job or stale held event can indefinitely suppress them.
     must_close_historical_residual:
       - SECOND_SEPARATELY_AUTHORIZED_DEPLOYED_LIVE_LANE_UNAVAILABLE
+      - H4_BACKGROUND_RECOVERY_SHARED_RUNNER_STARVATION
+    non_goals:
+      - REQUIRE_SIMULTANEOUS_CHATGPT_SEND_CLICKS
+      - REQUIRE_TRUE_HEADLESS
+      - CREATE_GENERIC_LIFECYCLE_ROUTER
+      - CREATE_TASK_SCOPED_BROWSER_LOCKS
+      - USE_CHAT_TRANSCRIPT_RECENCY_TIMESTAMP_OR_MODEL_MEMORY_AS_ROUTING_AUTHORITY
+      - AUTO_MOVE_TASKS_ON_PRIORITY_CHANGE
+      - AUTO_RETRY_AMBIGUOUS_POST_SEND_ATTEMPTS
+      - AUTO_ADVANCE_ROADMAP_FROM_LIVE_CONFORMANCE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4b-final-production-shape-semantic-resume-proof
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-final-production-shape-semantic-resume-proof
