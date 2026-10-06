@@ -93,6 +93,10 @@ def test_audited_two_calls_fresh_supplier_and_fresh_stage2(registry, profile_pac
     assert len(fresh_calls) == 1 and len(result.attributions) == 2
     assert calls[1]["stage1_lineage"]["stage1_decision_fingerprint"]
     assert result.decision["semantic_value"]["outcome"] == "CANDIDATE"
+    for field in ("cross_authority_context", "canonical_shape", "terminal_lifecycle"):
+        section = result.decision["semantic_value"][field]
+        assert section["packet_fingerprint"] == packet.as_dict()["packet_fingerprint"]
+        assert section["reconciled_candidate_fingerprint"] == result.decision["semantic_value"]["reconciled_candidate_fingerprint"]
     assert all("provider" not in item for item in calls)
 
 

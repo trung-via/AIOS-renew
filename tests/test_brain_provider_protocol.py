@@ -17,6 +17,7 @@ from aios_renew.brain_return_contract import parse_return_contract_registry, sel
 from aios_renew.brain_return_contract import return_contract_ref
 from aios_renew.decision_packet import DecisionPacket
 from aios_renew.task import validate_task
+from tests.test_brain_audit import v3_sections
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +35,9 @@ def registry():
 
 @pytest.fixture
 def profile_package():
-    profile = parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"][0]
+    profile = next(item for item in parse_profile_registry(
+        (ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+        if item["id"] == "brain-high-value-v3")
     return {"profile": profile, "audit_profile_ref": profile_ref(profile)}
 
 
@@ -87,6 +90,7 @@ def stage2_response(req, candidate, *, blocker=False):
         "outcome": "NO_DECISION" if blocker else "CANDIDATE",
     }
     if req["decision_packet"]["selected_flow"] == "TASK_AUTHORING":
+        material.update(v3_sections(req["stage1_lineage"]["construct"], candidate))
         material["acceptance_phase_ledger"] = [
             {"id": entry["id"], "phase": "CLAIM_NOW"} for entry in candidate.get("acceptance", [])
         ]
@@ -124,6 +128,7 @@ def test_audited_round_trip_and_stale_stage2(registry, profile_package):
 
 @pytest.mark.parametrize("tamper", (
     "stage2_fingerprint", "reconciled_candidate_fingerprint", "closure", "construct_audit",
+    "cross_authority_context", "canonical_shape", "terminal_lifecycle",
 ))
 def test_no_decision_serialized_stage2_tampering(registry, profile_package, tamper):
     first = request(registry, profile_package)
@@ -142,6 +147,8 @@ def test_no_decision_serialized_stage2_tampering(registry, profile_package, tamp
         semantic[tamper] = "0" * 64
     elif tamper == "closure":
         semantic["closure"][-1]["blocker_summary"] = "Different open risk"
+    elif tamper in {"cross_authority_context", "canonical_shape", "terminal_lifecycle"}:
+        semantic[tamper]["basis"] = "Substituted conformance judgment"
     else:
         semantic["construct_audit"][0] = {
             "lens": semantic["construct_audit"][0]["lens"], "outcome": "RISK_FOUND",
@@ -152,6 +159,35 @@ def test_no_decision_serialized_stage2_tampering(registry, profile_package, tamp
                                                if k != "decision_fingerprint"})
     with pytest.raises(BrainProviderProtocolError):
         revalidate_decision(altered, second)
+
+
+def test_stage2_fixture_matches_current_v3_closed_audit_contract(registry, profile_package):
+    from aios_renew.brain_audit import validate_stage2
+
+    first = request(registry, profile_package)
+    candidate = {"task_id": "TASK-999", "revision": 1}
+    construct = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]),
+                               first["return_contract_package"], first["external_bindings"],
+                               first["audit_profile_package"], request_mode="AUDIT_RECONCILE",
+                               stage1_decision=construct)
+    raw = stage2_response(second, candidate)
+    assert profile_package["profile"]["id"] == "brain-high-value-v3"
+    assert set(raw) == {
+        "request_fingerprint", "construct_audit", "reconciled_candidate", "closure", "outcome",
+        "acceptance_phase_ledger", "cross_authority_context", "canonical_shape", "terminal_lifecycle",
+    }
+    first_audit = second["stage1_lineage"]["construct"]
+    material = {
+        **{key: first_audit[key] for key in (
+            "packet_fingerprint", "audit_profile_ref", "selected_flow",
+            "construct_candidate", "construct_fingerprint")},
+        **{key: value for key, value in raw.items() if key != "request_fingerprint"},
+    }
+    audited = validate_stage2(second["decision_packet"], profile_package["profile"], first_audit, material)
+    assert audited["handoff_candidate"] == candidate
+    for field in ("cross_authority_context", "canonical_shape", "terminal_lifecycle"):
+        assert audited[field] == raw[field]
 
 
 def test_no_decision_changed_candidate_cannot_be_revalidated(registry, profile_package):

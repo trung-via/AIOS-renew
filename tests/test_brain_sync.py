@@ -15,6 +15,7 @@ from aios_renew.operator import (
     runtime_state_root,
 )
 from aios_renew.verification import materialize_verification_subject
+from tests.git_fixture_support import read_git_ref
 from tests.operator_test_support import (
     TASK_SOURCE,
     git,
@@ -459,7 +460,7 @@ def test_brain_sync_live_repository_smoke() -> None:
     assert len(next_items) == 1
     expected_next = next_items[0]
     before_status = git(repo, "status", "--porcelain=v1")
-    before_head = git(repo, "rev-parse", "HEAD")
+    before_head = read_git_ref(repo)
     before_refs = git(repo, "for-each-ref", "--format=%(refname) %(objectname)")
 
     snapshot = observe_brain_sync()
@@ -484,5 +485,31 @@ def test_brain_sync_live_repository_smoke() -> None:
     assert snapshot.verification_invoked is False
     assert snapshot.state_mutated is False
     assert git(repo, "status", "--porcelain=v1") == before_status
-    assert git(repo, "rev-parse", "HEAD") == before_head
+    assert read_git_ref(repo) == before_head
     assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+
+
+@pytest.mark.parametrize("detached", [False, True])
+@pytest.mark.parametrize("packed", [False, True])
+def test_shared_git_fixture_resolves_ordinary_and_linked_worktree_heads(
+    tmp_path: Path, detached: bool, packed: bool,
+) -> None:
+    repo = make_repo(tmp_path)
+    expected = git(repo, "rev-parse", "HEAD")
+    linked = tmp_path / "linked"
+    args = ("--detach",) if detached else ("-b", "linked")
+    git(repo, "worktree", "add", *args, str(linked), expected)
+    assert (repo / ".git").is_dir()
+    assert (linked / ".git").is_file()
+    if packed:
+        git(repo, "pack-refs", "--all", "--prune")
+    assert read_git_ref(repo) == expected
+    assert read_git_ref(linked) == expected
+    assert read_git_ref(linked, "refs/heads/main") == expected
+    # Exercise relative indirection as well as Git's absolute worktree marker.
+    import os
+    marker = linked / ".git"
+    git_dir = Path(marker.read_text(encoding="utf-8").strip()[8:])
+    marker.write_text(f"gitdir: {os.path.relpath(git_dir, linked)}\n", encoding="utf-8")
+    assert read_git_ref(linked) == expected
+    assert git(linked, "status", "--porcelain=v1") == ""
