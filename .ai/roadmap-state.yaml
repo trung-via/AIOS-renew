@@ -109,8 +109,8 @@ production_wake_amendment:
             but can become an indefinite sequencing wait if no qualifying event occurs.
     stage2:
       stage: ADVERSARIAL_AUDIT_AND_RECONCILE
-      outcome: HUMAN_DECISION_REQUIRED_FOR_ONE_NORMATIVE_RETIREMENT
-      closure: CLEAR_EXCEPT_PENDING_RETIREMENT_DECISIONS
+      outcome: HUMAN_RETIREMENT_DECISIONS_RESOLVED
+      closure: CLEAR_PENDING_DETAILED_EXECUTION_ROADMAP_APPROVAL
       reconciled_architecture:
         - >-
           Frozen Kernel v0.1, Human/Brain/Runtime/Reviewer/Publisher authority boundaries,
@@ -155,7 +155,9 @@ production_wake_amendment:
         - id: RETIRE-PAGE-SCOPED-PROOF-SOLE-ISSUER
           recommendation: RETIRE_SOLE_SOURCE_REQUIREMENT_PRESERVE_ADMISSION_SAFETY
           blocks_task310_target: true
-          human_decision: PENDING
+          human_decision: APPROVED_2026_10_06
+          retirement_status: NORMATIVE_SOLE_SOURCE_REQUIREMENT_RETIRED
+          contract_transition_commit: "ab6aa57b1e281daf46b492aa6a3a559e2e2ea23e"
           retire: >-
             Retire the normative requirement that origin_authoring_proof can be issued
             only by PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1.
@@ -178,7 +180,8 @@ production_wake_amendment:
           recommendation: RETIRE_FROM_EXECUTION_CRITICAL_RUNNER_PATH
           blocks_task310_target: false
           required_before: H4E_LIVE_CONFORMANCE
-          human_decision: PENDING
+          human_decision: APPROVED_2026_10_06
+          retirement_status: APPROVED_IMPLEMENTATION_PENDING
           retire: >-
             Retire the current */5 all-lanes recovery scheduling from the same
             execution-critical self-host runner class.
@@ -200,10 +203,38 @@ production_wake_amendment:
             a standalone roadmap closure gate while preserving its exact target-not-
             preopened live evidence as a mandatory H4E case.
       architecture_freeze_gate: >-
-        H4 origin/wake/continuation architecture may freeze for implementation after the
-        Human decides the normative page-proof sole-issuer retirement. The runner-cron
-        retirement must be resolved before H4E live conformance. The H4D standalone gate
-        remains conditional and need not block TASK-310/TASK-311 implementation.
+        Human approved the normative page-proof sole-issuer retirement and the
+        execution-critical shared-runner cron retirement on 2026-10-06. No implementation
+        TASK may nevertheless be authored until Human separately approves
+        docs/AIOS-H4-EXECUTION-ROADMAP-v1.md. The cron retirement implementation must close
+        before H4E live conformance. The H4D standalone gate remains conditional.
+  execution_roadmap_review:
+    document: docs/AIOS-H4-EXECUTION-ROADMAP-v1.md
+    version: 1
+    status: PENDING_HUMAN_APPROVAL
+    proposed_on: "2026-10-06"
+    authority: HUMAN_BRAIN_PLANNING
+    commit: "ffee3ba95524fbb719907ab2ffaa5ee7d77369d7"
+    hard_gate: NO_TASK_AUTHORING_BEFORE_HUMAN_APPROVAL
+    covers:
+      - TASK310_DEVICE_INDEPENDENT_RENDEZVOUS
+      - TASK310_REVIEWED_ISSUER_ACTIVATION_AND_LIVE_HANDSHAKE
+      - TASK311_SUBJECT_SCOPED_CONTINUATION
+      - SHARED_RUNNER_PERIODIC_RECOVERY_RETIREMENT_IMPLEMENTATION
+      - H4D_LIVE_EXIT_OR_CONDITIONAL_FOLD_DECISION
+      - H4E_INTEGRATED_PRODUCTION_CONFORMANCE
+      - H4B_FINAL_PRODUCTION_SEMANTIC_RESUME
+      - H5_H4_CONFORMANCE_CLOSURE
+      - TASK312_RETURN_TO_BLOCKED_TASK308_OBJECTIVE
+    task_authoring_state:
+      TASK-310: PROHIBITED_PENDING_ROADMAP_APPROVAL
+      TASK-311: PROHIBITED_PENDING_ROADMAP_APPROVAL
+      TASK-312: PROHIBITED_PENDING_ROADMAP_APPROVAL
+      recovery_retirement_task: UNASSIGNED_AND_PROHIBITED_PENDING_ROADMAP_APPROVAL
+    human_review_choices:
+      - APPROVE_H4_EXECUTION_ROADMAP_V1
+      - REQUEST_MODIFICATIONS
+      - REJECT_AND_REDESIGN
   sequencing:
     - H4C0_ORIGIN_CAPTURE_FEASIBILITY_AND_CONTRACT_FREEZE
     - H4C1_ORIGIN_AFFINE_RETURN_ROUTING
@@ -1034,7 +1065,7 @@ sequence:
       architecture_status: LIVE_FEASIBILITY_PASS_IMPLEMENTATION_REQUIRED
     implementation_next:
       id: h4-opaque-origin-rendezvous-implementation-v1
-      status: BLOCKED_PENDING_HUMAN_PROOF_ISSUER_RETIREMENT_DECISION
+      status: BLOCKED_PENDING_HUMAN_H4_EXECUTION_ROADMAP_APPROVAL
       phase: H4_ORIGIN_CAPTURE_DEVICE_INDEPENDENCE_IMPLEMENTATION
       authority: HUMAN_BRAIN_PLANNING
       candidate_task_id: TASK-310
@@ -1288,14 +1319,15 @@ sequence:
               establish absence of cross-control-plane regressions.
       authoring_preconditions:
         executor_selection: PENDING_HUMAN
-        proof_issuer_contract_transition: PENDING_HUMAN_DECISION
+        detailed_h4_execution_roadmap: PENDING_HUMAN_APPROVAL
+        proof_issuer_contract_transition: APPROVED_AND_CONTRACT_UPDATED
+        contract_transition_commit: "ab6aa57b1e281daf46b492aa6a3a559e2e2ea23e"
         current_page_origin_authoring_proof: REQUIRED_FOR_TASK310_BOOTSTRAP_UNDER_CURRENT_TASK309_GATE
         interpretation: >-
           TASK-310 must not bypass its own predecessor gate. Its own authoring may still
-          use one lawful current-page page-scoped proof. However, the Human must decide
-          whether to retire page-scoped bootstrap as the sole normative proof issuer for
-          post-TASK-310 production; without that transition, TASK-310 cannot satisfy the
-          standing no-Connect objective for future new TASK authoring.
+          use one lawful current-page page-scoped proof during transition. The sole-issuer
+          requirement is already retired prospectively, but TASK-310 remains prohibited
+          from authoring until the Human approves docs/AIOS-H4-EXECUTION-ROADMAP-v1.md.
       executor_delegation:
         status: REQUIRES_FRESH_HUMAN_SELECTION
         reason: NEW_TASK_IDENTITY_REQUIRES_HUMAN_DELEGATION
