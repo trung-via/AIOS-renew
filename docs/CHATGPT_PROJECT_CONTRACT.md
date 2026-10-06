@@ -64,9 +64,22 @@ ChatGPT Brain owns:
 Brain does not implement production code.
 
 New revision-1 `ORIGIN_AFFINE` TASK authoring must carry a bounded opaque
-`origin_authoring_proof` from an **active reviewed exact-origin issuer**, alongside
-the audited ingress handoff. The proof stays in the operational ingress envelope,
-outside the TASK payload. Copying a selector, an old TASK, another chat's proof,
+`origin_authoring_proof` from an **active reviewed exact-origin issuer**. The proof stays
+in the operational ingress envelope, outside the TASK payload.
+
+Human approved retirement on 2026-10-06 of the requirement that AUTHOR_TASK ingress must
+serialize and deterministically revalidate the complete two-stage Brain audit handoff
+(`AIOS_AUDITED_AUTHORING_HANDOFF`, Decision Packet fingerprint, Stage-1/Stage-2 audit
+envelope, and TASK acceptance-phase ledger) as a mutation prerequisite. The two-stage
+Brain audit itself remains a semantic authoring obligation: Brain must still audit the
+TASK design before handoff, but cognitive-support/audit plumbing is not canonical
+engineering truth and must not be required as a second mutation authority.
+
+This retirement is prospective. Until a reviewed implementation removes the old ingress
+gate, the currently published Runtime may continue to require the legacy audited handoff
+for the one transition TASK needed to remove it. After activation, AUTHOR_TASK admission
+must validate the final TASK contract and canonical/provenance bindings directly, without
+requiring reconstruction of Brain audit fingerprints. Copying a selector, an old TASK, another chat's proof,
 a rendezvous marker by itself, or an assistant/transcript assertion does not
 establish provenance.
 
