@@ -476,85 +476,186 @@ Exits: `AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE` and
 `PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE`, with `ASYNC_HANDOFF_RECEIPT_V1` and PRIMARY coverage of
 `ASYNC_LIVENESS_ATTENTION_V1` proven.
 
-### BO-6 — Delta semantic audit over settled architecture
+### Cross-phase invariant — DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1
 
-Purpose: retain two-stage Brain audit while eliminating repeated reasoning over already-settled,
-fingerprinted architecture/governance.
+BO-6, BO-7 and BO-8 remain separate implementation phases because they operate at different
+trust/mutation boundaries, but all three MUST conform to one common architecture invariant:
 
-TASK audit focuses on architecture fidelity, task-specific scope/non-goals, acceptance,
-verification and new counterexamples. Constitutional preflight becomes a bound governance
-input/lens rather than a separate redundant semantic pass.
+`DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1`.
 
-Any architecture fingerprint movement, ambiguity or conflict forces expanded fresh audit.
+Rules:
 
-Exit: `TASK_SPECIFIC_DELTA_AUDIT_ACTIVE`.
+1. Brain owns irreducible semantic decisions; Runtime MUST NOT acquire semantic WHAT/WHY authority.
+2. Facts Runtime can reconstruct exactly from canonical state MUST NOT require Brain to restate,
+   reserialize, re-hash, repackage or copy them merely to become mutation authority.
+3. Deterministically derived facts are projections, not independent sources of truth.
+4. Settled canonical material should be supplied by exact ref/digest/currentness proof plus the
+   bounded semantic material actually required for reasoning, rather than by unbounded rehydration.
+   A digest alone is never a substitute when the semantic content itself is required.
+5. Freshness checks SHOULD bind the smallest canonical subject whose movement can invalidate the
+   semantic decision; do not replace broad serialized audit handoffs with a new broad global hash.
+6. Compatibility/history mirrors MAY remain temporarily but MUST be non-authoritative and, where
+   mechanically derivable, regenerated from the smaller semantic root.
+7. Stable material may be elided only under exact deterministic binding. Ambiguity, movement,
+   incomplete binding or uncertain relevance expands fresh context or fails closed.
+8. Deterministic reduction never substitutes for the required two-stage Brain semantic audit.
+9. This invariant MUST NOT introduce a vector database, semantic code RAG, memory database,
+   persistent reasoning store, semantic Planner, lifecycle router, model-driven relevance selector
+   or second canonical planning database.
+
+Phase boundaries remain:
+
+```text
+BO-6 = semantic read/reasoning boundary
+BO-7 = correction mutation boundary
+BO-8 = planning mutation boundary
+```
+
+### BO-6 — Deterministically projected delta semantic audit
+
+Purpose: retain two-stage Brain audit while eliminating repeated semantic processing of already
+settled, canonical and unchanged architecture/governance. BO-6 is a consumer of the bounded
+context pipeline established by BO-2 and BO-3; it MUST NOT create an independent retrieval,
+memory or context subsystem.
+
+Target flow:
+
+```text
+fresh canonical subject
+ + deterministic relevance projection
+ + current semantic delta
+ -> Stage 1 CONSTRUCT
+ -> Stage 2 ADVERSARIAL_AUDIT_AND_RECONCILE
+ -> final semantic candidate
+```
+
+Required input shape:
+
+- one fresh subject envelope containing current main, exact subject/lineage, authority, selected
+  Flow Card, current lifecycle state and effective NEXT where planning state is relevant;
+- one deterministic relevance projection containing only mechanically relevant canonical
+  architecture/governance material, with exact canonical source, semantic section identity,
+  digest/currentness proof, relevance rule and bounded semantic material;
+- the current TASK/correction semantic delta: goal, task-specific assumptions, scope, non-goals,
+  constraints, acceptance, verification and new counterexamples as applicable.
+
+The context pipeline is:
+
+```text
+canonical facts
+ -> deterministic relevance projection
+ -> rule-based elision
+ -> digest/currentness proof
+ -> task/correction semantic delta
+ -> two-stage semantic audit
+```
+
+Semantic summarization is not the default relevance mechanism. Later provider optimization may use
+bounded summarization only if deterministic projection/elision still exceeds the provider budget.
+
+Settled architecture material may be reused without complete semantic re-analysis only when its
+authoritative source and semantic digest are exact/current, the present subject does not trigger a
+mechanically identified relevance expansion, and no authority conflict or ambiguity exists.
+Architecture/governance fingerprint movement invalidates reuse.
+
+Constitutional preflight becomes a bound governance input/lens rather than a separate redundant
+semantic pass where the same protection is already expressed by the canonical audit profile.
+The underlying governance remains authoritative; only repeated semantic processing is removed.
+
+Every task-specific audit still tests architecture fidelity, authority boundary, scope/non-goals,
+provenance/lineage, acceptance consistency, verification ownership/order, new failure-mode
+counterexamples and simplification/duplicate authority. Unchanged architecture never implies
+automatic TASK correctness.
+
+Context MUST expand or the operation MUST fail closed when architecture/governance identity moves,
+the candidate crosses an authority boundary outside the current projection, relevance rules are
+ambiguous, the canonical source is unavailable/conflicting, or semantic interpretation requires
+material excluded by the projection.
+
+Non-goals include semantic RAG, embeddings/vector retrieval, model-selected context search,
+architecture memory as authority, semantic dependency databases, a third audit stage or automatic
+risk/profile routing.
+
+Exit: `TASK_SPECIFIC_DELTA_AUDIT_ACTIVE`, conforming to
+`DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1`.
 
 ### BO-7 — Correction Authoring Direct Final Contract Ingress
 
 Status: **HUMAN_UPGRADED — IMPLEMENTATION REQUIRED**
 
-Purpose: make AUTHOR_REMEDIATION and AUTHOR_REPAIR obey the same final-contract mutation
-principle as BO-1 applies to AUTHOR_TASK.
+Purpose: remove duplicated Brain-derived mutation authority from AUTHOR_REMEDIATION and
+AUTHOR_REPAIR while preserving the final semantic correction contract as Brain-owned and canonical
+support/lineage reconstruction as Runtime-owned.
 
 Target flow:
 
 ```text
-canonical correction subject
+fresh correction subject
+ -> deterministic correction context projection
  -> Brain semantic correction decision
  -> two-stage Brain audit
  -> final REMEDIATION or REPAIR contract
  -> correction ingress
- -> Runtime reconstructs canonical correction lineage and deterministic support facts
- -> Runtime directly validates the final family contract
- -> minimal semantic-staleness witness + CAS/replay/currentness checks
+ -> Runtime reconstructs canonical correction lineage/support facts
+ -> Runtime validates the final family contract directly
+ -> narrow semantic freshness + CAS/replay/currentness checks
  -> canonical mutation
 ```
 
-The mutation boundary must not require Brain to serialize or hash Decision Packet material,
-Stage-1/Stage-2 audit-support envelopes, derived support sections or other material Runtime
-can deterministically reconstruct from canonical TASK/RUN/RESULT/FAILURE/REVIEW/current
-correction state.
+Mutation authority SHALL be the final correction contract, exact semantic subject identity,
+minimum freshness/CAS witnesses and Runtime-reconstructed canonical lineage. It SHALL NOT depend
+on Brain serialization of derivable support material.
 
-For AUTHOR_REMEDIATION, Runtime directly reconstructs and validates at minimum the exact
-source RUN, REVIEW, finding, reviewed SHA, TASK, ResultPackage/Evidence lineage and whether
-the finding remains canonically outstanding.
+The following cease to be required mutation authority when Runtime can reconstruct them:
+Decision Packet serialization, construct fingerprint, serialized Stage-1/Stage-2 outputs,
+Risk/Coverage Ledger serialization, derived support sections, Brain-generated normalization
+fingerprints, Brain copies of Runtime-readable lineage facts, and hashes whose only purpose is
+proving equality of deterministic support material. Brain still performs the required two-stage
+semantic audit; the audit transcript does not need to cross the mutation boundary.
 
-For AUTHOR_REPAIR, Runtime directly reconstructs and validates at minimum the failed RUN,
-FAILURE, failed head, TASK/revision, repairability/candidate facts, current repair
-authorization/supersession, continuation state and correction scope.
+For AUTHOR_REMEDIATION, Runtime reconstructs and validates at minimum the exact source RUN,
+finding, canonical REVIEW, reviewed SHA, finding action, TASK identity/revision,
+ResultPackage/Evidence lineage, current outstanding-finding state and current correction state.
 
-BO-7 preserves the exact TASK/correction identity needed for deterministic BO-4 delegation
-resolution, but correction ingress does not select Executor/model/effort. Execution delegation
-remains Human TASK-scoped authority; BO-7 neither duplicates nor substitutes BO-4.
+For AUTHOR_REPAIR, Runtime reconstructs and validates at minimum the failed RUN, canonical
+FAILURE, failed head, TASK identity/revision, RUN base, repairability, candidate changed files,
+current repair authorization/supersession lineage, continuation state and authorized correction
+scope.
 
-#### Required invariant — `NO_BRAIN_DERIVABLE_MATERIAL_REJECTION_V1`
+Required invariant: `NO_BRAIN_DERIVABLE_MATERIAL_REJECTION_V1`.
 
-An otherwise valid AUTHOR_TASK, AUTHOR_REMEDIATION or AUTHOR_REPAIR mutation must not fail
-solely because Brain serialized, normalized, packaged or hashed support material differently
-when Runtime can deterministically reconstruct that material from canonical state plus the
-final family contract.
+An otherwise valid AUTHOR_TASK, AUTHOR_REMEDIATION or AUTHOR_REPAIR mutation MUST NOT fail solely
+because Brain serialized, normalized, packaged or hashed derivable support material differently
+when Runtime can reconstruct that material deterministically from canonical state plus the final
+family contract.
 
-This does **not** remove meaningful semantic freshness. A minimal selector/hash/CAS remains
-when it proves what canonical state the Brain decision was authorized against and a later
-state must make that decision stale. Runtime must still fail closed on invalid final contract,
-wrong/stale subject, resolved finding, invalid correction action/scope, wrong failed head or
-predecessor, origin-provenance failure, replay conflict or concurrent canonical movement.
+Removal of `audited_handoff` mutation authority does NOT remove semantic freshness. Ingress still
+fails closed on stale/wrong subject, wrong reviewed SHA or failed head, resolved/superseded
+findings, invalid correction action/scope, wrong predecessor, concurrent canonical movement,
+origin/provenance failure where applicable, replay conflict or mutation conflict. Freshness SHOULD
+use narrow subject-specific witnesses instead of broad audit serialization.
 
-Legacy `audited_handoff`, if accepted temporarily for compatibility, has no mutation authority:
-changing only its derivable fingerprints/support sections cannot make an otherwise identical
-valid final contract fail, and the production carrier should stop sending it after transition.
+During migration, legacy `audited_handoff` MAY be accepted only as
+`COMPATIBILITY_ONLY_NON_AUTHORITATIVE`: changing only its derivable fingerprints/support sections
+cannot change admission for an otherwise identical final contract and canonical state. Production
+correction carriers SHOULD stop emitting it after direct-final-contract ingress becomes active;
+BO-10 later removes obsolete normative guidance/plumbing where safe.
 
 Required regression proof includes:
-- valid final REMEDIATION and REPAIR canonicalize without `audited_handoff`;
-- legacy handoff fingerprint/support-section differences do not alter the result for the same
-  final contract and canonical state;
-- serialization/normalization differences in derivable support material do not alter admission;
-- real semantic stale/CAS/lineage/scope/replay conflicts still fail closed.
 
-Non-overlap with BO-1R:
-- BO-1R/TASK-314 owns **post-authorization** same-head structural ResultPackage preservation;
-- BO-7 owns **pre-authorization** direct-final-contract correction ingress;
-- neither phase reimplements the other's boundary.
+- valid REMEDIATION canonicalizes without `audited_handoff`;
+- valid REPAIR canonicalizes without `audited_handoff`;
+- changes only to legacy derivable audit/support material do not alter admission;
+- Runtime independently reconstructs exact correction lineage;
+- stale reviewed SHA, stale failed head, resolved/superseded subject, invalid scope/action,
+  replay/mutation conflict and concurrent canonical movement still fail closed.
+
+Non-overlap with BO-1R remains exact:
+
+```text
+BO-1R = post-authorization structural ResultPackage preservation
+BO-7  = pre-authorization correction direct-final-contract ingress
+```
 
 Exit: `CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`.
 
@@ -563,22 +664,80 @@ Program-level combined exit after BO-1 and BO-7:
 `AUTHOR_TASK_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE` and
 `CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`.
 
-### BO-8 — Planning transaction batching and atomic NEXT transition
+### BO-8 — Single-root planning transition and deterministic projection
 
-Purpose: reduce multiple near-consecutive planning commits for one already-made Human decision
-and prevent partial roadmap transitions from creating split-brain NEXT.
+Purpose: reduce duplicated planning authority while preserving atomic planning mutation. BO-8 is
+not merely commit batching: one Human/Brain semantic planning decision should not require Brain to
+manually author multiple competing representations of the same planning state.
 
-One Human planning decision should normally produce one atomic canonical planning mutation when
-the affected files are known together. When effective NEXT changes, that transaction reconciles
-the effective selector, compatibility next_items view, prior/new sequence statuses, blocker and
-unblock state, return metadata, next semantic action and current Human priority selector together.
-Distinct Human approvals, risk acceptances or later semantic decisions remain separate transactions.
+Normal planning writes SHOULD follow:
 
-Runtime may structurally prove agreement or fail closed; it never chooses which work should be NEXT.
-The exact TASK-319 split-brain incident is a mandatory positive regression.
+```text
+one semantic planning transition
+ -> Runtime structural validation
+ -> deterministic planning projections
+ -> one atomic canonical mutation
+```
+
+Human/Brain own only irreducible semantic planning roots such as a genuine priority change,
+selection of a new planning objective, semantic block/unblock decision, risk-acceptance change,
+new sequencing decision or an approved semantic transition under existing authority.
+
+From that semantic root plus current canonical planning state, Runtime SHOULD derive or validate
+deterministic mirrors including effective NEXT, sequence status transitions, compatibility
+`next_items`, blocker/unblock projection, mechanically derivable `next_action`,
+predecessor/return metadata and current-status mirrors. A completely derivable field MUST NOT
+remain an independent semantic planning authority.
+
+BO-8 preserves `ROADMAP_SINGLE_EFFECTIVE_NEXT_V1` and adds:
+
+`ONE_SEMANTIC_NEXT_ROOT_V1`
+
+The normal writer SHALL make it structurally impossible for one valid transition to create two
+semantic NEXT authorities. A NEXT-changing transaction atomically reconciles all required derived
+views from one authorized semantic root.
+
+Compatibility mirrors such as `next_items`, sequence `NEXT`, return bookmarks and compatibility
+priority views MAY remain where required for transition/history, but are
+`DERIVED_COMPATIBILITY_VIEW` unless they contain an explicitly defined irreducible semantic
+decision. They cannot independently override the semantic planning root.
+
+Reader/runtime validation MUST continue to reject malformed legacy or externally created
+split-brain states. The demonstrated TASK-319 shape remains a mandatory regression:
+
+```text
+sequence NEXT = X
+next_items = Y
+X != Y
+ -> fail closed
+```
+
+The optimization is stronger than detection: the normative planning writer should no longer be
+able to manufacture this conflict in the first place.
+
+When several planning-file changes are consequences of one already-made Human/Brain semantic
+decision they SHOULD be committed as one atomic mutation. Distinct Human approvals, distinct risk
+acceptances, later semantic decisions, new-TASK authorization, new-TASK Executor/model/effort
+delegation and unrelated roadmap transitions MUST remain separate decisions.
+
+Runtime may derive mirrors, structurally validate consistency, enforce CAS, atomically write the
+projection and fail closed. Runtime MUST NOT choose which roadmap work is preferable, invent
+priority, choose a new TASK, rank semantic candidates or automatically advance planning without
+an exact authorized semantic transition.
+
+Required regressions include:
+
+- one semantic NEXT transition generates internally consistent mirrors;
+- compatibility `next_items` and sequence mirrors cannot independently override effective NEXT;
+- blocker projection cannot leave a blocked item selected as active NEXT;
+- partial mutation fails atomically and stale expected planning state fails CAS;
+- the TASK-319 split-brain fixture fails closed;
+- distinct Human decisions cannot be collapsed into one transaction;
+- Runtime cannot select a successor without authorized semantic input.
 
 Exits: `PLANNING_MUTATION_BATCHING_ACTIVE` and
-`ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE`.
+`ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE`, conforming to `ONE_SEMANTIC_NEXT_ROOT_V1` and
+`DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1`.
 
 ### BO-9 — Conditional provider/context serialization optimization
 

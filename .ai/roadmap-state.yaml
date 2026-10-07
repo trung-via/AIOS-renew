@@ -90,6 +90,55 @@ brain_optimization_preemption:
       - ATOMIC_TRANSITION_INCOMPLETE
     exact_regression: TASK319_SEQUENCE_NEXT_VS_NEXT_ITEMS_SPLIT_BRAIN
 
+  deterministic_authority_context_reduction_contract:
+    contract: DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1
+    human_decision: APPROVED_2026_10_08
+    audit_closure: CLEAR_WITH_MANDATORY_REFINEMENTS
+    applies_to:
+      - BO-6_TASK_SPECIFIC_DELTA_SEMANTIC_AUDIT
+      - BO-7_CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS
+      - BO-8_PLANNING_TRANSACTION_BATCHING
+    requirement: >-
+      Brain owns irreducible semantic decisions only. Runtime reconstructs canonically
+      derivable facts and deterministic projections; derived support facts and compatibility
+      mirrors cannot become independent mutation or planning authorities. Stable context may
+      be elided only under exact current binding; ambiguity expands fresh context or fails closed.
+    phase_boundaries:
+      BO-6: SEMANTIC_READ_REASONING_BOUNDARY
+      BO-7: CORRECTION_MUTATION_BOUNDARY
+      BO-8: PLANNING_MUTATION_BOUNDARY
+    bo6_requirements:
+      - CONSUME_BO2_BO3_CONTEXT_PIPELINE_NOT_NEW_RETRIEVAL_SUBSYSTEM
+      - DETERMINISTIC_RELEVANCE_PROJECTION_BEFORE_SEMANTIC_AUDIT
+      - DIGEST_IS_CURRENTNESS_PROOF_NOT_SUBSTITUTE_FOR_REQUIRED_SEMANTIC_CONTENT
+      - EXPAND_CONTEXT_ON_MOVEMENT_AMBIGUITY_OR_RELEVANCE_ESCAPE
+      - TWO_STAGE_TASK_SPECIFIC_AUDIT_REMAINS_MANDATORY
+    bo7_requirements:
+      - FINAL_CORRECTION_CONTRACT_IS_BRAIN_SEMANTIC_MUTATION_INPUT
+      - RUNTIME_RECONSTRUCTS_DERIVABLE_CORRECTION_LINEAGE
+      - AUDITED_HANDOFF_MAY_ONLY_BE_COMPATIBILITY_ONLY_NON_AUTHORITATIVE_DURING_TRANSITION
+      - NARROW_SUBJECT_FRESHNESS_WITNESSES_PREFERRED_OVER_BROAD_SUPPORT_HASHES
+      - NO_BRAIN_DERIVABLE_MATERIAL_REJECTION_V1
+    bo8_requirements:
+      - ONE_SEMANTIC_NEXT_ROOT_V1
+      - DERIVED_COMPATIBILITY_VIEW_IS_NOT_PLANNING_AUTHORITY
+      - ONE_AUTHORIZED_SEMANTIC_TRANSITION_TO_ATOMIC_DETERMINISTIC_PROJECTIONS
+      - LEGACY_OR_EXTERNAL_SPLIT_BRAIN_STATE_FAILS_CLOSED
+      - RUNTIME_NEVER_SELECTS_SEMANTIC_SUCCESSOR
+    forbidden:
+      - VECTOR_DATABASE
+      - SEMANTIC_CODE_RAG
+      - MEMORY_DATABASE
+      - PERSISTENT_REASONING_STORE
+      - SEMANTIC_PLANNER
+      - LIFECYCLE_ROUTER
+      - MODEL_DRIVEN_RELEVANCE_SELECTOR
+      - SECOND_CANONICAL_PLANNING_DATABASE
+    implementation_shape: THREE_DISTINCT_PHASES_ONE_COMMON_INVARIANT
+    roadmap_effect: >-
+      Canonicalizes the Human-approved BO-6/7/8 refinement only; does not create a TASK,
+      authorize implementation, change phase order, or alter the current effective NEXT.
+
   async_lifecycle_contract:
     contract: ASYNC_BOUNDARY_DOORBELL_CONTINUATION_V1
     human_decision: APPROVED_2026_10_07
