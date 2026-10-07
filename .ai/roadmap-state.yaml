@@ -1219,7 +1219,7 @@ sequence:
       TASK-316 sticky execution profile expires on TASK-id change.
     exit: MINIMUM_SUFFICIENT_VERIFICATION_V2_ACTIVE
     return_to: brain-optimization-v1-task316-verification-baseline-recovery
-    blocks:
+    historical_blocks_satisfied_by_completion:
       - brain-optimization-v1-task316-verification-baseline-recovery
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
