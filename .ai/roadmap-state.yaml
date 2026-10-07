@@ -1189,7 +1189,17 @@ sequence:
     planning_document: docs/AIOS-SELF-HOST-END-TO-END-FLOW-ARCHITECTURE-v1.md
     task_id: TASK-318
     task_authoring_status: NOT_AUTHORED
-    executor_selection: REQUIRES_NEW_TASK_SPECIFIC_HUMAN_EXECUTOR_MODEL_EFFORT_DELEGATION
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-07"
+      task_id: TASK-318
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_318_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
     human_decision: >-
       Immediately after reviewed and source-published TASK-317, prioritize the
       approved two-pass SELF_HOST_END_TO_END_FLOW_V1 architecture and normative
