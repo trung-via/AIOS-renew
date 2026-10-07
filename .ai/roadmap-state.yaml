@@ -1271,14 +1271,66 @@ sequence:
       - brain-optimization-v1-task316-verification-baseline-recovery
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
-  - id: brain-optimization-v1-task316-verification-baseline-recovery
+  - id: brain-optimization-v1-v2-full-suite-hardening
     status: NEXT
+    inserted_on: "2026-10-07"
+    phase: MINIMUM_SUFFICIENT_VERIFICATION_V2_FULL_SUITE_HARDENING
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-07"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    task_id: TASK-319
+    task_revision: 1
+    task_authoring_status: PENDING
+    human_decision: >-
+      Prioritize a bounded prerequisite hardening TASK before further TASK-316
+      correction or another expensive full-suite execution. The new work must harden
+      minimum-sufficient-v2 full-suite observation size and Windows verification
+      cleanup failure preservation without repairing TASK-316 candidate failures.
+    predecessor_failure:
+      run_id: RUN-316-003
+      terminal_kind: FAILURE
+      phase: VERIFICATION
+      terminal_attention_artifact_sha: "2f39039a87b1f859cb6a0d3cbfa1a90872ac5e15"
+      workflow_run_id: 37577305044
+      surfaced_failure: WINDOWS_VERIFICATION_ENVIRONMENT_CLEANUP_LOCK
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-07"
+      task_id: TASK-319
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_319_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+    objective: >-
+      Make minimum-sufficient-v2 full-suite evidence bounded and lossless at current
+      repository scale, preserve the primary verification cause when Windows cleanup
+      also fails, and keep a cleanup failure blocking when no earlier verification
+      failure exists.
+    boundaries:
+      - DO_NOT_REPAIR_TASK316_CANDIDATE_FAILURES_IN_TASK319
+      - DO_NOT_REINTERPRET_HUMAN_DIAGNOSTICS_AS_CANONICAL_RUNTIME_EVIDENCE
+      - DO_NOT_RAISE_CANONICAL_BYTE_BOUND_AS_THE_PRIMARY_FIX
+      - PRESERVE_COMPLETE_FAILURE_IDENTITY_AND_FINGERPRINT_TRUTH
+      - PRESERVE_RUNTIME_VERIFICATION_AUTHORITY
+      - PRESERVE_REPOSITORY_LOCK_SEMANTICS_UNLESS_NEW_CANONICAL_EVIDENCE_PROVES_A_DEFECT
+      - NO_PLANNER_RETRY_FAILOVER_REVIEWER_OR_PUBLISHER_AUTHORITY
+    exit: MINIMUM_SUFFICIENT_VERIFICATION_V2_FULL_SUITE_HARDENED
+    return_to: brain-optimization-v1-task316-verification-baseline-recovery
+    blocks:
+      - brain-optimization-v1-task316-verification-baseline-recovery
+      - brain-optimization-v1-bo1-author-task-mutation-path-simplification
+
+  - id: brain-optimization-v1-task316-verification-baseline-recovery
+    status: BLOCKED_BY_TASK_319
     resumed_on: "2026-10-07"
     priority_resume_gate: SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
     priority_resume_gate_status: SATISFIED_BY_TASK_318
     preserved_failure_lineage: RUN-316-002
-    pending_reconciliation: REEXECUTE_TASK316_R3_ON_CURRENT_MAIN_WITH_RUNTIME_VERIFICATION_V2
-    next_semantic_action: EXECUTE_TASK316_R3_PRIMARY_WITH_MINIMUM_SUFFICIENT_VERIFICATION_V2
+    pending_reconciliation: WAIT_FOR_TASK319_V2_FULL_SUITE_HARDENING_THEN_REEVALUATE_RUN_316_003
+    next_semantic_action: RESUME_TASK316_R3_ONLY_AFTER_TASK319_REVIEWED_PUBLICATION
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
