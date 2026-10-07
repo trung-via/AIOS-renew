@@ -93,22 +93,50 @@ brain_optimization_preemption:
   async_lifecycle_contract:
     contract: ASYNC_BOUNDARY_DOORBELL_CONTINUATION_V1
     human_decision: APPROVED_2026_10_07
+    integrated_audit_refinement: HUMAN_APPROVED_2026_10_08
+    audit_closure: CLEAR_WITH_MANDATORY_REFINEMENTS
+    architecture_principle: BRAIN_OWNS_SEMANTIC_DECISIONS_HANDS_OWN_ELAPSED_TIME
+    required_contracts:
+      - TASK_SCOPED_EXECUTION_DELEGATION_V1
+      - AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1
+      - ASYNC_HANDOFF_RECEIPT_V1
+      - ASYNC_LIVENESS_ATTENTION_V1
+      - NO_BLIND_CORRECTION_LOOP_V1
     handoff_boundaries:
       - PRIMARY
       - REPAIR
       - REMEDIATION
       - PUBLICATION
+    reviewer_boundary: >-
+      REVIEW remains an independent semantic authority outside BO-9A v1. Any later
+      Reviewer async optimization must change transport only and preserve verdict authority.
     stop_rule: >-
       After durable positive asynchronous handoff acceptance, Brain ends the current
-      turn and does not poll progress. Actionable terminal or addressed operational
-      outcomes resume Brain through attention/doorbell plus fresh canonical Brain Sync.
+      turn and does not poll progress. Hands own elapsed execution/publication time and
+      liveness supervision. Actionable terminal or addressed operational outcomes resume
+      Brain through attention/doorbell plus fresh canonical Brain Sync.
+    sticky_repair_rule: >-
+      For CODE_FIX or CONTINUE_IMPLEMENTATION with executor_required=true, automatic
+      REPAIR dispatch must resolve and carry the exact current TASK-scoped Human delegation.
+      Automation may transport existing Human authority but may not select, default, infer
+      or replace Executor/model/effort. Missing or stale delegation fails closed.
+    executorless_rule: >-
+      executor_required=false remains executorless even when the TASK has a sticky coding
+      delegation; NO_CHANGE must not receive an Executor merely because one exists.
+    liveness_rule: >-
+      Accepted asynchronous work that fails to make bounded operational progress must
+      surface deterministic operational attention without restoring Brain polling or
+      fabricating semantic FAILURE/correction strategy.
     preserve:
       - DISPATCH_ACCEPTED_IS_NOT_RUN_SUCCESS
+      - HANDOFF_ACCEPTED_IS_NOT_EXECUTION_VERIFICATION_REVIEW_OR_PUBLICATION_SUCCESS
       - PUBLICATION_HANDOFF_ACCEPTED_IS_NOT_PUBLICATION_SUCCESS
       - RUNTIME_DOES_NOT_CHOOSE_CORRECTION_STRATEGY
       - PROGRESS_SIGNALS_REMAIN_NON_WAKE
       - SAME_TASK_ORDINARY_CONTINUATION_REQUIRES_NO_CEREMONIAL_HUMAN_STOP
       - REAL_HUMAN_RISK_SCOPE_NEW_TASK_OR_OVERRIDE_BOUNDARIES_REMAIN
+      - REPLAY_CANNOT_CHANGE_BOUND_EXECUTION_DELEGATION
+      - H4_RETAINS_DEVICE_INDEPENDENT_EXACT_ORIGIN_DELIVERY_AUTHORITY
 
 production_wake_amendment:
   id: h4-origin-affine-unattended-wake-v1
@@ -1738,40 +1766,75 @@ sequence:
     phase: BO4_TASK_SCOPED_STICKY_EXECUTION_PROFILE
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    integrated_audit_refinement: HUMAN_APPROVED_2026_10_08
     objective: >-
-      Reuse one exact Human-selected Executor/model/effort profile throughout the
-      same TASK lifecycle, with Human-only override and expiry on TASK-id change.
-      Brain must not manually reattach same-TASK execution selectors at PRIMARY,
-      REMEDIATION, REPAIR or continuation boundaries.
-    required_contract: TASK_SCOPED_STICKY_EXECUTION_PROFILE_V1
+      Establish one canonical TASK-scoped Human execution delegation and reuse it
+      throughout PRIMARY, coding REPAIR, coding REMEDIATION and same-TASK continuation
+      without Brain selector glue, default/fallback selection or last-RUN inference.
+    required_contracts:
+      - TASK_SCOPED_STICKY_EXECUTION_PROFILE_V1
+      - TASK_SCOPED_EXECUTION_DELEGATION_V1
+      - AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1
     semantics:
       - HUMAN_SELECTS_EXECUTOR_MODEL_EFFORT_ONCE_PER_TASK
       - EXACT_PROFILE_REUSED_FOR_PRIMARY_REPAIR_REMEDIATION_AND_CONTINUATION_WITHIN_SAME_TASK
       - EXECUTOR_REQUIRED_TRUE_MUST_RESOLVE_EXACT_TASK_SCOPED_DELEGATION
       - EXECUTOR_REQUIRED_FALSE_PRESERVES_EXECUTORLESS_CONTINUATION
+      - AUTOMATION_MAY_TRANSPORT_BUT_MUST_NOT_SELECT_HUMAN_EXECUTION_AUTHORITY
+      - CODE_FIX_AUTO_REPAIR_MUST_NOT_DROP_EXECUTOR_MODEL_OR_EFFORT
       - NO_BRAIN_MEMORY_OR_LAST_RUN_AS_PROFILE_AUTHORITY
-      - HUMAN_OVERRIDE_TAKES_EFFECT_PROSPECTIVELY
+      - NO_REPOSITORY_OR_WORKFLOW_DEFAULT_AS_HUMAN_DELEGATION
+      - HUMAN_OVERRIDE_CREATES_PROSPECTIVE_DELEGATION_GENERATION
+      - ACCEPTED_DISPATCH_RETAINS_ITS_BOUND_GENERATION
       - NEW_TASK_ID_REQUIRES_FRESH_HUMAN_SELECTION
       - NO_AUTOMATIC_FALLBACK_OR_DIFFICULTY_ROUTING
+      - REPLAY_CANNOT_CHANGE_BOUND_EXECUTION_DELEGATION
+    mandatory_regressions:
+      - PRIMARY_STICKY_DELEGATION
+      - CODE_FIX_AUTO_REPAIR_STICKY_DELEGATION
+      - CONTINUE_IMPLEMENTATION_STICKY_DELEGATION
+      - CODING_REMEDIATION_STICKY_DELEGATION
+      - NO_BRAIN_SELECTOR_REATTACHMENT
+      - HUMAN_OVERRIDE_NEW_GENERATION
+      - STALE_GENERATION_FAIL_CLOSED
+      - NO_CHANGE_REMAINS_EXECUTORLESS
+      - MISSING_CODING_DELEGATION_FAILS_CLOSED
+      - REPLAY_PROFILE_COLLISION_FAILS_CLOSED
     exit: TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE
+    exit_requires:
+      - TASK_SCOPED_EXECUTION_DELEGATION_V1
+      - AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1
 
   - id: brain-optimization-v1-bo5-author-task-primary-continuation
     status: QUEUED_AFTER_BO4
     phase: BO5_AUTHOR_TASK_TO_PRIMARY_EXACT_CONTINUATION
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    integrated_audit_refinement: HUMAN_APPROVED_2026_10_08
     objective: >-
-      Carry exact canonical TASK identity from successful AUTHOR_TASK into PRIMARY
-      transport under existing Human delegation without Brain canonical reread/glue,
-      then treat durable positive PRIMARY handoff acceptance as the asynchronous Brain
-      turn boundary with no polling for RUNNER_STARTED or execution progress.
+      Carry exact canonical TASK identity and existing Human delegation from AUTHOR_TASK
+      into PRIMARY without Brain selector glue, establish one generic durable async
+      handoff receipt, end the Brain turn on positive acceptance, and keep liveness
+      supervision in Hands rather than restoring Brain polling.
+    required_contracts:
+      - ASYNC_HANDOFF_RECEIPT_V1
+      - ASYNC_LIVENESS_ATTENTION_V1
     preserve:
       - RUNTIME_REVALIDATES_TASK_COMMIT_BLOB_REVISION_AND_CURRENTNESS
       - PRIMARY_DISPATCH_ACCEPTANCE_IS_NOT_RUN_SUCCESS
+      - HANDOFF_ACCEPTANCE_IS_NOT_EXECUTION_VERIFICATION_REVIEW_OR_PUBLICATION_SUCCESS
       - PROGRESS_SIGNALS_REMAIN_NON_WAKE
       - ADDRESSED_OPERATIONAL_FAILURE_RESULT_OR_FAILURE_RESUMES_VIA_ATTENTION
+      - LIVENESS_ATTENTION_IS_OPERATIONAL_NOT_SEMANTIC_FAILURE
+      - LIVENESS_ATTENTION_CANNOT_SELECT_EXECUTOR_OR_CORRECTION_STRATEGY
+    generic_primitive_rule: >-
+      BO-5 defines the async handoff primitive once and activates it for PRIMARY;
+      BO-9A reuses the same primitive for REPAIR, REMEDIATION and PUBLICATION.
     exit: AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE
     additional_exit: PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE
+    exit_requires:
+      - ASYNC_HANDOFF_RECEIPT_V1
+      - PRIMARY_ASYNC_LIVENESS_ATTENTION_ACTIVE
 
   - id: brain-optimization-v1-bo6-delta-semantic-audit
     status: QUEUED_AFTER_BO5
@@ -1812,6 +1875,8 @@ sequence:
       - EXACT_TASK_RUN_FAILURE_REVIEW_FINDING_LINEAGE
       - OUTSTANDING_OR_UNRESOLVED_CORRECTION_STATE
       - CORRECTION_SCOPE_AND_STRATEGY_AUTHORITY
+      - EXACT_TASK_IDENTITY_FOR_DETERMINISTIC_EXECUTION_DELEGATION_RESOLUTION
+      - NO_EXECUTOR_MODEL_OR_EFFORT_SELECTION_BY_CORRECTION_INGRESS
       - MINIMAL_SEMANTIC_STALENESS_WITNESS
       - CAS_REPLAY_AND_MUTATION_CONFLICT_FAIL_CLOSE
     non_overlap:
@@ -1857,21 +1922,52 @@ sequence:
     phase: BO9A_ASYNC_LIFECYCLE_HANDOFF_DOORBELL_CONTINUATION_CLOSURE
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
+    integrated_audit_refinement: HUMAN_APPROVED_2026_10_08
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     objective: >-
-      Close one generic Brain-turn policy across PRIMARY, REPAIR, REMEDIATION and
-      PUBLICATION: continue synchronously until durable asynchronous handoff acceptance,
-      then end the current Brain turn without polling and resume only from actionable
-      attention plus fresh canonical Brain Sync.
-    required_contract: ASYNC_BOUNDARY_DOORBELL_CONTINUATION_V1
+      Reuse one generic durable async handoff policy across PRIMARY, REPAIR,
+      REMEDIATION and PUBLICATION: release Brain on positive handoff acceptance,
+      keep elapsed work/liveness supervision in Hands, preserve exact TASK execution
+      delegation across coding correction, and resume only from actionable attention
+      plus fresh canonical Brain Sync.
+    required_contracts:
+      - ASYNC_BOUNDARY_DOORBELL_CONTINUATION_V1
+      - ASYNC_HANDOFF_RECEIPT_V1
+      - ASYNC_LIVENESS_ATTENTION_V1
+      - AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1
+      - NO_BLIND_CORRECTION_LOOP_V1
+    lifecycle_families:
+      - PRIMARY
+      - REPAIR
+      - REMEDIATION
+      - PUBLICATION
     preserve:
       - NO_RUNTIME_CORRECTION_STRATEGY_SELECTION
       - NO_BLIND_CORRECTION_LOOP_V1
+      - CODING_CORRECTION_PRESERVES_EXACT_TASK_DELEGATION
+      - EXECUTORLESS_CORRECTION_REMAINS_EXECUTORLESS
+      - HANDOFF_ACCEPTANCE_IS_NOT_DOWNSTREAM_SUCCESS
       - PUBLICATION_HANDOFF_ACCEPTANCE_IS_NOT_PUBLICATION_SUCCESS
+      - PROGRESS_SIGNALS_REMAIN_NON_WAKE
       - SAME_TASK_ORDINARY_CORRECTION_REQUIRES_NO_CEREMONIAL_HUMAN_STOP
+      - REVIEWER_REMAINS_INDEPENDENT_SEMANTIC_AUTHORITY_OUTSIDE_BO9A_V1
       - TASK308_BLOCKED_ORIGIN_LINEAGE_REMAINS_HISTORICAL_NOT_ACTIVATED
       - H4_RETAINS_DEVICE_INDEPENDENT_EXACT_ORIGIN_DELIVERY_AUTHORITY
+    mandatory_regressions:
+      - ALL_FOUR_FAMILIES_SHARE_DURABLE_ACCEPTANCE_NO_POLL_SEMANTICS
+      - CODE_FIX_AUTO_REPAIR_PRESERVES_STICKY_DELEGATION
+      - NO_COMPLETION_COUPLED_BRAIN_WAITING
+      - ACCEPTED_HANDOFF_DOES_NOT_PROVE_SUCCESS
+      - ACTIONABLE_TERMINAL_OR_OPERATIONAL_BOUNDARY_WAKES
+      - LIVENESS_STALL_WAKES_WITHOUT_SEMANTIC_AUTO_CORRECTION
+      - REPLAY_CANNOT_MUTATE_BOUND_DELEGATION
     exit: ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE
+    exit_requires:
+      - SHARED_ASYNC_HANDOFF_PRIMITIVE_ACTIVE
+      - ALL_FOUR_LIFECYCLE_FAMILIES_COVERED
+      - STICKY_CODING_CORRECTION_PRESERVATION_PROVEN
+      - ASYNC_LIVENESS_ATTENTION_ACTIVE
+      - NO_BLIND_CORRECTION_LOOP_V1
     return_to: brain-optimization-v1-bo10-lifecycle-normative-consolidation
 
   - id: brain-optimization-v1-bo10-lifecycle-normative-consolidation
@@ -1892,8 +1988,10 @@ sequence:
       - ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE
       - MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE
       - TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE
+      - AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1
       - AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE
       - PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE
+      - ASYNC_LIVENESS_ATTENTION_V1
       - TASK_SPECIFIC_DELTA_AUDIT_ACTIVE
       - PLANNING_MUTATION_BATCHING_ACTIVE
       - ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE

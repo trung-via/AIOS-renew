@@ -379,38 +379,102 @@ Exit: `CANONICAL_CONTEXT_PIPELINE_V1_ACTIVE`.
 
 ### BO-4 — Task-scoped sticky execution profile
 
-Purpose: implement the already approved `TASK_SCOPED_STICKY_EXECUTION_PROFILE_V1`.
+Purpose: implement `TASK_SCOPED_STICKY_EXECUTION_PROFILE_V1` as a first-class canonical Human
+delegation rather than RUN-local selector glue.
+
+Required contracts:
+
+- `TASK_SCOPED_EXECUTION_DELEGATION_V1`
+- `AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1`
 
 The Human selects Executor/model/effort once per TASK. The exact task-scoped delegation is reused
 for PRIMARY, REMEDIATION, coding REPAIR and continuation within that TASK unless Human explicitly
-changes it. When `executor_required=true`, transport must deterministically resolve and propagate
-that exact delegation; Brain must not repair null carrier selectors by remembering and reattaching
-Executor/model/effort. When `executor_required=false`, the continuation remains executorless.
-New TASK id always requires fresh Human selection. No adaptive fallback/difficulty routing.
+changes it. The delegation is TASK authority, not Brain memory, last-RUN inference, repository
+default, workflow default or adaptive routing. A Human override creates a new prospective
+delegation generation; already accepted dispatches retain the generation to which they were bound.
+A new TASK id requires a fresh Human selection.
 
-Exit: `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE`.
+When `executor_required=true`, deterministic transport MUST resolve and propagate the exact current
+TASK-scoped delegation. When `executor_required=false`, continuation MUST remain executorless even
+if a sticky coding delegation exists. Runtime/transport may carry existing Human authority but
+MUST NOT create, guess, default, upgrade or substitute that authority.
+
+#### Mandatory coding-REPAIR invariant — `AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1`
+
+For canonical `CODE_FIX` or `CONTINUE_IMPLEMENTATION` with `executor_required=true`:
+
+```text
+canonical TASK + correction authority
+ -> exact current TASK-scoped Human delegation
+ -> executor/model/reasoning_effort/source bindings + delegation generation
+ -> immutable REPAIR dispatch binding
+```
+
+Auto REPAIR MUST NOT emit an empty Executor, re-resolve a repository/workflow default, infer a
+previous RUN profile, or require Brain/Human to reattach the same TASK selectors. Automation is
+allowed to transport an independently revalidated Human delegation; it is never allowed to select
+one. Missing or stale delegation fails closed before coding-Executor invocation and emits an
+actionable operational boundary rather than silently falling back.
+
+Executorless actions remain executorless. In particular, reusable `NO_CHANGE` state MUST NOT
+receive the sticky coding Executor merely because the TASK has one.
+
+Required regression proof includes PRIMARY, `CODE_FIX`, `CONTINUE_IMPLEMENTATION`, coding
+REMEDIATION, no Brain selector reattachment, prospective Human override generations, stale-
+generation fail-close, executorless `NO_CHANGE`, missing-delegation fail-close and immutable
+replay profile binding.
+
+Exit: `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE` is satisfied only when
+`TASK_SCOPED_EXECUTION_DELEGATION_V1` and `AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1` are both
+proven across the same-TASK lifecycle.
 
 ### BO-5 — Exact AUTHOR_TASK-to-PRIMARY asynchronous continuation
 
-Purpose: remove Brain canonical reread/manual selector glue after successful TASK authoring and
-make durable PRIMARY handoff acceptance the no-poll Brain-turn boundary.
+Purpose: remove Brain canonical reread/manual selector glue after successful TASK authoring,
+introduce one generic asynchronous handoff primitive, activate it first for PRIMARY, and make
+durable positive handoff acceptance the no-poll Brain-turn boundary.
 
-AUTHOR_TASK success exposes a bounded exact identity sufficient for continuation, including
-TASK id, revision, blob SHA and authoring commit/main identity. Where an exact current Human
-task-scoped execution delegation already exists, deterministic transport may dispatch PRIMARY
-without Brain copying/re-discovering those selectors.
+Required contracts:
+
+- `ASYNC_HANDOFF_RECEIPT_V1`
+- `ASYNC_LIVENESS_ATTENTION_V1`
+
+AUTHOR_TASK success exposes a bounded exact identity sufficient for continuation, including TASK
+id, revision, blob SHA and authoring commit/main identity. Where an exact current Human task-
+scoped execution delegation already exists, deterministic transport may dispatch PRIMARY without
+Brain copying or rediscovering those selectors.
+
+`ASYNC_HANDOFF_RECEIPT_V1` binds the lifecycle family, stable delivery identity, canonical
+subject, applicable delegation generation, transport identity, attempt identity and durable
+acceptance. `accepted=true` proves only downstream handoff acceptance:
+
+```text
+HANDOFF_ACCEPTED
+ != RUN_CREATED
+ != EXECUTION_SUCCESS
+ != VERIFICATION_PASS
+ != REVIEW_PASS
+ != PUBLICATION_SUCCESS
+```
 
 After durable positive PRIMARY handoff acceptance Brain ends the current turn. It does not wait
-for RUNNER_STARTED, Executor progress or verification progress. Those remain non-wake progress
-signals. Addressed pre-AIOS operational failure, canonical RESULT or canonical FAILURE resumes
-Brain through attention plus fresh canonical reconstruction.
+for RUNNER_STARTED, Executor progress, RUN duration or verification progress. Those remain non-
+wake progress signals. Addressed pre-AIOS operational failure, canonical RESULT or canonical
+FAILURE resumes Brain through attention plus fresh canonical reconstruction.
+
+No-poll continuation MUST remain live without moving polling back into Brain.
+`ASYNC_LIVENESS_ATTENTION_V1` therefore belongs to Hands/control plane and deterministically
+surfaces bounded no-admission, worker-loss, dispatch-stall or execution-liveness conditions.
+Liveness attention is operational evidence only: it MUST NOT fabricate semantic FAILURE, choose
+another Executor, choose correction strategy or expand scope.
 
 Runtime independently revalidates TASK commit/blob/revision/currentness before RUN admission.
-Dispatch acceptance is not RUN creation or success, and no planning or execution-profile choice
-moves into Runtime/transport.
+BO-5 defines the generic primitive once and activates it for PRIMARY; BO-9A later reuses the same
+primitive rather than replacing it with a second family-specific async protocol.
 
 Exits: `AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE` and
-`PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE`.
+`PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE`, with `ASYNC_HANDOFF_RECEIPT_V1` and PRIMARY coverage of
+`ASYNC_LIVENESS_ATTENTION_V1` proven.
 
 ### BO-6 — Delta semantic audit over settled architecture
 
@@ -458,6 +522,10 @@ the finding remains canonically outstanding.
 For AUTHOR_REPAIR, Runtime directly reconstructs and validates at minimum the failed RUN,
 FAILURE, failed head, TASK/revision, repairability/candidate facts, current repair
 authorization/supersession, continuation state and correction scope.
+
+BO-7 preserves the exact TASK/correction identity needed for deterministic BO-4 delegation
+resolution, but correction ingress does not select Executor/model/effort. Execution delegation
+remains Human TASK-scoped authority; BO-7 neither duplicates nor substitutes BO-4.
 
 #### Required invariant — `NO_BRAIN_DERIVABLE_MATERIAL_REJECTION_V1`
 
@@ -525,7 +593,16 @@ Exit: `BRAIN_PROVIDER_PAYLOAD_COST_RESOLVED`.
 ### BO-9A — Async lifecycle handoff and doorbell continuation closure
 
 Purpose: after BO-7 exists, close one generic Brain-turn policy across PRIMARY, REPAIR,
-REMEDIATION and PUBLICATION.
+REMEDIATION and PUBLICATION by reusing the BO-5 asynchronous primitive rather than inventing
+family-specific waiting behavior.
+
+Required contracts/invariants:
+
+- `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_V1`
+- `ASYNC_HANDOFF_RECEIPT_V1`
+- `ASYNC_LIVENESS_ATTENTION_V1`
+- `AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1`
+- `NO_BLIND_CORRECTION_LOOP_V1`
 
 Target behavior:
 
@@ -534,22 +611,82 @@ Brain performs current authorized semantic work
  -> deterministic asynchronous handoff
  -> durable positive handoff acceptance
  -> end current Brain turn / no polling
+ -> Hands own elapsed execution/publication time and liveness supervision
  -> actionable terminal or addressed operational outcome
  -> attention / doorbell
  -> fresh canonical Brain Sync
  -> continue under existing authority
 ```
 
+The durable acceptance boundary is uniform across PRIMARY, REPAIR, REMEDIATION and PUBLICATION.
+No family may require Brain to remain coupled until worker completion merely because its current
+transport uses a synchronous reusable workflow. Completion observations may remain operational
+evidence, but worker completion is not the Brain wait condition.
+
+Coding REPAIR and coding REMEDIATION MUST preserve the exact current TASK-scoped Human delegation
+across the async boundary. An auto-dispatched `CODE_FIX` may not arrive with an empty Executor,
+default or re-inferred profile, or a requirement that Brain/Human reattach selectors. If execution
+is required and the exact delegation cannot be proved, handoff fails closed and surfaces
+actionable operational attention. Executorless correction remains executorless.
+
 FAILURE still requires Brain semantic REPAIR strategy; CHANGES_REQUIRED still requires Brain
-semantic REMEDIATION; Runtime never becomes a correction planner. Ordinary same-TASK continuation
-requires no ceremonial Human stop unless a real Human risk/scope/new-TASK/override boundary appears.
+semantic REMEDIATION. Runtime never becomes a correction planner and liveness supervision never
+becomes a semantic correction selector. Ordinary same-TASK continuation requires no ceremonial
+Human stop unless a real Human risk/scope/new-TASK/override boundary appears.
+
+REVIEW is intentionally outside BO-9A v1 because Reviewer remains an independent semantic
+authority, not merely Hands executing Brain intent. If Reviewer transport later proves materially
+slow, it may be optimized under a separate provider-neutral async transport contract without
+changing Reviewer verdict authority.
+
 Publication handoff acceptance is not publication success. The blocked TASK-308 origin lineage is
-not activated; BO-9A adopts only the transport-neutral no-poll Brain-turn semantics, while H4
-retains responsibility for final device-independent exact-origin delivery.
+not activated; BO-9A owns transport-neutral no-poll semantics and actionable continuation, while
+H4 retains final device-independent exact-origin delivery authority.
 
-Required invariant: `NO_BLIND_CORRECTION_LOOP_V1`.
+#### Canonical integrated audit — BO-4/5/9A brain–hands decoupling
 
-Exit: `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE`.
+Audit closure: `CLEAR_WITH_MANDATORY_REFINEMENTS`.
+
+> **Brain owns semantic decisions. Hands own elapsed time.**
+
+The phases remain separate dependency-ordered implementation units, not one mega-task:
+
+```text
+BO-4: TASK-scoped Human delegation + sticky coding-REPAIR preservation
+ -> BO-5: generic async receipt + PRIMARY no-poll + Hands-side liveness
+ -> BO-7: direct final correction contract + exact identity + no profile selection
+ -> BO-9A: same async primitive for REPAIR / REMEDIATION / PUBLICATION
+ -> BO-10: retire manual-selector, polling and competing procedural guidance
+```
+
+Mandatory safety conclusions:
+
+1. `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE` MUST NOT be declared while auto `CODE_FIX` can
+   dispatch with an empty Executor, resolve a default, infer a prior RUN profile, or require
+   Brain/Human to reattach the same TASK Executor/model/effort.
+2. `PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE` MUST NOT be declared without deterministic Hands-side
+   liveness attention for accepted work that fails to make bounded operational progress.
+3. `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE` MUST NOT be declared until PRIMARY, REPAIR,
+   REMEDIATION and PUBLICATION share compatible durable-acceptance/no-poll semantics and coding
+   correction preserves exact TASK delegation.
+4. Handoff acceptance never proves RUN creation, execution success, verification success, Review
+   PASS or publication success.
+5. Liveness attention reports operational loss/stall only; it never fabricates semantic FAILURE,
+   selects a replacement Executor, chooses correction strategy or expands scope.
+6. Same-TASK ordinary continuation reuses existing Human delegation without ceremonial Human
+   reselection; new TASK, real risk/scope changes and explicit Human override remain Human bounds.
+7. Replay identity is immutable: an already-bound delivery cannot change Executor/model/effort or
+   delegation generation on replay.
+
+Required cross-phase regression coverage includes exact sticky PRIMARY, `CODE_FIX`,
+`CONTINUE_IMPLEMENTATION`, coding REMEDIATION, Human override generations, stale-generation
+rejection, executorless `NO_CHANGE`, missing-delegation fail-close, immutable replay, accepted
+handoff non-equivalence to success, progress-as-non-wake, terminal/actionable wake and liveness
+attention without semantic auto-correction.
+
+Exit: `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE` only after the shared async primitive, all
+four lifecycle families, sticky coding-correction preservation, no-blind-correction policy and
+Hands-side liveness attention are proven.
 
 ### BO-10 — Lifecycle normative consolidation and legacy cleanup
 
@@ -585,9 +722,11 @@ Before returning to TASK-310:
   authoring families are free of derivable-material ingress rejection;
 - prove `ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE`,
   `ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE` and `NO_ROADMAP_SPLIT_BRAIN_NEXT_V1`;
-- prove `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE`,
-  `PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE` and
-  `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE`;
+- prove `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE` including
+  `TASK_SCOPED_EXECUTION_DELEGATION_V1` and
+  `AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1`;
+- prove `PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE`, `ASYNC_HANDOFF_RECEIPT_V1`,
+  `ASYNC_LIVENESS_ATTENTION_V1` and `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE`;
 - prove `BRAIN_OPTIMIZATION_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE`;
 - fresh Brain Sync using the optimized path;
 - prove the H4 roadmap/objective is still current;
