@@ -839,7 +839,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-task316-verification-baseline-recovery
+  - brain-optimization-v1-v2-full-suite-hardening
 sequence:
 
   - id: TASK-309
@@ -1280,7 +1280,9 @@ sequence:
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-319
     task_revision: 1
-    task_authoring_status: PENDING
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "f0f846d319a8f0e85a6803bc0fc5f774eda17405"
+    task_blob_sha: "67a166ca8150add7eb0026498595d64691c13133"
     human_decision: >-
       Prioritize a bounded prerequisite hardening TASK before further TASK-316
       correction or another expensive full-suite execution. The new work must harden
