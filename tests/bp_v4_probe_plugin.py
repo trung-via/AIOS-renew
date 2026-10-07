@@ -22,7 +22,7 @@ from aios_renew.verification_contract import (
     MAX_CANONICAL_BYTES, MAX_CANONICAL_FAILURES, MAX_CANONICAL_NODEID_CHARS,
     MAX_CANONICAL_REPORTS, MAX_FAILURE_DETAIL_CHARS, verification_digest,
     toolchain_inventory_digest,
-    pytest_collection_identity, VerificationContractError,
+    pytest_collection_identity as _pytest_collection_identity, VerificationContractError,
 )
 
 
@@ -286,7 +286,7 @@ def pytest_collection_finish(session: Any) -> None:
 
 def _collection_identity(value: object) -> dict[str, Any] | None:
     try:
-        return pytest_collection_identity(value)
+        return _pytest_collection_identity(value)
     except (VerificationContractError, UnicodeError):
         _canonical_errors.append("malformed pytest collection identity")
         return None

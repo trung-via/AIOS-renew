@@ -96,6 +96,19 @@ def test_collection_identity_is_normalized_and_deterministic() -> None:
     assert len(first["digest"]) == 64
 
 
+def test_plugin_registration_preserves_collection_identity_without_unknown_hooks() -> None:
+    from aios_renew.verification_contract import pytest_collection_identity
+
+    manager = pytest.PytestPluginManager()
+    manager.add_hookspecs(pytest.importorskip("xdist.newhooks"))
+    manager.register(plugin, "aios-bp-v4-probe")
+    manager.check_pending()
+
+    expected = pytest_collection_identity(NODEIDS)
+    assert plugin._collection_identity(NODEIDS) == expected
+    assert plugin._collection_identity(list(reversed(NODEIDS))) == expected
+
+
 def test_pytest_command_is_fixed_and_uses_only_requested_workers(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
