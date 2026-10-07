@@ -18,6 +18,32 @@ the original per-repository ownership and cross-event in-flight rule are superse
 claims; exact-event ambiguity, dedupe, isolation and binding safety remain active.
 No whole-file historical label retires the still-active H4/H5 planning authority.
 
+## Post-BO-1 AUTHOR_TASK rule
+
+Upon reviewed publication of BO-1, AUTHOR_TASK uses one direct final-contract production
+path and rejects any supplied `audited_handoff` field, including null. Runtime validates
+the final TASK schema, exact identity/revision continuity, current minimum-sufficient
+verification policy, authored return affinity, expected-main currentness and canonical
+delta directly. Independent new revision-1 ORIGIN_AFFINE origin-proof admission retains
+exact carrier-attempt, TASK id, expected-main, route/generation, envelope-digest, HMAC,
+freshness, replay and same-attempt idempotence bindings. Legacy/revision separation and
+expected-old-main compare-and-swap fail-close remain intact.
+
+AUTHOR_TASK mutation does not require, reconstruct, validate, fingerprint or
+freshness-recheck Decision Packets, Stage-1/Stage-2 material, `acceptance_phase_ledger`
+or TASK_AUTHORING audit-support sections. Brain still must perform `CONSTRUCT` then
+`ADVERSARIAL_AUDIT_AND_RECONCILE` and reconcile acceptance proof ownership as cognitive
+and semantic discipline; support material is not canonical engineering truth or a second
+mutation authority.
+
+The H1 and H3 AUTHOR_TASK mutation prerequisites below are **HISTORICAL_ONLY and
+superseded for AUTHOR_TASK only**. Their original rationale and implementation history
+remain recorded. AUTHOR_REMEDIATION and AUTHOR_REPAIR retain H1 audited handoffs,
+canonical reconstruction, correction lineage and freshness checks. H2/H4/H5 and roadmap
+status are unchanged. This rule agrees with the
+[Project Contract](CHATGPT_PROJECT_CONTRACT.md) and
+[Brain TASK Authoring Contract](AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md).
+
 ## 1. Purpose
 
 This track closes demonstrated continuity gaps between canonical AIOS state, Brain
@@ -31,7 +57,8 @@ remember an unstated procedural obligation.
 
 ## 2. Evidence basis
 
-The architecture is grounded in current AIOS-renew and fresh downstream observations:
+The following observations describe the recorded architecture subject baseline, not
+post-BO-1 production authority:
 
 - BP-4A already implements a real two-stage `CONSTRUCT -> ADVERSARIAL_AUDIT_AND_RECONCILE`
   protocol for ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING and
@@ -79,6 +106,9 @@ Kernel v0.1 freezes the canonical TASK/RUN/RESULT/EVIDENCE/REVIEW contract famil
 This track therefore does **not** add a field to the canonical TASK acceptance schema
 and does not redefine RESULT claims.
 
+Historical H3 mutation mechanism (superseded for AUTHOR_TASK by the post-BO-1 rule above;
+proof-phase reconciliation remains a Brain semantic obligation):
+
 The acceptance deadlock is closed prospectively by hardening the audited authoring
 handoff: before a new TASK/revision is canonically mutated, Brain must explicitly
 classify acceptance statements by proof phase inside a transient audited handoff.
@@ -90,6 +120,11 @@ needed). The final frozen TASK candidate still uses the existing schema.
 Historical TASKs and immutable lineage are never rewritten.
 
 ## 5. H1 — Audited Authoring Gate
+
+Post-BO-1 classification: the original AUTHOR_TASK gate below is historical and
+superseded. The AUTHOR_REMEDIATION and AUTHOR_REPAIR gates remain normative. The
+original TASK bootstrap history is preserved; it does not enable a second production
+AUTHOR_TASK path.
 
 ### 5.1 Boundary
 
@@ -186,6 +221,11 @@ collapsing REPAIR into PRIMARY/REMEDIATION or fabricating a new lifecycle family
 This is a compatibility correction, not a generic correction router.
 
 ## 7. H3 — Acceptance proof-phase authoring contract
+
+Post-BO-1 classification: retain Brain proof-phase classification and reconciliation
+as semantic discipline. The original ingress-ledger enforcement below is historical
+and superseded for AUTHOR_TASK; Runtime directly validates the final TASK and never
+consumes that ledger as mutation authority.
 
 Preserve the frozen TASK schema while making proof ownership explicit before
 canonical authoring.

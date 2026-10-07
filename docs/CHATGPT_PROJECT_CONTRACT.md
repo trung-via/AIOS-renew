@@ -67,8 +67,25 @@ engineering truth and must not be required as a second mutation authority.
 This retirement is prospective. Until a reviewed implementation removes the old ingress
 gate, the currently published Runtime may continue to require the legacy audited handoff
 for the one transition TASK needed to remove it. After activation, AUTHOR_TASK admission
-must validate the final TASK contract and canonical/provenance bindings directly, without
-requiring reconstruction of Brain audit fingerprints. Copying a selector, an old TASK, another chat's proof,
+must validate the final TASK contract and canonical/provenance bindings directly. The
+post-BO-1 production path rejects any supplied `audited_handoff`, including a null carrier
+field; it does not accept a legacy alternative path or silently ignore that material.
+Runtime does not reconstruct, validate, fingerprint or freshness-recheck Decision Packets,
+Stage-1/Stage-2 material, `acceptance_phase_ledger` or TASK_AUTHORING audit-support sections
+to authorize AUTHOR_TASK mutation. Brain still performs `CONSTRUCT` then
+`ADVERSARIAL_AUDIT_AND_RECONCILE` as mandatory semantic authoring discipline.
+
+Direct admission preserves final TASK schema and identity/revision continuity,
+`minimum-sufficient-v2` for new identities/revisions, authored return-affinity rules,
+expected-main currentness, unrelated-delta rejection and expected-old-main
+compare-and-swap publication. Identical historical replay remains non-mutating.
+AUTHOR_REMEDIATION and AUTHOR_REPAIR retain their existing audited handoff, canonical
+reconstruction, correction-lineage and freshness gates; BO-1 changes AUTHOR_TASK only.
+This rule supersedes the historical H1/H3 AUTHOR_TASK mutation prerequisites in the
+[semantic-handoff hardening baseline](AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md),
+without changing their history or the two-stage Brain audit obligation.
+
+Copying a selector, an old TASK, another chat's proof,
 a rendezvous marker by itself, or an assistant/transcript assertion does not
 establish provenance.
 

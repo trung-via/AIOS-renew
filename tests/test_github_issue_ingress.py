@@ -61,7 +61,9 @@ def origin_carrier_fixture(tmp_path, monkeypatch):
                        "GITHUB_RUN_ATTEMPT": "1", "RUNNER_ENVIRONMENT": "self-hosted",
                        "AIOS_ORIGIN_REGISTRY": str(registry.path), "AIOS_ORIGIN_ADMISSION_KEY": "c" * 64}.items():
         monkeypatch.setenv(key, value)
-    event = _write_event(tmp_path, _event(json.dumps(asdict(envelope))))
+    body = asdict(envelope)
+    del body["audited_handoff"]
+    event = _write_event(tmp_path, _event(json.dumps(body)))
     policy = _write_policy(tmp_path)
     receipt = tmp_path / "admission.json"
     return repo, remote, main_sha, registry, envelope, admission, event, policy, receipt
@@ -70,6 +72,7 @@ def origin_carrier_fixture(tmp_path, monkeypatch):
 def test_production_origin_carrier_uses_local_admission_then_authenticated_hosted_delivery(tmp_path, monkeypatch):
     from tests.test_authoring_ingress import git
     repo, remote, main_sha, registry, envelope, _, event, policy, receipt = origin_carrier_fixture(tmp_path, monkeypatch)
+    assert "audited_handoff" not in json.loads(json.loads(event.read_text(encoding="utf-8"))["issue"]["body"])
     carrier.prepare_origin_admission(event, policy, receipt)
     before = receipt.read_bytes()
     carrier.prepare_origin_admission(event, policy, receipt)
@@ -306,7 +309,7 @@ payload:
     assert not (tmp_path / "owned").exists()
 
 
-@pytest.mark.parametrize("operation", ["AUTHOR_TASK", "AUTHOR_REPAIR"])
+@pytest.mark.parametrize("operation", ["AUTHOR_REMEDIATION", "AUTHOR_REPAIR"])
 def test_audited_handoff_remains_opaque_and_semantic_rejection_has_no_success_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], operation: str
 ) -> None:
@@ -339,6 +342,56 @@ def test_receipts_are_bounded() -> None:
     failure = carrier.render_failure(ValueError("x" * 10_000))
     assert len(failure) <= 3_500
     assert failure.endswith("[truncated]")
+
+
+def test_issue_carrier_canonicalizes_direct_final_task_without_audit(tmp_path, monkeypatch):
+    from tests.test_authoring_ingress import setup_test_repo, V2_TASK_105_SOURCE, git
+
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    body = {"format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_TASK",
+            "identity": {"task_id": "TASK-105"}, "expected_state": {"expected_main_sha": main_sha},
+            "payload": V2_TASK_105_SOURCE}
+    event = _write_event(tmp_path, _event(json.dumps(body)))
+    policy = _write_policy(tmp_path)
+    monkeypatch.setattr(carrier, "admit_local", lambda *a, **k: pytest.fail("legacy TASK cannot consume origin proof"))
+    delivery = carrier.deliver_event(event, policy, repo=repo)
+    assert delivery.ingress_result.status == "CANONICALIZED"
+    assert git(remote, "rev-parse", "refs/heads/main") == delivery.ingress_result.canonical_sha
+    assert delivery.github_outputs() == ""
+    assert carrier.deliver_event(event, policy, repo=repo).ingress_result.replayed
+
+
+@pytest.mark.parametrize("origin", (False, True))
+@pytest.mark.parametrize("mode", ("frame", "deliver"))
+def test_issue_carrier_rejects_task_handoff_with_fail_receipt_and_no_mutation(
+    tmp_path, monkeypatch, capsys, origin, mode
+):
+    from tests.test_authoring_ingress import setup_test_repo, V2_TASK_105_SOURCE, git
+    from aios_renew import brain_attention
+
+    monkeypatch.setattr(brain_attention, "observe_carrier_rejection", lambda *a, **k: None)
+
+    if origin:
+        repo, remote, main_sha, _, _, _, event, policy, _ = origin_carrier_fixture(tmp_path, monkeypatch)
+        body = json.loads(json.loads(event.read_text(encoding="utf-8"))["issue"]["body"])
+    else:
+        repo, remote, main_sha = setup_test_repo(tmp_path)
+        body = {"format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_TASK",
+                "identity": {"task_id": "TASK-105"}, "expected_state": {"expected_main_sha": main_sha},
+                "payload": V2_TASK_105_SOURCE}
+        policy = _write_policy(tmp_path)
+    body["audited_handoff"] = {"format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1,
+                               "stage1": {}, "stage2": {}}
+    event = _write_event(tmp_path, _event(json.dumps(body)))
+    output = tmp_path / "handoff-rejection-output"
+    assert carrier.main(["--mode", mode, "--event", str(event), "--policy", str(policy),
+                         "--repo", str(repo), "--output", str(output)]) == 1
+    receipt = capsys.readouterr().out
+    assert "AUTHOR_TASK does not accept audited_handoff" in receipt
+    assert "status: FAIL" in receipt and "status: PASS" not in receipt
+    assert not output.exists()
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
 
 
 def test_successful_submit_review_emits_publication_run_id_output(

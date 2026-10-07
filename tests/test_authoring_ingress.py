@@ -53,7 +53,6 @@ def origin_authoring_fixture(tmp_path, repo, main_sha, *, route=None):
     envelope = replace(new_task_envelope(main_sha),
         payload=V2_TASK_105_SOURCE.replace("{kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}", json.dumps(selector)),
         origin_authoring_proof=result.authoring_proof)
-    envelope = audited_envelope(envelope, repo)
     attempt = "github-issue:trung-via/AIOS-renew#107@trung-via/run:900/attempt:1"
     binding = proofs.binding_for(envelope, attempt)
     receipt = proofs.admit_local(registry, binding, "c" * 64)
@@ -148,7 +147,6 @@ def test_origin_revision_preserves_selector_without_current_chat_proof(tmp_path,
     revised = replace(envelope, expected_state={"expected_main_sha": first.canonical_sha},
         payload=V2_TASK_105_R2_SOURCE.replace("{kind: LEGACY_REPOSITORY_DEFAULT_ROUTE}", json.dumps(selector)),
         origin_authoring_proof=None, audited_handoff=None)
-    revised = audited_envelope(revised, repo)
     # A new chat's proof is never an implicit ownership or generation transfer.
     with pytest.raises(AuthoringIngressError, match="revisions"):
         execute_ingress(replace(revised, origin_authoring_proof=envelope.origin_authoring_proof), repo=repo)
@@ -161,9 +159,42 @@ def test_origin_revision_preserves_selector_without_current_chat_proof(tmp_path,
     assert yaml.safe_load(git(repo, "show", f"{result.canonical_sha}:.ai/tasks/TASK-105.yaml"))["return_affinity"] == selector
 
 
+@pytest.mark.parametrize("boundary", ("before_tree", "before_publication"))
+def test_direct_origin_task_rechecks_provenance_during_mutation(
+    tmp_path, monkeypatch, origin_admission_key, boundary
+):
+    from aios_renew import origin_authoring_proof as proofs
+
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    _, envelope, admission = origin_authoring_fixture(tmp_path, repo, main_sha)
+    def expire():
+        monkeypatch.setattr(proofs, "_clock", lambda: admission.receipt["expires_at"])
+    if boundary == "before_tree":
+        original = authoring_ingress_module._git
+        def expire_after_status(repo, *args, **kwargs):
+            result = original(repo, *args, **kwargs)
+            if args == ("status", "--porcelain"):
+                expire()
+            return result
+        monkeypatch.setattr(authoring_ingress_module, "_git", expire_after_status)
+        monkeypatch.setattr(authoring_ingress_module, "_hash_blob", lambda *a: pytest.fail("premature blob mutation"))
+    else:
+        original = authoring_ingress_module._commit_tree
+        def expire_after_commit(*args, **kwargs):
+            commit = original(*args, **kwargs)
+            expire()
+            return commit
+        monkeypatch.setattr(authoring_ingress_module, "_commit_tree", expire_after_commit)
+    with pytest.raises(AuthoringIngressError, match="origin"):
+        execute_ingress(envelope, repo=repo, origin_admission=admission)
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+
+
 def test_explicit_legacy_authoring_stays_separate_from_origin_proofs(tmp_path):
     repo, _, main_sha = setup_test_repo(tmp_path)
-    legacy = audited_envelope(new_task_envelope(main_sha), repo)
+    legacy = new_task_envelope(main_sha)
     with pytest.raises(AuthoringIngressError, match="legacy"):
         execute_ingress(replace(legacy, origin_authoring_proof="origin-authoring-v1:" + "0" * 64), repo=repo)
     result = execute_ingress(legacy, repo=repo)
@@ -217,99 +248,141 @@ def test_h4c1_revision_cannot_transfer_existing_affinity(change):
         require_authored_affinity(payload, existing)
 
 
-def test_audited_authoring_missing_handoff_is_non_mutating(tmp_path):
+def test_author_task_without_handoff_has_no_audit_dependencies(tmp_path, monkeypatch):
+    from aios_renew import brain_audit, brain_context, brain_sync, decision_packet
+
     repo, remote, main_sha = setup_test_repo(tmp_path)
-    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
-        execute_ingress(new_task_envelope(main_sha), repo=repo)
-    assert git(repo, "rev-parse", "HEAD") == main_sha
-    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
-    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+    def retired_dependency(*args, **kwargs):
+        pytest.fail("AUTHOR_TASK called retired Brain audit plumbing")
+    for name in ("_validate_handoff_shape", "_validate_authoring_handoff", "_compose_authoring_packet",
+                 "_recheck_authoring_binding", "_authoring_refs", "_prove_authoring_inputs"):
+        monkeypatch.setattr(authoring_ingress_module, name, retired_dependency)
+    for module, names in ((brain_audit, ("construct_stage1", "validate_stage2", "parse_profile_registry")),
+                          (brain_sync, ("observe_brain_sync",)),
+                          (brain_context, ("compose_brain_work_context", "resolve_flow")),
+                          (decision_packet, ("compile_decision_packet",))):
+        for name in names:
+            monkeypatch.setattr(module, name, retired_dependency)
+    envelope = parse_envelope({
+        "format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_TASK",
+        "identity": {"task_id": "TASK-105"}, "expected_state": {"expected_main_sha": main_sha},
+        "payload": V2_TASK_105_SOURCE,
+    })
+    first = execute_ingress(envelope, repo=repo)
+    revised = replace(envelope, expected_state={"expected_main_sha": first.canonical_sha},
+                      payload=V2_TASK_105_R2_SOURCE)
+    second = execute_ingress(revised, repo=repo)
+    assert first.status == second.status == "CANONICALIZED"
+    assert git(remote, "rev-parse", "refs/heads/main") == second.canonical_sha
+    assert execute_ingress(revised, repo=repo).replayed
 
 
 @pytest.mark.parametrize("revision", (1, 2))
-@pytest.mark.parametrize("fault", ("missing", "empty", "duplicate", "extra", "substituted", "proof_later"))
-def test_task_phase_ledger_gate_rejects_before_any_git_mutation(tmp_path, monkeypatch, revision, fault):
+@pytest.mark.parametrize("fault", ("malformed", "identity", "policy_absent", "policy_v1",
+                                    "empty_verification", "missing_affinity", "stale_main", "dirty_main"))
+def test_direct_author_task_safety_failures_precede_mutation(tmp_path, monkeypatch, revision, fault):
     repo, remote, main_sha = setup_test_repo(tmp_path)
     envelope = new_task_envelope(main_sha)
     if revision == 2:
-        first = execute_ingress(audited_envelope(envelope, repo), repo=repo)
-        main_sha = first.canonical_sha
+        main_sha = execute_ingress(envelope, repo=repo).canonical_sha
         envelope = replace(envelope, expected_state={"expected_main_sha": main_sha}, payload=V2_TASK_105_R2_SOURCE)
-    envelope = audited_envelope(envelope, repo)
-    handoff = copy.deepcopy(envelope.audited_handoff)
-    ledger = handoff["stage2"]["acceptance_phase_ledger"]
-    if fault == "missing":
-        del handoff["stage2"]["acceptance_phase_ledger"]
-    elif fault == "empty":
-        ledger.clear()
-    elif fault == "duplicate":
-        ledger.append(copy.deepcopy(ledger[0]))
-    elif fault == "extra":
-        ledger.append({"id": "EXTRA", "phase": "CLAIM_NOW"})
-    elif fault == "substituted":
-        ledger[0]["id"] = "SUBSTITUTED"
+    body = yaml.safe_load(envelope.payload)
+    if fault == "malformed":
+        del body["goal"]
+    elif fault == "identity":
+        body["task_id"] = "TASK-OTHER"
+    elif fault == "policy_absent":
+        del body["verification"]["policy"]
+    elif fault == "policy_v1":
+        body["verification"]["policy"] = "minimum-sufficient-v1"
+    elif fault == "empty_verification":
+        body["verification"]["required"] = []
+    elif fault == "missing_affinity":
+        del body["return_affinity"]
+    elif fault == "stale_main":
+        envelope = replace(envelope, expected_state={"expected_main_sha": "0" * 40})
     else:
-        ledger[0]["phase"] = "PROOF_LATER"
-    # Even temporary blob/index/commit construction must occur after the gate.
-    monkeypatch.setattr(authoring_ingress_module, "_hash_blob", lambda *a: pytest.fail("premature blob mutation"))
-    monkeypatch.setattr(authoring_ingress_module, "_git_env", lambda *a: pytest.fail("premature index mutation"))
-    monkeypatch.setattr(authoring_ingress_module, "_commit_tree", lambda *a: pytest.fail("premature commit mutation"))
-    before = git(repo, "show", f"{main_sha}:.ai/tasks/TASK-105.yaml", check=False)
-    with pytest.raises(AuthoringIngressError, match="acceptance_phase_ledger|PROOF_LATER"):
+        (repo / "README.md").write_text("dirty main\n", encoding="utf-8")
+    for name in ("_hash_blob", "_git_env", "_commit_tree", "_publish_ingress_ref"):
+        monkeypatch.setattr(authoring_ingress_module, name, lambda *a, **k: pytest.fail("premature Git mutation"))
+    with pytest.raises(AuthoringIngressError):
+        execute_ingress(replace(envelope, payload=body), repo=repo)
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+
+
+@pytest.mark.parametrize("revision", (1, 2, "replay"))
+@pytest.mark.parametrize("handoff", ({}, "legacy", {
+    "format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1, "stage1": {}, "stage2": {},
+}))
+def test_author_task_rejects_any_handoff_before_git_mutation(tmp_path, monkeypatch, revision, handoff):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = new_task_envelope(main_sha)
+    if revision in (2, "replay"):
+        first = execute_ingress(envelope, repo=repo)
+        main_sha = first.canonical_sha
+        if revision == 2:
+            envelope = replace(envelope, expected_state={"expected_main_sha": main_sha},
+                               payload=V2_TASK_105_R2_SOURCE)
+    for name in ("_validate_handoff_shape", "_hash_blob", "_git_env", "_commit_tree", "_publish_ingress_ref"):
+        monkeypatch.setattr(authoring_ingress_module, name, lambda *a, **k: pytest.fail("premature mutation or audit"))
+    with pytest.raises(AuthoringIngressError, match="AUTHOR_TASK does not accept audited_handoff"):
         execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
     assert git(repo, "rev-parse", "HEAD") == main_sha
     assert git(remote, "rev-parse", "refs/heads/main") == main_sha
-    assert git(repo, "show", f"{main_sha}:.ai/tasks/TASK-105.yaml", check=False) == before
 
 
-def test_task_phase_ledger_never_enters_frozen_task_bytes(tmp_path):
-    from aios_renew.task import TaskValidationError, parse_task
+@pytest.mark.parametrize("handoff", (None, {}, "legacy", {
+    "format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1, "stage1": {}, "stage2": {},
+}))
+def test_author_task_parser_rejects_supplied_handoff_even_null(handoff):
+    raw = {"format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_TASK",
+           "identity": {"task_id": "TASK-105"}, "expected_state": {"expected_main_sha": "a" * 40},
+           "payload": V2_TASK_105_SOURCE, "audited_handoff": handoff}
+    with pytest.raises(AuthoringIngressError, match="AUTHOR_TASK does not accept audited_handoff"):
+        parse_envelope(raw)
 
+
+@pytest.mark.parametrize("extra", ("acceptance_phase_ledger", "phase", "cross_authority_context",
+                                    "canonical_shape", "terminal_lifecycle", "TASK_AUTHORING"))
+def test_author_task_rejects_audit_support_inside_frozen_payload(tmp_path, monkeypatch, extra):
     repo, remote, main_sha = setup_test_repo(tmp_path)
-    envelope = audited_envelope(new_task_envelope(main_sha), repo)
-    result = execute_ingress(envelope, repo=repo)
-    raw = git(repo, "show", f"{result.canonical_sha}:.ai/tasks/TASK-105.yaml")
-    assert parse_task(raw) == parse_task(envelope.payload)
-    body = yaml.safe_load(raw)
-    assert all(key not in body for key in ("acceptance_phase_ledger", "cross_authority_context", "canonical_shape", "terminal_lifecycle"))
-    assert all(set(entry) == {"id", "condition"} for entry in body["acceptance"])
-    for extra in ("acceptance_phase_ledger", "phase", "cross_authority_context", "canonical_shape", "terminal_lifecycle"):
-        changed = copy.deepcopy(body)
-        if extra == "phase":
-            changed["acceptance"][0][extra] = "CLAIM_NOW"
-        else:
-            changed[extra] = envelope.audited_handoff["stage2"][extra]
-        with pytest.raises(TaskValidationError):
-            parse_task(json.dumps(changed))
+    body = yaml.safe_load(V2_TASK_105_SOURCE)
+    if extra == "phase":
+        body["acceptance"][0][extra] = "CLAIM_NOW"
+    else:
+        body[extra] = []
+    monkeypatch.setattr(authoring_ingress_module, "_hash_blob", lambda *a: pytest.fail("premature mutation"))
+    with pytest.raises(AuthoringIngressError, match="invalid TASK contract"):
+        execute_ingress(replace(new_task_envelope(main_sha), payload=body), repo=repo)
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
 
 
-def test_audited_authoring_semantic_formatting_and_read_only_replay(tmp_path):
+def test_direct_authoring_semantic_formatting_and_read_only_replay(tmp_path):
     repo, remote, main_sha = setup_test_repo(tmp_path)
-    envelope = audited_envelope(new_task_envelope(main_sha), repo)
+    envelope = new_task_envelope(main_sha)
     body = yaml.safe_load(envelope.payload)
     envelope = replace(envelope, payload=json.dumps(dict(reversed(list(body.items()))), indent=3) + "\r\n")
     result = execute_ingress(envelope, repo=repo)
     assert result.status == "CANONICALIZED"
     assert set(git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", main_sha, result.canonical_sha).splitlines()) == {".ai/tasks/TASK-105.yaml"}
-    replay = execute_ingress(replace(envelope, audited_handoff=None), repo=repo)
+    replay = execute_ingress(envelope, repo=repo)
     assert replay.status == "IDEMPOTENT"
     assert git(remote, "rev-parse", "refs/heads/main") == result.canonical_sha
     with pytest.raises(AuthoringIngressError, match="conflicting TASK"):
-        execute_ingress(replace(envelope, audited_handoff=None, payload=envelope.payload.replace("Implement generic", "Change generic")), repo=repo)
-    revised = replace(envelope, audited_handoff=None,
-                      expected_state={"expected_main_sha": result.canonical_sha},
+        execute_ingress(replace(envelope, payload=envelope.payload.replace("Implement generic", "Change generic")), repo=repo)
+    revised = replace(envelope, expected_state={"expected_main_sha": result.canonical_sha},
                       payload=V2_TASK_105_R2_SOURCE)
-    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
-        execute_ingress(revised, repo=repo)
+    assert execute_ingress(revised, repo=repo).status == "CANONICALIZED"
 
 
 @pytest.mark.parametrize("fault", [
     "stage1_only", "packet", "profile", "flow", "order", "missing_lens",
     "no_decision", "substitution", "reconciliation", "payload",
 ])
-def test_audited_authoring_rejects_invalid_provenance_before_mutation(tmp_path, fault):
-    repo, remote, main_sha = setup_test_repo(tmp_path)
-    envelope = audited_envelope(new_task_envelope(main_sha), repo)
+def test_correction_audited_authoring_rejects_invalid_handoff_before_mutation(tmp_path, fault):
+    repo, remote, _, _, initial = completion_gate_supersession_fixture(tmp_path)
+    envelope = audited_envelope(initial, repo)
     handoff = copy.deepcopy(envelope.audited_handoff)
     if fault == "stage1_only":
         del handoff["stage2"]
@@ -327,44 +400,77 @@ def test_audited_authoring_rejects_invalid_provenance_before_mutation(tmp_path, 
         handoff["stage2"]["closure"][0].update(outcome="BLOCKER", blocker_summary="Material blocker.")
         handoff["stage2"]["outcome"] = "NO_DECISION"
     elif fault in {"substitution", "reconciliation"}:
-        handoff["stage2"]["reconciled_candidate"]["goal"] = "A different semantic goal."
+        handoff["stage2"]["reconciled_candidate"]["instructions"] = ["A different strategy."]
         if fault == "substitution":
-            # A valid risk/reconciliation still cannot substitute the payload.
             handoff["stage2"]["construct_audit"][0] = {
                 "lens": handoff["stage2"]["construct_audit"][0]["lens"], "outcome": "RISK_FOUND",
-                "risks": [{"risk_summary": "Goal mismatch.", "counterexample": "Different goal.",
-                           "candidate_anchor": "goal", "disposition": "ADDRESSED_BY_RECONCILIATION"}],
+                "risks": [{"risk_summary": "Strategy mismatch.", "counterexample": "Different strategy.",
+                           "candidate_anchor": "instructions", "disposition": "ADDRESSED_BY_RECONCILIATION"}],
             }
-            from tests.test_brain_audit import v3_sections
-
-            handoff["stage2"].update(v3_sections(handoff["stage1"], handoff["stage2"]["reconciled_candidate"]))
-    elif fault == "payload":
-        envelope = replace(envelope, payload=envelope.payload.replace("Implement generic", "Change generic"))
+    else:
+        envelope = replace(envelope, payload={**envelope.payload, "instructions": ["Changed strategy."]})
     with pytest.raises(AuthoringIngressError):
         execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
-    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
-    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+    assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/repair/RUN-254-001")
 
 
 @pytest.mark.parametrize("input_path", [".ai/roadmap-state.yaml", ".ai/flow-cards.yaml",
                                        ".ai/brain-audit-profiles.yaml", ".ai/brain-return-contracts.yaml",
                                        ".ai/tasks/TASK-OTHER.yaml"])
-def test_audited_authoring_rejects_dirty_or_alternate_projection(tmp_path, input_path):
+def test_direct_author_task_uses_canonical_main_without_audit_projections(tmp_path, input_path):
     repo, remote, main_sha = setup_test_repo(tmp_path)
-    envelope = audited_envelope(new_task_envelope(main_sha), repo)
     git(repo, "checkout", "-b", "alternate")
     path = repo / input_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes((path.read_bytes() if path.exists() else b"") + b"\n# divergent input\n")
-    with pytest.raises(AuthoringIngressError, match="divergent"):
-        execute_ingress(envelope, repo=repo)
+    path.write_bytes((path.read_bytes() if path.exists() else b"") + b"\n# divergent audit input\n")
+    result = execute_ingress(new_task_envelope(main_sha), repo=repo)
+    assert result.status == "CANONICALIZED"
+    assert git(remote, "rev-parse", "refs/heads/main") == result.canonical_sha
+    assert git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", main_sha, result.canonical_sha) == ".ai/tasks/TASK-105.yaml"
+    assert authoring_ingress_module._read_commit_blob(repo, result.canonical_sha, input_path) == authoring_ingress_module._read_commit_blob(repo, main_sha, input_path)
+
+
+@pytest.mark.parametrize("movement", ("local_main", "remote_main"))
+def test_direct_author_task_cas_rejects_concurrent_main_mutation(tmp_path, monkeypatch, movement):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    original = authoring_ingress_module._commit_tree
+    moved = []
+    def move_main(*args, **kwargs):
+        commit = original(*args, **kwargs)
+        tree = git(repo, "rev-parse", f"{main_sha}^{{tree}}")
+        concurrent = original(repo, tree, [main_sha], "concurrent main movement")
+        moved.append(concurrent)
+        if movement == "remote_main":
+            git(remote, "fetch", "--no-tags", str(repo), concurrent)
+        git(repo if movement == "local_main" else remote, "update-ref", "refs/heads/main", concurrent)
+        return commit
+    monkeypatch.setattr(authoring_ingress_module, "_commit_tree", move_main)
+    with pytest.raises(AuthoringIngressError, match="concurrency|failed to push"):
+        execute_ingress(new_task_envelope(main_sha), repo=repo)
+    assert git(remote, "rev-parse", "refs/heads/main") == (moved[0] if movement == "remote_main" else main_sha)
+    assert git(repo, "rev-parse", "refs/heads/main") == (moved[0] if movement == "local_main" else main_sha)
+    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+
+
+def test_direct_author_task_rejects_unrelated_delta(tmp_path, monkeypatch):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    original = authoring_ingress_module._git_env
+    def add_unrelated_blob(repo, env, *args):
+        if args == ("write-tree",):
+            blob = authoring_ingress_module._hash_blob(repo, b"unrelated change\n")
+            original(repo, env, "update-index", "--add", "--cacheinfo", f"100644,{blob},README.md")
+        return original(repo, env, *args)
+    monkeypatch.setattr(authoring_ingress_module, "_git_env", add_unrelated_blob)
+    with pytest.raises(AuthoringIngressError, match="unrelated delta"):
+        execute_ingress(new_task_envelope(main_sha), repo=repo)
+    assert git(repo, "rev-parse", "HEAD") == main_sha
     assert git(remote, "rev-parse", "refs/heads/main") == main_sha
 
 
-@pytest.mark.parametrize("movement", ["main", "correction", "input_at_publication"])
-def test_audited_authoring_rechecks_movement_after_audit_and_at_publication(tmp_path, monkeypatch, movement):
-    repo, remote, main_sha = setup_test_repo(tmp_path)
-    envelope = audited_envelope(new_task_envelope(main_sha), repo)
+@pytest.mark.parametrize("movement", ("main", "correction", "input_at_publication"))
+def test_correction_audited_authoring_rechecks_freshness(tmp_path, monkeypatch, movement):
+    repo, remote, main_sha, _, initial = completion_gate_supersession_fixture(tmp_path)
+    envelope = audited_envelope(initial, repo)
     if movement == "input_at_publication":
         original = authoring_ingress_module._commit_tree
         def move_input(*args, **kwargs):
@@ -389,16 +495,14 @@ def test_audited_authoring_rechecks_movement_after_audit_and_at_publication(tmp_
         monkeypatch.setattr(brain_audit, "validate_stage2", move_ref)
     with pytest.raises(AuthoringIngressError, match="freshness"):
         execute_ingress(envelope, repo=repo)
-    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
-    if movement != "main":
-        assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+    assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/repair/RUN-254-001")
 
 
-def test_audited_handoff_has_one_closed_surface_and_excludes_reviewer():
+def test_audited_handoff_has_one_closed_correction_surface_and_excludes_reviewer():
     envelope = {
-        "format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_TASK",
-        "identity": {"task_id": "TASK-105"}, "expected_state": {"expected_main_sha": "a" * 40},
-        "payload": V2_TASK_105_SOURCE,
+        "format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_REPAIR",
+        "identity": {"failed_run_id": "RUN-105-001"}, "expected_state": {"expected_failed_head_sha": "a" * 40},
+        "payload": {"repair_id": "REPAIR-105-001"},
         "audited_handoff": {"format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1, "stage1": {}, "stage2": {}},
     }
     for key in ("decision_packet", "canonical_state", "provider", "model", "session"):
@@ -564,13 +668,6 @@ def audited_envelope(envelope: IngressEnvelope, repo: Path) -> IngressEnvelope:
         "closure": [{"lens": lens["id"], "outcome": "CLEAR"} for lens in profile["lenses"]],
         "outcome": "CANDIDATE",
     }
-    if envelope.operation == "AUTHOR_TASK":
-        from tests.test_brain_audit import v3_sections
-
-        stage2.update(v3_sections(stage1, candidate))
-        stage2["acceptance_phase_ledger"] = [
-            {"id": entry["id"], "phase": "CLAIM_NOW"} for entry in candidate["acceptance"]
-        ]
     return replace(envelope, audited_handoff={
         "format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1,
         "stage1": stage1, "stage2": stage2,
@@ -1149,7 +1246,6 @@ def test_author_task_new_and_revision(tmp_path):
         expected_state={"expected_main_sha": base_sha},
         payload=V2_TASK_105_SOURCE,
     )
-    envelope = audited_envelope(envelope, repo)
     result = execute_ingress(envelope, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == ".ai/tasks/TASK-105.yaml"
@@ -1213,7 +1309,7 @@ def test_author_task_new_and_revision(tmp_path):
         expected_state={"expected_main_sha": new_main_sha},
         payload=V2_TASK_105_R2_SOURCE,
     )
-    r2_result = execute_ingress(audited_envelope(r2_env, repo), repo=repo)
+    r2_result = execute_ingress(r2_env, repo=repo)
     assert r2_result.status == "CANONICALIZED"
     assert "revision: 2" in (repo / ".ai" / "tasks" / "TASK-105.yaml").read_text(encoding="utf-8")
 
@@ -1984,7 +2080,7 @@ findings: []
 # AC6: AUTHOR_REMEDIATION and AUTHOR_REPAIR
 # ===========================================================================
 
-def test_author_remediation_success_and_rejections(tmp_path):
+def test_author_remediation_success_and_rejections(tmp_path, monkeypatch):
     lineage = setup_candidate_lineage(tmp_path)
     repo = lineage["repo"]
     remote = lineage["remote"]
@@ -2054,6 +2150,20 @@ constraints:
     with pytest.raises(AuthoringIngressError, match="TASK_AUTHORING-only"):
         execute_ingress(replace(rem_env, audited_handoff=cross_flow), repo=repo)
     assert git(remote, "for-each-ref", "--format=%(objectname)", f"refs/heads/aios/remediation/{run_id}-F1") == ""
+    from aios_renew import brain_audit
+    validate = brain_audit.validate_stage2
+    movement_ref = "refs/heads/aios/repair/RUN-OTHER"
+    main_sha = git(repo, "rev-parse", "refs/heads/main")
+    def move_canonical_input(*args, **kwargs):
+        audit = validate(*args, **kwargs)
+        git(remote, "update-ref", movement_ref, main_sha)
+        return audit
+    with monkeypatch.context() as drift:
+        drift.setattr(brain_audit, "validate_stage2", move_canonical_input)
+        with pytest.raises(AuthoringIngressError, match="freshness"):
+            execute_ingress(rem_env, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(objectname)", f"refs/heads/aios/remediation/{run_id}-F1") == ""
+    git(remote, "update-ref", "-d", movement_ref)
     result = execute_ingress(rem_env, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/remediation/{run_id}-F1"
@@ -4190,68 +4300,17 @@ def test_h2_successful_repair_source_invalid_lineage_creates_no_remediation(tmp_
     assert not git(remote, "for-each-ref", "--format=%(refname)", f"refs/heads/aios/remediation/{source_id}-F2")
 
 
-@pytest.mark.parametrize("fault", [
-    "missing_context", "missing_shapes", "missing_lifecycle", "malformed", "packet_binding",
-    "candidate_binding", "failure_only", "blocked_remediation", "closure_blocker",
-    "missing_path", "extra_path", "v2_handoff",
-])
-def test_v3_conformance_rejected_before_authoring_git_mutation(tmp_path, monkeypatch, fault):
-    from aios_renew.brain_audit import construct_stage1, parse_profile_registry
-    from tests.test_brain_audit import stage2_input
-
+def test_direct_author_task_freezes_caller_owned_payload(tmp_path, monkeypatch):
     repo, remote, main_sha = setup_test_repo(tmp_path)
-    envelope = audited_envelope(new_task_envelope(main_sha), repo)
-    handoff = copy.deepcopy(envelope.audited_handoff)
-    material = handoff["stage2"]
-    if fault.startswith("missing_") and fault != "missing_path":
-        key = {"missing_context": "cross_authority_context", "missing_shapes": "canonical_shape",
-               "missing_lifecycle": "terminal_lifecycle"}[fault]
-        del material[key]
-    elif fault == "malformed":
-        material["cross_authority_context"]["entries"][0]["propagation"] = ""
-    elif fault == "packet_binding":
-        material["cross_authority_context"]["packet_fingerprint"] = "0" * 64
-    elif fault == "candidate_binding":
-        material["canonical_shape"]["reconciled_candidate_fingerprint"] = "0" * 64
-    elif fault == "failure_only":
-        material["canonical_shape"]["entries"] = [material["canonical_shape"]["entries"][1]]
-    elif fault in {"blocked_remediation", "closure_blocker"}:
-        target = material["terminal_lifecycle"]
-        target["entries"][1].update(status="BLOCKED", basis="Normal REMEDIATION cannot publish on current control plane")
-        target["status"] = "BLOCKED"
-        if fault == "closure_blocker":
-            material["closure"][4].update(outcome="BLOCKER", blocker_summary="The prerequisite cannot terminalize")
-            material["outcome"] = "NO_DECISION"
-    elif fault == "missing_path":
-        material["terminal_lifecycle"]["entries"].pop()
-    elif fault == "extra_path":
-        material["terminal_lifecycle"]["entries"].append({
-            "id": "OTHER_PATH", "status": "FEASIBLE", "basis": "Substitution", "candidate_anchor": "goal"})
-    else:
-        packet, _, _, _ = authoring_ingress_module._compose_authoring_packet(envelope, repo)
-        historical = next(p for p in parse_profile_registry((repo / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
-                          if p["id"] == "brain-high-value-v2")
-        first = construct_stage1(packet, historical, material["construct_candidate"])
-        handoff.update(stage1=first, stage2=stage2_input(first, historical))
-    monkeypatch.setattr(authoring_ingress_module, "_hash_blob", lambda *a: pytest.fail("premature blob mutation"))
-    monkeypatch.setattr(authoring_ingress_module, "_git_env", lambda *a: pytest.fail("premature index mutation"))
-    monkeypatch.setattr(authoring_ingress_module, "_commit_tree", lambda *a: pytest.fail("premature commit mutation"))
-    monkeypatch.setattr(authoring_ingress_module, "_publish_ingress_ref", lambda *a, **k: pytest.fail("premature ref mutation"))
-    with pytest.raises(AuthoringIngressError, match="audited authoring"):
-        execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
-    assert git(repo, "rev-parse", "HEAD") == main_sha
-    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
-    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
-
-
-def test_revision_two_requires_current_v3_conformance(tmp_path, monkeypatch):
-    repo, remote, main_sha = setup_test_repo(tmp_path)
-    authored = execute_ingress(audited_envelope(new_task_envelope(main_sha), repo), repo=repo)
-    revision = replace(new_task_envelope(authored.canonical_sha), payload=V2_TASK_105_R2_SOURCE)
-    revision = audited_envelope(revision, repo)
-    handoff = copy.deepcopy(revision.audited_handoff)
-    del handoff["stage2"]["canonical_shape"]
-    monkeypatch.setattr(authoring_ingress_module, "_hash_blob", lambda *a: pytest.fail("premature blob mutation"))
-    with pytest.raises(AuthoringIngressError, match="closed contract"):
-        execute_ingress(replace(revision, audited_handoff=handoff), repo=repo)
-    assert git(remote, "rev-parse", "refs/heads/main") == authored.canonical_sha
+    body = yaml.safe_load(V2_TASK_105_SOURCE)
+    envelope = replace(new_task_envelope(main_sha), payload=body)
+    original = authoring_ingress_module._hash_blob
+    def mutate_caller(*args, **kwargs):
+        body["goal"] = "Substituted after direct validation."
+        envelope.identity["task_id"] = "TASK-OTHER"
+        return original(*args, **kwargs)
+    monkeypatch.setattr(authoring_ingress_module, "_hash_blob", mutate_caller)
+    result = execute_ingress(envelope, repo=repo)
+    raw = git(repo, "show", f"{result.canonical_sha}:.ai/tasks/TASK-105.yaml")
+    assert yaml.safe_load(raw) == yaml.safe_load(V2_TASK_105_SOURCE)
+    assert git(remote, "rev-parse", "refs/heads/main") == result.canonical_sha
