@@ -1339,21 +1339,20 @@ sequence:
     priority_resume_gate_status: SATISFIED_BY_TASK_318
     preserved_failure_lineage: RUN-316-002
     pending_reconciliation: SATISFIED_BY_TASK319_REVIEWED_PUBLICATION
-    next_semantic_action: FRESH_PRIMARY_TASK316_R4_FROM_CURRENT_CANONICAL_MAIN
+    next_semantic_action: AUTHOR_TASK316_R5_WITH_FOCUSED_MINIMUM_SUFFICIENT_V2
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-316
-    task_revision: 4
-    task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "cad8df6381610df372d32dbe2a27f861c902d35d"
-    task_blob_sha: "132f7fd411411da716f496bfe47dcae9e72eff4e"
-    prior_task_revision: 3
-    prior_task_author_commit_sha: "fb50b58cfaf717252c589872adbeeaa700b11e41"
-    prior_task_blob_sha: "c662ebab45e7941226e43705464f60025fafe390"
+    task_revision: 5
+    task_authoring_status: PENDING
+    prior_task_revision: 4
+    prior_task_author_commit_sha: "cad8df6381610df372d32dbe2a27f861c902d35d"
+    prior_task_blob_sha: "132f7fd411411da716f496bfe47dcae9e72eff4e"
     revision_3_reason: APPLY_MINIMUM_SUFFICIENT_VERIFICATION_V2_TO_FRESH_CURRENT_MAIN_EXECUTION
     revision_4_reason: REEXECUTE_SAME_BOUNDED_BASELINE_RECOVERY_AFTER_TASK319_HARDENING_WITHOUT_REPAIRING_RUN_316_003
+    revision_5_reason: HUMAN_CANCELLED_R4_TO_REMOVE_UNNECESSARY_AUTHORED_FULL_SUITE_AND_USE_FOCUSED_MINIMUM_SUFFICIENT_V2
     predecessor_failure:
       run_id: RUN-316-001
       terminal_kind: FAILURE
@@ -1390,6 +1389,20 @@ sequence:
       supersedes:
         reasoning_effort: high
         basis: HUMAN_OVERRIDE_2026_10_07
+    human_verification_cost_decision:
+      authority: HUMAN
+      decided_on: "2026-10-07"
+      cancelled_run_id: RUN-316-004
+      cancellation_failure_artifact_sha: "88e620430a753dbb2acec79f42cb5fd8edcadf33"
+      cancellation_phase: EXECUTION
+      cancellation_error: HUMAN_INTERRUPTED_KEYBOARD_INTERRUPT
+      repairable: false
+      decision: >-
+        Do not repeat the authored repository-wide full-suite requirement for TASK-316.
+        Re-author the same bounded baseline-recovery semantics under minimum-sufficient-v2
+        with focused deterministic verification covering the exact affected semantic
+        surfaces; Runtime still owns execution, evidence, scope gates and fail-closed
+        fallback inside that authored envelope.
     objective: >-
       Restore a trustworthy verification baseline required to resume BO-1 by repairing
       stale regression fixtures and test-harness assumptions exposed by RUN-313-005,
