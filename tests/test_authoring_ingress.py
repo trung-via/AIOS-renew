@@ -2676,7 +2676,7 @@ def test_authority_separation_and_destination_derivation(tmp_path):
 
 
 def test_author_repair_multi_generation_supersession_production_topology_ac1_to_ac7(tmp_path):
-    repo, remote, base_sha = setup_test_repo(tmp_path)
+    repo, remote, _ = setup_test_repo(tmp_path, task_id="TASK-121")
     (repo / ".ai" / "tasks").mkdir(parents=True, exist_ok=True)
     (repo / ".ai" / "tasks" / "TASK-121.yaml").write_text(
         """task_id: TASK-121
@@ -2700,12 +2700,21 @@ verification:
 """,
         encoding="utf-8",
     )
+    # The TASK belongs to the admitted baseline. Combining it with the candidate
+    # would make the recorded src-only changed-files binding invalid.
+    git(repo, "add", ".ai/tasks/TASK-121.yaml")
+    git(repo, "commit", "--quiet", "-m", "canonical TASK-121 baseline")
+    base_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+    git(repo, "switch", "--quiet", "-c", "failed-candidate")
+    git(repo, "config", "branch.failed-candidate.remote", "origin")
+    git(repo, "config", "branch.failed-candidate.merge", "refs/heads/main")
     (repo / "src").mkdir(parents=True, exist_ok=True)
     (repo / "src" / "sample.py").write_text("# initial implementation\n", encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "--quiet", "-m", "failed candidate for RUN-121-004")
     failed_head_sha = git(repo, "rev-parse", "HEAD")
-    git(repo, "push", "--quiet", "origin", "main")
+    assert git(repo, "diff", "--name-only", base_sha, failed_head_sha).splitlines() == ["src/sample.py"]
 
     failed_run_id = "RUN-121-004"
     state = tmp_path / "supersession-state"
@@ -2747,6 +2756,8 @@ verification:
         run_path=run_path,
         failure_path=failure_path,
     )
+    git(repo, "switch", "--quiet", "main")
+    assert git(remote, "rev-parse", "refs/heads/main") == base_sha
     failure_ref = f"refs/heads/aios/failure-artifacts/{failed_run_id}"
     failure_sha = git(repo, "ls-remote", "--refs", "origin", failure_ref).split()[0]
 
@@ -2942,16 +2953,20 @@ verification:
     # Stale revision 1 selector fails closed in preflight
     pf_r1 = preflight_repair(failed_run_id, repo=repo, required_repair_sha=rev1_sha)
     assert pf_r1.status == "BLOCKED"
+    assert pf_r1.phase == "CANONICAL_CONTRACT_ADMISSION"
     assert pf_r1.reason_code == "CANONICAL_LINEAGE_INVALID"
 
     # Stale revision 2 selector fails closed in preflight
     pf_r2 = preflight_repair(failed_run_id, repo=repo, required_repair_sha=rev2_sha)
     assert pf_r2.status == "BLOCKED"
+    assert pf_r2.phase == "CANONICAL_CONTRACT_ADMISSION"
     assert pf_r2.reason_code == "CANONICAL_LINEAGE_INVALID"
 
     # Exact current revision 3 succeeds in preflight
     pf_r3 = preflight_repair(failed_run_id, repo=repo, required_repair_sha=rev3_sha)
     assert pf_r3.status == "READY"
+    assert pf_r3.phase == "READY"
+    assert pf_r3.reason_code == "READY"
     assert pf_r3.authorization_sha == rev3_sha
 
     # Direct run_repair execution fails closed on stale revision 1 or revision 2 selector
