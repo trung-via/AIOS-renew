@@ -1,0 +1,31 @@
+review_id: REVIEW-318-001
+reviewed_sha: 5f8f31fd831e859c7580253b8f28347e7a04c73d
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings:
+- id: F1
+  basis: AC3
+  action: CODE_FIX
+  location: "docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md \xA73 PRIMARY and admitted\
+    \ RUN / Executor"
+  issue: The normative entrypoint states that Runtime has 'selected one native Executor'.
+    Canonical TASK-318 planning binds executor_delegation.authority=HUMAN and override_authority=HUMAN_ONLY;
+    Runtime owns deterministic admission/invocation, not Human delegation selection.
+    In the new single normative navigation entrypoint this wording materially blurs
+    the authority boundary TASK-318 is required to preserve.
+  expected: State that Runtime admits the bound RUN and admits/invokes the exactly
+    one Human-delegated Executor/profile; Runtime validates the delegation/profile
+    binding but does not select or override Executor delegation. Add a bounded regression
+    assertion if needed so the central navigation cannot reassign Executor-selection
+    authority.
