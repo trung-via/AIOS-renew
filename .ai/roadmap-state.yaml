@@ -1105,7 +1105,20 @@ sequence:
     approved_on: "2026-10-07"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     architecture_contract: MINIMUM_SUFFICIENT_VERIFICATION_V2
+    task_id: TASK-317
+    task_revision: 1
     task_authoring_status: NOT_AUTHORED
+    executor_delegation:
+      authority: HUMAN
+      selected_on: "2026-10-07"
+      task_id: TASK-317
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_317_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
     objective: >-
       Upgrade the existing minimum-sufficient verification contract into one
       Runtime-owned deterministic architecture that combines affected-verification
