@@ -1315,11 +1315,14 @@ sequence:
       task_id: TASK-316
       executor: codex
       model: gpt-6.1-sol
-      reasoning_effort: high
+      reasoning_effort: xhigh
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
       persistence: THROUGH_TASK_316_ALL_REVISIONS_REMEDIATION_AND_REPAIR_UNLESS_HUMAN_CHANGES
+      supersedes:
+        reasoning_effort: high
+        basis: HUMAN_OVERRIDE_2026_10_07
     objective: >-
       Restore a trustworthy verification baseline required to resume BO-1 by repairing
       stale regression fixtures and test-harness assumptions exposed by RUN-313-005,
