@@ -963,50 +963,163 @@ Exit: `AIOS_HARNESS_EPISODE_TELEMETRY_V1_ACTIVE`.
 
 ### BO-10 — Lifecycle normative consolidation and legacy cleanup
 
-Purpose: starting only from the exact final reviewed/published BO state, prove the optimized
-lifecycle is complete and remove competing procedural truth. BO-10 is cleanup/closure, not a
-place to absorb missing BO-2/4/5/7/8/9A/9B feature work.
+Status: **HUMAN_APPROVED REFINEMENT 2026-10-08 — REQUIRED AFTER BO-9B**
+
+Purpose: starting only from the exact final reviewed/published BO state, prove that Brain
+Optimization v1 has one current procedural interpretation across the platform and remove,
+redirect, historicalize or bound every competing legacy procedure. BO-10 is cleanup/closure,
+not a place to absorb missing BO-2/3/4/5/6/7/8/9/9A/9B feature work.
 
 `SELF_HOST_END_TO_END_FLOW_V1` remains the single current generic Brain-facing operational
-entrypoint. BO-10 classifies claims/sections/call paths/tests as RETAIN_NORMATIVE,
-REPLACE_WITH_POINTER, HISTORICAL_ONLY, IMPLEMENTATION_LEAF,
-COMPATIBILITY_LEAF_NON_NORMATIVE or REMOVE_OBSOLETE.
+entrypoint. BO-10 MUST also audit that entrypoint itself: earlier implementation composition
+must not become a permanent normative lock after later reviewed BO phases replace it.
 
-Mandatory cleanup covers retired serialized authoring handoff requirements, unbounded/default
-Brain Sync guidance, repeated same-TASK profile selection/manual selector reattachment,
-AUTHOR_TASK/correction selector-copy glue, publication/execution polling instructions, competing
-roadmap NEXT authorities and tests/examples/comments that still teach retired procedure.
+BO-10 classifies every materially relevant current claim, section, call path, carrier,
+compatibility path, test, example and procedural comment as exactly one of:
 
-Required invariants include `NO_COMPETING_CURRENT_BRAIN_OPTIMIZATION_FLOW_V1`,
-`LEGACY_COMPATIBILITY_IS_NON_NORMATIVE_V1`, `NO_ROADMAP_SPLIT_BRAIN_NEXT_V1`,
-`SELF_HOST_SINGLE_NORMATIVE_ENTRYPOINT_V1`, historical engineering truth preservation and
-atomic cleanup activation.
+- `RETAIN_NORMATIVE`
+- `REPLACE_WITH_POINTER`
+- `HISTORICAL_ONLY`
+- `IMPLEMENTATION_LEAF`
+- `COMPATIBILITY_LEAF_NON_NORMATIVE`
+- `REMOVE_OBSOLETE`
+
+Required upstream closure includes:
+
+- `CANONICAL_CONTEXT_PIPELINE_V1_ACTIVE`, while retaining its compatibility exits
+  `BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE`,
+  `ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE` and
+  `MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE`;
+- `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE` with
+  `TASK_SCOPED_EXECUTION_DELEGATION_V1` and
+  `AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1`;
+- `AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE`,
+  `PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE`, `ASYNC_HANDOFF_RECEIPT_V1` and
+  `ASYNC_LIVENESS_ATTENTION_V1`;
+- `TASK_SPECIFIC_DELTA_AUDIT_ACTIVE` conforming to
+  `DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1`;
+- `AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`;
+- `PLANNING_MUTATION_BATCHING_ACTIVE`, `ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE`
+  and `ONE_SEMANTIC_NEXT_ROOT_V1`;
+- `BRAIN_PROVIDER_PAYLOAD_COST_RESOLVED`;
+- `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE`;
+- `AIOS_HARNESS_EPISODE_TELEMETRY_V1_ACTIVE`.
+
+Mandatory cleanup boundaries:
+
+1. **Canonical context pipeline.** Retire guidance that hydrates unbounded roadmap/spec/history,
+   treats summaries/digests as authority, independently reconciles raw roadmap mirrors, or freezes
+   the pre-BO-2/3 `brain_sync` / `brain_context` composition as permanent procedure. Preserve
+   `DETERMINISTIC_CONTEXT_BEFORE_SEMANTIC_COMPRESSION_V1`,
+   `NON_ELIDABLE_CONTROL_FACTS_V1`, `FLOW_CARD_CONTEXT_PROJECTION_V1`,
+   `RULE_BASED_CONTEXT_ELISION_V1`, `DIGEST_REUSE_IS_DERIVED_CACHE_NOT_AUTHORITY_V1`,
+   `SUMMARY_IS_NEVER_CANONICAL_AUTHORITY_V1`,
+   `EXACT_EXPANSION_ON_DECISION_DEPENDENCY_V1` and
+   `NO_UNBOUNDED_DEFAULT_CONTEXT_HYDRATION_V1`.
+
+2. **Semantic audit versus serialized plumbing.** Retire duplicated serialized audit transport,
+   broad derivable hashes/support copies and redundant cognitive-support mutation gates while
+   preserving the mandatory two-stage task-specific Brain semantic audit. Removing serialization
+   MUST NOT remove semantic authority, counterexample search or exact-context expansion where a
+   decision depends on omitted/compressed material.
+
+3. **TASK-scoped execution delegation.** Retire repeated same-TASK profile selection, fresh
+   per-authorization default resolution and manual selector reattachment. Preserve exact Human
+   delegation generation, prospective override semantics, immutable accepted-dispatch/replay
+   binding, missing/stale-delegation fail-close and executorless continuation when
+   `executor_required=false`.
+
+4. **Shared async handoff.** Retire family-specific Brain waiting/polling across PRIMARY, REPAIR,
+   REMEDIATION and PUBLICATION. All four use the BO-5 shared durable-acceptance primitive;
+   Hands/control plane own elapsed-time liveness supervision through
+   `ASYNC_LIVENESS_ATTENTION_V1`. Handoff acceptance is never downstream success and liveness
+   attention never fabricates semantic FAILURE or correction strategy. Reviewer verdict remains
+   an independent semantic authority outside BO-9A v1.
+
+5. **Direct correction ingress.** Retire `audited_handoff`, Decision Packet material,
+   Stage-1/Stage-2 serialization, Risk/Coverage ledger serialization, Brain normalization
+   fingerprints, copied Runtime-readable lineage and broad derivable support hashes as mutation
+   authority. Compatibility may remain only as `COMPATIBILITY_ONLY_NON_AUTHORITATIVE`;
+   narrow subject-specific freshness/CAS/lineage witnesses remain fail-closed authority.
+
+6. **Single-root planning mutation.** Retire instructions that make Brain manually maintain
+   `sequence`, `next_items`, blockers, return metadata, `next_action` or status mirrors as
+   competing semantic sources. One authorized Human/Brain semantic transition is the planning
+   root; Runtime validates/derives deterministic projections atomically. Legacy externally
+   split-brain states continue to fail closed.
+
+7. **Telemetry boundary.** Preserve BO-9B as observability-only. Episode telemetry, North-Star
+   tuples, intervention counts, timing or token metrics MUST NOT become planning, semantic,
+   verification, review, publication, wake or correction authority. Missing telemetry remains
+   non-blocking to authoritative lifecycle behavior.
+
+8. **Tests/examples/comments.** Current regression material must distinguish normative behavior
+   from historical/compatibility behavior. No active test, fixture, example or comment may teach a
+   retired procedure as the current canonical path.
+
+BO-10 uses a two-pass closure audit:
+
+- **Pass 1 — CLOSED_WORLD_INVENTORY:** enumerate every materially relevant procedural surface and
+  classify its authority and cleanup disposition.
+- **Pass 2 — ADVERSARIAL_RECONCILIATION:** attempt to reconstruct an alternate current procedure
+  from remaining material. Any alternate NEXT selector, context path, profile authority,
+  correction mutation gate, async waiting policy, telemetry authority or historical generic flow
+  blocks closure.
+
+Required invariants include:
+
+- `NO_COMPETING_CURRENT_BRAIN_OPTIMIZATION_FLOW_V1`
+- `SELF_HOST_SINGLE_NORMATIVE_ENTRYPOINT_V1`
+- `NORMATIVE_SURFACE_CLOSED_WORLD_V1`
+- `NO_STALE_IMPLEMENTATION_LOCK_IN_V1`
+- `COMPATIBILITY_HAS_NO_DECISION_AUTHORITY_V1`
+- `LEGACY_COMPATIBILITY_IS_NON_NORMATIVE_V1`
+- `SEMANTIC_AUDIT_SURVIVES_SERIALIZATION_CLEANUP_V1`
+- `DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1`
+- `ONE_SEMANTIC_NEXT_ROOT_V1`
+- `NO_ROADMAP_SPLIT_BRAIN_NEXT_V1`
+- `TASK_SCOPED_EXECUTION_DELEGATION_V1`
+- `AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1`
+- `ASYNC_HANDOFF_RECEIPT_V1`
+- `ASYNC_LIVENESS_ATTENTION_V1`
+- `NO_BLIND_CORRECTION_LOOP_V1`
+- `REVIEWER_SEMANTIC_AUTHORITY_NOT_ASYNC_HANDS_V1`
+- `TELEMETRY_SEMANTIC_INERTNESS_V1`
+- `NO_TEST_ENCODED_LEGACY_NORMATIVE_PATH_V1`
+- `HISTORICAL_ENGINEERING_TRUTH_PRESERVATION_V1`
+- `H4_TRANSITION_PRESERVATION_V1`
+- `ATOMIC_NORMATIVE_CLEANUP_ACTIVATION_V1`
+
+BO-10 MUST fail closed and return a missing behavior to its owning earlier BO phase instead of
+silently implementing that feature as cleanup.
 
 Exit: `BRAIN_OPTIMIZATION_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE`.
 
 ## 6. H4 resume gate
 
-TASK-310 and all remaining H4 implementation stay blocked until BO-1 through BO-10, including
-BO-9A and BO-9B, are closed (or an eligible phase closes NO_CHANGE after its required audit).
+TASK-310 and all remaining H4 implementation stay blocked until BO-1 through BO-10 are closed
+(or an eligible phase closes NO_CHANGE after its required audit).
 
 Before returning to TASK-310:
 
-- prove `AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE` so all Brain-owned
-  authoring families are free of derivable-material ingress rejection;
-- prove `ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE`,
-  `ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE` and `NO_ROADMAP_SPLIT_BRAIN_NEXT_V1`;
-- prove `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE` including
+- prove `CANONICAL_CONTEXT_PIPELINE_V1_ACTIVE`, including single-effective-NEXT and exact
+  expansion/non-authoritative summary guarantees;
+- prove `AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`;
+- prove `DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1`,
+  `TASK_SPECIFIC_DELTA_AUDIT_ACTIVE`, `ONE_SEMANTIC_NEXT_ROOT_V1` and
+  `ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE`;
+- prove `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE`, including
   `TASK_SCOPED_EXECUTION_DELEGATION_V1` and
   `AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1`;
 - prove `PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE`, `ASYNC_HANDOFF_RECEIPT_V1`,
   `ASYNC_LIVENESS_ATTENTION_V1` and `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE`;
-- prove `AIOS_HARNESS_EPISODE_TELEMETRY_V1_ACTIVE` with observability-only semantic inertness;
+- prove `AIOS_HARNESS_EPISODE_TELEMETRY_V1_ACTIVE` remains observability-only and non-blocking;
 - prove `BRAIN_OPTIMIZATION_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE`;
-- fresh Brain Sync using the optimized path;
+- fresh Brain Sync using the final canonical context pipeline;
 - prove the H4 roadmap/objective is still current;
 - confirm TASK-310 remains unauthored and required;
-- confirm its previously recorded Executor delegation is still valid under the final sticky-profile
-  contract, otherwise obtain fresh Human selection;
+- confirm its previously recorded Executor delegation is still valid under the final
+  TASK-scoped delegation contract, otherwise obtain fresh Human selection;
 - author TASK-310 only through the final reviewed AUTHOR_TASK path.
 
 Exit: `BRAIN_OPTIMIZATION_V1_CLOSED_RETURN_TO_TASK310`.

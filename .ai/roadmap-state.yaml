@@ -46,6 +46,7 @@ brain_optimization_preemption:
     - BO-8_PLANNING_TRANSACTION_BATCHING
     - BO-9_CONDITIONAL_PROVIDER_CONTEXT_SERIALIZATION_OPTIMIZATION
     - BO-9A_ASYNC_LIFECYCLE_HANDOFF_DOORBELL_CONTINUATION_CLOSURE
+    - BO-9B_HARNESS_EPISODE_TELEMETRY_AND_NORTH_STAR_MEASUREMENT
     - BO-10_LIFECYCLE_NORMATIVE_CONSOLIDATION_LEGACY_CLEANUP
   task310_status: BLOCKED_ON_BRAIN_OPTIMIZATION_V1_CLOSURE
   authoring_family_optimization_contract:
@@ -2017,44 +2018,95 @@ sequence:
       - STICKY_CODING_CORRECTION_PRESERVATION_PROVEN
       - ASYNC_LIVENESS_ATTENTION_ACTIVE
       - NO_BLIND_CORRECTION_LOOP_V1
+    return_to: brain-optimization-v1-bo9b-harness-episode-telemetry
+
+  - id: brain-optimization-v1-bo9b-harness-episode-telemetry
+    status: QUEUED_AFTER_BO9A
+    phase: BO9B_HARNESS_EPISODE_TELEMETRY_AND_NORTH_STAR_MEASUREMENT
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-08"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Aggregate one logical lifecycle into authority-neutral harness episode telemetry
+      so Verified Useful Work / (Time + Tokens + Human Effort) can be measured without
+      creating a second semantic, verification, review, publication, planning or wake authority.
+    required_contract: AIOS_HARNESS_EPISODE_TELEMETRY_V1
+    invariants:
+      - TELEMETRY_SEMANTIC_INERTNESS_V1
+      - EPISODE_METRIC_PROVENANCE_V1
+      - PARTIAL_TELEMETRY_NEVER_BLOCKS_V1
+      - NO_TELEMETRY_DERIVED_AUTHORITY_V1
+      - TRUSTED_TOKEN_ACCOUNTING_ONLY_V1
+    exit: AIOS_HARNESS_EPISODE_TELEMETRY_V1_ACTIVE
     return_to: brain-optimization-v1-bo10-lifecycle-normative-consolidation
 
   - id: brain-optimization-v1-bo10-lifecycle-normative-consolidation
-    status: QUEUED_AFTER_BO9A
+    status: QUEUED_AFTER_BO9B
     phase: BO10_LIFECYCLE_NORMATIVE_CONSOLIDATION_LEGACY_CLEANUP
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
+    integrated_audit_refinement: HUMAN_APPROVED_2026_10_08
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     objective: >-
-      Starting only from the exact final published BO state, converge current Brain
-      procedure into the existing SELF_HOST_END_TO_END_FLOW_V1 entrypoint and classify,
-      redirect, historicalize, retain as bounded compatibility, or remove obsolete
-      competing authoring, sync, profile, continuation, polling and roadmap-NEXT guidance.
-      BO-10 is cleanup/closure and must not absorb missing feature work from earlier phases.
+      Starting only from the exact final reviewed/published BO state, converge current
+      Brain procedure onto SELF_HOST_END_TO_END_FLOW_V1, including cleanup of that
+      entrypoint itself, and eliminate competing current context, audit-plumbing,
+      execution-delegation, async-wait, correction-ingress, planning-mirror and
+      telemetry-authority procedures without deleting immutable engineering history.
     required_preconditions:
-      - AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE
+      - CANONICAL_CONTEXT_PIPELINE_V1_ACTIVE
       - BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE
       - ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE
       - MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE
       - TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE
+      - TASK_SCOPED_EXECUTION_DELEGATION_V1
       - AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1
       - AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE
       - PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE
+      - ASYNC_HANDOFF_RECEIPT_V1
       - ASYNC_LIVENESS_ATTENTION_V1
       - TASK_SPECIFIC_DELTA_AUDIT_ACTIVE
+      - DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1
+      - AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE
       - PLANNING_MUTATION_BATCHING_ACTIVE
       - ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE
+      - ONE_SEMANTIC_NEXT_ROOT_V1
       - BRAIN_PROVIDER_PAYLOAD_COST_RESOLVED
       - ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE
+      - AIOS_HARNESS_EPISODE_TELEMETRY_V1_ACTIVE
+    cleanup_passes:
+      - CLOSED_WORLD_INVENTORY
+      - ADVERSARIAL_RECONCILIATION
+    classifications:
+      - RETAIN_NORMATIVE
+      - REPLACE_WITH_POINTER
+      - HISTORICAL_ONLY
+      - IMPLEMENTATION_LEAF
+      - COMPATIBILITY_LEAF_NON_NORMATIVE
+      - REMOVE_OBSOLETE
     invariants:
       - NO_COMPETING_CURRENT_BRAIN_OPTIMIZATION_FLOW_V1
-      - LEGACY_COMPATIBILITY_IS_NON_NORMATIVE_V1
-      - NO_BLIND_CORRECTION_LOOP_V1
-      - NO_ROADMAP_SPLIT_BRAIN_NEXT_V1
       - SELF_HOST_SINGLE_NORMATIVE_ENTRYPOINT_V1
-      - ATOMIC_NORMATIVE_CLEANUP_ACTIVATION_V1
+      - NORMATIVE_SURFACE_CLOSED_WORLD_V1
+      - NO_STALE_IMPLEMENTATION_LOCK_IN_V1
+      - COMPATIBILITY_HAS_NO_DECISION_AUTHORITY_V1
+      - LEGACY_COMPATIBILITY_IS_NON_NORMATIVE_V1
+      - SEMANTIC_AUDIT_SURVIVES_SERIALIZATION_CLEANUP_V1
+      - DETERMINISTIC_AUTHORITY_CONTEXT_REDUCTION_V1
+      - ONE_SEMANTIC_NEXT_ROOT_V1
+      - NO_ROADMAP_SPLIT_BRAIN_NEXT_V1
+      - TASK_SCOPED_EXECUTION_DELEGATION_V1
+      - AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1
+      - ASYNC_HANDOFF_RECEIPT_V1
+      - ASYNC_LIVENESS_ATTENTION_V1
+      - NO_BLIND_CORRECTION_LOOP_V1
+      - REVIEWER_SEMANTIC_AUTHORITY_NOT_ASYNC_HANDS_V1
+      - TELEMETRY_SEMANTIC_INERTNESS_V1
+      - NO_TEST_ENCODED_LEGACY_NORMATIVE_PATH_V1
       - HISTORICAL_ENGINEERING_TRUTH_PRESERVATION_V1
       - H4_TRANSITION_PRESERVATION_V1
+      - ATOMIC_NORMATIVE_CLEANUP_ACTIVATION_V1
+    missing_feature_rule: RETURN_TO_OWNING_BO_PHASE_FAIL_CLOSED
     exit: BRAIN_OPTIMIZATION_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
     return_to: h4-device-independent-origin-capture-correction-v1
 
