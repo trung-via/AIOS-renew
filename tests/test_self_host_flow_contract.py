@@ -115,6 +115,19 @@ def test_navigation_keeps_existing_authorities_and_freshness_precedence():
     assert "No repository-wide rediscovery" in body
 
 
+def test_primary_keeps_executor_delegation_and_overrides_with_human():
+    body = " ".join(section(document(), "## 3. PRIMARY and admitted RUN / Executor").split())
+    for contract in (
+        "Runtime validates the Human delegation/profile binding",
+        "admits the bound RUN",
+        "admits and invokes exactly one Human-delegated native Executor/profile",
+        "Runtime does not select or override Executor delegation",
+        "delegation and overrides remain Human-only",
+    ):
+        assert contract in body
+    assert "selected one native Executor" not in body
+
+
 def test_seven_card_registry_retains_closed_shape():
     cards = load_flow_cards(ROOT / ".ai/flow-cards.yaml")
     assert set(cards) == {"ARCHITECTURE", "TASK_AUTHORING", "SEMANTIC_REVIEW",

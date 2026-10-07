@@ -77,8 +77,11 @@ TASK from the then-current canonical main. Unrelated main movement cannot silent
 substitute a changed TASK. A carrier receipt, workflow dispatch or `RUNNER_STARTED`
 does not prove RUN creation or Executor invocation; inspect canonical RUN separately.
 
-Once Runtime has admitted a bound RUN and selected one native Executor, that Executor
-implements only the authorized modification scope and commits the final candidate.
+Runtime validates the Human delegation/profile binding, admits the bound RUN, and
+admits and invokes exactly one Human-delegated native Executor/profile. Runtime
+does not select or override Executor delegation; delegation and overrides remain
+Human-only. That Executor implements only the authorized modification scope and
+commits the final candidate.
 It returns concrete implementation claims bound to that committed HEAD. It does not
 re-admit/dispatch execution, change planning, select correction, issue review verdicts,
 publish, or alter current execution-profile delegation. No Executor push is authorized.
