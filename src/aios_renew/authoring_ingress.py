@@ -428,10 +428,9 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path,
     recheck_origin()
 
     expected_main_sha = _get_expected_sha(envelope.expected_state, "expected_main_sha", "main_sha")
-    remote = _resolve_remote(repo)
-    current_main_sha = _resolve_ref_sha(repo, "refs/heads/main", remote)
-    if current_main_sha is None:
-        raise AuthoringIngressError("cannot resolve canonical main ref")
+    transport = _resolve_author_task_transport(repo)
+    remote, _ = transport
+    current_main_sha = _resolve_author_task_main(repo, remote)
 
     _fetch_if_remote(repo, remote, current_main_sha)
 
@@ -539,6 +538,8 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path,
     )
 
     recheck_origin()
+    if _resolve_author_task_transport(repo) != transport:
+        raise AuthoringIngressError("canonical main transport authority changed during authoring")
     _publish_ingress_ref(
         repo,
         remote,
@@ -2143,6 +2144,59 @@ def _commit_tree(
         return proc.stdout.decode("utf-8", errors="strict").strip()
     except Exception as exc:
         raise AuthoringIngressError(f"failed to create commit: {exc}") from exc
+
+
+def _resolve_author_task_transport(repo: Path) -> tuple[str, str]:
+    """Bind TASK writes to main's upstream, independent of checkout/projections."""
+    def one_config(key: str) -> str:
+        code, output, _ = _git(
+            repo, "config", "--null", "--get-all", key,
+            strip_stdout=False, allow_fail=True,
+        )
+        values = output.removesuffix("\0").split("\0")
+        if code != 0 or len(values) != 1 or not values[0]:
+            raise AuthoringIngressError(
+                f"canonical main transport authority is missing or ambiguous: {key}"
+            )
+        return values[0]
+
+    remote = one_config("branch.main.remote")
+    if remote == "." or remote.startswith("-") or remote != remote.strip():
+        raise AuthoringIngressError("canonical main transport requires a named upstream remote")
+    if one_config("branch.main.merge") != "refs/heads/main":
+        raise AuthoringIngressError("canonical main transport has a conflicting upstream ref")
+    # A remote's presence (including origin) alone grants no TASK write authority.
+    one_config(f"remote.{remote}.url")
+    urls = []
+    for options in ((), ("--push",)):
+        code, output, _ = _git(
+            repo, "remote", "get-url", *options, "--all", remote,
+            strip_stdout=False, allow_fail=True,
+        )
+        values = output.splitlines()
+        if code != 0 or len(values) != 1 or not values[0]:
+            raise AuthoringIngressError("canonical main transport URL is missing or ambiguous")
+        urls.append(values[0])
+    if urls[0] != urls[1]:
+        raise AuthoringIngressError("canonical main transport has conflicting fetch/push URLs")
+    return remote, urls[0]
+
+
+def _resolve_author_task_main(repo: Path, remote: str) -> str:
+    """Require exact upstream main; unavailable transport never falls back locally."""
+    ref = "refs/heads/main"
+    code, output, _ = _git(repo, "ls-remote", "--refs", remote, ref, allow_fail=True)
+    entries = [line.split() for line in output.splitlines()]
+    if (code != 0 or len(entries) != 1 or len(entries[0]) != 2
+            or entries[0][1] != ref or re.fullmatch(r"[0-9a-f]{40}", entries[0][0]) is None):
+        raise AuthoringIngressError("canonical main transport ref is unavailable, missing or ambiguous")
+    main_sha = entries[0][0]
+    code, local_sha, _ = _git(repo, "rev-parse", "--verify", "--quiet", ref, allow_fail=True)
+    if code != 0 or local_sha != main_sha:
+        raise AuthoringIngressError(
+            "canonical main transport conflicts with local main (stale state or concurrency)"
+        )
+    return main_sha
 
 
 def _resolve_remote(repo: Path) -> str | None:

@@ -423,16 +423,129 @@ def test_direct_author_task_uses_canonical_main_without_audit_projections(tmp_pa
     path = repo / input_path
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes((path.read_bytes() if path.exists() else b"") + b"\n# divergent audit input\n")
+    projection = path.read_bytes()
+    status = git(repo, "status", "--porcelain")
     result = execute_ingress(new_task_envelope(main_sha), repo=repo)
     assert result.status == "CANONICALIZED"
     assert git(remote, "rev-parse", "refs/heads/main") == result.canonical_sha
+    assert git(repo, "rev-parse", "refs/heads/main") == result.canonical_sha
+    assert git(repo, "symbolic-ref", "--short", "HEAD") == "alternate"
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert path.read_bytes() == projection
+    assert git(repo, "status", "--porcelain") == status
     assert git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", main_sha, result.canonical_sha) == ".ai/tasks/TASK-105.yaml"
     assert authoring_ingress_module._read_commit_blob(repo, result.canonical_sha, input_path) == authoring_ingress_module._read_commit_blob(repo, main_sha, input_path)
 
 
-@pytest.mark.parametrize("movement", ("local_main", "remote_main"))
-def test_direct_author_task_cas_rejects_concurrent_main_mutation(tmp_path, monkeypatch, movement):
+@pytest.mark.parametrize("checkout", ("alternate", "detached"))
+def test_direct_author_task_uses_main_upstream_despite_other_transport(tmp_path, checkout):
     repo, remote, main_sha = setup_test_repo(tmp_path)
+    _, decoy_remote, decoy_sha = setup_test_repo(tmp_path / "decoy")
+    git(repo, "remote", "rename", "origin", "canonical")
+    git(repo, "remote", "add", "origin", str(decoy_remote))
+    if checkout == "alternate":
+        git(repo, "checkout", "-b", "alternate")
+        git(repo, "config", "branch.alternate.remote", "origin")
+        git(repo, "config", "branch.alternate.merge", "refs/heads/main")
+    else:
+        git(repo, "checkout", "--detach", main_sha)
+    head_binding = (repo / ".git/HEAD").read_bytes()
+
+    first = execute_ingress(new_task_envelope(main_sha), repo=repo)
+    revised = replace(new_task_envelope(first.canonical_sha), payload=V2_TASK_105_R2_SOURCE)
+    second = execute_ingress(revised, repo=repo)
+    replay = execute_ingress(revised, repo=repo)
+
+    assert first.status == second.status == "CANONICALIZED"
+    assert replay.status == "IDEMPOTENT" and replay.canonical_sha == second.canonical_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == second.canonical_sha
+    assert git(repo, "rev-parse", "refs/heads/main") == second.canonical_sha
+    assert git(decoy_remote, "rev-parse", "refs/heads/main") == decoy_sha
+    assert (repo / ".git/HEAD").read_bytes() == head_binding
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+    for parent, candidate in ((main_sha, first.canonical_sha), (first.canonical_sha, second.canonical_sha)):
+        assert git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", parent, candidate) == ".ai/tasks/TASK-105.yaml"
+
+
+@pytest.mark.parametrize("fault", (
+    "origin_only", "ambiguous_remote", "local_remote", "unknown_remote",
+    "missing_merge", "conflicting_merge", "ambiguous_merge", "missing_url",
+    "ambiguous_url", "conflicting_push_url", "ambiguous_push_url",
+    "unavailable_remote", "missing_remote_main", "divergent_main",
+))
+def test_direct_author_task_rejects_unbound_main_transport_before_mutation(tmp_path, monkeypatch, fault):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    git(repo, "checkout", "-b", "alternate")
+    if fault == "origin_only":
+        git(repo, "config", "--unset-all", "branch.main.remote")
+    elif fault == "ambiguous_remote":
+        git(repo, "config", "--add", "branch.main.remote", "other")
+    elif fault in {"local_remote", "unknown_remote"}:
+        git(repo, "config", "branch.main.remote", "." if fault == "local_remote" else "unknown")
+    elif fault == "missing_merge":
+        git(repo, "config", "--unset-all", "branch.main.merge")
+    elif fault == "conflicting_merge":
+        git(repo, "config", "branch.main.merge", "refs/heads/other")
+    elif fault == "ambiguous_merge":
+        git(repo, "config", "--add", "branch.main.merge", "refs/heads/other")
+    elif fault == "missing_url":
+        git(repo, "config", "--unset-all", "remote.origin.url")
+    elif fault == "ambiguous_url":
+        git(repo, "config", "--add", "remote.origin.url", str(tmp_path / "other.git"))
+    elif fault == "conflicting_push_url":
+        git(repo, "config", "remote.origin.pushurl", str(tmp_path / "other.git"))
+    elif fault == "ambiguous_push_url":
+        git(repo, "config", "--add", "remote.origin.pushurl", str(remote))
+        git(repo, "config", "--add", "remote.origin.pushurl", str(remote))
+    elif fault == "unavailable_remote":
+        git(repo, "config", "remote.origin.url", str(tmp_path / "absent.git"))
+    elif fault == "missing_remote_main":
+        git(remote, "update-ref", "-d", "refs/heads/main")
+    else:
+        tree = git(repo, "rev-parse", f"{main_sha}^{{tree}}")
+        moved = authoring_ingress_module._commit_tree(repo, tree, [main_sha], "stale main")
+        git(remote, "fetch", "--no-tags", str(repo), moved)
+        git(remote, "update-ref", "refs/heads/main", moved)
+    remote_before = git(remote, "rev-parse", "--verify", "refs/heads/main", check=False)
+    for name in ("_hash_blob", "_git_env", "_commit_tree", "_publish_ingress_ref"):
+        monkeypatch.setattr(authoring_ingress_module, name, lambda *a, **k: pytest.fail("premature Git mutation"))
+
+    with pytest.raises(AuthoringIngressError, match="canonical main transport"):
+        execute_ingress(new_task_envelope(main_sha), repo=repo)
+
+    assert git(repo, "rev-parse", "refs/heads/main") == main_sha
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "--verify", "refs/heads/main", check=False) == remote_before
+    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+
+
+def test_direct_author_task_rechecks_main_transport_before_publication(tmp_path, monkeypatch):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    _, decoy_remote, decoy_sha = setup_test_repo(tmp_path / "decoy")
+    git(repo, "checkout", "-b", "alternate")
+    original = authoring_ingress_module._commit_tree
+    def change_transport(*args, **kwargs):
+        commit = original(*args, **kwargs)
+        git(repo, "config", "remote.origin.url", str(decoy_remote))
+        return commit
+    monkeypatch.setattr(authoring_ingress_module, "_commit_tree", change_transport)
+    monkeypatch.setattr(authoring_ingress_module, "_publish_ingress_ref", lambda *a, **k: pytest.fail("stale transport publication"))
+
+    with pytest.raises(AuthoringIngressError, match="transport authority changed"):
+        execute_ingress(new_task_envelope(main_sha), repo=repo)
+
+    assert git(repo, "rev-parse", "refs/heads/main") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+    assert git(decoy_remote, "rev-parse", "refs/heads/main") == decoy_sha
+
+
+@pytest.mark.parametrize("checkout", ("main", "alternate"))
+@pytest.mark.parametrize("movement", ("local_main", "remote_main"))
+def test_direct_author_task_cas_rejects_concurrent_main_mutation(tmp_path, monkeypatch, movement, checkout):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    if checkout == "alternate":
+        git(repo, "checkout", "-b", "alternate")
     original = authoring_ingress_module._commit_tree
     moved = []
     def move_main(*args, **kwargs):
