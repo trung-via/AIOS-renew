@@ -1,0 +1,1 @@
+{"dispatch_id":"task316-r5-codex61-xhigh-20261007-001","error":{"message":"repository dirty","type":"OperatorError"},"executor_invoked":false,"format":"AIOS_ADMISSION_FAILURE","kind":"ADMISSION_FAILURE","operation":"PRIMARY","phase":"PRIMARY_SYNCHRONIZATION","reason_code":"PRIMARY_SYNCHRONIZATION_REJECTED","requested_executor":"codex","requested_task_id":"TASK-316","version":2}
