@@ -101,7 +101,8 @@ Closure: **CLEAR_WITH_PHASE_GATES**
 Reconciliation:
 
 - implementation is split into bounded phases BO-1 through BO-10, with BO-9A closing the
-  cross-boundary asynchronous lifecycle policy before BO-10 cleanup;
+  cross-boundary asynchronous lifecycle policy, BO-9B adding authority-neutral lifecycle episode
+  telemetry/North-Star measurement, and BO-10 performing final cleanup;
 - every phase preserves an explicit list of authority/trust-boundary invariants;
 - deterministic freshness checks may replace repeated semantic recomposition only when exact
   binding/digest/currentness is independently proved;
@@ -847,11 +848,124 @@ Exit: `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE` only after the shared async 
 four lifecycle families, sticky coding-correction preservation, no-blind-correction policy and
 Hands-side liveness attention are proven.
 
+### BO-9B — Harness episode telemetry and North-Star measurement
+
+Status: **HUMAN_APPROVED 2026-10-08 — REQUIRED AFTER BO-9A AND BEFORE BO-10**
+
+Purpose: make the program North Star `Verified Useful Work / (Time + Tokens + Human Effort)`
+measurable from one authority-neutral lifecycle episode summary without creating a new semantic,
+verification, review, publication, planning or wake authority.
+
+Contract: `AIOS_HARNESS_EPISODE_TELEMETRY_V1`.
+
+One logical authorized lifecycle is one episode spanning, as applicable:
+
+```text
+Brain authoring
+ -> canonical admission
+ -> dispatch
+ -> PRIMARY execution
+ -> verification
+ -> review
+ -> zero or more REPAIR / REMEDIATION correction loops
+ -> publication
+ -> wake / closure
+```
+
+REPAIR and REMEDIATION are episode phases/sub-spans, not independent top-level episodes merely
+because they create additional RUNs. The episode therefore preserves correction cost rather than
+reporting each retry as unrelated successful work.
+
+The episode summary is observability-only and MUST aggregate/source, without inventing authority:
+
+- Executor/provider/model/effort and harness/runtime identity, including phase changes where they
+  actually occur;
+- context/request bytes and trustworthy provider-reported input/output tokens;
+- tool-call count, retry count and tool wall time;
+- total lifecycle wall time plus phase durations;
+- pytest items executed (total and unique);
+- verification reuse and deterministic base replay avoided;
+- Brain intervention count plus reason class;
+- Human intervention count plus reason class;
+- repair/remediation/correction counts and bounded raw rework counters;
+- publication latency;
+- wake latency;
+- canonical outcome references and per-metric provenance/completeness.
+
+Required contracts/invariants:
+
+- `TELEMETRY_SEMANTIC_INERTNESS_V1`
+- `EPISODE_METRIC_PROVENANCE_V1`
+- `PARTIAL_TELEMETRY_NEVER_BLOCKS_V1`
+- `NO_TELEMETRY_DERIVED_AUTHORITY_V1`
+- `TRUSTED_TOKEN_ACCOUNTING_ONLY_V1`
+
+Telemetry MUST only read/aggregate canonical evidence or exact runtime/provider observations.
+Unknown/unavailable measurements remain `null`/unknown; bytes MUST NOT be converted into invented
+token counts, verification reuse/base-replay avoidance MUST NOT be inferred without deterministic
+evidence, and telemetry MUST NOT independently decide PASS, useful work, sufficient verification,
+review verdict, publication eligibility, lifecycle transition or roadmap NEXT.
+
+The deletion, corruption, lateness or total unavailability of telemetry MUST NOT change AUTHOR_TASK
+admission, dispatch, Runtime verification, Reviewer verdict, correction authority, publication,
+CAS/lineage, roadmap transition or wake semantics. A telemetry writer/reducer failure is therefore
+non-blocking to the authoritative lifecycle and may only degrade observability.
+
+Brain intervention means semantic Brain re-entry needed after the initial accepted handoff for the
+same logical lifecycle to continue, not routine deterministic transport bookkeeping. Human
+intervention means a post-authorization Human action without which the lifecycle cannot continue;
+reason classes MUST distinguish governance-required boundaries such as risk acceptance from
+harness/manual-recovery cost.
+
+BO-9 measurement instrumentation is consumed rather than duplicated: BO-9 context/serialization
+observations feed episode context cost; `MINIMUM_SUFFICIENT_VERIFICATION_V2` feeds episode
+verification/reuse observations; BO-4/5/9A lifecycle evidence feeds execution profile, elapsed
+execution, publication and wake timing. BO-9B is a measurement envelope/reducer, not a second
+measurement authority or a parallel lifecycle pipeline.
+
+V1 MUST expose the raw North-Star tuple and supporting counters without prematurely collapsing
+unlike units into one authoritative score:
+
+```text
+verified_work_units
+wall_seconds
+trusted_input_tokens
+trusted_output_tokens
+human_interventions
+brain_interventions
+correction_count
+```
+
+`verified_work_units` is referenced from the canonical lifecycle completion contract/outcome; the
+telemetry layer does not decide it. Any later normalized efficiency score belongs to a separately
+versioned, non-authoritative analytics layer whose weights/normalization constants cannot mutate
+episode evidence or lifecycle behavior.
+
+Episode summaries SHOULD live in runtime artifact/event observability storage and be deterministically
+rebuildable from their source evidence. They MUST NOT become a second planning database, semantic
+memory store, hidden reasoning store or normative Git authority merely because analytics consumes
+them.
+
+Required regression proof includes:
+
+- one logical lifecycle with multiple correction RUNs reduces to one deterministic episode identity;
+- every populated metric has exact source/provenance and missing metrics remain explicitly unknown;
+- provider token totals are accepted only from trusted usage accounting;
+- executed/reused verification and base-replay avoidance agree with Runtime evidence;
+- Brain/Human intervention classification distinguishes semantic/governance re-entry from routine
+  deterministic transport;
+- publication and wake latency use unambiguous event boundaries;
+- removing or crashing the telemetry path leaves authoritative lifecycle behavior unchanged;
+- analytics can recover the raw `(verified_work, time, tokens, human_effort)` tuple without
+  rereading/reasoning over the entire lifecycle.
+
+Exit: `AIOS_HARNESS_EPISODE_TELEMETRY_V1_ACTIVE`.
+
 ### BO-10 — Lifecycle normative consolidation and legacy cleanup
 
 Purpose: starting only from the exact final reviewed/published BO state, prove the optimized
 lifecycle is complete and remove competing procedural truth. BO-10 is cleanup/closure, not a
-place to absorb missing BO-2/4/5/7/8/9A feature work.
+place to absorb missing BO-2/4/5/7/8/9A/9B feature work.
 
 `SELF_HOST_END_TO_END_FLOW_V1` remains the single current generic Brain-facing operational
 entrypoint. BO-10 classifies claims/sections/call paths/tests as RETAIN_NORMATIVE,
@@ -872,8 +986,8 @@ Exit: `BRAIN_OPTIMIZATION_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE`.
 
 ## 6. H4 resume gate
 
-TASK-310 and all remaining H4 implementation stay blocked until BO-1 through BO-10 are closed
-(or an eligible phase closes NO_CHANGE after its required audit).
+TASK-310 and all remaining H4 implementation stay blocked until BO-1 through BO-10, including
+BO-9A and BO-9B, are closed (or an eligible phase closes NO_CHANGE after its required audit).
 
 Before returning to TASK-310:
 
@@ -886,6 +1000,7 @@ Before returning to TASK-310:
   `AUTO_REPAIR_STICKY_EXECUTOR_PRESERVATION_V1`;
 - prove `PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE`, `ASYNC_HANDOFF_RECEIPT_V1`,
   `ASYNC_LIVENESS_ATTENTION_V1` and `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE`;
+- prove `AIOS_HARNESS_EPISODE_TELEMETRY_V1_ACTIVE` with observability-only semantic inertness;
 - prove `BRAIN_OPTIMIZATION_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE`;
 - fresh Brain Sync using the optimized path;
 - prove the H4 roadmap/objective is still current;
