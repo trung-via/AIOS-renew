@@ -1,5 +1,5 @@
 task_id: TASK-316
-revision: 2
+revision: 3
 goal: Restore a trustworthy verification baseline required to resume BO-1 by repairing
   stale regression fixtures and test-harness assumptions exposed by RUN-313-005, and
   by restoring the published historical FINALIZE_CANDIDATE absent-reuse Executor fallback
@@ -23,9 +23,12 @@ problem: 'RUN-313-005 reached Runtime verification on the unchanged TASK-313 can
   the required v3 provider/protocol baseline repair needs src/aios_renew/brain_provider_protocol.py,
   which revision 1 allowed only for inspection. Revision 2 corrects only that mutation-authority
   omission; it does not reinterpret the failure as an implementation defect or widen
-  the baseline-recovery objective.'
+  the baseline-recovery objective. Revision 3 changes only the verification contract
+  from minimum-sufficient-v1 to minimum-sufficient-v2 and re-executes the same bounded
+  baseline-recovery semantics from current canonical main; it does not widen scope
+  or reinterpret RUN-316-002 as a correction authorization.'
 assumptions:
-- Canonical main at TASK-316 revision-2 authoring is 1985beae7e866b3e60e4d9295703f038a81f07f4.
+- Canonical main at TASK-316 revision-3 authoring is f147f9fa463b3c512fa1a29f2517a198a2aa3342.
 - RUN-313-005 is the current canonical TASK-313 verification failure and its failed
   candidate remains dd287d11eeaed3ba4bccabcd992fcb1b831bc0a3; TASK-316 does not rewrite,
   repair, supersede, or execute that lineage.
@@ -41,6 +44,10 @@ assumptions:
 - RUN-316-001 canonically failed at COMPLETION_GATE because src/aios_renew/brain_provider_protocol.py
   is required to reconcile the current brain-high-value-v3 Stage-2 protocol contract
   but was outside revision-1 scope.modify; revision 2 changes only that scope authority.
+- RUN-316-002 remains immutable historical verification evidence from revision 2.
+  Revision 3 does not authorize a broad REPAIR of that historical 51-failure population;
+  it re-executes the bounded TASK-316 objective from current canonical main under
+  minimum-sufficient-v2 so Runtime can produce complete current attribution evidence.
 scope:
   inspect:
   - .ai/tasks/TASK-313.yaml
@@ -106,11 +113,11 @@ constraints:
   - Shared Git fixture support must correctly resolve both ordinary repositories and
     linked worktrees without machine-specific paths or assumptions that .git/HEAD
     exists beneath the worktree root.
-  - 'Wake-bridge tests must verify current semantic boundaries: bounded exact source
+  - Wake-bridge tests must verify current semantic boundaries:bounded exact source
     selectors remain distinguishable from other workflow artifacts, and transport
     metadata does not become independent planning, lifecycle, review or publication
     authority. Historical exact artifact-count and TASK-260 diff-to-current-HEAD assumptions
-    must not be treated as permanent architecture.'
+    must not be treated as permanent architecture.
   - Historical FINALIZE_CANDIDATE with genuine absence of eligible reusable pre-verification
     state must remain READY with executor_required=true and no RUN or Executor invocation
     during preflight. Eligible reusable state may produce executor_required=false,
@@ -156,7 +163,7 @@ acceptance:
     candidate/correction lineage, BO-1 semantics, production wake workflows, Reviewer
     authority and Publisher authority unchanged.
 verification:
-  policy: minimum-sufficient-v1
+  policy: minimum-sufficient-v2
   required:
   - python scripts/aios_parallel_full_suite.py
   - git diff --check
