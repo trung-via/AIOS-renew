@@ -45,6 +45,8 @@ brain_optimization_preemption:
     - BO-7_CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS
     - BO-8_PLANNING_TRANSACTION_BATCHING
     - BO-9_CONDITIONAL_PROVIDER_CONTEXT_SERIALIZATION_OPTIMIZATION
+    - BO-9A_ASYNC_LIFECYCLE_HANDOFF_DOORBELL_CONTINUATION_CLOSURE
+    - BO-10_LIFECYCLE_NORMATIVE_CONSOLIDATION_LEGACY_CLEANUP
   task310_status: BLOCKED_ON_BRAIN_OPTIMIZATION_V1_CLOSURE
   authoring_family_optimization_contract:
     contract: NO_BRAIN_DERIVABLE_MATERIAL_REJECTION_V1
@@ -70,6 +72,43 @@ brain_optimization_preemption:
       - BO1R_OWNS_POST_AUTHORIZATION_STRUCTURAL_PACKAGE_REUSE
       - BO7_OWNS_PRE_AUTHORIZATION_DIRECT_FINAL_CONTRACT_INGRESS
       - NO_DUPLICATE_IMPLEMENTATION_BETWEEN_BO1R_AND_BO7
+
+  roadmap_next_consistency_contract:
+    contract: ROADMAP_SINGLE_EFFECTIVE_NEXT_V1
+    mutation_contract: ROADMAP_NEXT_ATOMIC_TRANSITION_V1
+    human_decision: APPROVED_2026_10_07
+    requirement: >-
+      Every active planning state has exactly one mechanically provable effective NEXT
+      unless the active track is explicitly complete or blocked with no eligible
+      successor. next_items, sequence status, Human priority, blockers and return
+      metadata must never act as competing independent NEXT authorities.
+    fail_closed_on:
+      - MULTIPLE_EFFECTIVE_NEXT
+      - NEXT_ITEMS_SEQUENCE_MISMATCH
+      - BLOCKED_ITEM_SELECTED_AS_EFFECTIVE_NEXT
+      - STALE_HUMAN_PRIORITY_PROJECTION
+      - ATOMIC_TRANSITION_INCOMPLETE
+    exact_regression: TASK319_SEQUENCE_NEXT_VS_NEXT_ITEMS_SPLIT_BRAIN
+
+  async_lifecycle_contract:
+    contract: ASYNC_BOUNDARY_DOORBELL_CONTINUATION_V1
+    human_decision: APPROVED_2026_10_07
+    handoff_boundaries:
+      - PRIMARY
+      - REPAIR
+      - REMEDIATION
+      - PUBLICATION
+    stop_rule: >-
+      After durable positive asynchronous handoff acceptance, Brain ends the current
+      turn and does not poll progress. Actionable terminal or addressed operational
+      outcomes resume Brain through attention/doorbell plus fresh canonical Brain Sync.
+    preserve:
+      - DISPATCH_ACCEPTED_IS_NOT_RUN_SUCCESS
+      - PUBLICATION_HANDOFF_ACCEPTED_IS_NOT_PUBLICATION_SUCCESS
+      - RUNTIME_DOES_NOT_CHOOSE_CORRECTION_STRATEGY
+      - PROGRESS_SIGNALS_REMAIN_NON_WAKE
+      - SAME_TASK_ORDINARY_CONTINUATION_REQUIRES_NO_CEREMONIAL_HUMAN_STOP
+      - REAL_HUMAN_RISK_SCOPE_NEW_TASK_OR_OVERRIDE_BOUNDARIES_REMAIN
 
 production_wake_amendment:
   id: h4-origin-affine-unattended-wake-v1
@@ -839,7 +878,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-task316-verification-baseline-recovery
+  - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 sequence:
 
   - id: TASK-309
@@ -955,7 +994,10 @@ sequence:
     return_to: task308-origin-correct-replacement-v1
 
   - id: brain-optimization-v1-bo1-author-task-mutation-path-simplification
-    status: BLOCKED_BY_TASK316_VERIFICATION_BASELINE_RECOVERY
+    status: NEXT
+    resumed_on: "2026-10-07"
+    unblocked_by:
+      - TASK-316_REVIEWED_PUBLISHED_RUN_316_006
     phase: BO1_AUTHOR_TASK_MUTATION_PATH_SIMPLIFICATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-06"
@@ -964,7 +1006,7 @@ sequence:
     task_revision: 1
     task_authoring_status: CANONICALIZED
     task_author_commit_sha: "3dfa7aade80f7237b9999062ffb6ed403e52abbc"
-    latest_failure_run_id: RUN-313-004
+    latest_failure_run_id: RUN-313-005
     bo1r_unblock:
       task_id: TASK-314
       run_id: RUN-314-002
@@ -1333,13 +1375,13 @@ sequence:
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
   - id: brain-optimization-v1-task316-verification-baseline-recovery
-    status: NEXT
+    status: DONE
     resumed_on: "2026-10-07"
     priority_resume_gate: SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
     priority_resume_gate_status: SATISFIED_BY_TASK_318
     preserved_failure_lineage: RUN-316-002
     pending_reconciliation: SATISFIED_BY_TASK319_REVIEWED_PUBLICATION
-    next_semantic_action: FRESH_PRIMARY_TASK316_R5_WITH_FOCUSED_MINIMUM_SUFFICIENT_V2
+    next_semantic_action: CLOSED_RETURN_TO_BO1
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
@@ -1440,6 +1482,19 @@ sequence:
       - NO_TASK313_LINEAGE_REWRITE
       - RUNTIME_OWNS_CANONICAL_VERIFICATION
       - REVIEWER_AND_PUBLISHER_BOUNDARIES_UNCHANGED
+    completed_by:
+      task_id: TASK-316
+      task_revision: 5
+      final_run_id: RUN-316-006
+      predecessor_failed_run_id: RUN-316-005
+      repair_authorization_sha: "0f595827de2286aee8bb110524fa7dae205e2a8e"
+      review_id: REVIEW-316-006
+      verdict: PASS
+      reviewed_sha: "f05a682bd2aca889a6541589f3e0f2d3cec04a07"
+      published_sha: "f05a682bd2aca889a6541589f3e0f2d3cec04a07"
+      publication_basis: EXACT_REVIEWED_SOURCE_EQUALS_CANONICAL_MAIN
+      runtime_verification: "302 passed in focused minimum-sufficient-v2 verification plus git diff --check"
+      consequence: RESTORE_BO1_AS_UNIQUE_NEXT
 
   - id: brain-optimization-v1-bo2-bounded-active-roadmap-projection
     status: QUEUED_AFTER_BO1
@@ -1448,8 +1503,17 @@ sequence:
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     objective: >-
       Bound normal planning hydration and historical validation so Brain Sync does
-      not parse/scan the full monolithic roadmap history for ordinary continuation.
+      not parse/scan the full monolithic roadmap history for ordinary continuation,
+      and expose one mechanically provable effective NEXT rather than requiring Brain
+      to reconcile competing roadmap mirrors.
+    required_contract: ROADMAP_SINGLE_EFFECTIVE_NEXT_V1
+    exact_regression: TASK319_SEQUENCE_NEXT_VS_NEXT_ITEMS_SPLIT_BRAIN
+    preserve_fail_closed_on:
+      - AMBIGUOUS_NEXT
+      - ROADMAP_LIFECYCLE_CONFLICT
+      - ROADMAP_LINEAGE_CONFLICT
     exit: BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE
+    additional_exit: ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE
 
   - id: brain-optimization-v1-bo3-minimum-fresh-brain-sync
     status: QUEUED_AFTER_BO2
@@ -1458,7 +1522,11 @@ sequence:
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     objective: >-
       Productionize MINIMUM_FRESH_BRAIN_SYNC_V1 with flow-scoped hydration and
-      deterministic digest-bound reuse of unchanged context.
+      deterministic digest-bound reuse of unchanged context. Consume the BO-2
+      effective-NEXT projection and fail closed rather than heuristically choosing
+      between conflicting roadmap indicators.
+    requires:
+      - ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE
     exit: MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE
 
   - id: brain-optimization-v1-bo4-sticky-execution-profile
@@ -1469,6 +1537,18 @@ sequence:
     objective: >-
       Reuse one exact Human-selected Executor/model/effort profile throughout the
       same TASK lifecycle, with Human-only override and expiry on TASK-id change.
+      Brain must not manually reattach same-TASK execution selectors at PRIMARY,
+      REMEDIATION, REPAIR or continuation boundaries.
+    required_contract: TASK_SCOPED_STICKY_EXECUTION_PROFILE_V1
+    semantics:
+      - HUMAN_SELECTS_EXECUTOR_MODEL_EFFORT_ONCE_PER_TASK
+      - EXACT_PROFILE_REUSED_FOR_PRIMARY_REPAIR_REMEDIATION_AND_CONTINUATION_WITHIN_SAME_TASK
+      - EXECUTOR_REQUIRED_TRUE_MUST_RESOLVE_EXACT_TASK_SCOPED_DELEGATION
+      - EXECUTOR_REQUIRED_FALSE_PRESERVES_EXECUTORLESS_CONTINUATION
+      - NO_BRAIN_MEMORY_OR_LAST_RUN_AS_PROFILE_AUTHORITY
+      - HUMAN_OVERRIDE_TAKES_EFFECT_PROSPECTIVELY
+      - NEW_TASK_ID_REQUIRES_FRESH_HUMAN_SELECTION
+      - NO_AUTOMATIC_FALLBACK_OR_DIFFICULTY_ROUTING
     exit: TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE
 
   - id: brain-optimization-v1-bo5-author-task-primary-continuation
@@ -1478,8 +1558,16 @@ sequence:
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     objective: >-
       Carry exact canonical TASK identity from successful AUTHOR_TASK into PRIMARY
-      transport under existing Human delegation without Brain canonical reread/glue.
+      transport under existing Human delegation without Brain canonical reread/glue,
+      then treat durable positive PRIMARY handoff acceptance as the asynchronous Brain
+      turn boundary with no polling for RUNNER_STARTED or execution progress.
+    preserve:
+      - RUNTIME_REVALIDATES_TASK_COMMIT_BLOB_REVISION_AND_CURRENTNESS
+      - PRIMARY_DISPATCH_ACCEPTANCE_IS_NOT_RUN_SUCCESS
+      - PROGRESS_SIGNALS_REMAIN_NON_WAKE
+      - ADDRESSED_OPERATIONAL_FAILURE_RESULT_OR_FAILURE_RESUMES_VIA_ATTENTION
     exit: AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE
+    additional_exit: PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE
 
   - id: brain-optimization-v1-bo6-delta-semantic-audit
     status: QUEUED_AFTER_BO5
@@ -1534,8 +1622,20 @@ sequence:
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     objective: >-
       Canonicalize one already-made Human planning decision atomically when possible
-      to reduce main churn without merging distinct approval or risk decisions.
+      to reduce main churn without merging distinct approval or risk decisions, and
+      update every current-selection surface together whenever effective NEXT changes.
+    required_contract: ROADMAP_NEXT_ATOMIC_TRANSITION_V1
+    atomic_next_surfaces:
+      - EFFECTIVE_NEXT
+      - NEXT_ITEMS_COMPATIBILITY_VIEW
+      - PRIOR_AND_NEW_SEQUENCE_STATUS
+      - BLOCKER_AND_UNBLOCK_STATE
+      - RETURN_TO_CONTINUATION_METADATA
+      - NEXT_SEMANTIC_ACTION
+      - CURRENT_HUMAN_PRIORITY_SELECTOR
+    exact_regression: TASK319_SEQUENCE_NEXT_VS_NEXT_ITEMS_SPLIT_BRAIN
     exit: PLANNING_MUTATION_BATCHING_ACTIVE
+    additional_exit: ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE
 
   - id: brain-optimization-v1-bo9-provider-context-serialization
     status: QUEUED_AFTER_BO8
@@ -1546,6 +1646,65 @@ sequence:
       Measure residual provider/Brain/Reviewer/RA serialization cost and optimize
       only material duplication while preserving self-contained stateless requests.
     exit: BRAIN_PROVIDER_PAYLOAD_COST_RESOLVED
+    return_to: brain-optimization-v1-bo9a-async-lifecycle-doorbell-continuation
+
+  - id: brain-optimization-v1-bo9a-async-lifecycle-doorbell-continuation
+    status: QUEUED_AFTER_BO9
+    phase: BO9A_ASYNC_LIFECYCLE_HANDOFF_DOORBELL_CONTINUATION_CLOSURE
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-07"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Close one generic Brain-turn policy across PRIMARY, REPAIR, REMEDIATION and
+      PUBLICATION: continue synchronously until durable asynchronous handoff acceptance,
+      then end the current Brain turn without polling and resume only from actionable
+      attention plus fresh canonical Brain Sync.
+    required_contract: ASYNC_BOUNDARY_DOORBELL_CONTINUATION_V1
+    preserve:
+      - NO_RUNTIME_CORRECTION_STRATEGY_SELECTION
+      - NO_BLIND_CORRECTION_LOOP_V1
+      - PUBLICATION_HANDOFF_ACCEPTANCE_IS_NOT_PUBLICATION_SUCCESS
+      - SAME_TASK_ORDINARY_CORRECTION_REQUIRES_NO_CEREMONIAL_HUMAN_STOP
+      - TASK308_BLOCKED_ORIGIN_LINEAGE_REMAINS_HISTORICAL_NOT_ACTIVATED
+      - H4_RETAINS_DEVICE_INDEPENDENT_EXACT_ORIGIN_DELIVERY_AUTHORITY
+    exit: ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE
+    return_to: brain-optimization-v1-bo10-lifecycle-normative-consolidation
+
+  - id: brain-optimization-v1-bo10-lifecycle-normative-consolidation
+    status: QUEUED_AFTER_BO9A
+    phase: BO10_LIFECYCLE_NORMATIVE_CONSOLIDATION_LEGACY_CLEANUP
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-07"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    objective: >-
+      Starting only from the exact final published BO state, converge current Brain
+      procedure into the existing SELF_HOST_END_TO_END_FLOW_V1 entrypoint and classify,
+      redirect, historicalize, retain as bounded compatibility, or remove obsolete
+      competing authoring, sync, profile, continuation, polling and roadmap-NEXT guidance.
+      BO-10 is cleanup/closure and must not absorb missing feature work from earlier phases.
+    required_preconditions:
+      - AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE
+      - BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE
+      - ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE
+      - MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE
+      - TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE
+      - AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE
+      - PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE
+      - TASK_SPECIFIC_DELTA_AUDIT_ACTIVE
+      - PLANNING_MUTATION_BATCHING_ACTIVE
+      - ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE
+      - BRAIN_PROVIDER_PAYLOAD_COST_RESOLVED
+      - ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE
+    invariants:
+      - NO_COMPETING_CURRENT_BRAIN_OPTIMIZATION_FLOW_V1
+      - LEGACY_COMPATIBILITY_IS_NON_NORMATIVE_V1
+      - NO_BLIND_CORRECTION_LOOP_V1
+      - NO_ROADMAP_SPLIT_BRAIN_NEXT_V1
+      - SELF_HOST_SINGLE_NORMATIVE_ENTRYPOINT_V1
+      - ATOMIC_NORMATIVE_CLEANUP_ACTIVATION_V1
+      - HISTORICAL_ENGINEERING_TRUTH_PRESERVATION_V1
+      - H4_TRANSITION_PRESERVATION_V1
+    exit: BRAIN_OPTIMIZATION_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
     return_to: h4-device-independent-origin-capture-correction-v1
 
   - id: h4-device-independent-origin-capture-correction-v1

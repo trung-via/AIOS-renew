@@ -65,6 +65,11 @@ Optimization must preserve:
     material from canonical state plus the final family contract.
 12. BO-1R and BO-7 are non-overlapping: BO-1R owns post-authorization same-head structural
     ResultPackage reuse; BO-7 owns pre-authorization direct-final-contract correction ingress.
+13. `ROADMAP_SINGLE_EFFECTIVE_NEXT_V1`: an active planning state exposes one mechanically
+    provable effective NEXT; conflicting mirrors fail closed and Brain never chooses heuristically.
+14. `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_V1`: after durable positive PRIMARY, REPAIR,
+    REMEDIATION or PUBLICATION handoff acceptance Brain ends the current turn without polling;
+    actionable outcomes resume through attention plus fresh canonical Brain Sync.
 
 ## 4. Two-stage planning audit
 
@@ -81,6 +86,12 @@ Risks found:
 - architecture-to-TASK delta audit could skip new task-specific risks;
 - REMEDIATION/REPAIR simplification could overgeneralize AUTHOR_TASK findings;
 - batching planning mutations could hide distinct Human decisions;
+- roadmap mirrors could split so sequence NEXT, next_items, blockers or Human priority name
+  different successors, reproducing the demonstrated TASK-319 split-brain incident;
+- sticky execution-profile transport could leave coding correction selectors null and force Brain
+  to manually reattach profile values despite an existing same-TASK Human delegation;
+- asynchronous execution/publication could keep Brain polling after responsibility has safely
+  crossed a durable handoff boundary;
 - provider/token optimization could weaken stateless/provider-neutral substitution protection.
 
 ### Stage 2 — ADVERSARIAL_AUDIT_AND_RECONCILE
@@ -89,13 +100,16 @@ Closure: **CLEAR_WITH_PHASE_GATES**
 
 Reconciliation:
 
-- implementation is split into bounded phases BO-1 through BO-9;
+- implementation is split into bounded phases BO-1 through BO-10, with BO-9A closing the
+  cross-boundary asynchronous lifecycle policy before BO-10 cleanup;
 - every phase preserves an explicit list of authority/trust-boundary invariants;
 - deterministic freshness checks may replace repeated semantic recomposition only when exact
   binding/digest/currentness is independently proved;
 - canonical historical evidence remains in Git/artifact history; no second planning store is added;
 - execution-profile reuse is valid only for the same exact TASK identity under existing Human
-  delegation and expires on TASK-id change or explicit Human override;
+  delegation and expires on TASK-id change or explicit Human override; coding boundaries with
+  executor_required=true deterministically consume that delegation, while executorless boundaries
+  must remain executorless rather than receiving an inherited coding profile;
 - deterministic continuation may carry out already-authorized lifecycle transport, but may not
   choose roadmap work, TASK meaning, Executor/model/effort, review verdict or correction strategy;
 - delta audit reuses only fingerprinted settled architecture; every TASK still receives two-stage
@@ -106,7 +120,15 @@ Reconciliation:
   deterministically. Distinct semantic staleness witnesses remain only where they prove the
   exact canonical state against which Brain authorized the correction;
 - planning batching combines only one already-made Human planning decision and cannot merge separate
-  approval/risk decisions;
+  approval/risk decisions; every effective-NEXT transition is atomic across current-selection
+  surfaces under `ROADMAP_NEXT_ATOMIC_TRANSITION_V1`;
+- BO-2 owns one effective-NEXT projection and the exact TASK-319 sequence-vs-next_items split-brain
+  shape is a mandatory regression; BO-3 consumes that projection and still fails closed on ambiguity;
+- BO-5 closes PRIMARY accepted-handoff no-poll behavior, while BO-9A closes the same asynchronous
+  policy across REPAIR, REMEDIATION and PUBLICATION after BO-7 exists;
+- BO-10 adds no missing feature work: it starts from the exact final published BO state, keeps
+  `SELF_HOST_END_TO_END_FLOW_V1` as the single generic navigation entrypoint and removes or
+  demotes competing legacy procedural truth;
 - BO-9 is conditional on measurement and must preserve self-contained stateless provider requests.
 
 ## 5. Execution sequence
@@ -116,7 +138,7 @@ Reconciliation:
 Status: **COMPLETED BY HUMAN PLANNING DECISION**
 
 Purpose: make Brain optimization the sole planning priority before TASK-310, remove stale
-approval ambiguity in roadmap sequencing, and freeze H4 implementation until BO-1..BO-9 close.
+approval ambiguity in roadmap sequencing, and freeze H4 implementation until BO-1..BO-10 close.
 
 Exit: `BRAIN_OPTIMIZATION_PREEMPTION_CANONICAL`.
 
@@ -237,20 +259,27 @@ handoff hardening text do not require contradictory AUTHOR_TASK gates.
 
 Exit: `AUTHOR_TASK_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`.
 
-### BO-2 — Bounded active-roadmap projection and history boundary
+### BO-2 — Bounded active-roadmap projection and single effective NEXT
 
 Purpose: stop normal Brain Sync from loading/scanning the current ~600 KB monolithic roadmap
-history merely to identify current planning state.
+history merely to identify current planning state, and eliminate roadmap split-brain selection.
 
 Target:
 
-- bounded current planning projection containing active track, unique NEXT, current blockers,
+- bounded current planning projection containing active track, one effective NEXT, current blockers,
   current Human decisions/delegations and exact predecessor anchors;
+- `ROADMAP_SINGLE_EFFECTIVE_NEXT_V1`: Human priority, current blocker/unblock state and the
+  selected planning item reconcile to one mechanically provable successor;
+- next_items, sequence status, return_to and similar compatibility/history fields may remain but
+  cannot independently select competing current work;
+- the exact demonstrated TASK-319 shape — sequence names TASK-319 NEXT while next_items still
+  names TASK-316 — must fail closed and is a mandatory regression;
 - historical planning remains canonical through Git/history/archive evidence, not a new database;
 - normal sync does not ancestry-scan every historical DONE item;
-- ambiguity/conflict can explicitly expand into historical material.
+- ambiguity/conflict explicitly expands bounded context or blocks; Brain never guesses a winner.
 
-Exit: `BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE`.
+Exits: `BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE` and
+`ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE`.
 
 ### BO-3 — MINIMUM_FRESH_BRAIN_SYNC_V1 production fast path
 
@@ -268,25 +297,36 @@ Exit: `MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE`.
 
 Purpose: implement the already approved `TASK_SCOPED_STICKY_EXECUTION_PROFILE_V1`.
 
-The Human selects Executor/model/effort once per TASK. The exact profile is reused for PRIMARY,
-REMEDIATION, REPAIR and continuation within that TASK unless Human explicitly changes it.
+The Human selects Executor/model/effort once per TASK. The exact task-scoped delegation is reused
+for PRIMARY, REMEDIATION, coding REPAIR and continuation within that TASK unless Human explicitly
+changes it. When `executor_required=true`, transport must deterministically resolve and propagate
+that exact delegation; Brain must not repair null carrier selectors by remembering and reattaching
+Executor/model/effort. When `executor_required=false`, the continuation remains executorless.
 New TASK id always requires fresh Human selection. No adaptive fallback/difficulty routing.
 
 Exit: `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE`.
 
-### BO-5 — Exact AUTHOR_TASK-to-PRIMARY continuation
+### BO-5 — Exact AUTHOR_TASK-to-PRIMARY asynchronous continuation
 
-Purpose: remove Brain canonical reread/manual selector glue after successful TASK authoring.
+Purpose: remove Brain canonical reread/manual selector glue after successful TASK authoring and
+make durable PRIMARY handoff acceptance the no-poll Brain-turn boundary.
 
 AUTHOR_TASK success exposes a bounded exact identity sufficient for continuation, including
 TASK id, revision, blob SHA and authoring commit/main identity. Where an exact current Human
 task-scoped execution delegation already exists, deterministic transport may dispatch PRIMARY
 without Brain copying/re-discovering those selectors.
 
-Runtime independently revalidates TASK commit/blob/revision/currentness before RUN admission.
-No planning or execution-profile choice moves into Runtime/transport.
+After durable positive PRIMARY handoff acceptance Brain ends the current turn. It does not wait
+for RUNNER_STARTED, Executor progress or verification progress. Those remain non-wake progress
+signals. Addressed pre-AIOS operational failure, canonical RESULT or canonical FAILURE resumes
+Brain through attention plus fresh canonical reconstruction.
 
-Exit: `AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE`.
+Runtime independently revalidates TASK commit/blob/revision/currentness before RUN admission.
+Dispatch acceptance is not RUN creation or success, and no planning or execution-profile choice
+moves into Runtime/transport.
+
+Exits: `AUTHOR_TASK_PRIMARY_EXACT_CONTINUATION_ACTIVE` and
+`PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE`.
 
 ### BO-6 — Delta semantic audit over settled architecture
 
@@ -371,15 +411,22 @@ Program-level combined exit after BO-1 and BO-7:
 `AUTHOR_TASK_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE` and
 `CORRECTION_AUTHORING_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`.
 
-### BO-8 — Planning transaction batching / main-churn reduction
+### BO-8 — Planning transaction batching and atomic NEXT transition
 
-Purpose: reduce multiple near-consecutive planning commits for one already-made Human decision.
+Purpose: reduce multiple near-consecutive planning commits for one already-made Human decision
+and prevent partial roadmap transitions from creating split-brain NEXT.
 
 One Human planning decision should normally produce one atomic canonical planning mutation when
-the affected files are known together. Distinct Human approvals, risk acceptances or later
-semantic decisions remain separate transactions.
+the affected files are known together. When effective NEXT changes, that transaction reconciles
+the effective selector, compatibility next_items view, prior/new sequence statuses, blocker and
+unblock state, return metadata, next semantic action and current Human priority selector together.
+Distinct Human approvals, risk acceptances or later semantic decisions remain separate transactions.
 
-Exit: `PLANNING_MUTATION_BATCHING_ACTIVE`.
+Runtime may structurally prove agreement or fail closed; it never chooses which work should be NEXT.
+The exact TASK-319 split-brain incident is a mandatory positive regression.
+
+Exits: `PLANNING_MUTATION_BATCHING_ACTIVE` and
+`ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE`.
 
 ### BO-9 — Conditional provider/context serialization optimization
 
@@ -391,15 +438,73 @@ substitution protection and provider neutrality. If residual gain is immaterial,
 
 Exit: `BRAIN_PROVIDER_PAYLOAD_COST_RESOLVED`.
 
+### BO-9A — Async lifecycle handoff and doorbell continuation closure
+
+Purpose: after BO-7 exists, close one generic Brain-turn policy across PRIMARY, REPAIR,
+REMEDIATION and PUBLICATION.
+
+Target behavior:
+
+```text
+Brain performs current authorized semantic work
+ -> deterministic asynchronous handoff
+ -> durable positive handoff acceptance
+ -> end current Brain turn / no polling
+ -> actionable terminal or addressed operational outcome
+ -> attention / doorbell
+ -> fresh canonical Brain Sync
+ -> continue under existing authority
+```
+
+FAILURE still requires Brain semantic REPAIR strategy; CHANGES_REQUIRED still requires Brain
+semantic REMEDIATION; Runtime never becomes a correction planner. Ordinary same-TASK continuation
+requires no ceremonial Human stop unless a real Human risk/scope/new-TASK/override boundary appears.
+Publication handoff acceptance is not publication success. The blocked TASK-308 origin lineage is
+not activated; BO-9A adopts only the transport-neutral no-poll Brain-turn semantics, while H4
+retains responsibility for final device-independent exact-origin delivery.
+
+Required invariant: `NO_BLIND_CORRECTION_LOOP_V1`.
+
+Exit: `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE`.
+
+### BO-10 — Lifecycle normative consolidation and legacy cleanup
+
+Purpose: starting only from the exact final reviewed/published BO state, prove the optimized
+lifecycle is complete and remove competing procedural truth. BO-10 is cleanup/closure, not a
+place to absorb missing BO-2/4/5/7/8/9A feature work.
+
+`SELF_HOST_END_TO_END_FLOW_V1` remains the single current generic Brain-facing operational
+entrypoint. BO-10 classifies claims/sections/call paths/tests as RETAIN_NORMATIVE,
+REPLACE_WITH_POINTER, HISTORICAL_ONLY, IMPLEMENTATION_LEAF,
+COMPATIBILITY_LEAF_NON_NORMATIVE or REMOVE_OBSOLETE.
+
+Mandatory cleanup covers retired serialized authoring handoff requirements, unbounded/default
+Brain Sync guidance, repeated same-TASK profile selection/manual selector reattachment,
+AUTHOR_TASK/correction selector-copy glue, publication/execution polling instructions, competing
+roadmap NEXT authorities and tests/examples/comments that still teach retired procedure.
+
+Required invariants include `NO_COMPETING_CURRENT_BRAIN_OPTIMIZATION_FLOW_V1`,
+`LEGACY_COMPATIBILITY_IS_NON_NORMATIVE_V1`, `NO_ROADMAP_SPLIT_BRAIN_NEXT_V1`,
+`SELF_HOST_SINGLE_NORMATIVE_ENTRYPOINT_V1`, historical engineering truth preservation and
+atomic cleanup activation.
+
+Exit: `BRAIN_OPTIMIZATION_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE`.
+
 ## 6. H4 resume gate
 
-TASK-310 and all remaining H4 implementation stay blocked until BO-1 through BO-9 are closed
-(or a phase closes NO_CHANGE after its required audit).
+TASK-310 and all remaining H4 implementation stay blocked until BO-1 through BO-10 are closed
+(or an eligible phase closes NO_CHANGE after its required audit).
 
 Before returning to TASK-310:
 
 - prove `AUTHORING_FAMILY_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE` so all Brain-owned
   authoring families are free of derivable-material ingress rejection;
+- prove `ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE`,
+  `ROADMAP_NEXT_ATOMIC_TRANSITION_ACTIVE` and `NO_ROADMAP_SPLIT_BRAIN_NEXT_V1`;
+- prove `TASK_SCOPED_STICKY_EXECUTION_PROFILE_ACTIVE`,
+  `PRIMARY_ASYNC_HANDOFF_NO_POLL_ACTIVE` and
+  `ASYNC_BOUNDARY_DOORBELL_CONTINUATION_ACTIVE`;
+- prove `BRAIN_OPTIMIZATION_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE`;
 - fresh Brain Sync using the optimized path;
 - prove the H4 roadmap/objective is still current;
 - confirm TASK-310 remains unauthored and required;
