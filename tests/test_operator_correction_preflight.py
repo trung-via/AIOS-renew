@@ -1,5 +1,6 @@
 # Tests for Correction Preflight readiness boundary.
 import json
+from copy import deepcopy
 from pathlib import Path
 import subprocess
 
@@ -354,8 +355,16 @@ def test_correction_preflight_remote_repair_is_observational_for_ready_and_block
     assert _control_repository_snapshot(repo) == before_blocked
 
 
+@pytest.mark.parametrize("action,reuse_state", (
+    ("CODE_FIX", "absent"), ("FINALIZE_CANDIDATE", "absent"),
+    ("FINALIZE_CANDIDATE", "eligible"), ("FINALIZE_CANDIDATE", "malformed"),
+    ("FINALIZE_CANDIDATE", "stale"), ("FINALIZE_CANDIDATE", "conflicting"),
+    ("FINALIZE_CANDIDATE", "incomplete"), ("FINALIZE_CANDIDATE", "missing_acceptance"),
+    ("FINALIZE_CANDIDATE", "changed_files"), ("FINALIZE_CANDIDATE", "duplicate_keys"),
+    ("FINALIZE_CANDIDATE", "local_only"),
+))
 def test_correction_preflight_historical_repair_preserves_subject_and_blocks_duplicate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action: str, reuse_state: str,
 ) -> None:
     repo = make_repo(tmp_path)
     root_base_sha = git(repo, "rev-parse", "HEAD")
@@ -395,12 +404,42 @@ def test_correction_preflight_historical_repair_preserves_subject_and_blocks_dup
             "outside_task_scope": [],
         },
     }
+    structural = {
+        "kind": "PRE_VERIFICATION_CANDIDATE", "run_id": failed_run_id,
+        "task": run["task"], "subject_sha": failed_head,
+        "package": {"result": {
+            "head_sha": failed_head, "changed_files": ["OUTPUT.txt"], "unresolved": [],
+            "claims": [{"id": "C1", "satisfies": ["AC1"],
+                        "claim": "OUTPUT.txt contains the committed candidate.", "evidence": []}],
+        }, "evidence": []},
+    }
+    if reuse_state == "stale":
+        structural["subject_sha"] = root_base_sha
+    elif reuse_state == "incomplete":
+        structural["package"]["result"]["unresolved"] = ["Finish the implementation."]
+    elif reuse_state == "missing_acceptance":
+        structural["package"]["result"]["claims"] = []
+    elif reuse_state == "changed_files":
+        structural["package"]["result"]["changed_files"] = []
+    content = None if reuse_state == "absent" else json.dumps(structural).encode()
+    if reuse_state == "malformed":
+        content = b"not-json"
+    elif reuse_state == "duplicate_keys":
+        content = content.replace(b'"subject_sha":', b'"subject_sha": "ignored", "subject_sha":', 1)
+    elif reuse_state in ("conflicting", "local_only"):
+        local = deepcopy(structural)
+        local["package"]["result"]["claims"][0]["claim"] = "Conflicting local package."
+        state = runtime_paths(repo)
+        (state.preverification / f"{failed_run_id}.json").write_text(json.dumps(local), encoding="utf-8")
+        if reuse_state == "local_only":
+            content = None
     artifact = RemoteFailureArtifacts(
         failed_run_id,
         failed_head,
         json.dumps(run).encode(),
         json.dumps(failure).encode(),
         None,
+        content,
     )
     monkeypatch.setattr(
         operator_module,
@@ -419,8 +458,8 @@ def test_correction_preflight_historical_repair_preserves_subject_and_blocks_dup
         "failed_run_id": failed_run_id,
         "failed_head_sha": failed_head,
         "task": {"id": "TASK-101", "revision": 1},
-        "action": "CODE_FIX",
-        "modification_scope": ["OUTPUT.txt"],
+        "action": action,
+        "modification_scope": ["OUTPUT.txt"] if action == "CODE_FIX" else [],
         "instructions": ["Correct only the historical subject."],
         "constraints": ["Commit the output."],
     }
@@ -433,9 +472,18 @@ def test_correction_preflight_historical_repair_preserves_subject_and_blocks_dup
 
     ready = preflight_repair(failed_run_id, repo=repo, repair=repair)
 
-    assert ready.status == "READY", json.dumps(ready.as_dict(), sort_keys=True)
-    assert ready.subject_mode == "HISTORICAL"
+    if reuse_state in ("absent", "eligible"):
+        assert ready.status == "READY", json.dumps(ready.as_dict(), sort_keys=True)
+        assert ready.subject_mode == "HISTORICAL"
+        assert ready.executor_required is (reuse_state != "eligible")
+    else:
+        assert ready.status == "BLOCKED", ready.as_dict()
+        assert ready.phase == "REUSABLE_STATE_ADMISSION"
+        assert ready.reason_code == "REUSABLE_STATE_REJECTED"
+    assert ready.action == action
     assert ready.failed_head_sha == failed_head
+    assert ready.as_dict()["run_created"] is False
+    assert ready.as_dict()["executor_invoked"] is False
     assert (
         git(repo, "rev-parse", "HEAD"),
         git(repo, "branch", "--show-current"),

@@ -17,6 +17,7 @@ from aios_renew.brain_return_contract import parse_return_contract_registry, sel
 from aios_renew.brain_return_contract import return_contract_ref
 from aios_renew.decision_packet import DecisionPacket
 from aios_renew.task import validate_task
+from tests.test_brain_audit import v3_sections
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +36,7 @@ def registry():
 @pytest.fixture
 def profile_package():
     profile = parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"][0]
+    assert (profile["id"], profile["version"]) == ("brain-high-value-v3", 3)
     return {"profile": profile, "audit_profile_ref": profile_ref(profile)}
 
 
@@ -87,6 +89,8 @@ def stage2_response(req, candidate, *, blocker=False):
         "outcome": "NO_DECISION" if blocker else "CANDIDATE",
     }
     if req["decision_packet"]["selected_flow"] == "TASK_AUTHORING":
+        if req["audit_profile_package"]["profile"]["version"] == 3:
+            material.update(v3_sections(req["stage1_lineage"]["construct"], candidate))
         material["acceptance_phase_ledger"] = [
             {"id": entry["id"], "phase": "CLAIM_NOW"} for entry in candidate.get("acceptance", [])
         ]
@@ -120,6 +124,47 @@ def test_audited_round_trip_and_stale_stage2(registry, profile_package):
     bad = stage2_response(second, {"task_id": "TASK-999", "revision": 2}, blocker=True)
     with pytest.raises(BrainProviderProtocolError):
         validate_response(second, bad)
+
+
+@pytest.mark.parametrize("section", ("cross_authority_context", "canonical_shape", "terminal_lifecycle"))
+@pytest.mark.parametrize("fault", ("missing", "unknown_field", "stale_packet", "stale_candidate", "invalid_status"))
+@pytest.mark.parametrize("blocker", (False, True))
+def test_v3_task_stage2_sections_are_closed_bound_and_revalidated(registry, profile_package, section, fault, blocker):
+    first = request(registry, profile_package)
+    candidate = {"task_id": "TASK-999", "revision": 1}
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]), first["return_contract_package"],
+                               first["external_bindings"], first["audit_profile_package"],
+                               request_mode="AUDIT_RECONCILE", stage1_decision=stage1)
+    material = stage2_response(second, candidate, blocker=blocker)
+    assert set(material) == {"request_fingerprint", "construct_audit", "reconciled_candidate", "closure",
+                             "outcome", "acceptance_phase_ledger", "cross_authority_context",
+                             "canonical_shape", "terminal_lifecycle"}
+    decision = validate_response(second, material)
+    assert revalidate_decision(decision, second) == decision
+    assert decision["semantic_value"][section] == material[section]
+
+    def corrupt(value):
+        if fault == "missing":
+            del value[section]
+        elif fault == "unknown_field":
+            value[section]["future_authority"] = "injected"
+        elif fault == "stale_packet":
+            value[section]["packet_fingerprint"] = "0" * 64
+        elif fault == "stale_candidate":
+            value[section]["reconciled_candidate_fingerprint"] = "0" * 64
+        else:
+            value[section]["status"] = "UNKNOWN"
+
+    invalid = deepcopy(material)
+    corrupt(invalid)
+    with pytest.raises(BrainProviderProtocolError):
+        validate_response(second, invalid)
+    altered = deepcopy(decision)
+    corrupt(altered["semantic_value"])
+    altered["decision_fingerprint"] = digest({k: v for k, v in altered.items() if k != "decision_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(altered, second)
 
 
 @pytest.mark.parametrize("tamper", (
@@ -329,6 +374,9 @@ def test_non_task_provider_stage2_rejects_task_phase_ledger(registry, profile_pa
     altered["decision_fingerprint"] = digest({k: v for k, v in altered.items() if k != "decision_fingerprint"})
     with pytest.raises(BrainProviderProtocolError):
         revalidate_decision(altered, second)
+    for section, value in v3_sections(stage1["semantic_value"], candidate).items():
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(second, {**material, section: value})
 
 
 def test_direct_grammar_and_modes(registry, profile_package):

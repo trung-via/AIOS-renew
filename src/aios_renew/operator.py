@@ -3296,6 +3296,11 @@ def _nearest_same_head_repair_package(
         if predecessor_id is None:
             if lineage is not None:
                 raise OperatorError("conflicting same-head terminal REPAIR lineage")
+            if content is None:
+                # Validated lineage with no structural candidate is ABSENT,
+                # preserving the explicitly authorized coding-Executor fallback.
+                # Present bytes still pass every eligibility check below.
+                return None
             predecessor = None
         else:
             if not isinstance(predecessor_id, str) or _RUN_ID_PATTERN.fullmatch(predecessor_id) is None:

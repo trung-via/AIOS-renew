@@ -13,7 +13,7 @@ import re
 from typing import Any, Mapping
 
 from .brain_audit import (
-    BrainAuditError, _ordered_lenses, _packet, _stage1, construct_stage1, normalize_profile,
+    BrainAuditError, _CONFORMANCE_LENSES, _ordered_lenses, _packet, _stage1, construct_stage1, normalize_profile,
     profile_ref, validate_stage2,
 )
 from .brain_return_contract import (
@@ -340,6 +340,14 @@ def _diagnostic(candidate: Any) -> dict[str, Any]:
     return body
 
 
+def _stage2_conformance_fields(request: Mapping[str, Any]) -> frozenset[str]:
+    """Carry exactly the prospective v3 TASK audit sections through the protocol."""
+    if (request["decision_packet"]["selected_flow"] == "TASK_AUTHORING"
+            and request["audit_profile_package"]["profile"]["version"] == 3):
+        return frozenset(_CONFORMANCE_LENSES)
+    return frozenset()
+
+
 def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str, Any]) -> dict[str, Any]:
     """Validate one provider semantic response; return a transient Brain decision."""
     try:
@@ -350,7 +358,7 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
         expected = ({"request_fingerprint", "construct_audit", "reconciled_candidate", "closure", "outcome"}
                     if mode == "AUDIT_RECONCILE" else {"request_fingerprint", "candidate"})
         if mode == "AUDIT_RECONCILE" and packet["selected_flow"] == "TASK_AUTHORING":
-            expected = expected | {"acceptance_phase_ledger"}
+            expected = expected | {"acceptance_phase_ledger"} | _stage2_conformance_fields(req)
         _exact(response, expected, "provider semantic response")
         if response["request_fingerprint"] != req["request_fingerprint"]:
             raise BrainProviderProtocolError("request echo mismatch")
@@ -372,6 +380,7 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
             }
             if "acceptance_phase_ledger" in response:
                 material["acceptance_phase_ledger"] = response["acceptance_phase_ledger"]
+            material.update({key: response[key] for key in _stage2_conformance_fields(req)})
             semantic = validate_stage2(packet, req["audit_profile_package"]["profile"], first, material)
         return _decision(req, semantic)
     except (BrainAuditError, BrainReturnContractError, KeyError, TypeError, RecursionError, UnicodeError) as exc:
@@ -399,7 +408,7 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
                       "construct_fingerprint", "construct_audit", "closure", "outcome",
                       "reconciled_candidate_fingerprint", "handoff_candidate", "stage2_fingerprint"}
             if req["decision_packet"]["selected_flow"] == "TASK_AUTHORING":
-                fields = fields | {"acceptance_phase_ledger"}
+                fields = fields | {"acceptance_phase_ledger"} | _stage2_conformance_fields(req)
             _exact(semantic, fields, "Stage-2 semantic result")
             if (semantic["format"] != "AIOS_BRAIN_SEMANTIC_AUDIT" or type(semantic["version"]) is not int or
                 semantic["version"] != 1 or semantic["stage"] != "ADVERSARIAL_AUDIT_AND_RECONCILE" or
@@ -435,6 +444,7 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
             }
             if "acceptance_phase_ledger" in semantic:
                 material["acceptance_phase_ledger"] = semantic["acceptance_phase_ledger"]
+            material.update({key: semantic[key] for key in _stage2_conformance_fields(req)})
             if validate_stage2(req["decision_packet"], profile, first, material) != semantic:
                 raise BrainProviderProtocolError("Stage-2 result does not match BP-4A semantics")
             validated = semantic

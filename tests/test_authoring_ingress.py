@@ -335,6 +335,9 @@ def test_audited_authoring_rejects_invalid_provenance_before_mutation(tmp_path, 
                 "risks": [{"risk_summary": "Goal mismatch.", "counterexample": "Different goal.",
                            "candidate_anchor": "goal", "disposition": "ADDRESSED_BY_RECONCILIATION"}],
             }
+            from tests.test_brain_audit import v3_sections
+
+            handoff["stage2"].update(v3_sections(handoff["stage1"], handoff["stage2"]["reconciled_candidate"]))
     elif fault == "payload":
         envelope = replace(envelope, payload=envelope.payload.replace("Implement generic", "Change generic"))
     with pytest.raises(AuthoringIngressError):

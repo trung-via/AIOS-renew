@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -31,24 +32,31 @@ def test_sources_export_one_attempt_bound_selector_artifact_without_wake_authori
     assert data["name"] == configured["name"]
     all_steps = [step for job in data["jobs"].values() for step in job.get("steps", [])]
     uploads = [step for step in all_steps if step.get("uses") == "actions/upload-artifact@v4"]
-    assert len(uploads) == 1
-    assert uploads[0]["with"] == {
+    selectors = [step for step in uploads if step["with"].get("name") ==
+                 "aios-wake-source-v1-attempt-${{ github.run_attempt }}"]
+    assert len(selectors) == 1
+    selector = selectors[0]
+    assert selector["with"] == {
         "name": "aios-wake-source-v1-attempt-${{ github.run_attempt }}",
         "path": "${{ runner.temp }}/aios-wake-source/source.json",
         "if-no-files-found": "error", "retention-days": "1",
     }
-    assert uploads[0]["if"].startswith("always() && steps.")
-    assert "outputs.ready == 'true'" in uploads[0]["if"]
+    assert selector["if"].startswith("always() && steps.")
+    assert "outputs.ready == 'true'" in selector["if"]
+    assert all(step["with"].get("path") != selector["with"]["path"]
+               for step in uploads if step is not selector)
     writer = next(step for step in all_steps if step.get("name") == "Write exact wake source selectors")
     assert writer["if"].startswith("always() && steps.")
-    assert all_steps.index(writer) < all_steps.index(uploads[0])
+    assert all_steps.index(writer) < all_steps.index(selector)
     if key in {"repair_carrier", "terminal"}:
         assert data["permissions"] == {"contents": "read", "issues": "write"}
     elif key == "primary_carrier":
         assert data["permissions"] == {"contents": "read", "issues": "write", "actions": "write"}
     else:
         assert data["permissions"] == {"contents": "write", "issues": "write", "actions": "write"}
-    for forbidden in ("[AIOS BRAIN WAKE]", "attention_family", "fresh_brain_sync_required", "event_id", "next_action", "wake_pr_number"):
+    # Operational event_id routing is allowed; the exact pointer schema below
+    # still excludes semantic decisions and independent lifecycle authority.
+    for forbidden in ("[AIOS BRAIN WAKE]", "attention_family", "fresh_brain_sync_required", "next_action", "wake_pr_number"):
         assert forbidden not in source
     if key != "terminal":
         receipt = next(step for step in all_steps if step.get("id") == "wake_source")
@@ -64,8 +72,7 @@ def test_sources_export_one_attempt_bound_selector_artifact_without_wake_authori
 @pytest.mark.parametrize("bad", [False, True])
 def test_real_source_writer_has_exact_numeric_selector_only_schema(key, bad):
     node = shutil.which("node")
-    if not node:
-        pytest.skip("Node is needed for the source-writer harness")
+    assert node is not None, "Node is needed for the source-writer harness"
     data = yaml.load((ROOT / bridge.SOURCE_WORKFLOWS[key]["path"]).read_text(), Loader=yaml.BaseLoader)
     writer = next(step for job in data["jobs"].values() for step in job.get("steps", []) if step.get("name") == "Write exact wake source selectors")
     script = writer["with"]["script"]
@@ -127,11 +134,35 @@ const write = new Function('require', 'core', 'return (async () => {' + SCRIPT +
         assert set(payload) == {"version", "event_id", "attention_family", "repository", "selectors", "fresh_brain_sync_required"}
 
 
-def test_candidate_changes_are_inside_authorized_scope():
-    authorized = {
-        ".github/workflows/aios-brain-wake-bridge.yml",
-        "tests/test_brain_wake_bridge_workflow.py",
-    }
-    # TASK-260 r1's admitted RUN-260-001 base and exact modify scope.
-    result = subprocess.run(["git", "diff", "--name-only", "ee76927b3edff179d9363e3fd62c42869db790e3", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True)
-    assert set(result.stdout.splitlines()) <= authorized
+@pytest.mark.parametrize("authority", (
+    "modification_scope", "next_action", "authority_owner", "review_verdict", "publication", "event_id",
+))
+def test_candidate_changes_are_inside_authorized_scope(authority):
+    # Scope comes from the admitted TASK; source metadata cannot authorize a
+    # candidate mutation, review, publication or independent lifecycle action.
+    pointer = {"version": 1, "source_kind": "comment", "issue_id": 4000,
+               "issue_number": 1210, "comment_id": 6000}
+    policy = bridge.load_policy(ROOT / ".ai/brain-wake-carriers.yaml")
+    with pytest.raises(bridge.WakeBridgeError, match="pointer schema"):
+        bridge.project_source(key="ingress", pointer={**pointer, authority: "injected authority"},
+                              issue={}, comment=None, policy=policy)
+
+
+@pytest.mark.parametrize("selection", ("exact", "other_only", "duplicate_exact"))
+def test_source_selector_remains_distinct_from_other_workflow_artifacts(selection):
+    from tests.test_brain_wake_bridge import SourceAPI
+
+    source = SourceAPI()
+    exact = deepcopy(source.items[0])
+    unrelated = {**exact, "id": 9001, "name": "aios-attention-ingress-v1-attempt-1"}
+    source.items = [unrelated]
+    if selection != "other_only":
+        source.items.append(exact)
+    if selection == "duplicate_exact":
+        source.items.append({**exact, "id": 9002})
+    policy = bridge.load_policy(ROOT / ".ai/brain-wake-carriers.yaml")
+    wake = source.project(policy)
+    assert wake["attention_family"] == (
+        "INGRESS_REJECTED" if selection == "exact" else "WAKE_SOURCE_HANDOFF_FAILURE"
+    )
+    assert not set(wake) & {"next_action", "authority_owner", "review_verdict", "publication"}

@@ -1,6 +1,7 @@
 """Deterministic tests for AIOS Brain Sync observation snapshot."""
 
 import json
+import os
 from pathlib import Path
 import pytest
 import yaml
@@ -15,6 +16,7 @@ from aios_renew.operator import (
     runtime_state_root,
 )
 from aios_renew.verification import materialize_verification_subject
+from tests.git_fixture_support import commit_fixture_state, read_git_ref
 from tests.operator_test_support import (
     TASK_SOURCE,
     git,
@@ -445,6 +447,43 @@ def test_brain_sync_detached_remote_identity_fails_closed(
     assert git(repo, "rev-parse", "refs/heads/main") == git(repo, "rev-parse", "HEAD")
     with pytest.raises(BrainSyncError, match="detached canonical remote main"):
         observe_brain_sync(repo=repo)
+
+
+@pytest.mark.parametrize("layout", ("ordinary", "linked_absolute", "linked_relative"))
+@pytest.mark.parametrize("detached", (False, True))
+def test_shared_git_fixture_resolves_head_and_common_refs(tmp_path: Path, layout: str, detached: bool) -> None:
+    repo = make_repo(tmp_path)
+    expected = git(repo, "rev-parse", "HEAD")
+    if layout == "ordinary":
+        subject = repo
+        git(subject, "checkout", "--quiet", "-b", "fixture-subject")
+    else:
+        subject = tmp_path / "linked-subject"
+        git(repo, "worktree", "add", "--quiet", "-b", "fixture-subject", str(subject))
+        assert (subject / ".git").is_file()
+        if layout == "linked_relative":
+            target = Path((subject / ".git").read_text(encoding="utf-8").strip()[8:])
+            (subject / ".git").write_text(
+                f"gitdir: {os.path.relpath(target, subject)}\n", encoding="utf-8"
+            )
+    git(repo, "pack-refs", "--all")
+    if detached:
+        git(subject, "checkout", "--quiet", "--detach")
+    assert read_git_ref(subject) == expected
+    assert read_git_ref(subject, "refs/heads/main") == expected
+    assert read_git_ref(subject, "fixture-subject") == expected
+
+    # Object storage and the writable index/HEAD must resolve to their proper
+    # common or per-worktree locations as well as the initial read-only HEAD.
+    (subject / "OUTPUT.txt").write_text("linked fixture change\n", encoding="utf-8")
+    changed = commit_fixture_state(subject, paths=["OUTPUT.txt"], message="fixture change",
+                                   user_name="Fixture", user_email="fixture@example.invalid")
+    assert changed != expected
+    assert read_git_ref(subject) == changed
+    assert git(subject, "show", "HEAD:OUTPUT.txt") == "linked fixture change"
+    assert git(subject, "status", "--porcelain") == ""
+    assert read_git_ref(subject, "refs/heads/main") == expected
+    assert read_git_ref(subject, "fixture-subject") == (expected if detached else changed)
 
 
 def test_brain_sync_live_repository_smoke() -> None:
