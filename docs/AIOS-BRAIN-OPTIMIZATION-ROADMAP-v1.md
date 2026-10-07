@@ -122,8 +122,11 @@ Reconciliation:
 - planning batching combines only one already-made Human planning decision and cannot merge separate
   approval/risk decisions; every effective-NEXT transition is atomic across current-selection
   surfaces under `ROADMAP_NEXT_ATOMIC_TRANSITION_V1`;
-- BO-2 owns one effective-NEXT projection and the exact TASK-319 sequence-vs-next_items split-brain
-  shape is a mandatory regression; BO-3 consumes that projection and still fails closed on ambiguity;
+- BO-2/3 are one `CANONICAL_CONTEXT_PIPELINE_V1`: fresh canonical anchors feed deterministic
+  relevance projection, rule-based elision, exact digest-bound reuse and a deterministic context
+  budget; bounded summarization is permitted only after those exact reductions remain over budget,
+  and exact expansion is required before a decision depends on compressed material. The exact
+  TASK-319 sequence-vs-next_items split-brain shape remains a mandatory fail-closed regression;
 - BO-5 closes PRIMARY accepted-handoff no-poll behavior, while BO-9A closes the same asynchronous
   policy across REPAIR, REMEDIATION and PUBLICATION after BO-7 exists;
 - BO-10 adds no missing feature work: it starts from the exact final published BO state, keeps
@@ -259,39 +262,120 @@ handoff hardening text do not require contradictory AUTHOR_TASK gates.
 
 Exit: `AUTHOR_TASK_DIRECT_FINAL_CONTRACT_INGRESS_ACTIVE`.
 
-### BO-2 — Bounded active-roadmap projection and single effective NEXT
+### BO-2/3 — CANONICAL_CONTEXT_PIPELINE_V1
 
-Purpose: stop normal Brain Sync from loading/scanning the current ~600 KB monolithic roadmap
-history merely to identify current planning state, and eliminate roadmap split-brain selection.
+Status: **HUMAN_APPROVED 2026-10-08 — NEXT AFTER TASK-320 REVIEWED/PUBLISHED**
 
-Target:
+Purpose: replace the former split between bounded active-roadmap projection and minimum-fresh
+Brain Sync with one deterministic context compilation architecture. The objective is not merely
+to make Brain Sync faster; it is to ensure every Brain reasoning turn receives the minimum
+trustworthy context derivable from fresh canonical state before any lossy semantic compression.
 
-- bounded current planning projection containing active track, one effective NEXT, current blockers,
-  current Human decisions/delegations and exact predecessor anchors;
-- `ROADMAP_SINGLE_EFFECTIVE_NEXT_V1`: Human priority, current blocker/unblock state and the
-  selected planning item reconcile to one mechanically provable successor;
-- next_items, sequence status, return_to and similar compatibility/history fields may remain but
-  cannot independently select competing current work;
-- the exact demonstrated TASK-319 shape — sequence names TASK-319 NEXT while next_items still
-  names TASK-316 — must fail closed and is a mandatory regression;
-- historical planning remains canonical through Git/history/archive evidence, not a new database;
-- normal sync does not ancestry-scan every historical DONE item;
-- ambiguity/conflict explicitly expands bounded context or blocks; Brain never guesses a winner.
+Target pipeline:
 
-Exits: `BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE` and
-`ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE`.
+```text
+fresh canonical anchors
+ -> deterministic relevance projection
+ -> rule-based elision
+ -> exact digest-bound reuse
+ -> deterministic budget check
+ -> bounded summarization only if still over budget
+ -> exact expansion when a decision depends on compressed material
+ -> Brain reasoning
+```
 
-### BO-3 — MINIMUM_FRESH_BRAIN_SYNC_V1 production fast path
+Required architecture contracts:
 
-Purpose: productionize the already approved minimum-fresh-sync design.
+- `DETERMINISTIC_CONTEXT_BEFORE_SEMANTIC_COMPRESSION_V1`: exact structural reduction is
+  exhausted before summarization.
+- `ROADMAP_SINGLE_EFFECTIVE_NEXT_V1`: active planning state exposes one mechanically provable
+  effective NEXT; conflicting mirrors fail closed and Brain never chooses heuristically.
+- `NON_ELIDABLE_CONTROL_FACTS_V1`: Human intent/priority/risk acceptance, effective NEXT,
+  blockers/conflicts, exact TASK/correction/review subjects, acceptance/scope where currently
+  decisive, exact lineage/CAS, authority and current lifecycle next_action remain exact.
+- `FLOW_CARD_CONTEXT_PROJECTION_V1`: relevance is derived only from closed deterministic inputs
+  such as Flow Card, lifecycle state, next_action, exact subject identity/type, required_context,
+  optional-context rules and explicit Human-selected side flow.
+- `RULE_BASED_CONTEXT_ELISION_V1`: omission is performed only by explicit versioned rules with
+  bounded provenance; semantic "looks irrelevant" decisions are forbidden.
+- `DIGEST_REUSE_IS_DERIVED_CACHE_NOT_AUTHORITY_V1`: unchanged material may be reused only under
+  exact source/projection bindings. Deleting the entire derived cache may change cost only, never
+  semantic behavior.
+- `SUMMARY_IS_NEVER_CANONICAL_AUTHORITY_V1`: summaries cannot establish NEXT, authority, risk,
+  scope, lineage, correction eligibility, Reviewer verdict or publication eligibility.
+- `EXACT_EXPANSION_ON_DECISION_DEPENDENCY_V1`: if a final semantic decision depends on material
+  represented only by a summary, elision manifest or digest-only reused fragment, the exact bounded
+  canonical source is expanded and rebound before the decision is finalized.
+- `NO_UNBOUNDED_DEFAULT_CONTEXT_HYDRATION_V1`: ordinary continuation does not hydrate full
+  historical planning/spec context by default.
 
-Always fresh: main identity, exact subject, exact lineage, TASK id/revision, unresolved status,
-Unified State, next_action, authority and Flow Card.
+Fresh canonical anchors include, where applicable: repository identity, canonical main SHA, exact
+planning/semantic subject, effective NEXT or explicit conflict, TASK id/revision, exact lineage,
+Unified State, lifecycle state, next_action, authority, blockers, current Human decisions and
+valid task-scoped delegation, selected Flow Card identity and current Human request.
 
-Hydrate only selected-flow material. Unchanged governance/spec bodies may be reused only after
-fresh exact digest/binding proof. Ambiguity expands context rather than guessing.
+Deterministic relevance MUST NOT use embeddings, vector similarity, semantic search, LLM relevance
+ranking, code RAG, learned retrieval indexes or persistent semantic memory. Flow Cards evolve into
+closed context contracts; they do not become a semantic router.
 
-Exit: `MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE`.
+Rule-based elision may remove classes such as resolved history, non-selected flows, unrelated TASK
+lineages, superseded state, duplicate compatibility views, unchanged governance bodies and
+non-required operational metadata only through explicit versioned rules. A bounded elision manifest
+SHOULD preserve class, rule and source digest provenance.
+
+Exact digest reuse is a disposable derived optimization rather than a state store. A reusable
+fragment binds repository identity, exact source blob/tree/commit identity, source digest,
+structural selector, Flow Card digest/version, projection-rule version and context-pipeline version
+as applicable. Any binding movement causes a cache miss and exact canonical reconstruction.
+
+Summarization is an overflow path only. After deterministic projection, elision and exact reuse,
+the compiler measures the remaining payload against a deterministic budget. If exact projected
+context fits, no summarization occurs. If it does not fit, only eligible compressible material may
+be summarized; non-elidable control facts remain exact.
+
+Active-roadmap semantics from former BO-2 remain inside this phase. The compact planning projection
+must contain active track, one effective NEXT, current blockers/unblockers, current Human planning
+decision, exact predecessor anchor, current TASK association when authored and return target where
+relevant. Compatibility fields such as next_items, sequence status and return_to may remain, but
+they cannot independently select competing work. The demonstrated TASK-319
+sequence-NEXT-versus-next_items mismatch remains mandatory fail-closed regression coverage.
+
+Brain Sync SHOULD move projection toward the source boundary:
+
+```text
+canonical source readers
+ -> canonical context compiler
+ -> bounded Brain Sync / context projection
+ -> BrainWorkContext
+ -> flow resolution
+ -> Brain semantic reasoning
+```
+
+The phase MUST NOT create a Planner, semantic Router, memory subsystem, persistent reasoning store,
+vector database, semantic code RAG, second roadmap selector, Reviewer/Publisher authority, automatic
+roadmap advancement or lifecycle mutation authority.
+
+Compatibility exits retained for downstream contracts:
+
+- `BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE`
+- `ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE`
+- `MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE`
+
+Combined exit:
+
+`CANONICAL_CONTEXT_PIPELINE_V1_ACTIVE`
+
+The combined exit is satisfied only when all compatibility exits and the new context-pipeline
+invariants above are proven.
+
+Relationship to later phases remains explicit:
+
+- BO-6 answers what semantic audit must be rerun over the compiled context; it is not absorbed here.
+- BO-8 owns atomic planning writes; this phase reads/proves planning state and does not replace BO-8.
+- BO-9 owns residual provider serialization cost after context selection; it is not a retrieval layer.
+- BO-10 later retires competing guidance that still teaches unbounded/default Brain Sync.
+
+Exit: `CANONICAL_CONTEXT_PIPELINE_V1_ACTIVE`.
 
 ### BO-4 — Task-scoped sticky execution profile
 

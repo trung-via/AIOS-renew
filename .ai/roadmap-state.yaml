@@ -882,7 +882,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-minimum-sufficient-verification-v2-execution-hardening
+  - brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
 sequence:
 
   - id: TASK-309
@@ -1536,14 +1536,26 @@ sequence:
       consequence: RESTORE_BO1_AS_UNIQUE_NEXT
 
   - id: brain-optimization-v1-minimum-sufficient-verification-v2-execution-hardening
-    status: NEXT
+    status: DONE
     inserted_on: "2026-10-08"
     phase: MINIMUM_SUFFICIENT_VERIFICATION_V2_EXECUTION_HARDENING
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-320
     task_revision: 1
-    task_authoring_status: PENDING_AUTHOR_TASK_AFTER_PLANNING_COMMIT
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "a5a6a8de3b894db9d3650b6d5993e2c2c295795a"
+    task_blob_sha: "4e2bd577ae8ab06986e0361b0e18bdc8ee2a3865"
+    completed_by:
+      run_id: RUN-320-001
+      review_id: REVIEW-320-001
+      verdict: PASS
+      result_artifact_sha: "f932a426813712ce9959fe105fbb0823fb74df52"
+      reviewed_sha: "fc152da72a4be084fbf3d374c648871b7d0e6ca7"
+      published_sha: "fc152da72a4be084fbf3d374c648871b7d0e6ca7"
+      publication_basis: EXACT_REVIEWED_SOURCE_EQUALS_CANONICAL_MAIN
+      runtime_verification: "252 passed in focused minimum-sufficient-v2 verification plus git diff --check"
+      consequence: ENTER_BO2_3_CANONICAL_CONTEXT_PIPELINE_V1
     human_decision: >-
       Immediately after reviewed publication of TASK-313 r2, harden the existing
       MINIMUM_SUFFICIENT_VERIFICATION_V2 execution strategy before BO-2. Keep one V2
@@ -1583,44 +1595,146 @@ sequence:
       base execution on a stale TASK-313 candidate, review-decision ref, repair ref, or
       alternate local branch; never force-push publication.
     exit: MINIMUM_SUFFICIENT_VERIFICATION_V2_EXECUTION_HARDENED
-    return_to: brain-optimization-v1-bo2-bounded-active-roadmap-projection
-    blocks: [brain-optimization-v1-bo2-bounded-active-roadmap-projection]
+    return_to: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
+    unblocks: [brain-optimization-v1-bo2-3-canonical-context-pipeline-v1]
 
-  - id: brain-optimization-v1-bo2-bounded-active-roadmap-projection
-    status: QUEUED_AFTER_V2_EXECUTION_HARDENING
-    phase: BO2_BOUNDED_ACTIVE_ROADMAP_PROJECTION
+  - id: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
+    status: NEXT
+    phase: BO2_BO3_CANONICAL_CONTEXT_PIPELINE_V1
     authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-08"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    human_decision: >-
+      Human approves the audited BO-2/BO-3 consolidation into one canonical context
+      compilation architecture after reviewed/source-published TASK-320. Do not treat
+      this as merely a faster Brain Sync: canonical facts must flow through deterministic
+      relevance projection, rule-based elision, exact digest-bound reuse and budget
+      evaluation before any semantic summarization.
+    predecessor:
+      task_id: TASK-320
+      run_id: RUN-320-001
+      review_id: REVIEW-320-001
+      reviewed_and_published_sha: "fc152da72a4be084fbf3d374c648871b7d0e6ca7"
+      verification: "252 passed plus git diff --check"
     objective: >-
-      Bound normal planning hydration and historical validation so Brain Sync does
-      not parse/scan the full monolithic roadmap history for ordinary continuation,
-      and expose one mechanically provable effective NEXT rather than requiring Brain
-      to reconcile competing roadmap mirrors.
-    required_contract: ROADMAP_SINGLE_EFFECTIVE_NEXT_V1
-    exact_regression: TASK319_SEQUENCE_NEXT_VS_NEXT_ITEMS_SPLIT_BRAIN
-    preserve_fail_closed_on:
-      - AMBIGUOUS_NEXT
-      - ROADMAP_LIFECYCLE_CONFLICT
-      - ROADMAP_LINEAGE_CONFLICT
-    exit: BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE
-    additional_exit: ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE
-
-  - id: brain-optimization-v1-bo3-minimum-fresh-brain-sync
-    status: QUEUED_AFTER_BO2
-    phase: BO3_MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_FAST_PATH
-    authority: HUMAN_BRAIN_PLANNING
-    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
-    objective: >-
-      Productionize MINIMUM_FRESH_BRAIN_SYNC_V1 with flow-scoped hydration and
-      deterministic digest-bound reuse of unchanged context. Consume the BO-2
-      effective-NEXT projection and fail closed rather than heuristically choosing
-      between conflicting roadmap indicators.
-    requires:
+      Compile the minimum trustworthy Brain context from fresh canonical state before
+      semantic compression, while retaining one mechanically provable effective NEXT,
+      fail-closed ambiguity handling, exact provenance and existing authority boundaries.
+    target_pipeline:
+      - FRESH_CANONICAL_ANCHORS
+      - DETERMINISTIC_RELEVANCE_PROJECTION
+      - RULE_BASED_ELISION
+      - EXACT_DIGEST_BOUND_REUSE
+      - DETERMINISTIC_CONTEXT_BUDGET
+      - BOUNDED_SUMMARIZATION_ONLY_IF_STILL_OVER_BUDGET
+      - EXACT_EXPANSION_ON_DECISION_DEPENDENCY
+      - BRAIN_REASONING
+    required_invariants:
+      - DETERMINISTIC_CONTEXT_BEFORE_SEMANTIC_COMPRESSION_V1
+      - ROADMAP_SINGLE_EFFECTIVE_NEXT_V1
+      - NON_ELIDABLE_CONTROL_FACTS_V1
+      - FLOW_CARD_CONTEXT_PROJECTION_V1
+      - RULE_BASED_CONTEXT_ELISION_V1
+      - DIGEST_REUSE_IS_DERIVED_CACHE_NOT_AUTHORITY_V1
+      - SUMMARY_IS_NEVER_CANONICAL_AUTHORITY_V1
+      - EXACT_EXPANSION_ON_DECISION_DEPENDENCY_V1
+      - CACHE_DELETION_SEMANTIC_EQUIVALENCE_V1
+      - NO_UNBOUNDED_DEFAULT_CONTEXT_HYDRATION_V1
+    explicit_prohibitions:
+      - NO_VECTOR_DB
+      - NO_EMBEDDING_RETRIEVAL
+      - NO_SEMANTIC_CODE_RAG
+      - NO_MEMORY_STORE
+      - NO_REASONING_STORE
+      - NO_LLM_RELEVANCE_ROUTING
+      - NO_SECOND_ROADMAP_SELECTOR
+      - NO_SUMMARY_AS_CONTROL_AUTHORITY
+      - NO_HEURISTIC_NEXT_SELECTION
+    fresh_anchor_minimum:
+      - REPOSITORY_IDENTITY
+      - CANONICAL_MAIN_SHA
+      - EXACT_ACTIVE_PLANNING_OR_SEMANTIC_SUBJECT
+      - EFFECTIVE_NEXT_OR_EXPLICIT_CONFLICT
+      - TASK_ID_AND_REVISION_WHEN_APPLICABLE
+      - EXACT_LINEAGE
+      - UNIFIED_STATE
+      - LIFECYCLE_STATE
+      - NEXT_ACTION
+      - AUTHORITY
+      - CURRENT_BLOCKERS
+      - CURRENT_HUMAN_DECISIONS_AND_VALID_DELEGATION
+      - SELECTED_FLOW_CARD_IDENTITY
+      - CURRENT_HUMAN_REQUEST
+    non_elidable_control_facts:
+      - HUMAN_INTENT_PRIORITY_AND_RISK_ACCEPTANCE
+      - EFFECTIVE_NEXT
+      - ACTIVE_BLOCKER_OR_CONFLICT
+      - EXACT_TASK_CORRECTION_REVIEW_SUBJECT
+      - CURRENT_DECISIVE_ACCEPTANCE_AND_MODIFICATION_SCOPE
+      - FAILED_RUN_OR_OUTSTANDING_REVIEW_FINDING_WHEN_APPLICABLE
+      - EXACT_CAS_AND_LINEAGE
+      - AUTHORITY_AND_LIFECYCLE_NEXT_ACTION
+      - ACTIVE_TASK_SCOPED_EXECUTION_DELEGATION_WHEN_APPLICABLE
+    relevance_basis:
+      - SELECTED_FLOW_CARD
+      - LIFECYCLE_STATE
+      - NEXT_ACTION
+      - EXACT_SUBJECT_TYPE_AND_IDENTITY
+      - FLOW_CARD_REQUIRED_CONTEXT
+      - FLOW_CARD_OPTIONAL_CONTEXT_RULES
+      - CANONICAL_BLOCKER_OR_CONFLICT_STATE
+      - EXPLICIT_HUMAN_SELECTED_SIDE_FLOW
+      - CURRENT_HUMAN_REQUEST_CLASS
+    elision_rules_are_closed_versioned_and_provenanced: true
+    digest_reuse_semantics:
+      authority: NONE
+      cache_kind: DISPOSABLE_DERIVED_OPTIMIZATION
+      invalidation: ANY_REQUIRED_SOURCE_OR_PROJECTION_BINDING_MOVEMENT
+      cache_deletion_must_preserve_semantic_behavior: true
+    summarization_semantics:
+      position: LAST_OVERFLOW_STAGE
+      canonical_authority: NONE
+      non_elidable_control_facts_remain_exact: true
+      exact_expansion_required_before_decision_dependency: true
+    roadmap_projection:
+      preserve:
+        - ACTIVE_TRACK
+        - ONE_EFFECTIVE_NEXT
+        - CURRENT_BLOCKERS_AND_UNBLOCKERS
+        - CURRENT_HUMAN_PLANNING_DECISION
+        - EXACT_PREDECESSOR_ANCHOR
+        - CURRENT_TASK_ASSOCIATION_WHEN_AUTHORED
+        - RETURN_TARGET_WHEN_RELEVANT
+      exact_regression: TASK319_SEQUENCE_NEXT_VS_NEXT_ITEMS_SPLIT_BRAIN
+      ambiguity_behavior: FAIL_CLOSED_NO_HEURISTIC_WINNER
+    compatibility_exits:
+      - BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE
       - ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE
-    exit: MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE
+      - MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE
+    exit: CANONICAL_CONTEXT_PIPELINE_V1_ACTIVE
+    downstream_relationships:
+      BO6: SEMANTIC_DELTA_AUDIT_REMAINS_SEPARATE
+      BO8: ATOMIC_PLANNING_WRITES_REMAIN_SEPARATE
+      BO9: PROVIDER_SERIALIZATION_OPTIMIZATION_REMAINS_SEPARATE
+      BO10: NORMATIVE_LEGACY_CLEANUP_AFTER_IMPLEMENTATION
+    non_goals:
+      - CREATE_PLANNER_OR_SEMANTIC_ROUTER
+      - CREATE_MEMORY_OR_REASONING_STORE
+      - CREATE_VECTOR_OR_SEMANTIC_CODE_RAG
+      - REPLACE_GIT_HISTORY_OR_UNIFIED_STATE
+      - MOVE_REVIEWER_PUBLISHER_OR_HUMAN_AUTHORITY
+      - AUTO_ADVANCE_ROADMAP_OR_MUTATE_LIFECYCLE
+    branch_and_publication_safety: >-
+      Any implementation TASK for this phase must be authored from the exact then-current
+      canonical main containing this planning transition. PRIMARY must use that admitted
+      descendant lineage and Publisher may publish only exact eligible reviewed source or
+      an authorized integration descendant. Never treat TASK-320 author/review refs or any
+      stale local branch as main-equivalent; never force publication.
+    unblocks_on_completion:
+      - brain-optimization-v1-bo4-sticky-execution-profile
 
   - id: brain-optimization-v1-bo4-sticky-execution-profile
-    status: QUEUED_AFTER_BO3
+    status: QUEUED_AFTER_BO2_3_CONTEXT_PIPELINE
     phase: BO4_TASK_SCOPED_STICKY_EXECUTION_PROFILE
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
