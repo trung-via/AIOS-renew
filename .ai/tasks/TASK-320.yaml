@@ -1,0 +1,174 @@
+task_id: TASK-320
+revision: 1
+goal: Harden MINIMUM_SUFFICIENT_VERIFICATION_V2 execution ordering so Runtime reaches
+  a trustworthy PASS/BLOCK decision with substantially less redundant pytest execution,
+  while preserving the authored proof envelope, exact attribution, fail-close behavior,
+  evidence binding, and all existing authority boundaries.
+problem: RUN-313-007 exposed a deterministic cost defect in the active V2 execution
+  strategy. The focused authored command collected 796 candidate test items and failed
+  on 5 identities, all five of which were candidate-only relative to the 776-item
+  base collection. Runtime nevertheless replayed the entire authored command on base
+  before returning unresolved attribution, producing 1,572 pytest item executions.
+  Current V2 also enables affected-first narrowing only for correction operations,
+  and when a correction's previous failed nodeids are already covered by an authored
+  broader command it moves that entire command first rather than probing the exact
+  failed identities. Harden the existing V2 implementation so exact collection/failure
+  identities are used as bounded fail-fast and attribution projections, without allowing
+  those projections to replace successful authored verification.
+assumptions:
+- Canonical main at TASK-320 authoring is de8a1479e1e30a2a85b3983be0ed1ad9e367445c;
+  this main already contains the reviewed/published TASK-313 r2 source candidate 8a7afeb6c8e9e18cde9117a7837661566cc8d230
+  plus the Human/Brain planning transition that makes this hardening the unique NEXT
+  before BO-2.
+- TASK-313 r2 completed as RUN-313-008 / REVIEW-313-008 PASS on reviewed/published
+  SHA 8a7afeb6c8e9e18cde9117a7837661566cc8d230. Its BO-1 semantics and immutable lineage
+  are closed and must not be reopened by TASK-320.
+- MINIMUM_SUFFICIENT_VERIFICATION_V2 from TASK-317 and full-suite observation/cleanup
+  hardening from TASK-319 remain the active verification foundation. TASK-320 hardens
+  execution ordering inside that one policy rather than creating V3 or a second verifier.
+- 'RUN-313-007 is immutable architecture evidence: candidate collection 796 items,
+  base collection 776 items, 5 candidate failures, and all 5 failed identities absent
+  from the base collection. This evidence motivates the hardening but is not rewritten
+  or reclassified retroactively.'
+- Human explicitly prioritized this hardening immediately after TASK-313 publication
+  and before BO-2 on 2026-10-08.
+- A new TASK id requires a fresh Human Executor/model/effort selection before PRIMARY
+  dispatch; no previous TASK execution profile is inherited automatically.
+scope:
+  inspect:
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/parallel_verification.py
+  - tests/bp_v4_probe_plugin.py
+  - tests/test_verification.py
+  - tests/test_verification_contract.py
+  - tests/test_bp_v4_parallel_probe.py
+  - .ai/tasks/TASK-317.yaml
+  - .ai/tasks/TASK-319.yaml
+  - .ai/tasks/TASK-313.yaml
+  modify:
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - tests/bp_v4_probe_plugin.py
+  - tests/test_verification.py
+  - tests/test_verification_contract.py
+  - tests/test_bp_v4_parallel_probe.py
+non_goals:
+- Create MINIMUM_SUFFICIENT_VERIFICATION_V3, a second verification policy, semantic
+  dependency graph, test-impact database, Planner, lifecycle router, retry/failover
+  authority, correction selector, Reviewer, or Publisher.
+- Infer semantic dependencies from changed production paths or let Runtime guess which
+  authored proof obligations may be dropped.
+- Allow an early candidate-delta probe or previous-failure probe to count as successful
+  completion of the broader authored verification requirement.
+- Remove, weaken, or automatically omit an explicitly authored full-suite integration
+  guard.
+- Add focused parallel execution, change the selected twelve-worker full-suite profile,
+  or redesign TASK-319 parallel observation infrastructure except for compatibility
+  needed by the existing canonical collection observer.
+- Change TASK-313 production semantics, AUTHOR_TASK behavior, correction authoring
+  semantics, BO-2+, TASK-310/H4, roadmap state, Reviewer verdict logic, Publisher
+  behavior, or immutable historical artifacts.
+- Repair any TASK-313 historical failure or reinterpret RUN-313-007 as a successful
+  RUN.
+constraints:
+  hard:
+  - Keep policy identity minimum-sufficient-v2. All new behavior is Runtime-owned
+    deterministic execution hardening inside the existing policy.
+  - Primary candidate-delta fail-fast may be derived only from exact mechanically
+    observed collection identities for the exact authored pytest coverage on exact
+    base/candidate commits under bound execution conditions. No semantic dependency
+    inference is permitted.
+  - Candidate-delta execution is an early failure gate only. If the bounded delta
+    probe passes or is ineligible, unavailable, incomplete, unstable or non-comparable,
+    Runtime must continue to the existing authored verification requirement or safely
+    fall back; it must not claim PASS from the delta probe.
+  - Delta-first eligibility must be deterministically bounded so an early probe cannot
+    create pathological near-full duplicate execution merely for optimization. Ineligible
+    projections fall back to the authored command without weakening proof.
+  - For REPAIR, REMEDIATION and DIRECT_CANDIDATE, exact previously failed nodeids
+    that are validly bound to the correction subject may run before a covering broader
+    authored command. Failure of the exact probe blocks immediately; success never
+    discharges the broader authored requirement.
+  - 'When an authored candidate pytest command fails, Runtime should prefer an exact
+    failure-projection attribution path: reproduce the exact failed identities on
+    candidate, then compare the same exact identities on base under comparable profile/toolchain
+    conditions before considering broad base replay.'
+  - If an exact failed identity is reproducible on candidate but is absent from the
+    exact base collection, Runtime may deterministically classify it as candidate-only
+    blocking evidence and must not replay the entire broad base command merely to
+    obtain an impossible same-node attribution.
+  - If exact failure projection cannot reproduce the candidate failure, collection
+    identity is unavailable or conflicting, execution conditions are incomparable,
+    or order/context dependence prevents trustworthy projection, fail closed or escalate
+    to the existing broader attribution path. Optimization must never turn uncertainty
+    into PASS.
+  - Exact SHA, tree, command/projection identity, profile, toolchain, collection identity,
+    failure nodeid/phase/fingerprint, changed-files digest, envelope digest, correction
+    lineage and raw evidence bindings remain canonical and lossless as applicable.
+  - Existing evidence reuse remains conservative. New projection evidence must not
+    make cross-tree or cross-context reuse less strict.
+  - Generated exact-node probes must preserve parameterized nodeids and platform-safe
+    quoting deterministically; malformed or ambiguous node identities fail closed.
+  - The explicit full-suite integration guard remains exactly authored policy input;
+    TASK-320 does not authorize Runtime to add or remove full-suite proof based on
+    heuristics.
+  - Executor modifies only scope.modify. Any required production mutation outside
+    that scope must fail closed and return a Brain scope decision rather than widening
+    itself.
+  - Implementation must start from the then-current canonical main containing TASK-320,
+    remain a descendant of that admitted base, and use canonical Runtime/Reviewer/Publisher
+    publication. Never use a stale TASK-313 candidate, review-decision ref, repair
+    ref or alternate local branch as main-equivalent; never force publication.
+acceptance:
+- id: AC1
+  condition: For an eligible PRIMARY authored pytest requirement with a bounded exact
+    candidate-only collection delta, Runtime executes the candidate-only projection
+    first; a reproduced failure blocks before the broader authored candidate command,
+    while a passing/ineligible projection still requires the full authored focused
+    command.
+- id: AC2
+  condition: Candidate-delta eligibility is deterministic and bounded, with explicit
+    safe fallback when collection truth is absent, conflicting, unstable, non-comparable
+    or too broad for an economical early probe; no optimization path can manufacture
+    PASS.
+- id: AC3
+  condition: For eligible correction operations, exact validly bound previous failed
+    nodeids run before a covering broader authored command. Persistent failure stops
+    early; exact-probe PASS does not discharge the authored broader requirement.
+- id: AC4
+  condition: After a broad candidate pytest failure, Runtime can reproduce and attribute
+    the exact failed identities with an exact projection before broad base replay.
+    Same-identity base PASS remains candidate regression; same comparable base failure
+    remains pre-existing only under existing fingerprint/detail rules.
+- id: AC5
+  condition: A failed identity that reproduces on candidate and is deterministically
+    absent from the exact base collection is represented as candidate-only blocking
+    evidence without executing the entire broad base command solely for attribution.
+- id: AC6
+  condition: Projection non-reproduction, collection disagreement, execution-condition
+    mismatch, order/context sensitivity or malformed evidence cannot produce a permissive
+    verdict; Runtime either uses the existing broader attribution path or remains
+    blocking.
+- id: AC7
+  condition: Exact bindings, lossless failure populations, conservative evidence reuse,
+    explicit full-suite guards and Runtime/Reviewer/Publisher authority remain unchanged
+    in strength. Early probes are execution optimizations, not proof-substitution
+    authority.
+- id: AC8
+  condition: Regression coverage includes a RUN-313-007-shaped case in which five
+    candidate-only failures are detected without replaying a 776-item broad base requirement,
+    plus passing-delta, correction-failure-first, projection-nonreproduction and broad-fallback
+    cases.
+- id: AC9
+  condition: Changes remain within scope.modify and introduce no V3 policy, semantic
+    dependency inference, lifecycle router, automatic correction strategy, roadmap
+    mutation, TASK-313 semantic change, or focused-parallel redesign.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_verification_contract.py tests/test_verification.py
+    tests/test_bp_v4_parallel_probe.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
