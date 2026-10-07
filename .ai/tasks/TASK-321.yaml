@@ -1,0 +1,184 @@
+task_id: TASK-321
+revision: 1
+goal: Activate CANONICAL_CONTEXT_PIPELINE_V1 so Brain-facing context is deterministically
+  compiled from fresh canonical anchors through exact relevance projection, rule-based
+  elision, exact digest-bound reuse and a deterministic budget before any lossy semantic
+  compression, while preserving one effective roadmap NEXT, exact control facts, fail-closed
+  ambiguity handling and all existing authority boundaries.
+problem: 'Current canonical BO-2/3 planning requires one context pipeline rather than
+  separate roadmap-projection and Brain-Sync optimizations. The published Brain Sync/Brain
+  Context path is not yet sufficient for that exit: BrainSyncSnapshot still exposes
+  a general snapshot and BrainWorkContext copies that observation wholesale; relevance
+  is not yet compiled as a closed Flow-Card-derived projection; rule-based elision,
+  disposable digest-bound reuse, deterministic context-budget handling and exact expansion
+  before summary-dependent decisions are not implemented as one contract. The live
+  Brain Sync regression also assumes the unique NEXT is already an authored TASK,
+  while the current canonical roadmap intentionally exposes one unique unauthored
+  BO-2/3 NEXT and must route that state to TASK_AUTHORING without treating it as roadmap
+  ambiguity. Implement the combined BO-2/3 architecture without creating a semantic
+  router, memory system or second roadmap authority.'
+assumptions:
+- Canonical AIOS-renew main at TASK-321 authoring is 882f9016dc2a9474d31b4f85da356857f32b6747.
+- TASK-320 r1 completed as RUN-320-001 / REVIEW-320-001 PASS and exact reviewed source
+  fc152da72a4be084fbf3d374c648871b7d0e6ca7 is published and an ancestor of current
+  main.
+- 'Canonical roadmap exposes exactly one effective planning NEXT: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1,
+  with no task_id yet; this unauthored state is a valid TASK_AUTHORING boundary rather
+  than permission to invent lifecycle state.'
+- BO-2 and BO-3 were Human-approved as one CANONICAL_CONTEXT_PIPELINE_V1 phase. Their
+  combined exit must preserve compatibility exits BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE,
+  ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE and MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE.
+- Existing src/aios_renew/brain_sync.py, src/aios_renew/brain_context.py and .ai/flow-cards.yaml
+  remain the canonical starting surfaces for deterministic observation, BrainWorkContext
+  composition and flow contracts.
+- TASK-319 sequence-NEXT-versus-next_items split-brain remains a mandatory fail-closed
+  regression shape.
+- BO-6 remains responsible for task-specific semantic delta audit, BO-8 for atomic
+  planning writes, BO-9 for residual provider serialization cost, and BO-10 for later
+  normative legacy cleanup; TASK-321 must not absorb those phases.
+scope:
+  inspect:
+  - docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/flow-cards.yaml
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/unified_state.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  - tests/test_operator_unified_state.py
+  - .ai/tasks/TASK-319.yaml
+  - .ai/tasks/TASK-320.yaml
+  modify:
+  - .ai/flow-cards.yaml
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+non_goals:
+- Implement BO-4 sticky execution profiles, BO-5 async PRIMARY continuation, BO-6
+  semantic delta audit, BO-7 correction ingress, BO-8 planning mutation batching,
+  BO-9 provider serialization optimization, BO-9A lifecycle doorbell behavior, BO-9B
+  telemetry, BO-10 normative cleanup, TASK-310 or H4.
+- Create a Planner, semantic Router, lifecycle router, automatic roadmap advancement
+  authority, Reviewer, Publisher or correction selector.
+- Create a vector database, embedding retrieval layer, semantic code RAG, memory database,
+  persistent reasoning store or learned relevance index.
+- Use an LLM or semantic similarity to choose context relevance, effective NEXT, authority,
+  blocker, scope or lifecycle state.
+- Turn a digest, cache fragment, elision manifest or summary into canonical engineering
+  or planning authority.
+- Change Unified State lifecycle semantics, Reviewer verdict semantics, Publisher
+  behavior, Runtime mutation authority or Human/Brain planning authority.
+- Perform broad normative documentation cleanup that belongs to BO-10.
+- Require repository-wide full-suite verification merely to close this bounded context-pipeline
+  change.
+constraints:
+  hard:
+  - 'Fresh canonical anchors must remain exact where applicable: repository identity,
+    canonical main SHA, current planning/semantic subject, effective NEXT or explicit
+    conflict, exact TASK/correction/review subject, exact lineage/CAS, Unified State
+    lifecycle state and next_action, authority, current blockers, current Human decisions/risk
+    acceptance and valid task-scoped delegation, selected Flow Card identity and current
+    Human request.'
+  - 'The context pipeline order is fixed semantically: fresh canonical anchors ->
+    deterministic relevance projection -> rule-based elision -> exact digest-bound
+    reuse -> deterministic context-budget evaluation -> bounded summarization only
+    when still over budget -> exact expansion when a semantic decision depends on
+    compressed material -> Brain reasoning.'
+  - Deterministic relevance may use only closed versioned inputs such as selected
+    Flow Card, lifecycle state, next_action, exact subject identity/type, Flow Card
+    required/optional context rules, canonical blocker/conflict state, explicit Human-selected
+    side flow and current request class. No model-driven relevance selection is permitted.
+  - Control facts are non-elidable. Human intent/priority/risk acceptance, effective
+    NEXT, active blockers/conflicts, exact TASK/correction/review subject, currently
+    decisive acceptance/modification scope, active failed RUN or review finding, exact
+    lineage/CAS, authority/next_action and active task-scoped delegation when applicable
+    must remain exact.
+  - Elision must be rule-based, closed, versioned and provenance-preserving. Resolved
+    history, unrelated lineages, duplicate compatibility views, superseded state and
+    non-required operational metadata may be omitted only under explicit deterministic
+    rules; ambiguity expands exact context or fails closed.
+  - Digest reuse is a disposable derived optimization with no authority. Reuse must
+    bind exact repository/source identity, source digest, structural selector, Flow
+    Card digest/version, projection-rule version and context-pipeline version as applicable.
+    Any required binding movement invalidates reuse. Deleting all derived reuse material
+    may change cost only, never semantic behavior.
+  - A summary may exist only as an overflow representation after deterministic projection/elision/reuse
+    still exceeds the declared context budget. Summary material cannot establish NEXT,
+    authority, risk, scope, lineage, correction eligibility, review verdict or publication
+    eligibility.
+  - If a final semantic decision depends on material represented only by summary,
+    digest-only reuse or an elision manifest, the exact bounded canonical source must
+    be expanded and rebound before the decision can be finalized; uncertainty must
+    not be converted into an answer.
+  - Roadmap projection must expose one mechanically provable effective NEXT or an
+    explicit conflict. next_items, sequence status, blockers, return metadata or Human-priority
+    compatibility mirrors cannot independently win. The TASK-319 split-brain shape
+    must fail closed.
+  - A unique unauthored roadmap NEXT is valid planning state and must remain distinguishable
+    from ambiguous/multiple NEXT. It must resolve to TASK_AUTHORING rather than be
+    treated as a selected executable TASK.
+  - BrainWorkContext and flow resolution must consume the compiled bounded context
+    rather than default-hydrating unbounded planning/spec/history material. Flow Cards
+    remain context contracts, not semantic routers.
+  - All composition/projection/reuse/budget operations remain observation-only and
+    must not create RUNs, invoke an Executor, execute verification, mutate roadmap/lifecycle
+    state or create a second canonical state store.
+  - Executor modifies only scope.modify. If a required production mutation falls outside
+    that set, fail closed for Brain scope reconciliation rather than widening implementation
+    authority.
+  - Implementation must start from exact admitted TASK-321 canonical lineage on then-current
+    main and publication must use normal Runtime/Reviewer/Publisher boundaries. Never
+    use TASK-320 author/review refs or a stale local branch as main-equivalent; never
+    force publication.
+acceptance:
+- id: AC1
+  condition: Brain Sync exposes a bounded deterministic active-planning projection
+    that proves exactly one effective NEXT or an explicit conflict, preserves the
+    required exact control facts, and correctly represents the current unique unauthored
+    BO-2/3 NEXT without fabricating a TASK or Unified State.
+- id: AC2
+  condition: Brain context compilation derives relevance only from closed Flow-Card/lifecycle/subject/request
+    inputs and produces a bounded deterministic projection before semantic reasoning;
+    no LLM relevance ranking, vector/embedding retrieval or semantic code RAG participates.
+- id: AC3
+  condition: Non-elidable control facts remain exact through projection and budget
+    handling, and ambiguous or competing roadmap/control facts fail closed rather
+    than being heuristically reconciled.
+- id: AC4
+  condition: Context elision is implemented through explicit versioned deterministic
+    rules with bounded provenance sufficient to explain which class/rule/source digest
+    caused an omission; semantic-looking relevance judgments cannot elide material.
+- id: AC5
+  condition: Exact digest-bound reuse is available only under complete current source/projection
+    bindings, invalidates on any required binding movement, carries no authority,
+    and regression coverage proves deleting all derived reuse material changes cost/recomputation
+    only, not the compiled semantic context.
+- id: AC6
+  condition: The pipeline applies a deterministic context budget only after exact
+    projection/elision/reuse, permits summarization solely as a bounded overflow representation,
+    preserves all non-elidable facts exactly, and provides a fail-closed exact-expansion
+    boundary before any semantic decision may rely on compressed-only material.
+- id: AC7
+  condition: BrainWorkContext and Flow Card resolution operate on the compiled bounded
+    context without default hydration of full historical roadmap/spec/lineage material,
+    while preserving existing observation-only behavior and authority ownership.
+- id: AC8
+  condition: Regression coverage includes TASK-319-style sequence-versus-next_items
+    split brain, one unique unauthored NEXT, stale/moved digest bindings, cache deletion
+    equivalence, over-budget overflow, exact expansion, non-elidable control facts
+    and malformed/ambiguous relevance inputs.
+- id: AC9
+  condition: Changes remain within scope.modify and activate CANONICAL_CONTEXT_PIPELINE_V1
+    plus its three compatibility exits without implementing later BO phases or introducing
+    a Planner, Router, memory/reasoning store, second roadmap selector, Reviewer,
+    Publisher or lifecycle mutation authority.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_brain_sync.py tests/test_brain_context.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
