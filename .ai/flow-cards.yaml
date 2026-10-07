@@ -1,10 +1,28 @@
 format: AIOS_FLOW_CARDS
 version: 1
+context_pipeline:
+  id: CANONICAL_CONTEXT_PIPELINE_V1
+  version: 1
+  projection_rules: FLOW_CARD_CONTEXT_PROJECTION_V1
+  elision_rules: RULE_BASED_CONTEXT_ELISION_V1
+  budget_metric: CANONICAL_JSON_UTF8_SEMANTIC_PAYLOAD_V1
+  default_budget_bytes: 131072
+  overflow_rule: SUPPORTING_DETAIL_UTF8_PREFIX_256_V1
+  exact_expansion: REQUIRED_BEFORE_DECISION_DEPENDENCY
+  compatibility_exits:
+    - BOUNDED_ACTIVE_PLANNING_PROJECTION_ACTIVE
+    - ROADMAP_SINGLE_EFFECTIVE_NEXT_ACTIVE
+    - MINIMUM_FRESH_BRAIN_SYNC_PRODUCTION_ACTIVE
 cards:
   - id: ARCHITECTURE
     entry_conditions: [EXPLICIT_SELECTOR]
     required_context: [canonical_observation.repository, canonical_observation.main_sha, current_request.flow_selector]
-    optional_context: [canonical_observation.roadmap, canonical_observation.blocker, current_request.human_input]
+    optional_context: [canonical_observation.roadmap, canonical_observation.blocker, current_request.human_input, canonical_observation.supporting_context]
+    optional_context_rules:
+      canonical_observation.roadmap: EXACT_CONTROL_ALWAYS
+      canonical_observation.blocker: EXACT_CONTROL_ALWAYS
+      current_request.human_input: EXACT_CONTROL_ALWAYS
+      canonical_observation.supporting_context: CURRENT_TASK_PROBLEM_WHEN_PRESENT
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
     authority_owner: BRAIN
     decision_family_ref: HUMAN_BRAIN_ARCHITECTURE_PLANNING
@@ -14,7 +32,11 @@ cards:
   - id: TASK_AUTHORING
     entry_conditions: [EXPLICIT_SELECTOR, UNIQUE_UNAUTHORED_NEXT]
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.roadmap, canonical_observation.blocker]
-    optional_context: [canonical_observation.selected_task, current_request.human_input]
+    optional_context: [canonical_observation.selected_task, current_request.human_input, canonical_observation.supporting_context]
+    optional_context_rules:
+      canonical_observation.selected_task: EXACT_CONTROL_ALWAYS
+      current_request.human_input: EXACT_CONTROL_ALWAYS
+      canonical_observation.supporting_context: CURRENT_TASK_PROBLEM_WHEN_PRESENT
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
     authority_owner: BRAIN
     decision_family_ref: task.validate_task+authoring_ingress
@@ -24,7 +46,11 @@ cards:
   - id: SEMANTIC_REVIEW
     entry_conditions: [UNIFIED_STATE_SEMANTIC_REVIEW]
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.selected_task, canonical_observation.unified_state]
-    optional_context: [canonical_observation.blocker, current_request.human_input]
+    optional_context: [canonical_observation.blocker, current_request.human_input, canonical_observation.supporting_context]
+    optional_context_rules:
+      canonical_observation.blocker: EXACT_CONTROL_ALWAYS
+      current_request.human_input: EXACT_CONTROL_ALWAYS
+      canonical_observation.supporting_context: CURRENT_TASK_PROBLEM_WHEN_PRESENT
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
     authority_owner: REVIEWER
     decision_family_ref: review.validate_review
@@ -34,7 +60,11 @@ cards:
   - id: REMEDIATION_AUTHORING
     entry_conditions: [UNIFIED_STATE_AUTHOR_REMEDIATION]
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.selected_task, canonical_observation.unified_state]
-    optional_context: [canonical_observation.blocker, current_request.human_input]
+    optional_context: [canonical_observation.blocker, current_request.human_input, canonical_observation.supporting_context]
+    optional_context_rules:
+      canonical_observation.blocker: EXACT_CONTROL_ALWAYS
+      current_request.human_input: EXACT_CONTROL_ALWAYS
+      canonical_observation.supporting_context: CURRENT_TASK_PROBLEM_WHEN_PRESENT
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
     authority_owner: BRAIN
     decision_family_ref: review.validate_remediation
@@ -44,7 +74,13 @@ cards:
   - id: REPAIR_AUTHORING
     entry_conditions: [UNIFIED_STATE_AUTHOR_REPAIR, EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION]
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.selected_task, canonical_observation.unified_state]
-    optional_context: [canonical_observation.blocker, canonical_observation.repair_supersession, current_request.flow_selector, current_request.human_input]
+    optional_context: [canonical_observation.blocker, canonical_observation.repair_supersession, current_request.flow_selector, current_request.human_input, canonical_observation.supporting_context]
+    optional_context_rules:
+      canonical_observation.blocker: EXACT_CONTROL_ALWAYS
+      canonical_observation.repair_supersession: EXACT_CONTROL_ALWAYS
+      current_request.flow_selector: EXACT_CONTROL_ALWAYS
+      current_request.human_input: EXACT_CONTROL_ALWAYS
+      canonical_observation.supporting_context: CURRENT_TASK_PROBLEM_WHEN_PRESENT
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
     authority_owner: BRAIN
     decision_family_ref: publication._validate_repair_authorization
@@ -54,7 +90,12 @@ cards:
   - id: DIAGNOSTIC
     entry_conditions: [EXPLICIT_SELECTOR]
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.blocker, current_request.flow_selector]
-    optional_context: [canonical_observation.roadmap, canonical_observation.unified_state, current_request.human_input]
+    optional_context: [canonical_observation.roadmap, canonical_observation.unified_state, current_request.human_input, canonical_observation.supporting_context]
+    optional_context_rules:
+      canonical_observation.roadmap: EXACT_CONTROL_ALWAYS
+      canonical_observation.unified_state: EXACT_CONTROL_ALWAYS
+      current_request.human_input: EXACT_CONTROL_ALWAYS
+      canonical_observation.supporting_context: CURRENT_TASK_PROBLEM_WHEN_PRESENT
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
     authority_owner: BRAIN
     decision_family_ref: HUMAN_BRAIN_DIAGNOSTIC
@@ -64,7 +105,12 @@ cards:
   - id: RESEARCH
     entry_conditions: [EXPLICIT_SELECTOR]
     required_context: [canonical_observation.repository, canonical_observation.main_sha, current_request.flow_selector]
-    optional_context: [canonical_observation.roadmap, canonical_observation.blocker, current_request.human_input]
+    optional_context: [canonical_observation.roadmap, canonical_observation.blocker, current_request.human_input, canonical_observation.supporting_context]
+    optional_context_rules:
+      canonical_observation.roadmap: EXACT_CONTROL_ALWAYS
+      canonical_observation.blocker: EXACT_CONTROL_ALWAYS
+      current_request.human_input: EXACT_CONTROL_ALWAYS
+      canonical_observation.supporting_context: CURRENT_TASK_PROBLEM_WHEN_PRESENT
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
     authority_owner: BRAIN
     decision_family_ref: HUMAN_BRAIN_RESEARCH_ASSURANCE

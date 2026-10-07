@@ -1,6 +1,7 @@
 """Offline BP-3 contracts over bounded Brain Sync observations."""
 
 from dataclasses import replace
+import hashlib
 import json
 from pathlib import Path
 
@@ -9,11 +10,25 @@ import yaml
 
 from aios_renew.brain_context import (
     BrainContextError,
+    ContextBudgetError,
+    DerivedContextCache,
+    ExactExpansionRequired,
     compose_brain_work_context,
+    expand_exact_context,
     load_flow_cards,
+    require_exact_context,
     resolve_flow,
 )
-from aios_renew.brain_sync import BrainSyncSnapshot
+from aios_renew.brain_sync import BrainSyncSnapshot, project_active_planning
+
+
+def planning(item_id="bp-3", *, authored=True, ambiguous=False, revision=2):
+    row = {"id": item_id, "status": "NEXT"}
+    if authored:
+        row.update(task_id="TASK-177", task_revision=revision)
+    rows = [row, {"id": "other", "status": "NEXT"}] if ambiguous else [row]
+    return project_active_planning({"version": 1, "active_track": "brain", "active_track_status": "ACTIVE",
+                                    "next_items": [item["id"] for item in rows], "sequence": rows})
 
 
 def snapshot(action="EXECUTE_PRIMARY", *, blocker=None, status="SELECTED", roadmap=None):
@@ -28,9 +43,10 @@ def snapshot(action="EXECUTE_PRIMARY", *, blocker=None, status="SELECTED", roadm
                     "name": "AIOS-renew", "main_sha": "a" * 40,
                     "remote": "origin", "remote_url": "https://secret@example.test/repo"},
         main_sha="a" * 40,
-        roadmap=roadmap or {"present": True, "next_items": ["bp-3"]},
+        roadmap=roadmap or planning(authored=status == "SELECTED", ambiguous=status == "AMBIGUOUS_NEXT"),
         selection_status=status, lifecycle_state="READY" if blocker is None else "BLOCKED",
-        next_action=action, authority="REVIEWER" if action == "SEMANTIC_REVIEW" else "BRAIN",
+        next_action=action, authority="NONE" if status == "AMBIGUOUS_NEXT" else
+        "REVIEWER" if action == "SEMANTIC_REVIEW" else "BRAIN",
         selected_task={"id": "TASK-177", "revision": 2} if unified else None,
         unified_state=unified, blocker=blocker,
     )
@@ -142,9 +158,11 @@ def test_utf8_bound_and_invalidation():
     assert first.invalidation_fingerprint == compose_brain_work_context(source, valid).invalidation_fingerprint
     variants = [
         compose_brain_work_context(source, {"human_input": "changed"}),
-        compose_brain_work_context(replace(source, main_sha="b" * 40), valid),
-        compose_brain_work_context(replace(source, roadmap={"next_items": ["other"]}), valid),
-        compose_brain_work_context(replace(source, selected_task={"id": "TASK-177", "revision": 3}), valid),
+        compose_brain_work_context(replace(source, main_sha="b" * 40, repository={**source.repository, "main_sha": "b" * 40}), valid),
+        compose_brain_work_context(replace(source, roadmap=planning("other")), valid),
+        compose_brain_work_context(replace(source, selected_task={"id": "TASK-177", "revision": 3},
+            roadmap=planning(revision=3),
+            unified_state={**source.unified_state, "task": {"id": "TASK-177", "revision": 3}}), valid),
         compose_brain_work_context(snapshot("SEMANTIC_REVIEW"), valid),
         compose_brain_work_context(replace(source, blocker={"code": "BLOCKED"}), valid),
     ]
@@ -159,11 +177,14 @@ def test_altered_context_fails_closed():
         resolve_flow(context)
 
 
-def test_checkout_root_and_remote_alias_are_not_semantic_identity():
+def test_checkout_root_and_remote_alias_are_not_semantic_identity(tmp_path):
     source = snapshot("AUTHOR_REPAIR")
     human_request = {"flow_selector": "DIAGNOSTIC", "human_input": "inspect"}
     first = compose_brain_work_context(source, human_request)
-    other = replace(source, repository={**source.repository, "root": "/other/checkout",
+    registry = tmp_path / ".ai" / "flow-cards.yaml"
+    registry.parent.mkdir()
+    registry.write_bytes((Path(source.repository["root"]) / ".ai" / "flow-cards.yaml").read_bytes())
+    other = replace(source, repository={**source.repository, "root": str(tmp_path),
                                         "remote": "upstream", "remote_url": "https://other.example/repo"})
     second = compose_brain_work_context(other, human_request)
     assert first.invalidation_basis == second.invalidation_basis
@@ -177,7 +198,7 @@ def test_resolver_uses_observed_repository_registry(tmp_path: Path):
     registry = repo / ".ai" / "flow-cards.yaml"
     registry.parent.mkdir(parents=True)
     source_cards = Path(__file__).resolve().parents[1] / ".ai" / "flow-cards.yaml"
-    registry.write_text(source_cards.read_text(encoding="utf-8"), encoding="utf-8")
+    registry.write_bytes(source_cards.read_bytes())
     context = compose_brain_work_context(replace(source, repository={**source.repository, "root": str(repo)}))
     assert resolve_flow(context).selected_flow == "SEMANTIC_REVIEW"
     assert resolve_flow(context, cards_path=registry).selected_flow == "SEMANTIC_REVIEW"
@@ -295,6 +316,7 @@ def test_explicit_repair_rejects_changed_canonical_authority_before_material_com
 ])
 def test_registry_rejects_malformed_cards(tmp_path: Path, mutation):
     registry = {"format": "AIOS_FLOW_CARDS", "version": 1,
+                "context_pipeline": yaml.safe_load((Path(__file__).resolve().parents[1] / ".ai" / "flow-cards.yaml").read_text(encoding="utf-8"))["context_pipeline"],
                 "cards": list(load_flow_cards().values())}
     mutation(registry)
     path = tmp_path / "cards.yaml"
@@ -308,3 +330,270 @@ def test_registry_rejects_duplicate_yaml_keys(tmp_path: Path):
     path.write_text("format: AIOS_FLOW_CARDS\nformat: AIOS_FLOW_CARDS\n", encoding="utf-8")
     with pytest.raises(BrainContextError):
         load_flow_cards(path)
+
+
+def material_snapshot(body="current task background"):
+    source = snapshot("SEMANTIC_REVIEW")
+    contract = {"task_id": "TASK-177", "revision": 2, "goal": "exact Human intent",
+                "acceptance": [{"id": "AC1", "condition": "exact decisive requirement"}],
+                "scope": {"modify": ["permitted.py"]}, "constraints": {"hard": ["retain authority"]},
+                "human_priority": "exact priority", "risk_acceptance": {"authority": "HUMAN", "risk": "exact"},
+                "executor_delegation": {"task_id": "TASK-177", "revision": 2, "executor": "codex"}}
+    return replace(source, task_contract=contract, supporting_context={"task_problem": body}, source_bindings={
+        "roadmap": {"commit": source.main_sha, "path": ".ai/roadmap-state.yaml", "source_digest": "1" * 64},
+        "task": {"commit": source.main_sha, "path": ".ai/tasks/TASK-177.yaml", "source_digest": "2" * 64},
+    }, unified_state={**source.unified_state, "failed_run_id": "RUN-177-000", "failed_head_sha": "b" * 40,
+                      "correction_sha": "c" * 40, "review_id": "REVIEW-177-001", "reviewed_sha": "d" * 40,
+                      "execution_base": {"run_id": "RUN-177-000", "candidate_sha": "b" * 40}})
+
+
+def overflow_case():
+    small = material_snapshot("tiny")
+    floor = compose_brain_work_context(small).compilation["budget"]["compiled_bytes"]
+    source = material_snapshot("background detail " * 20000)
+    context = compose_brain_work_context(source, budget_bytes=floor + 2048)
+    return source, context
+
+
+def test_context_pipeline_order_closed_inputs_and_exact_fit():
+    source = material_snapshot()
+    context = compose_brain_work_context(source, {"human_input": "research words are just text"})
+    pipeline = context.compilation
+    assert pipeline["id"] == "CANONICAL_CONTEXT_PIPELINE_V1"
+    assert pipeline["order"] == ["FRESH_CANONICAL_ANCHORS", "DETERMINISTIC_RELEVANCE_PROJECTION", "RULE_BASED_ELISION",
+                                 "EXACT_DIGEST_BOUND_REUSE", "DETERMINISTIC_CONTEXT_BUDGET",
+                                 "BOUNDED_SUMMARIZATION_ONLY_IF_STILL_OVER_BUDGET", "EXACT_EXPANSION_ON_DECISION_DEPENDENCY",
+                                 "BRAIN_REASONING"]
+    assert pipeline["projection_inputs"]["selected_flow"] == "SEMANTIC_REVIEW"
+    assert pipeline["projection_inputs"]["request_class"] == "CONTINUATION"
+    assert pipeline["projection_inputs"]["subject"] == source.selected_task
+    assert pipeline["budget"]["status"] == "EXACT" and pipeline["overflow"] == {}
+    assert context.canonical_observation["task_contract"] == source.task_contract
+    assert context.canonical_observation["supporting_context"] == source.supporting_context
+    assert pipeline["summary_authority"] == pipeline["reuse_authority"] == "NONE"
+
+
+def test_unique_unauthored_next_compiles_to_task_authoring_without_engineering_subject():
+    source = snapshot("TASK_AUTHORING", status="UNAUTHORED_TASK")
+    source = replace(source, authority="HUMAN_BRAIN_PLANNING", lifecycle_state="PLANNING")
+    context = compose_brain_work_context(source)
+    resolution = resolve_flow(context)
+    assert resolution.selected_flow == "TASK_AUTHORING" and resolution.selection_basis == "UNIQUE_UNAUTHORED_NEXT"
+    assert resolution.canonical_next_action == "TASK_AUTHORING"
+    assert context.canonical_observation["selected_task"] is None
+    assert context.canonical_observation["unified_state"] is None
+    assert context.compilation["projection_inputs"]["subject_type"] == "PLANNING"
+    assert context.compilation["projection_inputs"]["subject"] == "bp-3"
+
+
+def test_rule_elision_is_provenanced_and_expansion_gated():
+    source = replace(material_snapshot(), next_action="EXECUTE_PRIMARY", unified_state={
+        **material_snapshot().unified_state, "next_action": "EXECUTE_PRIMARY"})
+    context = compose_brain_work_context(source)
+    selector = "canonical_observation.supporting_context.task_problem"
+    assert context.canonical_observation["supporting_context"] is None
+    assert context.compilation["material_index"][selector]["representation"] == "ELIDED"
+    entry = next(entry for entry in context.compilation["elision_manifest"] if entry["selector"] == selector)
+    assert entry["class"] == "NONSELECTED_FLOW_DETAIL" and entry["rule"] == "OMIT_NONSELECTED_TASK_PROBLEM_V1"
+    assert entry["rule_version"] == "RULE_BASED_CONTEXT_ELISION_V1" and len(entry["source_digest"]) == 64
+    with pytest.raises(ExactExpansionRequired):
+        require_exact_context(context, [selector])
+    with pytest.raises(ExactExpansionRequired):
+        require_exact_context(context, ["canonical_observation.supporting_context"])
+    expansion = expand_exact_context(context, [selector], fresh_snapshot=source)
+    assert require_exact_context(context, [selector], expansion=expansion, fresh_snapshot=source)[selector] == source.supporting_context["task_problem"]
+
+
+def test_digest_cache_deletion_changes_cost_only_and_poisoning_reconstructs_exact():
+    source = material_snapshot()
+    cache = DerivedContextCache()
+    first = compose_brain_work_context(source, reuse_cache=cache)
+    second = compose_brain_work_context(source, reuse_cache=cache)
+    assert cache.hits == 1 and cache.misses == 1
+    assert first.as_dict() == second.as_dict()
+    entry = next(iter(cache._entries.values()))
+    entry[1]["task_problem"] = "poisoned cache has no authority"
+    reconstructed = compose_brain_work_context(source, reuse_cache=cache)
+    assert reconstructed.as_dict() == first.as_dict()
+    assert cache.misses == 2
+    cache.clear()
+    after_deletion = compose_brain_work_context(source, reuse_cache=cache)
+    assert after_deletion.as_dict() == first.as_dict()
+    assert compose_brain_work_context(source).as_dict() == first.as_dict()
+    assert cache.misses == 3
+
+
+@pytest.mark.parametrize("movement", ["main", "source_digest", "repository", "roadmap", "request", "request_class", "scope", "lifecycle"])
+def test_required_binding_movement_invalidates_exact_reuse(movement):
+    source = material_snapshot()
+    cache = DerivedContextCache()
+    first = compose_brain_work_context(source, reuse_cache=cache)
+    request = None
+    if movement == "main":
+        source = replace(source, main_sha="b" * 40, repository={**source.repository, "main_sha": "b" * 40},
+                         source_bindings={key: {**value, "commit": "b" * 40} for key, value in source.source_bindings.items()})
+    elif movement == "source_digest":
+        source = replace(source, source_bindings={**source.source_bindings, "task": {
+            **source.source_bindings["task"], "source_digest": "3" * 64}})
+    elif movement == "repository":
+        source = replace(source, repository={**source.repository, "name": "other/repository"})
+    elif movement == "roadmap":
+        source = replace(source, roadmap=planning("new-planning-subject"))
+    elif movement == "request":
+        request = {"human_input": "current Human priority changed"}
+    elif movement == "request_class":
+        request = {"request_class": "REVIEW"}
+    elif movement == "scope":
+        source = replace(source, task_contract={**source.task_contract, "scope": {"modify": ["other.py"]}})
+    elif movement == "lifecycle":
+        source = replace(source, next_action="AUTHOR_REMEDIATION", unified_state={
+            **source.unified_state, "next_action": "AUTHOR_REMEDIATION"})
+    moved = compose_brain_work_context(source, request, reuse_cache=cache)
+    assert cache.misses == 2 and cache.hits == 0
+    assert moved.invalidation_fingerprint != first.invalidation_fingerprint
+    assert moved.as_dict() == compose_brain_work_context(source, request).as_dict()
+
+
+@pytest.mark.parametrize("field", ["source_identity", "source_digest", "structural_selector", "flow_card_digest",
+                                    "flow_card_version", "projection_rule_version", "context_pipeline_version"])
+def test_cache_binds_all_versioned_source_and_projection_fields(field):
+    context = compose_brain_work_context(material_snapshot())
+    binding = context.compilation["bindings"]
+    cache = DerivedContextCache()
+    value = {"task_problem": "exact body"}
+    assert cache.exact(binding, value) == value
+    assert cache.exact({**binding, field: "moved"}, value) == value
+    assert cache.misses == 2 and cache.hits == 0
+
+
+def test_exact_reuse_requires_complete_current_bindings():
+    source = material_snapshot()
+    with pytest.raises(BrainContextError, match="complete"):
+        compose_brain_work_context(replace(source, source_bindings={"roadmap": source.source_bindings["roadmap"]}),
+                                   reuse_cache=DerivedContextCache())
+    with pytest.raises(BrainContextError, match="moved"):
+        compose_brain_work_context(replace(source, source_bindings={**source.source_bindings, "task": {
+            **source.source_bindings["task"], "commit": "b" * 40}}))
+
+
+def test_overflow_preserves_every_control_fact_and_requires_exact_decision_expansion():
+    source, context = overflow_case()
+    pipeline = context.compilation
+    assert pipeline["budget"]["status"] == "OVERFLOW_SUMMARIZED"
+    assert pipeline["budget"]["exact_projected_bytes"] > pipeline["budget"]["limit_bytes"]
+    assert pipeline["budget"]["compiled_bytes"] <= pipeline["budget"]["limit_bytes"]
+    for field in ("task_contract", "unified_state", "selected_task", "roadmap", "blocker", "authority", "next_action"):
+        assert context.canonical_observation[field] == source.as_dict()[field]
+    selector = "canonical_observation.supporting_context.task_problem"
+    summary = pipeline["overflow"][selector]
+    assert len(summary["summary"].encode("utf-8")) <= 256 and summary["canonical_authority"] == "NONE"
+    with pytest.raises(ExactExpansionRequired):
+        require_exact_context(context, [selector])
+    expansion = expand_exact_context(context, [selector], fresh_snapshot=source, max_bytes=1048576)
+    assert expansion.values[selector] == source.supporting_context["task_problem"]
+    # Rebinding also needs an explicit bounded expansion envelope for this large dependency.
+    with pytest.raises(ContextBudgetError):
+        require_exact_context(context, [selector], expansion=expansion, fresh_snapshot=source)
+    assert require_exact_context(context, [selector], expansion=expansion, fresh_snapshot=source, max_bytes=1048576)[selector] == source.supporting_context["task_problem"]
+    assert require_exact_context(context, ["canonical_observation.task_contract.scope"], fresh_snapshot=source) == {
+        "canonical_observation.task_contract.scope": source.task_contract["scope"]}
+    assert resolve_flow(context).selected_flow == "SEMANTIC_REVIEW"
+
+
+def test_control_floor_fails_closed_instead_of_summarizing_human_intent():
+    source = snapshot()
+    before = source.as_dict()
+    with pytest.raises(ContextBudgetError, match="non-elidable"):
+        compose_brain_work_context(source, {"human_input": "x" * 16384}, budget_bytes=8192)
+    assert source.as_dict() == before
+
+
+def test_expansion_checks_current_binding_and_detects_altered_material():
+    source = material_snapshot("bounded exact source " * 200)
+    baseline = compose_brain_work_context(material_snapshot("tiny")).compilation["budget"]["compiled_bytes"]
+    context = compose_brain_work_context(source, budget_bytes=baseline + 2048)
+    selector = "canonical_observation.supporting_context.task_problem"
+    expansion = expand_exact_context(context, [selector], fresh_snapshot=source)
+    assert require_exact_context(context, [selector], expansion=expansion, fresh_snapshot=source)[selector] == source.supporting_context["task_problem"]
+    moved = replace(source, source_bindings={**source.source_bindings, "task": {**source.source_bindings["task"], "source_digest": "3" * 64}})
+    with pytest.raises(BrainContextError, match="moved"):
+        expand_exact_context(context, [selector], fresh_snapshot=moved)
+    expansion.values[selector] = "tampered"
+    with pytest.raises(BrainContextError, match="altered"):
+        require_exact_context(context, [selector], expansion=expansion, fresh_snapshot=source)
+
+
+def test_registry_movement_invalidates_resolution_and_reuse(tmp_path):
+    source = material_snapshot()
+    registry = tmp_path / ".ai" / "flow-cards.yaml"
+    registry.parent.mkdir()
+    registry.write_bytes((Path(source.repository["root"]) / ".ai" / "flow-cards.yaml").read_bytes())
+    source = replace(source, repository={**source.repository, "root": str(tmp_path)})
+    cache = DerivedContextCache()
+    first = compose_brain_work_context(source, reuse_cache=cache)
+    registry.write_bytes(registry.read_bytes() + b"\n# exact registry source movement\n")
+    with pytest.raises(BrainContextError, match="binding moved"):
+        resolve_flow(first)
+    second = compose_brain_work_context(source, reuse_cache=cache)
+    assert first.invalidation_fingerprint != second.invalidation_fingerprint
+    assert cache.misses == 2 and cache.hits == 0
+
+
+@pytest.mark.parametrize("request", [{"request_class": "LLM_RANKED"}, {"request_class": []},
+                                     {"flow_selector": "RESEARCH", "relevance": "looks useful"}])
+def test_relevance_request_inputs_are_closed(request):
+    with pytest.raises(BrainContextError):
+        compose_brain_work_context(snapshot(), request)
+
+
+@pytest.mark.parametrize("fault", ["lifecycle", "subject", "support_class", "proof", "mirror", "missing_proof"])
+def test_malformed_or_competing_relevance_anchors_fail_closed(fault):
+    source = material_snapshot()
+    if fault == "lifecycle":
+        source = replace(source, unified_state={**source.unified_state, "next_action": []})
+    elif fault == "subject":
+        source = replace(source, selected_task={"id": "TASK-178", "revision": 2})
+    elif fault == "support_class":
+        source = replace(source, supporting_context={"authority": "looks like supporting text"})
+    elif fault == "proof":
+        source = replace(source, roadmap={**source.roadmap, "effective_next": {"id": "other", "status": "NEXT"}})
+    elif fault == "mirror":
+        source = replace(source, roadmap={**source.roadmap, "next_items": ["other"]})
+    elif fault == "missing_proof":
+        source = replace(source, roadmap={"present": True, "next_items": ["unproven"]})
+    with pytest.raises(BrainContextError):
+        compose_brain_work_context(source)
+
+
+def test_semantic_looking_optional_rule_cannot_elide_material(tmp_path):
+    registry = yaml.safe_load((Path(__file__).resolve().parents[1] / ".ai" / "flow-cards.yaml").read_text(encoding="utf-8"))
+    registry["cards"][0]["optional_context_rules"]["canonical_observation.supporting_context"] = "MODEL_DEEMS_IRRELEVANT"
+    path = tmp_path / "cards.yaml"
+    path.write_text(yaml.safe_dump(registry), encoding="utf-8")
+    with pytest.raises(BrainContextError, match="relevance rule"):
+        load_flow_cards(path)
+
+
+def test_historical_expansion_is_explicit_bounded_and_current_source_rebound(monkeypatch):
+    raw = {"sequence": [{"id": "old", "status": "DONE", "details": "bounded exact history"},
+                        {"id": "bp-3", "status": "NEXT", "task_id": "TASK-177", "task_revision": 2}]}
+    text = yaml.safe_dump(raw)
+    source = material_snapshot()
+    source = replace(source, roadmap=project_active_planning(raw), source_bindings={**source.source_bindings,
+        "roadmap": {**source.source_bindings["roadmap"], "source_digest": hashlib.sha256(text.encode("utf-8")).hexdigest()}})
+    reads = []
+    def read(root, commit, path):
+        reads.append((root, commit, path))
+        return text
+    monkeypatch.setattr("aios_renew.brain_context._read_main_source", read)
+    context = compose_brain_work_context(source)
+    assert reads == [] and "sequence" not in context.canonical_observation["roadmap"]
+    selector = "canonical_observation.roadmap.sequence[id=old]"
+    with pytest.raises(ExactExpansionRequired):
+        require_exact_context(context, [selector])
+    expansion = expand_exact_context(context, [selector], fresh_snapshot=source)
+    assert expansion.values[selector] == raw["sequence"][0] and len(reads) == 1
+    assert require_exact_context(context, [selector], expansion=expansion, fresh_snapshot=source)[selector] == raw["sequence"][0]
+    monkeypatch.setattr("aios_renew.brain_context._read_main_source", lambda *args: text + "# moved source\n")
+    with pytest.raises(BrainContextError, match="digest moved"):
+        expand_exact_context(context, [selector], fresh_snapshot=source)

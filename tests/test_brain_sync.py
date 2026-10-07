@@ -10,6 +10,7 @@ from aios_renew.brain_sync import (
     BrainSyncError,
     BrainSyncSnapshot,
     observe_brain_sync,
+    project_active_planning,
 )
 from aios_renew.operator import (
     OperatorError,
@@ -22,6 +23,16 @@ from tests.operator_test_support import (
     git,
     make_repo,
 )
+
+
+def _publish_roadmap(repo: Path, roadmap: dict | str) -> str:
+    path = repo / ".ai" / "roadmap-state.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(roadmap if isinstance(roadmap, str) else yaml.safe_dump(roadmap), encoding="utf-8")
+    git(repo, "add", ".ai/roadmap-state.yaml")
+    git(repo, "commit", "-m", "fixture canonical roadmap")
+    git(repo, "push", "origin", "main")
+    return git(repo, "rev-parse", "HEAD")
 
 
 def test_brain_sync_ready_single_next_rehydration(tmp_path: Path) -> None:
@@ -39,12 +50,7 @@ def test_brain_sync_ready_single_next_rehydration(tmp_path: Path) -> None:
             }
         ],
     }
-    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
-    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-    roadmap_path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "-m", "add roadmap")
-    git(repo, "push", "origin", "main")
+    _publish_roadmap(repo, roadmap)
     head = git(repo, "rev-parse", "HEAD")
 
     snapshot = observe_brain_sync(repo=repo)
@@ -96,9 +102,7 @@ def test_brain_sync_completed_no_next(tmp_path: Path) -> None:
             }
         ],
     }
-    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
-    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-    roadmap_path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    _publish_roadmap(repo, roadmap)
 
     snapshot = observe_brain_sync(repo=repo)
 
@@ -139,9 +143,7 @@ def test_brain_sync_ambiguous_next_multiple_items(tmp_path: Path) -> None:
             {"id": "t2", "status": "NEXT", "task_id": "TASK-102"},
         ],
     }
-    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
-    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-    roadmap_path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    _publish_roadmap(repo, roadmap)
 
     snapshot = observe_brain_sync(repo=repo)
 
@@ -169,9 +171,7 @@ def test_brain_sync_unauthored_next(tmp_path: Path) -> None:
             }
         ],
     }
-    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
-    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-    roadmap_path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    _publish_roadmap(repo, roadmap)
 
     snapshot = observe_brain_sync(repo=repo)
 
@@ -216,13 +216,11 @@ def test_brain_sync_roadmap_lineage_conflict_done_sha(tmp_path: Path) -> None:
             },
         ],
     }
-    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
-    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-    roadmap_path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    _publish_roadmap(repo, roadmap)
 
     snapshot = observe_brain_sync(repo=repo)
 
-    assert snapshot.main_sha == main_sha
+    assert snapshot.main_sha == git(repo, "rev-parse", "HEAD")
     assert snapshot.selection_status == "ROADMAP_LINEAGE_CONFLICT"
     assert snapshot.selected_task is None
     assert snapshot.unified_state is None
@@ -233,7 +231,7 @@ def test_brain_sync_roadmap_lineage_conflict_done_sha(tmp_path: Path) -> None:
     assert snapshot.blocker["code"] == "ROADMAP_LINEAGE_CONFLICT"
     assert snapshot.blocker["item_id"] == "diverged-done"
     assert snapshot.blocker["published_sha"] == published_sha
-    assert snapshot.blocker["main_sha"] == main_sha
+    assert snapshot.blocker["main_sha"] == snapshot.main_sha
 
 
 def test_brain_sync_roadmap_ancestry_observation_error_fails_closed(
@@ -254,9 +252,7 @@ def test_brain_sync_roadmap_ancestry_observation_error_fails_closed(
             },
         }],
     }
-    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
-    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-    roadmap_path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    _publish_roadmap(repo, roadmap)
 
     import aios_renew.brain_sync as bs_module
 
@@ -271,7 +267,7 @@ def test_brain_sync_roadmap_ancestry_observation_error_fails_closed(
     with pytest.raises(BrainSyncError, match="cannot observe Git ancestry") as error:
         observe_brain_sync(repo=repo)
 
-    assert observed == [(repo, main_sha, main_sha)]
+    assert observed == [(repo, main_sha, git(repo, "rev-parse", "HEAD"))]
     assert "observed-done" in str(error.value)
     assert main_sha in str(error.value)
     assert "ROADMAP_LINEAGE_CONFLICT" not in str(error.value)
@@ -295,9 +291,7 @@ def test_brain_sync_roadmap_lifecycle_conflict_next_already_done(
             },
         ],
     }
-    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
-    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-    roadmap_path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    _publish_roadmap(repo, roadmap)
 
     import aios_renew.brain_sync as bs_module
     from aios_renew.unified_state import UnifiedStateObservation
@@ -336,12 +330,7 @@ def test_brain_sync_observation_is_strictly_read_only(tmp_path: Path) -> None:
             }
         ],
     }
-    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
-    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
-    roadmap_path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "-m", "add roadmap")
-    git(repo, "push", "origin", "main")
+    _publish_roadmap(repo, roadmap)
 
     before_status = git(repo, "status", "--porcelain=v1")
     before_head = git(repo, "rev-parse", "HEAD")
@@ -365,8 +354,7 @@ def test_brain_sync_exact_detached_candidate_observes_published_main(
     tmp_path: Path,
 ) -> None:
     repo = make_repo(tmp_path)
-    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
-    roadmap_path.write_text(yaml.safe_dump({
+    _publish_roadmap(repo, {
         "version": 1,
         "active_track": "control-plane-closure",
         "active_track_status": "ACTIVE",
@@ -374,10 +362,7 @@ def test_brain_sync_exact_detached_candidate_observes_published_main(
             "id": "task-101-execution", "status": "NEXT",
             "task_id": "TASK-101", "task_revision": 1,
         }],
-    }), encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "-m", "publish roadmap")
-    git(repo, "push", "origin", "main")
+    })
     published = git(repo, "rev-parse", "HEAD")
     (repo / "candidate.txt").write_text("candidate\n", encoding="utf-8")
     git(repo, "add", ".")
@@ -517,15 +502,22 @@ def test_brain_sync_live_repository_smoke() -> None:
     assert snapshot.roadmap["active_track"] == roadmap["active_track"]
     assert snapshot.roadmap["active_track_status"] == roadmap["active_track_status"]
     assert snapshot.roadmap["next_items"] == next_item_ids
-    assert snapshot.selection_status == "SELECTED"
-    assert snapshot.selected_task == {
-        "id": expected_next["task_id"],
-        "revision": expected_next["task_revision"],
-    }
-    assert snapshot.unified_state is not None
-    assert snapshot.lifecycle_state == snapshot.unified_state["lifecycle_state"]
-    assert snapshot.next_action == snapshot.unified_state["next_action"]
-    assert snapshot.authority == snapshot.unified_state["authority"]
+    assert snapshot.roadmap["next_proof"]["status"] == "UNIQUE"
+    assert snapshot.roadmap["effective_next"] == expected_next
+    if expected_next.get("task_id"):
+        assert snapshot.selection_status == "SELECTED"
+        assert snapshot.selected_task == {"id": expected_next["task_id"], "revision": expected_next["task_revision"]}
+        assert snapshot.unified_state is not None
+        assert snapshot.lifecycle_state == snapshot.unified_state["lifecycle_state"]
+        assert snapshot.next_action == snapshot.unified_state["next_action"]
+        assert snapshot.authority == snapshot.unified_state["authority"]
+    else:
+        assert snapshot.selection_status == "UNAUTHORED_TASK"
+        assert snapshot.selected_task is None and snapshot.unified_state is None
+        assert snapshot.next_action == "TASK_AUTHORING"
+        assert snapshot.lifecycle_state == "PLANNING"
+        assert snapshot.authority == "HUMAN_BRAIN_PLANNING"
+        assert snapshot.blocker is None
     assert snapshot.run_created is False
     assert snapshot.executor_invoked is False
     assert snapshot.verification_invoked is False
@@ -533,3 +525,156 @@ def test_brain_sync_live_repository_smoke() -> None:
     assert git(repo, "status", "--porcelain=v1") == before_status
     assert git(repo, "rev-parse", "HEAD") == before_head
     assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+
+
+@pytest.mark.parametrize("selected_status", ["DONE", "BLOCKED", "QUEUED"])
+def test_task319_sequence_next_vs_next_items_split_brain(selected_status):
+    source = {"active_track_status": "ACTIVE", "next_items": ["TASK-319"], "sequence": [
+        {"id": "task316", "status": "NEXT", "task_id": "TASK-316", "human_decision": "resume correction"},
+        {"id": "task319", "status": selected_status, "task_id": "TASK-319"},
+    ]}
+    projected = project_active_planning(source)
+    assert projected["effective_next"] is None
+    assert projected["next_proof"]["status"] == "CONFLICT"
+    assert "NEXT_ITEMS_SEQUENCE_MISMATCH" in projected["next_proof"]["conflicts"]
+    assert projected["competing_next_controls"] == [source["sequence"][0]]
+
+
+def test_next_items_cannot_resurrect_a_completed_sequence():
+    projected = project_active_planning({"next_items": ["done"], "sequence": [{"id": "done", "status": "DONE"}]})
+    assert projected["next_proof"]["status"] == "CONFLICT"
+    assert projected["effective_next"] is None
+
+
+@pytest.mark.parametrize("mirror", [None, "step", [None], ["step", "step"], [{"id": "step", "status": "DONE"}], []])
+def test_malformed_or_competing_next_mirrors_fail_closed(mirror):
+    projected = project_active_planning({"next_items": mirror, "sequence": [{"id": "step", "status": "NEXT"}]})
+    assert projected["next_proof"]["status"] == "CONFLICT"
+    assert projected["effective_next"] is None
+
+
+@pytest.mark.parametrize("source", [
+    {"version": True, "sequence": []},
+    {"sequence": None}, {"sequence": [None]},
+    {"sequence": [{"id": "x", "status": "NEXT"}, {"id": "x", "status": "DONE"}]},
+    {"sequence": [{"id": "x", "status": "NEXT", "task_id": "../TASK-1"}]},
+    {"sequence": [{"id": "x", "status": "NEXT", "task_id": "TASK-1", "task_revision": True}]},
+])
+def test_malformed_planning_source_has_no_projection(source):
+    with pytest.raises(BrainSyncError):
+        project_active_planning(source)
+
+
+def test_bounded_projection_elides_history_but_keeps_exact_active_controls():
+    next_item = {"id": "bo2-3", "status": "NEXT", "human_decision": "current intent", "risk_acceptance": "exact risk",
+                 "predecessor": {"task_id": "TASK-320", "reviewed_and_published_sha": "a" * 40},
+                 "return_to": "bo4", "unblocks_on_completion": ["bo4"]}
+    source = {"active_track": "brain", "active_track_status": "ACTIVE", "next_items": ["bo2-3"],
+              "authority": {"advancement": "HUMAN"}, "human_priority": "preempts H4", "sequence": [
+                  *[{"id": f"done-{i}", "status": "DONE", "body": "resolved " * 1000} for i in range(1000)],
+                  next_item, {"id": "blocked", "status": "BLOCKED", "current_live_blocker": {"code": "exact"},
+                              "objective": "other lineage body", "human_decision": "preserve priority"}]}
+    projection = project_active_planning(source)
+    assert len(json.dumps(projection)) < 10000
+    assert projection["effective_next"] == next_item
+    assert projection["planning_controls"]["human_priority"] == "preempts H4"
+    assert projection["active_controls"][0]["current_live_blocker"] == {"code": "exact"}
+    assert projection["active_controls"][0]["human_decision"] == "preserve priority"
+    manifest = projection["elision_manifest"]
+    assert {entry["rule"] for entry in manifest} == {"OMIT_DONE_SEQUENCE_BODIES_V1", "OMIT_NONSELECTED_DETAIL_FIELDS_V1"}
+    assert all(len(entry["source_digest"]) == 64 and entry["rule_version"] == "RULE_BASED_CONTEXT_ELISION_V1" for entry in manifest)
+    assert projection == project_active_planning(source)
+
+
+def test_priority_and_blocker_mirrors_cannot_choose_a_winner():
+    row = {"id": "step", "status": "NEXT"}
+    source = {"next_items": ["step"], "sequence": [row, {"id": "other", "status": "QUEUED"}],
+              "human_priority_side_track": {"status": "ACTIVE", "next_items": ["other"]}}
+    assert project_active_planning(source)["next_proof"]["status"] == "CONFLICT"
+    source.pop("human_priority_side_track")
+    row["blocked_by"] = ["exact blocker"]
+    assert project_active_planning(source)["next_proof"]["conflicts"] == ["BLOCKED_ITEM_SELECTED_AS_EFFECTIVE_NEXT"]
+
+
+def test_brain_sync_unique_unauthored_next_has_no_task_or_lifecycle(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    source = {"active_track_status": "ACTIVE", "next_items": ["bo2-3"],
+              "sequence": [{"id": "bo2-3", "status": "NEXT", "human_decision": "author next"}]}
+    _publish_roadmap(repo, source)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("unauthored NEXT cannot select engineering lineage")
+    monkeypatch.setattr("aios_renew.brain_sync.load_task", forbidden)
+    monkeypatch.setattr("aios_renew.brain_sync.observe_unified_state", forbidden)
+    observed = observe_brain_sync(repo)
+    assert observed.selection_status == "UNAUTHORED_TASK"
+    assert observed.next_action == "TASK_AUTHORING" and observed.authority == "HUMAN_BRAIN_PLANNING"
+    assert observed.selected_task is None and observed.unified_state is None and observed.blocker is None
+    assert observed.roadmap["effective_next"] == source["sequence"][0]
+
+
+def test_brain_sync_reads_canonical_main_not_a_moved_worktree_bookmark(tmp_path):
+    repo = make_repo(tmp_path)
+    _publish_roadmap(repo, {"next_items": ["canonical"], "sequence": [{"id": "canonical", "status": "NEXT"}]})
+    path = repo / ".ai" / "roadmap-state.yaml"
+    path.write_text("next_items: [invented]\nsequence: []\n", encoding="utf-8")
+    before = git(repo, "status", "--porcelain")
+    observed = observe_brain_sync(repo)
+    assert observed.roadmap["effective_next"]["id"] == "canonical"
+    assert git(repo, "status", "--porcelain") == before
+
+
+def test_brain_sync_duplicate_yaml_control_keys_fail_closed(tmp_path):
+    repo = make_repo(tmp_path)
+    _publish_roadmap(repo, "next_items: []\nnext_items: [other]\nsequence: []\n")
+    observed = observe_brain_sync(repo)
+    assert observed.selection_status == "MALFORMED_ROADMAP"
+    assert observed.next_action == "NONE" and observed.authority == "NONE"
+
+
+def test_nested_control_facts_survive_nonselected_detail_elision():
+    nested = {"human_decision": "exact current decision", "risk_acceptance": {"risk": "exact", "authority": "HUMAN"},
+              "executor_delegation": {"task_id": "TASK-2", "executor": "codex"}}
+    source = {"sequence": [{"id": "next", "status": "NEXT"},
+                           {"id": "blocked", "status": "BLOCKED", "audit": {"details": "unrelated", "control": nested}}]}
+    projected = project_active_planning(source)
+    facts = {fact["selector"].rsplit(".", 1)[1]: fact["value"] for fact in projected["nested_control_facts"]}
+    assert all(facts[key] == value for key, value in nested.items())
+    assert "audit" not in projected["active_controls"][0]
+
+
+def test_resolved_control_history_has_bounded_provenance_and_exact_current_controls():
+    source = {"sequence": [{"id": "next", "status": "NEXT"}], "research_assurance": {
+        "status": "DONE", "authority": "HUMAN_BRAIN_PLANNING", "closure": {"reviewed_sha": "a" * 40},
+        "milestones": [{"id": "history", "status": "DONE", "body": "resolved" * 1000}]}}
+    projected = project_active_planning(source)
+    control = projected["planning_controls"]["research_assurance"]
+    assert "milestones" not in control and control["closure"] == source["research_assurance"]["closure"]
+    assert projected["elision_manifest"][0]["rule"] == "OMIT_COMPLETED_CONTROL_HISTORY_V1"
+
+
+def test_canonical_main_movement_during_sync_fails_closed(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    head = _publish_roadmap(repo, {"sequence": [{"id": "next", "status": "NEXT"}]})
+    observed = iter((head, "b" * 40))
+    monkeypatch.setattr("aios_renew.brain_sync._resolve_main_sha", lambda *args: next(observed))
+    with pytest.raises(BrainSyncError, match="main moved"):
+        observe_brain_sync(repo)
+
+
+def test_numeric_historical_diagnostic_keys_are_readable_but_alias_collisions_fail_closed(tmp_path):
+    repo = make_repo(tmp_path)
+    _publish_roadmap(repo, "sequence:\n- id: history\n  status: DONE\n  diagnostic: {326: bounded}\n- id: next\n  status: NEXT\n")
+    observed = observe_brain_sync(repo)
+    assert observed.next_action == "TASK_AUTHORING" and observed.roadmap["next_proof"]["status"] == "UNIQUE"
+    _publish_roadmap(repo, "sequence:\n- id: next\n  status: NEXT\n  control: {1: first, '1': conflicting}\n")
+    observed = observe_brain_sync(repo)
+    assert observed.selection_status == "MALFORMED_ROADMAP"
+
+
+def test_an_author_branch_cannot_substitute_for_missing_canonical_main(tmp_path):
+    repo = make_repo(tmp_path)
+    git(repo, "remote", "remove", "origin")
+    git(repo, "switch", "-c", "author-only")
+    git(repo, "branch", "-D", "main")
+    with pytest.raises(BrainSyncError, match="canonical main SHA"):
+        observe_brain_sync(repo)
