@@ -161,6 +161,15 @@ def test_parses_minimum_sufficient_v1_verification() -> None:
     assert task.verification.full_suite_reason is None
 
 
+def test_v2_task_is_one_policy_and_preserves_v1_readability() -> None:
+    for policy in ("minimum-sufficient-v1", "minimum-sufficient-v2"):
+        task = parse_task(VALID_TASK.replace("verification:\n", f"verification:\n  policy: {policy}\n"))
+        assert task.verification.policy == policy
+    for independent in ("attributed-minimum-verification", "deterministic-delta-minimum-verification"):
+        with pytest.raises(TaskValidationError, match="verification.policy"):
+            parse_task(VALID_TASK.replace("verification:\n", f"verification:\n  policy: {independent}\n"))
+
+
 def test_v1_task_rejects_known_redundant_verification() -> None:
     source = VALID_TASK.replace(
         "verification:\n  required:\n    - pytest tests/test_task.py\n",

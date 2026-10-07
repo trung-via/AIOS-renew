@@ -1,19 +1,32 @@
-"""Deterministic minimum-sufficient verification contract policy.
+"""One deterministic minimum-sufficient verification contract.
 
-This module classifies only a deliberately small pytest command grammar.  It
-does not select or execute tests.  Commands outside that grammar remain opaque.
+V1 declarations remain readable. V2 derives executions, exact covered probes
+and reuse from bounded canonical material inside the authored envelope. This
+module executes nothing and owns no semantic or lifecycle decisions. Commands
+outside the deliberately small coverage grammar remain opaque.
 """
 
 from __future__ import annotations
 
 import re
 import shlex
+import hashlib
+import json
+import importlib.metadata
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Sequence
 
 
 MINIMUM_SUFFICIENT_V1 = "minimum-sufficient-v1"
+MINIMUM_SUFFICIENT_V2 = "minimum-sufficient-v2"
+VERIFICATION_POLICIES = frozenset({MINIMUM_SUFFICIENT_V1, MINIMUM_SUFFICIENT_V2})
+CURRENT_VERIFICATION_POLICY = MINIMUM_SUFFICIENT_V2
+MAX_CANONICAL_REPORTS = 100_000
+MAX_CANONICAL_FAILURES = 10_000
+MAX_CANONICAL_NODEID_CHARS = 16_384
+MAX_FAILURE_DETAIL_CHARS = 16_384
+MAX_CANONICAL_BYTES = 16 * 1024 * 1024
 FULL_SUITE_REASON_LIMIT = 512
 BP_V4_PROBE_PATH = "scripts/bp_v4_parallel_probe.py"
 BP_V4_WORKERS = (2, 3, 4)
@@ -25,7 +38,7 @@ SELECTED_FULL_SUITE_COMMAND = "python scripts/aios_parallel_full_suite.py"
 
 
 class VerificationContractError(ValueError):
-    """Raised when a v1 verification declaration is structurally invalid."""
+    """Raised when verification declarations or canonical material are invalid."""
 
 
 @dataclass(frozen=True)
@@ -429,3 +442,292 @@ def _normalize_test_path(token: str) -> str:
     if nodes:
         return normalized + "::" + "::".join(nodes)
     return normalized
+
+
+def verification_digest(value: object) -> str:
+    """Hash bounded canonical JSON, never a clipped display representation."""
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=True, allow_nan=False).encode("utf-8")
+    if len(encoded) > MAX_CANONICAL_BYTES:
+        raise VerificationContractError("canonical verification material exceeds byte bound")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def toolchain_inventory_digest() -> str:
+    """Bind installed dependency/plugin versions without exposing host paths."""
+    inventory = sorted((distribution.metadata.get("Name", ""), distribution.version)
+                       for distribution in importlib.metadata.distributions())
+    return verification_digest(inventory)
+
+
+def validate_observation(value: object) -> dict:
+    """Require complete exact phase outcomes before permitting attribution."""
+    if not isinstance(value, dict):
+        raise VerificationContractError("missing canonical observation")
+    verification_digest(value)
+    if value.get("complete") is not True or value.get("unstable") is not False:
+        raise VerificationContractError("incomplete or unstable canonical observation")
+    for key in ("subject_sha", "command"):
+        if not isinstance(value.get(key), str) or not value[key]:
+            raise VerificationContractError("missing observation binding")
+    if re.fullmatch(r"[0-9a-f]{40}", value["subject_sha"]) is None:
+        raise VerificationContractError("observation requires an exact commit")
+    for key in ("profile", "toolchain"):
+        if not isinstance(value.get(key), dict) or not value[key]:
+            raise VerificationContractError("missing observation conditions")
+    if any(not isinstance(value["toolchain"].get(k), str) or not value["toolchain"][k] for k in (
+        "python_implementation", "python_version", "python_executable", "platform_system",
+        "platform_machine", "pytest_version", "pytest_xdist_version")):
+        raise VerificationContractError("incomplete comparable toolchain identity")
+    status = value.get("exit_code")
+    if type(status) is not int:
+        raise VerificationContractError("invalid raw observation exit")
+    reports = value.get("reports")
+    if not isinstance(reports, list) or len(reports) > MAX_CANONICAL_REPORTS:
+        raise VerificationContractError("canonical report population exceeds bound")
+    previous = None
+    failures = 0
+    for report in reports:
+        if not isinstance(report, dict):
+            raise VerificationContractError("invalid canonical report")
+        nodeid, phase = report.get("nodeid"), report.get("phase")
+        if (not isinstance(nodeid, str) or not nodeid or "\\" in nodeid.split("::", 1)[0]
+                or len(nodeid) > MAX_CANONICAL_NODEID_CHARS
+                or not isinstance(phase, str) or phase not in {"collect", "setup", "call", "teardown"}):
+            raise VerificationContractError("invalid exact canonical identity")
+        key = (nodeid, {"collect": -1, "setup": 0, "call": 1, "teardown": 2}[phase])
+        if previous is not None and key <= previous:
+            raise VerificationContractError("duplicate or unordered canonical report")
+        previous = key
+        if report.get("outcome") not in ("PASS", "FAIL", "SKIP"):
+            raise VerificationContractError("invalid canonical phase outcome")
+        if report["outcome"] == "FAIL":
+            failures += 1
+            detail = report.get("detail")
+            if (not isinstance(detail, str) or not detail
+                    or len(detail) > MAX_FAILURE_DETAIL_CHARS
+                    or report.get("fingerprint") != verification_digest(detail)):
+                raise VerificationContractError("missing or invalid bounded failure fingerprint")
+            if report.get("profile") != value["profile"] or report.get("toolchain") != value["toolchain"]:
+                raise VerificationContractError("failure conditions do not match observation")
+    if failures > MAX_CANONICAL_FAILURES or type(value.get("failure_count")) is not int or value.get("failure_count") != failures:
+        raise VerificationContractError("incomplete canonical failed identity population")
+    if status == 0 and failures:
+        raise VerificationContractError("successful command reports canonical failures")
+    if status == 1 and not failures:
+        raise VerificationContractError("failure exit has no canonical failed identity population")
+    return value
+
+
+def failed_identities(observation: dict) -> tuple[tuple[str, str], ...]:
+    value = validate_observation(observation)
+    return tuple((r["nodeid"], r["phase"]) for r in value["reports"] if r["outcome"] == "FAIL")
+
+
+def attribute_failures(base: object, candidate: object, *, base_sha: str,
+                       candidate_sha: str) -> tuple[dict, ...]:
+    """Fail closed: same identity alone never proves a baseline failure."""
+    candidate_reports = candidate.get("reports", []) if isinstance(candidate, dict) else []
+    identities = sorted({(r.get("nodeid"), r.get("phase")) for r in candidate_reports
+                         if isinstance(r, dict) and r.get("outcome") == "FAIL"
+                         and isinstance(r.get("nodeid"), str) and isinstance(r.get("phase"), str)})
+    comparable = False
+    try:
+        left, right = validate_observation(base), validate_observation(candidate)
+        comparable = (left["subject_sha"] == base_sha and right["subject_sha"] == candidate_sha
+                      and left["exit_code"] in {0, 1} and right["exit_code"] == 1
+                      and all(left[k] == right[k] for k in ("command", "profile", "toolchain")))
+    except (VerificationContractError, TypeError, ValueError):
+        left, right = {}, {}
+    base_reports = {(r["nodeid"], r["phase"]): r for r in left.get("reports", [])}
+    candidate_by_identity = {(r["nodeid"], r["phase"]): r for r in right.get("reports", [])}
+    result = []
+    for nodeid, phase in identities:
+        classification = "UNRESOLVED"
+        previous = base_reports.get((nodeid, phase))
+        current = candidate_by_identity.get((nodeid, phase))
+        if comparable and previous and current:
+            if previous["outcome"] == "PASS":
+                classification = "CANDIDATE_REGRESSION"
+            elif (previous["outcome"] == "FAIL"
+                  and previous["fingerprint"] == current["fingerprint"]
+                  and previous["detail"] == current["detail"]):
+                classification = "PRE_EXISTING_BASELINE"
+        result.append({"nodeid": nodeid, "phase": phase, "classification": classification})
+    return tuple(result)
+
+
+def attributed_task_passes(record: object, *, subject_sha: str,
+                           command: str, exit_code: int) -> bool:
+    """Recompute the higher-level outcome without changing raw command status."""
+    if not isinstance(record, dict) or record.get("policy") != MINIMUM_SUFFICIENT_V2:
+        return False
+    try:
+        candidate = validate_observation(record.get("candidate"))
+        if record.get("candidate_digest") != verification_digest(candidate):
+            return False
+        binding = record["binding"]
+        validate_evidence_binding(binding)
+        observed_sha = binding["subject_sha"]
+        if "reuse" in record:
+            reuse = record["reuse"]
+            target = reuse["binding"]
+            validate_evidence_binding(target)
+            if (target["subject_sha"] != subject_sha
+                    or {k: v for k, v in target.items() if k != "subject_sha"}
+                    != {k: v for k, v in binding.items() if k != "subject_sha"}
+                    or reuse.get("source_evidence_id") != record.get("evidence_id")):
+                return False
+        elif observed_sha != subject_sha:
+            return False
+        if (candidate["subject_sha"] != observed_sha or candidate["command"] != command
+                or candidate["exit_code"] != exit_code
+                or binding["command"] != command
+                or binding["profile"] != candidate["profile"]
+                or binding["toolchain"] != candidate["toolchain"]):
+            return False
+        if exit_code == 0:
+            return True
+        # pytest exit 1 alone means runtest failures. Collection/internal errors,
+        # interrupts, worker crashes and empty failure populations cannot pass.
+        if exit_code != 1 or not failed_identities(candidate):
+            return False
+        base_sha = binding["base_sha"]
+        if (record.get("base_digest") != verification_digest(record.get("base"))
+                or binding["failure_set_digest"] != record["base_digest"]):
+            return False
+        classifications = attribute_failures(record.get("base"), candidate,
+                                             base_sha=base_sha, candidate_sha=observed_sha)
+        if "attribution" in record and tuple(record["attribution"]) != classifications:
+            return False
+        return bool(classifications) and all(
+            item["classification"] == "PRE_EXISTING_BASELINE" for item in classifications)
+    except (KeyError, TypeError, ValueError, VerificationContractError):
+        return False
+
+
+def validate_evidence_binding(binding: object) -> dict:
+    """Require all reuse invalidators, including the complete tracked tree."""
+    if not isinstance(binding, dict):
+        raise VerificationContractError("missing verification evidence binding")
+    for key in ("subject_sha", "base_sha", "tree_sha"):
+        if not isinstance(binding.get(key), str) or re.fullmatch(r"[0-9a-f]{40}", binding[key]) is None:
+            raise VerificationContractError("evidence requires exact Git identities")
+    if "correction_base_sha" in binding and (not isinstance(binding["correction_base_sha"], str)
+            or re.fullmatch(r"[0-9a-f]{40}", binding["correction_base_sha"]) is None):
+        raise VerificationContractError("correction evidence requires an exact admitted subject")
+    for key in ("envelope_digest", "changed_files_digest", "failure_set_digest"):
+        if not isinstance(binding.get(key), str) or re.fullmatch(r"[0-9a-f]{64}", binding[key]) is None:
+            raise VerificationContractError("missing evidence invalidation binding")
+    if "correction_changed_files_digest" in binding and (not isinstance(binding["correction_changed_files_digest"], str)
+            or re.fullmatch(r"[0-9a-f]{64}", binding["correction_changed_files_digest"]) is None):
+        raise VerificationContractError("missing correction delta binding")
+    for key in ("profile", "toolchain"):
+        if not isinstance(binding.get(key), dict) or not binding[key]:
+            raise VerificationContractError("missing bound verification conditions")
+    if not isinstance(binding.get("command"), str) or not binding["command"]:
+        raise VerificationContractError("missing exact verification command")
+    verification_digest(binding)
+    return binding
+
+
+@dataclass(frozen=True)
+class VerificationPlan:
+    """One V2 derivation result: explicit executions, reuse and fallback reasons."""
+    commands: tuple[str, ...]
+    reused: tuple[dict, ...]
+    affected_first: tuple[str, ...]
+    fallback: tuple[str, ...]
+
+
+def derive_minimum_verification(
+    authored: Sequence[str], *, base_sha: str, candidate_sha: str,
+    changed_files: Sequence[str], modification_scope: Sequence[str],
+    operation: str, bindings: dict[str, dict], failed_observations: Sequence[dict] = (),
+    still_valid_evidence: Sequence[dict] = (),
+    correction_base_sha: str | None = None,
+    correction_changed_files: Sequence[str] | None = None,
+) -> VerificationPlan:
+    """The single deterministic boundary; no path-to-dependency inference.
+
+    Cross-candidate reuse requires the entire tracked tree and execution context
+    to match. Failed identities authorize only an exact covered first probe;
+    they never discharge the authored broader requirement or integration guard.
+    """
+    commands, reused, fallback = [], [], []
+    exact = all(isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha) for sha in (base_sha, candidate_sha))
+    correction_delta = changed_files if correction_changed_files is None else correction_changed_files
+    failure_subject = base_sha if correction_base_sha is None else correction_base_sha
+    if not isinstance(failure_subject, str) or re.fullmatch(r"[0-9a-f]{40}", failure_subject) is None:
+        exact = False
+    scope_valid = operation not in {"REPAIR", "REMEDIATION", "DIRECT_CANDIDATE"} or set(correction_delta) <= set(modification_scope)
+    for command in authored:
+        target = bindings.get(command)
+        matches = []
+        if exact and scope_valid and target and parse_pytest_coverage(command) is not None:
+            for item in still_valid_evidence:
+                old = item.get("binding", {})
+                try:
+                    validate_evidence_binding(old)
+                    validate_evidence_binding(target)
+                except VerificationContractError:
+                    continue
+                # subject and raw proof are rebound explicitly in Runtime; all
+                # other bindings, including complete-tree identity, must match.
+                if ({k: v for k, v in old.items() if k != "subject_sha"}
+                        == {k: v for k, v in target.items() if k != "subject_sha"}
+                        and attributed_task_passes(item, subject_sha=old.get("subject_sha", ""),
+                                                   command=command, exit_code=item.get("candidate", {}).get("exit_code"))):
+                    matches.append(item)
+        if matches:
+            reused.append(sorted(matches, key=lambda r: r["evidence_id"])[0])
+        else:
+            commands.append(command)
+            fallback.append(command)
+    affected = []
+    moved_authored = set()
+    if exact and scope_valid and operation in {"REPAIR", "REMEDIATION", "DIRECT_CANDIDATE"}:
+        for command in commands:
+            coverage = parse_pytest_coverage(command)
+            if coverage is None or coverage.measurement or coverage.filter_expression is not None:
+                continue
+            nodes = set()
+            for observation in failed_observations:
+                try:
+                    value = validate_observation(observation)
+                    if value["subject_sha"] != failure_subject or value["command"] != command:
+                        continue
+                    if value["profile"] != bindings[command]["profile"] or value["toolchain"] != bindings[command]["toolchain"]:
+                        continue
+                    for nodeid, _ in failed_identities(value):
+                        file_path = nodeid.split("::", 1)[0]
+                        if (file_path in modification_scope and "::" in nodeid
+                                and _path_scope_subsumes(coverage.paths, (nodeid,))
+                                and not any(c in nodeid for c in "\r\n\x00")):
+                            nodes.add(nodeid)
+                except (VerificationContractError, KeyError, TypeError, ValueError):
+                    continue
+            if nodes:
+                # An authored focused requirement already covers this probe.
+                # Reuse its valid proof or move its exact command first instead
+                # of executing the same tests in another generated invocation.
+                covering = next((c for c in authored if (
+                    (known_coverage := parse_pytest_coverage(c)) is not None
+                    and known_coverage.paths and not known_coverage.measurement
+                    and known_coverage.filter_expression is None
+                    and known_coverage.launcher == coverage.launcher
+                    and _path_scope_subsumes(known_coverage.paths, tuple(sorted(nodes)))
+                )), None)
+                if covering is not None:
+                    if covering in commands and covering not in affected:
+                        affected.append(covering)
+                        moved_authored.add(covering)
+                    continue
+                # subprocess receives each identity as a quoted positional arg;
+                # preserve parameterized identities, including spaces/brackets.
+                encoded = " ".join("'" + n.replace("'", "'\"'\"'") + "'" for n in sorted(nodes))
+                probe = coverage.launcher + " -q " + encoded
+                if probe not in authored and probe not in affected:
+                    affected.append(probe)
+    return VerificationPlan(tuple(c for c in commands if c not in moved_authored),
+                            tuple(reused), tuple(affected), tuple(fallback))

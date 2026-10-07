@@ -18,6 +18,7 @@ from .artifacts import (
     validate_result_package,
     validate_structural_result,
     validate_structural_result_package,
+    verification_requirement_passes,
 )
 from .codex_adapter import CodexExecutionError
 from .review import RemediationExecution
@@ -30,9 +31,13 @@ from .verification import (
     VerificationRunner,
     attach_verification_evidence,
     execute_verification,
+    execute_minimum_verification,
     materialize_verification_subject,
 )
-from .verification_contract import MINIMUM_SUFFICIENT_V1, normalize_verification
+from .verification_contract import (
+    MINIMUM_SUFFICIENT_V2, VERIFICATION_POLICIES,
+    normalize_verification, parse_pytest_coverage,
+)
 
 
 class RuntimeState(Protocol):
@@ -118,11 +123,18 @@ def repair_completion_policy(
     verification_commands = task.verification.required
     if origin_affected_verification:
         combined = (*verification_commands, *origin_affected_verification)
-        verification_commands = (
-            normalize_verification(combined)
-            if task.verification.policy == MINIMUM_SUFFICIENT_V1
-            else tuple(dict.fromkeys(combined))
-        )
+        if task.verification.policy == MINIMUM_SUFFICIENT_V2:
+            verification_commands = tuple(dict.fromkeys((*origin_affected_verification, *verification_commands)))
+        elif task.verification.policy in VERIFICATION_POLICIES:
+            verification_commands = normalize_verification(combined)
+        else:
+            verification_commands = tuple(dict.fromkeys(combined))
+    if task.verification.policy == MINIMUM_SUFFICIENT_V2:
+        # Normalization cannot remove an exact authored integration guard.
+        verification_commands = tuple(dict.fromkeys((*verification_commands, *(
+            c for c in task.verification.required
+            if (coverage := parse_pytest_coverage(c)) is not None and coverage.is_full_suite
+        ))))
     return CompletionPolicy(
         kind="REPAIR",
         verification_commands=verification_commands,
@@ -227,24 +239,42 @@ class RuntimeCompletion:
             else self.observation_tracker.begin_verification()
         )
         try:
-            with materialize_verification_subject(
-                self.repo,
-                run_id=self.run.run_id,
-                subject_sha=actual_head,
-            ) as verification_subject:
-                runtime_evidence = execute_verification(
-                    policy.verification_commands,
+            if self.task.verification.policy == MINIMUM_SUFFICIENT_V2:
+                commands = policy.verification_commands
+                if policy.remediation_execution is not None:
+                    commands = tuple(dict.fromkeys((*commands, *(
+                        c for c in self.task.verification.required
+                        if (coverage := parse_pytest_coverage(c)) is not None and coverage.is_full_suite
+                    ))))
+                runtime_evidence = execute_minimum_verification(
+                    commands, run_id=self.run.run_id, base_sha=self.run.base_sha,
+                    subject_sha=actual_head, repository=self.repo,
+                    raw_directory=self.state.verification / self.run.run_id,
+                    cache_directory=self.state.verification / MINIMUM_SUFFICIENT_V2,
+                    modification_scope=policy.mutation_scope if policy.kind == "REPAIR" else policy.result_scope,
+                    operation=policy.kind, runner=self.verification_runner,
+                    subject_check=self._require_post_verification_state,
+                    correction_base_sha=policy.mutation_base_sha if policy.kind == "REPAIR" else policy.result_base_sha,
+                )
+            else:
+                with materialize_verification_subject(
+                    self.repo,
                     run_id=self.run.run_id,
                     subject_sha=actual_head,
-                    repository=verification_subject,
-                    raw_directory=self.state.verification / self.run.run_id,
-                    runner=self.verification_runner,
-                )
-                self._require_post_verification_state(
-                    verification_subject,
-                    expected_head=actual_head,
-                    evidence=runtime_evidence,
-                )
+                ) as verification_subject:
+                    runtime_evidence = execute_verification(
+                        policy.verification_commands,
+                        run_id=self.run.run_id,
+                        subject_sha=actual_head,
+                        repository=verification_subject,
+                        raw_directory=self.state.verification / self.run.run_id,
+                        runner=self.verification_runner,
+                    )
+                    self._require_post_verification_state(
+                        verification_subject,
+                        expected_head=actual_head,
+                        evidence=runtime_evidence,
+                    )
         except RuntimeVerificationError as exc:
             self._raise(str(exc), cause=exc)
         finally:
@@ -468,7 +498,19 @@ class RuntimeCompletion:
                 self._raise(
                     f"{item.evidence_id} subject_sha does not match RESULT head_sha"
                 )
-        for command in execution.remediation.affected_verification:
+            if (self.task.verification.policy == MINIMUM_SUFFICIENT_V2 and item.verification is not None
+                    and item.verification.get("binding", {}).get("base_sha") != self.run.base_sha):
+                self._raise("V2 attribution base does not match RUN base_sha")
+            if (self.task.verification.policy == MINIMUM_SUFFICIENT_V2 and item.type == "VERIFICATION"
+                    and not verification_requirement_passes(item, policy=self.task.verification.policy)):
+                self._raise("blocking V2 observation cannot appear in canonical RESULT")
+        required = execution.remediation.affected_verification
+        if self.task.verification.policy == MINIMUM_SUFFICIENT_V2:
+            required = tuple(dict.fromkeys((*required, *(
+                c for c in self.task.verification.required
+                if (coverage := parse_pytest_coverage(c)) is not None and coverage.is_full_suite
+            ))))
+        for command in required:
             matching = [
                 item for item in package.evidence if item.source.command == command
             ]
@@ -477,7 +519,7 @@ class RuntimeCompletion:
                     "missing affected verification evidence for required command: "
                     + command
                 )
-            if not any(item.result.exit_code == 0 for item in matching):
+            if not any(verification_requirement_passes(item, policy=self.task.verification.policy) for item in matching):
                 self._raise(
                     "affected verification command has no successful evidence: "
                     + command
@@ -682,6 +724,7 @@ def persist_failure(
                     "command": item.source.command,
                     "exit_code": item.result.exit_code,
                     "summary": item.result.summary,
+                    **({"verification": item.verification} if item.verification is not None else {}),
                 }
                 for item in cause.evidence
             ]
@@ -740,6 +783,7 @@ def result_package_data(package: ResultPackage) -> dict[str, Any]:
                 "source": asdict(item.source),
                 "result": asdict(item.result),
                 "raw": {"path": item.raw_path},
+                **({"verification": item.verification} if item.verification is not None else {}),
             }
             for item in package.evidence
         ],

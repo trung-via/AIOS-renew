@@ -14,13 +14,15 @@ import sys
 import time
 from typing import Any, Callable
 
+from .verification_contract import validate_observation, VerificationContractError, MAX_CANONICAL_BYTES
+
 PYTEST_RANGE = ((8, 2), (9, 0))
 XDIST_RANGE = ((3, 6), (4, 0))
 PLUGIN_NAME = "bp_v4_probe_plugin"
 PLUGIN_OUTPUT_ENV = "AIOS_BP_V4_PLUGIN_OUTPUT"
 MAX_FAILURE_IDENTITIES = 20
 MAX_NODEID_DISPLAY_CHARS = 240
-FAILURE_PHASES = {"setup", "call", "teardown"}
+FAILURE_PHASES = {"collect", "setup", "call", "teardown"}
 
 class ProbeError(RuntimeError):
     """Fail-closed verification construction or observation error."""
@@ -122,6 +124,8 @@ def subject_identity(repository: Path) -> dict[str, Any]:
 
 def _load_observation(path: Path) -> dict[str, Any]:
     try:
+        if path.stat().st_size > MAX_CANONICAL_BYTES:
+            raise ProbeError("structured pytest observation exceeds declared byte bound")
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ProbeError("missing or malformed structured pytest observation") from exc
@@ -181,14 +185,19 @@ def run_pytest(
     environment.pop("PYTEST_PLUGINS", None)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-    tests_path = str(repository / "tests")
+    subject_pythonpath = os.pathsep.join((str(repository / "src"), str(repository / "tests")))
     current_pythonpath = environment.get("PYTHONPATH")
     environment["PYTHONPATH"] = (
-        tests_path + os.pathsep + current_pythonpath
+        subject_pythonpath + os.pathsep + current_pythonpath
         if current_pythonpath
-        else tests_path
+        else subject_pythonpath
     )
     environment[PLUGIN_OUTPUT_ENV] = str(observation)
+    environment["AIOS_V2_PROFILE"] = json.dumps({
+        "profile": "bounded-parallel-full-suite-v1" if workers == 12 and not collect_only else "pytest-parallel-observed-v2", "workers": workers,
+        "distribution": "load", "max_worker_restart": 0,
+        "collect_only": collect_only,
+    }, sort_keys=True)
 
     started = time.perf_counter()
     completed = subprocess.run(
@@ -200,7 +209,19 @@ def run_pytest(
         check=False,
     )
     elapsed = time.perf_counter() - started
-    return completed.returncode, elapsed, _load_observation(observation)
+    loaded = _load_observation(observation)
+    export = environment.get("AIOS_V2_OBSERVATION_DIRECTORY")
+    if export:
+        directory = Path(export)
+        directory.mkdir(parents=True, exist_ok=True)
+        destination = directory / f"{label}.json"
+        encoded = observation.read_bytes()
+        if destination.exists():
+            if destination.read_bytes() != encoded:
+                raise ProbeError("conflicting immutable pytest observation")
+        else:
+            destination.write_bytes(encoded)
+    return completed.returncode, elapsed, loaded
 
 
 Runner = Callable[..., tuple[int, float, dict[str, Any]]]
@@ -221,7 +242,11 @@ def _observation_exit_status(observation: dict[str, Any]) -> int:
 
 
 def _failure_diagnostics(observation: dict[str, Any]) -> dict[str, Any]:
-    """Validate the plugin's bounded identity-only failure summary."""
+    """Validate display bounds separately from complete canonical truth.
+
+    Historical v1 display-only observations remain readable; they cannot supply
+    V2 attribution, which independently requires a complete canonical population.
+    """
 
     value = observation.get("failure_diagnostics")
     if not isinstance(value, dict):
@@ -248,7 +273,7 @@ def _failure_diagnostics(observation: dict[str, Any]) -> dict[str, Any]:
         raise ProbeError("malformed structured pytest failure diagnostics")
 
     previous: tuple[str, int, str] | None = None
-    phase_order = {"setup": 0, "call": 1, "teardown": 2}
+    phase_order = {"collect": -1, "setup": 0, "call": 1, "teardown": 2}
     for identity in identities:
         if not isinstance(identity, dict) or set(identity) != {
             "nodeid",
@@ -288,6 +313,18 @@ def _failure_diagnostics(observation: dict[str, Any]) -> dict[str, Any]:
         if previous is not None and key <= previous:
             raise ProbeError("unordered or duplicate pytest failure identities")
         previous = key
+    canonical = value.get("canonical")
+    if canonical is not None:
+        try:
+            validate_observation({
+                **canonical, "subject_sha": "0" * 40, "command": "pytest-observation",
+                "profile": observation.get("profile"), "toolchain": observation.get("toolchain"),
+                "exit_code": _observation_exit_status(observation),
+            })
+        except VerificationContractError as exc:
+            raise ProbeError(str(exc)) from exc
+        if canonical["failure_count"] != count:
+            raise ProbeError("canonical failed population does not match reported count")
     return value
 
 
@@ -309,6 +346,10 @@ def _profile_result(
         "pytest_exit_status": _observation_exit_status(observation),
         "conformance": conformance,
     }
+    if "canonical" in diagnostics:
+        result["canonical"] = diagnostics["canonical"]
+        result["observation_profile"] = observation["profile"]
+        result["observation_toolchain"] = observation["toolchain"]
     if status != 0 or result["pytest_exit_status"] != 0:
         result["failure_diagnostics"] = diagnostics
     elif diagnostics["reported_count"] != 0:

@@ -39,6 +39,27 @@ verification:
     - pytest tests/test_review.py
 """
 
+
+def test_v2_remediation_roundtrip_requires_the_tasks_exact_policy():
+    task = parse_task(TASK_SOURCE.replace("verification:\n", "verification:\n  policy: minimum-sufficient-v2\n"))
+    review = parse_review(CHANGES_REVIEW)
+    source = """
+finding_id: R1
+action: CODE_FIX
+reviewed_sha: def456
+modification_scope: [src/aios_renew/review.py]
+verification:
+  policy: minimum-sufficient-v2
+  affected: [pytest tests/test_review.py]
+"""
+    remediation = parse_remediation(source)
+    assert validate_remediation(review=review, remediation=remediation, task=task) == remediation
+    assert parse_remediation(json.dumps(asdict(remediation))) == remediation
+    for policy in ("minimum-sufficient-v1", "attributed-minimum-verification", "deterministic-delta-minimum-verification"):
+        with pytest.raises(ReviewValidationError):
+            other = parse_remediation(source.replace("minimum-sufficient-v2", policy))
+            validate_remediation(review=review, remediation=other, task=task)
+
 RESULT_SOURCE = """
 head_sha: def456
 claims: []

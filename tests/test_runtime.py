@@ -143,6 +143,65 @@ def evidence_for(run_id: str, subject_sha: str, commands: tuple[str, ...]):
     )
 
 
+def test_v2_completion_uses_one_derivation_boundary_with_admitted_bindings(tmp_path, monkeypatch):
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    task = replace(task, verification=replace(task.verification, policy="minimum-sufficient-v2"))
+    calls = []
+    def verify(commands, **kwargs):
+        calls.append((tuple(commands), kwargs))
+        return evidence_for(kwargs["run_id"], kwargs["subject_sha"], tuple(commands))
+    monkeypatch.setattr(runtime_module, "execute_minimum_verification", verify)
+    monkeypatch.setattr(runtime_module, "execute_verification", lambda *a, **k: pytest.fail("legacy execution used for V2"))
+    monkeypatch.setattr(runtime_module, "transport_post_pass", lambda *a, **k: None)
+    completion = StubRuntimeCompletion(repo=tmp_path, state=state, task=task, run=run, run_path=run_path,
+        verification_runner=lambda *a, **k: None, observation_tracker=None, error_type=BoundaryError,
+        head_sha="head", changed_files={"OUTPUT.txt"})
+    completion.complete(package, primary_completion_policy(task, base_sha=run.base_sha))
+    assert len(calls) == 1
+    assert calls[0][0] == task.verification.required
+    bound = calls[0][1]
+    assert bound["base_sha"] == run.base_sha and bound["subject_sha"] == "head"
+    assert bound["modification_scope"] == task.scope.modify and bound["operation"] == "PRIMARY"
+    assert bound["cache_directory"] == state.verification / "minimum-sufficient-v2"
+
+
+def test_v2_remediation_retains_authored_full_guard_and_correction_scope(tmp_path, monkeypatch):
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    guard = "python scripts/aios_parallel_full_suite.py"
+    task = replace(task, verification=TaskVerification((guard,), policy="minimum-sufficient-v2", full_suite_reason="Integration guard."))
+    remediation = Remediation(finding_id="F1", action="CODE_FIX", reviewed_sha="base",
+                             modification_scope=("OUTPUT.txt",), affected_verification=("focused-check",))
+    execution = RemediationExecution(review_id="REVIEW-052-001", finding=Finding("F1", "AC1", "CODE_FIX", "OUTPUT.txt", "Defect", "Fix"),
+                                    remediation=remediation, run=run)
+    package = replace(package, result=replace(package.result, claims=()))
+    captured = []
+    def verify(commands, **kwargs):
+        captured.append((tuple(commands), kwargs["modification_scope"]))
+        # The intentionally blocking mock proves the exact guard reaches V2
+        # execution without invoking publication or relaxing correction scope.
+        raise RuntimeVerificationError("unresolved attribution", evidence=())
+    monkeypatch.setattr(runtime_module, "execute_minimum_verification", verify)
+    monkeypatch.setattr(runtime_module, "transport_post_pass", lambda *a, **k: pytest.fail("blocking correction transported as PASS"))
+    completion = StubRuntimeCompletion(repo=tmp_path, state=state, task=task, run=run, run_path=run_path,
+        verification_runner=lambda *a, **k: None, observation_tracker=None, error_type=BoundaryError,
+        head_sha="head", changed_files={"OUTPUT.txt"})
+    with pytest.raises(BoundaryError, match="unresolved attribution"):
+        completion.complete(package, remediation_completion_policy(execution))
+    assert captured == [(("focused-check", guard), ("OUTPUT.txt",))]
+    assert remediation.modification_scope == ("OUTPUT.txt",)
+
+
+def test_v2_repair_retains_each_exact_authored_requirement_when_combining(tmp_path):
+    task, _, _, _, _ = completion_fixture(tmp_path)
+    focused = "python -m pytest -q tests/test_runtime.py"
+    guard = "python scripts/aios_parallel_full_suite.py"
+    task = replace(task, verification=TaskVerification((focused,), policy="minimum-sufficient-v2"))
+    policy = repair_completion_policy(task, root_base_sha="base", failed_head_sha="failed", action="CODE_FIX",
+        modification_scope=("OUTPUT.txt",), lineage_path=tmp_path / "repair.json", origin_affected_verification=(guard,))
+    assert policy.verification_commands == (guard, focused)
+    assert policy.mutation_scope == ("OUTPUT.txt",)
+
+
 def test_runtime_owns_ordered_verification_evidence_persistence_and_transport(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

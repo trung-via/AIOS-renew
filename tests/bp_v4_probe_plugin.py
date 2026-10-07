@@ -10,17 +10,25 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
+import importlib.metadata
 from pathlib import Path
 import sys
 from typing import Any
 
 import pytest
 
+from aios_renew.verification_contract import (
+    MAX_CANONICAL_BYTES, MAX_CANONICAL_FAILURES, MAX_CANONICAL_NODEID_CHARS,
+    MAX_CANONICAL_REPORTS, MAX_FAILURE_DETAIL_CHARS, verification_digest,
+    toolchain_inventory_digest,
+)
+
 
 _OUTPUT_ENV = "AIOS_BP_V4_PLUGIN_OUTPUT"
 MAX_FAILURE_IDENTITIES = 20
 MAX_NODEID_DISPLAY_CHARS = 240
-_PHASE_ORDER = {"setup": 0, "call": 1, "teardown": 2}
+_PHASE_ORDER = {"collect": -1, "setup": 0, "call": 1, "teardown": 2}
 _node_collections: dict[str, list[str]] = {}
 _worker_payloads: dict[str, dict[str, Any]] = {}
 _local_failure_count = 0
@@ -29,10 +37,74 @@ _local_failure_truncated = False
 _parallel_failure_count = 0
 _parallel_failure_facts: list[dict[str, Any]] = []
 _parallel_failure_truncated = False
+_reports: dict[tuple[str, str], dict[str, Any]] = {}
+_canonical_errors: list[str] = []
+_canonical_bytes = 0
+_canonical_failure_count = 0
+_subject_root = ""
+_condition_snapshot = None
+
+
+def _resolve_conditions() -> tuple[dict, dict]:
+    profile = json.loads(os.environ.get("AIOS_V2_PROFILE", '{"profile":"pytest-observed-v2"}'))
+    toolchain = {
+        "python_implementation": platform.python_implementation(),
+        "python_version": platform.python_version(),
+        "python_executable": str(Path(sys.executable).resolve()),
+        "platform_system": platform.system(), "platform_machine": platform.machine(),
+        "pytest_version": pytest.__version__,
+        "installed_distributions_digest": toolchain_inventory_digest(),
+    }
+    try:
+        toolchain["pytest_xdist_version"] = importlib.metadata.version("pytest-xdist")
+    except importlib.metadata.PackageNotFoundError:
+        toolchain["pytest_xdist_version"] = "absent"
+    return profile, toolchain
+
+
+def _conditions() -> tuple[dict, dict]:
+    global _condition_snapshot
+    if _condition_snapshot is None:
+        _condition_snapshot = _resolve_conditions()
+    return _condition_snapshot
+
+
+def _canonical_add(report: dict) -> None:
+    global _canonical_bytes, _canonical_failure_count
+    key = (report["nodeid"], report["phase"])
+    if key in _reports:
+        # Even equal repeated reports can mask retries or unstable execution.
+        _canonical_errors.append("duplicate canonical phase observation")
+        return
+    size = len(json.dumps(report, sort_keys=True, ensure_ascii=True).encode("utf-8"))
+    if report["outcome"] == "FAIL":
+        _canonical_failure_count += 1
+    if (len(_reports) >= MAX_CANONICAL_REPORTS
+            or _canonical_failure_count > MAX_CANONICAL_FAILURES
+            or len(report["nodeid"]) > MAX_CANONICAL_NODEID_CHARS
+            or _canonical_bytes + size > MAX_CANONICAL_BYTES):
+        _canonical_errors.append("canonical material exceeds declared bound")
+        return
+    _reports[key] = report
+    _canonical_bytes += size
+
+
+def _canonical_summary() -> dict:
+    return {
+        "complete": not _canonical_errors, "unstable": bool(_canonical_errors),
+        "errors": sorted(set(_canonical_errors)),
+        "reports": sorted(_reports.values(), key=lambda r: (r["nodeid"], _PHASE_ORDER[r["phase"]])),
+        "failure_count": _canonical_failure_count,
+    }
 
 
 def _resolved(path: object) -> str:
     return str(Path(path).resolve())
+
+
+def _exact_nodeid(nodeid: str) -> str:
+    file_path, separator, nodes = nodeid.partition("::")
+    return file_path.replace("\\", "/") + separator + nodes
 
 
 def _failure_identity(nodeid: str, phase: str) -> dict[str, Any]:
@@ -88,11 +160,15 @@ def _summary(
         "display_limit": MAX_FAILURE_IDENTITIES,
         "displayed_identities": list(facts),
         "truncated": truncated,
+        "canonical": _canonical_summary(),
     }
 
 
 def pytest_sessionstart(session: Any) -> None:
-    del session
+    global _subject_root
+    _subject_root = str(session.config.rootpath) if session is not None else ""
+    global _condition_snapshot
+    _condition_snapshot = _resolve_conditions()
     global _local_failure_count, _local_failure_facts, _local_failure_truncated
     global _parallel_failure_count, _parallel_failure_facts
     global _parallel_failure_truncated
@@ -102,6 +178,35 @@ def pytest_sessionstart(session: Any) -> None:
     _parallel_failure_count = 0
     _parallel_failure_facts = []
     _parallel_failure_truncated = False
+    global _reports, _canonical_errors, _canonical_bytes, _canonical_failure_count
+    _reports = {}
+    _canonical_errors = []
+    _canonical_bytes = 0
+    _canonical_failure_count = 0
+    _node_collections.clear()
+    _worker_payloads.clear()
+
+
+def pytest_collectreport(report: Any) -> None:
+    """Preserve collection failures too; exit 2 can never become nonblocking."""
+    if not report.failed:
+        return
+    global _local_failure_count, _local_failure_truncated
+    _local_failure_count += 1
+    profile, toolchain = _conditions()
+    detail = str(report.longreprtext)
+    if _subject_root:
+        detail = detail.replace(_subject_root, "<SUBJECT>").replace(_subject_root.replace("\\", "/"), "<SUBJECT>")
+    fact = {"nodeid": _exact_nodeid(report.nodeid), "phase": "collect", "outcome": "FAIL",
+            "profile": profile, "toolchain": toolchain}
+    if not detail or len(detail) > MAX_FAILURE_DETAIL_CHARS:
+        _canonical_errors.append("collection failure detail exceeds declared bound")
+        fact.update(detail=None, fingerprint=None)
+    else:
+        fact.update(detail=detail, fingerprint=verification_digest(detail))
+    _canonical_add(fact)
+    if _bounded_add(_local_failure_facts, _failure_identity(report.nodeid, "collect")):
+        _local_failure_truncated = True
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -111,7 +216,25 @@ def pytest_runtest_makereport(item: Any, call: Any):
     del call
     outcome = yield
     report = outcome.get_result()
-    if not report.failed or report.when not in _PHASE_ORDER:
+    if report.when not in _PHASE_ORDER:
+        return
+    profile, toolchain = _conditions()
+    fact = {"nodeid": _exact_nodeid(report.nodeid), "phase": report.when,
+            "outcome": "FAIL" if report.failed else "SKIP" if report.skipped else "PASS"}
+    if report.failed:
+        # Normalize only the exact checkout root. Volatile temp paths, values,
+        # captured output and divergent details stay visible and fail closed.
+        detail = str(report.longreprtext) + "\n" + json.dumps(report.sections, ensure_ascii=True)
+        root = str(item.config.rootpath)
+        detail = detail.replace(root, "<SUBJECT>").replace(root.replace("\\", "/"), "<SUBJECT>")
+        if not detail or len(detail) > MAX_FAILURE_DETAIL_CHARS:
+            _canonical_errors.append("failure detail exceeds declared bound")
+            fact.update(detail=None, fingerprint=None)
+        else:
+            fact.update(detail=detail, fingerprint=verification_digest(detail))
+        fact.update(profile=profile, toolchain=toolchain)
+    _canonical_add(fact)
+    if not report.failed:
         return
     global _local_failure_count, _local_failure_truncated
     _local_failure_count += 1
@@ -156,6 +279,8 @@ def pytest_collection_finish(session: Any) -> None:
 
 def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
     config = session.config
+    if _resolve_conditions() != _conditions():
+        _canonical_errors.append("profile or toolchain changed during verification")
     if hasattr(config, "workerinput"):
         config.workeroutput["aios_bp_v4_facts"] = _worker_facts(config)
         config.workeroutput["aios_bp_v4_failures"] = _summary(
@@ -169,6 +294,14 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
     if not output:
         return
     serial_collection = getattr(config, "_aios_bp_v4_collection", None)
+    if not getattr(getattr(config, "option", None), "collectonly", False):
+        expected = serial_collection
+        if _node_collections:
+            expected = next(iter(_node_collections.values()))
+        if isinstance(expected, list):
+            observed = {nodeid for nodeid, phase in _reports if phase != "collect"}
+            if {_exact_nodeid(n) for n in expected}.difference(observed):
+                _canonical_errors.append("pytest did not execute the complete selected population")
     failures = (
         _summary(
             _parallel_failure_count,
@@ -190,6 +323,7 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
         "worker_collections": _node_collections,
         "workers": _worker_payloads,
         "failure_diagnostics": failures,
+        "profile": _conditions()[0], "toolchain": _conditions()[1],
     }
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -204,7 +338,8 @@ def pytest_xdist_node_collection_finished(node: Any, ids: list[str]) -> None:
 
 
 def pytest_testnodedown(node: Any, error: object) -> None:
-    del error
+    if error is not None:
+        _canonical_errors.append("worker terminated with an error")
     facts = node.workeroutput.get("aios_bp_v4_facts")
     collection = node.workeroutput.get("aios_bp_v4_collection")
     if isinstance(facts, dict):
@@ -213,7 +348,18 @@ def pytest_testnodedown(node: Any, error: object) -> None:
         _worker_payloads[node.gateway.id] = payload
     failures = node.workeroutput.get("aios_bp_v4_failures")
     if not isinstance(failures, dict):
+        _canonical_errors.append("missing worker canonical failure data")
         return
+    canonical = failures.get("canonical")
+    if not isinstance(canonical, dict) or not isinstance(canonical.get("reports"), list):
+        _canonical_errors.append("missing worker canonical population")
+    else:
+        if canonical.get("complete") is not True or canonical.get("unstable") is not False:
+            _canonical_errors.append("incomplete or unstable worker population")
+        for report in canonical["reports"]:
+            _canonical_add(report)
+        if canonical.get("failure_count") != sum(r.get("outcome") == "FAIL" for r in canonical["reports"]):
+            _canonical_errors.append("incomplete worker failed identity population")
     count = failures.get("reported_count")
     identities = failures.get("displayed_identities")
     if not isinstance(count, int) or isinstance(count, bool) or not isinstance(

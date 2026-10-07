@@ -8,7 +8,7 @@ import yaml
 
 from aios_renew.parallel_verification import ProbeError
 from aios_renew.verification_profile import (
-    COMPARABLE_TOOLCHAIN_KEYS, load_policy, performance_guard,
+    COMPARABLE_TOOLCHAIN_KEYS, load_policy, performance_guard, selected_profile_identity,
 )
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -38,6 +38,19 @@ def test_selected_policy_has_human_authority_and_no_timing_baseline() -> None:
         "authority": "HUMAN", "task_id": "TASK-231",
     }
     assert profile["baseline"] is None
+
+
+def test_comparison_identity_reads_the_existing_human_profile_without_selecting():
+    data = policy_data()
+    before = deepcopy(data)
+    identity = selected_profile_identity(data)
+    assert identity["workers"] == 12 and identity["selection_provenance"]["authority"] == "HUMAN"
+    assert data == before
+    for defect in (4, 8, 16):
+        changed = deepcopy(data)
+        changed["ordinary_canonical_full_suite"]["workers"] = defect
+        with pytest.raises(ProbeError, match="comparison profile"):
+            selected_profile_identity(changed)
 
 
 def test_historical_workers_four_remains_context_only() -> None:

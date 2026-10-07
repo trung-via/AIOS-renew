@@ -63,7 +63,7 @@ from .return_affinity import (AffinityError, document_affinity, require_same_aff
                               require_authored_affinity, OriginAffinity)
 from .origin_authoring_proof import AdmittedOrigin, OriginProofError, PROOF
 from .task import Task, TaskValidationError, _TaskLoader, parse_task
-from .verification_contract import MINIMUM_SUFFICIENT_V1
+from .verification_contract import CURRENT_VERIFICATION_POLICY
 from .unified_state import observe_unified_state
 
 if TYPE_CHECKING:
@@ -467,10 +467,10 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path,
                 f"new TASK must have revision 1, got {task.revision}"
             )
 
-    if task.verification.policy != MINIMUM_SUFFICIENT_V1:
+    if task.verification.policy != CURRENT_VERIFICATION_POLICY:
         raise AuthoringIngressError(
             "new TASK identities and revisions require verification.policy "
-            f"{MINIMUM_SUFFICIENT_V1}"
+            f"{CURRENT_VERIFICATION_POLICY}"
         )
 
     try:

@@ -1,4 +1,6 @@
 import pytest
+import copy
+from dataclasses import replace
 
 from aios_renew import (
     ArtifactValidationError,
@@ -14,7 +16,38 @@ from aios_renew.artifacts import (
     Result,
     validate_structural_result,
     validate_structural_result_package,
+    Evidence, EvidenceSource, EvidenceOutcome, validate_evidence,
 )
+
+
+def test_v2_package_keeps_raw_nonzero_and_validates_separate_baseline_outcome():
+    from tests.test_verification_contract import V2_BASE, V2_CANDIDATE, V2_COMMAND, v2_observation, v2_record
+    from aios_renew.verification_contract import MINIMUM_SUFFICIENT_V2
+    from aios_renew.runtime import result_package_data
+    task, run, result, _ = make_contracts()
+    task = replace(task, verification=replace(task.verification, required=(V2_COMMAND,), policy=MINIMUM_SUFFICIENT_V2))
+    run = replace(run, base_sha=V2_BASE)
+    result = replace(result, head_sha=V2_CANDIDATE)
+    record = v2_record(base=v2_observation(V2_BASE), candidate=v2_observation())
+    item = Evidence("E1", run.run_id, V2_CANDIDATE, "VERIFICATION", EvidenceSource(V2_COMMAND),
+                    EvidenceOutcome(1, "51 pre-existing failures"), "immutable.raw", record)
+    package = validate_result_package(task=task, run=run, result=result, evidence=(item,))
+    decoded = result_package_data(package)["evidence"][0]
+    assert decoded["result"]["exit_code"] == 1
+    assert validate_evidence(decoded) == item
+    tampered = copy.deepcopy(decoded)
+    tampered["verification"]["candidate"]["reports"][0]["fingerprint"] = "0" * 64
+    with pytest.raises(ArtifactValidationError, match="Runtime verification record"):
+        validate_evidence(tampered)
+    legacy = replace(task, verification=replace(task.verification, policy="minimum-sufficient-v1"))
+    with pytest.raises(ArtifactValidationError, match="successful evidence"):
+        validate_result_package(task=legacy, run=run, result=result, evidence=(item,))
+    wrong_base = replace(run, base_sha="d" * 40)
+    with pytest.raises(ArtifactValidationError, match="attribution base"):
+        validate_result_package(task=task, run=wrong_base, result=result, evidence=(item,))
+    unbound = replace(item, result=EvidenceOutcome(0, "pass"), verification=None)
+    with pytest.raises(ArtifactValidationError, match="successful evidence"):
+        validate_result_package(task=task, run=run, result=result, evidence=(unbound,))
 
 
 TASK_SOURCE = """

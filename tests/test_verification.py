@@ -1,6 +1,9 @@
 import os
 import stat
 import subprocess
+import json
+import hashlib
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -12,7 +15,160 @@ from aios_renew.verification import (
     attach_verification_evidence,
     execute_verification,
     materialize_verification_subject,
+    execute_minimum_verification,
 )
+
+
+@pytest.fixture
+def v2_injected_execution(tmp_path, monkeypatch):
+    from tests.test_verification_contract import V2_BASE, V2_CANDIDATE, V2_TOOLCHAIN, v2_observation
+    from aios_renew.verification_contract import SELECTED_FULL_SUITE_COMMAND
+    state = {"tree": "c" * 40, "observer": "f" * 40, "detail": "AssertionError: expected 1",
+             "base_pass": False, "probe_divergent": False, "calls": []}
+
+    def observe_git(repository, *args, **kwargs):
+        if args[:2] == ("rev-parse", "--verify"):
+            return args[2].split("^")[0]
+        if args[:2] == ("diff", "--name-only"):
+            return "tests/test_sample.py\0"
+        if args[0] == "rev-parse" and args[1].endswith("^{tree}"):
+            return "c" * 40 if args[1].startswith(V2_CANDIDATE) else state["tree"]
+        if args[0] == "rev-parse" and ":tests/bp_v4_probe_plugin.py" in args[1]:
+            return state["observer"]
+        if args[0] == "rev-parse" and ":.ai/verification-profiles.yaml" in args[1]:
+            return "e" * 40
+        if args[0] == "rev-parse" and ":" in args[1]:
+            return "1" * 40
+        if args[0] == "show":
+            return json.dumps(dict(format="AIOS_VERIFICATION_PROFILE_POLICY", version=1,
+                ordinary_canonical_full_suite=dict(profile="bounded-parallel-full-suite-v1", command=SELECTED_FULL_SUITE_COMMAND,
+                    workers=12, distribution="load", max_worker_restart=0,
+                    selection_provenance=dict(authority="HUMAN", task_id="TASK-231"))))
+        raise AssertionError(args)
+
+    @contextmanager
+    def materialize(repository, *, subject_sha, **kwargs):
+        checkout = tmp_path / subject_sha
+        checkout.mkdir(exist_ok=True)
+        yield checkout
+
+    def runner(shell, **kwargs):
+        sha = kwargs["cwd"].name
+        command = shell[-1]
+        state["calls"].append((sha, command))
+        profile = json.loads(kwargs["env"]["AIOS_V2_PROFILE"])
+        outcome = "PASS" if sha == V2_BASE and state["base_pass"] else "FAIL"
+        detail = state["detail"]
+        if state["probe_divergent"] and command != SELECTED_FULL_SUITE_COMMAND and sha != V2_BASE:
+            detail = "AssertionError: divergent candidate probe"
+        value = v2_observation(sha, outcome=outcome, count=51, detail=detail, command=command)
+        for report in value["reports"]:
+            if report["outcome"] == "FAIL":
+                report.update(profile=profile, toolchain=V2_TOOLCHAIN)
+        canonical = {k: value[k] for k in ("complete", "unstable", "reports", "failure_count")}
+        status = value["exit_code"]
+        if command == SELECTED_FULL_SUITE_COMMAND:
+            envelope = {"result": dict(canonical=canonical, observation_profile=profile,
+                observation_toolchain=V2_TOOLCHAIN, conformance={"all_workers_reported": True},
+                exit_status=status, pytest_exit_status=status)}
+            stdout = json.dumps(envelope).encode("utf-8")
+        else:
+            output = Path(kwargs["env"]["AIOS_BP_V4_PLUGIN_OUTPUT"])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(dict(schema="AIOS_BP_V4_PYTEST_OBSERVATION", version=1,
+                profile=profile, toolchain=V2_TOOLCHAIN, exit_status=status,
+                failure_diagnostics=dict(canonical=canonical, reported_count=canonical["failure_count"]))), encoding="utf-8")
+            stdout = b"synthetic pytest output\n"
+        return completed(status, stdout=stdout)
+
+    monkeypatch.setattr(verification_module, "_git", observe_git)
+    monkeypatch.setattr(verification_module, "_optional_git", observe_git)
+    monkeypatch.setattr(verification_module, "_v2_toolchain", lambda: dict(V2_TOOLCHAIN))
+    monkeypatch.setattr(verification_module, "materialize_verification_subject", materialize)
+
+    def execute(run_id, *, candidate=V2_CANDIDATE, operation="PRIMARY", scope=("tests/test_sample.py",)):
+        return execute_minimum_verification((SELECTED_FULL_SUITE_COMMAND,), run_id=run_id,
+            base_sha=V2_BASE, subject_sha=candidate, repository=tmp_path,
+            raw_directory=tmp_path / run_id, cache_directory=tmp_path / "cache", modification_scope=scope,
+            operation=operation, runner=runner, platform="posix", environment={}, subject_check=lambda *a, **k: None)
+    return execute, state
+
+
+def test_v2_full_guard_preserves_51_raw_failures_and_reuses_exact_evidence(v2_injected_execution, tmp_path):
+    execute, state = v2_injected_execution
+    first = execute("RUN-first")
+    assert len(state["calls"]) == 2
+    assert first[0].result.exit_code == 1
+    assert len(first[0].verification["attribution"]) == 51
+    assert {r["classification"] for r in first[0].verification["attribution"]} == {"PRE_EXISTING_BASELINE"}
+    raw = Path(first[0].raw_path).read_bytes()
+    second = execute("RUN-second")
+    assert len(state["calls"]) == 2 and second[0].result.exit_code == 1
+    assert second[0].verification["disposition"] == "REUSED"
+    assert Path(second[0].raw_path).read_bytes() == raw
+    audit = json.loads((tmp_path / "RUN-second" / "minimum-sufficient-v2-plan.json").read_text(encoding="utf-8"))
+    assert audit["records"][0]["disposition"] == "REUSED"
+    third = execute("RUN-third", candidate="d" * 40)
+    assert len(state["calls"]) == 2
+    assert third[0].subject_sha == "d" * 40
+    assert third[0].verification["candidate"]["subject_sha"] == first[0].subject_sha
+
+
+@pytest.mark.parametrize("change", ["tree", "observer", "raw"])
+def test_v2_changed_relevant_material_executes_the_authored_guard_again(v2_injected_execution, change):
+    execute, state = v2_injected_execution
+    first = execute("RUN-first")
+    if change == "raw":
+        Path(first[0].raw_path).write_bytes(b"tampered raw output")
+    else:
+        state[change] = "9" * 40
+    execute("RUN-next", candidate="d" * 40)
+    assert len(state["calls"]) == (3 if change == "tree" else 4)
+
+
+def test_v2_base_pass_candidate_failure_is_blocking(v2_injected_execution):
+    execute, state = v2_injected_execution
+    state["base_pass"] = True
+    with pytest.raises(RuntimeVerificationError) as failure:
+        execute("RUN-regression")
+    item = failure.value.evidence[0]
+    assert item.result.exit_code == 1
+    assert {r["classification"] for r in item.verification["attribution"]} == {"CANDIDATE_REGRESSION"}
+
+
+def test_v2_affected_probe_runs_first_and_never_skips_full_guard(v2_injected_execution, tmp_path):
+    from aios_renew.verification_contract import SELECTED_FULL_SUITE_COMMAND
+    execute, state = v2_injected_execution
+    execute("RUN-prior")
+    state["calls"].clear()
+    state["probe_divergent"] = True
+    with pytest.raises(RuntimeVerificationError) as failure:
+        execute("RUN-correction", operation="REPAIR")
+    candidate_calls = [command for sha, command in state["calls"] if sha == "b" * 40]
+    assert len(candidate_calls) == 2
+    assert "tests/test_sample.py::test_050" in candidate_calls[0]
+    assert candidate_calls[-1] == SELECTED_FULL_SUITE_COMMAND
+    assert failure.value.evidence[-1].result.exit_code == 1
+    assert {r["classification"] for r in failure.value.evidence[0].verification["attribution"]} == {"UNRESOLVED"}
+    audit = json.loads((tmp_path / "RUN-correction" / "minimum-sufficient-v2-plan.json").read_text(encoding="utf-8"))
+    assert audit["modification_scope"] == ["tests/test_sample.py"]
+
+
+def test_v2_canonical_cache_rejects_missing_raw_or_digest_tampering(tmp_path):
+    from tests.test_verification_contract import v2_record
+    raw = tmp_path / "source.raw"
+    raw.write_bytes(b"immutable verification output")
+    record = {**v2_record(), "raw_path": str(raw), "raw_digest": hashlib.sha256(raw.read_bytes()).hexdigest()}
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    path = cache / "proof.json"
+    path.write_text(json.dumps(record), encoding="utf-8")
+    assert verification_module._v2_cache_records(cache) == (record,)
+    record["candidate_digest"] = "0" * 64
+    path.write_text(json.dumps(record), encoding="utf-8")
+    assert verification_module._v2_cache_records(cache) == ()
+    raw.unlink()
+    assert verification_module._v2_cache_records(cache) == ()
 
 
 class RecordingRunner:

@@ -14,6 +14,7 @@ from .run import Run
 from .task import Task
 from .verification_contract import (
     MINIMUM_SUFFICIENT_V1,
+    VERIFICATION_POLICIES,
     VerificationContractError,
     validate_v1_verification,
 )
@@ -63,8 +64,8 @@ class Remediation:
 
 
 @dataclass(frozen=True)
-class _V1Remediation(Remediation):
-    """V1 extension that leaves serialized legacy remediation unchanged."""
+class _PolicyRemediation(Remediation):
+    """Policy extension that leaves serialized legacy remediation unchanged."""
 
     verification_policy: str = MINIMUM_SUFFICIENT_V1
     full_suite_reason: str | None = None
@@ -278,9 +279,9 @@ def parse_remediation(source: str) -> Remediation:
             verification_policy = _string(
                 verification["policy"], "verification.policy"
             )
-            if verification_policy != MINIMUM_SUFFICIENT_V1:
+            if verification_policy not in VERIFICATION_POLICIES:
                 raise ReviewValidationError(
-                    f"verification.policy must be {MINIMUM_SUFFICIENT_V1}"
+                    "verification.policy must be minimum-sufficient-v1 or minimum-sufficient-v2"
                 )
             if "affected" not in verification:
                 raise ReviewValidationError("verification.affected is required")
@@ -310,9 +311,9 @@ def parse_remediation(source: str) -> Remediation:
         verification_policy = _string(
             root["verification_policy"], "verification_policy"
         )
-        if verification_policy != MINIMUM_SUFFICIENT_V1:
+        if verification_policy not in VERIFICATION_POLICIES:
             raise ReviewValidationError(
-                f"verification_policy must be {MINIMUM_SUFFICIENT_V1}"
+                "verification_policy must be minimum-sufficient-v1 or minimum-sufficient-v2"
             )
         if root.get("full_suite_reason") is not None:
             full_suite_reason = _string(
@@ -355,7 +356,7 @@ def parse_remediation(source: str) -> Remediation:
     }
     if verification_policy is None:
         return Remediation(**values)
-    return _V1Remediation(
+    return _PolicyRemediation(
         **values,
         verification_policy=verification_policy,
         full_suite_reason=full_suite_reason,
@@ -382,11 +383,11 @@ def validate_remediation(
             "REMEDIATION action does not match finding action"
         )
     if task is not None:
-        if task.verification.policy == MINIMUM_SUFFICIENT_V1:
-            if remediation.verification_policy != MINIMUM_SUFFICIENT_V1:
+        if task.verification.policy in VERIFICATION_POLICIES:
+            if remediation.verification_policy != task.verification.policy:
                 raise ReviewValidationError(
-                    "REMEDIATION for a minimum-sufficient-v1 TASK must use "
-                    "verification.policy minimum-sufficient-v1"
+                    f"REMEDIATION for a {task.verification.policy} TASK must use "
+                    f"verification.policy {task.verification.policy}"
                 )
         outside_scope = set(remediation.modification_scope).difference(
             task.scope.modify

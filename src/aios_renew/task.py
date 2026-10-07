@@ -13,6 +13,7 @@ from .return_affinity import AffinityError, LEGACY, ReturnAffinity, document_aff
 
 from .verification_contract import (
     MINIMUM_SUFFICIENT_V1,
+    VERIFICATION_POLICIES,
     VerificationContractError,
     validate_v1_verification,
 )
@@ -179,9 +180,9 @@ def validate_task(data: Any) -> Task:
     full_suite_reason = None
     if "policy" in verification:
         verification_policy = _string(verification["policy"], "verification.policy")
-        if verification_policy != MINIMUM_SUFFICIENT_V1:
+        if verification_policy not in VERIFICATION_POLICIES:
             raise TaskValidationError(
-                f"verification.policy must be {MINIMUM_SUFFICIENT_V1}"
+                "verification.policy must be minimum-sufficient-v1 or minimum-sufficient-v2"
             )
         if "full_suite_reason" in verification:
             full_suite_reason = _string(

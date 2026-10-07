@@ -18,6 +18,23 @@ COMPARABLE_TOOLCHAIN_KEYS = (
 )
 
 
+def selected_profile_identity(policy: dict[str, Any]) -> dict[str, Any]:
+    """Bind attribution to the existing Human-selected profile without selection."""
+    if not isinstance(policy, dict):
+        raise ProbeError("missing selected comparison profile")
+    selected = policy.get("ordinary_canonical_full_suite")
+    if (policy.get("format") != FORMAT or policy.get("version") != 1
+            or not isinstance(selected, dict)
+            or selected.get("profile") != PROFILE
+            or selected.get("command") != "python scripts/aios_parallel_full_suite.py"
+            or selected.get("workers") != 12 or selected.get("distribution") != "load"
+            or selected.get("max_worker_restart") != 0
+            or selected.get("selection_provenance") != {"authority": "HUMAN", "task_id": "TASK-231"}):
+        raise ProbeError("incompatible selected comparison profile")
+    return {key: selected[key] for key in (
+        "profile", "workers", "distribution", "max_worker_restart", "selection_provenance")}
+
+
 def load_policy(repository: Path) -> dict[str, Any]:
     path = repository / ".ai" / "verification-profiles.yaml"
     try:

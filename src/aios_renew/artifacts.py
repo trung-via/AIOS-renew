@@ -10,6 +10,12 @@ import yaml
 
 from .run import Run
 from .task import Task
+from .verification_contract import (
+    MINIMUM_SUFFICIENT_V2, attributed_task_passes, verification_digest,
+    VerificationContractError,
+    parse_pytest_coverage,
+    validate_evidence_binding, validate_observation,
+)
 
 
 class ArtifactValidationError(ValueError):
@@ -52,6 +58,7 @@ class Evidence:
     source: EvidenceSource
     result: EvidenceOutcome
     raw_path: str
+    verification: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +151,37 @@ def validate_evidence(data: Any) -> Evidence:
     exit_code = _required(outcome, "exit_code", "result")
     if isinstance(exit_code, bool) or not isinstance(exit_code, int):
         raise ArtifactValidationError("result.exit_code must be an integer")
+    verification = root.get("verification")
+    if verification is not None:
+        if not isinstance(verification, dict) or verification.get("policy") != MINIMUM_SUFFICIENT_V2:
+            raise ArtifactValidationError("invalid Runtime verification record")
+        try:
+            verification_digest(verification)
+            binding = validate_evidence_binding(verification.get("binding"))
+            candidate = verification["candidate"]
+            if candidate.get("complete") is True:
+                validate_observation(candidate)
+            if (verification.get("candidate_digest") != verification_digest(candidate)
+                    or any(candidate.get(k) != binding[k] for k in ("subject_sha", "command", "profile", "toolchain"))
+                    or candidate.get("exit_code") != exit_code
+                    or binding["command"] != source.get("command")):
+                raise VerificationContractError("verification observation binding mismatch")
+            effective = binding
+            if "reuse" in verification:
+                effective = validate_evidence_binding(verification["reuse"].get("binding"))
+                if ({k: v for k, v in effective.items() if k != "subject_sha"}
+                        != {k: v for k, v in binding.items() if k != "subject_sha"}
+                        or verification["reuse"].get("source_evidence_id") != verification.get("evidence_id")):
+                    raise VerificationContractError("invalid evidence reuse binding")
+            if effective["subject_sha"] != root.get("subject_sha"):
+                raise VerificationContractError("verification subject mismatch")
+            if "base" in verification:
+                if (verification.get("base_digest") != verification_digest(verification["base"])
+                        or verification["base"].get("subject_sha") != binding["base_sha"]
+                        or binding["failure_set_digest"] != verification["base_digest"]):
+                    raise VerificationContractError("verification base binding mismatch")
+        except (VerificationContractError, TypeError, ValueError, KeyError, AttributeError) as exc:
+            raise ArtifactValidationError("invalid or unbounded Runtime verification record") from exc
 
     return Evidence(
         evidence_id=_string(
@@ -166,6 +204,7 @@ def validate_evidence(data: Any) -> Evidence:
             ),
         ),
         raw_path=_string(_required(raw, "path", "raw"), "raw.path"),
+        verification=verification,
     )
 
 
@@ -203,6 +242,9 @@ def validate_result_package(
             raise ArtifactValidationError(
                 f"{item.evidence_id} subject_sha does not match RESULT head_sha"
             )
+        if (task.verification.policy == MINIMUM_SUFFICIENT_V2 and item.verification is not None
+                and item.verification.get("binding", {}).get("base_sha") != run.base_sha):
+            raise ArtifactValidationError("V2 attribution base does not match RUN base_sha")
 
     acceptance_ids = {criterion.id for criterion in task.acceptance}
     for claim in result.claims:
@@ -233,12 +275,29 @@ def validate_result_package(
             raise ArtifactValidationError(
                 f"missing verification evidence for required command: {command}"
             )
-        if not any(item.result.exit_code == 0 for item in matching):
+        if not any(verification_requirement_passes(item, policy=task.verification.policy) for item in matching):
             raise ArtifactValidationError(
                 f"required verification command has no successful evidence: {command}"
             )
+    if task.verification.policy == MINIMUM_SUFFICIENT_V2:
+        for item in items:
+            if item.type == "VERIFICATION" and not verification_requirement_passes(item, policy=task.verification.policy):
+                raise ArtifactValidationError("blocking V2 observation cannot appear in canonical RESULT")
 
     return ResultPackage(result=result, evidence=items)
+
+
+def verification_requirement_passes(item: Evidence, *, policy: str | None) -> bool:
+    """Keep legacy raw success semantics; V2 recomputes attribution separately."""
+    if policy != MINIMUM_SUFFICIENT_V2:
+        return item.result.exit_code == 0
+    # Opaque authored commands have no comparable test observation. They still
+    # require ordinary raw success, and can never use nonzero attribution.
+    if item.verification is None:
+        coverage = parse_pytest_coverage(item.source.command)
+        return item.result.exit_code == 0 and (coverage is None or coverage.measurement)
+    return attributed_task_passes(item.verification, subject_sha=item.subject_sha,
+                                 command=item.source.command, exit_code=item.result.exit_code)
 
 
 def validate_structural_result_package(

@@ -1,8 +1,10 @@
 """Selected twelve-worker wrapper checks using injected observations only."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from aios_renew.parallel_verification import _failure_diagnostics
 
 from scripts import aios_parallel_full_suite as selected
 from test_bp_v4_parallel_probe import observation
@@ -10,6 +12,94 @@ from test_bp_v4_parallel_probe import observation
 REPOSITORY = Path(__file__).resolve().parents[1]
 SUBJECT = {"kind": "git-commit", "head_sha": "a" * 40, "worktree_clean": True}
 CALLS = [("collection", 1, True), ("parallel-12", 12, False)]
+
+
+def record_plugin_failure(plugin, index, *, phase="call", nodeid=None, detail="AssertionError: expected 1"):
+    item = SimpleNamespace(config=SimpleNamespace(rootpath=Path("C:/exact-subject")))
+    report = SimpleNamespace(failed=True, skipped=False, when=phase,
+        nodeid=nodeid or f"tests/test_sample.py::test_{index:03d}", longreprtext=detail, sections=[])
+    hook = plugin.pytest_runtest_makereport(item, None)
+    next(hook)
+    with pytest.raises(StopIteration):
+        hook.send(SimpleNamespace(get_result=lambda: report))
+
+
+def test_plugin_preserves_all_51_failures_independently_of_20_displayed(monkeypatch):
+    from tests import bp_v4_probe_plugin as plugin
+    monkeypatch.delenv("AIOS_V2_PROFILE", raising=False)
+    plugin.pytest_sessionstart(None)
+    for index in reversed(range(51)):
+        record_plugin_failure(plugin, index)
+    summary = plugin._summary(plugin._local_failure_count, plugin._local_failure_facts, plugin._local_failure_truncated)
+    profile, toolchain = plugin._conditions()
+    assert _failure_diagnostics(dict(failure_diagnostics=summary, exit_status=1, profile=profile, toolchain=toolchain)) == summary
+    assert summary["reported_count"] == 51 and summary["displayed_count"] == 20 and summary["truncated"]
+    canonical = summary["canonical"]
+    assert canonical["complete"] and canonical["failure_count"] == 51
+    assert len(canonical["reports"]) == 51
+    assert canonical["reports"][-1]["nodeid"].endswith("test_050")
+    assert all(r["fingerprint"] and r["profile"] == profile and r["toolchain"] == toolchain for r in canonical["reports"])
+
+
+def test_plugin_parallel_worker_merge_preserves_exact_nodeid_and_phase(monkeypatch):
+    from tests import bp_v4_probe_plugin as plugin
+    monkeypatch.delenv("AIOS_V2_PROFILE", raising=False)
+    plugin.pytest_sessionstart(None)
+    long_nodeid = "tests/test_sample.py::test_parameter[C:\\temp\\" + "x" * 400 + "]"
+    record_plugin_failure(plugin, 0, phase="setup", nodeid=long_nodeid)
+    record_plugin_failure(plugin, 0, phase="teardown", nodeid=long_nodeid)
+    failures = plugin._summary(plugin._local_failure_count, plugin._local_failure_facts, plugin._local_failure_truncated)
+    assert all(r["clipped"] for r in failures["displayed_identities"])
+    plugin.pytest_sessionstart(None)
+    worker = SimpleNamespace(gateway=SimpleNamespace(id="gw0"), workeroutput={"aios_bp_v4_failures": failures})
+    plugin.pytest_testnodedown(worker, None)
+    canonical = plugin._canonical_summary()
+    assert canonical["complete"] and canonical["failure_count"] == 2
+    assert [(r["nodeid"], r["phase"]) for r in canonical["reports"]] == [(long_nodeid, "setup"), (long_nodeid, "teardown")]
+    assert plugin._parallel_failure_count == 2
+
+
+def test_plugin_missing_worker_truth_or_oversized_detail_fails_closed():
+    from tests import bp_v4_probe_plugin as plugin
+    plugin.pytest_sessionstart(None)
+    record_plugin_failure(plugin, 0, detail="x" * 16385)
+    assert not plugin._canonical_summary()["complete"]
+    assert plugin._canonical_summary()["reports"][0]["nodeid"] == "tests/test_sample.py::test_000"
+    plugin.pytest_sessionstart(None)
+    worker = SimpleNamespace(gateway=SimpleNamespace(id="gw0"), workeroutput={})
+    plugin.pytest_testnodedown(worker, "worker crash")
+    assert plugin._canonical_summary()["unstable"]
+
+
+def test_declared_count_cannot_hide_a_smaller_canonical_failure_population():
+    from tests import bp_v4_probe_plugin as plugin
+    plugin.pytest_sessionstart(None)
+    record_plugin_failure(plugin, 0)
+    summary = plugin._summary(51, plugin._local_failure_facts, True)
+    profile, toolchain = plugin._conditions()
+    with pytest.raises(selected.ProbeError, match="population"):
+        _failure_diagnostics(dict(failure_diagnostics=summary, exit_status=1, profile=profile, toolchain=toolchain))
+
+
+def test_plugin_preserves_collection_failure_phase_and_early_stop_is_incomplete(tmp_path, monkeypatch):
+    import json
+    from tests import bp_v4_probe_plugin as plugin
+    config = SimpleNamespace(rootpath=tmp_path, option=SimpleNamespace(collectonly=False))
+    session = SimpleNamespace(config=config)
+    plugin.pytest_sessionstart(session)
+    plugin.pytest_collectreport(SimpleNamespace(failed=True, nodeid="tests/test_broken.py", longreprtext="ImportError: missing dependency"))
+    fact = plugin._canonical_summary()["reports"][0]
+    assert fact["nodeid"] == "tests/test_broken.py" and fact["phase"] == "collect"
+    assert fact["fingerprint"] and fact["toolchain"]
+    plugin.pytest_sessionstart(session)
+    config._aios_bp_v4_collection = ["tests/test_sample.py::test_000", "tests/test_sample.py::test_001"]
+    record_plugin_failure(plugin, 0)
+    output = tmp_path / "observation.json"
+    monkeypatch.setenv("AIOS_BP_V4_PLUGIN_OUTPUT", str(output))
+    plugin.pytest_sessionfinish(session, 1)
+    canonical = json.loads(output.read_text(encoding="utf-8"))["failure_diagnostics"]["canonical"]
+    assert not canonical["complete"] and canonical["failure_count"] == 1
+    assert "complete selected population" in " ".join(canonical["errors"])
 
 
 def execute(monkeypatch, runner):
