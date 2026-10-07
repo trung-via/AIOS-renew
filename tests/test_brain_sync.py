@@ -1,7 +1,9 @@
 """Deterministic tests for AIOS Brain Sync observation snapshot."""
 
 import json
+import os
 from pathlib import Path
+import subprocess
 import pytest
 import yaml
 
@@ -15,6 +17,7 @@ from aios_renew.operator import (
     runtime_state_root,
 )
 from aios_renew.verification import materialize_verification_subject
+from tests.git_fixture_support import commit_fixture_state, read_git_ref
 from tests.operator_test_support import (
     TASK_SOURCE,
     git,
@@ -445,6 +448,37 @@ def test_brain_sync_detached_remote_identity_fails_closed(
     assert git(repo, "rev-parse", "refs/heads/main") == git(repo, "rev-parse", "HEAD")
     with pytest.raises(BrainSyncError, match="detached canonical remote main"):
         observe_brain_sync(repo=repo)
+
+
+@pytest.mark.parametrize("detached", [False, True])
+def test_brain_sync_git_fixture_refs_support_linked_worktrees(tmp_path: Path, detached: bool) -> None:
+    repo = make_repo(tmp_path)
+    def native_head(subject: Path) -> str:
+        return subprocess.run(("git", "-C", str(subject), "rev-parse", "HEAD"),
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    original = native_head(repo)
+    assert read_git_ref(repo) == original
+    linked = tmp_path / "linked"
+    if detached:
+        git(repo, "worktree", "add", "--detach", str(linked), original)
+    else:
+        git(repo, "worktree", "add", "-b", "linked-fixture", str(linked), original)
+    assert (linked / ".git").is_file()
+    assert read_git_ref(linked) == native_head(linked) == original
+    git(repo, "pack-refs", "--all")
+    assert read_git_ref(linked, "main") == original
+    assert read_git_ref(linked) == original
+    # A relative gitdir is valid too; resolve it from the worktree root.
+    git_dir = Path(git(linked, "rev-parse", "--absolute-git-dir"))
+    (linked / ".git").write_text(f"gitdir: {os.path.relpath(git_dir, linked)}\n", encoding="utf-8")
+    (linked / "OUTPUT.txt").write_text("linked fixture change\n", encoding="utf-8")
+    committed = commit_fixture_state(linked, paths=["OUTPUT.txt"], message="linked fixture",
+                                     user_name="Fixture", user_email="fixture@example.invalid")
+    assert read_git_ref(linked) == native_head(linked) == committed
+    assert read_git_ref(repo, "main") == original
+    assert git(linked, "show", "HEAD:OUTPUT.txt") == "linked fixture change"
+    assert git(linked, "status", "--porcelain") == ""
 
 
 def test_brain_sync_live_repository_smoke() -> None:

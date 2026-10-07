@@ -466,6 +466,85 @@ def test_correction_preflight_module_boundary_and_operator_compatibility() -> No
     assert correction_preflight_module.preflight_repair is operator_module.preflight_repair
 
 
+@pytest.mark.parametrize("reuse", [
+    "absent", "eligible", "malformed", "stale_subject", "wrong_task", "incomplete",
+    "unresolved", "evidence", "local_conflict", "invalid_lineage",
+])
+def test_historical_finalize_preflight_distinguishes_absence_from_invalid_reuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reuse: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "switch", "--quiet", "-c", "failed-subject")
+    (repo / "OUTPUT.txt").write_text("candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "failed candidate")
+    head = git(repo, "rev-parse", "HEAD")
+    git(repo, "switch", "--quiet", "main")
+    run_id = "RUN-101-004"
+    run = {"run_id": run_id, "task": {"id": "TASK-101", "revision": 1},
+           "executor": "codex", "base_sha": base, "workspace": "old-workspace",
+           "head_sha": None, "status": "ACTIVE"}
+    failure = {"kind": "FAILURE", "run_id": run_id, "task": run["task"],
+               "executor": "codex", "base_sha": base, "failed_head_sha": head,
+               "phase": "COMPLETION_GATE", "candidate": {
+                   "transportable": True, "repairable": True, "dirty": False,
+                   "descends_from_base": True, "changed_files": ["OUTPUT.txt"],
+                   "outside_task_scope": [],
+               }}
+    structural = {
+        "kind": "PRE_VERIFICATION_CANDIDATE", "run_id": run_id,
+        "task": dict(run["task"]), "subject_sha": head, "package": {
+            "result": {"head_sha": head, "changed_files": ["OUTPUT.txt"], "unresolved": [],
+                       "claims": [{"id": "C1", "satisfies": ["AC1"],
+                                   "claim": "OUTPUT.txt contains the candidate output.", "evidence": []}]},
+            "evidence": [],
+        },
+    }
+    if reuse == "stale_subject":
+        structural["subject_sha"] = base
+    elif reuse == "wrong_task":
+        structural["task"]["revision"] = 2
+    elif reuse == "incomplete":
+        structural["package"]["result"]["claims"] = []
+    elif reuse == "unresolved":
+        structural["package"]["result"]["unresolved"] = ["Output remains incomplete."]
+    elif reuse == "evidence":
+        structural["package"]["result"]["claims"][0]["evidence"] = ["prior-evidence"]
+    content = None if reuse == "absent" else (
+        b"not-json" if reuse == "malformed" else json.dumps(structural).encode())
+    artifact = RemoteFailureArtifacts(run_id, head,
+        b"{}" if reuse == "invalid_lineage" else json.dumps(run).encode(),
+        json.dumps(failure).encode(), None, content)
+    monkeypatch.setattr(operator_module, "resolve_remote_repair_recovery",
+        lambda repo, *, failed_run_id: RemoteRepairRecovery((artifact,), (run_id,)))
+    monkeypatch.setattr(operator_module, "read_remote_task",
+        lambda repo, *, commit_sha, task_id: TASK_SOURCE.encode())
+    if reuse == "local_conflict":
+        state = runtime_paths(repo)
+        (state.preverification / f"{run_id}.json").write_bytes(b"conflicting-cache")
+    authorization = {
+        "repair_id": "REPAIR-101-FINALIZE", "failed_run_id": run_id,
+        "failed_head_sha": head, "task": run["task"], "action": "FINALIZE_CANDIDATE",
+        "modification_scope": [], "instructions": ["Finalize the exact candidate."],
+        "constraints": ["Commit the output."],
+    }
+    before = _control_repository_snapshot(repo)
+    observation = preflight_repair(run_id, repo=repo, repair=authorization)
+    if reuse in {"absent", "eligible"}:
+        assert observation.status == "READY", observation.as_dict()
+        assert observation.subject_mode == "HISTORICAL"
+        assert observation.executor_required is (reuse == "absent")
+    else:
+        assert observation.status == "BLOCKED", observation.as_dict()
+        if reuse != "invalid_lineage":
+            assert observation.phase == "REUSABLE_STATE_ADMISSION"
+            assert observation.reason_code == "REUSABLE_STATE_REJECTED"
+    assert observation.as_dict()["run_created"] is False
+    assert observation.as_dict()["executor_invoked"] is False
+    assert _control_repository_snapshot(repo) == before
+
+
 def test_correction_preflight_remediation_resolves_cumulative_sibling_execution_base_ac2_ac7(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

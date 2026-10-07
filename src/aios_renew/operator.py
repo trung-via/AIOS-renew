@@ -3255,6 +3255,31 @@ def _nearest_same_head_repair_package(
     if dict(current) != dict(failure):
         raise OperatorError("conflicting same-head target FAILURE")
     subject = failure["failed_head_sha"]
+    if transported_failures:
+        # Historical correction admission has already validated the canonical
+        # RUN/FAILURE/authorization chain. Discover optional reuse before applying
+        # the stronger structural-package gates: no package means the explicit
+        # Executor fallback, not a rejected attempt to reuse nonexistent state.
+        # read() still rejects malformed or conflicting local/canonical material.
+        probe_id = current_id
+        absent_seen: set[str] = set()
+        while True:
+            if probe_id in absent_seen:
+                raise OperatorError("cyclic same-head correction lineage")
+            absent_seen.add(probe_id)
+            probe, _, _, probe_content = read(probe_id)
+            if probe_content is not None:
+                break
+            predecessor_id = probe.get("continuation_of")
+            if predecessor_id is None:
+                return None
+            predecessor_artifact = remote.get(predecessor_id)
+            if predecessor_artifact is None:
+                raise OperatorError("canonical same-head predecessor is missing")
+            predecessor = mapping(predecessor_artifact.failure, "predecessor FAILURE")
+            if predecessor.get("failed_head_sha") != subject:
+                return None
+            probe_id = predecessor_id
     seen: set[str] = set()
     while True:
         if current_id in seen:

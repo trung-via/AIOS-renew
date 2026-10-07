@@ -135,7 +135,8 @@ def test_stage2_is_self_sufficient_on_fresh_adapter(registry, profile_package):
 
 
 @pytest.mark.parametrize("kind", ("mapping", "json"))
-@pytest.mark.parametrize("fault", (None, "missing", "invalid_phase", "cross_flow"))
+@pytest.mark.parametrize("fault", (None, "missing", "invalid_phase", "cross_flow",
+                                  "missing_section", "invalid_section", "stale_section"))
 def test_provider_attempt_phase_ledger_is_bound_and_fail_closed(registry, profile_package, kind, fault):
     flow = "ARCHITECTURE" if fault == "cross_flow" else "TASK_AUTHORING"
     packet, package = inputs(registry, flow)
@@ -157,6 +158,12 @@ def test_provider_attempt_phase_ledger_is_bound_and_fail_closed(registry, profil
                 semantic["acceptance_phase_ledger"][0]["phase"] = "UNKNOWN"
             elif fault == "cross_flow":
                 semantic["acceptance_phase_ledger"] = []
+            elif fault == "missing_section":
+                del semantic["canonical_shape"]
+            elif fault == "invalid_section":
+                semantic["terminal_lifecycle"]["entries"].pop()
+            elif fault == "stale_section":
+                semantic["cross_authority_context"]["packet_fingerprint"] = "0" * 64
         return wrapper(request, provider=kind, model="model", semantic=semantic)
     def fresh():
         freshness.append(None)

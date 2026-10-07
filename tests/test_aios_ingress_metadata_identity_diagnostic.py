@@ -4,9 +4,11 @@ import hashlib
 import os
 from copy import deepcopy
 
-from aios_renew.authoring_ingress import IngressEnvelope, execute_ingress
+import pytest
+
+from aios_renew.authoring_ingress import AuthoringIngressError, IngressEnvelope, execute_ingress
 from scripts import aios_ingress_metadata_identity_diagnostic as diagnostic
-from test_authoring_ingress import setup_candidate_lineage
+from test_authoring_ingress import audited_envelope, setup_candidate_lineage
 
 
 def test_ordinary_author_remediation_control(tmp_path):
@@ -38,9 +40,14 @@ affected_verification: [git diff --check]
 constraints:
   hard: [Bounded mutation authority only.]
 """
-    result = execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REMEDIATION",
-                                             {"source_run_id": run_id, "finding_id": "F1"},
-                                             {"expected_reviewed_sha": candidate_sha}, payload), repo=repo)
+    envelope = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REMEDIATION",
+                               {"source_run_id": run_id, "finding_id": "F1"},
+                               {"expected_reviewed_sha": candidate_sha}, payload)
+    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+        execute_ingress(envelope, repo=repo)
+    envelope = audited_envelope(envelope, repo)
+    assert envelope.audited_handoff["stage1"]["selected_flow"] == "REMEDIATION_AUTHORING"
+    result = execute_ingress(envelope, repo=repo)
     assert result.status == "CANONICALIZED"
 
 

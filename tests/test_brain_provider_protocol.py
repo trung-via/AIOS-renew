@@ -17,6 +17,7 @@ from aios_renew.brain_return_contract import parse_return_contract_registry, sel
 from aios_renew.brain_return_contract import return_contract_ref
 from aios_renew.decision_packet import DecisionPacket
 from aios_renew.task import validate_task
+from tests.test_brain_audit import v3_sections
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +35,9 @@ def registry():
 
 @pytest.fixture
 def profile_package():
-    profile = parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"][0]
+    profile = next(item for item in parse_profile_registry(
+        (ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+        if item["id"] == "brain-high-value-v3")
     return {"profile": profile, "audit_profile_ref": profile_ref(profile)}
 
 
@@ -87,6 +90,8 @@ def stage2_response(req, candidate, *, blocker=False):
         "outcome": "NO_DECISION" if blocker else "CANDIDATE",
     }
     if req["decision_packet"]["selected_flow"] == "TASK_AUTHORING":
+        if req["audit_profile_package"]["profile"]["version"] == 3:
+            material.update(v3_sections(req["stage1_lineage"]["construct"], candidate))
         material["acceptance_phase_ledger"] = [
             {"id": entry["id"], "phase": "CLAIM_NOW"} for entry in candidate.get("acceptance", [])
         ]
@@ -124,6 +129,7 @@ def test_audited_round_trip_and_stale_stage2(registry, profile_package):
 
 @pytest.mark.parametrize("tamper", (
     "stage2_fingerprint", "reconciled_candidate_fingerprint", "closure", "construct_audit",
+    "cross_authority_context", "canonical_shape", "terminal_lifecycle",
 ))
 def test_no_decision_serialized_stage2_tampering(registry, profile_package, tamper):
     first = request(registry, profile_package)
@@ -142,12 +148,14 @@ def test_no_decision_serialized_stage2_tampering(registry, profile_package, tamp
         semantic[tamper] = "0" * 64
     elif tamper == "closure":
         semantic["closure"][-1]["blocker_summary"] = "Different open risk"
-    else:
+    elif tamper == "construct_audit":
         semantic["construct_audit"][0] = {
             "lens": semantic["construct_audit"][0]["lens"], "outcome": "RISK_FOUND",
             "risks": [{"risk_summary": "Change needed", "counterexample": "Current candidate fails",
                        "candidate_anchor": "task_id", "disposition": "ADDRESSED_BY_RECONCILIATION"}],
         }
+    else:
+        semantic[tamper]["entries"][0]["basis"] = "A substituted conformance judgment"
     altered["decision_fingerprint"] = digest({k: v for k, v in altered.items()
                                                if k != "decision_fingerprint"})
     with pytest.raises(BrainProviderProtocolError):
@@ -309,6 +317,36 @@ def test_task_phase_ledger_binds_serialized_decision_identity(registry, profile_
             validate_response(second, {**material, "acceptance_phase_ledger": ledger})
 
 
+@pytest.mark.parametrize("section", ["cross_authority_context", "canonical_shape", "terminal_lifecycle"])
+@pytest.mark.parametrize("fault", ["missing", "extra", "stale_packet", "stale_candidate", "blocked_without_closure"])
+def test_task_v3_sections_are_closed_bound_and_fail_closed(registry, profile_package, section, fault):
+    first = request(registry, profile_package)
+    candidate = {"task_id": "TASK-999", "revision": 1}
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]), first["return_contract_package"],
+                               first["external_bindings"], first["audit_profile_package"],
+                               request_mode="AUDIT_RECONCILE", stage1_decision=stage1)
+    material = stage2_response(second, candidate)
+    assert set(material) == {"request_fingerprint", "construct_audit", "reconciled_candidate",
+                             "closure", "outcome", "acceptance_phase_ledger",
+                             "cross_authority_context", "canonical_shape", "terminal_lifecycle"}
+    final = validate_response(second, material)
+    assert revalidate_decision(final, second) == final
+    if fault == "missing":
+        del material[section]
+    elif fault == "extra":
+        material[section]["authority"] = "PUBLISHER"
+    elif fault == "stale_packet":
+        material[section]["packet_fingerprint"] = "0" * 64
+    elif fault == "stale_candidate":
+        material[section]["reconciled_candidate_fingerprint"] = "0" * 64
+    else:
+        material[section]["status"] = "BLOCKED"
+        material[section]["entries"][0]["status"] = "BLOCKED"
+    with pytest.raises(BrainProviderProtocolError):
+        validate_response(second, material)
+
+
 @pytest.mark.parametrize("flow", ("ARCHITECTURE", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"))
 def test_non_task_provider_stage2_rejects_task_phase_ledger(registry, profile_package, flow):
     bindings = {"repair_id": "REPAIR-999-001"} if flow == "REPAIR_AUTHORING" else {}
@@ -322,8 +360,9 @@ def test_non_task_provider_stage2_rejects_task_phase_ledger(registry, profile_pa
     decision = validate_response(second, material)
     assert revalidate_decision(decision, second) == decision
     assert "acceptance_phase_ledger" not in decision["semantic_value"]
-    with pytest.raises(BrainProviderProtocolError):
-        validate_response(second, {**material, "acceptance_phase_ledger": []})
+    for field in ("acceptance_phase_ledger", "cross_authority_context", "canonical_shape", "terminal_lifecycle"):
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(second, {**material, field: []})
     altered = deepcopy(decision)
     altered["semantic_value"]["acceptance_phase_ledger"] = []
     altered["decision_fingerprint"] = digest({k: v for k, v in altered.items() if k != "decision_fingerprint"})
