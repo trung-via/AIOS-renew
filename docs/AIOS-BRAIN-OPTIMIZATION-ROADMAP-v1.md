@@ -120,47 +120,79 @@ approval ambiguity in roadmap sequencing, and freeze H4 implementation until BO-
 
 Exit: `BRAIN_OPTIMIZATION_PREEMPTION_CANONICAL`.
 
-### Recovery overlay — ATTRIBUTED_MINIMUM_VERIFICATION_V1
+### Recovery overlay — MINIMUM_SUFFICIENT_VERIFICATION_V2
 
 Status: **HUMAN_APPROVED — PREEMPTS TASK-316 CORRECTION BEFORE BO-1 RESUMES**
 
-Purpose: stop a failing broad verification command from automatically turning every
-pre-existing or environment-specific failure into correction scope for the current TASK.
-This overlay unifies minimum-test selection, deterministic delta minimum verification,
-failure attribution and the final full-suite integration guard under one Runtime-owned
-verification architecture.
+Purpose: evolve the existing `minimum-sufficient-v1` contract into one Runtime-owned
+verification architecture that unifies authored minimum verification, deterministic affected
+verification, base↔candidate attribution, valid-evidence reuse, correction-aware narrowing and
+the final full-suite integration guard. `ATTRIBUTED_MINIMUM_VERIFICATION_V1` and
+`DETERMINISTIC_DELTA_MINIMUM_VERIFICATION` are absorbed capabilities, not independent
+subsystems or authorities.
+
+Authority boundary:
+
+- Human owns risk acceptance and explicit override.
+- Brain owns semantic verification requirements: what must be proven.
+- Runtime deterministically derives the exact still-required verification, executes it and
+  canonicalizes verification evidence.
+- Reviewer owns semantic verdict. Attribution evidence never becomes semantic review.
 
 Required invariant:
 
-1. Runtime preserves the complete deterministic failed-test identity set needed for exact
+1. Runtime preserves the complete deterministic failed-test identity population needed for exact
    replay/attribution. Human-facing display may remain bounded separately, but canonical
-   diagnostic truth must not be truncated by count as RUN-316-002 was (51 reported, 20 retained).
-2. Attribution compares the exact candidate with the exact RUN base under the same selected
-   verification profile/toolchain and classifies observed failures as candidate-induced,
-   proven pre-existing-equivalent, or unresolved. Candidate-only/absent-on-base failures are
-   candidate-induced; ambiguity or non-equivalent observations fail closed as unresolved.
-3. Raw command exit status is never hidden or rewritten. A higher-level attributed
-   verification outcome may treat only proven pre-existing-equivalent failures as non-blocking
-   for the current TASK; candidate-induced and unresolved failures remain blocking.
-4. Minimum affected verification is derived only from deterministic material already owned by
-   Runtime: TASK verification commands, exact failed identities, committed changed files and
-   authorized correction modification scope. Runtime must not invent a semantic dependency graph.
-   When exact narrowing cannot be proved, it falls back to the authored broader verification.
-5. Correction diagnostics may run the exact affected subset first. The repository-selected
-   full-suite remains the integration safety net before completion, but a nonzero raw suite may
-   be task-level non-blocking only when every observed failure is proven pre-existing-equivalent
-   against the exact base under the same verification conditions.
-6. Valid attribution evidence may be reused only while its exact base/candidate/profile/toolchain
-   and relevant failure-set bindings remain unchanged. Candidate movement or binding mismatch
-   invalidates reuse.
-7. Attribution is verification evidence only. It cannot choose TASK meaning, correction strategy,
-   modification scope, Reviewer verdict, publication, roadmap advancement or Executor/model/effort.
-8. RUN-316-002 is frozen as the motivating verification failure. No broad REPAIR should be
-   authored from its 51-failure population before this invariant is active; TASK-316 is then
-   re-evaluated using attributed verification and only genuine candidate-owned defects may
-   drive correction.
+   diagnostic truth must not be truncated by display count as RUN-316-002 was (51 reported,
+   20 retained).
+2. Canonical failure evidence binds each comparable observation to exact nodeid, phase, selected
+   verification profile, toolchain and a bounded deterministic failure fingerprint/detail.
+3. Attribution compares the exact candidate with the exact RUN base under equivalent selected
+   verification conditions. `BASE_PASS_CANDIDATE_FAIL` proves a candidate regression.
+   `BASE_FAIL_CANDIDATE_FAIL` is `PRE_EXISTING_BASELINE` only when the observations are
+   deterministically equivalent. Candidate-only, non-comparable, unstable or otherwise ambiguous
+   observations remain `UNRESOLVED` and fail closed.
+4. Raw command exit status is never hidden or rewritten. A separate higher-level task-verification
+   outcome may treat only fully proven `PRE_EXISTING_BASELINE` failures as non-blocking for the
+   current TASK; candidate regressions and unresolved failures remain blocking.
+5. Minimum affected verification is derived only from deterministic material already owned by
+   Runtime: authored TASK/REMEDIATION verification, exact base/candidate identity, committed
+   changed files, canonical failed identities, authorized correction modification scope and
+   still-valid evidence bindings. Runtime must not invent a semantic dependency graph. When exact
+   narrowing cannot be mechanically proved, it falls back to the authored broader verification.
+6. Evidence reuse is part of the same derivation. Exact-subject evidence remains reusable when
+   its bindings are unchanged. Cross-candidate reuse is allowed only when Runtime mechanically
+   proves all relevant bindings remain valid; otherwise the affected verification is rerun.
+7. Correction diagnostics may run the exact affected subset first. The repository-selected
+   full-suite remains the integration safety net whenever the authored contract requires it, but
+   unrelated proven baseline failures do not automatically widen correction scope.
+8. `PRE_EXISTING_BASELINE` does not become correction scope for the current TASK unless that
+   TASK explicitly owns the baseline debt.
+9. Attribution and minimum-verification derivation are verification evidence only. They cannot
+   choose TASK meaning, correction strategy, modification scope, Reviewer verdict, publication,
+   roadmap advancement or Executor/model/effort.
+10. RUN-316-002 is frozen as the motivating verification failure. No broad REPAIR is authored
+    from its 51-failure population before this architecture is active. After activation,
+    RUN-316-002 is re-evaluated and only genuine current-TASK blocking evidence may drive
+    correction.
 
-Exit: `ATTRIBUTED_MINIMUM_VERIFICATION_V1_ACTIVE`.
+Target Runtime derivation:
+
+```text
+authored verification baseline
++ exact base/candidate
++ committed changed files
++ canonical failed identities
++ authorized correction modification_scope
++ still-valid verification evidence
++ selected verification profile/toolchain
+→ minimum still-required verification
+→ execution + canonical evidence
+→ deterministic attribution
+→ full-suite integration guard when required
+```
+
+Exit: `MINIMUM_SUFFICIENT_VERIFICATION_V2_ACTIVE`.
 
 ### BO-1 — AUTHOR_TASK mutation-path simplification
 
