@@ -1277,16 +1277,18 @@ sequence:
     priority_resume_gate: SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
     priority_resume_gate_status: SATISFIED_BY_TASK_318
     preserved_failure_lineage: RUN-316-002
-    pending_reconciliation: REEVALUATE_EXACT_FAILURE_AFTER_RUNTIME_VERIFICATION_V2
-    next_semantic_action: REEVALUATE_RUN_316_002_WITH_MINIMUM_SUFFICIENT_VERIFICATION_V2
+    pending_reconciliation: REEXECUTE_TASK316_R3_ON_CURRENT_MAIN_WITH_RUNTIME_VERIFICATION_V2
+    next_semantic_action: EXECUTE_TASK316_R3_PRIMARY_WITH_MINIMUM_SUFFICIENT_VERIFICATION_V2
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-316
-    task_revision: 2
+    task_revision: 3
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "18088cb42a7f19c350661e068e6420c794fc0ed9"
+    task_author_commit_sha: "fb50b58cfaf717252c589872adbeeaa700b11e41"
+    task_blob_sha: "c662ebab45e7941226e43705464f60025fafe390"
+    revision_3_reason: APPLY_MINIMUM_SUFFICIENT_VERIFICATION_V2_TO_FRESH_CURRENT_MAIN_EXECUTION
     predecessor_failure:
       run_id: RUN-316-001
       terminal_kind: FAILURE
@@ -1335,7 +1337,7 @@ sequence:
       base_sha: "fbfc33b8fc2c89abba7dedf4d99fa74e9405b511"
       failed_candidate_sha: "e21a309b188ace8c7a270575490f84647e81dc54"
       failure_artifact_sha: "91207191523377772bf9c69382ecba9f9244cf0d"
-      disposition: READY_FOR_REEVALUATION_UNDER_MINIMUM_SUFFICIENT_VERIFICATION_V2
+      disposition: IMMUTABLE_HISTORICAL_EVIDENCE_SUPERSEDED_BY_FRESH_R3_EXECUTION_FOR_CURRENT_ATTRIBUTION
       repair_status: NOT_AUTHORED
       review_status: NOT_CREATED
     unblocked_by:
