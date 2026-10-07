@@ -27,6 +27,7 @@ MAX_CANONICAL_FAILURES = 10_000
 MAX_CANONICAL_NODEID_CHARS = 16_384
 MAX_FAILURE_DETAIL_CHARS = 16_384
 MAX_CANONICAL_BYTES = 16 * 1024 * 1024
+COLLECTION_IDENTITY_RULE = "sorted-posix-nodeid-lf-sha256-v1"
 FULL_SUITE_REASON_LIMIT = 512
 BP_V4_PROBE_PATH = "scripts/bp_v4_parallel_probe.py"
 BP_V4_WORKERS = (2, 3, 4)
@@ -442,6 +443,38 @@ def _normalize_test_path(token: str) -> str:
     if nodes:
         return normalized + "::" + "::".join(nodes)
     return normalized
+
+
+def pytest_collection_identity(value: object) -> dict:
+    """Build or validate bounded collection truth, independently of reports.
+
+    Historical lists normalize separators, sort unique nodeids by Unicode code
+    point, and hash UTF-8 nodeids terminated by LF. Compact observations carry
+    only this rule, count and digest; display identities never enter the hash.
+    """
+    if isinstance(value, dict):
+        if (set(value) != {"rule", "count", "digest"}
+                or value.get("rule") != COLLECTION_IDENTITY_RULE
+                or type(value.get("count")) is not int
+                or not 0 <= value["count"] <= MAX_CANONICAL_REPORTS
+                or not isinstance(value.get("digest"), str)
+                or re.fullmatch(r"[0-9a-f]{64}", value["digest"]) is None
+                or ((value["count"] == 0)
+                    != (value["digest"] == hashlib.sha256(b"").hexdigest()))):
+            raise VerificationContractError("malformed pytest collection identity")
+        return dict(value)
+    if (not isinstance(value, list) or len(value) > MAX_CANONICAL_REPORTS
+            or any(not isinstance(item, str) or not item
+                   or len(item) > MAX_CANONICAL_NODEID_CHARS for item in value)):
+        raise VerificationContractError("malformed pytest collection data")
+    normalized = [item.replace("\\", "/") for item in value]
+    if len(normalized) != len(set(normalized)):
+        raise VerificationContractError("pytest collection contains duplicate node identities")
+    digest = hashlib.sha256()
+    for item in sorted(normalized):
+        digest.update((item + "\n").encode("utf-8"))
+    return {"rule": COLLECTION_IDENTITY_RULE, "count": len(normalized),
+            "digest": digest.hexdigest()}
 
 
 def verification_digest(value: object) -> str:

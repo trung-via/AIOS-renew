@@ -41,6 +41,8 @@ _WINDOWS_TEMP_PREFIX = "aios-verification-"
 _TEMP_CLEANUP_MAX_ELAPSED_SECONDS = 5.0
 _TEMP_CLEANUP_INITIAL_RETRY_DELAY_SECONDS = 0.05
 _TEMP_CLEANUP_MAX_RETRY_DELAY_SECONDS = 0.5
+_MAX_CLEANUP_DIAGNOSTIC_CHARS = 1024
+_MAX_CLEANUP_DIAGNOSTICS = 4
 
 
 class RuntimeVerificationError(RuntimeError):
@@ -49,6 +51,41 @@ class RuntimeVerificationError(RuntimeError):
     def __init__(self, message: str, *, evidence: Iterable[Evidence] = ()) -> None:
         super().__init__(message)
         self.evidence = tuple(evidence)
+        self.cleanup_diagnostics: tuple[str, ...] = ()
+
+
+def _cleanup_verification_root(
+    temp_root: Path, *, primary: BaseException | None = None,
+    evidence: Iterable[Evidence] = (),
+) -> None:
+    """Keep finite cleanup subordinate to a primary cause, otherwise block."""
+    try:
+        _remove_temp_root(temp_root)
+    except OSError as exc:
+        if primary is None:
+            raise RuntimeVerificationError(_cleanup_failure_detail(exc), evidence=evidence) from exc
+        _retain_cleanup_failure(primary, exc)
+
+
+def _cleanup_failure_detail(exc: OSError) -> str:
+    detail = f"verification environment could not be cleaned: {exc}"
+    if len(detail) > _MAX_CLEANUP_DIAGNOSTIC_CHARS:
+        detail = detail[:_MAX_CLEANUP_DIAGNOSTIC_CHARS - 3] + "..."
+    return detail
+
+
+def _retain_cleanup_failure(primary: BaseException, exc: OSError) -> None:
+    detail = _cleanup_failure_detail(exc)
+    if isinstance(primary, RuntimeVerificationError):
+        if len(primary.cleanup_diagnostics) >= _MAX_CLEANUP_DIAGNOSTICS:
+            return
+        primary.cleanup_diagnostics += (detail,)
+    else:
+        notes = getattr(primary, "__notes__", ())
+        if sum(n.startswith("verification environment could not be cleaned:")
+               for n in notes) >= _MAX_CLEANUP_DIAGNOSTICS:
+            return
+    primary.add_note(detail)
 
 
 @contextmanager
@@ -64,8 +101,8 @@ def materialize_verification_subject(
     The clone deliberately has its own Git directory rather than using a linked
     worktree.  Immutable objects may be copied from the control repository, but
     its index, refs, configuration, and other mutable Git state are isolated.
-    Cleanup is subordinate: it can neither change verification's verdict nor
-    replace a canonical terminal with a cleanup failure.
+    Cleanup preserves an earlier verification exception and exposes bounded
+    diagnostics. With no earlier failure, unrecoverable cleanup blocks.
     """
 
     repository = repository.resolve()
@@ -140,38 +177,29 @@ def materialize_verification_subject(
         if _git(subject, "status", "--porcelain", environment=git_environment):
             raise RuntimeVerificationError("verification subject is initially dirty")
         (subject / ".git" / "aios").mkdir()
-    except RuntimeVerificationError:
-        if temp_root is not None:
-            try:
-                _remove_temp_root(temp_root)
-            except OSError:
-                pass
-        raise
     except (OSError, UnicodeError, RuntimeError) as exc:
-        if temp_root is not None:
-            try:
-                _remove_temp_root(temp_root)
-            except OSError:
-                pass
-        raise RuntimeVerificationError(
+        primary = exc if isinstance(exc, RuntimeVerificationError) else RuntimeVerificationError(
             f"verification subject could not be materialized: {exc}"
-        ) from exc
-    except BaseException:
+        )
         if temp_root is not None:
-            try:
-                _remove_temp_root(temp_root)
-            except OSError:
-                pass
+            _cleanup_verification_root(temp_root, primary=primary)
+        if primary is exc:
+            raise
+        raise primary from exc
+    except BaseException as exc:
+        if temp_root is not None:
+            _cleanup_verification_root(temp_root, primary=exc)
         raise
 
+    primary = None
     try:
         yield subject
+    except BaseException as exc:
+        primary = exc
+        raise
     finally:
         if temp_root is not None:
-            try:
-                _remove_temp_root(temp_root)
-            except OSError:
-                pass
+            _cleanup_verification_root(temp_root, primary=primary)
 
 
 def execute_verification(
@@ -206,6 +234,7 @@ def execute_verification(
     else:
         raw_directory.mkdir(parents=True, exist_ok=True)
     evidence: list[Evidence] = []
+    primary: BaseException | None = None
     try:
         env = _verification_environment(
             environment=environment,
@@ -270,15 +299,31 @@ def execute_verification(
                     f"{completed.returncode}: {command}",
                     evidence=evidence,
                 )
+    except BaseException as exc:
+        primary = exc
+        raise
     finally:
         if temp_root is not None:
             try:
                 _remove_temp_root(temp_root)
             except OSError as exc:
-                raise RuntimeVerificationError(
-                    f"verification environment could not be cleaned: {exc}",
-                    evidence=evidence,
-                ) from exc
+                # A raw nonzero may have been returned for later V2 attribution.
+                # If cleanup now blocks that return, retain the raw failure as
+                # the primary cause rather than substituting a cleanup verdict.
+                pending = next((item for item in evidence if item.result.exit_code != 0), None)
+                if primary is None and pending is not None:
+                    primary = RuntimeVerificationError(
+                        f"verification command failed with exit code "
+                        f"{pending.result.exit_code}: {pending.source.command}",
+                        evidence=evidence,
+                    )
+                    _retain_cleanup_failure(primary, exc)
+                    raise primary from None
+                if primary is None:
+                    raise RuntimeVerificationError(
+                        _cleanup_failure_detail(exc), evidence=evidence,
+                    ) from exc
+                _retain_cleanup_failure(primary, exc)
 
     return tuple(evidence)
 
@@ -708,8 +753,10 @@ def execute_minimum_verification(
             if audit_path.exists() and audit_path.read_text(encoding="utf-8") != encoded:
                 raise RuntimeVerificationError("conflicting V2 derivation audit", evidence=evidence)
             audit_path.write_text(encoded, encoding="utf-8")
-    if blocking:
-        raise RuntimeVerificationError("V2 verification remains blocking: " + ", ".join(blocking), evidence=evidence)
+        if blocking:
+            # Raise before the subject contexts unwind so their cleanup failures
+            # remain subordinate to this established blocking verification cause.
+            raise RuntimeVerificationError("V2 verification remains blocking: " + ", ".join(blocking), evidence=evidence)
     return tuple(evidence)
 
 

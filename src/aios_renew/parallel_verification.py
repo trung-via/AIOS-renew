@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import importlib
 import importlib.metadata
 import json
@@ -14,7 +13,10 @@ import sys
 import time
 from typing import Any, Callable
 
-from .verification_contract import validate_observation, VerificationContractError, MAX_CANONICAL_BYTES
+from .verification_contract import (
+    validate_observation, VerificationContractError, MAX_CANONICAL_BYTES,
+    pytest_collection_identity,
+)
 
 PYTEST_RANGE = ((8, 2), (9, 0))
 XDIST_RANGE = ((3, 6), (4, 0))
@@ -71,27 +73,11 @@ def load_toolchain() -> dict[str, str]:
 
 
 def collection_identity(nodeids: object) -> dict[str, Any]:
-    """Normalize pytest node ids and return the repository-owned identity.
-
-    Rule v1 converts path separators to ``/``, requires unique non-empty string
-    identities, sorts them by Unicode code point, and hashes their UTF-8 form,
-    each terminated by one LF, with SHA-256.
-    """
-
-    if not isinstance(nodeids, list) or any(
-        not isinstance(item, str) or not item for item in nodeids
-    ):
-        raise ProbeError("malformed pytest collection data")
-    normalized = [item.replace("\\", "/") for item in nodeids]
-    if len(normalized) != len(set(normalized)):
-        raise ProbeError("pytest collection contains duplicate node identities")
-    normalized.sort()
-    encoded = "".join(f"{item}\n" for item in normalized).encode("utf-8")
-    return {
-        "rule": "sorted-posix-nodeid-lf-sha256-v1",
-        "count": len(normalized),
-        "digest": hashlib.sha256(encoded).hexdigest(),
-    }
+    """Read historical nodeid lists or validated compact collection identities."""
+    try:
+        return pytest_collection_identity(nodeids)
+    except (VerificationContractError, UnicodeError) as exc:
+        raise ProbeError(str(exc)) from exc
 
 
 def subject_identity(repository: Path) -> dict[str, Any]:
@@ -364,8 +350,16 @@ def _parallel_conformance(
     workers = observation.get("workers")
     if not isinstance(collections, dict) or not isinstance(workers, dict):
         raise ProbeError("malformed structured xdist worker data")
-    if set(collections) != set(workers) or len(workers) != expected:
+    if (set(collections) != set(workers) or len(workers) != expected
+            or any(not isinstance(worker_id, str) or not worker_id for worker_id in workers)):
         raise ProbeError("missing or unexpected xdist worker data")
+    canonical = collection_identity(canonical)
+    controller = observation.get("controller_collection")
+    # Historical list observations had no controller collection in xdist mode.
+    # New compact observations must preserve the controller's own identity.
+    if controller is not None or any(isinstance(c, dict) for c in collections.values()):
+        if collection_identity(controller) != canonical:
+            raise ProbeError("controller collection does not match canonical collection")
 
     temp_roots: list[str] = []
     git_roots: list[str] = []
@@ -374,9 +368,10 @@ def _parallel_conformance(
         worker = workers[worker_id]
         if not isinstance(worker, dict) or worker.get("worker_id") != worker_id:
             raise ProbeError("malformed structured xdist worker identity")
-        if worker.get("collection") != collections[worker_id]:
+        identity = collection_identity(collections[worker_id])
+        if collection_identity(worker.get("collection")) != identity:
             raise ProbeError("inconsistent structured xdist worker collection")
-        if collection_identity(collections[worker_id]) != canonical:
+        if identity != canonical:
             raise ProbeError("xdist worker collection does not match canonical collection")
         temp_root = worker.get("temporary_root")
         git_root = worker.get("git_fixture_cache_root")

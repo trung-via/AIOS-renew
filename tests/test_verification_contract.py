@@ -2,6 +2,7 @@
 
 import pytest
 import copy
+import hashlib
 
 from aios_renew.verification_contract import (
     VerificationContractError,
@@ -480,3 +481,46 @@ def test_malformed_rebaseline_family_fails_closed(command) -> None:
         validate_v1_verification((command,), full_suite_reason=None, path="verification.required")
     with pytest.raises(VerificationContractError, match="malformed BP-V4 rebaseline"):
         normalize_verification((command,))
+
+
+@pytest.mark.parametrize("defect", ["rule", "count_bool", "count_negative", "count_bound",
+                                  "digest", "empty_digest", "nonempty_digest", "missing", "extra"])
+def test_compact_collection_identity_is_strict_and_bounded(defect):
+    from aios_renew.verification_contract import (
+        pytest_collection_identity, MAX_CANONICAL_REPORTS,
+    )
+    identity = pytest_collection_identity(["tests/test_sample.py::test_example"])
+    if defect == "rule":
+        identity["rule"] = "unowned-rule"
+    elif defect == "count_bool":
+        identity["count"] = True
+    elif defect == "count_negative":
+        identity["count"] = -1
+    elif defect == "count_bound":
+        identity["count"] = MAX_CANONICAL_REPORTS + 1
+    elif defect == "digest":
+        identity["digest"] = "G" * 64
+    elif defect == "empty_digest":
+        identity["count"] = 0
+    elif defect == "nonempty_digest":
+        identity["digest"] = hashlib.sha256(b"").hexdigest()
+    elif defect == "missing":
+        del identity["digest"]
+    else:
+        identity["nodeids"] = ["unbounded-list"]
+    with pytest.raises(VerificationContractError, match="collection identity"):
+        pytest_collection_identity(identity)
+
+
+def test_compact_collection_identity_keeps_historical_rule_and_full_identity():
+    from aios_renew.verification_contract import pytest_collection_identity
+    nodeids = ["tests\\test_sample.py::test_b[" + "x" * 500 + "]",
+               "tests/test_sample.py::test_a"]
+    expected = hashlib.sha256((nodeids[1] + "\n" + nodeids[0].replace("\\", "/") + "\n").encode("utf-8")).hexdigest()
+    identity = pytest_collection_identity(nodeids)
+    assert identity == {"rule": "sorted-posix-nodeid-lf-sha256-v1", "count": 2, "digest": expected}
+    assert pytest_collection_identity(identity) == identity
+    assert pytest_collection_identity(list(reversed(nodeids))) == identity
+    assert pytest_collection_identity([])["digest"] == hashlib.sha256(b"").hexdigest()
+    with pytest.raises(VerificationContractError, match="duplicate"):
+        pytest_collection_identity(["tests\\test_sample.py::test_a", "tests/test_sample.py::test_a"])

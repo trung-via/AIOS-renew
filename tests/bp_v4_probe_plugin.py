@@ -22,6 +22,7 @@ from aios_renew.verification_contract import (
     MAX_CANONICAL_BYTES, MAX_CANONICAL_FAILURES, MAX_CANONICAL_NODEID_CHARS,
     MAX_CANONICAL_REPORTS, MAX_FAILURE_DETAIL_CHARS, verification_digest,
     toolchain_inventory_digest,
+    pytest_collection_identity, VerificationContractError,
 )
 
 
@@ -29,7 +30,8 @@ _OUTPUT_ENV = "AIOS_BP_V4_PLUGIN_OUTPUT"
 MAX_FAILURE_IDENTITIES = 20
 MAX_NODEID_DISPLAY_CHARS = 240
 _PHASE_ORDER = {"collect": -1, "setup": 0, "call": 1, "teardown": 2}
-_node_collections: dict[str, list[str]] = {}
+_node_collections: dict[str, dict[str, Any] | None] = {}
+_expected_nodeids: set[str] | None = None
 _worker_payloads: dict[str, dict[str, Any]] = {}
 _local_failure_count = 0
 _local_failure_facts: list[dict[str, Any]] = []
@@ -183,6 +185,8 @@ def pytest_sessionstart(session: Any) -> None:
     _canonical_errors = []
     _canonical_bytes = 0
     _canonical_failure_count = 0
+    global _expected_nodeids
+    _expected_nodeids = None
     _node_collections.clear()
     _worker_payloads.clear()
 
@@ -269,12 +273,23 @@ def _worker_facts(config: Any) -> dict[str, Any]:
 
 
 def pytest_collection_finish(session: Any) -> None:
+    global _expected_nodeids
     config = session.config
     nodeids = [item.nodeid for item in session.items]
+    identity = _collection_identity(nodeids)
+    _expected_nodeids = {_exact_nodeid(n) for n in nodeids}
     if hasattr(config, "workerinput"):
-        config.workeroutput["aios_bp_v4_collection"] = nodeids
+        config.workeroutput["aios_bp_v4_collection"] = identity
     else:
-        config._aios_bp_v4_collection = nodeids
+        config._aios_bp_v4_collection = identity
+
+
+def _collection_identity(value: object) -> dict[str, Any] | None:
+    try:
+        return pytest_collection_identity(value)
+    except (VerificationContractError, UnicodeError):
+        _canonical_errors.append("malformed pytest collection identity")
+        return None
 
 
 def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
@@ -294,13 +309,18 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
     if not output:
         return
     serial_collection = getattr(config, "_aios_bp_v4_collection", None)
+    controller_collection = serial_collection
+    if _node_collections:
+        controller_collection = _node_collections[sorted(_node_collections)[0]]
+    controller_collection = _collection_identity(controller_collection)
     if not getattr(getattr(config, "option", None), "collectonly", False):
-        expected = serial_collection
-        if _node_collections:
-            expected = next(iter(_node_collections.values()))
-        if isinstance(expected, list):
+        expected = _expected_nodeids
+        # Preserve completion checking for historical injected list fixtures.
+        if expected is None and isinstance(serial_collection, list):
+            expected = {_exact_nodeid(n) for n in serial_collection}
+        if expected is not None:
             observed = {nodeid for nodeid, phase in _reports if phase != "collect"}
-            if {_exact_nodeid(n) for n in expected}.difference(observed):
+            if expected.difference(observed):
                 _canonical_errors.append("pytest did not execute the complete selected population")
     failures = (
         _summary(
@@ -319,7 +339,7 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
         "schema": "AIOS_BP_V4_PYTEST_OBSERVATION",
         "version": 1,
         "exit_status": int(exitstatus),
-        "controller_collection": serial_collection,
+        "controller_collection": controller_collection,
         "worker_collections": _node_collections,
         "workers": _worker_payloads,
         "failure_diagnostics": failures,
@@ -334,14 +354,24 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
 
 
 def pytest_xdist_node_collection_finished(node: Any, ids: list[str]) -> None:
-    _node_collections[node.gateway.id] = list(ids)
+    global _expected_nodeids
+    identity = _collection_identity(ids)
+    if node.gateway.id in _node_collections:
+        _canonical_errors.append("duplicate worker collection observation")
+    if _node_collections and identity != next(iter(_node_collections.values())):
+        _canonical_errors.append("xdist worker collections disagree")
+    _node_collections[node.gateway.id] = identity
+    if _expected_nodeids is None and identity is not None:
+        # One in-memory exact population suffices for completeness checking;
+        # no full collection list is serialized in the final observation.
+        _expected_nodeids = {_exact_nodeid(n) for n in ids}
 
 
 def pytest_testnodedown(node: Any, error: object) -> None:
     if error is not None:
         _canonical_errors.append("worker terminated with an error")
     facts = node.workeroutput.get("aios_bp_v4_facts")
-    collection = node.workeroutput.get("aios_bp_v4_collection")
+    collection = _collection_identity(node.workeroutput.get("aios_bp_v4_collection"))
     if isinstance(facts, dict):
         payload = dict(facts)
         payload["collection"] = collection

@@ -25,8 +25,9 @@ def observation(
     failures: dict[str, object] | None = None,
 ) -> dict[str, object]:
     collection = NODEIDS if nodeids is None else nodeids
+    identity = probe.collection_identity(collection)
     worker_collections = {
-        f"gw{index}": list(collection) for index in range(workers)
+        f"gw{index}": dict(identity) for index in range(workers)
     }
     worker_data = {
         f"gw{index}": {
@@ -36,7 +37,7 @@ def observation(
             "git_fixture_cache_root": (
                 "root/git-shared" if shared_root else f"root/git-{index}"
             ),
-            "collection": list(collection),
+            "collection": dict(identity),
         }
         for index in range(workers)
     }
@@ -44,7 +45,7 @@ def observation(
         "schema": "AIOS_BP_V4_PYTEST_OBSERVATION",
         "version": 1,
         "exit_status": exit_status,
-        "controller_collection": list(collection) if workers == 0 else None,
+        "controller_collection": dict(identity),
         "worker_collections": worker_collections,
         "workers": worker_data,
         "failure_diagnostics": failures

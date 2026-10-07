@@ -2,9 +2,13 @@
 
 from pathlib import Path
 from types import SimpleNamespace
+import json
 
 import pytest
-from aios_renew.parallel_verification import _failure_diagnostics
+from aios_renew.parallel_verification import (
+    _failure_diagnostics, _parallel_conformance, _load_observation, collection_identity,
+)
+from aios_renew.verification_contract import MAX_CANONICAL_BYTES, validate_observation
 
 from scripts import aios_parallel_full_suite as selected
 from test_bp_v4_parallel_probe import observation
@@ -51,7 +55,10 @@ def test_plugin_parallel_worker_merge_preserves_exact_nodeid_and_phase(monkeypat
     failures = plugin._summary(plugin._local_failure_count, plugin._local_failure_facts, plugin._local_failure_truncated)
     assert all(r["clipped"] for r in failures["displayed_identities"])
     plugin.pytest_sessionstart(None)
-    worker = SimpleNamespace(gateway=SimpleNamespace(id="gw0"), workeroutput={"aios_bp_v4_failures": failures})
+    worker = SimpleNamespace(gateway=SimpleNamespace(id="gw0"), workeroutput={
+        "aios_bp_v4_failures": failures,
+        "aios_bp_v4_collection": collection_identity([long_nodeid]),
+    })
     plugin.pytest_testnodedown(worker, None)
     canonical = plugin._canonical_summary()
     assert canonical["complete"] and canonical["failure_count"] == 2
@@ -100,6 +107,128 @@ def test_plugin_preserves_collection_failure_phase_and_early_stop_is_incomplete(
     canonical = json.loads(output.read_text(encoding="utf-8"))["failure_diagnostics"]["canonical"]
     assert not canonical["complete"] and canonical["failure_count"] == 1
     assert "complete selected population" in " ".join(canonical["errors"])
+
+
+def test_current_scale_twelve_worker_observation_fits_unchanged_byte_bound(tmp_path, monkeypatch):
+    from tests import bp_v4_probe_plugin as plugin
+    # Conservatively larger than the published 1,825-test historical population;
+    # long parametrized identities make repeated full collections exceed 16 MiB.
+    nodeids = [f"tests/test_scale.py::test_population[{i:05d}-" + "parameter-" * 20 + "]"
+               for i in range(8192)]
+    identity = collection_identity(nodeids)
+    profile = {"profile": "bounded-parallel-full-suite-v1", "workers": 12,
+               "distribution": "load", "max_worker_restart": 0, "collect_only": False}
+    toolchain = {"python_implementation": "CPython", "python_version": "3.14.7",
+                 "python_executable": "C:/python/python.exe", "platform_system": "Windows",
+                 "platform_machine": "AMD64", "pytest_version": "8.4.2",
+                 "pytest_xdist_version": "3.8.0", "installed_distributions_digest": "a" * 64}
+    monkeypatch.setattr(plugin, "_resolve_conditions", lambda: (profile, toolchain))
+    monkeypatch.setattr(plugin, "_worker_facts", lambda config: {
+        "worker_id": config.workerinput["workerid"],
+        "process_id": 100 + config.index,
+        "temporary_root": f"C:/temp/worker-{config.index}",
+        "git_fixture_cache_root": f"C:/temp/git-{config.index}",
+    })
+    nodes = []
+    for index in range(12):
+        config = SimpleNamespace(rootpath=tmp_path, index=index,
+                                 workerinput={"workerid": f"gw{index}"}, workeroutput={})
+        session = SimpleNamespace(config=config,
+                                  items=[SimpleNamespace(nodeid=n) for n in nodeids])
+        plugin.pytest_sessionstart(session)
+        plugin.pytest_collection_finish(session)
+        assert config.workeroutput["aios_bp_v4_collection"] == identity
+        for case in range(index, len(nodeids), 12):
+            for phase in ("setup", "call", "teardown"):
+                if case < 51 and phase == "call":
+                    record_plugin_failure(plugin, case, nodeid=nodeids[case])
+                else:
+                    plugin._canonical_add({"nodeid": nodeids[case], "phase": phase, "outcome": "PASS"})
+        plugin.pytest_sessionfinish(session, 1)
+        nodes.append(SimpleNamespace(gateway=SimpleNamespace(id=f"gw{index}"),
+                                     workeroutput=config.workeroutput))
+
+    controller = SimpleNamespace(config=SimpleNamespace(rootpath=tmp_path,
+                                  option=SimpleNamespace(collectonly=False)))
+    plugin.pytest_sessionstart(controller)
+    for node in reversed(nodes):
+        plugin.pytest_xdist_node_collection_finished(node, nodeids)
+        plugin.pytest_testnodedown(node, None)
+    output = tmp_path / "scale-observation.json"
+    monkeypatch.setenv("AIOS_BP_V4_PLUGIN_OUTPUT", str(output))
+    plugin.pytest_sessionfinish(controller, 1)
+    value = _load_observation(output)
+    assert MAX_CANONICAL_BYTES == 16 * 1024 * 1024
+    assert output.stat().st_size < MAX_CANONICAL_BYTES
+    assert 24 * len(json.dumps(nodeids).encode("utf-8")) > MAX_CANONICAL_BYTES
+    assert value["controller_collection"] == identity
+    assert len(value["worker_collections"]) == len(value["workers"]) == 12
+    assert all(c == identity for c in value["worker_collections"].values())
+    assert all(w["collection"] == identity for w in value["workers"].values())
+    assert all(_parallel_conformance(value, identity, 12).values())
+    diagnostics = _failure_diagnostics(value)
+    canonical = diagnostics["canonical"]
+    validate_observation({**canonical, "subject_sha": "a" * 40, "command": "pytest-observation",
+                          "profile": profile, "toolchain": toolchain, "exit_code": 1})
+    assert len(canonical["reports"]) == 3 * len(nodeids)
+    assert {(r["nodeid"], r["phase"]) for r in canonical["reports"]} == {
+        (n, phase) for n in nodeids for phase in ("setup", "call", "teardown")}
+    failures = [r for r in canonical["reports"] if r["outcome"] == "FAIL"]
+    assert canonical["failure_count"] == len(failures) == 51
+    assert [r["nodeid"] for r in failures] == nodeids[:51]
+    assert all(r["phase"] == "call" and r["detail"] == "AssertionError: expected 1\n[]"
+               and r["profile"] == profile and r["toolchain"] == toolchain for r in failures)
+    assert diagnostics["displayed_count"] == 20 and diagnostics["truncated"]
+    assert all(r["clipped"] for r in diagnostics["displayed_identities"])
+    envelope, success = execute(monkeypatch, lambda *args, **kwargs: (
+        0 if kwargs["collect_only"] else 1, 1.0,
+        observation(nodeids=nodeids) if kwargs["collect_only"] else value,
+    ))
+    assert not success
+    # Include the selected wrapper's complete final envelope, not only the
+    # exported pytest observation, in the unchanged-byte-bound assertion.
+    assert len(json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode("utf-8")) < MAX_CANONICAL_BYTES
+    assert envelope["result"]["canonical"] == canonical
+
+
+@pytest.mark.parametrize("defect", [
+    "missing_controller", "controller_disagreement", "controller_malformed",
+    "worker_rule", "worker_digest", "worker_count", "worker_extra", "missing_collection",
+    "worker_output_disagreement", "worker_output_malformed",
+])
+def test_compact_collection_conformance_fails_closed(defect):
+    data = observation(workers=12)
+    canonical = dict(data["controller_collection"])
+    if defect == "missing_controller":
+        del data["controller_collection"]
+    elif defect == "controller_disagreement":
+        data["controller_collection"]["digest"] = "0" * 64
+    elif defect == "controller_malformed":
+        data["controller_collection"]["count"] = True
+    elif defect == "missing_collection":
+        del data["worker_collections"]["gw1"]
+    elif defect == "worker_output_disagreement":
+        data["workers"]["gw1"]["collection"]["digest"] = "0" * 64
+    elif defect == "worker_output_malformed":
+        data["workers"]["gw1"]["collection"]["count"] = True
+    else:
+        field, value = {"worker_rule": ("rule", "unknown"),
+                        "worker_digest": ("digest", "invalid"),
+                        "worker_count": ("count", -1),
+                        "worker_extra": ("extra", "unbounded")}[defect]
+        data["worker_collections"]["gw1"][field] = value
+    with pytest.raises(selected.ProbeError):
+        _parallel_conformance(data, canonical, 12)
+
+
+def test_historical_list_observation_remains_readable():
+    data = observation(workers=2)
+    nodeids = ["tests/test_sample.py::test_example"]
+    data["controller_collection"] = None
+    for worker_id, worker in data["workers"].items():
+        data["worker_collections"][worker_id] = list(nodeids)
+        worker["collection"] = list(nodeids)
+    assert all(_parallel_conformance(data, collection_identity(nodeids), 2).values())
 
 
 def execute(monkeypatch, runner):

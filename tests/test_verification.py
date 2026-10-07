@@ -715,6 +715,129 @@ def test_windows_temp_cleanup_failure_fails_closed_and_preserves_raw_evidence(
     )
 
 
+@pytest.mark.parametrize("scenario", [
+    "command_failure", "returned_failure", "start_failure", "invalid_utf8", "unexpected_exception",
+])
+def test_windows_primary_cause_survives_bounded_cleanup_diagnostic(tmp_path, monkeypatch, scenario):
+    cleanup_calls = []
+    original = ValueError("original runner failure") if scenario == "unexpected_exception" else OSError("command start denied")
+
+    def runner(*args, **kwargs):
+        if scenario in {"start_failure", "unexpected_exception"}:
+            raise original
+        return completed(7 if scenario in {"command_failure", "returned_failure"} else 0,
+                         stdout=b"\xff" if scenario == "invalid_utf8" else b"primary output\n")
+
+    def fail_cleanup(path):
+        cleanup_calls.append(path)
+        raise PermissionError("operator.lock sharing violation " + "x" * 4000)
+
+    root = tmp_path / "isolated"
+    monkeypatch.setattr(verification_module, "_isolated_temp_root", lambda **kwargs: root)
+    monkeypatch.setattr(verification_module, "_remove_temp_root", fail_cleanup)
+    error_type = ValueError if scenario == "unexpected_exception" else RuntimeVerificationError
+    with pytest.raises(error_type) as caught:
+        execute_verification(("one-command",), run_id="RUN-cleanup", subject_sha="a" * 40,
+            repository=tmp_path, raw_directory=tmp_path / "raw", runner=runner,
+            platform="nt", environment={}, stop_on_failure=scenario != "returned_failure")
+    primary = caught.value
+    assert cleanup_calls == [root]
+    assert len(primary.__notes__) == 1
+    assert "operator.lock sharing violation" in primary.__notes__[0]
+    assert len(primary.__notes__[0]) <= verification_module._MAX_CLEANUP_DIAGNOSTIC_CHARS
+    if scenario == "unexpected_exception":
+        assert primary is original
+    else:
+        assert primary.cleanup_diagnostics == tuple(primary.__notes__)
+        if scenario in {"command_failure", "returned_failure"}:
+            assert str(primary) == "verification command failed with exit code 7: one-command"
+            assert primary.evidence[0].result.exit_code == 7
+            assert Path(primary.evidence[0].raw_path).read_bytes().startswith(b"STDOUT\nprimary output\n")
+        elif scenario == "start_failure":
+            assert "could not start" in str(primary) and primary.__cause__ is original
+        else:
+            assert "not strict UTF-8" in str(primary)
+            assert isinstance(primary.__cause__, UnicodeDecodeError)
+            assert (tmp_path / "raw" / "RUN-cleanup-V001.raw").read_bytes().startswith(b"STDOUT\n\xff")
+
+
+@pytest.mark.parametrize("scenario", ["materialization_failure", "body_failure", "success"])
+def test_subject_cleanup_preserves_primary_or_blocks_success(tmp_path, monkeypatch, scenario):
+    root = tmp_path / "isolated"
+    root.mkdir()
+    subject_sha = "a" * 40
+    primary = RuntimeVerificationError("primary V2 blocking cause")
+    cleanup_calls = []
+
+    def observe_git(repository, *args, **kwargs):
+        if "clone" in args:
+            if scenario == "materialization_failure":
+                raise OSError("clone failed")
+            (Path(args[-1]) / ".git").mkdir(parents=True)
+        return subject_sha if args[0] == "rev-parse" else ""
+
+    def fail_cleanup(path):
+        cleanup_calls.append(path)
+        raise PermissionError("subject cleanup denied")
+
+    monkeypatch.setattr(verification_module, "_git", observe_git)
+    monkeypatch.setattr(verification_module, "_optional_git", lambda *args, **kwargs: None)
+    monkeypatch.setattr(verification_module, "_isolated_temp_root", lambda **kwargs: root)
+    monkeypatch.setattr(verification_module, "_remove_temp_root", fail_cleanup)
+    with pytest.raises(RuntimeVerificationError) as caught:
+        with materialize_verification_subject(tmp_path, run_id="RUN-cleanup", subject_sha=subject_sha):
+            if scenario == "body_failure":
+                raise primary
+    assert cleanup_calls == [root]
+    if scenario == "success":
+        assert "could not be cleaned" in str(caught.value)
+        assert isinstance(caught.value.__cause__, PermissionError)
+    else:
+        assert "subject cleanup denied" in caught.value.cleanup_diagnostics[0]
+        if scenario == "body_failure":
+            assert caught.value is primary
+        else:
+            assert "could not be materialized: clone failed" in str(caught.value)
+            assert isinstance(caught.value.__cause__, OSError)
+
+
+def test_cleanup_diagnostic_population_remains_finite():
+    primary = RuntimeVerificationError("primary cause")
+    for _ in range(10):
+        verification_module._retain_cleanup_failure(primary, PermissionError("locked"))
+    assert len(primary.cleanup_diagnostics) == len(primary.__notes__) == verification_module._MAX_CLEANUP_DIAGNOSTICS
+    assert str(primary) == "primary cause"
+
+
+def test_v2_blocking_outcome_is_raised_before_subject_cleanup(v2_injected_execution, tmp_path, monkeypatch):
+    execute, state = v2_injected_execution
+    state["base_pass"] = True
+    original_materialize = verification_module.materialize_verification_subject
+
+    @contextmanager
+    def materialize(*args, **kwargs):
+        with original_materialize(*args, **kwargs) as checkout:
+            primary = None
+            try:
+                yield checkout
+            except BaseException as exc:
+                primary = exc
+                raise
+            finally:
+                verification_module._cleanup_verification_root(checkout, primary=primary)
+
+    def fail_cleanup(path):
+        raise PermissionError("V2 subject sharing violation")
+
+    monkeypatch.setattr(verification_module, "materialize_verification_subject", materialize)
+    monkeypatch.setattr(verification_module, "_remove_temp_root", fail_cleanup)
+    with pytest.raises(RuntimeVerificationError, match="V2 verification remains blocking") as caught:
+        execute("RUN-cleanup")
+    assert len(caught.value.cleanup_diagnostics) == 2
+    assert caught.value.evidence[0].result.exit_code == 1
+    assert {r["classification"] for r in caught.value.evidence[0].verification["attribution"]} == {"CANDIDATE_REGRESSION"}
+
+
 def test_temp_cleanup_recovers_read_only_git_object_tree(tmp_path: Path) -> None:
     temp_root = tmp_path / "isolated-verification-root"
     object_directory = temp_root / "smoke-repo" / ".git" / "objects" / "0a"
