@@ -1309,7 +1309,7 @@ sequence:
       - AUTHOR_OR_DISPATCH_WITHOUT_NEW_TASK_PROVENANCE_AND_DELEGATION
     exit: SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
     return_to: brain-optimization-v1-task316-verification-baseline-recovery
-    blocks:
+    historical_blocks_satisfied_by_completion:
       - brain-optimization-v1-task316-verification-baseline-recovery
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
