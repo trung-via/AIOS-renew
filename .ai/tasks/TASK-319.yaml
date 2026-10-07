@@ -1,0 +1,129 @@
+task_id: TASK-319
+revision: 1
+goal: Harden minimum-sufficient-v2 full-suite evidence production and Windows verification
+  cleanup so large parallel observations remain bounded without losing canonical failure
+  truth, and cleanup failures cannot mask an earlier verification cause.
+problem: RUN-316-003 is an admitted canonical verification FAILURE. Its self-host
+  workflow surfaced a Windows sharing violation while Runtime removed the isolated
+  verification environment, at a repository lock file created by the concurrent-acquisition
+  regression. Current execute_verification cleanup runs in a finally block and can
+  raise its own RuntimeVerificationError, so a cleanup failure can replace an earlier
+  verification exception. Separately, the selected parallel observation currently
+  serializes complete pytest collections in controller and per-worker structures,
+  including collection material duplicated across twelve workers; that is a repository-code
+  scale risk against the existing canonical byte bound, but it is not asserted to
+  be the canonical cause of RUN-316-003. TASK-319 hardens these verification-infrastructure
+  boundaries before TASK-316 is corrected or another expensive full-suite run is attempted.
+assumptions:
+- The Human explicitly prioritized TASK-319 before further TASK-316 correction and
+  selected a fresh task-scoped execution profile separately from the TASK contract.
+- RUN-316-003 remains immutable canonical FAILURE lineage and TASK-319 does not rewrite
+  or repair that RUN.
+- The canonical workflow evidence for RUN-316-003 surfaces a Windows verification-environment
+  cleanup sharing violation involving operator.lock.
+- The repeated full collection representation is established by current repository
+  code and is treated as a bounded scale-hardening target, not retroactive proof of
+  the RUN-316-003 terminal cause.
+- Human diagnostic attribution for TASK-316 may guide later Brain correction reasoning
+  but is not canonical Runtime evidence for TASK-319.
+- After reviewed publication of TASK-319, TASK-316 r3 returns as the blocked predecessor
+  and must be freshly reconciled before correction or re-execution.
+scope:
+  inspect:
+  - .ai/tasks/TASK-316.yaml
+  - .ai/verification-profiles.yaml
+  - scripts/aios_parallel_full_suite.py
+  - src/aios_renew/parallel_verification.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/operator.py
+  - tests/bp_v4_probe_plugin.py
+  - tests/test_parallel_verification.py
+  - tests/test_bp_v4_parallel_probe.py
+  - tests/test_verification.py
+  - tests/test_verification_contract.py
+  - tests/test_operator.py
+  modify:
+  - src/aios_renew/parallel_verification.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - tests/bp_v4_probe_plugin.py
+  - tests/test_parallel_verification.py
+  - tests/test_bp_v4_parallel_probe.py
+  - tests/test_verification.py
+  - tests/test_verification_contract.py
+non_goals:
+- Repair TASK-316 candidate failures, author REPAIR-316, or reinterpret TASK-316 diagnostic
+  classifications as canonical Runtime evidence.
+- Change RepositoryLock production semantics, operator concurrency authority, or tests/test_operator.py
+  merely to make Windows cleanup succeed.
+- Raise MAX_CANONICAL_BYTES as the primary solution or discard exact canonical failure
+  identities, phases, details, fingerprints, profile, or toolchain bindings to fit
+  the bound.
+- Change the Human-selected twelve-worker verification profile, remove the full-suite
+  integration guard from TASK-316, or claim TASK-316 verification success.
+- Create a Planner, retry or failover authority, Reviewer, Publisher, lifecycle router,
+  or automatic roadmap advancement mechanism.
+- Advance BO-1 completion or change TASK-313 semantics.
+constraints:
+  hard:
+  - The selected parallel verification observation must retain deterministic worker
+    collection-conformance proof while avoiding repeated serialization of full nodeid
+    collections for every worker in the final structured observation.
+  - Collection compaction must use deterministic repository-owned identity material
+    such as rule, count, and digest; disagreement, missing worker data, or malformed
+    identity remains fail closed.
+  - Canonical pytest phase and failure populations remain complete and attributable
+    under the existing verification contract; display truncation must never become
+    canonical identity truth.
+  - A deterministic scale regression must exercise a collection population representative
+    of the current full suite across twelve workers and remain inside the existing
+    canonical byte bound without simply increasing that bound.
+  - When verification has already produced a primary exception or blocking outcome
+    and Windows temp cleanup also fails, Runtime must preserve the primary verification
+    cause and record or expose the cleanup problem subordinately rather than replacing
+    the primary cause.
+  - When no earlier verification failure exists, an unrecoverable verification-environment
+    cleanup failure remains blocking; cleanup errors must not be silently ignored.
+  - Existing bounded Windows cleanup retry behavior remains finite and observable;
+    no unbounded retry, background cleaner, or hidden repair loop may be introduced.
+  - src/aios_renew/operator.py and tests/test_operator.py are inspection-only for
+    this TASK. Executor must fail closed and surface new Brain scope need if canonical
+    evidence proves RepositoryLock semantics themselves require mutation.
+  - Executor modifies only scope.modify. Runtime retains canonical verification ownership,
+    and Reviewer/Publisher/planning authorities remain unchanged.
+acceptance:
+- id: AC1
+  condition: Selected full-suite structured observations represent controller and
+    twelve-worker collection conformance with bounded deterministic collection identities
+    rather than serializing the complete nodeid list redundantly for every worker,
+    while missing or disagreeing worker collections still fail closed.
+- id: AC2
+  condition: The compaction leaves the complete canonical pytest phase/failure population
+    and its exact nodeid, phase, detail/fingerprint, profile and toolchain truth intact
+    for V2 attribution.
+- id: AC3
+  condition: Repository-owned deterministic scale coverage demonstrates that a current-scale
+    collection population with twelve worker identities remains within the existing
+    canonical observation byte bound without raising that bound as the primary fix.
+- id: AC4
+  condition: Verification cleanup handling preserves an already-raised primary verification
+    cause when cleanup also fails, while still retaining bounded evidence of the cleanup
+    failure.
+- id: AC5
+  condition: An unrecoverable Windows verification-environment cleanup failure with
+    no prior verification failure remains a blocking RuntimeVerificationError, and
+    existing finite cleanup retry behavior remains bounded.
+- id: AC6
+  condition: 'The implementation remains confined to verification infrastructure and
+    regression support: it does not change RepositoryLock semantics, TASK-316 candidate
+    behavior, execution-profile selection, review, publication, roadmap authority,
+    or any new lifecycle routing authority.'
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_parallel_verification.py tests/test_bp_v4_parallel_probe.py
+    tests/test_verification.py tests/test_verification_contract.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
