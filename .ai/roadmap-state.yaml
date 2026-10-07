@@ -1370,7 +1370,7 @@ sequence:
       integration_candidate_sha: "8c393ad5804eddad0609b66d7a7fc920b5fbfbe4"
       consequence: RESUME_TASK316_R4_WITH_FRESH_PRIMARY_NO_REPAIR_OF_RUN_316_003
     return_to: brain-optimization-v1-task316-verification-baseline-recovery
-    blocks:
+    unblocked_on_completion:
       - brain-optimization-v1-task316-verification-baseline-recovery
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
@@ -1474,7 +1474,7 @@ sequence:
       verification, semantic Review PASS and publication of TASK-316, restore
       brain-optimization-v1-bo1-author-task-mutation-path-simplification as the unique NEXT.
     return_to: brain-optimization-v1-bo1-author-task-mutation-path-simplification
-    blocks:
+    unblocked_on_completion:
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
     boundaries:
       - TEST_BASELINE_RECOVERY_NOT_BO1_SEMANTIC_CHANGE
