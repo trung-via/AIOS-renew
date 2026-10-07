@@ -3,14 +3,30 @@
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.util
 import json
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from scripts import bp_v4_parallel_probe as probe
-import bp_v4_probe_plugin as plugin
+
+
+def _load_unit_plugin():
+    # Runtime registers bp_v4_probe_plugin itself. Direct hook calls in these
+    # tests must use independent globals, never the surrounding observer's.
+    spec = importlib.util.spec_from_file_location(
+        "_bp_v4_probe_plugin_unit", Path(__file__).with_name("bp_v4_probe_plugin.py")
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+plugin = _load_unit_plugin()
 
 
 NODEIDS = ["tests/test_b.py::test_two", "tests\\test_a.py::test_one"]
@@ -107,6 +123,46 @@ def test_plugin_registration_preserves_collection_identity_without_unknown_hooks
     expected = pytest_collection_identity(NODEIDS)
     assert plugin._collection_identity(NODEIDS) == expected
     assert plugin._collection_identity(list(reversed(NODEIDS))) == expected
+
+
+def test_unit_plugin_fail_closed_paths_do_not_mutate_registered_observer(
+    request: pytest.FixtureRequest,
+) -> None:
+    import bp_v4_probe_plugin as observer
+
+    active = request.config.pluginmanager.get_plugin("bp_v4_probe_plugin")
+    assert active is None or active is observer
+    assert plugin is not observer
+
+    def state(module):
+        return deepcopy({
+            name: value for name, value in vars(module).items()
+            if name.startswith("_") and not name.startswith("__") and not callable(value)
+        })
+
+    before = state(observer)
+    plugin.pytest_sessionstart(None)
+    plugin.pytest_testnodedown(
+        SimpleNamespace(
+            gateway=SimpleNamespace(id="gw0"),
+            workeroutput={
+                "aios_bp_v4_failures": {
+                    "reported_count": 0,
+                    "displayed_identities": [],
+                    "truncated": False,
+                },
+            },
+        ),
+        None,
+    )
+    canonical = plugin._canonical_summary()
+    assert canonical["complete"] is False
+    assert canonical["unstable"] is True
+    assert canonical["errors"] == [
+        "malformed pytest collection identity",
+        "missing worker canonical population",
+    ]
+    assert state(observer) == before
 
 
 def test_pytest_command_is_fixed_and_uses_only_requested_workers(
