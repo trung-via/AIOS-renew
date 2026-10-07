@@ -1,0 +1,45 @@
+review_id: REVIEW-320-001
+reviewed_sha: fc152da72a4be084fbf3d374c648871b7d0e6ca7
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings: []
+notes:
+- RUN-320-001 is the canonical PRIMARY RESULT for TASK-320 r1. Exact candidate fc152da72a4be084fbf3d374c648871b7d0e6ca7
+  is a direct descendant of admitted TASK commit a5a6a8de3b894db9d3650b6d5993e2c2c295795a
+  and changes exactly the six TASK-authorized verification/regression files.
+- 'Runtime-owned minimum-sufficient-v2 verification PASS on the exact reviewed candidate:
+  focused pytest reports 252 passed in 11.36s; git diff --check passed; RESULT unresolved
+  is empty.'
+- "Semantic pass 1 \u2014 AC1/AC2/AC3: eligible PRIMARY exact collection deltas are\
+  \ bounded early failure gates only; a passing or ineligible delta cannot discharge\
+  \ the authored focused command. Correction exact previous-failure probes run first\
+  \ when validly bound; persistent failure blocks early while probe success retains\
+  \ the covering authored requirement."
+- "Semantic pass 1 \u2014 AC4/AC5: broad candidate failures may be exactly reproduced\
+  \ and compared against exact base collection/projection before broad base replay.\
+  \ Candidate failures absent from exact base collection are deterministically candidate-only\
+  \ blocking evidence; same-identity base PASS/regression and comparable base failure/pre-existing\
+  \ attribution retain exact identity/detail/fingerprint requirements."
+- "Semantic pass 2 \u2014 AC6/AC7: non-reproduction, collection disagreement, malformed\
+  \ identity, profile/toolchain mismatch, changed failure detail/fingerprint or other\
+  \ incomparability cannot become permissive; Runtime falls back to the existing broader\
+  \ attribution path or remains blocking. Early probes carry no authored proof authority,\
+  \ evidence reuse remains conservative, and explicit full-suite guards are unchanged."
+- "Semantic pass 2 \u2014 AC8/AC9: regression coverage includes the RUN-313-007-shaped\
+  \ 796/776 case with five candidate-only failures and no broad base replay, passing-delta\
+  \ continuation, correction failure-first, exact attribution, non-reproduction and\
+  \ broad fallback. No V3 policy, semantic dependency graph, lifecycle authority,\
+  \ roadmap mutation, TASK-313 semantic change or focused-parallel redesign is introduced."
+- 'Reviewer verdict: PASS. No semantic findings remain; candidate is eligible for
+  canonical Publisher handling. Publication acceptance or workflow success must not
+  be interpreted as publication until Publisher proves exact reviewed source inclusion.'
