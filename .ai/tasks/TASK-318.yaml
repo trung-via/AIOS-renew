@@ -1,0 +1,176 @@
+task_id: TASK-318
+revision: 1
+goal: Activate SELF_HOST_END_TO_END_FLOW_V1 as the single current Brain-facing normative
+  navigation entrypoint for the AIOS-renew GitHub/self-host operational path, with
+  same-activation cleanup of competing generic flow guidance while preserving existing
+  authority, implementation, planning, conformance and immutable historical evidence.
+problem: Current self-host operation is reconstructed from multiple overlapping Brain-facing
+  documents and implementation leaves. Even after a central flow document is added,
+  Brain would still waste context and reasoning if older generic instructions remain
+  independently normative, and cross-boundary changes can miss durable outer transport
+  effects such as the TASK-314 to TASK-315 executor_required mismatch. The approved
+  architecture therefore requires one operational navigation entrypoint plus normative
+  cleanup in the same candidate, without converting planning docs, Flow Cards, Runtime,
+  Reviewer, Publisher or transport into a new lifecycle authority.
+assumptions:
+- Canonical main at TASK-318 authoring is eb1cd2c66f47cdcd72097dc2d2f411525daca5aa.
+- TASK-317 / RUN-317-002 / REVIEW-317-002 is reviewed PASS and minimum-sufficient-v2
+  is active for newly authored TASKs.
+- The Human-approved planning architecture is docs/AIOS-SELF-HOST-END-TO-END-FLOW-ARCHITECTURE-v1.md
+  and remains planning authority; this TASK implements its bounded documentation/navigation
+  cleanup only.
+- The existing seven-card Flow Card registry remains closed and is not extended by
+  this TASK.
+- TASK-308 remains unpublished/blocked; its proposed publication-turn stop behavior
+  is not current production policy and must not be activated by this TASK.
+- Historical H4 planning and conformance documents may retain independent planning/proof
+  authority even when overlapping generic operational-navigation prose is redirected
+  or marked historical at section level.
+scope:
+  inspect:
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-ARCHITECTURE-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/flow-cards.yaml
+  - src/aios_renew/brain_context.py
+  - docs/AIOS-H4-EXECUTION-ROADMAP-v1.md
+  - .github/workflows/aios-issue-carrier.yml
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-approved-remediation-intent.yml
+  - .github/workflows/aios-approved-remediation-wakeup.yml
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_wakeup.py
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/repair_dispatch.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/local_chat_wake.py
+  modify:
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-BRAIN-PORTABILITY.md
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  - docs/AIOS-H4A4-DURABLE-WAKE-RECOVERY-CONFORMANCE-v1.md
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md
+  - tests/test_self_host_flow_contract.py
+non_goals:
+- Change `.ai/roadmap-state.yaml`, `.ai/flow-cards.yaml`, frozen Kernel semantics,
+  TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage, or downstream dependency
+  pins.
+- Create a SELF_HOST Flow Card, generic lifecycle router, Planner, retry/failover
+  controller, automatic correction selector, second engineering-state store, Reviewer
+  or Publisher.
+- Modify production Runtime, ingress, dispatch, workflow, wake, verification or publication
+  behavior merely to make the documentation cleanup pass.
+- Delete historical H4 evidence or blanket-mark whole planning/conformance documents
+  historical when they retain active independent authority.
+- Activate the unpublished TASK-308 publication-turn behavior or reinterpret dispatch
+  acceptance as RUN creation, review PASS or publication success.
+- Use an old TASK-317 failed candidate, REPAIR branch, review-decision ref or other
+  non-main metadata ref as the implementation base or publication substitute.
+constraints:
+  hard:
+  - 'SELF_HOST_SINGLE_NORMATIVE_ENTRYPOINT_V1: ordinary current Brain self-host operational
+    navigation resolves through exactly one maintained end-to-end entrypoint, while
+    independent governance, planning, protocol, conformance and implementation authorities
+    remain distinct.'
+  - 'SELF_HOST_NORMATIVE_CONSOLIDATION_V1: the new entrypoint and retirement/redirection
+    of competing current generic self-host guidance must exist in the same implementation
+    candidate; a doc-only additive layer without cleanup is not sufficient.'
+  - 'SELF_HOST_BOUNDARY_IMPACT_COVERAGE_V1: the entrypoint must expose bounded cross-boundary
+    impact edges for AUTHORING, PRIMARY, REPAIR, REMEDIATION, PUBLICATION and RETURN
+    without becoming a semantic dependency engine.'
+  - 'The TASK-314 to TASK-315 executor_required mismatch is a mandatory positive regression
+    scenario: correction_preflight changes must surface operator.run_repair_wakeup,
+    repair_dispatch, github_issue_repair_wakeup, brain-repair-wakeup and self-host-repair-wakeup
+    boundaries before scope closure.'
+  - Pre-AIOS carrier/admission failures must remain operational failures with run_created=false
+    and must never fabricate canonical FAILURE or REPAIR lineage.
+  - Carrier admission, workflow dispatch and RUNNER_STARTED are transport/operational
+    signals only; they do not prove RUN creation, Runtime verification, Reviewer PASS
+    or publication.
+  - The existing seven-card Flow Card schema and src/aios_renew/brain_context.py behavior
+    must remain unchanged by this TASK; no new card or unsupported field may be introduced.
+  - 'Cleanup classification is section/claim scoped: retain independent current authority,
+    replace duplicate generic navigation with a pointer, mark only superseded material
+    historical, preserve active implementation leaves, and remove only truly obsolete
+    instructions.'
+  - The production entrypoint must state that fresh canonical Git/lineage outranks
+    navigation and that ambiguity or conflict expands bounded context or fails closed
+    instead of guessed continuation.
+  - TASK-308 remains unpublished and cannot become production policy through documentation
+    wording in this TASK.
+  - Executor modifies only scope.modify and does not mutate planning state, select
+    semantic next work, issue review verdicts, publish, or alter current execution-profile
+    delegation.
+  - Primary execution must be admitted from the exact then-current canonical main
+    containing TASK-318; branch/publication ancestry remains Runtime/Publisher-owned
+    and force/ad-hoc publication is forbidden.
+acceptance:
+- id: AC1
+  condition: The candidate contains docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md as one
+    current Brain-facing normative operational-navigation entrypoint covering AUTHOR,
+    INGRESS, PRIMARY, admitted RUN/Executor, Runtime verification, RESULT/FAILURE,
+    REVIEW, REPAIR/REMEDIATION, PUBLISH and ATTENTION/WAKE boundaries.
+- id: AC2
+  condition: Within the modified Brain-facing documents, overlapping generic self-host
+    lifecycle instructions are removed, redirected to the single entrypoint, or explicitly
+    classified as historical/specialized so no second current generic end-to-end navigation
+    path remains.
+- id: AC3
+  condition: The cleanup preserves distinct Human/Brain planning, Runtime, Executor,
+    Reviewer, Publisher, H4 planning/conformance and historical-evidence authority
+    instead of treating the new navigation document as engineering-state or lifecycle
+    truth.
+- id: AC4
+  condition: The candidate preserves the existing seven-card Flow Card contract without
+    adding a SELF_HOST card or unsupported Flow Card field, and the single-entrypoint
+    design does not require a second semantic flow resolver.
+- id: AC5
+  condition: The entrypoint contains a bounded impact map for AUTHORING, PRIMARY,
+    REPAIR, REMEDIATION, PUBLICATION and RETURN and explicitly covers the TASK-314/TASK-315
+    executor_required chain through the durable outer REPAIR transport boundaries.
+- id: AC6
+  condition: The entrypoint and cleanup consistently distinguish pre-AIOS operational
+    failure from admitted RUN FAILURE, and distinguish carrier/dispatch/runner signals
+    from RUN creation, verification, semantic review, publication and wake outcomes.
+- id: AC7
+  condition: Current H4 planning and conformance requirements plus immutable historical
+    observations remain preserved at section/claim granularity; no whole-file historical
+    classification erases still-active independent authority.
+- id: AC8
+  condition: The candidate does not activate TASK-308 publication-turn semantics and
+    explicitly defers publication-turn behavior to the currently published Project
+    Contract and canonical lineage.
+- id: AC9
+  condition: 'The candidate is internally atomic: the new entrypoint and all required
+    normative redirects/retirements are present together, with no intermediate additive
+    state that claims SELF_HOST_END_TO_END_FLOW_V1 active while competing current
+    generic guidance remains.'
+- id: AC10
+  condition: Regression coverage in scope demonstrates the single-entrypoint/cleanup
+    invariants, preserved closed Flow Card shape, TASK-314/TASK-315 impact-chain coverage,
+    failure-taxonomy separation and absence of TASK-308 activation without weakening
+    existing safety tests.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_self_host_flow_contract.py tests/test_brain_context.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
