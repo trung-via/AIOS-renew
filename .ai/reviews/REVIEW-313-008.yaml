@@ -1,0 +1,44 @@
+review_id: REVIEW-313-008
+reviewed_sha: 8a7afeb6c8e9e18cde9117a7837661566cc8d230
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- RUN-313-008 is the canonical successful REPAIR RESULT for TASK-313 r2. Candidate
+  8a7afeb6c8e9e18cde9117a7837661566cc8d230 preserves the BO-1 direct-final AUTHOR_TASK
+  implementation and adds the bounded canonical-main transport correction authorized
+  by REPAIR-313-007-001.
+- 'Runtime-owned minimum-sufficient-v2 verification is PASS on the exact reviewed
+  candidate: focused pytest reports 320 passed and 495 skipped in 1427.87s; git diff
+  --check passed; RESULT unresolved is empty.'
+- "Semantic pass 1 \u2014 AC1/AC2/AC3: AUTHOR_TASK admits the final TASK contract\
+  \ directly without Decision Packet, Stage-1/Stage-2, audit-fingerprint, acceptance-ledger,\
+  \ or audited-freshness mutation credentials, and explicitly rejects any supplied\
+  \ audited_handoff including null. Correction authoring remains separate."
+- "Semantic pass 1 \u2014 AC4/AC5: direct schema/revision/verification/affinity/expected-main/unrelated-delta/CAS\
+  \ guards and independent ORIGIN_AFFINE provenance remain intact. The repair binds\
+  \ AUTHOR_TASK writes to main's configured authoritative upstream independently of\
+  \ current checkout and fails closed on missing, ambiguous, stale, conflicting, or\
+  \ changed transport authority."
+- "Semantic pass 2 \u2014 AC6/AC7: AUTHOR_REMEDIATION and AUTHOR_REPAIR retain audited-handoff\
+  \ reconstruction and freshness semantics. The three normative documents consistently\
+  \ state the post-BO-1 direct-final AUTHOR_TASK rule while preserving two-stage Brain\
+  \ semantic audit as cognitive discipline rather than Runtime mutation authority."
+- "Semantic pass 2 \u2014 AC8 and repair closure: regressions cover handoff-free authoring,\
+  \ handoff rejection, projection isolation, alternate/detached checkout, decoy transport,\
+  \ missing/ambiguous/conflicting transport authority, transport movement before publication,\
+  \ and local/remote main CAS conflicts. The five RUN-313-007 candidate failures are\
+  \ closed without weakening the tests or widening generic transport authority."
+- 'Authority closure: candidate changes remain within TASK-313 scope; REPAIR production
+  mutation is limited to src/aios_renew/authoring_ingress.py plus tests/test_authoring_ingress.py.
+  No TASK-314 re-proof, full-suite claim, roadmap advancement, Reviewer/Publisher
+  authority merge, BO-2+, TASK-310, or H4 semantic change is introduced by this review.'
