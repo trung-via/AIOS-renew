@@ -1,0 +1,13 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 5f8f31fd831e859c7580253b8f28347e7a04c73d
+modification_scope:
+- docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+- tests/test_self_host_flow_contract.py
+verification:
+  policy: minimum-sufficient-v2
+  affected:
+  - python -m pytest -q tests/test_self_host_flow_contract.py tests/test_brain_context.py
+  - git diff --check
+constraints:
+  hard: []
