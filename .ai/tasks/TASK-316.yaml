@@ -1,77 +1,41 @@
 task_id: TASK-316
-revision: 4
+revision: 5
 goal: Restore a trustworthy verification baseline required to resume BO-1 by repairing
   stale regression fixtures and test-harness assumptions exposed by RUN-313-005, and
   by restoring the published historical FINALIZE_CANDIDATE absent-reuse Executor fallback
   invariant, without changing BO-1 semantics.
-problem: 'RUN-313-005 reached Runtime verification on the unchanged TASK-313 candidate
-  dd287d11eeaed3ba4bccabcd992fcb1b831bc0a3 and the selected full suite reported 62
-  failures. Bounded read-only diagnostics on that exact candidate show representative
-  failures caused by baseline/test-contract drift rather than a demonstrated BO-1
-  production regression: an AUTHOR_REMEDIATION control omits the still-required audited
-  handoff; Brain provider/protocol fixtures serialize an obsolete Stage-2 shape instead
-  of the current brain-high-value-v3 closed contract; the Brain Sync live smoke assumes
-  a .git directory and is not linked-worktree aware; and wake-bridge regression tests
-  hard-code historical artifact-count, event_id, and TASK-260 diff-to-HEAD assumptions.
-  Separately, current-main diagnostics reproduce a historical FINALIZE_CANDIDATE preflight
-  that is BLOCKED at REUSABLE_STATE_ADMISSION when reusable state is genuinely absent,
-  contradicting the published TASK-314/TASK-315 invariant that absence uses the coding-Executor
-  fallback while present invalid state fails closed. Until these baseline defects
-  are corrected, TASK-313 full-suite verification cannot reliably discriminate BO-1
-  regressions from pre-existing verification debt. RUN-316-001 then failed canonically
-  at COMPLETION_GATE on candidate 43f9bdd022cee5752447e5fb3b1e05da351d59b5 because
-  the required v3 provider/protocol baseline repair needs src/aios_renew/brain_provider_protocol.py,
-  which revision 1 allowed only for inspection. Revision 2 corrects only that mutation-authority
-  omission; it does not reinterpret the failure as an implementation defect or widen
-  the baseline-recovery objective. Revision 3 changes only the verification contract
-  from minimum-sufficient-v1 to minimum-sufficient-v2 and re-executes the same bounded
-  baseline-recovery semantics from current canonical main; it does not widen scope
-  or reinterpret RUN-316-002 as a correction authorization. RUN-316-003 then failed
-  Runtime verification before semantic Review because the verification infrastructure
-  itself exceeded the bounded structured-observation contract and Windows cleanup
-  also encountered a locked operator.lock. TASK-319 has now been Runtime-verified,
-  semantically reviewed PASS, and published into canonical main specifically to harden
-  those two verification-infrastructure boundaries. Revision 4 therefore changes no
-  baseline-recovery objective, scope, acceptance, or production authority: it establishes
-  a fresh PRIMARY lifecycle from current canonical main so minimum-sufficient-v2 can
-  evaluate the same bounded TASK-316 work without treating RUN-316-003 as a repair
-  authorization.'
+problem: 'TASK-316 restores a trustworthy verification baseline for BO-1 without changing
+  TASK-313 semantics. Earlier TASK-316 revisions exposed baseline/test-contract drift,
+  a scope omission, then verification-infrastructure failures; TASK-319 subsequently
+  hardened minimum-sufficient-v2 observation and cleanup behavior and was reviewed
+  and published. RUN-316-004 was then interrupted by Human during EXECUTION before
+  any candidate delta or verification result because revision 4 still authored the
+  expensive repository-wide full-suite command as mandatory. V2 preserves every authored
+  requirement and cannot delete that guard on its own. Revision 5 therefore changes
+  only the Brain-owned verification envelope: keep the same TASK-316 goal, scope,
+  acceptance and production authority, but replace the mandatory repository-wide full
+  suite with deterministic focused verification over the exact affected TASK-316 semantic
+  surfaces plus git diff --check. Runtime remains authoritative for derivation, execution,
+  evidence, scope gates and fail-closed outcomes; focused verification is not a claim
+  of repository-wide greenness.'
 assumptions:
-- Canonical main at TASK-316 revision-4 authoring is 0a4860c261245978414e4c76e959d576f6f20331;
-  this main contains the reviewed TASK-319 hardening and the Human/Brain planning
-  transition that makes TASK-316 the unique NEXT item.
-- RUN-313-005 is the current canonical TASK-313 verification failure and its failed
-  candidate remains dd287d11eeaed3ba4bccabcd992fcb1b831bc0a3; TASK-316 does not rewrite,
-  repair, supersede, or execute that lineage.
-- TASK-314 and TASK-315 established the published invariant that an eligible same-head
-  structural package may elide the coding Executor, genuine absence falls back to
-  executor_required=true, and present malformed, stale, conflicting or otherwise invalid
-  reusable state fails closed.
-- Human-provided diagnostic runs motivate this bounded recovery but are not canonical
-  verification evidence; Runtime verification remains authoritative.
-- TASK-316 is a prerequisite baseline-recovery task. BO-1/TASK-313 resumes only after
-  ordinary Runtime verification, semantic Review PASS and exact publication of the
-  eligible TASK-316 candidate.
-- RUN-316-001 canonically failed at COMPLETION_GATE because src/aios_renew/brain_provider_protocol.py
-  is required to reconcile the current brain-high-value-v3 Stage-2 protocol contract
-  but was outside revision-1 scope.modify; revision 2 changes only that scope authority.
-- RUN-316-002 remains immutable historical verification evidence from revision 2.
-  Revision 3 does not authorize a broad REPAIR of that historical 51-failure population;
-  it re-executes the bounded TASK-316 objective from current canonical main under
-  minimum-sufficient-v2 so Runtime can produce complete current attribution evidence.
-- RUN-316-003 and FAILURE artifact 2f39039a87b1f859cb6a0d3cbfa1a90872ac5e15 remain
-  immutable historical verification evidence. Their surfaced byte-bound and Windows
-  cleanup failures were verification-infrastructure blockers addressed prospectively
-  by TASK-319; revision 4 does not AUTHOR_REPAIR or rewrite that lineage.
+- Canonical main at TASK-316 revision-5 authoring is 4102de9ad6528125fdb45cc927185bfee3061fc5;
+  TASK-316 is the unique planning NEXT item.
 - TASK-319 RUN-319-003 reviewed source 379fa184edb4387e22a4f13858fea261f7f5eba5 is
-  contained in the published integration main 8c393ad5804eddad0609b66d7a7fc920b5fbfbe4,
-  and current canonical main descends from that publication boundary. Revision 4 may
-  therefore execute the same TASK-316 semantics under the hardened minimum-sufficient-v2
-  infrastructure.
-- Revision 4 exists solely to create a fresh PRIMARY lifecycle for the already-approved
-  TASK-316 baseline-recovery semantics after the TASK-319 prerequisite closed. Any
-  fresh failure must be interpreted from its own canonical V2 evidence; historical
-  RUN-316-002 and RUN-316-003 are not automatic correction authorizations.
+  contained in published integration main 8c393ad5804eddad0609b66d7a7fc920b5fbfbe4;
+  its verification hardening is available prospectively to TASK-316 r5.
+- 'RUN-316-004 / FAILURE 88e620430a753dbb2acec79f42cb5fd8edcadf33 is immutable Human-interruption
+  evidence: phase EXECUTION, no candidate delta, non-repairable. Revision 5 does not
+  repair or reinterpret it.'
+- RUN-316-003 / FAILURE 2f39039a87b1f859cb6a0d3cbfa1a90872ac5e15 and older TASK-316
+  failures remain immutable historical evidence and do not automatically authorize
+  correction.
+- Revision 5 preserves TASK-316 scope, acceptance and authority boundaries; only its
+  verification envelope is narrowed from mandatory repository-wide full suite to the
+  focused affected surfaces listed in verification.required.
+- minimum-sufficient-v2 may deterministically derive or reuse evidence only inside
+  the authored envelope. The absence of a full-suite command must never be represented
+  as proof that the entire repository is globally green.
 scope:
   inspect:
   - .ai/tasks/TASK-313.yaml
@@ -124,6 +88,7 @@ non_goals:
   router, Reviewer, Publisher, or lifecycle authority.
 - Advance BO-1 roadmap completion, claim TASK-313 success, or reuse TASK-316 verification/review/publication
   as evidence for TASK-313.
+- Claim repository-wide full-suite greenness from revision-5 focused verification.
 constraints:
   hard:
   - Baseline tests must be reconciled to current reviewed/published contracts; production
@@ -189,11 +154,9 @@ acceptance:
 verification:
   policy: minimum-sufficient-v2
   required:
-  - python scripts/aios_parallel_full_suite.py
+  - python -m pytest -q tests/test_operator_correction_preflight.py tests/test_authoring_ingress.py
+    tests/test_aios_ingress_metadata_identity_diagnostic.py tests/test_brain_provider.py
+    tests/test_brain_provider_protocol.py tests/test_brain_sync.py tests/test_brain_wake_bridge_workflow.py
   - git diff --check
-  full_suite_reason: TASK-316 repairs cross-cutting verification baseline contracts
-    spanning correction preflight, authoring fixtures, Brain audit/provider fixtures,
-    Git linked-worktree support and wake-bridge regressions; the selected full suite
-    is required to prove the baseline is trustworthy before BO-1 resumes.
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
