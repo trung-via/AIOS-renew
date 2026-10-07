@@ -120,6 +120,24 @@ approval ambiguity in roadmap sequencing, and freeze H4 implementation until BO-
 
 Exit: `BRAIN_OPTIMIZATION_PREEMPTION_CANONICAL`.
 
+### Approved next overlay — SELF_HOST_END_TO_END_FLOW_V1 normative consolidation
+
+**Status: HUMAN_APPROVED 2026-10-07 — UNIQUE NEXT AFTER REVIEWED/PUBLISHED TASK-317**
+
+TASK-317 / RUN-317-002 / REVIEW-317-002 is PASS and the exact reviewed
+candidate `9a528c28f3007b50c40352b4839049aac4a2b2a4` is `main`.
+Human prospectively prioritizes one Brain-facing end-to-end self-host operational
+navigation entrypoint **plus same-activation retirement of competing normative
+guidance** ahead of frozen TASK-316 re-evaluation and BO-1 continuation.
+
+Architecture: [Self-Host End-to-End Flow Architecture v1](AIOS-SELF-HOST-END-TO-END-FLOW-ARCHITECTURE-v1.md).
+Planning only, not a new active operational contract. No Executor/model/effort
+is inherited from TASK-317. A future TASK-318 must be separately authored and
+Human-delegated; use current `main` after this planning mutation as its base.
+
+Exit: `SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE`.
+Then perform fresh TASK-316 lineage/Runtime V2 reconciliation before BO-1.
+
 ### Recovery overlay — MINIMUM_SUFFICIENT_VERIFICATION_V2
 
 Status: **HUMAN_APPROVED — PREEMPTS TASK-316 CORRECTION BEFORE BO-1 RESUMES**

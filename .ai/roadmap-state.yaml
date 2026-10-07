@@ -839,7 +839,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-minimum-sufficient-verification-v2
+  - brain-optimization-v1-self-host-end-to-end-flow-consolidation
 sequence:
 
   - id: TASK-309
@@ -1099,7 +1099,7 @@ sequence:
     unblocks: [brain-optimization-v1-bo1-author-task-mutation-path-simplification]
 
   - id: brain-optimization-v1-minimum-sufficient-verification-v2
-    status: NEXT
+    status: DONE
     phase: BO1_VERIFICATION_ARCHITECTURE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
@@ -1107,7 +1107,18 @@ sequence:
     architecture_contract: MINIMUM_SUFFICIENT_VERIFICATION_V2
     task_id: TASK-317
     task_revision: 1
-    task_authoring_status: NOT_AUTHORED
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "3ea0f92a5c822efa9348a539f1eeb8a7f2479073"
+    completed_by:
+      run_id: RUN-317-002
+      preceding_failure: RUN-317-001
+      repair_authorization_sha: "e134960fad20337b8b1b673a10e6da2532f2636d"
+      review_id: REVIEW-317-002
+      verdict: PASS
+      review_decision_sha: "44b473d3bf1a3dbab22a2b99132bec8c8a1b7016"
+      reviewed_sha: "9a528c28f3007b50c40352b4839049aac4a2b2a4"
+      published_sha: "9a528c28f3007b50c40352b4839049aac4a2b2a4"
+      publication_basis: EXACT_REVIEWED_CANDIDATE_IS_CANONICAL_MAIN_2026_10_07
     executor_delegation:
       authority: HUMAN
       selected_on: "2026-10-07"
@@ -1170,8 +1181,67 @@ sequence:
       - brain-optimization-v1-task316-verification-baseline-recovery
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
+  - id: brain-optimization-v1-self-host-end-to-end-flow-consolidation
+    status: NEXT
+    phase: BO1S_SELF_HOST_OPERATIONAL_FLOW_NORMATIVE_CONSOLIDATION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-07"
+    planning_document: docs/AIOS-SELF-HOST-END-TO-END-FLOW-ARCHITECTURE-v1.md
+    task_id: TASK-318
+    task_authoring_status: NOT_AUTHORED
+    executor_selection: REQUIRES_NEW_TASK_SPECIFIC_HUMAN_EXECUTOR_MODEL_EFFORT_DELEGATION
+    human_decision: >-
+      Immediately after reviewed and source-published TASK-317, prioritize the
+      approved two-pass SELF_HOST_END_TO_END_FLOW_V1 architecture and normative
+      cleanup as the next work. Do not activate the new operational entrypoint
+      until obsolete competing instructions are retired or redirected.
+    predecessor:
+      task_id: TASK-317
+      run_id: RUN-317-002
+      review_id: REVIEW-317-002
+      review_decision_sha: "44b473d3bf1a3dbab22a2b99132bec8c8a1b7016"
+      reviewed_and_published_sha: "9a528c28f3007b50c40352b4839049aac4a2b2a4"
+    goal: >-
+      Deliver one current Brain-facing normative self-host operational navigation
+      entrypoint spanning authoring, ingress, primary, execution, verification,
+      correction, review, publication and wake; retire or redirect overlapping
+      current procedural instructions in the same activation without changing
+      existing implementation authority, frozen Kernel or historical evidence.
+    invariants:
+      - SELF_HOST_SINGLE_NORMATIVE_ENTRYPOINT_V1
+      - SELF_HOST_NORMATIVE_CONSOLIDATION_V1
+      - SELF_HOST_BOUNDARY_IMPACT_COVERAGE_V1
+      - NO_COMPETING_CURRENT_SELF_HOST_END_TO_END_GUIDANCE
+      - ONE_REVIEWED_SOURCE_ACTIVATION_AFTER_CLEANUP
+      - KEEP_SEVEN_CLOSED_FLOW_CARDS_AND_AUTHORITY_BOUNDARIES
+      - NO_PRE_AIOS_FAILURE_TO_CANONICAL_RUN_CONVERSION
+      - NO_UNPUBLISHED_TASK308_PRODUCTION_ACTIVATION
+      - PRESERVE_CURRENT_H4_PLANNING_AND_HISTORICAL_CONFORMANCE
+    branch_and_publication_safety: >-
+      The future TASK implementation must start from the exact then-current
+      canonical main after this planning commit and TASK authoring, prove clean
+      descendant base/candidate ancestry, recheck latest main at admission and
+      before publication, and use the canonical Runtime/Reviewer/Publisher path.
+      No old TASK-317 failed candidate, repair branch or review-decision branch
+      may be used as a main-equivalent implementation base. If main moves,
+      reconcile and use approved integration; never force or ad-hoc publish.
+    non_goals:
+      - CREATE_GENERIC_LIFECYCLE_ROUTER_OR_SECOND_STATE_STORE
+      - DELETE_IMMUTABLE_TASK_RUN_REVIEW_OR_H4_PLANNING_EVIDENCE
+      - CHANGE_RUNTIME_REVIEWER_PUBLISHER_AUTHORITY
+      - IMPLEMENT_PRODUCTION_CODE_AS_BRAIN
+      - AUTHOR_OR_DISPATCH_WITHOUT_NEW_TASK_PROVENANCE_AND_DELEGATION
+    exit: SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
+    return_to: brain-optimization-v1-task316-verification-baseline-recovery
+    blocks:
+      - brain-optimization-v1-task316-verification-baseline-recovery
+      - brain-optimization-v1-bo1-author-task-mutation-path-simplification
+
   - id: brain-optimization-v1-task316-verification-baseline-recovery
-    status: BLOCKED_ON_MINIMUM_SUFFICIENT_VERIFICATION_V2
+    status: BLOCKED_ON_SELF_HOST_FLOW_CONSOLIDATION_PRIORITY
+    priority_resume_gate: SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
+    preserved_failure_lineage: RUN-316-002
+    pending_reconciliation: REEVALUATE_EXACT_FAILURE_AFTER_RUNTIME_VERIFICATION_V2
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
