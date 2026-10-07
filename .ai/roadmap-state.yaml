@@ -839,7 +839,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-v2-full-suite-hardening
+  - brain-optimization-v1-task316-verification-baseline-recovery
 sequence:
 
   - id: TASK-309
@@ -1272,7 +1272,7 @@ sequence:
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
   - id: brain-optimization-v1-v2-full-suite-hardening
-    status: NEXT
+    status: DONE
     inserted_on: "2026-10-07"
     phase: MINIMUM_SUFFICIENT_VERIFICATION_V2_FULL_SUITE_HARDENING
     authority: HUMAN_BRAIN_PLANNING
@@ -1320,19 +1320,26 @@ sequence:
       - PRESERVE_REPOSITORY_LOCK_SEMANTICS_UNLESS_NEW_CANONICAL_EVIDENCE_PROVES_A_DEFECT
       - NO_PLANNER_RETRY_FAILOVER_REVIEWER_OR_PUBLISHER_AUTHORITY
     exit: MINIMUM_SUFFICIENT_VERIFICATION_V2_FULL_SUITE_HARDENED
+    completion_reconciliation:
+      authority: HUMAN_BRAIN_PLANNING
+      decision: TASK319_REVIEWED_PUBLICATION_SATISFIES_HARDENING_GATE
+      reviewed_run_id: RUN-319-003
+      publication_boundary: PROVEN_INCLUDED_IN_MAIN
+      integration_candidate_sha: "8c393ad5804eddad0609b66d7a7fc920b5fbfbe4"
+      consequence: RESUME_TASK316_R3_WITH_FRESH_PRIMARY_NO_REPAIR_OF_RUN_316_003
     return_to: brain-optimization-v1-task316-verification-baseline-recovery
     blocks:
       - brain-optimization-v1-task316-verification-baseline-recovery
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
   - id: brain-optimization-v1-task316-verification-baseline-recovery
-    status: BLOCKED_BY_TASK_319
+    status: NEXT
     resumed_on: "2026-10-07"
     priority_resume_gate: SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
     priority_resume_gate_status: SATISFIED_BY_TASK_318
     preserved_failure_lineage: RUN-316-002
-    pending_reconciliation: WAIT_FOR_TASK319_V2_FULL_SUITE_HARDENING_THEN_REEVALUATE_RUN_316_003
-    next_semantic_action: RESUME_TASK316_R3_ONLY_AFTER_TASK319_REVIEWED_PUBLICATION
+    pending_reconciliation: SATISFIED_BY_TASK319_REVIEWED_PUBLICATION
+    next_semantic_action: FRESH_PRIMARY_TASK316_R3_FROM_CURRENT_CANONICAL_MAIN
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
