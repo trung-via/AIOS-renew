@@ -9,6 +9,17 @@ Exact workflow-354 evidence-equivalent planning-conformance path: TASK-277 revis
 Reviewed semantic source: TASK-268 revision 1; historical source is not publication authority.
 Live observation and planning closure authority: Human/Brain.
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: sections 2-6 exact-source eligibility, Human readiness, bounded
+ACK-only proof, negative-case safety and independent Human/Brain closure obligations.
+HISTORICAL_ONLY: exact TASK/workflow observations and source-time open/blocked
+status claims; they remain immutable evidence, not current milestone state or
+ordinary navigation. Current planning/lineage must establish any later eligibility.
+No whole-file historical classification retires this specialized proof authority.
+
 ## 1. Purpose and boundary
 
 This procedure defines the H4A3 live exact-chat proof using the published H4A2

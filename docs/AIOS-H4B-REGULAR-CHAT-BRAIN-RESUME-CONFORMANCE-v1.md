@@ -15,6 +15,16 @@ observation, residual-risk
 disposition and roadmap planning. Executor implementation performs no live wake,
 browser operation, binding change, review submission or downstream activation.
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: exact review-scope/fingerprint/invalidation contracts, offline
+composition proof, bounded one-step Human/Brain live procedure, residuals, reopen
+triggers and H4B/H5 closure gates. HISTORICAL_ONLY: exact dated RUN/transport
+observations and explicitly superseded eligibility claims. This specialized
+conformance authority is not retired by redirecting generic bootstrap prose.
+
 ## Existing contract and authority
 
 The governing sources are the [Constitution](AIOS-CONSTITUTION.md),
@@ -28,16 +38,10 @@ matrix remains INCOMPLETE. Earlier historical statements that H4A5 blocked H4B
 must be read with that closure disposition and the subsequent Human H4B start
 authorization. Neither planning decision supplies engineering lifecycle truth.
 
-Reuse this existing path without adding a router or reducer:
-
-```text
-fresh canonical repository/main + exact selected TASK/RUN/RESULT lineage
-  -> brain_sync.observe_brain_sync
-       -> unified_state.observe_unified_state
-  -> brain_context.compose_brain_work_context
-  -> brain_context.resolve_flow
-  -> observed repository's .ai/flow-cards.yaml
-```
+The generic reconstruction/composition route is REPLACE_WITH_POINTER to
+[the single entrypoint minimum fresh context](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md#1-authority-and-minimum-fresh-context).
+The existing Brain Sync, Unified State, brain_context composition/resolution and
+seven Flow Cards retain their protocol authority; no resolver is added here.
 
 The wake is an untrusted selector-only doorbell. Its event family, event_id,
 free-form instructions and alleged verdict do not select semantic flow, authority,
@@ -449,13 +453,11 @@ mutation authority.
 
 ## Minimum fresh context and invalidation
 
-Before any continuation, freshly establish canonical repository identity and main,
-exact selected TASK/revision and RUN/RESULT subject, its unresolved status, Unified
-State, next_action, authority and the repository-owned Flow Card. Require agreement
-between the selected subject and the exact wake selectors. Use
-`unified_state.observe_semantic_review_scope` for the current review subject when
-the review needs exact PRIMARY/DELTA origin, base and predecessor bindings; do not
-invent them from a RUN number, chat narrative or candidate similarity.
+Generic fresh bootstrap is REPLACE_WITH_POINTER to the single navigation
+entrypoint section 1. For this specialized review proof, selected subject and
+exact wake selectors must agree. Use `unified_state.observe_semantic_review_scope`
+for exact PRIMARY/DELTA origin, base and predecessor bindings; do not invent
+them from RUN number, chat narrative or candidate similarity.
 
 Work Context is transient. Its fingerprint binds repository identity, main,
 roadmap/selection, semantic subject/lifecycle, blockers and the bounded current
@@ -484,6 +486,10 @@ locates reads; the remote URL and machine-local conversation binding are unneces
 reasoning material. No persistent context cache is introduced.
 
 ## Bounded live procedure for Human/Brain observation
+
+RETAIN_NORMATIVE: the numbered sequence is the bounded H4B conformance probe,
+not an ordinary end-to-end operating procedure. Its one-step limit neither
+activates TASK-308 nor changes published publication-turn behavior.
 
 This procedure is a separately recorded Human/Brain conformance observation after
 Runtime supplies an eligible subject. It authorizes no Executor live probe, new

@@ -5,6 +5,19 @@ It is not a report of live conformance, Human planning reconciliation, H4A5 clos
 H4B resume or downstream activation. Runtime owns canonical verification. The
 Executor does not perform this procedure, modify local bindings or submit a wake.
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: source reconstruction, family/progress exclusions, privacy,
+bounded live-proof requirements and the dated Human/Brain closure disposition
+with its INCOMPLETE matrix/residuals. HISTORICAL_ONLY: dated replay observations
+and source-time blocked/readiness claims; later exact planning/lineage determines
+current status. The Remaining bounded cases ordering observation of one flight
+is a superseded policy claim under TEMPORARY_WAKE_FIRST_CUTOVER_V2; exact-event
+dedupe, generation/ambiguity safety and the independent live-proof obligation
+remain active. No observation or residual is deleted or relabeled as PASS.
+
 ## Contract and source reconstruction
 
 `.ai/brain-attention-families.yaml` mirrors the version 1 registry in

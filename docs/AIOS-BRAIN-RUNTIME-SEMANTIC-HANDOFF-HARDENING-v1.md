@@ -6,6 +6,18 @@ Architecture subject main: `a77cb976ed70f9e066a94abc3a1e0c78db680cd2`
 Audit profile: `brain-high-value-v2`  
 Scope: prospective control-plane hardening only; no engineering completion claim
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: independent authority/protocol, H4 planning/conformance and
+H5 exit requirements, sequencing and audit requirements, except claims explicitly
+superseded by later published authority. HISTORICAL_ONLY: source-baseline
+observations and superseded authoring-gate/transport policy claims. In section 8.1
+the original per-repository ownership and cross-event in-flight rule are superseded
+claims; exact-event ambiguity, dedupe, isolation and binding safety remain active.
+No whole-file historical label retires the still-active H4/H5 planning authority.
+
 ## 1. Purpose
 
 This track closes demonstrated continuity gaps between canonical AIOS state, Brain
@@ -288,51 +300,23 @@ dispatch and auto-publication start remain non-wake progress signals.
 
 ### 8.2 H4B — Regular Chat Brain resume
 
-After H4A passes, one real unresolved semantic checkpoint may wake the bound
-conversation. The regular Chat Brain must treat the wake turn only as a doorbell and:
+Generic wake-to-Brain operational reconstruction is REPLACE_WITH_POINTER to
+[the single entrypoint minimum fresh context](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md#1-authority-and-minimum-fresh-context)
+and its section 8 RETURN.
 
-1. perform fresh Brain Sync of canonical `main` and exact current lineage;
-2. verify the attention subject is still unresolved;
-3. resolve the current Unified State / Flow Card;
-4. occupy only the selected semantic authority;
-5. use existing Brain or Reviewer protocols and canonical ingress surfaces;
-6. take at most one semantic continuation step for that wake;
-7. stop at any new Human intent, priority or risk-acceptance boundary.
-
-H4B uses `MINIMUM_FRESH_BRAIN_SYNC_V1`. Freshness applies to the identity and
-lifecycle facts that can invalidate the next semantic decision; it does not require
-ceremonially rereading the entire repository, roadmap history or every governance
-document on every wake.
-
-Every wake must freshly establish from canonical state, using the wake payload only as
-an untrusted selector:
-
-- current canonical `main` identity;
-- the exact wake/attention subject and its exact current lineage;
-- selected TASK identity/revision and whether the subject remains unresolved;
-- current Unified State, `next_action`, selected authority and Flow Card.
-
-Only after that minimum reconstruction succeeds may the Brain hydrate additional
-canonical material required by the selected flow. Examples include exact TASK +
-RESULT/EVIDENCE and applicable prior review lineage for semantic review; TASK +
-FAILURE/failed RUN plus current H2 strategy facts for REPAIR authoring; exact source
-REVIEW/finding/provenance for REMEDIATION authoring; and the current roadmap item plus
-the relevant architecture contract for TASK authoring.
-
-Unchanged governance/specification bodies need not be reread in full when their exact
-canonical binding or digest is freshly proven unchanged; a deterministic bounded
-projection may be reused until the relevant binding changes. This reuse is never model
-memory or an independent state store. If the minimum projection cannot establish one
-unambiguous current subject, lifecycle state, authority or flow, reconstruction expands
-only as far as needed to resolve that ambiguity and otherwise fails closed.
-
-The minimum sync must not scan unrelated TASK/RUN history, all AIOS refs, the complete
-roadmap sequence or unrelated architecture material merely for ceremony. It must also
-never let the wake payload, chat history, provider/session identity or cached semantic
-judgment substitute for canonical truth.
-
-Human observability comes from the Brain response appearing directly in the same
-conversation. Conversation/session identity never becomes engineering truth.
+RETAIN_NORMATIVE specialized H4B conformance: one real unresolved checkpoint
+must produce exact-chat attention followed by fresh canonical main, selected
+TASK/revision, exact current unresolved lineage, Unified State/next_action,
+selected authority and existing Flow Card under MINIMUM_FRESH_BRAIN_SYNC_V1.
+Existing Brain/Reviewer protocols and canonical ingress remain the permitted
+handoff boundaries; no persistent context or lifecycle store is introduced.
+Hydrate only flow-required canonical context; freshly prove unchanged governance
+bindings before reuse. Ambiguity expands bounded reconstruction or fails closed.
+Wake payload, chat/provider/session memory and cached judgment cannot supply truth.
+The specialized live proof takes at most one semantic step and stops at a new
+Human intent, priority or risk boundary. This proof limit is not TASK-308
+publication-turn policy. Human observes the response in that same conversation;
+conversation identity remains transport configuration, not engineering truth.
 
 ## 9. H5 — Integration/conformance closure
 

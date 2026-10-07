@@ -6,6 +6,17 @@ Authority: HUMAN_BRAIN_PLANNING
 Parent track: `brain-runtime-semantic-handoff-hardening-v1`
 Production requirement: `ORIGIN_AFFINE_RETURN + UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5`
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: H4C1 implementation/provenance contract and sections 1-11 independent
+H4 planning, origin/continuation requirements, H4E live matrix, final H4B proof,
+H5 gates and approved sequencing. These remain planning/conformance authorities,
+not a generic self-host runbook. Only named superseded fallback procedures and
+dated observations are HISTORICAL_ONLY at section/claim level. This document is
+not classified historical as a whole; activation still requires canonical lineage.
+
 ## H4C1 implementation contract (TASK-301)
 
 ### New-TASK origin provenance gate (TASK-309)
@@ -1183,6 +1194,10 @@ The previously observed scheduled-recovery/shared-runner starvation risk is also
 H4E closure rather than an H4D architectural constraint.
 
 ## 8. Final H4B semantic-resume proof
+
+RETAIN_NORMATIVE: the sequence below specifies the specialized live-proof
+requirement. Ordinary current operational navigation is [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md);
+this proof does not select lifecycle work or establish publication-turn policy.
 
 The final H4B proof occurs after H4C0, H4C1, H4D, and H4E.
 

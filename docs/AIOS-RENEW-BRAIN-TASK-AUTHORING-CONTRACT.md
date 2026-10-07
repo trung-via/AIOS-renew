@@ -2,6 +2,18 @@
 
 This is the compact authoring boundary for canonical AIOS-renew TASKs. It supplements, and does not replace or revise, the frozen v0.1 specification.
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: constitutional/identity preflight, Brain WHAT/WHY, exact scope,
+acceptance authorability, semantic audit and verification authoring obligations.
+Use the entrypoint section 9 bounded impact map before closing self-host change
+scope, including all durable outer TASK-314/TASK-315 executor_required consumers.
+The map cannot choose work or grant modification scope. Canonical published
+ingress/protocol governs any superseded audit-plumbing claim below; retaining
+semantic audit authority does not reactivate retired mutation prerequisites.
+
 ## Constitutional preflight
 
 Before drafting or revising a TASK, perform a constitutional preflight against the canonical governance baseline:

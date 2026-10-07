@@ -5,7 +5,24 @@ Approved priority: 2026-09-30
 Architecture subject main: `8b8208149c5162832efc10231464e2d326962c67`  
 Scope: automation/wake transport and continuity only; no lifecycle authority transfer
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+HISTORICAL_ONLY applies at section/claim granularity to sections 1-19: the
+superseded Work target shape, carrier/loop/bootstrap instructions, source-time
+planning and all exact dated probe/ACK observations. They are preserved evidence,
+not current generic navigation or production Work enablement. RETAIN_NORMATIVE:
+section 20 Human Work-retirement decision and its requirement for new explicit
+Human authority before re-enablement. Only the section 20 interim
+HUMAN_WAKE_RELAY_V1 continuation claim is superseded by the later local
+regular-Chat contract. This is not a whole-file historical classification;
+independent safety/authority invariants remain binding.
+
 ## 1. Human objective
+
+HISTORICAL_ONLY: superseded Work route/proof context. Current operational
+navigation is [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md); the retained text grants no production authority.
 
 Before resuming semantic-handoff hardening implementation, complete the missing
 automation loop between GitHub and ChatGPT Brain.
@@ -68,6 +85,9 @@ No OpenAI API Brain service, Slack intermediary, message broker or persistent
 orchestration database is required for the first implementation.
 
 ## 4. Proposed minimal wake carrier
+
+HISTORICAL_ONLY: superseded Work route/proof context. Current operational
+navigation is [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md); the retained text grants no production authority.
 
 Use one dedicated long-lived GitHub pull request per controlled repository, for
 example an operational PR named "AIOS Brain Wake Bus".
@@ -178,6 +198,9 @@ The wake payload must not contain:
 
 ## 8. Brain behavior after wake
 
+HISTORICAL_ONLY: superseded Work route/proof context. Current operational
+navigation is [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md); the retained text grants no production authority.
+
 The event-triggered Work task must act as a **fresh Brain**, not as a continuation
 that trusts prior chat memory.
 
@@ -196,6 +219,9 @@ Its bootstrap instruction should be thin:
 This makes chat identity and conversation memory non-authoritative.
 
 ## 9. Loop examples
+
+HISTORICAL_ONLY: superseded Work route/proof context. Current operational
+navigation is [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md); the retained text grants no production authority.
 
 ### Authoring rejection
 
@@ -268,6 +294,9 @@ one low-frequency reconciliation fallback only if real testing shows it is neede
 Do not add this fallback preemptively if the native event path is reliable.
 
 ## 12. Conformance gates before roadmap resumes
+
+HISTORICAL_ONLY: superseded Work route/proof context. Current operational
+navigation is [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md); the retained text grants no production authority.
 
 The wake automation is not complete until real end-to-end probes demonstrate:
 
@@ -826,6 +855,10 @@ only.
 
 
 ## 20. Production disposition — Work retired from AIOS wake
+
+RETAIN_NORMATIVE: the Human Work-retirement/re-enablement boundary below.
+HISTORICAL_ONLY applies only to the interim Human-relay continuation claim,
+which the later local regular-Chat contract supersedes; historical facts remain intact.
 
 The GitHub -> ChatGPT Work path remains valid historical transport-conformance
 evidence. It is no longer the selected production wake mechanism.

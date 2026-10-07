@@ -6,6 +6,20 @@ review and publication do not themselves establish live H4A4 conformance, close 
 roadmap milestone, or activate a downstream project. Human/Brain must assess the
 observations separately after eligible reviewed publication.
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: independent privacy, exact-target, generation, durable
+deferral/ambiguity, no-resend, canonical supersession, isolation, compaction and
+Human/Brain live-proof/assessment obligations. HISTORICAL_ONLY applies specifically
+to the original terminal-only intake claim, version-2 repository-lane ownership,
+attached-browser/no-acquisition/cadence assumptions and cross-event flight/completion gating
+below where later published transport contracts supersede them. Those claims
+do not prescribe current deployment or resurrect flight gating. Current policy
+is resolved from the published local-wake/origin contracts and canonical lineage;
+the other independent conformance requirements remain active, not historical.
+
 ## Authority and privacy
 
 Retain the reviewed H4A3 exact-chat, authenticated regular-Chat surface, empty
@@ -14,7 +28,13 @@ Use an ACK-only Human planning agreement when a live wake is explicitly authoriz
 The transport never reads assistant output or ACK content, navigates, launches a
 browser, opens a tab, clears a draft, invokes ChatGPT Work, chooses an action or
 Executor, dispatches execution, reviews, publishes or advances roadmap state.
-Production intake remains exactly `terminal:RESULT|FAILURE:<RUN>:<artifact SHA>`.
+In that original H4A4 claim only, no navigation/browser launch/tab opening is
+HISTORICAL_ONLY under later H4D acquisition authority. Assistant-output isolation,
+draft protection and all semantic/lifecycle authority prohibitions remain
+RETAIN_NORMATIVE; H4D does not waive them.
+HISTORICAL_ONLY intake claim at TASK-278: production intake remained exactly
+`terminal:RESULT|FAILURE:<RUN>:<artifact SHA>`. Later H4A5 family coverage
+supersedes only that terminal-only restriction.
 
 Only the Human may prepare or reconcile machine-local configuration and state.
 The Executor must not run these live procedures or alter operational files. Keep

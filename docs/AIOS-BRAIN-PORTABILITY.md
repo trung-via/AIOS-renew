@@ -4,6 +4,18 @@ Status: HUMAN-APPROVED PLANNING BASELINE
 Approved by Human: 2026-09-17  
 Scope: provider-independent Brain/Reviewer continuity and zero-touch control-plane hardening above the frozen Kernel v0.1
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: sections 2-13 provider architecture, authority matrix, context, existing
+Flow Resolver/Card, family-specific handoff and receipt contracts; sections 15-23 planning,
+conformance and bounded migration contracts. The section 3 target composition is specialized
+architecture, not another current generic end-to-end operating procedure. Dated
+deployment facts are HISTORICAL_ONLY observations at claim level; fresh canonical
+Git/lineage and planning determine current status. No SELF_HOST card, added Flow
+Card field or second semantic resolver is introduced by the navigation pointer.
+
 ## 1. Purpose
 
 This baseline records the Human-approved BP-0 architecture for making AIOS-renew independent of any one Brain model/provider while preserving the existing authority model, canonical engineering truth, exact immutable lineage, GitHub/self-hosted execution path, and frozen Kernel v0.1 semantics.

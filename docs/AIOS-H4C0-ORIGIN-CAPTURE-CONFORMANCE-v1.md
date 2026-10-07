@@ -14,6 +14,20 @@ that availability observation does not invalidate its engineering lineage.
 Sections 6–13 define the selected page-scoped fallback, its bounded corrections,
 and its later Human/Brain live gate.
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: bounded feasibility/privacy/exact-origin proof requirements
+in sections 1-5, the specialized page-scoped fallback implementation/live
+procedure in sections 6-10, observation limits in sections 11-13 and the
+section 14 authoring-proof boundary. HISTORICAL_ONLY: prior source-specific
+operating choices and dated open/blocked or live-observation claims, including
+the superseded probe as the selected production issuer. Fresh published lineage
+determines current issuer eligibility; planning alone cannot activate a replacement.
+These claim-scoped classifications preserve current independent conformance
+authority and every historical observation.
+
 ## 1. Feasibility basis and limits
 
 The [OpenAI Plugin Reference](https://developers.openai.com/plugins/reference), consulted on 2026-10-04, documents tool-call `_meta["openai/session"]` as an anonymized conversation id for correlating tool calls within the same ChatGPT session. This is external transport feasibility evidence. It is not canonical engineering truth, a guarantee of availability or permanence, authentication, or proof of exact conversation affinity in the deployed environment.

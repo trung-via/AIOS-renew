@@ -10,6 +10,15 @@ Current eligibility policy: `TEMPORARY_WAKE_FIRST_CUTOVER_V2` (section 17),
 explicit Human wake-first risk acceptance on 2026-10-04. Earlier lane-flight
 serialization/release policies below are historical and prospectively superseded.
 
+## Navigation classification
+
+Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
+REPLACE_WITH_POINTER applies to that traversal only.
+RETAIN_NORMATIVE: distinct transport/privacy, Human-owned binding, current
+eligibility policy and independent H4/H5 planning/conformance requirements.
+HISTORICAL_ONLY applies to dated evidence and explicitly superseded policy
+claims, including earlier cross-event lane-flight eligibility, not the whole file.
+
 ## 1. Human objective
 
 When canonical AIOS state reaches a semantic checkpoint, wake the Human-visible regular
@@ -17,29 +26,11 @@ ChatGPT Brain automatically in one exact bound conversation without using ChatGP
 without consuming the Work/Codex shared allowance for wake transport, and without making
 the wake transport a Brain, Reviewer, Planner, Runtime, Publisher or lifecycle router.
 
-Target shape:
-
-```text
-AIOS/GitHub canonical attention
-        |
-        v
-deterministic bounded wake event
-        |
-        v
-local exact-chat wake transport
-        |
-        v
-bound regular ChatGPT Project conversation
-        |
-        v
-one bounded wake message is submitted
-        |
-        v
-regular Chat Brain performs fresh Brain Sync
-        |
-        v
-existing Flow Resolver / Brain / Reviewer / ingress contracts
-```
+The former generic target/Brain-continuation diagram is REPLACE_WITH_POINTER
+to the single entrypoint
+[ATTENTION / WAKE and RETURN](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md#8-attention--wake-and-return).
+The local attention-to-exact-chat delivery contract below remains specialized
+transport authority.
 
 The Human observes semantic progress in the bound ChatGPT conversation. Canonical
 engineering truth remains repository state and exact immutable lineage.
@@ -121,10 +112,9 @@ fresh_brain_sync_required: true
 It MUST NOT include copied TASK semantics, logs, a review verdict, correction strategy,
 roadmap successor, model selection or lifecycle command.
 
-On receipt, the regular Chat Brain must ignore semantic claims from the message, perform
-fresh Brain Sync from canonical `main` and exact lineage, verify that the event remains
-unresolved, resolve the current flow and take only the authority allowed by current
-canonical contracts.
+Generic Brain continuation after receipt is REPLACE_WITH_POINTER to
+[AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md). The message supplies no semantic authority;
+fresh canonical reconstruction and the existing selected authority remain mandatory.
 
 ## 6. Delivery and idempotency
 
@@ -306,6 +296,10 @@ the attention family and canonical subject but cannot encode an authoritative ne
 action, Reviewer verdict, correction strategy, roadmap successor or model selection.
 
 ### H4B — Regular Chat Brain resume
+
+RETAIN_NORMATIVE: the following is the H4B bounded live-conformance requirement,
+not a second generic operational procedure or a publication-turn stop policy.
+Use the single navigation entrypoint for ordinary continuation.
 
 After H4A transport conformance passes, prove that one real unresolved canonical semantic
 checkpoint can wake the bound conversation and that the regular Chat Brain:

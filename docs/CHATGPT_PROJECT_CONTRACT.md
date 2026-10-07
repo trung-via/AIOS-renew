@@ -7,20 +7,9 @@ Scope: ChatGPT Brain behavior for repository `trung-via/AIOS-renew`
 
 AIOS-renew is a minimal engineering execution kernel.
 
-It coordinates:
-
-```text
-Human Intent
-→ ChatGPT Brain
-→ TASK
-→ AIOS Runtime
-→ one active Executor
-→ RESULT + EVIDENCE
-→ ChatGPT Review
-→ PASS / CHANGES_REQUIRED / BLOCKED
-→ narrow REMEDIATION or REPAIR
-→ DELTA REVIEW
-```
+Current generic self-host operational navigation is maintained only in
+[AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md). The lifecycle diagram formerly here is
+REPLACE_WITH_POINTER; this contract retains distinct governance and protocol authority.
 
 This repository develops the execution substrate itself.
 
@@ -186,8 +175,8 @@ Keep these states separate:
 
 ### A. Admission failure
 
-No RUN exists.  
-Executor was not invoked.
+Pre-AIOS operational failure: `run_created=false`. No RUN exists.  
+Executor was not invoked. Carrier/dispatch/runner signals cannot fabricate canonical FAILURE or REPAIR lineage.
 
 ### B. RUN failure
 
@@ -312,18 +301,18 @@ At the beginning of a fresh ChatGPT work context:
 1. Read this contract.
 2. Rehydrate canonical facts deterministically using `AIOS_BRAIN_SYNC_SNAPSHOT` (`aios_renew.brain_sync.observe_brain_sync`). The snapshot establishes repository and main identity, roadmap planning status, selected exact TASK identity when uniquely justified, existing Unified State lifecycle next_action and authority, and explicit blockers from canonical repository facts without using chat or model memory.
 3. Read frozen kernel spec.
-4. Verify canonical rehydration against durable ordering and authority guards:
-   - **AUTHOR_TASK before PRIMARY**: Confirm that `AUTHOR_TASK` has been canonically committed and published into the canonical repository and refs before dispatching PRIMARY execution. Never dispatch PRIMARY against an unconfirmed or uncanonicalized TASK.
-   - **Addressed vs. Non-Target Carrier Receipts**: Interpret addressed carrier receipts strictly by family (e.g., wakeup, remediation intent, ingress). Non-target carrier `REJECTED` comments and receipts from other workflow runs or carriers are transport fan-out noise, not engineering lifecycle truth; ignore non-target REJECTED comments when evaluating TASK lifecycle.
-   - **Dispatch Acceptance vs. Terminal Engineering State**: Workflow dispatch or carrier acceptance acknowledges delivery only; it is NOT execution start, RUN creation, verification pass, review verdict, or publication outcome. Always inspect canonical terminal refs and artifacts before acting again.
-   - **Automatic PASS Publication Continuation**: After semantic PASS, invoke and observe the canonical publication-continuation surface (`TASK-110`) before considering manual fallback.
-   - **Admission Failure vs. RUN Failure**: Keep admission failures separate from RUN failures; never convert admission failure into RUN repair.
-   - **Evidence Reuse**: Verification is progressive and evidence-preserving; never rerun unchanged verification for ceremony.
-   - **Prohibition of Mutation-Only Capability Probes**: Never probe GitHub or repository write capability by creating, modifying, or deleting product or source files, branches, commits, refs, Issues, or other canonical mutations. Capability discovery must be read-only or derived from explicit permissions.
+4. Use [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md)
+   for current operational ordering, admission/dispatch distinctions, correction,
+   publication and return boundaries. The duplicated ordering guards are
+   REPLACE_WITH_POINTER; this section retains Brain Sync protocol authority.
 5. Check relevant success/failure/review/remediation/repair refs and immutable lineage.
 6. When `.ai/roadmap-state.yaml` is present, read it before selecting roadmap work and reconcile its bookmark against explicit current Human intent and the exact engineering lineage.
 7. Select roadmap work only after that reconciliation. For generic "continue roadmap" intent, use the unique `NEXT` item in the active track; parallel or separately gated work must not compete with it.
 8. Produce a short SYNC CHECKPOINT.
+
+Never probe write capability by creating, modifying or deleting canonical files,
+branches, commits, refs or Issues. Capability discovery remains read-only or based
+on explicit permissions; this independent safety obligation is RETAIN_NORMATIVE.
 
 Snapshot selection fails closed for missing, ambiguous, unauthored, or contradictory planning/lineage state and never fabricates completion, TASK/RUN identity, Human priority, Executor choice, transport success, review verdict, or publication outcome. Snapshot generation is strictly observation-only: `run_created=false`, `executor_invoked=false`, `verification_invoked=false`, `state_mutated=false`.
 
