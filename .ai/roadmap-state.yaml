@@ -1326,7 +1326,7 @@ sequence:
       reviewed_run_id: RUN-319-003
       publication_boundary: PROVEN_INCLUDED_IN_MAIN
       integration_candidate_sha: "8c393ad5804eddad0609b66d7a7fc920b5fbfbe4"
-      consequence: RESUME_TASK316_R3_WITH_FRESH_PRIMARY_NO_REPAIR_OF_RUN_316_003
+      consequence: RESUME_TASK316_R4_WITH_FRESH_PRIMARY_NO_REPAIR_OF_RUN_316_003
     return_to: brain-optimization-v1-task316-verification-baseline-recovery
     blocks:
       - brain-optimization-v1-task316-verification-baseline-recovery
@@ -1339,14 +1339,16 @@ sequence:
     priority_resume_gate_status: SATISFIED_BY_TASK_318
     preserved_failure_lineage: RUN-316-002
     pending_reconciliation: SATISFIED_BY_TASK319_REVIEWED_PUBLICATION
-    next_semantic_action: FRESH_PRIMARY_TASK316_R3_FROM_CURRENT_CANONICAL_MAIN
+    next_semantic_action: FRESH_PRIMARY_TASK316_R4_FROM_CURRENT_CANONICAL_MAIN
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-316
     task_revision: 4
-    task_authoring_status: PENDING
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "cad8df6381610df372d32dbe2a27f861c902d35d"
+    task_blob_sha: "132f7fd411411da716f496bfe47dcae9e72eff4e"
     prior_task_revision: 3
     prior_task_author_commit_sha: "fb50b58cfaf717252c589872adbeeaa700b11e41"
     prior_task_blob_sha: "c662ebab45e7941226e43705464f60025fafe390"
