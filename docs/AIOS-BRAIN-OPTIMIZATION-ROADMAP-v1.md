@@ -122,7 +122,7 @@ Exit: `BRAIN_OPTIMIZATION_PREEMPTION_CANONICAL`.
 
 ### Approved next overlay — SELF_HOST_END_TO_END_FLOW_V1 normative consolidation
 
-**Status: HUMAN_APPROVED 2026-10-07 — UNIQUE NEXT AFTER REVIEWED/PUBLISHED TASK-317**
+**Status: COMPLETED 2026-10-07 — TASK-318 REVIEWED/PUBLISHED; RETURNED TO TASK-316 RECONCILIATION**
 
 TASK-317 / RUN-317-002 / REVIEW-317-002 is PASS and the exact reviewed
 candidate `9a528c28f3007b50c40352b4839049aac4a2b2a4` is `main`.
@@ -131,12 +131,16 @@ navigation entrypoint **plus same-activation retirement of competing normative
 guidance** ahead of frozen TASK-316 re-evaluation and BO-1 continuation.
 
 Architecture: [Self-Host End-to-End Flow Architecture v1](AIOS-SELF-HOST-END-TO-END-FLOW-ARCHITECTURE-v1.md).
-Planning only, not a new active operational contract. No Executor/model/effort
-is inherited from TASK-317. A future TASK-318 must be separately authored and
-Human-delegated; use current `main` after this planning mutation as its base.
+This overlay remained planning-only until TASK-318 completed. TASK-318 was separately
+authored and Human-delegated. RUN-318-001 reached PRIMARY review with only AC3/F1
+outstanding; RUN-318-002 remediated that finding, REVIEW-318-002 returned DELTA PASS,
+and exact reviewed candidate `c39fcc318d2265257f1dbe3fcf499164aac5ac47` was
+source-published to canonical `main`. The subsequent local-chat-wake delivery failure
+is operational return evidence and does not invalidate source publication.
 
-Exit: `SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE`.
-Then perform fresh TASK-316 lineage/Runtime V2 reconciliation before BO-1.
+Exit: `SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE` — SATISFIED.
+Canonical planning NEXT after explicit Human/Brain reconciliation is fresh TASK-316
+lineage/Runtime V2 re-evaluation before BO-1 resumes.
 
 ### Recovery overlay — MINIMUM_SUFFICIENT_VERIFICATION_V2
 

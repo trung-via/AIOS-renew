@@ -839,7 +839,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-self-host-end-to-end-flow-consolidation
+  - brain-optimization-v1-task316-verification-baseline-recovery
 sequence:
 
   - id: TASK-309
@@ -1182,13 +1182,37 @@ sequence:
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
   - id: brain-optimization-v1-self-host-end-to-end-flow-consolidation
-    status: NEXT
+    status: DONE
     phase: BO1S_SELF_HOST_OPERATIONAL_FLOW_NORMATIVE_CONSOLIDATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
     planning_document: docs/AIOS-SELF-HOST-END-TO-END-FLOW-ARCHITECTURE-v1.md
     task_id: TASK-318
-    task_authoring_status: NOT_AUTHORED
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "b0de42adf26be6ac76ce9428153e60051a4e1b7f"
+    completed_by:
+      primary_run_id: RUN-318-001
+      primary_review_id: REVIEW-318-001
+      primary_review_verdict: CHANGES_REQUIRED
+      primary_finding_id: F1
+      remediation_authorization_sha: "ef27675c887f79e0e3e91d72535f52727e0387ae"
+      remediation_run_id: RUN-318-002
+      review_id: REVIEW-318-002
+      verdict: PASS
+      review_decision_sha: "040d1d52b810fc92627a95745f1abbe6820b4ca0"
+      reviewed_sha: "c39fcc318d2265257f1dbe3fcf499164aac5ac47"
+      published_sha: "c39fcc318d2265257f1dbe3fcf499164aac5ac47"
+      publication_workflow_run_id: 37574401607
+      publication_job_status: SUCCESS
+      workflow_terminal_status: POST_PUBLICATION_WAKE_FAILURE
+      publication_basis: EXACT_REVIEWED_REMEDIATION_CANDIDATE_IS_CANONICAL_MAIN_2026_10_07
+      runtime_verification: "82 passed plus git diff --check"
+      wake_interpretation: >-
+        Source publication completed successfully. The subsequent local-chat-wake
+        delivery failure is operational return evidence and does not invalidate the
+        exact reviewed source publication or TASK-318 engineering completion.
+    closure: SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
     executor_delegation:
       authority: HUMAN
       selected_on: "2026-10-07"
@@ -1248,10 +1272,13 @@ sequence:
       - brain-optimization-v1-bo1-author-task-mutation-path-simplification
 
   - id: brain-optimization-v1-task316-verification-baseline-recovery
-    status: BLOCKED_ON_SELF_HOST_FLOW_CONSOLIDATION_PRIORITY
+    status: NEXT
+    resumed_on: "2026-10-07"
     priority_resume_gate: SELF_HOST_END_TO_END_FLOW_V1_ACTIVE_AND_NORMATIVE_CLEANUP_COMPLETE
+    priority_resume_gate_status: SATISFIED_BY_TASK_318
     preserved_failure_lineage: RUN-316-002
     pending_reconciliation: REEVALUATE_EXACT_FAILURE_AFTER_RUNTIME_VERIFICATION_V2
+    next_semantic_action: REEVALUATE_RUN_316_002_WITH_MINIMUM_SUFFICIENT_VERIFICATION_V2
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
@@ -1305,11 +1332,12 @@ sequence:
       base_sha: "fbfc33b8fc2c89abba7dedf4d99fa74e9405b511"
       failed_candidate_sha: "e21a309b188ace8c7a270575490f84647e81dc54"
       failure_artifact_sha: "91207191523377772bf9c69382ecba9f9244cf0d"
-      disposition: FROZEN_PENDING_MINIMUM_SUFFICIENT_VERIFICATION_V2
+      disposition: READY_FOR_REEVALUATION_UNDER_MINIMUM_SUFFICIENT_VERIFICATION_V2
       repair_status: NOT_AUTHORED
       review_status: NOT_CREATED
-    blocked_by:
+    unblocked_by:
       - brain-optimization-v1-minimum-sufficient-verification-v2
+      - brain-optimization-v1-self-host-end-to-end-flow-consolidation
     recovery_rule: >-
       TASK-316 remains a bounded prerequisite recovery overlay inside BO-1 and its
       RUN-316-002 failure remains frozen as architecture evidence. Do not author a broad
