@@ -1339,14 +1339,16 @@ sequence:
     priority_resume_gate_status: SATISFIED_BY_TASK_318
     preserved_failure_lineage: RUN-316-002
     pending_reconciliation: SATISFIED_BY_TASK319_REVIEWED_PUBLICATION
-    next_semantic_action: AUTHOR_TASK316_R5_WITH_FOCUSED_MINIMUM_SUFFICIENT_V2
+    next_semantic_action: FRESH_PRIMARY_TASK316_R5_WITH_FOCUSED_MINIMUM_SUFFICIENT_V2
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-316
     task_revision: 5
-    task_authoring_status: PENDING
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "567a2583a8bf62d07566a547668ded3b6b7ee107"
+    task_blob_sha: "51648431e65dd0bc08bf509925f1f95002629603"
     prior_task_revision: 4
     prior_task_author_commit_sha: "cad8df6381610df372d32dbe2a27f861c902d35d"
     prior_task_blob_sha: "132f7fd411411da716f496bfe47dcae9e72eff4e"
