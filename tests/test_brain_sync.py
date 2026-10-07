@@ -462,10 +462,18 @@ def test_shared_git_fixture_resolves_head_and_common_refs(tmp_path: Path, layout
         git(repo, "worktree", "add", "--quiet", "-b", "fixture-subject", str(subject))
         assert (subject / ".git").is_file()
         if layout == "linked_relative":
-            target = Path((subject / ".git").read_text(encoding="utf-8").strip()[8:])
-            (subject / ".git").write_text(
-                f"gitdir: {os.path.relpath(target, subject)}\n", encoding="utf-8"
-            )
+            gitfile = subject / ".git"
+            target = Path(gitfile.read_text(encoding="utf-8").strip()[8:])
+            if not target.is_absolute():
+                target = subject / target
+            relative_target = os.path.relpath(target, subject)
+            assert not Path(relative_target).is_absolute()
+            # Git for Windows hides this file; opening it with truncation can
+            # fail even when it is writable. Replace it with a new gitfile.
+            replacement = subject / "relative-gitdir"
+            replacement.write_text(f"gitdir: {relative_target}\n", encoding="utf-8")
+            replacement.replace(gitfile)
+            assert gitfile.read_text(encoding="utf-8") == f"gitdir: {relative_target}\n"
     git(repo, "pack-refs", "--all")
     if detached:
         git(subject, "checkout", "--quiet", "--detach")

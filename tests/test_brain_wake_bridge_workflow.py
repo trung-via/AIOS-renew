@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import subprocess
 from copy import deepcopy
 from pathlib import Path
 
@@ -68,36 +65,73 @@ def test_sources_export_one_attempt_bound_selector_artifact_without_wake_authori
         assert "String(created.data.id)" in notify["with"]["script"]
 
 
+def _source_writer_contract(key):
+    """Bind the whole real writer to its closed, guarded serialization contract.
+
+    This is a static check, not a JavaScript interpreter. Only whitespace may
+    vary: extra statements, fields, weaker guards or premature readiness fail.
+    The parser/projection assertions below independently exercise transport.
+    """
+    data = yaml.load((ROOT / bridge.SOURCE_WORKFLOWS[key]["path"]).read_text(), Loader=yaml.BaseLoader)
+    writers = [step for job in data["jobs"].values() for step in job.get("steps", [])
+               if step.get("name") == "Write exact wake source selectors"]
+    assert len(writers) == 1
+    writer = writers[0]
+    kind = "issue" if key == "terminal" else "comment"
+    selectors = {"issue_id": "AIOS_ISSUE_ID", "issue_number": "AIOS_ISSUE_NUMBER"}
+    upstream = "notify" if key == "terminal" else "wake_source"
+    if kind == "comment":
+        selectors["comment_id"] = "AIOS_COMMENT_ID"
+    assert writer["uses"] == "actions/github-script@v7"
+    assert writer["env"] == {
+        **{env: "${{ steps." + upstream + ".outputs." + field + " }}"
+           for field, env in selectors.items()},
+        "AIOS_WAKE_SOURCE_PATH": "${{ runner.temp }}/aios-wake-source/source.json",
+    }
+    fields = ", ".join(f"{field}: Number(process.env.{env})" for field, env in selectors.items())
+    guarded = ", ".join(f"pointer.{field}" for field in selectors)
+    expected = f"""
+const fs = require('fs');
+const pointer = {{version: 1, source_kind: '{kind}', {fields}}};
+if (![{guarded}].every(n => Number.isSafeInteger(n) && n > 0)) {{
+  throw new Error('Invalid exact wake source selector');
+}}
+fs.mkdirSync(require('path').dirname(process.env.AIOS_WAKE_SOURCE_PATH), {{recursive: true}});
+fs.writeFileSync(process.env.AIOS_WAKE_SOURCE_PATH, JSON.stringify(pointer), 'utf8');
+core.setOutput('ready', 'true');
+"""
+    assert set(writer["with"]) == {"script"}
+    assert writer["with"]["script"].split() == expected.split()
+    return kind, selectors
+
+
 @pytest.mark.parametrize("key", list(bridge.SOURCE_WORKFLOWS))
 @pytest.mark.parametrize("bad", [False, True])
 def test_real_source_writer_has_exact_numeric_selector_only_schema(key, bad):
-    node = shutil.which("node")
-    assert node is not None, "Node is needed for the source-writer harness"
-    data = yaml.load((ROOT / bridge.SOURCE_WORKFLOWS[key]["path"]).read_text(), Loader=yaml.BaseLoader)
-    writer = next(step for job in data["jobs"].values() for step in job.get("steps", []) if step.get("name") == "Write exact wake source selectors")
-    script = writer["with"]["script"]
-    harness = r"""
-const writes = [];
-const outputs = {};
-const fs = {mkdirSync: () => {}, writeFileSync: (path, raw) => writes.push(JSON.parse(raw))};
-const req = name => name === 'fs' ? fs : require(name);
-const write = new Function('require', 'core', 'return (async () => {' + SCRIPT + '})()');
-(async () => {
-  try {await write(req, {setOutput: (key, value) => {outputs[key] = value;}});}
-  catch (error) {outputs.error = error.message;}
-  process.stdout.write(JSON.stringify({writes, outputs}));
-})();
-""".replace("SCRIPT", json.dumps(script))
-    result = subprocess.run([node, "-e", harness], env={**os.environ, "AIOS_ISSUE_ID": "bad" if bad else "4000", "AIOS_ISSUE_NUMBER": "1210", "AIOS_COMMENT_ID": "6000", "AIOS_WAKE_SOURCE_PATH": "fixture/source.json"}, capture_output=True, text=True, check=True)
-    observed = json.loads(result.stdout)
+    kind, selectors = _source_writer_contract(key)
+    identities = {"issue_id": 4000, "issue_number": 1210, "comment_id": 6000}
+    written = {"version": 1, "source_kind": kind,
+               **{field: identities[field] for field in selectors}}
     if bad:
-        assert observed["writes"] == [] and "ready" not in observed["outputs"]
+        # Every identity is guarded, including the comment-only selector. The
+        # real consumer rejects bad types and values before source projection.
+        policy = bridge.load_policy(ROOT / ".ai/brain-wake-carriers.yaml")
+        for field in selectors:
+            for invalid in ("bad", "4000", "", None, False, 0, -1, 1.5, 2 ** 53):
+                malformed = {**written, field: invalid}
+                with pytest.raises(bridge.WakeBridgeError, match="integer identity"):
+                    bridge.read_pointer(json.dumps(malformed).encode("utf-8"))
+                with pytest.raises(bridge.WakeBridgeError, match="integer identity"):
+                    bridge.project_source(key=key, pointer=malformed, issue={}, comment=None, policy=policy)
     else:
-        assert len(observed["writes"]) == 1
-        pointer = bridge.read_pointer(json.dumps(observed["writes"][0]).encode())
-        assert pointer["source_kind"] == ("issue" if key == "terminal" else "comment")
-        assert pointer["issue_id"] == 4000 and pointer["issue_number"] == 1210
-        assert observed["outputs"] == {"ready": "true"}
+        pointer = bridge.read_pointer(json.dumps(written).encode("utf-8"))
+        assert pointer == written
+        assert set(pointer) == {"version", "source_kind", *selectors}
+        assert all(type(pointer[field]) is int for field in selectors)
+        assert len(json.dumps(pointer).encode("utf-8")) <= bridge.POINTER_MAX_BYTES
+        for boundary in (1, 2 ** 53 - 1):
+            bounded = {**written, **dict.fromkeys(selectors, boundary)}
+            assert bridge.read_pointer(json.dumps(bounded).encode("utf-8")) == bounded
 
         # The retained writer still feeds the historical pure projection contract.
         # These independently reacquired objects are fixtures, with no delivery API.
