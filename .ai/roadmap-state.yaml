@@ -1345,11 +1345,13 @@ sequence:
     approved_on: "2026-10-07"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-316
-    task_revision: 3
-    task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "fb50b58cfaf717252c589872adbeeaa700b11e41"
-    task_blob_sha: "c662ebab45e7941226e43705464f60025fafe390"
+    task_revision: 4
+    task_authoring_status: PENDING
+    prior_task_revision: 3
+    prior_task_author_commit_sha: "fb50b58cfaf717252c589872adbeeaa700b11e41"
+    prior_task_blob_sha: "c662ebab45e7941226e43705464f60025fafe390"
     revision_3_reason: APPLY_MINIMUM_SUFFICIENT_VERIFICATION_V2_TO_FRESH_CURRENT_MAIN_EXECUTION
+    revision_4_reason: REEXECUTE_SAME_BOUNDED_BASELINE_RECOVERY_AFTER_TASK319_HARDENING_WITHOUT_REPAIRING_RUN_316_003
     predecessor_failure:
       run_id: RUN-316-001
       terminal_kind: FAILURE
