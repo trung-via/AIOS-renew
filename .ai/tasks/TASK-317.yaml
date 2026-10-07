@@ -1,0 +1,192 @@
+task_id: TASK-317
+revision: 1
+goal: Activate MINIMUM_SUFFICIENT_VERIFICATION_V2 as the single Runtime-owned verification
+  architecture that unifies deterministic affected-verification selection, complete
+  failure-population preservation, exact base-to-candidate attribution, valid evidence
+  reuse, correction-aware narrowing and the existing full-suite integration guard
+  without creating a second verification authority.
+problem: RUN-316-002 failed during Runtime verification after the selected full suite
+  reported 51 failures, but canonical diagnostics retained only 20 failed identities.
+  The existing minimum-sufficient-v1 contract mainly normalizes authored command lists
+  and Runtime executes those commands without a unified deterministic mechanism for
+  preserving the complete failure population, attributing base-versus-candidate failures,
+  reusing still-valid verification evidence, or narrowing correction verification
+  from exact canonical delta material. This forces Brain to perform manual attribution
+  and encourages unnecessary full-suite reruns or overly broad correction scope. The
+  verified architecture must remain fail closed, keep raw command results truthful,
+  and keep semantic judgment outside Runtime.
+assumptions:
+- Canonical main at TASK-317 authoring is 875670fec24daafe3f58da64a31c2318ca282545.
+- RUN-316-002 remains frozen as motivating verification evidence; no REPAIR-316-002
+  is authorized by this TASK.
+- minimum-sufficient-v1 remains readable for historical TASK and correction artifacts;
+  TASK-317 is a v1 bootstrap TASK and V2 activation is prospective after reviewed
+  publication.
+- The repository-selected full-suite profile remains an integration safety net when
+  the authored verification contract requires it; this TASK does not change Human-selected
+  worker policy.
+- Runtime may narrow verification only from mechanically provable repository-owned
+  material and must fall back to the authored broader verification when narrowing
+  cannot be proven.
+scope:
+  inspect:
+  - docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/tasks/TASK-316.yaml
+  - .ai/verification-profiles.yaml
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/task.py
+  - src/aios_renew/review.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/parallel_verification.py
+  - src/aios_renew/verification_profile.py
+  - src/aios_renew/artifacts.py
+  - src/aios_renew/review_transport.py
+  - tests/bp_v4_probe_plugin.py
+  - tests/test_verification_contract.py
+  - tests/test_task.py
+  - tests/test_review.py
+  - tests/test_authoring_ingress.py
+  - tests/test_runtime.py
+  - tests/test_verification.py
+  - tests/test_parallel_verification.py
+  - tests/test_verification_profile.py
+  - tests/test_artifacts.py
+  - tests/test_review_transport.py
+  modify:
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/task.py
+  - src/aios_renew/review.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/parallel_verification.py
+  - src/aios_renew/verification_profile.py
+  - src/aios_renew/artifacts.py
+  - src/aios_renew/review_transport.py
+  - tests/bp_v4_probe_plugin.py
+  - tests/test_verification_contract.py
+  - tests/test_task.py
+  - tests/test_review.py
+  - tests/test_authoring_ingress.py
+  - tests/test_runtime.py
+  - tests/test_verification.py
+  - tests/test_parallel_verification.py
+  - tests/test_verification_profile.py
+  - tests/test_artifacts.py
+  - tests/test_review_transport.py
+non_goals:
+- Author, execute or broaden REPAIR-316-002, reinterpret all 51 RUN-316-002 failures
+  as TASK-316 defects, or rewrite TASK-316 lineage.
+- Add a semantic dependency graph, Planner, generic lifecycle router, automatic correction
+  selector, retry/failover authority, Reviewer or Publisher.
+- Let Runtime decide what semantic behavior a TASK must prove, whether a code change
+  is architecturally correct, or whether a reviewed candidate should be published.
+- Treat matching nodeid alone as proof of a pre-existing failure, or classify candidate-only/non-comparable
+  observations as candidate-induced causal defects.
+- Rewrite a nonzero raw verification exit as zero, suppress unresolved attribution,
+  skip required integration guards, or delete/xfail tests to obtain a green result.
+- Change the selected full-suite worker count, provider/executor policy, BO-1 through
+  BO-9 semantics outside this verification architecture, TASK-310, or H4 behavior.
+- Automatically advance roadmap planning from Runtime verification, Reviewer output,
+  publication or transport events.
+constraints:
+  hard:
+  - Brain owns the semantic verification envelope describing what must be proven;
+    Runtime owns only deterministic derivation, execution, canonical evidence and
+    mechanical attribution inside that envelope.
+  - minimum-sufficient-v2 must absorb attributed-minimum-verification and deterministic-delta-minimum-verification
+    capabilities into one policy rather than expose parallel verification authorities.
+  - Canonical failure truth must preserve the complete deterministic failed-test identity
+    population separately from any bounded Human-facing display. Silent truncation
+    like 51 reported versus 20 retained is forbidden.
+  - Each comparable failed-test observation must bind exact nodeid, phase, selected
+    verification profile, toolchain identity and a bounded deterministic failure fingerprint/detail.
+    If canonical material exceeds a declared bound, fail closed rather than silently
+    truncating identity truth.
+  - Base PASS plus candidate FAIL under equivalent conditions may be classified as
+    candidate regression. Base FAIL plus candidate FAIL is PRE_EXISTING_BASELINE only
+    when the bounded observations are deterministically equivalent. Candidate-only,
+    unstable, non-comparable or fingerprint-divergent observations remain UNRESOLVED.
+  - Raw command exit status and raw Runtime evidence remain immutable facts. Any higher-level
+    attributed verification outcome is separate and may ignore only fully proven PRE_EXISTING_BASELINE
+    failures for current-TASK blocking purposes.
+  - Minimum still-required verification may use only authored verification, exact
+    base/candidate identity, committed changed files, canonical failed identities,
+    authorized correction modification_scope and still-valid evidence bindings. Changed
+    files alone never authorize a semantic dependency inference; when narrowing is
+    not mechanically provable Runtime must use the authored broader verification.
+  - Evidence reuse must be deterministic and explicitly bound. Exact-subject evidence
+    may be reused only while its command/profile/toolchain/subject bindings remain
+    valid; cross-candidate reuse requires Runtime to prove all relevant bindings unchanged,
+    otherwise the affected verification is rerun.
+  - For REMEDIATION and REPAIR, proven unrelated PRE_EXISTING_BASELINE failures do
+    not automatically widen modification_scope or correction semantics. Candidate
+    regressions and UNRESOLVED attribution remain blocking.
+  - An authored full-suite requirement remains an integration guard. A nonzero suite
+    may be task-level nonblocking only when every observed failure is deterministically
+    proven PRE_EXISTING_BASELINE under the exact comparison contract; otherwise it
+    remains blocking.
+  - The architecture must avoid repeated execution of unchanged verification when
+    valid canonical evidence already proves the same requirement, while preserving
+    a deterministic audit trail of reused versus newly executed evidence.
+  - Executor changes only scope.modify and does not mutate TASK-316 artifacts, choose
+    correction strategy, issue semantic verdicts, publish candidates or advance roadmap
+    state.
+acceptance:
+- id: AC1
+  condition: The canonical verification contract defines minimum-sufficient-v2 as
+    one prospective policy that preserves legacy minimum-sufficient-v1 readability
+    and does not create an independent attributed/delta verification authority.
+- id: AC2
+  condition: Runtime has one deterministic derivation boundary that consumes the authored
+    verification baseline plus exact base/candidate, committed changed files, canonical
+    failed identities, authorized correction modification_scope and still-valid evidence,
+    and returns the minimum still-required verification or falls back to the authored
+    broader verification when narrowing is not provable.
+- id: AC3
+  condition: Parallel/full-suite failure observation preserves the complete canonical
+    failed-test identity population with exact nodeid and phase while keeping Human
+    display bounds separate, and each comparable failure carries bounded deterministic
+    profile/toolchain/fingerprint material sufficient for attribution.
+- id: AC4
+  condition: 'Base-to-candidate attribution implements fail-closed classifications:
+    exact base PASS/candidate FAIL may prove candidate regression; exact equivalent
+    base FAIL/candidate FAIL may prove PRE_EXISTING_BASELINE; candidate-only, non-comparable,
+    unstable or fingerprint-divergent observations are UNRESOLVED.'
+- id: AC5
+  condition: Verification evidence reuse is mechanically bound and invalidated by
+    relevant subject, command, profile, toolchain or failure-set changes, with deterministic
+    records distinguishing reused evidence from newly executed evidence.
+- id: AC6
+  condition: REMEDIATION and REPAIR verification can run an exact mechanically proven
+    affected subset first without allowing proven unrelated baseline failures to expand
+    modification_scope, while candidate regressions and unresolved attribution remain
+    blocking.
+- id: AC7
+  condition: An authored full-suite integration guard remains mandatory when required;
+    its raw nonzero result is preserved and can be task-level nonblocking only when
+    all observed failures are proven PRE_EXISTING_BASELINE under the exact base/candidate
+    comparison contract.
+- id: AC8
+  condition: Regression coverage proves complete failure preservation, attribution
+    counterexamples, evidence invalidation/reuse, deterministic fallback, correction-scope
+    isolation and raw-exit preservation without deleting, skipping or weakening existing
+    safety tests.
+- id: AC9
+  condition: The V2 implementation introduces no semantic planning, correction selection,
+    review, publication, retry/failover or roadmap authority and leaves the frozen
+    RUN-316-002 lineage untouched so it can be re-evaluated only after V2 is active.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_verification_contract.py tests/test_task.py tests/test_review.py
+    tests/test_authoring_ingress.py tests/test_verification.py tests/test_runtime.py
+    tests/test_parallel_verification.py tests/test_verification_profile.py tests/test_artifacts.py
+    tests/test_review_transport.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
