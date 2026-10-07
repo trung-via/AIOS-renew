@@ -1,27 +1,38 @@
 task_id: TASK-313
-revision: 1
+revision: 2
 goal: Simplify AUTHOR_TASK canonical mutation so Runtime admits the final TASK contract
   directly without serialized Brain audit handoff plumbing, while preserving all canonical
   validation, provenance, CAS, replay, and mutation-safety guarantees.
-problem: The Human-approved BO-1 architecture has retired AIOS_AUDITED_AUTHORING_HANDOFF,
-  Decision Packet/audit fingerprints, Stage-1/Stage-2 serialized material, acceptance_phase_ledger
-  transport, and repeated audit-support reconstruction as AUTHOR_TASK mutation prerequisites.
-  The published Runtime still reconstructs and validates that cognitive-support material
-  before every AUTHOR_TASK mutation, and current authoring documentation still contains
-  contradictory normative requirements. This transition must remove that duplicate
-  mutation path without weakening Runtime authority or changing REMEDIATION/REPAIR
-  authoring semantics.
+problem: 'TASK-313 r2 preserves the complete BO-1 AUTHOR_TASK direct-final-contract
+  semantics of r1 and changes only the Brain-owned verification envelope. TASK-313
+  r1 remained bound to minimum-sufficient-v1 plus the selected repository-wide full
+  suite even after MINIMUM_SUFFICIENT_VERIFICATION_V2 and TASK-319 were reviewed and
+  published. RUN-313-006 therefore re-entered the obsolete full-suite path and failed
+  in verification infrastructure before producing useful BO-1 evidence. The Human
+  explicitly retires that r1 verification requirement for continuation: do not repair
+  or re-prove the obsolete V1/full-suite path merely to finish BO-1. Re-author the
+  same TASK semantics under focused minimum-sufficient-v2 verification.'
 assumptions:
-- Canonical main at authoring is 361513aaabc84682cdccc3d487ca5c2c130af651, BO-1 is
-  the unique NEXT, and Human explicitly bound BO-1 to TASK-313.
-- Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-313 lifecycle unless
-  Human changes it.
-- This TASK is the one bounded transition that may use the legacy audited AUTHOR_TASK
-  ingress for the final time; subsequent AUTHOR_TASK mutation must use the reviewed
-  direct-final-contract path.
+- Canonical main at TASK-313 revision-2 authoring is 4cfc5899c503fad767f908ab8c0b4d52c85fb483;
+  BO-1 remains the unique Human/Brain planning NEXT.
+- 'Human decision 2026-10-08: TASK-313 r1 verification is historical and must not
+  be repaired or re-proven as a prerequisite for r2; r2 uses focused minimum-sufficient-v2.'
+- TASK-313 r1 and RUN-313-001 through RUN-313-006 remain immutable historical lineage.
+  Revision 2 does not rewrite, delete, relabel or reinterpret those RUNs.
+- TASK-314 r1 / RUN-314-002 / REVIEW-314-002 PASS remains a closed reviewed and published
+  structural-package capability. Its valid evidence is reused as historical capability
+  truth and is not a TASK-313 r2 verification prerequisite that must be re-proven.
+- TASK-316 r5 and TASK-319 established the current minimum-sufficient-v2 verification
+  baseline/hardening; Runtime remains authoritative for deriving, executing, attributing
+  and binding verification inside the authored r2 envelope.
+- Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-313 lifecycle; that delegation
+  persists through TASK-313 revisions unless Human changes it.
+- TASK-313 remains the bounded transition TASK that may use the currently published
+  legacy audited AUTHOR_TASK ingress while implementing its retirement; the final
+  published BO-1 behavior still has one direct-final-contract AUTHOR_TASK path.
 - Brain two-stage semantic audit remains mandatory as CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE,
-  but its transient support material is not canonical engineering truth or a second
-  Runtime mutation credential.
+  but audit support material is not canonical engineering truth or a second mutation
+  authority.
 scope:
   inspect:
   - docs/CHATGPT_PROJECT_CONTRACT.md
@@ -59,6 +70,12 @@ non_goals:
   authority, second semantic state store, or direct TASK-file mutation bypass.
 - Advance roadmap phase status or claim BO-1 closure, Runtime verification, semantic
   Review PASS, or publication from Executor output.
+- Repair, preserve, or re-prove minimum-sufficient-v1 or the TASK-313 r1 repository-wide
+  full-suite requirement solely to obtain BO-1 completion.
+- Use TASK-314 r1 as a fresh r2 proof obligation; its reviewed/published capability
+  remains historical evidence unless relevant state invalidates it.
+- Claim repository-wide full-suite greenness from TASK-313 r2 focused minimum-sufficient-v2
+  verification.
 constraints:
   hard:
   - After the candidate is published, AUTHOR_TASK canonical mutation must not require,
@@ -86,6 +103,14 @@ constraints:
     as historical fact.'
   - Executor changes only scope.modify and leaves BO-2+, TASK-310/H4, roadmap progression,
     Reviewer verdict and Publisher publication to their owning authorities.
+  - TASK-313 r2 verification must not author python scripts/aios_parallel_full_suite.py
+    as a mandatory guard. Runtime may deterministically derive or reuse evidence only
+    inside the focused minimum-sufficient-v2 envelope below.
+  - Removing the r1 full-suite requirement changes verification cost/selection only;
+    it must not weaken BO-1 production semantics, acceptance criteria, scope, provenance,
+    CAS, replay, correction separation, Reviewer or Publisher boundaries.
+  - Historical TASK-314 evidence is reused until relevant state invalidates it; do
+    not rerun TASK-314 or require its 692-test proof as a TASK-313 r2 completion condition.
 acceptance:
 - id: AC1
   condition: AUTHOR_TASK canonicalization succeeds for a valid new or revised TASK
@@ -120,12 +145,10 @@ acceptance:
     handoff rejection, preserved direct safety/provenance failures, and unchanged
     REMEDIATION/REPAIR audited-handoff enforcement.
 verification:
-  policy: minimum-sufficient-v1
+  policy: minimum-sufficient-v2
   required:
-  - python scripts/aios_parallel_full_suite.py
+  - python -m pytest -q tests/test_authoring_ingress.py tests/test_github_issue_ingress.py
+    tests/test_github_issue_ingress_workflow.py tests/test_origin_bootstrap.py
   - git diff --check
-  full_suite_reason: AUTHOR_TASK is a shared canonical mutation boundary; BO-1 changes
-    its admission path while preserving correction and origin-provenance behavior,
-    so the selected full suite is required to exclude cross-control-plane regression.
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
