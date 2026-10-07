@@ -38,6 +38,41 @@ Acceptance criteria must be atomic, observable, and collectively complete. Each 
 
 For every newly authored TASK, each acceptance criterion must be truthfully claimable by an admitted Executor as a concrete implementation property before Runtime verification. Author the criterion around what the completed implementation establishes, not a future verification outcome or lifecycle event. Runtime verification timing and results, canonical EVIDENCE, Reviewer judgment, publication, roadmap advancement, and other later lifecycle facts remain with their existing authorities. Brain and Human own this semantic authoring judgment; structural validation does not classify acceptance prose.
 
+## Two-stage semantic audit and direct Runtime TASK admission
+
+Brain must complete `CONSTRUCT` followed by `ADVERSARIAL_AUDIT_AND_RECONCILE`
+before delivering the final TASK. The two-stage protocol, profile lenses,
+reconciliation and closure remain cognitive/semantic discipline. Decision Packet,
+stage fingerprints, acceptance-phase declarations and TASK_AUTHORING support
+sections remain transient Brain material; they are neither canonical engineering
+truth nor a second Runtime mutation credential.
+
+Post-BO-1, `AUTHOR_TASK` admits the final TASK contract directly. Omit the
+`audited_handoff` carrier field: supplying it, even as null, is rejected. Runtime
+neither reconstructs nor validates nor fingerprints nor freshness-rechecks Brain
+audit-support material for TASK mutation. Historical H1 audited TASK admission and
+H3 ingress-ledger coverage/all-`CLAIM_NOW` requirements are superseded for
+`AUTHOR_TASK` only. This does not retire the Brain semantic audit or change the
+Brain protocol's own bounded support representation.
+
+Runtime directly preserves TASK schema and exact identity/revision continuity,
+`minimum-sufficient-v2` verification policy for new identities/revisions, authored
+return-affinity rules, expected-main currentness, unrelated-delta rejection and
+expected-old-main compare-and-swap. Concurrent main mutation fails closed.
+Historical identical replay remains non-mutating under its existing bounds.
+
+New revision-1 `ORIGIN_AFFINE` TASKs still require an independently admitted
+`origin_authoring_proof`, outside the TASK payload. Admission binds the exact
+carrier attempt, TASK id, expected main, route/generation and envelope digest,
+with deployment-owned HMAC, freshness, replay protection and same-attempt
+idempotence. Revisions preserve canonical affinity without consuming a fresh
+origin proof; explicit legacy authoring remains separate.
+
+`AUTHOR_REMEDIATION` and `AUTHOR_REPAIR` retain their existing audited handoffs,
+canonical reconstruction, correction-lineage and freshness enforcement. Their
+protocols still reject TASK_AUTHORING-only material. BO-1 adds no correction
+simplification or lifecycle, verification, verdict, publication or roadmap authority.
+
 ## Declare acceptance proof phase in Stage 2
 
 For prospective `TASK_AUTHORING`, Brain alone classifies acceptance proof phase
@@ -49,33 +84,24 @@ during the existing adversarial audit and reconciliation:
   EVIDENCE, Reviewer judgment, publication, roadmap advancement or another later
   lifecycle fact.
 
-The Stage-2 semantic material carries one `acceptance_phase_ledger` array alongside
-`construct_audit`, `reconciled_candidate`, `closure` and `outcome`. Each entry has
-exactly `id` (non-empty text, at most 256 UTF-8 bytes) and `phase` (`CLAIM_NOW` or
-`PROOF_LATER`). The ledger is bounded to 256 entries and 32768 UTF-8 JSON bytes.
-It is normalized and bound into `stage2_fingerprint` and serialized Brain decision
-identity. Substituting the ledger changes that identity.
+Within the Brain protocol, Stage-2 semantic material carries one
+`acceptance_phase_ledger` alongside `construct_audit`, `reconciled_candidate`,
+`closure` and `outcome`. Each entry has exactly `id` (non-empty text, at most 256
+UTF-8 bytes) and `phase` (`CLAIM_NOW` or `PROOF_LATER`). The ledger remains bounded
+to 256 entries and 32768 UTF-8 JSON bytes and bound into Brain stage/decision
+identity. These are semantic-support protocol rules, not AUTHOR_TASK ingress
+transport requirements.
 
-Before final `CANDIDATE` handoff, reconcile every `PROOF_LATER` requirement out of
-final acceptance and retain its intent on existing verification, constraint or
+Before final `CANDIDATE`, Brain reconciles every `PROOF_LATER` requirement out of
+final acceptance and retains its intent on existing verification, constraint or
 non-goal surfaces as semantically appropriate. If reconciliation cannot close the
-risk, return a closure `BLOCKER` and `NO_DECISION`. A valid final ledger covers the
-reconciled candidate's acceptance ids exactly once, all `CLAIM_NOW`.
+risk, return a closure `BLOCKER` and `NO_DECISION`. The final semantic ledger covers
+the reconciled candidate's acceptance ids exactly once, all `CLAIM_NOW`. Runtime
+TASK admission does not consume this ledger or infer phase from acceptance prose.
 
-AUTHOR_TASK ingress requires this ledger for every new identity or revision and
-rejects missing, duplicate, extra, substituted or `PROOF_LATER` entries before
-mutation. BP-4A only validates bounded declared shape and fingerprints it; final
-acceptance coverage and the all-`CLAIM_NOW` gate belong to ingress. Runtime,
-provider protocol and ingress never infer phase from acceptance prose.
-
-The ledger is transient cognitive support, never lifecycle truth, evidence or a
-persistent reasoning record. Do not add it to the TASK candidate or canonical TASK
-bytes; frozen acceptance entries still contain only `id` and `condition`.
-REMEDIATION_AUTHORING, REPAIR_AUTHORING and other flows retain their existing
-contracts and reject this TASK-only material. Identical historical TASK replay
-remains non-mutating and does not require a ledger; prospective changes cannot
-bypass the gate. This contract creates no RUN, execution, verification, verdict,
-publication or roadmap advancement.
+Do not add the ledger or other audit-support sections to canonical TASK bytes;
+frozen acceptance entries still contain only `id` and `condition`. No persistent
+reasoning record or additional engineering-state store is created.
 
 ## Specify verification once
 

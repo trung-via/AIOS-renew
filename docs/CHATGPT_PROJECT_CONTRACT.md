@@ -56,21 +56,34 @@ New revision-1 `ORIGIN_AFFINE` TASK authoring must carry a bounded opaque
 `origin_authoring_proof` from an **active reviewed exact-origin issuer**. The proof stays
 in the operational ingress envelope, outside the TASK payload.
 
-Human approved retirement on 2026-10-06 of the requirement that AUTHOR_TASK ingress must
-serialize and deterministically revalidate the complete two-stage Brain audit handoff
-(`AIOS_AUDITED_AUTHORING_HANDOFF`, Decision Packet fingerprint, Stage-1/Stage-2 audit
-envelope, and TASK acceptance-phase ledger) as a mutation prerequisite. The two-stage
-Brain audit itself remains a semantic authoring obligation: Brain must still audit the
-TASK design before handoff, but cognitive-support/audit plumbing is not canonical
-engineering truth and must not be required as a second mutation authority.
+The post-BO-1 `AUTHOR_TASK` rule implements the Human-approved retirement of
+2026-10-06: Runtime validates the final TASK contract and canonical/provenance
+bindings directly. A supplied `audited_handoff` is rejected, including an explicit
+null carrier field; there is one production TASK mutation path. Runtime does not
+require, reconstruct, validate, fingerprint or freshness-recheck
+`AIOS_AUDITED_AUTHORING_HANDOFF`, Decision Packet, Stage-1/Stage-2 material,
+`acceptance_phase_ledger` or TASK_AUTHORING audit-support sections for TASK mutation.
 
-This retirement is prospective. Until a reviewed implementation removes the old ingress
-gate, the currently published Runtime may continue to require the legacy audited handoff
-for the one transition TASK needed to remove it. After activation, AUTHOR_TASK admission
-must validate the final TASK contract and canonical/provenance bindings directly, without
-requiring reconstruction of Brain audit fingerprints. Copying a selector, an old TASK, another chat's proof,
-a rendezvous marker by itself, or an assistant/transcript assertion does not
-establish provenance.
+Brain must still perform the two-stage semantic authoring audit, `CONSTRUCT` then
+`ADVERSARIAL_AUDIT_AND_RECONCILE`, and reconcile the final TASK before delivery.
+That cognitive support is transient, is not canonical engineering truth and does
+not grant Runtime mutation authority. Historical H1/H3 TASK mutation requirements
+are superseded for `AUTHOR_TASK` only. `AUTHOR_REMEDIATION` and `AUTHOR_REPAIR`
+retain their audited handoffs, canonical reconstruction, correction-lineage and
+freshness checks; BO-1 does not simplify correction authoring.
+
+Direct TASK validation retains exact identity/revision continuity,
+`minimum-sufficient-v2` verification policy, authored return-affinity preservation,
+expected-main currentness, unrelated-delta rejection and expected-old-main
+compare-and-swap publication. Concurrent mutation and validation/provenance
+conflicts fail closed. Identical canonical replay retains its existing bounds.
+
+Historical transition only: TASK-313 was authorized to use the legacy audited TASK
+ingress for the final time to implement BO-1. That exception grants no legacy
+post-BO-1 mutation path or publication/roadmap authority.
+
+Copying a selector, an old TASK, another chat's proof, a rendezvous marker by itself,
+or an assistant/transcript assertion does not establish provenance.
 
 The production carrier must admit the proof against machine-local exact-origin
 state on a bounded self-hosted runner before hosted AUTHOR_TASK mutation.

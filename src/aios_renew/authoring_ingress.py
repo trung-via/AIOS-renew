@@ -62,7 +62,7 @@ from .run import (
 from .return_affinity import (AffinityError, document_affinity, require_same_affinity,
                               require_authored_affinity, OriginAffinity)
 from .origin_authoring_proof import AdmittedOrigin, OriginProofError, PROOF
-from .task import Task, TaskValidationError, _TaskLoader, parse_task
+from .task import TaskValidationError, _TaskLoader, parse_task
 from .verification_contract import CURRENT_VERIFICATION_POLICY
 from .unified_state import observe_unified_state
 
@@ -205,6 +205,10 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
 
     if not isinstance(data, Mapping):
         raise AuthoringIngressError("ingress envelope must be a mapping")
+
+    # Retired TASK handoffs are rejected without inspecting their audit material.
+    if data.get("operation") == "AUTHOR_TASK" and "audited_handoff" in data:
+        raise AuthoringIngressError("AUTHOR_TASK does not accept audited_handoff")
 
     # Check for forbidden fields in the entire structure
     _scan_for_prohibited_fields(data)
@@ -371,8 +375,8 @@ def execute_ingress(envelope: IngressEnvelope, *, repo: Path,
         raise AuthoringIngressError(f"not a Git repository: {repo}")
 
     operation = envelope.operation
-    if operation in _AUTHORING_FLOWS:
-        # Caller-owned mappings cannot change the audited payload mid-ingress.
+    if operation == "AUTHOR_TASK" or operation in _AUTHORING_FLOWS:
+        # Caller-owned mappings cannot change the validated payload mid-ingress.
         envelope = copy.deepcopy(envelope)
     if operation == "AUTHOR_TASK":
         return _execute_author_task(envelope, repo_root, origin_admission)
@@ -394,6 +398,8 @@ def execute_ingress(envelope: IngressEnvelope, *, repo: Path,
 
 def _execute_author_task(envelope: IngressEnvelope, repo: Path,
                          origin_admission: AdmittedOrigin | None = None) -> IngressResult:
+    if envelope.audited_handoff is not None:
+        raise AuthoringIngressError("AUTHOR_TASK does not accept audited_handoff")
     task_id = envelope.identity["task_id"]
     payload_str = _payload_to_str(envelope.payload)
 
@@ -485,8 +491,6 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path,
             f"expected main SHA mismatch (stale predecessor): expected {expected_main_sha}, current is {current_main_sha}"
         )
 
-    audit_binding = _validate_authoring_handoff(envelope, repo)
-
     # Check that working tree is clean if currently checked out on main
     code, status_out, _ = _git(repo, "status", "--porcelain", allow_fail=True)
     if code == 0 and status_out.strip():
@@ -496,7 +500,6 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path,
             raise AuthoringIngressError("working tree is dirty: cannot mutate main")
 
     # Create new tree using temporary index
-    _recheck_authoring_binding(envelope, repo, audit_binding)
     recheck_origin()
     with tempfile.TemporaryDirectory(prefix="aios-ingress-") as tmp_dir:
         temp_index = Path(tmp_dir) / "index"
@@ -537,7 +540,6 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path,
         f"task: {task_id} r{task.revision}",
     )
 
-    _recheck_authoring_binding(envelope, repo, audit_binding)
     recheck_origin()
     _publish_ingress_ref(
         repo,
@@ -1400,7 +1402,6 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
 # ---------------------------------------------------------------------------
 
 _AUTHORING_FLOWS = {
-    "AUTHOR_TASK": "TASK_AUTHORING",
     "AUTHOR_REMEDIATION": "REMEDIATION_AUTHORING",
     "AUTHOR_REPAIR": "REPAIR_AUTHORING",
 }
@@ -1559,7 +1560,9 @@ def _canonical_repair_supersession(observed: Mapping[str, Any]) -> dict[str, Any
 def _compose_authoring_packet(
     envelope: IngressEnvelope, repo: Path
 ) -> tuple[DecisionPacket, dict[str, Any], dict[str, Any], _AuthoringRefs]:
-    """Deterministic ingress glue over existing projection/compiler owners."""
+    """Audited correction ingress glue over existing projection/compiler owners."""
+    if envelope.operation not in _AUTHORING_FLOWS:
+        raise AuthoringIngressError("audited authoring is only valid for corrections")
     from .brain_sync import observe_brain_sync
     from .brain_context import compose_brain_work_context, resolve_flow
     from .decision_packet import compile_decision_packet
@@ -1573,7 +1576,7 @@ def _compose_authoring_packet(
     if snapshot.main_sha != main_sha:
         raise AuthoringIngressError("Brain Sync canonical main moved during authoring")
     flow = _AUTHORING_FLOWS[envelope.operation]
-    request = {"flow_selector": flow} if envelope.operation == "AUTHOR_TASK" else None
+    request = None
     unified = snapshot.unified_state
     if (envelope.operation == "AUTHOR_REPAIR"
             and snapshot.next_action == "EXECUTE_REPAIR"
@@ -1588,69 +1591,65 @@ def _compose_authoring_packet(
     resolution = resolve_flow(context)
     if resolution.selected_flow != flow:
         raise AuthoringIngressError(f"canonical selected flow is not {flow}")
-    if envelope.operation == "AUTHOR_TASK":
-        task = parse_task(_payload_to_str(envelope.payload))
-        material = {"kind": flow, "observations": [f"AUTHOR_TASK {task.task_id} revision {task.revision}"]}
-    else:
-        selected, unified = snapshot.selected_task, snapshot.unified_state
-        if selected is None or unified is None:
-            raise AuthoringIngressError("canonical authoring subject is absent")
-        task_bytes = _authoring_blob(repo, main_sha, f".ai/tasks/{selected['id']}.yaml", remote)
-        # Feed the compiler the canonical family document. Dataclass defaults
-        # (notably legacy verification.policy=None) are not authored fields.
-        canonical_task = parse_task(task_bytes.decode("utf-8"))
-        task_data = yaml.safe_load(task_bytes)
-        if envelope.operation == "AUTHOR_REMEDIATION":
-            findings = []
-            outstanding = unified.get("outstanding_findings", [])
-            if not any(item["source_run_id"] == envelope.identity["source_run_id"]
-                       and item["finding_id"] == envelope.identity["finding_id"] for item in outstanding):
-                raise AuthoringIngressError("REMEDIATION target is not canonically outstanding")
-            for identity in outstanding:
-                ref = f"refs/heads/aios/review-decision/{identity['source_run_id']}"
-                sha = refs.get(ref)
-                if sha is None:
-                    raise AuthoringIngressError("canonical finding REVIEW ref is missing")
-                _fetch_if_remote(repo, remote, sha)
-                paths = [p for p in _ls_tree(repo, sha, ".ai/reviews") if p.endswith((".yaml", ".yml"))]
-                if len(paths) != 1:
-                    raise AuthoringIngressError("canonical finding REVIEW is ambiguous")
-                review = parse_review(_authoring_blob(repo, sha, paths[0], remote).decode("utf-8"))
-                if review.review_id != identity["review_id"] or review.reviewed_sha != identity["reviewed_sha"]:
-                    raise AuthoringIngressError("canonical finding REVIEW lineage mismatch")
-                finding = next((f for f in review.findings if f.id == identity["finding_id"]), None)
-                if finding is None:
-                    raise AuthoringIngressError("canonical outstanding finding is missing from REVIEW")
-                findings.append({"source_run_id": identity["source_run_id"], "review_id": review.review_id,
-                                 "reviewed_sha": review.reviewed_sha, "finding": asdict(finding)})
-            material = {"kind": flow, "task": task_data, "findings": findings,
-                        "subject_kind": "UNIQUE_FINDING" if len(findings) == 1 else "CORRECTION_FRONTIER"}
-        else:
-            failed_run_id = envelope.identity["failed_run_id"]
-            if unified.get("failed_run_id") != failed_run_id:
-                raise AuthoringIngressError("REPAIR target differs from canonical failed RUN")
-            sha = refs.get(f"refs/heads/aios/failure-artifacts/{failed_run_id}")
+    selected, unified = snapshot.selected_task, snapshot.unified_state
+    if selected is None or unified is None:
+        raise AuthoringIngressError("canonical authoring subject is absent")
+    task_bytes = _authoring_blob(repo, main_sha, f".ai/tasks/{selected['id']}.yaml", remote)
+    # Feed the compiler the canonical family document. Dataclass defaults
+    # (notably legacy verification.policy=None) are not authored fields.
+    canonical_task = parse_task(task_bytes.decode("utf-8"))
+    task_data = yaml.safe_load(task_bytes)
+    if envelope.operation == "AUTHOR_REMEDIATION":
+        findings = []
+        outstanding = unified.get("outstanding_findings", [])
+        if not any(item["source_run_id"] == envelope.identity["source_run_id"]
+                   and item["finding_id"] == envelope.identity["finding_id"] for item in outstanding):
+            raise AuthoringIngressError("REMEDIATION target is not canonically outstanding")
+        for identity in outstanding:
+            ref = f"refs/heads/aios/review-decision/{identity['source_run_id']}"
+            sha = refs.get(ref)
             if sha is None:
-                raise AuthoringIngressError("canonical FAILURE ref is missing")
-            run_data = _json_no_dups(_authoring_blob(repo, sha, ".ai/transport/run.json", remote), "RUN")
-            failure = _json_no_dups(_authoring_blob(repo, sha, ".ai/transport/failure.json", remote), "FAILURE")
-            material = {"kind": flow, "task": task_data, "failure": failure,
-                        "failed_run": dict(_resolve_underlying_run_view(run_data, expected_run_id=failed_run_id))}
-            if resolution.selection_basis == "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION":
-                material = dict(context.repair_supersession_material)
-                expected_repair = _get_expected_sha(envelope.expected_state, "expected_current_repair_sha",
-                                                   "expected_repair_sha", "predecessor_repair_sha")
-                expected_failure = _get_expected_sha(envelope.expected_state, "expected_failure_artifacts_sha",
-                                                    "expected_failure_sha", "failure_artifacts_sha")
-                if expected_repair != material["current_authorization"]["authorization_sha"]:
-                    raise AuthoringIngressError("expected current REPAIR SHA does not match canonical authorization")
-                if expected_failure != material["failure_artifacts_sha"] or sha != material["failure_artifacts_sha"]:
-                    raise AuthoringIngressError("expected canonical FAILURE identity does not match failed RUN")
-            from .correction_preflight import canonical_repair_strategy_state
-            material["strategy_state"] = canonical_repair_strategy_state(
-                repo, failed_run_id=failed_run_id, task=canonical_task, failure=failure,
-                expected_refs=refs,
-            )
+                raise AuthoringIngressError("canonical finding REVIEW ref is missing")
+            _fetch_if_remote(repo, remote, sha)
+            paths = [p for p in _ls_tree(repo, sha, ".ai/reviews") if p.endswith((".yaml", ".yml"))]
+            if len(paths) != 1:
+                raise AuthoringIngressError("canonical finding REVIEW is ambiguous")
+            review = parse_review(_authoring_blob(repo, sha, paths[0], remote).decode("utf-8"))
+            if review.review_id != identity["review_id"] or review.reviewed_sha != identity["reviewed_sha"]:
+                raise AuthoringIngressError("canonical finding REVIEW lineage mismatch")
+            finding = next((f for f in review.findings if f.id == identity["finding_id"]), None)
+            if finding is None:
+                raise AuthoringIngressError("canonical outstanding finding is missing from REVIEW")
+            findings.append({"source_run_id": identity["source_run_id"], "review_id": review.review_id,
+                             "reviewed_sha": review.reviewed_sha, "finding": asdict(finding)})
+        material = {"kind": flow, "task": task_data, "findings": findings,
+                    "subject_kind": "UNIQUE_FINDING" if len(findings) == 1 else "CORRECTION_FRONTIER"}
+    else:
+        failed_run_id = envelope.identity["failed_run_id"]
+        if unified.get("failed_run_id") != failed_run_id:
+            raise AuthoringIngressError("REPAIR target differs from canonical failed RUN")
+        sha = refs.get(f"refs/heads/aios/failure-artifacts/{failed_run_id}")
+        if sha is None:
+            raise AuthoringIngressError("canonical FAILURE ref is missing")
+        run_data = _json_no_dups(_authoring_blob(repo, sha, ".ai/transport/run.json", remote), "RUN")
+        failure = _json_no_dups(_authoring_blob(repo, sha, ".ai/transport/failure.json", remote), "FAILURE")
+        material = {"kind": flow, "task": task_data, "failure": failure,
+                    "failed_run": dict(_resolve_underlying_run_view(run_data, expected_run_id=failed_run_id))}
+        if resolution.selection_basis == "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION":
+            material = dict(context.repair_supersession_material)
+            expected_repair = _get_expected_sha(envelope.expected_state, "expected_current_repair_sha",
+                                               "expected_repair_sha", "predecessor_repair_sha")
+            expected_failure = _get_expected_sha(envelope.expected_state, "expected_failure_artifacts_sha",
+                                                "expected_failure_sha", "failure_artifacts_sha")
+            if expected_repair != material["current_authorization"]["authorization_sha"]:
+                raise AuthoringIngressError("expected current REPAIR SHA does not match canonical authorization")
+            if expected_failure != material["failure_artifacts_sha"] or sha != material["failure_artifacts_sha"]:
+                raise AuthoringIngressError("expected canonical FAILURE identity does not match failed RUN")
+        from .correction_preflight import canonical_repair_strategy_state
+        material["strategy_state"] = canonical_repair_strategy_state(
+            repo, failed_run_id=failed_run_id, task=canonical_task, failure=failure,
+            expected_refs=refs,
+        )
     packet = compile_decision_packet(context, resolution, material)
     profile = parse_profile_registry((repo / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"][0]
     if profile["id"] != "brain-high-value-v3" or profile["version"] != 3:
@@ -1670,8 +1669,6 @@ def _authoring_family_body(operation: str, value: Any, packet: DecisionPacket, r
     if isinstance(value, str):
         value = yaml.safe_load(value)
     body = normalize_return_value(dict(value))
-    if operation == "AUTHOR_TASK":
-        return parse_task(json.dumps(body))
     if operation == "AUTHOR_REMEDIATION":
         return parse_remediation(json.dumps(body))
     facts = packet.as_dict()
@@ -1701,25 +1698,10 @@ def _validate_authoring_handoff(envelope: IngressEnvelope, repo: Path) -> _Autho
         candidate = _authoring_family_body(envelope.operation, audit["handoff_candidate"], packet, repo)
         if candidate != _authoring_family_body(envelope.operation, envelope.payload, packet, repo):
             raise AuthoringIngressError("audited candidate differs from canonical family payload")
-        if envelope.operation == "AUTHOR_TASK":
-            _validate_task_acceptance_phases(candidate, audit.get("acceptance_phase_ledger"))
         return packet.packet_fingerprint, contract["return_contract_ref"], refs
     except (ValueError, TypeError, KeyError, OSError, RecursionError, yaml.YAMLError,
             BrainSyncError, ReviewTransportError, subprocess.SubprocessError) as exc:
         raise AuthoringIngressError(f"audited authoring rejected: {exc}") from exc
-
-
-def _validate_task_acceptance_phases(task: Task, ledger: Any) -> None:
-    """Enforce exact Brain-declared coverage without interpreting acceptance prose."""
-    if ledger is None:
-        raise AuthoringIngressError("new TASK authoring requires acceptance_phase_ledger")
-    ids = [entry["id"] for entry in ledger]
-    if len(ids) != len(set(ids)):
-        raise AuthoringIngressError("acceptance_phase_ledger contains duplicate ids")
-    if set(ids) != {criterion.id for criterion in task.acceptance}:
-        raise AuthoringIngressError("acceptance_phase_ledger must exactly cover final TASK acceptance ids")
-    if any(entry["phase"] != "CLAIM_NOW" for entry in ledger):
-        raise AuthoringIngressError("final TASK acceptance requires only CLAIM_NOW; reconcile PROOF_LATER before ingress")
 
 
 def _recheck_authoring_binding(envelope: IngressEnvelope, repo: Path, binding: _AuthoringBinding) -> None:

@@ -18,6 +18,43 @@ the original per-repository ownership and cross-event in-flight rule are superse
 claims; exact-event ambiguity, dedupe, isolation and binding safety remain active.
 No whole-file historical label retires the still-active H4/H5 planning authority.
 
+## Post-BO-1 AUTHOR_TASK rule and historical supersession
+
+`AUTHOR_TASK` Runtime mutation validates the final TASK contract and
+canonical/provenance bindings directly. Supplied `audited_handoff` is rejected,
+including an explicit null carrier field. Runtime TASK mutation must not require,
+reconstruct, validate, fingerprint or freshness-recheck Decision Packet,
+Stage-1/Stage-2 material, audit fingerprints, `acceptance_phase_ledger` or
+TASK_AUTHORING support sections. There is one direct-final-contract production
+TASK mutation path.
+
+The mandatory Brain two-stage audit remains `CONSTRUCT` followed by
+`ADVERSARIAL_AUDIT_AND_RECONCILE`, including semantic acceptance-phase
+reconciliation and the applicable profile discipline. Its transient support is
+not canonical engineering truth or Runtime mutation authority.
+
+The original H1/H3 AUTHOR_TASK gates in sections 4, 5 and 7 and their historical
+sequencing/audit descriptions are **HISTORICAL_ONLY / SUPERSEDED_FOR_AUTHOR_TASK**.
+They remain below as the historical design, not a competing production contract.
+The TASK-specific ingress statement at the end of section 12 is likewise
+superseded. H1 audited-handoff, canonical reconstruction, correction-lineage and
+freshness requirements remain normative for `AUTHOR_REMEDIATION` and
+`AUTHOR_REPAIR`; BO-1 introduces no correction-authoring simplification. H2,
+H4/H5 planning authority and the Brain semantic protocol retain their own scope.
+
+Direct TASK safeguards retain schema and exact identity/revision continuity,
+minimum-sufficient verification policy, authored affinity rules, expected-main
+currentness, unrelated-delta rejection and expected-old-main compare-and-swap.
+Concurrent mutation and all direct validation/provenance conflicts fail closed.
+New revision-1 ORIGIN_AFFINE TASKs still require independently admitted origin
+proof bound to exact carrier attempt, TASK id, expected main, route/generation
+and envelope digest, with HMAC, freshness, replay and same-attempt idempotence.
+Legacy/revision separation and historical replay bounds are unchanged.
+
+Historical transition: TASK-313 alone was authorized to use the legacy audited
+TASK ingress for the final time to implement BO-1. This document does not claim
+Runtime verification, Review PASS, publication, phase closure or roadmap advancement.
+
 ## 1. Purpose
 
 This track closes demonstrated continuity gaps between canonical AIOS state, Brain
@@ -31,7 +68,8 @@ remember an unstated procedural obligation.
 
 ## 2. Evidence basis
 
-The architecture is grounded in current AIOS-renew and fresh downstream observations:
+The original architecture was grounded in the following source-baseline AIOS-renew
+and downstream observations (historical facts, not post-BO-1 ingress requirements):
 
 - BP-4A already implements a real two-stage `CONSTRUCT -> ADVERSARIAL_AUDIT_AND_RECONCILE`
   protocol for ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING and
@@ -90,6 +128,10 @@ needed). The final frozen TASK candidate still uses the existing schema.
 Historical TASKs and immutable lineage are never rewritten.
 
 ## 5. H1 — Audited Authoring Gate
+
+**Superseded for AUTHOR_TASK only by the post-BO-1 rule above.** The original
+design below is retained as history for TASK mutation and remains normative for
+REMEDIATION/REPAIR mutation.
 
 ### 5.1 Boundary
 
@@ -186,6 +228,10 @@ collapsing REPAIR into PRIMARY/REMEDIATION or fabricating a new lifecycle family
 This is a compatibility correction, not a generic correction router.
 
 ## 7. H3 — Acceptance proof-phase authoring contract
+
+**Historical Runtime TASK gate, superseded by BO-1.** Brain semantic proof-phase
+classification/reconciliation remains mandatory; Runtime no longer consumes or
+validates the ledger for AUTHOR_TASK mutation. The original H3 design follows.
 
 Preserve the frozen TASK schema while making proof ownership explicit before
 canonical authoring.
@@ -320,19 +366,24 @@ conversation identity remains transport configuration, not engineering truth.
 
 ## 9. H5 — Integration/conformance closure
 
-Before the hardening track closes, minimum conformance must cover:
+Before the hardening track closes, minimum conformance must cover the following.
+BO-1 supersedes the original TASK gate requirements in items 1-4 and 9; the
+updated requirements below preserve the correction and attention boundaries:
 
-1. new unaudited TASK mutation is rejected;
-2. valid two-stage audited TASK candidate is accepted;
-3. Stage-2 candidate/payload substitution is rejected;
-4. stale Stage-2 handoff after relevant canonical movement is rejected;
-5. REMEDIATION and REPAIR audited authoring use the same gate without merging
-   authorities;
+1. a directly valid new or revised final TASK is accepted without audited handoff;
+2. AUTHOR_TASK rejects every supplied audited_handoff instead of retaining a dual path;
+3. direct malformed-contract, identity/revision, verification-policy, affinity,
+   stale-main, unrelated-delta and concurrent-main failures remain closed;
+4. independently admitted new-TASK origin provenance retains exact carrier/envelope
+   binding, HMAC, freshness, replay/idempotence and legacy/revision separation;
+5. REMEDIATION and REPAIR retain audited handoff validation, canonical
+   reconstruction, candidate equality and freshness without merging authorities;
 6. absent/invalid reusable pre-verification state is visible before REPAIR strategy
    selection;
 7. NO_CHANGE structural ineligibility is reported before wakeup/Runtime execution;
 8. FINALIZE_CANDIDATE structural eligibility remains distinct from NO_CHANGE reuse;
-9. TASK candidate with PROOF_LATER acceptance cannot cross authoring ingress;
+9. Brain reconciles PROOF_LATER acceptance before final TASK delivery as semantic
+   discipline, without a Runtime TASK ledger gate;
 10. successful REPAIR -> DELTA CHANGES_REQUIRED -> REMEDIATION lineage is resolvable;
 11. one eligible terminal/semantic attention event produces exactly one bounded wake
     user turn in the exact Human-bound regular ChatGPT conversation with zero ChatGPT
@@ -511,9 +562,12 @@ Any blocked entry requires a blocked section. Any blocked section requires a
 Stage-2 closure `BLOCKER` on its corresponding existing lens: `AUTHORITY_BOUNDARY`
 for context, `FAILURE_MODE_COUNTEREXAMPLES` for shape, or
 `AC_CONSISTENCY_COMPLETENESS` for terminal feasibility. Closure must be
-`NO_DECISION`, with no candidate handoff. Ingress still validates fresh packet
-lineage, exact candidate/payload identity and CAS before constructing any authoring
-blob, index, commit or ref update.
+`NO_DECISION`, with no candidate handoff. This remains Brain semantic discipline.
+The original TASK ingress requirement to validate fresh packet lineage and exact
+audit-candidate/payload identity is **SUPERSEDED_FOR_AUTHOR_TASK** by BO-1. Runtime
+validates the final TASK and canonical/provenance bindings directly before mutation
+and preserves CAS; REMEDIATION/REPAIR retain their audited freshness and exact
+candidate/payload validation.
 
 ### 12.4 Authority and privacy
 
