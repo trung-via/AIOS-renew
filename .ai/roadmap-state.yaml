@@ -1003,10 +1003,30 @@ sequence:
     approved_on: "2026-10-06"
     planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
     task_id: TASK-313
-    task_revision: 1
+    task_revision: 2
     task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "3dfa7aade80f7237b9999062ffb6ed403e52abbc"
-    latest_failure_run_id: RUN-313-005
+    task_author_commit_sha: "4566a58a83e69c1c46e6621f03bfa9dbc3866e1f"
+    task_blob_sha: "96d8ad479ece66f56345c687a040da4dcb34179c"
+    latest_failure_run_id: RUN-313-006
+    prior_task_revision: 1
+    prior_task_author_commit_sha: "3dfa7aade80f7237b9999062ffb6ed403e52abbc"
+    prior_task_blob_sha: "37724a85cb02aaab7fb699e99a221ae769ff9da6"
+    revision_2_reason: TASK313_R2_FOCUSED_MINIMUM_SUFFICIENT_V2
+    human_verification_revision_decision:
+      authority: HUMAN
+      decided_on: "2026-10-08"
+      decision: >-
+        Do not repair or re-prove TASK-313 r1 minimum-sufficient-v1 or its
+        repository-wide full-suite requirement merely to complete BO-1. Preserve
+        r1/RUN failure lineage as history and continue the same BO-1 semantics as
+        TASK-313 r2 under focused minimum-sufficient-v2 verification.
+      task314_r1_disposition: >-
+        CLOSED_REVIEWED_PUBLISHED_CAPABILITY_REUSED_AS_VALID_HISTORY_NOT_R2_PROOF_PREREQUISITE
+      preserve:
+        - TASK313_R1_IMMUTABLE_LINEAGE
+        - TASK314_R1_IMMUTABLE_DONE_LINEAGE
+        - RUNTIME_OWNS_CANONICAL_V2_VERIFICATION
+        - REVIEWER_AND_PUBLISHER_BOUNDARIES_UNCHANGED
     bo1r_unblock:
       task_id: TASK-314
       run_id: RUN-314-002
@@ -1015,6 +1035,7 @@ sequence:
       reviewed_published_sha: "6671a2724b5b1b7fe03ac66468e79ef209bf876d"
       runtime_verification: "692 passed plus git diff --check"
       effect: SAME_HEAD_STRUCTURAL_PACKAGE_PRESERVATION_ACTIVE
+      r2_proof_requirement: REUSE_VALID_PUBLISHED_EVIDENCE_NO_REEXECUTION
     executor_delegation:
       authority: HUMAN
       selected_on: "2026-10-06"
