@@ -839,7 +839,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-task316-verification-baseline-recovery
+  - brain-optimization-v1-minimum-sufficient-verification-v2
 sequence:
 
   - id: TASK-309
@@ -1098,8 +1098,67 @@ sequence:
         was included in main. This is bounded recovery evidence, not a standing bypass.
     unblocks: [brain-optimization-v1-bo1-author-task-mutation-path-simplification]
 
-  - id: brain-optimization-v1-task316-verification-baseline-recovery
+  - id: brain-optimization-v1-minimum-sufficient-verification-v2
     status: NEXT
+    phase: BO1_VERIFICATION_ARCHITECTURE_RECOVERY
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-07"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    architecture_contract: MINIMUM_SUFFICIENT_VERIFICATION_V2
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Upgrade the existing minimum-sufficient verification contract into one
+      Runtime-owned deterministic architecture that combines affected-verification
+      derivation, complete failure-population preservation, base-to-candidate
+      attribution, valid-evidence reuse, correction-aware narrowing and the existing
+      full-suite integration guard without creating a second verification authority.
+    motivating_failure:
+      task_id: TASK-316
+      task_revision: 2
+      run_id: RUN-316-002
+      terminal_kind: FAILURE
+      phase: VERIFICATION
+      base_sha: "fbfc33b8fc2c89abba7dedf4d99fa74e9405b511"
+      failed_candidate_sha: "e21a309b188ace8c7a270575490f84647e81dc54"
+      failure_artifact_sha: "91207191523377772bf9c69382ecba9f9244cf0d"
+      collection_count: 6541
+      reported_failure_count: 51
+      retained_failure_identity_count: 20
+      diagnostic_population_truncated: true
+      disposition: FROZEN_AS_ARCHITECTURE_EVIDENCE
+    human_decision: >-
+      Do not author a broad REPAIR from RUN-316-002. Implement
+      MINIMUM_SUFFICIENT_VERIFICATION_V2 first, then re-evaluate the frozen failure
+      population and allow only genuine current-TASK blocking evidence to drive
+      correction.
+    merge_rules:
+      - ATTRIBUTED_MINIMUM_VERIFICATION_V1_IS_ABSORBED_CAPABILITY
+      - DETERMINISTIC_DELTA_MINIMUM_VERIFICATION_IS_ABSORBED_CAPABILITY
+      - EVIDENCE_REUSE_IS_PART_OF_THE_SAME_RUNTIME_DERIVATION
+      - FULL_SUITE_REMAINS_INTEGRATION_GUARD_NOT_SCOPE_EXPANDER
+    boundaries:
+      - HUMAN_OWNS_RISK_ACCEPTANCE_AND_OVERRIDE
+      - BRAIN_OWNS_WHAT_MUST_BE_PROVEN
+      - RUNTIME_OWNS_DETERMINISTIC_SELECTION_EXECUTION_AND_CANONICAL_EVIDENCE
+      - REVIEWER_OWNS_SEMANTIC_VERDICT
+      - NO_SEMANTIC_DEPENDENCY_GRAPH_IN_RUNTIME
+      - NO_NEW_PLANNER_ROUTER_REVIEWER_OR_PUBLISHER
+      - UNRESOLVED_ATTRIBUTION_FAILS_CLOSED
+      - PRE_EXISTING_BASELINE_DOES_NOT_AUTO_EXPAND_CORRECTION_SCOPE
+      - RUN_316_002_REMAINS_FROZEN_NO_REPAIR_YET
+    implementation_task_boundary: >-
+      A new implementation TASK is required because TASK-316 is a baseline-recovery
+      contract and must not be widened into verification-architecture implementation.
+      The new TASK requires a fresh Human Executor/model/effort selection because the
+      TASK-316 sticky execution profile expires on TASK-id change.
+    exit: MINIMUM_SUFFICIENT_VERIFICATION_V2_ACTIVE
+    return_to: brain-optimization-v1-task316-verification-baseline-recovery
+    blocks:
+      - brain-optimization-v1-task316-verification-baseline-recovery
+      - brain-optimization-v1-bo1-author-task-mutation-path-simplification
+
+  - id: brain-optimization-v1-task316-verification-baseline-recovery
+    status: BLOCKED_ON_MINIMUM_SUFFICIENT_VERIFICATION_V2
     phase: BO1_VERIFICATION_BASELINE_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-07"
@@ -1146,10 +1205,25 @@ sequence:
       stale regression fixtures and test-harness assumptions exposed by RUN-313-005,
       including the current published correction-fallback invariant, without weakening
       current production contracts or changing BO-1 semantics.
+    current_failure:
+      run_id: RUN-316-002
+      terminal_kind: FAILURE
+      phase: VERIFICATION
+      base_sha: "fbfc33b8fc2c89abba7dedf4d99fa74e9405b511"
+      failed_candidate_sha: "e21a309b188ace8c7a270575490f84647e81dc54"
+      failure_artifact_sha: "91207191523377772bf9c69382ecba9f9244cf0d"
+      disposition: FROZEN_PENDING_MINIMUM_SUFFICIENT_VERIFICATION_V2
+      repair_status: NOT_AUTHORED
+      review_status: NOT_CREATED
+    blocked_by:
+      - brain-optimization-v1-minimum-sufficient-verification-v2
     recovery_rule: >-
-      TASK-316 is a bounded prerequisite recovery overlay inside BO-1. It does not
-      replace or complete BO-1, alter TASK-313 lineage, or advance BO-2+. After exact
-      Runtime verification, semantic Review PASS and publication of TASK-316, restore
+      TASK-316 remains a bounded prerequisite recovery overlay inside BO-1 and its
+      RUN-316-002 failure remains frozen as architecture evidence. Do not author a broad
+      REPAIR from the 51-failure population. After MINIMUM_SUFFICIENT_VERIFICATION_V2
+      is active, re-evaluate RUN-316-002 under attributed minimum verification; only
+      genuine TASK-316 blocking evidence may drive correction. After exact Runtime
+      verification, semantic Review PASS and publication of TASK-316, restore
       brain-optimization-v1-bo1-author-task-mutation-path-simplification as the unique NEXT.
     return_to: brain-optimization-v1-bo1-author-task-mutation-path-simplification
     blocks:
