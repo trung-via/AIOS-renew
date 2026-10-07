@@ -3,6 +3,7 @@ import stat
 import subprocess
 import json
 import hashlib
+import shlex
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -24,7 +25,7 @@ def v2_injected_execution(tmp_path, monkeypatch):
     from tests.test_verification_contract import V2_BASE, V2_CANDIDATE, V2_TOOLCHAIN, v2_observation
     from aios_renew.verification_contract import SELECTED_FULL_SUITE_COMMAND
     state = {"tree": "c" * 40, "observer": "f" * 40, "detail": "AssertionError: expected 1",
-             "base_pass": False, "probe_divergent": False, "calls": []}
+             "base_pass": False, "probe_divergent": False, "probe_pass": False, "calls": []}
 
     def observe_git(repository, *args, **kwargs):
         if args[:2] == ("rev-parse", "--verify"):
@@ -58,6 +59,8 @@ def v2_injected_execution(tmp_path, monkeypatch):
         state["calls"].append((sha, command))
         profile = json.loads(kwargs["env"]["AIOS_V2_PROFILE"])
         outcome = "PASS" if sha == V2_BASE and state["base_pass"] else "FAIL"
+        if command != SELECTED_FULL_SUITE_COMMAND and state["probe_pass"]:
+            outcome = "PASS"
         detail = state["detail"]
         if state["probe_divergent"] and command != SELECTED_FULL_SUITE_COMMAND and sha != V2_BASE:
             detail = "AssertionError: divergent candidate probe"
@@ -136,7 +139,7 @@ def test_v2_base_pass_candidate_failure_is_blocking(v2_injected_execution):
     assert {r["classification"] for r in item.verification["attribution"]} == {"CANDIDATE_REGRESSION"}
 
 
-def test_v2_affected_probe_runs_first_and_never_skips_full_guard(v2_injected_execution, tmp_path):
+def test_v2_affected_failure_stops_before_full_guard(v2_injected_execution, tmp_path):
     from aios_renew.verification_contract import SELECTED_FULL_SUITE_COMMAND
     execute, state = v2_injected_execution
     execute("RUN-prior")
@@ -145,13 +148,28 @@ def test_v2_affected_probe_runs_first_and_never_skips_full_guard(v2_injected_exe
     with pytest.raises(RuntimeVerificationError) as failure:
         execute("RUN-correction", operation="REPAIR")
     candidate_calls = [command for sha, command in state["calls"] if sha == "b" * 40]
+    assert len(candidate_calls) == 1
+    assert "tests/test_sample.py::test_050" in candidate_calls[0]
+    assert SELECTED_FULL_SUITE_COMMAND not in candidate_calls
+    assert failure.value.evidence[-1].result.exit_code == 1
+    assert failure.value.evidence[0].verification["early_probe"] is True
+    audit = json.loads((tmp_path / "RUN-correction" / "minimum-sufficient-v2-plan.json").read_text(encoding="utf-8"))
+    assert audit["modification_scope"] == ["tests/test_sample.py"]
+
+
+def test_v2_affected_success_still_executes_full_guard(v2_injected_execution):
+    from aios_renew.verification_contract import SELECTED_FULL_SUITE_COMMAND
+    execute, state = v2_injected_execution
+    execute("RUN-prior")
+    state["calls"].clear()
+    state["probe_pass"] = True
+    result = execute("RUN-correction", operation="REPAIR")
+    candidate_calls = [command for sha, command in state["calls"] if sha == "b" * 40]
     assert len(candidate_calls) == 2
     assert "tests/test_sample.py::test_050" in candidate_calls[0]
     assert candidate_calls[-1] == SELECTED_FULL_SUITE_COMMAND
-    assert failure.value.evidence[-1].result.exit_code == 1
-    assert {r["classification"] for r in failure.value.evidence[0].verification["attribution"]} == {"UNRESOLVED"}
-    audit = json.loads((tmp_path / "RUN-correction" / "minimum-sufficient-v2-plan.json").read_text(encoding="utf-8"))
-    assert audit["modification_scope"] == ["tests/test_sample.py"]
+    assert len(result) == 1 and result[0].source.command == SELECTED_FULL_SUITE_COMMAND
+    assert result[0].result.exit_code == 1  # The existing baseline proof remains separate.
 
 
 def test_v2_canonical_cache_rejects_missing_raw_or_digest_tampering(tmp_path):
@@ -169,6 +187,339 @@ def test_v2_canonical_cache_rejects_missing_raw_or_digest_tampering(tmp_path):
     assert verification_module._v2_cache_records(cache) == ()
     raw.unlink()
     assert verification_module._v2_cache_records(cache) == ()
+
+
+@pytest.fixture
+def task320_execution(tmp_path, monkeypatch):
+    from tests.test_verification_contract import V2_BASE, V2_CANDIDATE, V2_TOOLCHAIN, task320_observation
+    from aios_renew.verification_contract import verification_digest
+    command = "python -m pytest -q tests/test_sample.py"
+    before = [f"tests/test_sample.py::test_{i:03d}" for i in range(8)]
+    state = dict(base_nodes=before, candidate_nodes=before + ["tests/test_sample.py::test_new"],
+                 candidate_failures=set(), base_failures=set(), calls=[],
+                 nonreproduction=False, collection_defect=None, broad_disagreement=False,
+                 projection_defect=None, observer_mismatch=False)
+
+    def observe_git(repository, *args, **kwargs):
+        if args[:2] == ("rev-parse", "--verify"):
+            return args[2].split("^")[0]
+        if args[:2] == ("diff", "--name-only"):
+            return "tests/test_sample.py\0"
+        if args[0] == "rev-parse" and args[1].endswith("^{tree}"):
+            return args[1][0] * 40
+        if args[0] == "rev-parse" and ":" in args[1]:
+            if state["observer_mismatch"] and args[1].startswith(V2_BASE):
+                return "9" * 40
+            return "f" * 40
+        raise AssertionError(args)
+
+    @contextmanager
+    def materialize(repository, *, subject_sha, **kwargs):
+        checkout = tmp_path / subject_sha
+        checkout.mkdir(exist_ok=True)
+        yield checkout
+
+    def runner(shell, **kwargs):
+        sha, actual = kwargs["cwd"].name, shell[-1]
+        native = shell[0] == "python"
+        argv = list(shell) if native else shlex.split(actual)
+        if native:
+            actual = shlex.join(argv)
+        collect = "--collect-only" in argv
+        selectors = [a for a in argv[4:] if a != "--collect-only"]
+        broad = selectors == ["tests/test_sample.py"]
+        nodes = list(state["base_nodes"] if sha == V2_BASE else state["candidate_nodes"]) if broad else selectors
+        if broad and not collect and sha != V2_BASE and state["broad_disagreement"]:
+            nodes = nodes + ["tests/test_sample.py::test_unstable_collection"]
+        failed = set(state["base_failures"] if sha == V2_BASE else state["candidate_failures"]).intersection(nodes)
+        if not broad and sha != V2_BASE and state["nonreproduction"]:
+            failed = set()
+        profile = json.loads(kwargs["env"]["AIOS_V2_PROFILE"])
+        observed = task320_observation(sha, actual, nodes, failures=failed, collect=collect, profile=profile)
+        canonical = {k: observed[k] for k in ("complete", "unstable", "reports", "failure_count")}
+        envelope = dict(schema="AIOS_BP_V4_PYTEST_OBSERVATION", version=1, profile=profile,
+                        toolchain=dict(V2_TOOLCHAIN), exit_status=observed["exit_code"],
+                        controller_collection=observed["collection"]["identity"], exact_collection=observed["collection"],
+                        failure_diagnostics=dict(canonical=canonical, reported_count=canonical["failure_count"]))
+        if collect:
+            defect = state["collection_defect"]
+            if defect == "missing":
+                envelope.pop("exact_collection")
+            elif defect == "conflicting":
+                envelope["controller_collection"] = {**envelope["controller_collection"], "digest": "0" * 64}
+            elif defect == "unstable":
+                canonical.update(complete=False, unstable=True)
+            elif defect == "profile":
+                envelope["profile"] = {**profile, "workers": 2}
+            elif defect == "toolchain" and sha == V2_BASE:
+                envelope["toolchain"]["python_version"] = "changed"
+        if not broad and not collect:
+            defect = state["projection_defect"]
+            if defect == "collection":
+                envelope.pop("exact_collection")
+            elif defect == "profile":
+                envelope["profile"] = {**profile, "workers": 2}
+            elif defect == "fingerprint":
+                for report in canonical["reports"]:
+                    if report["outcome"] == "FAIL":
+                        report["fingerprint"] = "0" * 64
+            elif defect == "detail":
+                for report in canonical["reports"]:
+                    if report["outcome"] == "FAIL":
+                        report["detail"] += " context-dependent"
+                        report["fingerprint"] = verification_digest(report["detail"])
+            elif defect == "phase":
+                for report in canonical["reports"]:
+                    if report["outcome"] == "FAIL":
+                        report["phase"] = "collect"
+        state["calls"].append(dict(sha=sha, command=actual, collect=collect, broad=broad, nodeids=nodes,
+                                   native_argv=tuple(shell) if native else None))
+        output = Path(kwargs["env"]["AIOS_BP_V4_PLUGIN_OUTPUT"])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(envelope), encoding="utf-8")
+        return completed(observed["exit_code"], stdout=b"injected pytest execution\n")
+
+    monkeypatch.setattr(verification_module, "_git", observe_git)
+    monkeypatch.setattr(verification_module, "_optional_git", observe_git)
+    monkeypatch.setattr(verification_module, "_v2_toolchain", lambda: dict(V2_TOOLCHAIN))
+    monkeypatch.setattr(verification_module, "materialize_verification_subject", materialize)
+
+    def seed_previous(failed_nodes, *, sha="d" * 40):
+        profile = verification_module._v2_profile(tmp_path, sha, command, {})
+        previous = task320_observation(sha, command, state["candidate_nodes"], failures=failed_nodes, profile=profile)
+        raw = tmp_path / "previous.raw"
+        raw.write_bytes(b"bound previous failure population")
+        binding = dict(subject_sha=sha, base_sha=V2_BASE, tree_sha=sha[0] * 40, command=command,
+                       profile=profile, toolchain=dict(V2_TOOLCHAIN), envelope_digest=verification_digest([]),
+                       changed_files_digest=verification_digest(["tests/test_sample.py"]), failure_set_digest=verification_digest([]))
+        record = dict(policy="minimum-sufficient-v2", binding=binding, candidate=previous,
+                      candidate_digest=verification_digest(previous), evidence_id="RUN-previous-V001",
+                      raw_path=str(raw), raw_digest=hashlib.sha256(raw.read_bytes()).hexdigest())
+        cache = tmp_path / "cache"
+        cache.mkdir(exist_ok=True)
+        (cache / "previous.json").write_text(json.dumps(record), encoding="utf-8")
+        return sha
+
+    def execute(run_id="RUN-task320", *, operation="PRIMARY", correction_base=None, platform="posix"):
+        return execute_minimum_verification((command,), run_id=run_id, base_sha=V2_BASE, subject_sha=V2_CANDIDATE,
+            repository=tmp_path, raw_directory=tmp_path / run_id, cache_directory=tmp_path / "cache",
+            modification_scope=("tests/test_sample.py",), operation=operation, runner=runner, platform=platform,
+            environment={}, subject_check=lambda *a, **k: None, correction_base_sha=correction_base)
+    return execute, state, seed_previous
+
+
+def test_task320_run313007_shaped_delta_finds_five_failures_without_broad_replay(task320_execution):
+    execute, state, _ = task320_execution
+    state["base_nodes"] = [f"tests/test_sample.py::test_{i:03d}" for i in range(776)]
+    new = [f"tests/test_sample.py::test_new_{i:03d}" for i in range(20)]
+    state["candidate_nodes"] = state["base_nodes"] + new
+    state["candidate_failures"] = set(new[:5])
+    with pytest.raises(RuntimeVerificationError, match="candidate-only delta") as caught:
+        execute()
+    executed = [c for c in state["calls"] if not c["collect"]]
+    assert len(executed) == 1 and len(executed[0]["nodeids"]) == 20
+    assert executed[0]["sha"] == "b" * 40 and not executed[0]["broad"]
+    record = caught.value.evidence[0].verification
+    assert record["candidate"]["failure_count"] == 5
+    assert {r["classification"] for r in record["attribution"]} == {"CANDIDATE_ONLY"}
+    assert {r["nodeid"] for r in record["attribution"]} == set(new[:5])
+    assert record["early_probe"] is True
+
+
+def test_task320_passing_delta_requires_the_entire_authored_focused_command(task320_execution, tmp_path):
+    execute, state, _ = task320_execution
+    result = execute()
+    executed = [c for c in state["calls"] if not c["collect"]]
+    assert [len(c["nodeids"]) for c in executed] == [1, 9]
+    assert [c["broad"] for c in executed] == [False, True]
+    assert len(result) == 1 and result[0].source.command == executed[-1]["command"]
+    assert "early_probe" not in result[0].verification
+    audit = json.loads((tmp_path / "RUN-task320" / "minimum-sufficient-v2-plan.json").read_text(encoding="utf-8"))
+    assert audit["policy"] == "minimum-sufficient-v2"
+    assert [p["kind"] for p in audit["probes"]] == ["EXACT_COLLECTION", "EXACT_COLLECTION", "CANDIDATE_DELTA"]
+    assert all(p["early_probe"] for p in audit["probes"])
+    assert len(list((tmp_path / "cache").glob("*.json"))) == 1
+
+
+@pytest.mark.parametrize("defect", ["missing", "conflicting", "unstable", "profile", "toolchain", "near-full", "observer"])
+def test_task320_unavailable_or_uneconomical_delta_falls_back_to_authored_proof(task320_execution, defect):
+    execute, state, _ = task320_execution
+    if defect == "near-full":
+        state["base_nodes"] = state["candidate_nodes"][:1]
+    elif defect == "observer":
+        state["observer_mismatch"] = True
+    else:
+        state["collection_defect"] = defect
+    result = execute()
+    executed = [c for c in state["calls"] if not c["collect"]]
+    assert len(executed) == 1 and executed[0]["broad"]
+    assert len(result) == 1 and result[0].result.exit_code == 0
+
+
+@pytest.mark.parametrize("operation", ["REPAIR", "REMEDIATION", "DIRECT_CANDIDATE"])
+def test_task320_correction_persistent_exact_failure_stops_before_covering_command(task320_execution, operation):
+    execute, state, seed_previous = task320_execution
+    node = state["candidate_nodes"][0]
+    previous = seed_previous({node})
+    state["candidate_failures"] = {node}
+    with pytest.raises(RuntimeVerificationError, match="previous-failure probe") as caught:
+        execute(operation=operation, correction_base=previous)
+    assert len(state["calls"]) == 1
+    assert state["calls"][0]["nodeids"] == [node] and not state["calls"][0]["broad"]
+    binding = caught.value.evidence[0].verification["binding"]
+    assert binding["correction_base_sha"] == previous
+    assert binding["base_sha"] == "a" * 40
+    assert binding["projection_of"] == "python -m pytest -q tests/test_sample.py"
+
+
+def test_task320_correction_exact_pass_still_requires_broader_authored_proof(task320_execution):
+    execute, state, seed_previous = task320_execution
+    previous = seed_previous({state["candidate_nodes"][0]})
+    result = execute(operation="REPAIR", correction_base=previous)
+    assert len(state["calls"]) == 2
+    assert [c["broad"] for c in state["calls"]] == [False, True]
+    assert len(result) == 1 and result[0].source.command == state["calls"][-1]["command"]
+
+
+def test_task320_tampered_previous_raw_evidence_cannot_authorize_a_correction_probe(task320_execution, tmp_path):
+    execute, state, seed_previous = task320_execution
+    previous = seed_previous({state["candidate_nodes"][0]})
+    (tmp_path / "previous.raw").write_bytes(b"tampered previous failure")
+    result = execute(operation="REPAIR", correction_base=previous)
+    assert len(state["calls"]) == 1 and state["calls"][0]["broad"]
+    assert len(result) == 1 and result[0].result.exit_code == 0
+
+
+def test_task320_broad_failure_exact_reproduction_proves_absence_without_776_item_base_replay(task320_execution):
+    execute, state, _ = task320_execution
+    state["base_nodes"] = [f"tests/test_sample.py::test_{i:03d}" for i in range(776)]
+    new = [f"tests/test_sample.py::test_new_{i:03d}" for i in range(20)]
+    state["candidate_nodes"] = state["base_nodes"] + new
+    state["candidate_failures"] = set(new[:5])
+    with pytest.raises(RuntimeVerificationError) as caught:
+        execute(operation="REPAIR")  # No previous bound correction failures.
+    executed = [c for c in state["calls"] if not c["collect"]]
+    assert [len(c["nodeids"]) for c in executed] == [796, 5]
+    assert all(c["sha"] == "b" * 40 for c in executed)
+    record = caught.value.evidence[0].verification
+    assert {r["classification"] for r in record["attribution"]} == {"CANDIDATE_ONLY"}
+    assert record["failure_projection"]["base_collection"]["collection"]["identity"]["count"] == 776
+    assert "base" not in record["failure_projection"]
+
+
+@pytest.mark.parametrize("base_pass", [False, True])
+def test_task320_same_identity_base_projection_preserves_exact_attribution(task320_execution, base_pass):
+    execute, state, _ = task320_execution
+    node = state["base_nodes"][0]
+    state["candidate_failures"] = {node}
+    state["base_failures"] = set() if base_pass else {node}
+    if base_pass:
+        with pytest.raises(RuntimeVerificationError) as caught:
+            execute(operation="REPAIR")
+        result = caught.value.evidence
+    else:
+        result = execute(operation="REPAIR")
+    executed = [c for c in state["calls"] if not c["collect"]]
+    assert [c["broad"] for c in executed] == [True, False, False]
+    assert [c["sha"] for c in executed] == ["b" * 40, "b" * 40, "a" * 40]
+    record = result[0].verification
+    assert record["candidate"]["exit_code"] == 1
+    assert record["attribution"][0]["classification"] == ("CANDIDATE_REGRESSION" if base_pass else "PRE_EXISTING_BASELINE")
+
+
+@pytest.mark.parametrize("defect", ["pass", "detail", "phase", "fingerprint", "collection", "profile"])
+def test_task320_candidate_projection_nonreproduction_uses_broad_attribution(task320_execution, defect):
+    execute, state, _ = task320_execution
+    node = state["base_nodes"][0]
+    state["candidate_failures"] = {node}
+    if defect == "pass":
+        state["nonreproduction"] = True
+    else:
+        state["projection_defect"] = defect
+    with pytest.raises(RuntimeVerificationError) as caught:
+        execute(operation="REPAIR")
+    executed = [c for c in state["calls"] if not c["collect"]]
+    assert [c["broad"] for c in executed] == [True, False, True]
+    assert executed[-1]["sha"] == "a" * 40
+    record = caught.value.evidence[0].verification
+    assert "failure_projection" not in record
+    assert record["attribution"][0]["classification"] == "CANDIDATE_REGRESSION"
+
+
+def test_task320_missing_base_collection_requires_broad_base_truth(task320_execution):
+    execute, state, _ = task320_execution
+    node = state["base_nodes"][0]
+    state["candidate_failures"] = state["base_failures"] = {node}
+    state["collection_defect"] = "missing"
+    result = execute(operation="REPAIR")
+    executed = [c for c in state["calls"] if not c["collect"]]
+    assert [c["broad"] for c in executed] == [True, False, True]
+    assert executed[-1]["sha"] == "a" * 40
+    record = result[0].verification
+    assert "failure_projection" not in record
+    assert record["base"]["command"] == record["candidate"]["command"]
+    assert record["attribution"][0]["classification"] == "PRE_EXISTING_BASELINE"
+
+
+def test_task320_nonreproduction_pass_is_discharged_only_by_complete_broad_base_proof(task320_execution):
+    execute, state, _ = task320_execution
+    node = state["base_nodes"][0]
+    state["candidate_failures"] = state["base_failures"] = {node}
+    state["nonreproduction"] = True
+    result = execute(operation="REPAIR")
+    assert state["calls"][-1]["broad"] and state["calls"][-1]["sha"] == "a" * 40
+    assert "failure_projection" not in result[0].verification
+    assert result[0].verification["attribution"][0]["classification"] == "PRE_EXISTING_BASELINE"
+    assert result[0].result.exit_code == 1
+
+
+def test_task320_collection_toolchain_change_stays_blocking_even_after_broad_fallback(task320_execution):
+    execute, state, _ = task320_execution
+    node = state["base_nodes"][0]
+    state["candidate_failures"] = state["base_failures"] = {node}
+    state["collection_defect"] = "toolchain"
+    with pytest.raises(RuntimeVerificationError) as caught:
+        execute(operation="REPAIR")
+    assert state["calls"][-1]["broad"] and state["calls"][-1]["sha"] == "a" * 40
+    record = caught.value.evidence[0].verification
+    assert record["base"]["unstable"] is True
+    assert record["attribution"][0]["classification"] == "UNRESOLVED"
+
+
+def test_task320_collection_disagreement_cannot_make_a_passing_broad_command_permissive(task320_execution):
+    execute, state, _ = task320_execution
+    state["broad_disagreement"] = True
+    with pytest.raises(RuntimeVerificationError) as caught:
+        execute()
+    assert caught.value.evidence[0].result.exit_code == 0
+    assert caught.value.evidence[0].verification["candidate"]["unstable"] is True
+
+
+def test_task320_projection_raw_tampering_invalidates_canonical_cache(task320_execution, tmp_path):
+    execute, state, _ = task320_execution
+    node = state["base_nodes"][0]
+    state["candidate_failures"] = state["base_failures"] = {node}
+    result = execute(operation="REPAIR")
+    cache = tmp_path / "cache"
+    assert verification_module._v2_cache_records(cache)
+    raw = Path(result[0].verification["failure_projection"]["candidate_raw_path"])
+    raw.write_bytes(b"tampered exact reproduction")
+    assert verification_module._v2_cache_records(cache) == ()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows native argument transport")
+def test_task320_windows_generated_probe_transports_parameterized_nodeids_literally(task320_execution):
+    execute, state, _ = task320_execution
+    node = "tests/test_sample.py::test_value[space 'single' \"double\" \\path $() & ; [nested]]"
+    state["candidate_nodes"] = state["base_nodes"] + [node]
+    state["candidate_failures"] = {node}
+    with pytest.raises(RuntimeVerificationError, match="candidate-only delta"):
+        execute(platform="nt")
+    native = state["calls"][-1]["native_argv"]
+    assert native == ("python", "-m", "pytest", "-q", node)
+    transported = subprocess.run((native[0], "-c", "import json,sys; print(json.dumps(sys.argv[1:]))", *native[4:]),
+                                 capture_output=True, text=False, check=True)
+    assert json.loads(transported.stdout.decode("utf-8")) == [node]
 
 
 class RecordingRunner:

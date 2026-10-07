@@ -9,6 +9,7 @@ import json
 import os
 import platform as platform_module
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -30,6 +31,9 @@ from .verification_contract import (
     validate_observation, verification_digest,
     validate_evidence_binding,
     toolchain_inventory_digest,
+    candidate_delta_projection, exact_collection_observation,
+    projected_failure_attribution, pytest_collection_command, pytest_projection_command,
+    validate_exact_collection, validate_exact_projection, validate_failure_reproduction,
 )
 
 
@@ -385,7 +389,7 @@ def _v2_profile(repository: Path, sha: str, command: str, environment: Mapping[s
                            "src/aios_renew/verification_profile.py"))
     owned_tools = {path: _optional_git(repository, "rev-parse", f"{sha}:{path}") for path in tool_paths}
     bound_environment = {k: v for k, v in environment.items()
-                         if k.upper() not in {"TEMP", "TMP", "TMPDIR", "AIOS_BP_V4_PLUGIN_OUTPUT", "AIOS_V2_PROFILE", "AIOS_V2_OBSERVATION_DIRECTORY"}}
+                         if k.upper() not in {"TEMP", "TMP", "TMPDIR", "AIOS_BP_V4_PLUGIN_OUTPUT", "AIOS_V2_PROFILE", "AIOS_V2_OBSERVATION_DIRECTORY", "AIOS_V2_EXACT_COLLECTION"}}
     return {**description, "observer_blob": observer, "selected_policy_blob": policy if selected else None,
             "repository_tool_blobs": owned_tools,
             "environment_digest": verification_digest(bound_environment),
@@ -420,6 +424,8 @@ def _v2_cache_records(directory: Path, *, repository: Path | None = None) -> tup
             value = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(value, dict) or value.get("policy") != MINIMUM_SUFFICIENT_V2 or "reuse" in value:
                 continue
+            if "early_probe" in value:
+                continue
             validate_observation(value["candidate"])
             validate_evidence_binding(value["binding"])
             if any(value["candidate"][k] != value["binding"][k] for k in ("subject_sha", "command", "profile", "toolchain")):
@@ -440,6 +446,25 @@ def _v2_cache_records(directory: Path, *, repository: Path | None = None) -> tup
                     validate_observation(value["base"])
                 base_raw = Path(value["base_raw_path"]).read_bytes()
                 if hashlib.sha256(base_raw).hexdigest() != value["base_raw_digest"]:
+                    continue
+            if "failure_projection" in value:
+                projection = value["failure_projection"]
+                if (value.get("failure_projection_digest") != verification_digest(projection)
+                        or value["binding"]["failure_set_digest"] != value["failure_projection_digest"]):
+                    continue
+                for key in ("candidate", "base_collection", "base"):
+                    if key not in projection:
+                        continue
+                    validate_observation(projection[key])
+                    if projection.get(key + "_digest") != verification_digest(projection[key]):
+                        raise VerificationContractError("cached projection digest mismatch")
+                    projection_raw = Path(projection[key + "_raw_path"]).read_bytes()
+                    if hashlib.sha256(projection_raw).hexdigest() != projection[key + "_raw_digest"]:
+                        raise VerificationContractError("cached projection raw binding mismatch")
+                classifications = projected_failure_attribution(projection, value["candidate"],
+                    command=value["binding"]["command"], base_sha=value["binding"]["base_sha"],
+                    candidate_sha=value["binding"]["subject_sha"])
+                if tuple(value.get("attribution", ())) != classifications:
                     continue
             verification_digest(value)
             records.append(value)
@@ -489,6 +514,11 @@ def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bo
         value = {**canonical, "reports": reports, "subject_sha": item.subject_sha,
                  "command": item.source.command, "exit_code": item.result.exit_code,
                  "profile": binding["profile"], "toolchain": binding["toolchain"]}
+        if not selected and "exact_collection" in envelope:
+            value["collection"] = envelope["exact_collection"]
+            validate_exact_collection(value["collection"])
+            if value["collection"]["identity"] != envelope.get("controller_collection"):
+                valid_conditions = False
         if not valid_exit or not valid_conditions:
             value.update(complete=False, unstable=True)
         validate_observation(value)
@@ -547,9 +577,11 @@ def execute_minimum_verification(
 ) -> tuple[Evidence, ...]:
     """Runtime V2 execution of the single derived plan and mandatory guards.
 
-    Reuse is conservative (complete tracked tree equality). Exact failure
-    probes run first for authorized correction test paths; authored requirements
-    remain until valid bound evidence discharges them. No correction is selected.
+    Reuse is conservative (complete tracked tree equality). Bounded candidate
+    deltas and exact previous failures are early failure gates; their success
+    never discharges authored proof. Reproduced exact failures prefer projected
+    base attribution, with the existing broad path as conservative fallback.
+    No correction or integration guard is selected by this execution strategy.
     """
     authored = tuple(dict.fromkeys(commands))
     modification_scope = tuple(modification_scope)
@@ -608,14 +640,19 @@ def execute_minimum_verification(
     audit = {"policy": MINIMUM_SUFFICIENT_V2, "base_sha": base_sha, "candidate_sha": subject_sha,
              "authored": authored, "changed_files": changed, "modification_scope": sorted(modification_scope),
              "correction_base_sha": correction_base, "correction_changed_files": correction_changed,
-             "affected_first": plan.affected_first, "fallback": plan.fallback, "records": []}
+             "affected_first": plan.affected_first, "fallback": plan.fallback,
+             "records": [], "probes": [], "projection_fallback": []}
     blocking = []
     with ExitStack() as subjects:
         candidate_repository = None
         base_repository = None
+        execution_order = 0
+        observations = []
+        collections = {}
 
-        def run_once(command: str, *, sha: str, base: bool, affected: bool = False) -> tuple[Evidence, dict, dict]:
-            nonlocal candidate_repository, base_repository
+        def run_once(command: str, *, sha: str, base: bool, affected: bool = False,
+                     authored_command: str | None = None, collect_only: bool = False) -> tuple[Evidence, dict | None, dict]:
+            nonlocal candidate_repository, base_repository, execution_order
             if base:
                 if base_repository is None:
                     base_repository = subjects.enter_context(materialize_verification_subject(
@@ -626,12 +663,24 @@ def execute_minimum_verification(
                     candidate_repository = subjects.enter_context(materialize_verification_subject(
                         repository, run_id=run_id, subject_sha=subject_sha))
                 checkout = candidate_repository
-            order = len(evidence) + 1
+            execution_order = max(execution_order, len(evidence)) + 1
+            order = execution_order
             directory = raw_directory / ("base" if base else "candidate")
             output = directory / f"observation-{order:03d}.json"
-            profile = _v2_profile(repository, sha, command, env, affected=affected)
-            binding = {**bindings.get(command, {}), "subject_sha": sha, "command": command,
+            profile = _v2_profile(repository, sha, authored_command or command, env, affected=affected)
+            profile["collect_only"] = collect_only
+            binding = {**bindings.get(authored_command or command, {}),
+                       "base_sha": base_sha, "tree_sha": _git(repository, "rev-parse", f"{sha}^{{tree}}"),
+                       "envelope_digest": envelope_digest, "changed_files_digest": verification_digest(changed),
+                       "failure_set_digest": bindings.get(authored_command or command, {}).get("failure_set_digest", verification_digest([])),
+                       "correction_base_sha": correction_base,
+                       "correction_changed_files_digest": verification_digest(correction_changed),
+                       "subject_sha": sha, "command": command,
                        "profile": profile, "toolchain": toolchain}
+            if authored_command is not None:
+                binding["projection_of"] = authored_command
+            elif affected:
+                binding["projection_of"] = dict(plan.affected_requirements)[command]
             selected = command == SELECTED_FULL_SUITE_COMMAND
             command_env = dict(env)
             command_env.update(PYTHONDONTWRITEBYTECODE="1", AIOS_BP_V4_PLUGIN_OUTPUT=str(output),
@@ -639,24 +688,26 @@ def execute_minimum_verification(
                     "profile", "workers", "distribution", "max_worker_restart", "collect_only")}))
             command_env["PYTHONPATH"] = os.pathsep.join((str(checkout / "src"), str(checkout / "tests"), env.get("PYTHONPATH", "")))
             coverage = parse_pytest_coverage(command)
-            observed = selected or affected or (coverage is not None and not coverage.measurement)
+            observed = selected or affected or collect_only or authored_command is not None or (coverage is not None and not coverage.measurement)
             if observed and not selected:
                 # Hidden environment selection/maxfail flags cannot narrow an
                 # authored requirement. Repository configuration is still bound
                 # to the exact tree and completion is checked by the observer.
                 command_env.pop("PYTEST_ADDOPTS", None)
                 command_env["PYTEST_PLUGINS"] = ",".join(filter(None, (env.get("PYTEST_PLUGINS", ""), "bp_v4_probe_plugin")))
+                command_env["AIOS_V2_EXACT_COLLECTION"] = "1"
+            else:
+                command_env.pop("AIOS_V2_EXACT_COLLECTION", None)
             actual_runner = runner
-            if affected and platform == "nt":
-                # Generated probes use POSIX canonical quoting in their audit
-                # command, then mechanically encode the same argv for PowerShell.
-                import shlex
-                argv = shlex.split(command)
-                encoded = " ".join("'" + a.replace("'", "''") + "'" for a in argv)
+            if (affected or collect_only or authored_command is not None) and platform == "nt":
+                # Windows PowerShell's legacy native argument marshalling loses
+                # embedded double quotes. Submit the canonical generated argv
+                # directly; subprocess encodes it losslessly for CreateProcess.
+                argv = tuple(shlex.split(command))
                 def actual_runner(_command, **kwargs):
-                    return runner(_shell_command("& " + encoded, platform=platform), **kwargs)
+                    return runner(argv, **kwargs)
             raw_id = run_id + "-BASE" if base else run_id
-            if (directory / f"{raw_id}-V{order:03d}.raw").exists():
+            if output.exists() or (directory / f"{raw_id}-V{order:03d}.raw").exists():
                 raise RuntimeVerificationError("V2 raw evidence already exists; refusing overwrite", evidence=evidence)
             items = execute_verification((command,), run_id=run_id + "-BASE" if base else run_id,
                 subject_sha=sha, repository=checkout, raw_directory=directory, runner=actual_runner,
@@ -671,7 +722,127 @@ def execute_minimum_verification(
                 previous = _v2_known_observation(records, sha=sha, command=command, profile=profile, toolchain=binding["toolchain"])
                 if previous is not None and verification_digest(previous) != verification_digest(observation):
                     observation.update(complete=False, unstable=True)
+                for previous in observations:
+                    if (all(previous.get(k) == observation.get(k) for k in ("subject_sha", "command", "profile", "toolchain"))
+                            and verification_digest(previous) != verification_digest(observation)):
+                        observation.update(complete=False, unstable=True)
+                observations.append(observation)
             return item, observation, binding
+
+        def observed_record(item: Evidence, observation: dict, binding: dict, *, early: bool = False) -> dict:
+            record = {"policy": MINIMUM_SUFFICIENT_V2, "disposition": "EXECUTED",
+                      "binding": binding, "candidate": observation,
+                      "candidate_digest": verification_digest(observation),
+                      "evidence_id": item.evidence_id, "run_id": run_id, "raw_path": item.raw_path,
+                      "raw_digest": hashlib.sha256(Path(item.raw_path).read_bytes()).hexdigest()}
+            if early:
+                record["early_probe"] = True
+            return record
+
+        def probe_record(item: Evidence, observation: dict, binding: dict, *, kind: str) -> dict:
+            record = observed_record(item, observation, binding, early=True)
+            # Keep one bounded, immutable canonical population per probe. The
+            # plan links it by digest instead of duplicating whole collections
+            # and phase populations in an unbounded aggregate audit.
+            verification_digest(record)
+            directory = raw_directory / "projections"
+            directory.mkdir(exist_ok=True)
+            path = directory / f"{Path(item.raw_path).stem}.json"
+            encoded = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+            if path.exists() and path.read_bytes() != encoded:
+                raise RuntimeVerificationError("conflicting V2 projection record", evidence=evidence)
+            path.write_bytes(encoded)
+            audit["probes"].append({"evidence_id": item.evidence_id, "kind": kind, "early_probe": True,
+                "command": item.source.command, "record_path": str(path),
+                "record_digest": hashlib.sha256(encoded).hexdigest()})
+            return record
+
+        def projection_material(item: Evidence, observation: dict, *, key: str) -> dict:
+            return {key: observation, key + "_digest": verification_digest(observation),
+                    key + "_raw_path": item.raw_path,
+                    key + "_raw_digest": hashlib.sha256(Path(item.raw_path).read_bytes()).hexdigest()}
+
+        def collect(command: str, *, base: bool) -> tuple[Evidence, dict]:
+            sha = base_sha if base else subject_sha
+            item, observation, binding = run_once(pytest_collection_command(command), sha=sha, base=base,
+                                                authored_command=command, collect_only=True)
+            probe_record(item, observation, binding, kind="EXACT_COLLECTION")
+            exact_collection_observation(observation, command=command, subject_sha=sha)
+            collections.setdefault(command, {})["base" if base else "candidate"] = (item, observation)
+            return item, observation
+
+        def delta_first(command: str) -> None:
+            coverage = parse_pytest_coverage(command)
+            if (operation != "PRIMARY" or coverage is None or coverage.is_full_suite
+                    or coverage.measurement or coverage.selected_parallel or coverage.filter_expression is not None):
+                return
+            try:
+                # A known condition mismatch already makes exact comparison
+                # ineligible; no collection subprocess is needed to rediscover it.
+                if bindings[command]["profile"] != _v2_profile(repository, base_sha, command, env):
+                    raise VerificationContractError("base/candidate execution profiles differ")
+                candidate_item, candidate_collection = collect(command, base=False)
+                base_item, base_collection = collect(command, base=True)
+                nodes = candidate_delta_projection(base_collection, candidate_collection, command=command,
+                                                   base_sha=base_sha, candidate_sha=subject_sha)
+                probe = pytest_projection_command(command, nodes)
+                item, candidate, binding = run_once(probe, sha=subject_sha, base=False, authored_command=command)
+                record = probe_record(item, candidate, binding, kind="CANDIDATE_DELTA")
+                validate_exact_projection(candidate, command=command, nodeids=nodes, subject_sha=subject_sha)
+                if (candidate["profile"] != {**candidate_collection["profile"], "collect_only": False}
+                        or candidate["toolchain"] != candidate_collection["toolchain"]):
+                    raise VerificationContractError("delta probe conditions changed after collection")
+                if item.result.exit_code == 1:
+                    record["delta"] = {"nodeids": list(nodes),
+                        **projection_material(base_item, base_collection, key="base_collection"),
+                        **projection_material(candidate_item, candidate_collection, key="candidate_collection")}
+                    record["binding"]["failure_set_digest"] = verification_digest(record["delta"])
+                    record["attribution"] = tuple({"nodeid": node, "phase": phase, "classification": "CANDIDATE_ONLY"}
+                                                  for node, phase in failed_identities(candidate))
+                    evidence.append(replace(item, verification=record))
+                    audit["records"].append({"evidence_id": item.evidence_id, "command": probe,
+                        "disposition": "EARLY_BLOCK", "raw_exit_code": item.result.exit_code,
+                        "attribution": record["attribution"]})
+                    raise RuntimeVerificationError("V2 candidate-only delta remains blocking: " + command, evidence=evidence)
+            except VerificationContractError as exc:
+                audit["projection_fallback"].append({"command": command, "kind": "CANDIDATE_DELTA", "reason": str(exc)})
+            # Neither success nor ineligibility discharges the authored command.
+
+        def failure_projection(command: str, candidate: dict) -> dict | None:
+            try:
+                validate_observation(candidate)
+                if candidate["exit_code"] != 1:
+                    raise VerificationContractError("candidate failure is not a complete runtest failure")
+                nodes = tuple(sorted({node for node, _ in failed_identities(candidate)}))
+                probe = pytest_projection_command(command, nodes)
+                # Selected parallel/measurement profiles deliberately use the
+                # existing broad path; serial exact probes cannot replace them.
+                validate_exact_collection(candidate.get("collection"))
+                item, reproduced, binding = run_once(probe, sha=subject_sha, base=False, authored_command=command)
+                probe_record(item, reproduced, binding, kind="FAILURE_REPRODUCTION")
+                validate_failure_reproduction(candidate, reproduced, command=command, candidate_sha=subject_sha)
+                projection = {"command": probe, "nodeids": list(nodes),
+                              **projection_material(item, reproduced, key="candidate")}
+                base_item, base_collection = collections.get(command, {}).get("base", (None, None))
+                if base_collection is None:
+                    base_item, base_collection = collect(command, base=True)
+                projection.update(projection_material(base_item, base_collection, key="base_collection"))
+                before = exact_collection_observation(base_collection, command=command, subject_sha=base_sha)
+                if (reproduced["profile"] != {**base_collection["profile"], "collect_only": False}
+                        or reproduced["toolchain"] != base_collection["toolchain"]):
+                    raise VerificationContractError("base collection conditions are not comparable to candidate reproduction")
+                if not set(nodes).difference(before):
+                    base_item, base_observation, binding = run_once(probe, sha=base_sha, base=True, authored_command=command)
+                    probe_record(base_item, base_observation, binding, kind="EXACT_BASE_ATTRIBUTION")
+                    projection.update(projection_material(base_item, base_observation, key="base"))
+                # This recomputes conditions, collection agreement, exact
+                # reproduction and fingerprints before authorizing any outcome.
+                projected_failure_attribution(projection, candidate, command=command,
+                                              base_sha=base_sha, candidate_sha=subject_sha)
+                return projection
+            except (VerificationContractError, KeyError, TypeError, ValueError) as exc:
+                audit["projection_fallback"].append({"command": command, "kind": "FAILURE_ATTRIBUTION", "reason": str(exc)})
+                return None
 
         try:
             for previous in plan.reused:
@@ -684,43 +855,75 @@ def execute_minimum_verification(
                 audit["records"].append({"evidence_id": item.evidence_id, "disposition": "REUSED", "source_evidence_id": previous["evidence_id"]})
             for command in (*plan.affected_first, *plan.commands):
                 affected = command in plan.affected_first and command not in authored
+                if not affected:
+                    delta_first(command)
                 item, candidate, binding = run_once(command, sha=subject_sha, base=False, affected=affected)
+                if affected:
+                    record = probe_record(item, candidate, binding, kind="PREVIOUS_FAILURE")
+                    if item.result.exit_code != 0:
+                        # A validly bound correction probe is a failure gate.
+                        # Even incomplete diagnostics cannot make its raw
+                        # nonzero status permissive or require broad replay.
+                        record["binding"]["failure_set_digest"] = verification_digest(
+                            correction_known[dict(plan.affected_requirements)[command]])
+                        evidence.append(replace(item, verification=record))
+                        audit["records"].append({"evidence_id": item.evidence_id, "command": command,
+                            "disposition": "EARLY_BLOCK", "raw_exit_code": item.result.exit_code})
+                        raise RuntimeVerificationError("V2 previous-failure probe remains blocking: " + command, evidence=evidence)
+                    continue
+                collected = collections.get(command, {}).get("candidate", (None, None))[1]
+                if candidate is not None and collected is not None:
+                    if (candidate["profile"] != {**collected["profile"], "collect_only": False}
+                            or candidate["toolchain"] != collected["toolchain"]
+                            or ("collection" in candidate and candidate["collection"] != collected["collection"])):
+                        candidate.update(complete=False, unstable=True)
                 evidence.append(item)
                 record = None
                 if candidate is not None:
-                    record = {"policy": MINIMUM_SUFFICIENT_V2, "disposition": "EXECUTED", "binding": binding, "candidate": candidate,
-                              "candidate_digest": verification_digest(candidate),
-                              "evidence_id": item.evidence_id, "run_id": run_id, "raw_path": item.raw_path,
-                              "raw_digest": hashlib.sha256(Path(item.raw_path).read_bytes()).hexdigest()}
+                    record = observed_record(item, candidate, binding)
+                    if command in plan.affected_first and item.result.exit_code != 0:
+                        evidence[-1] = replace(item, verification=record)
+                        audit["records"].append({"evidence_id": item.evidence_id, "command": command,
+                            "disposition": "EARLY_BLOCK", "raw_exit_code": item.result.exit_code})
+                        raise RuntimeVerificationError("V2 authored previous-failure requirement remains blocking: " + command, evidence=evidence)
                     if item.result.exit_code != 0:
-                        known = None if affected else base_known.get(command)
-                        if known is None and not affected:
+                        known = base_known.get(command)
+                        if known is None:
                             known = _v2_known_observation(records, sha=base_sha, command=command,
                                 profile=_v2_profile(repository, base_sha, command, env), toolchain=binding["toolchain"])
+                        projection = failure_projection(command, candidate) if known is None else None
+                        if projection is not None:
+                            record["failure_projection"] = projection
+                            digest = verification_digest(projection)
+                            record["failure_projection_digest"] = digest
+                            record["binding"]["failure_set_digest"] = digest
+                            record["attribution"] = projected_failure_attribution(projection, candidate,
+                                command=command, base_sha=base_sha, candidate_sha=subject_sha)
                         # Evidence with a broken raw binding is already excluded
                         # from records. Reuse exact base observations when present.
-                        if known is None or known.get("complete") is not True:
+                        elif known is None or known.get("complete") is not True:
                             base_item, base_observation, _ = run_once(command, sha=base_sha, base=True, affected=affected)
                             record.update(base=base_observation, base_raw_path=base_item.raw_path,
                                           base_raw_digest=hashlib.sha256(Path(base_item.raw_path).read_bytes()).hexdigest())
                             if known is not None:
                                 record["base"].update(complete=False, unstable=True)
-                        else:
+                            collected_base = collections.get(command, {}).get("base", (None, None))[1]
+                            if collected_base is not None and (
+                                    record["base"]["profile"] != {**collected_base["profile"], "collect_only": False}
+                                    or record["base"]["toolchain"] != collected_base["toolchain"]
+                                    or ("collection" in record["base"] and record["base"]["collection"] != collected_base["collection"])):
+                                record["base"].update(complete=False, unstable=True)
+                        elif projection is None:
                             record["base"] = known
                             source = next(r for r in records if r.get("base") == known or r.get("candidate") == known)
                             source_path = source["base_raw_path"] if source.get("base") == known else source["raw_path"]
                             record.update(base_raw_path=source_path,
                                           base_raw_digest=hashlib.sha256(Path(source_path).read_bytes()).hexdigest())
-                        record["binding"]["failure_set_digest"] = verification_digest(record["base"])
-                        record["base_digest"] = verification_digest(record["base"])
-                        record["attribution"] = attribute_failures(record["base"], candidate,
-                            base_sha=base_sha, candidate_sha=subject_sha)
-                    if affected:
-                        record["binding"].update(base_sha=base_sha, tree_sha=tree,
-                            envelope_digest=envelope_digest, changed_files_digest=verification_digest(changed),
-                            failure_set_digest=record["binding"].get("failure_set_digest", verification_digest([])))
-                        record["binding"].update(correction_base_sha=correction_base,
-                            correction_changed_files_digest=verification_digest(correction_changed))
+                        if projection is None:
+                            record["binding"]["failure_set_digest"] = verification_digest(record["base"])
+                            record["base_digest"] = verification_digest(record["base"])
+                            record["attribution"] = attribute_failures(record["base"], candidate,
+                                base_sha=base_sha, candidate_sha=subject_sha)
                     item = replace(item, verification=record)
                     evidence[-1] = item
                 audit["records"].append({"evidence_id": item.evidence_id, "command": command, "disposition": "EXECUTED",

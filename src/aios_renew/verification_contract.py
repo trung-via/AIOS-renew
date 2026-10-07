@@ -36,6 +36,12 @@ REBASELINE_COMMAND = "python scripts/bp_v4_parallel_rebaseline.py --workers 4 8 
 REBASELINE_WORKERS = (4, 8, 12, 16)
 SELECTED_FULL_SUITE_PATH = "scripts/aios_parallel_full_suite.py"
 SELECTED_FULL_SUITE_COMMAND = "python scripts/aios_parallel_full_suite.py"
+# Fixed cost bounds, not test-impact or proof-selection policy. A PRIMARY
+# delta may duplicate at most a quarter of the authored candidate population.
+MAX_DELTA_PROJECTION_NODES = 64
+DELTA_PROJECTION_MAX_FRACTION = 4
+MAX_EXACT_PROJECTION_NODES = 128
+MAX_EXACT_PROJECTION_COMMAND_CHARS = 8_192
 
 
 class VerificationContractError(ValueError):
@@ -445,6 +451,176 @@ def _normalize_test_path(token: str) -> str:
     return normalized
 
 
+def exact_pytest_nodeids(value: object) -> tuple[str, ...]:
+    """Validate lossless positional identities; never guess a partial selector.
+
+    Only the file portion is POSIX-normalized by the observer. Parameter text
+    (including quotes, brackets, spaces and backslashes) remains literal.
+    Unsupported collector identities use the broader attribution path.
+    """
+    if not isinstance(value, (list, tuple)) or not value or len(value) > MAX_CANONICAL_REPORTS:
+        raise VerificationContractError("missing or oversized exact pytest population")
+    for nodeid in value:
+        if (not isinstance(nodeid, str) or len(nodeid) > MAX_CANONICAL_NODEID_CHARS
+                or any(ord(c) < 32 or ord(c) == 127 for c in nodeid)):
+            raise VerificationContractError("malformed exact pytest nodeid")
+        file_path, separator, selector = nodeid.partition("::")
+        stem, parameter, suffix = selector.partition("[")
+        if (not separator or not file_path.endswith(".py") or ":" in file_path
+                or not _is_supported_test_path(file_path)
+                or _normalize_test_path(file_path) != file_path
+                or any(not part.isidentifier() for part in stem.split("::"))
+                or (parameter and not suffix.endswith("]"))):
+            raise VerificationContractError("ambiguous exact pytest nodeid")
+        try:
+            nodeid.encode("utf-8", errors="strict")
+        except UnicodeError as exc:
+            raise VerificationContractError("invalid exact pytest nodeid encoding") from exc
+    if tuple(value) != tuple(sorted(set(value))):
+        raise VerificationContractError("duplicate or unordered exact pytest population")
+    return tuple(value)
+
+
+def validate_exact_collection(value: object) -> tuple[str, ...]:
+    """Require the complete list and its historical compact identity together."""
+    if not isinstance(value, dict) or set(value) != {"identity", "nodeids"}:
+        raise VerificationContractError("missing exact pytest collection truth")
+    nodes = value["nodeids"]
+    if nodes == []:
+        exact = ()
+    else:
+        exact = exact_pytest_nodeids(nodes)
+    if pytest_collection_identity(value["identity"]) != pytest_collection_identity(list(exact)):
+        raise VerificationContractError("exact pytest collection disagrees with its identity")
+    verification_digest(value)
+    return exact
+
+
+def pytest_projection_command(command: str, nodeids: Sequence[str]) -> str:
+    """Encode an exact serial projection of a recognized authored requirement."""
+    coverage = parse_pytest_coverage(command)
+    if (coverage is None or coverage.measurement or coverage.selected_parallel
+            or coverage.filter_expression is not None):
+        raise VerificationContractError("authored command has no comparable serial projection")
+    nodes = exact_pytest_nodeids(nodeids)
+    if (len(nodes) > MAX_EXACT_PROJECTION_NODES
+            or not _path_scope_subsumes(coverage.paths, nodes)):
+        raise VerificationContractError("exact pytest projection is outside its bounded coverage")
+    # Always quote each positional identity. Windows Runtime submits this same
+    # argv directly rather than using PowerShell's lossy native marshalling.
+    encoded = " ".join("'" + n.replace("'", "'\"'\"'") + "'" for n in nodes)
+    probe = coverage.launcher + " -q " + encoded
+    if len(probe) > MAX_EXACT_PROJECTION_COMMAND_CHARS:
+        raise VerificationContractError("exact pytest projection exceeds command bound")
+    return probe
+
+
+def pytest_collection_command(command: str) -> str:
+    """Collect the exact authored argv without changing its selection."""
+    coverage = parse_pytest_coverage(command)
+    if (coverage is None or coverage.measurement or coverage.selected_parallel
+            or coverage.filter_expression is not None):
+        raise VerificationContractError("authored command has no exact serial collection")
+    return command + " --collect-only"
+
+
+def _execution_conditions(value: dict) -> tuple[dict, dict]:
+    return ({k: v for k, v in value["profile"].items() if k != "collect_only"}, value["toolchain"])
+
+
+def exact_collection_observation(value: object, *, command: str, subject_sha: str) -> tuple[str, ...]:
+    observed = validate_observation(value)
+    if (observed["command"] != pytest_collection_command(command)
+            or observed["subject_sha"] != subject_sha or observed["exit_code"] != 0
+            or observed["profile"].get("collect_only") is not True or observed["reports"]):
+        raise VerificationContractError("collection observation is not bound to authored coverage")
+    return validate_exact_collection(observed.get("collection"))
+
+
+def candidate_delta_projection(base: object, candidate: object, *, command: str,
+                               base_sha: str, candidate_sha: str) -> tuple[str, ...]:
+    """Derive only a bounded mechanical set difference; absence never proves PASS."""
+    coverage = parse_pytest_coverage(command)
+    if coverage is None or coverage.is_full_suite:
+        raise VerificationContractError("full-suite guards are not delta-first requirements")
+    before = exact_collection_observation(base, command=command, subject_sha=base_sha)
+    after = exact_collection_observation(candidate, command=command, subject_sha=candidate_sha)
+    if _execution_conditions(base) != _execution_conditions(candidate):
+        raise VerificationContractError("collection execution conditions are not comparable")
+    nodes = tuple(sorted(set(after).difference(before)))
+    if (not nodes or len(nodes) > MAX_DELTA_PROJECTION_NODES
+            or len(nodes) * DELTA_PROJECTION_MAX_FRACTION > len(after)):
+        raise VerificationContractError("candidate delta is empty or uneconomical")
+    pytest_projection_command(command, nodes)
+    return nodes
+
+
+def validate_exact_projection(value: object, *, command: str, nodeids: Sequence[str],
+                              subject_sha: str) -> dict:
+    observed = validate_observation(value)
+    nodes = exact_pytest_nodeids(nodeids)
+    if (observed["subject_sha"] != subject_sha
+            or observed["command"] != pytest_projection_command(command, nodes)
+            or observed["exit_code"] not in {0, 1}
+            or observed["profile"].get("collect_only") is not False
+            or validate_exact_collection(observed.get("collection")) != nodes
+            or {r["nodeid"] for r in observed["reports"]} != set(nodes)
+            or any(r["phase"] == "collect" for r in observed["reports"])):
+        raise VerificationContractError("exact pytest projection did not execute its complete population")
+    return observed
+
+
+def validate_failure_reproduction(candidate: object, projection: object, *, command: str,
+                                  candidate_sha: str) -> tuple[str, ...]:
+    broad = validate_observation(candidate)
+    nodes = tuple(sorted({node for node, _ in failed_identities(broad)}))
+    probe = validate_exact_projection(projection, command=command, nodeids=nodes, subject_sha=candidate_sha)
+    if (broad["subject_sha"] != candidate_sha or broad["command"] != command
+            or broad["exit_code"] != 1 or probe["exit_code"] != 1
+            or broad["profile"] != probe["profile"] or broad["toolchain"] != probe["toolchain"]
+            or not set(nodes) <= set(validate_exact_collection(broad.get("collection")))
+            or failed_identities(broad) != failed_identities(probe)):
+        raise VerificationContractError("candidate failure projection did not reproduce exact failures")
+    facts = {(r["nodeid"], r["phase"]): r for r in probe["reports"]}
+    for report in broad["reports"]:
+        if report["outcome"] == "FAIL" and any(
+                report[k] != facts[(report["nodeid"], report["phase"])][k] for k in ("detail", "fingerprint")):
+            raise VerificationContractError("candidate projection failure detail changed")
+    return nodes
+
+
+def projected_failure_attribution(projection: object, candidate: object, *, command: str,
+                                  base_sha: str, candidate_sha: str) -> tuple[dict, ...]:
+    """Recompute projection proof; never trust cached classifications."""
+    if not isinstance(projection, dict):
+        raise VerificationContractError("missing bound failure projection")
+    probe = projection["candidate"]
+    collection = projection["base_collection"]
+    for key in ("candidate", "base_collection"):
+        if projection.get(key + "_digest") != verification_digest(projection[key]):
+            raise VerificationContractError("failure projection digest mismatch")
+    nodes = validate_failure_reproduction(candidate, probe, command=command, candidate_sha=candidate_sha)
+    if projection.get("nodeids") != list(nodes) or projection.get("command") != probe["command"]:
+        raise VerificationContractError("failure projection identity mismatch")
+    base_nodes = exact_collection_observation(collection, command=command, subject_sha=base_sha)
+    if _execution_conditions(collection) != _execution_conditions(probe):
+        raise VerificationContractError("base collection conditions are not comparable")
+    absent = set(nodes).difference(base_nodes)
+    classifications = {}
+    if not absent:
+        base = projection["base"]
+        if projection.get("base_digest") != verification_digest(base):
+            raise VerificationContractError("base projection digest mismatch")
+        validate_exact_projection(base, command=command, nodeids=nodes, subject_sha=base_sha)
+        if _execution_conditions(base) != _execution_conditions(collection):
+            raise VerificationContractError("base projection conditions changed after collection")
+        classifications = {(r["nodeid"], r["phase"]): r["classification"] for r in attribute_failures(
+            base, probe, base_sha=base_sha, candidate_sha=candidate_sha)}
+    return tuple({"nodeid": node, "phase": phase,
+                  "classification": "CANDIDATE_ONLY" if node in absent else classifications.get((node, phase), "UNRESOLVED")}
+                 for node, phase in failed_identities(candidate))
+
+
 def pytest_collection_identity(value: object) -> dict:
     """Build or validate bounded collection truth, independently of reports.
 
@@ -549,6 +725,8 @@ def validate_observation(value: object) -> dict:
         raise VerificationContractError("successful command reports canonical failures")
     if status == 1 and not failures:
         raise VerificationContractError("failure exit has no canonical failed identity population")
+    if "collection" in value:
+        validate_exact_collection(value["collection"])
     return value
 
 
@@ -595,6 +773,10 @@ def attributed_task_passes(record: object, *, subject_sha: str,
     """Recompute the higher-level outcome without changing raw command status."""
     if not isinstance(record, dict) or record.get("policy") != MINIMUM_SUFFICIENT_V2:
         return False
+    if "early_probe" in record:
+        # An optimization observation has no authored proof authority, even
+        # when the exact-node execution succeeds.
+        return False
     try:
         candidate = validate_observation(record.get("candidate"))
         if record.get("candidate_digest") != verification_digest(candidate):
@@ -626,6 +808,18 @@ def attributed_task_passes(record: object, *, subject_sha: str,
         if exit_code != 1 or not failed_identities(candidate):
             return False
         base_sha = binding["base_sha"]
+        if "failure_projection" in record:
+            projection = record["failure_projection"]
+            digest = verification_digest(projection)
+            if (record.get("failure_projection_digest") != digest
+                    or binding["failure_set_digest"] != digest):
+                return False
+            classifications = projected_failure_attribution(projection, candidate,
+                command=command, base_sha=base_sha, candidate_sha=observed_sha)
+            if tuple(record.get("attribution", ())) != classifications:
+                return False
+            return bool(classifications) and all(
+                item["classification"] == "PRE_EXISTING_BASELINE" for item in classifications)
         if (record.get("base_digest") != verification_digest(record.get("base"))
                 or binding["failure_set_digest"] != record["base_digest"]):
             return False
@@ -671,6 +865,7 @@ class VerificationPlan:
     reused: tuple[dict, ...]
     affected_first: tuple[str, ...]
     fallback: tuple[str, ...]
+    affected_requirements: tuple[tuple[str, str], ...] = ()
 
 
 def derive_minimum_verification(
@@ -717,18 +912,33 @@ def derive_minimum_verification(
         else:
             commands.append(command)
             fallback.append(command)
-    affected = []
+    affected, affected_requirements = [], []
     moved_authored = set()
     if exact and scope_valid and operation in {"REPAIR", "REMEDIATION", "DIRECT_CANDIDATE"}:
         for command in commands:
             coverage = parse_pytest_coverage(command)
             if coverage is None or coverage.measurement or coverage.filter_expression is not None:
                 continue
+            try:
+                target = validate_evidence_binding(bindings.get(command))
+                if (target["subject_sha"] != candidate_sha or target["base_sha"] != base_sha or target["command"] != command
+                        or target.get("correction_base_sha", failure_subject) != failure_subject):
+                    continue
+            except VerificationContractError:
+                continue
             nodes = set()
-            for observation in failed_observations:
+            observations = [o for o in failed_observations if isinstance(o, dict)
+                            and o.get("subject_sha") == failure_subject and o.get("command") == command]
+            try:
+                conflict = len({verification_digest(o) for o in observations}) > 1
+            except (VerificationContractError, TypeError, ValueError):
+                conflict = True
+            if conflict:
+                continue
+            for observation in observations:
                 try:
                     value = validate_observation(observation)
-                    if value["subject_sha"] != failure_subject or value["command"] != command:
+                    if value["exit_code"] != 1:
                         continue
                     if value["profile"] != bindings[command]["profile"] or value["toolchain"] != bindings[command]["toolchain"]:
                         continue
@@ -741,26 +951,30 @@ def derive_minimum_verification(
                 except (VerificationContractError, KeyError, TypeError, ValueError):
                     continue
             if nodes:
-                # An authored focused requirement already covers this probe.
-                # Reuse its valid proof or move its exact command first instead
-                # of executing the same tests in another generated invocation.
+                try:
+                    probe = pytest_projection_command(
+                        coverage.launcher + " -q" if coverage.selected_parallel else command,
+                        tuple(sorted(nodes)))
+                except VerificationContractError:
+                    continue
+                # Only an authored exact-node requirement can be moved in
+                # place of this probe. A covering file/directory command still
+                # runs after exact-probe success.
                 covering = next((c for c in authored if (
                     (known_coverage := parse_pytest_coverage(c)) is not None
                     and known_coverage.paths and not known_coverage.measurement
                     and known_coverage.filter_expression is None
                     and known_coverage.launcher == coverage.launcher
-                    and _path_scope_subsumes(known_coverage.paths, tuple(sorted(nodes)))
+                    and tuple(sorted(known_coverage.paths)) == tuple(sorted(nodes))
                 )), None)
                 if covering is not None:
                     if covering in commands and covering not in affected:
                         affected.append(covering)
                         moved_authored.add(covering)
+                        affected_requirements.append((covering, command))
                     continue
-                # subprocess receives each identity as a quoted positional arg;
-                # preserve parameterized identities, including spaces/brackets.
-                encoded = " ".join("'" + n.replace("'", "'\"'\"'") + "'" for n in sorted(nodes))
-                probe = coverage.launcher + " -q " + encoded
                 if probe not in authored and probe not in affected:
                     affected.append(probe)
+                    affected_requirements.append((probe, command))
     return VerificationPlan(tuple(c for c in commands if c not in moved_authored),
-                            tuple(reused), tuple(affected), tuple(fallback))
+                            tuple(reused), tuple(affected), tuple(fallback), tuple(affected_requirements))

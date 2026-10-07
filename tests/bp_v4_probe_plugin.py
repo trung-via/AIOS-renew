@@ -23,6 +23,7 @@ from aios_renew.verification_contract import (
     MAX_CANONICAL_REPORTS, MAX_FAILURE_DETAIL_CHARS, verification_digest,
     toolchain_inventory_digest,
     pytest_collection_identity as _pytest_collection_identity, VerificationContractError,
+    validate_exact_collection,
 )
 
 
@@ -282,6 +283,18 @@ def pytest_collection_finish(session: Any) -> None:
         config.workeroutput["aios_bp_v4_collection"] = identity
     else:
         config._aios_bp_v4_collection = identity
+        config._aios_v2_exact_collection = None
+        if os.environ.get("AIOS_V2_EXACT_COLLECTION") == "1":
+            # Opt-in serial truth only. Parallel controller/worker payloads
+            # retain the compact conformance representation from TASK-319.
+            exact = {"identity": identity, "nodeids": sorted(_exact_nodeid(n) for n in nodeids)}
+            try:
+                validate_exact_collection(exact)
+                config._aios_v2_exact_collection = exact
+            except (VerificationContractError, UnicodeError):
+                # Optimization unavailable; preserve the ordinary phase and
+                # failure population rather than emitting a partial collection.
+                config._aios_v2_exact_collection = None
 
 
 def _collection_identity(value: object) -> dict[str, Any] | None:
@@ -296,6 +309,9 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
     config = session.config
     if _resolve_conditions() != _conditions():
         _canonical_errors.append("profile or toolchain changed during verification")
+    if ("collect_only" in _conditions()[0]
+            and _conditions()[0]["collect_only"] != bool(getattr(getattr(config, "option", None), "collectonly", False))):
+        _canonical_errors.append("actual collection mode disagrees with bound profile")
     if hasattr(config, "workerinput"):
         config.workeroutput["aios_bp_v4_facts"] = _worker_facts(config)
         config.workeroutput["aios_bp_v4_failures"] = _summary(
@@ -345,6 +361,14 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
         "failure_diagnostics": failures,
         "profile": _conditions()[0], "toolchain": _conditions()[1],
     }
+    exact = getattr(config, "_aios_v2_exact_collection", None)
+    if exact is not None and not _node_collections:
+        try:
+            verification_digest({**payload, "exact_collection": exact})
+            payload["exact_collection"] = exact
+        except VerificationContractError:
+            # No truncated identity list is ever presented as exact truth.
+            pass
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

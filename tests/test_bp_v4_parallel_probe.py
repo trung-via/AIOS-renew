@@ -125,6 +125,55 @@ def test_plugin_registration_preserves_collection_identity_without_unknown_hooks
     assert plugin._collection_identity(list(reversed(NODEIDS))) == expected
 
 
+def test_task320_serial_collection_opt_in_preserves_lossless_parameter_text(tmp_path, monkeypatch):
+    from aios_renew.verification_contract import validate_exact_collection
+    observer = _load_unit_plugin()
+    output = tmp_path / "collection.json"
+    monkeypatch.setenv("AIOS_BP_V4_PLUGIN_OUTPUT", str(output))
+    monkeypatch.setenv("AIOS_V2_EXACT_COLLECTION", "1")
+    monkeypatch.setenv("AIOS_V2_PROFILE", json.dumps({"profile": "pytest-observed-v2", "collect_only": True}))
+    config = SimpleNamespace(rootpath=tmp_path, option=SimpleNamespace(collectonly=True))
+    nodes = ["tests\\test_sample.py::test_value[space 'quote' [nested] \\path]",
+             "tests/test_sample.py::test_other"]
+    session = SimpleNamespace(config=config, items=[SimpleNamespace(nodeid=n) for n in nodes])
+    observer.pytest_sessionstart(session)
+    observer.pytest_collection_finish(session)
+    observer.pytest_sessionfinish(session, 0)
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    expected = tuple(sorted(["tests/test_sample.py::test_value[space 'quote' [nested] \\path]", nodes[1]]))
+    assert validate_exact_collection(payload["exact_collection"]) == expected
+    assert payload["controller_collection"] == payload["exact_collection"]["identity"]
+    assert payload["failure_diagnostics"]["canonical"]["complete"] is True
+
+
+def test_task320_parallel_worker_collection_stays_compact_with_opt_in(tmp_path, monkeypatch):
+    observer = _load_unit_plugin()
+    monkeypatch.setenv("AIOS_V2_EXACT_COLLECTION", "1")
+    monkeypatch.setenv("AIOS_V2_PROFILE", json.dumps({"profile": "pytest-observed-v2", "collect_only": True}))
+    config = SimpleNamespace(rootpath=tmp_path, option=SimpleNamespace(collectonly=True),
+                             workerinput={"workerid": "gw0"}, workeroutput={})
+    session = SimpleNamespace(config=config, items=[SimpleNamespace(nodeid=n) for n in NODEIDS])
+    observer.pytest_sessionstart(session)
+    observer.pytest_collection_finish(session)
+    assert config.workeroutput["aios_bp_v4_collection"] == probe.collection_identity(NODEIDS)
+    assert not hasattr(config, "_aios_v2_exact_collection")
+
+
+def test_task320_collection_mode_mismatch_is_incomplete(tmp_path, monkeypatch):
+    observer = _load_unit_plugin()
+    output = tmp_path / "mismatch.json"
+    monkeypatch.setenv("AIOS_BP_V4_PLUGIN_OUTPUT", str(output))
+    monkeypatch.setenv("AIOS_V2_PROFILE", json.dumps({"profile": "pytest-observed-v2", "collect_only": True}))
+    config = SimpleNamespace(rootpath=tmp_path, option=SimpleNamespace(collectonly=False))
+    session = SimpleNamespace(config=config, items=[])
+    observer.pytest_sessionstart(session)
+    observer.pytest_collection_finish(session)
+    observer.pytest_sessionfinish(session, 0)
+    canonical = json.loads(output.read_text(encoding="utf-8"))["failure_diagnostics"]["canonical"]
+    assert canonical["complete"] is False
+    assert "actual collection mode disagrees with bound profile" in canonical["errors"]
+
+
 def test_unit_plugin_fail_closed_paths_do_not_mutate_registered_observer(
     request: pytest.FixtureRequest,
 ) -> None:

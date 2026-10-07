@@ -3,6 +3,7 @@
 import pytest
 import copy
 import hashlib
+import shlex
 
 from aios_renew.verification_contract import (
     VerificationContractError,
@@ -14,6 +15,9 @@ from aios_renew.verification_contract import (
     MINIMUM_SUFFICIENT_V2, MAX_CANONICAL_FAILURES, MAX_CANONICAL_NODEID_CHARS,
     attribute_failures, attributed_task_passes, derive_minimum_verification,
     failed_identities, validate_observation, verification_digest,
+    candidate_delta_projection, exact_pytest_nodeids, pytest_collection_command,
+    pytest_collection_identity, pytest_projection_command, projected_failure_attribution,
+    validate_exact_collection, MAX_DELTA_PROJECTION_NODES, MAX_EXACT_PROJECTION_NODES,
 )
 
 
@@ -64,6 +68,207 @@ def v2_plan(*, records=(), bindings=None, failures=(), changed=(), scope=(), ope
         changed_files=changed, modification_scope=scope, operation=operation,
         bindings=bindings or {V2_COMMAND: v2_binding()}, failed_observations=failures,
         still_valid_evidence=records)
+
+
+def task320_observation(sha, command, nodes, *, failures=(), collect=False, profile=None):
+    profile = dict(profile or {"profile": "pytest-observed-v2", "workers": 1,
+                              "distribution": "load", "max_worker_restart": 0, "collect_only": collect})
+    reports = []
+    for node in sorted(nodes) if not collect else ():
+        for phase in ("setup", "call", "teardown"):
+            report = dict(nodeid=node, phase=phase, outcome="FAIL" if node in failures and phase == "call" else "PASS")
+            if report["outcome"] == "FAIL":
+                detail = "AssertionError: " + node
+                report.update(detail=detail, fingerprint=verification_digest(detail),
+                              profile=profile, toolchain=dict(V2_TOOLCHAIN))
+            reports.append(report)
+    return dict(subject_sha=sha, command=command, profile=profile, toolchain=dict(V2_TOOLCHAIN),
+                reports=reports, failure_count=len(failures) if not collect else 0,
+                exit_code=1 if failures and not collect else 0, complete=True, unstable=False,
+                collection={"identity": pytest_collection_identity(list(nodes)), "nodeids": sorted(nodes)})
+
+
+def task320_projected_record(*, base_pass=False):
+    command = "python -m pytest -q tests/test_sample.py"
+    nodes = [f"tests/test_sample.py::test_{i:03d}" for i in range(8)]
+    failed = nodes[:1]
+    probe = pytest_projection_command(command, failed)
+    candidate = task320_observation(V2_CANDIDATE, command, nodes, failures=failed)
+    projection = dict(command=probe, nodeids=failed,
+        candidate=task320_observation(V2_CANDIDATE, probe, failed, failures=failed),
+        base_collection=task320_observation(V2_BASE, pytest_collection_command(command), nodes, collect=True),
+        base=task320_observation(V2_BASE, probe, failed, failures=() if base_pass else failed))
+    for key in ("candidate", "base_collection", "base"):
+        projection[key + "_digest"] = verification_digest(projection[key])
+    binding = {**v2_binding(), "command": command, "profile": candidate["profile"],
+               "failure_set_digest": verification_digest(projection)}
+    return dict(policy=MINIMUM_SUFFICIENT_V2, binding=binding, candidate=candidate,
+                candidate_digest=verification_digest(candidate), failure_projection=projection,
+                failure_projection_digest=verification_digest(projection),
+                attribution=projected_failure_attribution(projection, candidate, command=command,
+                    base_sha=V2_BASE, candidate_sha=V2_CANDIDATE))
+
+
+def test_task320_delta_is_exact_deterministic_and_economical():
+    command = "python -m pytest -q tests/test_sample.py"
+    before = [f"tests/test_sample.py::test_{i:03d}" for i in range(776)]
+    after = before + [f"tests/test_sample.py::test_new_{i:03d}" for i in range(20)]
+    base = task320_observation(V2_BASE, pytest_collection_command(command), before, collect=True)
+    candidate = task320_observation(V2_CANDIDATE, pytest_collection_command(command), after, collect=True)
+    assert candidate_delta_projection(base, candidate, command=command, base_sha=V2_BASE,
+                                      candidate_sha=V2_CANDIDATE) == tuple(after[-20:])
+    assert candidate_delta_projection(copy.deepcopy(base), copy.deepcopy(candidate), command=command,
+                                      base_sha=V2_BASE, candidate_sha=V2_CANDIDATE) == tuple(after[-20:])
+
+
+@pytest.mark.parametrize("defect", ["missing", "compact-only", "digest", "duplicate", "unstable", "incomplete",
+    "command", "sha", "profile", "toolchain", "too-many", "near-full", "empty", "filtered", "full-suite"])
+def test_task320_delta_ineligible_truth_never_authorizes_an_early_probe(defect):
+    command = "python -m pytest -q tests/test_sample.py"
+    before = [f"tests/test_sample.py::test_{i:03d}" for i in range(300)]
+    after = before + ["tests/test_sample.py::test_new"]
+    if defect == "too-many":
+        after = before + [f"tests/test_sample.py::test_new_{i:03d}" for i in range(MAX_DELTA_PROJECTION_NODES + 1)]
+    elif defect == "near-full":
+        before, after = before[:1], before[:1] + after[-1:]
+    elif defect == "empty":
+        after = before
+    base = task320_observation(V2_BASE, pytest_collection_command(command), before, collect=True)
+    candidate = task320_observation(V2_CANDIDATE, pytest_collection_command(command), after, collect=True)
+    if defect == "missing":
+        candidate.pop("collection")
+    elif defect == "compact-only":
+        candidate["collection"] = candidate["collection"]["identity"]
+    elif defect == "digest":
+        candidate["collection"]["identity"]["digest"] = "0" * 64
+    elif defect == "duplicate":
+        candidate["collection"]["nodeids"].append(after[-1])
+    elif defect == "unstable":
+        candidate["unstable"] = True
+    elif defect == "incomplete":
+        candidate["complete"] = False
+    elif defect == "command":
+        candidate["command"] = "python -m pytest -q tests/test_other.py --collect-only"
+    elif defect == "sha":
+        candidate["subject_sha"] = "d" * 40
+    elif defect in {"profile", "toolchain"}:
+        candidate[defect]["changed"] = "true"
+    elif defect == "filtered":
+        command += " -k sample"
+    elif defect == "full-suite":
+        command = V2_COMMAND
+    with pytest.raises(VerificationContractError):
+        candidate_delta_projection(base, candidate, command=command, base_sha=V2_BASE, candidate_sha=V2_CANDIDATE)
+
+
+def test_task320_exact_projection_preserves_literal_parameterized_identities():
+    nodes = ("tests/test_sample.py::TestSample::test_value[space 'quote' \"double\" $() & | ; [nested] \\path]",)
+    probe = pytest_projection_command("python -m pytest -q tests/test_sample.py", nodes)
+    assert shlex.split(probe) == ["python", "-m", "pytest", "-q", *nodes]
+    collection = {"identity": pytest_collection_identity(list(nodes)), "nodeids": list(nodes)}
+    assert validate_exact_collection(collection) == nodes
+
+
+@pytest.mark.parametrize("node", ["tests/../test_sample.py::test_value", "tests\\test_sample.py::test_value",
+    "tests/test_sample.py", "tests/test_sample.py::", "tests/test_sample.py::test_value[broken",
+    "tests/test_sample.py::test_value\nnext", "tests/test_sample.py::test_value\x00", "C:/tests/test_sample.py::test_value"])
+def test_task320_malformed_identity_fails_closed(node):
+    with pytest.raises(VerificationContractError):
+        exact_pytest_nodeids((node,))
+
+
+@pytest.mark.parametrize("flag", [True, False, "malformed"])
+def test_task320_early_pass_has_no_reuse_or_authored_proof_authority(flag):
+    record = {**v2_record(), "early_probe": flag}
+    assert not attributed_task_passes(record, subject_sha=V2_CANDIDATE, command=V2_COMMAND, exit_code=0)
+    assert v2_plan(records=(record,)).commands == (V2_COMMAND,)
+
+
+def test_task320_projection_command_cost_is_bounded_even_for_long_parameters():
+    node = "tests/test_sample.py::test_value[" + "x" * 9000 + "]"
+    with pytest.raises(VerificationContractError, match="command bound"):
+        pytest_projection_command("python -m pytest -q tests/test_sample.py", (node,))
+
+
+@pytest.mark.parametrize("base_pass", [False, True])
+def test_task320_projection_attribution_preserves_regression_and_baseline_rules(base_pass):
+    record = task320_projected_record(base_pass=base_pass)
+    assert record["attribution"][0]["classification"] == ("CANDIDATE_REGRESSION" if base_pass else "PRE_EXISTING_BASELINE")
+    assert attributed_task_passes(record, subject_sha=V2_CANDIDATE, command=record["binding"]["command"], exit_code=1) is (not base_pass)
+    assert record["candidate"]["exit_code"] == 1
+
+
+@pytest.mark.parametrize("defect", ["nonreproduction", "detail", "phase", "projection-command", "projection-sha",
+    "candidate-profile", "base-profile", "toolchain", "collection", "base-collection", "unstable", "incomplete",
+    "failure-count", "raw-exit", "classification", "missing-phase"])
+def test_task320_projection_uncertainty_cannot_authorize_pass_even_with_rebound_digests(defect):
+    record = task320_projected_record()
+    projection = record["failure_projection"]
+    probe = projection["candidate"]
+    failure = next(r for r in probe["reports"] if r["outcome"] == "FAIL")
+    if defect == "nonreproduction":
+        failure.clear()
+        failure.update(nodeid=projection["nodeids"][0], phase="call", outcome="PASS")
+        probe.update(exit_code=0, failure_count=0)
+    elif defect == "detail":
+        failure["detail"] = "AssertionError: different"
+        failure["fingerprint"] = verification_digest(failure["detail"])
+    elif defect == "phase":
+        failure["phase"] = "collect"
+    elif defect == "projection-command":
+        probe["command"] += " -k different"
+    elif defect == "projection-sha":
+        probe["subject_sha"] = V2_BASE
+    elif defect in {"candidate-profile", "base-profile", "toolchain"}:
+        target = probe if defect != "base-profile" else projection["base"]
+        key = "toolchain" if defect == "toolchain" else "profile"
+        target[key] = {**target[key], "changed": "true"}
+        for report in target["reports"]:
+            if report["outcome"] == "FAIL":
+                report[key] = target[key]
+    elif defect == "collection":
+        probe["collection"]["nodeids"].append("tests/test_sample.py::test_extra")
+        probe["collection"]["identity"] = pytest_collection_identity(probe["collection"]["nodeids"])
+    elif defect == "base-collection":
+        projection["base_collection"]["collection"] = {"identity": pytest_collection_identity([]), "nodeids": []}
+    elif defect == "unstable":
+        probe["unstable"] = True
+    elif defect == "incomplete":
+        probe["complete"] = False
+    elif defect == "failure-count":
+        probe["failure_count"] += 1
+    elif defect == "raw-exit":
+        projection["base"]["exit_code"] = 3
+    elif defect == "missing-phase":
+        probe["reports"].remove(failure)
+    for key in ("candidate", "base_collection", "base"):
+        projection[key + "_digest"] = verification_digest(projection[key])
+    record["failure_projection_digest"] = record["binding"]["failure_set_digest"] = verification_digest(projection)
+    if defect == "classification":
+        record["attribution"] = ()
+    assert not attributed_task_passes(record, subject_sha=V2_CANDIDATE, command=record["binding"]["command"], exit_code=1)
+
+
+def test_task320_correction_conflicting_and_oversized_failure_populations_fall_back():
+    scope = ("tests/test_sample.py",)
+    failures = v2_observation(V2_BASE, count=MAX_EXACT_PROJECTION_NODES + 1)
+    assert v2_plan(failures=(failures,), scope=scope, changed=scope, operation="REPAIR").affected_first == ()
+    one, two = v2_observation(V2_BASE), v2_observation(V2_BASE, detail="AssertionError: changed")
+    plan = v2_plan(failures=(one, two), scope=scope, changed=scope, operation="REPAIR")
+    assert plan.affected_first == () and plan.commands == (V2_COMMAND,)
+
+
+@pytest.mark.parametrize("defect", ["subject_sha", "base_sha", "tree_sha", "correction_base_sha", "command", "profile", "toolchain"])
+def test_task320_correction_probe_requires_valid_exact_target_bindings(defect):
+    binding = v2_binding()
+    if defect in {"profile", "toolchain"}:
+        binding[defect] = {**binding[defect], "changed": "true"}
+    else:
+        binding[defect] = "wrong" if defect == "tree_sha" else "d" * 40
+    scope = ("tests/test_sample.py",)
+    plan = v2_plan(bindings={V2_COMMAND: binding}, failures=(v2_observation(V2_BASE),),
+                   scope=scope, changed=scope, operation="REPAIR")
+    assert plan.affected_first == () and plan.commands == (V2_COMMAND,)
 
 
 def test_v2_complete_population_is_independent_of_display_bound():
@@ -206,14 +411,16 @@ def test_v2_correction_delta_is_separate_from_original_task_attribution_base():
     assert not attributed_task_passes(record, subject_sha=V2_CANDIDATE, command=V2_COMMAND, exit_code=1)
 
 
-def test_v2_authored_focused_requirement_prevents_duplicate_probe_execution():
+def test_v2_covering_focused_requirement_still_follows_exact_probe():
     focused = "python -m pytest -q tests/test_sample.py"
     binding = {**v2_binding(), "command": focused}
     plan = derive_minimum_verification((focused, V2_COMMAND), base_sha=V2_BASE, candidate_sha=V2_CANDIDATE,
         changed_files=("tests/test_sample.py",), modification_scope=("tests/test_sample.py",), operation="REPAIR",
         bindings={focused: binding, V2_COMMAND: v2_binding()}, failed_observations=(v2_observation(V2_BASE),))
-    assert plan.affected_first == (focused,)
-    assert plan.commands == (V2_COMMAND,)
+    probe = pytest_projection_command(V2_COMMAND, ("tests/test_sample.py::test_000",))
+    assert plan.affected_first == (probe,)
+    assert plan.commands == (focused, V2_COMMAND)
+    assert plan.affected_requirements == ((probe, V2_COMMAND),)
 
 
 def test_v2_unknown_or_filtered_coverage_falls_back_without_dependency_inference():
