@@ -1,0 +1,111 @@
+task_id: TASK-325
+revision: 1
+goal: Restore scoped GitHub Actions reusable-workflow propagation of the deployment-owned
+  AIOS_ORIGIN_ADMISSION_KEY to H4C0 origin-authoring admission and hosted receipt
+  validation, while preserving fail-closed origin provenance and existing legacy Issue
+  authoring. This independent BO-5 transport hardening is prerequisite infrastructure
+  for the separate ORIGIN_AFFINE VP-01 / TASK-324 authoring, not a change of TASK-324
+  affinity or roadmap NEXT.
+problem: 'The Issue carrier caller invokes aios-brain-ingress.yml without forwarding
+  AIOS_ORIGIN_ADMISSION_KEY, while the reusable ingress workflow reads secrets.AIOS_ORIGIN_ADMISSION_KEY
+  in origin_provenance and deliver. The self-host origin_provenance job for new ORIGIN_AFFINE
+  TASK-324 authoring (Issues #1690, #1691 and #1692) observed an empty admission-key
+  environment value and failed closed, despite a current repository Actions secret.
+  Older TASK-316 through TASK-322 used LEGACY_REPOSITORY_DEFAULT_ROUTE and their authoring/dispatch
+  did not exercise this admission gate. Existing workflow tests encode the obsolete
+  no-secrets structure, so a bounded two-workflow and two-test correction is necessary.'
+assumptions:
+- Authoring anchor is AIOS-renew main 203008726e2bfed01323ed6c19400e45b2384ee9; admission
+  must enforce expected-main/CAS and freshness if this anchor moves.
+- The current Human expressly selected the legacy repository default return route
+  for this independent BO-5 ingress repair TASK; this is not an implicit fallback
+  or revision of origin-affine TASK-324.
+- The Human has delegated this TASK to Codex GPT-6.1 Sol xhigh; deterministic Runtime
+  must admit the execution profile/dispatch independently.
+- GitHub Actions secret AIOS_ORIGIN_ADMISSION_KEY is provisioned by the repository
+  administrator. Never embed, print or commit its value. End-to-end runtime admission
+  remains separately required after publishing this patch.
+- 'GitHub Issues #1690, #1691 and #1692 show origin admission FAIL, not a canonical
+  TASK-324 or RUN. Successful Issue delivery, wakeup, or carrier transport is not
+  proof of RUN success.'
+scope:
+  inspect:
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .ai/roadmap-state.yaml
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/origin_authoring_proof.py
+  - tests/test_github_issue_ingress.py
+  modify:
+  - .github/workflows/aios-issue-carrier.yml
+  - .github/workflows/aios-brain-ingress.yml
+  - tests/test_issue_carrier_demux_workflow.py
+  - tests/test_github_issue_ingress_workflow.py
+non_goals:
+- Change TASK-324 payload, return_affinity, evidence, revision, or any prior Issue;
+  create or dispatch VP-01 before valid fresh proof is admitted.
+- Introduce origin proof bypass, self-certified admission, permissive fallback, disabled
+  gate, or a generic legacy route selector for unrelated origin-affine flows.
+- Broaden caller secret propagation to all repository secrets or the other three reusable
+  Issue carrier families.
+- Modify Python Runtime, proof cryptography, route registry, tasks, workflow execution
+  authority, Reviewer/Publisher, or roadmap state.
+- Replace current verification policy, run a repository-wide full suite for ceremony,
+  or reopen completed BO architecture.
+constraints:
+  hard:
+  - Limit all code changes to the four exact paths in scope.modify; if more mutation
+    is required, stop and request a new Brain scope decision.
+  - The ingress caller must forward only the named AIOS_ORIGIN_ADMISSION_KEY reusable-workflow
+    secret; the called workflow must explicitly declare that named workflow_call secret,
+    without logging or persisting its value.
+  - Both pre-mutation self-host origin_provenance and hosted deliver must continue
+    consuming the deployment-owned secret reference. Origin admission and signed receipt
+    verification must remain fail-closed when a secret is absent or invalid.
+  - No weakening or skipping of carrier attempt, origin route/generation, proof TTL/replay,
+    expected-main, envelope digest, HMAC, registry, or exact GitHub Issue event boundaries.
+  - Legacy authoring paths must remain operational and explicitly separate, not falsely
+    portrayed as proof-bearing; TASK-325 has LEGACY_REPOSITORY_DEFAULT_ROUTE solely
+    by explicit Human selection for this separate infrastructure hardening.
+  - Update the existing static workflow regression tests that currently require an
+    empty workflow_call and reject any secrets in caller, with narrow test exceptions
+    applying only to the ingress reusable carrier; preserve the closed routing and
+    permission invariants for the other carrier jobs.
+  - Use canonical reviewed source candidate, Runtime minimum-sufficient proof and
+    semantic Reviewer/Publisher lifecycle. Do not advance roadmap NEXT automatically.
+    Do not claim GitHub carrier admission alone constitutes RUN creation, execution,
+    PASS or publication.
+acceptance:
+- id: AC1
+  condition: The issue-carrier ingress job forwards exactly the AIOS_ORIGIN_ADMISSION_KEY
+    secret to the aios-brain-ingress.yml reusable workflow, without inheriting all
+    repository secrets or broadening other Issue carrier jobs.
+- id: AC2
+  condition: The called ingress workflow declares exactly the required named workflow_call
+    secret and retains its original exact-title event, scoped permissions, pre-mutation
+    self-hosted origin gate and hosted delivery behavior.
+- id: AC3
+  condition: Both self-host origin_provenance and hosted deliver retain the deployment-owned
+    secret reference and fail closed if the key or authenticated receipt is absent
+    or invalid; no bypass or unverified success branch is introduced.
+- id: AC4
+  condition: Workflow regression tests prove correct caller/callee secret wiring,
+    distinguish ingress from the three unaffected reusable workflows, and preserve
+    exact-title demultiplexing, bounded scope, event identity and existing no-secret-value-exposure
+    properties.
+- id: AC5
+  condition: Existing workflow tests are updated only for the precisely authorized
+    ingress secret interface, retain all unrelated assertions, and a missing/renamed
+    secret interface is rejected by focused regression coverage.
+- id: AC6
+  condition: Changes remain confined to the four listed workflow and test files, leave
+    TASK-324 and roadmap NEXT untouched, and preserve legacy authoring compatibility
+    while allowing separate future origin-affine admission once fresh proof is issued.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_issue_carrier_demux_workflow.py tests/test_github_issue_ingress_workflow.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
