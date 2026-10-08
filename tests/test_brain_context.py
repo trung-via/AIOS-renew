@@ -539,11 +539,11 @@ def test_registry_movement_invalidates_resolution_and_reuse(tmp_path):
     assert cache.misses == 2 and cache.hits == 0
 
 
-@pytest.mark.parametrize("request", [{"request_class": "LLM_RANKED"}, {"request_class": []},
+@pytest.mark.parametrize("request_value", [{"request_class": "LLM_RANKED"}, {"request_class": []},
                                      {"flow_selector": "RESEARCH", "relevance": "looks useful"}])
-def test_relevance_request_inputs_are_closed(request):
+def test_relevance_request_inputs_are_closed(request_value):
     with pytest.raises(BrainContextError):
-        compose_brain_work_context(snapshot(), request)
+        compose_brain_work_context(snapshot(), request_value)
 
 
 @pytest.mark.parametrize("fault", ["lifecycle", "subject", "support_class", "proof", "mirror", "missing_proof"])
