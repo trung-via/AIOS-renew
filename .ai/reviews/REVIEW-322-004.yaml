@@ -1,0 +1,31 @@
+review_id: REVIEW-322-004
+reviewed_sha: 3944d717af68a8ca97048a4e7472c8c46a5dadc4
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+findings: []
+notes:
+- RUN-322-004 is the canonical PRIMARY RESULT for TASK-322 r4. Candidate 3944d717af68a8ca97048a4e7472c8c46a5dadc4
+  is exactly one commit ahead of canonical r4 base 5b82bec0afdb66a666f3d6003b4d4ebf1f619a3c.
+- 'AC1 PASS: all eight candidate blobs exactly match the frozen TASK-322 r3 candidate
+  identities required by r4; no additional source or test delta exists.'
+- 'AC2 PASS: ResultPackage binds exact head_sha and changed_files, unresolved is empty,
+  and claim.satisfies covers AC1 through AC4.'
+- 'AC3 PASS: Runtime minimum-sufficient-v2 executed only tests/test_brain_sync.py::test_bo_2_3_planning_next_does_not_discover_recent_canonical_tasks
+  on the exact candidate; 1 passed. The regression materializes canonical flow cards,
+  keeps the BO-2/3 NEXT unauthored, asserts selected_task/unified_state remain absent,
+  and resolves TASK_AUTHORING.'
+- 'AC4 PASS: git diff --check passed. Candidate is clean, in scope and descendant-correct.
+  RUN-322-002 prior evidence was not ceremonially rerun; r4 verification contained
+  only the one unresolved nodeid plus diff check.'
+- 'Authority review PASS: EXACT_CORRECTION_SUBJECT_LINEAGE_V1 bytes are unchanged
+  from the previously examined r2/r3 implementation. No roadmap mutation, BO-7 early
+  implementation, new Planner/router/store, Reviewer/Publisher merge, or lifecycle
+  bypass is introduced.'
+- 'Reviewer verdict: PASS. Candidate is semantically eligible for canonical Publisher
+  handling; publication is not inferred until the Publisher proves exact reviewed-source
+  publication.'
