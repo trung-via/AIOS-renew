@@ -1,183 +1,178 @@
 task_id: TASK-110
-revision: 1
+revision: 2
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
 
 goal: >
-  Close the observed Review-to-Publication transport gap for reviews canonicalized through
-  the authorized GitHub-Issue Brain Authoring Ingress. After one SUBMIT_REVIEW is accepted
-  and its canonical review-decision ref exists, repository-owned transport must wake the
-  already-existing safe Publisher without Human workflow_dispatch replay, while preserving
-  the Publisher as the sole publication authority and preserving all existing review,
-  ancestry, race, lineage, and exact-candidate checks.
+  Upgrade the canonical Review-to-Publication continuation into one flat deterministic
+  publication flow that normally publishes the exact reviewed source without Brain
+  recovery work, closes the publication/main-advance race before later canonical-main
+  mutation can strand an eligible reviewed candidate, and provides one bounded
+  deterministic recovery classification for already-diverged publication attempts.
+  Preserve Runtime, Reviewer and Publisher as distinct authorities and preserve the
+  Project Contract rule that semantic PASS authorizes publication of the exact reviewed
+  source candidate only.
 
 problem: >
-  TASK-107 made GitHub Issues a bounded carrier for the existing authoring ingress and
-  TASK-108 made GitHub Issues a bounded PRIMARY wakeup carrier. During TASK-108 live use,
-  Issue #9 submitted REVIEW-108-001 for RUN-108-003 through SUBMIT_REVIEW and the ingress
-  canonicalized review-decision SHA 9e33035b11fc755f148e775c107bb2e8c373dcd4. The
-  existing aios-auto-publish workflow declares a push trigger for
-  aios/review-decision/**, but the exact decision SHA produced zero push-triggered workflow
-  runs. Publication occurred only after a Human workflow_dispatch replay for RUN-108-003,
-  which then safely published reviewed source d5d906431dd8ef38099ed21b2b4b0a0002a99618.
-  This is an outer transport discontinuity caused by the review-decision ref being created
-  from a GitHub Actions GITHUB_TOKEN context; it is not a review semantic defect and not a
-  reason to weaken or duplicate safe publication.
+  RUN-321-003 produced exact candidate
+  1278440199805edfea4979e65a75fff38ad1171b and REVIEW-321-003 is canonical PRIMARY PASS
+  with AC1-AC9 PASS. Before that exact candidate was published, canonical main advanced
+  through TASK-322 and is now 3944d717af68a8ca97048a4e7472c8c46a5dadc4, so the existing
+  Publisher correctly classifies publication as INTEGRATION_REQUIRED. The safe failure
+  exposes a control-plane gap: normal publication continuation does not reserve/serialize
+  the exact publication opportunity against later main-changing continuation, and the
+  recovery classification leaves Brain to rediscover how to recover each divergence.
+  Force, reset, ad-hoc cherry-pick, or treating an unreviewed merge commit as equivalent
+  to the reviewed source would violate publication authority.
 
 assumptions:
-  - >
-    Canonical AIOS-renew main at TASK-110 authoring is
-    a4c945f67d4272b6d855e20bf48d71e96b12cc0a. TASK-109 revision 1 is authored on that
-    main but has not been executed, reviewed, or published as implementation; current Human
-    intent explicitly requires the two observed control-plane transport gaps to close before
-    final downstream-adoption/track reconciliation.
-  - >
-    Issue #9 is canonical transport evidence for RUN-108-003 SUBMIT_REVIEW: ingress PASS,
-    destination refs/heads/aios/review-decision/RUN-108-003, decision SHA
-    9e33035b11fc755f148e775c107bb2e8c373dcd4, replayed false.
-  - >
-    GitHub Actions evidence for decision SHA 9e33035b11fc755f148e775c107bb2e8c373dcd4
-    contains zero event=push workflow runs, while workflow_dispatch run 34752302900 later
-    invoked the existing safe publisher for RUN-108-003 and published exact reviewed source
-    d5d906431dd8ef38099ed21b2b4b0a0002a99618.
-  - >
-    The existing aios-auto-publish workflow already owns a bounded workflow_dispatch input
-    run_id and delegates publication to the existing deterministic publication boundary.
-    Its publication semantics remain authoritative; this TASK closes transport only.
-  - >
-    TASK-107 remains authoritative that GitHub Issue content and receipts are transport and
-    observability, not semantic truth. This TASK narrowly supersedes only TASK-107's
-    historical non-goal that the Issue workflow cannot wake publication after canonical
-    SUBMIT_REVIEW, because observed GITHUB_TOKEN recursion suppression now proves that an
-    explicit bounded continuation transport is required.
+  - Canonical main at revision-2 authoring is 3944d717af68a8ca97048a4e7472c8c46a5dadc4.
+  - TASK-321 revision 1 remains the current BO-2/BO-3 implementation subject until its publication closure is canonically resolved.
+  - RUN-321-003 is the canonical successful RESULT and REVIEW-321-003 is PASS for exact reviewed SHA 1278440199805edfea4979e65a75fff38ad1171b.
+  - REVIEW-321-003 does not authorize publication of a different integration SHA.
+  - TASK-110 revision 1 remains authority for automatic review-to-Publisher continuation; this revision extends that same boundary rather than creating a second Publisher.
+  - Existing correction_integration mechanics are correction-lineage authority and must not be reused as publication authority.
+  - Runtime verification, Reviewer verdict and Publisher publication remain distinct authorities even if transport is flat and unattended.
 
 scope:
   inspect:
     - docs/AIOS-MANIFESTO.md
     - docs/AIOS-CONSTITUTION.md
     - docs/CHATGPT_PROJECT_CONTRACT.md
-    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
-    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
-    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
     - .ai/roadmap-state.yaml
-    - .ai/tasks/TASK-063.yaml
-    - .ai/tasks/TASK-090.yaml
-    - .ai/tasks/TASK-107.yaml
-    - .ai/tasks/TASK-108.yaml
-    - .ai/tasks/TASK-109.yaml
-    - .github/workflows/aios-brain-ingress.yml
-    - .github/workflows/aios-auto-publish.yml
-    - src/aios_renew/github_issue_ingress.py
-    - src/aios_renew/authoring_ingress.py
+    - .ai/tasks/TASK-110.yaml
+    - .ai/tasks/TASK-321.yaml
+    - .ai/tasks/TASK-322.yaml
     - src/aios_renew/publication.py
-    - tests/test_github_issue_ingress.py
-    - tests/test_github_issue_ingress_workflow.py
-    - tests/test_authoring_ingress.py
-    - tests/test_publication.py
-  modify:
-    - .github/workflows/aios-brain-ingress.yml
+    - src/aios_renew/correction_integration.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/brain_attention.py
     - .github/workflows/aios-auto-publish.yml
-    - src/aios_renew/github_issue_ingress.py
-    - tests/test_github_issue_ingress.py
-    - tests/test_github_issue_ingress_workflow.py
+    - tests/test_publication.py
+    - tests/test_brain_attention.py
+  modify:
+    - src/aios_renew/publication.py
+    - src/aios_renew/brain_attention.py
+    - .github/workflows/aios-auto-publish.yml
+    - tests/test_publication.py
+    - tests/test_brain_attention.py
 
 non_goals:
-  - Change REVIEW semantics, SUBMIT_REVIEW semantic validation, review-decision destination
-    derivation, TASK/REMEDIATION/REPAIR semantics, Runtime verification, Executor behavior,
-    or safe-publication semantic validation.
-  - Let the Issue ingress workflow publish implementation main directly, call publication.py
-    directly as an alternate authority, or move reviewed source selection into Issue data.
-  - Add a generic operation router, scheduler, poller, retry worker, queue, database, daemon,
-    PAT/service-account dependency, browser automation, or Human approval bypass.
-  - Trust Issue title/body/comment/receipt, workflow output, timestamps, or arbitrary payload
-    fields as publication truth after canonical review-decision creation.
-  - Wake publication for AUTHOR_TASK, AUTHOR_REMEDIATION, AUTHOR_REPAIR, failed ingress,
-    CHANGES_REQUIRED review, malformed review, or any state lacking canonical publication
-    eligibility.
-  - Re-run Runtime verification or semantic review during publication continuation.
-  - Change GAP-B / REPAIR continuation transport, A6 approved REMEDIATION wakeup, PRIMARY
-    wakeup, downstream pins, or TASK-109 roadmap reconciliation in this TASK.
-  - Push or publish from Executor implementation execution.
+  - Publish, reset, force, cherry-pick, rebase or otherwise manually mutate main to rescue RUN-321-003.
+  - Treat REVIEW-321-003 as semantic approval of any SHA other than 1278440199805edfea4979e65a75fff38ad1171b.
+  - Create a second Publisher, Reviewer, Planner, lifecycle router, retry daemon, correction selector or roadmap authority.
+  - Reuse correction_integration authority as publication authority or convert PRIMARY PASS into REPAIR/REMEDIATION lineage.
+  - Let Runtime make a semantic review verdict, choose conflict resolution, choose an Executor, or infer risk acceptance.
+  - Re-run TASK-321 implementation merely because publication raced with later main movement.
+  - Automatically advance BO-2/BO-3 roadmap semantics from transport/publication observations.
+  - Require repository-wide full-suite verification merely to close this bounded publication-control change.
 
 constraints:
   hard:
     - >
-      The transport continuation must occur only after the existing semantic ingress has
-      successfully canonicalized SUBMIT_REVIEW. Failed carrier admission, failed semantic
-      ingress, and all non-SUBMIT_REVIEW operations must not request publication.
+      Normal REVIEW PASS continuation must remain flat: canonical review decision to
+      Publisher to exact-source publication outcome without Brain polling or Human
+      workflow replay.
     - >
-      The continuation may carry only a bounded canonical selector sufficient for the
-      existing Publisher to independently resolve the exact review-decision and source RUN.
-      It must not carry or trust a candidate SHA, destination ref, main SHA override,
-      publication command, force flag, review verdict override, or arbitrary workflow name.
+      Preserve Project Contract section 12 exactly: semantic PASS authorizes publication
+      of the reviewed source candidate only. No deterministic merge, tree equivalence,
+      clean conflict-free composition or ancestry observation may upgrade a different SHA
+      into reviewed-source authority.
     - >
-      The existing safe Publisher remains the sole publication authority. On wakeup it must
-      independently consume canonical PASS state and preserve exact reviewed-candidate,
-      lineage, ancestry, current-main compare-and-swap/race, review-metadata isolation, and
-      idempotent publication protections. Transport acceptance is not publication success.
+      Close the race prospectively by deterministically serializing or leasing the
+      publication-critical main mutation boundary so an eligible exact reviewed source
+      cannot be stranded merely because unrelated later canonical-main work advances
+      before its publication attempt completes. The mechanism transports existing
+      authority only and may not select roadmap work or semantic successors.
     - >
-      The solution must not depend on the suppressed review-decision push event firing. It
-      must use a bounded GitHub-supported continuation path that is valid from the Issue
-      ingress Actions context, without introducing a PAT or long-lived credential product.
+      Re-check the exact canonical main binding immediately before mutation. CAS failure,
+      concurrent movement or stale lease must never force publication; bounded
+      deterministic re-observation may continue only while exact reviewed-source
+      publication remains lawful.
     - >
-      The Issue ingress remains one semantic ingress invocation per admitted Issue. Any
-      post-ingress publication wakeup is outer deterministic coordination over the returned
-      canonical ingress result and must not invoke another authoring operation or reinterpret
-      the submitted review payload.
+      If a publication attempt is already diverged, classify it deterministically.
+      Do not ask Brain to rediscover a Git repair strategy. A conflict-free mechanical
+      integration candidate, if the implementation exposes one as recovery material,
+      is a new source candidate and cannot reach main until Runtime verification and a
+      fresh semantic Reviewer PASS establish eligibility for that exact SHA.
     - >
-      Replay must be safe. Re-delivery of an identical already-canonical SUBMIT_REVIEW may
-      at most wake the same existing Publisher again; existing publication idempotency must
-      ensure it cannot create a second semantic publication or publish a different source.
+      Any recovery requiring semantic conflict resolution, scope/risk judgment or a new
+      implementation choice must fail closed with one typed attention state containing
+      exact reviewed SHA, sampled main SHA and deterministic cause. Runtime must not
+      choose the semantic resolution.
     - >
-      CHANGES_REQUIRED reviews must remain canonical review decisions but must not advance
-      product main. If the bounded continuation wakes the Publisher for such a decision, the
-      Publisher must fail/no-op under existing authority rather than carrier code inventing
-      PASS. Prefer avoiding the wakeup when the canonical ingress result itself already
-      proves no publication-eligible PASS decision, but do not duplicate Reviewer semantics.
+      Publication integration/recovery is executorless unless a separately authorized
+      implementation/correction TASK requires an Executor. Existing sticky Executor
+      delegation must not be injected into a mechanical Publisher continuation.
     - >
-      Workflow permissions must remain least-privilege and tests must make any newly required
-      Actions permission explicit. Unrelated write permissions remain forbidden.
+      Existing already-published/idempotent replay and fast-forward publication behavior
+      must remain valid. Review-decision metadata remains non-product source.
     - >
-      Existing file/stdin ingress behavior, all four authoring operation families, TASK-108
-      PRIMARY wakeup, A6 REMEDIATION wakeup, direct manual publisher workflow_dispatch as an
-      emergency/debug fallback, and publication.py semantics remain behaviorally compatible.
-    - Do not push from Executor implementation execution.
+      TASK-321 is the live regression fixture for the already-diverged shape. Its
+      RUN-321-003 verification and REVIEW-321-003 verdict remain immutable evidence and
+      must not be rewritten or falsely reused as review of another SHA.
+    - >
+      Attention/doorbell may report terminal publication success or typed actionable
+      recovery/conflict only. Intermediate INTEGRATION_REQUIRED classification must not
+      cause Brain to search for an ad-hoc publication procedure when deterministic
+      continuation is still possible.
+    - >
+      Executor may modify only scope.modify. If the required solution needs Kernel
+      lifecycle semantics, Reviewer authority, correction_integration authority or files
+      outside scope.modify, fail closed for Brain scope reconciliation instead of
+      widening authority.
 
 acceptance:
   - id: AC1
     condition: >
-      Deterministic workflow/carrier regressions prove that one successful GitHub-Issue
-      SUBMIT_REVIEW canonicalization produces exactly one bounded wakeup request to the
-      existing safe Publisher using only the canonical RUN selector, with no direct main
-      mutation or candidate selection in the ingress carrier.
+      Existing exact reviewed-source fast-forward and idempotent publication paths remain
+      correct and use one canonical Publisher boundary.
   - id: AC2
     condition: >
-      AUTHOR_TASK, AUTHOR_REMEDIATION, AUTHOR_REPAIR, rejected ingress, malformed carrier
-      events, and ingress exceptions produce no publication wakeup.
+      A production-shaped race proves later main-changing continuation cannot strand an
+      eligible reviewed source between canonical PASS and its exact Publisher attempt;
+      stale/CAS movement fails closed without force.
   - id: AC3
     condition: >
-      Publication continuation does not rely on the review-decision push trigger and works
-      from the same GITHUB_TOKEN-based Issue workflow context without PAT or external secret
-      authority, while transport acceptance remains distinguishable from publication result.
+      A REVIEW PASS candidate that is already contained/published is deterministically
+      recognized as successful/no-op without duplicate mutation.
   - id: AC4
     condition: >
-      The existing Publisher independently re-resolves canonical review-decision/source RUN
-      and retains all safe-publication protections; no review verdict, candidate SHA, target
-      ref, force flag, or publication command is accepted from Issue content or carrier
-      output.
+      An already-diverged case equivalent to RUN-321-003 is deterministically classified
+      without manual Git instructions; no different SHA is treated as covered by the old
+      review, and any newly materialized recovery candidate is explicitly ineligible for
+      publication until Runtime verification plus fresh Reviewer PASS for that exact SHA.
   - id: AC5
     condition: >
-      Identical SUBMIT_REVIEW replay cannot publish twice or choose a new candidate, and a
-      CHANGES_REQUIRED/non-publishable decision cannot advance main.
+      Merge conflict, ambiguous ancestry, concurrent main movement, stale review binding,
+      malformed lineage and recovery-scope escape all fail closed with typed bounded
+      evidence and no main mutation.
   - id: AC6
     condition: >
-      Existing Issue ingress, file/stdin ingress, publication workflow_dispatch fallback,
-      publication.py regressions, TASK-108 PRIMARY wakeup, and A6 REMEDIATION behavior remain
-      compatible; no new generic lifecycle router or semantic authority is introduced.
+      Publication continuation does not select Executor/model/effort, correction strategy,
+      roadmap NEXT, semantic review verdict or risk acceptance and does not create a
+      second lifecycle router or Publisher.
   - id: AC7
     condition: >
-      Required focused verification and git diff --check pass with no modified file outside
-      TASK-110 scope and RESULT contains zero unresolved items.
+      Publication attention exposes only exact canonical identities and terminal/actionable
+      outcomes; ordinary deterministic continuation does not wake Brain merely to choose
+      a Git recovery procedure.
+  - id: AC8
+    condition: >
+      Regression coverage proves REVIEW-321-003 remains authority only for
+      1278440199805edfea4979e65a75fff38ad1171b and current main
+      3944d717af68a8ca97048a4e7472c8c46a5dadc4 is never reset/forced to that historical
+      candidate.
+  - id: AC9
+    condition: >
+      Source changes remain within scope.modify and preserve Runtime verification,
+      Reviewer semantic authority, Publisher exact-source authority, TASK-110 continuation,
+      correction lineage authority and Human/Brain roadmap authority.
 
 verification:
+  policy: minimum-sufficient-v2
   required:
-    - python -m pytest tests/test_github_issue_ingress.py tests/test_github_issue_ingress_workflow.py tests/test_authoring_ingress.py tests/test_publication.py -q
+    - python -m pytest -q tests/test_publication.py tests/test_brain_attention.py
     - git diff --check
