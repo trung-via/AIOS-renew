@@ -1,0 +1,44 @@
+review_id: REVIEW-325-001
+reviewed_sha: 204c1b0496dc85e0ca0078e3147f723da217d012
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- Exact review subject TASK-325 r1, RUN-325-001 canonical RESULT on refs/heads/aios/artifacts/RUN-325-001
+  commit 64a5c6e2461f385bf0776f218afe2a93c7fbb663. Exact candidate sha 204c1b0496dc85e0ca0078e3147f723da217d012
+  directly descends from task canonical main d2d5f969df0c170d9b940ebaaa63698c5684e375.
+- 'Runtime verification RUN-325-001-V004: focused python -m pytest -q tests/test_issue_carrier_demux_workflow.py
+  tests/test_github_issue_ingress_workflow.py, 73 passed in 2.73s; RUN-325-001-V005:
+  git diff --check PASS. RESULT head_sha binds exact candidate, unresolved empty,
+  claims C1-C6 map AC1-AC6. This Reviewer reuses Runtime proof and does not rerun
+  or replace canonical verification.'
+- 'Semantic audit pass 1: exact four paths modified only: .github/workflows/aios-issue-carrier.yml,
+  .github/workflows/aios-brain-ingress.yml, tests/test_issue_carrier_demux_workflow.py,
+  tests/test_github_issue_ingress_workflow.py. No Python Runtime, roadmap, task or
+  unrelated workflow changed.'
+- 'Semantic audit pass 1 AC1-AC3: caller forwards the single AIOS_ORIGIN_ADMISSION_KEY
+  secret expressly to ingress reusable workflow; called workflow requires exactly
+  that named workflow_call secret. Existing self-host origin_provenance and hosted
+  deliver still receive deployment-owned key reference, and Python origin validation
+  remains fail-closed with no bypass, source-key exposure or broader secrets inheritance.'
+- 'Semantic audit pass 2 counterexamples AC4-AC5: regression tests reject missing,
+  renamed, optional or extra declared secret, wrong caller key or inherited secrets
+  and enforce unchanged other three carrier jobs, exact-title selection, native issue
+  event provenance, bounded permissions and no secret interpolation into shell commands.
+  Tests cover both caller and called interface under 73 passing focused pytest items.'
+- 'Semantic audit pass 2 AC6 and authority boundaries: TASK-325 is a separately Human-authorized
+  legacy-origin infrastructure fix, not a downgrade or edit of TASK-324. It leaves
+  roadmap NEXT VP-01, H4C0 proof route/generation, replay/freshness, signed-receipt
+  checking, Reviewer and Publisher authorities untouched. GitHub runtime live secret/registry
+  still requires future fresh origin-affine conformance after publication; this review
+  does not claim live VP-01 admission already passes.'
+- Verdict PASS for AC1-AC6, no semantic findings, on candidate 204c1b0496dc85e0ca0078e3147f723da217d012.
+  Runtime and Publisher must independently bind candidate, control publication reservation,
+  CAS and publication completion. REVIEW PASS alone does not mean published.
