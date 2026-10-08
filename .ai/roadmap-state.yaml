@@ -570,12 +570,17 @@ verification_architecture_replacement_preemption:
     immutable legacy lineage and all authority boundaries. This planning
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
-  effective_next: verification-architecture-replacement-v1-vp01-baseline-and-measurement
+  effective_next: verification-architecture-replacement-v1-vp02-proof-contract
   return_to: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
   package_count: 7
   executor_delegation: UNASSIGNED_FOR_NEW_TASK
   implementation_authorized: false
   roadmap_auto_progression: false
+  human_priority_override_2026_10_09: >-
+    Explicit Human decision: stop H4C0 diagnostics, defer VP-01 without claiming
+    completion, and make VP-02 the sole planning NEXT. Dependency on VP-01 remains
+    visible as an unclosed measurement/compatibility gate for later publication
+    and cutover; it is not silently waived.
   source_main_at_human_planning_transition: 08a5021236938b99d994d41e3d4f3907ec237230
   publication_safety: >-
     Every future authoring and execution uses freshly observed canonical main,
@@ -999,7 +1004,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - verification-architecture-replacement-v1-vp01-baseline-and-measurement
+  - verification-architecture-replacement-v1-vp02-proof-contract
 sequence:
 
   - id: TASK-309
@@ -1716,7 +1721,7 @@ sequence:
     unblocks: [brain-optimization-v1-bo2-3-canonical-context-pipeline-v1]
 
   - id: verification-architecture-replacement-v1-vp01-baseline-and-measurement
-    status: NEXT
+    status: DEFERRED_BY_HUMAN
     phase: VP01_BASELINE_MEASUREMENT
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
@@ -1732,7 +1737,7 @@ sequence:
       publishes eligible reviewed candidate or lawful integration descendant.
 
   - id: verification-architecture-replacement-v1-vp02-proof-contract
-    status: QUEUED_AFTER_VP01
+    status: NEXT
     phase: VP02_PROOF_CONTRACT
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
@@ -1741,6 +1746,12 @@ sequence:
     objective: >-
       Retire authored executable verification authoring prospective; define authority-preserving proof coverage contract and explicit frozen Kernel compatibility gate.
     depends_on: verification-architecture-replacement-v1-vp01-baseline-and-measurement
+    dependency_disposition: >-
+      Human explicitly deferred VP-01 on 2026-10-09 and prioritized VP-02 semantic design
+      and independently admissible bounded work. VP-01 is not DONE; no baseline evidence
+      is fabricated. Any VP-02 acceptance/publication or later cutover claim that needs
+      VP-01 measurements remains gated pending explicit proof or separately authorized
+      reconciliation. No automatic progression or reclassification of VP-01.
     implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
     branch_and_publication_safety: >-
       Author each TASK from exact current canonical main after approved planning
