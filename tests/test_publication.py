@@ -1700,18 +1700,22 @@ def test_concurrent_main_update_is_not_overwritten(
     )
     real_git = publication_module._git
     raced = False
+    main_pushes: list[tuple[str, ...]] = []
 
     def racing_git(repo_path, *args, **kwargs):
         nonlocal raced
-        if args and args[0] == "push" and not raced:
-            raced = True
-            git(
-                lineage["remote"],
-                "update-ref",
-                "refs/heads/main",
-                concurrent_sha,
-                lineage["base_sha"],
-            )
+        # Reservation pushes precede the exact-main CAS boundary under test.
+        if args and args[0] == "push" and args[-1].endswith(":refs/heads/main"):
+            main_pushes.append(tuple(args))
+            if not raced:
+                raced = True
+                git(
+                    lineage["remote"],
+                    "update-ref",
+                    "refs/heads/main",
+                    concurrent_sha,
+                    lineage["base_sha"],
+                )
         return real_git(repo_path, *args, **kwargs)
 
     monkeypatch.setattr(publication_module, "_git", racing_git)
@@ -1720,6 +1724,10 @@ def test_concurrent_main_update_is_not_overwritten(
         publish(lineage)
 
     assert raced is True
+    assert len(main_pushes) == 1
+    assert main_pushes[0][-1] == f"{lineage['candidate_sha']}:refs/heads/main"
+    assert f"--force-with-lease=refs/heads/main:{lineage['base_sha']}" in main_pushes[0]
+    assert raised.value.report.reviewed_sha == lineage["candidate_sha"]
     assert raised.value.report.cause == "MAIN_CAS_FAILED"
     assert remote_main(lineage) == concurrent_sha
 
@@ -1730,18 +1738,22 @@ def test_compatible_concurrent_main_update_fails_exact_sha_lease(
     lineage = make_lineage(tmp_path, intermediate_candidate=True)
     real_git = publication_module._git
     raced = False
+    main_pushes: list[tuple[str, ...]] = []
 
     def racing_git(repo_path, *args, **kwargs):
         nonlocal raced
-        if args and args[0] == "push" and not raced:
-            raced = True
-            git(
-                lineage["remote"],
-                "update-ref",
-                "refs/heads/main",
-                lineage["intermediate_sha"],
-                lineage["base_sha"],
-            )
+        # Compatible ancestry still must reject movement at the exact-main CAS.
+        if args and args[0] == "push" and args[-1].endswith(":refs/heads/main"):
+            main_pushes.append(tuple(args))
+            if not raced:
+                raced = True
+                git(
+                    lineage["remote"],
+                    "update-ref",
+                    "refs/heads/main",
+                    lineage["intermediate_sha"],
+                    lineage["base_sha"],
+                )
         return real_git(repo_path, *args, **kwargs)
 
     monkeypatch.setattr(publication_module, "_git", racing_git)
@@ -1750,6 +1762,10 @@ def test_compatible_concurrent_main_update_fails_exact_sha_lease(
         publish(lineage)
 
     assert raced is True
+    assert len(main_pushes) == 1
+    assert main_pushes[0][-1] == f"{lineage['candidate_sha']}:refs/heads/main"
+    assert f"--force-with-lease=refs/heads/main:{lineage['base_sha']}" in main_pushes[0]
+    assert raised.value.report.reviewed_sha == lineage["candidate_sha"]
     assert raised.value.report.cause == "MAIN_CAS_FAILED"
     assert remote_main(lineage) == lineage["intermediate_sha"]
 
