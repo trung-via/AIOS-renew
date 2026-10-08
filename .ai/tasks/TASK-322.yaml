@@ -1,0 +1,177 @@
+task_id: TASK-322
+revision: 1
+goal: Eliminate the correction-authoring bootstrap defect by making AUTHOR_REPAIR
+  and AUTHOR_REMEDIATION resolve their semantic subject from exact immutable correction
+  lineage rather than from roadmap NEXT selection, while preserving generic Brain
+  Sync planning semantics, Unified State authority, audited correction handoff, and
+  all fail-closed correction lineage/CAS gates.
+problem: RUN-321-001 is a canonical repairable FAILURE for TASK-321 r1, but AUTHOR_REPAIR
+  cannot currently compose its audited authoring packet because _compose_authoring_packet
+  first calls generic observe_brain_sync(), which selects the roadmap planning NEXT.
+  The current roadmap intentionally has one unique unauthored BO-2/3 NEXT, so Brain
+  Sync returns UNAUTHORED_TASK/TASK_AUTHORING even though the exact failed_run_id
+  already deterministically identifies TASK-321 r1 and its immutable FAILURE lineage.
+  This incorrectly lets Human/Brain planning state veto an engineering correction
+  subject already established by Runtime. Existing AUTHOR_REPAIR tests mask the defect
+  because setup_test_repo pre-populates roadmap NEXT with the same task_id. Fix the
+  authority coupling at correction subject resolution, not by editing roadmap, revising
+  TASK-321, guessing a TASK, or weakening correction validation.
+assumptions:
+- Canonical main at authoring is 18dd8c67f60c96d98f847e046c3fe42b8d40ecbe.
+- RUN-321-001 is an admitted canonical FAILURE for TASK-321 r1 with failed candidate
+  a0f4e8e58d808ccf41fc56cbf0b9df1ae4446eb0 and failure artifact 627570765fe157360b01fd01e3e996a8c8400119;
+  its candidate is transportable and repairable.
+- The immediate RUN-321-001 verification error is a pytest collection defect in tests/test_brain_context.py
+  caused by parametrizing the reserved name request; TASK-322 does not repair that
+  candidate. It fixes the kernel defect preventing the correct REPAIR authorization
+  from being authored.
+- The current roadmap BO-2/3 item is intentionally a planning NEXT without task_id.
+  Generic Brain Sync must continue to classify that planning state as UNAUTHORED_TASK/TASK_AUTHORING.
+- Project authority requires REPAIR to continue from exact failed lineage and REMEDIATION
+  to continue from exact reviewed finding lineage; roadmap state is Human/Brain planning
+  truth and is not engineering correction identity.
+- AUTHOR_REPAIR and AUTHOR_REMEDIATION still require the currently published audited
+  two-stage handoff and canonical freshness reconstruction. BO-7 direct-final correction
+  ingress is not active yet and is outside this recovery task.
+- Unified State remains the deterministic owner of lifecycle next_action and outstanding
+  correction state once the exact TASK identity/revision is established from canonical
+  correction lineage.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/flow-cards.yaml
+  - .ai/tasks/TASK-321.yaml
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/correction_preflight.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  - tests/test_decision_packet.py
+  modify:
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/decision_packet.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  - tests/test_decision_packet.py
+non_goals:
+- Repair RUN-321-001's pytest test code or alter the TASK-321 candidate.
+- Revise TASK-321, rewrite RUN-321-001/FAILURE history, or mutate the BO-2/3 roadmap
+  association as a workaround.
+- Implement BO-2/3 CANONICAL_CONTEXT_PIPELINE_V1, BO-4, BO-5, BO-6, BO-7 direct-final
+  correction ingress, BO-8, BO-9, BO-9A, BO-9B, BO-10, TASK-310, or H4.
+- Remove or weaken AIOS_AUDITED_AUTHORING_HANDOFF, Stage-1/Stage-2 semantic audit,
+  Decision Packet freshness, correction scope validation, expected-state CAS, Runtime
+  failure binding, review/finding validation, or Unified State lifecycle validation.
+- Add a Planner, lifecycle router, semantic correction selector, memory/reasoning
+  store, vector/embedding retrieval, heuristic task discovery, or repository-wide
+  task scan used as authority.
+- Allow a caller-supplied task_id/revision, REPAIR/REMEDIATION payload, roadmap entry,
+  chat context, task filename guess, or recent TASK to self-certify the correction
+  subject.
+- Change Publisher/integration semantics for historical correction candidates.
+constraints:
+  hard:
+  - 'Introduce and enforce EXACT_CORRECTION_SUBJECT_LINEAGE_V1: correction authoring
+    subject identity must be deterministically reconstructed from canonical immutable
+    correction lineage identified by the operation''s exact selector, never selected
+    by roadmap NEXT.'
+  - For AUTHOR_REPAIR, failed_run_id is only a selector into canonical failure refs.
+    The authoritative TASK id/revision, failed head, executor/base bindings, repairability/transportability
+    and failure identity must be reconstructed and cross-validated from canonical
+    RUN/FAILURE artifacts plus the canonical TASK document and Unified State.
+  - For AUTHOR_REMEDIATION, source_run_id and finding_id are only selectors into canonical
+    RESULT/REVIEW/finding lineage. The authoritative TASK id/revision, reviewed SHA,
+    finding identity and outstanding status must be reconstructed and cross-validated
+    from canonical artifacts plus Unified State.
+  - 'Generic observe_brain_sync behavior for planning continuation must remain unchanged:
+    a unique unauthored roadmap NEXT remains UNAUTHORED_TASK and resolves to TASK_AUTHORING
+    outside a correction-authoring request.'
+  - A roadmap NEXT that is unauthored, points at another TASK, or is planning-ambiguous
+    must not override or replace an exact valid correction subject. Conversely, correction
+    lineage ambiguity or invalidity must fail closed even if roadmap happens to point
+    at a matching TASK.
+  - No heuristic fallback is allowed. Missing, stale, malformed, competing or mismatched
+    correction refs; TASK revision mismatch; moved FAILURE/REVIEW identity; non-outstanding
+    finding; non-repairable failure; or Unified State mismatch must fail closed before
+    mutation.
+  - Decision Packet/Brain Work Context used for correction audit must expose the exact
+    correction-bound selected_task and Unified State derived from canonical lineage,
+    without treating roadmap as correction authority. Roadmap projection must remain
+    absent/non-authoritative for correction Decision Packets as currently intended.
+  - The existing audited_handoff, brain-high-value-v3 Stage-1/Stage-2 audit, packet
+    freshness recheck, return-contract selection and canonical-family payload comparison
+    remain mandatory for new correction mutation. Do not implement BO-7 early.
+  - 'The correction subject binding path must remain deterministic and observation-only
+    until ordinary ingress mutation authority is reached: no RUN creation, Executor
+    invocation, verification, roadmap mutation, review mutation or hidden state write
+    during packet composition.'
+  - Do not broaden AUTHOR_TASK mutation. AUTHOR_TASK must continue to mutate only
+    its canonical TASK document and must not be changed to update roadmap as part
+    of this fix.
+  - 'Regression coverage must reproduce the production class that current fixtures
+    miss: canonical TASK + canonical failed/reviewed lineage while roadmap NEXT lacks
+    task_id or references unrelated planning work.'
+  - Executor may modify only scope.modify. If the clean architectural fix requires
+    another production file, fail closed for Brain scope reconciliation rather than
+    silently widening mutation authority.
+acceptance:
+- id: AC1
+  condition: AUTHOR_REPAIR packet composition and audited ingress succeed for a valid
+    exact repairable FAILURE even when canonical roadmap has a unique unauthored NEXT,
+    and the resulting packet/authorization remains bound to the FAILURE's exact TASK
+    id/revision, failed_run_id and failed_head_sha.
+- id: AC2
+  condition: AUTHOR_REPAIR uses the same exact correction lineage when roadmap NEXT
+    references another TASK or contains a planning-only ambiguity; roadmap state cannot
+    retarget the correction subject, while invalid/ambiguous FAILURE lineage still
+    fails closed.
+- id: AC3
+  condition: AUTHOR_REMEDIATION resolves the exact TASK/review/finding subject from
+    source_run_id + finding_id canonical lineage and Unified State independently of
+    roadmap NEXT, including an unauthored or unrelated planning NEXT.
+- id: AC4
+  condition: Wrong/stale failed_run_id, moved FAILURE ref, TASK id/revision mismatch,
+    failed-head mismatch, non-repairable/non-transportable failure, stale review/finding
+    identity, resolved finding, competing correction lineage and Unified State mismatch
+    are rejected before canonical correction mutation.
+- id: AC5
+  condition: Correction Decision Packets retain exact selected_task, task contract,
+    Unified State next_action and correction subject facts reconstructed from canonical
+    lineage; roadmap remains absent/non-authoritative for REPAIR_AUTHORING and REMEDIATION_AUTHORING
+    packets.
+- id: AC6
+  condition: 'Generic Brain Sync and Flow Resolver behavior is unchanged for ordinary
+    roadmap continuation: the current unique unauthored BO-2/3 NEXT still produces
+    UNAUTHORED_TASK/TASK_AUTHORING rather than being auto-associated with TASK-321
+    or TASK-322.'
+- id: AC7
+  condition: 'The published audited correction path remains intact: new AUTHOR_REPAIR/AUTHOR_REMEDIATION
+    still require fresh Stage-1/Stage-2 audited_handoff and existing packet/CAS/family
+    validation; no BO-7 direct-final-contract mutation path is introduced.'
+- id: AC8
+  condition: 'Regression tests explicitly include the previously missing production-shaped
+    cases: exact correction lineage with roadmap NEXT lacking task_id, roadmap pointing
+    at a different task, and planning split-brain; valid correction lineage continues
+    while invalid engineering lineage fails closed.'
+- id: AC9
+  condition: Packet composition and subject reconstruction are observation-only, changes
+    remain within scope.modify, AUTHOR_TASK still mutates only the TASK document,
+    and no Planner/router/heuristic task discovery/new authority/store is introduced.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_authoring_ingress.py tests/test_brain_context.py
+    tests/test_decision_packet.py tests/test_brain_sync.py
+  - git diff --check
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
