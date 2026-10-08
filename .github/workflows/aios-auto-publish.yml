@@ -15,12 +15,15 @@ permissions:
   contents: write
 
 concurrency:
+  # Job serialization supplements the canonical Git reservation shared with
+  # durable PASS ingress and TASK authoring; Python owns the exact ref/CAS boundary.
   group: aios-auto-publish-main
   cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       event_id: ${{ steps.attention.outputs.event_id }}
     steps:
@@ -92,6 +95,8 @@ jobs:
           AIOS_DECISION_SHA: ${{ steps.publication.outputs.decision_sha }}
           AIOS_PUBLICATION_REPORT: ${{ runner.temp }}/aios-publication-report.json
           AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-publication/source.json
+        # The shared projector emits only terminal/actionable outcomes;
+        # historical INTEGRATION_REQUIRED progress produces no doorbell.
         run: >-
           python -m aios_renew.brain_attention publication
           --run-id "$AIOS_RUN_ID" --decision-sha "$AIOS_DECISION_SHA"

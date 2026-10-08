@@ -27,6 +27,14 @@ from .artifacts import (
     validate_result_package,
 )
 from .publication import (
+    PublicationError,
+    PublicationReservation,
+    check_publication_reservation,
+    reserve_publication,
+    release_publication_reservation,
+    finish_main_publication_reservation,
+    _pending_review_guard,
+    _recheck_binding,
     _parse_remediation_run,
     _repair_review_lineage,
     _validate_remediation_package,
@@ -450,6 +458,12 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path,
                 code, parent_out, _ = _git(repo, "rev-parse", f"{current_main_sha}^", allow_fail=True)
                 parent_sha = parent_out.strip() if code == 0 else None
                 if current_main_sha == expected_main_sha or parent_sha == expected_main_sha:
+                    try:
+                        finish_main_publication_reservation(
+                            repo, remote, subject=task_id, published_sha=current_main_sha,
+                        )
+                    except PublicationError as exc:
+                        raise AuthoringIngressError(f"{exc.report.cause}: {exc}") from exc
                     return IngressResult(
                         operation="AUTHOR_TASK",
                         status="IDEMPOTENT",
@@ -541,13 +555,29 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path,
     recheck_origin()
     if _resolve_author_task_transport(repo) != transport:
         raise AuthoringIngressError("canonical main transport authority changed during authoring")
-    _publish_ingress_ref(
-        repo,
-        remote,
-        "refs/heads/main",
-        commit_sha,
-        expected_old_sha=current_main_sha,
-    )
+    try:
+        # Historical eligible PASS decisions must also remain publishable.
+        decisions, pending = _pending_review_guard(
+            repo, remote, run_id=task_id, reviewed_sha=commit_sha, main_sha=current_main_sha,
+        )
+        reservation = reserve_publication(
+            repo, remote, kind="MAIN_MUTATION", subject=task_id,
+            source_sha=commit_sha, main_sha=current_main_sha,
+        )
+        _recheck_binding(repo, remote, pending, run_id=task_id, reviewed_sha=commit_sha,
+                         main_sha=current_main_sha, decisions=decisions)
+        recheck_origin()
+        if _resolve_author_task_transport(repo) != transport:
+            raise AuthoringIngressError("canonical main transport authority changed during reservation")
+        _publish_ingress_ref(
+            repo, remote, "refs/heads/main", commit_sha,
+            expected_old_sha=current_main_sha, reservation=reservation,
+        )
+        if _resolve_author_task_main(repo, remote) != commit_sha:
+            raise AuthoringIngressError("canonical main publication postcondition failed")
+        release_publication_reservation(repo, remote, reservation)
+    except PublicationError as exc:
+        raise AuthoringIngressError(f"publication concurrency failure ({exc.report.cause}): {exc}") from exc
 
     # If current branch is main, sync working tree if clean
     curr_branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD", allow_fail=True)[1].strip()
@@ -621,6 +651,11 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
         except AuthoringIngressError:
             pass
         else:
+            if review.verdict == "PASS":
+                _reserve_review_submission(
+                    repo, remote, run_id, candidate_sha, existing_decision_sha,
+                    decision_exists=True,
+                )
             return IngressResult(
                 operation="SUBMIT_REVIEW",
                 status="IDEMPOTENT",
@@ -857,9 +892,16 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
         metadata_bytes=review_bytes,
         operation="SUBMIT_REVIEW",
     )
+    reservation = None
+    if review.verdict == "PASS":
+        reservation = _reserve_review_submission(
+            repo, remote, run_id, candidate_sha, commit_sha, artifacts_sha=artifacts_sha,
+        )
     _publish_ingress_ref(
-        repo, remote, decision_ref, commit_sha, expect_missing=True
+        repo, remote, decision_ref, commit_sha, expect_missing=True, reservation=reservation,
     )
+    # A PASS owner is intentionally retained across the durable write and the
+    # asynchronous Publisher continuation. Ingress has no main publication authority.
 
     return IngressResult(
         operation="SUBMIT_REVIEW",
@@ -1400,6 +1442,45 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
+
+def _reserve_review_submission(repo: Path, remote: str | None, run_id: str,
+                                candidate_sha: str, decision_sha: str, *,
+                                artifacts_sha: str | None = None,
+                                decision_exists: bool = False) -> PublicationReservation | None:
+    candidate_ref = f"refs/heads/aios/review/{run_id}"
+    artifacts_ref = f"refs/heads/aios/artifacts/{run_id}"
+    main_sha = _resolve_ref_sha(repo, "refs/heads/main", remote)
+    canonical_artifacts = _resolve_ref_sha(repo, artifacts_ref, remote)
+    if main_sha is None or canonical_artifacts is None:
+        raise AuthoringIngressError("WRITER_SCOPE_GAP: SUBMIT_REVIEW canonical main/artifacts boundary unavailable")
+    if artifacts_sha is not None and canonical_artifacts != artifacts_sha:
+        raise AuthoringIngressError("STALE_REVIEW_BINDING: review artifacts moved before reservation")
+    _fetch_if_remote(repo, remote, main_sha)
+    if decision_exists:
+        code, _, _ = _git(repo, "merge-base", "--is-ancestor", candidate_sha, main_sha, allow_fail=True)
+        if code == 0:
+            return None  # Immutable replay after publication does not open a new interval.
+        if code != 1:
+            raise AuthoringIngressError("cannot classify exact review replay ancestry")
+    try:
+        reservation = reserve_publication(
+            repo, remote, kind="REVIEW_TO_PUBLICATION", subject=run_id,
+            source_sha=candidate_sha, main_sha=main_sha, decision_sha=decision_sha,
+            artifacts_sha=canonical_artifacts,
+        )
+        check_publication_reservation(repo, remote, reservation)
+    except PublicationError as exc:
+        raise AuthoringIngressError(f"{exc.report.cause}: {exc}") from exc
+    if (_resolve_ref_sha(repo, candidate_ref, remote) != candidate_sha
+            or _resolve_ref_sha(repo, artifacts_ref, remote) != canonical_artifacts):
+        raise AuthoringIngressError("STALE_REVIEW_BINDING: exact review lineage moved during reservation")
+    if _resolve_ref_sha(repo, "refs/heads/main", remote) != main_sha:
+        raise AuthoringIngressError("CONCURRENT_MAIN_MOVEMENT: canonical main moved during review reservation")
+    if decision_exists and _resolve_ref_sha(repo, f"refs/heads/aios/review-decision/{run_id}", remote) != decision_sha:
+        raise AuthoringIngressError("STALE_REVIEW_BINDING: durable review decision moved during replay")
+    return reservation
+
 
 _AUTHORING_FLOWS = {
     "AUTHOR_REMEDIATION": "REMEDIATION_AUTHORING",
@@ -2410,11 +2491,44 @@ def _publish_ingress_ref(
     expected_old_sha: str | None = None,
     *,
     expect_missing: bool = False,
+    reservation: PublicationReservation | None = None,
 ) -> None:
     if expect_missing and expected_old_sha is not None:
         raise AuthoringIngressError(
             "ingress ref publication cannot expect both a missing and existing ref"
         )
+
+    critical = ref == "refs/heads/main"
+    if ref.startswith("refs/heads/aios/review-decision/"):
+        paths = _ls_tree(repo, new_sha, ".ai/reviews")
+        paths = [path for path in paths if path.endswith((".yaml", ".yml"))]
+        if len(paths) != 1:
+            raise AuthoringIngressError("review decision writer requires exactly one REVIEW")
+        content = _read_commit_blob(repo, new_sha, paths[0])
+        if content is None:
+            raise AuthoringIngressError("review decision writer cannot read exact REVIEW")
+        critical = parse_review(content.decode("utf-8")).verdict == "PASS"
+    if critical:
+        if reservation is None:
+            raise AuthoringIngressError(
+                f"WRITER_SCOPE_GAP: src/aios_renew/authoring_ingress.py::_publish_ingress_ref({ref}) requires shared reservation"
+            )
+        identity = reservation.identity
+        if ref == "refs/heads/main":
+            matches = (identity["kind"] == "MAIN_MUTATION" and identity["source_sha"] == new_sha
+                       and identity["main_sha"] == expected_old_sha)
+        else:
+            matches = (identity["kind"] == "REVIEW_TO_PUBLICATION"
+                       and identity["subject"] == ref.rsplit("/", 1)[1]
+                       and identity["decision_sha"] == new_sha)
+        if not matches:
+            raise AuthoringIngressError("RESERVATION_INVALID: ingress writer identity mismatch")
+        try:
+            check_publication_reservation(repo, remote, reservation)
+            if _resolve_ref_sha(repo, "refs/heads/main", remote) != identity["main_sha"]:
+                raise AuthoringIngressError("CONCURRENT_MAIN_MOVEMENT: reserved canonical main moved before ingress write")
+        except PublicationError as exc:
+            raise AuthoringIngressError(f"{exc.report.cause}: {exc}") from exc
 
     # 1. Update local ref
     local_expected_sha = "0" * 40 if expect_missing else expected_old_sha
@@ -2434,6 +2548,19 @@ def _publish_ingress_ref(
 
     # 2. Push to remote if configured
     if remote is not None:
+        if critical:
+            try:
+                check_publication_reservation(repo, remote, reservation)
+                if _resolve_ref_sha(repo, "refs/heads/main", remote) != identity["main_sha"]:
+                    raise AuthoringIngressError("CONCURRENT_MAIN_MOVEMENT: reserved canonical main moved before ingress push")
+            except (PublicationError, AuthoringIngressError) as exc:
+                if expect_missing:
+                    _git(repo, "update-ref", "-d", ref, new_sha, allow_fail=True)
+                elif expected_old_sha is not None:
+                    _git(repo, "update-ref", ref, expected_old_sha, new_sha, allow_fail=True)
+                if isinstance(exc, PublicationError):
+                    raise AuthoringIngressError(f"{exc.report.cause}: {exc}") from exc
+                raise
         args = ["push", "--porcelain", "--no-tags"]
         if expect_missing:
             args.append(f"--force-with-lease={ref}:")
@@ -2445,7 +2572,7 @@ def _publish_ingress_ref(
             if expect_missing:
                 _git(repo, "update-ref", "-d", ref, new_sha, allow_fail=True)
             elif expected_old_sha is not None:
-                _git(repo, "update-ref", ref, expected_old_sha, allow_fail=True)
+                _git(repo, "update-ref", ref, expected_old_sha, new_sha, allow_fail=True)
             raise AuthoringIngressError(f"failed to push ingress ref {ref} to {remote}: {err}")
 
 
