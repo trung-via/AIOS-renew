@@ -260,15 +260,21 @@ def publication_artifacts(source):
 @pytest.mark.parametrize("outcome,family", [
     ("PUBLISHED", brain.PUBLICATION_SUCCESS), ("ALREADY_PUBLISHED", brain.PUBLICATION_SUCCESS),
     ("ALREADY_INCLUDED", brain.PUBLICATION_SUCCESS), ("FAILED", brain.PUBLICATION_FAILURE),
-    ("INTEGRATION_REQUIRED", brain.CONFLICT),
+    ("RECOVERY_BLOCKED", brain.CONFLICT), ("RECOVERY_REVIEW_REQUIRED", brain.CONFLICT),
 ])
 def test_direct_publication_and_artifact_collection_share_exact_identity(monkeypatch, tmp_path, outcome, family):
     sources = Sources("PASS")
     sources.is_included = family == brain.PUBLICATION_SUCCESS
     monkeypatch.setattr(brain, "GitSources", lambda *args: sources)
     report_path, source_path, output_path = [tmp_path / name for name in ("report.json", "source.json", "capture.out")]
-    report_path.write_text(json.dumps(dict(source_run=IDENTITY["run_id"], reviewed_sha=IDENTITY["reviewed_sha"],
-        prior_main_sha="e" * 40, outcome=outcome, detail="private publisher diagnostic")), encoding="utf-8")
+    report = dict(source_run=IDENTITY["run_id"], reviewed_sha=IDENTITY["reviewed_sha"],
+        prior_main_sha="e" * 40, outcome=outcome, detail="private publisher diagnostic")
+    if outcome in {"RECOVERY_BLOCKED", "RECOVERY_REVIEW_REQUIRED"}:
+        report.update(prior_main_sha="d" * 40, cause="MERGE_CONFLICT" if outcome == "RECOVERY_BLOCKED"
+                      else "FRESH_EXACT_REVIEW_REQUIRED", blocker=None,
+                      recovery=None if outcome == "RECOVERY_BLOCKED" else dict(
+                          merge_base_sha="e" * 40, tree_sha="f" * 40, publication_eligible=False))
+    report_path.write_text(json.dumps(report), encoding="utf-8")
     assert brain.main(["publication", "--report", str(report_path), "--source", str(source_path),
         "--run-id", IDENTITY["run_id"], "--decision-sha", IDENTITY["decision_sha"], "--output", str(output_path)]) == 0
     source = brain.load_json(source_path.read_bytes(), brain.MAX_SOURCE_BYTES)
@@ -303,6 +309,103 @@ def test_direct_publication_progress_and_empty_source_emit_no_identity(tmp_path,
     path.write_bytes(brain.canonical(source))
     assert brain.publication_event(path, 100, 2, 200, brain.digest(source)) == ""
     assert brain.collect(100, 2, artifacts=publication_artifacts(source)) == []
+
+
+def test_intermediate_integration_required_never_rings_brain(monkeypatch, tmp_path):
+    sources = Sources("PASS")
+    monkeypatch.setattr(brain, "GitSources", lambda *args: sources)
+    report_path, source_path = tmp_path / "report.json", tmp_path / "source.json"
+    report_path.write_text(json.dumps(dict(source_run=IDENTITY["run_id"],
+        reviewed_sha=IDENTITY["reviewed_sha"], prior_main_sha="d" * 40,
+        outcome="INTEGRATION_REQUIRED", detail="historical intermediate classification")), encoding="utf-8")
+    source = brain.capture_publication(report_path, source_path, IDENTITY["run_id"], IDENTITY["decision_sha"])
+    assert source["observations"] == []
+    assert brain.publication_event(source_path, 100, 2, 200, brain.digest(source)) == ""
+    assert brain.collect(100, 2, artifacts=publication_artifacts(source)) == []
+
+
+def recovery_observation(cause="MERGE_CONFLICT"):
+    attempt = dict(IDENTITY, sampled_main_sha="d" * 40, outcome="RECOVERY_BLOCKED",
+                   cause=cause, recovery=None, blocker=None)
+    return dict(boundary="CANONICAL_CONFLICT", prepared_sha=IDENTITY["reviewed_sha"],
+                prepared_digest=brain.digest(attempt), predecessor_ref="refs/heads/main",
+                predecessor_sha="d" * 40, observed_sha="d" * 40, publication_attempt=attempt)
+
+
+@pytest.mark.parametrize("cause", ["MERGE_CONFLICT", "AMBIGUOUS_ANCESTRY", "RECOVERY_SCOPE_ESCAPE",
+                                   "MERGE_CALCULATION_FAILED"])
+def test_typed_recovery_reuses_existing_conflict_family_and_digest_binds_exact_identities(cause):
+    observation = recovery_observation(cause)
+    item, source, pointer = source_event(observation)
+    assert item.family == brain.CONFLICT
+    attempt = source["observations"][0]["publication_attempt"]
+    assert {name: attempt[name] for name in IDENTITY} == IDENTITY
+    assert attempt["sampled_main_sha"] == item.selectors["predecessor_sha"]
+    assert item.selectors["prepared_digest"] == brain.digest(attempt)
+    assert item.selectors["source_digest"] == brain.digest(source)
+    assert "detail" not in json.dumps(source)
+    changed = recovery_observation("MERGE_CONFLICT" if cause != "MERGE_CONFLICT" else "RECOVERY_SCOPE_ESCAPE")
+    assert source_event(changed)[0].event_id != item.event_id
+    assert brain.project_source(source, pointer) == [item]
+
+
+@pytest.mark.parametrize("defect", ["unknown_cause", "candidate_authority", "semantic_choice", "wrong_main",
+                                   "wrong_reviewed", "wrong_digest", "wrong_boundary", "extra_identity"])
+def test_publication_context_cannot_upgrade_authority_or_escape_its_exact_binding(defect):
+    observation = recovery_observation()
+    attempt = observation["publication_attempt"]
+    if defect == "unknown_cause":
+        attempt["cause"] = "CHOOSE_A_GIT_STRATEGY"
+    elif defect == "candidate_authority":
+        attempt.update(outcome="RECOVERY_REVIEW_REQUIRED", cause="FRESH_EXACT_REVIEW_REQUIRED",
+                       recovery=dict(merge_base_sha="e" * 40, tree_sha="f" * 40, publication_eligible=True))
+    elif defect == "semantic_choice":
+        attempt["executor"] = "codex"
+    elif defect == "wrong_main":
+        observation["predecessor_sha"] = "e" * 40
+    elif defect == "wrong_reviewed":
+        observation["prepared_sha"] = "e" * 40
+    elif defect == "wrong_digest":
+        observation["prepared_digest"] = "0" * 64
+    elif defect == "wrong_boundary":
+        observation["boundary"] = "PUBLICATION_PROVEN"
+    else:
+        attempt["candidate_sha"] = "e" * 40
+    with pytest.raises(brain.AttentionError):
+        source_event(observation)
+
+
+def test_recovery_capture_rejects_main_movement_before_attention(monkeypatch, tmp_path):
+    sources = Sources("PASS")
+    monkeypatch.setattr(brain, "GitSources", lambda *args: sources)
+    report_path, source_path = tmp_path / "report.json", tmp_path / "source.json"
+    report_path.write_text(json.dumps(dict(source_run=IDENTITY["run_id"],
+        reviewed_sha=IDENTITY["reviewed_sha"], prior_main_sha="e" * 40,
+        outcome="RECOVERY_BLOCKED", cause="MERGE_CONFLICT", detail="private", recovery=None, blocker=None)),
+        encoding="utf-8")
+    with pytest.raises(brain.AttentionError, match="STALE_PUBLICATION_RECOVERY"):
+        brain.capture_publication(report_path, source_path, IDENTITY["run_id"], IDENTITY["decision_sha"])
+    assert not source_path.exists()
+
+
+@pytest.mark.parametrize("field,value", [("artifact_sha", "e" * 40), ("reviewed_sha", "e" * 40),
+                                        ("decision_sha", "e" * 40)])
+def test_recovery_freshness_reproves_exact_review_and_artifact_identity(field, value):
+    item, source, _ = source_event(recovery_observation())
+    sources = Sources("PASS")
+    assert brain.freshness(item, sources, Artifacts(source)) == "UNRESOLVED"
+    sources.identity = dict(IDENTITY, **{field: value})
+    assert brain.freshness(item, sources, Artifacts(source)) == "UNKNOWN"
+
+
+def test_recovery_successor_resolution_requires_inclusion_of_the_original_reviewed_source():
+    item, source, _ = source_event(recovery_observation())
+    sources = Sources("PASS")
+    sources.is_included = True
+    assert brain.freshness(item, sources, Artifacts(source)) == "RESOLVED"
+    sources.is_included = False
+    sources.values["refs/heads/main"] = "e" * 40
+    assert brain.freshness(item, sources, Artifacts(source)) == "UNKNOWN"
 
 
 @pytest.mark.parametrize("case", ["digest", "run", "attempt", "artifact", "repository", "missing",
@@ -1064,6 +1167,18 @@ def test_h4c1_exact_terminal_review_publication_lineage_and_recovery(family):
     recovery = brain.attention(brain.RECOVERY, {"original_event_id": event_id})
     assert brain.resolve_return_affinity(recovery.event_id, sources, artifact) == affinity
     assert item.event_id == event_id and "page-origin" not in item.render()
+
+
+def test_typed_publication_recovery_preserves_only_the_original_run_authored_affinity():
+    from aios_renew.return_affinity import OriginAffinity
+    from dataclasses import asdict
+    affinity = OriginAffinity("page-origin-v1:" + "a" * 64, 3)
+    sources = AffinitySources(selector=asdict(affinity))
+    sources.verdict = "PASS"
+    item, source, _ = source_event(recovery_observation())
+    assert brain.resolve_return_affinity(item.event_id, sources, Artifacts(source)) == affinity
+    sources.drift = True
+    assert brain.resolve_return_affinity(item.event_id, sources, Artifacts(source)) is None
 
 
 @pytest.mark.parametrize("defect", ["missing_task", "missing_run_affinity", "candidate_drift", "run_drift", "ref_drift", "opposite_terminal", "wrong_artifact"])

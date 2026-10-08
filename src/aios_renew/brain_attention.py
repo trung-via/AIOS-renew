@@ -260,12 +260,71 @@ def registry_document():
                 non_wake=sorted(NON_WAKE))
 
 
+def _publication_attempt(attempt):
+    """Closed, selector-only Publisher context; no procedure or semantic choice."""
+    from .publication import PUBLICATION_CAUSES
+    required = set(_REVIEW) | {"sampled_main_sha", "outcome", "cause", "recovery", "blocker"}
+    if not isinstance(attempt, dict) or set(attempt) != required:
+        raise AttentionError("PUBLICATION_CONTEXT_SCHEMA_MISMATCH")
+    for name, kind in _REVIEW.items():
+        _value(attempt[name], kind)
+    _value(attempt["sampled_main_sha"], "sha")
+    cause, outcome = attempt["cause"], attempt["outcome"]
+    if not isinstance(cause, str) or cause not in PUBLICATION_CAUSES:
+        raise AttentionError("UNKNOWN_PUBLICATION_CAUSE")
+    recovery, blocker = attempt["recovery"], attempt["blocker"]
+    if outcome == "RECOVERY_REVIEW_REQUIRED":
+        if (cause != "FRESH_EXACT_REVIEW_REQUIRED" or blocker is not None
+                or not isinstance(recovery, dict)
+                or set(recovery) != {"merge_base_sha", "tree_sha", "publication_eligible"}
+                or recovery["publication_eligible"] is not False):
+            raise AttentionError("UNREVIEWED_RECOVERY_AUTHORITY")
+        _value(recovery["merge_base_sha"], "sha")
+        _value(recovery["tree_sha"], "sha")
+    elif outcome == "RECOVERY_BLOCKED":
+        if recovery is not None or cause not in {
+                "AMBIGUOUS_ANCESTRY", "MERGE_CONFLICT", "MERGE_CALCULATION_FAILED",
+                "RECOVERY_SCOPE_ESCAPE", "COMPETING_REVIEWED_SOURCE"}:
+            raise AttentionError("PUBLICATION_CONTEXT_SCHEMA_MISMATCH")
+        if cause == "COMPETING_REVIEWED_SOURCE":
+            if not isinstance(blocker, dict) or set(blocker) != {"source_run", "decision_sha", "reviewed_sha"}:
+                raise AttentionError("PUBLICATION_CONTEXT_SCHEMA_MISMATCH")
+            _value(blocker["source_run"], "run")
+            _value(blocker["decision_sha"], "sha")
+            _value(blocker["reviewed_sha"], "sha")
+        elif blocker is not None:
+            raise AttentionError("PUBLICATION_CONTEXT_SCHEMA_MISMATCH")
+    elif outcome == "FAILED":
+        if recovery is not None or blocker is not None or cause in {
+                "NONE", "FRESH_EXACT_REVIEW_REQUIRED", "COMPETING_REVIEWED_SOURCE"}:
+            raise AttentionError("PUBLICATION_CONTEXT_SCHEMA_MISMATCH")
+    else:
+        raise AttentionError("NONACTIONABLE_PUBLICATION_CONTEXT")
+    return attempt
+
+
 def project_observation(observation, pointer):
     """The sole family classifier. Source status is a fact, never a flow choice."""
     if not isinstance(observation, dict) or not isinstance(observation.get("boundary"), str):
         raise AttentionError("INVALID_OBSERVATION")
     boundary = observation["boundary"]
     fields = {k: v for k, v in observation.items() if k != "boundary"}
+    # Optional bounded source context is digest-bound in the existing conflict
+    # selectors. It adds no family, routing decision, or free-text selector.
+    if "publication_attempt" in fields:
+        attempt = _publication_attempt(fields.pop("publication_attempt"))
+        if boundary == "CANONICAL_CONFLICT":
+            if attempt["outcome"] not in {"RECOVERY_BLOCKED", "RECOVERY_REVIEW_REQUIRED"}:
+                raise AttentionError("NONACTIONABLE_PUBLICATION_CONTEXT")
+            expected = dict(prepared_sha=attempt["reviewed_sha"], prepared_digest=digest(attempt),
+                            predecessor_ref="refs/heads/main", predecessor_sha=attempt["sampled_main_sha"])
+            if any(fields.get(key) != value for key, value in expected.items()):
+                raise AttentionError("PUBLICATION_CONTEXT_SUBSTITUTION")
+        elif boundary == "PUBLICATION_FAILED":
+            if attempt["outcome"] != "FAILED" or any(fields.get(key) != attempt[key] for key in _REVIEW):
+                raise AttentionError("PUBLICATION_CONTEXT_SUBSTITUTION")
+        else:
+            raise AttentionError("NONACTIONABLE_PUBLICATION_CONTEXT")
     if boundary in NON_WAKE:
         if fields:
             raise AttentionError("PROGRESS_SCHEMA_MISMATCH")
@@ -319,6 +378,33 @@ def project_source(source, pointer):
     if len({item.event_id for item in items}) != len(items):
         raise AttentionError("DUPLICATE_OBSERVATION")
     return items
+
+
+def _publication_context(source, item):
+    """Recover only the context already bound to a projected conflict identity."""
+    if item.family != CONFLICT:
+        return None
+    for observation in source["observations"]:
+        attempt = observation.get("publication_attempt")
+        if (observation["boundary"] == "CANONICAL_CONFLICT" and attempt is not None
+                and digest(attempt) == item.selectors["prepared_digest"]):
+            return attempt
+    return None
+
+
+def _current_publication_context(sources, context):
+    try:
+        identity, review = sources.review(context["run_id"], context["decision_sha"])
+        if review["verdict"] != "PASS" or any(identity[key] != context[key] for key in _REVIEW):
+            return False
+        blocker = context["blocker"]
+        if blocker is not None:
+            identity, review = sources.review(blocker["source_run"], blocker["decision_sha"])
+            if review["verdict"] != "PASS" or identity["reviewed_sha"] != blocker["reviewed_sha"]:
+                return False
+        return True
+    except AttentionError:
+        return False
 
 
 def operational_observation(receipt):
@@ -735,10 +821,15 @@ def resolve_return_affinity(event_id, sources, artifacts=None):
         if item.family == RECOVERY:
             item = parse_event_id(item.selectors["original_event_id"])
         s = dict(item.selectors)
+        publication_context = None
         if set(_POINTER).issubset(s):
             pointer = {key: s[key] for key in _POINTER}
-            if artifacts is None or item.event_id not in {candidate.event_id for candidate in project_source(artifacts.artifact(pointer), pointer)}:
+            if artifacts is None:
                 return None
+            source = artifacts.artifact(pointer)
+            if item.event_id not in {candidate.event_id for candidate in project_source(source, pointer)}:
+                return None
+            publication_context = _publication_context(source, item)
         if item.family in {RESULT, FAILURE}:
             affinity = run_affinity(s["run_id"], s["artifact_sha"], kind=item.family)
         elif item.family in {REVIEW, PUBLICATION_FAILURE, PUBLICATION_SUCCESS}:
@@ -753,6 +844,16 @@ def resolve_return_affinity(event_id, sources, artifacts=None):
                 main = refs("refs/heads/main").get("refs/heads/main")
                 if not main or not sources.included(s["published_sha"], main):
                     return None
+        elif item.family == CONFLICT and publication_context is not None:
+            refs(*_review_patterns(publication_context["run_id"]))
+            if publication_context["blocker"] is not None:
+                refs(*_review_patterns(publication_context["blocker"]["source_run"]))
+            if not _current_publication_context(sources, publication_context):
+                return None
+            if refs("refs/heads/main").get("refs/heads/main") != s["observed_sha"]:
+                return None
+            affinity = run_affinity(publication_context["run_id"], publication_context["artifact_sha"],
+                                    publication_context["reviewed_sha"], RESULT)
         elif item.family in {DISPATCH, PRE_AIOS}:
             if s["subject_id"] == "NONE" or s["subject_sha"] == "0" * 40:
                 return None
@@ -1010,11 +1111,14 @@ def freshness(item, sources, artifacts):
     s = dict(item.selectors)
     if item.family in {RESULT, FAILURE, RECOVERY}:
         raise AttentionError("USE_ORIGINAL_LANE_FRESHNESS")
+    publication_context = None
     if set(_POINTER).issubset(s):
         pointer = {key: s[key] for key in _POINTER}
-        candidates = project_source(artifacts.artifact(pointer), pointer)
+        source = artifacts.artifact(pointer)
+        candidates = project_source(source, pointer)
         if item.event_id not in {candidate.event_id for candidate in candidates}:
             return "UNKNOWN"
+        publication_context = _publication_context(source, item)
     root = "refs/heads/aios/"
     patterns, successor = [], None
     if item.family in {REVIEW, PUBLICATION_FAILURE, PUBLICATION_SUCCESS}:
@@ -1023,6 +1127,10 @@ def freshness(item, sources, artifacts):
                      else ["refs/heads/main"])
     elif item.family == CONFLICT:
         patterns = [s["predecessor_ref"]]
+        if publication_context is not None:
+            patterns += _review_patterns(publication_context["run_id"])
+            if publication_context["blocker"] is not None:
+                patterns += _review_patterns(publication_context["blocker"]["source_run"])
     elif item.family == REVIEW_INGRESS and s["subject_sha"] != "0" * 40:
         patterns = _review_patterns(s["subject_id"])
     elif item.family == AUTHORING and s["subject_sha"] != "0" * 40:
@@ -1045,7 +1153,7 @@ def freshness(item, sources, artifacts):
         return _freshness(item, sources, artifacts, successor)
     before = sources.refs(*patterns)
     observation = sources.frozen(before)
-    state = _freshness(item, observation, artifacts, successor)
+    state = _freshness(item, observation, artifacts, successor, publication_context)
     return state if sources.refs(*patterns) == before else "UNKNOWN"
 
 
@@ -1077,7 +1185,7 @@ def _remediation(sources, ref, sha, identity, actions):
     return correction.finding_id
 
 
-def _freshness(item, sources, artifacts, successor):
+def _freshness(item, sources, artifacts, successor, publication_context=None):
     """Exact source reconstruction, then only exact canonical successor facts."""
     s = dict(item.selectors)
     if item.family in {REVIEW, PUBLICATION_FAILURE, PUBLICATION_SUCCESS}:
@@ -1128,6 +1236,8 @@ def _freshness(item, sources, artifacts, successor):
             return "UNKNOWN"
         return "RESOLVED" if reconciled else "UNRESOLVED"
     if item.family == CONFLICT:
+        if publication_context is not None and not _current_publication_context(sources, publication_context):
+            return "UNKNOWN"
         current = sources.refs(s["predecessor_ref"]).get(s["predecessor_ref"])
         if current is None:
             return "UNKNOWN"
@@ -1206,23 +1316,50 @@ def capture_publication(report_path, source_path, run_id, decision_sha, repo="."
     if review["verdict"] in {"CHANGES_REQUIRED", "BLOCKED"}:
         return write_source(source_path, [dict(boundary="REVIEW_FOLLOWUP", **identity)])
     report = load_json(Path(report_path).read_bytes(), MAX_SOURCE_BYTES)
-    if (set(report) != {"source_run", "reviewed_sha", "prior_main_sha", "outcome", "detail"}
+    legacy_fields = {"source_run", "reviewed_sha", "prior_main_sha", "outcome", "detail"}
+    if (not isinstance(report, dict)
+            or set(report) not in (legacy_fields, legacy_fields | {"cause", "recovery", "blocker"})
+            or not isinstance(report["outcome"], str) or not isinstance(report["detail"], str)
             or report["source_run"] != run_id or report["reviewed_sha"] != identity["reviewed_sha"]):
         raise AttentionError("UNPROVEN_PUBLICATION_ATTEMPT")
     _value(report["prior_main_sha"], "sha")
     outcome = report["outcome"]
     if outcome in {"PUBLISHED", "ALREADY_PUBLISHED", "ALREADY_INCLUDED"}:
+        if (report.get("cause", "NONE") != "NONE" or report.get("recovery") is not None
+                or report.get("blocker") is not None):
+            raise AttentionError("UNPROVEN_PUBLICATION_ATTEMPT")
         main = sources.refs("refs/heads/main").get("refs/heads/main")
         if main is None or not sources.included(identity["reviewed_sha"], main):
             raise AttentionError("UNPROVEN_PUBLICATION")
+        if sources.refs("refs/heads/main").get("refs/heads/main") != main:
+            raise AttentionError("UNPROVEN_PUBLICATION")
         observation = dict(boundary="PUBLICATION_PROVEN", **identity, published_sha=identity["reviewed_sha"])
     elif outcome == "INTEGRATION_REQUIRED":
+        # Historical intermediate classification is not an actionable recovery
+        # result. Never ring Brain merely to rediscover a Git procedure.
+        return write_source(source_path, [])
+    elif outcome in {"RECOVERY_REVIEW_REQUIRED", "RECOVERY_BLOCKED", "FAILED"}:
+        attempt = _publication_attempt(dict(
+            **identity, sampled_main_sha=report["prior_main_sha"], outcome=outcome,
+            cause=report.get("cause", "PUBLICATION_GATE_FAILED"),
+            recovery=report.get("recovery"), blocker=report.get("blocker")))
+        if attempt["blocker"] is not None:
+            blocker = attempt["blocker"]
+            blocked_identity, blocked_review = sources.review(blocker["source_run"], blocker["decision_sha"])
+            if blocked_review["verdict"] != "PASS" or blocked_identity["reviewed_sha"] != blocker["reviewed_sha"]:
+                raise AttentionError("UNPROVEN_PUBLICATION_BLOCKER")
         main = sources.refs("refs/heads/main").get("refs/heads/main")
-        observation = dict(boundary="CANONICAL_CONFLICT", prepared_sha=identity["reviewed_sha"],
-                           prepared_digest=digest(identity), predecessor_ref="refs/heads/main",
-                           predecessor_sha=report["prior_main_sha"], observed_sha=main)
-    elif outcome == "FAILED":
-        observation = dict(boundary="PUBLICATION_FAILED", **identity, stage="EXECUTION")
+        _value(main, "sha")
+        if outcome == "FAILED":
+            observation = dict(boundary="PUBLICATION_FAILED", **identity, stage="EXECUTION",
+                               publication_attempt=attempt)
+        else:
+            if main != report["prior_main_sha"]:
+                raise AttentionError("STALE_PUBLICATION_RECOVERY")
+            observation = dict(boundary="CANONICAL_CONFLICT", prepared_sha=identity["reviewed_sha"],
+                               prepared_digest=digest(attempt), predecessor_ref="refs/heads/main",
+                               predecessor_sha=report["prior_main_sha"], observed_sha=main,
+                               publication_attempt=attempt)
     else:
         raise AttentionError("UNKNOWN_PUBLICATION_OUTCOME")
     return write_source(source_path, [observation])
