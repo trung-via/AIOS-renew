@@ -1,6 +1,7 @@
 import json
 import re
 import subprocess
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1637,7 +1638,7 @@ def test_review_or_result_sha_mismatch_does_not_mutate_main(
     assert remote_main(lineage) == lineage["base_sha"]
 
 
-def test_divergent_candidate_requires_integration_before_lease_mutation(
+def test_divergent_candidate_classifies_conflict_before_lease_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     lineage = make_lineage(tmp_path)
@@ -1661,7 +1662,7 @@ def test_divergent_candidate_requires_integration_before_lease_mutation(
 
     monkeypatch.setattr(publication_module, "_git", recording_git)
 
-    with pytest.raises(PublicationError, match="integration candidate") as raised:
+    with pytest.raises(PublicationError, match="semantic conflict resolution") as raised:
         publish(lineage)
 
     assert push_attempted is False
@@ -1669,7 +1670,9 @@ def test_divergent_candidate_requires_integration_before_lease_mutation(
     assert raised.value.report.source_run == lineage["run_id"]
     assert raised.value.report.reviewed_sha == lineage["candidate_sha"]
     assert raised.value.report.prior_main_sha == diverged_sha
-    assert raised.value.report.outcome == "INTEGRATION_REQUIRED"
+    assert raised.value.report.outcome == "RECOVERY_BLOCKED"
+    assert raised.value.report.cause == "MERGE_CONFLICT"
+    assert raised.value.report.recovery is None
     assert not any(
         command and command[0] in {"merge", "rebase", "cherry-pick"}
         for command in commands
@@ -1711,10 +1714,11 @@ def test_concurrent_main_update_is_not_overwritten(
 
     monkeypatch.setattr(publication_module, "_git", racing_git)
 
-    with pytest.raises(PublicationError, match="publication failed"):
+    with pytest.raises(PublicationError, match="publication failed") as raised:
         publish(lineage)
 
     assert raced is True
+    assert raised.value.report.cause == "MAIN_CAS_FAILED"
     assert remote_main(lineage) == concurrent_sha
 
 
@@ -1740,10 +1744,11 @@ def test_compatible_concurrent_main_update_fails_exact_sha_lease(
 
     monkeypatch.setattr(publication_module, "_git", racing_git)
 
-    with pytest.raises(PublicationError, match="publication failed"):
+    with pytest.raises(PublicationError, match="publication failed") as raised:
         publish(lineage)
 
     assert raced is True
+    assert raised.value.report.cause == "MAIN_CAS_FAILED"
     assert remote_main(lineage) == lineage["intermediate_sha"]
 
 
@@ -2037,6 +2042,245 @@ def test_exact_reviewed_publication_and_replay_export_same_direct_planning_ident
             published_sha=lineage["candidate_sha"], source_boundary="PUBLICATION_PROVEN")
         event_ids.append(event_id)
     assert event_ids[0] == event_ids[1]
+
+
+def advance_divergent_main(lineage, *, rename=False):
+    repo = lineage["repo"]
+    git(repo, "checkout", "--quiet", "--detach", lineage["base_sha"])
+    if rename:
+        git(repo, "mv", "product.txt", "renamed.txt")
+    else:
+        (repo / "later.txt").write_text("later main work\n", encoding="utf-8")
+        git(repo, "add", "later.txt")
+    git(repo, "commit", "--quiet", "-m", "later canonical main")
+    main_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "HEAD:refs/heads/main")
+    return main_sha
+
+
+def add_sibling_pass(lineage, run_id="RUN-063-002"):
+    """A canonical Runtime-success transport and PASS on a sibling source."""
+    repo = lineage["repo"]
+    git(repo, "checkout", "--quiet", "--detach", lineage["base_sha"])
+    (repo / "product.txt").write_text("later candidate\n", encoding="utf-8")
+    candidate = commit_fixture_state(
+        repo, paths=("product.txt",), message="later reviewed source",
+        user_name="AIOS Publication Test", user_email="publication@example.invalid")
+    state = repo.parent / "later-state"
+    state.mkdir()
+    run_path, result_path = state / "run.json", state / "result.json"
+    run_path.write_text(json.dumps(dict(
+        run_id=run_id, task=dict(id="TASK-063", revision=2), executor="codex",
+        base_sha=lineage["base_sha"], workspace=str(repo), head_sha=None, status="ACTIVE")),
+        encoding="utf-8")
+    result_path.write_text(json.dumps(result_payload(run_id, candidate)), encoding="utf-8")
+    transport_post_pass(repo, run_id=run_id, head_sha=candidate,
+                        run_path=run_path, result_path=result_path)
+    review_dir = repo / ".ai" / "reviews"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "REVIEW-063-002.yaml").write_text(
+        review_source(candidate).replace("REVIEW-063-001", "REVIEW-063-002"), encoding="utf-8")
+    decision = commit_fixture_state(
+        repo, paths=(".ai",), message="later canonical PASS",
+        user_name="AIOS Publication Test", user_email="publication@example.invalid",
+        remote=lineage["remote"], remote_ref=f"refs/heads/aios/review-decision/{run_id}")
+    return dict(lineage, run_id=run_id, candidate_sha=candidate, decision_sha=decision)
+
+
+def test_clean_divergence_exposes_only_an_ineligible_tree_and_one_actionable_attention(tmp_path):
+    lineage = make_lineage(tmp_path)
+    main_sha = advance_divergent_main(lineage)
+    refs_before = git(lineage["remote"], "show-ref")
+    with pytest.raises(PublicationError) as raised:
+        publish(lineage)
+    report = raised.value.report
+    assert report.outcome == "RECOVERY_REVIEW_REQUIRED"
+    assert report.cause == "FRESH_EXACT_REVIEW_REQUIRED"
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert report.prior_main_sha == main_sha
+    assert report.recovery.merge_base_sha == lineage["base_sha"]
+    assert report.recovery.publication_eligible is False
+    assert git(lineage["repo"], "cat-file", "-t", report.recovery.tree_sha) == "tree"
+    assert "Runtime verification and fresh Reviewer PASS" in report.detail
+    assert git(lineage["remote"], "show-ref") == refs_before
+    assert remote_main(lineage) == main_sha
+    assert "candidate_sha" not in asdict(report.recovery)
+    report_path, source_path = tmp_path / "report.json", tmp_path / "source.json"
+    report_path.write_text(json.dumps(asdict(report)), encoding="utf-8")
+    source = brain.capture_publication(report_path, source_path, lineage["run_id"],
+                                      lineage["decision_sha"], repo=lineage["repo"])
+    obs = source["observations"][0]
+    assert obs["publication_attempt"]["cause"] == report.cause
+    assert obs["publication_attempt"]["sampled_main_sha"] == main_sha
+    assert obs["publication_attempt"]["reviewed_sha"] == lineage["candidate_sha"]
+    event = brain.parse_event_id(brain.publication_event(source_path, 100, 1, 200, brain.digest(source)))
+    assert event.family == brain.CONFLICT
+    assert "detail" not in json.dumps(source)
+
+
+def test_recovery_rename_outside_task_scope_fails_closed(tmp_path):
+    lineage = make_lineage(tmp_path)
+    main_sha = advance_divergent_main(lineage, rename=True)
+    with pytest.raises(PublicationError) as raised:
+        publish(lineage)
+    assert raised.value.report.outcome == "RECOVERY_BLOCKED"
+    assert raised.value.report.cause == "RECOVERY_SCOPE_ESCAPE"
+    assert raised.value.report.recovery is None
+    assert remote_main(lineage) == main_sha
+
+
+@pytest.mark.parametrize("bases,code", [("", 1), ("a" * 40 + "\n" + "b" * 40, 0)])
+def test_missing_or_ambiguous_merge_base_is_typed_and_cannot_mutate_main(tmp_path, monkeypatch, bases, code):
+    lineage = make_lineage(tmp_path)
+    main_sha = advance_divergent_main(lineage)
+    real_git = publication_module._git
+    def uncertain_git(repo, *args, **kwargs):
+        if args[:2] == ("merge-base", "--all"):
+            return code, bases, ""
+        assert args[0] != "push"
+        return real_git(repo, *args, **kwargs)
+    monkeypatch.setattr(publication_module, "_git", uncertain_git)
+    with pytest.raises(PublicationError) as raised:
+        publish(lineage)
+    assert raised.value.report.cause == "AMBIGUOUS_ANCESTRY"
+    assert raised.value.report.outcome == "RECOVERY_BLOCKED"
+    assert remote_main(lineage) == main_sha
+
+
+def test_later_publisher_cannot_strand_an_observed_pending_exact_pass(tmp_path, monkeypatch):
+    earlier = make_lineage(tmp_path)
+    later = add_sibling_pass(earlier)
+    refs_before = git(earlier["remote"], "show-ref")
+    real_git = publication_module._git
+    commands = []
+    def recorded_git(repo, *args, **kwargs):
+        commands.append(args)
+        return real_git(repo, *args, **kwargs)
+    monkeypatch.setattr(publication_module, "_git", recorded_git)
+    # The earlier PASS workflow has not attempted publication. A later canonical
+    # Publisher continuation observes that authority and holds its own mutation.
+    with pytest.raises(PublicationError) as raised:
+        publish(later)
+    report = raised.value.report
+    assert report.outcome == "RECOVERY_BLOCKED"
+    assert report.cause == "COMPETING_REVIEWED_SOURCE"
+    assert asdict(report.blocker) == dict(source_run=earlier["run_id"],
+        decision_sha=earlier["decision_sha"], reviewed_sha=earlier["candidate_sha"])
+    assert not any(command[0] == "push" for command in commands)
+    assert remote_main(earlier) == earlier["base_sha"]
+    assert git(earlier["remote"], "show-ref") == refs_before
+    # No semantic ordering or winner is inferred from two competing PASS sources.
+    with pytest.raises(PublicationError) as reverse:
+        publish(earlier)
+    assert reverse.value.report.cause == "COMPETING_REVIEWED_SOURCE"
+    assert remote_main(earlier) == earlier["base_sha"]
+
+
+def test_main_movement_during_lineage_validation_is_rechecked_before_push(tmp_path, monkeypatch):
+    lineage = make_lineage(tmp_path)
+    later = add_sibling_pass(lineage)
+    real_load = publication_module._load_success_lineage
+    def moving_lineage(*args, **kwargs):
+        result = real_load(*args, **kwargs)
+        git(lineage["remote"], "update-ref", "refs/heads/main",
+            later["candidate_sha"], lineage["base_sha"])
+        return result
+    monkeypatch.setattr(publication_module, "_load_success_lineage", moving_lineage)
+    with pytest.raises(PublicationError) as raised:
+        publish(lineage)
+    assert raised.value.report.cause == "CONCURRENT_MAIN_MOVEMENT"
+    assert raised.value.report.prior_main_sha == lineage["base_sha"]
+    assert remote_main(lineage) == later["candidate_sha"]
+
+
+@pytest.mark.parametrize("namespace", ["review", "artifacts", "review-decision"])
+def test_moved_canonical_review_binding_fails_before_mutation(tmp_path, monkeypatch, namespace):
+    lineage = make_lineage(tmp_path)
+    ref = f"refs/heads/aios/{namespace}/{lineage['run_id']}"
+    real_load = publication_module._load_success_lineage
+    def moving_lineage(*args, **kwargs):
+        result = real_load(*args, **kwargs)
+        git(lineage["remote"], "update-ref", ref, lineage["base_sha"])
+        return result
+    monkeypatch.setattr(publication_module, "_load_success_lineage", moving_lineage)
+    with pytest.raises(PublicationError) as raised:
+        publish(lineage)
+    assert raised.value.report.cause == "STALE_REVIEW_BINDING"
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_new_decision_during_pending_snapshot_fails_closed(tmp_path, monkeypatch):
+    lineage = make_lineage(tmp_path)
+    real_git = publication_module._git
+    snapshots = 0
+    def changing_decisions(repo, *args, **kwargs):
+        nonlocal snapshots
+        if args == ("ls-remote", "--refs", "origin", "refs/heads/aios/review-decision/*"):
+            snapshots += 1
+            if snapshots == 2:
+                git(lineage["remote"], "update-ref", "refs/heads/aios/review-decision/RUN-063-002",
+                    lineage["decision_sha"])
+        assert args[0] != "push"
+        return real_git(repo, *args, **kwargs)
+    monkeypatch.setattr(publication_module, "_git", changing_decisions)
+    with pytest.raises(PublicationError) as raised:
+        publish(lineage)
+    assert raised.value.report.cause == "DECISION_SET_CHANGED"
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_stale_control_report_preserves_exact_source_and_sampled_main(tmp_path):
+    lineage = make_lineage(tmp_path)
+    with pytest.raises(PublicationError) as raised:
+        publish_review_decision(lineage["repo"], run_id=lineage["run_id"],
+            decision_sha=lineage["decision_sha"], control_sha=lineage["candidate_sha"])
+    assert raised.value.report.cause == "STALE_CONTROL_BINDING"
+    assert raised.value.report.reviewed_sha == lineage["candidate_sha"]
+    assert raised.value.report.prior_main_sha == lineage["base_sha"]
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_review_321_003_never_authorizes_reset_or_a_different_sha(tmp_path, monkeypatch):
+    reviewed = "1278440199805edfea4979e65a75fff38ad1171b"
+    main = "3944d717af68a8ca97048a4e7472c8c46a5dadc4"
+    decision, artifact, base, tree = "a" * 40, "b" * 40, "c" * 40, "d" * 40
+    refs = {"refs/heads/main": main, "refs/heads/aios/review/RUN-321-003": reviewed,
+            "refs/heads/aios/artifacts/RUN-321-003": artifact,
+            "refs/heads/aios/review-decision/RUN-321-003": decision}
+    review = f"review_id: REVIEW-321-003\nreviewed_sha: {reviewed}\nverdict: PASS\n"
+    commands = []
+    def bounded_git(repo, *args, **kwargs):
+        commands.append(args)
+        if args[0] == "ls-remote":
+            return 0, refs[args[-1]] + "\t" + args[-1], ""
+        if args[0] == "fetch":
+            return 0, "", ""
+        if args[0] == "cat-file":
+            return 0, "tree" if args[-1] == tree else "commit", ""
+        if args[:2] == ("merge-base", "--is-ancestor"):
+            return 1, "", ""
+        if args[:2] == ("merge-base", "--all"):
+            return 0, base, ""
+        if args[0] == "merge-tree":
+            return 0, tree, ""
+        if args[0] == "diff":
+            return 0, "src/aios_renew/brain_context.py\0", ""
+        pytest.fail(f"historical publication attempted an unauthorized operation: {args[0]}")
+    monkeypatch.setattr(publication_module, "_git", bounded_git)
+    def exact_lineage(repo, **kwargs):
+        assert kwargs["run_id"] == "RUN-321-003" and kwargs["decision_sha"] == decision
+        assert kwargs["publication_main_sha"] == main
+        assert "REVIEW-321-003" in review and reviewed in review
+        return reviewed, None, ("src/aios_renew/brain_context.py",)
+    monkeypatch.setattr(publication_module, "_load_success_lineage", exact_lineage)
+    with pytest.raises(PublicationError) as raised:
+        publish_review_decision(tmp_path, run_id="RUN-321-003", decision_sha=decision, control_sha=main)
+    report = raised.value.report
+    assert report.reviewed_sha == reviewed and report.prior_main_sha == main
+    assert report.outcome == "RECOVERY_REVIEW_REQUIRED" and report.recovery.publication_eligible is False
+    assert refs["refs/heads/main"] == main
+    assert not any(command[0] in {"push", "reset", "merge", "rebase", "cherry-pick", "commit-tree"}
+                   for command in commands)
 
 
 def make_predecessor_lineage(

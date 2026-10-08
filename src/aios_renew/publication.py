@@ -43,6 +43,14 @@ from .task import parse_task
 _RUN_ID = re.compile(r"RUN-[A-Za-z0-9][A-Za-z0-9._-]*")
 _SHA = re.compile(r"[0-9a-f]{40}")
 _DECISION_PREFIX = "refs/heads/aios/review-decision/"
+_MAX_DECISIONS = 1024
+PUBLICATION_CAUSES = frozenset({
+    "NONE", "PUBLICATION_GATE_FAILED", "MALFORMED_LINEAGE", "STALE_CONTROL_BINDING",
+    "STALE_REVIEW_BINDING", "CONCURRENT_MAIN_MOVEMENT", "MAIN_CAS_FAILED",
+    "AMBIGUOUS_ANCESTRY", "MERGE_CONFLICT", "MERGE_CALCULATION_FAILED",
+    "RECOVERY_SCOPE_ESCAPE", "FRESH_EXACT_REVIEW_REQUIRED",
+    "COMPETING_REVIEWED_SOURCE", "DECISION_SET_CHANGED",
+})
 
 
 class PublicationError(RuntimeError):
@@ -54,6 +62,22 @@ class PublicationError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class PublicationRecovery:
+    """Mechanical tree observation only; it is never a reviewed source commit."""
+
+    merge_base_sha: str
+    tree_sha: str
+    publication_eligible: bool = False
+
+
+@dataclass(frozen=True)
+class PublicationBlocker:
+    source_run: str
+    decision_sha: str
+    reviewed_sha: str
+
+
+@dataclass(frozen=True)
 class PublicationReport:
     """Attributable outcome emitted for every publication attempt."""
 
@@ -62,6 +86,9 @@ class PublicationReport:
     prior_main_sha: str
     outcome: str
     detail: str
+    cause: str = "NONE"
+    recovery: PublicationRecovery | None = None
+    blocker: PublicationBlocker | None = None
 
 
 def _git(
@@ -73,12 +100,15 @@ def _git(
             capture_output=True,
             text=False,
             check=False,
+            timeout=30,
         )
-        stdout = completed.stdout.decode("utf-8", errors="strict").strip()
+        stdout = completed.stdout.decode("utf-8", errors="strict")
+        if "-z" not in args:
+            stdout = stdout.strip()
         stderr = completed.stderr.decode("utf-8", errors="strict").strip()
-    except (OSError, UnicodeError) as exc:
+    except (OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
         if allow_fail:
-            return 1, "", str(exc)
+            return 128, "", "Git acquisition failed"
         raise RuntimeError(f"Git command failed: {exc}") from exc
     if completed.returncode and not allow_fail:
         detail = stderr or stdout or f"exit {completed.returncode}"
@@ -92,7 +122,9 @@ def _failed(
     *,
     reviewed_sha: str = "UNKNOWN",
     prior_main_sha: str = "UNKNOWN",
+    cause: str = "PUBLICATION_GATE_FAILED",
 ) -> PublicationError:
+    message = message[:512]
     return PublicationError(
         message,
         PublicationReport(
@@ -100,26 +132,29 @@ def _failed(
             reviewed_sha=reviewed_sha,
             prior_main_sha=prior_main_sha,
             outcome="FAILED",
-            detail=message,
+            detail=message[:512],
+            cause=cause,
         ),
     )
 
 
-def _integration_required(
-    run_id: str, *, reviewed_sha: str, prior_main_sha: str
+def _recovery_required(
+    run_id: str, *, reviewed_sha: str, prior_main_sha: str, cause: str,
+    detail: str, recovery: PublicationRecovery | None = None,
+    blocker: PublicationBlocker | None = None,
 ) -> PublicationError:
-    detail = (
-        "reviewed candidate and current main have diverged; a separately "
-        "authorized integration candidate is required"
-    )
+    detail = detail[:512]
     return PublicationError(
         detail,
         PublicationReport(
             source_run=run_id,
             reviewed_sha=reviewed_sha,
             prior_main_sha=prior_main_sha,
-            outcome="INTEGRATION_REQUIRED",
-            detail=detail,
+            outcome=("RECOVERY_REVIEW_REQUIRED" if recovery else "RECOVERY_BLOCKED"),
+            detail=detail[:512],
+            cause=cause,
+            recovery=recovery,
+            blocker=blocker,
         ),
     )
 
@@ -1453,6 +1488,20 @@ def _validate_repair_package(
     return package
 
 
+def _decision_review_bytes(repo: Path, decision_sha: str, *, run_id: str) -> bytes:
+    code, tree, _ = _git(
+        repo, "ls-tree", "-r", "--name-only", decision_sha, "--", ".ai/reviews",
+        allow_fail=True,
+    )
+    if code:
+        raise _failed(run_id, "cannot inspect canonical review decision")
+    paths = [path for path in tree.splitlines() if path.startswith(".ai/reviews/")
+             and path.endswith((".yaml", ".yml"))]
+    if len(paths) != 1:
+        raise _failed(run_id, "review decision must contain exactly one REVIEW document")
+    return _read_blob(repo, decision_sha, paths[0], run_id=run_id)
+
+
 def _load_success_lineage(
     repo: Path,
     *,
@@ -1460,33 +1509,8 @@ def _load_success_lineage(
     run_id: str,
     decision_sha: str,
     publication_main_sha: str | None = None,
-) -> tuple[str, ResultPackage]:
-    code, tree, _ = _git(
-        repo,
-        "ls-tree",
-        "-r",
-        "--name-only",
-        decision_sha,
-        "--",
-        ".ai/reviews",
-        allow_fail=True,
-    )
-    if code:
-        raise _failed(run_id, "cannot inspect canonical review decision")
-    review_paths = [
-        path
-        for path in tree.splitlines()
-        if path.startswith(".ai/reviews/")
-        and path.endswith((".yaml", ".yml"))
-    ]
-    if len(review_paths) != 1:
-        raise _failed(
-            run_id, "review decision must contain exactly one REVIEW document"
-        )
-
-    review_bytes = _read_blob(
-        repo, decision_sha, review_paths[0], run_id=run_id
-    )
+) -> tuple[str, ResultPackage, tuple[str, ...]]:
+    review_bytes = _decision_review_bytes(repo, decision_sha, run_id=run_id)
     artifacts_ref = f"refs/heads/aios/artifacts/{run_id}"
     source_ref = f"refs/heads/aios/review/{run_id}"
     artifacts_sha = _single_remote_sha(
@@ -1727,8 +1751,146 @@ def _load_success_lineage(
             run_id,
             f"invalid canonical publication lineage: {exc}",
             reviewed_sha=reviewed_sha,
+            cause="MALFORMED_LINEAGE",
         ) from exc
-    return source_sha, package
+    return source_sha, package, tuple(task.scope.modify)
+
+
+def _decision_snapshot(repo: Path, remote: str, *, run_id: str) -> dict[str, str]:
+    code, output, _ = _git(
+        repo, "ls-remote", "--refs", remote, f"{_DECISION_PREFIX}*", allow_fail=True,
+    )
+    lines = output.splitlines()
+    if code or len(lines) > _MAX_DECISIONS:
+        raise _failed(run_id, "canonical decision snapshot unavailable or over capacity")
+    refs: dict[str, str] = {}
+    for line in lines:
+        pair = line.split()
+        if (len(pair) != 2 or _SHA.fullmatch(pair[0]) is None
+                or not pair[1].startswith(_DECISION_PREFIX)
+                or _RUN_ID.fullmatch(pair[1][len(_DECISION_PREFIX):]) is None
+                or pair[1] in refs):
+            raise _failed(run_id, "canonical decision snapshot is malformed or ambiguous")
+        refs[pair[1]] = pair[0]
+    return refs
+
+
+def _ancestor(repo: Path, ancestor: str, descendant: str, *, run_id: str,
+              reviewed_sha: str, main_sha: str) -> bool:
+    code, _, _ = _git(
+        repo, "merge-base", "--is-ancestor", ancestor, descendant, allow_fail=True,
+    )
+    if code not in (0, 1):
+        raise _failed(run_id, "cannot classify canonical ancestry", reviewed_sha=reviewed_sha,
+                      prior_main_sha=main_sha, cause="AMBIGUOUS_ANCESTRY")
+    return code == 0
+
+
+def _recheck_binding(repo: Path, remote: str, binding: Mapping[str, str], *,
+                     run_id: str, reviewed_sha: str, main_sha: str,
+                     decisions: Mapping[str, str] | None = None) -> None:
+    """Re-read immutable lineage, then main immediately before a terminal gate."""
+    try:
+        for ref, sha in binding.items():
+            if _single_remote_sha(repo, remote, ref, run_id=run_id) != sha:
+                raise _failed(run_id, "canonical review binding changed during publication",
+                              cause="STALE_REVIEW_BINDING")
+        if decisions is not None and _decision_snapshot(repo, remote, run_id=run_id) != decisions:
+            raise _failed(run_id, "canonical review decision set changed before mutation",
+                          cause="DECISION_SET_CHANGED")
+        if _single_remote_sha(repo, remote, "refs/heads/main", run_id=run_id) != main_sha:
+            raise _failed(run_id, "canonical main moved during publication",
+                          cause="CONCURRENT_MAIN_MOVEMENT")
+    except PublicationError as exc:
+        raise _failed(run_id, str(exc), reviewed_sha=reviewed_sha, prior_main_sha=main_sha,
+                      cause=exc.report.cause) from exc
+
+
+def _pending_review_guard(repo: Path, remote: str, *, run_id: str, reviewed_sha: str,
+                          main_sha: str) -> tuple[dict[str, str], dict[str, str]]:
+    """Hold a mutation that would strand an observed eligible exact PASS source.
+
+    This is a Publisher-side observation guard, not a lease on PASS issuance or
+    other main writers. Those boundaries must participate in shared coordination
+    before a PASS-to-publication reservation can be guaranteed.
+    """
+    decisions = _decision_snapshot(repo, remote, run_id=run_id)
+    source_binding: dict[str, str] = {}
+    for ref, decision in sorted(decisions.items()):
+        other_run = ref[len(_DECISION_PREFIX):]
+        if other_run == run_id:
+            continue
+        source_ref = f"refs/heads/aios/review/{other_run}"
+        source = _single_remote_sha(repo, remote, source_ref, run_id=run_id)
+        source_binding[source_ref] = source
+        _fetch_object(repo, remote, source, run_id=run_id)
+        if (source == main_sha or not _ancestor(
+                repo, main_sha, source, run_id=run_id, reviewed_sha=reviewed_sha, main_sha=main_sha)
+                or _ancestor(repo, source, reviewed_sha, run_id=run_id,
+                             reviewed_sha=reviewed_sha, main_sha=main_sha)):
+            continue
+        _fetch_object(repo, remote, decision, run_id=run_id)
+        try:
+            review = parse_review(_decision_review_bytes(
+                repo, decision, run_id=other_run).decode("utf-8", errors="strict"))
+        except (TypeError, ValueError, UnicodeError) as exc:
+            raise _failed(run_id, "pending canonical review is malformed") from exc
+        if review.verdict != "PASS":
+            continue
+        validated_source, _, _ = _load_success_lineage(
+            repo, remote=remote, run_id=other_run, decision_sha=decision,
+            publication_main_sha=main_sha,
+        )
+        if validated_source != source:
+            raise _failed(run_id, "pending reviewed source changed", cause="STALE_REVIEW_BINDING")
+        raise _recovery_required(
+            run_id, reviewed_sha=reviewed_sha, prior_main_sha=main_sha,
+            cause="COMPETING_REVIEWED_SOURCE",
+            detail="main mutation would strand another eligible exact PASS source; "
+                   "shared mutation-boundary scope reconciliation is required",
+            blocker=PublicationBlocker(other_run, decision, source),
+        )
+    return decisions, source_binding
+
+
+def _classify_recovery(repo: Path, *, run_id: str, reviewed_sha: str, main_sha: str,
+                       modification_scope: tuple[str, ...]) -> PublicationError:
+    """Compute bounded recovery observations without making a source commit or ref."""
+    def blocked(cause: str, detail: str) -> PublicationError:
+        return _recovery_required(run_id, reviewed_sha=reviewed_sha, prior_main_sha=main_sha,
+                                  cause=cause, detail=detail)
+
+    code, bases, _ = _git(repo, "merge-base", "--all", main_sha, reviewed_sha, allow_fail=True)
+    merge_bases = bases.splitlines()
+    if code or len(merge_bases) != 1 or _SHA.fullmatch(merge_bases[0]) is None:
+        return blocked("AMBIGUOUS_ANCESTRY", "recovery has no unique canonical merge base")
+    code, output, _ = _git(repo, "merge-tree", "--write-tree", main_sha, reviewed_sha,
+                           allow_fail=True)
+    if code == 1:
+        return blocked("MERGE_CONFLICT", "recovery requires semantic conflict resolution")
+    if code:
+        return blocked("MERGE_CALCULATION_FAILED", "mechanical recovery tree is unavailable")
+    lines = output.splitlines()
+    if len(lines) != 1 or _SHA.fullmatch(lines[0]) is None:
+        return blocked("MERGE_CALCULATION_FAILED", "mechanical recovery tree is malformed")
+    tree_sha = lines[0]
+    code, kind, _ = _git(repo, "cat-file", "-t", tree_sha, allow_fail=True)
+    if code or kind != "tree":
+        return blocked("MERGE_CALCULATION_FAILED", "mechanical recovery did not produce a tree")
+    try:
+        changed = _changed_files(repo, main_sha, tree_sha)
+    except ValueError:
+        return blocked("MERGE_CALCULATION_FAILED", "recovery delta cannot be inspected")
+    if changed.difference(modification_scope):
+        return blocked("RECOVERY_SCOPE_ESCAPE", "recovery delta escapes the canonical TASK modify scope")
+    return _recovery_required(
+        run_id, reviewed_sha=reviewed_sha, prior_main_sha=main_sha,
+        cause="FRESH_EXACT_REVIEW_REQUIRED",
+        detail="clean mechanical recovery tree observed; a separately authorized new source "
+               "candidate requires Runtime verification and fresh Reviewer PASS for its exact SHA; "
+               "the existing review authorizes only the original reviewed source",
+        recovery=PublicationRecovery(merge_bases[0], tree_sha),
+    )
 
 
 def publish_review_decision(
@@ -1761,12 +1923,6 @@ def publish_review_decision(
             run_id,
             str(exc),
         ) from exc
-    if control_sha is not None and control_sha != prior_main_sha:
-        raise _failed(
-            run_id,
-            "publication control SHA does not match current canonical main",
-            prior_main_sha=prior_main_sha,
-        )
     expected_reviewed_sha = "UNKNOWN"
     try:
         expected_reviewed_sha = _single_remote_sha(
@@ -1775,6 +1931,11 @@ def publish_review_decision(
             f"refs/heads/aios/review/{run_id}",
             run_id=run_id,
         )
+        if control_sha is not None and control_sha != prior_main_sha:
+            raise _failed(
+                run_id, "publication control SHA does not match current canonical main",
+                cause="STALE_CONTROL_BINDING",
+            )
         decision_ref = f"{_DECISION_PREFIX}{run_id}"
         remote_decision_sha = _single_remote_sha(
             root, remote, decision_ref, run_id=run_id
@@ -1783,9 +1944,16 @@ def publish_review_decision(
             raise _failed(
                 run_id,
                 "review-decision event SHA does not match canonical remote ref",
+                cause="STALE_REVIEW_BINDING",
             )
+        artifacts_ref = f"refs/heads/aios/artifacts/{run_id}"
+        binding = {
+            decision_ref: decision_sha,
+            f"refs/heads/aios/review/{run_id}": expected_reviewed_sha,
+            artifacts_ref: _single_remote_sha(root, remote, artifacts_ref, run_id=run_id),
+        }
         _fetch_object(root, remote, decision_sha, run_id=run_id)
-        reviewed_sha, _ = _load_success_lineage(
+        reviewed_sha, _, modification_scope = _load_success_lineage(
             root,
             remote=remote,
             run_id=run_id,
@@ -1801,6 +1969,7 @@ def publish_review_decision(
             str(exc),
             reviewed_sha=reviewed,
             prior_main_sha=prior_main_sha,
+            cause=exc.report.cause,
         ) from exc
     try:
         _fetch_object(root, remote, prior_main_sha, run_id=run_id)
@@ -1811,6 +1980,9 @@ def publish_review_decision(
             reviewed_sha=reviewed_sha,
             prior_main_sha=prior_main_sha,
         ) from exc
+
+    _recheck_binding(root, remote, binding, run_id=run_id,
+                     reviewed_sha=reviewed_sha, main_sha=prior_main_sha)
 
     if prior_main_sha == reviewed_sha:
         return PublicationReport(
@@ -1835,6 +2007,7 @@ def publish_review_decision(
             "cannot classify reviewed candidate against remote main",
             reviewed_sha=reviewed_sha,
             prior_main_sha=prior_main_sha,
+            cause="AMBIGUOUS_ANCESTRY",
         )
     if code == 1:
         included_code, _, _ = _git(
@@ -1846,6 +2019,8 @@ def publish_review_decision(
             allow_fail=True,
         )
         if included_code == 0:
+            _recheck_binding(root, remote, binding, run_id=run_id,
+                             reviewed_sha=reviewed_sha, main_sha=prior_main_sha)
             return PublicationReport(
                 source_run=run_id,
                 reviewed_sha=reviewed_sha,
@@ -1859,12 +2034,35 @@ def publish_review_decision(
                 "cannot classify reviewed candidate against remote main",
                 reviewed_sha=reviewed_sha,
                 prior_main_sha=prior_main_sha,
+                cause="AMBIGUOUS_ANCESTRY",
             )
-        raise _integration_required(
-            run_id,
-            reviewed_sha=reviewed_sha,
-            prior_main_sha=prior_main_sha,
+        recovery = _classify_recovery(
+            root, run_id=run_id, reviewed_sha=reviewed_sha, main_sha=prior_main_sha,
+            modification_scope=modification_scope,
         )
+        _recheck_binding(root, remote, binding, run_id=run_id,
+                         reviewed_sha=reviewed_sha, main_sha=prior_main_sha)
+        raise recovery
+
+    try:
+        decisions, pending_binding = _pending_review_guard(
+            root, remote, run_id=run_id, reviewed_sha=reviewed_sha, main_sha=prior_main_sha,
+        )
+        binding.update(pending_binding)
+    except PublicationError as exc:
+        # Actionable competing-source outcomes are already bound to this attempt.
+        if exc.report.outcome == "RECOVERY_BLOCKED":
+            blocker = exc.report.blocker
+            if blocker is not None:
+                binding[f"{_DECISION_PREFIX}{blocker.source_run}"] = blocker.decision_sha
+                binding[f"refs/heads/aios/review/{blocker.source_run}"] = blocker.reviewed_sha
+            _recheck_binding(root, remote, binding, run_id=run_id,
+                             reviewed_sha=reviewed_sha, main_sha=prior_main_sha)
+            raise
+        raise _failed(run_id, str(exc), reviewed_sha=reviewed_sha,
+                      prior_main_sha=prior_main_sha, cause=exc.report.cause) from exc
+    _recheck_binding(root, remote, binding, run_id=run_id,
+                     reviewed_sha=reviewed_sha, main_sha=prior_main_sha, decisions=decisions)
 
     code, output, stderr = _git(
         root,
@@ -1883,6 +2081,7 @@ def publish_review_decision(
             f"fast-forward publication failed: {detail}",
             reviewed_sha=reviewed_sha,
             prior_main_sha=prior_main_sha,
+            cause="MAIN_CAS_FAILED",
         )
 
     try:
