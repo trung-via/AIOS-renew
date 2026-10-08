@@ -1,5 +1,5 @@
 task_id: TASK-110
-revision: 3
+revision: 4
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
 goal: 'Reconcile the exact RUN-110-003 completion-gate scope failure without restarting
@@ -21,7 +21,11 @@ problem: 'RUN-110-003 failed closed at COMPLETION_GATE after producing a clean, 
 
   '
 assumptions:
-- Canonical main at r3 authoring is 8687f08f143988486f93d37e9a82c22966f7b6a2.
+- Canonical main at r4 authoring is 267852f479289fb5bdcb05bbef083fb789a23345.
+- RUN-110-004 is the canonical failed PRIMARY for TASK-110 r3; failed_head_sha is
+  11d2822f976584a6872ef7d9160561683b14f934.
+- RUN-110-004 isolated the exact remaining scope gap to src/aios_renew/authoring_ingress.py::_execute_submit_review
+  and its direct _publish_ingress_ref durable review-decision write.
 - RUN-110-003 is the canonical failed PRIMARY for TASK-110 r2.
 - RUN-110-003 failed_head_sha is ba88fdf2f6569f8f173ca647a31f529ae6dc385f.
 - The r2 candidate changed exactly .github/workflows/aios-auto-publish.yml, src/aios_renew/brain_attention.py,
@@ -44,14 +48,18 @@ scope:
   - src/aios_renew/brain_attention.py
   - src/aios_renew/review_transport.py
   - src/aios_renew/runtime.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_authoring_ingress.py
   - .github/workflows/aios-auto-publish.yml
   - tests/test_publication.py
   - tests/test_brain_attention.py
   - tests/test_review_transport.py
+  - tests/test_authoring_ingress.py
   modify:
   - src/aios_renew/publication.py
   - src/aios_renew/brain_attention.py
   - src/aios_renew/review_transport.py
+  - src/aios_renew/authoring_ingress.py
   - .github/workflows/aios-auto-publish.yml
   - tests/test_publication.py
   - tests/test_brain_attention.py
@@ -69,9 +77,11 @@ non_goals:
 - Run a repository-wide full suite solely because r3 reconciles AC2 scope.
 constraints:
   hard:
-  - 'Execution must start cumulatively from RUN-110-003 failed_head_sha ba88fdf2f6569f8f173ca647a31f529ae6dc385f,
+  - 'Execution must preserve the cumulative TASK-110 r2/r3 implementation evidence
+    and start from RUN-110-004 failed_head_sha 11d2822f976584a6872ef7d9160561683b14f934,
     or deterministically reconstruct the exact same cumulative source before applying
-    the r3 delta. Previously completed r2 changes are evidence, not work to redo.
+    only the r4 scope-reconciliation delta. Previously completed work is evidence,
+    not work to redo.
 
     '
   - 'The new shared reservation/serialization primitive is deterministic coordination
@@ -156,7 +166,7 @@ acceptance:
 
     '
 - id: AC8
-  condition: 'Source changes remain within r3 scope.modify; any still-missing required
+  condition: 'Source changes remain within r4 scope.modify; any still-missing required
     writer entry point causes an explicit completion-gate failure naming the exact
     scope gap.
 
@@ -170,4 +180,5 @@ verification:
   policy: minimum-sufficient-v2
   required:
   - python -m pytest -q tests/test_publication.py tests/test_brain_attention.py tests/test_review_transport.py
+    tests/test_authoring_ingress.py
   - git diff --check
