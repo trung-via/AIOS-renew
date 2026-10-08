@@ -1,5 +1,6 @@
 """Deterministic tests for AIOS Brain Sync observation snapshot."""
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import yaml
 from aios_renew.brain_sync import (
     BrainSyncError,
     BrainSyncSnapshot,
+    _read_main_source,
     observe_brain_sync,
     project_active_planning,
 )
@@ -67,6 +69,12 @@ def test_brain_sync_ready_single_next_rehydration(tmp_path: Path) -> None:
     assert snapshot.blocker is None
     assert snapshot.unified_state is not None
     assert snapshot.unified_state["next_action"] == "EXECUTE_PRIMARY"
+    assert _read_main_source(repo, head, ".ai/tasks/TASK-101.yaml") == TASK_SOURCE
+    assert snapshot.source_bindings["task"] == {
+        "commit": head,
+        "path": ".ai/tasks/TASK-101.yaml",
+        "source_digest": hashlib.sha256(TASK_SOURCE.encode("utf-8")).hexdigest(),
+    }
     assert snapshot.run_created is False
     assert snapshot.executor_invoked is False
     assert snapshot.verification_invoked is False
@@ -81,6 +89,51 @@ def test_brain_sync_ready_single_next_rehydration(tmp_path: Path) -> None:
     # Serialization
     as_dict = snapshot.as_dict()
     assert json.loads(snapshot.render()) == as_dict
+
+
+@pytest.mark.parametrize("task_source", [
+    TASK_SOURCE,
+    TASK_SOURCE.rstrip("\n"),
+    TASK_SOURCE.replace("\n", "\r\n"),
+    TASK_SOURCE + "\n  \n",
+])
+def test_brain_sync_canonical_blob_preserves_exact_text(tmp_path: Path, task_source: str) -> None:
+    repo = make_repo(tmp_path, task_source=task_source)
+    head = git(repo, "rev-parse", "HEAD")
+    assert _read_main_source(repo, head, ".ai/tasks/TASK-101.yaml") == task_source
+
+
+@pytest.mark.parametrize("worktree_text", [
+    TASK_SOURCE.rstrip("\n"),
+    TASK_SOURCE.lstrip("\n"),
+    TASK_SOURCE.replace("goal: Create", "goal: Alter"),
+])
+def test_brain_sync_canonical_task_worktree_conflict_fails_closed(
+    tmp_path: Path, worktree_text: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    _publish_roadmap(repo, {"sequence": [{"id": "task", "status": "NEXT", "task_id": "TASK-101"}]})
+    (repo / ".ai" / "tasks" / "TASK-101.yaml").write_text(worktree_text, encoding="utf-8")
+
+    snapshot = observe_brain_sync(repo)
+
+    assert snapshot.selection_status == "BLOCKED"
+    assert snapshot.blocker["code"] == "CANONICAL_TASK_CONFLICT"
+    assert snapshot.selected_task is None and snapshot.unified_state is None
+    assert snapshot.next_action == "NONE" and snapshot.authority == "NONE"
+
+
+def test_brain_sync_duplicate_canonical_task_keys_fail_closed(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, task_source=TASK_SOURCE + "revision: 1\n")
+    _publish_roadmap(repo, {"sequence": [{"id": "task", "status": "NEXT", "task_id": "TASK-101"}]})
+
+    snapshot = observe_brain_sync(repo)
+
+    assert snapshot.selection_status == "BLOCKED"
+    assert snapshot.blocker["code"] == "CANONICAL_TASK_CONFLICT"
+    assert "duplicate" in snapshot.blocker["message"]
+    assert snapshot.selected_task is None and snapshot.unified_state is None
+    assert snapshot.next_action == "NONE" and snapshot.authority == "NONE"
 
 
 def test_brain_sync_completed_no_next(tmp_path: Path) -> None:
@@ -479,8 +532,23 @@ def test_shared_git_fixture_resolves_head_and_common_refs(tmp_path: Path, layout
     assert read_git_ref(subject, "fixture-subject") == (expected if detached else changed)
 
 
-def test_brain_sync_live_repository_smoke() -> None:
-    repo = Path(__file__).resolve().parents[1]
+def test_brain_sync_live_repository_smoke(tmp_path: Path) -> None:
+    source_repo = Path(__file__).resolve().parents[1]
+    source_head = git(source_repo, "rev-parse", "HEAD")
+    # Runtime's detached subject may have no branch upstream. Give this smoke
+    # an isolated explicit canonical-main binding to the exact live source tree,
+    # retaining its ancestry without changing the subject's config or refs.
+    remote = tmp_path / "live-canonical.git"
+    repo = tmp_path / "live-brain-sync"
+    git(source_repo, "clone", "--bare", "--no-hardlinks", str(source_repo), str(remote))
+    git(remote, "update-ref", "refs/heads/main", source_head)
+    git(remote, "symbolic-ref", "HEAD", "refs/heads/main")
+    git(source_repo, "clone", "--no-hardlinks", "--no-checkout", "--branch", "main", str(remote), str(repo))
+    git(repo, "config", "core.autocrlf", "false")
+    git(repo, "config", "core.eol", "lf")
+    git(repo, "remote", "rename", "origin", "smoke-canonical")
+    git(repo, "checkout", "--detach", source_head)
+    assert git(repo, "config", "branch.main.remote") == "smoke-canonical"
     roadmap = yaml.safe_load(
         (repo / ".ai" / "roadmap-state.yaml").read_text(encoding="utf-8")
     )
@@ -493,12 +561,17 @@ def test_brain_sync_live_repository_smoke() -> None:
     before_status = git(repo, "status", "--porcelain=v1")
     before_head = git(repo, "rev-parse", "HEAD")
     before_refs = git(repo, "for-each-ref", "--format=%(refname) %(objectname)")
+    before_config = (repo / ".git" / "config").read_bytes()
+    before_index = (repo / ".git" / "index").read_bytes()
+    before_remote_refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
 
-    snapshot = observe_brain_sync()
+    snapshot = observe_brain_sync(repo)
 
     assert snapshot.format == "AIOS_BRAIN_SYNC_SNAPSHOT"
     assert snapshot.version == 1
-    assert snapshot.repository["name"] == "trung-via/AIOS-renew"
+    assert snapshot.main_sha == source_head
+    assert snapshot.repository["name"] == repo.name
+    assert snapshot.repository["remote"] == "smoke-canonical"
     assert snapshot.roadmap["active_track"] == roadmap["active_track"]
     assert snapshot.roadmap["active_track_status"] == roadmap["active_track_status"]
     assert snapshot.roadmap["next_items"] == next_item_ids
@@ -525,6 +598,9 @@ def test_brain_sync_live_repository_smoke() -> None:
     assert git(repo, "status", "--porcelain=v1") == before_status
     assert git(repo, "rev-parse", "HEAD") == before_head
     assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+    assert (repo / ".git" / "config").read_bytes() == before_config
+    assert (repo / ".git" / "index").read_bytes() == before_index
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_remote_refs
 
 
 @pytest.mark.parametrize("selected_status", ["DONE", "BLOCKED", "QUEUED"])

@@ -83,7 +83,9 @@ _RoadmapLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _
 
 def _read_main_source(root: Path, main_sha: str, path: str) -> str | None:
     """Read the exact observed main tree, never an author/review/worktree substitute."""
-    code, text, _ = _git_cmd(root, "show", f"{main_sha}:{path}", allow_fail=True)
+    # Blob whitespace is source material, not Git command framing. The helper
+    # decodes raw UTF-8 bytes without newline translation when stripping is off.
+    code, text, _ = _git_cmd(root, "show", f"{main_sha}:{path}", strip=False, allow_fail=True)
     if code == 0:
         return text
     code, _, _ = _git_cmd(root, "cat-file", "-e", f"{main_sha}^{{commit}}", allow_fail=True)
