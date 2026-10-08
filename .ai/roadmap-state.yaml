@@ -557,6 +557,45 @@ production_wake_amendment:
         - NO_SYNTHETIC_HUMAN_INTENT_OR_IMPLICIT_TASK_OR_ROUTE_TRANSFER
         - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
 
+verification_architecture_replacement_preemption:
+  id: aios-verification-architecture-replacement-v1
+  status: HUMAN_APPROVED_ACTIVE_PRE_BO2_3
+  approved_on: "2026-10-08"
+  authority: HUMAN_BRAIN_PLANNING
+  planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  human_instruction: >-
+    Execute the seven VP work packages promptly ahead of BO-2/3, retire
+    Authored Executable Verification and replace minimum-sufficient-v2
+    command-driven scheduling, while preserving evidence, correctness,
+    immutable legacy lineage and all authority boundaries. This planning
+    decision is not a TASK, RUN, Runtime verification or source publication.
+  priority: PREEMPTS_BO2_BO3_TEMPORARILY
+  effective_next: verification-architecture-replacement-v1-vp01-baseline-and-measurement
+  return_to: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
+  package_count: 7
+  executor_delegation: UNASSIGNED_FOR_NEW_TASK
+  implementation_authorized: false
+  roadmap_auto_progression: false
+  source_main_at_human_planning_transition: 08a5021236938b99d994d41e3d4f3907ec237230
+  publication_safety: >-
+    Every future authoring and execution uses freshly observed canonical main,
+    not a pre-planning stale base. Do not publish via ad hoc Git push, branch
+    move or cherry-pick. Preserve reviewed RUN-110-008 source and let Publisher
+    own exact reviewed-source/integration publication; no new VP TASK may
+    impersonate that authority.
+  invariants:
+    - ROADMAP_SINGLE_EFFECTIVE_NEXT_V1
+    - ONE_SEMANTIC_NEXT_ROOT_V1
+    - RUNTIME_CANONICAL_VERIFICATION_ONLY
+    - NO_BRAIN_AUTHORED_EXECUTABLE_VERIFICATION_PROSPECTIVE
+    - NO_PARALLEL_NEW_AND_V2_EXECUTION_AUTHORITIES
+    - EVIDENCE_REUSE_ONLY_IF_PROVEN_VALID
+    - UNKNOWN_PROOF_NEVER_PASS
+    - NO_RUNTIME_SEMANTIC_TEST_DEPENDENCY_INFERENCE
+    - FROZEN_KERNEL_AMENDMENT_REQUIRES_SEPARATE_HUMAN_AUTHORITY
+    - NO_NEW_PLANNER_ROUTER_REVIEWER_PUBLISHER_OR_TELEMETRY_AUTHORITY
+    - BO9B_OBSERVABILITY_REUSE_NO_SECOND_TELEMETRY_PIPELINE
+
 verification_foundation_audit:
   id: ta-0-ta-1-verification-foundation
   status: HUMAN_APPROVED
@@ -960,7 +999,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
+  - verification-architecture-replacement-v1-vp01-baseline-and-measurement
 sequence:
 
   - id: TASK-309
@@ -1676,8 +1715,126 @@ sequence:
     return_to: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
     unblocks: [brain-optimization-v1-bo2-3-canonical-context-pipeline-v1]
 
-  - id: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
+  - id: verification-architecture-replacement-v1-vp01-baseline-and-measurement
     status: NEXT
+    phase: VP01_BASELINE_MEASUREMENT
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-08"
+    planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Collect exact historical performance baselines, total/unique executed pytest items, Git/fixture/collection/cleanup costs and BO-9B provenance.
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
+    branch_and_publication_safety: >-
+      Author each TASK from exact current canonical main after approved planning
+      mutation is included there. Bind TASK/PRIMARY expected-main CAS; never use
+      stale local, repair, review or planning branch as source. Publisher alone
+      publishes eligible reviewed candidate or lawful integration descendant.
+
+  - id: verification-architecture-replacement-v1-vp02-proof-contract
+    status: QUEUED_AFTER_VP01
+    phase: VP02_PROOF_CONTRACT
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-08"
+    planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Retire authored executable verification authoring prospective; define authority-preserving proof coverage contract and explicit frozen Kernel compatibility gate.
+    depends_on: verification-architecture-replacement-v1-vp01-baseline-and-measurement
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
+    branch_and_publication_safety: >-
+      Author each TASK from exact current canonical main after approved planning
+      mutation is included there. Bind TASK/PRIMARY expected-main CAS; never use
+      stale local, repair, review or planning branch as source. Publisher alone
+      publishes eligible reviewed candidate or lawful integration descendant.
+
+  - id: verification-architecture-replacement-v1-vp03-evidence-validity
+    status: QUEUED_AFTER_VP02
+    phase: VP03_EVIDENCE_VALIDITY
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-08"
+    planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Define verified VALID/INVALIDATED/UNKNOWN, immutable source bindings and cross-lineage proof reuse without filename-based guesses.
+    depends_on: verification-architecture-replacement-v1-vp02-proof-contract
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
+    branch_and_publication_safety: >-
+      Author each TASK from exact current canonical main after approved planning
+      mutation is included there. Bind TASK/PRIMARY expected-main CAS; never use
+      stale local, repair, review or planning branch as source. Publisher alone
+      publishes eligible reviewed candidate or lawful integration descendant.
+
+  - id: verification-architecture-replacement-v1-vp04-single-proof-execution
+    status: QUEUED_AFTER_VP03
+    phase: VP04_SINGLE_PROOF_EXECUTION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-08"
+    planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Independently replace V2 command-driven execution with one deterministic Runtime proof plan; avoid equivalent reexecutions.
+    depends_on: verification-architecture-replacement-v1-vp03-evidence-validity
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
+    branch_and_publication_safety: >-
+      Author each TASK from exact current canonical main after approved planning
+      mutation is included there. Bind TASK/PRIMARY expected-main CAS; never use
+      stale local, repair, review or planning branch as source. Publisher alone
+      publishes eligible reviewed candidate or lawful integration descendant.
+
+  - id: verification-architecture-replacement-v1-vp05-correction-and-attribution
+    status: QUEUED_AFTER_VP04
+    phase: VP05_CORRECTION_ATTRIBUTION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-08"
+    planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Bound PRIMARY/REPAIR/REMEDIATION/DIRECT_CANDIDATE proof, comparable baseline attribution and avoid unjustified broad base replay.
+    depends_on: verification-architecture-replacement-v1-vp04-single-proof-execution
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
+    branch_and_publication_safety: >-
+      Author each TASK from exact current canonical main after approved planning
+      mutation is included there. Bind TASK/PRIMARY expected-main CAS; never use
+      stale local, repair, review or planning branch as source. Publisher alone
+      publishes eligible reviewed candidate or lawful integration descendant.
+
+  - id: verification-architecture-replacement-v1-vp06-runtime-performance
+    status: QUEUED_AFTER_VP05
+    phase: VP06_RUNTIME_PERFORMANCE
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-08"
+    planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Optimize measured pytest collection, Git fixture/sandbox, clean checkout, selected workers, Windows startup and observation handling with conformance preserved.
+    depends_on: verification-architecture-replacement-v1-vp05-correction-and-attribution
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
+    branch_and_publication_safety: >-
+      Author each TASK from exact current canonical main after approved planning
+      mutation is included there. Bind TASK/PRIMARY expected-main CAS; never use
+      stale local, repair, review or planning branch as source. Publisher alone
+      publishes eligible reviewed candidate or lawful integration descendant.
+
+  - id: verification-architecture-replacement-v1-vp07-cutover-and-conformance
+    status: QUEUED_AFTER_VP06
+    phase: VP07_CUTOVER_CONFORMANCE
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-08"
+    planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Validate real-case counterexamples, preserve historic V1/V2 lineage, and cut over prospective production via Runtime/Reviewer/Publisher only.
+    depends_on: verification-architecture-replacement-v1-vp06-runtime-performance
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
+    branch_and_publication_safety: >-
+      Author each TASK from exact current canonical main after approved planning
+      mutation is included there. Bind TASK/PRIMARY expected-main CAS; never use
+      stale local, repair, review or planning branch as source. Publisher alone
+      publishes eligible reviewed candidate or lawful integration descendant.
+
+  - id: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
+    status: PAUSED_BY_VERIFICATION_ARCHITECTURE_REPLACEMENT_V1
     phase: BO2_BO3_CANONICAL_CONTEXT_PIPELINE_V1
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
