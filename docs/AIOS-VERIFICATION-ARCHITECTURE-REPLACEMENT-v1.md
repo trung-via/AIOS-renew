@@ -38,7 +38,9 @@ Brain owns WHAT/WHY and semantic proof obligations; one admitted Executor owns H
 | VP-06 — Infrastructure Performance | Measured Git fixture, clone, collection, worker distribution, Windows process, fingerprint/evidence IO optimization | Correctness and conformance unchanged, benefit measured |
 | VP-07 — Cutover & Conformance | Regression proof on real cases, prospective policy admission/cutover, historical decode continuity | Exact Runtime/Reviewer/Publisher-gated activation |
 
-Dependencies: VP-01 → VP-02 → VP-03 → VP-04 → VP-05 → VP-06 → VP-07 for publication/cutover. VP-06 profiling experiments may begin after VP-01 without mutating production ahead of authorized TASK sequencing. Every package requires an independently admitted TASK and normal runtime verification, review and Publisher publication; REPAIR must preserve prior successful proof until invalidated.
+Dependencies: VP-01 → VP-02 → VP-03 → VP-04 → VP-05 → VP-06 → VP-07 for publication/cutover.
+
+Human planning override (2026-10-09): VP-01 is explicitly DEFERRED, not completed or accepted; VP-02 is the unique effective NEXT for bounded semantic design and independently admissible work. This does not erase the VP-01 measurement dependency or authorize a publication/cutover claim that requires unproven VP-01 evidence. Any such exit stays blocked until fresh Human/Brain reconciliation and the relevant evidence; later VP work does not auto-advance. The planning override is not a frozen Kernel amendment. VP-06 profiling experiments may begin after VP-01 without mutating production ahead of authorized TASK sequencing. Every package requires an independently admitted TASK and normal runtime verification, review and Publisher publication; REPAIR must preserve prior successful proof until invalidated.
 
 ## Historical counterexamples and acceptance gates
 
