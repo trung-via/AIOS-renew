@@ -1,0 +1,57 @@
+review_id: REVIEW-321-003
+reviewed_sha: 1278440199805edfea4979e65a75fff38ad1171b
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings: []
+notes:
+- 'RUN-321-003 is the canonical successful REPAIR RESULT for TASK-321 r1. Candidate
+  1278440199805edfea4979e65a75fff38ad1171b is three commits ahead of TASK-321 authoring
+  commit 18dd8c67f60c96d98f847e046c3fe42b8d40ecbe and cumulative changed files are
+  exactly the five TASK-authorized paths: .ai/flow-cards.yaml, src/aios_renew/brain_context.py,
+  src/aios_renew/brain_sync.py, tests/test_brain_context.py, and tests/test_brain_sync.py.'
+- 'Runtime-owned minimum-sufficient-v2 verification is PASS on the exact reviewed
+  candidate: python -m pytest -q tests/test_brain_sync.py tests/test_brain_context.py
+  reports 149 passed in 44.94s, and git diff --check passed. RESULT unresolved is
+  empty.'
+- "Semantic pass 1 \u2014 AC1/AC3: Brain Sync provides one bounded structural NEXT\
+  \ proof, keeps exact planning/control facts, fails closed on competing mirrors,\
+  \ and represents the current unique unauthored BO-2/3 NEXT as TASK_AUTHORING without\
+  \ fabricating TASK or Unified State. Exact canonical TASK blob reads now preserve\
+  \ meaningful whitespace/newline bytes instead of normalizing Git source material."
+- "Semantic pass 1 \u2014 AC2/AC4/AC5: Brain context relevance is derived from closed\
+  \ versioned Flow Card/lifecycle/subject/request inputs. Elision is rule-based and\
+  \ provenance-bound; derived reuse is disposable, exact-binding dependent and non-authoritative.\
+  \ No LLM relevance ranking, vector/embedding retrieval, semantic code RAG, memory\
+  \ DB or learned relevance authority is introduced."
+- "Semantic pass 1 \u2014 AC6/AC7: deterministic budgeting occurs after projection/elision/reuse;\
+  \ exact control facts remain non-elidable, overflow summaries remain non-authoritative,\
+  \ and exact expansion/rebinding is required before a semantic decision may depend\
+  \ on compressed material. BrainWorkContext and flow resolution remain observation-only\
+  \ and do not create lifecycle authority."
+- "Semantic pass 2 \u2014 AC8: regressions cover TASK-319 split brain, unique unauthored\
+  \ NEXT, stale/moved bindings, cache deletion equivalence, overflow, exact expansion,\
+  \ malformed relevance inputs, canonical TASK byte preservation, duplicate canonical\
+  \ keys and worktree/canonical conflicts. The prior pytest reserved-parameter collection\
+  \ defect is closed and retained."
+- "Semantic pass 2 \u2014 detached authority: production detached observation remains\
+  \ fail-closed and still requires deterministic explicit authority evidence; the\
+  \ repair does not add ambient origin fallback. The live smoke now creates an isolated\
+  \ explicit upstream binding and proves observation does not mutate subject config,\
+  \ refs, index or remote refs."
+- "Semantic pass 2 \u2014 AC9 and scope closure: the final repair changes only src/aios_renew/brain_sync.py\
+  \ and tests/test_brain_sync.py on top of the prior bounded test-only repair. CANONICAL_CONTEXT_PIPELINE_V1\
+  \ and its three compatibility exits remain the subject; BO-4+, BO-7, H4, roadmap\
+  \ mutation, Reviewer/Publisher merging and lifecycle routing remain outside scope."
+- 'Reviewer verdict: PASS. Candidate is semantically eligible for exact Publisher
+  handling; publication is not inferred until canonical publication proves the reviewed
+  source.'
