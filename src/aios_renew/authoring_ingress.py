@@ -67,6 +67,7 @@ from .verification_contract import CURRENT_VERIFICATION_POLICY
 from .unified_state import observe_unified_state
 
 if TYPE_CHECKING:
+    from .brain_sync import BrainSyncSnapshot
     from .decision_packet import DecisionPacket
 
 
@@ -1487,6 +1488,128 @@ def _authoring_blob(repo: Path, sha: str, path: str, remote: str | None) -> byte
     return content
 
 
+def _canonical_authoring_review(repo: Path, sha: str, remote: str | None) -> Review:
+    _fetch_if_remote(repo, remote, sha)
+    paths = [p for p in _ls_tree(repo, sha, ".ai/reviews") if p.endswith((".yaml", ".yml"))]
+    if len(paths) != 1:
+        raise AuthoringIngressError("canonical finding REVIEW is missing or ambiguous")
+    return parse_review(_authoring_blob(repo, sha, paths[0], remote).decode("utf-8"))
+
+
+def _canonical_correction_snapshot(
+    operation: str, identity: Mapping[str, Any], repo: Path, inputs: _AuthoringRefs,
+) -> BrainSyncSnapshot:
+    """EXACT_CORRECTION_SUBJECT_LINEAGE_V1: selectors identify artifacts, not TASKs.
+
+    Reconstruct the TASK from the exact immutable RUN family, validate its
+    terminal/review lineage, then ask the existing Unified State owner for that
+    TASK's lifecycle. No roadmap selection or caller payload supplies identity.
+    The caller proves working-tree inputs and rechecks canonical refs around
+    this observation; this function acquires no mutation authority.
+    """
+    from .brain_sync import BrainSyncSnapshot, _resolve_repository_name
+
+    if operation not in _AUTHORING_FLOWS:
+        raise AuthoringIngressError("exact correction observation requires a correction operation")
+    _validate_operation_identity(operation, identity)
+    remote, refs = inputs
+    main_sha = refs["refs/heads/main"]
+    repair = operation == "AUTHOR_REPAIR"
+    run_id = identity["failed_run_id" if repair else "source_run_id"]
+    family = "failure-artifacts" if repair else "artifacts"
+    artifacts_sha = refs.get(f"refs/heads/aios/{family}/{run_id}")
+    if artifacts_sha is None:
+        raise AuthoringIngressError("canonical correction artifacts ref is missing")
+    run_doc = _json_no_dups(_authoring_blob(repo, artifacts_sha, ".ai/transport/run.json", remote), "RUN")
+    run_view = _resolve_underlying_run_view(run_doc, expected_run_id=run_id)
+    # Validate the identifier before deriving a bounded canonical TASK path.
+    task_id = _extract_task_id(run_view)
+    run = _run_from_data(run_view)
+    task_bytes = _authoring_blob(repo, main_sha, f".ai/tasks/{task_id}.yaml", remote)
+    task = parse_task(task_bytes.decode("utf-8"))
+    selected = {"id": task.task_id, "revision": task.revision}
+    if run.task != RunTaskReference(task.task_id, task.revision):
+        raise AuthoringIngressError("correction RUN does not match canonical TASK id/revision")
+    require_same_affinity(task, run)
+    lineage = {"policy": "EXACT_CORRECTION_SUBJECT_LINEAGE_V1",
+               "operation": operation, "task": selected, "selectors": dict(identity),
+               "artifacts_sha": artifacts_sha}
+    if repair:
+        failure = _json_no_dups(
+            _authoring_blob(repo, artifacts_sha, ".ai/transport/failure.json", remote), "FAILURE")
+        head = failure.get("failed_head_sha")
+        if (not isinstance(head, str) or re.fullmatch(r"[0-9a-f]{40}", head) is None
+                or refs.get(f"refs/heads/aios/failure/{run_id}") != head
+                or (run.head_sha is not None and run.head_sha != head)):
+            raise AuthoringIngressError("canonical failed candidate identity is missing or mismatched")
+        validate_runtime_failure_binding(
+            failure, run_id=run_id, task_id=task.task_id, task_revision=task.revision,
+            executor=run.executor, base_sha=run.base_sha, candidate_sha=head,
+            modification_scope=task.scope.modify,
+        )
+        if not all(failure["candidate"][flag] is True for flag in ("repairable", "transportable")):
+            raise AuthoringIngressError("canonical FAILURE is not repairable/transportable")
+        lineage.update(failed_run_id=run_id, failed_head_sha=head)
+    else:
+        decision_sha = refs.get(f"refs/heads/aios/review-decision/{run_id}")
+        if decision_sha is None:
+            raise AuthoringIngressError("canonical finding REVIEW ref is missing")
+        review = _canonical_authoring_review(repo, decision_sha, remote)
+        result_doc = _json_no_dups(
+            _authoring_blob(repo, artifacts_sha, ".ai/transport/result.json", remote), "ResultPackage")
+        package = ResultPackage(
+            result=validate_result(result_doc["result"]),
+            evidence=tuple(validate_evidence(item) for item in result_doc["evidence"]),
+        )
+        head = package.result.head_sha
+        if (refs.get(f"refs/heads/aios/review/{run_id}") != head or review.reviewed_sha != head
+                or (run.head_sha is not None and run.head_sha != head)):
+            raise AuthoringIngressError("canonical reviewed candidate identity mismatch")
+        # Reuse the published source-family validator, including repaired
+        # remediation sources and their prior REVIEW/RESULT/failure bindings.
+        from .operator import _validated_repair_remediation_source
+        _fetch_if_remote(repo, remote, head)
+        _validated_repair_remediation_source(
+            repo, task=task, run_data=run_doc, run=run, package=package, review=review,
+            repair=_read_commit_blob(repo, artifacts_sha, ".ai/transport/repair.json"),
+        )
+        if (review.verdict != "CHANGES_REQUIRED"
+                or len([f for f in review.findings if f.id == identity["finding_id"]]) != 1):
+            raise AuthoringIngressError("canonical correction finding is absent from CHANGES_REQUIRED REVIEW")
+        lineage.update(source_run_id=run_id, finding_id=identity["finding_id"],
+                       review_id=review.review_id, reviewed_sha=head, review_decision_sha=decision_sha)
+
+    unified = observe_unified_state(task.task_id, repo=repo).as_dict()
+    allowed_actions = {"AUTHOR_REPAIR", "EXECUTE_REPAIR"} if repair else {"AUTHOR_REMEDIATION"}
+    if (unified.get("task") != selected or unified.get("blocker") is not None
+            or unified.get("next_action") not in allowed_actions):
+        raise AuthoringIngressError("canonical correction subject differs from Unified State")
+    if repair:
+        if (unified.get("run_id") != run_id or unified.get("failed_run_id") != run_id
+                or unified.get("failed_head_sha") != head):
+            raise AuthoringIngressError("REPAIR target differs from canonical failed RUN")
+    else:
+        target = {key: lineage[key] for key in ("source_run_id", "review_id", "finding_id", "reviewed_sha")}
+        if sum(item == target for item in unified.get("outstanding_findings", [])) != 1:
+            raise AuthoringIngressError("REMEDIATION target is not canonically outstanding")
+        # A frontier packet audits every outstanding finding, so each REVIEW
+        # ref identity belongs to its freshness binding, not only the selector.
+        lineage["outstanding_reviews"] = []
+        for item in unified["outstanding_findings"]:
+            sha = refs.get(f"refs/heads/aios/review-decision/{item['source_run_id']}")
+            if sha is None:
+                raise AuthoringIngressError("canonical outstanding REVIEW ref is missing")
+            lineage["outstanding_reviews"].append({**item, "review_decision_sha": sha})
+    return BrainSyncSnapshot(
+        repository={"root": str(repo), "name": _resolve_repository_name(repo),
+                    "main_sha": main_sha, "remote": remote},
+        main_sha=main_sha, roadmap={}, selection_status="SELECTED", selected_task=selected,
+        unified_state=unified, lifecycle_state=unified["lifecycle_state"],
+        next_action=unified["next_action"], authority=unified["authority"],
+        blocker=None, correction_subject=lineage,
+    )
+
+
 def _canonical_repair_supersession(observed: Mapping[str, Any]) -> dict[str, Any]:
     """Read the one unexecuted authorization; never select a replacement strategy.
 
@@ -1511,10 +1634,15 @@ def _canonical_repair_supersession(observed: Mapping[str, Any]) -> dict[str, Any
     if main_sha != observed.get("main_sha"):
         raise AuthoringIngressError("supersession canonical main is stale")
     _prove_authoring_inputs(repo, main_sha, remote)
-    fresh = observe_brain_sync(repo=repo)
+    subject = observed.get("correction_subject")
+    fresh = (
+        _canonical_correction_snapshot("AUTHOR_REPAIR", {"failed_run_id": failed_run_id},
+                                       repo, (remote, refs))
+        if subject is not None else observe_brain_sync(repo=repo)
+    )
     if (fresh.main_sha != main_sha or fresh.next_action != "EXECUTE_REPAIR"
             or fresh.selected_task != selected or fresh.unified_state != unified
-            or fresh.blocker != observed.get("blocker")):
+            or fresh.blocker != observed.get("blocker") or fresh.correction_subject != subject):
         raise AuthoringIngressError("supersession canonical lifecycle observation is stale")
     current = resolve_remote_repair_authorization(repo, failed_run_id, remote=remote)
     if current.commit_sha != unified.get("correction_sha") or refs.get(current.ref) != current.commit_sha:
@@ -1562,7 +1690,6 @@ def _compose_authoring_packet(
     """Deterministic ingress glue over existing projection/compiler owners."""
     if envelope.operation not in _AUTHORING_FLOWS:
         raise AuthoringIngressError("audited authoring is only valid for correction operations")
-    from .brain_sync import observe_brain_sync
     from .brain_context import compose_brain_work_context, resolve_flow
     from .decision_packet import compile_decision_packet
     from .brain_audit import parse_profile_registry
@@ -1571,9 +1698,16 @@ def _compose_authoring_packet(
     remote, refs = _authoring_refs(repo)
     main_sha = refs["refs/heads/main"]
     _prove_authoring_inputs(repo, main_sha, remote)
-    snapshot = observe_brain_sync(repo=repo)
-    if snapshot.main_sha != main_sha:
-        raise AuthoringIngressError("Brain Sync canonical main moved during authoring")
+    snapshot = _canonical_correction_snapshot(envelope.operation, envelope.identity, repo, (remote, refs))
+    subject = snapshot.correction_subject
+    if envelope.operation == "AUTHOR_REPAIR":
+        expected_head = _get_expected_sha(envelope.expected_state, "expected_failed_head_sha", "failed_head_sha")
+        if expected_head != subject["failed_head_sha"]:
+            raise AuthoringIngressError("expected failed head SHA mismatch")
+    else:
+        expected_head = _get_expected_sha(envelope.expected_state, "expected_reviewed_sha", "reviewed_sha")
+        if expected_head != subject["reviewed_sha"]:
+            raise AuthoringIngressError("expected reviewed SHA mismatch")
     flow = _AUTHORING_FLOWS[envelope.operation]
     request = None
     unified = snapshot.unified_state
@@ -1609,11 +1743,7 @@ def _compose_authoring_packet(
             sha = refs.get(ref)
             if sha is None:
                 raise AuthoringIngressError("canonical finding REVIEW ref is missing")
-            _fetch_if_remote(repo, remote, sha)
-            paths = [p for p in _ls_tree(repo, sha, ".ai/reviews") if p.endswith((".yaml", ".yml"))]
-            if len(paths) != 1:
-                raise AuthoringIngressError("canonical finding REVIEW is ambiguous")
-            review = parse_review(_authoring_blob(repo, sha, paths[0], remote).decode("utf-8"))
+            review = _canonical_authoring_review(repo, sha, remote)
             if review.review_id != identity["review_id"] or review.reviewed_sha != identity["reviewed_sha"]:
                 raise AuthoringIngressError("canonical finding REVIEW lineage mismatch")
             finding = next((f for f in review.findings if f.id == identity["finding_id"]), None)

@@ -158,6 +158,10 @@ def _invalidation_basis(observed: Mapping[str, Any], request: Mapping[str, str] 
     }
     if "repair_supersession" in observed:
         basis["repair_supersession_sha256"] = _digest(observed["repair_supersession"])
+    if "correction_subject" in observed:
+        # Bind immutable artifact/ref identities even when a moved ref happens
+        # to project identical semantic facts. Roadmap is absent in this view.
+        basis["correction_subject_sha256"] = _digest(observed["correction_subject"])
     return basis
 
 

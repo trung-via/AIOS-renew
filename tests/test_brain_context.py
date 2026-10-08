@@ -159,6 +159,24 @@ def test_altered_context_fails_closed():
         resolve_flow(context)
 
 
+def test_exact_correction_artifact_identity_invalidates_work_context():
+    source = replace(snapshot("AUTHOR_REPAIR"), roadmap={}, correction_subject={
+        "policy": "EXACT_CORRECTION_SUBJECT_LINEAGE_V1", "operation": "AUTHOR_REPAIR",
+        "task": {"id": "TASK-177", "revision": 2}, "selectors": {"failed_run_id": "RUN-177-001"},
+        "artifacts_sha": "b" * 40, "failed_run_id": "RUN-177-001", "failed_head_sha": "c" * 40,
+    })
+    first = compose_brain_work_context(source)
+    moved = compose_brain_work_context(replace(source, correction_subject={
+        **source.correction_subject, "artifacts_sha": "d" * 40}))
+    assert first.canonical_observation["roadmap"] == {}
+    assert first.canonical_observation["selected_task"] == {"id": "TASK-177", "revision": 2}
+    assert first.invalidation_fingerprint != moved.invalidation_fingerprint
+    assert resolve_flow(first).selected_flow == "REPAIR_AUTHORING"
+    first.canonical_observation["correction_subject"]["artifacts_sha"] = "d" * 40
+    with pytest.raises(BrainContextError, match="stale or altered"):
+        resolve_flow(first)
+
+
 def test_checkout_root_and_remote_alias_are_not_semantic_identity():
     source = snapshot("AUTHOR_REPAIR")
     human_request = {"flow_selector": "DIAGNOSTIC", "human_input": "inspect"}

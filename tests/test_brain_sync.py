@@ -185,6 +185,27 @@ def test_brain_sync_unauthored_next(tmp_path: Path) -> None:
     assert snapshot.blocker["code"] == "UNAUTHORED_TASK"
 
 
+def test_bo_2_3_planning_next_does_not_discover_recent_canonical_tasks(tmp_path: Path) -> None:
+    from aios_renew.brain_context import compose_brain_work_context, resolve_flow
+
+    repo = make_repo(tmp_path)
+    for task_id in ("TASK-321", "TASK-322"):
+        (repo / f".ai/tasks/{task_id}.yaml").write_text(
+            TASK_SOURCE.replace("TASK-101", task_id), encoding="utf-8")
+    roadmap = {"version": 1, "active_track": "brain-optimization-v1", "active_track_status": "ACTIVE",
+               "sequence": [{"id": "bo-2-3-canonical-context-pipeline", "status": "NEXT"}]}
+    (repo / ".ai/roadmap-state.yaml").write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    git(repo, "add", ".ai")
+    git(repo, "commit", "-m", "canonical tasks with intentionally unauthored planning NEXT")
+    git(repo, "push", "origin", "main")
+    observed = observe_brain_sync(repo=repo)
+    assert observed.selection_status == "UNAUTHORED_TASK"
+    assert observed.selected_task is None and observed.unified_state is None
+    assert "correction_subject" not in observed.as_dict()
+    assert resolve_flow(compose_brain_work_context(observed)).selected_flow == "TASK_AUTHORING"
+    assert observed.next_action == "NONE"
+
+
 def test_brain_sync_roadmap_lineage_conflict_done_sha(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     main_sha = git(repo, "rev-parse", "refs/heads/main")
