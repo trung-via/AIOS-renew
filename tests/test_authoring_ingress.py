@@ -747,14 +747,16 @@ V2_TASK_105_R2_SOURCE = TASK_105_R2_SOURCE.replace(
 V1_TASK_105_SOURCE = V2_TASK_105_SOURCE.replace("minimum-sufficient-v2", "minimum-sufficient-v1")
 V1_TASK_105_R2_SOURCE = V2_TASK_105_R2_SOURCE.replace("minimum-sufficient-v2", "minimum-sufficient-v1")
 
-def setup_test_repo(root: Path, *, task_id: str = "TASK-105") -> tuple[Path, Path, str]:
+def setup_test_repo(
+    root: Path, *, task_id: str = "TASK-105", roadmap: dict | None = None,
+) -> tuple[Path, Path, str]:
     """Create local repo and bare upstream git repo."""
     return materialize_git_baseline(
         root,
         files={
             "README.md": "initial repo\n",
             ".gitattributes": ".ai/** -text\n",
-            ".ai/roadmap-state.yaml": yaml.safe_dump({
+            ".ai/roadmap-state.yaml": yaml.safe_dump(roadmap if roadmap is not None else {
                 "version": 1, "active_track": "ingress", "active_track_status": "ACTIVE",
                 "sequence": [{"id": task_id, "task_id": task_id, "status": "NEXT"}],
             }).encode("utf-8"),
@@ -828,17 +830,22 @@ def historical_repair_fixture(envelope: IngressEnvelope, *, repo: Path) -> Ingre
     return IngressResult(operation="AUTHOR_REPAIR", canonical_destination=ref, canonical_sha=commit)
 
 
-def completion_gate_supersession_fixture(tmp_path):
+def completion_gate_supersession_fixture(
+    tmp_path, *, roadmap=None, phase="COMPLETION_GATE", task_revision=2,
+):
     """RUN-254-001's r2 blocker shape, with isolated Git identities.
 
     The r2 candidate is clean/transportable and fails only at COMPLETION_GATE.
     It is transported as a failed candidate, never published on fixture main.
     """
-    repo, remote, _ = setup_test_repo(tmp_path, task_id="TASK-254")
-    task_source = TASK_105_R2_SOURCE.replace("TASK-105", "TASK-254")
+    repo, remote, _ = setup_test_repo(tmp_path, task_id="TASK-254", roadmap=roadmap)
+    task_source = (TASK_105_R2_SOURCE if task_revision == 2 else TASK_105_SOURCE).replace("TASK-105", "TASK-254")
     task_path = repo / ".ai/tasks/TASK-254.yaml"
     task_path.parent.mkdir(parents=True, exist_ok=True)
     task_path.write_text(task_source, encoding="utf-8")
+    if roadmap is not None:
+        (task_path.parent / "TASK-999.yaml").write_text(
+            TASK_105_SOURCE.replace("TASK-105", "TASK-999"), encoding="utf-8")
     sample = repo / "src/sample.py"
     sample.parent.mkdir(parents=True, exist_ok=True)
     sample.write_text("# base\n", encoding="utf-8")
@@ -854,18 +861,20 @@ def completion_gate_supersession_fixture(tmp_path):
     # Transport reads configured upstream authority on the candidate checkout.
     git(repo, "config", "branch.failed-candidate.remote", "origin")
     git(repo, "config", "branch.failed-candidate.merge", "refs/heads/main")
-    run = {"run_id": "RUN-254-001", "task": {"id": "TASK-254", "revision": 2},
+    run = {"run_id": "RUN-254-001", "task": {"id": "TASK-254", "revision": task_revision},
            "executor": "codex", "base_sha": base, "head_sha": head,
            "workspace": str(repo), "status": "ACTIVE"}
     failure = {"kind": "FAILURE", "run_id": run["run_id"], "task": run["task"],
                "executor": "codex", "base_sha": base, "failed_head_sha": head,
-               "phase": "COMPLETION_GATE",
+               "phase": phase,
                "error": {"type": "OperatorError", "message": "RESULT has unresolved items",
                          "executor_diagnostics": {"unresolved": [
                              "Superseding REPAIR cannot obtain an audited packet while Unified State projects EXECUTE_REPAIR."]}},
                "candidate": {"transportable": True, "repairable": True, "dirty": False,
                              "descends_from_base": True, "changed_files": ["src/sample.py"],
-                             "outside_task_scope": []}}
+                              "outside_task_scope": []}}
+    if phase == "VERIFICATION":
+        failure["error"] = {"type": "RuntimeVerificationError", "message": "bounded verification failure"}
     state = tmp_path / "failure-material"
     state.mkdir()
     run_path, failure_path = state / "run.json", state / "failure.json"
@@ -877,7 +886,8 @@ def completion_gate_supersession_fixture(tmp_path):
     failure_sha = git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/RUN-254-001")
     predecessor = {"repair_id": "REPAIR-254-001", "failed_run_id": run["run_id"],
                    "failed_head_sha": head, "task": run["task"],
-                   "action": "CONTINUE_IMPLEMENTATION", "modification_scope": ["src/sample.py"],
+                   "action": "CODE_FIX" if phase == "VERIFICATION" else "CONTINUE_IMPLEMENTATION",
+                   "modification_scope": ["src/sample.py"],
                    "instructions": ["Continue implementation."],
                    "constraints": ["Bounded mutation authority only."]}
     initial = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
@@ -1056,11 +1066,14 @@ def setup_candidate_lineage(
     candidate_content: str = "def sample(): return True\n",
     run_override: dict[str, object] | None = None,
     result_override: dict[str, object] | None = None,
+    roadmap: dict | None = None,
 ) -> dict[str, object]:
-    repo, remote, base_sha = setup_test_repo(root, task_id=task_id)
+    repo, remote, base_sha = setup_test_repo(root, task_id=task_id, roadmap=roadmap)
     task_dir = repo / ".ai" / "tasks"
     task_dir.mkdir(parents=True, exist_ok=True)
     (task_dir / f"{task_id}.yaml").write_bytes(task_source.encode("utf-8"))
+    if roadmap is not None:
+        (task_dir / "TASK-999.yaml").write_bytes(task_source.replace(task_id, "TASK-999").encode("utf-8"))
     workflow = repo / ".github" / "workflows" / "aios-auto-publish.yml"
     workflow.parent.mkdir(parents=True, exist_ok=True)
     workflow.write_text("name: AIOS auto publish\n", encoding="utf-8")
@@ -4427,3 +4440,323 @@ def test_direct_author_task_freezes_caller_owned_payload(tmp_path, monkeypatch):
     raw = git(repo, "show", f"{result.canonical_sha}:.ai/tasks/TASK-105.yaml")
     assert yaml.safe_load(raw) == yaml.safe_load(V2_TASK_105_SOURCE)
     assert git(remote, "rev-parse", "refs/heads/main") == result.canonical_sha
+
+
+def correction_planning_state(planning, task_id):
+    item = {"id": "bo-2-3-canonical-context-pipeline", "status": "NEXT"}
+    if planning == "unrelated":
+        item["task_id"] = "TASK-999"
+    elif planning == "matching":
+        item["task_id"] = task_id
+    roadmap = {"version": 1, "active_track": "brain-optimization-v1",
+               "active_track_status": "ACTIVE", "sequence": [item]}
+    if planning == "split_brain":
+        roadmap["next_items"] = ["unrelated-planning-next"]
+    return roadmap
+
+
+def exact_correction_fixture(
+    tmp_path, operation, planning, *, multiple_findings=False, repair_phase="VERIFICATION",
+):
+    if operation == "AUTHOR_REPAIR":
+        return completion_gate_supersession_fixture(
+            tmp_path, roadmap=correction_planning_state(planning, "TASK-254"),
+            phase=repair_phase, task_revision=1 if repair_phase == "VERIFICATION" else 2)
+    lineage = setup_candidate_lineage(
+        tmp_path, roadmap=correction_planning_state(planning, "TASK-105"))
+    repo, remote = lineage["repo"], lineage["remote"]
+    run_id, head = lineage["run_id"], lineage["candidate_sha"]
+    review = {"review_id": "REVIEW-105-001", "reviewed_sha": head,
+              "mode": "PRIMARY", "verdict": "CHANGES_REQUIRED", "acceptance": {"AC1": "FAIL"},
+              "findings": [{"id": "F1", "basis": "AC1", "action": "CODE_FIX",
+                            "location": "src/sample.py", "issue": "One bounded defect.",
+                            "expected": "Correct the defect."}]}
+    if multiple_findings:
+        review["findings"].append({**review["findings"][0], "id": "F2"})
+    decision = execute_ingress(IngressEnvelope(
+        "AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW", {"run_id": run_id},
+        {"expected_candidate_sha": head}, yaml.safe_dump(review)), repo=repo)
+    git(repo, "reset", "--hard", lineage["main_sha"])
+    payload = {"finding_id": "F1", "action": "CODE_FIX", "reviewed_sha": head,
+               "modification_scope": ["src/sample.py"], "affected_verification": ["git diff --check"],
+               "constraints": ["Bounded mutation authority only."]}
+    envelope = IngressEnvelope(
+        "AIOS_INGRESS_ENVELOPE", 1, operation, {"source_run_id": run_id, "finding_id": "F1"},
+        {"expected_reviewed_sha": head}, payload)
+    return repo, remote, lineage["main_sha"], decision.canonical_sha, envelope
+
+
+def forbid_correction_mutation(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("correction observation or rejection attempted Git mutation")
+    for name in ("_hash_blob", "_git_env", "_commit_tree", "_publish_ingress_ref"):
+        monkeypatch.setattr(authoring_ingress_module, name, forbidden)
+
+
+@pytest.mark.parametrize("operation", ["AUTHOR_REPAIR", "AUTHOR_REMEDIATION"])
+@pytest.mark.parametrize("planning", ["unauthored", "unrelated", "split_brain"])
+def test_exact_correction_packet_and_audited_ingress_ignore_planning_next(tmp_path, monkeypatch, operation, planning):
+    from aios_renew.brain_context import compose_brain_work_context, resolve_flow
+    from aios_renew.brain_sync import observe_brain_sync
+
+    repo, remote, main, lineage_sha, envelope = exact_correction_fixture(tmp_path, operation, planning)
+    task = envelope.payload.get("task", {"id": "TASK-105", "revision": 1})
+    generic = observe_brain_sync(repo=repo)
+    if planning == "unauthored":
+        assert generic.selection_status == "UNAUTHORED_TASK" and generic.selected_task is None
+        assert resolve_flow(compose_brain_work_context(generic)).selected_flow == "TASK_AUTHORING"
+    elif planning == "unrelated":
+        assert generic.selected_task == {"id": "TASK-999", "revision": 1}
+        assert generic.next_action == "EXECUTE_PRIMARY"
+    else:
+        assert generic.selection_status == "AMBIGUOUS_NEXT" and generic.selected_task is None
+    before_refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    before_head = git(repo, "rev-parse", "HEAD")
+    before_roadmap = (repo / ".ai/roadmap-state.yaml").read_bytes()
+    before_task = (repo / f".ai/tasks/{task['id']}.yaml").read_bytes()
+    with monkeypatch.context() as guard:
+        forbid_correction_mutation(guard)
+        packet, _, _, inputs = authoring_ingress_module._compose_authoring_packet(envelope, repo)
+        snapshot = authoring_ingress_module._canonical_correction_snapshot(operation, envelope.identity, repo, inputs)
+        work = compose_brain_work_context(snapshot)
+        assert work.canonical_observation["roadmap"] == {}
+        assert work.canonical_observation["selected_task"] == task
+        assert work.canonical_observation["unified_state"]["task"] == task
+        assert resolve_flow(work).selected_flow == operation.replace("AUTHOR_", "") + "_AUTHORING"
+        with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+            execute_ingress(envelope, repo=repo)
+    facts = packet.as_dict()["canonical_facts"]
+    assert facts["selected_task"] == task
+    assert facts["task_contract"]["task_id"] == task["id"]
+    assert facts["task_contract"]["revision"] == task["revision"]
+    assert facts["canonical_next_action"] == facts["unified_state_next_action"] == operation
+    assert facts["roadmap"] is None
+    subject = facts["correction_subject"]
+    assert subject["policy"] == "EXACT_CORRECTION_SUBJECT_LINEAGE_V1"
+    assert subject["selectors"] == envelope.identity and subject["task"] == task
+    if operation == "AUTHOR_REPAIR":
+        assert subject["artifacts_sha"] == lineage_sha
+        assert packet.as_dict()["subject"]["failed_run_id"] == envelope.identity["failed_run_id"]
+        assert packet.as_dict()["subject"]["failed_head_sha"] == envelope.payload["failed_head_sha"]
+    else:
+        assert subject["review_decision_sha"] == lineage_sha
+        assert packet.as_dict()["subject"]["source_run_id"] == envelope.identity["source_run_id"]
+        assert packet.as_dict()["subject"]["finding_id"] == envelope.identity["finding_id"]
+        assert packet.as_dict()["subject"]["reviewed_sha"] == envelope.payload["reviewed_sha"]
+    assert all(packet.as_dict()[key] is False for key in
+               ("run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+    result = execute_audited_ingress(envelope, repo=repo)
+    assert result.status == "CANONICALIZED"
+    parent = envelope.payload["failed_head_sha"] if operation == "AUTHOR_REPAIR" else lineage_sha
+    metadata = (".ai/transport/repair.json" if operation == "AUTHOR_REPAIR" else
+                f".ai/remediations/REMEDIATION-{envelope.identity['source_run_id']}-F1.yaml")
+    assert git(repo, "rev-parse", f"{result.canonical_sha}^") == parent
+    assert git(repo, "diff", "--name-only", parent, result.canonical_sha) == metadata
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+    assert git(repo, "rev-parse", "HEAD") == before_head
+    assert (repo / ".ai/roadmap-state.yaml").read_bytes() == before_roadmap
+    assert (repo / f".ai/tasks/{task['id']}.yaml").read_bytes() == before_task
+    assert observe_brain_sync(repo=repo).as_dict() == generic.as_dict()
+
+
+@pytest.mark.parametrize("planning", ["unauthored", "unrelated", "split_brain"])
+def test_exact_repair_supersession_keeps_audited_path_independent_of_next(tmp_path, planning):
+    repo, remote, main, failure_sha, initial = exact_correction_fixture(
+        tmp_path, "AUTHOR_REPAIR", planning, repair_phase="COMPLETION_GATE")
+    first = execute_audited_ingress(initial, repo=repo)
+    successor = replace(initial, expected_state={**initial.expected_state,
+        "expected_current_repair_sha": first.canonical_sha, "expected_failure_artifacts_sha": failure_sha},
+        payload={**initial.payload, "action": "FINALIZE_CANDIDATE", "modification_scope": [],
+                 "instructions": ["Finalize the exact existing candidate."]})
+    packet, _, _, _ = authoring_ingress_module._compose_authoring_packet(successor, repo)
+    body = packet.as_dict()
+    assert body["selection_basis"] == "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION"
+    assert body["canonical_facts"]["roadmap"] is None
+    assert body["canonical_facts"]["canonical_next_action"] == "EXECUTE_REPAIR"
+    assert body["subject"]["failure_artifacts_sha"] == failure_sha
+    second = execute_audited_ingress(successor, repo=repo)
+    current = resolve_remote_repair_authorization(repo, initial.identity["failed_run_id"])
+    assert current.commit_sha == second.canonical_sha and current.predecessor_sha == first.canonical_sha
+    assert current.revision == 2
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+
+
+def substitute_correction_blob(repo, remote, ref, path, content):
+    sha = git(remote, "rev-parse", ref)
+    tree = authoring_ingress_module._tree_with_metadata(repo, sha, path, content, replace_existing=True)
+    moved = authoring_ingress_module._commit_tree(repo, tree, [sha], "substituted correction fixture")
+    git(remote, "fetch", "--no-tags", str(repo), moved)
+    git(remote, "update-ref", ref, moved)
+
+
+def substitute_transport_document(repo, remote, ref, path, change):
+    sha = git(remote, "rev-parse", ref)
+    document = json.loads(authoring_ingress_module._authoring_blob(repo, sha, path, "origin"))
+    change(document)
+    substitute_correction_blob(repo, remote, ref, path, json.dumps(document).encode("utf-8"))
+
+
+@pytest.mark.parametrize("planning,fault", [
+    ("matching", fault) for fault in ("wrong_selector", "stale_selector", "run_task", "run_revision",
+        "failure_task", "failed_head", "run_head", "executor", "base", "non_repairable", "non_transportable",
+        "missing_candidate", "competing_lineage", "unified_task", "unified_head", "malformed")
+] + [(planning, "wrong_selector") for planning in ("unauthored", "unrelated", "split_brain")])
+def test_exact_repair_invalid_engineering_lineage_fails_closed(tmp_path, monkeypatch, planning, fault):
+    repo, remote, main, failure_sha, envelope = exact_correction_fixture(tmp_path, "AUTHOR_REPAIR", planning)
+    run_id = envelope.identity["failed_run_id"]
+    ref = f"refs/heads/aios/failure-artifacts/{run_id}"
+    if fault == "wrong_selector":
+        envelope = replace(envelope, identity={"failed_run_id": "RUN-254-099"})
+    elif fault == "stale_selector":
+        git(remote, "update-ref", "refs/heads/aios/failure-artifacts/RUN-254-000", failure_sha)
+        envelope = replace(envelope, identity={"failed_run_id": "RUN-254-000"})
+    elif fault == "missing_candidate":
+        git(remote, "update-ref", "-d", f"refs/heads/aios/failure/{run_id}")
+    elif fault == "malformed":
+        substitute_correction_blob(repo, remote, ref, ".ai/transport/failure.json", b'{"kind": "FAILURE",')
+    elif fault == "competing_lineage":
+        substitute_transport_document(repo, remote, ref, ".ai/transport/run.json",
+                                      lambda doc: doc.update(run_id="RUN-254-099"))
+        moved = git(remote, "rev-parse", ref)
+        git(remote, "update-ref", ref, failure_sha)
+        git(remote, "update-ref", "refs/heads/aios/failure-artifacts/RUN-254-099", moved)
+        git(remote, "update-ref", "refs/heads/aios/failure/RUN-254-099", envelope.payload["failed_head_sha"])
+    elif fault.startswith("unified_"):
+        real = observe_unified_state("TASK-254", repo=repo)
+        altered = replace(real, task_revision=99) if fault == "unified_task" else replace(real, failed_head_sha=main)
+        monkeypatch.setattr(authoring_ingress_module, "observe_unified_state", lambda *a, **k: altered)
+    else:
+        path = ".ai/transport/run.json" if fault.startswith("run_") else ".ai/transport/failure.json"
+        def change(doc):
+            if fault in {"run_task", "failure_task"}:
+                doc["task"]["id"] = "TASK-999"
+            elif fault == "run_revision":
+                doc["task"]["revision"] = 99
+            elif fault == "run_head":
+                doc["head_sha"] = main
+            elif fault == "failed_head":
+                doc["failed_head_sha"] = main
+            elif fault == "executor":
+                doc["executor"] = "antigravity"
+            elif fault == "base":
+                doc["base_sha"] = envelope.payload["failed_head_sha"]
+            elif fault == "non_repairable":
+                doc["candidate"].update(repairable=False, transportable=False, dirty=True)
+            else:
+                doc["candidate"].update(transportable=False, changed_files=["outside.py"],
+                                        outside_task_scope=["outside.py"])
+        substitute_transport_document(repo, remote, ref, path, change)
+    before_refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_correction_mutation(monkeypatch)
+    with pytest.raises((ValueError, ReviewTransportError)):
+        authoring_ingress_module._compose_authoring_packet(envelope, repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+    assert not git(remote, "for-each-ref", "--format=%(refname)", f"refs/heads/aios/repair/{run_id}")
+
+
+@pytest.mark.parametrize("operation", ["AUTHOR_REPAIR", "AUTHOR_REMEDIATION"])
+@pytest.mark.parametrize("planning", ["unauthored", "unrelated", "split_brain"])
+def test_moved_immutable_correction_identity_invalidates_prior_audit(tmp_path, monkeypatch, operation, planning):
+    repo, remote, _, lineage_sha, envelope = exact_correction_fixture(tmp_path, operation, planning)
+    prior, _, _, _ = authoring_ingress_module._compose_authoring_packet(envelope, repo)
+    audited = audited_envelope(envelope, repo)
+    run_id = envelope.identity.get("failed_run_id", envelope.identity.get("source_run_id"))
+    family = "failure-artifacts" if operation == "AUTHOR_REPAIR" else "review-decision"
+    ref = f"refs/heads/aios/{family}/{run_id}"
+    tree = git(repo, "rev-parse", f"{lineage_sha}^{{tree}}")
+    # The parent list may be empty (FAILURE transport uses a root commit).
+    # Preserve every parent without asking Git to resolve a nonexistent '^'.
+    parents = git(repo, "show", "-s", "--format=%P", lineage_sha).split()
+    moved = authoring_ingress_module._commit_tree(repo, tree, parents, "moved immutable correction identity")
+    assert moved != lineage_sha
+    assert git(repo, "rev-parse", f"{moved}^{{tree}}") == tree
+    assert git(repo, "show", "-s", "--format=%P", moved).split() == parents
+    assert git(repo, "diff", "--name-only", lineage_sha, moved) == ""
+    git(remote, "fetch", "--no-tags", str(repo), moved)
+    git(remote, "update-ref", ref, moved)
+    fresh, _, _, _ = authoring_ingress_module._compose_authoring_packet(envelope, repo)
+    assert fresh.as_dict()["subject"] == prior.as_dict()["subject"]
+    for field in ("selected_task", "task_contract", "unified_state_next_action"):
+        assert fresh.as_dict()["canonical_facts"][field] == prior.as_dict()["canonical_facts"][field]
+    assert fresh.packet_fingerprint != audited.audited_handoff["stage1"]["packet_fingerprint"]
+    before_refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_correction_mutation(monkeypatch)
+    with pytest.raises(AuthoringIngressError, match="Stage-1 packet, profile or construct lineage mismatch"):
+        execute_ingress(audited, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+
+
+@pytest.mark.parametrize("planning,fault", [
+    ("matching", fault) for fault in ("source", "stale_source", "finding", "reviewed_head", "run_task",
+        "run_revision", "run_head", "result_head", "missing_review", "resolved", "review_identity",
+        "finding_identity", "unified_task", "competing_lineage", "malformed_result", "malformed_review")
+] + [(planning, "source") for planning in ("unauthored", "unrelated", "split_brain")])
+def test_exact_remediation_invalid_lineage_fails_closed(tmp_path, monkeypatch, planning, fault):
+    repo, remote, main, decision_sha, envelope = exact_correction_fixture(
+        tmp_path, "AUTHOR_REMEDIATION", planning, multiple_findings=fault == "competing_lineage")
+    audited = audited_envelope(envelope, repo)
+    run_id = envelope.identity["source_run_id"]
+    ref = f"refs/heads/aios/artifacts/{run_id}"
+    if fault == "source":
+        envelope = replace(envelope, identity={**envelope.identity, "source_run_id": "RUN-105-099"})
+    elif fault == "stale_source":
+        git(remote, "update-ref", "refs/heads/aios/artifacts/RUN-105-099", git(remote, "rev-parse", ref))
+        envelope = replace(envelope, identity={**envelope.identity, "source_run_id": "RUN-105-099"})
+    elif fault == "finding":
+        envelope = replace(envelope, identity={**envelope.identity, "finding_id": "F999"})
+    elif fault == "reviewed_head":
+        envelope = replace(envelope, expected_state={"expected_reviewed_sha": main})
+    elif fault == "missing_review":
+        git(remote, "update-ref", "-d", f"refs/heads/aios/review-decision/{run_id}")
+    elif fault == "malformed_result":
+        substitute_correction_blob(repo, remote, ref, ".ai/transport/result.json", b'{"result":')
+    elif fault == "malformed_review":
+        substitute_correction_blob(repo, remote, f"refs/heads/aios/review-decision/{run_id}",
+                                   ".ai/reviews/REVIEW-105-001.yaml", b'review_id: [')
+    elif fault in {"resolved", "unified_task"}:
+        real = observe_unified_state("TASK-105", repo=repo)
+        altered = (replace(real, outstanding_findings=()) if fault == "resolved" else
+                   replace(real, task_id="TASK-999"))
+        monkeypatch.setattr(authoring_ingress_module, "observe_unified_state", lambda *a, **k: altered)
+    elif fault == "competing_lineage":
+        for finding_id in ("F1", "F2"):
+            path = f".ai/remediations/REMEDIATION-{run_id}-{finding_id}.yaml"
+            body = yaml.safe_dump({**envelope.payload, "finding_id": finding_id}).encode("utf-8")
+            tree = authoring_ingress_module._tree_with_metadata(repo, decision_sha, path, body)
+            commit = authoring_ingress_module._commit_tree(repo, tree, [decision_sha], "competing remediation fixture")
+            git(remote, "fetch", "--no-tags", str(repo), commit)
+            git(remote, "update-ref", f"refs/heads/aios/remediation/{run_id}-{finding_id}", commit)
+    elif fault in {"review_identity", "finding_identity"}:
+        review_ref = f"refs/heads/aios/review-decision/{run_id}"
+        sha = git(remote, "rev-parse", review_ref)
+        path = ".ai/reviews/REVIEW-105-001.yaml"
+        review = yaml.safe_load(authoring_ingress_module._authoring_blob(repo, sha, path, "origin"))
+        if fault == "review_identity":
+            review["review_id"] = "REVIEW-105-OTHER"
+        else:
+            review["findings"][0]["id"] = "F999"
+        substitute_correction_blob(repo, remote, review_ref, path, yaml.safe_dump(review).encode("utf-8"))
+    else:
+        path = ".ai/transport/result.json" if fault == "result_head" else ".ai/transport/run.json"
+        def change(doc):
+            if fault == "result_head":
+                doc["result"]["head_sha"] = main
+            elif fault == "run_task":
+                doc["task"]["id"] = "TASK-999"
+            elif fault == "run_head":
+                doc["head_sha"] = main
+            else:
+                doc["task"]["revision"] = 2
+        substitute_transport_document(repo, remote, ref, path, change)
+    before_refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_correction_mutation(monkeypatch)
+    if fault == "review_identity":
+        with pytest.raises(AuthoringIngressError):
+            execute_ingress(audited, repo=repo)
+    else:
+        with pytest.raises((ValueError, ReviewTransportError)):
+            authoring_ingress_module._compose_authoring_packet(envelope, repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+    if fault != "competing_lineage":
+        assert not git(remote, "for-each-ref", "--format=%(refname)", f"refs/heads/aios/remediation/{run_id}-F1")

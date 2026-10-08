@@ -158,6 +158,9 @@ def _invalidation_basis(observed: Mapping[str, Any], request: Mapping[str, str] 
     }
     if "repair_supersession" in observed:
         basis["repair_supersession_sha256"] = _digest(observed["repair_supersession"])
+    if "correction_subject" in observed:
+        # Immutable ref movement invalidates an audit even when facts are equal.
+        basis["correction_subject_sha256"] = _digest(observed["correction_subject"])
     return basis
 
 
