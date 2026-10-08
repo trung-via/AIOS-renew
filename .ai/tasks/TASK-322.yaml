@@ -1,41 +1,37 @@
 task_id: TASK-322
-revision: 2
+revision: 3
 goal: Eliminate the correction-authoring bootstrap defect by making AUTHOR_REPAIR
   and AUTHOR_REMEDIATION resolve their semantic subject from exact immutable correction
   lineage rather than from roadmap NEXT selection, while preserving generic Brain
   Sync planning semantics, Unified State authority, audited correction handoff, and
   all fail-closed correction lineage/CAS gates.
-problem: 'TASK-322 r1 established the intended EXACT_CORRECTION_SUBJECT_LINEAGE_V1
-  architecture, but RUN-322-001 failed Runtime verification because one newly added
-  immutable-identity regression fixture for AUTHOR_REPAIR assumed the canonical failure-artifact
-  commit had a parent and called git rev-parse <lineage_sha>^. The repairable failed
-  candidate 16f10b108e6d4583879696bd266789b139203bf7 therefore cannot be published,
-  while canonical main still contains the pre-fix correction-authoring implementation
-  that cannot author REPAIR for this same failure when roadmap NEXT is unauthored.
-  r2 is the Human-authorized bootstrap recovery: perform a fresh PRIMARY implementation
-  of the same root fix from canonical main, using RUN-322-001/candidate only as non-authoritative
-  implementation reference, and correct the fixture so immutable identity movement
-  is tested without assuming a parent commit.'
+problem: 'RUN-322-002 on TASK-322 r2 produced candidate 436cc597e34679291236033afa8b490631d47780
+  and Runtime verification proved a 57-node affected population with exactly one CANDIDATE_ONLY
+  failure: tests/test_brain_sync.py::test_bo_2_3_planning_next_does_not_discover_recent_canonical_tasks.
+  The failure is a fixture defect: tests/operator_test_support.make_repo() does not
+  materialize .ai/flow-cards.yaml, while the new regression calls resolve_flow().
+  Human requires evidence-preserving continuation: r3 must not re-implement or broadly
+  re-verify the already passing r2 work. The canonical RUN-322-002 failure artifact
+  and unchanged r2 bytes are prior evidence; r3 may change only the remaining defective
+  fixture behavior and must preserve all previously proven implementation/test bytes
+  exactly.'
 assumptions:
-- Canonical main at r2 authoring is f1ea3d89c7027756d3afacf18d2bc65f70b4c69f and contains
-  TASK-322 r1 contract but not the failed candidate implementation.
-- RUN-322-001 is immutable failed history for TASK-322 r1. Its failure artifact is
-  57c4ed3b175724521480811e9849a5a5e535f940 and failed candidate is 16f10b108e6d4583879696bd266789b139203bf7.
-- RUN-322-001 candidate is clean, descends from r1 base, stays within r1 scope, and
-  is repairable/transportable; it may be inspected as implementation evidence/reference
-  but must not act as Runtime, authoring authority, control source, or self-authorizing
-  correction path.
-- The r1 Runtime failure is confined to the new AUTHOR_REPAIR immutable-identity regression
-  fixture using git rev-parse <lineage_sha>^ on a fixture commit that may be parentless.
-  Production root-fix semantics were not canonically accepted because verification
-  did not PASS.
-- r2 must re-establish EXACT_CORRECTION_SUBJECT_LINEAGE_V1 from canonical main through
-  a fresh PRIMARY candidate and must not depend on publishing, rebasing, or mutating
-  RUN-322-001.
-- The current roadmap BO-2/3 planning NEXT remains intentionally unauthored and must
-  remain planning-only; generic Brain Sync behavior stays unchanged.
-- AUTHOR_REPAIR and AUTHOR_REMEDIATION continue to require the currently published
-  two-stage audited handoff; BO-7 remains outside scope.
+- Canonical main at r3 authoring is 75a945cc4118f741d60a8fec3a98ea4231610fb4 with
+  TASK-322 r2.
+- RUN-322-002 is immutable canonical FAILURE evidence with failure artifact 45d88efb8f67f4f1af816e461c432c378095fae8
+  and candidate 436cc597e34679291236033afa8b490631d47780.
+- 'Runtime attributed exactly one candidate-only failure in RUN-322-002: tests/test_brain_sync.py::test_bo_2_3_planning_next_does_not_discover_recent_canonical_tasks.'
+- The RUN-322-002 candidate changed exactly the eight TASK-322 scope files and was
+  clean, descendant-correct, repairable, transportable, with no outside-scope files.
+- All r2 affected tests other than the one attributed failing nodeid are prior canonical
+  evidence and must not be rerun merely because r3 exists.
+- Automatic v2 cross-candidate cache reuse is binding-sensitive and a TASK revision
+  changes repository identity; therefore r3 expresses prior evidence semantically
+  and narrows authored verification to only the unresolved nodeid plus git diff --check.
+- The r2 production implementation and passing regression bytes remain the intended
+  implementation baseline. The r3 Executor may inspect/copy those exact bytes as implementation
+  evidence but they do not become control-plane authority.
+- Sticky Executor remains Codex GPT-6.1 Sol xhigh.
 scope:
   inspect:
   - docs/AIOS-CONSTITUTION.md
@@ -64,94 +60,85 @@ scope:
   - tests/test_brain_context.py
   - tests/test_decision_packet.py
 non_goals:
-- Mutate, rewrite, publish, rebase, or otherwise convert RUN-322-001 into a successful
-  RUN.
-- Use failed candidate 16f10b108e6d4583879696bd266789b139203bf7 as a control plane,
-  Runtime source, authoring implementation, or self-authorizing correction path.
-- Edit roadmap to bind TASK-322 as a workaround or alter generic planning NEXT semantics.
-- Implement BO-2/3 CANONICAL_CONTEXT_PIPELINE_V1 or BO-4/5/6/7/8/9/9A/9B/10, TASK-310,
-  or H4.
-- Remove or weaken audited_handoff, Stage-1/Stage-2 semantic audit, Decision Packet
-  freshness, correction scope/CAS validation, Unified State lifecycle ownership, Reviewer,
-  Publisher, or Runtime authority.
-- Add heuristic TASK discovery, task scans as authority, Planner/router/memory store/vector
-  retrieval/reasoning store.
-- Broaden AUTHOR_TASK mutation beyond the TASK document.
+- Freshly redesign, re-implement, refactor, optimize, or otherwise alter the r2 production
+  solution.
+- Change any r2 production file bytes relative to candidate 436cc597e34679291236033afa8b490631d47780.
+- Change tests/test_authoring_ingress.py, tests/test_brain_context.py, or tests/test_decision_packet.py
+  bytes relative to candidate 436cc597e34679291236033afa8b490631d47780.
+- Rerun the 56 RUN-322-002 affected nodeids that already passed unless Runtime can
+  prove a relevant byte/dependency invalidation caused by the sole r3 fixture delta.
+- Run the original four-file pytest command as ceremony or restart TASK-322 implementation
+  from canonical r3 main.
+- Mutate/rewrite RUN-322-001 or RUN-322-002 history, use either failed candidate as
+  Runtime/control authority, or publish them directly.
+- Edit roadmap or generic Brain Sync planning semantics.
+- Implement BO-2/3 or later BO/H4/TASK-310 work, BO-7 direct-final correction ingress,
+  new authority/store/router/planner.
 constraints:
   hard:
-  - 'Re-implement and enforce EXACT_CORRECTION_SUBJECT_LINEAGE_V1 from canonical r2
-    main: AUTHOR_REPAIR/AUTHOR_REMEDIATION subject identity comes from exact immutable
-    correction lineage, never roadmap NEXT.'
-  - RUN-322-001 and failed candidate 16f10b108e6d4583879696bd266789b139203bf7 are
-    evidence/reference only; all production code in r2 must be produced by the admitted
-    r2 Executor from canonical r2 base.
-  - For AUTHOR_REPAIR, failed_run_id only selects canonical failure lineage; reconstruct
-    and cross-check TASK id/revision, RUN, failed head, executor/base, repairability/transportability,
-    canonical TASK document and Unified State.
-  - For AUTHOR_REMEDIATION, source_run_id + finding_id only select canonical RESULT/REVIEW/finding
-    lineage; reconstruct and cross-check TASK id/revision, reviewed SHA, finding identity,
-    outstanding status and Unified State.
-  - Roadmap may remain unauthored, unrelated, or planning-ambiguous without retargeting
-    an otherwise exact correction subject; invalid engineering lineage still fails
-    closed.
-  - 'Generic observe_brain_sync remains unchanged for ordinary planning continuation:
-    unique unauthored BO-2/3 NEXT remains UNAUTHORED_TASK/TASK_AUTHORING.'
-  - Preserve the current audited correction path; do not implement BO-7 direct-final
-    correction ingress early.
-  - Fix the immutable-identity regression fixture so it creates a distinct commit
-    identity with the same semantic tree without assuming lineage_sha has a parent.
-    The test must remain capable of proving packet/audit invalidation when immutable
-    canonical identity moves.
-  - Regression must cover AUTHOR_REPAIR and AUTHOR_REMEDIATION across unauthored,
-    unrelated and split-brain planning shapes, plus stale/malformed/moved correction
-    lineage failures.
-  - Packet composition/subject reconstruction stay observation-only until ordinary
-    ingress mutation authority; no hidden mutation, RUN creation, Executor invocation,
-    verification or roadmap mutation.
-  - AUTHOR_TASK continues to mutate only .ai/tasks/TASK-322.yaml.
-  - Executor may modify only scope.modify; fail closed if another production file
-    is required.
+  - 'PRIOR_VALID_EVIDENCE_REUSE_REQUIRED: canonical RUN-322-002 verification is prior
+    evidence. Preserve every already-passing r2 implementation/test byte unless the
+    sole unresolved failure deterministically requires otherwise.'
+  - The r3 candidate must replay exact blob content from r2 candidate 436cc597e34679291236033afa8b490631d47780
+    for src/aios_renew/authoring_ingress.py, src/aios_renew/brain_sync.py, src/aios_renew/brain_context.py,
+    src/aios_renew/decision_packet.py, tests/test_authoring_ingress.py, tests/test_brain_context.py,
+    and tests/test_decision_packet.py.
+  - Relative to r2 candidate 436cc597e34679291236033afa8b490631d47780, the only permitted
+    semantic/code delta is in tests/test_brain_sync.py and only to supply the canonical
+    flow-card registry needed by test_bo_2_3_planning_next_does_not_discover_recent_canonical_tasks
+    (or an equivalently bounded fixture-local correction).
+  - 'Do not modify production behavior to make the failing test pass. The failure
+    is fixture setup: resolve_flow requires .ai/flow-cards.yaml and make_repo does
+    not provide it.'
+  - 'The fixed regression must still prove: canonical TASK-321/TASK-322 documents
+    do not cause unauthored BO-2/3 planning NEXT to discover/associate a TASK; observe_brain_sync
+    remains UNAUTHORED_TASK; resolve_flow yields TASK_AUTHORING.'
+  - The r3 candidate must remain a fresh descendant of canonical r3 task base, but
+    Executor implementation work is continuation/replay of r2 evidence, not fresh
+    reimplementation.
+  - Runtime must treat RUN-322-002 failure artifact 45d88efb8f67f4f1af816e461c432c378095fae8
+    and subject 436cc597e34679291236033afa8b490631d47780 as the prior evidence basis
+    for scope/evidence comparison.
+  - Previously passing nodeids are not authored r3 verification requirements. They
+    may be rerun only if Runtime deterministically proves relevant invalidation from
+    changed bytes/dependencies; if such invalidation cannot be proven, do not rerun
+    them.
+  - No full-suite or original broad four-file pytest command is authorized for r3
+    merely for ceremony.
+  - Keep minimum-sufficient-v2. Do not weaken fail-closed correction lineage, audited
+    handoff, CAS, Unified State, Reviewer, Publisher, or Runtime authority.
+  - No files outside scope.modify may change; among scope.modify, seven files are
+    byte-frozen to r2 candidate and tests/test_brain_sync.py is the only permitted
+    delta.
 acceptance:
 - id: AC1
-  condition: Fresh r2 candidate implements AUTHOR_REPAIR exact subject reconstruction
-    from canonical FAILURE/RUN/TASK/Unified State independently of roadmap NEXT and
-    passes unauthored, unrelated and split-brain planning regressions.
+  condition: Seven byte-frozen files exactly match their blobs from r2 candidate 436cc597e34679291236033afa8b490631d47780;
+    no fresh production implementation occurs.
 - id: AC2
-  condition: Fresh r2 candidate implements AUTHOR_REMEDIATION exact subject reconstruction
-    from canonical RESULT/REVIEW/finding/TASK/Unified State independently of roadmap
-    NEXT and passes corresponding planning regressions.
+  condition: The only r3 semantic delta versus the r2 candidate is the bounded tests/test_brain_sync.py
+    fixture correction needed to materialize the canonical flow-card registry for
+    the previously failing regression.
 - id: AC3
-  condition: Generic Brain Sync still reports the current unauthored BO-2/3 planning
-    NEXT as UNAUTHORED_TASK/TASK_AUTHORING; no automatic association with TASK-321
-    or TASK-322 occurs.
+  condition: tests/test_brain_sync.py::test_bo_2_3_planning_next_does_not_discover_recent_canonical_tasks
+    passes and still proves UNAUTHORED_TASK plus TASK_AUTHORING without automatic
+    TASK discovery.
 - id: AC4
-  condition: Wrong/stale/moved/malformed correction refs, TASK/revision/head/executor/base
-    mismatches, non-repairable failure, resolved/competing findings and Unified State
-    mismatch fail closed before mutation.
+  condition: RUN-322-002 canonical evidence remains the proof basis for the previously
+    passing affected population; those tests are not rerun absent deterministic relevant
+    invalidation.
 - id: AC5
-  condition: Correction Decision Packets bind exact selected_task, correction_subject
-    immutable identities and Unified State next_action while roadmap remains absent/non-authoritative
-    for correction packets.
+  condition: EXACT_CORRECTION_SUBJECT_LINEAGE_V1 production semantics and all passing
+    correction-lineage regressions are unchanged from r2 candidate.
 - id: AC6
-  condition: Audited_handoff, Stage-1/Stage-2 audit, packet freshness/CAS and family
-    validation remain mandatory; BO-7 direct-final ingress is not introduced.
+  condition: git diff --check passes; candidate is clean, within scope, and descends
+    from canonical r3 base.
 - id: AC7
-  condition: The moved-immutable-identity regression no longer assumes the correction
-    artifact commit has a parent, and proves that a semantically identical but identity-distinct
-    canonical correction ref invalidates the prior audit for both REPAIR and REMEDIATION.
-- id: AC8
-  condition: RUN-322-001 remains immutable failed history and its candidate is not
-    used as control authority or published as r2; r2 is a fresh PRIMARY descendant
-    of canonical r2 task base.
-- id: AC9
-  condition: All mutations remain within scope.modify, AUTHOR_TASK mutation semantics
-    remain unchanged, and no new Planner/router/heuristic task discovery/store/authority
-    is added.
+  condition: No roadmap mutation, BO-7 implementation, authority broadening, planner/router/store,
+    or lifecycle bypass is introduced.
 verification:
   policy: minimum-sufficient-v2
   required:
-  - python -m pytest -q tests/test_authoring_ingress.py tests/test_brain_context.py
-    tests/test_decision_packet.py tests/test_brain_sync.py
+  - python -m pytest -q tests/test_brain_sync.py::test_bo_2_3_planning_next_does_not_discover_recent_canonical_tasks
   - git diff --check
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
