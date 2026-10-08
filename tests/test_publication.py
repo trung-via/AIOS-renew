@@ -2063,7 +2063,10 @@ def advance_divergent_main(lineage, *, rename=False):
 def add_sibling_pass(lineage, run_id="RUN-063-002"):
     """A canonical Runtime-success transport and PASS on a sibling source."""
     repo = lineage["repo"]
-    git(repo, "checkout", "--quiet", "--detach", lineage["base_sha"])
+    branch = f"fixture/{run_id}"
+    git(repo, "checkout", "--quiet", "-b", branch, lineage["base_sha"])
+    git(repo, "config", f"branch.{branch}.remote", "origin")
+    git(repo, "config", f"branch.{branch}.merge", "refs/heads/main")
     (repo / "product.txt").write_text("later candidate\n", encoding="utf-8")
     candidate = commit_fixture_state(
         repo, paths=("product.txt",), message="later reviewed source",
@@ -2248,13 +2251,15 @@ def test_review_321_003_never_authorizes_reset_or_a_different_sha(tmp_path, monk
     decision, artifact, base, tree = "a" * 40, "b" * 40, "c" * 40, "d" * 40
     refs = {"refs/heads/main": main, "refs/heads/aios/review/RUN-321-003": reviewed,
             "refs/heads/aios/artifacts/RUN-321-003": artifact,
-            "refs/heads/aios/review-decision/RUN-321-003": decision}
+            "refs/heads/aios/review-decision/RUN-321-003": decision,
+            publication_module.PUBLICATION_RESERVATION_REF: None}
     review = f"review_id: REVIEW-321-003\nreviewed_sha: {reviewed}\nverdict: PASS\n"
     commands = []
     def bounded_git(repo, *args, **kwargs):
         commands.append(args)
         if args[0] == "ls-remote":
-            return 0, refs[args[-1]] + "\t" + args[-1], ""
+            sha = refs[args[-1]]
+            return 0, "" if sha is None else sha + "\t" + args[-1], ""
         if args[0] == "fetch":
             return 0, "", ""
         if args[0] == "cat-file":
@@ -3920,6 +3925,10 @@ def test_durable_pass_reserves_through_publisher_and_blocks_task_main_writer(tmp
     import aios_renew.authoring_ingress as ingress
     lineage = make_lineage(tmp_path)
     _remove_fixture_decision(lineage)
+    # The competing writer starts from canonical main, independently of the
+    # review checkout's candidate and decision commits.
+    writer_checkout = tmp_path / "task-main-writer"
+    git(tmp_path, "clone", "--quiet", "--branch", "main", str(lineage["remote"]), str(writer_checkout))
     before_decision, continue_decision = Event(), Event()
     real_write = ingress._publish_ingress_ref
 
@@ -3945,7 +3954,8 @@ def test_durable_pass_reserves_through_publisher_and_blocks_task_main_writer(tmp
             assert before_decision.wait(20)
             token = git(lineage["remote"], "rev-parse", publication_module.PUBLICATION_RESERVATION_REF)
             with pytest.raises(ingress.AuthoringIngressError, match="RESERVATION_CONTENDED"):
-                ingress.execute_ingress(authoring, repo=lineage["repo"])
+                ingress.execute_ingress(authoring, repo=writer_checkout)
+            assert git(lineage["remote"], "rev-parse", publication_module.PUBLICATION_RESERVATION_REF) == token
             assert remote_main(lineage) == lineage["base_sha"]
         finally:
             continue_decision.set()
@@ -4023,7 +4033,9 @@ def test_reserved_exact_source_replay_releases_only_its_completed_owner(tmp_path
             repo, paths=("later.txt",), message="later history containing exact source",
             user_name="AIOS Publication Test", user_email="publication@example.invalid",
         )
-    git(lineage["remote"], "update-ref", "refs/heads/main", main_sha, lineage["base_sha"])
+    # Transfer the descendant's objects with an ordinary fast-forward; a bare
+    # update-ref cannot install a commit that only exists in the source checkout.
+    git(lineage["repo"], "push", "--quiet", "origin", f"{main_sha}:refs/heads/main")
     report = publish(lineage)
     assert report.outcome == ("ALREADY_INCLUDED" if included else "ALREADY_PUBLISHED")
     assert report.reviewed_sha == reservation.identity["source_sha"]
