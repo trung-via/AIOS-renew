@@ -550,6 +550,8 @@ def compile_decision_packet(
         "run_created": False, "executor_invoked": False,
         "verification_invoked": False, "state_mutated": False,
     }
+    if "correction_subject" in observed:
+        body["canonical_facts"]["correction_subject"] = observed["correction_subject"]
     _bound_projection(body)
     body["packet_fingerprint"] = _digest(body)
     if len(_json(body).encode("utf-8")) > _MAX_PACKET:

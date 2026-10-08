@@ -87,7 +87,7 @@ def identity(item_value):
             "reviewed_sha": item_value["reviewed_sha"]}
 
 
-def context(action, unified, *, selector=None, blocker=None, root=ROOT):
+def context(action, unified, *, selector=None, blocker=None, root=ROOT, correction_subject=None):
     snapshot = BrainSyncSnapshot(
         repository={"root": str(root), "name": "AIOS-renew", "main_sha": A,
                     "remote": "private-origin", "remote_url": "https://secret.invalid/repo"},
@@ -95,6 +95,7 @@ def context(action, unified, *, selector=None, blocker=None, root=ROOT):
         lifecycle_state="CORRECTION", next_action=action, authority="BRAIN",
         selected_task={"id": "TASK-002", "revision": 1}, unified_state=unified,
         blocker=blocker,
+        correction_subject=correction_subject,
     )
     request = {"flow_selector": selector, "human_input": "Human priority"} if selector else None
     work = compose_brain_work_context(snapshot, request)
@@ -261,6 +262,25 @@ def test_side_flow_preserves_pending_obligation_and_blocks_nested_packet():
         compile_decision_packet(work, flow, {"kind": "DIAGNOSTIC", "packet": packet.as_dict()})
     with pytest.raises(DecisionPacketError):
         compile_decision_packet(work, flow, {"kind": "ARCHITECTURE"})
+
+
+def test_exact_correction_packet_projects_lineage_and_binds_immutable_identity():
+    lineage = {"policy": "EXACT_CORRECTION_SUBJECT_LINEAGE_V1", "operation": "AUTHOR_REPAIR",
+               "task": {"id": "TASK-002", "revision": 1}, "selectors": {"failed_run_id": "RUN-002-001"},
+               "artifacts_sha": C, "failed_run_id": "RUN-002-001", "failed_head_sha": A}
+    unified = {"next_action": "AUTHOR_REPAIR", "failed_run_id": "RUN-002-001", "failed_head_sha": A}
+    work, flow = context("AUTHOR_REPAIR", unified, correction_subject=lineage)
+    material = {"kind": "REPAIR_AUTHORING", "task": task(),
+                "failed_run": run("RUN-002-001", A, B), "failure": runtime_failure()}
+    packet = compile_decision_packet(work, flow, material)
+    facts = packet.as_dict()["canonical_facts"]
+    assert facts["correction_subject"] == lineage
+    assert facts["selected_task"] == lineage["task"] and facts["task_contract"]["revision"] == 1
+    assert facts["roadmap"] is None
+    assert facts["canonical_next_action"] == facts["unified_state_next_action"] == "AUTHOR_REPAIR"
+    moved, moved_flow = context("AUTHOR_REPAIR", unified,
+                                correction_subject={**lineage, "artifacts_sha": D})
+    assert compile_decision_packet(moved, moved_flow, material).packet_fingerprint != packet.packet_fingerprint
 
 
 def test_repair_authoring_and_exact_repair_provenance():

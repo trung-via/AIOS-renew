@@ -61,9 +61,11 @@ class BrainSyncSnapshot:
     format: str = "AIOS_BRAIN_SYNC_SNAPSHOT"
     version: int = 1
     kind: str = "BRAIN_SYNC_SNAPSHOT"
+    # Exact correction observations supply this; ordinary planning never does.
+    correction_subject: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        body = {
             "format": self.format,
             "version": self.version,
             "kind": self.kind,
@@ -82,6 +84,9 @@ class BrainSyncSnapshot:
             "verification_invoked": self.verification_invoked,
             "state_mutated": self.state_mutated,
         }
+        if self.correction_subject is not None:
+            body["correction_subject"] = dict(self.correction_subject)
+        return body
 
     def render(self) -> str:
         return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
