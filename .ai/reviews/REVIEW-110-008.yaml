@@ -1,0 +1,63 @@
+review_id: REVIEW-110-008
+reviewed_sha: 08a5021236938b99d994d41e3d4f3907ec237230
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings: []
+notes:
+- 'Exact subject: TASK-110 revision 4, successful CODE_FIX REPAIR RESULT RUN-110-008;
+  canonical reviewed source is 08a5021236938b99d994d41e3d4f3907ec237230, one commit
+  after failed candidate 6fa66e27424de6856c54d5e7dbefaf065aad7e89. The authorization
+  is REPAIR-110-007-001 bound to RUN-110-007. No new TASK, new policy or restart from
+  TASK root is authorized by this review.'
+- 'Runtime verification evidence on the exact candidate: RUN-110-008-V001 executed
+  python -m pytest -q tests/test_publication.py tests/test_brain_attention.py tests/test_review_transport.py
+  tests/test_authoring_ingress.py and returned 728 passed in 4438.97s; RUN-110-008-V002
+  git diff --check passed. RESULT has claims covering AC1-AC9 and unresolved=[]. This
+  Reviewer does not replace or repeat canonical Runtime verification.'
+- "Semantic audit pass 1 \u2014 exact repair delta: only tests/test_publication.py\
+  \ changes (+34/-18) relative to RUN-110-007 failed head. Cumulative TASK-110 result.changed_files\
+  \ lists six authorized source/test/workflow paths; the larger list reflects original\
+  \ TASK root history, not six newly altered files in this REPAIR."
+- "Semantic audit pass 1 \u2014 AC2 and AC4: both repaired concurrency tests inject\
+  \ the race only when the intercepted push explicitly targets refs/heads/main, not\
+  \ earlier reservation or metadata pushes. Each verifies exactly one attempted main\
+  \ push from the reviewed candidate SHA, the original --force-with-lease expected\
+  \ main SHA, and the returned report.reviewed_sha. Race occurrence, MAIN_CAS_FAILED\
+  \ classification and preservation of the independently advanced remote main remain\
+  \ hard assertions."
+- "Semantic audit pass 1 \u2014 AC1, AC3, AC5: cumulative r2/r3/r4 production implementation\
+  \ is preserved across candidate ancestry. The bounded identity/CAS reservation,\
+  \ exact reviewer source, already-contained/replay paths and conflict requiring fresh\
+  \ exact review remain covered by the successful authored publication and adjacent\
+  \ regression tests. The repaired fixture does not adjust production policy or change\
+  \ source semantics."
+- "Semantic audit pass 2 \u2014 counterexample: a hook matching any Git push races\
+  \ during reservation, observes 'canonical main moved during publication', and can\
+  \ fail before reaching the intended main CAS. The new hook only triggers at push\
+  \ targeting refs/heads/main; extra assertions reject false-green on early push,\
+  \ missing CAS lease, wrong reviewed SHA, unexpected repeat push, absent race, wrong\
+  \ failure cause or overwritten remote main."
+- "Semantic audit pass 2 \u2014 AC6/AC7/AC8/AC9: the repair does not alter authority\
+  \ boundaries, typed terminal attention, reservation writer scope, TASK-321 regression\
+  \ identities, reviewer/publisher responsibilities or canonical main mutation. In-scope\
+  \ fixture changes keep original tests and concurrency guards; full candidate changes\
+  \ are limited to the eight TASK-110-r4-authorized modify paths."
+- 'Lineage and currentness: candidate 08a5021236938b99d994d41e3d4f3907ec237230 descends
+  from r4 TASK commit 8b37db19ba0d9b5435584fbe48fea72fb1ad23be via 4de7e430 and 6fa66e27;
+  canonical main 4beca5e821e989cb20958176feffe12c7b23e76e contains a separate TASK-323
+  author-and-revert history. This review does not assert a fast-forward from candidate
+  to current main; Publisher must independently enforce exact source, merge/currentness
+  and CAS, including any fail-closed integration.'
+- 'Reviewer semantic verdict: PASS for AC1-AC9 on the exact candidate and canonical
+  Runtime evidence, with no semantic findings. This verdict is not publication success,
+  and no roadmap, Executor or Runtime verification authority is acquired.'
