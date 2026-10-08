@@ -43,6 +43,8 @@ jobs:
       issues: write
       actions: write
     uses: ./.github/workflows/aios-brain-ingress.yml
+    secrets:
+      AIOS_ORIGIN_ADMISSION_KEY: ${{ secrets.AIOS_ORIGIN_ADMISSION_KEY }}
 
   wakeup:
     needs: route

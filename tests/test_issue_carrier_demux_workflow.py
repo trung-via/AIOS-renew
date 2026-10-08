@@ -14,6 +14,13 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 ENTRY = WORKFLOWS / "aios-issue-carrier.yml"
+INGRESS_WORKFLOW = "aios-brain-ingress.yml"
+INGRESS_SECRETS = {
+    "AIOS_ORIGIN_ADMISSION_KEY": "${{ secrets.AIOS_ORIGIN_ADMISSION_KEY }}",
+}
+INGRESS_WORKFLOW_CALL = {
+    "secrets": {"AIOS_ORIGIN_ADMISSION_KEY": {"required": "true"}},
+}
 ROUTES = {
     "[AIOS BRAIN INGRESS]": "aios-brain-ingress.yml",
     "[AIOS BRAIN WAKEUP]": "aios-brain-wakeup.yml",
@@ -41,6 +48,19 @@ ADMISSION_JOBS = {
 def _workflow(path: Path) -> tuple[dict, str]:
     text = path.read_text(encoding="utf-8")
     return yaml.load(text, Loader=yaml.BaseLoader), text
+
+
+def _assert_reusable_trigger(workflow: dict, name: str) -> None:
+    interface = INGRESS_WORKFLOW_CALL if name == INGRESS_WORKFLOW else ""
+    assert workflow["on"] == {"workflow_call": interface}
+
+
+def _assert_native_call_interface(job: dict, name: str) -> None:
+    expected_keys = {"needs", "if", "permissions", "uses"}
+    if name == INGRESS_WORKFLOW:
+        expected_keys.add("secrets")
+        assert job.get("secrets") == INGRESS_SECRETS
+    assert set(job) == expected_keys
 
 
 def _bash() -> str:
@@ -115,7 +135,7 @@ def test_family_has_one_opened_subscription_and_four_reusable_only_carriers() ->
             assert workflow["on"] == {"issues": {"types": ["opened"]}}
         else:
             # No manual, comment, schedule, polling or workflow_run entry path.
-            assert workflow["on"] == {"workflow_call": ""}
+            _assert_reusable_trigger(workflow, path.name)
     assert subscriptions == [ENTRY.name]
 
 
@@ -130,13 +150,33 @@ def test_entry_has_only_four_fixed_native_calls_with_route_scoped_permissions() 
         f"./.github/workflows/{name}" for name in ROUTES.values()
     }
     for job in calls:
-        # No serialized replacement event, semantic inputs, secrets or caller concurrency.
-        assert set(job) == {"needs", "if", "permissions", "uses"}
-        assert job["needs"] == "route"
+        # Only ingress receives its named deployment key; no replacement event,
+        # semantic inputs, inherited secrets or caller concurrency are admitted.
         name = Path(job["uses"]).name
+        _assert_native_call_interface(job, name)
+        assert job["needs"] == "route"
         assert job["if"] == f"needs.route.outputs.carrier == '{name}'"
         carrier, _ = _workflow(WORKFLOWS / name)
         assert job["permissions"] == carrier["permissions"] == PERMISSIONS[name]
+
+
+@pytest.mark.parametrize("secrets", [
+    None,
+    "inherit",
+    {"AIOS_ORIGIN_ADMISSION_KEY_RENAMED": INGRESS_SECRETS["AIOS_ORIGIN_ADMISSION_KEY"]},
+    {"AIOS_ORIGIN_ADMISSION_KEY": "${{ secrets.AIOS_ORIGIN_ADMISSION_KEY_RENAMED }}"},
+    {**INGRESS_SECRETS, "UNRELATED": "${{ secrets.UNRELATED }}"},
+])
+def test_ingress_call_rejects_missing_renamed_or_broadened_secret_interface(
+    secrets: object,
+) -> None:
+    workflow, _ = _workflow(ENTRY)
+    job = workflow["jobs"]["ingress"]
+    job.pop("secrets", None)
+    if secrets is not None:
+        job["secrets"] = secrets
+    with pytest.raises(AssertionError):
+        _assert_native_call_interface(job, INGRESS_WORKFLOW)
 
 
 def test_selector_reads_only_title_and_has_four_literal_equality_routes() -> None:
@@ -160,6 +200,14 @@ def test_selector_reads_only_title_and_has_four_literal_equality_routes() -> Non
     assert "${{" not in step["run"]
     assert step["run"].startswith("carrier=''\n")
     assert step["run"].endswith('printf \'carrier=%s\\n\' "$carrier" >> "$GITHUB_OUTPUT"\n')
+    # Exempt only the exact ingress secret forwarding block from the existing
+    # whole-entry prohibition; the selector and other three calls stay secret-free.
+    secret_block = (
+        "    secrets:\n"
+        "      AIOS_ORIGIN_ADMISSION_KEY: ${{ secrets.AIOS_ORIGIN_ADMISSION_KEY }}\n"
+    )
+    assert text.count(secret_block) == 1
+    boundary_text = text.replace(secret_block, "", 1)
     for forbidden in (
         "github.event.issue.body", "GITHUB_EVENT_PATH", "next_action", "NEXT",
         "correction_strategy", "provider", "model", "executor", "runtime",
@@ -167,7 +215,7 @@ def test_selector_reads_only_title_and_has_four_literal_equality_routes() -> Non
         "python", "checkout", "createWorkflowDispatch", "createComment",
         "workflow_run", "schedule", "secrets", "inputs.", "curl", "wget",
     ):
-        assert forbidden not in text
+        assert forbidden not in boundary_text
 
 
 @pytest.mark.parametrize(("title", "name"), list(ROUTES.items()))
@@ -205,9 +253,12 @@ def test_native_reuse_preserves_original_issue_event_admission_and_receipt_contr
     # GitHub binds reusable workflows to the caller's github context:
     # https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#github-context
     carrier, text = _workflow(WORKFLOWS / name)
-    assert carrier["on"] == {"workflow_call": ""}
+    _assert_reusable_trigger(carrier, name)
     admission_job = carrier["jobs"][ADMISSION_JOBS[name]]
-    assert admission_job["if"] == f"github.event.issue.title == '{title}'"
+    title_gate = f"github.event.issue.title == '{title}'"
+    assert admission_job["if"] == (
+        f"always() && {title_gate}" if name == INGRESS_WORKFLOW else title_gate
+    )
     admission_steps = [
         step for step in admission_job["steps"]
         if "aios_renew.github_issue_" in step.get("run", "")
@@ -227,7 +278,22 @@ def test_native_reuse_preserves_original_issue_event_admission_and_receipt_contr
                 check_environment(value)
 
     check_environment(carrier)
-    assert text.count("GITHUB_EVENT_PATH") == 1
+    if name == INGRESS_WORKFLOW:
+        # Framing, local admission and hosted delivery all use the same native
+        # event file; none serializes a replacement Issue or caller context.
+        assert text.count("GITHUB_EVENT_PATH") == 3
+        frame = carrier["jobs"]["origin_request"]
+        assert frame["if"] == title_gate
+        frame_step = next(step for step in frame["steps"] if step.get("id") == "frame")
+        assert '--event "$GITHUB_EVENT_PATH"' in frame_step["run"]
+        gate_steps = [
+            step for step in carrier["jobs"]["origin_provenance"]["steps"]
+            if "aios_renew.github_issue_ingress" in step.get("run", "")
+        ]
+        assert len(gate_steps) == 1
+        assert '--event "$env:GITHUB_EVENT_PATH"' in gate_steps[0]["run"]
+    else:
+        assert text.count("GITHUB_EVENT_PATH") == 1
     checkout = admission_job["steps"][0]
     assert checkout["with"]["ref"] == (
         "main" if name == "aios-brain-ingress.yml" else "${{ github.sha }}"

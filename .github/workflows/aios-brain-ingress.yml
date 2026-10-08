@@ -2,6 +2,9 @@ name: AIOS Brain Issue Ingress
 
 on:
   workflow_call:
+    secrets:
+      AIOS_ORIGIN_ADMISSION_KEY:
+        required: true
 
 permissions:
   contents: write

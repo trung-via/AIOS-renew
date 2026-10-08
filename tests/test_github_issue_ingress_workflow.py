@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -16,13 +17,43 @@ def _workflow() -> tuple[dict, str]:
     return yaml.load(text, Loader=yaml.BaseLoader), text
 
 
+def _assert_required_origin_secret(workflow: dict) -> None:
+    assert workflow["on"] == {
+        "workflow_call": {
+            "secrets": {"AIOS_ORIGIN_ADMISSION_KEY": {"required": "true"}},
+        },
+    }
+
+
 def test_workflow_is_reusable_only_and_retains_exact_marker_gate() -> None:
     workflow, _ = _workflow()
-    assert workflow["on"] == {"workflow_call": ""}
+    _assert_required_origin_secret(workflow)
     job = workflow["jobs"]["deliver"]
     assert job["if"] == "always() && github.event.issue.title == '[AIOS BRAIN INGRESS]'"
     assert "issue_comment" not in workflow["on"]
     assert "workflow_dispatch" not in workflow["on"]
+
+
+@pytest.mark.parametrize("secrets", [
+    None,
+    {"AIOS_ORIGIN_ADMISSION_KEY_RENAMED": {"required": "true"}},
+    {"AIOS_ORIGIN_ADMISSION_KEY": {"required": "false"}},
+    {"AIOS_ORIGIN_ADMISSION_KEY": {}},
+    {
+        "AIOS_ORIGIN_ADMISSION_KEY": {"required": "true"},
+        "UNRELATED": {"required": "true"},
+    },
+])
+def test_reusable_ingress_rejects_missing_renamed_optional_or_extra_secret(
+    secrets: object,
+) -> None:
+    workflow, _ = _workflow()
+    if secrets is None:
+        workflow["on"]["workflow_call"] = ""
+    else:
+        workflow["on"]["workflow_call"]["secrets"] = secrets
+    with pytest.raises(AssertionError):
+        _assert_required_origin_secret(workflow)
 
 
 def test_workflow_permissions_and_concurrency_are_minimal_and_serial() -> None:
@@ -89,6 +120,30 @@ def test_origin_admission_artifact_and_delivery_are_bound_to_this_attempt_and_fa
     # A failed provenance job still reaches the existing FAIL receipt/attention
     # path; missing authenticated admission blocks before semantic ingress.
     assert jobs["deliver"]["if"].startswith("always() &&")
+
+
+def test_deployment_key_is_consumed_only_by_origin_gate_and_hosted_delivery() -> None:
+    workflow, text = _workflow()
+    key = "AIOS_ORIGIN_ADMISSION_KEY"
+    reference = "${{ secrets.AIOS_ORIGIN_ADMISSION_KEY }}"
+    consumers = []
+    for name, job in workflow["jobs"].items():
+        for step in job["steps"]:
+            env = step.get("env", {})
+            if key in env:
+                assert env[key] == reference
+                consumers.append((name, step["name"]))
+            # The key stays in the process environment, away from commands,
+            # receipts, GitHub outputs and uploaded artifact paths.
+            assert key not in step.get("run", "")
+            assert "secrets." not in step.get("run", "")
+    assert consumers == [
+        ("origin_provenance", "Admit exact attempt against machine-local H4C0 state"),
+        ("deliver", "Deliver immutable Issue event once"),
+    ]
+    assert text.count(reference) == 2
+    assert "toJSON(secrets)" not in text
+    assert "toJSON(env)" not in text
 
 
 def test_workflow_has_one_event_file_carrier_invocation_and_no_body_interpolation() -> None:
