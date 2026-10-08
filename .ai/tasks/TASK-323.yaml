@@ -1,0 +1,149 @@
+task_id: TASK-323
+revision: 1
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
+goal: Implement a single-use, immutable-lineage-bound Runtime verification exception
+  permitting only the next eligible CODE_FIX REPAIR continuation of TASK-110 r4 after
+  RUN-110-006 to use the already-supported conventional/legacy verification execution
+  path instead of minimum-sufficient-v2, while preserving independently executed authored
+  verification, all safety gates, and ordinary V2 policy for every other lifecycle.
+problem: RUN-110-006 is a canonical repair FAILURE on failed candidate 6fa66e27424de6856c54d5e7dbefaf065aad7e89
+  after correcting seven former publication test failures. Its minimum-sufficient-v2
+  verification executed 728 candidate pytest items (726 passed, 2 failed) and incurred
+  8712.75 seconds of Runtime verification including attribution/replay overhead, versus
+  270.08 seconds of Executor work. The Human explicitly chose to continue repair using
+  conventional/legacy Runtime verification rather than V2 while separately auditing
+  the V2 architecture. Current Runtime unconditionally selects V2 from TASK-110 r4,
+  so a normal AUTHOR_REPAIR request cannot lawfully change the policy. Provide a reviewed,
+  one-time, exact-subject exception rather than silently disabling verification or
+  weakening general policy.
+assumptions:
+- Current canonical main for authoring is 8b37db19ba0d9b5435584fbe48fea72fb1ad23be;
+  TASK-323 does not already exist and RUN-110-007 is not currently present on the
+  observed remote.
+- TASK-110 remains revision 4 on canonical main with verification.policy minimum-sufficient-v2
+  and authored commands python -m pytest -q tests/test_publication.py tests/test_brain_attention.py
+  tests/test_review_transport.py tests/test_authoring_ingress.py and git diff --check;
+  that TASK and its evidence stay immutable.
+- RUN-110-006 is a canonical VERIFICATION FAILURE continuing RUN-110-005, with failed_head_sha
+  6fa66e27424de6856c54d5e7dbefaf065aad7e89; canonical FAILURE artifact is 2099a6727607e441e09b661ffcb8f8129f87ca22
+  on the aios/failure-artifacts/RUN-110-006 branch.
+- The only two remaining failed identities are tests/test_publication.py::test_concurrent_main_update_is_not_overwritten
+  and tests/test_publication.py::test_compatible_concurrent_main_update_fails_exact_sha_lease;
+  a repair strategy must independently diagnose these, not predeclare a semantic outcome.
+- The Human explicitly authorizes this single scoped legacy-verification exception
+  and separately delegates implementation of TASK-323 to Codex GPT-6.1 Sol xhigh.
+  TASK-323 does not change the TASK-110 sticky Executor selection or authorize the
+  subsequent REPAIR by itself.
+- The existing legacy branch of Runtime verification is still available. Using it
+  does not imply that previously recorded 726 passing test observations can satisfy
+  the changed candidate's canonical verification.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/tasks/TASK-110.yaml
+  - .ai/executor-profiles.yaml
+  - src/aios_renew/runtime.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/correction_preflight.py
+  - tests/test_runtime.py
+  - tests/test_operator.py
+  - tests/test_repair_preverification_eligibility.py
+  modify:
+  - .ai/scoped-verification-exceptions.yaml
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/scoped_verification_exception.py
+  - tests/test_scoped_verification_exception.py
+  - tests/test_runtime.py
+  - tests/test_operator.py
+non_goals:
+- Modify TASK-110 revision 4, reinterpret or erase RUN-110-006, invent a REPAIR authorization,
+  run TASK-110 again from TASK base, or promise the next REPAIR will pass.
+- Disable minimum-sufficient-v2 globally, introduce a V3 verification engine, edit
+  TASK/REPAIR policy from the chat, or permit an env var, CLI flag, Executor claim
+  or generic Issue to bypass canonical Runtime verification.
+- Omit any verification.required command for TASK-110, invent an evidence PASS, represent
+  prior candidate pass results as proof for a modified candidate, or make an authored
+  full-suite optional.
+- Make publication, review, roadmap mutation, Executor delegation, correction selection,
+  risk acceptance, or retry decisions inside the Runtime exception machinery.
+- Modify TASK-110 production publication logic or its failing tests as part of TASK-323;
+  that remains a subsequent separately authorized REPAIR.
+- Add a general-purpose policy-override router, durable model memory, retry loop,
+  or migration of other TASKs or downstream dependencies.
+constraints:
+  hard:
+  - TASK-323 itself must retain verification.policy minimum-sufficient-v2, with bounded
+    focused verification and no repository-wide full suite.
+  - 'One exceptional eligible subject only: CODE_FIX REPAIR of TASK-110 revision 4
+    whose canonical predecessor is RUN-110-006 and whose predecessor FAILURE artifact
+    and failed candidate match the exact immutable observed identities above. The
+    exception must bind the specific next admitted RUN-110-007 and be invalid for
+    all other RUN IDs, tasks, revisions, correction actions, operations, or stale/mismatched
+    lineage.'
+  - Use an explicitly reviewed canonical, repository-owned fixed authorization artifact
+    for the one-shot exception; dynamically supplied user, Executor, Issue, environment,
+    task comments or handoff strings are not authorization. Runtime must check trusted
+    authorization and canonical identity before changing the effective verifier; no
+    extra generic override surface may be created.
+  - The exception only selects the existing conventional/legacy verification execution
+    path for the exact bound repair completion. All authored TASK-110 commands, exact
+    candidate checkout, normal exit status, evidence, integrity/completion and CAS/currentness
+    boundaries remain enforced by Runtime.
+  - A replay, competing dispatch, second RUN or other correction may not reuse the
+    waiver. The admitted exact RUN identity plus immutable execution lineage are the
+    single-use witness; do not implement a second independently writable lifecycle-state
+    store.
+  - Preserve TASK-110 code's existing V2 identity outside this narrowly proven exception.
+    Evidence must distinguish the effective legacy mode and reason/authorization so
+    review can validate that it ran the expected verifier. No zero-cost or presumed
+    success of previously passing 726 items.
+  - If any required trusted binding or legacy proof surface cannot be implemented
+    within authorized modification scope, fail closed and report the specific missing
+    authority; do not silently expand scope.
+  - After reviewed/published activation of this TASK, any later AUTHOR_REPAIR of RUN-110-006
+    remains a distinct Brain semantic action. This TASK does not automatically create,
+    dispatch, review or publish that correction.
+acceptance:
+- id: AC1
+  condition: A canonical, strictly parsed one-shot exception contract identifies only
+    TASK-110 r4 / RUN-110-006 and its exact immutable FAILURE/candidate subject, and
+    binds exactly one successor RUN-110-007 to the legacy verification path.
+- id: AC2
+  condition: Runtime derives the effective verifier exclusively from the reviewed
+    trusted exception plus exact admitted repair lineage; a correct subject selects
+    ordinary verification while mismatched, stale, missing or untrusted subjects fail
+    closed or retain their authored V2 policy as appropriate.
+- id: AC3
+  condition: The exceptional completion executes every unchanged TASK-110 r4 verification.required
+    command using the existing conventional verifier and captures normal Runtime evidence
+    with an auditable exception binding; it neither uses the V2 attribution engine
+    nor treats old pass records as current-candidate proof.
+- id: AC4
+  condition: Single-use semantics are enforced against replay/competing RUNs and no
+    other TASK, PRIMARY, REMEDIATION, DIRECT_CANDIDATE, or unrelated REPAIR can inherit
+    the legacy exception.
+- id: AC5
+  condition: All original Runtime admission, repository integrity, candidate SHA,
+    scope, verification failure, RESULT, Reviewer, Publisher, and publication-currentness
+    boundaries remain unchanged and fail closed.
+- id: AC6
+  condition: The exact pre-existing RUN-110-006 FAILURE and 726 PASS / 2 FAIL observations
+    remain historical evidence; no automatic REPAIR, new TASK-110 authorization, semantic
+    verdict, publication or roadmap change is fabricated by this capability.
+- id: AC7
+  condition: Focused positive and adversarial regression fixtures exercise exact authorization,
+    case mismatch, replay, missing/changed artifacts, preserved V2 for unrelated subjects,
+    conventional command execution and failure propagation without any repository-wide
+    full suite.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_scoped_verification_exception.py
+  - git diff --check
