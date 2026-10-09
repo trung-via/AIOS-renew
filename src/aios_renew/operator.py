@@ -133,6 +133,7 @@ from .review import (
 from .return_affinity import document_affinity, require_same_affinity
 from .task import Task, TaskValidationError, parse_task
 from .verification import VerificationRunner
+from .runtime_provenance_owner import _observe_operator
 
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
@@ -1491,6 +1492,7 @@ def _run_task_impl(
             error_type=OperatorError,
         )
         attempt.bind_completion(runtime_completion)
+        _observe_operator(runtime_completion)
         completion = runtime_completion.complete(
             package, primary_completion_policy(task, base_sha=base_sha)
         )
@@ -2111,6 +2113,7 @@ def recover_publication_source(source_run_id: str, *, decision_sha: str,
                 run_path=run_path, verification_runner=verification_runner,
                 observation_tracker=tracker, error_type=OperatorError, transport_repo=root)
             attempt.bind_completion(completion)
+            _observe_operator(completion)
             policy = primary_completion_policy(task, base_sha=run.base_sha)
             completion._require_executor_structure(structural)
             completion._require_task_result(structural, policy, actual_head=candidate)
@@ -2295,6 +2298,7 @@ def _recover_primary_impl(
             transport_repo=repo,
         )
         attempt.bind_completion(completion)
+        _observe_operator(completion)
         _prepare_historical_terminalization(repo, attempt)
         outcome = completion.complete(
             resolved_admission.structural_package,
@@ -3049,6 +3053,7 @@ def _run_repair_impl(
             transport_repo=repo,
         )
         attempt.bind_completion(runtime_completion)
+        _observe_operator(runtime_completion)
         _prepare_historical_terminalization(repo, attempt)
         completion = runtime_completion.complete(
             package,
@@ -7625,6 +7630,7 @@ def _run_remediation_impl(
         )
         if attempt is not None:
             attempt.bind_completion(runtime_completion)
+        _observe_operator(runtime_completion)
         completion_policy = remediation_completion_policy(execution)
         if resolved.cumulative:
             completion_policy = replace(
@@ -7939,6 +7945,7 @@ def _accept_candidate_impl(
             error_type=OperatorError,
         )
         attempt.bind_completion(runtime_completion)
+        _observe_operator(runtime_completion)
         completion = runtime_completion.complete(
             structural_package,
             completion_policy,

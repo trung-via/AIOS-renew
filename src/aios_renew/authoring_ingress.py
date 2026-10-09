@@ -72,6 +72,7 @@ from .return_affinity import (AffinityError, document_affinity, require_same_aff
 from .origin_authoring_proof import AdmittedOrigin, OriginProofError, PROOF
 from .task import Task, TaskValidationError, _TaskLoader, parse_task
 from .verification_contract import CURRENT_VERIFICATION_POLICY
+from .runtime_provenance_owner import _observe_review, read_owner_provenance
 from .unified_state import observe_unified_state
 
 if TYPE_CHECKING:
@@ -174,6 +175,11 @@ class IngressResult:
     canonical_sha: str = ""
     replayed: bool = False
     detail: str = ""
+
+    @property
+    def owner_provenance(self):
+        """Prospective read-only origin; absent on manually constructed results."""
+        return read_owner_provenance(self)
 
     def render(self) -> str:
         return (
@@ -656,7 +662,7 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
                     repo, remote, run_id, candidate_sha, existing_decision_sha,
                     decision_exists=True,
                 )
-            return IngressResult(
+            ingress_result = IngressResult(
                 operation="SUBMIT_REVIEW",
                 status="IDEMPOTENT",
                 canonical_destination=decision_ref,
@@ -664,6 +670,8 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
                 replayed=True,
                 detail=f"identical REVIEW already canonicalized for {run_id}",
             )
+            _observe_review(ingress_result)
+            return ingress_result
         raise AuthoringIngressError(
             f"conflicting review decision already exists on {decision_ref}"
         )
@@ -916,7 +924,7 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
     # A PASS owner is intentionally retained across the durable write and the
     # asynchronous Publisher continuation. Ingress has no main publication authority.
 
-    return IngressResult(
+    ingress_result = IngressResult(
         operation="SUBMIT_REVIEW",
         status="CANONICALIZED",
         canonical_destination=decision_ref,
@@ -924,6 +932,8 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
         replayed=False,
         detail=f"canonicalized {review.verdict} review decision for {run_id}",
     )
+    _observe_review(ingress_result)
+    return ingress_result
 
 
 # ---------------------------------------------------------------------------

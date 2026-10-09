@@ -20,6 +20,7 @@ from .origin_authoring_proof import (OriginProofError, authenticate_receipt, bin
                                     admit_local, read_receipt)
 from .return_affinity import OriginAffinity
 from .task import TaskValidationError, parse_task
+from .runtime_provenance_owner import _observe_carrier
 from .repair_dispatch import (
     FAILED_RUN_ID_PATTERN,
     REPAIR_DISPATCH_ID_PATTERN,
@@ -332,6 +333,7 @@ def deliver_event(
                 raise GitHubIssueIngressError(str(exc)) from None
     kwargs = {"origin_admission": admission} if admission is not None else {}
     result = ingest_carrier("-", repo=Path(repo), stdin_bytes=issue.body_bytes, **kwargs)
+    _observe_carrier(result)
     return IssueDelivery(carrier_identity=issue.identity, ingress_result=result)
 
 

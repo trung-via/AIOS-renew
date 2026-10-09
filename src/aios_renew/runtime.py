@@ -184,6 +184,12 @@ class RuntimeCompletion:
         self.interruption_phase = "COMPLETION_GATE"
         self.verification_subject_sha: str | None = None
 
+    @property
+    def owner_provenance(self):
+        """Read subordinate admission facts; constructors confer no origin."""
+        from .runtime_provenance_owner import read_owner_provenance
+        return read_owner_provenance(self)
+
     def complete(
         self, package: ResultPackage, policy: CompletionPolicy
     ) -> CompletionOutcome:
