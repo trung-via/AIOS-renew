@@ -1,0 +1,190 @@
+task_id: TASK-331
+revision: 1
+goal: "Deliver VP-03B's bounded, offline, read-only immutable checkpoint-lineage and\
+  \ crash/replay conformance foundation for prospective same-RUN PRIMARY C1\u2192\
+  C2 proof tracking. Validate authoritative checkpoint identity, history, predecessor\
+  \ order, sticky delegation, resource accounting and exact per-proof applicability\
+  \ using the already-published VP-02 and VP-03A validators. Return factual consistency/replay\
+  \ BLOCK observations only; keep prospective KA-01 continuation NOT_ACTIVATED and\
+  \ do not create production checkpoint persistence, another scheduler or lifecycle\
+  \ truth."
+problem: "Published TASK-330 VP-03A authenticates original Git-backed evidence and\
+  \ source-to-target applicability but does not prove a chain of multiple immutable\
+  \ preterminal checkpoints survives duplicate receipt, interruption or conflicting\
+  \ replay without reusing a source as target evidence. TASK-328 offers only a single\
+  \ offline checkpoint declaration and synthetic counters. KA-01 prospective design\
+  \ and VP-03 need a separate bound proof of exact ordered C1/K1\u2192C2/K2 lineage,\
+  \ independent source applicability and crash-safe idempotence before future VP-04\
+  \ single-scheduler integration. No historical RUN/RESULT status may be rewritten\
+  \ or promoted."
+assumptions:
+- Fresh canonical planning main for AUTHOR_TASK is 4694227a955af229d4d5a04b79723ac50abb897e;
+  TASK and future PRIMARY require exact current CAS/task blob binding.
+- Human approved continuing the VP roadmap after TASK-330 exact publication. Canonical
+  TASK-330 r1 RUN-330-002 DELTA REVIEW-330-002 PASS on reviewed main source 1be1608aeeac27c046452072fc28614f1be09a4a;
+  source RUN-330-001 REVIEW CHANGES_REQUIRED R1 and remediation authorization fecf9d9c6a12efc7431c73962b9fa9bad3fcb535
+  are preserved. Its 75 passing focused tests are Runtime evidence, not future VP-03B
+  verification.
+- Kernel v0.1 and Constitution remain unchanged. Human-ratified published KA-01 v1
+  is a prospective normative specification NOT_ACTIVATED. VP-01 measurement remains
+  DEFERRED_BY_HUMAN; VP-02 package has pending exits; VP-03 whole exit and VP-04/05
+  integration/cutover are not established.
+- Reuse published TASK-326 proof-coverage mapping, TASK-328 intra-run declaration,
+  TASK-330 read-only Git-authenticated applicability, existing `Run` ACTIVE with head_sha=null,
+  the current TASK/RESULT/EVIDENCE decoders and their BR1..BR6 gates rather than reimplementing
+  or weakening any provenance/semantic contract.
+- An opaque SHA/digest, caller-generated checkpoint JSON, evidence identity, profile
+  label or apparent C1 PASS never establishes authenticated authority. Any independent
+  trust catalog/root or ledger must be supplied by a trusted existing canonical boundary;
+  no caller enrollment of new authority.
+- Human has not selected executor/model/effort for TASK-331. The Codex gpt-6.1-sol
+  max instruction was sticky only for TASK-330 and cannot be silently inherited as
+  new TASK-331 authority. These operational fields are not TASK schema fields.
+- Legacy repository default return affinity is the currently approved planning route;
+  no origin-scoped proof or downstream adoption is inferred.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+  - docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md
+  - docs/AIOS-VP03-PROVENANCE-APPLICABILITY-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-326.yaml
+  - .ai/tasks/TASK-328.yaml
+  - .ai/tasks/TASK-330.yaml
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/proof_applicability.py
+  - src/aios_renew/run.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/brain_audit.py
+  - tests/test_intra_run_proof_contract.py
+  - tests/test_proof_applicability.py
+  modify:
+  - src/aios_renew/proof_checkpoint_lineage.py
+  - tests/test_proof_checkpoint_lineage.py
+  - docs/AIOS-VP03-CHECKPOINT-LINEAGE-AND-REPLAY-v1.md
+non_goals:
+- Do not create or write an authoritative checkpoint journal, RUN/RESULT/FAILURE/REVIEW/REPAIR/REMEDIATION,
+  local persistent history, memory DB, new status, new Git transport/ref, versioned
+  task parser change, policy activation or second lifecycle truth.
+- Do not integrate with current Runtime production calls, evidence discharge/reuse
+  decisions, verification scheduler, executor adapter, cloud/self-host runner, feedback
+  delivery, retry/failover, Publisher, Reviewer or V2 command-driven orchestration.
+- Do not automatically retry candidate proofs, select a correction strategy, authorize
+  Executor continuation, regenerate/evaluate source proof as target execution, rerun
+  identical proofs at terminalization, reproduce failure, materialize base or broaden
+  scope.
+- Do not trust request-selected catalog roots, unauthenticated source logs or caller-provided
+  `VALID` statuses; do not infer dependency completeness from filenames, nodeids,
+  unchanged command, a commit hash alone or synthetic shadow fixtures.
+- Do not expand the frozen Kernel/KA-01 ratification, waive VP-01, mark VP-02/VP-03
+  DONE, claim VP-04 scheduler or VP-07 conformance, or change downstream versions/roadmap
+  planning.
+- Do not override Human sticky Executor authorization/lease/finite resource bounds,
+  redefine Brain proof semantics or move Reviewer judgments into deterministic validation.
+constraints:
+  hard:
+  - Supply a prospective versioned bounded read-only checkpoint lineage contract and
+    factual evaluator, reusing TASK-328's `Checkpoint`, `Binding`, `Delegation` and
+    semantic mapping invariants and TASK-330's authenticated proof applicability boundary
+    wherever applicable. No second independently interpreted proof validity engine
+    or self-certified authority root.
+  - Accept an exact finite sequence of immutable source-pinned candidate/checkpoint/feedback
+    identities from a separately trusted canonical-source boundary. Authenticate actual
+    contents, Git ancestry and existing canonical RUN/TASK/base/delegation/opt-in
+    authority identity rather than trusting user-selected refs, bare hashes or mutable
+    main. Missing trust-root provenance is UNKNOWN/BLOCK.
+  - Enforce ordinal K1..Kn strictly monotonic and hash-linked; K1 has no predecessor,
+    each successor binds the previous sealed content digest/ordinal; every candidate
+    is distinct, committed, clean under independently attested facts and descendant
+    of the preceding candidate, with no reused base or candidate SHA, forks, gap,
+    rollback or multiple competing current tips. Currentness must fail closed if moved;
+    do not invent a repository lock/lease or attempt to guarantee atomicity by SHA
+    alone.
+  - Bind each checkpoint to exactly one admitted ACTIVE prospective PRIMARY RUN/TASK
+    revision, fixed base, reviewed semantic proof contract/mapping, identical Human
+    delegation/Executor/model/effort/live lease identity and generation, authorized
+    scope, budget and immutable source EVIDENCE provenance. A change, uncertainty,
+    missing authorization or terminal status yields factual BLOCK; historical V1/V2
+    records cannot be accepted as live KA-01 checkpoint approval.
+  - Account corrections, wall time, test items and applicable token/resources monotonically
+    and with explicit finite Human bound/reservation facts, including crash/replay.
+    Partial or missing accounting, negative/overflow/underflow, expired/lost lease,
+    changed risk or semantic choice and unverified progress are fail-closed. Budget
+    checking must not permit skipping any required proof and must never independently
+    authorize continuation.
+  - "Evaluate C_i\u2192C_j per-proof VALID/INVALIDATED/UNKNOWN through the existing\
+    \ VP-03A authenticated immutable-source applicability interface. Preserve original\
+    \ source RUN/EVIDENCE/subject/outcome, use a separate exact applicability witness\
+    \ for each target; fail or unknown must not discharge an acceptance. Independent\
+    \ integration/concurrency/ordering/worker and comparison obligations remain distinct.\
+    \ No automatic source-result relabeling or new target execution EVIDENCE."
+  - Define deterministic read-only exact duplicate re-observation (`SAME_FACT`), conflicting
+    duplicate/ordinal and fork (`BLOCK`), and partial/torn tail, missing predecessor,
+    divergent replay, uncertain currentness or crash (`UNKNOWN`/BLOCK). Never consume
+    the same feedback twice, reset spent budgets, append an inferred checkpoint or
+    generate terminal RUN/FAILURE from absent/partial transport. Any actual durable
+    CAS/atomic append integration remains later separately authorized work.
+  - Negative conformance must use bounded disposable real Git repository objects and
+    immutable checkpoint snapshots (including genuine admitted RUN ACTIVE head_sha=null),
+    changed candidate ancestry, missing/conflicting source evidence, lost/changed
+    delegation/lease, checkpoint gaps/forks/replay, partial write recovery, budget
+    reset/overrun, changed fixture/helper/profile/worker/integration and upstream
+    applicability UNKNOWN/INVALIDATED. Demonstrate read-only behavior and bounded
+    test execution; no external network.
+  - Results and documentation explicitly mark all authorization, mutation, terminalization,
+    evidence reuse/acceptance discharge and scheduler flags FALSE/NOT_ACTIVATED; existing
+    Runtime remains sole coordination/canonical evidence/terminal owner. No new production
+    watcher/worker/orchestration.
+  - Modify only the three listed paths; favor deterministic small offline focused
+    tests with minimal fixture/worktree recreation. Verification remains existing
+    policy minimum-sufficient-v2 and only the authored focused test command is required.
+acceptance:
+- id: AC1
+  condition: A bounded versioned offline immutable checkpoint-lineage API exists,
+    with strict source/record identities, exact TASK/PRIMARY RUN/base/contract/delegation
+    bindings and independently authenticated provenance preconditions; no caller-declared
+    checkpoint VALID grants authority.
+- id: AC2
+  condition: It deterministically verifies K1..Kn monotonic ordinal/content-hash/parent
+    and candidate Git ancestry, unique distinct in-scope C1..Cn, no history fork/gap/reused
+    base, and immutable source-to-target subject separation.
+- id: AC3
+  condition: It enforces fixed Human authority, sticky Executor/profile/model/effort,
+    unexpired lease, exact scope and monotonic finite accounting; stale/changed/missing
+    risk or limits return factual BLOCK/UNKNOWN rather than continuation permission.
+- id: AC4
+  condition: Replay/crash checking distinguishes exact same sealed checkpoint from
+    conflicting duplicate, missing/torn tail and moved head, without consuming feedback
+    twice, resetting budgets or writing another checkpoint/terminal artifact.
+- id: AC5
+  condition: Checkpoint per-proof applicability reuses the published VP-03A authenticated
+    VALID/INVALIDATED/UNKNOWN evaluator and immutable original EVIDENCE/RESULT, preserves
+    actual original FAIL, and does not collapse distinct integration/concurrency/ordering
+    or comparison obligations.
+- id: AC6
+  condition: "Focused disposable real Git negative tests cover canonical ACTIVE RUN\
+    \ with head_sha null, C1\u2192C2, fork/gap/duplicate/replay, mismatched lineage,\
+    \ partial crash, budget/lease drift, missing/forged evidence and changed fixture/helper/profile/worker/integration;\
+    \ no self-certified VALID or double execution."
+- id: AC7
+  condition: Documentation explains trusted catalog/issuer limits, read-only status
+    versus future Runtime durable checkpoint CAS, exact terminal/REPAIR/REMEDIATION
+    boundaries, no duplicate scheduler, all KA-01 opt-in gates and deferred VP-01/V2/VP-07
+    conformance obligations.
+- id: AC8
+  condition: The candidate modifies exactly the new module, focused tests and versioned
+    VP-03B document; no existing kernel/runtime/scheduler/artifact/workflow/task parser
+    mutation or actual checkpoint/proof/RUN persistence occurs.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_proof_checkpoint_lineage.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
