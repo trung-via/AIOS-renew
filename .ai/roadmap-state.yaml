@@ -663,6 +663,31 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03_post_task331_publication_2026_10_09:
+    authority: HUMAN_BRAIN_PLANNING
+    human_intent: CONTINUE_VP03_AFTER_TASK331_REVIEW_PASS_SOURCE_PUBLISHED
+    reconciled_canonical_main: 5d7a372b32d482f926b5dab8bfa7fa24484622ad
+    completed_slice: VP03B_TASK331_READ_ONLY_CHECKPOINT_LINEAGE_REPLAY
+    source_run_id: RUN-331-001
+    source_review_id: REVIEW-331-001
+    review_verdict: PASS
+    exact_reviewed_source_sha: 5d7a372b32d482f926b5dab8bfa7fa24484622ad
+    current_next_root: verification-architecture-replacement-v1-vp03-evidence-validity
+    bounded_next_slice: VP03C_TRUSTED_CANONICAL_PROVENANCE_HANDOFF_READ_ONLY
+    selected_task: TASK-332
+    executor: codex
+    model: gpt-6.1-sol
+    reasoning_effort: xhigh
+    sticky_scope: ENTIRE_TASK332_LIFECYCLE_INCLUDING_REPAIR_AND_REMEDIATION
+    vp01: DEFERRED_NOT_WAIVED
+    vp02: FOUNDATION_PUBLISHED_OTHER_EXITS_GATED
+    vp03_full_exit: NOT_YET_ESTABLISHED
+    ka01_activation: NOT_ACTIVATED
+    roadmap_auto_progression: false
+    non_goals:
+      - NO_PRODUCTION_TRUST_ISSUER_OR_RUNTIME_POLICY_ACTIVATION
+      - NO_NEW_SCHEDULER_LIFECYCLE_MUTATION_OR_EVIDENCE_DISCHARGE
+      - NO_AUTOMATIC_ADVANCE_TO_VP04
   vp03_post_task330_publication_2026_10_09:
     authority: HUMAN_BRAIN_PLANNING
     human_intent: CONTINUE_APPROVED_VP_ROADMAP_AFTER_EXACT_TASK330_REVIEW_PASS_PUBLISHED
@@ -2082,7 +2107,7 @@ sequence:
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
     planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
-    task_id: TASK-331
+    task_id: TASK-332
     task_revision: 1
     task_authoring_status: PENDING_CANONICAL_AUTHOR_TASK
     bounded_first_slice: VP03A_READ_ONLY_AUTHENTICATED_PROVENANCE_AND_APPLICABILITY_FOUNDATION
@@ -2107,8 +2132,8 @@ sequence:
       model: gpt-6.1-sol
       reasoning_effort: max
       publication_does_not_activate_runtime: true
-    bounded_next_slice: VP03B_OFFLINE_CHECKPOINT_LINEAGE_REPLAY_AND_CRASH_PROOF
-    next_task_id: TASK-331
+    bounded_next_slice: VP03C_TRUSTED_CANONICAL_PROVENANCE_HANDOFF_READ_ONLY
+    next_task_id: TASK-332
     next_slice_non_goals:
       - NO_PRODUCTION_RUNTIME_CHECKPOINT_WRITE
       - NO_NEW_CANONICAL_LIFECYCLE_STATE
@@ -2116,7 +2141,29 @@ sequence:
       - NO_EVIDENCE_REUSE_DISCHARGE_AUTHORITY
       - NO_AUTO_CORRECTION_OR_TERMINALIZATION
       - NO_DOWNSTREAM_ADOPTION
-    executor_delegation: UNASSIGNED_FOR_TASK331_HUMAN_DECISION_REQUIRED
+    executor_delegation:
+      authority: HUMAN
+      task_id: TASK-332
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: TASK332_ENTIRE_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
+      persistence: UNTIL_TASK332_COMPLETE_OR_HUMAN_OVERRIDE
+    vp03b_reviewed_published_slice:
+      name: VP03B
+      task_id: TASK-331
+      revision: 1
+      run_id: RUN-331-001
+      review_id: REVIEW-331-001
+      verdict: PASS
+      result_artifact_ref_sha: 03fd40c52c3b6063a386af3dfc08ef4703ef7b98
+      review_decision_ref_sha: 1e34ee83d915cecac4276f284b0496907387d8dc
+      exact_reviewed_source_sha: 5d7a372b32d482f926b5dab8bfa7fa24484622ad
+      source_in_main: true
+      verification_evidence: RUN-331-001-V003
+      focused_tests_passed: 106
+      runtime_activation: NOT_ACTIVATED
+      vp03_full_exit: NOT_CLAIMED
     production_activation: NOT_AUTHORIZED
     vp02_dependency_disposition: >-
       TASK-326 and TASK-328 foundations plus separately ratified KA-01 TASK-329 are
