@@ -384,6 +384,37 @@ def _validate_lifecycle_failure(
         raise ValueError("FAILURE continuation does not match RUN family")
 
 
+def _decode_publication_continuation(
+    repo: Path,
+    *,
+    task: Task,
+    run: Run,
+    family: str,
+    parent_run_id: str | None,
+    raw: bytes,
+    candidate_sha: str,
+    package: ResultPackage | None,
+) -> tuple[Mapping[str, Any], str]:
+    """Project the same validated recovery provenance for local and remote terminals."""
+
+    document = publication_module._mapping(publication_module._json_no_duplicates(
+        raw, document="publication continuation"), "publication continuation")
+    if family != "PRIMARY" or parent_run_id is not None:
+        raise ValueError("publication continuation cannot impersonate a correction")
+    plan = publication_module.publication_plan_from_data(document["plan"])
+    if package is not None:
+        publication_module.validate_publication_recovery(repo,
+            remote=resolve_transport_remote(repo), raw=raw,
+            run=run, task=task, candidate_sha=candidate_sha, package=package)
+    elif (set(document) != {"format", "version", "plan", "identity", "reservation_sha"}
+            or document["format"] != "AIOS_PUBLICATION_RECOVERY_ADMISSION"
+            or document["version"] != 1 or document["identity"] != plan.identity
+            or run.base_sha != plan.main_sha or run.task.id != plan.task_id
+            or run.task.revision != plan.task_revision):
+        raise ValueError("publication failure has no exact Runtime admission")
+    return document, plan.source_run_id
+
+
 def _decode_remote_lifecycle(
     repo: Path, task: Task, lifecycle: RemoteTaskLifecycle
 ) -> tuple[list[_LifecycleRun], dict[str, Review]]:
@@ -476,8 +507,9 @@ def _decode_remote_lifecycle(
         terminal = json.loads(item.terminal.decode("utf-8", errors="strict"))
         if not isinstance(terminal, Mapping):
             raise ValueError("terminal document must be a mapping")
+        package = None
         if item.kind == "RESULT":
-            _validate_lifecycle_result(
+            package = _validate_lifecycle_result(
                 task=task,
                 run=run,
                 family=family,
@@ -497,24 +529,11 @@ def _decode_remote_lifecycle(
             )
         recovery_document = None
         if item.publication_recovery is not None:
-            recovery_document = publication_module._mapping(publication_module._json_no_duplicates(
-                item.publication_recovery, document="publication continuation"), "publication continuation")
-            if family != "PRIMARY" or parent_run_id is not None:
-                raise ValueError("publication continuation cannot impersonate a correction")
-            plan = publication_module.publication_plan_from_data(recovery_document["plan"])
-            if item.kind == "RESULT":
-                package = _validate_lifecycle_result(task=task, run=run, family=family,
-                    run_document=run_document, terminal=terminal, candidate_sha=item.candidate_sha)
-                publication_module.validate_publication_recovery(repo,
-                    remote=resolve_transport_remote(repo), raw=item.publication_recovery,
-                    run=run, task=task, candidate_sha=item.candidate_sha, package=package)
-            elif (set(recovery_document) != {"format", "version", "plan", "identity", "reservation_sha"}
-                    or recovery_document["format"] != "AIOS_PUBLICATION_RECOVERY_ADMISSION"
-                    or recovery_document["version"] != 1 or recovery_document["identity"] != plan.identity
-                    or run.base_sha != plan.main_sha or run.task.id != plan.task_id
-                    or run.task.revision != plan.task_revision):
-                raise ValueError("publication failure has no exact Runtime admission")
-            parent_run_id = plan.source_run_id
+            recovery_document, parent_run_id = _decode_publication_continuation(
+                repo, task=task, run=run, family=family, parent_run_id=parent_run_id,
+                raw=item.publication_recovery, candidate_sha=item.candidate_sha,
+                package=package,
+            )
         decoded.append(
             _LifecycleRun(
                 item.run_id,
@@ -1073,6 +1092,7 @@ def _local_pending_runs(
         )
         if not isinstance(value, Mapping):
             raise ValueError("persisted terminal document must be a mapping")
+        package = None
         if has_result:
             result_data = value.get("result")
             candidate_sha = (
@@ -1082,7 +1102,7 @@ def _local_pending_runs(
             )
             if not isinstance(candidate_sha, str) or not candidate_sha:
                 raise ValueError("persisted RESULT has no candidate head")
-            _validate_lifecycle_result(
+            package = _validate_lifecycle_result(
                 task=task,
                 run=run,
                 family=family,
@@ -1103,6 +1123,14 @@ def _local_pending_runs(
                 candidate_available=True,
                 continuation_of=parent_run_id if family == "REPAIR" else None,
             )
+        recovery_document = None
+        recovery_path = state.root / "publication-recovery" / path.name
+        if recovery_path.is_file():
+            recovery_document, parent_run_id = _decode_publication_continuation(
+                repo, task=task, run=run, family=family, parent_run_id=parent_run_id,
+                raw=recovery_path.read_bytes(), candidate_sha=candidate_sha,
+                package=package,
+            )
         same_run = [item for item in remote if item.run_id == run_id]
         if same_run:
             canonical = same_run[0] if len(same_run) == 1 else None
@@ -1116,6 +1144,7 @@ def _local_pending_runs(
                 or canonical.execution_base != execution_base
                 or canonical.review_id != review_id
                 or canonical.finding_id != finding_id
+                or canonical.publication_recovery != recovery_document
                 or canonical.run_document is None
                 or dict(canonical.run_document) != dict(run_document)
                 or dict(canonical.terminal) != dict(value)
@@ -1136,6 +1165,7 @@ def _local_pending_runs(
                 semantic_predecessor=semantic_predecessor,
                 execution_base_run_id=execution_base_run_id,
                 execution_base=execution_base,
+                publication_recovery=recovery_document,
             )
         )
     return terminal_pending, active_pending
@@ -1565,7 +1595,8 @@ def observe_unified_state(
         raise op.OperatorError(
             f"Unified State canonical observation unavailable ({exc.category})"
         ) from exc
-    except (ReviewTransportError, ArtifactValidationError, ReviewValidationError,
+    except (ReviewTransportError, publication_module.PublicationError,
+            ArtifactValidationError, ReviewValidationError,
             KeyError, OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         # Canonical facts were acquired but cannot support a guessed continuation.
         return _unified_blocked(
