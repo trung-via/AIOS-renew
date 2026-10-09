@@ -1,0 +1,198 @@
+task_id: TASK-328
+revision: 1
+goal: >-
+  Complete the bounded VP-02B preterminal proof and feedback contract for prospective
+  opt-in PRIMARY intra-RUN correction, with an explicit frozen Kernel v0.1
+  compatibility/amendment decision gate. Provide only offline declarative validation,
+  synthetic conformance and a normative design document; do not activate any Runtime
+  correction loop, proof scheduler or new lifecycle semantics.
+problem: >-
+  Reviewed and main-included TASK-326 establishes VP-02 proof coverage v1 and BR-1..BR-6
+  declarative eligibility, but the Human-approved VP v1.2 introduces a distinct
+  runtime-driven preterminal checkpoint, typed failed-proof feedback and same-RUN
+  same-Executor correction concept. Frozen Kernel v0.1 permits Executor-local
+  targeted test/fix iteration, while automatic retry and Runtime-driven canonical
+  feedback are not presently production-authorized. VP-02 needs a bounded pure
+  semantic/structural contract and a fail-closed compatibility decision before
+  VP-03 evidence validity, VP-04 scheduling or VP-05 continuation are implemented.
+assumptions:
+  - >-
+    Current canonical main for TASK authoring is
+    4d3851e9d0974f7938bcfb76b5ea68d238ed2557; exact expected-main/CAS
+    admission is mandatory and PRIMARY must use freshly observed main.
+  - >-
+    TASK-327 revision 1 REVIEW-327-004 PASS source
+    9271a2afcdfbdf67d3dd038551ce2c5d1643d2d2 is included in canonical
+    main, and the Human/Brain planning transition made VP-02 the sole NEXT.
+  - >-
+    TASK-326 revision 1 RUN-326-001 REVIEW-326-001 PASS source
+    9b2ec4afbedc4ef342b3ea198c59abbb48938f74 is included in main;
+    this independent foundation is reused, not retested or modified.
+  - >-
+    VP-01 remains DEFERRED_BY_HUMAN; this independently admissible VP-02
+    foundation does not satisfy VP-01 measurement, VP-07 conformance or VP-03
+    implementation dependencies.
+  - >-
+    Human explicitly selected Codex GPT-6.1 Sol xhigh for TASK-328's entire
+    lifecycle, including authorized corrections; executor selection is an
+    operational delegation and must not become a TASK field.
+  - >-
+    Human-approved prospective LEGACY_REPOSITORY_DEFAULT_ROUTE applies to this
+    newly authored AIOS-renew TASK; previously authored affinity is unchanged.
+  - >-
+    Currently admitted verification.policy remains minimum-sufficient-v2; no
+    proof-coverage policy cutover or Kernel amendment has been authorized.
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-326.yaml
+    - .ai/tasks/TASK-327.yaml
+    - src/aios_renew/proof_coverage_contract.py
+    - tests/test_proof_coverage_contract.py
+    - src/aios_renew/task.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/unified_state.py
+  modify:
+    - src/aios_renew/intra_run_proof_contract.py
+    - tests/test_intra_run_proof_contract.py
+    - docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md
+non_goals:
+  - >-
+    Activate Runtime-driven correction, second canonical scheduler, feedback
+    dispatch, automated fixes/retries, new admission gates, RUN status mutations,
+    preterminal persistent storage, correction strategy selection or lifecycle routing.
+  - >-
+    Rewrite or reinterpret frozen Kernel contracts, historical TASK/RUN/RESULT/
+    FAILURE/REPAIR/REVIEW/EVIDENCE, prior TASK-326/327 artifacts or current
+    V1/V2 parser, verification, runner, ingress or Publisher.
+  - >-
+    Implement VP-03 checkpoint durability, historical provenance authentication,
+    full evidence-validity/application witnesses, VP-04 scheduling, VP-05 executor
+    re-entry, VP-06 performance optimization or VP-07 production cutover.
+  - >-
+    Declare evidence VALID solely from an ID, unchanged command/nodeid, file
+    disjointness or caller assertions; claim that synthetic cases prove production
+    Runtime verification or actual Kernel compliance.
+  - >-
+    Select correction strategy from raw logs, inject commands into an Executor,
+    change Human risk/delegation/budgets, switch Executor/profile or add a Planner,
+    Reviewer, Publisher, memory store, retry/failover authority or router.
+  - >-
+    Make measurement savings claims, mark VP-01 DONE, auto-advance roadmap,
+    change H4 origin conformance, alter downstream adoption/pins, or publish from
+    Executor.
+constraints:
+  hard:
+    - >-
+      Provide one bounded, versioned, strict, in-memory-only contract family
+      describing prospective PRIMARY opt-in, admitted RUN/TASK/base/candidate
+      identity, preterminal checkpoint metadata, factual feedback, permitted
+      continuation decision, immutable proof applicability requirements and
+      terminal-state exclusion. Unknown/malformed inputs fail closed.
+    - >-
+      Separate Executor-local targeted test/fix behavior allowed by Kernel
+      section 5 from Runtime-driven canonical preterminal orchestration. A
+      prospective authority gate must explicitly classify extension
+      eligibility as NOT_ACTIVATED and KERNEL_AMENDMENT_REQUIRED wherever
+      currently frozen authority cannot be established; no automatic
+      authorization from planning/refinement.
+    - >-
+      Require exact immutable binding of TASK revision/source, RUN identity/base,
+      candidate SHA, ordinal and predecessor checkpoint, proof-contract/mapping
+      identity, Human delegation/profile/effort, lease, bounded resources and
+      evidence references. Opaque labels or synthetic digests alone never
+      authenticate canonical provenance.
+    - >-
+      Factual feedback may describe failed obligation/acceptance identities and
+      typed evidence outcome only. It must not select a semantic strategy,
+      prescribe code edits, embed executable commands or interpret raw untrusted
+      logs as instructions.
+    - >-
+      Prospective eligibility requires explicit Human opt-in/budget and same
+      Executor lease, one complete stable failed candidate proof, in-scope
+      continuation, no new risk/semantic-choice requirement, finite progress
+      bounds and no already-terminal RUN. Ambiguity, stale or incomplete proof,
+      changed authority, budget exhaustion and no progress must BLOCK.
+    - >-
+      Express the C1 to C2 VALID/INVALIDATED/UNKNOWN applicability and
+      no-equivalent-double-execution obligations as prospective invariants,
+      not authenticated or implemented evidence reuse. Preserve distinct
+      integration/concurrency/ordering proofs and BR-1..BR-6 for any base replay.
+      Do not add a scheduler, RUN checkpoint persistence or second evidence store.
+    - >-
+      Keep the normal frozen terminal RESULT/FAILURE and subsequent AUTHOR_REPAIR
+      distinct from a preterminal observation. A failed admitted RUN is not
+      reopened, and a pre-AIOS failure cannot create RUN/FAILURE.
+    - >-
+      Use only pure Python parsing/validation in the bounded new module. Its
+      public calls must have no filesystem, Git, subprocess, network,
+      credentials, pytest child execution, environment read, Runtime mutation
+      or production integration side effects; return design descriptions,
+      never runtime decisions or verified evidence.
+    - >-
+      The compatibility document must state exact frozen Kernel clauses,
+      design alternatives, fields that may remain subordinate operational
+      metadata, fields requiring separate Human Kernel amendment if normative,
+      and explicit STOP/GO governance gates before any future production use.
+    - >-
+      Changes are limited to the three scope.modify paths. No existing Python
+      production runtime call site or active policy can be modified.
+acceptance:
+  - id: AC1
+    condition: >-
+      A versioned, bounded in-memory preterminal/feedback contract exists with
+      strict shape, identity and provenance declarations for prospective opt-in
+      PRIMARY only, without creating canonical checkpoint artifacts.
+  - id: AC2
+    condition: >-
+      The contract distinguishes preterminal observation, one terminal
+      RESULT/FAILURE, Executor-local iteration and terminal AUTHOR_REPAIR, and
+      rejects attempts to reopen or impersonate terminal/frozen lineage.
+  - id: AC3
+    condition: >-
+      Typed factual feedback and continuation eligibility declarations enforce
+      same TASK/RUN/candidate binding, sticky Executor/profile/lease,
+      scope/risk/budget/progress guards and no strategy or command leakage.
+  - id: AC4
+    condition: >-
+      Its prospective proof-applicability declarations retain VALID,
+      INVALIDATED and UNKNOWN distinctions, preserve mandatory separate
+      integration/concurrency/order coverage, and cannot authorize evidence
+      reuse, redundant verification or base replay based on weak selectors.
+  - id: AC5
+    condition: >-
+      A frozen-Kernel compatibility matrix documents the lawful
+      Executor-local path, distinct Runtime-orchestrated path, exact
+      Human-amendment blockers and conservative STOP/GO gates with no silent
+      schema or authority change.
+  - id: AC6
+    condition: >-
+      Synthetic focused tests cover complete admissible declarations, malformed
+      and stale identities, insufficient proof, repeated feedback/checkpoints,
+      loss of lease, changed Executor, scope escape, unstable/unknown evidence,
+      budget exhaustion, terminal re-entry and missing amendment authority.
+  - id: AC7
+    condition: >-
+      The focused tests prove in-memory validation has zero process, Git,
+      network, filesystem mutation, pytest child invocation and Runtime
+      lifecycle effects, with no production V2 or Kernel integration.
+  - id: AC8
+    condition: >-
+      The implementation only adds the three specified files, preserves
+      TASK-326 proof foundation and current V2 production policy, and makes no
+      unsupported VP-01/03/07 or publication/measurement claim.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+    - python -m pytest -q tests/test_intra_run_proof_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
