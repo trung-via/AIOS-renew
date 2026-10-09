@@ -598,7 +598,7 @@ publication_end_to_end_preemption:
   approved_on: "2026-10-09"
   authority: HUMAN_BRAIN_PLANNING
   priority: HISTORICAL_PREEMPTION_CLOSED
-  effective_next: kernel-amendment-ka01-prospective-verification-continuation
+  effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
   return_to: verification-architecture-replacement-v1-vp02-proof-contract
   completion:
     authority: HUMAN_BRAIN_PLANNING_RECONCILED_WITH_CANONICAL_RUNTIME_REVIEWER_PUBLISHER_LINEAGE
@@ -662,7 +662,19 @@ verification_architecture_replacement_preemption:
     immutable legacy lineage and all authority boundaries. This planning
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
-  effective_next: kernel-amendment-ka01-prospective-verification-continuation
+  effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03_resumption_post_ka01_2026_10_09:
+    authority: HUMAN_BRAIN_PLANNING
+    human_intent: CONTINUE_APPROVED_VP_ROADMAP_AFTER_KA01_PUBLISHED
+    prior_main: 648a2cdeaa1de7949bab9da707c82dac179abc05
+    completed: TASK329_REVIEW_PASS_PUBLISHED
+    successor: verification-architecture-replacement-v1-vp03-evidence-validity
+    bounded_next_task: TASK-330
+    admissible_scope: VP03A_READ_ONLY_FOUNDATION_NO_PRODUCTION_ACTIVATION
+    vp02_status: FOUNDATION_PUBLISHED_NOT_FULL_EXIT
+    vp01_status: DEFERRED_NOT_WAIVED
+    human_executor_delegation: REQUIRED_BEFORE_PRIMARY
+    roadmap_auto_progression: false
   kernel_amendment_ka01_2026_10_09:
     authority: HUMAN_KERNEL_AMENDMENT_RATIFICATION
     decision: RATIFIED_PROSPECTIVE_ONLY
@@ -1183,7 +1195,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - kernel-amendment-ka01-prospective-verification-continuation
+  - verification-architecture-replacement-v1-vp03-evidence-validity
 sequence:
 
   - id: TASK-309
@@ -1946,13 +1958,27 @@ sequence:
       the pending reviewed implementation; existing TASK-326 review and candidate
       are immutable. No manual main rewind or integration shortcut.
   - id: kernel-amendment-ka01-prospective-verification-continuation
-    status: NEXT
+    status: DONE
     phase: KA01_KERNEL_PROSPECTIVE_AMENDMENT_PUBLICATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-09"
     task_id: TASK-329
     task_revision: 1
-    task_authoring_status: PENDING_CANONICAL_AUTHOR_TASK
+    task_authoring_status: CANONICALIZED
+    completion:
+      authority: HUMAN_BRAIN_PLANNING_RECONCILED_WITH_CANONICAL_RUNTIME_REVIEWER_PUBLISHER_LINEAGE
+      task_id: TASK-329
+      run_id: RUN-329-001
+      review_id: REVIEW-329-001
+      verdict: PASS
+      result_artifact_sha: 73377a0d2e33cfe8f8df1877e27e5475af29b0db
+      review_decision_sha: 1a8d80d2eabf89b1e954e446907cb6d730f7c9c4
+      exact_reviewed_source_sha: 648a2cdeaa1de7949bab9da707c82dac179abc05
+      published_source_in_main: true
+      published_main_at_reconciliation: 648a2cdeaa1de7949bab9da707c82dac179abc05
+      kernel_amendment_normative_spec: HUMAN_RATIFIED_PROSPECTIVE_SPEC
+      runtime_activation: NOT_ACTIVATED
+      successor: verification-architecture-replacement-v1-vp03-evidence-validity
     planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
     amendment_identity: AIOS_KERNEL_KA01_PROSPECTIVE_VERIFICATION_CONTINUATION
     human_decision: EXPLICITLY_RATIFIED_BY_HUMAN_2026_10_09
@@ -1984,7 +2010,7 @@ sequence:
       KA-01 publication and future independently authorized engineering.
 
   - id: verification-architecture-replacement-v1-vp02-proof-contract
-    status: PAUSED_PENDING_KA01_KERNEL_AMENDMENT_PUBLICATION
+    status: FOUNDATION_REVIEWED_PUBLISHED_REMAINING_EXITS_GATED
     phase: VP02_PROOF_CONTRACT
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
@@ -1999,7 +2025,7 @@ sequence:
       reviewed_published_sha: 19037a71536f65327c541668527c099099af6efe
       result_artifact_sha: f54ff39c5153e4224dbaa79e5311792316ab0172
       review_decision_sha: e8530a0a2270a31bf46f1023eee7e41ab4040a7a
-      package_status: FOUNDATION_REVIEWED_PUBLISHED_KA01_AND_OTHER_EXITS_PENDING
+      package_status: FOUNDATION_REVIEWED_PUBLISHED_KA01_PUBLISHED_OTHER_EXITS_GATED
       does_not_activate_runtime: true
     previous_foundation:
       task_id: TASK-326
@@ -2037,12 +2063,24 @@ sequence:
       publishes eligible reviewed candidate or lawful integration descendant.
 
   - id: verification-architecture-replacement-v1-vp03-evidence-validity
-    status: QUEUED_AFTER_VP02
+    status: NEXT
     phase: VP03_EVIDENCE_VALIDITY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
     planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
-    task_authoring_status: NOT_AUTHORED
+    task_id: TASK-330
+    task_revision: 1
+    task_authoring_status: PENDING_CANONICAL_AUTHOR_TASK
+    bounded_first_slice: VP03A_READ_ONLY_AUTHENTICATED_PROVENANCE_AND_APPLICABILITY_FOUNDATION
+    executor_delegation: UNASSIGNED_FOR_TASK330_HUMAN_DECISION_REQUIRED
+    production_activation: NOT_AUTHORIZED
+    vp02_dependency_disposition: >-
+      TASK-326 and TASK-328 foundations plus separately ratified KA-01 TASK-329 are
+      exact reviewed published source. Human explicitly requested continuation after
+      KA-01 publication, authorizing only bounded independently admissible VP-03A
+      read-only foundation while VP-02 full exit and VP-01 measurements remain gated.
+      No VP-02 DONE claim, live checkpoint/RUN mutation, V2 replacement, scheduler,
+      production evidence-reuse authorization or VP-03 full package closure.
     objective: >-
       Define verified VALID/INVALIDATED/UNKNOWN, immutable source bindings and cross-lineage proof reuse without filename-based guesses.
       Add immutable preterminal checkpoint lineage, C1-to-C2 proof applicability witnesses and replay/crash-safe VALID/INVALIDATED/UNKNOWN decisions.
