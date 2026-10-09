@@ -2223,7 +2223,14 @@ sequence:
       - NO_EVIDENCE_REUSE_DISCHARGE_AUTHORITY
       - NO_AUTO_CORRECTION_OR_TERMINALIZATION
       - NO_DOWNSTREAM_ADOPTION
-    executor_delegation: UNASSIGNED_TASK335_REQUIRES_EXPLICIT_HUMAN_DELEGATION
+    executor_delegation:
+      authority: HUMAN
+      task_id: TASK-335
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK335_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
+      persistence: UNTIL_TASK335_COMPLETE_OR_EXPLICIT_HUMAN_CHANGE
     failed_task334_delegation:
       authority: HUMAN
       task_id: TASK-334
@@ -2336,7 +2343,13 @@ sequence:
       public_repo_raw_policy: NO_UNREDACTED_RAW_EXPORT
       no_new_authority: true
       acceptance_limited_to_PROSPECTIVE_OWNER_SOURCE_CONTRACT: true
-      executor: EXPLICIT_HUMAN_DELEGATION_REQUIRED
+      executor:
+        authority: HUMAN
+        task_id: TASK-335
+        executor: codex
+        model: gpt-6.1-sol
+        reasoning_effort: xhigh
+        scope: ENTIRE_TASK335_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
       after_publication: REASSESS_TASK334_BOUNDED_REPAIR_FROM_PRESERVED_FAILED_CANDIDATE
       after_task334_publication: REASSESS_TASK333_BOUNDED_REPAIR
       activations: NOT_AUTHORIZED
