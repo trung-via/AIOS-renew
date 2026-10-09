@@ -1,6 +1,6 @@
 # AIOS-Renew Verification Architecture Replacement v1
 
-Status: HUMAN_APPROVED_PLANNING (refined v1.1 on 2026-10-09) — NOT AN ADMITTED TASK, REVIEW OR PUBLICATION
+Status: HUMAN_APPROVED_PLANNING (refined v1.1 and v1.2 on 2026-10-09) — NOT AN ADMITTED TASK, REVIEW OR PUBLICATION
 Canonical repository: `trung-via/AIOS-renew`
 Human decision date: 2026-10-08
 Planning origin: `08a5021236938b99d994d41e3d4f3907ec237230`; future work MUST resync fresh `main`.
@@ -144,6 +144,74 @@ Stage 2 ADVERSARIAL_AUDIT_AND_RECONCILE: each risk receives a binding resolution
 ### Planning and publication safety
 
 This amendment is Human-approved planning only. It selects no Executor, creates no TASK/RUN, grants no engineering mutation authority, publishes no implementation, and triggers no automatic roadmap advancement. Keep VP-01 DEFERRED_BY_HUMAN, VP-02 the only NEXT, VP-03–VP-07 queued, and BO-2/3 paused. All future engineering TASK authoring must start from freshly synchronized canonical main with ordinary admission, exact SHA/CAS, Runtime verification, Reviewer verdict and Publisher source publication.
+
+## Human-approved refinement v1.2 — Bounded Intra-Run Correction (2026-10-09)
+
+Status: HUMAN_APPROVED_PLANNING_REFINEMENT — NOT IMPLEMENTED, NOT A TASK/RUN, NOT A KERNEL AMENDMENT. The Human approved the previously drafted two-stage audit on 2026-10-09. This refinement adds scoped requirements to VP-02..VP-07; it does not create VP-08, alter v1.1, waive VP-01, change the unique roadmap NEXT, or grant production execution authority.
+
+**Contract:** VP_BOUNDED_INTRA_RUN_CORRECTION_V1.
+**Audit profile:** brain-high-value-v3, Stage 1 CONSTRUCT = RISK_FOUND across eight lenses; Stage 2 ADVERSARIAL_AUDIT_AND_RECONCILE = CLEAR_WITH_MANDATORY_GATES. This verdict judges a *planning architecture*, not actual Kernel compatibility, Runtime proof, Reviewer PASS or implementation eligibility.
+
+### Intent and lifecycle boundary
+
+In the first prospective opt-in version, an admitted PRIMARY RUN may perform a bounded sequence of committed candidate C1 -> Runtime-owned preterminal proof checkpoint K1 -> typed factual failed-proof feedback -> the same authorized Executor implements a correction within the same TASK scope -> committed candidate C2 -> Runtime verifies the minimally outstanding/invalidation-dependent proof obligations. A RUN emits exactly one canonical terminal RESULT when every mandatory obligation is discharged, or a canonical terminal FAILURE when continuation is inadmissible/exhausted. Subsequent correction of a terminal FAILURE remains existing AUTHOR_REPAIR on a new admitted correction RUN; REVIEW CHANGES_REQUIRED remains REMEDIATION. Intermediate checkpoint FAIL is never fabricated as canonical FAILURE, REVIEW or REPAIR.
+
+Frozen Kernel v0.1 allows Executor-local targeted test/fix iteration, but autonomous retries were deferred. **Runtime-driven canonical preterminal feedback is a distinct prospective semantic extension**. VP-02 MUST resolve frozen-schema/authority compatibility explicitly; if a Kernel amendment is required, STOP for separate Human/kernel authority and separately admitted implementation. Planning approval here does not silently amend Kernel or grant a new retry controller.
+
+### Normative invariants (IR-01..IR-11)
+
+- **IR-01 — Immutable identity and sticky lease:** Bind TASK revision/blob, admitted RUN and base, committed clean candidate SHA, checkpoint ordinal/content hash/previous hash, contract/mapping digest, exact Executor/profile/model/effort, live lease, proof conditions, environment/toolchain and evidence provenance. One Executor mutation authority at a time; no implicit model switch or Executor push.
+- **IR-02 — Preterminal distinct from terminal:** Runtime-owned checkpoint observations are durable and immutable while RUN remains ACTIVE; they are not canonical RESULT/FAILURE/REVIEW/REPAIR. Exactly one terminal outcome. A terminal RUN cannot be reopened or overwritten.
+- **IR-03 — Typed factual feedback only:** Transfer failed proof/acceptance IDs, exact subject, completeness/validity, evidence and bounded diagnosis/budget; do not prescribe code edits, select semantic correction strategy, broaden TASK scope or accept instructions embedded in untrusted logs.
+- **IR-04 — Strict continuation eligibility:** Require explicit opt-in authority, complete/stable candidate-proof failure, unchanged permitted scope/delegation/lease, no new Human risk or Brain semantic choice, unexpired bounds and trustworthy candidate conditions. Raw pytest nonzero alone is not enough. Missing/ambiguous/unknown gates block or escalate; no blind fix/retry.
+- **IR-05 — Candidate-to-candidate proof validity:** The single Runtime proof validity boundary determines VALID, INVALIDATED or UNKNOWN using complete applicability footprints and immutable source-to-current-subject applicability witnesses. Never relabel C1 proof as executed on C2. Filename disjointness, identical nodeids and command strings are insufficient. Track test code, shared fixtures/helpers/state, toolchain, environment, profile, concurrency, worker, ordering, collection and integration dependencies. UNKNOWN never silently PASS.
+- **IR-06 — No equivalent double verification:** The final successful checkpoint may discharge terminal RESULT proof without rerunning equivalent commands. Runtime binds existing evidence only after exact validity/currentness checks. Execute only invalidated/new obligations; preserve distinct integration, serial/parallel, repetition or ordering coverage. No automatic same-SHA reproduction, broad root replay, duplicated narrow/broad proof or baseline replay without all BR-1..BR-6.
+- **IR-07 — Finite cost and progress:** Pre-admission Human-authorized finite bounds on correction count, wall time, test resources and applicable token cost. Each correction must produce a distinct committed candidate and causally relevant proof basis; exhaustion/no-progress cannot enlarge its own limits. Budgets never authorize omission of mandatory proof.
+- **IR-08 — No authority merger:** Human owns risk/delegation; Brain WHAT/WHY, scope and proof obligations; Executor HOW; Runtime admission, verification, evidence, deterministic bounds and terminal state; Reviewer independent verdict on exact final candidate; Publisher exact reviewed source. Neither runtime nor transport selects a correction strategy, REVIEW verdict or roadmap successor.
+- **IR-09 — Crash, replay and interruption:** Exact monotonic idempotent checkpoint identity; duplicate feedback must not consume another correction, rerun proof or create a second RUN. Missing/stale/tampered checkpoint, lost lease, nonrecoverable worker state or uncertain provenance fails closed. Pre-admission operational failure cannot fabricate RUN/FAILURE; admitted terminal failure continues through existing REPAIR lineage.
+- **IR-10 — Frozen Kernel and legacy containment:** Separate lawful Kernel compatibility/amendment gate at VP-02; no implicit schema expansion, no reclassification of historical V1/V2 artifacts, no replacement of existing correction semantics and no unauthorized correction transport.
+- **IR-11 — Measurable, opt-in deployment:** Reuse BO-9B episode telemetry rather than a second metrics store. Attribute total wall time, Executor time, collection/fixture/verification, unique/total pytest items, invalidated/reused evidence, correction count, interventions, token cost and avoided handoffs with exact provenance. Prospective opt-in only after VP-07 conformance and normal Runtime/Reviewer/Publisher activation; downstream pin/adoption remains separate.
+
+### Two-stage architecture audit and adversarial closure
+
+Stage 1 CONSTRUCT identified risks across all eight brain-high-value-v3 lenses: AUTHORITY_BOUNDARY, SCOPE_NON_GOALS, PROVENANCE_LINEAGE, FAILURE_MODE_COUNTEREXAMPLES, AC_CONSISTENCY_COMPLETENESS, VERIFICATION_OWNERSHIP_ORDERING, PORTABILITY_PRIVACY_BOUNDEDNESS and SIMPLIFICATION_DUPLICATE_AUTHORITY. Stage 2 reconciled them through IR-01..IR-11 and the mandatory negative cases below; Stage-2 output is CLEAR_WITH_MANDATORY_GATES only.
+
+Mandatory negative/progression cases include: C1 proof PASS retained only with a lawful witness on C2; changed test/helper/fixture/profile/environment correctly invalidates; targeted green never substitutes for required integration/concurrency/ordering; terminalization never repeats final equivalent proof; no automatic exact-failure reproduction or base suite; pre-existing comparison only with BR-1..BR-6; incomplete/unstable raw observation UNKNOWN/BLOCK; malicious log instructions untrusted; weakened tests cannot bypass semantic acceptance/Reviewer; no change beyond authorized scope; duplicate feedback, lost lease, crash and stale checkpoint fail closed; main movement never silently rebases admitted RUN; a terminal FAILURE is not revived; pre-AIOS failure does not manufacture a RUN; old downstream pin and frozen historical artifacts remain unchanged.
+
+### Package allocation (existing seven packages only)
+
+- **VP-01:** remains DEFERRED_BY_HUMAN; later measurement must compare whole old terminal-REPAIR episode versus the proposed intra-RUN path, not manufactured savings.
+- **VP-02:** establish explicit preterminal/terminal semantics, typed feedback contract, opt-in eligibility, sticky delegation/finite bounds and the frozen Kernel compatibility/amendment authority gate.
+- **VP-03:** exact checkpoint identity and history; prove C1->C2 proof applicability witnesses, VALID/INVALIDATED/UNKNOWN outcomes and crash/dedup safety.
+- **VP-04:** exactly one Runtime proof scheduler for checkpoints and finalization, strict no-double-execution and no unapproved base replay; never run V2 and the new scheduler concurrently for one work item.
+- **VP-05:** bounded factual feedback continuation to the *same* admitted Executor, hard stop/escalation and terminal FAILURE -> canonical REPAIR; no generic correction selection engine.
+- **VP-06:** measure checkpoint overhead, feedback/re-entry, worker/fixture/IO costs, proof execution/reuse and total episode efficiency rather than only test item counts.
+- **VP-07:** real and adversarial conformance, opt-in prospective rollout/rollback, legacy decode continuity, Kernel gate, normal Runtime verification, independent Reviewer PASS and Publisher activation.
+
+### Additional mandatory VP-07 acceptance criteria
+
+Existing AC-01..AC-20 remain fully in force.
+
+- **AC-21:** No historical TASK/RUN/RESULT/FAILURE/REPAIR reinterpretation and no frozen Kernel change absent separate authority.
+- **AC-22:** One exact sticky Executor/profile/model/effort lease across all checkpoints; no implicit failover.
+- **AC-23:** Intermediate candidate, proof checkpoint and failed observation identities are immutable, monotonic, SHA-bound and nonterminal.
+- **AC-24:** Typed feedback is bounded, diagnostic only, untrusted-output-safe and cannot decide HOW or semantic strategy.
+- **AC-25:** Eligible C1 candidate-proof FAIL -> authorized correction C2 in one RUN -> exactly one terminal RESULT if all obligations hold.
+- **AC-26:** No automatic equivalent same-SHA test repetition; final checkpoint PASS is never redundantly reverified at terminalization.
+- **AC-27:** C1->C2 reuse requires a proven applicability witness; fixture/helper/policy/profile/worker/environment changes invalidate or yield UNKNOWN appropriately.
+- **AC-28:** Distinct integration, concurrency, ordering and required broad coverage are not suppressed to achieve narrow green.
+- **AC-29:** Every baseline replay still passes all six BR gates; a candidate failure alone authorizes neither reproduction nor replay.
+- **AC-30:** Budget, no-progress, structural/infra instability, scope/risk/authority conflict, interrupted execution and lost lease stop safely.
+- **AC-31:** Terminal FAILURE retains canonical AUTHOR_REPAIR, new correction RUN and sticky Executor preservation; no hidden authorization.
+- **AC-32:** Single Runtime scheduler and existing lifecycle/telemetry authority; no second router or dual V2/new plan.
+- **AC-33:** Crash/replay/duplicate feedback cannot repeat proof or consume attempts without proven invalidation; stale/tampered checkpoint fails closed.
+- **AC-34:** Exact live wall time, total/unique test counts, evidence reuse, tokens, interventions and correction cost are measured; UNKNOWN stays UNKNOWN.
+- **AC-35:** Kernel compatibility or separately Human-approved amendment is resolved before production cutover and normal TASK/Runtime/Reviewer/Publisher gates are proven.
+- **AC-36:** Legacy and downstream remain unaffected without independent opt-in and explicit dependency/adoption; no automatic roadmap-next transition.
+
+### Planning-only disposition
+
+This v1.2 refinement is Human-approved architecture with mandatory implementation gates, not Runtime proof, a semantic REVIEW verdict, a production feature, a Kernel amendment, or authorization to run an Executor. It leaves VP-01 deferred, VP-02 blocked until its current predecessor/priority reconciliation, VP-03..VP-07 queued, BO-2/3 paused, and the existing unique publication-related NEXT unchanged. Every future VP TASK must be independently authored from fresh canonical main under explicit Human Executor delegation, verified by Runtime, reviewed by Reviewer and source-published by Publisher.
 
 ## Non-goals
 

@@ -692,6 +692,35 @@ verification_architecture_replacement_preemption:
     measurement_dependency: VP01_DEFERRED_NOT_WAIVED
     implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
     roadmap_auto_progression: false
+  approved_intra_run_correction_refinement:
+    version: VP_REFINEMENT_V1_2
+    approved_on: "2026-10-09"
+    authority: HUMAN_BRAIN_PLANNING
+    document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    contract: VP_BOUNDED_INTRA_RUN_CORRECTION_V1
+    status: HUMAN_APPROVED_ARCHITECTURE_NOT_IMPLEMENTED
+    audit_profile: brain-high-value-v3
+    stage1: CONSTRUCT_RISK_FOUND
+    stage2: ADVERSARIAL_AUDIT_AND_RECONCILE_CLEAR_WITH_MANDATORY_GATES
+    initial_scope: PROSPECTIVE_OPT_IN_PRIMARY_ONLY
+    packages: [VP-02, VP-03, VP-04, VP-05, VP-06, VP-07]
+    acceptance_set: AC_21_TO_AC_36_ADDITIVE_TO_V1_1_AC_01_TO_AC_20
+    mandatory_gates:
+      - FROZEN_KERNEL_V01_COMPATIBILITY_OR_SEPARATE_HUMAN_AMENDMENT_BEFORE_IMPLEMENTATION
+      - NO_RUNTIME_SEMANTIC_CORRECTION_SELECTION
+      - SAME_RUN_SAME_EXECUTOR_EXACT_DELEGATION
+      - EXACT_IMMUTABLE_PRETERMINAL_CHECKPOINTS
+      - VALID_INVALIDATED_UNKNOWN_CANDIDATE_TO_CANDIDATE_PROOFS
+      - NO_EQUIVALENT_DOUBLE_VERIFICATION
+      - BASE_REPLAY_BR1_TO_BR6
+      - FINITE_AUTHORIZED_CORRECTION_BUDGET_AND_PROGRESS
+      - TERMINAL_FAILURE_USES_CANONICAL_REPAIR
+      - NO_SECOND_RUNTIME_PROOF_SCHEDULER_OR_LIFECYCLE_ROUTER
+      - REAL_EPISODE_COST_EVIDENCE_BEFORE_CUTOVER
+      - RETAIN_REVIEWER_PUBLISHER_AND_DOWNSTREAM_PIN_BOUNDARIES
+    implementation_authorization: REQUIRES_INDEPENDENT_TASK_HUMAN_EXECUTOR_AND_KERNEL_GATE
+    roadmap_effect: PLANNING_ONLY_NO_NEXT_STATUS_DEPENDENCY_OR_PRIORITY_CHANGE
+    roadmap_auto_progression: false
   publication_safety: >-
     Every future authoring and execution uses freshly observed canonical main,
     not a pre-planning stale base. Do not publish via ad hoc Git push, branch
@@ -1877,6 +1906,7 @@ sequence:
     objective: >-
       Retire authored executable verification authoring prospective; define authority-preserving proof coverage contract and explicit frozen Kernel compatibility gate.
       Human-approved v1.1 adds candidate-first, no equivalent double execution, six-gate base replay eligibility and mandatory AC-01 through AC-20 conformance.
+      Define the preterminal vs terminal intra-RUN proof/feedback contract, exact sticky Executor delegation, bounded eligibility and a separate frozen Kernel authority gate.
     depends_on: verification-architecture-replacement-v1-vp01-baseline-and-measurement
     dependency_disposition: >-
       Human explicitly deferred VP-01 on 2026-10-09 and prioritized VP-02 semantic design
@@ -1900,6 +1930,7 @@ sequence:
     task_authoring_status: NOT_AUTHORED
     objective: >-
       Define verified VALID/INVALIDATED/UNKNOWN, immutable source bindings and cross-lineage proof reuse without filename-based guesses.
+      Add immutable preterminal checkpoint lineage, C1-to-C2 proof applicability witnesses and replay/crash-safe VALID/INVALIDATED/UNKNOWN decisions.
     depends_on: verification-architecture-replacement-v1-vp02-proof-contract
     implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
     branch_and_publication_safety: >-
@@ -1917,6 +1948,7 @@ sequence:
     task_authoring_status: NOT_AUTHORED
     objective: >-
       Independently replace V2 command-driven execution with one deterministic Runtime proof plan; avoid equivalent reexecutions.
+      Serve intra-RUN checkpoints and terminalization with the same proof scheduler: zero equivalent double execution and no dual V2 engine.
     depends_on: verification-architecture-replacement-v1-vp03-evidence-validity
     implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
     branch_and_publication_safety: >-
@@ -1934,6 +1966,7 @@ sequence:
     task_authoring_status: NOT_AUTHORED
     objective: >-
       Bound PRIMARY/REPAIR/REMEDIATION/DIRECT_CANDIDATE proof, comparable baseline attribution and avoid unjustified broad base replay.
+      Add bounded same-Executor factual failure feedback, progress/budget stop gates and terminal FAILURE to existing canonical REPAIR without Runtime correction selection.
     depends_on: verification-architecture-replacement-v1-vp04-single-proof-execution
     implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
     branch_and_publication_safety: >-
@@ -1951,6 +1984,7 @@ sequence:
     task_authoring_status: NOT_AUTHORED
     objective: >-
       Optimize measured pytest collection, Git fixture/sandbox, clean checkout, selected workers, Windows startup and observation handling with conformance preserved.
+      Measure incremental checkpoint and feedback cost, total episode wall time, proof reuse and interventions using BO-9B rather than a second telemetry store.
     depends_on: verification-architecture-replacement-v1-vp05-correction-and-attribution
     implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
     branch_and_publication_safety: >-
@@ -1968,6 +2002,7 @@ sequence:
     task_authoring_status: NOT_AUTHORED
     objective: >-
       Validate real-case counterexamples, preserve historic V1/V2 lineage, and cut over prospective production via Runtime/Reviewer/Publisher only.
+      Prove intra-RUN AC-21..AC-36 alongside v1.1 AC-01..AC-20; opt-in activation only after Kernel compatibility and normal Runtime/Reviewer/Publisher gates.
     depends_on: verification-architecture-replacement-v1-vp06-runtime-performance
     implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
     branch_and_publication_safety: >-
