@@ -1,0 +1,40 @@
+review_id: REVIEW-330-001
+reviewed_sha: eae286d3ff673d07929dbd7128af0d4d23fb8079
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: src/aios_renew/proof_applicability.py
+    issue: >-
+      The evaluator rejects genuine canonical ACTIVE RUN snapshots with head_sha null,
+      because it requires run.head_sha equal to the candidate SHA even though
+      canonical Runtime stores that exact candidate in terminal RESULT/EVIDENCE.
+      Existing focused fixtures synthesize ACTIVE RUN with populated head_sha
+      and therefore cannot detect the incompatible canonical form. This breaks
+      authentic source provenance and applicability for real canonical RUN lineage
+      against AC1/AC2 and omits a mandatory real-record-shape negative/positive case under AC6.
+    expected: >-
+      Accept and authenticate the actually admitted immutable ACTIVE RUN head_sha=null
+      shape while deriving and validating the candidate subject solely from separate
+      canonical terminal RESULT/EVIDENCE and exact Git lineage. Reject inconsistent
+      RUN/RESULT/head/subject contradictions, forged or incomplete source, and preserve
+      all external trust-root, read-only, UNKNOWN fail-close and non-activation guards.
+      Add focused tests matching an actual canonical RUN record and contradictory
+      non-null/mismatched-head records; no broad suite or other production mutation.
+notes:
+- "Reviewer independently examined TASK-330 r1 RUN-330-001 PRIMARY against exact candidate eae286d3ff673d07929dbd7128af0d4d23fb8079, admitted base 8f7348e4f496c9342c62ee6f93c758c2a995a78b, terminal RESULT artifact 6bd42196bff88f346336e227a0024bb9300bdf08. Executor profile codex/gpt-6.1-sol/max; canonical evidence RUN-330-001-V003 binds 63 focused PASS, exit 0, 503.72s pytest, Runtime observation verification 522.38s and soft budget EXCEEDED (nonblocking operational observation). Reviewer did not rerun verification."
+- "STAGE 1 CONSTRUCT: source changes are exactly src/aios_renew/proof_applicability.py, tests/test_proof_applicability.py and docs/AIOS-VP03-PROVENANCE-APPLICABILITY-v1.md. Versioned read-only Git object/source-witness API, explicit immutable catalog trust-root precondition, full sixteen dependency dimensions, typed VALID/INVALIDATED/UNKNOWN, preserved actual observation and non-activation flags. No Runtime call site, TASK parser, V2 scheduler, production checkpoint or historical artifact modification."
+- "STAGE 2 ADVERSARIAL MATERIAL CONTRACT VIOLATION: actual canonical RUN-330-001 .ai/transport/run.json on immutable aios/artifacts/RUN-330-001 has status ACTIVE and head_sha null, while RESULT in same artifact has head_sha eae286d3ff673d07929dbd7128af0d4d23fb8079. This is also the documented Run.from_task form. The new evaluator in src/aios_renew/proof_applicability.py requires (run.task.id,run.task.revision,run.base_sha,run.head_sha)==(task id,revision,base,original SHA), thereby rejecting the normal authenticated canonical RUN snapshot as SOURCE_BINDING_CONFLICT/UNKNOWN. Fixture tests/test_proof_applicability.py instead synthesizes status ACTIVE with head_sha original SHA, masking real canonical-shape incompatibility. This blocks realistic AC1/AC2 identity applicability and leaves the required real negative/positive canonical record format uncovered in AC6."
+- "Minimum remedy (one causal issue): accept/authenticate the actual immutable canonical ACTIVE RUN record with head_sha null where that is the admitted shape, bind candidate SHA strictly through separately authenticated terminal RESULT/EVIDENCE, admitted base and real Git source/lineage, and reject inconsistent non-null RUN head, mismatched RESULT, corrupted/fabricated evidence or wrong currentness. Preserve all existing trust-root constraints, full dependency witnesses, read-only scope and NOT_ACTIVATED behavior. Add focused real-canonical-RUN-shape positive and negative tests; adjust concise docs only if contract description needs clarification. Do not alter existing Runtime artifacts, synthesize an unbound head, waive provenance or rerun broad suites."
+- "Independent Reviewer verdict CHANGES_REQUIRED for one material TASK-contract compatibility issue, grounded in AC1, AC2 and AC6. Other reviewed properties broadly meet AC3-AC5 and AC7-AC8. This is not a Runtime verification failure; canonical RESULT 63/63 PASS remains immutable. Correct via authorized narrow REMEDIATION after canonical REVIEW ingress; sticky Human-selected Executor codex/gpt-6.1-sol/max must be preserved. Review of corrected candidate must be fresh on its exact SHA; Publisher cannot publish current candidate as PASS."
