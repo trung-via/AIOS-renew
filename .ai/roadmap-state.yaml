@@ -2198,7 +2198,14 @@ sequence:
       - NO_EVIDENCE_REUSE_DISCHARGE_AUTHORITY
       - NO_AUTO_CORRECTION_OR_TERMINALIZATION
       - NO_DOWNSTREAM_ADOPTION
-    executor_delegation: UNASSIGNED_TASK334_REQUIRES_EXPLICIT_HUMAN_DELEGATION
+    executor_delegation:
+      authority: HUMAN
+      task_id: TASK-334
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK334_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
+      persistence: UNTIL_TASK334_COMPLETE_OR_EXPLICIT_HUMAN_CHANGE
     failed_task333_delegation:
       authority: HUMAN
       task_id: TASK-333
@@ -2270,7 +2277,13 @@ sequence:
       raw_policy: NO_UNREDACTED_RAW_LOG_EXPORT_TO_PUBLIC_GITHUB
       raw_requirement: BIND_IMMUTABLE_RAW_DIGEST_AND_AUTHORIZED_AVAILABILITY_OR_FAIL_CLOSED
       standalone_task: TASK-334
-      executor: REQUIRES_FRESH_EXPLICIT_HUMAN_DELEGATION
+      executor:
+        authority: HUMAN
+        task_id: TASK-334
+        executor: codex
+        model: gpt-6.1-sol
+        reasoning_effort: xhigh
+        scope: ENTIRE_TASK334_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
       after_reviewed_publication: RECONCILE_TASK333_FAILED_LINEAGE_THEN_AUTHOR_LAWFUL_BOUNDED_REPAIR_IF_ELIGIBLE
       stages: [CONSTRUCT_RISK_AUDIT, ADVERSARIAL_RECONCILIATION]
       activation: NOT_ACTIVATED
