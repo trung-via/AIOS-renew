@@ -675,7 +675,13 @@ verification_architecture_replacement_preemption:
     unique_effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
     selected_bounded_next_slice: VP03D_RUNTIME_CANONICAL_PROVENANCE_ISSUER_READ_ONLY_BRIDGE
     selected_task_id: TASK-333
-    selected_executor: EXPLICIT_HUMAN_DELEGATION_REQUIRED_FOR_NEW_TASK
+    selected_executor:
+      authority: HUMAN
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      sticky_same_task: true
+      expiry: TASK333_COMPLETE_OR_HUMAN_OVERRIDE
     source_producer_gap: NO_INDEPENDENT_PRODUCTION_CANONICAL_RUNTIME_ISSUER
     scope_disposition: READ_ONLY_EXISTING_RUNTIME_CANONICAL_OBSERVATION_BOUNDARY_NO_SEPARATE_AUTHORITY
     stage1_semantic_audit: RISK_FOUND_UNTRUSTED_GIT_SELF_ATTESTATION_PRETERMINAL_FABRICATION_FALSE_REUSE_DOUBLE_SCHEDULER
@@ -2164,7 +2170,14 @@ sequence:
       - NO_EVIDENCE_REUSE_DISCHARGE_AUTHORITY
       - NO_AUTO_CORRECTION_OR_TERMINALIZATION
       - NO_DOWNSTREAM_ADOPTION
-    executor_delegation: UNASSIGNED_FOR_TASK333_EXPLICIT_HUMAN_SELECTION_REQUIRED
+    executor_delegation:
+      authority: HUMAN
+      task_id: TASK-333
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK333_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
+      persistence: UNTIL_TASK333_COMPLETION_OR_EXPLICIT_HUMAN_CHANGE
     vp03b_reviewed_published_slice:
       name: VP03B
       task_id: TASK-331
