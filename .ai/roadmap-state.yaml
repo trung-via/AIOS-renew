@@ -592,6 +592,50 @@ production_wake_amendment:
         - NO_SYNTHETIC_HUMAN_INTENT_OR_IMPLICIT_TASK_OR_ROUTE_TRANSFER
         - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
 
+publication_end_to_end_preemption:
+  id: publication-end-to-end-v1
+  status: HUMAN_APPROVED_NEXT_PRE_VP02
+  approved_on: "2026-10-09"
+  authority: HUMAN_BRAIN_PLANNING
+  priority: PREEMPTS_VP02_PUBLICATION_BLOCKER
+  effective_next: publication-end-to-end-v1-safe-recovery-and-consolidation
+  return_to: verification-architecture-replacement-v1-vp02-proof-contract
+  human_instruction: >-
+    Deliver one permanent end-to-end publication lane, including lawful post-PASS
+    divergent-main source recovery, exact Runtime verification/evidence reuse,
+    fresh Reviewer verdict where a replacement SHA is introduced, Publisher-owned
+    CAS publication and one authoritative publication navigation entrypoint
+    with same-candidate scoped retirement of duplicated Brain instructions.
+    No per-incident implementation TASK is the normal recovery path.
+  initiating_incident:
+    task_id: TASK-326
+    revision: 1
+    run_id: RUN-326-001
+    review_id: REVIEW-326-001
+    result_artifact_sha: 5b5af1e276c9a1bb7aa0031952e1390fe607fc9c
+    reviewed_sha: 9b2ec4afbedc4ef342b3ea198c59abbb48938f74
+    review_decision_sha: b526cfdded14d74985af42fc4a14b7b54045b260
+    publisher_main_sha: 1ead2b69f8c3ab68bee76e37414f013c2449de78
+    blocker: FRESH_EXACT_REVIEW_REQUIRED
+    publication_status: BLOCKED_NOT_PUBLISHED
+  preservation:
+    - KEEP_TASK326_RESULT_EVIDENCE_AND_REVIEW_IMMUTABLE
+    - PRESERVE_HUMAN_LEGACY_ROUTE_PLANNING_COMMIT
+    - NO_REPLAY_OR_DOUBLE_VERIFICATION_WITHOUT_PROVEN_INVALIDATION
+    - NO_MANUAL_FORCE_PUSH_OR_BLIND_CHERRY_PICK
+    - NO_NEW_KERNEL_SEMANTICS_WITHOUT_SEPARATE_EXPLICIT_HUMAN_APPROVAL
+    - NO_NEW_GENERIC_ROUTER_PLANNER_REVIEWER_OR_PUBLISHER
+    - SINGLE_NORMATIVE_SELF_HOST_ENTRYPOINT_WITH_PUBLICATION_SPECIALIST_LEAF
+    - SCOPED_RETIREMENT_NOT_DELETION_OF_HISTORICAL_LINEAGE
+  gate: >-
+    Activate recovery and documentation cleanup atomically only after
+    admitted TASK, Runtime evidence, Reviewer PASS and Publisher publication
+    of the eligible implementation. This planning override cannot itself
+    publish or reclassify RUN-326-001.
+  implementation_authorized: false
+  executor_delegation: UNASSIGNED_FOR_NEW_TASK
+  roadmap_auto_progression: false
+
 verification_architecture_replacement_preemption:
   id: aios-verification-architecture-replacement-v1
   status: HUMAN_APPROVED_ACTIVE_PRE_BO2_3
@@ -605,17 +649,18 @@ verification_architecture_replacement_preemption:
     immutable legacy lineage and all authority boundaries. This planning
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
-  effective_next: verification-architecture-replacement-v1-vp02-proof-contract
+  effective_next: publication-end-to-end-v1-safe-recovery-and-consolidation
   return_to: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
   package_count: 7
   executor_delegation: UNASSIGNED_FOR_NEW_TASK
   implementation_authorized: false
   roadmap_auto_progression: false
   human_priority_override_2026_10_09: >-
-    Explicit Human decision: stop H4C0 diagnostics, defer VP-01 without claiming
-    completion, and make VP-02 the sole planning NEXT. Dependency on VP-01 remains
-    visible as an unclosed measurement/compatibility gate for later publication
-    and cutover; it is not silently waived.
+    Earlier on 2026-10-09 Human deferred VP-01 and selected VP-02. Later that day,
+    after RUN-326-001 REVIEW PASS was blocked at publication by divergent main,
+    Human prospectively preempted VP-02 with publication-end-to-end-v1 as the
+    unique NEXT. VP-01 stays deferred, VP-02 is not DONE or published, and no
+    cutover/measurement gate is waived.
   source_main_at_human_planning_transition: 08a5021236938b99d994d41e3d4f3907ec237230
   approved_refinement:
     version: VP_REFINEMENT_V1_1
@@ -1069,7 +1114,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - verification-architecture-replacement-v1-vp02-proof-contract
+  - publication-end-to-end-v1-safe-recovery-and-consolidation
 sequence:
 
   - id: TASK-309
@@ -1801,8 +1846,29 @@ sequence:
       stale local, repair, review or planning branch as source. Publisher alone
       publishes eligible reviewed candidate or lawful integration descendant.
 
-  - id: verification-architecture-replacement-v1-vp02-proof-contract
+  - id: publication-end-to-end-v1-safe-recovery-and-consolidation
     status: NEXT
+    phase: PUBLICATION_SAFE_RECOVERY_AND_NORMATIVE_CLEANUP
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-09"
+    task_id: TASK-327
+    planning_document: docs/AIOS-SELF-HOST-END-TO-END-FLOW-ARCHITECTURE-v1.md
+    objective: >-
+      Implement permanent exact-reviewed-source publication continuation for
+      clean divergent main, with Runtime-gated source recovery and minimal valid
+      evidence reuse, independent fresh Reviewer verdict if a candidate SHA
+      changes, Publisher-only publication and one publication end-to-end
+      navigation leaf; remove competing current procedural guidance atomically.
+    active_incident: RUN-326-001
+    successor_commitment: verification-architecture-replacement-v1-vp02-proof-contract
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_EXPLICIT_HUMAN_EXECUTOR_DELEGATION
+    branch_and_publication_safety: >-
+      TASK-327 implementation must use fresh main after this planning transition
+      and its own TASK authoring. No additional planning main mutation during
+      the pending reviewed implementation; existing TASK-326 review and candidate
+      are immutable. No manual main rewind or integration shortcut.
+  - id: verification-architecture-replacement-v1-vp02-proof-contract
+    status: BLOCKED_ON_PUBLICATION_RECOVERY
     phase: VP02_PROOF_CONTRACT
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
