@@ -107,7 +107,8 @@ def _fingerprint(entries, context, paths):
 
 def _case(tmp_path, *, change=None, fact_change=None, outcome="PASS", selected="unit",
           witness_defect=None, review_defect=None, evidence_defect=None, mapping_defect=None,
-          sibling=False, source_worker_mismatch=False, inapplicable=None):
+          sibling=False, source_worker_mismatch=False, inapplicable=None,
+          run_status="ACTIVE", run_head=None, result_head="source"):
     repo = tmp_path / "repository"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "main")
@@ -215,6 +216,10 @@ def _case(tmp_path, *, change=None, fact_change=None, outcome="PASS", selected="
         evidence["verification"]["candidate_digest"] = "0" * 64
     elif evidence_defect == "subject":
         evidence["subject_sha"] = target
+    elif evidence_defect == "relabelled_subject":
+        evidence["subject_sha"] = observation["subject_sha"] = target
+        evidence["verification"]["binding"].update(subject_sha=target, tree_sha=target_tree)
+        evidence["verification"]["candidate_digest"] = canonical_digest(observation)
     elif evidence_defect == "incomplete":
         observation["complete"] = False
         evidence["verification"]["candidate_digest"] = canonical_digest(observation)
@@ -224,10 +229,13 @@ def _case(tmp_path, *, change=None, fact_change=None, outcome="PASS", selected="
     elif evidence_defect == "reuse":
         evidence["verification"]["reuse"] = {"binding": copy.deepcopy(evidence["verification"]["binding"]),
                                                "source_evidence_id": "EVIDENCE-OFFLINE"}
+    heads = {None: None, "source": original, "base": base, "target": target}
+    # Match the canonical immutable admission record: ACTIVE, head_sha=null.
+    # The original candidate appears in separate terminal RESULT/EVIDENCE.
     run = {"run_id": "RUN-OFFLINE", "task": {"id": task["task_id"], "revision": 1},
         "executor": "codex", "base_sha": base, "workspace": "OFFLINE-DISPOSABLE",
-        "head_sha": original, "status": "ACTIVE", "return_affinity": task["return_affinity"]}
-    result = {"head_sha": original, "claims": [{"id": "claim-v1", "satisfies": ["AC1"],
+        "head_sha": heads[run_head], "status": run_status, "return_affinity": task["return_affinity"]}
+    result = {"head_sha": heads[result_head], "claims": [{"id": "claim-v1", "satisfies": ["AC1"],
         "claim": "An original observation was recorded.", "evidence": ["EVIDENCE-OFFLINE"]}],
         "changed_files": ["app.dat"], "unresolved": []}
     values = {"run": run, "result": result, "evidence": evidence,
@@ -330,6 +338,12 @@ def _codes(result):
 
 def test_valid_is_immutable_idempotent_and_retains_actual_original_subject(tmp_path):
     authority, request, catalog = _case(tmp_path)
+    run = json.loads(_git(authority.repository, "show",
+        f"{catalog['run']['commit_sha']}:{catalog['run']['path']}"))
+    assert run == {"run_id": "RUN-OFFLINE", "task": {"id": "TASK-OFFLINE", "revision": 1},
+        "executor": "codex", "base_sha": catalog["base_sha"], "workspace": "OFFLINE-DISPOSABLE",
+        "head_sha": None, "status": "ACTIVE",
+        "return_affinity": {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}}
     before = _git(authority.repository, "status", "--porcelain")
     result = evaluate_applicability(request, authority=authority)
     assert result.state == State.VALID and result.reasons == ()
@@ -348,6 +362,45 @@ def test_valid_is_immutable_idempotent_and_retains_actual_original_subject(tmp_p
     assert before == _git(authority.repository, "status", "--porcelain") == b""
     with pytest.raises(FrozenInstanceError):
         result.source.subject_sha = request.target_candidate_sha
+
+
+@pytest.mark.parametrize("status", ("ACTIVE", "RESULT"))
+def test_populated_run_head_must_agree_with_terminal_source_records(tmp_path, status):
+    authority, request, catalog = _case(tmp_path, run_status=status, run_head="source")
+    result = evaluate_applicability(request, authority=authority)
+    assert result.state == State.VALID and result.reasons == ()
+    assert result.source.subject_sha == catalog["source_candidate_sha"]
+
+
+@pytest.mark.parametrize("status, head", (
+    ("ACTIVE", "base"), ("ACTIVE", "target"),
+    ("RESULT", "base"), ("RESULT", "target"), ("RESULT", None),
+))
+def test_contradictory_run_heads_fail_closed_even_when_catalog_pinned(tmp_path, status, head):
+    authority, request, _ = _case(tmp_path, run_status=status, run_head=head)
+    result = evaluate_applicability(request, authority=authority)
+    assert result.state == State.UNKNOWN
+    assert result.reasons == (module.Reason(ReasonCode.SOURCE_BINDING_CONFLICT),)
+    assert result.source is None and result.applicable_obligation is None
+    assert not result.authority_authenticated and result.activation == "NOT_ACTIVATED"
+    assert not any((result.acceptance_discharge_authorized, result.evidence_reuse_authorized,
+        result.verification_execution_authorized, result.target_execution_evidence_created,
+        result.canonical_checkpoint_created))
+
+
+@pytest.mark.parametrize("head, evidence_defect, reason", (
+    ("base", None, ReasonCode.SOURCE_BINDING_CONFLICT),
+    ("target", None, ReasonCode.SOURCE_BINDING_CONFLICT),
+    (None, None, ReasonCode.RECORD_CORRUPT),
+    ("source", "relabelled_subject", ReasonCode.SOURCE_BINDING_CONFLICT),
+    ("target", "relabelled_subject", ReasonCode.SOURCE_BINDING_CONFLICT),
+))
+def test_null_active_run_head_cannot_mask_terminal_subject_conflicts(tmp_path, head, evidence_defect, reason):
+    authority, request, _ = _case(tmp_path, result_head=head, evidence_defect=evidence_defect)
+    result = evaluate_applicability(request, authority=authority)
+    assert result.state == State.UNKNOWN and result.reasons == (module.Reason(reason),)
+    assert result.source is None and result.applicable_obligation is None
+    assert not result.authority_authenticated and result.activation == "NOT_ACTIVATED"
 
 
 @pytest.mark.parametrize("dimension", DIMENSIONS)

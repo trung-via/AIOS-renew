@@ -654,10 +654,16 @@ def evaluate_applicability(request: ApplicabilityRequest, *,
         evidence_data = _object(data["evidence"], {"evidence_id", "run_id", "subject_sha", "type",
                                                   "source", "result", "raw", "verification"})
         evidence = validate_evidence(evidence_data)
-        _require((run.task.id, run.task.revision, run.base_sha, run.head_sha) ==
-                 (task["task_id"], task["revision"], base, original)
+        # Immutable admission snapshots remain ACTIVE with no candidate head.
+        # The separate terminal RESULT/EVIDENCE bind the observed subject; a
+        # populated RUN head must agree, and a RESULT RUN cannot omit its head.
+        _require((run.task.id, run.task.revision, run.base_sha) ==
+                 (task["task_id"], task["revision"], base)
+                 and (run.head_sha == result.head_sha
+                      or (run.status == "ACTIVE" and run.head_sha is None))
                  and evidence.run_id == run.run_id and result.head_sha == original
-                 and evidence.subject_sha == original and evidence.raw_path == records["raw"].path,
+                 and evidence.subject_sha == result.head_sha
+                 and evidence.raw_path == records["raw"].path,
                  ReasonCode.SOURCE_BINDING_CONFLICT)
         verification = evidence.verification
         _require(type(verification) is dict and not any(key in verification for key in
