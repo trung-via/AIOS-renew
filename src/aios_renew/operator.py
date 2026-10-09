@@ -97,6 +97,7 @@ from .review_transport import (
     resolve_remote_run_namespace,
     resolve_remote_task_lifecycle,
     resolve_detached_observation_remote,
+    resolve_transport_remote,
     task_run_prefix,
     transport_admission_failure,
     transport_failure,
