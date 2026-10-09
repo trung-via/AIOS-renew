@@ -157,6 +157,9 @@ jobs:
               },
             });
 
+      # Initial and recovered-source PASS use this same transport continuation.
+      # Ingress/Python bind exact RUN, candidate and provenance; dispatch does
+      # not infer review, recovery admission, evidence or publication success.
       - name: Observe rejected publication dispatch
         if: always() && steps.ingress.outcome == 'success' && steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome == 'failure'
         env:

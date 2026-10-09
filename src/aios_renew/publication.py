@@ -53,6 +53,9 @@ PUBLICATION_CAUSES = frozenset({
     "COMPETING_REVIEWED_SOURCE", "DECISION_SET_CHANGED",
     "RESERVATION_CONTENDED", "RESERVATION_STALE", "RESERVATION_INVALID",
     "RESERVATION_CAS_FAILED", "RESERVATION_UNAVAILABLE", "WRITER_SCOPE_GAP",
+    "RECOVERY_MATERIAL_OVERLAP", "RECOVERY_UNSUPPORTED_MODE",
+    "RECOVERY_TASK_CHANGED", "HUMAN_KERNEL_AMENDMENT_REQUIRED",
+    "RECOVERY_ALREADY_ADMITTED", "RECOVERY_NOT_ACTIVATED",
 })
 
 # One repository-wide ordering boundary, independent of workflow/job identity.
@@ -312,6 +315,13 @@ class PublicationBlocker:
 
 
 @dataclass(frozen=True)
+class PublicationLineage:
+    decision_sha: str
+    artifacts_sha: str
+    reservation_sha: str | None = None
+
+
+@dataclass(frozen=True)
 class PublicationReport:
     """Attributable outcome emitted for every publication attempt."""
 
@@ -323,6 +333,25 @@ class PublicationReport:
     cause: str = "NONE"
     recovery: PublicationRecovery | None = None
     blocker: PublicationBlocker | None = None
+    lineage: PublicationLineage | None = None
+
+    @property
+    def classification(self) -> str:
+        """One closed classification, independent of transport/terminal wording."""
+        if self.outcome in {"PUBLISHED", "PUBLISHABLE"}:
+            return "PUBLISHABLE"
+        if self.outcome in {"ALREADY_PUBLISHED", "ALREADY_INCLUDED"}:
+            return "ALREADY_INCLUDED"
+        if self.recovery is not None or self.outcome == "AWAITING_REVIEW":
+            return "CLEAN_RECOVERY_ELIGIBLE"
+        if self.cause in {"COMPETING_REVIEWED_SOURCE", "RESERVATION_CONTENDED"}:
+            return "COMPETING_SOURCE"
+        if self.cause in {"STALE_CONTROL_BINDING", "STALE_REVIEW_BINDING",
+                          "CONCURRENT_MAIN_MOVEMENT", "DECISION_SET_CHANGED",
+                          "RESERVATION_STALE", "RESERVATION_CAS_FAILED",
+                          "RECOVERY_TASK_CHANGED", "RECOVERY_ALREADY_ADMITTED"}:
+            return "STALE_BINDING"
+        return "CONFLICT_OR_UNKNOWN"
 
 
 def _git(
@@ -1763,6 +1792,7 @@ def _load_success_lineage(
     repair_bytes = _read_optional_blob(
         repo, artifacts_sha, ".ai/transport/repair.json"
     )
+    recovery_bytes = _read_optional_blob(repo, artifacts_sha, ".ai/transport/publication-recovery.json")
     try:
         run_data = _mapping(
             _json_no_duplicates(run_bytes, document="RUN"), "RUN"
@@ -1884,6 +1914,12 @@ def _load_success_lineage(
             )
         if package.result.unresolved:
             raise ValueError("successful RESULT contains unresolved items")
+        if recovery_bytes is not None:
+            if remediation is not None or repair_bytes is not None:
+                raise ValueError("publication recovery cannot impersonate a correction family")
+            validate_publication_recovery(repo, remote=remote, raw=recovery_bytes,
+                run=run, task=task, candidate_sha=source_sha, package=package,
+                current_main_sha=publication_main_sha)
 
         review = parse_review(review_bytes.decode("utf-8", errors="strict"))
         if repair_bytes is not None:
@@ -2097,6 +2133,19 @@ def _classify_recovery(repo: Path, *, run_id: str, reviewed_sha: str, main_sha: 
     merge_bases = bases.splitlines()
     if code or len(merge_bases) != 1 or _SHA.fullmatch(merge_bases[0]) is None:
         return blocked("AMBIGUOUS_ANCESTRY", "recovery has no unique canonical merge base")
+    from .correction_integration import publication_tree_entries, CorrectionIntegrationError
+    try:
+        original = publication_tree_entries(repo, reviewed_sha)
+        main = publication_tree_entries(repo, main_sha)
+        base = publication_tree_entries(repo, merge_bases[0])
+        source_delta = {path for path in base.keys() | original.keys()
+                        if base.get(path) != original.get(path)}
+        main_delta = {path for path in base.keys() | main.keys()
+                      if base.get(path) != main.get(path)}
+    except (CorrectionIntegrationError, ValueError):
+        return blocked("RECOVERY_UNSUPPORTED_MODE", "recovery cannot preserve unsupported tracked identities")
+    if source_delta.difference(modification_scope):
+        return blocked("RECOVERY_SCOPE_ESCAPE", "original reviewed source escapes the current TASK modify scope")
     code, output, _ = _git(repo, "merge-tree", "--write-tree", main_sha, reviewed_sha,
                            allow_fail=True)
     if code == 1:
@@ -2116,6 +2165,20 @@ def _classify_recovery(repo: Path, *, run_id: str, reviewed_sha: str, main_sha: 
         return blocked("MERGE_CALCULATION_FAILED", "recovery delta cannot be inspected")
     if changed.difference(modification_scope):
         return blocked("RECOVERY_SCOPE_ESCAPE", "recovery delta escapes the canonical TASK modify scope")
+    if source_delta.intersection(main_delta):
+        return blocked("RECOVERY_MATERIAL_OVERLAP", "main and reviewed source overlap; textual merge success is insufficient")
+    try:
+        merged = publication_tree_entries(repo, tree_sha)
+        expected = dict(main)
+        for path in source_delta:
+            if path in original:
+                expected[path] = original[path]
+            else:
+                expected.pop(path, None)
+        if merged != expected or changed != source_delta:
+            return blocked("RECOVERY_MATERIAL_OVERLAP", "merge does not preserve exact original blobs and unrelated main content")
+    except (CorrectionIntegrationError, ValueError):
+        return blocked("RECOVERY_UNSUPPORTED_MODE", "recovery tree contains unsupported tracked identities")
     return _recovery_required(
         run_id, reviewed_sha=reviewed_sha, prior_main_sha=main_sha,
         cause="FRESH_EXACT_REVIEW_REQUIRED",
@@ -2124,6 +2187,276 @@ def _classify_recovery(repo: Path, *, run_id: str, reviewed_sha: str, main_sha: 
                "the existing review authorizes only the original reviewed source",
         recovery=PublicationRecovery(merge_bases[0], tree_sha),
     )
+
+
+def _recovery_competing_guard(repo: Path, remote: str, *, run_id: str,
+        reviewed_sha: str, main_sha: str, delta: set[str], decisions: Mapping[str, str]) -> dict[str, str]:
+    """An overlapping divergent PASS cannot be stranded by recovering a winner.
+
+    Ordinary fast-forward gates are unchanged. This bounded recovery-only guard
+    also covers PASS sources that became divergent through the same planning
+    preemption and hence cannot appear in the old fast-forward pending guard.
+    """
+    binding = {}
+    for ref, decision in sorted(decisions.items()):
+        other = ref[len(_DECISION_PREFIX):]
+        if other == run_id:
+            continue
+        source_ref = f"refs/heads/aios/review/{other}"
+        source = _single_remote_sha(repo, remote, source_ref, run_id=run_id)
+        binding[source_ref] = source
+        _fetch_object(repo, remote, source, run_id=run_id)
+        if (_ancestor(repo, source, main_sha, run_id=run_id, reviewed_sha=reviewed_sha, main_sha=main_sha)
+                or _ancestor(repo, source, reviewed_sha, run_id=run_id, reviewed_sha=reviewed_sha, main_sha=main_sha)):
+            continue
+        code, bases, _ = _git(repo, "merge-base", "--all", main_sha, source, allow_fail=True)
+        if code or len(bases.splitlines()) != 1:
+            raise _failed(run_id, "competing source ancestry is ambiguous", reviewed_sha=reviewed_sha,
+                          prior_main_sha=main_sha, cause="AMBIGUOUS_ANCESTRY")
+        if not delta.intersection(_changed_files(repo, bases, source)):
+            continue
+        _fetch_object(repo, remote, decision, run_id=run_id)
+        review = parse_review(_decision_review_bytes(repo, decision, run_id=other).decode("utf-8"))
+        if review.verdict != "PASS":
+            continue
+        validated, *_ = _load_success_lineage(repo, remote=remote, run_id=other,
+            decision_sha=decision, publication_main_sha=main_sha)
+        if validated != source:
+            raise _failed(run_id, "competing PASS source moved", cause="STALE_REVIEW_BINDING")
+        raise _recovery_required(run_id, reviewed_sha=reviewed_sha, prior_main_sha=main_sha,
+            cause="COMPETING_REVIEWED_SOURCE", detail="overlapping divergent PASS sources require explicit reconciliation; no automatic winner",
+            blocker=PublicationBlocker(other, decision, source))
+    return binding
+
+
+def prepare_publication_recovery(repo: Path, *, run_id: str, decision_sha: str,
+                                 expected_main_sha: str, remote: str = "origin"):
+    """Read-only exact admission input, using the Publisher's existing gates."""
+    from .correction_integration import PublicationSourcePlan, publication_tree_entries
+    binding = {f"{_DECISION_PREFIX}{run_id}": decision_sha,
+               "refs/heads/main": expected_main_sha}
+    for namespace in ("review", "artifacts"):
+        ref = f"refs/heads/aios/{namespace}/{run_id}"
+        binding[ref] = _single_remote_sha(repo, remote, ref, run_id=run_id)
+    _recheck_binding(repo, remote, binding, run_id=run_id,
+        reviewed_sha=binding[f"refs/heads/aios/review/{run_id}"], main_sha=expected_main_sha)
+    _fetch_object(repo, remote, decision_sha, run_id=run_id)
+    _fetch_object(repo, remote, expected_main_sha, run_id=run_id)
+    source, package, scope = _load_success_lineage(repo, remote=remote, run_id=run_id,
+        decision_sha=decision_sha, publication_main_sha=expected_main_sha)
+    if (_ancestor(repo, expected_main_sha, source, run_id=run_id, reviewed_sha=source,
+                  main_sha=expected_main_sha)
+            or _ancestor(repo, source, expected_main_sha, run_id=run_id,
+                         reviewed_sha=source, main_sha=expected_main_sha)):
+        raise _failed(run_id, "source recovery is unnecessary for ordinary publication")
+    artifacts = binding[f"refs/heads/aios/artifacts/{run_id}"]
+    if _read_optional_blob(repo, artifacts, ".ai/transport/publication-recovery.json") is not None:
+        raise _failed(run_id, "an admitted recovered source cannot construct another candidate automatically",
+                      cause="RECOVERY_ALREADY_ADMITTED")
+    run_data = _mapping(_json_no_duplicates(_read_blob(repo, artifacts,
+        ".ai/transport/run.json", run_id=run_id), document="RUN"), "RUN")
+    source_run = (_run_from_data(run_data, "RUN") if "kind" not in run_data
+                  else _parse_remediation_run(run_data, run_id=run_id)[0])
+    task_path = f".ai/tasks/{source_run.task.id}.yaml"
+    task_bytes = _read_blob(repo, source, task_path, run_id=run_id)
+    if _read_optional_blob(repo, expected_main_sha, task_path) != task_bytes:
+        raise _failed(run_id, "TASK or return affinity changed on current main",
+                      cause="RECOVERY_TASK_CHANGED")
+    task = parse_task(task_bytes.decode("utf-8"))
+    from .return_affinity import require_same_affinity
+    require_same_affinity(task, source_run)
+    if ("kind" not in run_data and _read_optional_blob(repo, artifacts, ".ai/transport/repair.json") is None
+            and _changed_files(repo, source_run.base_sha, source) != set(package.result.changed_files)):
+        raise _failed(run_id, "original reviewed RESULT changed_files do not match its exact source delta",
+                      cause="MALFORMED_LINEAGE")
+    observation = _classify_recovery(repo, run_id=run_id, reviewed_sha=source,
+        main_sha=expected_main_sha, modification_scope=scope)
+    if observation.report.recovery is None:
+        raise observation
+    decisions, competing = _pending_review_guard(repo, remote, run_id=run_id,
+        reviewed_sha=source, main_sha=expected_main_sha)
+    binding.update(competing)
+    binding.update(_recovery_competing_guard(repo, remote, run_id=run_id,
+        reviewed_sha=source, main_sha=expected_main_sha,
+        delta=_changed_files(repo, expected_main_sha, observation.report.recovery.tree_sha), decisions=decisions))
+    _recheck_binding(repo, remote, binding, run_id=run_id, reviewed_sha=source,
+                     main_sha=expected_main_sha, decisions=decisions)
+    recovery = observation.report.recovery
+    entries = publication_tree_entries(repo, recovery.tree_sha)
+    delta = tuple((path, *entries[path]) if path in entries else (path, None, None)
+                  for path in sorted(_changed_files(repo, expected_main_sha, recovery.tree_sha)))
+    plan = PublicationSourcePlan(run_id, artifacts, decision_sha, source,
+        expected_main_sha, recovery.merge_base_sha, recovery.tree_sha,
+        task.task_id, task.revision, delta)
+    return plan, task, source_run, package, binding, decisions
+
+
+PUBLICATION_RECOVERY_PATH = ".ai/transport/publication-recovery.json"
+PUBLICATION_RECOVERY_PREFIX = "refs/heads/aios/publication-recovery/"
+
+
+def publication_plan_from_data(value):
+    from .correction_integration import PublicationSourcePlan
+    from dataclasses import fields
+    if not isinstance(value, dict) or set(value) != {field.name for field in fields(PublicationSourcePlan)}:
+        raise ValueError("publication recovery plan schema mismatch")
+    copied = dict(value)
+    delta = copied["delta"]
+    if (not isinstance(delta, list) or len(delta) > 4096
+            or any(not isinstance(entry, list) or len(entry) != 3 for entry in delta)):
+        raise ValueError("publication recovery delta schema mismatch")
+    copied["delta"] = tuple(tuple(entry) for entry in delta)
+    plan = PublicationSourcePlan(**copied)
+    if (_RUN_ID.fullmatch(plan.source_run_id) is None
+            or re.fullmatch(r"TASK-[A-Za-z0-9][A-Za-z0-9._-]*", plan.task_id) is None
+            or type(plan.task_revision) is not int or plan.task_revision < 1
+            or any(not isinstance(sha, str) or _SHA.fullmatch(sha) is None for sha in (
+                plan.artifacts_sha, plan.decision_sha, plan.reviewed_sha, plan.main_sha,
+                plan.merge_base_sha, plan.tree_sha))
+            or [entry[0] for entry in plan.delta] != sorted({entry[0] for entry in plan.delta})
+            or any(not isinstance(path, str) or not path or path.startswith("/")
+                   or "\\" in path or any(part in {"", ".", ".."} for part in path.split("/"))
+                   or not ((mode is None and blob is None)
+                           or (mode in {"100644", "100755"} and isinstance(blob, str)
+                               and _SHA.fullmatch(blob))) for path, mode, blob in plan.delta)):
+        raise ValueError("invalid exact publication recovery identity")
+    return plan
+
+
+def validate_publication_recovery(repo: Path, *, remote: str, raw: bytes,
+        run: Run, task, candidate_sha: str, package: ResultPackage | None = None,
+        current_main_sha: str | None = None):
+    """Bind implementation metadata to ordinary frozen RUN/RESULT authority.
+
+    Prior PASS is immutable provenance, never the recovered source's verdict.
+    This validator is shared by Publisher, ingress and the read-only reducer.
+    """
+    from .correction_integration import publication_tree_entries, publication_source_ref
+    if current_main_sha is not None:
+        _fetch_object(repo, remote, current_main_sha, run_id=run.run_id)
+    document = _mapping(_json_no_duplicates(raw, document="publication recovery"), "publication recovery")
+    if (set(document) != {"format", "version", "plan", "identity", "run_id",
+                          "candidate_sha", "admission_sha", "evidence_decision"}
+            or document["format"] != "AIOS_PUBLICATION_RECOVERY"
+            or type(document["version"]) is not int or document["version"] != 1):
+        raise ValueError("publication recovery metadata schema mismatch")
+    plan = publication_plan_from_data(document["plan"])
+    if _single_remote_sha(repo, remote, publication_source_ref(plan.identity), run_id=run.run_id) != candidate_sha:
+        raise ValueError("publication recovered source ref changed")
+    if (document["identity"] != plan.identity or document["run_id"] != run.run_id
+            or document["candidate_sha"] != candidate_sha or plan.source_run_id == run.run_id
+            or plan.task_id != task.task_id or plan.task_revision != task.revision
+            or run.base_sha != plan.main_sha):
+        raise ValueError("publication continuation exact RUN identity mismatch")
+    admission_ref = PUBLICATION_RECOVERY_PREFIX + plan.source_run_id
+    admission_sha = _single_remote_sha(repo, remote, admission_ref, run_id=run.run_id)
+    if admission_sha != document["admission_sha"]:
+        raise ValueError("publication admission ref changed")
+    _fetch_object(repo, remote, admission_sha, run_id=run.run_id)
+    admission = _mapping(_json_no_duplicates(_read_blob(repo, admission_sha,
+        PUBLICATION_RECOVERY_PATH, run_id=run.run_id), document="publication admission"), "publication admission")
+    admitted_run = _run_from_data(_json_no_duplicates(_read_blob(repo, admission_sha,
+        ".ai/transport/run.json", run_id=run.run_id), document="admitted RUN"), "admitted RUN")
+    if (set(admission) != {"format", "version", "plan", "identity", "reservation_sha"}
+            or admission["format"] != "AIOS_PUBLICATION_RECOVERY_ADMISSION"
+            or admission["version"] != 1 or type(admission["version"]) is not int
+            or admission["identity"] != plan.identity
+            or publication_plan_from_data(admission["plan"]) != plan
+            or not isinstance(admission["reservation_sha"], str)
+            or _SHA.fullmatch(admission["reservation_sha"]) is None or admitted_run != run):
+        raise ValueError("publication recovery lacks exact Runtime admission")
+    if _single_remote_sha(repo, remote, f"refs/heads/aios/artifacts/{plan.source_run_id}", run_id=run.run_id) != plan.artifacts_sha:
+        raise ValueError("original immutable RESULT provenance changed")
+    _fetch_object(repo, remote, plan.artifacts_sha, run_id=run.run_id)
+    if _read_optional_blob(repo, plan.artifacts_sha, PUBLICATION_RECOVERY_PATH) is not None:
+        raise ValueError("automatic repeated publication recovery is prohibited")
+    _fetch_object(repo, remote, plan.decision_sha, run_id=run.run_id)
+    if _single_remote_sha(repo, remote, _DECISION_PREFIX + plan.source_run_id, run_id=run.run_id) != plan.decision_sha:
+        raise ValueError("original immutable PASS provenance changed")
+    original_sha, original_package, _ = _load_success_lineage(repo, remote=remote,
+        run_id=plan.source_run_id, decision_sha=plan.decision_sha,
+        publication_main_sha=plan.main_sha)
+    if original_sha != plan.reviewed_sha:
+        raise ValueError("original reviewed source provenance changed")
+    observation = _classify_recovery(repo, run_id=plan.source_run_id,
+        reviewed_sha=plan.reviewed_sha, main_sha=plan.main_sha, modification_scope=tuple(task.scope.modify))
+    if (observation.report.recovery is None or observation.report.recovery.tree_sha != plan.tree_sha
+            or observation.report.recovery.merge_base_sha != plan.merge_base_sha):
+        raise ValueError("publication integration is not uniquely source preserving")
+    _, parents, _ = _git(repo, "rev-parse", f"{candidate_sha}^@")
+    _, tree, _ = _git(repo, "rev-parse", f"{candidate_sha}^{{tree}}")
+    _, message, _ = _git(repo, "log", "-1", "--format=%B", candidate_sha)
+    entries = publication_tree_entries(repo, candidate_sha)
+    if (parents.splitlines() != [plan.main_sha, plan.reviewed_sha] or tree != plan.tree_sha
+            or message != "AIOS publication source recovery " + plan.identity
+            or _changed_files(repo, plan.main_sha, candidate_sha) != {p for p, _, _ in plan.delta}
+            or any(entries.get(path) != (None if mode is None else (mode, blob)) for path, mode, blob in plan.delta)
+            or _read_optional_blob(repo, candidate_sha, f".ai/tasks/{task.task_id}.yaml")
+               != _read_optional_blob(repo, plan.reviewed_sha, f".ai/tasks/{task.task_id}.yaml")):
+        raise ValueError("recovered candidate/source/blob/parent binding mismatch")
+    if current_main_sha is not None and current_main_sha != plan.main_sha and not _ancestor(
+            repo, candidate_sha, current_main_sha, run_id=run.run_id,
+            reviewed_sha=candidate_sha, main_sha=current_main_sha):
+        raise _failed(run.run_id, "recovery current-main binding is stale",
+                      cause="CONCURRENT_MAIN_MOVEMENT")
+    if package is not None:
+        if set(package.result.changed_files) != {p for p, _, _ in plan.delta}:
+            raise ValueError("recovered RESULT changed_files do not match exact preserved source delta")
+        audit = document["evidence_decision"]
+        expected = dict(recovery_identity=plan.identity, source_run_id=plan.source_run_id,
+            source_artifacts_sha=plan.artifacts_sha, source_decision_sha=plan.decision_sha,
+            source_sha=plan.reviewed_sha, candidate_sha=candidate_sha, main_sha=plan.main_sha)
+        if (not isinstance(audit, dict) or any(audit.get(k) != v for k, v in expected.items())
+                or audit.get("format") != "AIOS_PUBLICATION_EVIDENCE_DECISION"
+                or audit.get("version") != 1 or audit.get("read_set") != "ENTIRE_TRACKED_TREE"
+                or audit.get("integration_obligation") != "EXACT_SOURCE_AND_MAIN_PRESERVATION"
+                or not isinstance(audit.get("records"), list)
+                or len(audit["records"]) != len(set(task.verification.required))):
+            raise ValueError("recovered evidence validity decision is missing or malformed")
+        commands = set()
+        for record in audit["records"]:
+            if (set(record) != {"command", "validity", "disposition", "source_evidence_ids"}
+                    or record["command"] in commands
+                    or record["command"] not in task.verification.required
+                    or record["validity"] not in {"VALID", "INVALIDATED", "UNKNOWN"}
+                    or record["disposition"] != ("REUSED" if record["validity"] == "VALID" else "EXECUTED")):
+                raise ValueError("unproven publication evidence disposition")
+            commands.add(record["command"])
+            originals = [item for item in original_package.evidence if item.source.command == record["command"]]
+            if record["source_evidence_ids"] != [item.evidence_id for item in originals]:
+                raise ValueError("publication evidence lost original immutable provenance")
+            matching = [item for item in package.evidence if item.source.command == record["command"]]
+            if not matching:
+                raise ValueError("missing recovered canonical EVIDENCE")
+            if record["disposition"] == "REUSED":
+                if (len(originals) != 1 or len(matching) != 1
+                        or originals[0].verification is None or matching[0].verification is None
+                        or publication_tree_entries(repo, plan.reviewed_sha) != entries):
+                    raise ValueError("unknown material proof cannot be reused")
+                old, new = originals[0].verification, matching[0].verification
+                import hashlib
+                receipt = {"decision": "REUSED", "source_evidence_id": originals[0].evidence_id,
+                    "source_run_id": originals[0].run_id, "source_artifacts_sha": plan.artifacts_sha,
+                    "source_verification": old, "source_raw_digest": old.get("raw_digest"),
+                    "candidate_sha": candidate_sha, "conditions": "EXACT_CANDIDATE_AND_BASE_TREES_AND_CONTEXT"}
+                expected_digest = hashlib.sha256((json.dumps(receipt, sort_keys=True) + "\n").encode("utf-8")).hexdigest()
+                if (old["candidate"].get("failure_count") != 0 or originals[0].result.exit_code != 0
+                        or publication_tree_entries(repo, old["binding"]["base_sha"])
+                           != publication_tree_entries(repo, run.base_sha)
+                        or new.get("raw_digest") != expected_digest
+                        or old["binding"]["changed_files_digest"] != new["binding"]["changed_files_digest"]
+                        or {k: v for k, v in old["candidate"].items() if k != "subject_sha"}
+                           != {k: v for k, v in new["candidate"].items() if k != "subject_sha"}
+                        or any(old["binding"][key] != new["binding"][key]
+                               for key in ("command", "profile", "toolchain", "envelope_digest"))
+                        or not matching[0].result.summary.startswith("Runtime VALID: reused ")):
+                    raise ValueError("publication reused proof conditions are incompatible")
+        if not any(item.type == "PUBLICATION_INTEGRATION"
+                   and item.source.command == "aios-publication-source-preservation-v1"
+                   and item.subject_sha == candidate_sha and item.result.exit_code == 0
+                   for item in package.evidence):
+            raise ValueError("distinct publication integration proof is absent")
+    return plan
 
 
 def publish_review_decision(
@@ -2193,7 +2526,32 @@ def publish_review_decision(
             decision_sha=decision_sha,
             publication_main_sha=prior_main_sha,
         )
+        recovery_bytes = _read_optional_blob(root, binding[artifacts_ref], PUBLICATION_RECOVERY_PATH)
+        if recovery_bytes is not None:
+            document = _json_no_duplicates(recovery_bytes, document="publication recovery")
+            plan = publication_plan_from_data(document["plan"])
+            from .correction_integration import publication_source_ref
+            binding.update({PUBLICATION_RECOVERY_PREFIX + plan.source_run_id: document["admission_sha"],
+                publication_source_ref(plan.identity): reviewed_sha,
+                _DECISION_PREFIX + plan.source_run_id: plan.decision_sha,
+                f"refs/heads/aios/artifacts/{plan.source_run_id}": plan.artifacts_sha,
+                f"refs/heads/aios/review/{plan.source_run_id}": plan.reviewed_sha})
+            # A distinct overlapping PASS may have arrived while this source was
+            # awaiting its independent semantic review. Do not publish a winner.
+            if not _ancestor(root, reviewed_sha, prior_main_sha, run_id=run_id,
+                             reviewed_sha=reviewed_sha, main_sha=prior_main_sha):
+                decisions = _decision_snapshot(root, remote, run_id=run_id)
+                binding.update(_recovery_competing_guard(root, remote, run_id=run_id,
+                    reviewed_sha=reviewed_sha, main_sha=prior_main_sha,
+                    delta={path for path, _, _ in plan.delta}, decisions=decisions))
     except PublicationError as exc:
+        if exc.report.outcome == "RECOVERY_BLOCKED" and exc.report.blocker is not None:
+            blocker = exc.report.blocker
+            binding.update({_DECISION_PREFIX + blocker.source_run: blocker.decision_sha,
+                            f"refs/heads/aios/review/{blocker.source_run}": blocker.reviewed_sha})
+            _recheck_binding(root, remote, binding, run_id=run_id,
+                reviewed_sha=exc.report.reviewed_sha, main_sha=prior_main_sha)
+            raise
         reviewed = exc.report.reviewed_sha
         if reviewed == "UNKNOWN":
             reviewed = expected_reviewed_sha
@@ -2227,6 +2585,7 @@ def publish_review_decision(
             prior_main_sha=prior_main_sha,
             outcome="ALREADY_PUBLISHED",
             detail="remote main already equals the reviewed candidate",
+            lineage=PublicationLineage(decision_sha, binding[artifacts_ref]),
         )
 
     code, _, _ = _git(
@@ -2266,6 +2625,7 @@ def publish_review_decision(
                 prior_main_sha=prior_main_sha,
                 outcome="ALREADY_INCLUDED",
                 detail="reviewed candidate is already contained in remote main",
+                lineage=PublicationLineage(decision_sha, binding[artifacts_ref]),
             )
         if included_code != 1:
             raise _failed(
@@ -2279,6 +2639,9 @@ def publish_review_decision(
             root, run_id=run_id, reviewed_sha=reviewed_sha, main_sha=prior_main_sha,
             modification_scope=modification_scope,
         )
+        from dataclasses import replace
+        recovery.report = replace(recovery.report,
+            lineage=PublicationLineage(decision_sha, binding[artifacts_ref], _reservation_tip(root, remote, run_id)))
         _recheck_binding(root, remote, binding, run_id=run_id,
                          reviewed_sha=reviewed_sha, main_sha=prior_main_sha)
         _finish_review_reservation(root, remote, run_id=run_id, reviewed_sha=reviewed_sha,
@@ -2376,6 +2739,7 @@ def publish_review_decision(
         prior_main_sha=prior_main_sha,
         outcome="PUBLISHED",
         detail="remote main advanced by fast-forward to reviewed candidate",
+        lineage=PublicationLineage(decision_sha, binding[artifacts_ref], reservation.token_sha),
     )
 
 
@@ -2388,13 +2752,76 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--decision-sha", required=True)
     parser.add_argument("--control-sha")
+    parser.add_argument("--recover-clean", action="store_true",
+                        help="Continue uniquely eligible divergence through Runtime and fresh review")
     return parser
+
+
+def continue_publication(repo: str | Path, *, run_id: str, decision_sha: str,
+                         control_sha: str, remote: str = "origin") -> PublicationReport:
+    """One durable publication lane; no generic retry or semantic verdict."""
+    if (not isinstance(run_id, str) or _RUN_ID.fullmatch(run_id) is None
+            or not isinstance(decision_sha, str) or _SHA.fullmatch(decision_sha) is None
+            or not isinstance(control_sha, str) or _SHA.fullmatch(control_sha) is None
+            or not isinstance(remote, str) or not remote or remote.startswith("-")):
+        raise _failed(str(run_id), "invalid exact publication continuation selectors", cause="MALFORMED_LINEAGE")
+    root = Path(repo).resolve()
+    # An origin replay selects its one admitted destination, never numeric RUN
+    # ordering. A recovered-source decision event enters ordinary Publisher.
+    existing = _single_optional_remote_sha(root, remote,
+        PUBLICATION_RECOVERY_PREFIX + run_id, run_id=run_id)
+    if existing is not None:
+        _fetch_object(root, remote, existing, run_id=run_id)
+        admission = _mapping(_json_no_duplicates(_read_blob(root, existing,
+            PUBLICATION_RECOVERY_PATH, run_id=run_id), document="publication admission"), "publication admission")
+        plan = publication_plan_from_data(admission["plan"])
+        admitted_run = _run_from_data(_json_no_duplicates(_read_blob(root, existing,
+            ".ai/transport/run.json", run_id=run_id), document="admitted RUN"), "admitted RUN")
+        if (plan.source_run_id != run_id or plan.decision_sha != decision_sha
+                or admission.get("identity") != plan.identity):
+            raise _failed(run_id, "publication replay changed its exact origin", cause="STALE_REVIEW_BINDING")
+        decision = _single_optional_remote_sha(root, remote,
+            _DECISION_PREFIX + admitted_run.run_id, run_id=run_id)
+        if decision is not None:
+            # New canonical PASS remains mandatory in _load_success_lineage.
+            return publish_review_decision(root, run_id=admitted_run.run_id,
+                decision_sha=decision, control_sha=control_sha, remote=remote)
+    else:
+        try:
+            return publish_review_decision(root, run_id=run_id, decision_sha=decision_sha,
+                                           control_sha=control_sha, remote=remote)
+        except PublicationError as exc:
+            if exc.report.classification != "CLEAN_RECOVERY_ELIGIBLE":
+                raise
+    if remote != "origin":
+        raise _failed(run_id, "Runtime source recovery requires the repository-owned transport remote")
+    from .operator import recover_publication_source
+    original_source = _single_remote_sha(root, remote, f"refs/heads/aios/review/{run_id}", run_id=run_id)
+    try:
+        recovered = recover_publication_source(run_id, decision_sha=decision_sha,
+                                               expected_main_sha=control_sha, repo=root)
+    except PublicationError as exc:
+        if (exc.report.source_run == run_id and exc.report.reviewed_sha == original_source
+                and exc.report.prior_main_sha == control_sha):
+            raise
+        raise _failed(run_id, str(exc), reviewed_sha=original_source,
+                      prior_main_sha=control_sha, cause=exc.report.cause) from exc
+    except (RuntimeError, ValueError, OSError) as exc:
+        raise _failed(run_id, "Runtime publication continuation failed: " + str(exc),
+            reviewed_sha=original_source,
+            prior_main_sha=control_sha) from exc
+    return PublicationReport(run_id, _single_remote_sha(root, remote,
+        f"refs/heads/aios/review/{run_id}", run_id=run_id), control_sha, "AWAITING_REVIEW",
+        f"Runtime RESULT for {recovered.run_id} at {recovered.head_sha}; fresh exact PRIMARY REVIEW required; original PASS is provenance only")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        report = publish_review_decision(
+        publisher = continue_publication if args.recover_clean else publish_review_decision
+        if args.recover_clean and args.control_sha is None:
+            raise _failed(args.run_id, "continuation requires exact expected current main")
+        report = publisher(
             args.repo,
             run_id=args.run_id,
             decision_sha=args.decision_sha,
@@ -2402,10 +2829,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             remote=args.remote,
         )
     except PublicationError as exc:
-        print(json.dumps(asdict(exc.report), sort_keys=True))
+        print(json.dumps({**asdict(exc.report), "classification": exc.report.classification}, sort_keys=True))
         print(str(exc), file=sys.stderr)
         return 1
-    print(json.dumps(asdict(report), sort_keys=True))
+    except (RuntimeError, ValueError, TypeError, KeyError, OSError) as exc:
+        # Acquisition/schema failures still have a closed operational outcome;
+        # they cannot masquerade as canonical publication or Runtime proof.
+        source = "UNKNOWN"
+        try:
+            source = _single_remote_sha(Path(args.repo).resolve(), args.remote,
+                f"refs/heads/aios/review/{args.run_id}", run_id=args.run_id)
+        except (PublicationError, RuntimeError, ValueError):
+            pass
+        failed = _failed(args.run_id, "publication continuation could not bind canonical state: " + str(exc),
+            reviewed_sha=source, prior_main_sha=args.control_sha or "UNKNOWN", cause="MALFORMED_LINEAGE")
+        print(json.dumps({**asdict(failed.report), "classification": failed.report.classification}, sort_keys=True))
+        print(str(failed), file=sys.stderr)
+        return 1
+    print(json.dumps({**asdict(report), "classification": report.classification}, sort_keys=True))
     return 0
 
 

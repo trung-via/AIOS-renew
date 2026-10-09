@@ -678,6 +678,7 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
     run_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/run.json")
     result_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/result.json")
     repair_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/repair.json")
+    recovery_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/publication-recovery.json")
     if run_bytes is None or result_bytes is None:
         raise AuthoringIngressError(
             f"canonical artifacts content missing for {run_id}"
@@ -860,6 +861,18 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
             )
     except (ArtifactValidationError, ValueError, TypeError) as exc:
         raise AuthoringIngressError(f"result package validation failed: {exc}") from exc
+
+    if recovery_bytes is not None:
+        from .publication import validate_publication_recovery
+        if remote is None or remediation is not None or repair_bytes is not None or review.mode != "PRIMARY":
+            raise AuthoringIngressError("recovered source requires an independent PRIMARY review and canonical remote")
+        try:
+            validate_publication_recovery(repo, remote=remote, raw=recovery_bytes,
+                run=run, task=task, candidate_sha=candidate_sha,
+                package=ResultPackage(result=result, evidence=evidence),
+                current_main_sha=_resolve_ref_sha(repo, "refs/heads/main", remote))
+        except (PublicationError, ValueError, TypeError, KeyError) as exc:
+            raise AuthoringIngressError(f"invalid publication recovery lineage: {exc}") from exc
 
     try:
         validate_review(
@@ -1457,6 +1470,25 @@ def _reserve_review_submission(repo: Path, remote: str | None, run_id: str,
     if artifacts_sha is not None and canonical_artifacts != artifacts_sha:
         raise AuthoringIngressError("STALE_REVIEW_BINDING: review artifacts moved before reservation")
     _fetch_if_remote(repo, remote, main_sha)
+    _fetch_if_remote(repo, remote, canonical_artifacts)
+    recovery_bytes = _read_commit_blob(repo, canonical_artifacts, ".ai/transport/publication-recovery.json")
+    if recovery_bytes is not None:
+        from .publication import validate_publication_recovery
+        if remote is None:
+            raise AuthoringIngressError("canonical remote is required for publication recovery")
+        try:
+            run = _run_from_data(_json_no_dups(_read_commit_blob(repo, canonical_artifacts,
+                ".ai/transport/run.json"), "RUN"))
+            task = parse_task(_read_commit_blob(repo, candidate_sha,
+                f".ai/tasks/{run.task.id}.yaml").decode("utf-8"))
+            data = _json_no_dups(_read_commit_blob(repo, canonical_artifacts,
+                ".ai/transport/result.json"), "ResultPackage")
+            package = ResultPackage(validate_result(data["result"]), tuple(validate_evidence(e) for e in data["evidence"]))
+            validate_publication_recovery(repo, remote=remote, raw=recovery_bytes,
+                run=run, task=task, candidate_sha=candidate_sha, package=package,
+                current_main_sha=main_sha)
+        except (PublicationError, ValueError, TypeError, KeyError, AttributeError) as exc:
+            raise AuthoringIngressError(f"stale publication recovery review reservation: {exc}") from exc
     if decision_exists:
         code, _, _ = _git(repo, "merge-base", "--is-ancestor", candidate_sha, main_sha, allow_fail=True)
         if code == 0:

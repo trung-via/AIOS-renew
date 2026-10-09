@@ -133,12 +133,11 @@ that correction; it does not restart the original TASK or absorb new Human inten
 
 ## 7. PUBLISH
 
-After canonical semantic PASS, use and observe the existing canonical publication
-continuation. Publisher checks exact REVIEW/RESULT/candidate, source eligibility,
-base-to-candidate/main ancestry and expected-main/CAS; its publication report and
-canonical main inclusion establish outcome. Review-decision refs are metadata,
-not product candidates. Divergence uses existing authorized integration; no force
-update, ad-hoc push, cherry-pick or metadata-ref substitution bypasses Publisher.
+Use [PUBLICATION_END_TO_END_FLOW_V1](AIOS-PUBLICATION-END-TO-END-FLOW-v1.md)
+for PASS ingress, exact Publisher outcome, safe Runtime source recovery, evidence
+validity, independent recovered-source review, CAS publication and attention.
+This section's competing publication traversal is REPLACE_WITH_POINTER to that
+one specialized leaf. This document remains the one generic self-host entrypoint.
 
 TASK-308 remains unpublished/blocked. This cleanup **does not activate TASK-308**
 publication-turn semantics. Publication-turn behavior is deferred to the **currently
@@ -233,6 +232,7 @@ never to entire mixed-authority files:
 | Document / section or claim | Classification and retained purpose |
 | --- | --- |
 | [Project Contract](CHATGPT_PROJECT_CONTRACT.md) §1 generic lifecycle diagram; §13 generic operational ordering guards | REPLACE_WITH_POINTER here; RETAIN_NORMATIVE governance, failure taxonomy, Brain Sync identity/checkpoint and planning authority in §§2–14. |
+| [Publication flow](AIOS-PUBLICATION-END-TO-END-FLOW-v1.md); Project Contract §12 and this §7 | RETAIN_NORMATIVE specialized publication navigation; duplicated publication traversal is REPLACE_WITH_POINTER to that leaf. Independent Publisher/Reviewer/Kernel/VP/H4 authority and historical evidence remain retained. |
 | [Brain Portability](AIOS-BRAIN-PORTABILITY.md) §3 target composition, §§4–13 provider/Flow Card/handoff/receipt contracts; §§15–23 planning, conformance and exact migration leaves | RETAIN_NORMATIVE specialized architecture/protocol/planning; generic self-host traversal is REPLACE_WITH_POINTER here. Historical deployment observations remain HISTORICAL_ONLY claims at their original identities. |
 | [Origin-Affine Wake](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md) H4C1 implementation contract; §§1–11 architecture, H4C0/C1/D/E requirements, H4B/H5 gates and sequencing | RETAIN_NORMATIVE specialized planning/implementation authority, including current independent requirements; generic traversal is REPLACE_WITH_POINTER here. Named historical fallback/observations retain their claim-scoped historical status. |
 | [Local Regular Chat Wake](AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md) §1 target shape and §5 generic Brain continuation | REPLACE_WITH_POINTER here; §§3–17 transport, current eligibility, planning and conformance requirements RETAIN_NORMATIVE where not explicitly superseded; older observations/policies remain HISTORICAL_ONLY at claim level. |

@@ -37,6 +37,33 @@ from aios_renew.review_transport import (
 from aios_renew.unified_state import observe_unified_state
 
 
+@pytest.mark.parametrize("review_fault", ["old-sha", "delta", "main-moved"])
+def test_publication_recovery_review_ingress_requires_fresh_exact_primary_and_current_main(tmp_path, monkeypatch, review_fault):
+    from aios_renew import operator
+    from tests.test_publication import recover_publication_fixture, review_source
+    lineage, main, _, runner = recover_publication_fixture(tmp_path, monkeypatch)
+    recovered = operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+        expected_main_sha=main, repo=lineage["repo"], verification_runner=runner)
+    reviewed = lineage["candidate_sha"] if review_fault == "old-sha" else recovered.head_sha
+    payload = review_source(reviewed).replace("REVIEW-063-001", "REVIEW-" + recovered.run_id[4:])
+    if review_fault == "delta":
+        payload = payload.replace("mode: PRIMARY", "mode: DELTA\nprior_finding_id: fabricated")
+    elif review_fault == "main-moved":
+        (lineage["repo"] / "moved.txt").write_text("concurrent main\n", encoding="utf-8")
+        from tests.test_publication import git
+        git(lineage["repo"], "add", "moved.txt")
+        git(lineage["repo"], "commit", "--quiet", "-m", "concurrent main")
+        git(lineage["repo"], "push", "--quiet", "origin", "HEAD:refs/heads/main")
+    from tests.test_publication import git
+    before = git(lineage["remote"], "rev-parse", "refs/heads/main")
+    with pytest.raises(AuthoringIngressError):
+        execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW",
+            {"run_id": recovered.run_id}, {"expected_candidate_sha": recovered.head_sha}, payload), repo=lineage["repo"])
+    assert git(lineage["remote"], "rev-parse", "refs/heads/main") == before
+    assert git(lineage["remote"], "show-ref", "--verify", "--hash",
+               f"refs/heads/aios/review-decision/{recovered.run_id}", check=False) == ""
+
+
 def new_task_envelope(main_sha: str) -> IngressEnvelope:
     return IngressEnvelope(
         "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_TASK", {"task_id": "TASK-105"},

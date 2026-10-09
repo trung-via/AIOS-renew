@@ -284,7 +284,8 @@ def _publication_attempt(attempt):
     elif outcome == "RECOVERY_BLOCKED":
         if recovery is not None or cause not in {
                 "AMBIGUOUS_ANCESTRY", "MERGE_CONFLICT", "MERGE_CALCULATION_FAILED",
-                "RECOVERY_SCOPE_ESCAPE", "COMPETING_REVIEWED_SOURCE"}:
+                "RECOVERY_SCOPE_ESCAPE", "COMPETING_REVIEWED_SOURCE",
+                "RECOVERY_MATERIAL_OVERLAP", "RECOVERY_UNSUPPORTED_MODE"}:
             raise AttentionError("PUBLICATION_CONTEXT_SCHEMA_MISMATCH")
         if cause == "COMPETING_REVIEWED_SOURCE":
             if not isinstance(blocker, dict) or set(blocker) != {"source_run", "decision_sha", "reviewed_sha"}:
@@ -1328,6 +1329,47 @@ def capture_publication(report_path, source_path, run_id, decision_sha, repo="."
     if review["verdict"] in {"CHANGES_REQUIRED", "BLOCKED"}:
         return write_source(source_path, [dict(boundary="REVIEW_FOLLOWUP", **identity)])
     report = load_json(Path(report_path).read_bytes(), MAX_SOURCE_BYTES)
+    lineage = report.pop("lineage", None) if isinstance(report, dict) else None
+    classification = report.pop("classification", None) if isinstance(report, dict) else None
+    if classification is not None:
+        from .publication import PublicationReport, PublicationRecovery, PublicationBlocker
+        try:
+            typed = {**report}
+            if typed.get("recovery") is not None:
+                typed["recovery"] = PublicationRecovery(**typed["recovery"])
+            if typed.get("blocker") is not None:
+                typed["blocker"] = PublicationBlocker(**typed["blocker"])
+            if classification != PublicationReport(**typed).classification:
+                raise ValueError("classification mismatch")
+        except (ValueError, TypeError, KeyError):
+            raise AttentionError("UNPROVEN_PUBLICATION_CLASSIFICATION") from None
+    if isinstance(report, dict) and report.get("source_run") != run_id:
+        from . import publication as pub
+        admission_ref = pub.PUBLICATION_RECOVERY_PREFIX + run_id
+        before = sources.refs(admission_ref)
+        sha = before.get(admission_ref)
+        if sha is None:
+            raise AttentionError("PUBLICATION_CONTINUATION_SUBSTITUTION")
+        admission = sources.document(sha, pub.PUBLICATION_RECOVERY_PATH)
+        plan = pub.publication_plan_from_data(admission["plan"])
+        admitted = pub._run_from_data(sources.document(sha, ".ai/transport/run.json"), "admitted RUN")
+        if (plan.source_run_id != run_id or plan.decision_sha != decision_sha
+                or plan.artifacts_sha != identity["artifact_sha"] or plan.reviewed_sha != identity["reviewed_sha"]
+                or admission.get("identity") != plan.identity or report.get("source_run") != admitted.run_id):
+            raise AttentionError("PUBLICATION_CONTINUATION_SUBSTITUTION")
+        identity, review = sources.review(admitted.run_id)
+        run_id = admitted.run_id
+        if sources.refs(admission_ref) != before:
+            raise AttentionError("STALE_PUBLICATION_CONTINUATION")
+        if review["verdict"] in {"CHANGES_REQUIRED", "BLOCKED"}:
+            return write_source(source_path, [dict(boundary="REVIEW_FOLLOWUP", **identity)])
+    if lineage is not None:
+        if (not isinstance(lineage, dict) or set(lineage) != {"decision_sha", "artifacts_sha", "reservation_sha"}
+                or lineage["decision_sha"] != identity["decision_sha"]
+                or lineage["artifacts_sha"] != identity["artifact_sha"]):
+            raise AttentionError("UNPROVEN_PUBLICATION_LINEAGE")
+        if lineage["reservation_sha"] is not None:
+            _value(lineage["reservation_sha"], "sha")
     legacy_fields = {"source_run", "reviewed_sha", "prior_main_sha", "outcome", "detail"}
     if (not isinstance(report, dict)
             or set(report) not in (legacy_fields, legacy_fields | {"cause", "recovery", "blocker"})
@@ -1346,6 +1388,37 @@ def capture_publication(report_path, source_path, run_id, decision_sha, repo="."
         if sources.refs("refs/heads/main").get("refs/heads/main") != main:
             raise AttentionError("UNPROVEN_PUBLICATION")
         observation = dict(boundary="PUBLICATION_PROVEN", **identity, published_sha=identity["reviewed_sha"])
+    elif outcome == "AWAITING_REVIEW":
+        # Review wake is the standard canonical RESULT lane. The original
+        # publication attempt must not impersonate publication or fresh PASS.
+        from . import publication as pub
+        from .artifacts import ResultPackage, validate_result, validate_evidence, validate_result_package
+        from .task import parse_task
+        admission_ref = pub.PUBLICATION_RECOVERY_PREFIX + run_id
+        admission_sha = sources.refs(admission_ref).get(admission_ref)
+        if admission_sha is None or report.get("cause") != "NONE" or report.get("recovery") is not None or report.get("blocker") is not None:
+            raise AttentionError("UNPROVEN_PUBLICATION_CONTINUATION")
+        admitted_run = pub._run_from_data(sources.document(admission_sha, ".ai/transport/run.json"), "admitted RUN")
+        refs = sources.refs(*_review_patterns(admitted_run.run_id))
+        artifact = refs.get(f"refs/heads/aios/artifacts/{admitted_run.run_id}")
+        candidate = refs.get(f"refs/heads/aios/review/{admitted_run.run_id}")
+        if artifact is None or candidate is None or any(f"refs/heads/aios/{kind}/{admitted_run.run_id}" in refs for kind in ("failure", "failure-artifacts", "review-decision")):
+            raise AttentionError("UNPROVEN_PUBLICATION_CONTINUATION")
+        data = sources.document(artifact, ".ai/transport/result.json")
+        package = ResultPackage(validate_result(data["result"]), tuple(validate_evidence(e) for e in data["evidence"]))
+        task_data = sources.document(candidate, f".ai/tasks/{admitted_run.task.id}.yaml")
+        task = parse_task(json.dumps(task_data))
+        validate_result_package(task=task, run=admitted_run, result=package.result, evidence=package.evidence)
+        plan = pub.validate_publication_recovery(Path(repo), remote="origin",
+            raw=json.dumps(sources.document(artifact, pub.PUBLICATION_RECOVERY_PATH)).encode(),
+            run=admitted_run, task=task, candidate_sha=candidate, package=package,
+            current_main_sha=report["prior_main_sha"])
+        if (plan.source_run_id != run_id or plan.decision_sha != decision_sha
+                or plan.artifacts_sha != identity["artifact_sha"]
+                or sources.refs(admission_ref).get(admission_ref) != admission_sha
+                or sources.refs(*_review_patterns(admitted_run.run_id)) != refs):
+            raise AttentionError("STALE_PUBLICATION_CONTINUATION")
+        return write_source(source_path, [])
     elif outcome == "INTEGRATION_REQUIRED":
         # Historical intermediate classification is not an actionable recovery
         # result. Never ring Brain merely to rediscover a Git procedure.

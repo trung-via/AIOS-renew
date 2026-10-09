@@ -1954,6 +1954,233 @@ def recover_primary(
         _remove_historical_workspace(root, attempt.historical_workspace)
 
 
+def recover_publication_source(source_run_id: str, *, decision_sha: str,
+        expected_main_sha: str, repo: str | Path,
+        verification_runner: VerificationRunner = subprocess.run) -> RecoverySummary:
+    """Runtime-owned, executor-free continuation of an exact unpublished PASS.
+
+    This is called by the standing publication lane after classification. It
+    admits an ordinary PRIMARY RUN, uses existing completion/result contracts,
+    and emits a new exact review subject. The provenance sidecar is transport
+    metadata, with no new Kernel kind or substituted semantic verdict.
+    """
+    from . import publication as pub
+    from .correction_integration import materialize_publication_source
+    from .runtime import (persist_preverification_candidate, result_package_data,
+                          persist_terminal_observation)
+    from .verification import execute_publication_verification, attach_verification_evidence
+    from .review_transport import _create_named_artifacts_commit
+    root = resolve_repository(repo)
+    state = runtime_paths(root)
+    attempt = _RunAttempt()
+    tracker = RunObservationTracker("PRIMARY", monotonic_clock=time.monotonic)
+    admission = _new_admission("RECOVER_PRIMARY", phase="REMOTE_LINEAGE_RESOLUTION",
+        reason_code="CANONICAL_LINEAGE_MISSING", source_run_id=source_run_id)
+    reservation = None
+    try:
+        with RepositoryLock(state.lock):
+            if (_git(root, "status", "--porcelain")
+                    or _git(root, "rev-parse", "HEAD") != expected_main_sha):
+                raise OperatorError("publication recovery requires exact clean current-main control")
+            remote = resolve_transport_remote(root)
+            _require_publication_recovery_activation(root, expected_main_sha)
+            admission_ref = pub.PUBLICATION_RECOVERY_PREFIX + source_run_id
+            existing = pub._single_optional_remote_sha(root, remote, admission_ref, run_id=source_run_id)
+            durable_path = state.root / "publication-recovery" / (source_run_id + "-admission.json")
+            durable_path.parent.mkdir(parents=True, exist_ok=True)
+            if existing is not None:
+                pub._fetch_object(root, remote, existing, run_id=source_run_id)
+                raw_admission = pub._read_blob(root, existing, pub.PUBLICATION_RECOVERY_PATH, run_id=source_run_id)
+                stored = pub._mapping(pub._json_no_duplicates(raw_admission, document="publication admission"), "publication admission")
+                plan = pub.publication_plan_from_data(stored["plan"])
+                run = pub._run_from_data(pub._json_no_duplicates(pub._read_blob(root, existing,
+                    ".ai/transport/run.json", run_id=source_run_id), document="admitted RUN"), "admitted RUN")
+                if (stored.get("format") != "AIOS_PUBLICATION_RECOVERY_ADMISSION"
+                        or stored.get("identity") != plan.identity or plan.source_run_id != source_run_id
+                        or plan.decision_sha != decision_sha or run.base_sha != plan.main_sha):
+                    raise OperatorError("publication recovery admission identity conflict")
+                # A terminal continuation resumes transport/review, never proof.
+                failure_ref = f"refs/heads/aios/failure-artifacts/{run.run_id}"
+                if pub._single_optional_remote_sha(root, remote, failure_ref, run_id=source_run_id) is not None:
+                    raise OperatorError("publication recovery already has canonical FAILURE; no automatic retry")
+                result_ref = f"refs/heads/aios/artifacts/{run.run_id}"
+                terminal = pub._single_optional_remote_sha(root, remote, result_ref, run_id=source_run_id)
+                if terminal is not None:
+                    pub._fetch_object(root, remote, terminal, run_id=source_run_id)
+                    raw = pub._read_blob(root, terminal, ".ai/transport/result.json", run_id=source_run_id)
+                    data = pub._json_no_duplicates(raw, document="recovered ResultPackage")
+                    package = ResultPackage(validate_result(data["result"]), tuple(validate_evidence(e) for e in data["evidence"]))
+                    candidate = pub._single_remote_sha(root, remote, f"refs/heads/aios/review/{run.run_id}", run_id=source_run_id)
+                    pub._fetch_object(root, remote, candidate, run_id=source_run_id)
+                    task = parse_task(pub._read_blob(root, candidate, f".ai/tasks/{plan.task_id}.yaml", run_id=source_run_id).decode("utf-8"))
+                    validate_result_package(task=task, run=run, result=package.result, evidence=package.evidence)
+                    pub.validate_publication_recovery(root, remote=remote, raw=pub._read_blob(root, terminal,
+                        pub.PUBLICATION_RECOVERY_PATH, run_id=source_run_id), run=run, task=task,
+                        candidate_sha=candidate, package=package, current_main_sha=expected_main_sha)
+                    # The standard terminal transport retries its idempotent wake.
+                    run_path = state.runs / (run.run_id + ".json")
+                    result_path = state.results / (run.run_id + ".json")
+                    recovery_path = state.root / "publication-recovery" / (run.run_id + ".json")
+                    _write_json(run_path, asdict(run))
+                    result_path.write_bytes(raw)
+                    recovery_path.write_bytes(pub._read_blob(root, terminal, pub.PUBLICATION_RECOVERY_PATH, run_id=source_run_id))
+                    pub._finish_review_reservation(root, remote, run_id=source_run_id,
+                        reviewed_sha=plan.reviewed_sha, decision_sha=plan.decision_sha,
+                        artifacts_sha=plan.artifacts_sha, main_sha=plan.main_sha,
+                        contained=expected_main_sha != plan.main_sha)
+                    transport_post_pass(root, run_id=run.run_id, head_sha=candidate,
+                        run_path=run_path, result_path=result_path, publication_recovery_path=recovery_path)
+                    return RecoverySummary(task.task_id, source_run_id, run.run_id, run.executor,
+                                           run.base_sha, candidate, result_path)
+                if plan.main_sha != expected_main_sha:
+                    raise pub._failed(source_run_id, "admitted recovery current main moved", cause="CONCURRENT_MAIN_MOVEMENT")
+                if not (state.results / (run.run_id + ".json")).is_file():
+                    raise pub._failed(source_run_id,
+                        "recovery RUN already admitted without a completed local/canonical RESULT; no duplicate execution or automatic retry",
+                        cause="RECOVERY_ALREADY_ADMITTED")
+            plan, task, source_run, source_package, binding, decisions = pub.prepare_publication_recovery(
+                root, run_id=source_run_id, decision_sha=decision_sha,
+                expected_main_sha=expected_main_sha, remote=remote)
+            _bind_admission_task(admission, task)
+            # Unique current operational tip, including unreviewed continuations.
+            lifecycle = resolve_remote_task_lifecycle(root, task_id=task.task_id, task_revision=task.revision)
+            from .unified_state import _decode_remote_lifecycle, _operational_parent
+            decoded, _ = _decode_remote_lifecycle(root, task, lifecycle)
+            parents = {_operational_parent(item) for item in decoded}
+            tips = [item for item in decoded if item.run_id not in parents]
+            if len(tips) != 1 or tips[0].run_id != source_run_id or tips[0].candidate_sha != plan.reviewed_sha:
+                raise OperatorError("publication recovery source is not the unique exact current lifecycle tip")
+            if existing is not None and pub.publication_plan_from_data(stored["plan"]) != plan:
+                raise OperatorError("publication recovery cannot replace its admitted identity")
+            covered = {acceptance_id for claim in source_package.result.claims for acceptance_id in claim.satisfies}
+            if any(criterion.id not in covered for criterion in task.acceptance):
+                raise pub._failed(source_run_id,
+                    "HUMAN_KERNEL_AMENDMENT_REQUIRED: original RESULT cannot supply complete ordinary PRIMARY claims; no finding or verdict will be fabricated",
+                    cause="HUMAN_KERNEL_AMENDMENT_REQUIRED")
+            reservation = pub.reserve_publication(root, remote, kind="REVIEW_TO_PUBLICATION",
+                subject=source_run_id, source_sha=plan.reviewed_sha, main_sha=plan.main_sha,
+                decision_sha=decision_sha, artifacts_sha=plan.artifacts_sha)
+
+            def check_currentness():
+                pub._recheck_binding(root, remote, binding, run_id=source_run_id,
+                    reviewed_sha=plan.reviewed_sha, main_sha=plan.main_sha, decisions=decisions)
+                pub.check_publication_reservation(root, remote, reservation)
+
+            check_currentness()
+            if existing is None:
+                run_id = next_run_id(task.task_id, state.runs,
+                    reserved=_remote_run_reservations(root, task, admission=admission))
+                # Source objects are authored in this real admitted repository;
+                # verification uses isolated subjects, as ordinary Runtime does.
+                # Transport resume preserves this historical workspace binding.
+                run = Run.from_task(run_id=run_id, task=task, executor=source_run.executor,
+                    base_sha=plan.main_sha, workspace=str(root))
+            run_path = state.runs / (run.run_id + ".json")
+            if run_path.exists() and pub._run_from_data(json.loads(run_path.read_text(encoding="utf-8")), "RUN") != run:
+                raise OperatorError("publication recovery local RUN identity conflict")
+            if existing is None:
+                prospective_path = durable_path.parent / (run.run_id + "-prospective.json")
+                _write_json(prospective_path, asdict(run))
+                _write_json(durable_path, dict(format="AIOS_PUBLICATION_RECOVERY_ADMISSION", version=1,
+                    plan=asdict(plan), identity=plan.identity, reservation_sha=reservation.token_sha))
+                admission_sha = _create_named_artifacts_commit(root, run_path=prospective_path,
+                    artifact_path=durable_path, artifact_name="publication-recovery.json", run_id=run.run_id)
+                check_currentness()
+                code, _, _ = pub._git(root, "push", "--no-tags",
+                    f"--force-with-lease={admission_ref}:", remote,
+                    f"{admission_sha}:{admission_ref}", allow_fail=True)
+                if code:
+                    raise OperatorError("publication recovery same-origin admission CAS failed")
+            else:
+                admission_sha = existing
+            # Admission CAS is the ownership edge. A losing delivery has no new
+            # RUN and cannot emit a FAILURE conflicting with the winning RUN.
+            _write_json(run_path, asdict(run))
+            attempt.bind_run(run_path)
+            attempt.bind_subject(root, task)
+            tracker.admit(run)
+            check_currentness()
+            candidate = materialize_publication_source(root, plan, check_currentness=check_currentness, remote=remote)
+            subject = _create_historical_workspace(root, candidate)
+            attempt.bind_subject(subject, task, subject)
+            claims = tuple(replace(claim, evidence=()) for claim in source_package.result.claims)
+            structural = ResultPackage(Result(candidate, claims,
+                tuple(path for path, _, _ in plan.delta), ()), ())
+            completion = RuntimeCompletion(repo=subject, state=state, task=task, run=run,
+                run_path=run_path, verification_runner=verification_runner,
+                observation_tracker=tracker, error_type=OperatorError, transport_repo=root)
+            attempt.bind_completion(completion)
+            policy = primary_completion_policy(task, base_sha=run.base_sha)
+            completion._require_executor_structure(structural)
+            completion._require_task_result(structural, policy, actual_head=candidate)
+            persist_preverification_candidate(state.preverification / (run.run_id + ".json"),
+                task=task, run=run, subject_sha=candidate, package=structural)
+            result_path = state.results / (run.run_id + ".json")
+            recovery_path = state.root / "publication-recovery" / (run.run_id + ".json")
+            if result_path.exists():
+                data = json.loads(result_path.read_text(encoding="utf-8"))
+                package = ResultPackage(validate_result(data["result"]), tuple(validate_evidence(e) for e in data["evidence"]))
+            else:
+                completion.interruption_phase = "VERIFICATION"
+                completion.verification_subject_sha = candidate
+                started = tracker.begin_verification()
+                try:
+                    evidence, audit = execute_publication_verification(task=task, run=run,
+                        plan=plan, source_run=source_run, source_package=source_package,
+                        subject_sha=candidate, repository=root,
+                        raw_directory=state.verification / run.run_id,
+                        cache_directory=state.verification / "minimum-sufficient-v2",
+                        runner=verification_runner)
+                finally:
+                    tracker.end_verification(started)
+                completion.interruption_phase = "COMPLETION_GATE"
+                check_currentness()
+                completion._require_post_verification_state(subject, expected_head=candidate, evidence=evidence)
+                package = validate_result_package(task=task, run=run,
+                    result=attach_verification_evidence(structural.result, evidence), evidence=evidence)
+                _write_json(recovery_path, dict(format="AIOS_PUBLICATION_RECOVERY", version=1,
+                    plan=asdict(plan), identity=plan.identity, run_id=run.run_id,
+                    candidate_sha=candidate, admission_sha=admission_sha, evidence_decision=audit))
+                pub.validate_publication_recovery(root, remote=remote, raw=recovery_path.read_bytes(),
+                    run=run, task=task, candidate_sha=candidate, package=package, current_main_sha=plan.main_sha)
+                _write_json(result_path, result_package_data(package))
+                persist_terminal_observation(state, tracker, "RESULT")
+            check_currentness()
+            validate_result_package(task=task, run=run, result=package.result, evidence=package.evidence)
+            pub.validate_publication_recovery(root, remote=remote, raw=recovery_path.read_bytes(),
+                run=run, task=task, candidate_sha=candidate, package=package, current_main_sha=plan.main_sha)
+            transport_post_pass(root, run_id=run.run_id, head_sha=candidate,
+                run_path=run_path, result_path=result_path, publication_recovery_path=recovery_path)
+            pub.release_publication_reservation(root, remote, reservation)
+            reservation = None
+            return RecoverySummary(task.task_id, source_run_id, run.run_id, run.executor,
+                                   run.base_sha, candidate, result_path)
+    except BaseException as exc:
+        if attempt.run_path is None:
+            _persist_and_transport_admission_failure(root, admission=admission, failure=exc)
+        else:
+            _persist_primary_recovery_failure(root, state=state, attempt=attempt,
+                failure=exc, observation_tracker=tracker, interruption_phase=attempt.interruption_phase)
+        raise
+    finally:
+        _remove_historical_workspace(root, attempt.historical_workspace)
+
+
+def _require_publication_recovery_activation(root: Path, main_sha: str) -> None:
+    """Recovery code must come from canonical published main, never its candidate."""
+    from . import publication as pub
+    leaf = pub._read_optional_blob(root, main_sha, "docs/AIOS-PUBLICATION-END-TO-END-FLOW-v1.md")
+    if leaf is None or b"PUBLICATION_END_TO_END_FLOW_V1" not in leaf:
+        raise pub._failed("RUN-ACTIVATION", "standing source recovery is not published on canonical main",
+                          cause="RECOVERY_NOT_ACTIVATED")
+    from . import verification as verification_module
+    for module in (pub, verification_module, sys.modules[__name__]):
+        filename = Path(module.__file__).resolve()
+        expected = root / "src" / "aios_renew" / filename.name
+        if filename != expected.resolve():
+            raise OperatorError("publication recovery control is not the exact current-main source")
+
+
 def _persist_primary_recovery_failure(
     control_repo: Path,
     *,

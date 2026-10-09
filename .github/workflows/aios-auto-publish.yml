@@ -23,7 +23,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     outputs:
       event_id: ${{ steps.attention.outputs.event_id }}
     steps:
@@ -73,7 +73,9 @@ jobs:
             fi
           fi
 
-          # Preserve exact attempt framing before publication can fail.
+          # Preserve exact attempt framing before publication can fail. Python
+          # owns recovery admission/proof and exact destination selection; this
+          # workflow never supplies a verdict, test plan or publication truth.
           printf 'run_id=%s\ndecision_sha=%s\n' "$run_id" "$decision_sha" >> "$GITHUB_OUTPUT"
 
           git fetch --no-tags origin refs/heads/main
@@ -84,7 +86,8 @@ jobs:
             --remote origin \
             --run-id "$run_id" \
             --decision-sha "$decision_sha" \
-            --control-sha "$control_sha" > "$AIOS_PUBLICATION_REPORT"
+            --control-sha "$control_sha" \
+            --recover-clean > "$AIOS_PUBLICATION_REPORT"
 
       - name: Project canonical review and exact publication attempt
         id: attention-source

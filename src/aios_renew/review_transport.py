@@ -180,6 +180,7 @@ class RemoteLifecycleTerminal:
     terminal: bytes
     correction: bytes | None = None
     candidate_available: bool = True
+    publication_recovery: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -377,6 +378,7 @@ def resolve_remote_run_namespace(
         remote,
         f"refs/heads/aios/failure-artifacts/{task_prefix}*",
         f"refs/heads/aios/artifacts/{task_prefix}*",
+        f"refs/heads/aios/publication-recovery/{task_prefix}*",
     )
     try:
         return _remote_run_namespace_from_refs(
@@ -882,6 +884,7 @@ def resolve_remote_task_lifecycle(
         f"refs/heads/aios/artifacts/{task_prefix}*",
         f"refs/heads/aios/review/{task_prefix}*",
         f"refs/heads/aios/review-decision/{task_prefix}*",
+        f"refs/heads/aios/publication-recovery/{task_prefix}*",
         f"refs/heads/aios/remediation/{task_prefix}*",
         f"refs/heads/aios/repair/{task_prefix}*",
         f"{REPAIR_SUPERSESSION_PREFIX}{task_prefix}*/*",
@@ -899,6 +902,22 @@ def resolve_remote_task_lifecycle(
                 "failed to acquire canonical main",
                 category=_classify_remote_failure(main_error),
             )
+        publication_admissions = {}
+        for ref, sha in refs.items():
+            if not ref.startswith("refs/heads/aios/publication-recovery/"):
+                continue
+            run_bytes = _read_lifecycle_blob(repo, remote, sha, ".ai/transport/run.json")
+            metadata = _read_lifecycle_blob(repo, remote, sha, ".ai/transport/publication-recovery.json")
+            if run_bytes is None or metadata is None:
+                raise ReviewTransportError("publication admission is incomplete")
+            bound_task, revision, admitted_id = _decode_run_task_identity(run_bytes, ref)
+            if bound_task != task_id:
+                raise ReviewTransportError("publication admission TASK mismatch")
+            if revision != task_revision:
+                continue
+            if admitted_id in publication_admissions:
+                raise ReviewTransportError("competing publication admissions for the same RUN")
+            publication_admissions[admitted_id] = (run_bytes, metadata)
         terminals: list[RemoteLifecycleTerminal] = []
         for ref, artifact_sha in sorted(refs.items()):
             if ref.startswith("refs/heads/aios/failure-artifacts/"):
@@ -926,6 +945,9 @@ def resolve_remote_task_lifecycle(
                 )
             if bound_revision != task_revision:
                 continue
+            admitted = publication_admissions.get(run_id)
+            if admitted is not None and _json_mapping(admitted[0], "admitted RUN") != _json_mapping(run, "terminal RUN"):
+                raise ReviewTransportError("publication terminal RUN differs from admitted RUN")
             terminal = _read_lifecycle_blob(repo, remote, artifact_sha, terminal_path)
             correction = _read_lifecycle_blob(
                 repo, remote, artifact_sha, ".ai/transport/repair.json"
@@ -960,6 +982,9 @@ def resolve_remote_task_lifecycle(
                 RemoteLifecycleTerminal(
                     run_id, kind, candidate_sha, run, terminal, correction,
                     candidate_available,
+                    _read_lifecycle_blob(repo, remote, artifact_sha,
+                                         ".ai/transport/publication-recovery.json")
+                    or (admitted[1] if admitted is not None else None),
                 )
             )
 
@@ -1109,6 +1134,15 @@ def _remote_run_namespace_from_refs(
     terminal_kinds: dict[str, set[str]] = {}
     run_pattern = re.compile(rf"^{re.escape(task_prefix)}\d{{3,}}$")
     for ref, artifact_sha in refs.items():
+        if ref.startswith("refs/heads/aios/publication-recovery/"):
+            run_bytes = _read_remote_blob(repo, remote, artifact_sha, ".ai/transport/run.json")
+            if run_bytes is None:
+                raise ReviewTransportError("publication admission has no persisted RUN")
+            bound_task, _, admitted_id = _decode_run_task_identity(run_bytes, ref)
+            if bound_task != task_id or not run_pattern.fullmatch(admitted_id):
+                raise ReviewTransportError("publication admission RUN namespace mismatch")
+            terminal_kinds.setdefault(admitted_id, set())
+            continue
         if ref.startswith("refs/heads/aios/failure-artifacts/"):
             terminal_kind = "FAILURE"
         elif ref.startswith("refs/heads/aios/artifacts/"):
@@ -1842,8 +1876,15 @@ def _create_artifacts_commit(
     lineage_path: Path | None = None,
     observation_path: Path | None = None,
     execution_profile_path: Path | None = None,
+    publication_recovery_path: Path | None = None,
 ) -> str:
     """Create an isolated success artifact tree with optional operational state."""
+    if publication_recovery_path is not None:
+        return _create_named_artifacts_commit(repo, run_path=run_path,
+            artifact_path=result_path, artifact_name="result.json", run_id=run_id,
+            lineage_path=lineage_path, observation_path=observation_path,
+            execution_profile_path=execution_profile_path,
+            publication_recovery_path=publication_recovery_path)
     if not run_path.is_file():
         raise ReviewTransportError(f"persisted RUN JSON missing: {run_path}")
     if not result_path.is_file():
@@ -1999,6 +2040,7 @@ def _create_named_artifacts_commit(
     observation_path: Path | None = None,
     preverification_path: Path | None = None,
     execution_profile_path: Path | None = None,
+    publication_recovery_path: Path | None = None,
 ) -> str:
     """Create an isolated artifacts commit without touching the worktree."""
 
@@ -2009,6 +2051,8 @@ def _create_named_artifacts_commit(
 
     blobs: dict[str, str] = {}
     inputs = [("run.json", run_path), (artifact_name, artifact_path)]
+    if publication_recovery_path is not None:
+        inputs.append(("publication-recovery.json", publication_recovery_path))
     if lineage_path is not None:
         if not lineage_path.is_file():
             raise ReviewTransportError(
@@ -2678,6 +2722,7 @@ def transport_post_pass(
     lineage_path: Path | None = None,
     observation_path: Path | None = None,
     execution_profile_path: Path | None = None,
+    publication_recovery_path: Path | None = None,
 ) -> None:
     """Publish aios/review/<RUN_ID> and aios/artifacts/<RUN_ID> to upstream remote."""
     remote = resolve_transport_remote(repo)
@@ -2692,6 +2737,8 @@ def transport_post_pass(
     expected_run_bytes = run_path.read_bytes()
     expected_result_bytes = result_path.read_bytes()
     expected_lineage_bytes = lineage_path.read_bytes() if lineage_path is not None else None
+    expected_recovery_bytes = (publication_recovery_path.read_bytes()
+                               if publication_recovery_path is not None else None)
     _validate_transport_affinity(repo, expected_run_bytes, head_sha, expected_lineage_bytes)
     expected_observation_bytes = (
         observation_path.read_bytes() if observation_path is not None else None
@@ -2743,6 +2790,8 @@ def transport_post_pass(
         remote_execution_profile_bytes = _read_remote_blob(
             repo, remote, existing_artifacts_sha, ".ai/transport/execution-profile.json"
         )
+        remote_recovery_bytes = _read_remote_blob(
+            repo, remote, existing_artifacts_sha, ".ai/transport/publication-recovery.json")
 
         if (
             remote_run_bytes == expected_run_bytes
@@ -2753,6 +2802,7 @@ def transport_post_pass(
                 or remote_observation_bytes in (None, expected_observation_bytes)
             )
             and remote_execution_profile_bytes == expected_execution_profile_bytes
+            and remote_recovery_bytes == expected_recovery_bytes
         ):
             push_artifacts = False
         else:
@@ -2770,6 +2820,7 @@ def transport_post_pass(
             lineage_path=lineage_path,
             observation_path=observation_path,
             execution_profile_path=execution_profile_path,
+            publication_recovery_path=publication_recovery_path,
         )
 
     push_specs: list[str] = []
@@ -2780,7 +2831,10 @@ def transport_post_pass(
         push_specs.append(f"{artifacts_commit_sha}:{artifacts_ref}")
 
     if push_specs:
-        code, _, stderr = _git_cmd(repo, "push", "--no-tags", remote, *push_specs, allow_fail=True)
+        recovery_cas = (["--atomic", *(f"--force-with-lease={spec.split(':', 1)[1]}:"
+                         for spec in push_specs)] if publication_recovery_path is not None else [])
+        code, _, stderr = _git_cmd(repo, "push", "--no-tags", *recovery_cas,
+                                   remote, *push_specs, allow_fail=True)
         if code != 0:
             raise ReviewTransportError(f"failed to push transport refs to {remote}: {stderr}")
     assert artifacts_commit_sha is not None

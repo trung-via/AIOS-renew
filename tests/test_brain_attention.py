@@ -215,6 +215,44 @@ class Sources:
         return self.is_included
 
 
+def test_publication_awaiting_recovered_review_is_canonical_progress_not_publication(tmp_path, monkeypatch):
+    from tests.test_publication import recover_publication_fixture
+    from aios_renew import operator, publication
+    from dataclasses import asdict
+    lineage, main, calls, runner = recover_publication_fixture(tmp_path, monkeypatch)
+    recovered = operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+        expected_main_sha=main, repo=lineage["repo"], verification_runner=runner)
+    report = publication.PublicationReport(lineage["run_id"], lineage["candidate_sha"], main,
+        "AWAITING_REVIEW", "canonical new RESULT; no verdict")
+    report_path, source_path = tmp_path / "report.json", tmp_path / "source.json"
+    report_path.write_text(json.dumps({**asdict(report), "classification": report.classification}), encoding="utf-8")
+    source = brain.capture_publication(report_path, source_path, lineage["run_id"], lineage["decision_sha"], repo=lineage["repo"])
+    assert source["observations"] == [] and len(calls) == 1
+    assert brain.publication_event(source_path, 100, 1, 200, brain.digest(source)) == ""
+    from tests.test_publication import git
+    git(lineage["remote"], "update-ref", "-d", f"refs/heads/aios/artifacts/{recovered.run_id}")
+    with pytest.raises(brain.AttentionError, match="UNPROVEN_PUBLICATION_CONTINUATION"):
+        brain.capture_publication(report_path, source_path, lineage["run_id"], lineage["decision_sha"], repo=lineage["repo"])
+
+
+def test_publication_classification_and_lineage_cannot_forge_publication_success(tmp_path, monkeypatch):
+    from aios_renew.publication import PublicationReport, PublicationLineage
+    from dataclasses import asdict
+    sources = Sources("PASS")
+    monkeypatch.setattr(brain, "GitSources", lambda *_args: sources)
+    report = PublicationReport(IDENTITY["run_id"], IDENTITY["reviewed_sha"], "d" * 40,
+        "FAILED", "runner accepted", lineage=PublicationLineage(IDENTITY["decision_sha"], IDENTITY["artifact_sha"]))
+    path, output = tmp_path / "report.json", tmp_path / "source.json"
+    path.write_text(json.dumps({**asdict(report), "classification": "PUBLISHABLE"}), encoding="utf-8")
+    with pytest.raises(brain.AttentionError, match="UNPROVEN_PUBLICATION_CLASSIFICATION"):
+        brain.capture_publication(path, output, IDENTITY["run_id"], IDENTITY["decision_sha"])
+    altered = asdict(report)
+    altered["lineage"]["artifacts_sha"] = "0" * 40
+    path.write_text(json.dumps({**altered, "classification": report.classification}), encoding="utf-8")
+    with pytest.raises(brain.AttentionError, match="UNPROVEN_PUBLICATION_LINEAGE"):
+        brain.capture_publication(path, output, IDENTITY["run_id"], IDENTITY["decision_sha"])
+
+
 class Artifacts:
     def __init__(self, source=None):
         self.source = source

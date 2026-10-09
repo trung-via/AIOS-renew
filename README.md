@@ -10,6 +10,16 @@ AIOS operates under canonical governance:
 
 Operational surfaces, transport mechanisms, Git refs, and handoffs are subordinate, replaceable mechanisms that serve canonical state rather than sources of constitutional authority.
 
+## Publication navigation
+
+Use [SELF_HOST_END_TO_END_FLOW_V1](docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md) for
+generic operational navigation and its one publication-specific leaf,
+[PUBLICATION_END_TO_END_FLOW_V1](docs/AIOS-PUBLICATION-END-TO-END-FLOW-v1.md), for
+review ingress, exact publication outcomes, safe Runtime source recovery,
+evidence validity, fresh recovered-source review and final Publisher CAS.
+README publication traversal is REPLACE_WITH_POINTER to that leaf; specialized
+protocols, safety gates and dated historical evidence retain their own authority.
+
 
 ## Install
 

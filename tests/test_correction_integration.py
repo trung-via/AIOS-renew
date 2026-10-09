@@ -35,6 +35,60 @@ from aios_renew.review_transport import (
 import aios_renew.operator as operator_module
 
 
+def test_publication_source_identity_is_distinct_current_main_bound_and_blob_exact(tmp_path):
+    from dataclasses import replace
+    from aios_renew.publication import prepare_publication_recovery
+    from tests.test_publication import make_lineage, advance_divergent_main
+    lineage = make_lineage(tmp_path)
+    main = advance_divergent_main(lineage)
+    plan, *_ = prepare_publication_recovery(lineage["repo"], run_id=lineage["run_id"],
+        decision_sha=lineage["decision_sha"], expected_main_sha=main)
+    assert len(plan.identity) == 64
+    for changed in (replace(plan, main_sha="a" * 40), replace(plan, decision_sha="b" * 40),
+                    replace(plan, artifacts_sha="c" * 40), replace(plan, task_revision=3),
+                    replace(plan, delta=(("product.txt", "100644", "d" * 40),))):
+        assert changed.identity != plan.identity
+    assert plan.identity != derive_integration_identity(plan.task_id, plan.task_revision,
+        plan.source_run_id, plan.reviewed_sha, plan.main_sha)
+
+
+def test_publication_source_constructed_once_and_stale_or_corrupt_ref_fails_closed(tmp_path, monkeypatch):
+    import aios_renew.correction_integration as integration
+    from aios_renew.publication import prepare_publication_recovery
+    from tests.test_publication import make_lineage, advance_divergent_main
+    lineage = make_lineage(tmp_path)
+    repo = lineage["repo"]
+    main = advance_divergent_main(lineage)
+    plan, *_ = prepare_publication_recovery(repo, run_id=lineage["run_id"],
+        decision_sha=lineage["decision_sha"], expected_main_sha=main)
+    calls, stale = [], []
+    original = subprocess.run
+
+    def recording(command, **kwargs):
+        if "commit-tree" in command:
+            calls.append(command)
+        return original(command, **kwargs)
+
+    def current():
+        if stale:
+            raise CorrectionIntegrationError("stale current main")
+        assert git(repo, "rev-parse", "HEAD") == main
+
+    monkeypatch.setattr(integration.subprocess, "run", recording)
+    candidate = integration.materialize_publication_source(repo, plan, check_currentness=current)
+    assert integration.materialize_publication_source(repo, plan, check_currentness=current) == candidate
+    assert len(calls) == 1
+    stale.append(True)
+    with pytest.raises(CorrectionIntegrationError, match="stale"):
+        integration.materialize_publication_source(repo, plan, check_currentness=current)
+    assert len(calls) == 1
+    stale.clear()
+    git(repo, "update-ref", integration.publication_source_ref(plan.identity), plan.reviewed_sha)
+    with pytest.raises(CorrectionIntegrationError, match="corrupted or competing"):
+        integration.materialize_publication_source(repo, plan, check_currentness=current)
+    assert len(calls) == 1 and git(repo, "rev-parse", "HEAD") == main
+
+
 def test_derive_integration_identity_deterministic() -> None:
     id1 = derive_integration_identity(
         "TASK-101", 1, "RUN-101-001", "a" * 40, "b" * 40

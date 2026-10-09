@@ -350,6 +350,135 @@ def attach_verification_evidence(
     return replace(result, claims=claims)
 
 
+def execute_publication_verification(*, task, run, plan, source_run,
+        source_package, subject_sha: str, repository: Path, raw_directory: Path,
+        cache_directory: Path, runner: VerificationRunner = subprocess.run,
+        environment: Mapping[str, str] | None = None) -> tuple[tuple[Evidence, ...], dict]:
+    """Bounded Runtime decision for a publication source continuation.
+
+    No dependency inference and no parallel scheduler. The entire tracked tree
+    is the conservative read set. A changed planning file alone does not prove
+    independence: absent an established equivalent context, execute the authored
+    bounded requirements through the existing Runtime strategy. Zero-failure
+    proof can be reused only with exact tree, observer, helper/config, environment,
+    toolchain, policy/envelope and immutable raw provenance. Base-attributed
+    failures are never transplanted to another integration base.
+    """
+    from .artifacts import ResultPackage, validate_evidence, verification_requirement_passes
+    from .correction_integration import publication_tree_entries
+    from .runtime import result_package_data
+    env = dict(os.environ if environment is None else environment)
+    raw_directory.mkdir(parents=True, exist_ok=True)
+    tree_equal = (publication_tree_entries(repository, plan.reviewed_sha) == publication_tree_entries(repository, subject_sha)
+                  and publication_tree_entries(repository, source_run.base_sha) == publication_tree_entries(repository, run.base_sha))
+    toolchain = _v2_toolchain()
+    source_items = {command: [item for item in source_package.evidence
+                             if item.source.command == command]
+                    for command in task.verification.required}
+    audit = {"format": "AIOS_PUBLICATION_EVIDENCE_DECISION", "version": 1,
+        "recovery_identity": plan.identity, "source_run_id": source_run.run_id,
+        "source_artifacts_sha": plan.artifacts_sha, "source_decision_sha": plan.decision_sha,
+        "source_sha": plan.reviewed_sha, "candidate_sha": subject_sha,
+        "main_sha": plan.main_sha, "read_set": "ENTIRE_TRACKED_TREE",
+        "records": [], "integration_obligation": "EXACT_SOURCE_AND_MAIN_PRESERVATION"}
+    reused, execute = [], []
+    for order, command in enumerate(dict.fromkeys(task.verification.required), 1):
+        matches = source_items[command]
+        item = matches[0] if len(matches) == 1 else None
+        disposition = "UNKNOWN"
+        if not tree_equal:
+            disposition = "INVALIDATED"
+        record = None if item is None else item.verification
+        try:
+            if (item is None or record is None or task.verification.policy != MINIMUM_SUFFICIENT_V2
+                    or "reuse" in record or "base" in record or "failure_projection" in record
+                    or item.run_id != source_run.run_id or item.subject_sha != plan.reviewed_sha):
+                raise ValueError("no uniquely comparable original proof")
+            validate_evidence(result_package_data(ResultPackage(Result("unused", (), (), ()), (item,)))["evidence"][0])
+            validate_observation(record["candidate"])
+            binding = record["binding"]
+            profile = _v2_profile(repository, subject_sha, command, env)
+            envelope = verification_digest({"authored": tuple(dict.fromkeys(task.verification.required)),
+                "operation": "PRIMARY", "modification_scope": sorted(task.scope.modify)})
+            if (not tree_equal or item.result.exit_code != 0
+                    or record["candidate"]["failure_count"] != 0
+                    or not verification_requirement_passes(item, policy=task.verification.policy)
+                    or binding["subject_sha"] != plan.reviewed_sha
+                    or binding["base_sha"] != source_run.base_sha
+                    or binding["changed_files_digest"] != verification_digest(tuple(sorted(path for path, _, _ in plan.delta)))
+                    or binding["tree_sha"] != _git(repository, "rev-parse", f"{plan.reviewed_sha}^{{tree}}")
+                    or binding["command"] != command or binding["profile"] != profile
+                    or binding["toolchain"] != toolchain or binding["envelope_digest"] != envelope):
+                disposition = "INVALIDATED"
+                raise ValueError("changed proof conditions")
+            original_raw = Path(item.raw_path).read_bytes()
+            if hashlib.sha256(original_raw).hexdigest() != record["raw_digest"]:
+                raise ValueError("missing immutable raw provenance")
+            disposition = "VALID"
+            evidence_id = f"{run.run_id}-REUSE-{order:03d}"
+            path = raw_directory / f"{evidence_id}.json"
+            receipt = {"decision": "REUSED", "source_evidence_id": item.evidence_id,
+                       "source_run_id": item.run_id, "source_artifacts_sha": plan.artifacts_sha,
+                       "source_verification": record, "source_raw_digest": record["raw_digest"],
+                       "candidate_sha": subject_sha, "conditions": "EXACT_CANDIDATE_AND_BASE_TREES_AND_CONTEXT"}
+            if path.exists():
+                raise RuntimeVerificationError("publication reuse receipt already exists; no proof replay")
+            path.write_bytes((json.dumps(receipt, sort_keys=True) + "\n").encode("utf-8"))
+            changed = tuple(sorted(path for path, _, _ in plan.delta))
+            current_binding = {**binding, "subject_sha": subject_sha, "base_sha": run.base_sha,
+                "tree_sha": plan.tree_sha, "correction_base_sha": run.base_sha,
+                "changed_files_digest": verification_digest(changed),
+                "correction_changed_files_digest": verification_digest(changed),
+                "failure_set_digest": verification_digest([])}
+            candidate = {**record["candidate"], "subject_sha": subject_sha}
+            # This is explicitly a Runtime-derived validity observation. Its raw
+            # source is the reuse receipt, retaining the actual executed subject.
+            derived = {"policy": MINIMUM_SUFFICIENT_V2, "evidence_id": evidence_id,
+                "binding": current_binding, "candidate": candidate,
+                "candidate_digest": verification_digest(candidate),
+                "raw_path": str(path), "raw_digest": hashlib.sha256(path.read_bytes()).hexdigest()}
+            reused.append(Evidence(evidence_id, run.run_id, subject_sha, "VERIFICATION",
+                EvidenceSource(command), EvidenceOutcome(0, "Runtime VALID: reused " + item.evidence_id),
+                str(path), derived))
+        except (OSError, KeyError, ValueError, TypeError, RuntimeError):
+            # Unknown/invalid proof never becomes PASS through tree equality.
+            if disposition == "VALID":
+                raise
+            execute.append(command)
+        audit["records"].append({"command": command, "validity": disposition,
+            "disposition": "REUSED" if disposition == "VALID" else "EXECUTED",
+            "source_evidence_ids": [item.evidence_id for item in matches]})
+    executed = ()
+    if execute:
+        if task.verification.policy == MINIMUM_SUFFICIENT_V2:
+            executed = execute_minimum_verification(execute, run_id=run.run_id,
+                base_sha=run.base_sha, subject_sha=subject_sha, repository=repository,
+                raw_directory=raw_directory / "executed", cache_directory=cache_directory,
+                modification_scope=task.scope.modify, operation="PRIMARY", runner=runner,
+                environment=env)
+        else:
+            with materialize_verification_subject(repository, run_id=run.run_id,
+                                                   subject_sha=subject_sha) as subject:
+                executed = execute_verification(execute, run_id=run.run_id,
+                    subject_sha=subject_sha, repository=subject,
+                    raw_directory=raw_directory / "executed", runner=runner, environment=env)
+    # Distinct integration proof is mandatory even when every authored proof was
+    # reused. This guard establishes source/blob preservation, never semantic PASS.
+    parents = _git(repository, "rev-parse", f"{subject_sha}^@").splitlines()
+    entries = publication_tree_entries(repository, subject_sha)
+    if (parents != [plan.main_sha, plan.reviewed_sha]
+            or _git(repository, "rev-parse", f"{subject_sha}^{{tree}}") != plan.tree_sha
+            or any(entries.get(path) != (None if mode is None else (mode, blob))
+                   for path, mode, blob in plan.delta)):
+        raise RuntimeVerificationError("publication integration guard failed", evidence=(*reused, *executed))
+    path = raw_directory / "publication-integration.json"
+    path.write_text(json.dumps(audit, sort_keys=True) + "\n", encoding="utf-8")
+    guard = Evidence(run.run_id + "-INTEGRATION", run.run_id, subject_sha,
+        "PUBLICATION_INTEGRATION", EvidenceSource("aios-publication-source-preservation-v1"),
+        EvidenceOutcome(0, "Exact original blobs and unrelated current-main content preserved"), str(path))
+    return (*reused, *executed, guard), audit
+
+
 def _v2_toolchain() -> dict[str, str]:
     values = {
         "python_implementation": platform_module.python_implementation(),

@@ -24,6 +24,119 @@ class CorrectionIntegrationError(RuntimeError):
     """Raised when correction integration cannot be cleanly and deterministically materialized."""
 
 
+@dataclass(frozen=True)
+class PublicationSourcePlan:
+    """Source-only proposal. Neither this plan nor its commit is a verdict."""
+
+    source_run_id: str
+    artifacts_sha: str
+    decision_sha: str
+    reviewed_sha: str
+    main_sha: str
+    merge_base_sha: str
+    tree_sha: str
+    task_id: str
+    task_revision: int
+    # Exact modes/blob identities, including deletion (None); no rename inference.
+    delta: tuple[tuple[str, str | None, str | None], ...]
+
+    @property
+    def identity(self) -> str:
+        from dataclasses import asdict
+        return hashlib.sha256(json.dumps(asdict(self), sort_keys=True,
+            separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def publication_tree_entries(repo: Path, sha: str) -> dict[str, tuple[str, str]]:
+    """Read bounded exact tracked identities; do not interpret merge text."""
+    from .publication import _git
+    code, output, _ = _git(repo, "ls-tree", "-r", "-z", sha, allow_fail=True)
+    if code or len(output.encode("utf-8")) > 4 * 1024 * 1024:
+        raise CorrectionIntegrationError("publication tree is unavailable or over capacity")
+    result = {}
+    for entry in filter(None, output.split("\0")):
+        info, path = entry.split("\t", 1)
+        mode, kind, blob = info.split()
+        if (kind != "blob" or mode not in {"100644", "100755"}
+                or not _SHA_PATTERN.fullmatch(blob) or path in result
+                or path.startswith("/") or "\\" in path
+                or any(part in {"", ".", ".."} for part in path.split("/"))):
+            raise CorrectionIntegrationError("unsupported publication tree mode or path")
+        result[path] = (mode, blob)
+    return result
+
+
+def publication_source_ref(identity: str) -> str:
+    if re.fullmatch(r"[0-9a-f]{64}", identity) is None:
+        raise CorrectionIntegrationError("invalid publication source identity")
+    return "refs/heads/aios/publication-source/" + identity
+
+
+def materialize_publication_source(repo: Path, plan: PublicationSourcePlan,
+                                   *, check_currentness, remote: str | None = None) -> str:
+    """Called only after Runtime admission; deterministic object, no main update.
+
+    The caller owns the live reservation and exact ref snapshot. A durable
+    content-addressed source ref resumes the same object without rebuilding it;
+    it confers no RUN, RESULT, evidence, review or publication authority.
+    """
+    check_currentness()
+    from .publication import _classify_recovery
+    observation = _classify_recovery(repo, run_id=plan.source_run_id,
+        reviewed_sha=plan.reviewed_sha, main_sha=plan.main_sha,
+        modification_scope=tuple(path for path, _, _ in plan.delta))
+    if (observation.report.recovery is None
+            or observation.report.recovery.tree_sha != plan.tree_sha
+            or observation.report.recovery.merge_base_sha != plan.merge_base_sha):
+        raise CorrectionIntegrationError("publication recovery plan no longer matches exact source")
+    tree = publication_tree_entries(repo, plan.tree_sha)
+    if any(tree.get(path) != (None if mode is None else (mode, blob))
+           for path, mode, blob in plan.delta):
+        raise CorrectionIntegrationError("publication recovery blob provenance mismatch")
+    from . import publication as pub
+    ref = publication_source_ref(plan.identity)
+    if remote is None:
+        code, existing, _ = pub._git(repo, "rev-parse", "--verify", "--quiet", ref, allow_fail=True)
+        if code not in {0, 1}:
+            raise CorrectionIntegrationError("publication source ref is unavailable")
+        existing = existing if code == 0 else None
+    else:
+        existing = pub._single_optional_remote_sha(repo, remote, ref, run_id=plan.source_run_id)
+        if existing is not None:
+            pub._fetch_object(repo, remote, existing, run_id=plan.source_run_id)
+    if existing is not None:
+        _, parents, _ = pub._git(repo, "rev-parse", f"{existing}^@")
+        _, actual_tree, _ = pub._git(repo, "rev-parse", f"{existing}^{{tree}}")
+        _, message, _ = pub._git(repo, "log", "-1", "--format=%B", existing)
+        if (parents.splitlines() != [plan.main_sha, plan.reviewed_sha]
+                or actual_tree != plan.tree_sha
+                or message != "AIOS publication source recovery " + plan.identity):
+            raise CorrectionIntegrationError("publication source identity ref is corrupted or competing")
+        check_currentness()
+        return existing
+    env = dict(os.environ)
+    env.update(GIT_AUTHOR_NAME="AIOS Runtime", GIT_AUTHOR_EMAIL="runtime@aios.invalid",
+               GIT_COMMITTER_NAME="AIOS Runtime", GIT_COMMITTER_EMAIL="runtime@aios.invalid",
+               GIT_AUTHOR_DATE="@0 +0000", GIT_COMMITTER_DATE="@0 +0000")
+    proc = subprocess.run(("git", "-C", str(repo), "commit-tree", plan.tree_sha,
+        "-p", plan.main_sha, "-p", plan.reviewed_sha,
+        "-m", "AIOS publication source recovery " + plan.identity),
+        env=env, capture_output=True, check=False, timeout=30)
+    sha = proc.stdout.decode("ascii").strip()
+    if proc.returncode or not _SHA_PATTERN.fullmatch(sha):
+        raise CorrectionIntegrationError("cannot materialize publication recovery source")
+    check_currentness()
+    if remote is None:
+        code, _, _ = pub._git(repo, "update-ref", ref, sha, "0" * 40, allow_fail=True)
+    else:
+        code, _, _ = pub._git(repo, "push", "--no-tags", f"--force-with-lease={ref}:",
+                              remote, f"{sha}:{ref}", allow_fail=True)
+    if code:
+        raise CorrectionIntegrationError("publication source creation CAS failed; no blind retry")
+    check_currentness()
+    return sha
+
+
 def derive_integration_identity(
     task_id: str,
     task_revision: int,

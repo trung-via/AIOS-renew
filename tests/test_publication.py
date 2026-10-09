@@ -4080,3 +4080,286 @@ def test_ingress_uncovered_main_writer_names_exact_scope_gap_before_mutation(tmp
         _publish_ingress_ref(lineage["repo"], "origin", "refs/heads/main",
                              lineage["candidate_sha"], expected_old_sha=lineage["base_sha"])
     assert remote_main(lineage) == lineage["base_sha"]
+
+
+def recover_publication_fixture(tmp_path, monkeypatch, *, lineage=None, fail_wake=False):
+    """Local real-Git Runtime, with a stand-in for published activation only."""
+    from aios_renew import operator, review_transport
+    lineage = make_lineage(tmp_path) if lineage is None else lineage
+    main = advance_divergent_main(lineage)
+    monkeypatch.setattr(operator, "_require_publication_recovery_activation", lambda *_: None)
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(tuple(command))
+        return subprocess.run(command, **kwargs)
+
+    if fail_wake:
+        from aios_renew.terminal_attention import TerminalAttentionError
+        original = review_transport.publish_terminal_attention
+        failed = []
+
+        def wake(*args, **kwargs):
+            if kwargs["run_id"] != lineage["run_id"] and not failed:
+                failed.append(True)
+                raise TerminalAttentionError("lost review wake fixture")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(review_transport, "publish_terminal_attention", wake)
+    return lineage, main, calls, runner
+
+
+def test_publication_recovery_admits_once_then_requires_new_exact_review(tmp_path, monkeypatch):
+    from aios_renew import operator
+    from aios_renew.authoring_ingress import execute_ingress, IngressEnvelope
+    from aios_renew.unified_state import observe_unified_state, observe_semantic_review_scope
+    lineage, main, calls, runner = recover_publication_fixture(tmp_path, monkeypatch)
+    repo = lineage["repo"]
+    before_source = git(repo, "show", f"{lineage['candidate_sha']}:product.txt")
+    original_decision = git(lineage["remote"], "rev-parse", f"refs/heads/aios/review-decision/{lineage['run_id']}")
+    recovered = operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+        expected_main_sha=main, repo=repo, verification_runner=runner)
+    assert recovered.run_id != lineage["run_id"] and recovered.head_sha != lineage["candidate_sha"]
+    assert remote_main(lineage) == main and len(calls) == 1
+    assert git(repo, "show", f"{recovered.head_sha}:product.txt") == before_source
+    assert git(repo, "show", f"{recovered.head_sha}:later.txt") == git(repo, "show", f"{main}:later.txt")
+    assert git(repo, "rev-parse", f"{recovered.head_sha}^@").splitlines() == [main, lineage["candidate_sha"]]
+    observation = observe_unified_state("TASK-063", repo=repo)
+    assert observation.next_action == "SEMANTIC_REVIEW" and observation.run_id == recovered.run_id
+    scope = observe_semantic_review_scope("TASK-063", repo=repo)
+    assert scope["review_mode"] == "PRIMARY" and scope["reviewed_head_sha"] == recovered.head_sha
+    assert scope["publication_provenance"]["prior_pass_is_verdict"] is False
+    refs = git(lineage["remote"], "show-ref")
+    replay = operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+        expected_main_sha=main, repo=repo, verification_runner=runner)
+    assert replay.head_sha == recovered.head_sha and replay.run_id == recovered.run_id
+    assert len(calls) == 1 and git(lineage["remote"], "show-ref") == refs
+    with pytest.raises(PublicationError):
+        publish_review_decision(repo, run_id=recovered.run_id, decision_sha=lineage["decision_sha"], control_sha=main)
+    assert remote_main(lineage) == main
+    review = review_source(recovered.head_sha).replace("REVIEW-063-001", "REVIEW-" + recovered.run_id[4:])
+    ingress = execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW",
+        {"run_id": recovered.run_id}, {"expected_candidate_sha": recovered.head_sha}, review), repo=repo)
+    report = publication_module.continue_publication(repo, run_id=lineage["run_id"],
+        decision_sha=lineage["decision_sha"], control_sha=main)
+    assert report.source_run == recovered.run_id and report.outcome == "PUBLISHED"
+    assert remote_main(lineage) == recovered.head_sha and len(calls) == 1
+    assert git(lineage["remote"], "rev-parse", f"refs/heads/aios/review-decision/{lineage['run_id']}") == original_decision
+    assert publish_review_decision(repo, run_id=recovered.run_id, decision_sha=ingress.canonical_sha,
+                                   control_sha=recovered.head_sha).classification == "ALREADY_INCLUDED"
+
+
+def test_publication_recovery_lost_review_wake_resumes_canonical_result_without_proof(tmp_path, monkeypatch):
+    from aios_renew import operator
+    from aios_renew.review_transport import ReviewTransportError
+    lineage, main, calls, runner = recover_publication_fixture(tmp_path, monkeypatch, fail_wake=True)
+    with pytest.raises(ReviewTransportError, match="attention delivery failed"):
+        operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+            expected_main_sha=main, repo=lineage["repo"], verification_runner=runner)
+    recovered = operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+        expected_main_sha=main, repo=lineage["repo"], verification_runner=runner)
+    assert len(calls) == 1 and remote_main(lineage) == main
+    assert git(lineage["remote"], "show-ref", "--verify", "--hash",
+               f"refs/heads/aios/failure-artifacts/{recovered.run_id}", check=False) == ""
+
+
+@pytest.mark.parametrize("mutation", ["main", "review", "artifact", "task", "overlap", "missing-evidence"])
+def test_publication_recovery_counterexamples_never_mutate_main(tmp_path, monkeypatch, mutation):
+    from aios_renew import operator
+    lineage, main, _, runner = recover_publication_fixture(tmp_path, monkeypatch)
+    repo, remote = lineage["repo"], lineage["remote"]
+    if mutation in {"task", "overlap", "main"}:
+        path = ".ai/tasks/TASK-063.yaml" if mutation == "task" else "product.txt" if mutation == "overlap" else "other.txt"
+        (repo / path).write_text(TASK_SOURCE.replace("revision: 2", "revision: 3") if mutation == "task" else "moved\n", encoding="utf-8")
+        git(repo, "add", path)
+        git(repo, "commit", "--quiet", "-m", mutation)
+        git(repo, "push", "--quiet", "origin", "HEAD:refs/heads/main")
+        if mutation != "main":
+            main = git(repo, "rev-parse", "HEAD")
+    elif mutation == "review":
+        git(remote, "update-ref", f"refs/heads/aios/review-decision/{lineage['run_id']}", lineage["candidate_sha"])
+    elif mutation in {"artifact", "missing-evidence"}:
+        # Missing canonical RESULT/EVIDENCE or artifacts cannot be papered over.
+        git(remote, "update-ref", f"refs/heads/aios/artifacts/{lineage['run_id']}", lineage["base_sha"])
+    before = remote_main(lineage)
+    with pytest.raises((PublicationError, operator.OperatorError, ValueError)):
+        operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+            expected_main_sha=main, repo=repo, verification_runner=runner)
+    assert remote_main(lineage) == before
+    assert git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/publication-source/") == ""
+
+
+def test_publication_recovery_without_published_activation_has_no_run(tmp_path):
+    from aios_renew import operator
+    lineage = make_lineage(tmp_path)
+    main = advance_divergent_main(lineage)
+    with pytest.raises(PublicationError) as raised:
+        operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+            expected_main_sha=main, repo=lineage["repo"])
+    assert raised.value.report.cause == "RECOVERY_NOT_ACTIVATED"
+    assert list(operator.runtime_paths(lineage["repo"]).runs.glob("*.json")) == []
+    assert remote_main(lineage) == main
+
+
+def test_publication_recovery_competing_divergent_pass_cannot_select_a_winner(tmp_path, monkeypatch):
+    from aios_renew import operator
+    lineage, main, calls, runner = recover_publication_fixture(tmp_path, monkeypatch)
+    sibling = add_sibling_pass(lineage)
+    git(lineage["repo"], "checkout", "--quiet", "--detach", main)
+    with pytest.raises(PublicationError) as raised:
+        operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+            expected_main_sha=main, repo=lineage["repo"], verification_runner=runner)
+    assert raised.value.report.classification == "COMPETING_SOURCE"
+    assert raised.value.report.blocker.source_run == sibling["run_id"]
+    assert calls == [] and remote_main(lineage) == main
+    assert git(lineage["remote"], "for-each-ref", "--format=%(refname)", "refs/heads/aios/publication-source/") == ""
+
+
+def test_publication_outcome_classification_is_closed_and_receipts_are_not_success():
+    report = publication_module.PublicationReport
+    assert report("RUN-1", "a" * 40, "b" * 40, "PUBLISHED", "included").classification == "PUBLISHABLE"
+    assert report("RUN-1", "a" * 40, "b" * 40, "ALREADY_PUBLISHED", "included").classification == "ALREADY_INCLUDED"
+    assert report("RUN-1", "a" * 40, "b" * 40, "FAILED", "queued").classification == "CONFLICT_OR_UNKNOWN"
+    assert report("RUN-1", "a" * 40, "b" * 40, "FAILED", "moved", "CONCURRENT_MAIN_MOVEMENT").classification == "STALE_BINDING"
+    assert report("RUN-1", "a" * 40, "b" * 40, "RECOVERY_BLOCKED", "competing", "COMPETING_REVIEWED_SOURCE").classification == "COMPETING_SOURCE"
+
+
+def run326_planning_divergence_fixture(tmp_path, *, material_overlap=False):
+    """Reproduce the RUN-326-001 source/planning topology without live refs.
+
+    The historical observed identities remain immutable test provenance:
+    source 9b2ec4afbedc4ef342b3ea198c59abbb48938f74,
+    artifact 5b5af1e276c9a1bb7aa0031952e1390fe607fc9c,
+    PASS b526cfdded14d74985af42fc4a14b7b54045b260. Disposable
+    commits model that same three-file source / roadmap-only main delta.
+    """
+    paths = ("src/aios_renew/proof_coverage_contract.py", "tests/test_proof_coverage_contract.py",
+             "docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md")
+    task = TASK_SOURCE.replace("TASK-063", "TASK-326").replace("revision: 2", "revision: 1").replace(
+        "[product.txt, secondary.txt]", json.dumps(paths))
+    repo, remote, base = materialize_git_baseline(tmp_path,
+        files={".ai/tasks/TASK-326.yaml": task, ".ai/roadmap-state.yaml": "route: prior\n",
+               **{path: "base\n" for path in paths}}, user_name="Publication Fixture",
+        user_email="fixture@aios.invalid", commit_message="RUN-326 base topology")
+    for path in paths:
+        (repo / path).write_text("exact reviewed proof contract\n", encoding="utf-8")
+    candidate = commit_fixture_state(repo, paths=paths, message="RUN-326 reviewed source",
+        user_name="Publication Fixture", user_email="fixture@aios.invalid")
+    state = tmp_path / "state"
+    state.mkdir()
+    run_path, result_path = state / "run.json", state / "result.json"
+    run_path.write_text(json.dumps(dict(run_id="RUN-326-001", task=dict(id="TASK-326", revision=1),
+        executor="codex", base_sha=base, workspace=str(repo), head_sha=None, status="ACTIVE")), encoding="utf-8")
+    result_path.write_text(json.dumps(result_payload("RUN-326-001", candidate, changed_files=paths)), encoding="utf-8")
+    transport_post_pass(repo, run_id="RUN-326-001", head_sha=candidate, run_path=run_path, result_path=result_path)
+    review_path = repo / ".ai/reviews/REVIEW-326-001.yaml"
+    review_path.parent.mkdir(parents=True)
+    review_path.write_text(review_source(candidate).replace("REVIEW-063-001", "REVIEW-326-001"), encoding="utf-8")
+    decision = commit_fixture_state(repo, paths=(".ai/reviews/REVIEW-326-001.yaml",), message="REVIEW-326 PASS",
+        user_name="Publication Fixture", user_email="fixture@aios.invalid", remote=remote,
+        remote_ref="refs/heads/aios/review-decision/RUN-326-001")
+    git(repo, "checkout", "--quiet", "--detach", base)
+    path = paths[0] if material_overlap else ".ai/roadmap-state.yaml"
+    (repo / path).write_text("competing material\n" if material_overlap else "route: LEGACY_REPOSITORY_DEFAULT_ROUTE\n", encoding="utf-8")
+    main = commit_fixture_state(repo, paths=(path,), message="Human legacy-route planning" if not material_overlap else "material divergence",
+        user_name="Publication Fixture", user_email="fixture@aios.invalid", remote=remote, remote_ref="refs/heads/main")
+    return dict(repo=repo, remote=remote, run_id="RUN-326-001", base_sha=base,
+                candidate_sha=candidate, decision_sha=decision, main_sha=main, paths=paths)
+
+
+@pytest.mark.parametrize("material_overlap", [False, True])
+def test_original_run326_planning_divergence_and_material_counterexample(tmp_path, material_overlap):
+    lineage = run326_planning_divergence_fixture(tmp_path, material_overlap=material_overlap)
+    before = remote_main(lineage)
+    if material_overlap:
+        with pytest.raises(PublicationError) as raised:
+            publication_module.prepare_publication_recovery(lineage["repo"], run_id=lineage["run_id"],
+                decision_sha=lineage["decision_sha"], expected_main_sha=before)
+        assert raised.value.report.classification == "CONFLICT_OR_UNKNOWN"
+    else:
+        plan, task, _, _, _, _ = publication_module.prepare_publication_recovery(lineage["repo"],
+            run_id=lineage["run_id"], decision_sha=lineage["decision_sha"], expected_main_sha=before)
+        assert plan.task_id == "TASK-326" and plan.task_revision == 1
+        assert set(path for path, _, _ in plan.delta) == set(lineage["paths"])
+        assert git(lineage["repo"], "show", f"{plan.tree_sha}:.ai/roadmap-state.yaml") == "route: LEGACY_REPOSITORY_DEFAULT_ROUTE"
+        for path, mode, blob in plan.delta:
+            assert mode == "100644" and blob == git(lineage["repo"], "rev-parse", f"{lineage['candidate_sha']}:{path}")
+        assert task.task_id == "TASK-326"
+    assert remote_main(lineage) == before
+    assert git(lineage["remote"], "for-each-ref", "--format=%(refname)", "refs/heads/aios/publication-source/") == ""
+
+
+def publication_proof_fixture(tmp_path, monkeypatch):
+    from aios_renew import verification, correction_integration
+    from aios_renew.artifacts import Result, ResultPackage, Evidence, EvidenceSource, EvidenceOutcome
+    from aios_renew.verification_contract import verification_digest
+    import hashlib
+    command, original, candidate, main, base, tree = "python -m pytest -q tests/test_product.py", "a" * 40, "b" * 40, "c" * 40, "d" * 40, "e" * 40
+    toolchain = dict(python_implementation="CPython", python_version="3.11", python_executable="fixture",
+        platform_system="fixture", platform_machine="fixture", pytest_version="8", pytest_xdist_version="3")
+    profile = {"profile": "fixture", "environment_digest": "same", "helper_blob": "same"}
+    task = SimpleNamespace(scope=SimpleNamespace(modify=("product.txt",)),
+        verification=SimpleNamespace(required=(command,), policy="minimum-sufficient-v2"))
+    plan = SimpleNamespace(identity="f" * 64, reviewed_sha=original, artifacts_sha="1" * 40,
+        decision_sha="2" * 40, main_sha=main, tree_sha=tree, delta=(("product.txt", "100644", "3" * 40),))
+    source_run, run = SimpleNamespace(run_id="RUN-063-001", base_sha=base), SimpleNamespace(run_id="RUN-063-002", base_sha=main)
+    raw = tmp_path / "original.raw"
+    raw.write_bytes(b"original observed pass")
+    binding = dict(subject_sha=original, base_sha=base, tree_sha=tree, command=command, profile=profile,
+        toolchain=toolchain, envelope_digest=verification_digest({"authored": (command,), "operation": "PRIMARY", "modification_scope": ["product.txt"]}),
+        changed_files_digest=verification_digest(("product.txt",)), failure_set_digest=verification_digest([]))
+    observation = dict(subject_sha=original, command=command, profile=profile, toolchain=toolchain,
+        complete=True, unstable=False, reports=[], failure_count=0, exit_code=0)
+    record = dict(policy="minimum-sufficient-v2", evidence_id="E1", binding=binding, candidate=observation,
+        candidate_digest=verification_digest(observation), raw_digest=hashlib.sha256(raw.read_bytes()).hexdigest())
+    item = Evidence("E1", source_run.run_id, original, "VERIFICATION", EvidenceSource(command), EvidenceOutcome(0, "observed pass"), str(raw), record)
+    package = ResultPackage(Result(original, (), ("product.txt",), ()), (item,))
+    monkeypatch.setattr(verification, "_v2_profile", lambda *_args, **_kwargs: profile)
+    monkeypatch.setattr(verification, "_v2_toolchain", lambda: toolchain)
+    monkeypatch.setattr(correction_integration, "publication_tree_entries", lambda _repo, sha:
+        {"product.txt": ("100644", ("0" if sha in {base, main} else "3") * 40)})
+    monkeypatch.setattr(verification, "_git", lambda _repo, _op, subject: main + "\n" + original if subject.endswith("^@") else tree)
+    arguments = dict(task=task, run=run, plan=plan, source_run=source_run, source_package=package,
+        subject_sha=candidate, repository=tmp_path, raw_directory=tmp_path / "proof", cache_directory=tmp_path / "cache", environment={})
+    return verification, arguments, item, raw
+
+
+def test_publication_unchanged_proof_is_reused_with_distinct_integration_guard(tmp_path, monkeypatch):
+    verification, arguments, source, raw = publication_proof_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(verification, "execute_minimum_verification", lambda *_args, **_kwargs: pytest.fail("valid proof repeated"))
+    evidence, audit = verification.execute_publication_verification(**arguments)
+    assert audit["records"][0]["validity"] == "VALID" and audit["records"][0]["disposition"] == "REUSED"
+    assert evidence[0].subject_sha == arguments["subject_sha"] and evidence[0].run_id == arguments["run"].run_id
+    receipt = json.loads(Path(evidence[0].raw_path).read_text(encoding="utf-8"))
+    assert receipt["source_evidence_id"] == source.evidence_id
+    assert receipt["source_verification"] == source.verification and raw.read_bytes() == b"original observed pass"
+    assert evidence[-1].type == "PUBLICATION_INTEGRATION"
+
+
+@pytest.mark.parametrize("condition", ["profile", "toolchain", "test", "fixture", "helper", "missing-raw", "missing-evidence", "ambiguous-evidence"])
+def test_publication_invalid_or_unknown_proof_requires_bounded_execution_not_false_pass(tmp_path, monkeypatch, condition):
+    from aios_renew import correction_integration
+    from dataclasses import replace
+    verification, arguments, source, raw = publication_proof_fixture(tmp_path, monkeypatch)
+    if condition == "profile":
+        monkeypatch.setattr(verification, "_v2_profile", lambda *_args, **_kwargs: {"profile": "changed"})
+    elif condition == "toolchain":
+        monkeypatch.setattr(verification, "_v2_toolchain", lambda: {"toolchain": "changed"})
+    elif condition in {"test", "fixture", "helper"}:
+        monkeypatch.setattr(correction_integration, "publication_tree_entries", lambda _repo, sha:
+            {"product.txt": ("100644", ("0" if sha in {arguments["source_run"].base_sha, arguments["run"].base_sha} else "3") * 40),
+             condition + ".py": ("100644", ("4" if sha in {arguments["subject_sha"], arguments["run"].base_sha} else "5") * 40)})
+    elif condition == "missing-raw":
+        raw.unlink()
+    else:
+        arguments["source_package"] = replace(arguments["source_package"], evidence=() if condition == "missing-evidence" else (source, source))
+    calls = []
+
+    def fail_required(commands, **kwargs):
+        calls.append((tuple(commands), kwargs["base_sha"], kwargs["subject_sha"]))
+        raise verification.RuntimeVerificationError("affected proof failed")
+
+    monkeypatch.setattr(verification, "execute_minimum_verification", fail_required)
+    with pytest.raises(verification.RuntimeVerificationError, match="affected proof failed"):
+        verification.execute_publication_verification(**arguments)
+    assert calls == [(arguments["task"].verification.required, arguments["run"].base_sha, arguments["subject_sha"])]

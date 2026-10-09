@@ -304,12 +304,16 @@ Do not audit the entire repository indiscriminately.
 
 ## 12. Publication
 
-A semantic PASS authorizes publication of the reviewed source candidate only.
+Current publication ordering and canonical locators are defined by
+[PUBLICATION_END_TO_END_FLOW_V1](AIOS-PUBLICATION-END-TO-END-FLOW-v1.md), the one
+specialized leaf under [SELF_HOST_END_TO_END_FLOW_V1 §7](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md#7-publish).
+This section's duplicated procedure is REPLACE_WITH_POINTER to that leaf.
 
-After semantic PASS, always use the canonical publication-continuation surface (`TASK-110`) and observe publication outcome before manual fallback. Review branches and review-decision commits are metadata, not product implementation; never substitute manual Git pushes, cherry-picks, or ad-hoc publication steps for canonical publication continuation.
-
-Fast-forward is preferred.  
-Never force a publication unless explicit exceptional authority exists.
+RETAIN_NORMATIVE: semantic PASS binds only its exact reviewed source; Publisher
+owns publication and canonical main inclusion. A recovered SHA requires its own
+Runtime evidence and independent exact Reviewer PASS. Historical exceptional
+publication authority never becomes a standing bypass. Publication does not
+advance roadmap state or establish wake/semantic-resume success.
 
 ## 13. Brain Sync Protocol
 

@@ -37,6 +37,45 @@ from tests.operator_test_support import (
     publish_upstream,
 )
 
+
+def test_publication_recovery_scope_selects_only_new_candidate_and_pass_is_provenance(tmp_path, monkeypatch):
+    from tests.test_publication import recover_publication_fixture
+    lineage, main, calls, runner = recover_publication_fixture(tmp_path, monkeypatch)
+    recovered = operator_module.recover_publication_source(lineage["run_id"],
+        decision_sha=lineage["decision_sha"], expected_main_sha=main,
+        repo=lineage["repo"], verification_runner=runner)
+    before = git(lineage["remote"], "show-ref")
+    observation = observe_unified_state("TASK-063", repo=lineage["repo"])
+    assert (observation.next_action, observation.run_id) == ("SEMANTIC_REVIEW", recovered.run_id)
+    scope = observe_semantic_review_scope("TASK-063", repo=lineage["repo"])
+    assert scope["prior_review_id"] is None and scope["review_mode"] == "PRIMARY"
+    assert scope["semantic_base_sha"] == main and scope["reviewed_head_sha"] == recovered.head_sha
+    assert scope["publication_provenance"]["source_run_id"] == lineage["run_id"]
+    assert scope["publication_provenance"]["source_decision_sha"] == lineage["decision_sha"]
+    assert scope["publication_provenance"]["prior_pass_is_verdict"] is False
+    assert git(lineage["remote"], "show-ref") == before and len(calls) == 1
+
+
+def test_publication_recovery_malformed_provenance_cannot_create_a_semantic_tip(tmp_path, monkeypatch):
+    from tests.test_publication import recover_publication_fixture
+    from aios_renew.review_transport import resolve_remote_task_lifecycle
+    from dataclasses import replace
+    lineage, main, _, runner = recover_publication_fixture(tmp_path, monkeypatch)
+    recovered = operator_module.recover_publication_source(lineage["run_id"],
+        decision_sha=lineage["decision_sha"], expected_main_sha=main,
+        repo=lineage["repo"], verification_runner=runner)
+    snapshot = resolve_remote_task_lifecycle(lineage["repo"], task_id="TASK-063", task_revision=2)
+    terminals = []
+    for item in snapshot.terminals:
+        if item.run_id == recovered.run_id:
+            metadata = json.loads(item.publication_recovery)
+            metadata["plan"]["reviewed_sha"] = "0" * 40
+            item = replace(item, publication_recovery=json.dumps(metadata).encode())
+        terminals.append(item)
+    _stub_unified_remote(monkeypatch, lineage["repo"], replace(snapshot, terminals=tuple(terminals)))
+    observation = observe_unified_state("TASK-063", repo=lineage["repo"])
+    assert observation.next_action == "NONE" and observation.blocker["code"] == "MALFORMED_CANONICAL_STATE"
+
 def _stub_unified_remote(
     monkeypatch: pytest.MonkeyPatch,
     repo: Path,

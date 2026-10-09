@@ -198,6 +198,7 @@ class _LifecycleRun:
     semantic_predecessor: Any | None = None
     execution_base_run_id: str | None = None
     execution_base: Any | None = None
+    publication_recovery: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -494,6 +495,26 @@ def _decode_remote_lifecycle(
                 candidate_available=item.candidate_available,
                 continuation_of=parent_run_id if family == "REPAIR" else None,
             )
+        recovery_document = None
+        if item.publication_recovery is not None:
+            recovery_document = publication_module._mapping(publication_module._json_no_duplicates(
+                item.publication_recovery, document="publication continuation"), "publication continuation")
+            if family != "PRIMARY" or parent_run_id is not None:
+                raise ValueError("publication continuation cannot impersonate a correction")
+            plan = publication_module.publication_plan_from_data(recovery_document["plan"])
+            if item.kind == "RESULT":
+                package = _validate_lifecycle_result(task=task, run=run, family=family,
+                    run_document=run_document, terminal=terminal, candidate_sha=item.candidate_sha)
+                publication_module.validate_publication_recovery(repo,
+                    remote=resolve_transport_remote(repo), raw=item.publication_recovery,
+                    run=run, task=task, candidate_sha=item.candidate_sha, package=package)
+            elif (set(recovery_document) != {"format", "version", "plan", "identity", "reservation_sha"}
+                    or recovery_document["format"] != "AIOS_PUBLICATION_RECOVERY_ADMISSION"
+                    or recovery_document["version"] != 1 or recovery_document["identity"] != plan.identity
+                    or run.base_sha != plan.main_sha or run.task.id != plan.task_id
+                    or run.task.revision != plan.task_revision):
+                raise ValueError("publication failure has no exact Runtime admission")
+            parent_run_id = plan.source_run_id
         decoded.append(
             _LifecycleRun(
                 item.run_id,
@@ -511,6 +532,7 @@ def _decode_remote_lifecycle(
                 semantic_predecessor,
                 execution_base_run_id,
                 execution_base,
+                recovery_document,
             )
         )
     # A remediation points to the uniquely reviewed predecessor with the same
@@ -520,6 +542,16 @@ def _decode_remote_lifecycle(
         by_candidate.setdefault(item.candidate_sha, []).append(item)
     resolved: list[_LifecycleRun] = []
     for item in decoded:
+        if item.publication_recovery is not None:
+            plan = publication_module.publication_plan_from_data(item.publication_recovery["plan"])
+            parents = [parent for parent in decoded if parent.run_id == plan.source_run_id
+                       and parent.candidate_sha == plan.reviewed_sha and parent.terminal_kind == "RESULT"]
+            prior = reviews.get(plan.source_run_id)
+            if (len(parents) != 1 or prior is None or prior.verdict != "PASS"
+                    or prior.reviewed_sha != plan.reviewed_sha
+                    or next((review.decision_sha for review in lifecycle.reviews
+                             if review.run_id == plan.source_run_id), None) != plan.decision_sha):
+                raise ValueError("publication continuation original PASS predecessor is missing or ambiguous")
         if item.family != "REMEDIATION":
             resolved.append(item)
             continue
@@ -734,6 +766,11 @@ def _derive_tip_frontier(
     reviews: Mapping[str, Review],
 ) -> CorrectionFrontier:
     ordered = _ordered_lineage(tip, lifecycle)
+    # A recovered source starts a new PRIMARY semantic obligation. Earlier PASS
+    # decisions remain validated provenance and cannot compete as its verdict.
+    recovery_roots = [idx for idx, item in enumerate(ordered) if item.publication_recovery is not None]
+    if recovery_roots:
+        ordered = ordered[recovery_roots[-1]:]
     primary_roots = [
         (idx, item, review)
         for idx, item in enumerate(ordered)
@@ -1483,7 +1520,7 @@ def observe_unified_state(
             # observer before classifying ancestry.  Runtime PASS and a parsed
             # PASS document alone do not establish publication eligibility.
             try:
-                publication_candidate, _ = publication_module._load_success_lineage(
+                publication_candidate, *_ = publication_module._load_success_lineage(
                     observer,
                     remote=resolve_transport_remote(observer),
                     run_id=tip.run_id,
@@ -1514,11 +1551,16 @@ def observe_unified_state(
                     candidate_sha=tip.candidate_sha, reviewed_sha=review.reviewed_sha,
                     admission_failures=admission_context,
                 )
-            return _unified_blocked(
-                task, "INTEGRATION_REQUIRED", admission_failures=admission_context,
-                run_id=tip.run_id, review_id=review.review_id,
-                candidate_sha=tip.candidate_sha, reviewed_sha=review.reviewed_sha,
-            )
+            recovery = publication_module._classify_recovery(observer, run_id=tip.run_id,
+                reviewed_sha=tip.candidate_sha, main_sha=lifecycle.main_sha,
+                modification_scope=tuple(task.scope.modify))
+            if recovery.report.classification == "CLEAN_RECOVERY_ELIGIBLE" and tip.publication_recovery is None:
+                return UnifiedStateObservation(task.task_id, task.revision, "PUBLICATION", "PUBLICATION",
+                    run_id=tip.run_id, review_id=review.review_id, candidate_sha=tip.candidate_sha,
+                    reviewed_sha=review.reviewed_sha, admission_failures=admission_context)
+            return _unified_blocked(task, "INTEGRATION_REQUIRED", admission_failures=admission_context,
+                run_id=tip.run_id, review_id=review.review_id, candidate_sha=tip.candidate_sha,
+                reviewed_sha=review.reviewed_sha)
     except RemoteQueryError as exc:
         raise op.OperatorError(
             f"Unified State canonical observation unavailable ({exc.category})"
@@ -1573,7 +1615,8 @@ def observe_semantic_review_scope(
 
     prior_run_id = prior_review_id = prior_finding_id = None
     if origin.family == "PRIMARY":
-        if origin_index != 0 or tip.review_id is not None or tip.finding_id is not None:
+        if ((origin_index != 0 and origin.publication_recovery is None)
+                or tip.review_id is not None or tip.finding_id is not None):
             raise ValueError("PRIMARY semantic review identity is inconsistent")
         mode = "PRIMARY"
         semantic_base = origin.run.base_sha
@@ -1619,6 +1662,12 @@ def observe_semantic_review_scope(
         "prior_review_id": prior_review_id,
         "prior_finding_id": prior_finding_id,
     }
+    if origin.publication_recovery is not None:
+        plan = publication_module.publication_plan_from_data(origin.publication_recovery["plan"])
+        body["publication_provenance"] = dict(source_run_id=plan.source_run_id,
+            source_sha=plan.reviewed_sha, source_decision_sha=plan.decision_sha,
+            source_artifacts_sha=plan.artifacts_sha, current_main_sha=plan.main_sha,
+            recovery_identity=plan.identity, prior_pass_is_verdict=False)
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
     body["scope_fingerprint"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return body
