@@ -1,0 +1,50 @@
+review_id: REVIEW-327-004
+reviewed_sha: 9271a2afcdfbdf67d3dd038551ce2c5d1643d2d2
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings: []
+notes:
+- 'Subject binding: TASK-327 r1, RUN-327-004, review PRIMARY (REPAIR preceding any
+  semantic review finding). Exact candidate 9271a2afcdfbdf67d3dd038551ce2c5d1643d2d2,
+  canonical RESULT artifact f27e104954301b033aeee9d677d3f0d193fbe023, parent candidate
+  a7f47cc24a416ead1216cb8a9a918cc58de50fb7. Source main 41e68e733029996c5f634a84e7d9b27f1abca1e5;
+  original TASK and immutable RUN-327-001/002/003 failure lineage preserved.'
+- 'Runtime verified exact candidate with five bound V2 EVIDENCE records RUN-327-004-V001..V005:
+  publication 256 passed; correction integration 15 passed; operator Unified State
+  recovery/integration 5 passed; authoring ingress review/publication 27 passed; brain
+  attention publication 62 passed; 365 PASS total. Result has 10 concrete AC claims,
+  unresolved=[], and factual changed_files covering 19 paths inside TASK-327 scope.modify.
+  No tests were rerun by Reviewer.'
+- 'STAGE 1 CONSTRUCT: evaluated AC1 bounded Publisher outcomes, AC2 exact current-main-bound
+  source recovery, AC3 lawful existing RUN/RESULT admission, AC4 provenance-bound
+  reuse and independent integration proof, AC5 new PRIMARY semantic review of recovered
+  source, AC6 durable ingress/PUBLISH path, AC7 negative safety cases, AC8 single
+  specialized documentation leaf, AC9 real-Git/synthetic counterexamples, AC10 frozen
+  authority and correction backward compatibility. Candidate is a 4-commit descendant
+  of unchanged canonical main; last REPAIR delta is only src/aios_renew/unified_state.py.'
+- 'STAGE 2 ADVERSARIAL AUDIT: checked no old PASS substitution for a new candidate;
+  original PASS is provenance only. Recovery guards stale main, ambiguous merge-base/material
+  overlap, unsupported modes, scope escape, competing PASS, malformed admission/source
+  refs and proof, duplicate delivery, and missing evidence; publisher remains sole
+  main mutator under reservation/CAS. Recovered RESULT becomes the unique PRIMARY
+  SEMANTIC_REVIEW tip; malformed provenance is converted to MALFORMED_CANONICAL_STATE
+  rather than accepted. Regression identities include prior three failures, lost review
+  wake, negative lineage conditions, profile/integration invalidation, and ordinary
+  fast-forward/already-included.'
+- No new Planner/lifecycle router/parallel verifier/Reviewer/Publisher, frozen Kernel
+  amendment, new verification cutover, H4 route/pin change, synthetic task completion,
+  or manual main push is authorized. TASK-326 original REVIEW remains immutable and
+  its separate recovery/publication is not claimed. This verdict authorizes only the
+  exact TASK-327 candidate; ingress and Publisher independently gate canonicalization,
+  currentness, and eventual publication.
