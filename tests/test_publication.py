@@ -2062,7 +2062,7 @@ def test_exact_reviewed_publication_and_replay_export_same_direct_planning_ident
     assert event_ids[0] == event_ids[1]
 
 
-def advance_divergent_main(lineage, *, rename=False):
+def advance_divergent_main(lineage, *, rename=False, control_branch=False):
     repo = lineage["repo"]
     git(repo, "checkout", "--quiet", "--detach", lineage["base_sha"])
     if rename:
@@ -2073,6 +2073,13 @@ def advance_divergent_main(lineage, *, rename=False):
     git(repo, "commit", "--quiet", "-m", "later canonical main")
     main_sha = git(repo, "rev-parse", "HEAD")
     git(repo, "push", "--quiet", "origin", "HEAD:refs/heads/main")
+    if control_branch:
+        # Recovery writes require explicit upstream authority on current-main
+        # control, just as the production publisher's checkout of main does.
+        branch = "fixture/publication-control"
+        git(repo, "checkout", "--quiet", "-b", branch, main_sha)
+        git(repo, "config", f"branch.{branch}.remote", "origin")
+        git(repo, "config", f"branch.{branch}.merge", "refs/heads/main")
     return main_sha
 
 
@@ -2270,6 +2277,14 @@ def test_review_321_003_never_authorizes_reset_or_a_different_sha(tmp_path, monk
             "refs/heads/aios/review-decision/RUN-321-003": decision,
             publication_module.PUBLICATION_RESERVATION_REF: None}
     review = f"review_id: REVIEW-321-003\nreviewed_sha: {reviewed}\nverdict: PASS\n"
+    source_path = "src/aios_renew/brain_context.py"
+    original_blob, reviewed_blob, planning_blob = "e" * 40, "f" * 40, "0" * 40
+    trees = {
+        base: {source_path: original_blob},
+        reviewed: {source_path: reviewed_blob},
+        main: {source_path: original_blob, "planning.txt": planning_blob},
+        tree: {source_path: reviewed_blob, "planning.txt": planning_blob},
+    }
     commands = []
     def bounded_git(repo, *args, **kwargs):
         commands.append(args)
@@ -2278,6 +2293,13 @@ def test_review_321_003_never_authorizes_reset_or_a_different_sha(tmp_path, monk
             return 0, "" if sha is None else sha + "\t" + args[-1], ""
         if args[0] == "fetch":
             return 0, "", ""
+        if args == ("show", f"{artifact}:{publication_module.PUBLICATION_RECOVERY_PATH}"):
+            assert kwargs["allow_fail"] is True
+            return 128, "", "historical artifacts have no recovery sidecar"
+        if args[:3] == ("ls-tree", "-r", "-z"):
+            assert len(args) == 4
+            return 0, "".join(f"100644 blob {blob}\t{path}\0"
+                               for path, blob in sorted(trees[args[3]].items())), ""
         if args[0] == "cat-file":
             return 0, "tree" if args[-1] == tree else "commit", ""
         if args[:2] == ("merge-base", "--is-ancestor"):
@@ -2301,7 +2323,11 @@ def test_review_321_003_never_authorizes_reset_or_a_different_sha(tmp_path, monk
     report = raised.value.report
     assert report.reviewed_sha == reviewed and report.prior_main_sha == main
     assert report.outcome == "RECOVERY_REVIEW_REQUIRED" and report.recovery.publication_eligible is False
+    assert report.recovery.merge_base_sha == base and report.recovery.tree_sha == tree
     assert refs["refs/heads/main"] == main
+    assert [command for command in commands if command[0] == "show"] == [
+        ("show", f"{artifact}:{publication_module.PUBLICATION_RECOVERY_PATH}")]
+    assert {command[3] for command in commands if command[:3] == ("ls-tree", "-r", "-z")} == set(trees)
     assert not any(command[0] in {"push", "reset", "merge", "rebase", "cherry-pick", "commit-tree"}
                    for command in commands)
 
@@ -4086,7 +4112,7 @@ def recover_publication_fixture(tmp_path, monkeypatch, *, lineage=None, fail_wak
     """Local real-Git Runtime, with a stand-in for published activation only."""
     from aios_renew import operator, review_transport
     lineage = make_lineage(tmp_path) if lineage is None else lineage
-    main = advance_divergent_main(lineage)
+    main = advance_divergent_main(lineage, control_branch=True)
     monkeypatch.setattr(operator, "_require_publication_recovery_activation", lambda *_: None)
     calls = []
 
@@ -4192,7 +4218,7 @@ def test_publication_recovery_counterexamples_never_mutate_main(tmp_path, monkey
 def test_publication_recovery_without_published_activation_has_no_run(tmp_path):
     from aios_renew import operator
     lineage = make_lineage(tmp_path)
-    main = advance_divergent_main(lineage)
+    main = advance_divergent_main(lineage, control_branch=True)
     with pytest.raises(PublicationError) as raised:
         operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
             expected_main_sha=main, repo=lineage["repo"])
@@ -4205,7 +4231,8 @@ def test_publication_recovery_competing_divergent_pass_cannot_select_a_winner(tm
     from aios_renew import operator
     lineage, main, calls, runner = recover_publication_fixture(tmp_path, monkeypatch)
     sibling = add_sibling_pass(lineage)
-    git(lineage["repo"], "checkout", "--quiet", "--detach", main)
+    git(lineage["repo"], "checkout", "--quiet", "fixture/publication-control")
+    assert git(lineage["repo"], "rev-parse", "HEAD") == main
     with pytest.raises(PublicationError) as raised:
         operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
             expected_main_sha=main, repo=lineage["repo"], verification_runner=runner)
