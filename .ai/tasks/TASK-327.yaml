@@ -1,0 +1,245 @@
+task_id: TASK-327
+revision: 1
+goal: Implement one durable, authority-preserving PUBLICATION_END_TO_END_FLOW_V1 for
+  all AIOS-renew reviewed source candidates, including deterministic recovery of clean
+  main divergence after semantic PASS without a separate per-incident implementation
+  TASK, and atomically consolidate active publication navigation into one specialized
+  entrypoint under SELF_HOST_END_TO_END_FLOW_V1. Preserve the frozen Kernel, exact
+  review/source binding and historical lineage.
+problem: RUN-326-001 has canonical RESULT and 148 focused-test passes; REVIEW-326-001
+  is PRIMARY PASS with all seven acceptance criteria satisfied. Publication failed
+  because Human-approved legacy-route planning advanced main to 1ead2b69f8c3ab68bee76e37414f013c2449de78
+  after candidate 9b2ec4afbedc4ef342b3ea198c59abbb48938f74 forked from 528a1f6ae0a49f352ac7aa2fbf17920f418dd9db.
+  Current Publisher classifies this clean divergence as FRESH_EXACT_REVIEW_REQUIRED
+  and exposes only an ineligible recovery tree. Existing correction integration applies
+  to open REMEDIATION findings, not an already PASS-reviewed PRIMARY. Brain must rediscover
+  historical TASK-068/070/072, TASK-287/288, TASK-293/295 and TASK-315 exceptions
+  and disconnected Publisher docs. Human now prioritizes a standing production solution,
+  not another exceptional Git push, new recovery TASK per incident, unverified merge
+  or additional verification scheduler.
+assumptions:
+- Fresh canonical main for authoring is dfa72166f96c980cdf1aff3cdf5bf254621c9773,
+  a Human/Brain planning-only preemption following legacy-route planning main 1ead2b69f8c3ab68bee76e37414f013c2449de78.
+  Bind AUTHOR_TASK expected main and normal CAS.
+- RUN-326-001 immutable RESULT artifact SHA 5b5af1e276c9a1bb7aa0031952e1390fe607fc9c,
+  reviewed candidate 9b2ec4afbedc4ef342b3ea198c59abbb48938f74 and REVIEW-326-001 decision
+  b526cfdded14d74985af42fc4a14b7b54045b260 remain authoritative and unpublished; no
+  modification or replay of historical artifacts.
+- TASK-315 content-addressed correction integration and its exceptional one-time Human-authorized
+  fast-forward/Publisher ALREADY_INCLUDED are historical precedents, not a standing
+  publication bypass.
+- TASK-070/072, TASK-287/288 and TASK-293/295 are independently reviewed source-preserving
+  integration precedents and do not authorize reusing a prior verdict for a different
+  SHA.
+- The current canonical SELF_HOST_END_TO_END_FLOW_V1 is already the one generic Brain
+  operational navigation entrypoint; this TASK owns a publication-specific leaf and
+  section-level redirects, not another generic self-host authority.
+- Current transitional verification policy for a newly authored TASK is minimum-sufficient-v2.
+  VP-01 measurement is deferred, VP-02 implementation TASK-326 is REVIEW PASS but
+  not published; no VP policy cutover is authorized.
+- Human has prospectively approved LEGACY_REPOSITORY_DEFAULT_ROUTE for newly authored
+  AIOS-renew TASKs, as recorded on canonical main. This TASK uses that explicit base
+  affinity; it does not reinterpret existing origin-affine lineage.
+- A new TASK requires a fresh explicit Human Executor/model/effort delegation; prior
+  TASK-326 delegation cannot be inferred for TASK-327.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-ARCHITECTURE-v1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-326.yaml
+  - .ai/tasks/TASK-070.yaml
+  - .ai/tasks/TASK-072.yaml
+  - .ai/tasks/TASK-257.yaml
+  - .ai/tasks/TASK-295.yaml
+  - src/aios_renew/publication.py
+  - src/aios_renew/correction_integration.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/artifacts.py
+  - src/aios_renew/brain_attention.py
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-brain-ingress.yml
+  - tests/test_publication.py
+  - tests/test_correction_integration.py
+  - tests/test_operator_unified_state.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_attention.py
+  modify:
+  - src/aios_renew/publication.py
+  - src/aios_renew/correction_integration.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/brain_attention.py
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-brain-ingress.yml
+  - tests/test_publication.py
+  - tests/test_correction_integration.py
+  - tests/test_operator_unified_state.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_attention.py
+  - docs/AIOS-PUBLICATION-END-TO-END-FLOW-v1.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - README.md
+non_goals:
+- Treat a successful merge-tree calculation, unchanged blobs, workflow acceptance
+  or Executor assertion as permission for publication, semantic REVIEW PASS or evidence
+  validity.
+- Rewrite, delete, replace or reinterpret historical TASK/RUN/RESULT/FAILURE/EVIDENCE/REVIEW/REMEDIATION/REPAIR
+  artifacts or silently modify REVIEW-326-001 or its source candidate.
+- Introduce a new Planner, second verification scheduler, generic lifecycle reducer/router,
+  permanent event database, Reviewer, Publisher or autonomous review verdict.
+- Modify frozen Kernel v0.1, extend frozen artifact schemas, or silently grant new
+  publication/integration semantic authority; any otherwise unavoidable amendment
+  is an explicit Human blocker requiring separate approval.
+- Fast-forward/force-push/cherry-pick/rebase main from Brain/Executor or restore TASK-315
+  exceptional one-time manual publication as a permanent default.
+- Reexecute implementation or launch baseline/full-suite pytest automatically merely
+  because main SHA moved; proof reuse requires independent current validity and distinct
+  integration obligations remain mandatory.
+- Modify future VP-03/VP-04/VP-07 verification policy architecture or retroactively
+  finish deferred VP-01 baseline.
+- Retire existing live ingress/publisher/attention workflows, trust-boundary checks,
+  constitutional and specialized protocol documents, H4 live conformance or historical
+  evidence by broad deletion.
+- Auto-advance roadmap, change Executor delegation, wake another Chat destination,
+  implement H4/H5, or change downstream project pins.
+constraints:
+  hard:
+  - 'Normal exact reviewed candidate publication remains Publisher-owned: bind canonical
+    PASS, exact eligible source and RESULT/EVIDENCE, current main ancestry, expected
+    main and CAS, reservation, and post-push inclusion. Review decision commits remain
+    metadata.'
+  - For divergent main, classify exact outcomes PUBLISHABLE, ALREADY_INCLUDED, CLEAN_RECOVERY_ELIGIBLE,
+    CONFLICT_OR_UNKNOWN, STALE_BINDING and COMPETING_SOURCE without a generic blind
+    retry. Only safe, uniquely bounded, content-addressed no-conflict integration
+    may enter source recovery; disallow scope escape, unsupported tree mode, ambiguous
+    merge bases, overlapping material changes, main drift, changed TASK/affinity or
+    unresolved competing PASS.
+  - A clean recovery must preserve the old reviewed source as immutable provenance
+    and exactly preserve unrelated canonical main deltas, including the Human legacy-route
+    planning commit. It must create a distinguishable new source candidate bound to
+    current main, original PASS and the exact allowed changed-file and blob identities;
+    it must not publish or claim that candidate is reviewed.
+  - A mechanically generated candidate after PASS may proceed only through an admitted
+    Runtime-governed recovery/continuation with exact traceable identity under currently
+    legal frozen RUN/RESULT/EVIDENCE semantics. No fabricated RUN, FAILURE, remediation
+    finding or prior REVIEW substitution. If frozen semantics cannot represent the
+    needed transition, return explicit HUMAN_KERNEL_AMENDMENT_REQUIRED without mutation.
+  - Runtime alone establishes actual candidate evidence validity; never manufacture
+    PASS from equality of a filename, command, pytest nodeid, disjoint diff, passing
+    previous RUN or ordinary Git merge. Explicit reuse requires compatible source
+    contents, test/fixture/helper/environment/profile/policy/toolchain and independent
+    obligations with immutable provenance; INVALIDATED requires only affected verification,
+    UNKNOWN blocks or requires bounded authorized proof. Do not implement a competing
+    general V2/VP proof scheduler.
+  - Reviewer independently judges the exact recovered candidate and its source/obligation
+    delta; a fresh SHA cannot inherit old PASS as its verdict. Review handoff pauses
+    at its normal semantic authority boundary, then successful exact ingress triggers
+    Publisher without manual replay loops.
+  - Admission, approval, creation of recovery candidate, review dispatch, publication
+    CAS and terminal/wake statuses must remain separate, durable, idempotent and provenance-bound;
+    reject same-origin duplicate, stale main, changed reservation, ambiguous predecessor
+    and any automatic repeated candidate construction.
+  - Workflow dispatch is transport only; never treat queued, admitted, runner started,
+    carrier accepted, recovery proposal or review-request wake as canonical RUN/verification/review/publication
+    truth.
+  - Keep one current generic operational entrypoint SELF_HOST_END_TO_END_FLOW_V1 and
+    exactly one publication-specific normative flow leaf. The publication leaf documents
+    PASS -> ingress -> decision -> Publisher -> outcome -> safe Runtime recovery ->
+    EVIDENCE -> Reviewer -> Publisher -> postcondition/attention with exact authority,
+    negative branches and canonical locators. Project Contract publication navigation,
+    self-host section 7 and README must redirect to that leaf without establishing
+    conflicting instructions.
+  - 'Perform claim/section-scoped cleanup in the same reviewed implementation candidate
+    as the new flow and recovery activation: RETAIN_NORMATIVE independent Constitution/frozen
+    Kernel/TASK/Reviewer/Publisher/VP/H4, REPLACE_WITH_POINTER competing generic publication
+    procedures, HISTORICAL_ONLY dated procedures, IMPLEMENTATION_LEAF active code.
+    Do not remove historical audit/evidence or decommission active safety gates.'
+  - Source candidate implementation may change only listed scope.modify paths, should
+    not add a new runtime gate on normal fast-forward publication, and must retain
+    the existing Git reservation/expected-old-main semantics at mutation edges.
+  - The normal recoverable incident is exactly TASK-326 r1 with existing RESULT/REVIEW;
+    its standing original review remains immutable. New automatic recovery becomes
+    eligible only after THIS TASK itself is Runtime-verified, reviewed and source-published;
+    TASK-326 recovery/publication is a separate later canonical operation, never falsely
+    counted as TASK-327 acceptance.
+acceptance:
+- id: AC1
+  condition: The implementation exposes one bounded publisher outcome classification
+    with exact canonical candidate/review/main/reservation lineage and a no-additional-work
+    fast-forward/already-included path; failure/operational receipts never impersonate
+    published state.
+- id: AC2
+  condition: For a uniquely clean divergent main, the implementation defines an idempotent
+    current-main-bound source-only recovery identity and candidate with exact original
+    reviewed source/blob provenance and preserved unrelated main content; invalid
+    overlap, stale currentness, scope escape or ambiguous ancestry cannot materialize
+    or publish it.
+- id: AC3
+  condition: The recovered-source continuation is admitted and represented only by
+    legally authoritative existing Runtime lifecycle/result surfaces, with an explicit
+    no-RUN/pre-AIOS failure distinction; it never generates a fake finding, rewrites
+    prior PASS or extends frozen Kernel schemas.
+- id: AC4
+  condition: A recovered candidate has a bounded Runtime-owned evidence validity/affected-proof
+    decision recording original evidence provenance and reused-versus-executed proof
+    without parallel scheduling; unchanged conditions do not mandate duplicate proof,
+    while invalid/unknown or distinct integration obligations cannot be falsely marked
+    PASS.
+- id: AC5
+  condition: The recovery-to-Reviewer boundary deterministically selects exactly the
+    candidate needing a new semantic verdict, preserves prior PASS as provenance only,
+    and requires a canonical PASS for the new exact SHA before Publisher is eligible.
+- id: AC6
+  condition: The durable publication workflow supports initial review ingress, safe
+    divergent-source continuation, resumed exact review and final CAS publication
+    with monotonic exact identity, dedupe and publication outcome classification,
+    without Brain manual multi-step Git intervention in the normal eligible case.
+- id: AC7
+  condition: Counterexamples for concurrent main movement, stale/competing PASS source,
+    missing EVIDENCE, duplicate dispatch, lost review wake, malformed integration,
+    conflict, changed profile and changed relevant test/fixture/helper remain fail-closed
+    and cannot mutate canonical main.
+- id: AC8
+  condition: One publication-specific current normative navigation leaf and same-candidate
+    section-scoped cleanup make the publication lane discoverable from the already
+    canonical SELF_HOST_END_TO_END_FLOW_V1, Project Contract and README, without rival
+    generic flow, orphaned current instructions or deletion of specialized/historical
+    authority.
+- id: AC9
+  condition: Focused real-Git and synthetic regression fixtures cover both original
+    RUN-326-001 clean planning-only divergence and disallowed material divergence,
+    plus ordinary fast-forward, already-included, post-review recovery, currentness
+    and no-repeat evidence behaviors. Tests do not require external credentials, live
+    wake or uncontrolled full suite.
+- id: AC10
+  condition: The implementation preserves current primary/remediation/repair publication
+    and correction integration contracts, exact review/RESULT binding, transport-only
+    workflows, frozen Kernel semantics, and correct separation between TASK-327 publication
+    and any later independent TASK-326 resolution.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_publication.py
+  - python -m pytest -q tests/test_correction_integration.py
+  - python -m pytest -q tests/test_operator_unified_state.py -k 'publication or integration
+    or recovery'
+  - python -m pytest -q tests/test_authoring_ingress.py -k 'review or publication'
+  - python -m pytest -q tests/test_brain_attention.py -k 'publication'
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
