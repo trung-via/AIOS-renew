@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field as dataclass_field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -55,6 +55,43 @@ class RuntimeState(Protocol):
 BoundaryError = type[Exception]
 CompletionKind = Literal["PRIMARY", "REMEDIATION", "REPAIR", "DIRECT_CANDIDATE"]
 NATIVE_DIAGNOSTIC_LIMIT = 4096
+
+
+@dataclass(frozen=True)
+class CanonicalProvenanceAvailability:
+    """Read-only availability at the existing Runtime source boundary.
+
+    The transport decoder authenticates content relative to an upstream, not
+    the independent ownership of that upstream. Neither constructor arguments
+    nor an existing RuntimeCompletion object supply that missing attestation.
+    These non-init fields cannot be turned into an issuer credential.
+    """
+
+    schema: str = dataclass_field(default="runtime-provenance-availability-v1", init=False)
+    terminal_source: str = dataclass_field(default="UNKNOWN", init=False)
+    runtime_issuer: str = dataclass_field(default="UNAVAILABLE", init=False)
+    reviewer_issuer: str = dataclass_field(default="UNAVAILABLE", init=False)
+    preterminal_source: str = dataclass_field(default="UNKNOWN", init=False)
+    activation: str = dataclass_field(default="NOT_ACTIVATED", init=False)
+    reasons: tuple[str, ...] = dataclass_field(default=(
+        "INDEPENDENT_CANONICAL_RUNTIME_ISSUER_UNAVAILABLE",
+        "INDEPENDENT_REVIEWER_ISSUER_UNAVAILABLE",
+        "LIVE_PRETERMINAL_SOURCE_UNAVAILABLE",
+        "HUMAN_LEASE_UNAVAILABLE",
+        "ATOMIC_CAS_ABA_UNAVAILABLE",
+    ), init=False)
+
+
+def observe_canonical_provenance_availability() -> CanonicalProvenanceAvailability:
+    """Observe issuer availability without admission, I/O or lifecycle effects.
+
+    There is no caller-selected repository, remote, catalog, producer, instance,
+    callback, configuration or enrollment path. Existing remote lifecycle reads
+    cannot independently prove Runtime/Reviewer producer rights. Fail closed
+    until that external source fact exists at this boundary; do not synthesize
+    it from terminal writes or a Python constructor. Completion is unchanged.
+    """
+    return CanonicalProvenanceAvailability()
 
 
 @dataclass(frozen=True)

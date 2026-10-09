@@ -1,4 +1,4 @@
-"""VP-03C v1: read-only handoff, with no installed independent Runtime issuer.
+"""VP-03C v1 handoff with the VP-03D closed Runtime observation boundary.
 
 The canonical entry point accepts no authority, repository, producer or callback.
 An explicitly separate offline diagnostic consumes VP-03A/03B content facts;
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import proof_applicability as applicability
 from . import proof_checkpoint_lineage as lineage
@@ -17,6 +18,9 @@ from .proof_coverage_contract import (
     BR_GATES, ProofCoverageError, ProofDescriptor, ProofObligation,
     validate_proof_mapping,
 )
+
+if TYPE_CHECKING:
+    from .runtime_provenance_bridge import ProvenanceObservation
 
 
 SCHEMA = "canonical-proof-handoff-v1"
@@ -87,10 +91,13 @@ class InactiveEffects:
     # Non-init fields cannot be enabled by constructing/replacing a result.
     activation: str = field(default="NOT_ACTIVATED", init=False)
     issuer_authenticated: bool = field(default=False, init=False)
+    producer_rights_authenticated: bool = field(default=False, init=False)
     authorization_granted: bool = field(default=False, init=False)
+    correction_authorized: bool = field(default=False, init=False)
     runtime_continuation_authorized: bool = field(default=False, init=False)
     lifecycle_mutation_authorized: bool = field(default=False, init=False)
     checkpoint_append_authorized: bool = field(default=False, init=False)
+    checkpoint_consumption_authorized: bool = field(default=False, init=False)
     feedback_consumption_authorized: bool = field(default=False, init=False)
     acceptance_discharge_authorized: bool = field(default=False, init=False)
     evidence_reuse_authorized: bool = field(default=False, init=False)
@@ -99,6 +106,8 @@ class InactiveEffects:
     scheduler_activated: bool = field(default=False, init=False)
     publisher_activated: bool = field(default=False, init=False)
     target_execution_evidence_created: bool = field(default=False, init=False)
+    semantic_verdict_issued: bool = field(default=False, init=False)
+    acceptance_pass_asserted: bool = field(default=False, init=False)
     canonical_checkpoint_created: bool = field(default=False, init=False)
     artifact_persistence_performed: bool = field(default=False, init=False)
     budget_reservation_performed: bool = field(default=False, init=False)
@@ -149,6 +158,7 @@ class HandoffResult(InactiveEffects):
     target: CandidateBinding | None = None
     currentness: CurrentnessFact | None = None
     content_lineage: lineage.LineageResult | None = None
+    runtime_provenance: ProvenanceObservation | None = None
 
 
 def _record(value, cls):
@@ -286,12 +296,13 @@ def _empty(request, digest, schema=SCHEMA):
 
 
 def evaluate_handoff(request: HandoffRequest) -> HandoffResult:
-    """Canonical API. The independent production producer is NOT INSTALLED.
+    """Canonical API; source acquisition belongs exclusively to Runtime.
 
     No setter/registration/authority argument exists. Git objects, even coherent
     reviewed-looking ones, cannot substitute for that absent source boundary.
-    Future integration requires separate authorization to change Runtime and
-    this contract; this v1 intentionally performs no canonical source reads.
+    VP-03D observes the existing boundary's availability without trusting a
+    caller-provided fixture or Runtime-looking instance. No independent source
+    attestation exists there yet; no terminal fact is projected into C1/C2.
     """
     request, digest = _checked(request)
     result = _empty(request, digest)
@@ -300,7 +311,16 @@ def evaluate_handoff(request: HandoffRequest) -> HandoffResult:
     except _Conflict as exc:
         return replace(result, status="BLOCK", observation="CONFLICT",
                        reasons=(str(exc), *result.reasons))
-    return result
+    from .runtime_provenance_bridge import _closed_runtime_observation, observe_handoff_provenance
+
+    provenance = observe_handoff_provenance(request)
+    # The bridge accepts no observation/producer argument and exposes no
+    # positive issuer-enrollment branch. Offline content is a separate schema.
+    if not _closed_runtime_observation(provenance, digest):
+        return replace(result, status="BLOCK", observation="CONFLICT",
+            reasons=("UNTRUSTED_RUNTIME_SOURCE_OBSERVATION", *result.reasons))
+    return replace(result, status=provenance.status, runtime_provenance=provenance,
+                   reasons=tuple(dict.fromkeys((*provenance.reasons, *result.reasons))))
 
 
 def _ref(git, ref):
