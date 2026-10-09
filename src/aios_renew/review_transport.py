@@ -35,6 +35,24 @@ class RemoteQueryError(ReviewTransportError):
         } else "UNKNOWN"
 
 
+def _require_owned_runtime_source(content: bytes | None) -> None:
+    """No public helper may mint provenance using caller-supplied metadata.
+
+    Legacy terminal transport remains unchanged. A bounded authority revision
+    must connect independently admitted Runtime ownership before the reserved
+    v1 source slot can be populated; files/Git/config are not that connection.
+    """
+    if content is None:
+        return
+    from .runtime_provenance_issuer import SourceError, refuse_unowned_transport_source
+    try:
+        refuse_unowned_transport_source(content)
+    except SourceError as exc:
+        error = ReviewTransportError(f"Runtime source issuance blocked: {exc.reason}")
+        error.reason = exc.reason
+        raise error from None
+
+
 def validate_runtime_failure_binding(
     failure: Mapping[str, Any],
     *,
@@ -1877,8 +1895,10 @@ def _create_artifacts_commit(
     observation_path: Path | None = None,
     execution_profile_path: Path | None = None,
     publication_recovery_path: Path | None = None,
+    runtime_source: bytes | None = None,
 ) -> str:
     """Create an isolated success artifact tree with optional operational state."""
+    _require_owned_runtime_source(runtime_source)
     if publication_recovery_path is not None:
         return _create_named_artifacts_commit(repo, run_path=run_path,
             artifact_path=result_path, artifact_name="result.json", run_id=run_id,
@@ -2723,8 +2743,12 @@ def transport_post_pass(
     observation_path: Path | None = None,
     execution_profile_path: Path | None = None,
     publication_recovery_path: Path | None = None,
+    runtime_source: bytes | None = None,
 ) -> None:
     """Publish aios/review/<RUN_ID> and aios/artifacts/<RUN_ID> to upstream remote."""
+    # Refuse before remote query or object creation, including replay. Do not
+    # backfill historic immutable refs or export a protected raw sidecar.
+    _require_owned_runtime_source(runtime_source)
     remote = resolve_transport_remote(repo)
     review_ref = f"refs/heads/aios/review/{run_id}"
     artifacts_ref = f"refs/heads/aios/artifacts/{run_id}"

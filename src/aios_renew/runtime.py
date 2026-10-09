@@ -24,6 +24,7 @@ from .codex_adapter import CodexExecutionError
 from .review import RemediationExecution
 from .review_transport import ReviewTransportError, transport_failure, transport_post_pass
 from .run import Run
+from .runtime_provenance_issuer import SourceObservation, _capture_completion
 from .run_observation import RunObservationTracker, persist_observation
 from .task import Task
 from .verification import (
@@ -183,6 +184,7 @@ class RuntimeCompletion:
         self.transport_repo = transport_repo or repo
         self.interruption_phase = "COMPLETION_GATE"
         self.verification_subject_sha: str | None = None
+        self.source_observation: SourceObservation | None = None
 
     def complete(
         self, package: ResultPackage, policy: CompletionPolicy
@@ -308,6 +310,19 @@ class RuntimeCompletion:
         observation_path = persist_terminal_observation(
             self.state, self.observation_tracker, "RESULT"
         )
+        # Subordinate protected content capture only. Admission/transport
+        # authority is not exposed to this callable boundary; never turn a
+        # constructed Runtime instance into a trusted issuer. A capture failure
+        # must not replace the original terminal or transport outcome.
+        try:
+            self.source_observation = _capture_completion(
+                self, canonical_package, policy.kind
+            )
+        except Exception:
+            self.source_observation = SourceObservation(
+                "BLOCK", ("RUNTIME_ADMISSION_AUTHORITY_UNAVAILABLE",
+                          "SOURCE_CAPTURE_FAILED")
+            )
         try:
             transport_post_pass(
                 self.transport_repo,
