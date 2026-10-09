@@ -1,0 +1,10 @@
+finding_id: R1
+action: CODE_FIX
+reviewed_sha: eae286d3ff673d07929dbd7128af0d4d23fb8079
+modification_scope:
+- src/aios_renew/proof_applicability.py
+- tests/test_proof_applicability.py
+verification:
+  policy: minimum-sufficient-v2
+  affected:
+  - python -m pytest -q tests/test_proof_applicability.py
