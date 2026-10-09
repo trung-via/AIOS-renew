@@ -663,6 +663,40 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03_post_task335_publication_reconciliation_2026_10_10:
+    authority: HUMAN_BRAIN_PLANNING
+    human_intent: CONTINUE_UNIQUE_VP03_NEXT_AFTER_TASK335_REVIEW_PASS_PUBLISHED
+    fresh_main_at_reconciliation: 247aabc5dbaa100b345ddb8e55094c1cf294a471
+    source_run_id: RUN-335-001
+    canonical_result_artifact_sha: f642bc503f90c6d636bf98a02e0937d456987e91
+    canonical_evidence_id: RUN-335-001-V003
+    focused_tests_passed: 25
+    source_review_id: REVIEW-335-001
+    source_review_verdict: PASS
+    source_review_decision_sha: 785c4cf20c9244d878e79e4859eba896a8cf1fc7
+    exact_reviewed_source_in_main: 247aabc5dbaa100b345ddb8e55094c1cf294a471
+    historical_task335: DONE_PUBLISHED
+    selected_root_next: verification-architecture-replacement-v1-vp03-evidence-validity
+    bounded_next_focus: TASK334_REPAIR_ELIGIBILITY_AND_SOURCE_TRUST_DECISION
+    bounded_next_task_id: TASK-334
+    task334_repair_disposition: BLOCKED_PENDING_AUTHENTICATED_RUNTIME_ISSUER_AND_REVIEWER_ORIGIN
+    cannot_solve_via_TASK334_FIVE_FILE_SCOPE_ALONE: true
+    unproven_source_gates:
+      - RUNTIME_INDEPENDENT_SOURCE_ISSUANCE
+      - REVIEW_ORIGIN_ATTESTATION_IN_EXISTING_PROTECTED_INGRESS
+      - PROTECTED_RAW_ACCESS_AND_VERIFIABLE_DIGEST
+      - BOUNDED_CANONICAL_CURRENTNESS
+    no_auto_fix_or_new_trust_root: true
+    require_human_authority_if_TRUST_POLICY_CHANGES: true
+    no_repair_authored_or_dispatched: true
+    task333_and_task334_immutable_failures_preserved: true
+    publisher_only_and_no_downstream_adoption: true
+    next_action: HUMAN_TRUST_BOUNDARY_DECISION_BEFORE_NEW_IMPLEMENTATION_AUTHORITY
+    vp01: DEFERRED_NOT_WAIVED
+    vp02_full_exit: NOT_ESTABLISHED
+    vp03_full_exit: NOT_ESTABLISHED
+    ka01_activation: NOT_ACTIVATED
+    roadmap_auto_progression: false
   vp03_task334_owner_authority_override_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     human_intent: APPROVED_SEPARATE_BOUNDED_OWNER_AUTHORITY_REVISION_NOT_BLIND_TASK334_REPAIR
@@ -2189,9 +2223,9 @@ sequence:
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
     planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
-    task_id: TASK-335
+    task_id: TASK-334
     task_revision: 1
-    task_authoring_status: PENDING_CANONICAL_AUTHOR_TASK
+    task_authoring_status: CANONICALIZED
     bounded_first_slice: VP03A_READ_ONLY_AUTHENTICATED_PROVENANCE_AND_APPLICABILITY_FOUNDATION
     completed_slice:
       name: VP03A
@@ -2214,8 +2248,8 @@ sequence:
       model: gpt-6.1-sol
       reasoning_effort: max
       publication_does_not_activate_runtime: true
-    bounded_next_slice: VP03D_AUTHORITY_OWNER_BINDING_PREREQUISITE_FOR_TASK334
-    next_task_id: TASK-335
+    bounded_next_slice: VP03D_TASK334_REPAIR_ELIGIBILITY_BLOCKED_ON_AUTHENTICATED_SOURCE_TRUST
+    next_task_id: TASK-334
     next_slice_non_goals:
       - NO_PRODUCTION_RUNTIME_CHECKPOINT_WRITE
       - NO_NEW_CANONICAL_LIFECYCLE_STATE
@@ -2225,20 +2259,20 @@ sequence:
       - NO_DOWNSTREAM_ADOPTION
     executor_delegation:
       authority: HUMAN
-      task_id: TASK-335
-      executor: codex
-      model: gpt-6.1-sol
-      reasoning_effort: xhigh
-      scope: ENTIRE_TASK335_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
-      persistence: UNTIL_TASK335_COMPLETE_OR_EXPLICIT_HUMAN_CHANGE
-    failed_task334_delegation:
-      authority: HUMAN
       task_id: TASK-334
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
       scope: EXISTING_TASK334_ONLY_INCLUDING_LATER_LAWFUL_REPAIR
       persistence: UNTIL_TASK334_COMPLETION_OR_EXPLICIT_HUMAN_CHANGE
+    published_task335_delegation:
+      authority: HUMAN
+      task_id: TASK-335
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: HISTORICAL_TASK335_IMPLEMENTATION
+      persistence: COMPLETED
     failed_task333_delegation:
       authority: HUMAN
       task_id: TASK-333
@@ -2335,7 +2369,7 @@ sequence:
         - RUNTIME_ADMISSION_AND_LEASE_AUTHORITY_NOT_AVAILABLE_AT_COMPLETION
         - REVIEWER_INGRESS_AUTHORITY_NOT_AVAILABLE_TO_PROVENANCE_CONSUMER
       correction_authorized: false
-      disposition: PAUSE_REPAIR_UNTIL_OWNER_BOUND_AUTHORITY_PREREQUISITE_REVIEWED_AND_PUBLISHED
+      disposition: REPAIR_REASSESSED_AFTER_TASK335_PUBLICATION_NOT_ELIGIBLE_WITHOUT_INDEPENDENT_SOURCE_AUTHORITY
     vp03d_next_prerequisite_task335:
       task_id: TASK-335
       focus: OWNER_BOUND_RUNTIME_ADMISSION_AND_INDEPENDENT_REVIEW_INGRESS_PROVENANCE
@@ -2350,9 +2384,45 @@ sequence:
         model: gpt-6.1-sol
         reasoning_effort: xhigh
         scope: ENTIRE_TASK335_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
-      after_publication: REASSESS_TASK334_BOUNDED_REPAIR_FROM_PRESERVED_FAILED_CANDIDATE
+      after_publication: REASSESSED_TASK334_REPAIR_IS_BLOCKED_ON_SOURCE_AUTHORITY_TRUST
+      publication_status: EXACT_REVIEWED_CANDIDATE_IN_MAIN
+      run_id: RUN-335-001
+      review_id: REVIEW-335-001
+      review_verdict: PASS
+      reviewed_source_sha: 247aabc5dbaa100b345ddb8e55094c1cf294a471
+      terminal_result_artifact_sha: f642bc503f90c6d636bf98a02e0937d456987e91
+      review_decision_sha: 785c4cf20c9244d878e79e4859eba896a8cf1fc7
+      verification_evidence_id: RUN-335-001-V003
+      focused_tests_passed: 25
+      runtime_source_issuer_authenticated: false
+      protected_reviewer_origin_authenticated: false
+      raw_access: RAW_UNAVAILABLE
+      independent_currentness: UNKNOWN
+      full_vp03_exit: NOT_ESTABLISHED
       after_task334_publication: REASSESS_TASK333_BOUNDED_REPAIR
       activations: NOT_AUTHORIZED
+    vp03d_task334_post_task335_reassessment:
+      source_of_truth: CANONICAL_MAIN_PLUS_RUN335_RESULT_AND_REVIEW335_PASS
+      reviewable_prerequisite: TASK335_OWNER_BOUND_OBSERVATION_PUBLISHED
+      failed_task: TASK-334
+      failed_run: RUN-334-001
+      failed_candidate_sha: 321227b18fe67eff43547ee620d9d7b3ac50e3ec
+      failure_artifact_sha: 7179c1eb16bbb2b97d1ddbe389ec41925c4ceb3d
+      structural_repairable: true
+      semantic_repair_eligibility: BLOCKED
+      blockers:
+        - OWNER_BOUND_OBSERVATION_IS_NOT_INDEPENDENT_CANONICAL_ISSUER
+        - REVIEW_CARRIER_PROVENANCE_IS_NOT_PROTECTED_AUTHENTICATION
+        - NO_AUTHORIZED_REMOTE_PROTECTED_RAW_COMPARISON
+        - NO_ATOMIC_REMOTE_SOURCE_CURRENTNESS
+      authoritative_next: VP03D_SOURCE_AUTHENTICATION_TRUST_CONTRACT_HUMAN_GATE
+      prospective_planning_only: true
+      no_new_task_or_repair_dispatched: true
+      preserve_task334_sticky_executor: true
+      preserve_task333_failure_and_executor: true
+      forbid_scope_expansion_without_NEW_TASK_OR_SEPARATE_HUMAN_AUTHORIZATION: true
+      no_policy_activation: true
+      no_test_rerun: true
     production_activation: NOT_AUTHORIZED
     vp02_dependency_disposition: >-
       TASK-326 and TASK-328 foundations plus separately ratified KA-01 TASK-329 are
