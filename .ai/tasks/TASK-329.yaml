@@ -1,0 +1,163 @@
+task_id: TASK-329
+revision: 1
+goal: Publish the separately Human-ratified, prospective AIOS Kernel Amendment KA-01
+  as a precise bounded normative addendum and a single discoverable documentation
+  link. Extend only the future-version governance contract for semantic verification
+  obligations and optional Runtime-preterminal same-RUN feedback/continuation; preserve
+  frozen Kernel v0.1 and all legacy behavior. Do not activate any production execution,
+  verification, or correction feature.
+problem: The reviewed, published TASK-326/TASK-328 VP-02 foundations explicitly identify
+  frozen Kernel v0.1 section 11 automatic-retry exclusions and missing Runtime preterminal
+  semantics as a STOP for VP-03-to-VP-07 production direction. Human explicitly ratified
+  the two-stage-audited KA-01 prospective addendum and prioritized its separate canonical
+  specification publication before VP-03. The amendment must not be conflated with
+  a Constitution change, rewriting frozen v0.1, or a functioning automatic retry/scheduler.
+assumptions:
+- Fresh Human/Brain planning-only main expected for AUTHOR_TASK is 5ba60b2444c36841fe16bcce0d2a26e4f136e098;
+  bind expected-main CAS. The immediate predecessor publication is TASK-328 r1 RUN-328-002
+  reviewed exact source 19037a71536f65327c541668527c099099af6efe with REVIEW-328-002
+  PASS and Runtime 250 focused passes; its contract is offline/NOT_ACTIVATED.
+- Human ratified the KA-01 prospective normative design on 2026-10-09 (sections A-D
+  of its audited draft); this is separate Human Kernel amendment authority, NOT permission
+  to activate Runtime behavior or alter already admitted work. The current Constitution
+  is unchanged.
+- Kernel v0.1 specification and freeze record are immutable historical baseline. TASK-326
+  BR-1..BR-6 proof coverage and TASK-328 in-memory feedback and Kernel STOP gates
+  are supporting design, not a production scheduler, authenticated applicability or
+  live retry authority.
+- Human explicitly delegated this separate TASK-329 to Codex GPT-6.1 Sol max for its
+  entire normal lifecycle, including authorized corrections. Executor/model/effort
+  are operational selections and MUST NOT become TASK schema fields.
+- Prospective legacy repository default return-affinity was Human approved on main.
+  Use LEGACY_REPOSITORY_DEFAULT_ROUTE; do not infer origin-affine proof or apply to
+  existing historical TASKs.
+- The currently active verification policy is minimum-sufficient-v2. The future proof
+  obligation TASK version and one new scheduler are subject to separately admitted
+  VP engineering and VP-01/03..07 conformance; there is no production cutover during
+  TASK-329.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+  - docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-326.yaml
+  - .ai/tasks/TASK-328.yaml
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - README.md
+  modify:
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - README.md
+non_goals:
+- Edit the Constitution, overwrite/rewrite the frozen Kernel v0.1 specification or
+  freeze record, or reinterpret any existing TASK/RUN/RESULT/FAILURE/EVIDENCE/REVIEW/REPAIR/REMEDIATION
+  identities or schemas.
+- Implement or activate a Runtime-owned proof scheduler, feedback dispatcher, checkpoint
+  store, evidence reuse authority, same-RUN retry loop, executor interface, new TASK
+  parser/verification policy, new operational status, or optional production cutover.
+- Add a second Planner, lifecycle router, generic retry/failover decision-maker, Reviewer,
+  Publisher, memory database, semantic dependency guesser or duplicate proof execution
+  engine.
+- Claim that Human ratification, synthetic TASK-328 tests or this document alone authenticates
+  a real applicability witness, leases, risk consent, actual cost savings, successful
+  VP-01 measurements or production readiness.
+- Relax sticky executor, Human opt-in, finite budget, source-to-target evidence validity,
+  one-terminal, BR-1..BR-6, separate integration/concurrency/ordering proof, or mandatory
+  independent review and Publisher gates.
+- Update the roadmap, downstream dependency pin, VP-03 status, H4 origin, legacy live
+  V2 behavior or any transport/workflow; Brain/Human own prospective planning semantics.
+constraints:
+  hard:
+  - Write a single separately versioned KA-01 normative addendum, visibly marked HUMAN_RATIFIED_PROSPECTIVE_SPEC
+    and NOT_ACTIVATED; explicitly state its effect occurs only for future versioned
+    Human-opted-in work after separate Runtime/Reviewer/Publisher-gated engineering.
+    The constitutional baseline and frozen v0.1 remain unchanged.
+  - "Map exact frozen Kernel clauses \xA73, \xA74.1\u20134.5, \xA75, \xA77, \xA79,\
+    \ \xA710, \xA711 and \xA712 to the narrow KA-01 extension while preserving all\
+    \ unaffected boundaries. \xA711 automatic retry exclusion gets only a narrowly\
+    \ future opt-in ACTIVE PRIMARY preterminal exception, not general automatic reroute/failover/repair."
+  - Future-version TASK may specify reviewed semantic proof obligations and deterministic
+    mapping in lieu of mandatory Brain-authored executable test commands only after
+    separate versioned schema admission; maintain TASK WHAT/WHY, no Executor/model/budget
+    fields in TASK and legacy decoding intact.
+  - "Describe exactly one admitted ACTIVE PRIMARY RUN with monotonic SHA/provenance-bound\
+    \ checkpoint sequence C1/K1\u2192factual failed-proof feedback\u2192same Executor\
+    \ implementation C2/K2 within finite Human-authorized opt-in/budget/live lease;\
+    \ terminal RESULT or FAILURE exactly once, never reopen terminal; terminal FAILURE\
+    \ remains separate AUTHOR_REPAIR/new RUN; REVIEW findings remain REMEDIATION."
+  - Specify factual typed feedback only (proof/acceptance identity, subject, state
+    and evidence references), with zero code-edit/strategy instructions; no Runtime
+    selection of HOW, model, Executor or Human/Brain risk and semantic decisions.
+    Unknown, stale, uncommitted, over-budget, lease loss, risk change and no progress
+    must stop/fail closed.
+  - Specify Runtime-authenticated source-to-target applicability over full test/fixture/helper/shared-state/toolchain/environment/profile/worker/concurrency/ordering/collection/integration
+    footprints; VALID/INVALIDATED/UNKNOWN keep original evidence subject and do not
+    grant PASS on a synthetic label. Distinct required integration/concurrency/ordering
+    remain. One Runtime proof scheduler prohibits equivalent duplicate execution;
+    all BR-1..BR-6 gates mandatory before base replay.
+  - Define crash/replay/duplicate-checkpoint behavior, idempotent feedback and bounded
+    cost without creating competing canonical RUN/FAILURE from a pre-AIOS transport
+    event. Subordinate operational metadata does not constitute a new lifecycle authority.
+  - "State lifecycle gates separately: (i) Human ratification, (ii) exact independently\
+    \ admitted/Runtime-verified/Reviewer-PASS/Publisher-published normative addendum,\
+    \ (iii) separately admitted VP-03\u2013VP-07 features, (iv) actual VP-01 measurement\
+    \ dependency reconciliation, VP-06 measured performance and VP-07 AC-01..AC-36\
+    \ real negative conformance, (v) explicit Human opt-in for prospective activation.\
+    \ Missing any gate means NOT_ACTIVATED and no policy substitution."
+  - Describe legacy default/rollback, no cross-policy dual execution, no retroactive
+    schema changes, and downstream pin/adoption separate fresh authority. Do not claim
+    VP-02 fully closed, VP-01 DONE, VP-03 admitted or any production savings.
+  - Only modify the two exact allowed documentation paths. README receives a concise
+    governance pointer to the separately versioned KA-01 document, not a second normative
+    specification. No code, tests, GitHub workflow, roadmap or frozen document changes.
+acceptance:
+- id: AC1
+  condition: A complete standalone versioned KA-01 addendum exists with exact Human-ratified
+    prospective-only identity, legal effect and explicit NOT_ACTIVATED status, while
+    preserving frozen Kernel v0.1 and historical work.
+- id: AC2
+  condition: "The addendum includes a precise normative compatibility map for \xA7\
+    \xA73, 4.1\u20134.5, 5, 7, 9, 10, 11 and 12, with an explicit bounded exception\
+    \ for future opt-in ACTIVE PRIMARY preterminal continuation but not generalized\
+    \ automatic retry."
+- id: AC3
+  condition: The prospective version gate separates reviewed semantic proof obligation/mapping
+    authoring from executable verification plans, keeps Human-authorized version/consent/finite
+    delegation operational, and retains legacy TASK schema/decoding and current V2
+    behavior.
+- id: AC4
+  condition: The normative state-transition specification defines strictly monotonic
+    in-RUN candidate/checkpoint/feedback and sticky Executor continuation under one
+    admitted ACTIVE PRIMARY with exactly one terminal outcome and distinct postterminal
+    AUTHOR_REPAIR/REMEDIATION.
+- id: AC5
+  condition: The addendum explicitly constrains factual feedback, scope, changed risk/semantic
+    decision, live lease/profile, finite budget, idempotent replay/crash handling
+    and fail-closed stops without Runtime ownership of HOW or another lifecycle authority.
+- id: AC6
+  condition: The addendum requires authenticated source-to-target proof applicability
+    with VALID/INVALIDATED/UNKNOWN, full relevant dependency dimensions and distinct
+    integration/concurrency/ordering; it bars equivalent double execution, false subject
+    relabeling, automatic failure reproduction and base replay lacking all BR-1..BR-6
+    gates.
+- id: AC7
+  condition: Separated ratification/publication/engineering/measurement/conformance/activation
+    and rollback gates are unambiguous; VP-01 remains deferred, VP-03..VP-07 independently
+    authorized, historical and downstream boundaries preserved, and no production-ready
+    or savings claim is made.
+- id: AC8
+  condition: The final committed change set contains only the single KA-01 document
+    and a concise README pointer, with no code, test, governance baseline, roadmap,
+    workflow or historical artifact modifications.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_intra_run_proof_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
