@@ -1,0 +1,173 @@
+task_id: TASK-333
+revision: 1
+goal: Deliver VP-03D's read-only canonical Runtime provenance issuer/consumer bridge
+  for real admitted terminal TASK/RUN/RESULT/EVIDENCE/REVIEW artifacts and exact main/currentness,
+  replacing caller-invented trust roots with independently established existing Runtime-owned
+  source facts. Integrate only an authenticated factual source path with VP-03C's
+  strict read-only handoff; fail closed for unavailable independent issuer or preterminal
+  checkpoint source. Keep KA-01 and all evidence-discharge, verification/continuation
+  and scheduler authorities NOT_ACTIVATED.
+problem: Published VP-03A/B authenticate committed proof/checkpoint content only relative
+  to a catalog; VP-03C TASK-332 correctly returns INDEPENDENT_CANONICAL_RUNTIME_ISSUER_UNAVAILABLE
+  because an attacker can inject a coherent self-certified Git repository. No real
+  Runtime-owned source producer supplies independently grounded TASK/RUN/evidence/review/currentness
+  facts. VP-03D must close the trusted terminal provenance observation boundary without
+  fabricating prospective preterminal checkpoints, granting new permission or building
+  a second scheduler.
+assumptions:
+- Fresh canonical main is 97184cf204365e8b2fab7deeb27f6ffd7ec2867b after Human/Brain
+  planning recorded TASK-333 as unique VP-03D NEXT and Human explicitly delegated
+  Codex GPT-6.1 Sol xhigh through the entire same-TASK lifecycle, including REPAIR/REMEDIATION.
+  TASK must stay executor-neutral.
+- Last published TASK-332 r1 RUN-332-001 REVIEW-332-001 PASS exact source 49629a560e27e4b8618dfc65f118993686ebbbed;
+  Runtime evidence 50 focused passes. TASK-330/331/332 outputs remain immutable, not
+  TASK-333 verification.
+- Current existing Runtime/operator canonical source and remote lifecycle observation
+  are lower-level facts, not a new issuer registry. Git SHA, mock Runtime-looking
+  object or caller-selected local repository cannot independently authenticate its
+  own legitimacy.
+- Terminal RESULT/REVIEW artifacts do not establish preterminal C1/C2 source or Human
+  lease/consent. VP-01 remains DEFERRED_NOT_WAIVED, VP-02 and VP-03 exit NOT_ESTABLISHED,
+  KA-01 NOT_ACTIVATED, VP-04 queued and V2 verification policy active.
+- New revision-1 AIOS-renew return route uses the Human-approved LEGACY_REPOSITORY_DEFAULT_ROUTE;
+  canonical AUTHOR_TASK and future PRIMARY must use exact current expected-main/TASK-blob
+  bindings.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+  - docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md
+  - docs/AIOS-VP03-PROVENANCE-APPLICABILITY-v1.md
+  - docs/AIOS-VP03-CHECKPOINT-LINEAGE-AND-REPLAY-v1.md
+  - docs/AIOS-VP03-CANONICAL-PROOF-HANDOFF-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-330.yaml
+  - .ai/tasks/TASK-331.yaml
+  - .ai/tasks/TASK-332.yaml
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/proof_authority_handoff.py
+  - src/aios_renew/proof_applicability.py
+  - src/aios_renew/proof_checkpoint_lineage.py
+  - src/aios_renew/run.py
+  - src/aios_renew/review.py
+  - src/aios_renew/artifacts.py
+  - tests/test_proof_authority_handoff.py
+  modify:
+  - src/aios_renew/runtime.py
+  - src/aios_renew/proof_authority_handoff.py
+  - src/aios_renew/runtime_provenance_bridge.py
+  - tests/test_runtime_provenance_bridge.py
+  - docs/AIOS-VP03-RUNTIME-CANONICAL-PROVENANCE-ISSUER-v1.md
+non_goals:
+- NO second trust registry, signer/key issuer, persistent lifecycle store, generic
+  router/planner, scheduler, review publisher or verification engine.
+- NO change to existing Runtime execution/verification, TASK/RUN/RESULT/EVIDENCE/REVIEW
+  schemas, admission, canonical terminal writes, workflow/transport, or Executor code
+  path; only a bounded non-mutating observation/issuer entrypoint may be attached.
+- NO synthetic preterminal checkpoints, lease/Human consent, reviewed source or target
+  evidence; no terminal result promoted into ACTIVE same-RUN checkpoint authority.
+- NO caller-selected repository/catalog/producer/callback authority, no self-attested
+  validity or acceptance PASS, no evidence reuse or discharge, no feedback consumption,
+  new verification policy, automatic correction or KA-01 activation.
+- NO full suite, legacy focused suites or base replay solely for ceremony; no roadmap
+  auto-progression or downstream pin changes.
+constraints:
+  hard:
+  - Existing Runtime alone owns independent canonical provenance issuance. No untrusted
+    caller may choose trusted repository/remote/ref/catalog/issuer, pass a Runtime-looking
+    instance, register an arbitrary producer or override currentness; fail closed
+    if the existing authentic source cannot be independently proven.
+  - Exact authenticated terminal source binding must include canonical TASK revision/blob/commit,
+    admitted RUN ID/base, committed candidate SHA/tree, source RESULT/EVIDENCE/raw
+    subject, independently submitted REVIEW and exact reviewed source, and separately
+    established current canonical main/publication state. Preserve real source outcome,
+    including FAIL.
+  - Use existing Runtime/transport decoders plus VP-03A/B/C typed proof validation;
+    distinguish authenticated source bytes, legitimate Runtime admission/Reviewer
+    issuer, semantic proof adequacy and actual target execution. Neither Git presence
+    nor review-looking objects nor fixture records alone grant authority.
+  - Preserve complete versioned immutable source-to-target mapping, dependency/condition
+    and replay identity. Incomplete, conflicting, forged, stale, detached, swapped,
+    duplicated or torn sources/currentness produce explicit UNKNOWN/BLOCK rather than
+    PASS or unsupported source attestation.
+  - 'Any positive terminal provenance is restricted to real independently authenticated
+    terminal facts. No live preterminal producer exists: C1/C2 checkpoint/currentness/lease
+    and atomic CAS/ABA consumption stay UNKNOWN and must be called out as gates. Do
+    not project terminal RESULT into an interim RUN status.'
+  - Read-only source acquisition may observe authoritative refs before and after,
+    but cannot substitute non-atomic ref checks for durable CAS or create a new trust
+    root. Avoid Git subprocess network for tests; no source writes and no execution
+    from this bridge.
+  - Integration to VP-03C can consume only independently Runtime-issued read-only
+    observations, never a public caller-provided fixture_authority as a production
+    source. All issuer-dependent activation/authorization/continuation/mutation/checkpoint/feedback/acceptance/evidence-reuse/verification/scheduler/publisher/terminalization
+    flags remain false under NOT_ACTIVATED.
+  - Restrict edits to five exact authorized files; `RuntimeCompletion.complete` and
+    current minimum-sufficient-v2 execution remain behaviorally unchanged, no schema/Kernel/history/workflow
+    or pin modifications.
+  - Maintain targeted negative tests for forged coherent Git repo, swapped admission/RESULT/evidence/raw/review,
+    mismatched source/main/currentness, absent real issuer, duplicate/replay/crash,
+    missing preterminal/lease, policy/condition changes and no-effect invariants.
+    Reuse existing valid upstream tests, do not duplicate expensive suites.
+  - Runtime owns the sole authored focused verification requirement; future production
+    issuer enrollment, checkpoint CAS/lease, proof reuse/discharge and VP04/05/07
+    cutover require distinct authorized gates.
+acceptance:
+- id: AC1
+  condition: Provide a documented versioned read-only Runtime canonical provenance
+    issuer/consumer bridge using existing trusted Runtime source boundaries, with
+    no caller-enrollable trust root, alternate authority registry or new lifecycle
+    state.
+- id: AC2
+  condition: When an independently authenticated existing terminal source exists,
+    the bridge constructs immutable exact TASK/RUN/base and terminal RESULT/EVIDENCE/raw,
+    candidate/tree, reviewed-source and independent REVIEW facts with separately observed
+    main/publication currentness; no fabricated source is needed.
+- id: AC3
+  condition: An unavailable, forged, incomplete, stale or ambiguous independent Runtime/Reviewer
+    source produces typed UNKNOWN/BLOCK, including coherent attacker-controlled Git
+    history or a spoofed Runtime-looking constructor, without asserting authenticated
+    producer rights.
+- id: AC4
+  condition: The VP-03C read-only canonical handoff can consume only a legitimate
+    existing Runtime-owned issuer observation and retain VP-03A/B original proof/mapping/checkpoint
+    witness facts without creating target execution EVIDENCE, semantic verdict, or
+    acceptance PASS.
+- id: AC5
+  condition: Terminal source truth remains terminal, original PASS/FAIL subjects remain
+    unchanged, nonexistent live preterminal C1/C2/lease/currentness/CAS stays unavailable,
+    and every activation, correction, verification, reuse/discharge, feedback, checkpoint,
+    publisher and mutation authority remains false with NOT_ACTIVATED.
+- id: AC6
+  condition: Focused deterministic adversarial tests cover issuer availability, fake
+    trusted repos, wrong TASK/RUN/base/candidate/tree/evidence/raw/REVIEW, stale or
+    ambiguous main, replay/torn/duplicate, absent preterminal authority and unchanged
+    repository/effects; no live Runtime execution or network calls.
+- id: AC7
+  condition: Documentation explicitly distinguishes real independently sourced terminal
+    provenance from conditionally authenticated fixture content, and lists external
+    source issuance, CAS/lease, VP01/02/03 exit, KA-01 and VP04/05/07 gates still
+    blocking production evidence reuse.
+- id: AC8
+  condition: Candidate changes only five scope.modify paths, preserves current Runtime
+    verification/lifecycle contract, frozen Kernel, existing workflows/transport,
+    immutable historical artifacts, publication authority and downstream isolation.
+    New focused verification is the only required TASK command.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_runtime_provenance_bridge.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
