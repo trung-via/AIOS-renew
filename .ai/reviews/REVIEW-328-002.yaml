@@ -1,0 +1,21 @@
+review_id: REVIEW-328-002
+reviewed_sha: 19037a71536f65327c541668527c099099af6efe
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- "Independent Reviewer subject: TASK-328 revision 1, RUN-328-002, REVIEW PRIMARY after an Executor CODE_FIX REPAIR of RUN-328-001 prior to any semantic REVIEW finding. Exact reviewed candidate 19037a71536f65327c541668527c099099af6efe, Runtime RESULT artifact f54ff39c5153e4224dbaa79e5311792316ab0172; repair base and historical failed candidate b298f3ac3192b4ad9694944d1af44532f3020be6 preserved. Main at preflight 6fd9dc08a17a909b514bbbcae3849ad936f44421."
+- "Runtime-owned evidence RUN-328-002-V001 binds the exact candidate and authored command python -m pytest -q tests/test_intra_run_proof_contract.py; exit code 0, 250 passed in 0.79s, Runtime verification wall approximately 6.02s. Result C1..C8 covers AC1..AC8 with unresolved=[]; reviewer did not re-execute tests or replace independent Runtime verification."
+- "STAGE 1 CONSTRUCT: examined strict offline versioned proof/lineage contract, candidate+lease+Human identity pins, exact factual failed-proof feedback, finite scope/progress/budget, mandatory full applicability dimensions, VALID/INVALIDATED/UNKNOWN and BR1..BR6 invariants, Kernel gate, negative conformance and three-path modification scope. Original TASK-326 proof foundation remains unchanged, no production V2 policy change."
+- "STAGE 2 ADVERSARIAL: checked that provenance/content digests and synthetic witnesses do not confer authority, that returned runtime_continuation_authorized/verification_execution_authorized/evidence_reuse_authorized/verified_evidence/canonical_checkpoint_created remain false, and that Runtime preterminal feedback stays NOT_ACTIVATED and KERNEL_AMENDMENT_REQUIRED. Terminal FAILURE/AUTHOR_REPAIR remains distinct, and no Planner/router/retry scheduler/reviewer/publisher or hidden integration is introduced."
+- "Repair delta b298f3ac..19037a71 changes only tests/test_intra_run_proof_contract.py: installs the forbidden builtins.__import__ trap last so pytest MonkeyPatch internals complete first and undo removes trap first. All other forbidden effects and assertions stay in place; 250 focused tests now pass. Combined candidate diff from exact TASK main has only src/aios_renew/intra_run_proof_contract.py, tests/test_intra_run_proof_contract.py and docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md."
+- "PASS is only a semantic verdict for this exact candidate and AC1..AC8. This does not grant production Kernel amendment, checkpoint orchestration/retry, VP-01/03/07 closure, performance savings, downstream adoption, automatic roadmap progression, Reviewer execution of tests or Publisher authority. AIOS Runtime owns ingress and Publisher alone may publish the exact eligible reviewed source."
