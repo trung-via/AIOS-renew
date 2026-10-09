@@ -12,6 +12,41 @@ planning_baseline:
     BP-0 is the Human-approved architecture and roadmap planning baseline. It does
     not claim implementation completion for BP-1 through BP-9, does not create RUN
     or verification truth, and does not alter frozen Kernel v0.1 semantics.
+prospective_task_return_affinity_human_override:
+  id: AIOS_RENEW_TEMPORARY_LEGACY_DEFAULT_2026_10_09
+  status: HUMAN_APPROVED_ACTIVE
+  authority: HUMAN_INTENT_AND_RISK_ACCEPTANCE
+  approved_on: "2026-10-09"
+  applies_to: NEW_AIOS_RENEW_TASK_IDENTITIES_PROSPECTIVE_ONLY
+  default_return_affinity:
+    kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
+  instruction: >-
+    For every newly authored AIOS-renew TASK from this Human decision forward,
+    explicitly select LEGACY_REPOSITORY_DEFAULT_ROUTE unless the Human changes
+    this decision or a future production origin fix is demonstrated and
+    reconciled against fresh canonical evidence. This is the Human's standing
+    authoring route choice, not an inferred fallback on origin-proof failure.
+  sunset_conditions:
+    - EXPLICIT_SUBSEQUENT_HUMAN_ROUTE_DECISION
+    - REVIEWED_PUBLISHED_AND_LIVE_PROVEN_ORIGIN_PRODUCTION_FIX
+  sunset_handling: >-
+    A possible origin fix is not proof merely because a TASK, transport receipt,
+    workflow or source commit exists. When exact reviewed, published and live
+    production conformance proves the origin fix, the Brain must first reconcile
+    the condition with fresh canonical state and record a new prospective planning
+    transition before choosing a replacement default for later TASKs.
+    Runtime must never auto-switch a route or mutate an existing TASK.
+  immutable_boundaries:
+    - PREEXISTING_TASK_AND_RUN_AFFINITY_UNCHANGED
+    - REVISIONS_KEEP_THEIR_CANONICAL_BASE_AFFINITY
+    - ORIGIN_AFFINE_PROOF_AND_ADMISSION_REMAIN_FAIL_CLOSED
+    - LEGACY_ROUTE_NEVER_COUNTS_AS_ORIGIN_AFFINE_CONFORMANCE
+    - LIVE_H4_H5_ORIGIN_AFFINE_REQUIREMENTS_NOT_WAIVED
+    - NO_DEFAULT_ROUTE_FALLBACK_FOR_ORIGIN_AFFINE_TASKS
+    - NO_CHANGE_TO_EXECUTOR_OR_REVIEWER_OR_PUBLISHER_AUTHORITY
+    - DOWNSTREAM_REPOSITORIES_REQUIRE_SEPARATE_HUMAN_AND_CANONICAL_AUTHORITY
+  engineering_effect: NONE_PLANNING_AND_AUTHORING_CHOICE_ONLY
+
 brain_optimization_preemption:
   id: brain-optimization-v1
   status: HUMAN_APPROVED_ACTIVE_PRE_H4
