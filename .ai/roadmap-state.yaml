@@ -663,6 +663,29 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03_post_task332_publication_2026_10_10:
+    authority: HUMAN_BRAIN_PLANNING
+    human_intent: CONTINUE_HUMAN_APPROVED_VP_ROADMAP_AFTER_TASK332_REVIEW_PASS_PUBLISHED
+    canonical_main_at_reconciliation: 49629a560e27e4b8618dfc65f118993686ebbbed
+    completed_slice: VP03C_TASK332_READ_ONLY_CANONICAL_PROOF_HANDOFF
+    source_run_id: RUN-332-001
+    source_review_id: REVIEW-332-001
+    source_review_verdict: PASS
+    exact_reviewed_published_sha: 49629a560e27e4b8618dfc65f118993686ebbbed
+    unique_effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+    selected_bounded_next_slice: VP03D_RUNTIME_CANONICAL_PROVENANCE_ISSUER_READ_ONLY_BRIDGE
+    selected_task_id: TASK-333
+    selected_executor: EXPLICIT_HUMAN_DELEGATION_REQUIRED_FOR_NEW_TASK
+    source_producer_gap: NO_INDEPENDENT_PRODUCTION_CANONICAL_RUNTIME_ISSUER
+    scope_disposition: READ_ONLY_EXISTING_RUNTIME_CANONICAL_OBSERVATION_BOUNDARY_NO_SEPARATE_AUTHORITY
+    stage1_semantic_audit: RISK_FOUND_UNTRUSTED_GIT_SELF_ATTESTATION_PRETERMINAL_FABRICATION_FALSE_REUSE_DOUBLE_SCHEDULER
+    stage2_semantic_audit: RECONCILED_WITH_PROVENANCE_FAIL_CLOSED_NO_ACTIVATION_AND_DELTA_PROOF_GATES
+    vp03_full_exit: NOT_ESTABLISHED
+    vp02_full_exit: NOT_ESTABLISHED
+    vp01: DEFERRED_NOT_WAIVED
+    ka01_activation: NOT_ACTIVATED
+    vp04_production: NOT_AUTHORIZED
+    roadmap_auto_progression: false
   vp03_post_task331_publication_2026_10_09:
     authority: HUMAN_BRAIN_PLANNING
     human_intent: CONTINUE_VP03_AFTER_TASK331_REVIEW_PASS_SOURCE_PUBLISHED
@@ -2107,7 +2130,7 @@ sequence:
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
     planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
-    task_id: TASK-332
+    task_id: TASK-333
     task_revision: 1
     task_authoring_status: PENDING_CANONICAL_AUTHOR_TASK
     bounded_first_slice: VP03A_READ_ONLY_AUTHENTICATED_PROVENANCE_AND_APPLICABILITY_FOUNDATION
@@ -2132,8 +2155,8 @@ sequence:
       model: gpt-6.1-sol
       reasoning_effort: max
       publication_does_not_activate_runtime: true
-    bounded_next_slice: VP03C_TRUSTED_CANONICAL_PROVENANCE_HANDOFF_READ_ONLY
-    next_task_id: TASK-332
+    bounded_next_slice: VP03D_RUNTIME_CANONICAL_PROVENANCE_ISSUER_READ_ONLY_BRIDGE
+    next_task_id: TASK-333
     next_slice_non_goals:
       - NO_PRODUCTION_RUNTIME_CHECKPOINT_WRITE
       - NO_NEW_CANONICAL_LIFECYCLE_STATE
@@ -2141,14 +2164,7 @@ sequence:
       - NO_EVIDENCE_REUSE_DISCHARGE_AUTHORITY
       - NO_AUTO_CORRECTION_OR_TERMINALIZATION
       - NO_DOWNSTREAM_ADOPTION
-    executor_delegation:
-      authority: HUMAN
-      task_id: TASK-332
-      executor: codex
-      model: gpt-6.1-sol
-      reasoning_effort: xhigh
-      scope: TASK332_ENTIRE_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
-      persistence: UNTIL_TASK332_COMPLETE_OR_HUMAN_OVERRIDE
+    executor_delegation: UNASSIGNED_FOR_TASK333_EXPLICIT_HUMAN_SELECTION_REQUIRED
     vp03b_reviewed_published_slice:
       name: VP03B
       task_id: TASK-331
@@ -2164,6 +2180,34 @@ sequence:
       focused_tests_passed: 106
       runtime_activation: NOT_ACTIVATED
       vp03_full_exit: NOT_CLAIMED
+    vp03c_reviewed_published_slice:
+      name: VP03C
+      task_id: TASK-332
+      revision: 1
+      run_id: RUN-332-001
+      review_id: REVIEW-332-001
+      review_verdict: PASS
+      terminal_result_artifact_sha: 06d5526d0a5e953c689ed73dab7a1256fa147fb0
+      review_decision_sha: cde24cf666a9d9cc945e2bbeea30dff209a72e21
+      exact_reviewed_published_source_sha: 49629a560e27e4b8618dfc65f118993686ebbbed
+      source_in_main: true
+      canonical_evidence_id: RUN-332-001-V003
+      canonical_focused_tests_passed: 50
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      external_issuer_installed: false
+      activation: NOT_ACTIVATED
+      vp03_full_exit: NOT_ESTABLISHED
+    vp03d_next_slice_acceptance_gates:
+      - EXISTING_RUNTIME_OWNS_CANONICAL_SOURCE_ATTESTATION_NOT_CALLER
+      - EXACT_TASK_RUN_RESULT_EVIDENCE_REVIEW_AND_MAIN_CURRENTNESS
+      - NO_SYNTHETIC_PRETERMINAL_ARTIFACT_OR_POSITIVE_PROOF_WITHOUT_SOURCE
+      - NO_TRUST_ENROLLMENT_SECOND_REGISTRY_OR_RUNTIME_SCHEDULER
+      - READ_ONLY_NO_EVIDENCE_DISCHARGE_OR_LIFECYCLE_MUTATION
+      - INSUFFICIENT_AUTHORITY_FAILS_CLOSED_AND_REPORTS_BLOCKER
+      - FOCUSED_DELTA_PROOF_REUSES_VALID_VP03A_B_C_EVIDENCE
+      - VP02_VP01_KA01_EXIT_GATES_REMAIN_OPEN
     production_activation: NOT_AUTHORIZED
     vp02_dependency_disposition: >-
       TASK-326 and TASK-328 foundations plus separately ratified KA-01 TASK-329 are
