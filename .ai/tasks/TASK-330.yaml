@@ -1,0 +1,168 @@
+task_id: TASK-330
+revision: 1
+goal: 'Deliver VP-03A''s independently testable read-only, canonical-provenance-bound
+  evidence applicability foundation: establish when an existing observed proof remains
+  VALID, becomes INVALIDATED, or is UNKNOWN for an exact source-to-target candidate/lineage
+  with full dependency and reviewed proof mapping context. Preserve the actual source
+  evidence subject. Do not activate any new Runtime scheduler, checkpoint state mutation,
+  proof reuse authorization, or same-RUN correction.'
+problem: Published VP-02 proof/mapping (TASK-326), intra-RUN declaration (TASK-328),
+  and Human-ratified KA-01 addendum (TASK-329) specify cross-candidate evidence validity
+  but cannot authenticate an actual source/evidence/target/footprint from caller assertions.
+  Without a read-only trusted provenance and applicability boundary, matching commands,
+  unchanged filenames, self-certified witness digests or stale correction evidence
+  could create false PASS or duplicated verification. VP-03 needs a bounded first
+  implementation slice separating immutable authentication and three-state factual
+  applicability from later checkpoint durability, single scheduler and live continuation.
+assumptions:
+- Canonical planning transition main for authoring is 84478a59405427ef932740eb26d8ce6292b0fe71.
+  AUTHOR_TASK expected-main CAS and later PRIMARY exact TASK SHA binding are mandatory;
+  new main movements fail closed.
+- TASK-329 r1 RUN-329-001 exact reviewed published source 648a2cdeaa1de7949bab9da707c82dac179abc05
+  and REVIEW-329-001 PASS establish KA-01 prospective design only; Runtime activation
+  remains NOT_ACTIVATED. Frozen v0.1 and Constitution are unchanged.
+- TASK-326 proof-coverage-v1 and TASK-328 intra-run-proof-v1 are published in-memory
+  validation foundations and must be reused rather than reinterpreted or reimplemented.
+- VP-02 foundation and KA-01 source are published; VP-02 whole-package/VP-01 measurement
+  exits are NOT done. Human requested continuation to independently admissible bounded
+  VP-03A, not full VP-03 closure, live cutover or VP-01 waiver.
+- Existing V1/V2 TASK/RESULT/EVIDENCE/REPAIR contracts and minimum-sufficient-v2 verification
+  policy remain active. Historical actual subject/raw metadata are immutable and any
+  source-to-target applicability is separate.
+- Human has not yet selected an Executor/model/effort for TASK-330. Do not inherit
+  TASK-329's Codex gpt-6.1-sol max profile; executor delegation belongs to a later
+  explicit Human choice and must not be placed in TASK fields.
+- Newly authored AIOS-renew TASK identity uses the currently Human-approved LEGACY_REPOSITORY_DEFAULT_ROUTE;
+  this is not origin-affine proof nor a default for downstream repositories.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+  - docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-326.yaml
+  - .ai/tasks/TASK-328.yaml
+  - .ai/tasks/TASK-329.yaml
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/artifacts.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/run.py
+  - tests/test_proof_coverage_contract.py
+  - tests/test_intra_run_proof_contract.py
+  modify:
+  - src/aios_renew/proof_applicability.py
+  - tests/test_proof_applicability.py
+  - docs/AIOS-VP03-PROVENANCE-APPLICABILITY-v1.md
+non_goals:
+- Activate prospective KA-01 intra-RUN continuation or create/live-write checkpoints,
+  EVIDENCE, RUN, FAILURE, review, permission, workflow or another persistence/lifecycle
+  store.
+- Modify current Runtime verification/production callers, task/authoring parser, minimum-sufficient-v2
+  scheduling, reviewer/publisher, executor adapter, profiles, GitHub workflows or
+  historical V1/V2 artifacts.
+- Invent proof validity from caller-supplied identity labels, digest strings, filename
+  or diff disjointness, nodeids, pytest command names, synthetic witnesses, previous
+  PASS labels, or untrusted logs.
+- Run proof execution, change verification selection, trigger base materialization/collection,
+  reuse source failure as target PASS, reproduce candidate failure or base-replay;
+  VP-04 and VP-05 separately own scheduling/attribution.
+- Close full VP-03/VP-02, claim VP-01 measurement, VP-06 savings or VP-07 AC-01..AC-36
+  production conformance, modify KA-01 normative ratification or initiate VP-04.
+- Change Human risk, sticky executor, workload authority, budget, task semantics,
+  downstream pin, H4 origin or roadmap priority; do not add another semantic planner,
+  lifecycle router, verifier agent, automatic correction selector, memory DB or second
+  Runtime.
+constraints:
+  hard:
+  - Provide a bounded, versioned, read-only VP-03A API/contract that accepts only
+    decoded strict typed immutable identifiers and trusted canonical repository/evidence
+    source inputs; authenticate real Git object/candidate/source bindings and canonical
+    result/evidence provenance independently of caller-supplied semantic claims. Unavailable/untrustworthy
+    authority must be UNKNOWN/BLOCK, never inferred VALID.
+  - Bind the immutable original TASK revision, RUN/RESULT/EVIDENCE source/subject
+    and proof identity/version/mapping, actual source record digest, exact target
+    candidate/lineage and explicit source-to-target applicability witness. Preserve
+    actual observed outcome and original subject; any target applicability statement
+    is a separate binding, never a relabel or new target EVIDENCE.
+  - A trusted source may be read-only; validated SHA/digest equality, verified object
+    existence and correct immutable lineage are necessary but not sufficient to assert
+    applicability. An opaque ref, caller-generated digest, self-certified review label,
+    stale main pin or forgeable witness cannot alone authorize PASS/reuse. Fail closed
+    without independent complete trusted facts.
+  - Each relevant distinguishing dependency dimension, including test code, fixtures/setup/teardown,
+    shared helpers/state, population/collection, toolchain/environment/policy/profile,
+    worker/concurrency/ordering/repetition, integration and evidence schema, must
+    be affirmatively covered or demonstrably inapplicable from trusted reviewed mapping
+    and source-to-target evidence. Unknown omissions never default to unchanged. Avoid
+    filename-only or exact nodeid-only impact inference.
+  - Determine applicability only as VALID if every required comparison, authority/provenance,
+    subject and condition is authenticated and source proof remains valid; INVALIDATED
+    if an authenticated relevant change definitively breaks conditions; UNKNOWN if
+    material proof or lineage is absent, inconsistent or unsupported. INVALIDATED/UNKNOWN
+    may not discharge acceptance. A VALID original FAIL remains FAIL.
+  - Distinct integration/concurrency/ordering/serial-vs-parallel and mandatory comparison
+    obligations remain independently represented and cannot collapse under a single
+    narrow green; no equivalent duplicate execution is introduced. Base replay remains
+    gated on all BR-1..BR-6 and this slice must not execute/propose automatic base
+    replay.
+  - Expose only immutable read-only factual applicability outputs and typed reasons,
+    with deterministic/idempotent same-input results and bounded resource/input sizes.
+    Real Git-backed disposable-repository negative conformance must include forgery,
+    movement, conflicting lineage, changed fixture/helper/profile/environment/worker,
+    incomplete mapping, unknown footprints, wrong source, spoofed digest and corrupted
+    evidence; no subprocess execution of pytest from the module.
+  - 'Keep VP-03A non-activating: no live Runtime scheduler integration, no authoritative
+    checkpoint persistence or correction feedback, no new V1/V2 decoding status or
+    live permission. Any later checkpoint durable history and actual cross-run reuse
+    authority require independently admitted VP-03B/VP-04 work and Runtime verification.'
+  - Change only the three exact listed paths. New focused tests are allowed to use
+    bounded disposable real Git data and offline fixtures but never production repository
+    writes, external network, forced full-suite run or unbounded subprocess retries.
+    The single verification command stays minimum-sufficient-v2 and minimum sufficient.
+acceptance:
+- id: AC1
+  condition: A bounded versioned VP-03A read-only interface exists and deterministically
+    validates authoritative source and target Git/canonical-result evidence identities
+    without trusting bare caller labels or mutable refs as proof.
+- id: AC2
+  condition: The interface preserves actual original source RUN/EVIDENCE/subject/outcome
+    and binds a distinct immutable source-to-target applicability witness to the exact
+    reviewed proof contract/mapping, TASK revision and target candidate lineage.
+- id: AC3
+  condition: A three-state factual result distinguishes VALID, INVALIDATED and UNKNOWN
+    with fail-closed typed reasons under authenticated complete dependency dimensions;
+    an incomplete/forged witness never produces VALID.
+- id: AC4
+  condition: Candidate changes to tests, fixtures/helpers/shared state, profile/toolchain/environment/policy,
+    collection/population, worker/concurrency/ordering/integration or evidence schema
+    invalidate affected proof or remain UNKNOWN without filename-only inference.
+- id: AC5
+  condition: A VALID original PASS may be applicable only to its adequate mapped target
+    obligation; a VALID source FAIL remains FAIL, and INVALIDATED/UNKNOWN never create
+    acceptance discharge, target execution EVIDENCE or an inferred PASS.
+- id: AC6
+  condition: Focused deterministic negative tests exercise real disposable Git-object/lineage
+    provenance and wrong-source, stale/currentness, altered dependencies, conflicting/missing
+    proof mapping, forged digest and integration-vs-narrow distinctions without invoking
+    an actual Runtime production scheduler.
+- id: AC7
+  condition: The documentation clearly states VP-03A non-activation, authenticated-vs-asserted
+    provenance limits, no duplicate execution/base replay, later VP-03B/VP-04 dependencies,
+    preserved legacy and VP-01 deferred measurement/KA-01 activation gates.
+- id: AC8
+  condition: The candidate changes exactly the new module, focused tests and single
+    VP-03A documentation file; all existing Runtime/Kernel/TASK parser/V2 scheduler/older
+    artifacts remain unchanged and no checkpoint, proof, RESULT or lifecycle mutation
+    occurs.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_proof_applicability.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
