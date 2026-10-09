@@ -787,11 +787,12 @@ def test_all_public_calls_are_pure_with_zero_process_git_network_fs_env_pytest_o
         effects.append("effect")
         raise AssertionError("in-memory public call attempted an effect")
 
-    # Everything is prepared before entering the trap; the pytest harness itself
-    # remains outside it. Process traps also prohibit Git and pytest children.
+    # Process traps also prohibit Git and pytest children. Install the import
+    # sentinel last: MonkeyPatch.setattr imports inspect on every call, and undo
+    # restores the last-installed sentinel first before the rest of cleanup.
     with monkeypatch.context() as trap:
         for owner, names in (
-            (builtins, ("open", "eval", "exec", "__import__")),
+            (builtins, ("open", "eval", "exec")),
             (subprocess, ("Popen", "run", "call", "check_call", "check_output")),
             (os, ("open", "system", "popen", "getenv", "putenv", "listdir", "scandir", "chdir", "mkdir", "makedirs",
                   "remove", "unlink", "rmdir", "removedirs", "rename", "replace")),
@@ -807,6 +808,7 @@ def test_all_public_calls_are_pure_with_zero_process_git_network_fs_env_pytest_o
         for name in dir(os):
             if name.startswith(("exec", "spawn")) and callable(getattr(os, name)):
                 trap.setattr(os, name, forbidden)
+        trap.setattr(builtins, "__import__", forbidden)
         results = [validate(case) for case in cases]
         routes = [describe_lifecycle(data, expected_lineage=expected) for data, expected in lifecycle_cases]
         try:
