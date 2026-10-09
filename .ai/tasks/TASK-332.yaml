@@ -1,0 +1,175 @@
+task_id: TASK-332
+revision: 1
+goal: Deliver VP-03C's bounded, read-only canonical provenance handoff foundation
+  connecting published VP-02/VP-03A/VP-03B factual proof and checkpoint validators
+  to an independently established canonical Runtime source boundary. Preserve exact
+  source evidence, TASK/RUN and proof identity, map target applicability as VALID/INVALIDATED/UNKNOWN
+  only, and surface factual BLOCK/UNKNOWN when trusted issuer/currentness/coverage
+  is missing. The output remains NOT_ACTIVATED and grants no verification, acceptance
+  discharge, executor continuation or lifecycle mutation.
+problem: Published TASK-330 and TASK-331 authenticate records and ordered checkpoint
+  lineage only relative to a trusted catalog supplied outside their APIs. A caller
+  can manufacture self-consistent Git objects and dependency-inject an invented authority;
+  Git SHA/replay proof alone does not authenticate its issuer or Runtime admission/review
+  authority. Before VP-04 can lawfully use the foundations, VP-03 must demonstrate
+  a bounded read-only handoff that consumes only independently pinned canonical Runtime
+  source provenance, prevents self-selected catalog authority, retains original EVIDENCE
+  subjects, and fails closed instead of promoting synthetic offline records to live
+  authority.
+assumptions:
+- Canonical main reconciled to 533655907fc4e39c76a128557d387d24eb116bbe after Human/Brain
+  VP-03 NEXT planning transition. TASK-332 is the approved bounded next slice within
+  VP-03 and its AUTHOR_TASK/PRIMARY must independently enforce fresh expected-main/CAS.
+- TASK-331 r1 RUN-331-001 REVIEW-331-001 PASS, exact reviewed source 5d7a372b32d482f926b5dab8bfa7fa24484622ad
+  included in canonical main. Runtime's 106 focused passes are historical evidence
+  for TASK-331, not verification of TASK-332.
+- TASK-330 VP-03A and TASK-331 VP-03B expose read-only content authentication and
+  checkpoint applicability under an externally trusted canonical-source catalog. Their
+  constructors do not authenticate catalog issuer or Human/Runtime/Reviewer legitimacy;
+  an absent real issuer cannot be treated as VALID.
+- The Human explicitly selected Codex GPT-6.1 Sol xhigh for TASK-332 through its entire
+  lifecycle including CODE_FIX REPAIR and REMEDIATION; delegation is operational and
+  does not appear in this executor-neutral TASK semantic payload.
+- KA-01 prospective design remains NOT_ACTIVATED; VP-01 remains DEFERRED_NOT_WAIVED;
+  VP-02 and whole VP-03 exits remain gated; current minimum-sufficient-v2 is still
+  the active policy. No automatic promotion to VP-04.
+- New AIOS-renew revision-1 TASK authoring retains Human-approved LEGACY_REPOSITORY_DEFAULT_ROUTE;
+  downstream adoption and preexisting return affinities remain unchanged.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+  - docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md
+  - docs/AIOS-VP03-PROVENANCE-APPLICABILITY-v1.md
+  - docs/AIOS-VP03-CHECKPOINT-LINEAGE-AND-REPLAY-v1.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-330.yaml
+  - .ai/tasks/TASK-331.yaml
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/proof_applicability.py
+  - src/aios_renew/proof_checkpoint_lineage.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/run.py
+  - src/aios_renew/task.py
+  - src/aios_renew/artifacts.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/runtime.py
+  - tests/test_proof_applicability.py
+  - tests/test_proof_checkpoint_lineage.py
+  modify:
+  - src/aios_renew/proof_authority_handoff.py
+  - tests/test_proof_authority_handoff.py
+  - docs/AIOS-VP03-CANONICAL-PROOF-HANDOFF-v1.md
+non_goals:
+- Do not build a second canonical source issuer, persistent trust registry, key service,
+  certificate authority, root acceptance API or caller-chosen trust anchor. If an
+  independently reviewed Runtime source cannot be established, return UNKNOWN/BLOCK
+  and document the missing integration gate; do not synthesize it.
+- Do not change existing production Runtime, TASK/RUN/RESULT/EVIDENCE/FAILURE/REVIEW
+  decoders, checkpoint scheduler, workflow, Git carrier, self-host runner, Publisher,
+  Reviewer or historical artifacts.
+- Do not create authoritative checkpoint persistence, feedback consumption, proof
+  execution, target EVIDENCE, acceptance discharge, re-entry/REPAIR, Runtime continuation,
+  automatic source evidence retargeting or terminalization.
+- Do not infer semantic dependency coverage from filenames, matching SHA alone, nodeids,
+  test commands, fixtures or caller-approved VALID labels; do not create a second
+  proof validity or semantic mapping engine.
+- Do not activate KA-01, replace V2, start VP-04 production integration, waive VP-01,
+  close VP-02/VP-03, change roadmap automatically or retarget downstream pins.
+- Do not run baseline comparison/reproduction, broad full-suite, duplicate already
+  valid TASK-331 tests or live Executor feedback; no network or destructive Git operation.
+constraints:
+  hard:
+  - Offer an exact versioned, bounded read-only handoff contract and strictly decoded
+    facts; untrusted request cannot set or override repository identity, catalog source,
+    trusted issuer, expected main, Human/Runtime/Reviewer authority, acceptance verdict
+    or validity label.
+  - Provenance must originate at an independently established existing canonical Runtime/source
+    observation boundary with exact source/issuer legitimacy and currentness, not
+    from requester-supplied Git history, SHA, path, dynamically registered callback,
+    arbitrary duck-typed source or self-certified permission. If no production-grade
+    trusted producer is present, the only lawful result is factual UNKNOWN/BLOCK and
+    explicit residual, even if an offline fixture is internally consistent.
+  - Reuse VP-03A evaluate_applicability and VP-03B evaluate_lineage for factual evidence
+    and checkpoint checks, and VP-02 mapping/coverage contracts for semantic completeness.
+    Do not duplicate validity/scheduling logic. Preserve VALID/INVALIDATED/UNKNOWN
+    by exact immutable source-to-target witness, without relabeling original RESULT/EVIDENCE
+    subject or manufacturing target execution.
+  - Authenticate exact TASK revision/blob and admitted RUN/base, candidate committed
+    tree, original source EVIDENCE/RESULT/raw and applicable current target, reviewed
+    proof obligation/mapping, lease/Human delegation and finite accounting where pertinent.
+    Missing or mismatched issuer, mapping, evidence, currentness, source review or
+    target coverage must fail closed, not be represented as PASS.
+  - No silent proof obligation collapse. Keep integration, concurrency, worker, ordering,
+    profile, fixture/helper, environment/toolchain, comparison and repetition obligations
+    distinct; original FAIL remains FAIL even if source-to-target factual applicability
+    is VALID.
+  - Replay, duplicate receipt, torn/moved main, changed head/lease, conflicting catalog
+    pins, forged commit history and stale/tampered checkpoint must not consume feedback,
+    reserve budget, execute any proof, create a second checkpoint or confer new authority.
+    Distinguish factual CONSISTENT from authorization.
+  - Human/Brain semantic choice and Reviewer verdict remain external. The new module
+    must be read-only and inactive, with every continuation, evidence-reuse/discharge,
+    execution, scheduler, terminal, mutation, publisher and activation flag false;
+    no new lifecycle state.
+  - Use bounded deterministic offline real-Git conformance only; share minimal fixtures,
+    avoid re-running TASK-331's expensive complete focused suite or any equivalent
+    proof for ceremony. The existing Runtime alone owns this TASK's required focused
+    verification command.
+  - Restrict all implementation changes to exactly the three new paths in scope.modify;
+    if the necessary trusted producer requires editing existing Runtime, document
+    that separate future authorization as a BLOCKER rather than expanding this TASK
+    or shipping a fake production issuer.
+acceptance:
+- id: AC1
+  condition: A bounded versioned read-only canonical proof handoff API and document
+    exist, with strict decoded source identity, trusted-issuer/currentness preconditions,
+    no caller-selected trust root or self-attested VALID permission, and explicit
+    factual UNKNOWN/BLOCK for absent independent issuer.
+- id: AC2
+  condition: The handoff binds source TASK/RUN/base and admitted status, original
+    committed candidate/evidence/raw subjects, exact source and target proof/mapping/lineage
+    identities, and separately observed currentness without creating new authority
+    or interpreting arbitrary Git objects as canonical approval.
+- id: AC3
+  condition: It consumes the published VP-03A/VP-03B validators and existing VP-02
+    mapping only, preserves each original source observation and verdict, and exposes
+    per-target VALID/INVALIDATED/UNKNOWN with immutable applicability witness rather
+    than synthetic target EVIDENCE or aggregate acceptance PASS.
+- id: AC4
+  condition: The fact projection retains distinct mandatory integration, concurrency,
+    ordering, worker, profile, environment, fixture/helper, comparison and repetition
+    obligations; incomplete or conflicting mapping/footprints never discharge a target
+    obligation.
+- id: AC5
+  condition: A conflicting, missing, stale, duplicate, replayed or torn issuer/checkpoint
+    handoff deterministically returns factual BLOCK/UNKNOWN without repeating proof,
+    consuming feedback twice, resetting costs, mutating history or granting continuation.
+- id: AC6
+  condition: Focused bounded disposable real-Git tests exercise independent trust-root
+    absence, fake coherent repository, forged issuer/catalog, exact source binding,
+    stale main, swapped TASK/RUN/evidence, mixed valid/invalidated/unknown proof,
+    original FAIL preservation, mapping/condition drift and replay/crash negatives;
+    tests do not issue network, live execution or checkpoint writes.
+- id: AC7
+  condition: Every exposed authorization/activation/reuse/discharge/verification/continuation/terminalization/persistence
+    flag remains false with NOT_ACTIVATED; documentation names the external issuer/producer
+    limitations and future VP-04/VP-05/VP-07 Runtime/CAS/conformance gates without
+    claiming readiness.
+- id: AC8
+  condition: The committed delta contains only the new bounded handoff module, focused
+    test module and versioned documentation; existing production Runtime, Kernel,
+    workflows, contracts, canonical history and downstream pins remain untouched.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_proof_authority_handoff.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
