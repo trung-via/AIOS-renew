@@ -663,6 +663,20 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03_post_task330_publication_2026_10_09:
+    authority: HUMAN_BRAIN_PLANNING
+    human_intent: CONTINUE_APPROVED_VP_ROADMAP_AFTER_EXACT_TASK330_REVIEW_PASS_PUBLISHED
+    current_main_at_reconciliation: 1be1608aeeac27c046452072fc28614f1be09a4a
+    completed_slice: VP03A_TASK330_REVIEWED_PUBLISHED
+    canonical_successor: verification-architecture-replacement-v1-vp03-evidence-validity
+    bounded_next_slice: VP03B_OFFLINE_CHECKPOINT_LINEAGE_REPLAY_AND_CRASH_PROOF
+    selected_task: TASK-331
+    vp03_full_exit: NOT_YET_ESTABLISHED
+    vp01: DEFERRED_NOT_WAIVED
+    vp02: FOUNDATION_PUBLISHED_OTHER_EXITS_GATED
+    ka01_activation: NOT_ACTIVATED
+    next_executor: EXPLICIT_HUMAN_SELECTION_REQUIRED
+    roadmap_auto_progression: false
   vp03_resumption_post_ka01_2026_10_09:
     authority: HUMAN_BRAIN_PLANNING
     human_intent: CONTINUE_APPROVED_VP_ROADMAP_AFTER_KA01_PUBLISHED
@@ -2068,11 +2082,41 @@ sequence:
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
     planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
-    task_id: TASK-330
+    task_id: TASK-331
     task_revision: 1
     task_authoring_status: PENDING_CANONICAL_AUTHOR_TASK
     bounded_first_slice: VP03A_READ_ONLY_AUTHENTICATED_PROVENANCE_AND_APPLICABILITY_FOUNDATION
-    executor_delegation: UNASSIGNED_FOR_TASK330_HUMAN_DECISION_REQUIRED
+    completed_slice:
+      name: VP03A
+      task_id: TASK-330
+      revision: 1
+      source_run_id: RUN-330-001
+      source_review_id: REVIEW-330-001
+      source_review_verdict: CHANGES_REQUIRED
+      source_finding_id: R1
+      remediation_run_id: RUN-330-002
+      remediation_review_id: REVIEW-330-002
+      remediation_review_verdict: PASS
+      correction_authorization_sha: fecf9d9c6a12efc7431c73962b9fa9bad3fcb535
+      result_artifact_sha: e360dee7e9e0943f2a3e06af9ff08abf0a7679f4
+      review_decision_sha: 6d7ded936ee4383f379e89495b728aef94c230d9
+      reviewed_published_source_sha: 1be1608aeeac27c046452072fc28614f1be09a4a
+      published_source_in_main: true
+      canonical_result_verified_tests: 75
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: max
+      publication_does_not_activate_runtime: true
+    bounded_next_slice: VP03B_OFFLINE_CHECKPOINT_LINEAGE_REPLAY_AND_CRASH_PROOF
+    next_task_id: TASK-331
+    next_slice_non_goals:
+      - NO_PRODUCTION_RUNTIME_CHECKPOINT_WRITE
+      - NO_NEW_CANONICAL_LIFECYCLE_STATE
+      - NO_NEW_SCHEDULER_OR_V2_DUAL_EXECUTION
+      - NO_EVIDENCE_REUSE_DISCHARGE_AUTHORITY
+      - NO_AUTO_CORRECTION_OR_TERMINALIZATION
+      - NO_DOWNSTREAM_ADOPTION
+    executor_delegation: UNASSIGNED_FOR_TASK331_HUMAN_DECISION_REQUIRED
     production_activation: NOT_AUTHORIZED
     vp02_dependency_disposition: >-
       TASK-326 and TASK-328 foundations plus separately ratified KA-01 TASK-329 are
