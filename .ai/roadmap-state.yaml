@@ -598,7 +598,7 @@ publication_end_to_end_preemption:
   approved_on: "2026-10-09"
   authority: HUMAN_BRAIN_PLANNING
   priority: HISTORICAL_PREEMPTION_CLOSED
-  effective_next: verification-architecture-replacement-v1-vp02-proof-contract
+  effective_next: kernel-amendment-ka01-prospective-verification-continuation
   return_to: verification-architecture-replacement-v1-vp02-proof-contract
   completion:
     authority: HUMAN_BRAIN_PLANNING_RECONCILED_WITH_CANONICAL_RUNTIME_REVIEWER_PUBLISHER_LINEAGE
@@ -662,7 +662,18 @@ verification_architecture_replacement_preemption:
     immutable legacy lineage and all authority boundaries. This planning
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
-  effective_next: verification-architecture-replacement-v1-vp02-proof-contract
+  effective_next: kernel-amendment-ka01-prospective-verification-continuation
+  kernel_amendment_ka01_2026_10_09:
+    authority: HUMAN_KERNEL_AMENDMENT_RATIFICATION
+    decision: RATIFIED_PROSPECTIVE_ONLY
+    new_next: kernel-amendment-ka01-prospective-verification-continuation
+    selected_task_id: TASK-329
+    executor: codex
+    model: gpt-6.1-sol
+    reasoning_effort: max
+    requires: INDEPENDENT_TASK_RUNTIME_REVIEWER_PUBLISHER_PUBLICATION
+    activation: NOT_AUTHORIZED
+    preserves: [KERNEL_V01_FROZEN, HISTORICAL_LINEAGE, VP01_DEFERRED, VP03_QUEUED, NO_DOUBLE_SCHEDULER]
   return_to: brain-optimization-v1-bo2-3-canonical-context-pipeline-v1
   package_count: 7
   executor_delegation: UNASSIGNED_FOR_NEW_TASK
@@ -1172,7 +1183,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - verification-architecture-replacement-v1-vp02-proof-contract
+  - kernel-amendment-ka01-prospective-verification-continuation
 sequence:
 
   - id: TASK-309
@@ -1934,15 +1945,62 @@ sequence:
       and its own TASK authoring. No additional planning main mutation during
       the pending reviewed implementation; existing TASK-326 review and candidate
       are immutable. No manual main rewind or integration shortcut.
-  - id: verification-architecture-replacement-v1-vp02-proof-contract
+  - id: kernel-amendment-ka01-prospective-verification-continuation
     status: NEXT
+    phase: KA01_KERNEL_PROSPECTIVE_AMENDMENT_PUBLICATION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-09"
+    task_id: TASK-329
+    task_revision: 1
+    task_authoring_status: PENDING_CANONICAL_AUTHOR_TASK
+    planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    amendment_identity: AIOS_KERNEL_KA01_PROSPECTIVE_VERIFICATION_CONTINUATION
+    human_decision: EXPLICITLY_RATIFIED_BY_HUMAN_2026_10_09
+    human_request: RATIFY_AND_RUN_BOUNDING_SPEC_PUBLICATION_BEFORE_VP03
+    amendment_scope: PROSPECTIVE_NORMATIVE_DESIGN_ONLY
+    prior_kernel_v01: FROZEN_AND_HISTORICALLY_IMMUTABLE
+    no_constitutional_change: true
+    runtime_activation: NOT_AUTHORIZED
+    dependent_package: verification-architecture-replacement-v1-vp02-proof-contract
+    exit: EXACT_TASK329_RUNTIME_VERIFIED_REVIEW_PASS_PUBLISHER_PUBLISHED
+    executor_delegation:
+      authority: HUMAN
+      task_id: TASK-329
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: max
+      scope: TASK329_ENTIRE_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
+      persistence: UNTIL_TASK_329_COMPLETE_OR_HUMAN_OVERRIDE
+    return_affinity: LEGACY_REPOSITORY_DEFAULT_ROUTE
+    implementation_authorization: CANONICAL_TASK_AND_RUNTIME_ADMISSION_REQUIRED
+    notes: >-
+      Human approved exactly the audited KA-01 prospective verification and
+      preterminal continuation addendum. Publish a separate versioned normative
+      document by ordinary TASK/Runtime/Reviewer/Publisher flow, preserving frozen
+      v0.1 and its freeze record. The amendment does not authorize production
+      activation, new verification scheduler, live same-RUN retry, or changing
+      historical TASK/RUN/RESULT/FAILURE/REVIEW/REPAIR artifacts. VP-01 remains
+      DEFERRED_BY_HUMAN and not waived; VP-03 remains QUEUED_AFTER_VP02 pending
+      KA-01 publication and future independently authorized engineering.
+
+  - id: verification-architecture-replacement-v1-vp02-proof-contract
+    status: PAUSED_PENDING_KA01_KERNEL_AMENDMENT_PUBLICATION
     phase: VP02_PROOF_CONTRACT
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
     planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
     task_id: TASK-328
     task_revision: 1
-    task_authoring_status: PENDING_CANONICAL_AUTHOR_TASK
+    task_authoring_status: CANONICALIZED
+    task328_completion:
+      run_id: RUN-328-002
+      review_id: REVIEW-328-002
+      verdict: PASS
+      reviewed_published_sha: 19037a71536f65327c541668527c099099af6efe
+      result_artifact_sha: f54ff39c5153e4224dbaa79e5311792316ab0172
+      review_decision_sha: e8530a0a2270a31bf46f1023eee7e41ab4040a7a
+      package_status: FOUNDATION_REVIEWED_PUBLISHED_KA01_AND_OTHER_EXITS_PENDING
+      does_not_activate_runtime: true
     previous_foundation:
       task_id: TASK-326
       run_id: RUN-326-001
