@@ -663,6 +663,31 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03_task334_owner_authority_override_2026_10_10:
+    authority: HUMAN_BRAIN_PLANNING
+    human_intent: APPROVED_SEPARATE_BOUNDED_OWNER_AUTHORITY_REVISION_NOT_BLIND_TASK334_REPAIR
+    canonical_main_at_decision: 8b52bd16064123248e3a91fcc907f1418a87d1eb
+    primary_failure: RUN-334-001
+    failure_artifact_sha: 7179c1eb16bbb2b97d1ddbe389ec41925c4ceb3d
+    failed_candidate_sha: 321227b18fe67eff43547ee620d9d7b3ac50e3ec
+    current_root_next: verification-architecture-replacement-v1-vp03-evidence-validity
+    selected_bounded_slice: VP03D_AUTHORITY_OWNER_BINDING_PREREQUISITE_FOR_TASK334
+    selected_task_id: TASK-335
+    selected_executor: NEW_TASK_HUMAN_EXPLICIT_DELEGATION_REQUIRED
+    scope: EXISTING_ADMITTED_OPERATOR_AND_INDEPENDENT_SUBMIT_REVIEW_INGRESS_PROVENANCE_NO_NEW_ISSUER
+    fail_closed: true
+    public_repo_raw_transport: FORBIDDEN
+    preserve_failed_run_lineage:
+      - RUN-333-001
+      - RUN-334-001
+    review_and_publication_required_before_repair: true
+    audit_stage1: RISK_UNAUTHENTICATED_CONSTRUCTOR_LEASE_REVIEWER_IMPERSONATION_GIT_SELF_ATTESTATION_HISTORICAL_REWRITE
+    audit_stage2: PROSPECTIVE_OWNER_ONLY_NO_TRUST_ENROLLMENT_NO_CROSS_TASK_EXECUTOR_INHERITANCE_NO_RAW_PUBLICATION
+    no_automatic_progression: true
+    production_activation: NOT_AUTHORIZED
+    vp01: DEFERRED_NOT_WAIVED
+    vp02_full_exit: NOT_ESTABLISHED
+    vp03_full_exit: NOT_ESTABLISHED
   vp03_task333_failure_prerequisite_override_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     human_intent: APPROVE_SEPARATE_RUNTIME_SOURCE_ISSUANCE_CONTRACT_INSTEAD_OF_BLIND_REPAIR
@@ -2164,7 +2189,7 @@ sequence:
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
     planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
-    task_id: TASK-334
+    task_id: TASK-335
     task_revision: 1
     task_authoring_status: PENDING_CANONICAL_AUTHOR_TASK
     bounded_first_slice: VP03A_READ_ONLY_AUTHENTICATED_PROVENANCE_AND_APPLICABILITY_FOUNDATION
@@ -2189,8 +2214,8 @@ sequence:
       model: gpt-6.1-sol
       reasoning_effort: max
       publication_does_not_activate_runtime: true
-    bounded_next_slice: VP03D_PREREQUISITE_RUNTIME_SOURCE_ISSUANCE_TRUST_AND_SAFE_RAW_BINDING
-    next_task_id: TASK-334
+    bounded_next_slice: VP03D_AUTHORITY_OWNER_BINDING_PREREQUISITE_FOR_TASK334
+    next_task_id: TASK-335
     next_slice_non_goals:
       - NO_PRODUCTION_RUNTIME_CHECKPOINT_WRITE
       - NO_NEW_CANONICAL_LIFECYCLE_STATE
@@ -2198,14 +2223,15 @@ sequence:
       - NO_EVIDENCE_REUSE_DISCHARGE_AUTHORITY
       - NO_AUTO_CORRECTION_OR_TERMINALIZATION
       - NO_DOWNSTREAM_ADOPTION
-    executor_delegation:
+    executor_delegation: UNASSIGNED_TASK335_REQUIRES_EXPLICIT_HUMAN_DELEGATION
+    failed_task334_delegation:
       authority: HUMAN
       task_id: TASK-334
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      scope: ENTIRE_TASK334_LIFECYCLE_INCLUDING_CODE_FIX_REPAIR_AND_REMEDIATION
-      persistence: UNTIL_TASK334_COMPLETE_OR_EXPLICIT_HUMAN_CHANGE
+      scope: EXISTING_TASK334_ONLY_INCLUDING_LATER_LAWFUL_REPAIR
+      persistence: UNTIL_TASK334_COMPLETION_OR_EXPLICIT_HUMAN_CHANGE
     failed_task333_delegation:
       authority: HUMAN
       task_id: TASK-333
@@ -2288,6 +2314,32 @@ sequence:
       stages: [CONSTRUCT_RISK_AUDIT, ADVERSARIAL_RECONCILIATION]
       activation: NOT_ACTIVATED
       vp03_full_exit: NOT_ESTABLISHED
+    vp03d_prerequisite_task334_failure:
+      task_id: TASK-334
+      revision: 1
+      run_id: RUN-334-001
+      terminal_kind: FAILURE
+      failure_artifact_sha: 7179c1eb16bbb2b97d1ddbe389ec41925c4ceb3d
+      failed_candidate_sha: 321227b18fe67eff43547ee620d9d7b3ac50e3ec
+      phase: COMPLETION_GATE
+      verification_invoked: false
+      in_scope_clean_repairable: true
+      unresolved:
+        - RUNTIME_ADMISSION_AND_LEASE_AUTHORITY_NOT_AVAILABLE_AT_COMPLETION
+        - REVIEWER_INGRESS_AUTHORITY_NOT_AVAILABLE_TO_PROVENANCE_CONSUMER
+      correction_authorized: false
+      disposition: PAUSE_REPAIR_UNTIL_OWNER_BOUND_AUTHORITY_PREREQUISITE_REVIEWED_AND_PUBLISHED
+    vp03d_next_prerequisite_task335:
+      task_id: TASK-335
+      focus: OWNER_BOUND_RUNTIME_ADMISSION_AND_INDEPENDENT_REVIEW_INGRESS_PROVENANCE
+      trusted_sources: EXISTING_OPERATOR_ADMISSION_AND_CANONICAL_REVIEW_INGRESS_ONLY
+      public_repo_raw_policy: NO_UNREDACTED_RAW_EXPORT
+      no_new_authority: true
+      acceptance_limited_to_PROSPECTIVE_OWNER_SOURCE_CONTRACT: true
+      executor: EXPLICIT_HUMAN_DELEGATION_REQUIRED
+      after_publication: REASSESS_TASK334_BOUNDED_REPAIR_FROM_PRESERVED_FAILED_CANDIDATE
+      after_task334_publication: REASSESS_TASK333_BOUNDED_REPAIR
+      activations: NOT_AUTHORIZED
     production_activation: NOT_AUTHORIZED
     vp02_dependency_disposition: >-
       TASK-326 and TASK-328 foundations plus separately ratified KA-01 TASK-329 are
