@@ -1,0 +1,127 @@
+task_id: TASK-326
+revision: 1
+goal: Establish VP-02's bounded, versioned semantic proof-coverage contract and deterministic
+  mapping/admission criteria as independently testable, non-executing foundations
+  for the future Runtime proof engine, without adding a new production verification
+  gate, altering frozen Kernel v0.1, or activating a second scheduler.
+problem: Current TASK authoring requires executable commands in verification.required
+  and minimum-sufficient-v2 schedules candidate probes, authored commands and possible
+  reproduction/base comparison. Human-approved VP v1.1 instead requires semantic proof
+  obligations, candidate-first execution, evidence-aware no-double-execution and six
+  explicit necessity gates before any base replay. VP-02 must make future-proof obligations
+  representable and validated without prematurely changing production scheduling or
+  claiming deferred VP-01 evidence.
+assumptions:
+- Fresh canonical main is 5dd5f5552a3493e07d13a5451616eabdfe81f175; AUTHOR_TASK must
+  bind exact expected-main/CAS and refuse stale movement.
+- VP-02 is the sole NEXT; VP-01 is DEFERRED_BY_HUMAN, not DONE; any VP-02 acceptance/publication
+  claim requiring VP-01 measurement remains blocked.
+- Human has selected Codex GPT-6.1 Sol xhigh for TASK-326 entire execution lifecycle;
+  this delegation is transport-level, not an operative TASK field.
+- Transitional TASK-326 uses currently admitted verification.policy minimum-sufficient-v2
+  until separately authorized policy cutover.
+- Human explicitly declined the proposed additional runtime compatibility preflight/gate
+  due to possible latency costs; keep already-approved VP-02 frozen-Kernel compatibility
+  analysis without introducing another runtime gate.
+- Human explicitly selected LEGACY_REPOSITORY_DEFAULT_ROUTE for TASK-326 r1 only,
+  without authorizing a fallback for any other TASK or changing origin-affine policy.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - src/aios_renew/task.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/runtime.py
+  - tests/test_task.py
+  - tests/test_verification_contract.py
+  modify:
+  - src/aios_renew/proof_coverage_contract.py
+  - tests/test_proof_coverage_contract.py
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+non_goals:
+- Modify frozen Kernel v0.1 or assume planning approval grants amendment authority.
+- Add any new production compatibility preflight, repeated verification stage, test
+  collection, base materialization, or automatic base replay for this contract.
+- Activate proof-coverage-v1 as a TASK admission policy or modify task.py, authoring
+  ingress, V1/V2 production verification or Runtime scheduling.
+- Implement VP-03 evidence validity, VP-04 Runtime scheduler, VP-05 attribution, VP-06
+  instrumentation or VP-07 cutover.
+- Introduce a semantic dependency guesser, new Planner, authority layer, independent
+  proof-scheduling daemon, second telemetry system or lifecycle router.
+- Reinterpret, rewrite or mutate historical TASK/RUN/RESULT/FAILURE/EVIDENCE/REVIEW
+  artifacts; claim deferred VP-01 measurements or VP-07 conformance.
+- Change roadmap priorities/next_items or auto-advance beyond VP-02.
+constraints:
+  hard:
+  - 'New contract modules/documents are design and validation artifacts only: using
+    them must not execute pytest, subprocess, Git, base checkout, file discovery,
+    evidence mutation or production verification.'
+  - Proof obligations have bounded stable identity, semantic claim/coverage requirements
+    and declared distinguishing conditions, without executable pytest/shell commands
+    disguised as metadata.
+  - Reviewed/versioned proof mapping is a mechanical input, never authority for Runtime
+    to infer semantic dependencies from filename, changed path or test history; missing,
+    conflicting, stale or ambiguous mapping does not discharge proof.
+  - Explicit equivalence requires compatible subject/evidence, relevant test/fixture,
+    profile, concurrency, ordering, integration, toolchain and environment; matching
+    nodeid alone is insufficient.
+  - Candidate-first is the target execution default; base replay eligibility must
+    explicitly express all BR-1 approved necessity, BR-2 decision relevance, BR-3
+    no valid alternative, BR-4 minimum lawful scope, BR-5 exact comparability and
+    BR-6 authority/cost bounds. Any failed gate disallows replay without inventing
+    PASS.
+  - Candidate failure alone never triggers automatic reproduction, base collection,
+    narrow base probe or broad fallback. Complete decisive candidate failure may BLOCK
+    without further attribution when no independent mandatory comparison obligation
+    is outstanding.
+  - Pure contract validation must reject incomplete, contradictory, unbounded or improperly
+    merged obligations deterministically, without claiming canonical Runtime verification,
+    Reviewer PASS or production activation.
+  - Only three exact scope.modify paths can change; current verification profiles,
+    published V2 scheduler, frozen Kernel and canonical historical lineage must remain
+    unchanged.
+  - Focused tests must use synthetic in-memory contract data only, with no real pytest
+    child process, base checkout, Git subprocess, network, credentials or profiling.
+acceptance:
+- id: AC1
+  condition: A bounded versioned proof-coverage contract explicitly represents semantic
+    obligations, distinguishing execution conditions and their identity/provenance
+    independently of mandatory executable command lists.
+- id: AC2
+  condition: A deterministic explicitly declared mapping interface validates complete
+    coverage and rejects missing, ambiguous, stale or conflicting mappings without
+    inferring dependencies or declaring unsupported PASS.
+- id: AC3
+  condition: Contract equivalence distinguishes truly equivalent proof conditions
+    from different fixture, integration, worker, order, concurrency, toolchain and
+    environment requirements rather than deduplicating by command/nodeid alone.
+- id: AC4
+  condition: "Contract eligibility for base replay requires all six BR-1\u2013BR-6\
+    \ facts affirmatively established and supports candidate-first/no-reproduction\
+    \ default without auto-executing baseline or widening into broad fallback."
+- id: AC5
+  condition: A versioned compatibility analysis explains how semantic verification
+    requirements fit frozen TASK verification.required minimum form, identifies truly
+    amendment-requiring alternatives for Human governance, and introduces no new Runtime
+    preflight or Kernel mutation.
+- id: AC6
+  condition: Focused synthetic unit tests cover valid/malformed contracts, mapping
+    ambiguity, distinct integration obligations, each missing BR gate, decisive candidate
+    failure, no automatic base fallback and zero verification execution.
+- id: AC7
+  condition: Changes remain confined to the three declared paths, leave active V1/V2
+    authoring/Runtime scheduler and historical decode intact and make no production
+    cutover or VP-01 measurement claim.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_proof_coverage_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
