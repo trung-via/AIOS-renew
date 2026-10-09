@@ -582,6 +582,36 @@ verification_architecture_replacement_preemption:
     visible as an unclosed measurement/compatibility gate for later publication
     and cutover; it is not silently waived.
   source_main_at_human_planning_transition: 08a5021236938b99d994d41e3d4f3907ec237230
+  approved_refinement:
+    version: VP_REFINEMENT_V1_1
+    approved_on: "2026-10-09"
+    authority: HUMAN_BRAIN_PLANNING
+    document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+    status: HUMAN_APPROVED_ARCHITECTURE_NOT_IMPLEMENTED
+    audit_profile: brain-high-value-v3
+    normative_invariants:
+      - VP_NO_EQUIVALENT_DOUBLE_EXECUTION
+      - VP_BASE_REPLAY_BY_PROVEN_NECESSITY_ONLY
+      - CANDIDATE_FIRST_NOT_BASE_BY_DEFAULT
+      - FAILURE_DOES_NOT_AUTOMATICALLY_AUTHOR_REPRODUCTION
+      - UNKNOWN_ATTRIBUTION_NEVER_FALSE_PASS
+      - REUSE_VALID_CORRECTION_PROOFS
+      - PRESERVE_DISTINCT_INTEGRATION_OBLIGATIONS
+      - NO_BROAD_BASE_FALLBACK_WITHOUT_ALL_REPLAY_GATES
+      - SINGLE_RUNTIME_PROOF_SCHEDULER
+    base_replay_gates:
+      - BR1_APPROVED_NECESSITY
+      - BR2_DECISION_RELEVANCE
+      - BR3_NO_VALID_ALTERNATIVE
+      - BR4_MINIMUM_LAWFUL_SCOPE
+      - BR5_EXACT_COMPARABILITY
+      - BR6_AUTHORITY_COST_BOUNDS
+    acceptance_set: AC_01_TO_AC_20_IN_PLANNING_DOCUMENT
+    task_313_case: RUN_313_007_796_CANDIDATE_776_BASE_5_CANDIDATE_ONLY_HISTORICAL
+    task_316_case: RUN_316_006_302_PASSED_HISTORICAL_CORRECTION_REUSE
+    measurement_dependency: VP01_DEFERRED_NOT_WAIVED
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
+    roadmap_auto_progression: false
   publication_safety: >-
     Every future authoring and execution uses freshly observed canonical main,
     not a pre-planning stale base. Do not publish via ad hoc Git push, branch
@@ -1745,6 +1775,7 @@ sequence:
     task_authoring_status: NOT_AUTHORED
     objective: >-
       Retire authored executable verification authoring prospective; define authority-preserving proof coverage contract and explicit frozen Kernel compatibility gate.
+      Human-approved v1.1 adds candidate-first, no equivalent double execution, six-gate base replay eligibility and mandatory AC-01 through AC-20 conformance.
     depends_on: verification-architecture-replacement-v1-vp01-baseline-and-measurement
     dependency_disposition: >-
       Human explicitly deferred VP-01 on 2026-10-09 and prioritized VP-02 semantic design
