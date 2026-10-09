@@ -1,0 +1,209 @@
+task_id: TASK-335
+revision: 1
+goal: Deliver a bounded prospective VP-03D owner-bound provenance bridge anchored
+  in the existing admitted Runtime/operator path and separately authenticated SUBMIT_REVIEW
+  ingress path. Establish immutable task/run/execution-profile/continuation and review-decision
+  origin facts at the actual owner boundaries, and pass their read-only provenance
+  to downstream Runtime/VP-03D as subordinate, in-process and/or already-authorized
+  operational observations. Missing origin, authenticated ingress actor, terminal/source
+  identity or independent currentness must be clearly UNKNOWN/BLOCK. Do not mint new
+  source authority, alter the immutable canonical Kernel contracts, create public
+  raw exports or activate proof reuse. This prerequisite will unblock a separately
+  authorized bounded repair of failed TASK-334 only after independent Runtime verification,
+  semantic review and exact publication.
+problem: Canonical RUN-334-001 ended with FAILURE because TASK-334's five-file scope
+  could capture only CONDITIONAL_CONTENT_ONLY metadata. `RuntimeCompletion` receives
+  publicly constructible Task/Run/Path values without the protected admitted owner,
+  approved profile and continuation authorization; the independent SUBMIT_REVIEW ingress
+  decision is similarly not exposed to prospective provenance consumers as an owner-origin
+  event. Git refs, REVIEW bytes, local constructor/fixture values and configured remotes
+  are not independent provenance. Existing `operator.py`, authorized GitHub Issue
+  ingress, and `authoring_ingress.py` already enforce the relevant distinct boundaries
+  but did not expose a bounded, owner-origin bridge.
+assumptions:
+- Fresh canonical planning main after approved priority revision is ddd48e2f587ce81c7a1b66fdb64750eb2e707dcd;
+  VP-03 is unique effective NEXT and TASK-335 r1 is the authorized bounded owner-provenance
+  prerequisite. AUTHOR_TASK and PRIMARY retain fresh CAS/TASK-blob/currentness rules.
+- RUN-334-001 canonical FAILURE from artifact commit 7179c1eb16bbb2b97d1ddbe389ec41925c4ceb3d,
+  failed candidate 321227b18fe67eff43547ee620d9d7b3ac50e3ec; existing RUN-333-001
+  failure artifact commit 53230d3eeac098a9350ce99669877b51623006e4 and candidate af16ec63c8700b9f7411434d338f044300392b86.
+  Both immutable, no REPAIR/RESULT/PASS was authorized or fabricated.
+- New TASK-335 Executor/model/effort is UNASSIGNED. Previous explicit Codex gpt-6.1-sol
+  xhigh selections are sticky to TASK-333/TASK-334 alone. Human must separately select
+  TASK-335 Executor before PRIMARY. TASK contract is independent of Executor identity.
+- Current `operator.py` is the primary/repair/remediation/direct-candidate owner and
+  owns relevant task admission, RUN reservation, execution profile, lease/continuation
+  and runtime handoff; existing `github_issue_ingress.py` and `authoring_ingress.py`
+  enforce authorized carrier-origin and SUBMIT_REVIEW lineage. Normal direct/local
+  ingress paths may lack authenticated external-origin provenance and must not gain
+  a false credential.
+- Canonical repository is public. Protected raw verification bytes and secrets cannot
+  be sent to public GitHub refs. TASK-334's safe metadata capture remains only on
+  immutable failed candidate, not main; TASK-335 must not import it as active code
+  or publish that failed candidate.
+- Existing Runtime/Reviewer/Publisher own distinct state transitions. VP-01 DEFERRED_NOT_WAIVED;
+  VP-02/VP-03 exit not established; KA-01 NOT_ACTIVATED, VP-04/VP-05/VP-07 and production
+  proof reuse not authorized. Current authored verification policy remains minimum-sufficient-v2.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-VP03-CANONICAL-PROOF-HANDOFF-v1.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-333.yaml
+  - .ai/tasks/TASK-334.yaml
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/run.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/review.py
+  - src/aios_renew/dispatch_reconciliation.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/return_affinity.py
+  - tests/test_authoring_ingress.py
+  - tests/test_runtime.py
+  - tests/test_review_transport.py
+  - .github/workflows/aios-brain-ingress.yml
+  - src/aios_renew/proof_authority_handoff.py
+  modify:
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/runtime_provenance_owner.py
+  - tests/test_runtime_provenance_owner.py
+  - docs/AIOS-VP03-OWNER-BOUND-PROVENANCE-AUTHORITY-v1.md
+non_goals:
+- No repair dispatch or automatic correction of TASK-333/334, no publication of their
+  failed candidates, and no retroactive attestation of already-committed RUN, RESULT,
+  EVIDENCE or REVIEW data.
+- No new actor who can admit RUN, invoke Executor, choose semantic review verdict,
+  publish source, perform correction, add identity/authority registry, grant secret-bearing
+  capabilities or schedule verification.
+- No public raw verification log, complete private raw bytes, local paths, environment
+  variables, command output or secrets in publicly transported GitHub artifacts; no
+  new public endpoint or API containing protected data.
+- No independent review verdict generated by Runtime or through a delivery receipt.
+  An ingress actor attestation is not semantic Reviewer PASS; missing independent
+  Reviewer context remains unavailable.
+- No repository/remote/caller-selected issuer root, private-key minting, self-certified
+  SignedByGit claim, arbitrary trust callbacks/fixtures or local constructor state
+  promoted into admission authority.
+- No modification to frozen TASK/RUN/RESULT/EVIDENCE/REVIEW schema or current V2 tests,
+  no prospective preterminal C1/C2, KA-01 activation, evidence reuse, acceptance discharge,
+  double scheduler, new authoring flow, or downstream adoption.
+- No baseline/full-suite repeat, replay of unchanged prior VP-03 tests, or base candidate
+  comparison unless a separately proven distinct gate requires one.
+constraints:
+  hard:
+  - Anchor all provenance origin facts to actions performed within the current existing
+    canonical admitted operator and trusted GitHub issue/authoring ingress owners.
+    A publicly constructed RuntimeCompletion, RunLease, fabricated task/commit, even
+    a self-consistent Git repository, must never independently authorize issuer authentication.
+  - At the operator owner boundary bind exact TASK ID/revision/blob/authoring-commit/current
+    main when already admitted, actual RUN/base/Executor/execution profile and relevant
+    admission/dispatch/repair/remediation continuation identity. PRIMARY lease provenance
+    is valid only if owned by its admitted run; REPAIR/REMEDIATION must use their
+    existing different owner/continuation guards, not invent a universal lease.
+  - At the REVIEW owner boundary preserve the existing SUBMIT_REVIEW immutable decision
+    SHA and exact RUN/revision, expected candidate, artifact and REVIEW bytes/verdict
+    only as recorded content. Origin must distinguish authenticated protected GitHub
+    carrier from local direct ingress without verified carrier-origin evidence, and
+    Reviewer semantic judgment remains independent and never issued by Runtime.
+  - Permit narrowly typed non-authoritative owner-origin observations and read-only
+    joins only under the existing trusted operation; no publicly callable setter,
+    enrollment function, arbitrary issuer/repo/callback or fixture path may make status
+    AUTHENTICATED. Any source not demonstrably owned by the real admission or ingress
+    operation remains UNKNOWN/BLOCK. Do not overclaim resistance to arbitrary malicious
+    in-process Python code that already controls those trusted owners.
+  - Do not change run creation, execution, verification scheduling, existing result/failure/REVIEW
+    transition, publication or auto-dispatch behavior. Subordinate provenance failures
+    must preserve exact original terminal failure cause, fail-closed status and scoped
+    diagnostics rather than silently granting provenance or overriding a canonical
+    success.
+  - Existing GitHub carrier-origin permissions and separate authoring ingress must
+    be validated under the established actual protected policy; no mutable request
+    content, issue comment, credential-free CLI, ticket number or Git SHA itself proves
+    authenticated actor or a positive semantic REVIEW. Negative/anonymous/ambiguous
+    carrier route returns origin UNKNOWN.
+  - Keep owner observations bounded, deterministic and versioned, with exact SHA/digest
+    bindings and explicit UNKNOWN/BLOCK for origin/lease/authorization/currentness
+    gaps. If operational facts cannot be anchored in existing authority without broader
+    policy or new protected capability, expose typed blocker for that field, never
+    fill it from fabricated data.
+  - 'Provenance is prospective: no retrospective claim that prior RUN-333-001, RUN-334-001
+    or TASK-330/331/332 held this newly installed owner identity. Does not alter immutable
+    canonical artifacts or add a source of lifecycle truth.'
+  - Do not publish raw outputs to the public repository. Any future consumer lacking
+    authorized protected raw access must remain RAW_UNAVAILABLE; digest/size alone
+    are metadata, not proof/permission. Reviewer-approved publication of this task
+    will establish only the owner bridge, not TASK-334's separately failed raw/transport
+    implementation.
+  - Exactly seven authorized paths may be modified; use existing owner APIs and validation.
+    Preserve historical decoder continuity, authoring origin admission, existing return
+    affinity, protected transport and no cross-task Executor delegation.
+  - Focused adversarial tests exercise real existing owner admission/ingress invocation
+    paths and distinguish those from constructor/fixture/manual ingress lookalikes;
+    include absent origin/review, stale/ambiguous candidate, mismatched TASK blob,
+    incorrect RUN/profile/lease, REPAIR/REMEDIATION paths, conflicting replay, private
+    raw nonexport and no authority-effects. No network or live GitHub actions.
+  - The published task must remain nonactivated. Future TASK-334/333 repairs are separate
+    Brain-authored authorized corrections on preserved failed candidate lineage, after
+    this task's canonical RESULT, semantic REVIEW PASS and publication, with evidence
+    reuse and no unnecessary base replay.
+acceptance:
+- id: AC1
+  condition: A documented versioned bounded owner-origin provenance contract exists,
+    integrated with existing operator admission and independently with SUBMIT_REVIEW
+    ingress, with no second trust authority, state store or lifecycle decision.
+- id: AC2
+  condition: Prospective admitted PRIMARY operation can expose exact owner-held TASK
+    ID/revision/blob/commit and current-main, RUN/base/Executor, profile and legitimate
+    admission/lease context without self-certification by a caller-constructed RuntimeCompletion
+    or Git fixture.
+- id: AC3
+  condition: Prospective admitted REPAIR, REMEDIATION and any supported direct-candidate
+    completion paths preserve their distinct existing admission/correction bindings
+    in provenance, or explicitly expose UNKNOWN for unavailable owner facts; no fabricated
+    PRIMARY lease or changed Executor selection.
+- id: AC4
+  condition: A canonical SUBMIT_REVIEW ingress operation can expose immutable exact
+    RUN/candidate/artifact, decision SHA, recorded verdict and authenticated carrier-origin
+    when independently established by the protected existing ingress; local/unknown/unauthenticated
+    carrier origin is not promoted to Reviewer authority.
+- id: AC5
+  condition: Read-only owner-origin consumers reject caller-selected roots, arbitrary
+    constructors, self-attested Git or REVIEW bytes, detached/stale/ambiguous bindings,
+    missing owner/lease/profile/currentness, duplicate/replay conflicts and unsupported
+    provenance with explicit typed UNKNOWN/BLOCK rather than a false positive source.
+- id: AC6
+  condition: 'All owner facts remain subordinate to existing Runtime/Reviewer/Publisher
+    authority: no changes in canonical RUN/RESULT/EVIDENCE/REVIEW schema, execution,
+    verification, review verdict submission, transport/publication, proof reuse or
+    acceptance-discharge behavior; existing failures retain original causes.'
+- id: AC7
+  condition: Focused deterministic tests cover genuine owner-path vs forged external-path
+    provenance, operator PRIMARY and correction variants, protected vs unverified
+    REVIEW ingress, SHA/profile/lease/currentness disagreements, replay and no public
+    raw leakage, without running unchanged upstream full suites or accessing live
+    GitHub.
+- id: AC8
+  condition: Documentation identifies existing operational trust scope and limitations
+    (no arbitrary in-process adversary guarantee), read-only consumer interface, unavailable
+    provenance classifications, public-repository raw privacy, unchanged TASK-333/334
+    failures and distinct future review/publication/repair and VP/KA-01 activation
+    gates.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_runtime_provenance_owner.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
