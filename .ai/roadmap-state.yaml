@@ -2404,7 +2404,7 @@ sequence:
       publishes eligible reviewed candidate or lawful integration descendant.
 
   - id: verification-architecture-replacement-v1-vp03-evidence-validity
-    status: NEXT
+    status: SUPERSEDED_BY_HUMAN_PENDING_FORWARD_RECOVERY
     phase: VP03_EVIDENCE_VALIDITY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
@@ -2610,6 +2610,21 @@ sequence:
       no_policy_activation: true
       no_test_rerun: true
     production_activation: NOT_AUTHORIZED
+    human_supersession_20261010:
+      authority: HUMAN_INTENT_AND_BRAIN_PLANNING
+      decision: RETIRE_VP03_A_B_C_D_NEW_PROTECT_ATTESTATION_PATH_AND_FORWARD_RECOVER_CODE
+      pre_vp03_code_baseline: 84478a59405427ef932740eb26d8ce6292b0fe71
+      current_published_vp03_source_before_recovery: e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4
+      old_next_task_id_historical_only: TASK-334
+      old_engineering_lineage: PRESERVE_AS_CANONICAL_HISTORY
+      live_code_state: VP03_SOURCE_STILL_PRESENT_UNTIL_REVIEWED_PUBLISHED_RECOVERY
+      runtime_policy: MINIMUM_SUFFICIENT_V2_UNCHANGED_PENDING_PROSPECTIVE_NEW_POLICY
+      task333_failure: IMMUTABLE_NOT_RETROACTIVELY_REPAIRED
+      task334_r2: REVIEWED_PUBLISHED_NOT_LIVE_BROKER_ACTIVATION
+      stage2_ruleset: NOT_ACTIVATED_AND_NOT_TO_BE_ACTIVATED_BY_RECOVERY
+      stage1_ruleset_24824106: PRESERVE_UNTIL_SEPARATE_HUMAN_CONFIGURATION_DECISION
+      kernel_ka01: HUMAN_RATIFIED_PROSPECTIVE_NOT_ACTIVATED
+      next_commitment: VP03_FORWARD_RECOVERY_ONLY
     vp02_dependency_disposition: >-
       TASK-326 and TASK-328 foundations plus separately ratified KA-01 TASK-329 are
       exact reviewed published source. Human explicitly requested continuation after
@@ -2628,8 +2643,65 @@ sequence:
       stale local, repair, review or planning branch as source. Publisher alone
       publishes eligible reviewed candidate or lawful integration descendant.
 
+  - id: verification-architecture-replacement-v1-vp03-forward-recovery
+    status: NEXT
+    phase: VP03_PRE_TASK330_FORWARD_RECOVERY
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-10"
+    task_id: TASK-336
+    task_authoring_status: NOT_AUTHORED
+    baseline_commit: 84478a59405427ef932740eb26d8ce6292b0fe71
+    source_main_at_decision: e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4
+    predecessor_task334_r2_reviewed_published_sha: e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4
+    canonical_history_policy: PRESERVE_ALL_TASK_RUN_FAILURE_RESULT_EVIDENCE_REVIEW_REPAIR_REMEDIATION_AND_GIT_ANCESTRY
+    implementation: ONE_NEW_FORWARD_RECOVERY_TASK_NO_MAIN_RESET_NO_FORCE_PUSH
+    objective: >-
+      Return the current production code behavior to pre-VP03/TASK330 baseline while
+      retiring newly added VP03A/B/C/D modules and broker/issuer/owner/handoff hooks.
+      Preserve necessary bounded public-artifact redaction, existing canonical
+      identity/admission/Runtime verification, Reviewer, Publisher, CAS and history.
+      Prove targeted PRIMARY, REPAIR, REMEDIATION, ingress, result/failure, review and
+      publication conformance without unrelated broad or base pytest execution.
+    human_executor_delegation:
+      authority: HUMAN
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      persistence: ENTIRE_TASK_LIFECYCLE_INCLUDING_LAWFUL_CODE_FIX_REPAIR_AND_REMEDIATION
+    safety:
+      - STAGE2_ENFORCEMENT_OFF
+      - STAGE1_RULESET_UNCHANGED_UNTIL_SEPARATE_HUMAN_AUTHORITY
+      - NO_GITHUB_APP_OR_SECRET_PROVISIONING
+      - NO_RESET_FORCE_PUSH_OR_IMMUTABLE_REF_DELETION
+      - NO_TERMINAL_LINEAGE_REOPENING
+      - NO_V2_BEHAVIOR_REPLACEMENT_OR_UNAUTHORIZED_KA01_ACTIVATION
+      - NO_SCOPE_EXPANSION_INTO_NEW_PROOF_ENGINE_OR_INTRA_PRIMARY_CORRECTION
+      - PRESERVE_PUBLIC_REDACTION_WITHOUT_NEW_PROTECTED_SERVICES
+    completion_boundary: ONLY_RUNTIME_RESULT_REVIEWER_PASS_AND_PUBLISHER_EXACT_SOURCE_PUBLICATION
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
+    branch_and_publication_safety: >-
+      Author from fresh canonical main with expected-main CAS. Exactly one admitted
+      Executor owns code HOW; Runtime verifies and Publisher alone publishes.
+      A source candidate commit must advance main normally, not rewrite history.
+
+  - id: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+    status: QUEUED_AFTER_FORWARD_RECOVERY
+    phase: VP03_RUNTIME_INTEGRATED_MINIMAL_EVIDENCE_VALIDITY
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-10"
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Define and implement minimum sufficient VALID/INVALIDATED/UNKNOWN proof applicability
+      directly inside the existing Runtime using exact canonical evidence and approved
+      proof mapping. No independent broker, issuer, source journal, second verifier or
+      arbitrary reuse from filename/nodeid matching. Measure overhead and preserve UNKNOWN
+      as blocking. Reconcile KA01's prospective normative gates before activation.
+    depends_on: verification-architecture-replacement-v1-vp03-forward-recovery
+    activation: NOT_AUTHORIZED
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_FRESH_HUMAN_DELEGATION
+
   - id: verification-architecture-replacement-v1-vp04-single-proof-execution
-    status: QUEUED_AFTER_VP03
+    status: QUEUED_AFTER_RUNTIME_LEAN_VALIDITY
     phase: VP04_SINGLE_PROOF_EXECUTION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
@@ -2638,7 +2710,7 @@ sequence:
     objective: >-
       Independently replace V2 command-driven execution with one deterministic Runtime proof plan; avoid equivalent reexecutions.
       Serve intra-RUN checkpoints and terminalization with the same proof scheduler: zero equivalent double execution and no dual V2 engine.
-    depends_on: verification-architecture-replacement-v1-vp03-evidence-validity
+    depends_on: verification-architecture-replacement-v1-vp03-runtime-lean-validity
     implementation_authorization: REQUIRES_CANONICAL_TASK_AND_HUMAN_EXECUTOR_DELEGATION
     branch_and_publication_safety: >-
       Author each TASK from exact current canonical main after approved planning
