@@ -56,7 +56,7 @@ def terminal(tmp_path, monkeypatch):
     monkeypatch.setattr(op, "primary_dispatcher", factory)
     monkeypatch.setattr(issuer, "protected_client", lambda: PeerFixture(service, "runtime-peer"))
     def fixture_verification(command, **kwargs):
-        return subprocess.CompletedProcess(command, 0, stdout="fixture verification raw\n", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout=b"fixture verification raw\n", stderr=b"")
     primary(repo, verification_runner=fixture_verification)
     owner = owners[0]
     assert owner.source_provenance.issuer_authenticated
