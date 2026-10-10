@@ -663,6 +663,39 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03d_runtime_git_credential_transport_reconciliation_2026_10_10:
+    authority: HUMAN_BRAIN_PLANNING
+    reported_read_only_local_checkout: C_TOOLS_AIOS_RUNTIME_AIOS_RENEW_VALID_GIT_WORKTREE
+    reported_runtime_checkout_push_transport: HTTPS
+    reported_git_credential_helper: CONFIGURED
+    actual_runtime_service_OS_identity: NOT_VERIFIED
+    runtime_credential_issuing_GITHUB_PRINCIPAL: NOT_VERIFIED
+    actual_runtime_push_principal: NOT_VERIFIED
+    bearer_token_or_secret_values: NOT_ACCESSED
+    github_app_writer_installations: UNAVAILABLE_NOT_ZERO
+    github_token_default_permissions: READ
+    repository_visible_writer_collaborators: ONE
+    repository_secret_names:
+      - AIOS_ORIGIN_ADMISSION_KEY
+    repository_variable_names:
+      - AIOS_REPO_ROOT
+      - AIOS_LOCAL_CHAT_WAKE_ENABLED
+    credential_helper_is_NOT_INDEPENDENT_ISSUER_PROOF: true
+    privileged_single_writer_is_NOT_RUNTIME_REVIEWER_SEPARATION: true
+    trust_root_stage2: NOT_ESTABLISHED
+    candidate_least_privilege_approach: SEPARATE_RUNTIME_AND_CONTROL_PLANE_WRITER_IDENTITIES
+    control_plane_actor_separation_must_still_be_PROVEN_AT_INGRESS_AND_PUBLICATION: true
+    stage2_requirements:
+      - DISTINCT_PROVEN_WRITER_IDENTITIES_AND_CREDENTIAL_SCOPES
+      - REFS_PARTITIONED_RULESETS_WITH_NO_GLOBAL_BYPASS
+      - AUTHORIZED_RUNTIME_INGRESS_PUBLISHER_SMOKE
+      - DENIED_CROSS_ROLE_WRITES_WITHOUT_DESTRUCTIVE_LIVE_TEST
+      - PRESERVE_STAGE1_NON_FAST_FORWARD_AND_DELETION_RULE_NO_BYPASS
+    stage2_ruleset_activation: NOT_AUTHORIZED_UNTIL_CREDENTIALS_PROVISIONED_AND_TESTED
+    canonical_task334_revision2: NOT_AUTHORED
+    planning_next: WRITER_CREDENTIAL_PROVISIONING_THEN_ONE_END_TO_END_TASK334_REVISION2
+    no_new_task_or_RUN: true
+    no_automatic_roadmap_progression: true
   vp03d_stage2_writer_ownership_audit_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     fact_snapshot_main_sha: a012534110f4f6c6d09b3cf44df0ba0bae67c447
