@@ -663,6 +663,50 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03d_terminal_trust_choice_and_ref_writer_preflight_2026_10_10:
+    authority: HUMAN_BRAIN_PLANNING
+    human_approved_boundary: EXISTING_ADMITTED_RUNTIME_PLUS_PROTECTED_CANONICAL_TRANSPORT_PLUS_INDEPENDENTLY_CANONICALIZED_REVIEW_INGRESS
+    human_approved_future_scope: PROSPECTIVE_TASK334_REVISION2_END_TO_END_ONLY_IF_WRITER_TRUST_VERIFIED
+    implementation_goal: TERMINAL_PROVENANCE_SOURCE_TO_TRANSPORT_TO_REVIEW_TO_READ_ONLY_CONSUMER
+    prefer_reuse:
+      - PUBLISHED_TASK335_OWNER_OBSERVATIONS
+      - IMMUTABLE_FAILED_TASK334_SAFE_RAW_SOURCE_CANDIDATE_SUBJECT_TO_LAWFUL_REUSE
+      - IMMUTABLE_FAILED_TASK333_HANDOFF_CONTENT_SUBJECT_TO_LAWFUL_REUSE
+    assessment_main_sha: 1ed585b10dd73ea2a27ad528b74267f8423b40bd
+    repo_public: true
+    observed_primary_repository_admin: trung-via
+    observed_main_branch_protected: false
+    observed_artifacts_example_branch_protected: false
+    observed_review_example_branch_protected: false
+    observed_review_decision_example_branch_protected: false
+    observed_repository_rulesets: NONE
+    observed_workflow_permissions: CONTENTS_WRITE
+    collaborator_writer_population: NOT_VERIFIED
+    effective_protected_ref_writer_boundary: NOT_ESTABLISHED
+    github_branch_protection_detailed_api: INTEGRATION_403
+    trust_assessment: BLOCKED_PENDING_WRITER_POLICY_AND_EXTERNAL_ISSUER_AUTHENTICATION
+    actor_policy_observation_is_not_authenticated_reviewer_verdict: true
+    git_sha_is_content_identity_not_producer_AUTHENTICATION: true
+    requirement_to_prove_before_author_task334_r2:
+      - CANONICAL_WRITER_POLICY_CONSTRAINS_CRITICAL_SOURCE_RESULT_AND_REVIEW_REFS
+      - EXISTING_RUNTIME_OWNER_AND_REVIEW_INGRESS_HAVE_DISTINCT_PROVABLE_PROVENANCE
+      - PROTECTED_RAW_LOCALITY_AND_NONEXPORT
+      - EXACT_REMOTE_CURRENTNESS_SEMANTICS_WITHOUT_FALSE_ATOMIC_CAS_CLAIM
+      - END_TO_END_TESTABLE_POSITIVE_AND_NEGATIVE_PATHS
+      - CONFORMANT_REVISION2_SCOPE_AND_ACCEPTANCE_WITH_NO_IMPOSSIBLE_PROOF
+    no_new_trust_service_or_registry: true
+    preterminal_and_checkpoint_activation: NOT_AUTHORIZED
+    no_implied_HUMAN_AUTHORIZATION_TO_CHANGE_GITHUB_SECURITY_SETTINGS: true
+    no_task_revision_authored_or_ingressed: true
+    no_repair_dispatch: true
+    no_new_task_created: true
+    preserve_immutable_task333_and_task334_failure: true
+    preserve_task334_sticky_executor: true
+    unique_root_next: verification-architecture-replacement-v1-vp03-evidence-validity
+    next_action: EXPLICIT_HUMAN_WRITER_POLICY_DECISION_OR_AUTHORITATIVE_ADMISSION_EVIDENCE
+    vp01_status: DEFERRED_NOT_WAIVED
+    vp02_full_exit: NOT_ESTABLISHED
+    vp03_full_exit: NOT_ESTABLISHED
   vp03_post_task335_publication_reconciliation_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     human_intent: CONTINUE_UNIQUE_VP03_NEXT_AFTER_TASK335_REVIEW_PASS_PUBLISHED
