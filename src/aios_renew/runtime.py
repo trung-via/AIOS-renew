@@ -184,17 +184,6 @@ class RuntimeCompletion:
         self.interruption_phase = "COMPLETION_GATE"
         self.verification_subject_sha: str | None = None
 
-    @property
-    def owner_provenance(self):
-        """Read subordinate admission facts; constructors confer no origin."""
-        from .runtime_provenance_owner import read_owner_provenance
-        return read_owner_provenance(self)
-
-    @property
-    def source_provenance(self):
-        from .runtime_provenance_issuer import read_source_provenance
-        return read_source_provenance(self)
-
     def complete(
         self, package: ResultPackage, policy: CompletionPolicy
     ) -> CompletionOutcome:
@@ -319,10 +308,8 @@ class RuntimeCompletion:
         observation_path = persist_terminal_observation(
             self.state, self.observation_tracker, "RESULT"
         )
-        from .runtime_provenance_issuer import _prepare_terminal, _finish_terminal
-        source_ticket = _prepare_terminal(self, canonical_package, result_path)
         try:
-            terminal_artifact_sha = transport_post_pass(
+            transport_post_pass(
                 self.transport_repo,
                 run_id=self.run.run_id,
                 head_sha=actual_head,
@@ -333,7 +320,6 @@ class RuntimeCompletion:
             )
         except ReviewTransportError as exc:
             self._raise(f"review transport failed: {exc}", cause=exc)
-        _finish_terminal(self, source_ticket, terminal_artifact_sha)
         return CompletionOutcome(actual_head, result_path, observation_path)
 
     def _canonicalize_repair_changed_files(

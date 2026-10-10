@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from .return_affinity import document_affinity
-from .runtime_provenance_issuer import public_run, public_result, public_metadata
 
 import hashlib
 import json
@@ -24,6 +23,69 @@ from .terminal_attention import (
 
 class ReviewTransportError(RuntimeError):
     """Raised when post-PASS review or artifact transport fails."""
+
+
+PUBLIC_ARTIFACT_MAX_BYTES = 1024 * 1024
+
+
+def public_metadata(content: bytes) -> bytes:
+    """Project local terminal records for public Git transport only.
+
+    Keep canonical identities, commands and verification records intact. Raw
+    locators and diagnostic text are local; their public placeholders confer no
+    raw availability, proof reuse or source issuance authority.
+    """
+    if len(content) > PUBLIC_ARTIFACT_MAX_BYTES:
+        raise ReviewTransportError("public artifact exceeds byte bound")
+
+    def safe(value: Any, depth: int = 0) -> Any:
+        if depth > 64:
+            raise ReviewTransportError("public artifact exceeds nesting bound")
+        if isinstance(value, list):
+            return [safe(item, depth + 1) for item in value]
+        if not isinstance(value, dict):
+            return value
+        data = {key: safe(item, depth + 1) for key, item in value.items()}
+        if "run_id" in data and "workspace" in data and "task" in data:
+            data["workspace"] = "protected-runtime-workspace"
+        if "evidence_id" in data and "raw" in data:
+            identity = data["evidence_id"]
+            if not isinstance(identity, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,96}", identity):
+                raise ReviewTransportError("unsafe public evidence identity")
+            outcome = data.get("result")
+            if not isinstance(outcome, dict) or type(outcome.get("exit_code")) is not int:
+                raise ReviewTransportError("invalid public evidence outcome")
+            data["raw"] = {"path": "protected-runtime-raw/" + identity}
+            # Preserve the existing recovery status marker without its private
+            # free text; Publisher still checks the original V2 bindings.
+            outcome["summary"] = (
+                "Runtime VALID: reused protected Runtime proof."
+                if isinstance(outcome.get("summary"), str)
+                and outcome["summary"].startswith("Runtime VALID: reused ")
+                else "Runtime verification exit code " + str(outcome["exit_code"])
+            )
+        if data.get("kind") == "FAILURE" and isinstance(data.get("error"), dict):
+            error = data["error"]
+            # Diagnostic extensions never enter the public tree. Preserve the
+            # lifecycle classification and exact verification/source bindings.
+            data["error"] = {key: item for key, item in error.items()
+                             if key in {"type", "exit_code", "verification"}}
+            data["error"]["message"] = "Protected Runtime diagnostics remain local."
+            verification = data["error"].get("verification", [])
+            for index, item in enumerate(verification):
+                if not isinstance(item, dict) or type(item.get("exit_code")) is not int:
+                    raise ReviewTransportError("invalid public failure verification outcome")
+                verification[index] = {key: value for key, value in item.items()
+                                       if key in {"command", "exit_code", "verification"}}
+                verification[index]["summary"] = "Runtime verification exit code " + str(item["exit_code"])
+        return data
+
+    try:
+        data = _performance_json_mapping(content, "public artifact")
+        return json.dumps(safe(data), sort_keys=True, separators=(",", ":"),
+                          allow_nan=False).encode("utf-8")
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise ReviewTransportError("invalid public artifact projection") from exc
 
 
 class RemoteQueryError(ReviewTransportError):
@@ -254,12 +316,6 @@ PERFORMANCE_MAX_TERMINAL_RUNS = 256
 
 
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
-    from .runtime_writer_broker import broker_git_push
-    protected = broker_git_push(repo, args)
-    if protected is not None:
-        if protected[0] and not allow_fail:
-            raise ReviewTransportError(protected[2])
-        return protected
     try:
         completed = subprocess.run(
             ("git", "-C", str(repo), *args),
@@ -953,7 +1009,7 @@ def resolve_remote_task_lifecycle(
             if bound_revision != task_revision:
                 continue
             admitted = publication_admissions.get(run_id)
-            if admitted is not None and _json_mapping(admitted[0], "admitted RUN") != _json_mapping(run, "terminal RUN"):
+            if admitted is not None and public_metadata(admitted[0]) != public_metadata(run):
                 raise ReviewTransportError("publication terminal RUN differs from admitted RUN")
             terminal = _read_lifecycle_blob(repo, remote, artifact_sha, terminal_path)
             correction = _read_lifecycle_blob(
@@ -1897,7 +1953,7 @@ def _create_artifacts_commit(
     if not result_path.is_file():
         raise ReviewTransportError(f"persisted canonical ResultPackage JSON missing: {result_path}")
 
-    run_bytes = public_run(run_path.read_bytes())
+    run_bytes = public_metadata(run_path.read_bytes())
     try:
         proc = subprocess.run(
             ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
@@ -1909,7 +1965,7 @@ def _create_artifacts_commit(
     except Exception as exc:
         raise ReviewTransportError(f"failed to hash run.json: {exc}") from exc
 
-    result_bytes = public_result(result_path.read_bytes())
+    result_bytes = public_metadata(result_path.read_bytes())
     try:
         proc = subprocess.run(
             ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
@@ -2091,9 +2147,9 @@ def _create_named_artifacts_commit(
         try:
             proc = subprocess.run(
                 ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
-                input=(public_run(path.read_bytes()) if name == "run.json" else
-                       public_result(path.read_bytes()) if name == "result.json" else
-                       public_metadata(path.read_bytes()) if name in {"failure.json", "repair.json", "pre-verification-candidate.json"} else path.read_bytes()),
+                input=(public_metadata(path.read_bytes()) if name in {
+                    "run.json", "result.json", "failure.json", "repair.json",
+                    "pre-verification-candidate.json"} else path.read_bytes()),
                 capture_output=True, check=True,
             )
             blobs[name] = proc.stdout.decode("utf-8", errors="strict").strip()
@@ -2141,7 +2197,7 @@ def transport_failure(
     _validate_transport_affinity(repo, run_path.read_bytes(), head_sha,
                                  lineage_path.read_bytes() if lineage_path is not None else None)
     expected = {
-        ".ai/transport/run.json": public_run(run_path.read_bytes()),
+        ".ai/transport/run.json": public_metadata(run_path.read_bytes()),
         ".ai/transport/failure.json": public_metadata(failure_path.read_bytes()),
     }
     if lineage_path is not None:
@@ -2230,8 +2286,7 @@ def transport_failure(
         terminal_artifact_sha = commit
         specs.append(f"{commit}:{artifacts_ref}")
     if specs:
-        code, _, stderr = _git_cmd(repo, "push", "--no-tags", "--atomic",
-            *(f"--force-with-lease={spec.split(':', 1)[1]}:" for spec in specs), remote, *specs, allow_fail=True)
+        code, _, stderr = _git_cmd(repo, "push", "--no-tags", remote, *specs, allow_fail=True)
         if code:
             raise ReviewTransportError(f"failed to push transport refs to {remote}: {stderr}")
     assert terminal_artifact_sha is not None
@@ -2738,7 +2793,7 @@ def transport_post_pass(
     observation_path: Path | None = None,
     execution_profile_path: Path | None = None,
     publication_recovery_path: Path | None = None,
-) -> str:
+) -> None:
     """Publish aios/review/<RUN_ID> and aios/artifacts/<RUN_ID> to upstream remote."""
     remote = resolve_transport_remote(repo)
     review_ref = f"refs/heads/aios/review/{run_id}"
@@ -2749,8 +2804,8 @@ def transport_post_pass(
     if not result_path.is_file():
         raise ReviewTransportError(f"persisted canonical ResultPackage JSON missing: {result_path}")
 
-    expected_run_bytes = public_run(run_path.read_bytes())
-    expected_result_bytes = public_result(result_path.read_bytes())
+    expected_run_bytes = public_metadata(run_path.read_bytes())
+    expected_result_bytes = public_metadata(result_path.read_bytes())
     original_run_bytes, original_result_bytes = run_path.read_bytes(), result_path.read_bytes()
     original_lineage_bytes = lineage_path.read_bytes() if lineage_path is not None else None
     expected_lineage_bytes = public_metadata(original_lineage_bytes) if original_lineage_bytes is not None else None
@@ -2849,7 +2904,8 @@ def transport_post_pass(
         push_specs.append(f"{artifacts_commit_sha}:{artifacts_ref}")
 
     if push_specs:
-        recovery_cas = ["--atomic", *(f"--force-with-lease={spec.split(':', 1)[1]}:" for spec in push_specs)]
+        recovery_cas = (["--atomic", *(f"--force-with-lease={spec.split(':', 1)[1]}:"
+                         for spec in push_specs)] if publication_recovery_path is not None else [])
         code, _, stderr = _git_cmd(repo, "push", "--no-tags", *recovery_cas,
                                    remote, *push_specs, allow_fail=True)
         if code != 0:
@@ -2867,4 +2923,3 @@ def transport_post_pass(
         raise ReviewTransportError(
             f"terminal RESULT is canonical but attention delivery failed: {exc}"
         ) from exc
-    return artifacts_commit_sha

@@ -4361,6 +4361,23 @@ def test_publication_unchanged_proof_is_reused_with_distinct_integration_guard(t
     assert receipt["source_evidence_id"] == source.evidence_id
     assert receipt["source_verification"] == source.verification and raw.read_bytes() == b"original observed pass"
     assert evidence[-1].type == "PUBLICATION_INTEGRATION"
+    # Public redaction preserves the original V2 digests and the existing
+    # recovery status marker; a public raw placeholder never supplies raw bytes.
+    from aios_renew.artifacts import validate_evidence
+    from aios_renew.runtime import result_package_data
+    from aios_renew.review_transport import public_metadata
+    from aios_renew.artifacts import Result, ResultPackage
+    public = json.loads(public_metadata(json.dumps(result_package_data(
+        ResultPackage(Result(arguments["subject_sha"], (), ("product.txt",), ()), evidence)
+    )).encode()))
+    projected = validate_evidence(public["evidence"][0])
+    assert projected.verification == evidence[0].verification
+    assert (projected.evidence_id, projected.run_id, projected.subject_sha, projected.source) == (
+        evidence[0].evidence_id, evidence[0].run_id, evidence[0].subject_sha, evidence[0].source)
+    assert projected.result.summary == "Runtime VALID: reused protected Runtime proof."
+    assert projected.raw_path == "protected-runtime-raw/" + projected.evidence_id
+    assert str(tmp_path) not in json.dumps(public)
+    assert Path(evidence[0].raw_path).is_file() and raw.read_bytes() == b"original observed pass"
 
 
 @pytest.mark.parametrize("condition", ["profile", "toolchain", "test", "fixture", "helper", "missing-raw", "missing-evidence", "ambiguous-evidence"])

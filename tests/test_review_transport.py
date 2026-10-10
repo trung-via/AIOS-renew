@@ -326,7 +326,12 @@ def publish_failure(
             preverification_path if preverification is not None else None
         ),
     )
-    return run_bytes, failure_bytes, lineage_bytes, preverification
+    return (
+        review_transport.public_metadata(run_bytes),
+        review_transport.public_metadata(failure_bytes),
+        review_transport.public_metadata(lineage_bytes) if lineage_bytes is not None else None,
+        review_transport.public_metadata(preverification) if preverification is not None else None,
+    )
 
 
 def publish_success(
@@ -1920,3 +1925,205 @@ def test_delivery_alias_rejects_identical_bytes_at_conflicting_commits(tmp_path:
             repo, family="PRIMARY", delivery_id=payload["dispatch_id"],
         )
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+@pytest.mark.parametrize("terminal_kind", ["RESULT", "FAILURE"])
+@pytest.mark.parametrize("run_kind", ["PRIMARY", "REMEDIATION"])
+def test_terminal_public_views_keep_bindings_and_private_originals_local(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, terminal_kind: str, run_kind: str
+) -> None:
+    from aios_renew.artifacts import validate_evidence
+
+    repo, remote = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-058-990"
+    secret = "fixture-secret-token"
+    private_path = str(tmp_path / "private-workspace")
+    diagnostic = secret + " " + private_path + " " + "raw log\n" * 1000
+    run = dict(run_id=run_id, task=TASK, executor="codex", base_sha=head,
+               workspace=private_path, head_sha=None, status="ACTIVE")
+    run_document = run if run_kind == "PRIMARY" else {"kind": "REMEDIATION", "execution": {"run": run}}
+    evidence = dict(evidence_id=run_id + "-V001", run_id=run_id, subject_sha=head,
+                    type="VERIFICATION", source={"command": "python -m pytest -q tests/test_product.py"},
+                    result={"exit_code": 0, "summary": diagnostic},
+                    raw={"path": private_path + "/verification/raw.log", "original": diagnostic})
+    package = {"result": {"head_sha": head, "claims": [{"id": "C1", "satisfies": ["AC1"],
+                "claim": "Implemented the change.", "evidence": [evidence["evidence_id"]]}],
+                "changed_files": [], "unresolved": []}, "evidence": [evidence]}
+    structural = json.loads(json.dumps(package))
+    structural["evidence"] = []
+    structural["result"]["claims"][0]["evidence"] = []
+    failure = dict(kind="FAILURE", run_id=run_id, task=TASK, executor="codex", base_sha=head,
+                   failed_head_sha=head, phase="VERIFICATION",
+                   candidate=dict(transportable=True, repairable=True, dirty=False,
+                                  descends_from_base=True, changed_files=[], outside_task_scope=[]),
+                   error=dict(type="RuntimeVerificationError", message=diagnostic,
+                              native_diagnostics={"stdout": diagnostic},
+                              executor_diagnostics={"unresolved": [diagnostic]},
+                              verification=[dict(command=evidence["source"]["command"], exit_code=1,
+                                                 summary=diagnostic, raw_path=private_path, stderr=diagnostic)]))
+    predecessor = dict(failure, run_id="RUN-058-989")
+    lineage = dict(failed_run_id=predecessor["run_id"], root_base_sha=head, failed_head_sha=head,
+                   failure=predecessor, task={"task_id": TASK["id"], "revision": TASK["revision"]},
+                   repair={"repair_id": "REPAIR-058-989", "failed_run_id": predecessor["run_id"],
+                           "failed_head_sha": head, "task": TASK, "action": "NO_CHANGE",
+                           "modification_scope": [], "instructions": [], "constraints": []}, run=run)
+    files = tmp_path / "private-files"
+    run_path, result_path = files / "run.json", files / "result.json"
+    failure_path, lineage_path = files / "failure.json", files / "repair.json"
+    preverification_path = files / "pre-verification-candidate.json"
+    originals = {
+        run_path: write_json(run_path, run_document),
+        result_path: write_json(result_path, package),
+        failure_path: write_json(failure_path, failure),
+        lineage_path: write_json(lineage_path, lineage),
+        preverification_path: write_json(preverification_path, dict(kind="PRE_VERIFICATION_CANDIDATE",
+            run_id=run_id, task=TASK, subject_sha=head, package=structural)),
+    }
+    monkeypatch.setattr(review_transport, "publish_terminal_attention", lambda *args, **kwargs: "PUBLISHED")
+
+    def deliver() -> None:
+        if terminal_kind == "RESULT":
+            transport_post_pass(repo, run_id=run_id, head_sha=head, run_path=run_path,
+                                result_path=result_path, lineage_path=lineage_path)
+        else:
+            transport_failure(repo, run_id=run_id, head_sha=head, run_path=run_path,
+                              failure_path=failure_path, lineage_path=lineage_path,
+                              preverification_path=preverification_path)
+
+    deliver()
+    namespace = "artifacts" if terminal_kind == "RESULT" else "failure-artifacts"
+    artifact_ref = f"refs/heads/aios/{namespace}/{run_id}"
+    artifact_sha = git(remote, "rev-parse", artifact_ref)
+    names = ["run.json", "repair.json", "result.json" if terminal_kind == "RESULT" else "failure.json"]
+    if terminal_kind == "FAILURE":
+        names.append("pre-verification-candidate.json")
+    views = {name: json.loads(git(remote, "show", f"{artifact_sha}:.ai/transport/{name}")) for name in names}
+    serialized = json.dumps(views)
+    assert secret not in serialized and private_path not in serialized and "raw log" not in serialized
+    public_run = views["run.json"] if run_kind == "PRIMARY" else views["run.json"]["execution"]["run"]
+    assert public_run == dict(run, workspace="protected-runtime-workspace")
+    assert views["repair.json"]["repair"] == lineage["repair"]
+    assert views["repair.json"]["failure"]["candidate"] == predecessor["candidate"]
+    public_package = views["result.json"] if terminal_kind == "RESULT" else views["pre-verification-candidate.json"]["package"]
+    if terminal_kind == "RESULT":
+        assert public_package["result"] == package["result"]
+        public_evidence = public_package["evidence"][0]
+        assert {key: public_evidence[key] for key in ("evidence_id", "run_id", "subject_sha", "type", "source")} == {
+            key: evidence[key] for key in ("evidence_id", "run_id", "subject_sha", "type", "source")}
+        assert validate_evidence(public_evidence).raw_path == "protected-runtime-raw/" + evidence["evidence_id"]
+        assert public_evidence["result"] == {"exit_code": 0, "summary": "Runtime verification exit code 0"}
+    else:
+        assert public_package == structural
+        assert views["failure.json"]["error"]["verification"] == [{
+            "command": evidence["source"]["command"], "exit_code": 1,
+            "summary": "Runtime verification exit code 1"}]
+    assert {path: path.read_bytes() for path in originals} == originals
+    refs = git(remote, "show-ref")
+    deliver()
+    assert git(remote, "show-ref") == refs
+    # A source-command or candidate-fact substitution is still a conflict.
+    if terminal_kind == "RESULT":
+        evidence["source"]["command"] = "different-proof"
+        write_json(result_path, package)
+    else:
+        failure["candidate"]["dirty"] = True
+        write_json(failure_path, failure)
+    with pytest.raises(ReviewTransportError, match="different artifact content"):
+        deliver()
+    assert git(remote, "show-ref") == refs
+
+
+@pytest.mark.parametrize("terminal_kind", ["RESULT", "FAILURE"])
+def test_legacy_terminal_replay_preserves_original_artifact_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, terminal_kind: str
+) -> None:
+    repo, remote = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-058-991"
+    files = tmp_path / "legacy-files"
+    run_path, artifact_path = files / "run.json", files / "terminal.json"
+    original_run = write_json(run_path, dict(run_id=run_id, task=TASK, executor="codex",
+        base_sha=head, workspace="historical-private-workspace", head_sha=None, status="ACTIVE"))
+    artifact = ({"result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []}, "evidence": []}
+                if terminal_kind == "RESULT" else dict(kind="FAILURE", run_id=run_id, task=TASK,
+                    executor="codex", base_sha=head, failed_head_sha=head, phase="EXECUTION",
+                    error={"type": "RuntimeError", "message": "historical diagnostics"},
+                    candidate={"repairable": True, "changed_files": []}))
+    original_artifact = write_json(artifact_path, artifact)
+    monkeypatch.setattr(review_transport, "publish_terminal_attention", lambda *args, **kwargs: "PUBLISHED")
+
+    def deliver() -> None:
+        if terminal_kind == "RESULT":
+            transport_post_pass(repo, run_id=run_id, head_sha=head, run_path=run_path, result_path=artifact_path)
+        else:
+            transport_failure(repo, run_id=run_id, head_sha=head, run_path=run_path, failure_path=artifact_path)
+
+    # Model an immutable pre-redaction ref in this disposable repository.
+    with monkeypatch.context() as legacy:
+        legacy.setattr(review_transport, "public_metadata", lambda content: content)
+        deliver()
+    refs = git(remote, "show-ref")
+    deliver()
+    assert git(remote, "show-ref") == refs
+    namespace = "artifacts" if terminal_kind == "RESULT" else "failure-artifacts"
+    commit = git(remote, "rev-parse", f"refs/heads/aios/{namespace}/{run_id}")
+    name = "result.json" if terminal_kind == "RESULT" else "failure.json"
+    assert git(remote, "show", f"{commit}:.ai/transport/run.json").encode() == original_run
+    assert git(remote, "show", f"{commit}:.ai/transport/{name}").encode() == original_artifact
+
+
+@pytest.mark.parametrize("content", [
+    b'{"run_id":"first","run_id":"second"}',
+    b'{"value":NaN}',
+    b'{"evidence_id":"../private","raw":{},"result":{"exit_code":0}}',
+    b'{"evidence_id":"E1","raw":{},"result":{"exit_code":true}}',
+    b'{"nested":' + b'[' * 70 + b'0' + b']' * 70 + b'}',
+    b' ' * (review_transport.PUBLIC_ARTIFACT_MAX_BYTES + 1),
+])
+def test_public_projection_rejects_ambiguous_unsafe_or_unbounded_records(content: bytes) -> None:
+    with pytest.raises(ReviewTransportError):
+        review_transport.public_metadata(content)
+
+
+@pytest.mark.parametrize("surface", ["ingress", "transport", "publisher"])
+@pytest.mark.parametrize("config_content", [b"", b'{"endpoint":"retired-service"}'])
+@pytest.mark.parametrize("status", [0, 128])
+def test_git_writers_keep_existing_credentials_and_failure_semantics_without_broker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, surface: str, config_content: bytes, status: int
+) -> None:
+    from aios_renew import authoring_ingress, publication
+
+    protected_config = Path("C:/ProgramData/AIOS/owner-client.json")
+    real_is_file, real_read = Path.is_file, Path.read_bytes
+    config_reads = []
+    monkeypatch.setattr(Path, "is_file", lambda path: True if path == protected_config else real_is_file(path))
+
+    def read(path: Path) -> bytes:
+        if path == protected_config:
+            config_reads.append(path)
+            return config_content
+        return real_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read)
+    calls = []
+
+    def invoke(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, status, stdout=b"", stderr=b"permission denied" if status else b"")
+
+    monkeypatch.setattr(subprocess, "run", invoke)
+    call, error_type = {
+        "ingress": (authoring_ingress._git, authoring_ingress.AuthoringIngressError),
+        "transport": (review_transport._git_cmd, ReviewTransportError),
+        "publisher": (publication._git, RuntimeError),
+    }[surface]
+    args = ("push", "--no-tags", "--force-with-lease=refs/heads/main:" + "a" * 40,
+            "origin", "b" * 40 + ":refs/heads/main")
+    if status:
+        with pytest.raises(error_type):
+            call(tmp_path, *args)
+    else:
+        assert call(tmp_path, *args)[0] == 0
+    assert len(calls) == 1 and calls[0][0] == ("git", "-C", str(tmp_path), *args)
+    assert config_reads == []
+    assert call(tmp_path, *args, allow_fail=True)[0] == status
+    assert len(calls) == 2 and config_reads == []

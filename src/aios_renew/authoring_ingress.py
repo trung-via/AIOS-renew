@@ -72,7 +72,6 @@ from .return_affinity import (AffinityError, document_affinity, require_same_aff
 from .origin_authoring_proof import AdmittedOrigin, OriginProofError, PROOF
 from .task import Task, TaskValidationError, _TaskLoader, parse_task
 from .verification_contract import CURRENT_VERIFICATION_POLICY
-from .runtime_provenance_owner import _observe_review, read_owner_provenance
 from .unified_state import observe_unified_state
 
 if TYPE_CHECKING:
@@ -175,16 +174,6 @@ class IngressResult:
     canonical_sha: str = ""
     replayed: bool = False
     detail: str = ""
-
-    @property
-    def owner_provenance(self):
-        """Prospective read-only origin; absent on manually constructed results."""
-        return read_owner_provenance(self)
-
-    @property
-    def source_provenance(self):
-        from .runtime_provenance_issuer import read_source_provenance
-        return read_source_provenance(self)
 
     def render(self) -> str:
         return (
@@ -667,7 +656,7 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
                     repo, remote, run_id, candidate_sha, existing_decision_sha,
                     decision_exists=True,
                 )
-            ingress_result = IngressResult(
+            return IngressResult(
                 operation="SUBMIT_REVIEW",
                 status="IDEMPOTENT",
                 canonical_destination=decision_ref,
@@ -675,10 +664,6 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
                 replayed=True,
                 detail=f"identical REVIEW already canonicalized for {run_id}",
             )
-            _observe_review(ingress_result)
-            from .runtime_provenance_issuer import _issue_review
-            _issue_review(ingress_result)
-            return ingress_result
         raise AuthoringIngressError(
             f"conflicting review decision already exists on {decision_ref}"
         )
@@ -931,7 +916,7 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
     # A PASS owner is intentionally retained across the durable write and the
     # asynchronous Publisher continuation. Ingress has no main publication authority.
 
-    ingress_result = IngressResult(
+    return IngressResult(
         operation="SUBMIT_REVIEW",
         status="CANONICALIZED",
         canonical_destination=decision_ref,
@@ -939,10 +924,6 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
         replayed=False,
         detail=f"canonicalized {review.verdict} review decision for {run_id}",
     )
-    _observe_review(ingress_result)
-    from .runtime_provenance_issuer import _issue_review
-    _issue_review(ingress_result)
-    return ingress_result
 
 
 # ---------------------------------------------------------------------------
@@ -2216,12 +2197,6 @@ def _query_matching_refs(
 def _git(
     repo: Path, *args: str, strip_stdout: bool = True, allow_fail: bool = False
 ) -> tuple[int, str, str]:
-    from .runtime_writer_broker import broker_git_push
-    protected = broker_git_push(repo, args)
-    if protected is not None:
-        if protected[0] and not allow_fail:
-            raise AuthoringIngressError(protected[2])
-        return protected
     env = dict(os.environ)
     env.setdefault("GIT_AUTHOR_NAME", "AIOS Ingress")
     env.setdefault("GIT_AUTHOR_EMAIL", "aios-ingress@example.invalid")

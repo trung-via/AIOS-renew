@@ -5026,7 +5026,7 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
         "show",
         "refs/heads/aios/failure-artifacts/RUN-101-001:"
         ".ai/transport/pre-verification-candidate.json",
-    ).encode() == first_sidecar.read_bytes()
+    ).encode() == transport_module.public_metadata(first_sidecar.read_bytes())
 
     def authorization(run_id: str) -> dict:
         failure = json.loads(
@@ -5181,7 +5181,7 @@ def test_retry_failure_transport_preserves_preverification_sidecar(
         "show",
         "refs/heads/aios/failure-artifacts/RUN-101-001:"
         ".ai/transport/pre-verification-candidate.json",
-    ).encode() == sidecar.read_bytes()
+    ).encode() == transport_module.public_metadata(sidecar.read_bytes())
 
 
 def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
@@ -5272,7 +5272,7 @@ def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
     persisted_lineage = (state.repairs / "RUN-101-002.json").read_text(
         encoding="utf-8"
     ).strip()
-    assert transported_lineage == persisted_lineage
+    assert transported_lineage.encode() == transport_module.public_metadata(persisted_lineage.encode())
 
     summary = run_repair(
         continuation_run_id,

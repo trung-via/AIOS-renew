@@ -34,6 +34,7 @@ from .review import (
 )
 from .review_transport import (
     ReviewTransportError,
+    public_metadata,
     resolve_remote_repair_authorization,
     validate_runtime_failure_binding,
 )
@@ -357,12 +358,6 @@ class PublicationReport:
 def _git(
     repo: Path, *args: str, allow_fail: bool = False
 ) -> tuple[int, str, str]:
-    from .runtime_writer_broker import broker_git_push
-    protected = broker_git_push(repo, args)
-    if protected is not None:
-        if protected[0] and not allow_fail:
-            raise RuntimeError(protected[2])
-        return protected
     try:
         completed = subprocess.run(
             ("git", "-C", str(repo), *args),
@@ -1444,7 +1439,7 @@ def _repair_review_lineage(
     ):
         raise ValueError("REPAIR root or failed-head SHA is invalid")
     embedded_run = _mapping(lineage.get("run"), "REPAIR execution.run")
-    if dict(embedded_run) != dict(child_run_data):
+    if public_metadata(json.dumps(dict(embedded_run)).encode()) != public_metadata(json.dumps(dict(child_run_data)).encode()):
         raise ValueError("REPAIR execution RUN does not match successful RUN")
     if child_run.base_sha != failed_head_sha:
         raise ValueError("REPAIR RUN base_sha does not match failed_head_sha")
@@ -1487,7 +1482,6 @@ def _repair_review_lineage(
     embedded_failure = _mapping(lineage.get("failure"), "REPAIR execution.failure")
     expected_task = {"id": task.task_id, "revision": task.revision}
     failure_task = _mapping(failure.get("task"), "predecessor FAILURE.task")
-    from .runtime_provenance_issuer import public_metadata
     if (
         # Private diagnostics are unavailable in new public privacy views.
         # Exact canonical artifact SHAs and all lifecycle identity fields still
@@ -2374,7 +2368,8 @@ def validate_publication_recovery(repo: Path, *, remote: str, raw: bytes,
             or admission["identity"] != plan.identity
             or publication_plan_from_data(admission["plan"]) != plan
             or not isinstance(admission["reservation_sha"], str)
-            or _SHA.fullmatch(admission["reservation_sha"]) is None or admitted_run != run):
+            or _SHA.fullmatch(admission["reservation_sha"]) is None
+            or public_metadata(json.dumps(asdict(admitted_run)).encode()) != public_metadata(json.dumps(asdict(run)).encode())):
         raise ValueError("publication recovery lacks exact Runtime admission")
     if _single_remote_sha(repo, remote, f"refs/heads/aios/artifacts/{plan.source_run_id}", run_id=run.run_id) != plan.artifacts_sha:
         raise ValueError("original immutable RESULT provenance changed")

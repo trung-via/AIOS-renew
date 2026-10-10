@@ -143,6 +143,38 @@ def evidence_for(run_id: str, subject_sha: str, commands: tuple[str, ...]):
     )
 
 
+@pytest.mark.parametrize("fault", ["task", "run", "candidate", "missing-proof", "executor-evidence"])
+def test_primary_rejects_substituted_bindings_and_executor_proof_without_terminal_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    if fault == "task":
+        run = replace(run, task=replace(run.task, revision=run.task.revision + 1))
+    if fault == "candidate":
+        package = replace(package, result=replace(package.result, head_sha="different-candidate"))
+    if fault == "executor-evidence":
+        package = replace(package, evidence=evidence_for(run.run_id, "head", ("verify-one",)))
+
+    def verify(commands, **kwargs):
+        items = evidence_for(kwargs["run_id"], kwargs["subject_sha"], tuple(commands))
+        if fault == "run":
+            return (replace(items[0], run_id="RUN-052-999"), *items[1:])
+        if fault == "missing-proof":
+            return items[:1]
+        return items
+
+    monkeypatch.setattr(runtime_module, "execute_verification", verify)
+    monkeypatch.setattr(runtime_module, "transport_post_pass", lambda *args, **kwargs: pytest.fail("invalid proof transported"))
+    completion = StubRuntimeCompletion(
+        repo=tmp_path, state=state, task=task, run=run, run_path=run_path,
+        verification_runner=lambda *args, **kwargs: None, observation_tracker=None,
+        error_type=BoundaryError, head_sha="head", changed_files={"OUTPUT.txt"},
+    )
+    with pytest.raises(BoundaryError):
+        completion.complete(package, primary_completion_policy(task, base_sha=run.base_sha))
+    assert not (state.results / f"{run.run_id}.json").exists()
+
+
 def test_v2_completion_uses_one_derivation_boundary_with_admitted_bindings(tmp_path, monkeypatch):
     task, run, state, run_path, package = completion_fixture(tmp_path)
     task = replace(task, verification=replace(task.verification, policy="minimum-sufficient-v2"))

@@ -102,6 +102,7 @@ from .review_transport import (
     transport_admission_failure,
     transport_failure,
     transport_post_pass,
+    public_metadata,
     validate_runtime_failure_binding,
     prove_remote_failed_candidate,
     _exact_remote_refs,
@@ -114,6 +115,7 @@ from .run_observation import (
 from .runtime import (
     RuntimeCompletion,
     persist_failure,
+    result_package_data,
     primary_completion_policy,
     remediation_completion_policy,
     repair_completion_policy,
@@ -133,7 +135,6 @@ from .review import (
 from .return_affinity import document_affinity, require_same_affinity
 from .task import Task, TaskValidationError, parse_task
 from .verification import VerificationRunner
-from .runtime_provenance_owner import _observe_operator
 
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
@@ -1492,7 +1493,6 @@ def _run_task_impl(
             error_type=OperatorError,
         )
         attempt.bind_completion(runtime_completion)
-        _observe_operator(runtime_completion)
         completion = runtime_completion.complete(
             package, primary_completion_policy(task, base_sha=base_sha)
         )
@@ -2079,8 +2079,10 @@ def recover_publication_source(source_run_id: str, *, decision_sha: str,
                 run = Run.from_task(run_id=run_id, task=task, executor=source_run.executor,
                     base_sha=plan.main_sha, workspace=str(root))
             run_path = state.runs / (run.run_id + ".json")
-            if run_path.exists() and pub._run_from_data(json.loads(run_path.read_text(encoding="utf-8")), "RUN") != run:
-                raise OperatorError("publication recovery local RUN identity conflict")
+            if run_path.exists():
+                local_run = pub._run_from_data(json.loads(run_path.read_text(encoding="utf-8")), "RUN")
+                if _public_record(asdict(local_run)) != _public_record(asdict(run)):
+                    raise OperatorError("publication recovery local RUN identity conflict")
             if existing is None:
                 prospective_path = durable_path.parent / (run.run_id + "-prospective.json")
                 _write_json(prospective_path, asdict(run))
@@ -2113,7 +2115,6 @@ def recover_publication_source(source_run_id: str, *, decision_sha: str,
                 run_path=run_path, verification_runner=verification_runner,
                 observation_tracker=tracker, error_type=OperatorError, transport_repo=root)
             attempt.bind_completion(completion)
-            _observe_operator(completion)
             policy = primary_completion_policy(task, base_sha=run.base_sha)
             completion._require_executor_structure(structural)
             completion._require_task_result(structural, policy, actual_head=candidate)
@@ -2298,7 +2299,6 @@ def _recover_primary_impl(
             transport_repo=repo,
         )
         attempt.bind_completion(completion)
-        _observe_operator(completion)
         _prepare_historical_terminalization(repo, attempt)
         outcome = completion.complete(
             resolved_admission.structural_package,
@@ -2601,7 +2601,7 @@ def _resolve_repair_admission(
         origin_affected_verification = (
             resolved_admission.origin_affected_verification
         )
-        if local_failure is not None and dict(local_failure) != dict(failure):
+        if local_failure is not None and _public_record(local_failure) != _public_record(failure):
             raise OperatorError("local and canonical remote FAILURE conflict")
     else:
         failure = local_failure
@@ -2815,7 +2815,7 @@ def _resolve_repair_admission(
                     source_repo, failed_run_id, admission=admission
                 )
                 if (
-                    dict(canonical.failure) != dict(failure)
+                    _public_record(canonical.failure) != _public_record(failure)
                     or canonical.task != task
                     or canonical.root_base_sha != root_base_sha
                     or canonical.result_base_sha != result_base_sha
@@ -3053,7 +3053,6 @@ def _run_repair_impl(
             transport_repo=repo,
         )
         attempt.bind_completion(runtime_completion)
-        _observe_operator(runtime_completion)
         _prepare_historical_terminalization(repo, attempt)
         completion = runtime_completion.complete(
             package,
@@ -3178,9 +3177,9 @@ def _resolve_historical_repair_admission(
                 repair_execution.get("failed_run_id") != continuation
                 or repair_execution.get("failed_head_sha") != run.base_sha
                 or not isinstance(embedded_run, Mapping)
-                or dict(embedded_run) != dict(_decode_remote_mapping(artifact.run, "RUN"))
+                or _public_record(embedded_run) != public_metadata(artifact.run)
                 or not isinstance(embedded_failure, Mapping)
-                or dict(embedded_failure) != dict(predecessor[1])
+                or _public_record(embedded_failure) != _public_record(predecessor[1])
                 or (
                     authorization_sha is not None
                     and (
@@ -3395,6 +3394,15 @@ def _read_optional_bytes(path: Path) -> bytes | None:
         ) from exc
 
 
+def _public_record(data: Mapping[str, Any] | bytes) -> bytes:
+    """Compare lifecycle bindings across private and public transport views."""
+    try:
+        content = data if isinstance(data, bytes) else json.dumps(dict(data)).encode("utf-8")
+        return public_metadata(content)
+    except ReviewTransportError as exc:
+        raise OperatorError("invalid public lifecycle record") from exc
+
+
 def _repair_action_structure(failure: Mapping[str, Any]) -> dict[str, bool]:
     """Action-neutral prerequisites shared by authoring and execution admission.
 
@@ -3466,13 +3474,10 @@ def _nearest_same_head_repair_package(
             if artifact is None:
                 raise OperatorError("canonical same-head predecessor is missing")
             contents = (artifact.failure, artifact.run, artifact.repair, artifact.preverification)
-            for index, (local, canonical) in enumerate(zip(local_contents, contents)):
+            for local, canonical in zip(local_contents, contents):
                 if local is None:
                     continue
-                if index == 3:
-                    equal = local == canonical
-                else:
-                    equal = canonical is not None and mapping(local, "local lineage") == mapping(canonical, "canonical lineage")
+                equal = canonical is not None and _public_record(local) == _public_record(canonical)
                 if not equal:
                     raise OperatorError("local and canonical remote same-head lineage conflict")
         else:
@@ -3485,7 +3490,7 @@ def _nearest_same_head_repair_package(
 
     current_id = failure["run_id"]
     current, run_data, lineage, content = read(current_id)
-    if dict(current) != dict(failure):
+    if _public_record(current) != _public_record(failure):
         raise OperatorError("conflicting same-head target FAILURE")
     subject = failure["failed_head_sha"]
     seen: set[str] = set()
@@ -3560,8 +3565,10 @@ def _nearest_same_head_repair_package(
                 authorization = lineage.get("repair")
                 task_data = lineage.get("task")
                 if (
-                    lineage.get("run") != dict(run_data)
-                    or lineage.get("failure") != dict(predecessor)
+                    not isinstance(lineage.get("run"), Mapping)
+                    or _public_record(lineage["run"]) != _public_record(run_data)
+                    or not isinstance(lineage.get("failure"), Mapping)
+                    or _public_record(lineage["failure"]) != _public_record(predecessor)
                     or lineage.get("failed_run_id") != predecessor_id
                     or lineage.get("failed_head_sha") != predecessor.get("failed_head_sha")
                     or lineage.get("root_base_sha") != root_base_sha
@@ -3622,7 +3629,7 @@ def _eligible_reusable_repair_package(
     ):
         return None
 
-    if local_content is not None and local_content != content:
+    if local_content is not None and (content is None or _public_record(local_content) != _public_record(content)):
         raise OperatorError(
             "local and canonical remote pre-verification candidate conflict"
         )
@@ -3785,10 +3792,13 @@ def _validated_repair_remediation_source(
         pub._read_blob(repo, artifacts_sha, ".ai/transport/result.json", run_id=source_id),
         document="ResultPackage",
     )
-    if canonical_repair != repair or canonical_run != dict(run_data) or (
-        validate_result(canonical_result["result"]) != package.result
-        or tuple(validate_evidence(item) for item in canonical_result["evidence"]) != package.evidence
-    ):
+    canonical_package = ResultPackage(
+        validate_result(canonical_result["result"]),
+        tuple(validate_evidence(item) for item in canonical_result["evidence"]),
+    )
+    if (canonical_repair is None or _public_record(canonical_repair) != _public_record(repair)
+            or _public_record(canonical_run) != _public_record(run_data)
+            or _public_record(result_package_data(canonical_package)) != _public_record(result_package_data(package))):
         raise ValueError("substituted successful REPAIR source transport")
     decision_sha = pub._single_remote_sha(
         repo, remote, f"refs/heads/aios/review-decision/{source_id}", run_id=source_id,
@@ -7630,7 +7640,6 @@ def _run_remediation_impl(
         )
         if attempt is not None:
             attempt.bind_completion(runtime_completion)
-        _observe_operator(runtime_completion)
         completion_policy = remediation_completion_policy(execution)
         if resolved.cumulative:
             completion_policy = replace(
@@ -7945,7 +7954,6 @@ def _accept_candidate_impl(
             error_type=OperatorError,
         )
         attempt.bind_completion(runtime_completion)
-        _observe_operator(runtime_completion)
         completion = runtime_completion.complete(
             structural_package,
             completion_policy,
