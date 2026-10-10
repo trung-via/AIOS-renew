@@ -663,6 +663,47 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03d_git_writer_ruleset_policy_approval_2026_10_10:
+    authority: HUMAN_BRAIN_PLANNING
+    intent: HUMAN_APPROVED_PROTECT_CRITICAL_REFS_WITH_GITHUB_RULESETS_WHILE_PRESERVING_LAWFUL_WORKFLOWS
+    baseline_main_sha: 6a6529a7649d18393804bbf0e887b203c20a5500
+    repo: trung-via/AIOS-renew
+    rulesets_confirmed_before_change: NONE
+    github_admin_identity: trung-via
+    branch_integrity_coverage_requested:
+      - refs/heads/main
+      - refs/heads/aios/review/*
+      - refs/heads/aios/artifacts/*
+      - refs/heads/aios/review-decision/*
+      - refs/heads/aios/failure-artifacts/*
+    planned_policy_stage1: IMMUTABILITY_NON_FAST_FORWARD_AND_DELETION_PROTECTION_ON_CANONICAL_TERMINAL_REFS
+    planned_policy_stage2: RESTRICT_UPDATES_BY_EXPLICITLY_PROVEN_OWNER_SCOPED_WRITER_CREDENTIALS
+    stage2_owner_separation:
+      - RUNTIME_TERMINAL_ARTIFACT_WRITER
+      - REVIEW_DECISION_INGRESS_WRITER
+      - MAIN_AUTHOR_TASK_AND_PUBLISHER_WRITER_GATED_BY_DISTINCT_LIFECYCLE_PROTOCOL
+    stage2_prohibited_shortcut: UNIVERSAL_GITHUB_ACTIONS_OR_ALL_WORKFLOW_BYPASS
+    actions_default_write_tokens_do_not_ESTABLISH_PER_WORKFLOW_IDENTITY: true
+    migration_safety: DISABLED_PREPARE_THEN_ACTIVATE_IN_ORDER_AFTER_ROLE_SMOKE_AND_ROLLBACK
+    stage1_live_activation: NOT_PERFORMED
+    stage2_live_activation: NOT_PERFORMED
+    github_ruleset_admin_mutation_tool: NOT_AVAILABLE_IN_CONNECTED_GITHUB_APP
+    external_admin_write_authority: REQUIRES_AUTHENTICATED_GITHUB_UI_OR_AUTHORIZED_GH_CLI
+    existing_author_TASK_REVIEW_PUBLISH_WORKFLOWS: PRESERVE
+    security_evidence_requirements:
+      - GITHUB_API_READ_BACK_MATCHES_ACTIVE_RULESET
+      - EXACT_BYPASS_ACTOR_IDENTITY_AND_TOKEN_ACCESS_BOUND
+      - AUTHORIZED_AUTHOR_TASK_PASS_AND_UNAUTHORIZED_UPDATE_REJECTED
+      - AUTHORIZED_RUNTIME_TERMINAL_TRANSPORT_PASS_AND_UNAUTHORIZED_UPDATE_REJECTED
+      - AUTHORIZED_SUBMIT_REVIEW_PASS_AND_UNAUTHORIZED_UPDATE_REJECTED
+      - AUTHORIZED_PUBLISH_PASS_AND_UNAUTHORIZED_UPDATE_REJECTED
+      - NO_RAW_PUBLICATION_NO_FALSE_ISSUER_ASSERTION
+    terminal_trust_authentication: NOT_ESTABLISHED
+    do_not_claim_protected_canonical_transport: true
+    not_authorized_to_activate_VP03D_PROOF_REUSE_OR_KA01: true
+    no_task334_r2_authored_or_dispatched: true
+    no_new_TASK_or_RUN: true
+    no_automatic_roadmap_advance: true
   vp03d_terminal_trust_choice_and_ref_writer_preflight_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     human_approved_boundary: EXISTING_ADMITTED_RUNTIME_PLUS_PROTECTED_CANONICAL_TRANSPORT_PLUS_INDEPENDENTLY_CANONICALIZED_REVIEW_INGRESS
