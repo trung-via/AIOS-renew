@@ -1,47 +1,42 @@
 task_id: TASK-334
-revision: 1
-goal: Establish an independently grounded, bounded Runtime-owned terminal provenance
-  issuance and safe raw-EVIDENCE binding at the existing Runtime completion/transport
-  boundary for prospective admitted RUNs, so the paused VP-03D TASK-333 can later
-  consume real trusted source facts rather than a self-certified repository. Emit
-  immutable source facts rooted in actual Runtime admission/verification, preserve
-  independently authored REVIEW identity/currentness as a separate downstream observation,
-  and make any absent raw/source/reviewer information explicitly UNKNOWN/BLOCK. Do
-  not activate proof reuse, verification-policy replacement, KA-01 continuation or
-  any new authority.
-problem: Canonical RUN-333-001 terminated FAILURE with a clean in-scope candidate
-  because TASK-333's constrained read-only module could not establish an independent
-  real Runtime/Reviewer terminal issuer or canonical raw source. Current Runtime locally
-  persists canonical RUN/RESULT/EVIDENCE and raw verification; existing transport
-  publishes RUN/RESULT/operational metadata but not a complete provenance-bound raw
-  source usable under independent trust/currentness. A Git SHA, authenticated-looking
-  fixture, configured arbitrary remote or REVIEW-shaped data are not independent issuance.
-  A distinct prospective Runtime source/transport contract is required before TASK-333
-  AC2 and positive AC4 can be addressed.
+revision: 2
+goal: Complete one bounded VP-03D end-to-end authenticated Runtime terminal-source
+  and independent Reviewer-source contract, using published TASK-335 owner-bound observations
+  and only valid in-scope material from failed TASK-333/334 candidates. Include GitHub
+  App writer credential isolation and a staged, non-enforcing ref-authority smoke
+  contract. Do not promote Git transport, metadata or a successful smoke alone to
+  canonical Runtime verification, Reviewer PASS, publication or proof-reuse authority.
+problem: RUN-333-001 and RUN-334-001 terminated at COMPLETION_GATE with clean preserved
+  failed candidates and no canonical verification run. The first lacked a real Runtime/Reviewer
+  source; the second captured conditional content but could not authenticate independently
+  admitted Runtime/Reviewer ownership within its five-file scope. TASK-335 added in-process
+  owner observations and was reviewed PASS and published, but its issuer_authenticated
+  and reviewer_authority fields remain false and raw/currentness are unavailable.
+  Runtime's local Git push principal is still unproven; both self-hosted runners use
+  .\TRUNG.
 assumptions:
-- Human explicitly approved a separate source-issuance contract instead of retrying
-  code-only REPAIR. Fresh roadmap main 0b37e18b74f7b550288b04b85ec21cae4a9ee461 selects
-  TASK-334 as the unique VP-03D prerequisite and retains TASK-333's failed lineage
-  without remediation, publication or changed acceptance.
-- TASK-333 r1 RUN-333-001 FAILURE artifact on aios/failure-artifacts/RUN-333-001 commit
-  53230d3eeac098a9350ce99669877b51623006e4; failed candidate af16ec63c8700b9f7411434d338f044300392b86,
-  COMPLETION_GATE unresolved legitimate issuer/source, verification not run. Preserve
-  those identities; no implicit new RUN/REPAIR.
-- Human's Codex gpt-6.1-sol xhigh delegation remains sticky to TASK-333 only. TASK-334
-  Executor/model/effort not selected and require new Human assignment before any PRIMARY,
-  though AUTHOR_TASK may be canonicalized separately.
-- GitHub repository trung-via/AIOS-renew is PUBLIC. Raw verification logs may contain
-  sensitive information and cannot be emitted to public source/artifact refs without
-  explicit separate privacy authorization. Publish only bounded non-sensitive immutable
-  identity, cryptographic digest and availability/validation facts; retain protected
-  raw at Runtime-local authorized boundary.
-- Existing Runtime completion/transport and independent REVIEW ingress/currentness
-  must retain their own canonical roles. The issuer is not a new cryptographic trust
-  root or reclassification of Git objects; its limited authenticity is the existing
-  admitted Runtime observation and protected transport/admission configuration.
-- Existing minimum-sufficient-v2 remains active for this TASK. VP-01 deferred-not-waived,
-  VP-02/VP-03 full exit open, KA-01 NOT_ACTIVATED and VP-04/05/07 source policy/reuse/cutover
-  not authorized. New revision-1 legacy return route is the approved default.
+- Canonical main at authoring is 397fe842f2ed740c7088bae164225b48748589cb; refresh
+  exact HEAD, TASK revision and lineage before any execution admission.
+- Human authorizes prospective TASK-334 r2 scope expansion and accepts Windows Administrator
+  as a trusted Human emergency recovery authority; no anti-Administrator protection,
+  hardware attestation or anti-tamper gate.
+- Human selected Codex GPT-6.1 Sol xhigh for TASK-334; sticky Executor is retained
+  until completion or explicit Human change. TASK data does not self-assign Executor;
+  Runtime admission retains delegation authority.
+- RUN-333-001 immutable failure artifact 53230d3eeac098a9350ce99669877b51623006e4
+  and failed candidate af16ec63c8700b9f7411434d338f044300392b86.
+- RUN-334-001 immutable failure artifact 7179c1eb16bbb2b97d1ddbe389ec41925c4ceb3d
+  and failed candidate 321227b18fe67eff43547ee620d9d7b3ac50e3ec.
+- TASK-335 REVIEW PASS published source 247aabc5dbaa100b345ddb8e55094c1cf294a471,
+  RESULT artifact f642bc503f90c6d636bf98a02e0937d456987e91 and REVIEW decision 785c4cf20c9244d878e79e4859eba896a8cf1fc7.
+- Runtime Writer App ID 5257829 and Control Writer App ID 5257909 are installed only
+  for trung-via/AIOS-renew by Human-verified settings; Control Writer PEM is in environment
+  aios-control-writer. Runtime Writer credential is not provisioned; no production
+  job currently proven to use either App token.
+- Human explicitly authorizes AUTHOR_TASK and dispatch of TASK-334 r2 before live
+  credential positive/negative smoke. Such smoke is a mandatory gate before Stage
+  2 enforcement, not a gate for coding and Runtime verification of the bounded implementation.
+  No production enforcement is authorized here.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -49,156 +44,144 @@ scope:
   - docs/CHATGPT_PROJECT_CONTRACT.md
   - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
   - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
-  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
-  - docs/AIOS-PUBLICATION-END-TO-END-FLOW-v1.md
   - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
   - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
-  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
   - docs/AIOS-VP03-CANONICAL-PROOF-HANDOFF-v1.md
+  - docs/AIOS-VP03-OWNER-BOUND-PROVENANCE-AUTHORITY-v1.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
   - .ai/roadmap-state.yaml
-  - .ai/tasks/TASK-332.yaml
   - .ai/tasks/TASK-333.yaml
-  - src/aios_renew/runtime.py
-  - src/aios_renew/verification.py
-  - src/aios_renew/review_transport.py
+  - .ai/tasks/TASK-334.yaml
+  - .ai/tasks/TASK-335.yaml
   - src/aios_renew/operator.py
-  - src/aios_renew/run.py
-  - src/aios_renew/artifacts.py
-  - src/aios_renew/review.py
+  - src/aios_renew/authoring_ingress.py
   - src/aios_renew/github_issue_ingress.py
-  - src/aios_renew/unified_state.py
-  - src/aios_renew/proof_authority_handoff.py
-  - tests/test_runtime.py
-  - tests/test_review_transport.py
-  - src/aios_renew/runtime_provenance_bridge.py
-  modify:
   - src/aios_renew/runtime.py
   - src/aios_renew/review_transport.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/runtime_provenance_owner.py
+  - src/aios_renew/proof_authority_handoff.py
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - tests/test_runtime_provenance_owner.py
+  - tests/test_authoring_ingress.py
+  - tests/test_review_transport.py
+  - tests/test_publication.py
+  modify:
+  - src/aios_renew/operator.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/runtime_provenance_owner.py
   - src/aios_renew/runtime_provenance_issuer.py
+  - src/aios_renew/runtime_writer_broker.py
+  - src/aios_renew/proof_authority_handoff.py
   - tests/test_runtime_provenance_issuer.py
+  - tests/test_runtime_provenance_owner.py
+  - tests/test_runtime_writer_broker.py
+  - tests/test_authoring_ingress.py
+  - tests/test_review_transport.py
+  - tests/test_publication.py
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-auto-publish.yml
   - docs/AIOS-VP03-RUNTIME-SOURCE-ISSUANCE-CONTRACT-v1.md
+  - docs/AIOS-VP03-GITHUB-APP-WRITER-TRUST-v1.md
 non_goals:
-- No modification to failed TASK-333 source/failed RUN/terminal artifacts, no automatic
-  REPAIR, no retrospective backfill or rewriting immutable historical EVIDENCE, REVIEW
-  or TASK schemas.
-- No private or unredacted raw logs, subprocess output, environment secrets, credentials,
-  tokens or external personal data published to the public Git repository; no new
-  public endpoint for protected local raw.
-- No independent Reviewer verdict created by Runtime; no Reviewer-to-Runtime authority
-  merger or assumption that a recorded terminal RESULT is already reviewed or published.
-- No added trust registry/issuer enrollment authority, independent signature service,
-  second planner/router, retry/failover, verification scheduler, proof authorization
-  service, or persistent memory/state database.
-- No producer that authenticates arbitrary caller-selected repository/remote, Git
-  objects, fake Runtime instance or test fixture by its own assertion; no new permission
-  flags permitting acceptance discharge or code continuation.
-- No Kernel v0.1 or KA-01 activation, no V2 retirement, no new verification execution
-  policy, no live preterminal C1/C2, no automatic feedback/checkpoint/scheduler/publisher
-  action or downstream pin change.
-- No broad pytest, unchanged expensive upstream suite reruns, base replay or double
-  verification without separately proven distinct obligation.
+- No modification or publication of failed TASK-333/334 candidate refs or original
+  terminal artifacts.
+- No second Runtime, Reviewer, Publisher, lifecycle router, scheduler or trust registry.
+- No approval or bypass for arbitrary private-key/token access by Executor.
+- No Windows Administrator adversarial threat model or administrator anti-tamper.
+- No public raw verification logs, secrets, file-system paths or protected REVIEW
+  payloads.
+- No silent source-to-current-target proof conversion or synthetic terminal/preterminal
+  authority.
+- No live Stage-2 restrict-creations/updates enforcement, Stage-1 modification or
+  bypass change.
+- No frozen Kernel or schema amendment, KA-01 cutover, C1/C2 checkpoint activation
+  or downstream adoption.
+- No full-suite, base replay or unchanged verification repetition without proved invalidation
+  or obligation.
 constraints:
   hard:
-  - Only existing Runtime's independently admitted execution/completion, approved
-    execution profile, exact TASK/RUN/terminal source and deterministic verification/evidence
-    process may issue source facts. Issuance must occur at the real owner boundary;
-    a caller of a diagnostic, repository fixture or public helper cannot mint a trusted
-    equivalent. Issuer legitimacy must not be inferred from Git SHA or self-certified
-    fields alone.
-  - Bind exact TASK ID/revision/task blob/commit/admitted RUN/base/executor/verification
-    subject/candidate/tree, RESULT/EVIDENCE structural identities, proof type, command,
-    original outcome and source raw path/size/SHA256 where present, plus issuer context/source
-    version and lifecycle phase. Do not relabel original subject or create target
-    execution evidence.
-  - 'Separate actual Runtime-issued terminal facts from independent Reviewer ingress:
-    a postterminal read-only join may project a REVIEW only after current canonical
-    review-decision source, exact review candidate/revision/acceptance and authority
-    provenance are separately established. Absence of REVIEW must not block source
-    issuance, but must block positive reviewed-source conclusions.'
-  - Use protected existing transport/artifact namespaces and issuance/read-only observation
-    rules, with exactly scoped additive versioned metadata. No canonical RESULT/EVIDENCE/REVIEW
-    schema changes and no competing lifecycle truth, publisher or result terminalization
-    path.
-  - Public GitHub may receive only explicitly non-sensitive bounded provenance digest/size/identity
-    and source availability state, never unredacted raw logs or secret-bearing data.
-    Raw content remains at authorized existing Runtime-local storage. A remote read-only
-    consumer lacking authorized raw access must receive RAW_UNAVAILABLE/UNKNOWN, not
-    an invented authenticated raw match.
-  - Any positive authenticated-source observation must be traceable to the existing
-    Runtime-controlled local issuer/action and protected canonical transport, with
-    bounded immutable currentness checks on fixed allowlisted refs and authenticated
-    upstream context; caller-chosen fixture or Git history alone yields CONDITIONAL_CONTENT_ONLY/UNKNOWN.
-    No new trust root is manufactured by metadata.
-  - Preserve transport idempotent replay/CAS/ref protection, historical decoder continuity,
-    existing recovery publication and correction behavior. Conflicting/detached/swapped/stale/torn
-    RUN, candidate, EVIDENCE, raw hash, reviewer or main pins must fail closed and
-    keep original failure grounds.
-  - Do not claim atomic currentness or ABA safety from before/after Git reads, terminal
-    provenance as preterminal C1/C2, review as Runtime issuance, RESULT as REVIEW
-    PASS, or digest as executable authorization. All activation, continuation, acceptance
-    discharge, proof-reuse and scheduler flags stay false with NOT_ACTIVATED.
-  - Existing RuntimeVerification and RuntimeCompletion verification ordering and one
-    terminal artifact per RUN remain unchanged in effect; an inability to safely create/persist
-    the new bounded provenance cannot generate a forged canonical RESULT or mask the
-    original verification/transport cause.
-  - Changes limited to the five exact scope.modify paths; where an authoritative producer
-    cannot be safely realized without changing admission/transport trust policy outside
-    scope, preserve a typed implementation blocker and request separate bounded authority
-    revision instead of passing with an availability-only shell.
-  - New focused tests include real owned Runtime issuance path and forged outsider
-    negatives, exact admitted identity, raw safe metadata vs no public raw bytes,
-    target/source integrity, independent Reviewer absence/presence, stale/conflicting
-    refs, replay/idempotence, preterminal absence, no permissions and preservation
-    of legacy transport paths. Tests use safe disposable repos and never send raw
-    to live GitHub.
-  - Use current policy minimum-sufficient-v2 and precisely bounded target test; Runtime
-    solely produces verification EVIDENCE and Reviewer consumes it independently after
-    a terminal RESULT.
+  - Preserve all current TASK/RUN/RESULT/EVIDENCE/REVIEW immutable schemas, admission,
+    separate Reviewer verdict and Publisher CAS source authority.
+  - Issued terminal-source facts must originate in the existing admitted Runtime/verification
+    completion boundary and bind TASK revision/blob, admitted RUN, base, profile,
+    candidate/tree, RESULT/EVIDENCE, original raw digest/size and exact terminal artifact.
+    Public constructors, fixtures, arbitrary remotes and Git content alone cannot
+    authenticate issuance.
+  - Independent SUBMIT_REVIEW origin must be verifiably authenticated by its existing
+    ingress-owner path, bind exact decision/ref/candidate/artifacts and never infer
+    semantic verdict from GitHub App identity.
+  - Protected raw stays local at its existing authorized Runtime location. Public
+    GitHub may carry only bounded safe digest/size/identity metadata. Lack of authorized
+    independent raw read keeps RAW_UNAVAILABLE/UNKNOWN.
+  - Runtime Writer and Control Writer have separate GitHub App private keys. Runtime
+    Writer token is minted only for trung-via/AIOS-renew with minimum necessary permissions;
+    broker shall not leak token or private key to Codex. A dedicated Windows service
+    identity is the approved isolation design; Windows Administrator remains a trusted
+    Human recovery authority.
+  - An untrusted request from the .\TRUNG runner is not sufficient IPC authority.
+    Broker enforces a narrowly bound Runtime-owned operation, authenticated approved
+    caller boundary, exact ref/old-new SHA/CAS and non-replay, without becoming lifecycle
+    authority.
+  - The shared refs/heads/aios/publication-reservation/main lease/CAS path remains
+    coherent across AUTHOR_TASK, SUBMIT_REVIEW, Publisher and publication recovery.
+    Do not assign it blindly to only one writer.
+  - Stage 1 ruleset 24824106 stays unchanged, no bypass. Stage 2 separately evaluates
+    restrict-creations and restrict-updates on Runtime/Control namespaces; activation
+    requires positive/negative live writer smoke plus separate Human authority, not
+    completion of this TASK alone.
+  - Historical source provenance cannot be retroactively minted. Positive source/currentness
+    claims require independent proof; absent/torn, stale, forged or swapped inputs
+    stay UNKNOWN/BLOCK.
+  - Reuse reviewed/published TASK-335 on main. Treat failed TASK-333/334 source only
+    as exact-SHA inspectable material; do not merge or publish failed candidates wholesale.
+  - Verification under minimum-sufficient-v2 remains focused on newly affected obligations
+    and actually invalidated evidence. Keep distinct mandatory integration proof;
+    no automatic baseline replay or double-execution of unchanged items.
+  - Broker service deployment, live private key, GitHub installation credentials and
+    production smoke are separate protected operational setup, never TASK payload
+    or canonical public artifact. Missing live credentials keeps live-smoke unproven
+    and enforcement off.
 acceptance:
 - id: AC1
-  condition: A versioned additive Runtime-source issuance contract and bounded producer
-    are implemented at existing admitted Runtime completion/transport authority, with
-    a clear independent origin boundary instead of arbitrary repository-derived issuer
-    assertions.
+  condition: Actual Runtime owner origin and admitted terminal issuance are independently
+    bound to exact TASK/RUN/profile/candidate/RESULT/EVIDENCE and immutable raw metadata.
 - id: AC2
-  condition: For a legitimately admitted successful terminal source, emitted read-only
-    metadata binds exact TASK/revision/blob, RUN/base/subject/candidate/tree, RESULT/EVIDENCE/original
-    raw identity, digest/size and source version without altering canonical evidence
-    or inventing acceptance PASS.
+  condition: Read-only consumer correlates independently authenticated REVIEW ingress
+    with exact terminal source, without confusing recorded verdict with provenance
+    of semantic Reviewer judgment.
 - id: AC3
-  condition: No raw verification payload or credentials are transported to public
-    GitHub; only bounded safe metadata and cryptographic raw digest/availability are
-    exposed, with protected local raw and explicit UNKNOWN/BLOCK when source cannot
-    be independently retrieved and compared.
+  condition: Runtime Writer broker implementation enforces protected operation, ref
+    and CAS identity; Executor receives neither PEM nor installation token, and unauthorized
+    writer mutations are rejected.
 - id: AC4
-  condition: A separate read-only consumer can correlate an existing independently
-    submitted canonical REVIEW/decision to the exact Runtime-issued terminal source
-    and current main/ref facts only when such distinct source is truly present; missing/unreviewed/stale/forged
-    decisions never become Reviewer PASS.
+  condition: Raw content is not exported to public GitHub; availability is honest
+    and authorized comparisons bind immutable source digest/size.
 - id: AC5
-  condition: The producer and consumer refuse spoofed Runtime instances, caller-selected
-    trust roots/refs, torn/synthetic source records, swapped TASK/RUN/result/evidence
-    or raw digests, ambiguous review history and conflicting transport replay; all
-    unsupported or unauthorized cases fail closed with typed reasons.
+  condition: Ref creation/update, publication reservation/recovery, replay and failure
+    paths preserve Runtime/Control ownership and existing CAS/lifecycle semantics.
 - id: AC6
-  condition: Existing primary/remediation/repair terminal lifecycle, verification,
-    cleanup, publication and transport ordering remain correct, idempotent and bounded;
-    new provenance is subordinate metadata rather than new RUN/RESULT/REVIEW/lifecycle
-    truth, and historic unissued sources remain historically UNKNOWN.
+  condition: Focused adversarial tests cover fake Runtime/Reviewer source, wrong writer,
+    mismatched RUN/blob/SHA, swapped raw/decision, stale refs, replay, unauthenticated
+    IPC and missing credential/permission without production-ref mutations.
 - id: AC7
-  condition: A focused deterministic test suite covers authentic issuance, safe raw
-    digest capture, protected raw nonexport, independent Reviewer delayed arrival,
-    exact source/currentness, adversarial forgery, conflict and replay, missing sources,
-    legacy compatibility and disabled effect flags without live network or full-suite
-    repetition.
+  condition: Stage 2 design enumerates creation/update namespace coverage and leaves
+    enforcement disabled pending separate credential and positive/negative live smoke
+    evidence; no ruleset is activated by implementation.
 - id: AC8
-  condition: Versioned documentation identifies the exact Runtime and independent
-    Reviewer authority boundaries, public-repository privacy constraint, compatibility
-    and future gates (TASK-333 lawful REPAIR, live preterminal, CAS/ABA, VP01/02/03/04/05/07,
-    KA-01), and the delta modifies only the five authorized paths.
+  condition: Frozen Kernel compatibility, legacy decode, no authority expansion and
+    evidence reuse until invalidated are preserved; out-of-scope or unsupported source
+    claims remain typed UNKNOWN/BLOCK, not asserted PASS.
 verification:
   policy: minimum-sufficient-v2
   required:
-  - python -m pytest -q tests/test_runtime_provenance_issuer.py
+  - python -m pytest -q tests/test_runtime_provenance_issuer.py tests/test_runtime_provenance_owner.py
+    tests/test_runtime_writer_broker.py
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
