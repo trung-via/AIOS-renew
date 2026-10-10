@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .return_affinity import document_affinity
+from .runtime_provenance_issuer import public_run, public_result, public_metadata
 
 import hashlib
 import json
@@ -253,6 +254,12 @@ PERFORMANCE_MAX_TERMINAL_RUNS = 256
 
 
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
+    from .runtime_writer_broker import broker_git_push
+    protected = broker_git_push(repo, args)
+    if protected is not None:
+        if protected[0] and not allow_fail:
+            raise ReviewTransportError(protected[2])
+        return protected
     try:
         completed = subprocess.run(
             ("git", "-C", str(repo), *args),
@@ -1890,7 +1897,7 @@ def _create_artifacts_commit(
     if not result_path.is_file():
         raise ReviewTransportError(f"persisted canonical ResultPackage JSON missing: {result_path}")
 
-    run_bytes = run_path.read_bytes()
+    run_bytes = public_run(run_path.read_bytes())
     try:
         proc = subprocess.run(
             ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
@@ -1902,7 +1909,7 @@ def _create_artifacts_commit(
     except Exception as exc:
         raise ReviewTransportError(f"failed to hash run.json: {exc}") from exc
 
-    result_bytes = result_path.read_bytes()
+    result_bytes = public_result(result_path.read_bytes())
     try:
         proc = subprocess.run(
             ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
@@ -1921,7 +1928,7 @@ def _create_artifacts_commit(
         try:
             proc = subprocess.run(
                 ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
-                input=lineage_path.read_bytes(), capture_output=True, check=True,
+                input=public_metadata(lineage_path.read_bytes()), capture_output=True, check=True,
             )
             lineage_sha = proc.stdout.decode("utf-8", errors="strict").strip()
             lineage_entry = f"100644 blob {lineage_sha}\trepair.json\n"
@@ -2084,7 +2091,10 @@ def _create_named_artifacts_commit(
         try:
             proc = subprocess.run(
                 ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
-                input=path.read_bytes(), capture_output=True, check=True,
+                input=(public_run(path.read_bytes()) if name == "run.json" else
+                       public_result(path.read_bytes()) if name == "result.json" else
+                       public_metadata(path.read_bytes()) if name in {"failure.json", "repair.json", "pre-verification-candidate.json"} else path.read_bytes()),
+                capture_output=True, check=True,
             )
             blobs[name] = proc.stdout.decode("utf-8", errors="strict").strip()
         except (OSError, UnicodeError, subprocess.CalledProcessError) as exc:
@@ -2131,16 +2141,16 @@ def transport_failure(
     _validate_transport_affinity(repo, run_path.read_bytes(), head_sha,
                                  lineage_path.read_bytes() if lineage_path is not None else None)
     expected = {
-        ".ai/transport/run.json": run_path.read_bytes(),
-        ".ai/transport/failure.json": failure_path.read_bytes(),
+        ".ai/transport/run.json": public_run(run_path.read_bytes()),
+        ".ai/transport/failure.json": public_metadata(failure_path.read_bytes()),
     }
     if lineage_path is not None:
-        expected[".ai/transport/repair.json"] = lineage_path.read_bytes()
+        expected[".ai/transport/repair.json"] = public_metadata(lineage_path.read_bytes())
     expected_observation = (
         observation_path.read_bytes() if observation_path is not None else None
     )
     expected_preverification = (
-        preverification_path.read_bytes()
+        public_metadata(preverification_path.read_bytes())
         if preverification_path is not None
         else None
     )
@@ -2169,11 +2179,15 @@ def transport_failure(
             specs.append(f"{head_sha}:{candidate_ref}")
     terminal_artifact_sha = refs.get(artifacts_ref)
     if artifacts_ref in refs:
-        for path, content in expected.items():
-            if _read_remote_blob(repo, remote, refs[artifacts_ref], path) != content:
-                raise ReviewTransportError(
-                    f"remote failure artifacts ref {artifacts_ref} exists with different artifact content"
-                )
+        observed = {path: _read_remote_blob(repo, remote, refs[artifacts_ref], path) for path in expected}
+        legacy = {".ai/transport/run.json": run_path.read_bytes(),
+                  ".ai/transport/failure.json": failure_path.read_bytes()}
+        if lineage_path is not None:
+            legacy[".ai/transport/repair.json"] = lineage_path.read_bytes()
+        if observed != expected and observed != legacy:
+            raise ReviewTransportError(
+                f"remote failure artifacts ref {artifacts_ref} exists with different artifact content"
+            )
         remote_observation = _read_remote_blob(
             repo, remote, refs[artifacts_ref], ".ai/transport/observation.json"
         )
@@ -2192,7 +2206,7 @@ def transport_failure(
         )
         if (
             expected_preverification is not None
-            and remote_preverification != expected_preverification
+            and remote_preverification not in (expected_preverification, preverification_path.read_bytes())
         ):
             raise ReviewTransportError(
                 f"remote failure artifacts ref {artifacts_ref} exists with different pre-verification candidate content"
@@ -2216,7 +2230,8 @@ def transport_failure(
         terminal_artifact_sha = commit
         specs.append(f"{commit}:{artifacts_ref}")
     if specs:
-        code, _, stderr = _git_cmd(repo, "push", "--no-tags", remote, *specs, allow_fail=True)
+        code, _, stderr = _git_cmd(repo, "push", "--no-tags", "--atomic",
+            *(f"--force-with-lease={spec.split(':', 1)[1]}:" for spec in specs), remote, *specs, allow_fail=True)
         if code:
             raise ReviewTransportError(f"failed to push transport refs to {remote}: {stderr}")
     assert terminal_artifact_sha is not None
@@ -2723,7 +2738,7 @@ def transport_post_pass(
     observation_path: Path | None = None,
     execution_profile_path: Path | None = None,
     publication_recovery_path: Path | None = None,
-) -> None:
+) -> str:
     """Publish aios/review/<RUN_ID> and aios/artifacts/<RUN_ID> to upstream remote."""
     remote = resolve_transport_remote(repo)
     review_ref = f"refs/heads/aios/review/{run_id}"
@@ -2734,9 +2749,11 @@ def transport_post_pass(
     if not result_path.is_file():
         raise ReviewTransportError(f"persisted canonical ResultPackage JSON missing: {result_path}")
 
-    expected_run_bytes = run_path.read_bytes()
-    expected_result_bytes = result_path.read_bytes()
-    expected_lineage_bytes = lineage_path.read_bytes() if lineage_path is not None else None
+    expected_run_bytes = public_run(run_path.read_bytes())
+    expected_result_bytes = public_result(result_path.read_bytes())
+    original_run_bytes, original_result_bytes = run_path.read_bytes(), result_path.read_bytes()
+    original_lineage_bytes = lineage_path.read_bytes() if lineage_path is not None else None
+    expected_lineage_bytes = public_metadata(original_lineage_bytes) if original_lineage_bytes is not None else None
     expected_recovery_bytes = (publication_recovery_path.read_bytes()
                                if publication_recovery_path is not None else None)
     _validate_transport_affinity(repo, expected_run_bytes, head_sha, expected_lineage_bytes)
@@ -2794,9 +2811,10 @@ def transport_post_pass(
             repo, remote, existing_artifacts_sha, ".ai/transport/publication-recovery.json")
 
         if (
-            remote_run_bytes == expected_run_bytes
-            and remote_result_bytes == expected_result_bytes
-            and remote_lineage_bytes == expected_lineage_bytes
+            ((remote_run_bytes == expected_run_bytes and remote_result_bytes == expected_result_bytes
+              and remote_lineage_bytes == expected_lineage_bytes)
+             or (remote_run_bytes == original_run_bytes and remote_result_bytes == original_result_bytes
+                 and remote_lineage_bytes == original_lineage_bytes))
             and (
                 expected_observation_bytes is None
                 or remote_observation_bytes in (None, expected_observation_bytes)
@@ -2831,8 +2849,7 @@ def transport_post_pass(
         push_specs.append(f"{artifacts_commit_sha}:{artifacts_ref}")
 
     if push_specs:
-        recovery_cas = (["--atomic", *(f"--force-with-lease={spec.split(':', 1)[1]}:"
-                         for spec in push_specs)] if publication_recovery_path is not None else [])
+        recovery_cas = ["--atomic", *(f"--force-with-lease={spec.split(':', 1)[1]}:" for spec in push_specs)]
         code, _, stderr = _git_cmd(repo, "push", "--no-tags", *recovery_cas,
                                    remote, *push_specs, allow_fail=True)
         if code != 0:
@@ -2850,3 +2867,4 @@ def transport_post_pass(
         raise ReviewTransportError(
             f"terminal RESULT is canonical but attention delivery failed: {exc}"
         ) from exc
+    return artifacts_commit_sha

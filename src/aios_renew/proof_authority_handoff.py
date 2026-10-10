@@ -1,4 +1,4 @@
-"""VP-03C v1: read-only handoff, with no installed independent Runtime issuer.
+"""VP-03C v1 handoff and subordinate VP-03D terminal-source inspection.
 
 The canonical entry point accepts no authority, repository, producer or callback.
 An explicitly separate offline diagnostic consumes VP-03A/03B content facts;
@@ -26,6 +26,16 @@ ISSUER_UNAVAILABLE = "INDEPENDENT_CANONICAL_RUNTIME_ISSUER_UNAVAILABLE"
 RecordIdentity = applicability.RecordIdentity
 ProofPin = applicability.ProofPin
 State = applicability.State
+
+
+def inspect_terminal_source(expected, *, raw_paths=None):
+    """Inspect prospective authenticated issuance, without activating proof reuse.
+
+    This surface does not convert a terminal source into current-target evidence
+    or alter VP-03C's frozen request/response and UNKNOWN admission contracts.
+    """
+    from .runtime_provenance_issuer import inspect_sources
+    return inspect_sources(expected, raw_paths=raw_paths)
 
 
 class HandoffInputError(ValueError):

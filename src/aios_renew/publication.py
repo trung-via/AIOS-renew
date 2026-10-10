@@ -357,6 +357,12 @@ class PublicationReport:
 def _git(
     repo: Path, *args: str, allow_fail: bool = False
 ) -> tuple[int, str, str]:
+    from .runtime_writer_broker import broker_git_push
+    protected = broker_git_push(repo, args)
+    if protected is not None:
+        if protected[0] and not allow_fail:
+            raise RuntimeError(protected[2])
+        return protected
     try:
         completed = subprocess.run(
             ("git", "-C", str(repo), *args),
@@ -1481,8 +1487,13 @@ def _repair_review_lineage(
     embedded_failure = _mapping(lineage.get("failure"), "REPAIR execution.failure")
     expected_task = {"id": task.task_id, "revision": task.revision}
     failure_task = _mapping(failure.get("task"), "predecessor FAILURE.task")
+    from .runtime_provenance_issuer import public_metadata
     if (
-        dict(embedded_failure) != dict(failure)
+        # Private diagnostics are unavailable in new public privacy views.
+        # Exact canonical artifact SHAs and all lifecycle identity fields still
+        # bind; this comparison grants no historical raw/source provenance.
+        public_metadata(json.dumps(dict(embedded_failure)).encode()) !=
+        public_metadata(json.dumps(dict(failure)).encode())
         or failure.get("kind") != "FAILURE"
         or failure.get("run_id") != failed_run_id
         or dict(failure_task) != expected_task

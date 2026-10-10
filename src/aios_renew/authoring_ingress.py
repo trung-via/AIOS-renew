@@ -181,6 +181,11 @@ class IngressResult:
         """Prospective read-only origin; absent on manually constructed results."""
         return read_owner_provenance(self)
 
+    @property
+    def source_provenance(self):
+        from .runtime_provenance_issuer import read_source_provenance
+        return read_source_provenance(self)
+
     def render(self) -> str:
         return (
             "AIOS INGRESS PASS\n"
@@ -671,6 +676,8 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
                 detail=f"identical REVIEW already canonicalized for {run_id}",
             )
             _observe_review(ingress_result)
+            from .runtime_provenance_issuer import _issue_review
+            _issue_review(ingress_result)
             return ingress_result
         raise AuthoringIngressError(
             f"conflicting review decision already exists on {decision_ref}"
@@ -933,6 +940,8 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
         detail=f"canonicalized {review.verdict} review decision for {run_id}",
     )
     _observe_review(ingress_result)
+    from .runtime_provenance_issuer import _issue_review
+    _issue_review(ingress_result)
     return ingress_result
 
 
@@ -2207,6 +2216,12 @@ def _query_matching_refs(
 def _git(
     repo: Path, *args: str, strip_stdout: bool = True, allow_fail: bool = False
 ) -> tuple[int, str, str]:
+    from .runtime_writer_broker import broker_git_push
+    protected = broker_git_push(repo, args)
+    if protected is not None:
+        if protected[0] and not allow_fail:
+            raise AuthoringIngressError(protected[2])
+        return protected
     env = dict(os.environ)
     env.setdefault("GIT_AUTHOR_NAME", "AIOS Ingress")
     env.setdefault("GIT_AUTHOR_EMAIL", "aios-ingress@example.invalid")

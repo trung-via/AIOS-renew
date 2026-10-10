@@ -490,3 +490,13 @@ def join_owner_provenance(completion: object, review_ingress: object | None = No
     bindings = tuple(sorted({**left, **{"review_" + key: value for key, value in right.items()}}.items()))
     return replace(execution, status=State.UNKNOWN, bindings=bindings,
                    gaps=tuple(dict.fromkeys(residual + list(decision.gaps))))
+
+
+def join_authenticated_provenance(completion: object, review_ingress: object, *, raw_paths=None):
+    """Separate prospective service receipts from TASK-335's legacy observations."""
+    from .runtime import RuntimeCompletion
+    from .authoring_ingress import IngressResult
+    from .runtime_provenance_issuer import SourceFacts, correlate_sources
+    if type(completion) is not RuntimeCompletion or type(review_ingress) is not IngressResult:
+        return SourceFacts(status="BLOCK", gaps=("UNSUPPORTED_SOURCE_OWNER",))
+    return correlate_sources(completion, review_ingress, raw_paths=raw_paths)
