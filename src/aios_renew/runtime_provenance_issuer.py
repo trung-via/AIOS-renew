@@ -170,7 +170,9 @@ def _channels():
             return None
         try:
             canonical = result_path.read_bytes()
-            if decode(canonical) != result_package_data(package):
+            # Match Runtime's canonical JSON bytes, including dataclass tuples
+            # serialized as arrays, while rejecting any persisted byte change.
+            if canonical != encoded(result_package_data(package)):
                 raise BrokerError("canonical terminal changed")
             profile_path = (owner.state.execution_profiles or owner.state.root / "execution-profiles") / (owner.run.run_id + ".json")
             profile = profile_path.read_bytes()
