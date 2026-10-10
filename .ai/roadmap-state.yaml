@@ -663,6 +663,44 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03d_stage2_writer_ownership_audit_2026_10_10:
+    authority: HUMAN_BRAIN_PLANNING
+    fact_snapshot_main_sha: a012534110f4f6c6d09b3cf44df0ba0bae67c447
+    ref_integrity_ruleset: 24824106
+    ref_integrity_enforcement: ACTIVE
+    stage2_restrict_updates: NOT_ENABLED
+    stage2_bypass_actors: NONE
+    reviewed_writer_paths:
+      - ingress_GITHUB_TOKEN_contents_write_CAN_WRITE_AUTHOR_TASK_MAIN_AND_REVIEW_DECISION
+      - publisher_GITHUB_TOKEN_contents_write_CAN_WRITE_MAIN
+      - runtime_selfhosted_WORKFLOW_CONTENTS_READ_BUT_LOCAL_GIT_PUSH_CREDENTIAL_UNVERIFIED
+    github_app_installation_and_secrets_inventory: NOT_ACCESSIBLE_WITH_CONNECTED_GITHUB_TOOL
+    verified_writer_authentication: NOT_ESTABLISHED
+    blocked_shortcut: ALL_WRITERS_BYPASS_ON_SINGLE_ALL_REF_RULESET
+    staged_role_ref_separation:
+      runtime:
+        - refs/heads/aios/review/*
+        - refs/heads/aios/artifacts/*
+        - refs/heads/aios/failure/*
+        - refs/heads/aios/failure-artifacts/*
+        - refs/heads/aios/publication-recovery/*
+      review_and_authoring_ingress:
+        - refs/heads/aios/review-decision/*
+        - refs/heads/aios/repair/*
+        - refs/heads/aios/remediation/*
+      shared_canonical_main:
+        - refs/heads/main
+      shared_publication_reservation:
+        - refs/heads/aios/publication-reservation/main
+    other_operational_ref_namespaces: AUDIT_FOR_OWNER_BEFORE_ENFORCEMENT
+    no_direct_runtime_git_write_without_OWNER_SCOPED_TOKEN_PROOF: true
+    no_global_GITHUB_TOKEN_BYPASS: true
+    avoid_live_negative_push: true
+    next_required_read_only_input: GITHUB_APP_INSTALLATION_SECRETS_AND_LOCAL_RUNTIME_CREDENTIAL_INVENTORY
+    next_design_action: SINGLE_TASK334_REVISION2_AFTER_CREDENTIAL_AND_WRITER_BOUNDARY_FEASIBILITY
+    no_NEW_TASK_or_REPAIR: true
+    no_STAGE2_ENFORCEMENT_CHANGE: true
+    vp03_full_exit: NOT_ESTABLISHED
   vp03d_stage1_ruleset_integrity_activation_observed_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     evidence_source: READ_ONLY_GITHUB_API
