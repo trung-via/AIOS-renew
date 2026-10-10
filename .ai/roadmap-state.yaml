@@ -663,6 +663,36 @@ verification_architecture_replacement_preemption:
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
   effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  vp03d_stage1_ruleset_integrity_activation_observed_2026_10_10:
+    authority: HUMAN_BRAIN_PLANNING
+    evidence_source: READ_ONLY_GITHUB_API
+    repository: trung-via/AIOS-renew
+    ruleset_id: 24824106
+    ruleset_name: AIOS-VP03D-Canonical-Ref-Integrity-v1
+    ruleset_enforcement: ACTIVE
+    rules:
+      - deletion
+      - non_fast_forward
+    ref_scope:
+      - refs/heads/main
+      - refs/heads/aios/review/*
+      - refs/heads/aios/artifacts/*
+      - refs/heads/aios/review-decision/*
+      - refs/heads/aios/failure-artifacts/*
+    bypass_actors: NONE
+    read_back_main_protected: true
+    read_back_artifacts_example_protected: true
+    read_back_review_decision_example_protected: true
+    update_restriction: NOT_ENABLED
+    independent_writer_identity: NOT_PROVEN
+    runtime_issuer_authenticated: false
+    independently_authenticated_review_carrier: NOT_PROVEN
+    stage1_readback: VERIFIED
+    stage2: NOT_ACTIVATED
+    stage2_blocker: ROLE_SPECIFIC_PROTECTED_WRITER_IDENTITY_AND_POSITIVE_NEGATIVE_SMOKE
+    no_unsafe_live_negative_push: true
+    task334_revision2: NOT_AUTHORED
+    automatic_roadmap_advance: false
   vp03d_git_writer_ruleset_policy_approval_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     intent: HUMAN_APPROVED_PROTECT_CRITICAL_REFS_WITH_GITHUB_RULESETS_WHILE_PRESERVING_LAWFUL_WORKFLOWS
