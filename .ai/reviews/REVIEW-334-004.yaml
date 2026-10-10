@@ -1,0 +1,22 @@
+review_id: REVIEW-334-004
+reviewed_sha: e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+  - "Stage 1 CONTRACT_COVERAGE. Exact canonical TASK-334 r2 blob 5a2744a327ce88f71fe00ce13381e486a868a998 on main 71da4321dddc5c390671064dfad8324487b30ba7; reviewed source candidate e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4 for RUN-334-004, artifact 75eb9e08599a1268676f9f0cc4c61ec8e68036ea and 8 claims with zero unresolved. Runtime-owned minimum-sufficient-v2 verification RUN-334-004-V001, exact requested three-file pytest command, 65 passed in 226.43s, exit 0; no Reviewer re-execution."
+  - "Stage 1 AC1/AC2. Source integration reaches only the existing admitted PRIMARY RuntimeCompletion.complete owner boundary, pins original TASK revision/blob/admission, RUN/execution profile/candidate/tree, RESULT/EVIDENCE/raw and exact terminal artifact with independent mTLS-service issuance where deployed. Independent SUBMIT_REVIEW ingress binds the same source, decision/ref/digest/verdict without becoming semantic Reviewer. Historical and correction sources lacking protected issuance remain UNKNOWN/BLOCK."
+  - "Stage 1 AC3/AC5. Protected Runtime/Control App writer implementation restricts actor operation, ref namespace, exact old/new CAS, replay and shared publication-reservation ownership while preserving Runtime/Reviewer/Publisher responsibilities. Dedicated Windows service token and separate credentials remain operational provisioning, not Executor privileges. The GitHub App installation and transport alone are not Runtime or Reviewer semantic authority."
+  - "Stage 1 AC4/AC6. Candidate implements prospective opaque public verification locators and bounded summaries, authorized original-raw digest/size comparison, deny-by-default broker permissions, wrong writer/CAS, swapped artifacts/review/raw, forged source and nonce replay tests. RUN-334-004 legacy transport artifact emitted by prepublication main retains a local raw locator; this historical artifact is NOT positive evidence of live privacy deployment, not retroactively redacted, and remains separately observable. No raw content, PEM, installation token or service secret is claimed live-exposed by this candidate."
+  - "Stage 1 AC7/AC8. Stage 1 ruleset 24824106 remains deletion/non-fast-forward with zero bypass. Stage 2 creation/update enforcement, live protected Windows broker/ACL setup, GitHub App PEM provisioning and positive/negative credential/writer smoke remain explicitly unactivated and require separate Human approval. No frozen Kernel/schema change, new Planner/Runtime/Reviewer/Publisher or automatic proof reuse/current-target applicability is introduced."
+  - "Stage 2 ADVERSARIAL_AUDIT_AND_RECONCILE. RUN-334-002 and RUN-334-003 canonical verification failures were not counted as passing evidence. RUN-334-003 diagnostic isolated the tuple/list false comparison in issuer prepare, and latest repair SHA e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4 changes only src/aios_renew/runtime_provenance_issuer.py to compare canonical persisted bytes to encoded(result_package_data(package)); precise terminal equality remains mandatory. Wrong object SHA, swapped raw, hostile caller, missing approved credential, replay and unknown currentness remain negative/bounded. No source defect found requiring changes within authorized prospective TASK implementation."
+  - "Reviewer verdict PASS is scoped to exact source candidate e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4 and Runtime RESULT RUN-334-004. PASS neither activates Stage 2, certifies live broker deployment/credentials, closes VP-03 exit, grants future proof applicability, changes planning NEXT, nor overwrites old FAILURE/REPAIR source. Canonical SUBMIT_REVIEW ingress and Publisher retain exclusive admission/publication authority."
