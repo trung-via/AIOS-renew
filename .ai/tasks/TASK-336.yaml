@@ -1,0 +1,188 @@
+task_id: TASK-336
+revision: 1
+goal: >-
+  Forward-recover AIOS-renew production source to the reviewed pre-VP03/TASK330
+  operational behavior at exact baseline 84478a59405427ef932740eb26d8ce6292b0fe71, retiring the additional
+  VP03A/B/C/D evidence-attestation/protected-writer architecture and all of its
+  runtime-integrated hooks. Preserve current canonical history, independent
+  Runtime verification/Reviewer/Publisher responsibilities, existing Git CAS,
+  and minimal safe public transport redaction. This TASK is recovery only, not
+  a new evidence validity engine or intra-PRIMARY correction implementation.
+problem: >-
+  After TASK-330 through TASK-335 and TASK-334 r2 publication, VP03 introduced
+  read-only proof catalog/checkpoint/handoff plus owner-bound provenance, independent
+  source issuance and GitHub App Writer Broker. The new protected Windows broker
+  is not deployed and the VP03 paths have not established production verification
+  savings. The extra service and authentication requirements create implementation
+  and operations cost contrary to the AIOS Manifesto's sufficient-evidence,
+  no-redundant-work North Star. Human explicitly superseded VP03 protect design
+  and selected a forward recovery, retaining existing KA01 prospective and
+  VP-02 foundations. Do not turn this recovery into VP04 or VP05.
+assumptions:
+- Canonical main at authoring is aa7e0c1379a49d925c33ee2d264aa8d13d146afb; Runtime must revalidate current main
+  and TASK blob/admission before any execution. No stale main or force update.
+- Exact pre-VP03 behavior reference is 84478a59405427ef932740eb26d8ce6292b0fe71, the canonical commit immediately
+  before TASK-330 r1 authoring; the current main is its descendant and has
+  historical TASK/RUN/REVIEW lineage that must remain immutable.
+- Human on 2026-10-10 approved recovery and selected Codex GPT-6.1 Sol xhigh
+  for the entire TASK-336 lifecycle, including lawful REPAIR/REMEDIATION.
+  Executor/model/effort are Human operational delegation, not TASK authority fields.
+- Canonical roadmap at aa7e0c1379a49d925c33ee2d264aa8d13d146afb has VP03_FORWARD_RECOVERY as unique NEXT,
+  VP03A/B/C/D planning superseded and legacy TASK-334 r1 bookmark historical.
+- Published TASK-334 r2 source e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4
+  is reviewed historical engineering truth, not evidence that the Windows broker
+  or independent live writer identity was activated.
+- Public repository transport requires bounded safe original-raw redaction.
+  Recovering original source byte-for-byte is not acceptable if it re-exposes
+  local paths, raw logs or secrets; preserve only a minimal in-process safe
+  representation under existing transport authority.
+- TASK-333 failure remains immutable; no automatic repair, re-entry or
+  proof-source minting. V2 remains current verification policy; KA01 is
+  Human-ratified prospective but NOT_ACTIVATED.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/tasks/TASK-330.yaml
+  - .ai/tasks/TASK-331.yaml
+  - .ai/tasks/TASK-332.yaml
+  - .ai/tasks/TASK-333.yaml
+  - .ai/tasks/TASK-334.yaml
+  - .ai/tasks/TASK-335.yaml
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/proof_applicability.py
+  - src/aios_renew/proof_authority_handoff.py
+  - src/aios_renew/proof_checkpoint_lineage.py
+  - src/aios_renew/runtime_provenance_issuer.py
+  - src/aios_renew/runtime_provenance_owner.py
+  - src/aios_renew/runtime_writer_broker.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/unified_state.py
+  modify:
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/proof_applicability.py
+  - src/aios_renew/proof_authority_handoff.py
+  - src/aios_renew/proof_checkpoint_lineage.py
+  - src/aios_renew/runtime_provenance_issuer.py
+  - src/aios_renew/runtime_provenance_owner.py
+  - src/aios_renew/runtime_writer_broker.py
+  - tests/test_proof_applicability.py
+  - tests/test_proof_authority_handoff.py
+  - tests/test_proof_checkpoint_lineage.py
+  - tests/test_runtime_provenance_issuer.py
+  - tests/test_runtime_provenance_owner.py
+  - tests/test_runtime_writer_broker.py
+  - docs/AIOS-VP03-CANONICAL-PROOF-HANDOFF-v1.md
+  - docs/AIOS-VP03-CHECKPOINT-LINEAGE-AND-REPLAY-v1.md
+  - docs/AIOS-VP03-GITHUB-APP-WRITER-TRUST-v1.md
+  - docs/AIOS-VP03-OWNER-BOUND-PROVENANCE-AUTHORITY-v1.md
+  - docs/AIOS-VP03-PROVENANCE-APPLICABILITY-v1.md
+  - docs/AIOS-VP03-RUNTIME-SOURCE-ISSUANCE-CONTRACT-v1.md
+  - tests/test_runtime.py
+  - tests/test_review_transport.py
+  - tests/test_publication.py
+  - tests/test_authoring_ingress.py
+  - tests/test_operator.py
+  - tests/test_github_issue_ingress.py
+non_goals:
+- Reset main, force-push, delete or rewrite historical canonical refs,
+  history, TASK records, FAILURE, REVIEW, REVIEW decision or RUN artifacts.
+- Install or operate a Windows Writer Broker, new Runtime Writer/Control Writer
+  App credentials, TLS service, provenance journal, additional currentness
+  attestation system or Stage 2 enforcement.
+- Change Github Stage 1 ruleset 24824106, its bypass settings, Stage 2 rulesets,
+  GitHub secrets, Actions variables, runner accounts or workflow files.
+- Retire existing admission/CAS/security or leak raw verification material
+  merely to match the old transport byte-for-byte.
+- Activate KA01 intra-RUN correction, change frozen Kernel, create checkpoint
+  persistence, new proof engine/scheduler, automatic repair routing or another
+  Reviewer/Publisher/Runtime.
+- Rewrite the current roadmap, author VP03 Lean/VP04/VP05, publish source on
+  behalf of Publisher, update downstream dependency pins or retest all history.
+constraints:
+  hard:
+  - Perform forward recovery in the new TASK-336 candidate from current
+    canonical main, never by checkout/reset/force-update of main or historical
+    artifacts; reference pre-VP03 SHA only as a source for file behavior comparison.
+  - Restore six existing source integration files toward their pre-VP03 behavior
+    without removing independent canonical Runtime admission, versioned legacy
+    decoding, verification, RESULT/FAILURE production, SUBMIT_REVIEW authority,
+    Publisher exact-source CAS or correction flows.
+  - Retire VP03-exclusive six modules, six focused test files and six associated
+    versioned docs; only the published pre-VP03 TASK/RUN/REVIEW Git history keeps
+    their historical content. No remaining import path may demand those modules.
+  - Public transport must still use minimal deterministic safe projections,
+    preserving canonical field/schema relations and immutable source evidence
+    identity while never exposing protected original raw bytes, local path
+    locators, secrets or unbounded diagnostics.
+  - Retain the previous canonical identity/lease/currentness/expected-old
+    CAS checks; no credential escalation or opaque broker fallback. Empty or
+    stale protected client config must not route Git operations into retired code.
+  - Historical code and artifacts remain inspectable using exact Git SHAs;
+    immutable TASK-330..335 and TASK-334 r2 completion, RUN-333 failure, and
+    existing REVIEW/REPAIR/REMEDIATION lineage stay unchanged.
+  - Keep all existing public workflow entrypoints, Runner transport and
+    minimum-sufficient-v2 Runtime verification policy functional. Do not
+    introduce a second scheduler or require new environment/provisioning.
+  - Limit production conformance testing to the identified affected surfaces,
+    using the canonical Runtime test requirement and necessary narrow
+    compatibility coverage; no full suite, automatic broad base replay or
+    needless unchanged-proof rerun.
+  - If a necessary safety fix requires a file outside scope or contradicts
+    a frozen/higher authority contract, stop with a typed scoped blocker and
+    request separate Human/Brain semantic authorization rather than broadening.
+acceptance:
+- id: AC1
+  condition: >-
+    Existing production Runtime/ingress/operator/review-transport/publication modules no longer depend on VP-03A/B/C/D issuer, broker, provenance-owner or handoff code; retain the pre-TASK330 operational lifecycle semantics except the explicit bounded public-redaction safeguard.
+- id: AC2
+  condition: >-
+    VP-03-only source modules, focused tests and versioned VP-03 documents introduced after the baseline are absent from the prospective production tree, with no dangling imports/callers or exposed dead policy hooks.
+- id: AC3
+  condition: >-
+    Terminal RESULT/FAILURE/REPAIR/REMEDIATION public Git transport retains canonical schemas, original proof/source identities and safe bounded public views without publishing sensitive original raw bytes, local workspace/verification raw locators or secret-bearing diagnostics.
+- id: AC4
+  condition: >-
+    Runtime PRIMARY completion and terminal RESULT/FAILURE enforce exact admitted TASK/RUN/candidate, canonical verification/evidence and single terminal semantics without a new attestation service or checkpoint authority.
+- id: AC5
+  condition: >-
+    Existing AUTHOR_TASK, SUBMIT_REVIEW, AUTHOR_REPAIR and AUTHOR_REMEDIATION ingress retain their canonical identity, expected-main/CAS and correction lineage ownership without a broker requirement or a new privilege fallback.
+- id: AC6
+  condition: >-
+    Publisher and publication recovery retain exactly reviewed source binding, shared reservation/CAS, legitimate replay and fail-closed conflict behavior, without an issuer/broker dependency or writer-role expansion.
+- id: AC7
+  condition: >-
+    Legacy immutable TASK/RUN/RESULT/EVIDENCE/FAILURE/REVIEW/REMEDIATION/REPAIR artifacts and pre-VP03 refs remain readable, with no canonical history rewriting, replay of failed TASK-333, or retrospective alteration of TASK-334 PASS.
+- id: AC8
+  condition: >-
+    Existing minimum-sufficient-v2 execution policy and Frozen Kernel/KA-01 prospective NOT_ACTIVATED boundary remain unchanged, with no added scheduler, proof-reuse authority or intra-PRIMARY correction capability.
+- id: AC9
+  condition: >-
+    Focused regression cases cover normal and conflicting admission, PRIMARY RESULT/FAILURE, correction pathways, safe public serialization, reviewer ingress, CAS publication and recovery, including negative rejection, while keeping existing self-host and hosted workflow entrypoints compatible.
+- id: AC10
+  condition: >-
+    Candidate modification is confined to the exact listed restore/retirement/regression files, with no change to workflows, roadmaps, existing TASK artifacts, GitHub rulesets, secrets, installation credentials or downstream repositories.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_runtime.py tests/test_review_transport.py tests/test_publication.py tests/test_authoring_ingress.py tests/test_operator.py tests/test_github_issue_ingress.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
