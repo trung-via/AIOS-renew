@@ -1,0 +1,10 @@
+{
+  "effort_source": "EXPLICIT",
+  "executor": "codex",
+  "format": "AIOS_EXECUTION_PROFILE",
+  "model": "gpt-6-astra",
+  "model_source": "EXPLICIT",
+  "reasoning_effort": "medium",
+  "run_id": "RUN-336-003",
+  "version": 1
+}
