@@ -285,36 +285,16 @@ def _lifecycle_document(raw: bytes, name: str) -> Mapping[str, Any]:
     )
 
 
-def _matches_public_document(
-    private: Mapping[str, Any] | None,
-    canonical: Mapping[str, Any] | None,
+def _validated_private_public_view(
+    private: Mapping[str, Any],
     kind: str,
-) -> bool:
-    """Compare a validated private record with its exact transport representation.
+) -> Mapping[str, Any]:
+    """Validate private privacy roles and produce the bounded read projection.
 
-    Validate even the historical exact representation. Only the writer's authorized
-    privacy fields may differ; projecting both sides would conceal corruption of
-    the public record. This read projection deliberately has no writer input cap.
+    This does not establish canonical equality or transport success. Pending local
+    records need the same role validation independently of a public counterpart.
+    The historical read projection deliberately has no writer input cap.
     """
-    if private is None or canonical is None:
-        return private is canonical
-
-    def encoded(value: Any) -> str:
-        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-    def protected_view(value: Any) -> bool:
-        if isinstance(value, list):
-            return any(protected_view(item) for item in value)
-        if not isinstance(value, Mapping):
-            return False
-        raw = value.get("raw")
-        error = value.get("error")
-        return (value.get("workspace") == "protected-runtime-workspace"
-                or (isinstance(raw, Mapping) and isinstance(raw.get("path"), str)
-                    and raw["path"].startswith("protected-runtime-raw/"))
-                or (isinstance(error, Mapping)
-                    and error.get("message") == "Protected Runtime diagnostics remain local.")
-                or any(protected_view(item) for item in value.values()))
 
     def evidence(item: dict[str, Any], owner: Mapping[str, Any] | None = None) -> None:
         validate_evidence(item)
@@ -514,9 +494,7 @@ def _matches_public_document(
                 item["summary"] = "Runtime verification exit code " + str(item["exit_code"])
         return data
 
-    original = encoded(private)
-    public = encoded(canonical)
-    projected = json.loads(original)
+    projected = json.loads(json.dumps(private, allow_nan=False))
     if kind == "RUN":
         workspace(projected["execution"]["run"] if projected.get("kind") == "REMEDIATION" else projected)
     elif kind == "RESULT":
@@ -526,6 +504,43 @@ def _matches_public_document(
         projected = metadata(projected, "root")
     else:
         raise ValueError("unknown terminal representation")
+    return projected
+
+
+def _matches_public_document(
+    private: Mapping[str, Any] | None,
+    canonical: Mapping[str, Any] | None,
+    kind: str,
+) -> bool:
+    """Compare a validated private record with its exact transport representation.
+
+    Validate even the historical exact representation. Only the writer's authorized
+    privacy fields may differ; projecting both sides would conceal corruption of
+    the public record.
+    """
+    if private is None or canonical is None:
+        return private is canonical
+
+    def encoded(value: Any) -> str:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+    def protected_view(value: Any) -> bool:
+        if isinstance(value, list):
+            return any(protected_view(item) for item in value)
+        if not isinstance(value, Mapping):
+            return False
+        raw = value.get("raw")
+        error = value.get("error")
+        return (value.get("workspace") == "protected-runtime-workspace"
+                or (isinstance(raw, Mapping) and isinstance(raw.get("path"), str)
+                    and raw["path"].startswith("protected-runtime-raw/"))
+                or (isinstance(error, Mapping)
+                    and error.get("message") == "Protected Runtime diagnostics remain local.")
+                or any(protected_view(item) for item in value.values()))
+
+    original = encoded(private)
+    public = encoded(canonical)
+    projected = _validated_private_public_view(private, kind)
     if public == original and not protected_view(canonical):
         return True
     return public == encoded(projected)
@@ -623,8 +638,13 @@ def _validate_lifecycle_failure(
     candidate_sha: str,
     candidate_available: bool,
     continuation_of: str | None,
+    public_representation: bool = True,
 ) -> None:
-    """Bind one FAILURE to Runtime's exact RUN and candidate facts."""
+    """Bind one FAILURE to Runtime's exact RUN and candidate facts.
+
+    Canonical terminals must already be public representations. Local private
+    terminals validate the same roles before their separate reconciliation.
+    """
 
     op = _operator()
     actual_descends = None
@@ -655,8 +675,11 @@ def _validate_lifecycle_failure(
         raise ValueError("FAILURE continuation does not match RUN family")
     if type(terminal["task"].get("revision")) is not int:
         raise ValueError("FAILURE TASK revision is malformed")
-    if not _matches_public_document(terminal, terminal, "METADATA"):
-        raise ValueError("FAILURE privacy representation is invalid")
+    if public_representation:
+        if not _matches_public_document(terminal, terminal, "METADATA"):
+            raise ValueError("FAILURE privacy representation is invalid")
+    else:
+        _validated_private_public_view(terminal, "METADATA")
 
 
 def _decode_publication_continuation(
@@ -1290,6 +1313,7 @@ def _local_pending_runs(
         require_same_affinity(task, run)
         if run.run_id != run_id or run.status != "ACTIVE":
             raise ValueError("persisted RUN identity is invalid")
+        same_run = [item for item in remote if item.run_id == run_id]
         parent_run_id = None
         correction = None
         semantic_predecessor = None
@@ -1302,8 +1326,10 @@ def _local_pending_runs(
             repair_execution = _lifecycle_document(repair_path.read_bytes(), "persisted REPAIR")
             if not isinstance(repair_execution, Mapping):
                 raise ValueError("persisted REPAIR execution must be a mapping")
-            if not _matches_public_document(repair_execution, repair_execution, "METADATA"):
-                raise ValueError("persisted REPAIR privacy representation is invalid")
+            # Private structural/privacy validation is not canonical equality.
+            # A transported correction is compared with its recognized public
+            # counterpart below; a pending one must remain pending.
+            _validated_private_public_view(repair_execution, "METADATA")
             correction = repair_execution
             parent_run_id = repair_execution.get("failed_run_id")
             failure = repair_execution.get("failure")
@@ -1404,7 +1430,7 @@ def _local_pending_runs(
                 )
             ]
             if len(parents) != 1:
-                parent_run_id = None
+                raise ValueError("persisted REPAIR predecessor is missing or ambiguous")
             elif parents[0].family in ("REMEDIATION", "REPAIR"):
                 # Match canonical lifecycle decoding: correction identity belongs
                 # to the exact failed correction chain, never to repair prose or
@@ -1412,6 +1438,14 @@ def _local_pending_runs(
                 # leaves both values unset.
                 review_id = parents[0].review_id
                 finding_id = parents[0].finding_id
+            if not same_run:
+                # Without a transported child, validate the private authorization
+                # contract independently; this cannot prove canonical equality.
+                publication_module._validate_repair_authorization(
+                    correction["repair"], failed_run_id=parent_run_id,
+                    failed_head_sha=run.base_sha, task=task,
+                    failed_changed_files=set(parents[0].terminal["candidate"]["changed_files"]),
+                )
         result_path = state.results / path.name
         failure_path = state.failures / path.name
         has_result = result_path.is_file()
@@ -1457,6 +1491,7 @@ def _local_pending_runs(
                 terminal=value,
                 candidate_sha=candidate_sha,
             )
+            _validated_private_public_view(value, "RESULT")
         else:
             candidate_sha = value.get("failed_head_sha")
             if not isinstance(candidate_sha, str) or not candidate_sha:
@@ -1469,6 +1504,7 @@ def _local_pending_runs(
                 candidate_sha=candidate_sha,
                 candidate_available=True,
                 continuation_of=parent_run_id if family == "REPAIR" else None,
+                public_representation=False,
             )
         recovery_document = None
         recovery_path = state.root / "publication-recovery" / path.name
@@ -1479,7 +1515,6 @@ def _local_pending_runs(
                 package=package,
                 local_repository=local_repository,
             )
-        same_run = [item for item in remote if item.run_id == run_id]
         if same_run:
             canonical = same_run[0] if len(same_run) == 1 else None
             if (
