@@ -1,36 +1,38 @@
 task_id: TASK-337
-revision: 4
-goal: Prospectively restore lawful canonical historical terminal reconciliation and
-  AUTHOR_REPAIR eligibility for TASK-336 after the TASK-337 revision-3 self-hosting
-  deadlock. Deliver the narrowly scoped, fail-closed reader and regression-fixture
-  correction as a new ordinary PRIMARY from canonical main, preserving all revision-3
-  FAILED RUNs and original engineering lineage.
-problem: TASK-337 r3 RUN-337-004 through RUN-337-007 terminated without reviewed publication.
-  Current main still classifies nested V2 FAILURE verification metadata containing
-  evidence_id but no full EVIDENCE raw field as a full evidence record. Unified State
-  can therefore block with MALFORMED_CANONICAL_STATE, preventing AUTHOR_REPAIR for
-  the r3 failed tip (and historical TASK-336 RUN-336-004) before correction ingress.
-  The r3 candidate commits d7d15ca514df5e568538f1886daf9d3c1b51c7e1 and 057180502792c6d4a7ead882623fd1b0101f1f63
-  are unreviewed implementation references only, not authority or proven results.
-  The r3 RUN-337-007 Completion Gate also found missing implementation claims for
-  AC3 and AC6. Revision 4 must remove both risks without rewriting or bypassing prior
-  lineage.
+revision: 5
+goal: Finish the fail-closed historical terminal reconciliation recovery blocked by
+  RUN-337-008 by delivering an independently verifiable, contract-valid four-RUN TASK-336
+  regression fixture plus the r4 intended V2 reference/full-EVIDENCE reader correction,
+  without any production authority expansion.
+problem: 'RUN-337-008, the r4 PRIMARY, is canonical VERIFICATION FAILURE against base
+  246f59715a04ed05e665ed15c5c2fd9300c96015 and failed candidate 486ffc0916fb270f4b21482a30a36ea502dda4ea.
+  Runtime V2 attributed four unresolved authoring fixture tests: two normal protected/unprotected
+  authoring tests reject an invalid fixture REPAIR constraint (''REPAIR constraints
+  introduce new Human intent'') before reaching the audited_handoff guard; two adversarial
+  changed-correction/missing-raw tests issue Git update-ref for a newly built object
+  not transferred into the bare remote. Fresh semantic audit also identifies an extra
+  ''affected_verification'' field on a fixture REPAIR authorization; production _validate_repair_authorization
+  accepts an exact eight-field schema and requires constraints drawn from the original
+  TASK. Earlier revision-3 authoring was deadlocked by an unreviewed nested verification
+  reference parser fix absent from canonical main. All r3/r4 failed candidates are
+  evidence of attempted work only, not reviewed/published source. Revision 5 is a
+  Human-authorized prospective PRIMARY from current main, not a correction of an immutable
+  previous RUN.'
 assumptions:
-- Human explicitly approved prospective TASK-337 revision 4 as an ordinary new PRIMARY,
-  not a REPAIR of revision 3. The expected canonical authoring base is main e59db7dc98b70f083d0a22b0c982e0e48885dd4f;
-  ingress must enforce fresh expected-main CAS and revision continuity.
-- Immutable r3 RUN-337-004 through RUN-337-007 FAILURE/REPAIR and r2 reviewed/published
-  evidence remain historical and unmodified. Do not treat their candidate implementation
-  or Executor claims as Runtime verification evidence.
-- The latest observed r3 failed tip is RUN-337-007 with candidate 057180502792c6d4a7ead882623fd1b0101f1f63
-  and COMPLETION_GATE failure; a revision-4 PRIMARY starts from current canonical
-  main instead of this candidate.
-- TASK-336 RUN-336-001 through RUN-336-004 are a distinct immutable historical lineage;
-  this TASK only fixes read-only observation/authoring eligibility, not its implementation
-  or execution.
-- Revision 4 preserves existing LEGACY_REPOSITORY_DEFAULT_ROUTE and the Human-selected
-  Codex GPT-6.1 Sol xhigh as external operational delegation; the semantic TASK itself
-  is executor-neutral.
+- Human explicitly approved TASK-337 revision 5 as a prospective PRIMARY with no new
+  TASK id, following the failed revision-4 RUN-337-008.
+- Exact authoritative main at authoring is 246f59715a04ed05e665ed15c5c2fd9300c96015
+  and canonical prior TASK is TASK-337 revision 4. AUTHOR_TASK must enforce fresh
+  expected-main CAS and sequential revision.
+- Immutable prior RUN-337-004 through RUN-337-008 FAILURE/repair and prior reviewed/published
+  revisions remain unchanged. RUN-337-008 candidate 486ffc0916fb270f4b21482a30a36ea502dda4ea
+  is a nonauthoritative implementation reference, not a verified or published source.
+- The observed original fixture TASK source hard-constraints are ['Commit the output.'];
+  the current production _validate_repair_authorization permits only REPAIR constraints
+  from those hard constraints and an exact eight-field authorization schema.
+- The existing TASK return affinity remains LEGACY_REPOSITORY_DEFAULT_ROUTE. Codex
+  GPT-6.1 Sol xhigh is the active Human-selected Executor delegation outside the semantic
+  TASK; Runtime must admit exactly that profile when PRIMARY is later delivered.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -40,9 +42,11 @@ scope:
   - .ai/roadmap-state.yaml
   - .ai/tasks/TASK-336.yaml
   - src/aios_renew/unified_state.py
-  - src/aios_renew/verification_contract.py
+  - src/aios_renew/publication.py
   - src/aios_renew/authoring_ingress.py
   - src/aios_renew/review_transport.py
+  - src/aios_renew/verification_contract.py
+  - tests/operator_test_support.py
   - tests/test_operator.py
   - tests/test_authoring_ingress.py
   modify:
@@ -50,76 +54,99 @@ scope:
   - tests/test_operator.py
   - tests/test_authoring_ingress.py
 non_goals:
-- No execution, authoring, repair or publication of TASK-336; no REPAIR of failed
-  TASK-337 revision-3 RUNs; no re-opening or mutation of immutable RUN, RESULT, FAILURE,
-  REPAIR, REMEDIATION, REVIEW, EVIDENCE or refs.
-- No change to Runtime admission/completion, correction strategy, review/publication
-  semantics, private/public writers, GitHub workflow, branch rulesets, credentials,
-  verification engine, or downstream repository.
-- No auto-retry, manual tampering with canonical history, copying candidate artifacts
-  into main outside the admitted Executor, default PASS, skip/xfail, weakening of
-  raw evidence checks, or bypass of Unified State.
-- No broad full-suite or unneeded equivalent baseline re-execution solely for ceremony;
-  no new scheduler, router, reviewer, publisher or evidence authority.
+- No AUTHOR_REPAIR/EXECUTE_REPAIR of RUN-337-008 or any r3 failure, and no mutation
+  of TASK-336 or historical canonical RUN/RESULT/FAILURE/REVIEW/REPAIR refs; revision
+  5 is independent prospective PRIMARY.
+- No changes to Runtime admission, verification evidence validity caps, private/public
+  writers, verification selection, test-harness policy, repair semantic validator,
+  Reviewer, Publisher or canonical flow, and no weakening of constitutional authority
+  separation.
+- No new AIOS TASK identity, automatic new roadmap NEXT, new lifecycle/failover router,
+  repeated historical remediation, mutation of platform workflows, self-host credentials,
+  branch rulesets or downstream adoption.
+- No arbitrary broad-suite reruns, invented passing evidence, test skipping/xfail,
+  acceptance narrowing or bypass of authentication/fail-closed private/protected-public
+  comparison.
 constraints:
   hard:
-  - The reader must distinguish a nested V2 FAILURE verification reference from a
-    full EVIDENCE object using explicit structural context and validated fields; a
-    mere evidence_id is insufficient to classify either representation.
-  - Full EVIDENCE still requires authenticated raw/result/identity fields and fails
-    closed for missing or malformed fields. Metadata references must preserve exact
-    observation, digests, command, source and candidate SHA, correction ancestry and
-    no evidence provenance substitution.
-  - Preserve only explicitly privacy-allowlisted private/public differences; reject
-    fabricated public placeholders, spoofed reference or complete EVIDENCE, malformed
-    metadata, changed task/run/head/digest identity and parent/authorization contradictions.
-    Do not suppress parsing exceptions globally.
-  - Historical TASK-336 four-RUN reproduction must be read-only and must not leak
-    private raw paths or force AUTHOR_REPAIR if an independent canonical blocker exists.
-  - Windows test fixtures must reproduce exact canonical raw TASK bytes even with
-    core.autocrlf and Git checkout conversions, while detecting deliberate CRLF working-tree
-    drift without relaxing production authoring gates.
-  - Modify only the three explicitly listed source/test files. Commits d7d15ca514df5e568538f1886daf9d3c1b51c7e1
-    and 057180502792c6d4a7ead882623fd1b0101f1f63 are non-authoritative references
-    to reassess, not a prescribed cherry-pick or completion proof.
-  - Provide a complete structural ResultPackage with truthful, specific implementation
-    claims covering all acceptance IDs before Runtime verification; do not fabricate
-    verification evidence or mark unexecuted tests PASS. Runtime owns minimum-sufficient-v2
-    verification and reuse; duplicate/unchanged base replay is forbidden without relevant
-    invalidation.
-  - A new revision-4 PRIMARY must be based on exact canonical main with fresh TASK
-    revision, original legacy return affinity and Human-selected Executor delegation
-    held outside TASK. Do not author, run or automatically dispatch an r3 REPAIR.
+  - Carry forward the reviewed-published TASK-337 r2 protections and the r4 intended
+    fail-closed V2 private/public terminal metadata reader semantics. A reference-only
+    verification observation is not a full EVIDENCE object; complete EVIDENCE must
+    still validate raw/result/identity, provenance, digests, correction ancestry,
+    owner and privacy allowlists.
+  - The authored repair-history fixture must construct every embedded REPAIR authorization
+    with exactly the current production REPAIR schema (no extra affected_verification
+    key or other unsupported keys); every constraint must be a verbatim member of
+    the fixture TASK.constraints.hard, and execution scope must remain within authorized
+    TASK/failed-changed-files. No fabricated new Human intent is allowed.
+  - For normal AUTHOR_REPAIR tests, the initial unsigned/unaudited carrier must reach
+    and be rejected specifically at the real audited_handoff gate, then the valid
+    audited correction must canonicalize when all independent guards pass. A premature
+    invalid REPAIR authorization or fixture Git error must never count as PASS.
+  - For the changed-correction and missing-raw negative tests, the intentionally altered
+    metadata Git commit must exist in the test bare remote object store before an
+    expected-old-SHA compare-and-swap updates the test ref. Real Git and canonical
+    parsing must reject corruption at the intended boundary; no bypass of CAS, provenance
+    checking or production validation.
+  - Retain explicit positive and adversarial tests for normal protected and non-protected
+    terminal reconciliation, nested V2 FAILURE references, incomplete full EVIDENCE,
+    forged or changed correction metadata, identity/head/digest mismatches and malformed
+    lineage. Do not suppress tests, alter fail-closed parser to permit bogus corrections,
+    re-label failures as expected, or relax a regex merely to accept an earlier unintended
+    error.
+  - Windows fixture construction must bind raw working-tree .ai inputs to exact committed
+    Git bytes even under core.autocrlf=true, while adversarial CRLF-only drift remains
+    rejected by production ingress. No mutation of the historical TASK-336 canonical
+    refs or real Runtime artifacts.
+  - Candidate may consult failed RUN-337-008 commit 486ffc0916fb270f4b21482a30a36ea502dda4ea
+    and earlier r3 commits as unreviewed implementation references only. It must be
+    independently authored from exact canonical main; do not cherry-pick unreviewed
+    candidate as authority or skip applicable acceptance checks.
+  - Modify only the three authorized paths. Do not change publication.py, authoring_ingress.py,
+    verification_contract.py, workflows, Runner configuration, GitHub refs or protection,
+    Runner admission, review/publication semantics, or the frozen Kernel. No new router,
+    lifecycle retry authority, or parallel Executor.
+  - Before declaring implementation ready, check the complete historical-fixture contract
+    after each simulated correction across all four RUNs; not just the four previously
+    reported test failures. A clean expected pass for all targeted acceptance tests
+    must be supported by truthful output, not assertions alone.
+  - Produce a complete structural ResultPackage with truthful claims that explicitly
+    cover AC1-AC6 and identify the exact committed candidate and changed files. Runtime
+    owns independent minimum-sufficient-v2 verification, proof validity/reuse and
+    terminal lineage; do not execute identical authored full targeted suites redundantly
+    solely as ceremony or claim invalid prior evidence as reusable.
 acceptance:
 - id: AC1
-  condition: The implementation distinguishes nested reference-only V2 verification
-    observations under FAILURE/REPAIR metadata from complete EVIDENCE records, allowing
-    valid references without a raw object while validating complete EVIDENCE with
-    its required fields.
+  condition: The exact r5 candidate supports correct V2 nested FAILURE verification
+    references and complete EVIDENCE roles under protected and unprotected metadata,
+    rejecting spoofed or incomplete roles without hiding independent blockers or changing
+    production authority.
 - id: AC2
-  condition: The reader deterministically reconstructs the four historical TASK-336
-    terminal identities and private/protected-public comparison, yielding the lawful
-    RUN-336-004 AUTHOR_REPAIR eligibility when all independent guards pass, and an
-    explicit blocker when they do not.
+  condition: The historical TASK-336 four-RUN test fixture uses a contract-valid exact
+    REPAIR authorization shape and constraints limited to canonical fixture TASK hard
+    constraints throughout all correction links; positive normal_authoring_admission[False]
+    and [True] reach the expected audited_handoff rejection for unadmitted ingress
+    and then successfully canonicalize a valid audited correction.
 - id: AC3
-  condition: The metadata reader rejects spoofed reference-only objects, incomplete
-    full EVIDENCE, corrupted observation digests, mismatched run/task/head/authorization
-    identities, malformed correction ancestry and unauthorized privacy differences
-    without changing original artifacts.
+  condition: Both adversarial changed-correction and missing-raw cases transport their
+    synthetic replacement commit objects to the test bare remote before a bound expected-old
+    ref update, reach the production canonical tamper checks, and reject the malformed
+    metadata without any unauthorized ref/Runtime change.
 - id: AC4
-  condition: The test fixture for normal TASK-336 historical AUTHOR_REPAIR admission
-    preserves exact committed .ai TASK bytes under Windows core.autocrlf settings
-    and includes an adversarial CRLF-only raw-byte divergence rejection case.
+  condition: The four-RUN TASK-336 lineage, exact public/private projections and admissible
+    final AUTHOR_REPAIR are deterministically reconstructed read-only when all independent
+    guards pass; changed task/head/authorization/digests, invalid nested evidence,
+    fake public redactions and independent competing blockers fail closed.
 - id: AC5
-  condition: The candidate preserves previous reviewed TASK-337 r2 behavior and existing
-    publication-recovery protections, limits its committed implementation delta to
-    the three authorized source/test files and leaves immutable prior RUN, FAILURE
-    and REPAIR state untouched.
+  condition: Windows core.autocrlf=true valid authoring fixtures compare exact committed
+    raw .ai TASK bytes correctly, and the CRLF-only working-tree drift adversary is
+    still rejected, with no weakening of Git/index or raw authoring input verification.
 - id: AC6
-  condition: The candidate contains executable targeted positive and adversarial terminal_reconciliation
-    tests covering the historical TASK-336 reader, normal protected/unprotected authoring,
-    missing raw, changed identities and CRLF drift without skips, expected failures
-    or weakened validation; each test is selectable by the authored command.
+  condition: Only the three authorized production/test paths differ from canonical
+    base; prior r2 reviewed behavior and publication recovery protections remain intact;
+    targeted terminal_reconciliation positive and adversarial tests are executable
+    without skip/xfail, and ResultPackage implementation claims explicitly and truthfully
+    cover all six ACs before independent V2 verification.
 verification:
   policy: minimum-sufficient-v2
   required:
