@@ -1,0 +1,30 @@
+review_id: REVIEW-337-011
+reviewed_sha: ae805c69ab15b95ff7062e82abe32b8b926887b5
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC4: FAIL
+findings:
+- id: FINDING-337-011-001
+  basis: AC4
+  action: CODE_FIX
+  location: 'src/aios_renew/unified_state.py: _matches_public_document.metadata, embedded_package
+    role dispatch under generic metadata'
+  issue: The metadata role is recursively propagated through arbitrary unknown wrapper
+    keys, while `key == 'embedded_package' and role in {'root','failure','failure_error','metadata'}`
+    promotes any such descendant to a recognized package. Thus a full, internally
+    valid, same-owner EVIDENCE at FAILURE.unrelated.embedded_package.evidence or FAILURE.metadata.unrelated.embedded_package.evidence
+    gets an authorized full_evidence role and passes owner-binding and privacy projection
+    despite an unsupported placement. The new adversarial tests cover direct evidence,
+    package lookalikes, nested foreign FAILURE and provenance misuse, but not embedded_package
+    behind an unrelated metadata wrapper. This leaves AC4's structural-placement requirement
+    unresolved.
+  expected: Allow embedded_package only at declared structural positions, with owner
+    lineage preserved, rather than under arbitrary metadata descendants. Reject unsupported
+    wrappers such as FAILURE.unrelated.embedded_package and FAILURE.metadata.unrelated.embedded_package
+    with otherwise valid same-owner EVIDENCE. Add bounded private/protected and read-only
+    local/remote adversarial regressions for these placements while retaining existing
+    allowed FAILURE.embedded_package and FAILURE.metadata.embedded_package positives,
+    the four-RUN TASK-336 fixture, and the authorized three-file scope and minimum-sufficient-v2
+    policy.
+prior_finding_id: FINDING-337-009-002
