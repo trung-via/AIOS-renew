@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import aios_renew.publication as publication_module
+import aios_renew.review_transport as transport_module
 from .artifacts import (
     ArtifactValidationError,
     ResultPackage,
@@ -275,7 +276,7 @@ def _bounded_admission_context(
 def _decode_lifecycle_run(
     raw: bytes, *, run_id: str
 ) -> tuple[Run, str, str | None, str | None]:
-    value = json.loads(raw.decode("utf-8", errors="strict"))
+    value = _lifecycle_document(raw)
     if not isinstance(value, Mapping):
         raise ValueError("RUN must be a mapping")
     op = _operator()
@@ -309,6 +310,133 @@ def _decode_lifecycle_run(
         raise ValueError("unknown RUN kind")
     run = op._run_from_data(value)
     return run, "PRIMARY", None, None
+
+
+def _lifecycle_document(raw: bytes) -> Mapping[str, Any]:
+    """Read historical JSON without imposing a prospective writer size limit."""
+
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                raise ValueError("duplicate lifecycle document field")
+            value[key] = item
+        return value
+
+    def constant(_):
+        raise ValueError("non-finite lifecycle document value")
+
+    value = json.loads(raw.decode("utf-8", errors="strict"),
+                       object_pairs_hook=pairs, parse_constant=constant)
+    if not isinstance(value, Mapping):
+        raise ValueError("lifecycle document must be a mapping")
+    return value
+
+
+def _document_bytes(value: Mapping[str, Any]) -> bytes:
+    # JSON identity distinguishes booleans from integers and retains every field.
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False).encode("utf-8")
+
+
+def _validate_private_projection_fields(value: Any) -> None:
+    """Validate fields that transport hides before asking for their public view.
+
+    A placeholder cannot repair a missing locator/summary or conceal an unknown
+    binding inside a discarded diagnostics/raw object. All other fields remain
+    part of the exact comparison, including complete verification observations.
+    """
+
+    if isinstance(value, list):
+        for item in value:
+            _validate_private_projection_fields(item)
+        return
+    if not isinstance(value, Mapping):
+        return
+    if "run_id" in value and "workspace" in value and "task" in value:
+        _operator()._run_from_data(value)
+    if "evidence_id" in value and "raw" in value:
+        validate_evidence(value)
+        if set(value["raw"]) != {"path"}:
+            raise ValueError("private raw locator contains unrepresented fields")
+    if value.get("kind") == "FAILURE" and "error" in value:
+        error = value["error"]
+        if not isinstance(error, Mapping) or any(
+            not isinstance(error.get(key), str) or not error[key].strip()
+            for key in ("type", "message")
+        ):
+            raise ValueError("invalid private FAILURE error")
+        if "verification" in error:
+            records = error["verification"]
+            if not isinstance(records, list) or any(
+                not isinstance(item, Mapping)
+                or not isinstance(item.get("command"), str) or not item["command"]
+                or type(item.get("exit_code")) is not int
+                or not isinstance(item.get("summary"), str) or not item["summary"].strip()
+                for item in records
+            ):
+                raise ValueError("invalid private FAILURE verification diagnostics")
+        if "executor_diagnostics" in error:
+            diagnostics = error["executor_diagnostics"]
+            if (not isinstance(diagnostics, Mapping) or set(diagnostics) != {"unresolved"}
+                    or not isinstance(diagnostics["unresolved"], list)
+                    or any(not isinstance(item, str) or not item.strip()
+                           for item in diagnostics["unresolved"])):
+                raise ValueError("invalid private executor diagnostics")
+        if "native_diagnostics" in error:
+            diagnostics = error["native_diagnostics"]
+            if (not isinstance(diagnostics, Mapping)
+                    or set(diagnostics) != {"limit_chars", "stdout", "stderr"}
+                    or type(diagnostics["limit_chars"]) is not int
+                    or diagnostics["limit_chars"] < 1):
+                raise ValueError("invalid private native diagnostics")
+            for name in ("stdout", "stderr"):
+                stream = diagnostics[name]
+                if not isinstance(stream, Mapping):
+                    raise ValueError("invalid private native stream")
+                availability = stream.get("availability")
+                if availability == "captured":
+                    valid = (set(stream) == {"availability", "text", "truncated"}
+                             and isinstance(stream["text"], str)
+                             and type(stream["truncated"]) is bool
+                             and len(stream["text"]) <= diagnostics["limit_chars"])
+                else:
+                    valid = ((availability == "empty" and set(stream) == {"availability"})
+                             or (availability == "unavailable"
+                                 and (set(stream) == {"availability"}
+                                      or (set(stream) == {"availability", "reason"}
+                                          and stream["reason"] in {"invalid_utf8", "unsupported_type"}))))
+                if not valid:
+                    raise ValueError("invalid private native stream")
+    for item in value.values():
+        _validate_private_projection_fields(item)
+
+
+def _same_public_document(
+    private: Mapping[str, Any], canonical: Mapping[str, Any], *, kind: str
+) -> bool:
+    """Compare exactly, or compare only the authorized one-way public projection.
+
+    Never redact the canonical document to make a mismatch disappear. Historical
+    exact documents need no writer invocation (or writer input cap).
+    """
+
+    private_bytes = _document_bytes(private)
+    canonical_bytes = _document_bytes(canonical)
+    if private_bytes == canonical_bytes:
+        return True
+    _validate_private_projection_fields(private)
+    projection = {
+        "RUN": transport_module.public_run,
+        "RESULT": transport_module.public_result,
+        "FAILURE": transport_module.public_metadata,
+        "REPAIR": transport_module.public_metadata,
+    }[kind]
+    try:
+        projected = _lifecycle_document(projection(private_bytes))
+    except (RuntimeError, KeyError, TypeError, ValueError) as exc:
+        raise ValueError("private lifecycle public projection is invalid") from exc
+    return _document_bytes(projected) == canonical_bytes
 
 
 def _validate_lifecycle_result(
@@ -355,6 +483,7 @@ def _validate_lifecycle_failure(
 ) -> None:
     """Bind one FAILURE to Runtime's exact RUN and candidate facts."""
 
+    _validate_private_projection_fields(terminal)
     op = _operator()
     actual_descends = None
     actual_changed = None
@@ -394,21 +523,26 @@ def _decode_publication_continuation(
     raw: bytes,
     candidate_sha: str,
     package: ResultPackage | None,
+    current_main_sha: str | None = None,
 ) -> tuple[Mapping[str, Any], str]:
     """Project the same validated recovery provenance for local and remote terminals."""
 
-    document = publication_module._mapping(publication_module._json_no_duplicates(
-        raw, document="publication continuation"), "publication continuation")
+    document = _lifecycle_document(raw)
     if family != "PRIMARY" or parent_run_id is not None:
         raise ValueError("publication continuation cannot impersonate a correction")
     plan = publication_module.publication_plan_from_data(document["plan"])
     if package is not None:
+        audit = document.get("evidence_decision")
+        if not isinstance(audit, Mapping) or type(audit.get("version")) is not int:
+            raise ValueError("publication evidence decision version is invalid")
         publication_module.validate_publication_recovery(repo,
             remote=resolve_transport_remote(repo), raw=raw,
-            run=run, task=task, candidate_sha=candidate_sha, package=package)
+            run=run, task=task, candidate_sha=candidate_sha, package=package,
+            current_main_sha=current_main_sha)
     elif (set(document) != {"format", "version", "plan", "identity", "reservation_sha"}
             or document["format"] != "AIOS_PUBLICATION_RECOVERY_ADMISSION"
-            or document["version"] != 1 or document["identity"] != plan.identity
+            or type(document["version"]) is not int or document["version"] != 1
+            or document["identity"] != plan.identity
             or run.base_sha != plan.main_sha or run.task.id != plan.task_id
             or run.task.revision != plan.task_revision):
         raise ValueError("publication failure has no exact Runtime admission")
@@ -427,8 +561,13 @@ def _decode_remote_lifecycle(
             item.review.decode("utf-8", errors="strict")
         )
     decoded: list[_LifecycleRun] = []
+    terminal_identities: set[tuple[str, str]] = set()
     for item in lifecycle.terminals:
-        run_document = json.loads(item.run.decode("utf-8", errors="strict"))
+        identity = (item.run_id, item.kind)
+        if item.kind not in {"RESULT", "FAILURE"} or identity in terminal_identities:
+            raise ValueError("invalid or duplicate canonical terminal")
+        terminal_identities.add(identity)
+        run_document = _lifecycle_document(item.run)
         if not isinstance(run_document, Mapping):
             raise ValueError("RUN must be a mapping")
         run, family, review_id, finding_id = _decode_lifecycle_run(
@@ -463,7 +602,7 @@ def _decode_remote_lifecycle(
         parent_run_id = None
         correction = None
         if item.correction is not None:
-            correction = json.loads(item.correction.decode("utf-8", errors="strict"))
+            correction = _lifecycle_document(item.correction)
             if not isinstance(correction, Mapping):
                 raise ValueError("REPAIR lineage must be a mapping")
             parent_run_id = correction.get("failed_run_id")
@@ -476,13 +615,13 @@ def _decode_remote_lifecycle(
             authorization = correction.get("repair")
             authorization_sha = correction.get("repair_authorization_sha")
             correction_task = correction.get("task")
-            run_value = json.loads(item.run.decode("utf-8", errors="strict"))
+            run_value = run_document
             if (
                 correction.get("failed_head_sha") != run.base_sha
                 or not isinstance(correction.get("root_base_sha"), str)
                 or not correction.get("root_base_sha")
                 or not isinstance(embedded_run, Mapping)
-                or dict(embedded_run) != dict(run_value)
+                or _document_bytes(embedded_run) != _document_bytes(run_value)
                 or not isinstance(embedded_failure, Mapping)
                 or embedded_failure.get("run_id") != parent_run_id
                 or embedded_failure.get("failed_head_sha") != run.base_sha
@@ -499,12 +638,13 @@ def _decode_remote_lifecycle(
                 )
                 or not isinstance(correction_task, Mapping)
                 or correction_task.get("task_id") != task.task_id
+                or type(correction_task.get("revision")) is not int
                 or correction_task.get("revision") != task.revision
                 or document_affinity(correction_task) != task.return_affinity
             ):
                 raise ValueError("REPAIR execution lineage is invalid")
             family = "REPAIR"
-        terminal = json.loads(item.terminal.decode("utf-8", errors="strict"))
+        terminal = _lifecycle_document(item.terminal)
         if not isinstance(terminal, Mapping):
             raise ValueError("terminal document must be a mapping")
         package = None
@@ -533,6 +673,7 @@ def _decode_remote_lifecycle(
                 repo, task=task, run=run, family=family, parent_run_id=parent_run_id,
                 raw=item.publication_recovery, candidate_sha=item.candidate_sha,
                 package=package,
+                current_main_sha=lifecycle.main_sha,
             )
         decoded.append(
             _LifecycleRun(
@@ -671,7 +812,7 @@ def _decode_remote_lifecycle(
             parent.terminal_kind != "FAILURE"
             or item.run.base_sha != parent.candidate_sha
             or item.correction is None
-            or dict(item.correction["failure"]) != dict(parent.terminal)
+            or not _same_public_document(parent.terminal, item.correction["failure"], kind="FAILURE")
             or parent.terminal.get("base_sha") != parent.run.base_sha
         ):
             raise ValueError("REPAIR predecessor identity or failed SHA mismatch")
@@ -950,20 +1091,39 @@ def _local_pending_runs(
     terminal_pending: list[_LifecycleRun] = []
     active_pending: list[_LifecycleRun] = []
     prefix = task_run_prefix(task.task_id)
+    recovery_directory = state.root / "publication-recovery"
+    for directory in (state.results, state.failures, state.repairs,
+                      recovery_directory):
+        if directory.is_dir() and any(
+            not (state.runs / path.name).is_file()
+            for path in directory.glob(f"{prefix}*.json")
+            # The two named admission/prospective carriers are support records,
+            # rather than terminal sidecars. Unknown filenames still fail closed.
+            if directory != recovery_directory
+            or re.fullmatch(re.escape(prefix) + r"\d{3,}-(admission|prospective)", path.stem) is None
+        ):
+            raise ValueError("persisted terminal/correction has no RUN")
     if not state.runs.is_dir():
         return terminal_pending, active_pending
     for path in state.runs.glob(f"{prefix}*.json"):
         run_id = path.stem
         raw = path.read_bytes()
-        run_document = json.loads(raw.decode("utf-8", errors="strict"))
+        run_document = _lifecycle_document(raw)
         if not isinstance(run_document, Mapping):
             raise ValueError("persisted RUN must be a mapping")
         run, family, review_id, finding_id = _decode_lifecycle_run(raw, run_id=run_id)
-        if run.task.id != task.task_id or run.task.revision != task.revision:
+        same_run = [item for item in remote if item.run_id == run_id]
+        canonical = same_run[0] if len(same_run) == 1 else None
+        if run.task.id != task.task_id or (same_run and run.task.revision != task.revision):
+            raise ValueError("persisted RUN TASK identity conflicts with canonical state")
+        if run.task.revision != task.revision:
             continue
         require_same_affinity(task, run)
         if run.run_id != run_id or run.status != "ACTIVE":
             raise ValueError("persisted RUN identity is invalid")
+        if same_run and (canonical is None or canonical.run_document is None
+                         or not _same_public_document(run_document, canonical.run_document, kind="RUN")):
+            raise ValueError("local and canonical RUN state conflict")
         parent_run_id = None
         correction = None
         semantic_predecessor = None
@@ -973,7 +1133,7 @@ def _local_pending_runs(
         if repair_path.is_file():
             if family != "PRIMARY":
                 raise ValueError("local RUN has competing correction families")
-            repair_execution = json.loads(repair_path.read_text(encoding="utf-8"))
+            repair_execution = _lifecycle_document(repair_path.read_bytes())
             if not isinstance(repair_execution, Mapping):
                 raise ValueError("persisted REPAIR execution must be a mapping")
             correction = repair_execution
@@ -986,6 +1146,8 @@ def _local_pending_runs(
                 not isinstance(parent_run_id, str)
                 or not parent_run_id
                 or repair_execution.get("failed_head_sha") != run.base_sha
+                or not isinstance(repair_execution.get("root_base_sha"), str)
+                or not repair_execution["root_base_sha"]
                 or not isinstance(failure, Mapping)
                 or failure.get("run_id") != parent_run_id
                 or failure.get("failed_head_sha") != run.base_sha
@@ -1001,13 +1163,17 @@ def _local_pending_runs(
                     )
                 )
                 or not isinstance(embedded_run, Mapping)
-                or op._run_from_data(embedded_run) != run
+                or _document_bytes(embedded_run) != _document_bytes(run_document)
+                or not isinstance(repair_execution.get("task"), Mapping)
+                or repair_execution["task"].get("task_id") != task.task_id
+                or type(repair_execution["task"].get("revision")) is not int
+                or repair_execution["task"].get("revision") != task.revision
                 or document_affinity(repair_execution.get("task", {})) != task.return_affinity
             ):
                 raise ValueError("persisted REPAIR execution lineage is invalid")
             family = "REPAIR"
         elif family == "REMEDIATION":
-            local_value = json.loads(raw.decode("utf-8", errors="strict"))
+            local_value = run_document
             execution = op._remediation_execution_from_data(local_value["execution"])
             if "predecessor" in local_value:
                 semantic_predecessor = op._parse_remediation_predecessor(
@@ -1055,7 +1221,7 @@ def _local_pending_runs(
                 and parent.terminal_kind == "FAILURE"
                 and correction is not None
                 and isinstance(correction.get("failure"), Mapping)
-                and dict(correction["failure"]) == dict(parent.terminal)
+                and _same_public_document(correction["failure"], parent.terminal, kind="FAILURE")
                 and parent.terminal.get("base_sha") == parent.run.base_sha
             ]
             if len(parents) != 1:
@@ -1074,6 +1240,8 @@ def _local_pending_runs(
         if has_result and has_failure:
             raise ValueError("persisted RUN has conflicting terminal state")
         if not has_result and not has_failure:
+            if same_run:
+                raise ValueError("persisted canonical RUN has no local terminal")
             if not any(item.run_id == run_id for item in remote):
                 active_pending.append(
                     _LifecycleRun(
@@ -1087,9 +1255,7 @@ def _local_pending_runs(
                 )
             continue
         kind = "RESULT" if has_result else "FAILURE"
-        value = json.loads(
-            (result_path if has_result else failure_path).read_text(encoding="utf-8")
-        )
+        value = _lifecycle_document((result_path if has_result else failure_path).read_bytes())
         if not isinstance(value, Mapping):
             raise ValueError("persisted terminal document must be a mapping")
         package = None
@@ -1126,14 +1292,34 @@ def _local_pending_runs(
         recovery_document = None
         recovery_path = state.root / "publication-recovery" / path.name
         if recovery_path.is_file():
+            # The local RUN has already been validated and bound to the exact
+            # canonical RUN projection. Admission compares canonical RUNs,
+            # including their workspace representation, rather than private paths.
+            recovery_raw = recovery_path.read_bytes()
+            if canonical is not None:
+                validation_run = canonical.run
+            else:
+                # A not-yet-transported terminal still has an immutable admission.
+                # Read its applicable representation instead of assuming which
+                # historical public writer produced it.
+                plan = publication_module.publication_plan_from_data(
+                    _lifecycle_document(recovery_raw)["plan"])
+                remote_name = resolve_transport_remote(repo)
+                admission_sha = publication_module._single_remote_sha(
+                    repo, remote_name, publication_module.PUBLICATION_RECOVERY_PREFIX + plan.source_run_id,
+                    run_id=run_id)
+                publication_module._fetch_object(repo, remote_name, admission_sha, run_id=run_id)
+                admitted_raw = publication_module._read_blob(
+                    repo, admission_sha, ".ai/transport/run.json", run_id=run_id)
+                if not _same_public_document(run_document, _lifecycle_document(admitted_raw), kind="RUN"):
+                    raise ValueError("local recovery RUN conflicts with canonical admission")
+                validation_run = _decode_lifecycle_run(admitted_raw, run_id=run_id)[0]
             recovery_document, parent_run_id = _decode_publication_continuation(
-                repo, task=task, run=run, family=family, parent_run_id=parent_run_id,
-                raw=recovery_path.read_bytes(), candidate_sha=candidate_sha,
+                repo, task=task, run=validation_run, family=family, parent_run_id=parent_run_id,
+                raw=recovery_raw, candidate_sha=candidate_sha,
                 package=package,
             )
-        same_run = [item for item in remote if item.run_id == run_id]
         if same_run:
-            canonical = same_run[0] if len(same_run) == 1 else None
             if (
                 canonical is None
                 or (run_id, kind) not in remote_kinds
@@ -1144,15 +1330,13 @@ def _local_pending_runs(
                 or canonical.execution_base != execution_base
                 or canonical.review_id != review_id
                 or canonical.finding_id != finding_id
-                or canonical.publication_recovery != recovery_document
-                or canonical.run_document is None
-                or dict(canonical.run_document) != dict(run_document)
-                or dict(canonical.terminal) != dict(value)
-                or (
-                    None if canonical.correction is None
-                    else dict(canonical.correction)
-                )
-                != (None if correction is None else dict(correction))
+                or (canonical.publication_recovery is None) != (recovery_document is None)
+                or (recovery_document is not None and canonical.publication_recovery is not None
+                    and _document_bytes(canonical.publication_recovery) != _document_bytes(recovery_document))
+                or not _same_public_document(value, canonical.terminal, kind=kind)
+                or (canonical.correction is None) != (correction is None)
+                or (correction is not None and canonical.correction is not None
+                    and not _same_public_document(correction, canonical.correction, kind="REPAIR"))
             ):
                 raise ValueError("local and canonical terminal state conflict")
             continue
@@ -1345,9 +1529,7 @@ def observe_unified_state(
                         run_id=tip.run_id, failed_run_id=tip.run_id,
                         failed_head_sha=tip.candidate_sha,
                     )
-                repair_authorization = json.loads(
-                    selectors[0][2].decode("utf-8", errors="strict")
-                )
+                repair_authorization = _lifecycle_document(selectors[0][2])
                 if not isinstance(repair_authorization, Mapping):
                     raise ValueError("canonical REPAIR authorization must be a mapping")
                 preflight_repair_fn = getattr(op, "preflight_repair", preflight_repair)

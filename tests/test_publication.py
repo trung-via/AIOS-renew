@@ -4152,9 +4152,19 @@ def test_publication_recovery_admits_once_then_requires_new_exact_review(tmp_pat
     assert git(repo, "rev-parse", f"{recovered.head_sha}^@").splitlines() == [main, lineage["candidate_sha"]]
     observation = observe_unified_state("TASK-063", repo=repo)
     assert observation.next_action == "SEMANTIC_REVIEW" and observation.run_id == recovered.run_id
+    assert observation.candidate_sha == recovered.head_sha and observation.review_id is None
+    assert observation.blocker is None
+    state = operator.runtime_paths(repo)
+    private_run = json.loads((state.runs / f"{recovered.run_id}.json").read_bytes())
+    private_package = json.loads((state.results / f"{recovered.run_id}.json").read_bytes())
+    public_run = json.loads(git(lineage["remote"], "show",
+        f"refs/heads/aios/artifacts/{recovered.run_id}:.ai/transport/run.json"))
+    assert private_run["workspace"] == str(repo) and public_run["workspace"] == "protected-runtime-workspace"
+    assert private_package["result"]["head_sha"] == recovered.head_sha
     scope = observe_semantic_review_scope("TASK-063", repo=repo)
     assert scope["review_mode"] == "PRIMARY" and scope["reviewed_head_sha"] == recovered.head_sha
     assert scope["publication_provenance"]["prior_pass_is_verdict"] is False
+    assert scope["publication_provenance"]["source_run_id"] == lineage["run_id"]
     refs = git(lineage["remote"], "show-ref")
     replay = operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
         expected_main_sha=main, repo=repo, verification_runner=runner)
@@ -4187,6 +4197,60 @@ def test_publication_recovery_lost_review_wake_resumes_canonical_result_without_
     assert len(calls) == 1 and remote_main(lineage) == main
     assert git(lineage["remote"], "show-ref", "--verify", "--hash",
                f"refs/heads/aios/failure-artifacts/{recovered.run_id}", check=False) == ""
+    from aios_renew.unified_state import observe_unified_state
+    observation = observe_unified_state("TASK-063", repo=lineage["repo"])
+    assert observation.next_action == "SEMANTIC_REVIEW"
+    assert (observation.run_id, observation.candidate_sha) == (recovered.run_id, recovered.head_sha)
+
+
+@pytest.mark.parametrize("mutation", [
+    "local-source", "local-review", "local-evidence-decision", "local-version", "missing-continuation",
+    "duplicate-continuation", "canonical-source", "canonical-review", "canonical-artifact", "main",
+])
+def test_unified_recovered_source_requires_exact_unreviewed_publication_bindings(tmp_path, monkeypatch, mutation):
+    from aios_renew import operator
+    from aios_renew.unified_state import observe_unified_state
+    lineage, main, calls, runner = recover_publication_fixture(tmp_path, monkeypatch)
+    repo, remote = lineage["repo"], lineage["remote"]
+    recovered = operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+        expected_main_sha=main, repo=repo, verification_runner=runner)
+    state = operator.runtime_paths(repo)
+    path = state.root / "publication-recovery" / f"{recovered.run_id}.json"
+    document = json.loads(path.read_bytes())
+    if mutation.startswith("local-"):
+        if mutation == "local-source":
+            document["plan"]["source_run_id"] = "RUN-063-099"
+        elif mutation == "local-review":
+            document["plan"]["decision_sha"] = recovered.head_sha
+        elif mutation == "local-version":
+            document["evidence_decision"]["version"] = True
+        else:
+            document["evidence_decision"]["records"][0]["source_evidence_ids"] = ["forged-evidence"]
+        path.write_text(json.dumps(document), encoding="utf-8")
+    elif mutation == "missing-continuation":
+        path.unlink()
+    elif mutation == "duplicate-continuation":
+        path.write_text(json.dumps(document)[:-1] + ', "run_id": "' + recovered.run_id + '"}', encoding="utf-8")
+    elif mutation == "canonical-source":
+        from aios_renew.correction_integration import publication_source_ref
+        git(remote, "update-ref", publication_source_ref(document["identity"]), main)
+    elif mutation in {"canonical-review", "canonical-artifact"}:
+        family = "review-decision" if mutation == "canonical-review" else "artifacts"
+        git(remote, "update-ref", f"refs/heads/aios/{family}/{lineage['run_id']}", main)
+    else:
+        (repo / "concurrent-main.txt").write_text("concurrent main\n", encoding="utf-8")
+        moved = commit_fixture_state(repo, paths=("concurrent-main.txt",), message="concurrent main after recovery",
+            user_name="AIOS Publication Test", user_email="publication@example.invalid")
+        git(repo, "push", "--quiet", "origin", f"{moved}:refs/heads/main")
+    before_main = remote_main(lineage)
+    before_refs = git(remote, "show-ref")
+    before_local = {item: item.read_bytes() for item in state.root.rglob("*.json")}
+    observation = observe_unified_state("TASK-063", repo=repo)
+    assert observation.next_action == "NONE" and observation.lifecycle_state == "BLOCKED"
+    assert observation.blocker["code"] == "MALFORMED_CANONICAL_STATE"
+    assert remote_main(lineage) == before_main and git(remote, "show-ref") == before_refs
+    assert {item: item.read_bytes() for item in state.root.rglob("*.json")} == before_local
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize("mutation", ["main", "review", "artifact", "task", "overlap", "missing-evidence"])
