@@ -50,6 +50,12 @@ from .review_transport import (
 )
 from .run import Run
 from .task import Task
+from .verification_contract import (
+    MINIMUM_SUFFICIENT_V2,
+    validate_evidence_binding,
+    validate_observation,
+    verification_digest,
+)
 
 
 _UNIFIED_NEXT_ACTIONS = frozenset({
@@ -311,9 +317,11 @@ def _matches_public_document(
                 or any(protected_view(item) for item in value.values()))
 
     def evidence(item: dict[str, Any]) -> None:
-        identity = item["evidence_id"]
-        raw = item["raw"]
-        outcome = item["result"]
+        # A full record cannot become a reference by dropping raw/result.
+        validate_evidence(item)
+        identity = item.get("evidence_id")
+        raw = item.get("raw")
+        outcome = item.get("result")
         if (not isinstance(identity, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,96}", identity) is None
                 or not isinstance(raw, dict) or set(raw) != {"path"}
                 or not isinstance(raw["path"], str) or not raw["path"]
@@ -328,15 +336,107 @@ def _matches_public_document(
             raise ValueError("invalid private RUN workspace")
         item["workspace"] = "protected-runtime-workspace"
 
-    def metadata(value: Any) -> Any:
+    def reference(item: dict[str, Any], owner: Mapping[str, Any]) -> None:
+        """Validate a V2 observation reference without opening its raw locator.
+
+        This role is available only inside a FAILURE verification outcome.
+        Full EVIDENCE uses its existing validator. Provenance stays verbatim.
+        """
+        identity = item.get("evidence_id")
+        if (item.get("policy") != MINIMUM_SUFFICIENT_V2
+                or not isinstance(identity, str)
+                or re.fullmatch(r"[A-Za-z0-9_-]{1,96}", identity) is None
+                or any(key in item for key in ("raw", "result", "source", "subject_sha", "type"))
+                or not isinstance(item.get("raw_path"), str) or not item["raw_path"]
+                or not isinstance(item.get("raw_digest"), str)
+                or re.fullmatch(r"[0-9a-f]{64}", item["raw_digest"]) is None
+                or ("run_id" in item and
+                    (not isinstance(item["run_id"], str) or not item["run_id"]))):
+            raise ValueError("invalid verification reference metadata")
+        verification_digest(item)
+        binding = validate_evidence_binding(item.get("binding"))
+        candidate = item.get("candidate")
+        if not isinstance(candidate, dict):
+            raise ValueError("missing verification reference observation")
+        if candidate.get("complete") is True:
+            validate_observation(candidate)
+        if (item.get("candidate_digest") != verification_digest(candidate)
+                or any(candidate.get(key) != binding[key]
+                       for key in ("subject_sha", "command", "profile", "toolchain"))
+                or type(candidate.get("exit_code")) is not int
+                or candidate.get("exit_code") != owner.get("exit_code")
+                or binding["command"] != owner.get("command")):
+            raise ValueError("verification reference observation binding mismatch")
+        effective = binding
+        if "reuse" in item:
+            reuse = item["reuse"]
+            if not isinstance(reuse, dict):
+                raise ValueError("invalid verification reference reuse")
+            target = validate_evidence_binding(reuse.get("binding"))
+            if (reuse.get("source_evidence_id") != identity
+                    or {key: value for key, value in target.items() if key != "subject_sha"}
+                    != {key: value for key, value in binding.items() if key != "subject_sha"}):
+                raise ValueError("verification reference reuse binding mismatch")
+            effective = target
+        elif item.get("run_id", owner.get("run_id")) != owner.get("run_id"):
+            raise ValueError("verification reference RUN binding mismatch")
+        if effective["subject_sha"] != owner.get("subject_sha"):
+            raise ValueError("verification reference subject binding mismatch")
+        if "base" in item:
+            base = item["base"]
+            if (not isinstance(base, dict)
+                    or item.get("base_digest") != verification_digest(base)
+                    or base.get("subject_sha") != binding["base_sha"]
+                    or binding["failure_set_digest"] != item["base_digest"]):
+                raise ValueError("verification reference base binding mismatch")
+
+    def metadata(value: Any, role: str = "metadata", owner: Mapping[str, Any] | None = None) -> Any:
         if isinstance(value, list):
-            return [metadata(item) for item in value]
+            if role in {"reference", "full_evidence", "outcome"}:
+                raise ValueError("terminal verification record must be a mapping")
+            child_role = {"outcomes": "outcome", "evidence": "full_evidence"}.get(role, "metadata")
+            return [metadata(item, child_role, owner) for item in value]
         if not isinstance(value, dict):
+            if role in {"reference", "full_evidence", "outcomes", "evidence", "outcome"}:
+                raise ValueError("malformed terminal verification metadata")
             return value
-        data = {key: metadata(item) for key, item in value.items()}
+        full_evidence = role == "full_evidence" or ("evidence_id" in value and role != "reference")
+        if role == "reference":
+            if owner is None:
+                raise ValueError("verification reference has no structural owner")
+            reference(value, owner)
+        data = {}
+        for key, item in value.items():
+            child_role = "metadata"
+            child_owner = None
+            if key == "error" and value.get("kind") == "FAILURE":
+                child_role, child_owner = "failure_error", value
+            elif key == "verification" and role == "failure_error":
+                if not isinstance(item, list):
+                    raise ValueError("invalid private FAILURE verification")
+                child_role, child_owner = "outcomes", owner
+            elif key == "verification" and role == "outcome":
+                if owner is None:
+                    raise ValueError("FAILURE verification has no structural owner")
+                child_role = "reference"
+                child_owner = dict(command=value.get("command"), exit_code=value.get("exit_code"),
+                    run_id=owner.get("run_id"), subject_sha=owner.get("failed_head_sha"))
+            elif key == "verification" and full_evidence:
+                # Full EVIDENCE validation binds this record, including
+                # legacy/reused observations; it must not acquire a raw object.
+                if isinstance(item, dict) and any(field in item for field in
+                        ("raw", "result", "source", "subject_sha", "type")):
+                    raise ValueError("full EVIDENCE impersonates verification reference metadata")
+                data[key] = item
+                continue
+            elif key == "evidence" and "result" in value:
+                if not isinstance(item, list):
+                    raise ValueError("invalid full EVIDENCE population")
+                child_role = "evidence"
+            data[key] = metadata(item, child_role, child_owner)
         if "run_id" in data and "workspace" in data and "task" in data:
             workspace(data)
-        if "evidence_id" in data:
+        if full_evidence:
             evidence(data)
         if data.get("kind") == "FAILURE":
             error = data.get("error")
@@ -354,8 +454,6 @@ def _matches_public_document(
 
     original = encoded(private)
     public = encoded(canonical)
-    if public == original and not protected_view(canonical):
-        return True
     projected = json.loads(original)
     if kind == "RUN":
         workspace(projected["execution"]["run"] if projected.get("kind") == "REMEDIATION" else projected)
@@ -366,6 +464,9 @@ def _matches_public_document(
         projected = metadata(projected)
     else:
         raise ValueError("unknown terminal representation")
+    # Exact historical representations still require the same structural checks.
+    if public == original and not protected_view(canonical):
+        return True
     return public == encoded(projected)
 
 
@@ -491,6 +592,8 @@ def _validate_lifecycle_failure(
     )
     if terminal.get("continuation_of") != continuation_of:
         raise ValueError("FAILURE continuation does not match RUN family")
+    if not _matches_public_document(terminal, terminal, "METADATA"):
+        raise ValueError("FAILURE privacy representation is invalid")
 
 
 def _decode_publication_continuation(
@@ -577,6 +680,8 @@ def _decode_remote_lifecycle(
             correction = _lifecycle_document(item.correction, "REPAIR")
             if not isinstance(correction, Mapping):
                 raise ValueError("REPAIR lineage must be a mapping")
+            if not _matches_public_document(correction, correction, "METADATA"):
+                raise ValueError("REPAIR privacy representation is invalid")
             parent_run_id = correction.get("failed_run_id")
             if not isinstance(parent_run_id, str) or not parent_run_id:
                 raise ValueError("REPAIR lineage has no failed RUN identity")
