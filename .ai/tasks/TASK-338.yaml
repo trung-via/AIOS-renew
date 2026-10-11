@@ -1,0 +1,139 @@
+task_id: TASK-338
+revision: 1
+goal: Restore fail-closed local Runtime REPAIR terminal reconciliation so an authentic
+  private persisted correction can be checked against its exact authorized canonical
+  public counterpart, without requiring a private record to equal its own redacted
+  public view. This prospective compatibility correction unblocks independent TASK-336
+  continuation without altering that TASK or any immutable lineage.
+problem: Canonical TASK-336 revision 1 has an immutable five-RUN FAILURE chain ending
+  at RUN-336-005, whose latest FAILURE artifact is 1f367eeb5835c21957e127af72bd47428aa9ff9c.
+  A read-only diagnostic decoded all five canonical terminal and REPAIR lineages successfully,
+  then Unified State returned MALFORMED_CANONICAL_STATE in _local_pending_runs at
+  the persisted REPAIR privacy representation check. A focused read-only private/public
+  comparison for RUN-336-005 found self-comparison false while comparison with its
+  exact canonical public counterpart was true; the private working record legitimately
+  needs workspace redaction. The current production reducer compares repair_execution
+  to itself as if private bytes were already canonical public bytes, which rejects
+  an authentic protected private record and prevents any lawful new REPAIR. The intended
+  correction is limited to this read-only interpretation, not to evidence-validation,
+  transport writing, repair selection, or frozen Kernel behavior.
+assumptions:
+- Authoring baseline is exact canonical main 980eb39561bef5bb441fada120a27ab29b85e14a;
+  AUTHOR_TASK ingress must reject stale main or competing TASK identity. The authoring
+  date is 2026-10-12.
+- TASK-336 revision 1 remains active under Human-approved VP03 forward recovery priority.
+  This is a scoped prerequisite to restore trustworthy observation, not a completion/revision/repair
+  of TASK-336.
+- Current canonical TASK-337 revision 5 published behavior is authoritative for fail-closed
+  historical V2 reference/full-EVIDENCE and nested privacy projection semantics. No
+  prior RUN or protected local observation may be altered to hide this problem.
+- The Human-approved prospective AIOS-renew route choice in .ai/roadmap-state.yaml
+  remains LEGACY_REPOSITORY_DEFAULT_ROUTE for new TASK identities; origin-affine conformance
+  is neither claimed nor replaced.
+- Executor selection, model and effort for this new TASK remain a separate explicit
+  Human delegation; TASK semantics do not choose an Executor. TASK-336 existing executor
+  delegation remains unchanged.
+- The read-only local probe reported canonical_pair_check.matches=true and self_check.matches=false
+  for RUN-336-005, with workspace_needs_redaction=true and repo_mutated=false. These
+  observations motivate the test but do not replace canonical state, Runtime verification,
+  or independent evidence.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-336.yaml
+  - .ai/tasks/TASK-337.yaml
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/publication.py
+  - tests/test_operator.py
+  - tests/operator_test_support.py
+  modify:
+  - src/aios_renew/unified_state.py
+  - tests/test_operator.py
+non_goals:
+- No mutation, deletion, re-publication, reclassification or retroactive repair of
+  TASK-336, TASK-337, their RUN/RESULT/FAILURE/REVIEW/REPAIR/EVIDENCE, or protected
+  local Runtime files.
+- No weakening or removal of privacy redaction, role/owner/identity, raw/evidence
+  binding, original verification digests, correction ancestry, canonical equality,
+  or rejection of modified public/private records.
+- No change to Runtime verification policy, result completeness/acceptance gate, EVIDENCE
+  producer, Reviewer, Publisher, Git reservations/CAS, carrier/wakeup, delegated Executor,
+  or self-hosted workflows.
+- No new source writer/reader authority, generic lifecycle router, automatic repair
+  selector, retry/failover system, mutable trust store, planner or provenance broker.
+- No automatic retry of RUN-336-005 or change to planning NEXT, no modification of
+  return affinity, frozen Kernel, policy, credentials or downstream repositories.
+- No unconditional projection or trust of arbitrary private bytes when no canonical
+  public counterpart exists; untransported local pending records must still be structurally
+  bound and fail closed on ambiguity.
+constraints:
+  hard:
+  - Preserve the exact existing authenticated canonical snapshot and immutable private/public
+    relation. Only a recognized corresponding canonical public record may discharge
+    an exact already-transported private/public equality check; mismatching identities,
+    owner, parent, authorization SHA or original payload must still block.
+  - For a local correction without a corresponding canonical terminal, retain the
+    existing pending/transport boundary and validate its private structural/lineage/privacy
+    roles independently; do not fabricate a public counterpart, infer canonical success,
+    admit another Executor, or skip eventual reconciliation.
+  - Maintain TASK-337 published role-aware verification reference versus full EVIDENCE
+    validation, owner binding and declared placement protections. An evidence_id in
+    unrelated or nested metadata may not become a trusted full record; protected public
+    diagnostic/workspace/raw redaction remains bounded.
+  - Protect multi-RUN ancestry, exact prior FAILURE base/head and embedded correction,
+    canonical authorization and revision, including historical replays and conflicting/missing
+    remote refs. Do not weaken existing negative tests or redefine malformed state
+    to always pass.
+  - No changes outside src/aios_renew/unified_state.py and tests/test_operator.py;
+    no Git refs/main alteration, no editing .git/aios, no task/roadmap/workflow file
+    changes, no test skip/xfail and no custom runtime mutation to make acceptance
+    green.
+  - Keep verification minimum-sufficient-v2 and reuse only evidence that Runtime independently
+    deems valid; Executor supplies truthful structural RESULT claims and exact committed
+    HEAD/changed-files, Runtime supplies independent EVIDENCE.
+  - A missing/contradictory canonical counterpart, changed public redaction, ambiguous
+    pending correction, unsupported representation, or unrelated blocker must retain
+    typed fail-closed behavior; report any out-of-scope necessary fix rather than
+    expanding scope.
+acceptance:
+- id: AC1
+  condition: A valid local persisted REPAIR record containing an actual private workspace
+    or protected diagnostic, with an exact matching immutable canonical public correction,
+    is accepted by local/canonical reconciliation; the reducer no longer rejects that
+    valid pair only because the private record differs from its own redacted view.
+- id: AC2
+  condition: The complete canonical five-RUN TASK-336-style chain ending in a repairable
+    COMPLETION_GATE FAILURE can be reduced read-only to its exact failed tip and AUTHOR_REPAIR
+    state when local private correction records faithfully match canonical public
+    counterparts and no other gate blocks; no synthetic RUN, review, verdict or repair
+    authorization is generated.
+- id: AC3
+  condition: For local pending REPAIR/RESULT/FAILURE whose remote terminal has not
+    yet been published, the reducer preserves correct pending transport/active classification
+    while independently rejecting malformed private structural lineage and never treating
+    absent remote counterparts as successful canonical equality.
+- id: AC4
+  condition: Existing positive and adversarial regression cases reject changed public
+    representations, mismatching private identities/bases/authorization/ancestor,
+    extra or missing private/canonical terminals, competing correction tips, forged
+    redactions, and invalid V2 verification reference/full EVIDENCE identity/owner/placement,
+    without relaxing published TASK-337 protections.
+- id: AC5
+  condition: The prospective change touches only src/aios_renew/unified_state.py and
+    tests/test_operator.py, retains deterministic read-only observation and all existing
+    Runtime/Reviewer/Publisher/mutation boundaries, and includes a regression that
+    distinguishes valid private-to-public comparison from invalid private-to-self
+    comparison.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_operator.py -k terminal_reconciliation
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
