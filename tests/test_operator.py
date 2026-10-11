@@ -14433,6 +14433,39 @@ def _terminal_reconciliation_full_evidence(reference, *, run_id=None, subject_sh
         raw=dict(path="fixture-unavailable-raw"), verification=json.loads(json.dumps(reference)))
 
 
+def _terminal_reconciliation_place_full_evidence(failure, evidence, placement):
+    """Place an internally valid record without granting it reader authority."""
+    if placement == "failure-error":
+        failure["error"]["evidence"] = [evidence]
+    elif placement == "package":
+        failure["embedded_package"] = dict(result={}, evidence=[evidence])
+    elif placement == "nested-package":
+        failure["metadata"] = dict(embedded_package=dict(result={}, evidence=[evidence]))
+    elif placement == "direct":
+        failure["unrelated"] = evidence
+    elif placement == "list":
+        failure["metadata"] = dict(unrelated=[evidence])
+    elif placement == "package-lookalike":
+        failure["metadata"] = dict(unrelated=dict(result={}, evidence=[evidence]))
+    elif placement == "package-result":
+        failure["embedded_package"] = dict(result=dict(unrelated=evidence), evidence=[])
+    elif placement == "foreign-failure":
+        failure["unrelated"] = dict(kind="FAILURE", run_id=evidence["run_id"],
+            failed_head_sha=evidence["subject_sha"], error=dict(type="OperatorError",
+                message="foreign fixture diagnostics", evidence=[evidence]))
+    elif placement in {"reference-annotation", "evidence-provenance"}:
+        reference = _terminal_reconciliation_reference(
+            failure["run_id"], failure["failed_head_sha"], failure.get("base_sha", "b" * 40))
+        reference["historical_annotations"] = dict(unrelated=evidence)
+        if placement == "reference-annotation":
+            failure["error"]["verification"] = [dict(command=reference["binding"]["command"],
+                exit_code=0, summary="private fixture summary", verification=reference)]
+        else:
+            failure["error"]["evidence"] = [_terminal_reconciliation_full_evidence(reference)]
+    else:
+        raise AssertionError("unknown evidence placement: " + placement)
+
+
 @pytest.mark.parametrize("protected", [False, True])
 @pytest.mark.parametrize("reused", [False, True])
 def test_terminal_reconciliation_historical_metadata_reference(protected, reused):
@@ -14519,6 +14552,61 @@ def test_terminal_reconciliation_embedded_package_evidence_requires_owner(protec
     public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
     with pytest.raises(ValueError, match="full EVIDENCE has no structural owner"):
         _matches_public_document(private, public, "METADATA")
+
+
+@pytest.mark.parametrize("protected", [False, True])
+@pytest.mark.parametrize("foreign", [False, True])
+@pytest.mark.parametrize("placement", [
+    "direct", "list", "package-lookalike", "package-result", "foreign-failure",
+    "reference-annotation", "evidence-provenance",
+])
+def test_terminal_reconciliation_valid_evidence_requires_declared_placement(protected, foreign, placement):
+    from aios_renew.artifacts import validate_evidence
+    from aios_renew.unified_state import _matches_public_document
+    private = _terminal_reconciliation_failure_metadata()
+    evidence = _terminal_reconciliation_full_evidence(_terminal_reconciliation_reference(
+        "RUN-336-009" if foreign else private["run_id"],
+        "9" * 40 if foreign else private["failed_head_sha"], "b" * 40))
+    # A complete and internally consistent record must still fail at placement.
+    validate_evidence(evidence)
+    _terminal_reconciliation_place_full_evidence(private, evidence, placement)
+    before = json.dumps(private, sort_keys=True)
+    public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
+    message = ("FAILURE outside a validated structural role" if placement == "foreign-failure"
+               else "EVIDENCE identity outside a validated structural role")
+    with pytest.raises(ValueError, match=message):
+        _matches_public_document(private, public, "METADATA")
+    assert json.dumps(private, sort_keys=True) == before
+
+
+@pytest.mark.parametrize("protected", [False, True])
+@pytest.mark.parametrize("placement", ["failure-error", "package", "nested-package"])
+@pytest.mark.parametrize("mismatch", [None, "run", "subject"])
+def test_terminal_reconciliation_nested_failure_evidence_binds_correction(protected, placement, mismatch):
+    from aios_renew.task import parse_task
+    from aios_renew.unified_state import _matches_public_document
+    task = parse_task(TASK_SOURCE.replace("TASK-101", "TASK-336"))
+    failure = _terminal_reconciliation_failure_metadata()
+    failure["candidate"] = dict(changed_files=["OUTPUT.txt"])
+    evidence = _terminal_reconciliation_full_evidence(failure["error"]["verification"][0]["verification"])
+    _terminal_reconciliation_place_full_evidence(failure, evidence, placement)
+    run = dict(run_id="RUN-336-004", task=dict(id=task.task_id, revision=task.revision), executor="codex",
+        base_sha=failure["failed_head_sha"], head_sha=None, workspace="fixture", status="ACTIVE")
+    private = dict(failed_run_id=failure["run_id"], failed_head_sha=failure["failed_head_sha"],
+        root_base_sha="b" * 40, task=dict(task_id=task.task_id, revision=task.revision), run=run,
+        repair=_terminal_reconciliation_repair(task, failure, "REPAIR-336-001"), failure=failure)
+    if mismatch == "run":
+        private["failed_run_id"] = "RUN-336-009"
+    elif mismatch == "subject":
+        private["failed_head_sha"] = "9" * 40
+    before = json.dumps(private, sort_keys=True)
+    public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
+    if mismatch is None:
+        assert _matches_public_document(private, public, "METADATA")
+    else:
+        with pytest.raises(ValueError, match="nested FAILURE does not bind its correction owner"):
+            _matches_public_document(private, public, "METADATA")
+    assert json.dumps(private, sort_keys=True) == before
 
 
 @pytest.mark.parametrize("representation", ["private", "protected"])
@@ -14723,6 +14811,63 @@ def test_terminal_reconciliation_task336_historical_lineage(tmp_path, monkeypatc
     assert str(repo) not in json.dumps(observation.as_dict())
     assert "fixture-unavailable-raw" not in json.dumps(observation.as_dict())
     assert {path: path.read_bytes() for path in before} == before
+    assert git(repo, "show-ref") == refs
+    assert all(observation.as_dict()[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+
+
+@pytest.mark.parametrize("protected", [False, True])
+@pytest.mark.parametrize("placement", ["failure-error", "package", "nested-package", "direct", "foreign-failure"])
+@pytest.mark.parametrize("surface", ["local", "remote", "both"])
+def test_terminal_reconciliation_task336_full_evidence_placement(tmp_path, monkeypatch, protected, placement, surface):
+    from aios_renew.artifacts import validate_evidence
+    from aios_renew.unified_state import _decode_remote_lifecycle, _local_pending_runs
+    repo, state, task, lifecycle = _terminal_reconciliation_task336_fixture(tmp_path, protected=protected)
+    tip = lifecycle.terminals[-1]
+    path = state.failures / (tip.run_id + ".json")
+    private = json.loads(path.read_bytes())
+    source = lifecycle.terminals[1] if placement == "foreign-failure" else tip
+    source_failure = json.loads((state.failures / (source.run_id + ".json")).read_bytes())
+    evidence = _terminal_reconciliation_full_evidence(
+        _terminal_reconciliation_reference(source.run_id, source.candidate_sha, source_failure["base_sha"]))
+    validate_evidence(evidence)
+    _terminal_reconciliation_place_full_evidence(private, evidence, placement)
+    if placement == "foreign-failure":
+        # Reuse an actual valid historical FAILURE, not a fabricated owner.
+        foreign_failure = source_failure
+        foreign_failure["error"]["evidence"] = [evidence]
+        private["unrelated"] = foreign_failure
+    if surface != "remote":
+        path.write_bytes(json.dumps(private).encode())
+    if surface != "local":
+        public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
+        lifecycle = replace(lifecycle, terminals=lifecycle.terminals[:-1] + (
+            replace(tip, terminal=json.dumps(public).encode()),))
+    before = {p: p.read_bytes() for directory in (state.runs, state.failures, state.repairs)
+              for p in directory.glob("*.json")}
+    refs = git(repo, "show-ref")
+    valid = placement in {"failure-error", "package", "nested-package"}
+    if valid and surface == "both":
+        _terminal_reconciliation_assert_fixture_contract(repo, state, task, lifecycle)
+    elif not valid:
+        message = ("FAILURE outside a validated structural role" if placement == "foreign-failure"
+                   else "EVIDENCE identity outside a validated structural role")
+        with pytest.raises(ValueError, match=message):
+            decoded, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
+            _local_pending_runs(repo, state, task, decoded, reviews)
+    @contextmanager
+    def observer(_root):
+        yield repo
+    monkeypatch.setattr(operator_module, "_remote_observation_repository", observer)
+    monkeypatch.setattr(operator_module, "resolve_remote_task_lifecycle", lambda *a, **k: lifecycle)
+    observation = observe_unified_state(task.task_id, repo=repo)
+    if valid and surface == "both":
+        assert observation.next_action == "AUTHOR_REPAIR" and observation.blocker is None
+        assert observation.failed_run_id == "RUN-336-004"
+    else:
+        assert observation.lifecycle_state == "BLOCKED" and observation.next_action == "NONE"
+        assert observation.blocker["code"] == "MALFORMED_CANONICAL_STATE"
+    assert {p: p.read_bytes() for p in before} == before
     assert git(repo, "show-ref") == refs
     assert all(observation.as_dict()[key] is False for key in (
         "run_created", "executor_invoked", "verification_invoked", "state_mutated"))

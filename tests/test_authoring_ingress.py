@@ -4789,12 +4789,15 @@ def test_exact_remediation_invalid_lineage_fails_closed(tmp_path, monkeypatch, p
         assert not git(remote, "for-each-ref", "--format=%(refname)", f"refs/heads/aios/remediation/{run_id}-F1")
 
 
-def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=True):
+def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=True, evidence_placement=None):
     from aios_renew.publication import _repair_review_lineage
     from aios_renew.operator import _run_from_data
+    from aios_renew.review_transport import public_metadata
     from tests.test_operator import (
         _terminal_reconciliation_task336_fixture, _terminal_reconciliation_repair,
         _terminal_reconciliation_assert_fixture_contract, _terminal_reconciliation_fixture_selectors,
+        _terminal_reconciliation_full_evidence, _terminal_reconciliation_reference,
+        _terminal_reconciliation_place_full_evidence,
         _reviewed_preservation_metadata,
     )
     repo, state, task, lifecycle = _terminal_reconciliation_task336_fixture(
@@ -4803,6 +4806,16 @@ def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=Tr
     artifacts = {}
     terminals = list(lifecycle.terminals)
     for index, terminal in enumerate(terminals):
+        if index == 3 and evidence_placement is not None:
+            local_path = state.failures / (terminal.run_id + ".json")
+            failure = json.loads(local_path.read_bytes())
+            evidence = _terminal_reconciliation_full_evidence(_terminal_reconciliation_reference(
+                terminal.run_id, terminal.candidate_sha, failure["base_sha"]))
+            _terminal_reconciliation_place_full_evidence(failure, evidence, evidence_placement)
+            local_path.write_bytes(json.dumps(failure).encode())
+            public = (public_metadata(json.dumps(failure).encode())
+                      if protected else json.dumps(failure).encode())
+            terminal = replace(terminal, terminal=public)
         documents = {".ai/transport/run.json": terminal.run, ".ai/transport/failure.json": terminal.terminal}
         if terminal.correction is not None:
             correction = json.loads(terminal.correction)
@@ -4859,9 +4872,10 @@ def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=Tr
 
 
 @pytest.mark.parametrize("protected", [False, True])
-def test_terminal_reconciliation_task336_normal_authoring_admission(tmp_path, monkeypatch, protected):
+@pytest.mark.parametrize("evidence_placement", [None, "failure-error", "package", "nested-package"])
+def test_terminal_reconciliation_task336_normal_authoring_admission(tmp_path, monkeypatch, protected, evidence_placement):
     repo, remote, state, lifecycle, artifacts, envelope = _terminal_reconciliation_task336_authoring_fixture(
-        tmp_path, protected=protected)
+        tmp_path, protected=protected, evidence_placement=evidence_placement)
     assert git(repo, "config", "core.autocrlf") == "true"
     task_path = repo / ".ai/tasks/TASK-336.yaml"
     task_bytes = task_path.read_bytes()
@@ -4914,7 +4928,8 @@ def _terminal_reconciliation_replace_artifacts(repo, remote, commit, expected_ol
 @pytest.mark.parametrize("protected", [False, True])
 @pytest.mark.parametrize("fault", ["stale-head", "wrong-tip", "changed-correction", "missing-raw", "crlf-task",
                                   "local-runtime-state", "embedded-evidence-run", "embedded-evidence-subject",
-                                  "embedded-evidence-run-and-subject"])
+                                  "embedded-evidence-run-and-subject", "misplaced-evidence-direct",
+                                  "misplaced-evidence-foreign-failure"])
 def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, monkeypatch, protected, fault):
     from tests.test_operator import _reviewed_preservation_metadata
     repo, remote, state, lifecycle, artifacts, envelope = _terminal_reconciliation_task336_authoring_fixture(
@@ -4939,6 +4954,26 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         task_bytes = task_bytes.replace(b"\n", b"\r\n")
         task_path.write_bytes(task_bytes)
         assert git(repo, "status", "--porcelain", "--", ".ai/tasks/TASK-336.yaml") == ""
+    elif fault.startswith("misplaced-evidence-"):
+        from aios_renew.artifacts import validate_evidence
+        from aios_renew.review_transport import public_metadata
+        from tests.test_operator import (
+            _terminal_reconciliation_full_evidence, _terminal_reconciliation_reference,
+            _terminal_reconciliation_place_full_evidence,
+        )
+        tip = lifecycle.terminals[-1]
+        document = json.loads(tip.terminal)
+        source = lifecycle.terminals[1] if fault == "misplaced-evidence-foreign-failure" else tip
+        source_failure = json.loads(source.terminal)
+        evidence = _terminal_reconciliation_full_evidence(_terminal_reconciliation_reference(
+            source.run_id, source.candidate_sha, source_failure["base_sha"]))
+        validate_evidence(evidence)
+        _terminal_reconciliation_place_full_evidence(document, evidence, fault[len("misplaced-evidence-"):])
+        if fault == "misplaced-evidence-foreign-failure":
+            source_failure["error"]["evidence"] = [evidence]
+            document["unrelated"] = source_failure
+        if protected:
+            document = json.loads(public_metadata(json.dumps(document).encode()))
     elif fault.startswith("embedded-evidence-"):
         from aios_renew.artifacts import validate_evidence
         from aios_renew.review_transport import public_metadata
@@ -4961,7 +4996,8 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         document["error"]["evidence"] = [dict(evidence_id="RUN-336-004-V001", run_id="RUN-336-004",
             subject_sha=envelope.payload["failed_head_sha"], type="VERIFICATION", source=dict(command="git diff --check"),
             result=dict(exit_code=0, summary="spoofed full evidence"))]
-    corrupted_metadata = fault in {"changed-correction", "missing-raw"} or fault.startswith("embedded-evidence-")
+    corrupted_metadata = (fault in {"changed-correction", "missing-raw"}
+                          or fault.startswith(("embedded-evidence-", "misplaced-evidence-")))
     if corrupted_metadata:
         tip = lifecycle.terminals[-1]
         documents = {".ai/transport/run.json": tip.run, ".ai/transport/failure.json": tip.terminal,
@@ -4982,7 +5018,10 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         canonical = resolve_remote_task_lifecycle(repo, task_id="TASK-336", task_revision=1)
         parser_message = ("persisted repair_authorization_sha does not match current canonical authorization"
                           if fault == "changed-correction" else r"EVIDENCE\.raw is required"
-                          if fault == "missing-raw" else "full EVIDENCE does not bind its FAILURE owner")
+                          if fault == "missing-raw" else "EVIDENCE identity outside a validated structural role"
+                          if fault == "misplaced-evidence-direct" else "FAILURE outside a validated structural role"
+                          if fault == "misplaced-evidence-foreign-failure"
+                          else "full EVIDENCE does not bind its FAILURE owner")
         with pytest.raises(ValueError, match=parser_message):
             _decode_remote_lifecycle(repo, load_task(repo, "TASK-336"), canonical)
     expected_message = {
@@ -4995,6 +5034,8 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         "embedded-evidence-run": "canonical correction subject differs from Unified State",
         "embedded-evidence-subject": "canonical correction subject differs from Unified State",
         "embedded-evidence-run-and-subject": "canonical correction subject differs from Unified State",
+        "misplaced-evidence-direct": "canonical correction subject differs from Unified State",
+        "misplaced-evidence-foreign-failure": "canonical correction subject differs from Unified State",
     }[fault]
     with pytest.raises((AuthoringIngressError, ValueError), match=expected_message):
         authoring_ingress_module._compose_authoring_packet(envelope, repo)

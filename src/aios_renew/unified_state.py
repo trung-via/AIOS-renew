@@ -402,13 +402,14 @@ def _matches_public_document(
             raise ValueError("verification reference has orphaned base metadata")
 
     def metadata(value: Any, role: str = "metadata", owner: Mapping[str, Any] | None = None) -> Any:
+        mapping_roles = {"root", "failure", "failure_error", "package", "reference", "full_evidence", "outcome"}
         if isinstance(value, list):
-            if role in {"reference", "full_evidence", "outcome"}:
+            if role in mapping_roles:
                 raise ValueError("terminal verification record must be a mapping")
-            member_role = {"outcomes": "outcome", "evidence": "full_evidence"}.get(role, "metadata")
+            member_role = {"outcomes": "outcome", "evidence": "full_evidence"}.get(role, role)
             return [metadata(item, member_role, owner) for item in value]
         if not isinstance(value, dict):
-            if role in {"reference", "full_evidence", "outcomes", "evidence", "outcome"}:
+            if role in mapping_roles | {"outcomes", "evidence"}:
                 raise ValueError("malformed terminal verification metadata")
             return value
         if role in {"outcomes", "evidence"}:
@@ -418,22 +419,49 @@ def _matches_public_document(
                 raise ValueError("verification reference has no structural owner")
             reference(value, owner)
             # Authenticated observation/provenance remains verbatim, including
-            # historical annotations. No raw locator is opened by this reader.
+            # historical annotations, but cannot hide additional EVIDENCE roles.
+            # No raw locator is opened by this reader.
+            for item in value.values():
+                metadata(item, "record_metadata")
             return value
-        evidence_fields = {"evidence_id", "run_id", "subject_sha", "type", "source", "result", "raw"}
-        full_evidence = role == "full_evidence" or (
-            role == "metadata" and evidence_fields <= value.keys()
-        )
+        full_evidence = role == "full_evidence"
         if "evidence_id" in value and not full_evidence:
             raise ValueError("EVIDENCE identity outside a validated structural role")
         if value.get("kind") == "FAILURE":
-            # Keep the enclosing failed RUN identity through metadata wrappers,
-            # including embedded ResultPackages; nested FAILUREs own their records.
+            if role not in {"root", "failure"}:
+                raise ValueError("FAILURE outside a validated structural role")
+            if (not isinstance(value.get("run_id"), str) or not value["run_id"]
+                    or not isinstance(value.get("failed_head_sha"), str)
+                    or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value["failed_head_sha"]) is None):
+                raise ValueError("FAILURE structural owner is malformed")
+            if owner is not None and (
+                value["run_id"] != owner.get("run_id")
+                or value["failed_head_sha"] != owner.get("failed_head_sha")
+            ):
+                raise ValueError("nested FAILURE does not bind its correction owner")
+            role = "failure"
             owner = value
+        elif role == "failure":
+            raise ValueError("nested FAILURE structural owner is missing")
+        if role == "root" and "failure" in value and (
+            not {"failed_run_id", "failed_head_sha", "root_base_sha", "task", "run", "repair"} <= value.keys()
+            or any(not isinstance(value.get(key), dict) for key in ("task", "run", "repair"))
+        ):
+            raise ValueError("nested FAILURE has no correction lineage")
+        if role == "package" and (
+            not isinstance(value.get("result"), dict) or not isinstance(value.get("evidence"), list)
+        ):
+            raise ValueError("malformed embedded ResultPackage")
         data = {}
         for key, item in value.items():
-            child_role, child_owner = "metadata", owner
-            if key == "error" and value.get("kind") == "FAILURE":
+            # Only declared populations grant full EVIDENCE authority. Record
+            # fields cannot create new populations or replace the inherited owner.
+            child_role = "record_metadata" if role in {"full_evidence", "package", "record_metadata"} else "metadata"
+            child_owner = owner
+            if key == "failure" and role == "root":
+                child_role = "failure"
+                child_owner = dict(run_id=value.get("failed_run_id"), failed_head_sha=value.get("failed_head_sha"))
+            elif key == "error" and role == "failure":
                 child_role, child_owner = "failure_error", value
             elif key == "verification" and role == "failure_error":
                 child_role, child_owner = "outcomes", owner
@@ -450,9 +478,14 @@ def _matches_public_document(
                     {"raw", "result", "source", "subject_sha", "type"}
                 ):
                     raise ValueError("full EVIDENCE impersonates reference metadata")
+                if isinstance(item, dict):
+                    for member in item.values():
+                        metadata(member, "record_metadata")
                 data[key] = item
                 continue
-            elif key == "evidence" and ("result" in value or role == "failure_error"):
+            elif key == "embedded_package" and role in {"root", "failure", "failure_error", "metadata"}:
+                child_role = "package"
+            elif key == "evidence" and role in {"package", "failure_error"}:
                 child_role, child_owner = "evidence", owner
             data[key] = metadata(item, child_role, child_owner)
         if "run_id" in data and "workspace" in data and "task" in data:
@@ -484,7 +517,7 @@ def _matches_public_document(
         for item in projected["evidence"]:
             evidence(item)
     elif kind == "METADATA":
-        projected = metadata(projected)
+        projected = metadata(projected, "root")
     else:
         raise ValueError("unknown terminal representation")
     if public == original and not protected_view(canonical):
