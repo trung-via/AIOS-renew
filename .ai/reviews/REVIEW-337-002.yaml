@@ -1,0 +1,42 @@
+review_id: REVIEW-337-002
+reviewed_sha: 92c33d8552e41c174be36146f1a6268f52cd62c6
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+findings:
+- id: FINDING-337-002-001
+  basis: AC6
+  action: EVIDENCE_ONLY
+  location: tests/test_operator.py, tests/test_publication.py; RUN-337-002-V001 Runtime
+    verification collection
+  issue: 'The only canonical Runtime verification RUN-337-002-V001 selected and executed
+    1 test: tests/test_publication.py::test_publication_recovery_admits_once_then_requires_new_exact_review.
+    The candidate introduced parametrized terminal reconciliation, tampering, correction
+    lineage, historical size, and authenticated publication admission regressions,
+    but none of these new tests match the TASK''s ''-k local_public or publication_recovery_admits_once_then_requires_new_exact_review''
+    selector. Thus C1/C2/C4/C5 negative and historical claims are not demonstrated
+    by Runtime test evidence; AC6''s focused regression coverage is not verified.'
+  expected: Obtain bounded Runtime-owned EVIDENCE_ONLY verification on the exact candidate
+    for newly added terminal-reconciliation and publication-admission regression families,
+    including negative cases. Reuse valid V001 publication-recovery PASS and avoid
+    whole-suite/base replay. Preserve four-file source candidate and all lineage unless
+    a new failing test proves a material code defect; independently re-review the
+    resulting evidence-bound continuation.
+notes:
+- 'Stage 1 CONTRACT_COVERAGE: TASK-337 revision 2 at main 1cf24d530142228dfd2bdbbb0bff6a42ac2a4a86,
+  source candidate 92c33d8552e41c174be36146f1a6268f52cd62c6, RUN-337-002, artifact
+  38027a065d73bfc480ae27b2a8cd27a405e69579, exact four modified files within scope.
+  Code/source inspection supports the semantic direction of AC1-AC5 and AC7; one functional
+  publication recovery test passes.'
+- 'Stage 2 ADVERSARIAL_AUDIT_AND_RECONCILE: V001 exit 0 but collection count=1; missing
+  execution evidence for the newly added multiple private/public safety regression
+  cases. This is a bounded evidence coverage defect under AC6, not proof of failing
+  code. Reviewer did not rerun tests. EVIDENCE_ONLY correction is preferred; do not
+  restart PRIMARY or change TASK revision.'
