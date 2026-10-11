@@ -4146,12 +4146,22 @@ def test_publication_recovery_admits_once_then_requires_new_exact_review(tmp_pat
     recovered = operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
         expected_main_sha=main, repo=repo, verification_runner=runner)
     assert recovered.run_id != lineage["run_id"] and recovered.head_sha != lineage["candidate_sha"]
+    state = operator.runtime_paths(repo)
+    private_run = json.loads((state.runs / (recovered.run_id + ".json")).read_bytes())
+    admission_sha = git(lineage["remote"], "rev-parse",
+        publication_module.PUBLICATION_RECOVERY_PREFIX + lineage["run_id"])
+    public_run = json.loads(git(repo, "show", admission_sha + ":.ai/transport/run.json"))
+    assert private_run["workspace"] == str(repo.resolve())
+    assert public_run["workspace"] == "protected-runtime-workspace"
+    assert {k: v for k, v in private_run.items() if k != "workspace"} == {
+        k: v for k, v in public_run.items() if k != "workspace"}
     assert remote_main(lineage) == main and len(calls) == 1
     assert git(repo, "show", f"{recovered.head_sha}:product.txt") == before_source
     assert git(repo, "show", f"{recovered.head_sha}:later.txt") == git(repo, "show", f"{main}:later.txt")
     assert git(repo, "rev-parse", f"{recovered.head_sha}^@").splitlines() == [main, lineage["candidate_sha"]]
     observation = observe_unified_state("TASK-063", repo=repo)
     assert observation.next_action == "SEMANTIC_REVIEW" and observation.run_id == recovered.run_id
+    assert observation.candidate_sha == recovered.head_sha
     scope = observe_semantic_review_scope("TASK-063", repo=repo)
     assert scope["review_mode"] == "PRIMARY" and scope["reviewed_head_sha"] == recovered.head_sha
     assert scope["publication_provenance"]["prior_pass_is_verdict"] is False
@@ -4240,6 +4250,87 @@ def test_publication_recovery_competing_divergent_pass_cannot_select_a_winner(tm
     assert raised.value.report.blocker.source_run == sibling["run_id"]
     assert calls == [] and remote_main(lineage) == main
     assert git(lineage["remote"], "for-each-ref", "--format=%(refname)", "refs/heads/aios/publication-source/") == ""
+
+
+@pytest.mark.parametrize("representation", ["private", "public", "historical"])
+def test_publication_recovery_admission_accepts_only_validated_representations(tmp_path, representation):
+    from aios_renew.run import Run
+    from aios_renew.task import parse_task
+    from aios_renew.review_transport import public_run
+    task = parse_task(TASK_SOURCE)
+    run = Run.from_task(run_id="RUN-063-002", task=task, executor="codex",
+        base_sha="a" * 40, workspace=str(tmp_path.resolve()))
+    data = asdict(run)
+    if representation != "historical": data = json.loads(public_run(json.dumps(data).encode()))
+    if representation == "public": run = publication_module._run_from_data(data, "canonical admitted RUN")
+    publication_module._validate_recovery_admitted_run(data, run=run, task=task, local_repository=tmp_path)
+
+
+@pytest.mark.parametrize("mutation", ["workspace", "workspace-placeholder", "workspace-empty", "workspace-missing",
+    "run-id", "task", "revision", "boolean-revision", "executor", "status", "head", "base", "affinity",
+    "public-workspace", "public-head", "public-extra", "public-missing-head", "public-status"])
+def test_publication_recovery_admission_rejects_spoofed_private_public_identity(tmp_path, mutation):
+    from aios_renew.run import Run
+    from aios_renew.task import parse_task
+    from aios_renew.review_transport import public_run
+    task = parse_task(TASK_SOURCE)
+    run = Run.from_task(run_id="RUN-063-002", task=task, executor="codex",
+        base_sha="a" * 40, workspace=str(tmp_path.resolve()))
+    private = asdict(run)
+    public = json.loads(public_run(json.dumps(private).encode()))
+    if mutation == "workspace": private["workspace"] = str(tmp_path / "fabricated")
+    elif mutation == "workspace-placeholder": private["workspace"] = "other-protected-workspace"
+    elif mutation == "workspace-empty": private["workspace"] = ""
+    elif mutation == "workspace-missing": private.pop("workspace")
+    elif mutation == "run-id": private["run_id"] = "RUN-063-999"
+    elif mutation == "task": private["task"]["id"] = "TASK-999"
+    elif mutation == "revision": private["task"]["revision"] = 3
+    elif mutation == "boolean-revision": private["task"]["revision"] = True
+    elif mutation == "executor": private["executor"] = "antigravity"
+    elif mutation == "status": private["status"] = "DONE"
+    elif mutation == "head": private["head_sha"] = "b" * 40
+    elif mutation == "base": private["base_sha"] = "b" * 40
+    elif mutation == "affinity": private["return_affinity"] = dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "b" * 64, generation=1)
+    elif mutation == "public-workspace": public["workspace"] = "fabricated-public-workspace"
+    elif mutation == "public-head": public["head_sha"] = "b" * 40
+    elif mutation == "public-extra": public["admission_proof"] = "self-certified"
+    elif mutation == "public-missing-head": public.pop("head_sha")
+    else: public["status"] = "DONE"
+    with pytest.raises((ValueError, KeyError, TypeError)):
+        changed = publication_module._run_from_data(private, "private RUN")
+        publication_module._validate_recovery_admitted_run(public, run=changed, task=task, local_repository=tmp_path)
+
+
+@pytest.mark.parametrize("mutation", ["run-id", "reservation", "source"])
+def test_publication_recovery_corrupt_authenticated_admission_creates_no_result(tmp_path, monkeypatch, mutation):
+    from aios_renew import operator, review_transport
+    lineage, main, _, runner = recover_publication_fixture(tmp_path, monkeypatch)
+    real_create = review_transport._create_named_artifacts_commit
+
+    def corrupt_admission(repo, **kwargs):
+        if kwargs["artifact_name"] != "publication-recovery.json":
+            return real_create(repo, **kwargs)
+        path = kwargs["run_path"] if mutation == "run-id" else kwargs["artifact_path"]
+        original = path.read_bytes()
+        data = json.loads(original)
+        if mutation == "run-id": data["run_id"] = "RUN-063-999"
+        elif mutation == "reservation": data["reservation_sha"] = lineage["base_sha"]
+        else: data["plan"]["source_run_id"] = "RUN-063-999"
+        try:
+            path.write_text(json.dumps(data), encoding="utf-8")
+            return real_create(repo, **kwargs)
+        finally:
+            path.write_bytes(original)
+
+    monkeypatch.setattr(review_transport, "_create_named_artifacts_commit", corrupt_admission)
+    with pytest.raises((ValueError, PublicationError, operator.OperatorError)):
+        operator.recover_publication_source(lineage["run_id"], decision_sha=lineage["decision_sha"],
+            expected_main_sha=main, repo=lineage["repo"], verification_runner=runner)
+    state = operator.runtime_paths(lineage["repo"])
+    assert list(state.results.glob("*.json")) == []
+    assert remote_main(lineage) == main
+    assert git(lineage["remote"], "for-each-ref", "--format=%(refname)", "refs/heads/aios/artifacts/") == (
+        "refs/heads/aios/artifacts/" + lineage["run_id"])
 
 
 def test_publication_outcome_classification_is_closed_and_receipts_are_not_success():

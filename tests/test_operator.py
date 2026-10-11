@@ -14213,3 +14213,185 @@ def test_h4c1_persisted_run_decoding_and_task_mismatch_fail_closed(monkeypatch):
             packet_run(changed, task)
         with pytest.raises(transport_module.ReviewTransportError, match="affinity"):
             transport_module._validate_transport_affinity(Path("."), json.dumps(changed).encode(), "c" * 40)
+
+
+def _private_public_terminal_fixture(tmp_path, *, repair=False):
+    """Real Git identities and writer projections, without an execution launcher."""
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    task = load_task(repo, "TASK-101")
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("reconciled output\n", encoding="utf-8")
+    head = commit_setup_state(repo, "OUTPUT.txt", message="terminal reconciliation candidate")
+    run_id = "RUN-101-002" if repair else "RUN-101-001"
+    run = dict(run_id=run_id, task=dict(id="TASK-101", revision=1), executor="codex",
+        base_sha=base, head_sha=None, workspace=str(repo), status="ACTIVE")
+    package = canonical_result_payload(run_id, head, changed_files=["OUTPUT.txt"])
+    correction = None
+    terminals = []
+    if repair:
+        parent = dict(run, run_id="RUN-101-001")
+        failure = dict(kind="FAILURE", run_id=parent["run_id"], task=parent["task"],
+            executor="codex", base_sha=base, failed_head_sha=base,
+            candidate=dict(transportable=True, repairable=True, dirty=False,
+                descends_from_base=True, changed_files=[], outside_task_scope=[]),
+            error=dict(type="OperatorError", message="private failed diagnostics",
+                executor_diagnostics={"stdout": "private content"}))
+        correction = dict(failed_run_id=parent["run_id"], failed_head_sha=base,
+            root_base_sha=base, task=dict(task_id="TASK-101", revision=1), run=run,
+            failure=failure, repair=dict(repair_id="REPAIR-101-001", failed_run_id=parent["run_id"],
+                failed_head_sha=base, action="CODE_FIX"), repair_authorization_sha="a" * 40)
+        (state.runs / "RUN-101-001.json").write_text(json.dumps(parent), encoding="utf-8")
+        (state.failures / "RUN-101-001.json").write_text(json.dumps(failure), encoding="utf-8")
+        (state.repairs / (run_id + ".json")).write_text(json.dumps(correction), encoding="utf-8")
+        terminals.append(RemoteLifecycleTerminal(parent["run_id"], "FAILURE", base,
+            transport_module.public_run(json.dumps(parent).encode()),
+            transport_module.public_metadata(json.dumps(failure).encode())))
+    (state.runs / (run_id + ".json")).write_text(json.dumps(run), encoding="utf-8")
+    (state.results / (run_id + ".json")).write_text(json.dumps(package), encoding="utf-8")
+    terminals.append(RemoteLifecycleTerminal(run_id, "RESULT", head,
+        transport_module.public_run(json.dumps(run).encode()),
+        transport_module.public_result(json.dumps(package).encode()),
+        None if correction is None else transport_module.public_metadata(json.dumps(correction).encode())))
+    lifecycle = RemoteTaskLifecycle(base, tuple(terminals), (), (), (), ())
+    return repo, state, task, lifecycle
+
+
+@pytest.mark.parametrize("repair", [False, True])
+def test_terminal_reconciliation_matches_exact_private_public_projection(tmp_path, repair):
+    from aios_renew.unified_state import _decode_remote_lifecycle, _local_pending_runs
+    repo, state, task, lifecycle = _private_public_terminal_fixture(tmp_path, repair=repair)
+    before = {path: path.read_bytes() for directory in (state.runs, state.results, state.failures, state.repairs)
+              for path in directory.glob("*.json")}
+    remote, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
+    assert _local_pending_runs(repo, state, task, remote, reviews) == ([], [])
+    assert len(remote) == (2 if repair else 1)
+    assert {path: path.read_bytes() for path in before} == before
+    assert "private failed diagnostics" not in json.dumps(remote[-1].correction)
+    assert str(repo) not in json.dumps(remote[-1].run_document)
+
+
+@pytest.mark.parametrize("mutation", ["run-id", "task", "revision", "boolean-revision", "base", "head", "workspace-missing",
+    "status", "evidence-run", "evidence-sha", "evidence-command", "evidence-digest", "raw-missing",
+    "summary-missing", "extra-terminal", "missing-terminal", "duplicate-key", "public-workspace",
+    "public-summary", "public-raw", "both-public-summary"])
+def test_terminal_reconciliation_rejects_hidden_or_changed_bindings(tmp_path, mutation):
+    from aios_renew.unified_state import _decode_remote_lifecycle, _local_pending_runs
+    repo, state, task, lifecycle = _private_public_terminal_fixture(tmp_path)
+    run_path = state.runs / "RUN-101-001.json"
+    result_path = state.results / run_path.name
+    run = json.loads(run_path.read_bytes())
+    package = json.loads(result_path.read_bytes())
+    if mutation == "run-id": run["run_id"] = "RUN-101-009"
+    elif mutation == "task": run["task"]["id"] = "TASK-999"
+    elif mutation == "revision": run["task"]["revision"] = 2
+    elif mutation == "boolean-revision": run["task"]["revision"] = True
+    elif mutation == "base": run["base_sha"] = "a" * 40
+    elif mutation == "head": run["head_sha"] = "a" * 40
+    elif mutation == "workspace-missing": run.pop("workspace")
+    elif mutation == "status": run["status"] = "DONE"
+    elif mutation == "evidence-run": package["evidence"][0]["run_id"] = "RUN-101-009"
+    elif mutation == "evidence-sha": package["evidence"][0]["subject_sha"] = "a" * 40
+    elif mutation == "evidence-command": package["evidence"][0]["source"]["command"] = "fabricated-command"
+    elif mutation == "evidence-digest": package["evidence"][0]["verification"] = {"raw_digest": "a" * 64}
+    elif mutation == "raw-missing": package["evidence"][0].pop("raw")
+    elif mutation == "summary-missing": package["evidence"][0]["result"].pop("summary")
+    elif mutation == "extra-terminal":
+        (state.failures / run_path.name).write_text("{}", encoding="utf-8")
+    elif mutation == "missing-terminal": result_path.unlink()
+    elif mutation.startswith("public-") or mutation == "both-public-summary":
+        terminal = lifecycle.terminals[0]
+        document = json.loads(terminal.run if mutation == "public-workspace" else terminal.terminal)
+        if mutation == "public-workspace": document["workspace"] = "spoofed-protected-workspace"
+        elif mutation in {"public-summary", "both-public-summary"}:
+            document["evidence"][0]["result"]["summary"] = "fabricated public summary"
+            if mutation == "both-public-summary": package = json.loads(json.dumps(document))
+        else: document["evidence"][0]["raw"]["path"] = "protected-runtime-raw/OTHER"
+        changes = {"run" if mutation == "public-workspace" else "terminal": json.dumps(document).encode()}
+        lifecycle = replace(lifecycle, terminals=(replace(terminal, **changes),))
+    if mutation == "duplicate-key":
+        run_path.write_text(json.dumps(run)[:-1] + ', "workspace": "spoofed"}', encoding="utf-8")
+    else:
+        run_path.write_text(json.dumps(run), encoding="utf-8")
+    if mutation != "missing-terminal": result_path.write_text(json.dumps(package), encoding="utf-8")
+    with pytest.raises((ValueError, KeyError, TypeError)):
+        remote, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
+        _local_pending_runs(repo, state, task, remote, reviews)
+
+
+@pytest.mark.parametrize("mutation", ["parent", "root", "authorization", "embedded-run", "embedded-failure", "task"])
+def test_terminal_reconciliation_rejects_private_correction_lineage_changes(tmp_path, mutation):
+    from aios_renew.unified_state import _decode_remote_lifecycle, _local_pending_runs
+    repo, state, task, lifecycle = _private_public_terminal_fixture(tmp_path, repair=True)
+    path = state.repairs / "RUN-101-002.json"
+    correction = json.loads(path.read_bytes())
+    if mutation == "parent": correction["failed_run_id"] = "RUN-101-009"
+    elif mutation == "root": correction["root_base_sha"] = "b" * 40
+    elif mutation == "authorization": correction["repair_authorization_sha"] = "b" * 40
+    elif mutation == "embedded-run": correction["run"]["executor"] = "antigravity"
+    elif mutation == "embedded-failure": correction["failure"]["candidate"]["changed_files"] = ["OUTPUT.txt"]
+    else: correction["task"]["revision"] = 2
+    path.write_text(json.dumps(correction), encoding="utf-8")
+    remote, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
+    with pytest.raises((ValueError, KeyError, TypeError)):
+        _local_pending_runs(repo, state, task, remote, reviews)
+
+
+@pytest.mark.parametrize("protected", [False, True])
+def test_terminal_reconciliation_historical_large_records_do_not_use_writer_cap(tmp_path, protected):
+    from aios_renew.unified_state import _decode_remote_lifecycle, _local_pending_runs
+    repo, state, task, lifecycle = _private_public_terminal_fixture(tmp_path)
+    path = state.results / "RUN-101-001.json"
+    package = json.loads(path.read_bytes())
+    package["result"]["claims"] = [dict(id="C1", satisfies=["AC1"],
+        claim="historical implementation property " + "x" * 1048576,
+        evidence=[package["evidence"][0]["evidence_id"]])]
+    private = json.dumps(package).encode()
+    # Project just the privacy fields. A current writer need not accept this old
+    # artifact's size for the reader to reconcile its validated representation.
+    canonical = json.loads(private)
+    if protected:
+        for item in canonical["evidence"]:
+            item["raw"] = {"path": "protected-runtime-raw/" + item["evidence_id"]}
+            item["result"]["summary"] = "Runtime verification exit code " + str(item["result"]["exit_code"])
+    path.write_bytes(private)
+    terminal = replace(lifecycle.terminals[0], terminal=json.dumps(canonical).encode())
+    if not protected:
+        terminal = replace(terminal, run=(state.runs / path.name).read_bytes())
+    lifecycle = replace(lifecycle, terminals=(terminal,))
+    remote, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
+    assert _local_pending_runs(repo, state, task, remote, reviews) == ([], [])
+    assert path.read_bytes() == private
+
+
+@pytest.mark.parametrize("mutation", ["missing-run", "duplicate-terminal", "competing-tip"])
+def test_terminal_reconciliation_observation_blocks_without_mutation(tmp_path, monkeypatch, mutation):
+    repo, state, _, lifecycle = _private_public_terminal_fixture(tmp_path)
+    if mutation == "missing-run":
+        (state.runs / "RUN-101-001.json").unlink()
+    elif mutation == "duplicate-terminal":
+        lifecycle = replace(lifecycle, terminals=lifecycle.terminals * 2)
+    else:
+        terminal = lifecycle.terminals[0]
+        run = json.loads(terminal.run)
+        run["run_id"] = "RUN-101-009"
+        package = json.loads(terminal.terminal)
+        for item in package["evidence"]: item["run_id"] = run["run_id"]
+        lifecycle = replace(lifecycle, terminals=lifecycle.terminals + (replace(terminal,
+            run_id=run["run_id"], run=json.dumps(run).encode(), terminal=json.dumps(package).encode()),))
+
+    @contextmanager
+    def observer(_root):
+        yield repo
+
+    monkeypatch.setattr(operator_module, "_remote_observation_repository", observer)
+    monkeypatch.setattr(operator_module, "resolve_remote_task_lifecycle", lambda *_args, **_kwargs: lifecycle)
+    before = {path: path.read_bytes() for directory in (state.runs, state.results, state.failures, state.repairs)
+              for path in directory.glob("*.json")}
+    refs = git(tmp_path / "upstream.git", "show-ref")
+    observation = observe_unified_state("TASK-101", repo=repo)
+    assert observation.next_action == "NONE" and observation.lifecycle_state == "BLOCKED"
+    assert observation.blocker["code"] == ("AMBIGUOUS_LINEAGE_TIP" if mutation == "competing-tip"
+                                           else "MALFORMED_CANONICAL_STATE")
+    assert {path: path.read_bytes() for path in before} == before
+    assert git(tmp_path / "upstream.git", "show-ref") == refs

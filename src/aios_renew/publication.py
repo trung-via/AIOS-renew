@@ -38,6 +38,7 @@ from .review_transport import (
     validate_runtime_failure_binding,
 )
 from .run import ACTIVE, Run, RunTaskReference
+from .return_affinity import document_affinity, require_same_affinity
 from .task import parse_task
 
 
@@ -505,6 +506,7 @@ def _run_from_data(data: Any, document: str) -> Run:
         workspace=root["workspace"],
         head_sha=root.get("head_sha"),
         status=root["status"],
+        return_affinity=document_affinity(root),
     )
 
 
@@ -2334,9 +2336,69 @@ def publication_plan_from_data(value):
     return plan
 
 
+def _validate_recovery_admitted_run(
+        data: Any, *, run: Run, task, local_repository: Path) -> None:
+    """Validate the authenticated admission before allowing privacy equivalence.
+
+    Public RUNs are replayable only as the exact canonical representation. A
+    private workspace must be the actual Runtime control repository, never an
+    arbitrary path that happens to project to the same protected placeholder.
+    """
+    data = _mapping(data, "admitted RUN")
+    required = {"run_id", "task", "executor", "base_sha", "workspace", "head_sha", "status"}
+    if (set(data) not in (required, required | {"return_affinity"})
+            or not isinstance(data["task"], Mapping) or set(data["task"]) != {"id", "revision"}
+            or type(data["task"]["revision"]) is not int
+            or type(run.task.revision) is not int
+            or any(not isinstance(data[key], str) or not data[key].strip()
+                   for key in ("run_id", "executor", "base_sha", "workspace", "status"))
+            or _RUN_ID.fullmatch(data["run_id"]) is None
+            or _SHA.fullmatch(data["base_sha"]) is None
+            or data["head_sha"] is not None or run.head_sha is not None
+            or data["status"] != ACTIVE or run.status != ACTIVE
+            or data["executor"] not in {"codex", "antigravity", "antigravity-minimax"}
+            or not isinstance(run.workspace, str) or not run.workspace.strip()):
+        raise ValueError("publication recovery admitted RUN is malformed")
+    admitted = _run_from_data(data, "admitted RUN")
+    require_same_affinity(task, admitted)
+    require_same_affinity(task, run)
+    if (admitted.task.id != task.task_id or admitted.task.revision != task.revision
+            or admitted != Run(run_id=run.run_id, task=run.task, executor=run.executor,
+                base_sha=run.base_sha, workspace=admitted.workspace,
+                head_sha=run.head_sha, status=run.status, return_affinity=run.return_affinity)):
+        raise ValueError("publication recovery lacks exact Runtime admission")
+    protected = "protected-runtime-workspace"
+    if run.workspace == admitted.workspace:
+        # Historical unredacted and exact authenticated public RUNs remain valid.
+        return
+    if (admitted.workspace != protected or run.workspace == protected
+            or not Path(run.workspace).is_absolute()
+            or Path(run.workspace).resolve() != local_repository.resolve()):
+        raise ValueError("publication recovery private workspace provenance mismatch")
+
+
+def _validate_recovery_reservation(repo: Path, *, remote: str, token: str, plan, run_id: str) -> None:
+    # The admission permanently binds this immutable reservation object. It may
+    # since have expired or been released; historical validation is not takeover.
+    _fetch_object(repo, remote, token, run_id=run_id)
+    raw = _read_blob(repo, token, _RESERVATION_PATH, run_id=run_id)
+    if len(raw) > 4096:
+        raise ValueError("publication admission reservation exceeds bound")
+    document = _mapping(_json_no_duplicates(raw, document="admission reservation"), "admission reservation")
+    expected = _reservation_identity("REVIEW_TO_PUBLICATION", plan.source_run_id,
+        plan.reviewed_sha, plan.main_sha, plan.decision_sha, plan.artifacts_sha)
+    if (set(document) != {"version", "identity", "created_at", "expires_at"}
+            or type(document["version"]) is not int or document["version"] != 1
+            or document["identity"] != expected
+            or type(document["created_at"]) is not int or document["created_at"] < 0
+            or type(document["expires_at"]) is not int
+            or document["expires_at"] - document["created_at"] != _RESERVATION_SECONDS):
+        raise ValueError("publication admission reservation identity mismatch")
+
+
 def validate_publication_recovery(repo: Path, *, remote: str, raw: bytes,
         run: Run, task, candidate_sha: str, package: ResultPackage | None = None,
-        current_main_sha: str | None = None):
+        current_main_sha: str | None = None, local_repository: Path | None = None):
     """Bind implementation metadata to ordinary frozen RUN/RESULT authority.
 
     Prior PASS is immutable provenance, never the recovered source's verdict.
@@ -2366,16 +2428,20 @@ def validate_publication_recovery(repo: Path, *, remote: str, raw: bytes,
     _fetch_object(repo, remote, admission_sha, run_id=run.run_id)
     admission = _mapping(_json_no_duplicates(_read_blob(repo, admission_sha,
         PUBLICATION_RECOVERY_PATH, run_id=run.run_id), document="publication admission"), "publication admission")
-    admitted_run = _run_from_data(_json_no_duplicates(_read_blob(repo, admission_sha,
-        ".ai/transport/run.json", run_id=run.run_id), document="admitted RUN"), "admitted RUN")
+    admitted_run = _json_no_duplicates(_read_blob(repo, admission_sha,
+        ".ai/transport/run.json", run_id=run.run_id), document="admitted RUN")
     if (set(admission) != {"format", "version", "plan", "identity", "reservation_sha"}
             or admission["format"] != "AIOS_PUBLICATION_RECOVERY_ADMISSION"
             or admission["version"] != 1 or type(admission["version"]) is not int
             or admission["identity"] != plan.identity
             or publication_plan_from_data(admission["plan"]) != plan
             or not isinstance(admission["reservation_sha"], str)
-            or _SHA.fullmatch(admission["reservation_sha"]) is None or admitted_run != run):
+            or _SHA.fullmatch(admission["reservation_sha"]) is None):
         raise ValueError("publication recovery lacks exact Runtime admission")
+    _validate_recovery_admitted_run(admitted_run, run=run, task=task,
+        local_repository=repo if local_repository is None else local_repository)
+    _validate_recovery_reservation(repo, remote=remote, token=admission["reservation_sha"],
+        plan=plan, run_id=run.run_id)
     if _single_remote_sha(repo, remote, f"refs/heads/aios/artifacts/{plan.source_run_id}", run_id=run.run_id) != plan.artifacts_sha:
         raise ValueError("original immutable RESULT provenance changed")
     _fetch_object(repo, remote, plan.artifacts_sha, run_id=run.run_id)
