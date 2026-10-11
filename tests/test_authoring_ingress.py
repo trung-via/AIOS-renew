@@ -4787,3 +4787,155 @@ def test_exact_remediation_invalid_lineage_fails_closed(tmp_path, monkeypatch, p
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
     if fault != "competing_lineage":
         assert not git(remote, "for-each-ref", "--format=%(refname)", f"refs/heads/aios/remediation/{run_id}-F1")
+
+
+def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=True):
+    from tests.test_operator import (
+        _terminal_reconciliation_task336_fixture, _reviewed_preservation_metadata,
+    )
+    repo, state, task, lifecycle = _terminal_reconciliation_task336_fixture(
+        tmp_path, protected=protected, authoring=True)
+    remote = tmp_path / "upstream.git"
+    artifacts = {}
+    terminals = []
+    for terminal in lifecycle.terminals:
+        documents = {".ai/transport/run.json": terminal.run, ".ai/transport/failure.json": terminal.terminal}
+        if terminal.correction is not None:
+            correction = json.loads(terminal.correction)
+            authorization_sha = _reviewed_preservation_metadata(repo, correction["failed_head_sha"], {
+                ".ai/transport/repair.json": json.dumps(correction["repair"]).encode()})
+            git(repo, "push", "--quiet", "origin",
+                f"{authorization_sha}:refs/heads/aios/repair/{correction['failed_run_id']}")
+            correction["repair_authorization_sha"] = authorization_sha
+            terminal = replace(terminal, correction=json.dumps(correction).encode())
+            documents[".ai/transport/repair.json"] = terminal.correction
+            local_path = state.repairs / (terminal.run_id + ".json")
+            local = json.loads(local_path.read_bytes())
+            local["repair_authorization_sha"] = authorization_sha
+            local_path.write_text(json.dumps(local), encoding="utf-8")
+        terminals.append(terminal)
+        sha = _reviewed_preservation_metadata(repo, terminal.candidate_sha, documents)
+        artifacts[terminal.run_id] = sha
+        git(repo, "push", "--quiet", "origin",
+            f"{terminal.candidate_sha}:refs/heads/aios/failure/{terminal.run_id}",
+            f"{sha}:refs/heads/aios/failure-artifacts/{terminal.run_id}")
+    lifecycle = replace(lifecycle, terminals=tuple(terminals))
+    # Hosted authoring must reconstruct canonical remote lineage with no local
+    # Runtime observations. Preserve the private fixture artifacts in their
+    # original checkout; do not bypass that independent production guard.
+    authoring_repo = tmp_path / "authoring"
+    subprocess.run(("git", "clone", "--quiet", "--branch", "main", "--config", "core.autocrlf=true",
+                    str(remote), str(authoring_repo)), check=True)
+    repo = authoring_repo
+    git(repo, "config", "user.name", "AIOS Historical Authoring Test")
+    git(repo, "config", "user.email", "authoring@example.invalid")
+    git(repo, "reset", "--hard", lifecycle.main_sha)
+    # write_text() on Windows and checkout with core.autocrlf=true can leave
+    # CRLF bytes while the committed TASK blob is LF. The authoring gate proves
+    # raw bytes, so restore the canonical blob after the fixture's last reset.
+    for input_path in git(repo, "ls-tree", "-r", "--name-only", lifecycle.main_sha, "--", ".ai").splitlines():
+        canonical_bytes = subprocess.run(
+            ("git", "-C", str(repo), "show", f"{lifecycle.main_sha}:{input_path}"),
+            capture_output=True, check=True,
+        ).stdout
+        (repo / input_path).write_bytes(canonical_bytes)
+    head = lifecycle.terminals[-1].candidate_sha
+    payload = dict(repair_id="REPAIR-336-004", failed_run_id="RUN-336-004", failed_head_sha=head,
+        task=dict(id=task.task_id, revision=task.revision), action="CONTINUE_IMPLEMENTATION",
+        modification_scope=["OUTPUT.txt"], instructions=["Continue within the existing TASK."],
+        constraints=["Preserve immutable terminals."])
+    envelope = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+        {"failed_run_id": "RUN-336-004"}, {"expected_failed_head_sha": head}, payload)
+    return repo, remote, state, lifecycle, artifacts, envelope
+
+
+@pytest.mark.parametrize("protected", [False, True])
+def test_terminal_reconciliation_task336_normal_authoring_admission(tmp_path, monkeypatch, protected):
+    repo, remote, state, lifecycle, artifacts, envelope = _terminal_reconciliation_task336_authoring_fixture(
+        tmp_path, protected=protected)
+    assert git(repo, "config", "core.autocrlf") == "true"
+    assert (repo / ".ai/tasks/TASK-336.yaml").read_bytes() == subprocess.run(
+        ("git", "-C", str(repo), "show", f"{lifecycle.main_sha}:.ai/tasks/TASK-336.yaml"),
+        capture_output=True, check=True,
+    ).stdout
+    task_bytes = (repo / ".ai/tasks/TASK-336.yaml").read_bytes()
+    before = {p: p.read_bytes() for directory in (state.runs, state.failures, state.repairs)
+              for p in directory.glob("*.json")}
+    refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    main = git(remote, "rev-parse", "refs/heads/main")
+    observation = observe_unified_state("TASK-336", repo=repo)
+    assert observation.next_action == "AUTHOR_REPAIR" and observation.failed_run_id == "RUN-336-004"
+    with monkeypatch.context() as guard:
+        forbid_correction_mutation(guard)
+        packet, _, _, _ = authoring_ingress_module._compose_authoring_packet(envelope, repo)
+        facts = packet.as_dict()["canonical_facts"]
+        assert facts["canonical_next_action"] == facts["unified_state_next_action"] == "AUTHOR_REPAIR"
+        assert facts["correction_subject"]["artifacts_sha"] == artifacts["RUN-336-004"]
+        with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+            execute_ingress(envelope, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
+    admitted = execute_audited_ingress(envelope, repo=repo)
+    assert admitted.status == "CANONICALIZED"
+    assert admitted.canonical_destination == "refs/heads/aios/repair/RUN-336-004"
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+    assert git(repo, "rev-parse", f"{admitted.canonical_sha}^") == lifecycle.terminals[-1].candidate_sha
+    assert {p: p.read_bytes() for p in before} == before
+    assert (repo / ".ai/tasks/TASK-336.yaml").read_bytes() == task_bytes
+
+
+@pytest.mark.parametrize("fault", ["stale-head", "wrong-tip", "changed-correction", "missing-raw", "crlf-task",
+                                  "local-runtime-state"])
+def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, monkeypatch, fault):
+    from tests.test_operator import _reviewed_preservation_metadata
+    repo, remote, state, lifecycle, artifacts, envelope = _terminal_reconciliation_task336_authoring_fixture(tmp_path)
+    if fault == "stale-head":
+        envelope = replace(envelope, expected_state={"expected_failed_head_sha": "b" * 40})
+    elif fault == "wrong-tip":
+        envelope = replace(envelope, identity={"failed_run_id": "RUN-336-003"})
+    elif fault == "changed-correction":
+        document = json.loads(lifecycle.terminals[-1].correction)
+        document["repair_authorization_sha"] = "b" * 40
+    elif fault == "local-runtime-state":
+        from aios_renew.operator import _runtime_paths_readonly
+        hosted_state = _runtime_paths_readonly(repo)
+        hosted_state.runs.mkdir(parents=True)
+        hosted_run = hosted_state.runs / "RUN-336-004.json"
+        hosted_run.write_bytes(lifecycle.terminals[-1].run)
+    elif fault == "crlf-task":
+        task_path = repo / ".ai/tasks/TASK-336.yaml"
+        task_bytes = task_path.read_bytes()
+        assert b"\r\n" not in task_bytes and b"\n" in task_bytes
+        task_bytes = task_bytes.replace(b"\n", b"\r\n")
+        task_path.write_bytes(task_bytes)
+        # Git's clean conversion hides this drift, but raw authoring must not.
+        assert git(repo, "status", "--porcelain", "--", ".ai/tasks/TASK-336.yaml") == ""
+    else:
+        document = json.loads(lifecycle.terminals[-1].terminal)
+        document["error"]["evidence"] = [dict(evidence_id="RUN-336-004-V001",
+            run_id="RUN-336-004", subject_sha=envelope.payload["failed_head_sha"], type="VERIFICATION",
+            source=dict(command="git diff --check"), result=dict(exit_code=0, summary="spoofed full evidence"))]
+        # Outside a reference role, full EVIDENCE still requires raw/result.
+    if fault in {"changed-correction", "missing-raw"}:
+        tip = lifecycle.terminals[-1]
+        documents = {".ai/transport/run.json": tip.run, ".ai/transport/failure.json": tip.terminal,
+                     ".ai/transport/repair.json": tip.correction}
+        documents[".ai/transport/repair.json" if fault == "changed-correction" else ".ai/transport/failure.json"] = (
+            json.dumps(document).encode())
+        corrupted = _reviewed_preservation_metadata(repo, tip.candidate_sha, documents)
+        git(remote, "update-ref", "refs/heads/aios/failure-artifacts/RUN-336-004", corrupted,
+            artifacts["RUN-336-004"])
+    refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    before = {p: p.read_bytes() for directory in (state.runs, state.failures, state.repairs)
+              for p in directory.glob("*.json")}
+    forbid_correction_mutation(monkeypatch)
+    expected_message = ("divergent canonical authoring input bytes" if fault == "crlf-task"
+                        else "local Runtime observations cannot supply canonical authoring inputs"
+                        if fault == "local-runtime-state" else None)
+    with pytest.raises((AuthoringIngressError, ValueError, RuntimeError), match=expected_message):
+        authoring_ingress_module._compose_authoring_packet(envelope, repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
+    assert {p: p.read_bytes() for p in before} == before
+    if fault == "crlf-task":
+        assert task_path.read_bytes() == task_bytes
+    elif fault == "local-runtime-state":
+        assert hosted_run.read_bytes() == lifecycle.terminals[-1].run
