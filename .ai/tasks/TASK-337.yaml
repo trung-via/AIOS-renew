@@ -1,184 +1,172 @@
 task_id: TASK-337
-revision: 2
+revision: 3
 goal: >-
-  Restore deterministic, fail-closed reconciliation between private local
-  terminal/correction records and the safe public canonical Git projections,
-  including exact publication-recovery to semantic-review handoff, without
-  changing independent Runtime/Reviewer/Publisher authority or reopening
-  any immutable prior RUN.
+  Correct the verified post-r2 historical terminal reconciliation regression
+  in TASK-336 lineage: distinguish evidence-id references in nested
+  FAILURE/REPAIR metadata from full verification EVIDENCE objects with raw
+  locators. Restore bounded, deterministic Unified State observation and
+  lawful AUTHOR_REPAIR eligibility for RUN-336-004 without weakening private/
+  public integrity, rewriting immutable artifacts, or implementing TASK-336.
 problem: >-
-  TASK-336 forward recovery introduced bounded public redaction in terminal
-  Git transport, but unchanged unified_state.py still compares some local
-  private RUN/FAILURE/REPAIR documents directly with their public canonical
-  counterparts. This produced 'local and canonical terminal state conflict'
-  despite successfully resolved remote lifecycle and canonical decoding.
-  A publication recovery regression also observed next_action NONE instead
-  of SEMANTIC_REVIEW after a newly recovered, unreviewed result. The failure
-  mechanisms must be distinguished and corrected without assuming that
-  redacted records are identical, nor treating public placeholders as proof.
+  After the reviewed and published TASK-337 r2 candidate
+  92c33d8552e41c174be36146f1a6268f52cd62c6, a canonical read-only
+  diagnosis of TASK-336 r1 reported four canonical terminals but
+  observe_unified_state returned BLOCKED / MALFORMED_CANONICAL_STATE with
+  KeyError 'raw' during _decode_remote_lifecycle. In unified_state.py the
+  metadata projection invokes full evidence(raw, result) handling on any
+  mapping containing an evidence_id, even when that mapping is only a
+  historical evidence reference lacking a raw field. Consequently
+  AUTHOR_REPAIR for the exact terminal RUN-336-004 was correctly rejected
+  before ingress. A fail-closed schema-aware reader correction is required;
+  the underlying historical documents must remain immutable.
 assumptions:
   - >-
-    This Human-authorized revision 2 is authored against canonical AIOS-renew main
-    425dabb5fbb9007476dad9eb0d6918162369f42c. Runtime must independently
-    recheck expected-main CAS before canonicalizing the revised contract.
+    Human explicitly approved revision 3 as a prospective narrow
+    correction to the already reviewed and published revision 2 capability.
+    Canonical authoring base is main 92c33d8552e41c174be36146f1a6268f52cd62c6;
+    Runtime must independently verify expected-main CAS and existing TASK
+    revision continuity before authoring or admitting a fresh PRIMARY.
   - >-
-    TASK-336 r1 is a separate, still-unpublished forward-recovery lineage.
-    RUN-336-001 through RUN-336-004 failures and their exact canonical refs
-    are immutable evidence, not permission to overwrite or replay a RUN.
+    TASK-337 r2 RUN-337-002, EVIDENCE_ONLY RUN-337-003,
+    REVIEW-337-003 DELTA PASS and the published source are immutable
+    verified history, not repairable or re-opened RUNs.
   - >-
-    RUN-337-001 of revision 1 failed canonical VERIFICATION against candidate
-    74ada321ff91027a1b3d7ebce9b7656fd5ec5181, with the publication recovery
-    admission regression failing on both the baseline and candidate. Revision 2
-    is a prospective, Human-authorized scope amendment, not REPAIR of that RUN.
-    Its candidate and FAILURE remain immutable; revision 2 PRIMARY starts from
-    current canonical main and must satisfy the entire TASK scope anew.
+    TASK-336 r1 remains a distinct unfinished forward recovery. Its
+    RUN-336-001 through RUN-336-004 terminal/ref lineage is immutable.
+    RUN-336-004 is the observed latest completion-gate FAILURE at candidate
+    fc1cd55cb73cbbc13f530156877a14865d869da3; no canonical
+    REPAIR authorization has yet been created for that RUN.
   - >-
-    TASK-336 retains ownership of its separate forward recovery, transport
-    serialization and bounded public redaction fixes.
+    Historic large records and nested verification identity references
+    can be structurally different from a complete EVIDENCE record.
+    A plain evidence_id field cannot authorize access to a nonexistent
+    raw locator or weaken digest, identity, SHA and claim bindings.
   - >-
-    Canonical redaction may intentionally protect workspace, diagnostics and
-    raw locators while preserving required identity, SHA, evidence and
-    verification bindings. Historic artifact versions may differ in size and
-    representation; no raw-path disclosure or historical rewrite is allowed.
-  - >-
-    LEGACY_REPOSITORY_DEFAULT_ROUTE is the prospective Human-selected return
-    affinity; executor and model selection remain outside the TASK contract.
+    Return affinity for this revision remains the existing
+    LEGACY_REPOSITORY_DEFAULT_ROUTE; previously selected sticky Codex
+    GPT-6.1 Sol xhigh is operational delegation, not TASK semantic authority.
 scope:
   inspect:
     - docs/AIOS-MANIFESTO.md
     - docs/AIOS-CONSTITUTION.md
     - docs/CHATGPT_PROJECT_CONTRACT.md
     - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
-    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
     - .ai/roadmap-state.yaml
     - .ai/tasks/TASK-336.yaml
     - src/aios_renew/unified_state.py
-    - src/aios_renew/operator.py
     - src/aios_renew/review_transport.py
-    - src/aios_renew/runtime_provenance_issuer.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/operator.py
     - src/aios_renew/publication.py
-    - src/aios_renew/runtime.py
-    - src/aios_renew/correction_preflight.py
     - tests/test_operator.py
+    - tests/test_authoring_ingress.py
     - tests/test_publication.py
-    - tests/test_review_transport.py
-    - tests/test_runtime.py
   modify:
     - src/aios_renew/unified_state.py
-    - src/aios_renew/publication.py
     - tests/test_operator.py
-    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
 non_goals:
   - >-
-    No edit to transport redaction or output-size policies in
-    review_transport.py; those TASK-336 obligations remain separately owned.
+    No change to private/public transport writer, review_transport.py,
+    publication.py, Runtime admission, correction authoring semantics,
+    Reviewer, Publisher, GitHub workflow or security configuration.
   - >-
-    No alteration or deletion of historical TASK, RUN, FAILURE, RESULT,
-    EVIDENCE, REVIEW, REPAIR or REMEDIATION; no main reset, forced Git update,
-    canonical ref rewrite, publisher shortcut or synthetic verification PASS.
+    No edit, deletion, replacement, padding, replay or rewriting of
+    historical TASK/RUN/RESULT/FAILURE/REPAIR/REMEDIATION/REVIEW/EVIDENCE
+    documents, refs, raw sidecars or published source history.
   - >-
-    No new lifecycle router, trust issuer, verifier, proof-reuse engine,
-    memory store, Runtime admission, Reviewer or Publisher authority.
+    No bypass of canonical Unified State, AUTHOR_REPAIR or freshness gates;
+    no direct creation of REPAIR-336-004 or RUN for TASK-336; no implementation
+    or publication of TASK-336's separate forward recovery.
   - >-
-    No automatic remediation of TASK-336, no direct integration of an unpublished
-    TASK-336 candidate into this TASK, and no downstream dependency changes.
-  - >-
-    No broad regression suite, redundant base replay, self-host workflow
-    reconfiguration, protected credential mutation or KA01 activation.
+    No new router, scheduler, proof engine, broad V2 test rerun, base replay,
+    provider switch, KA01 activation or downstream repository mutation.
 constraints:
   hard:
     - >-
-      Compare only the deterministic authorized public projection of relevant
-      private fields or an equivalent exact verified binding, while preserving
-      canonical Git identities and source verification/evidence semantics.
-      Never treat redacted placeholders as independent proof or let absent,
-      changed or malicious private data pass because a public field is hidden.
+      Classify nested metadata evidence-id references by exact structural
+      context and required fields, not by the mere presence of evidence_id.
+      Require complete, validated raw/result/privacy fields for actual
+      EVIDENCE objects where required; malformed or missing full evidence
+      objects must still fail closed.
     - >-
-      Fail closed on changed RUN/TASK identity, head/base SHA, correction parent,
-      repair authorization, publication recovery source, review binding,
-      evidence digest/verification binding, extra local terminals or competing
-      remote tips. Do not bypass strict checks to make valid fixtures green.
+      Preserve identity, command, digest, source/candidate SHA, task revision,
+      correction parent, authorization, head/base, publication and review
+      bindings. Missing required fields, changed private material and
+      fabricated public placeholders must not become equivalent.
     - >-
-      Distinguish legitimate privacy representation changes from true
-      canonical mismatch. Retain support for byte-exact historical artifacts
-      and bounded legacy records; avoid applying a new public-writer input
-      size cap as an unconditional historical reader limit.
+      The metadata projection must preserve unrelated nested structure,
+      references and verification provenance; only privacy-allowlisted
+      representation differences may be compared after validation.
+      Do not suppress KeyError/ValueError globally, default unknown data
+      to PASS, or normalize away tampering.
     - >-
-      Restore exact recovery-result to SEMANTIC_REVIEW classification only
-      when its admitted recovered RESULT is actually eligible and unreviewed.
-      Prior PASS never substitutes for the new Reviewer verdict; replay, CAS,
-      loss of wake, corruption and concurrent-main conflicts stay fail closed.
+      Use bounded read-only reproduction for exact canonical TASK-336
+      RUN-336-001 through RUN-336-004, including the historical large
+      FAILURE, embedded correction metadata, and safe public transport.
+      Do not copy private raw paths/secrets into tests or Git. If the
+      actual blocker is additional/independent, report the exact blocker
+      rather than force AUTHOR_REPAIR.
     - >-
-      Scope is strictly the four listed modify files, with publication.py now
-      explicitly authorized only for the demonstrated admission-representation
-      mismatch and directly necessary fail-closed validation. Any further
-      production-file change or higher-authority conflict requires a typed
-      blocker and separate Human scope authorization.
+      Regression coverage must contrast reference-only metadata with
+      required full EVIDENCE records and include negative missing-raw,
+      spoofed-reference, mismatched identity/SHA/digest, malformed
+      correction linkage and public projection cases. Positive tests
+      alone are insufficient for security-sensitive reconciliation.
     - >-
-      Recovered publication admission must distinguish validated private RUN
-      metadata from its authenticated public transport projection without
-      requiring byte-equality of privacy-redacted workspace fields. Preserve
-      exact admitted RUN identity, TASK revision, executor, status, affinity,
-      base/head SHA, source/candidate provenance, and canonical admission ref
-      and reservation identity. A protected workspace placeholder alone is
-      never proof of a legitimate local workspace or RUN identity.
+      Only the three listed source/test files may change. Existing
+      reviewed publication-recovery protections and TASK-337 r2
+      behavior must not regress; proof reuse is permitted only when
+      exact Runtime validity conditions remain satisfied.
     - >-
-      Do not relax publication.py admission guards wholesale or permit
-      self-certified equivalence: absent, malformed, contradictory, spoofed,
-      replayed or otherwise unbound private/public data must fail closed.
-      Keep historical byte-exact validation valid and do not bypass Runtime
-      admission, independent Reviewer verdict or Publisher authority.
-    - >-
-      Minimum-sufficient-v2 applies. Reuse valid source/candidate proof under
-      Runtime rules and limit tests to focused correction-path regressions;
-      Executor claims do not substitute for Runtime verification.
+      Keep minimum-sufficient-v2 Runtime verification. The new targeted
+      regression family names must match the selected test command;
+      report collection count and exact relevant nodeids to prevent
+      the earlier one-test-only coverage gap. No automatic full suite
+      or equivalent base replay.
 acceptance:
   - id: AC1
     condition: >-
-      A locally persisted terminal whose identity, correction lineage and
-      verification/evidence bindings match the exact authenticated canonical
-      public representation can reconcile to the same terminal without a
-      false private/public conflict; no duplicate or synthetic terminal appears.
+      Correctly formed nested verification/evidence reference metadata
+      without raw remains readable in immutable terminal and correction
+      lineage, with no KeyError, while complete EVIDENCE records retain
+      their required raw/result checks and fail closed if incomplete.
   - id: AC2
     condition: >-
-      Missing, malformed, contradictory or adversarial local/canonical records,
-      including changed RUN/TASK/base/head/correction/review/recovery/evidence
-      bindings, remain deterministically blocked instead of being hidden by
-      redaction or accepted by field omission.
+      Valid private and protected-public representations of historical
+      TASK-336 RUN-336-001 through RUN-336-004 reconcile read-only,
+      including large FAILURE metadata and repair ancestry, without
+      mutation, new writer-size caps, raw disclosure or synthetic records.
   - id: AC3
     condition: >-
-      Historical unredacted and protected terminal records can both be
-      reconciled under their applicable validated representation, without
-      rewriting immutable refs, leaking private fields or incorrectly treating
-      a public-writer size limit as a universal historical-read limit.
+      On canonical history that satisfies all independent guards,
+      Unified State identifies RUN-336-004 as the exact repairable
+      failed tip and yields AUTHOR_REPAIR, enabling normal authoring
+      admission without bypass. Any independently invalid condition
+      still yields an explicit fail-closed blocker instead.
   - id: AC4
     condition: >-
-      A valid newly recovered, not-yet-reviewed publication source is classified
-      as SEMANTIC_REVIEW for its exact recovered RUN and candidate; a historical
-      prior PASS does not count as a verdict for that recovered source.
+      Adversarial nested reference/full-evidence cases, changed
+      correction binding, missing required raw/result, malformed
+      or conflicting public/private representations, and changed
+      task/run/head/source/digest identities remain blocked.
   - id: AC5
     condition: >-
-      Recovery replay, conflicting source or main, invalid lineage, duplicate
-      terminal and malformed private/public representations retain their
-      existing fail-closed and no-unauthorized-mutation behavior.
+      The existing reviewed TASK-337 private/public reconciliation,
+      publication-recovery security and authority boundaries remain
+      intact. Revision 3 changes only the authorized three files;
+      all previous canonical records remain immutable.
   - id: AC6
     condition: >-
-      Focused regression cases cover matching and mismatching private/public
-      terminals, correction lineage, historic large-artifact behavior,
-      legitimate recovered review handoff, authenticated private/public
-      admission comparison and negative publication recovery; test assertions
-      do not conceal a production defect.
-  - id: AC7
-    condition: >-
-      Publication recovery accepts a genuinely admitted, valid private RUN
-      and its matching authenticated redacted public RUN without false
-      workspace-inequality rejection, but rejects changed or fabricated
-      admission identity, workspace provenance, status, SHA, revision,
-      executor, affinity or source binding before creating a recovered RESULT
-      or semantic-review eligibility.
+      Runtime-owned focused verification explicitly executes the
+      new historical metadata, TASK-336 lineage and adversarial
+      regression cases (not only a pre-existing publication test),
+      reports exact selected nodeids and pass/failure counts, and
+      avoids repeating unaffected equivalent tests or base replay
+      unless relevant state proves invalidation.
 verification:
   policy: minimum-sufficient-v2
   required:
-    - python -m pytest -q tests/test_operator.py tests/test_publication.py -k "local_public or publication_recovery_admits_once_then_requires_new_exact_review"
+    - python -m pytest -q tests/test_operator.py tests/test_authoring_ingress.py -k "terminal_reconciliation"
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
