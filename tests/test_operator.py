@@ -14454,7 +14454,7 @@ def test_terminal_reconciliation_historical_metadata_reference(protected, reused
 
 @pytest.mark.parametrize("protected", [False, True])
 @pytest.mark.parametrize("reused", [False, True])
-@pytest.mark.parametrize("placement", ["package", "failure-error"])
+@pytest.mark.parametrize("placement", ["package", "nested-package", "failure-error"])
 def test_terminal_reconciliation_historical_metadata_full_evidence(protected, reused, placement):
     from aios_renew.unified_state import _matches_public_document
     private = _terminal_reconciliation_failure_metadata()
@@ -14468,16 +14468,57 @@ def test_terminal_reconciliation_historical_metadata_full_evidence(protected, re
         run_id=private["run_id"], subject_sha=private["failed_head_sha"])
     if placement == "package":
         private["embedded_package"] = dict(result={}, evidence=[evidence])
+    elif placement == "nested-package":
+        private["metadata"] = dict(embedded_package=dict(result={}, evidence=[evidence]))
     else:
         private["error"]["evidence"] = [evidence]
     before = json.dumps(private, sort_keys=True)
     public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
     assert _matches_public_document(private, public, "METADATA")
-    projected = public["embedded_package"] if placement == "package" else public["error"]
+    projected = (public["metadata"]["embedded_package"] if placement == "nested-package"
+                 else public["embedded_package"] if placement == "package" else public["error"])
     expected_raw = "protected-runtime-raw/" + evidence["evidence_id"] if protected else evidence["raw"]["path"]
     assert projected["evidence"][0]["raw"] == {"path": expected_raw}
     assert projected["evidence"][0]["verification"] == reference
     assert json.dumps(private, sort_keys=True) == before
+
+
+@pytest.mark.parametrize("protected", [False, True])
+@pytest.mark.parametrize("placement", ["package", "nested-package"])
+@pytest.mark.parametrize("mismatch", ["run", "subject", "run-and-subject"])
+def test_terminal_reconciliation_embedded_package_evidence_wrong_owner(protected, placement, mismatch):
+    from aios_renew.artifacts import validate_evidence
+    from aios_renew.unified_state import _matches_public_document
+    private = _terminal_reconciliation_failure_metadata()
+    reference = _terminal_reconciliation_reference(
+        "RUN-336-009" if mismatch != "subject" else private["run_id"],
+        "9" * 40 if mismatch != "run" else private["failed_head_sha"], "b" * 40)
+    evidence = _terminal_reconciliation_full_evidence(reference)
+    # Internal V2 validity cannot establish the enclosing FAILURE's ownership.
+    validate_evidence(evidence)
+    package = dict(result={}, evidence=[evidence])
+    if placement == "package":
+        private["embedded_package"] = package
+    else:
+        private["metadata"] = dict(embedded_package=package)
+    before = json.dumps(private, sort_keys=True)
+    public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
+    with pytest.raises(ValueError, match="full EVIDENCE does not bind its FAILURE owner"):
+        _matches_public_document(private, public, "METADATA")
+    assert json.dumps(private, sort_keys=True) == before
+
+
+@pytest.mark.parametrize("protected", [False, True])
+def test_terminal_reconciliation_embedded_package_evidence_requires_owner(protected):
+    from aios_renew.artifacts import validate_evidence
+    from aios_renew.unified_state import _matches_public_document
+    evidence = _terminal_reconciliation_full_evidence(
+        _terminal_reconciliation_reference("RUN-336-001", "a" * 40, "b" * 40))
+    validate_evidence(evidence)
+    private = dict(embedded_package=dict(result={}, evidence=[evidence]))
+    public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
+    with pytest.raises(ValueError, match="full EVIDENCE has no structural owner"):
+        _matches_public_document(private, public, "METADATA")
 
 
 @pytest.mark.parametrize("representation", ["private", "protected"])

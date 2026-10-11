@@ -426,9 +426,13 @@ def _matches_public_document(
         )
         if "evidence_id" in value and not full_evidence:
             raise ValueError("EVIDENCE identity outside a validated structural role")
+        if value.get("kind") == "FAILURE":
+            # Keep the enclosing failed RUN identity through metadata wrappers,
+            # including embedded ResultPackages; nested FAILUREs own their records.
+            owner = value
         data = {}
         for key, item in value.items():
-            child_role, child_owner = "metadata", None
+            child_role, child_owner = "metadata", owner
             if key == "error" and value.get("kind") == "FAILURE":
                 child_role, child_owner = "failure_error", value
             elif key == "verification" and role == "failure_error":
@@ -454,6 +458,8 @@ def _matches_public_document(
         if "run_id" in data and "workspace" in data and "task" in data:
             workspace(data)
         if full_evidence:
+            if owner is None:
+                raise ValueError("full EVIDENCE has no structural owner")
             evidence(data, owner)
         if data.get("kind") == "FAILURE":
             error = data.get("error")
