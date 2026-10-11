@@ -1,0 +1,9 @@
+finding_id: FINDING-337-002-001
+action: EVIDENCE_ONLY
+reviewed_sha: 92c33d8552e41c174be36146f1a6268f52cd62c6
+modification_scope: []
+verification:
+  policy: minimum-sufficient-v2
+  affected:
+  - python -m pytest -q tests/test_operator.py tests/test_publication.py -k "terminal_reconciliation
+    or publication_recovery_admission or publication_recovery_corrupt_authenticated_admission"
