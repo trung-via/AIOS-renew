@@ -1,0 +1,49 @@
+review_id: REVIEW-337-009
+reviewed_sha: 6bfd5311eab95827592e1b7baae23101aad4d102
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: PASS
+  AC4: FAIL
+  AC5: PASS
+  AC6: PASS
+findings:
+- id: FINDING-337-009-001
+  basis: AC1
+  action: CODE_FIX
+  location: 'src/aios_renew/unified_state.py: _matches_public_document.metadata/evidence,
+    structural embedded_package.evidence'
+  issue: A full EVIDENCE nested under embedded_package is decoded with owner=None.
+    Even when surrounding canonical metadata is an identified FAILURE, this bypasses
+    the cross-check of EVIDENCE.run_id and EVIDENCE.subject_sha against the owning
+    failed RUN. validate_evidence alone validates the evidence record internally,
+    not its containing FAILURE identity. Existing positive checks and adversarial
+    wrong-owner checks under FAILURE.error.evidence do not cover this alternate structural
+    path.
+  expected: Preserve exact V2 nested-reference/full-EVIDENCE separation and existing
+    private/protected representation. Bind full EVIDENCE to the appropriate canonical
+    enclosing RUN/FAILURE owner, or fail closed when an owning identity cannot be
+    established in a context requiring it. Add protected and non-protected negative
+    regressions with internally valid EVIDENCE from a different RUN/subject under
+    embedded_package.evidence, without widening TASK scope or altering verification
+    policy.
+- id: FINDING-337-009-002
+  basis: AC4
+  action: CODE_FIX
+  location: 'src/aios_renew/unified_state.py: _matches_public_document.metadata, structural
+    role dispatch and generic full_evidence detection'
+  issue: The generic metadata path recognizes full EVIDENCE from the presence of field
+    names and can accept it through unowned or unexpected nested locations. An otherwise
+    internally valid EVIDENCE in an unsupported structural placement can pass the
+    metadata projection without a fail-closed structural owner or location check;
+    existing invalid-full-EVIDENCE and tampering regressions do not establish rejection
+    of a valid but misplaced foreign-owner record.
+  expected: Constrain full EVIDENCE acceptance to allowed structural roles with their
+    correct owner/lineage binding; reject unsupported or ambiguous placements rather
+    than accepting by a generic field-set heuristic. Cover privacy projection and
+    local/remote read-only reconciliation using targeted positive and adversarial
+    tests for protected and unprotected metadata. Preserve the original four-RUN TASK-336
+    fixture, historical protections, no writes from Unified State, and all unaffected
+    already valid verification evidence.
