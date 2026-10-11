@@ -4787,3 +4787,197 @@ def test_exact_remediation_invalid_lineage_fails_closed(tmp_path, monkeypatch, p
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
     if fault != "competing_lineage":
         assert not git(remote, "for-each-ref", "--format=%(refname)", f"refs/heads/aios/remediation/{run_id}-F1")
+
+
+def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=True):
+    from aios_renew.publication import _repair_review_lineage
+    from aios_renew.operator import _run_from_data
+    from tests.test_operator import (
+        _terminal_reconciliation_task336_fixture, _terminal_reconciliation_repair,
+        _terminal_reconciliation_assert_fixture_contract, _terminal_reconciliation_fixture_selectors,
+        _reviewed_preservation_metadata,
+    )
+    repo, state, task, lifecycle = _terminal_reconciliation_task336_fixture(
+        tmp_path, protected=protected, authoring=True)
+    remote = tmp_path / "upstream.git"
+    artifacts = {}
+    terminals = list(lifecycle.terminals)
+    for index, terminal in enumerate(terminals):
+        documents = {".ai/transport/run.json": terminal.run, ".ai/transport/failure.json": terminal.terminal}
+        if terminal.correction is not None:
+            correction = json.loads(terminal.correction)
+            authorization_sha = _reviewed_preservation_metadata(repo, correction["failed_head_sha"], {
+                ".ai/transport/repair.json": json.dumps(correction["repair"]).encode()})
+            git(repo, "push", "--quiet", "origin",
+                f"{authorization_sha}:refs/heads/aios/repair/{correction['failed_run_id']}")
+            correction["repair_authorization_sha"] = authorization_sha
+            terminal = replace(terminal, correction=json.dumps(correction).encode())
+            documents[".ai/transport/repair.json"] = terminal.correction
+            local_path = state.repairs / (terminal.run_id + ".json")
+            local = json.loads(local_path.read_bytes())
+            local["repair_authorization_sha"] = authorization_sha
+            local_path.write_bytes(json.dumps(local).encode())
+        terminals[index] = terminal
+        lifecycle = replace(lifecycle, terminals=tuple(terminals),
+            repair_selectors=_terminal_reconciliation_fixture_selectors(terminals))
+        sha = _reviewed_preservation_metadata(repo, terminal.candidate_sha, documents)
+        artifacts[terminal.run_id] = sha
+        git(repo, "push", "--quiet", "origin",
+            f"{terminal.candidate_sha}:refs/heads/aios/failure/{terminal.run_id}",
+            f"{sha}:refs/heads/aios/failure-artifacts/{terminal.run_id}")
+        _terminal_reconciliation_assert_fixture_contract(repo, state, task, lifecycle)
+        if terminal.correction is not None:
+            # Check all canonical predecessors, including zero-delta historical
+            # failures and authorization refs, after every simulated correction.
+            run_data = json.loads(terminal.run)
+            root, result_base, review, finding = _repair_review_lineage(
+                repo, remote="origin", publication_run_id=terminal.run_id,
+                child_run_data=run_data, child_run=_run_from_data(run_data),
+                child_head_sha=terminal.candidate_sha, lineage_bytes=terminal.correction,
+                task=task, historical_child_failure=json.loads(terminal.terminal), strict_source=True)
+            assert root == result_base == lifecycle.main_sha
+            assert review is finding is None
+    # Hosted ingress must reconstruct the remote history without local Runtime observations.
+    authoring_repo = tmp_path / "authoring"
+    subprocess.run(("git", "clone", "--quiet", "--branch", "main", "--config", "core.autocrlf=true",
+                    str(remote), str(authoring_repo)), check=True, capture_output=True)
+    git(authoring_repo, "config", "user.name", "AIOS Historical Authoring Test")
+    git(authoring_repo, "config", "user.email", "authoring@example.invalid")
+    git(authoring_repo, "reset", "--hard", lifecycle.main_sha)
+    # Git's clean conversion can conceal CRLF checkout bytes. Restore every raw
+    # .ai input from the committed blob after the fixture's last reset.
+    for input_path in git(authoring_repo, "ls-tree", "-r", "--name-only", lifecycle.main_sha, "--", ".ai").splitlines():
+        committed = subprocess.run(
+            ("git", "-C", str(authoring_repo), "show", f"{lifecycle.main_sha}:{input_path}"),
+            capture_output=True, check=True).stdout
+        (authoring_repo / input_path).write_bytes(committed)
+        assert (authoring_repo / input_path).read_bytes() == committed
+    payload = _terminal_reconciliation_repair(task, json.loads(lifecycle.terminals[-1].terminal), "REPAIR-336-004")
+    envelope = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+        {"failed_run_id": "RUN-336-004"}, {"expected_failed_head_sha": payload["failed_head_sha"]}, payload)
+    return authoring_repo, remote, state, lifecycle, artifacts, envelope
+
+
+@pytest.mark.parametrize("protected", [False, True])
+def test_terminal_reconciliation_task336_normal_authoring_admission(tmp_path, monkeypatch, protected):
+    repo, remote, state, lifecycle, artifacts, envelope = _terminal_reconciliation_task336_authoring_fixture(
+        tmp_path, protected=protected)
+    assert git(repo, "config", "core.autocrlf") == "true"
+    task_path = repo / ".ai/tasks/TASK-336.yaml"
+    task_bytes = task_path.read_bytes()
+    assert task_bytes == subprocess.run(
+        ("git", "-C", str(repo), "show", f"{lifecycle.main_sha}:.ai/tasks/TASK-336.yaml"),
+        capture_output=True, check=True).stdout
+    before = {path: path.read_bytes() for directory in (state.runs, state.failures, state.repairs)
+              for path in directory.glob("*.json")}
+    refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    observation = observe_unified_state("TASK-336", repo=repo)
+    assert observation.next_action == "AUTHOR_REPAIR" and observation.failed_run_id == "RUN-336-004"
+    with monkeypatch.context() as guard:
+        forbid_correction_mutation(guard)
+        packet, _, _, _ = authoring_ingress_module._compose_authoring_packet(envelope, repo)
+        facts = packet.as_dict()["canonical_facts"]
+        assert facts["canonical_next_action"] == facts["unified_state_next_action"] == "AUTHOR_REPAIR"
+        assert facts["correction_subject"]["artifacts_sha"] == artifacts["RUN-336-004"]
+        with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+            execute_ingress(envelope, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
+    admitted = execute_audited_ingress(envelope, repo=repo)
+    assert admitted.status == "CANONICALIZED"
+    assert admitted.canonical_destination == "refs/heads/aios/repair/RUN-336-004"
+    assert git(remote, "rev-parse", "refs/heads/main") == lifecycle.main_sha
+    assert git(repo, "rev-parse", f"{admitted.canonical_sha}^") == lifecycle.terminals[-1].candidate_sha
+    assert json.loads(git(repo, "show", f"{admitted.canonical_sha}:.ai/transport/repair.json")) == envelope.payload
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == "\n".join(sorted(
+        refs.splitlines() + [admitted.canonical_destination + " " + admitted.canonical_sha]))
+    assert {path: path.read_bytes() for path in before} == before
+    assert task_path.read_bytes() == task_bytes
+
+
+def _terminal_reconciliation_replace_artifacts(repo, remote, commit, expected_old):
+    """Send real objects before an expected-old update of exactly one test ref."""
+    refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    pack = subprocess.run(("git", "-C", str(repo), "pack-objects", "--stdout", "--revs"),
+        input=(commit + "\n").encode(), capture_output=True, check=True).stdout
+    subprocess.run(("git", "-C", str(remote), "index-pack", "--stdin"),
+        input=pack, capture_output=True, check=True)
+    git(remote, "cat-file", "-e", commit + "^{commit}")
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
+    ref = "refs/heads/aios/failure-artifacts/RUN-336-004"
+    assert git(remote, "rev-parse", ref) == expected_old
+    git(remote, "update-ref", ref, commit, expected_old)
+    assert git(remote, "rev-parse", ref) == commit
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs.replace(
+        ref + " " + expected_old, ref + " " + commit)
+
+
+@pytest.mark.parametrize("protected", [False, True])
+@pytest.mark.parametrize("fault", ["stale-head", "wrong-tip", "changed-correction", "missing-raw", "crlf-task",
+                                  "local-runtime-state"])
+def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, monkeypatch, protected, fault):
+    from tests.test_operator import _reviewed_preservation_metadata
+    repo, remote, state, lifecycle, artifacts, envelope = _terminal_reconciliation_task336_authoring_fixture(
+        tmp_path, protected=protected)
+    if fault == "stale-head":
+        envelope = replace(envelope, expected_state={"expected_failed_head_sha": "b" * 40})
+    elif fault == "wrong-tip":
+        envelope = replace(envelope, identity={"failed_run_id": "RUN-336-003"})
+    elif fault == "changed-correction":
+        document = json.loads(lifecycle.terminals[-1].correction)
+        document["repair_authorization_sha"] = "b" * 40
+    elif fault == "local-runtime-state":
+        from aios_renew.operator import _runtime_paths_readonly
+        hosted_state = _runtime_paths_readonly(repo)
+        hosted_state.runs.mkdir(parents=True)
+        hosted_run = hosted_state.runs / "RUN-336-004.json"
+        hosted_run.write_bytes(lifecycle.terminals[-1].run)
+    elif fault == "crlf-task":
+        task_path = repo / ".ai/tasks/TASK-336.yaml"
+        task_bytes = task_path.read_bytes()
+        assert b"\r\n" not in task_bytes and b"\n" in task_bytes
+        task_bytes = task_bytes.replace(b"\n", b"\r\n")
+        task_path.write_bytes(task_bytes)
+        assert git(repo, "status", "--porcelain", "--", ".ai/tasks/TASK-336.yaml") == ""
+    else:
+        document = json.loads(lifecycle.terminals[-1].terminal)
+        document["error"]["evidence"] = [dict(evidence_id="RUN-336-004-V001", run_id="RUN-336-004",
+            subject_sha=envelope.payload["failed_head_sha"], type="VERIFICATION", source=dict(command="git diff --check"),
+            result=dict(exit_code=0, summary="spoofed full evidence"))]
+    if fault in {"changed-correction", "missing-raw"}:
+        tip = lifecycle.terminals[-1]
+        documents = {".ai/transport/run.json": tip.run, ".ai/transport/failure.json": tip.terminal,
+                     ".ai/transport/repair.json": tip.correction}
+        path = ".ai/transport/repair.json" if fault == "changed-correction" else ".ai/transport/failure.json"
+        documents[path] = json.dumps(document).encode()
+        corrupted = _reviewed_preservation_metadata(repo, tip.candidate_sha, documents)
+        _terminal_reconciliation_replace_artifacts(repo, remote, corrupted, artifacts["RUN-336-004"])
+    refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    before = {path: path.read_bytes() for directory in (state.runs, state.failures, state.repairs)
+              for path in directory.glob("*.json")}
+    forbid_correction_mutation(monkeypatch)
+    if fault in {"changed-correction", "missing-raw"}:
+        from aios_renew.unified_state import _decode_remote_lifecycle
+        from aios_renew.operator import load_task
+        # Read the replacement object through real remote transport and require
+        # the exact parser boundary, before checking the ingress projection.
+        canonical = resolve_remote_task_lifecycle(repo, task_id="TASK-336", task_revision=1)
+        parser_message = ("persisted repair_authorization_sha does not match current canonical authorization"
+                          if fault == "changed-correction" else r"EVIDENCE\.raw is required")
+        with pytest.raises(ValueError, match=parser_message):
+            _decode_remote_lifecycle(repo, load_task(repo, "TASK-336"), canonical)
+    expected_message = {
+        "stale-head": "expected failed head SHA mismatch",
+        "wrong-tip": "REPAIR target differs from canonical failed RUN",
+        "changed-correction": "canonical correction subject differs from Unified State",
+        "missing-raw": "canonical correction subject differs from Unified State",
+        "crlf-task": "divergent canonical authoring input bytes",
+        "local-runtime-state": "local Runtime observations cannot supply canonical authoring inputs",
+    }[fault]
+    with pytest.raises((AuthoringIngressError, ValueError), match=expected_message):
+        authoring_ingress_module._compose_authoring_packet(envelope, repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
+    assert {path: path.read_bytes() for path in before} == before
+    if fault == "crlf-task":
+        assert task_path.read_bytes() == task_bytes
+    elif fault == "local-runtime-state":
+        assert hosted_run.read_bytes() == lifecycle.terminals[-1].run

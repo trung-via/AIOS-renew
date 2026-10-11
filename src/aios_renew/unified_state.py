@@ -50,6 +50,12 @@ from .review_transport import (
 )
 from .run import Run
 from .task import Task
+from .verification_contract import (
+    MINIMUM_SUFFICIENT_V2,
+    validate_evidence_binding,
+    validate_observation,
+    verification_digest,
+)
 
 
 _UNIFIED_NEXT_ACTIONS = frozenset({
@@ -286,7 +292,7 @@ def _matches_public_document(
 ) -> bool:
     """Compare a validated private record with its exact transport representation.
 
-    Keep the historical exact representation first. Only the writer's authorized
+    Validate even the historical exact representation. Only the writer's authorized
     privacy fields may differ; projecting both sides would conceal corruption of
     the public record. This read projection deliberately has no writer input cap.
     """
@@ -310,16 +316,21 @@ def _matches_public_document(
                     and error.get("message") == "Protected Runtime diagnostics remain local.")
                 or any(protected_view(item) for item in value.values()))
 
-    def evidence(item: dict[str, Any]) -> None:
-        identity = item["evidence_id"]
-        raw = item["raw"]
-        outcome = item["result"]
+    def evidence(item: dict[str, Any], owner: Mapping[str, Any] | None = None) -> None:
+        validate_evidence(item)
+        identity, raw, outcome = item["evidence_id"], item["raw"], item["result"]
         if (not isinstance(identity, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,96}", identity) is None
                 or not isinstance(raw, dict) or set(raw) != {"path"}
                 or not isinstance(raw["path"], str) or not raw["path"]
                 or not isinstance(outcome, dict) or not isinstance(outcome.get("summary"), str)
-                or type(outcome.get("exit_code")) is not int):
+                or type(outcome.get("exit_code")) is not int
+                or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", item["subject_sha"]) is None):
             raise ValueError("invalid private EVIDENCE privacy fields")
+        if owner is not None and (
+            item["run_id"] != owner.get("run_id")
+            or item["subject_sha"] != owner.get("failed_head_sha")
+        ):
+            raise ValueError("full EVIDENCE does not bind its FAILURE owner")
         item["raw"] = {"path": "protected-runtime-raw/" + identity}
         outcome["summary"] = "Runtime verification exit code " + str(outcome["exit_code"])
 
@@ -328,16 +339,122 @@ def _matches_public_document(
             raise ValueError("invalid private RUN workspace")
         item["workspace"] = "protected-runtime-workspace"
 
-    def metadata(value: Any) -> Any:
-        if isinstance(value, list):
-            return [metadata(item) for item in value]
-        if not isinstance(value, dict):
+    def reference(item: dict[str, Any], owner: Mapping[str, Any]) -> None:
+        # Only FAILURE.error.verification[].verification grants this role. It is
+        # an observation reference, never an incomplete full EVIDENCE object.
+        identity = item.get("evidence_id")
+        if (item.get("policy") != MINIMUM_SUFFICIENT_V2
+                or not isinstance(identity, str)
+                or re.fullmatch(r"[A-Za-z0-9_-]{1,96}", identity) is None
+                or set(item).intersection({"raw", "result", "source", "subject_sha", "type"})
+                or not isinstance(item.get("run_id"), str) or not item["run_id"]):
+            raise ValueError("invalid verification reference role")
+        verification_digest(item)
+        for prefix in ("", "base_"):
+            path_key, digest_key = prefix + "raw_path", prefix + "raw_digest"
+            if prefix and not ({path_key, digest_key} & item.keys()):
+                continue
+            if (not isinstance(item.get(path_key), str) or not item[path_key]
+                    or not isinstance(item.get(digest_key), str)
+                    or re.fullmatch(r"[0-9a-f]{64}", item[digest_key]) is None):
+                raise ValueError("invalid verification reference raw metadata")
+        binding = validate_evidence_binding(item.get("binding"))
+
+        def observation(name: str) -> dict[str, Any]:
+            value = item.get(name)
+            if (not isinstance(value, dict)
+                    or type(value.get("complete")) is not bool
+                    or type(value.get("unstable")) is not bool
+                    or item.get(name + "_digest") != verification_digest(value)):
+                raise ValueError("invalid verification reference observation")
+            if value["complete"]:
+                validate_observation(value)
             return value
-        data = {key: metadata(item) for key, item in value.items()}
+
+        candidate = observation("candidate")
+        if (any(candidate.get(key) != binding[key]
+                for key in ("subject_sha", "command", "profile", "toolchain"))
+                or type(candidate.get("exit_code")) is not int
+                or candidate["exit_code"] != owner.get("exit_code")
+                or binding["command"] != owner.get("command")):
+            raise ValueError("verification reference outcome binding mismatch")
+        effective = binding
+        if "reuse" in item:
+            reuse = item["reuse"]
+            if not isinstance(reuse, dict):
+                raise ValueError("invalid verification reference reuse")
+            effective = validate_evidence_binding(reuse.get("binding"))
+            if (reuse.get("source_evidence_id") != identity
+                    or {key: value for key, value in effective.items() if key != "subject_sha"}
+                    != {key: value for key, value in binding.items() if key != "subject_sha"}):
+                raise ValueError("verification reference reuse binding mismatch")
+        elif item["run_id"] != owner.get("run_id"):
+            raise ValueError("verification reference RUN binding mismatch")
+        if effective["subject_sha"] != owner.get("subject_sha"):
+            raise ValueError("verification reference subject binding mismatch")
+        if "base" in item:
+            base = observation("base")
+            if (base.get("subject_sha") != binding["base_sha"]
+                    or any(base.get(key) != binding[key] for key in ("command", "profile", "toolchain"))
+                    or binding["failure_set_digest"] != item["base_digest"]):
+                raise ValueError("verification reference base binding mismatch")
+        elif {"base_digest", "base_raw_path", "base_raw_digest"} & item.keys():
+            raise ValueError("verification reference has orphaned base metadata")
+
+    def metadata(value: Any, role: str = "metadata", owner: Mapping[str, Any] | None = None) -> Any:
+        if isinstance(value, list):
+            if role in {"reference", "full_evidence", "outcome"}:
+                raise ValueError("terminal verification record must be a mapping")
+            member_role = {"outcomes": "outcome", "evidence": "full_evidence"}.get(role, "metadata")
+            return [metadata(item, member_role, owner) for item in value]
+        if not isinstance(value, dict):
+            if role in {"reference", "full_evidence", "outcomes", "evidence", "outcome"}:
+                raise ValueError("malformed terminal verification metadata")
+            return value
+        if role in {"outcomes", "evidence"}:
+            raise ValueError("terminal verification population must be a list")
+        if role == "reference":
+            if owner is None:
+                raise ValueError("verification reference has no structural owner")
+            reference(value, owner)
+            # Authenticated observation/provenance remains verbatim, including
+            # historical annotations. No raw locator is opened by this reader.
+            return value
+        evidence_fields = {"evidence_id", "run_id", "subject_sha", "type", "source", "result", "raw"}
+        full_evidence = role == "full_evidence" or (
+            role == "metadata" and evidence_fields <= value.keys()
+        )
+        if "evidence_id" in value and not full_evidence:
+            raise ValueError("EVIDENCE identity outside a validated structural role")
+        data = {}
+        for key, item in value.items():
+            child_role, child_owner = "metadata", None
+            if key == "error" and value.get("kind") == "FAILURE":
+                child_role, child_owner = "failure_error", value
+            elif key == "verification" and role == "failure_error":
+                child_role, child_owner = "outcomes", owner
+            elif key == "verification" and role == "outcome":
+                if owner is None:
+                    raise ValueError("FAILURE verification has no structural owner")
+                child_role = "reference"
+                child_owner = dict(command=value.get("command"), exit_code=value.get("exit_code"),
+                    run_id=owner.get("run_id"), subject_sha=owner.get("failed_head_sha"))
+            elif key == "verification" and full_evidence:
+                # validate_evidence owns a full record's verification binding.
+                # It cannot contain another full record masquerading as one.
+                if isinstance(item, dict) and set(item).intersection(
+                    {"raw", "result", "source", "subject_sha", "type"}
+                ):
+                    raise ValueError("full EVIDENCE impersonates reference metadata")
+                data[key] = item
+                continue
+            elif key == "evidence" and ("result" in value or role == "failure_error"):
+                child_role, child_owner = "evidence", owner
+            data[key] = metadata(item, child_role, child_owner)
         if "run_id" in data and "workspace" in data and "task" in data:
             workspace(data)
-        if "evidence_id" in data:
-            evidence(data)
+        if full_evidence:
+            evidence(data, owner)
         if data.get("kind") == "FAILURE":
             error = data.get("error")
             if not isinstance(error, dict) or not isinstance(error.get("message"), str):
@@ -354,8 +471,6 @@ def _matches_public_document(
 
     original = encoded(private)
     public = encoded(canonical)
-    if public == original and not protected_view(canonical):
-        return True
     projected = json.loads(original)
     if kind == "RUN":
         workspace(projected["execution"]["run"] if projected.get("kind") == "REMEDIATION" else projected)
@@ -366,6 +481,8 @@ def _matches_public_document(
         projected = metadata(projected)
     else:
         raise ValueError("unknown terminal representation")
+    if public == original and not protected_view(canonical):
+        return True
     return public == encoded(projected)
 
 
@@ -491,6 +608,10 @@ def _validate_lifecycle_failure(
     )
     if terminal.get("continuation_of") != continuation_of:
         raise ValueError("FAILURE continuation does not match RUN family")
+    if type(terminal["task"].get("revision")) is not int:
+        raise ValueError("FAILURE TASK revision is malformed")
+    if not _matches_public_document(terminal, terminal, "METADATA"):
+        raise ValueError("FAILURE privacy representation is invalid")
 
 
 def _decode_publication_continuation(
@@ -577,6 +698,8 @@ def _decode_remote_lifecycle(
             correction = _lifecycle_document(item.correction, "REPAIR")
             if not isinstance(correction, Mapping):
                 raise ValueError("REPAIR lineage must be a mapping")
+            if not _matches_public_document(correction, correction, "METADATA"):
+                raise ValueError("REPAIR privacy representation is invalid")
             parent_run_id = correction.get("failed_run_id")
             if not isinstance(parent_run_id, str) or not parent_run_id:
                 raise ValueError("REPAIR lineage has no failed RUN identity")
@@ -600,6 +723,11 @@ def _decode_remote_lifecycle(
                 or not isinstance(authorization, Mapping)
                 or authorization.get("failed_run_id") != parent_run_id
                 or authorization.get("failed_head_sha") != run.base_sha
+                or ("task" in authorization and (
+                    not isinstance(authorization["task"], Mapping)
+                    or type(authorization["task"].get("revision")) is not int
+                    or dict(authorization["task"]) != {"id": task.task_id, "revision": task.revision}
+                ))
                 or (
                     authorization_sha is not None
                     and (
@@ -610,10 +738,34 @@ def _decode_remote_lifecycle(
                 )
                 or not isinstance(correction_task, Mapping)
                 or correction_task.get("task_id") != task.task_id
+                or type(correction_task.get("revision")) is not int
                 or correction_task.get("revision") != task.revision
                 or document_affinity(correction_task) != task.return_affinity
             ):
                 raise ValueError("REPAIR execution lineage is invalid")
+            # The acquired snapshot already resolves canonical authorization
+            # chains. Bind executed corrections to those immutable selectors
+            # whenever present; historical snapshots without selectors retain
+            # their existing embedded-lineage validation.
+            selectors = [selector for selector in lifecycle.repair_selectors
+                         if selector[0] == parent_run_id]
+            if not selectors and lifecycle.observed_refs:
+                raise ValueError("REPAIR canonical authorization is missing")
+            if selectors:
+                if len(selectors) != 1:
+                    raise ValueError("REPAIR canonical authorization is ambiguous")
+                _, selected_sha, selected_raw = selectors[0]
+                selected = _lifecycle_document(selected_raw, "REPAIR authorization")
+                publication_module._validate_repair_authorization(
+                    authorization, failed_run_id=parent_run_id, failed_head_sha=run.base_sha,
+                    task=task, failed_changed_files=set(embedded_failure["candidate"]["changed_files"]),
+                )
+                if dict(selected) != dict(authorization):
+                    raise ValueError("persisted REPAIR authorization is not canonical")
+                if authorization_sha is not None and authorization_sha != selected_sha:
+                    raise ValueError(
+                        "persisted repair_authorization_sha does not match current canonical authorization"
+                    )
             family = "REPAIR"
         terminal = _lifecycle_document(item.terminal, item.kind)
         if not isinstance(terminal, Mapping):
@@ -784,6 +936,11 @@ def _decode_remote_lifecycle(
             or item.correction is None
             or not _matches_public_document(item.correction["failure"], parent.terminal, "METADATA")
             or parent.terminal.get("base_sha") != parent.run.base_sha
+            or item.correction["root_base_sha"] != (
+                parent.correction["root_base_sha"]
+                if parent.family == "REPAIR" and parent.correction is not None
+                else parent.run.base_sha
+            )
         ):
             raise ValueError("REPAIR predecessor identity or failed SHA mismatch")
         return correction_origin(parent, seen.union((item.run_id,)))
@@ -1100,6 +1257,8 @@ def _local_pending_runs(
             repair_execution = _lifecycle_document(repair_path.read_bytes(), "persisted REPAIR")
             if not isinstance(repair_execution, Mapping):
                 raise ValueError("persisted REPAIR execution must be a mapping")
+            if not _matches_public_document(repair_execution, repair_execution, "METADATA"):
+                raise ValueError("persisted REPAIR privacy representation is invalid")
             correction = repair_execution
             parent_run_id = repair_execution.get("failed_run_id")
             failure = repair_execution.get("failure")
@@ -1119,6 +1278,11 @@ def _local_pending_runs(
                 or not isinstance(authorization, Mapping)
                 or authorization.get("failed_run_id") != parent_run_id
                 or authorization.get("failed_head_sha") != run.base_sha
+                or ("task" in authorization and (
+                    not isinstance(authorization["task"], Mapping)
+                    or type(authorization["task"].get("revision")) is not int
+                    or dict(authorization["task"]) != {"id": task.task_id, "revision": task.revision}
+                ))
                 or (
                     authorization_sha is not None
                     and (
@@ -1131,6 +1295,7 @@ def _local_pending_runs(
                 or dict(embedded_run) != dict(run_document)
                 or not isinstance(correction_task, Mapping)
                 or correction_task.get("task_id") != task.task_id
+                or type(correction_task.get("revision")) is not int
                 or correction_task.get("revision") != task.revision
                 or document_affinity(correction_task) != task.return_affinity
             ):
@@ -1187,6 +1352,11 @@ def _local_pending_runs(
                 and isinstance(correction.get("failure"), Mapping)
                 and _matches_public_document(correction["failure"], parent.terminal, "METADATA")
                 and parent.terminal.get("base_sha") == parent.run.base_sha
+                and correction["root_base_sha"] == (
+                    parent.correction["root_base_sha"]
+                    if parent.family == "REPAIR" and parent.correction is not None
+                    else parent.run.base_sha
+                )
             ]
             if len(parents) != 1:
                 parent_run_id = None

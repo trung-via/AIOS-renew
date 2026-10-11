@@ -14395,3 +14395,370 @@ def test_terminal_reconciliation_observation_blocks_without_mutation(tmp_path, m
                                            else "MALFORMED_CANONICAL_STATE")
     assert {path: path.read_bytes() for path in before} == before
     assert git(tmp_path / "upstream.git", "show-ref") == refs
+
+
+def _terminal_reconciliation_reference(run_id, head, base):
+    """Synthetic V2 provenance whose raw locators deliberately do not exist."""
+    from aios_renew.verification_contract import verification_digest
+    profile = {"kind": "fixture"}
+    toolchain = dict.fromkeys((
+        "python_implementation", "python_version", "python_executable", "platform_system",
+        "platform_machine", "pytest_version", "pytest_xdist_version"), "fixture")
+    command = "git diff --check"
+    candidate = dict(subject_sha=head, command=command, profile=profile, toolchain=toolchain,
+        complete=True, unstable=False, exit_code=0, failure_count=0, reports=[])
+    binding = dict(subject_sha=head, base_sha=base, tree_sha="c" * 40, command=command,
+        profile=profile, toolchain=toolchain, envelope_digest="d" * 64,
+        changed_files_digest="e" * 64, failure_set_digest=verification_digest([]))
+    return dict(policy="minimum-sufficient-v2", disposition="EXECUTED", binding=binding,
+        candidate=candidate, candidate_digest=verification_digest(candidate),
+        evidence_id=run_id + "-V001", run_id=run_id,
+        raw_path="fixture-unavailable-raw", raw_digest="f" * 64)
+
+
+def _terminal_reconciliation_failure_metadata():
+    reference = _terminal_reconciliation_reference("RUN-336-001", "a" * 40, "b" * 40)
+    return dict(kind="FAILURE", run_id="RUN-336-001", failed_head_sha="a" * 40,
+        error=dict(type="RuntimeVerificationError", message="private fixture diagnostics",
+            verification=[dict(command=reference["binding"]["command"], exit_code=0,
+                summary="private fixture summary", verification=reference)]))
+
+
+def _terminal_reconciliation_full_evidence(reference, *, run_id=None, subject_sha=None):
+    return dict(evidence_id=(run_id or reference["run_id"]) + "-V002",
+        run_id=run_id or reference["run_id"],
+        subject_sha=subject_sha or reference["binding"]["subject_sha"], type="VERIFICATION",
+        source=dict(command=reference["binding"]["command"]),
+        result=dict(exit_code=reference["candidate"]["exit_code"], summary="private fixture summary"),
+        raw=dict(path="fixture-unavailable-raw"), verification=json.loads(json.dumps(reference)))
+
+
+@pytest.mark.parametrize("protected", [False, True])
+@pytest.mark.parametrize("reused", [False, True])
+def test_terminal_reconciliation_historical_metadata_reference(protected, reused):
+    from aios_renew.unified_state import _matches_public_document
+    private = _terminal_reconciliation_failure_metadata()
+    reference = private["error"]["verification"][0]["verification"]
+    if reused:
+        private.update(run_id="RUN-336-004", failed_head_sha="c" * 40)
+        reference.update(disposition="REUSED", reuse=dict(
+            binding=dict(reference["binding"], subject_sha=private["failed_head_sha"]),
+            source_evidence_id=reference["evidence_id"]))
+    before = json.dumps(private, sort_keys=True)
+    public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
+    assert _matches_public_document(private, public, "METADATA")
+    assert public["error"]["verification"][0]["verification"] == reference
+    assert "raw" not in reference
+    assert json.dumps(private, sort_keys=True) == before
+
+
+@pytest.mark.parametrize("protected", [False, True])
+@pytest.mark.parametrize("reused", [False, True])
+@pytest.mark.parametrize("placement", ["package", "failure-error"])
+def test_terminal_reconciliation_historical_metadata_full_evidence(protected, reused, placement):
+    from aios_renew.unified_state import _matches_public_document
+    private = _terminal_reconciliation_failure_metadata()
+    reference = private["error"]["verification"][0]["verification"]
+    if reused:
+        private.update(run_id="RUN-336-004", failed_head_sha="c" * 40)
+        reference.update(disposition="REUSED", reuse=dict(
+            binding=dict(reference["binding"], subject_sha=private["failed_head_sha"]),
+            source_evidence_id=reference["evidence_id"]))
+    evidence = _terminal_reconciliation_full_evidence(reference,
+        run_id=private["run_id"], subject_sha=private["failed_head_sha"])
+    if placement == "package":
+        private["embedded_package"] = dict(result={}, evidence=[evidence])
+    else:
+        private["error"]["evidence"] = [evidence]
+    before = json.dumps(private, sort_keys=True)
+    public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
+    assert _matches_public_document(private, public, "METADATA")
+    projected = public["embedded_package"] if placement == "package" else public["error"]
+    expected_raw = "protected-runtime-raw/" + evidence["evidence_id"] if protected else evidence["raw"]["path"]
+    assert projected["evidence"][0]["raw"] == {"path": expected_raw}
+    assert projected["evidence"][0]["verification"] == reference
+    assert json.dumps(private, sort_keys=True) == before
+
+
+@pytest.mark.parametrize("representation", ["private", "protected"])
+@pytest.mark.parametrize("mutation", [
+    "missing-raw", "missing-result", "missing-source", "missing-id", "partial-reference",
+    "reference-with-raw", "reference-with-result", "wrong-context", "missing-binding",
+    "candidate-digest", "candidate-sha", "candidate-command", "base-digest", "reuse-source",
+    "raw-digest", "boolean-exit", "malformed-outcomes", "reference-list", "full-evidence-list",
+    "missing-reference-run", "candidate-flags", "base-observation", "base-raw-digest", "base-command", "orphaned-base",
+    "full-evidence-as-reference", "full-evidence-wrong-owner", "full-evidence-invalid-sha",
+    "full-evidence-bad-binding", "full-evidence-missing-result-exit",
+])
+def test_terminal_reconciliation_historical_metadata_adversarial(representation, mutation):
+    from aios_renew.unified_state import _matches_public_document
+    from aios_renew.verification_contract import verification_digest
+    private = _terminal_reconciliation_failure_metadata()
+    reference = private["error"]["verification"][0]["verification"]
+    evidence = _terminal_reconciliation_full_evidence(reference)
+    private["embedded_package"] = dict(result={}, evidence=[evidence])
+    public = json.loads(transport_module.public_metadata(json.dumps(private).encode()))
+    if mutation in {"missing-raw", "missing-result", "missing-source", "missing-id"}:
+        evidence.pop("evidence_id" if mutation == "missing-id" else mutation[8:])
+    elif mutation == "partial-reference":
+        private["error"]["verification"][0]["verification"] = {"evidence_id": reference["evidence_id"]}
+    elif mutation == "reference-with-raw": reference["raw"] = {"path": "fixture-unavailable-raw"}
+    elif mutation == "reference-with-result": reference["result"] = {"exit_code": 0, "summary": "spoof"}
+    elif mutation == "wrong-context": private["unrelated"] = private["error"]["verification"][0].pop("verification")
+    elif mutation == "missing-binding": reference.pop("binding")
+    elif mutation == "candidate-digest": reference["candidate_digest"] = "0" * 64
+    elif mutation == "candidate-sha": reference["candidate"]["subject_sha"] = "0" * 40
+    elif mutation == "candidate-command": reference["candidate"]["command"] = "fabricated-command"
+    elif mutation == "base-digest": reference.update(base=reference["candidate"], base_digest="0" * 64)
+    elif mutation == "reuse-source": reference["reuse"] = dict(binding=reference["binding"], source_evidence_id="OTHER")
+    elif mutation == "raw-digest": reference["raw_digest"] = "invalid"
+    elif mutation == "missing-reference-run": reference.pop("run_id")
+    elif mutation == "candidate-flags":
+        reference["candidate"]["complete"] = "true"
+        reference["candidate_digest"] = verification_digest(reference["candidate"])
+    elif mutation in {"base-observation", "base-raw-digest", "base-command"}:
+        base = dict(reference["candidate"], subject_sha=reference["binding"]["base_sha"])
+        if mutation == "base-observation": base["failure_count"] = 1
+        if mutation == "base-command": base["command"] = "fabricated-command"
+        reference.update(base=base, base_digest=verification_digest(base),
+            base_raw_path="fixture-unavailable-base-raw", base_raw_digest="f" * 64)
+        reference["binding"]["failure_set_digest"] = reference["base_digest"]
+        if mutation == "base-raw-digest": reference["base_raw_digest"] = "invalid"
+    elif mutation == "orphaned-base": reference["base_digest"] = "f" * 64
+    elif mutation == "full-evidence-as-reference": private["error"]["verification"][0]["verification"] = evidence
+    elif mutation == "full-evidence-wrong-owner": private["error"]["evidence"] = [dict(evidence, run_id="RUN-336-009")]
+    elif mutation == "full-evidence-invalid-sha": evidence["subject_sha"] = "not-a-commit"
+    elif mutation == "full-evidence-bad-binding": evidence["verification"]["binding"]["command"] = "spoof"
+    elif mutation == "full-evidence-missing-result-exit": evidence["result"].pop("exit_code")
+    elif mutation == "boolean-exit": private["error"]["verification"][0]["exit_code"] = True
+    elif mutation == "reference-list": private["error"]["verification"][0]["verification"] = []
+    elif mutation == "full-evidence-list": private["embedded_package"]["evidence"] = [[]]
+    else: private["error"]["verification"] = {"spoofed": reference}
+    canonical = private if representation == "private" else public
+    with pytest.raises(ValueError):
+        _matches_public_document(private, canonical, "METADATA")
+
+
+def _terminal_reconciliation_repair(task, failure, repair_id, *, action="CONTINUE_IMPLEMENTATION"):
+    """Every fixture authorization uses the production eight-field contract."""
+    from aios_renew.publication import _validate_repair_authorization
+    authorization = dict(repair_id=repair_id, failed_run_id=failure["run_id"],
+        failed_head_sha=failure["failed_head_sha"], task=dict(id=task.task_id, revision=task.revision),
+        action=action, modification_scope=list(task.scope.modify),
+        instructions=["Continue the bounded implementation."], constraints=list(task.constraints.hard))
+    _validate_repair_authorization(authorization, failed_run_id=failure["run_id"],
+        failed_head_sha=failure["failed_head_sha"], task=task,
+        failed_changed_files=set(failure["candidate"]["changed_files"]))
+    return authorization
+
+
+def _terminal_reconciliation_assert_fixture_contract(repo, state, task, lifecycle):
+    """Check all accumulated links after each simulated correction, read-only."""
+    from aios_renew.publication import _validate_repair_authorization
+    from aios_renew.unified_state import _decode_remote_lifecycle, _local_pending_runs
+    assert list(task.constraints.hard) == ["Commit the output."]
+    expected_fields = {"repair_id", "failed_run_id", "failed_head_sha", "task", "action",
+        "modification_scope", "instructions", "constraints"}
+    for index, terminal in enumerate(lifecycle.terminals):
+        assert terminal.run_id == f"RUN-336-{index + 1:03}"
+        if index == 0:
+            assert terminal.correction is None
+            continue
+        for correction in (json.loads(terminal.correction),
+                           json.loads((state.repairs / (terminal.run_id + ".json")).read_bytes())):
+            failure = json.loads(lifecycle.terminals[index - 1].terminal)
+            authorization = correction["repair"]
+            assert set(authorization) == expected_fields
+            assert authorization["constraints"] == list(task.constraints.hard)
+            _validate_repair_authorization(authorization, failed_run_id=failure["run_id"],
+                failed_head_sha=failure["failed_head_sha"], task=task,
+                failed_changed_files=set(failure["candidate"]["changed_files"]))
+    decoded, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
+    assert [item.family for item in decoded] == ["PRIMARY"] + ["REPAIR"] * (len(decoded) - 1)
+    assert [item.parent_run_id for item in decoded] == [None] + [item.run_id for item in decoded[:-1]]
+    assert _local_pending_runs(repo, state, task, decoded, reviews) == ([], [])
+
+
+def _terminal_reconciliation_fixture_selectors(terminals):
+    selectors = []
+    for terminal in terminals:
+        if terminal.correction is not None:
+            correction = json.loads(terminal.correction)
+            selectors.append((correction["failed_run_id"], correction["repair_authorization_sha"],
+                              json.dumps(correction["repair"]).encode()))
+    return tuple(selectors)
+
+
+def _terminal_reconciliation_task336_fixture(tmp_path, *, protected=True, authoring=False):
+    """Four synthetic RUNs; no access to historical TASK-336 refs or raw files."""
+    from aios_renew.verification_contract import verification_digest
+    repo = make_repo(tmp_path, task_source=None)
+    task_path = repo / ".ai/tasks/TASK-336.yaml"
+    task_path.parent.mkdir(parents=True, exist_ok=True)
+    task_path.write_bytes(TASK_SOURCE.replace("TASK-101", "TASK-336").encode())
+    if authoring:
+        for name in ("flow-cards.yaml", "brain-audit-profiles.yaml", "brain-return-contracts.yaml"):
+            (repo / ".ai" / name).write_bytes((Path(__file__).resolve().parents[1] / ".ai" / name).read_bytes())
+    base = commit_setup_state(repo, ".ai", message="historical TASK fixture")
+    git(repo, "push", "--quiet", "origin", "HEAD:refs/heads/main")
+    task = load_task(repo, "TASK-336")
+    (repo / "OUTPUT.txt").write_bytes(b"first candidate\n")
+    first = commit_setup_state(repo, "OUTPUT.txt", message="first historical candidate")
+    (repo / "OUTPUT.txt").write_bytes(b"second candidate\n")
+    head = commit_setup_state(repo, "OUTPUT.txt", message="second historical candidate")
+    state = runtime_paths(repo)
+    terminals, prior_private, prior_public = [], None, None
+    for index, run_base, candidate in ((1, base, first), (2, first, first), (3, first, head), (4, head, head)):
+        run_id = f"RUN-336-{index:03}"
+        run = dict(run_id=run_id, task=dict(id=task.task_id, revision=task.revision), executor="codex",
+            base_sha=run_base, head_sha=None, workspace=str(repo), status="ACTIVE")
+        failure = dict(kind="FAILURE", run_id=run_id, task=run["task"], executor="codex",
+            base_sha=run_base, failed_head_sha=candidate, phase="VERIFICATION" if index == 1 else "COMPLETION_GATE",
+            candidate=dict(transportable=True, repairable=True, dirty=False, descends_from_base=True,
+                changed_files=[] if run_base == candidate else ["OUTPUT.txt"], outside_task_scope=[]),
+            error=dict(type="OperatorError", message="private fixture diagnostics"))
+        if index == 1:
+            reference = _terminal_reconciliation_reference(run_id, candidate, run_base)
+            report = dict(nodeid="tests/test_historical.py::test_existing_failure", phase="call", outcome="FAIL",
+                detail="historical fixture failure", fingerprint=verification_digest("historical fixture failure"),
+                profile=reference["binding"]["profile"], toolchain=reference["binding"]["toolchain"])
+            reference["candidate"].update(exit_code=1, failure_count=1, reports=[report])
+            reference["candidate_digest"] = verification_digest(reference["candidate"])
+            reference["base"] = dict(reference["candidate"], subject_sha=run_base)
+            reference["base_digest"] = verification_digest(reference["base"])
+            reference["binding"]["failure_set_digest"] = reference["base_digest"]
+            reference.update(base_raw_path="fixture-unavailable-base-raw", base_raw_digest="e" * 64)
+            reference["historical_annotations"] = {"unrelated": ["safe metadata " + "x" * 1048576]}
+            failure["error"]["verification"] = [dict(command=reference["binding"]["command"], exit_code=1,
+                summary="private fixture summary", verification=reference)]
+        correction = None
+        if prior_private is not None:
+            failure["continuation_of"] = prior_private["run_id"]
+            correction = dict(failed_run_id=prior_private["run_id"], failed_head_sha=run_base,
+                root_base_sha=base, task=dict(task_id=task.task_id, revision=task.revision), run=run,
+                failure=prior_private, repair=_terminal_reconciliation_repair(task, prior_private,
+                    f"REPAIR-336-{index - 1:03}", action="CODE_FIX" if index == 2 else "CONTINUE_IMPLEMENTATION"),
+                repair_authorization_sha="a" * 40)
+        # Exercise historical reader sizes independently of prospective writer caps.
+        public_run = dict(run, workspace="protected-runtime-workspace") if protected else run
+        public_failure = json.loads(json.dumps(failure))
+        if protected:
+            public_failure["error"]["message"] = "Protected Runtime diagnostics remain local."
+            for outcome in public_failure["error"].get("verification", []):
+                outcome["summary"] = "Runtime verification exit code " + str(outcome["exit_code"])
+        public_correction = None if correction is None else dict(correction, run=public_run, failure=prior_public)
+        name = run_id + ".json"
+        (state.runs / name).write_bytes(json.dumps(run).encode())
+        (state.failures / name).write_bytes(json.dumps(failure).encode())
+        if correction is not None:
+            (state.repairs / name).write_bytes(json.dumps(correction).encode())
+        terminals.append(RemoteLifecycleTerminal(run_id, "FAILURE", candidate,
+            json.dumps(public_run).encode(), json.dumps(public_failure).encode(),
+            None if public_correction is None else json.dumps(public_correction).encode()))
+        lifecycle = RemoteTaskLifecycle(base, tuple(terminals), (), (),
+            _terminal_reconciliation_fixture_selectors(terminals), ())
+        _terminal_reconciliation_assert_fixture_contract(repo, state, task, lifecycle)
+        prior_private, prior_public = failure, public_failure
+    return repo, state, task, lifecycle
+
+
+@pytest.mark.parametrize("protected", [False, True])
+def test_terminal_reconciliation_task336_historical_lineage(tmp_path, monkeypatch, protected):
+    repo, state, task, lifecycle = _terminal_reconciliation_task336_fixture(tmp_path, protected=protected)
+    before = {path: path.read_bytes() for directory in (state.runs, state.failures, state.repairs)
+              for path in directory.glob("*.json")}
+    refs = git(repo, "show-ref")
+    _terminal_reconciliation_assert_fixture_contract(repo, state, task, lifecycle)
+    assert len(lifecycle.terminals[0].terminal) > 1048576
+    @contextmanager
+    def observer(_root):
+        yield repo
+    monkeypatch.setattr(operator_module, "_remote_observation_repository", observer)
+    monkeypatch.setattr(operator_module, "resolve_remote_task_lifecycle", lambda *a, **k: lifecycle)
+    observation = observe_unified_state(task.task_id, repo=repo)
+    assert observation.next_action == "AUTHOR_REPAIR" and observation.blocker is None
+    assert observation.run_id == observation.failed_run_id == "RUN-336-004"
+    assert observation.failed_head_sha == lifecycle.terminals[-1].candidate_sha
+    assert str(repo) not in json.dumps(observation.as_dict())
+    assert "fixture-unavailable-raw" not in json.dumps(observation.as_dict())
+    assert {path: path.read_bytes() for path in before} == before
+    assert git(repo, "show-ref") == refs
+    assert all(observation.as_dict()[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+
+
+@pytest.mark.parametrize("protected", [False, True])
+@pytest.mark.parametrize("mutation", ["parent", "embedded-failure", "authorization", "root", "task", "run", "head",
+    "reference-id", "reference-run", "reference-digest", "reference-source", "public-summary", "public-placeholder",
+    "nonrepairable", "missing-candidate", "canonical-root", "canonical-authorization-task", "boolean-task",
+    "canonical-authorization-sha", "canonical-authorization-body", "missing-authorization",
+    "boolean-failure-task", "competing-repair"])
+def test_terminal_reconciliation_task336_historical_lineage_blockers(tmp_path, monkeypatch, protected, mutation):
+    repo, state, _, lifecycle = _terminal_reconciliation_task336_fixture(tmp_path, protected=protected)
+    path = state.repairs / "RUN-336-004.json"
+    correction = json.loads(path.read_bytes())
+    if mutation == "parent": correction["failed_run_id"] = "RUN-336-001"
+    elif mutation == "embedded-failure": correction["failure"]["error"]["type"] = "FabricatedError"
+    elif mutation == "authorization": correction["repair_authorization_sha"] = "b" * 40
+    elif mutation == "root": correction["root_base_sha"] = "b" * 40
+    elif mutation == "task": correction["task"]["revision"] = 2
+    elif mutation == "run": correction["run"]["executor"] = "OTHER"
+    elif mutation == "head": correction["failed_head_sha"] = "b" * 40
+    elif mutation == "boolean-task": correction["task"]["revision"] = True
+    elif mutation in {"canonical-root", "canonical-authorization-task", "canonical-authorization-sha", "canonical-authorization-body"}:
+        tip = lifecycle.terminals[-1]
+        canonical_correction = json.loads(tip.correction)
+        if mutation == "canonical-root":
+            canonical_correction["root_base_sha"] = correction["root_base_sha"] = "b" * 40
+        elif mutation == "canonical-authorization-task":
+            canonical_correction["repair"]["task"] = correction["repair"]["task"] = {"id": "TASK-999", "revision": 1}
+        elif mutation == "canonical-authorization-sha":
+            canonical_correction["repair_authorization_sha"] = correction["repair_authorization_sha"] = "b" * 40
+        else:
+            canonical_correction["repair"]["instructions"] = correction["repair"]["instructions"] = ["Fabricated correction."]
+        lifecycle = replace(lifecycle, terminals=lifecycle.terminals[:-1] + (replace(tip,
+            correction=json.dumps(canonical_correction).encode()),))
+    elif mutation == "competing-repair":
+        lifecycle = replace(lifecycle, repair_selectors=lifecycle.repair_selectors + (
+            ("RUN-336-004", "a" * 40, b"{}"), ("RUN-336-004", "b" * 40, b"{}")))
+    elif mutation == "missing-authorization":
+        lifecycle = replace(lifecycle, observed_refs=(("refs/heads/main", lifecycle.main_sha),),
+            repair_selectors=tuple(selector for selector in lifecycle.repair_selectors if selector[0] != "RUN-336-003"))
+    elif mutation.startswith("reference-"):
+        path = state.failures / "RUN-336-001.json"
+        correction = json.loads(path.read_bytes())
+        reference = correction["error"]["verification"][0]["verification"]
+        if mutation == "reference-id": reference["evidence_id"] = "OTHER"
+        elif mutation == "reference-run": reference["run_id"] = "RUN-336-009"
+        elif mutation == "reference-digest": reference["raw_digest"] = "0" * 64
+        else: reference["binding"]["command"] = "fabricated-command"
+    else:
+        tip = lifecycle.terminals[-1]
+        document = json.loads(tip.terminal)
+        if mutation == "public-summary": document["error"]["message"] = "fabricated public summary"
+        elif mutation == "public-placeholder": document["error"]["verification"] = [{"evidence_id": "OTHER"}]
+        elif mutation == "boolean-failure-task": document["task"]["revision"] = True
+        elif mutation == "nonrepairable": document["candidate"].update(dirty=True, repairable=False, transportable=False)
+        lifecycle = replace(lifecycle, terminals=lifecycle.terminals[:-1] + (replace(tip,
+            terminal=json.dumps(document).encode(), candidate_available=mutation != "missing-candidate"),))
+        if mutation == "nonrepairable":
+            for directory in (state.runs, state.failures, state.repairs):
+                (directory / "RUN-336-004.json").unlink()
+    if mutation in {"parent", "embedded-failure", "authorization", "root", "task", "run", "head",
+                    "canonical-root", "canonical-authorization-task", "canonical-authorization-sha",
+                    "canonical-authorization-body", "boolean-task"} or mutation.startswith("reference-"):
+        path.write_bytes(json.dumps(correction).encode())
+    @contextmanager
+    def observer(_root):
+        yield repo
+    monkeypatch.setattr(operator_module, "_remote_observation_repository", observer)
+    monkeypatch.setattr(operator_module, "resolve_remote_task_lifecycle", lambda *a, **k: lifecycle)
+    before = {p: p.read_bytes() for directory in (state.runs, state.failures, state.repairs) for p in directory.glob("*.json")}
+    refs = git(repo, "show-ref")
+    observation = observe_unified_state("TASK-336", repo=repo)
+    assert observation.lifecycle_state == "BLOCKED" and observation.next_action == "NONE"
+    expected = ("NON_REPAIRABLE_FAILURE" if mutation in {"nonrepairable", "missing-candidate"}
+                else "COMPETING_REPAIRS" if mutation == "competing-repair" else "MALFORMED_CANONICAL_STATE")
+    assert observation.blocker["code"] == expected
+    assert {p: p.read_bytes() for p in before} == before
+    assert git(repo, "show-ref") == refs
