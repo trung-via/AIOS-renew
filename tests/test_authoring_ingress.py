@@ -4820,6 +4820,15 @@ def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=Tr
             f"{sha}:refs/heads/aios/failure-artifacts/{terminal.run_id}")
     lifecycle = replace(lifecycle, terminals=tuple(terminals))
     git(repo, "reset", "--hard", lifecycle.main_sha)
+    # write_text() on Windows and checkout with core.autocrlf=true can leave
+    # CRLF bytes while the committed TASK blob is LF. The authoring gate proves
+    # raw bytes, so restore the canonical blob after the fixture's last reset.
+    task_path = ".ai/tasks/TASK-336.yaml"
+    task_bytes = subprocess.run(
+        ("git", "-C", str(repo), "show", f"{lifecycle.main_sha}:{task_path}"),
+        capture_output=True, check=True,
+    ).stdout
+    (repo / task_path).write_bytes(task_bytes)
     head = lifecycle.terminals[-1].candidate_sha
     payload = dict(repair_id="REPAIR-336-004", failed_run_id="RUN-336-004", failed_head_sha=head,
         task=dict(id=task.task_id, revision=task.revision), action="CONTINUE_IMPLEMENTATION",
@@ -4834,6 +4843,11 @@ def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=Tr
 def test_terminal_reconciliation_task336_normal_authoring_admission(tmp_path, monkeypatch, protected):
     repo, remote, state, lifecycle, artifacts, envelope = _terminal_reconciliation_task336_authoring_fixture(
         tmp_path, protected=protected)
+    assert git(repo, "config", "core.autocrlf") == "true"
+    assert (repo / ".ai/tasks/TASK-336.yaml").read_bytes() == subprocess.run(
+        ("git", "-C", str(repo), "show", f"{lifecycle.main_sha}:.ai/tasks/TASK-336.yaml"),
+        capture_output=True, check=True,
+    ).stdout
     before = {p: p.read_bytes() for directory in (state.runs, state.failures, state.repairs)
               for p in directory.glob("*.json")}
     refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
@@ -4857,7 +4871,7 @@ def test_terminal_reconciliation_task336_normal_authoring_admission(tmp_path, mo
     assert {p: p.read_bytes() for p in before} == before
 
 
-@pytest.mark.parametrize("fault", ["stale-head", "wrong-tip", "changed-correction", "missing-raw"])
+@pytest.mark.parametrize("fault", ["stale-head", "wrong-tip", "changed-correction", "missing-raw", "crlf-task"])
 def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, monkeypatch, fault):
     repo, remote, state, _, _, envelope = _terminal_reconciliation_task336_authoring_fixture(tmp_path)
     if fault == "stale-head":
@@ -4869,6 +4883,14 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         document = json.loads(path.read_bytes())
         document["repair_authorization_sha"] = "b" * 40
         path.write_text(json.dumps(document), encoding="utf-8")
+    elif fault == "crlf-task":
+        task_path = repo / ".ai/tasks/TASK-336.yaml"
+        task_bytes = task_path.read_bytes()
+        assert b"\r\n" not in task_bytes and b"\n" in task_bytes
+        task_bytes = task_bytes.replace(b"\n", b"\r\n")
+        task_path.write_bytes(task_bytes)
+        # Git's clean conversion hides this drift, but raw authoring must not.
+        assert git(repo, "status", "--porcelain", "--", ".ai/tasks/TASK-336.yaml") == ""
     else:
         path = state.failures / "RUN-336-004.json"
         document = json.loads(path.read_bytes())
@@ -4881,7 +4903,10 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
     before = {p: p.read_bytes() for directory in (state.runs, state.failures, state.repairs)
               for p in directory.glob("*.json")}
     forbid_correction_mutation(monkeypatch)
-    with pytest.raises((AuthoringIngressError, ValueError, RuntimeError)):
+    with pytest.raises((AuthoringIngressError, ValueError, RuntimeError),
+                       match="divergent canonical authoring input bytes" if fault == "crlf-task" else None):
         authoring_ingress_module._compose_authoring_packet(envelope, repo)
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
     assert {p: p.read_bytes() for p in before} == before
+    if fault == "crlf-task":
+        assert task_path.read_bytes() == task_bytes
