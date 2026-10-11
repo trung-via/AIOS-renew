@@ -4929,7 +4929,8 @@ def _terminal_reconciliation_replace_artifacts(repo, remote, commit, expected_ol
 @pytest.mark.parametrize("fault", ["stale-head", "wrong-tip", "changed-correction", "missing-raw", "crlf-task",
                                   "local-runtime-state", "embedded-evidence-run", "embedded-evidence-subject",
                                   "embedded-evidence-run-and-subject", "misplaced-evidence-direct",
-                                  "misplaced-evidence-foreign-failure"])
+                                  "misplaced-evidence-foreign-failure", "misplaced-evidence-unrelated-package",
+                                  "misplaced-evidence-metadata-unrelated-package"])
 def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, monkeypatch, protected, fault):
     from tests.test_operator import _reviewed_preservation_metadata
     repo, remote, state, lifecycle, artifacts, envelope = _terminal_reconciliation_task336_authoring_fixture(
@@ -5019,7 +5020,9 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         parser_message = ("persisted repair_authorization_sha does not match current canonical authorization"
                           if fault == "changed-correction" else r"EVIDENCE\.raw is required"
                           if fault == "missing-raw" else "EVIDENCE identity outside a validated structural role"
-                          if fault == "misplaced-evidence-direct" else "FAILURE outside a validated structural role"
+                          if fault in {"misplaced-evidence-direct", "misplaced-evidence-unrelated-package",
+                                       "misplaced-evidence-metadata-unrelated-package"}
+                          else "FAILURE outside a validated structural role"
                           if fault == "misplaced-evidence-foreign-failure"
                           else "full EVIDENCE does not bind its FAILURE owner")
         with pytest.raises(ValueError, match=parser_message):
@@ -5036,6 +5039,8 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         "embedded-evidence-run-and-subject": "canonical correction subject differs from Unified State",
         "misplaced-evidence-direct": "canonical correction subject differs from Unified State",
         "misplaced-evidence-foreign-failure": "canonical correction subject differs from Unified State",
+        "misplaced-evidence-unrelated-package": "canonical correction subject differs from Unified State",
+        "misplaced-evidence-metadata-unrelated-package": "canonical correction subject differs from Unified State",
     }[fault]
     with pytest.raises((AuthoringIngressError, ValueError), match=expected_message):
         authoring_ingress_module._compose_authoring_packet(envelope, repo)

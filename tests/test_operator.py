@@ -14441,6 +14441,10 @@ def _terminal_reconciliation_place_full_evidence(failure, evidence, placement):
         failure["embedded_package"] = dict(result={}, evidence=[evidence])
     elif placement == "nested-package":
         failure["metadata"] = dict(embedded_package=dict(result={}, evidence=[evidence]))
+    elif placement == "unrelated-package":
+        failure["unrelated"] = dict(embedded_package=dict(result={}, evidence=[evidence]))
+    elif placement == "metadata-unrelated-package":
+        failure["metadata"] = dict(unrelated=dict(embedded_package=dict(result={}, evidence=[evidence])))
     elif placement == "direct":
         failure["unrelated"] = evidence
     elif placement == "list":
@@ -14558,6 +14562,7 @@ def test_terminal_reconciliation_embedded_package_evidence_requires_owner(protec
 @pytest.mark.parametrize("foreign", [False, True])
 @pytest.mark.parametrize("placement", [
     "direct", "list", "package-lookalike", "package-result", "foreign-failure",
+    "unrelated-package", "metadata-unrelated-package",
     "reference-annotation", "evidence-provenance",
 ])
 def test_terminal_reconciliation_valid_evidence_requires_declared_placement(protected, foreign, placement):
@@ -14817,7 +14822,8 @@ def test_terminal_reconciliation_task336_historical_lineage(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize("protected", [False, True])
-@pytest.mark.parametrize("placement", ["failure-error", "package", "nested-package", "direct", "foreign-failure"])
+@pytest.mark.parametrize("placement", ["failure-error", "package", "nested-package", "direct", "foreign-failure",
+                                       "unrelated-package", "metadata-unrelated-package"])
 @pytest.mark.parametrize("surface", ["local", "remote", "both"])
 def test_terminal_reconciliation_task336_full_evidence_placement(tmp_path, monkeypatch, protected, placement, surface):
     from aios_renew.artifacts import validate_evidence

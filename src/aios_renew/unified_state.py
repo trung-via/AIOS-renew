@@ -402,7 +402,8 @@ def _matches_public_document(
             raise ValueError("verification reference has orphaned base metadata")
 
     def metadata(value: Any, role: str = "metadata", owner: Mapping[str, Any] | None = None) -> Any:
-        mapping_roles = {"root", "failure", "failure_error", "package", "reference", "full_evidence", "outcome"}
+        mapping_roles = {"root", "failure", "failure_error", "declared_metadata", "package",
+                         "reference", "full_evidence", "outcome"}
         if isinstance(value, list):
             if role in mapping_roles:
                 raise ValueError("terminal verification record must be a mapping")
@@ -483,7 +484,12 @@ def _matches_public_document(
                         metadata(member, "record_metadata")
                 data[key] = item
                 continue
-            elif key == "embedded_package" and role in {"root", "failure", "failure_error", "metadata"}:
+            elif (key == "metadata" and role in {"root", "failure", "failure_error"}
+                  and isinstance(item, dict)):
+                # Only this immediate container may declare a package. Unknown
+                # descendants retain generic metadata without that authority.
+                child_role = "declared_metadata"
+            elif key == "embedded_package" and role in {"root", "failure", "failure_error", "declared_metadata"}:
                 child_role = "package"
             elif key == "evidence" and role in {"package", "failure_error"}:
                 child_role, child_owner = "evidence", owner
