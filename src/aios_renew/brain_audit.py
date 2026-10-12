@@ -101,6 +101,27 @@ _PATH_IDS = (
 _CONFORMANCE_BOUNDS = {"sections_bytes": 65536, "entries_per_section": 16, "text_bytes": 2048}
 _V3_RESERVED_KEYS = frozenset(_CONFORMANCE_LENSES) | frozenset(
     key.replace("_", "") for key in _CONFORMANCE_LENSES)
+_ADAPTIVE_ID = "aios-adaptive-brain-audit-v1"
+# Identity allowlist only: procedural meanings live in the portable registry.
+# V1 is one exact supported revision; renaming old material or supplying only
+# part of the adaptive procedure must not remint it as V1 proof.
+_ADAPTIVE_DIGEST = "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718"
+_PROFILE_VERSIONS = {"brain-high-value-v2": 2, "brain-high-value-v3": 3, _ADAPTIVE_ID: 1}
+_ADAPTIVE_RESERVED_KEYS = frozenset({
+    "selected_focus", "focus_selector", "focus_notes", "audit_profile_package",
+    "return_contract_package", "stage1_lineage",
+})
+_ADAPTIVE_RESERVED_COMPACT = frozenset(key.replace("_", "") for key in _ADAPTIVE_RESERVED_KEYS)
+_ADAPTIVE_ENVELOPES = (
+    "AIOS_BRAIN_REQUEST", "AIOS_BRAIN_DECISION", "AIOS_BRAIN_AUDIT_PROFILE",
+    "AIOS_BRAIN_AUDIT_PROFILE_PACKAGE", "AIOS_AUDITED_AUTHORING_HANDOFF",
+    "AIOS_ADAPTIVE_BRAIN_AUDIT_V1",
+)
+
+
+def _has_conformance(policy: Mapping[str, Any]) -> bool:
+    """Capabilities follow exact identity, never numeric successor ordering."""
+    return policy["id"] in {"brain-high-value-v3", _ADAPTIVE_ID}
 
 
 def _conformance_policy() -> dict[str, Any]:
@@ -119,7 +140,7 @@ def _fields(value: Any, expected: frozenset[str] | set[str], name: str) -> dict[
 
 
 def _normal(value: Any, *, depth: int, max_depth: int, private: bool = False,
-            v3: bool = False) -> Any:
+            v3: bool = False, adaptive: bool = False) -> Any:
     if depth > max_depth:
         raise BrainAuditError("semantic material exceeds structural depth")
     if value is None or type(value) in (bool, int):
@@ -138,8 +159,12 @@ def _normal(value: Any, *, depth: int, max_depth: int, private: bool = False,
             raise BrainAuditError("machine-local path in semantic material")
         return normalized
     if type(value) is list:
-        return [_normal(v, depth=depth + 1, max_depth=max_depth, private=private, v3=v3) for v in value]
+        return [_normal(v, depth=depth + 1, max_depth=max_depth, private=private,
+                        v3=v3, adaptive=adaptive) for v in value]
     if type(value) is dict:
+        if private and adaptive and "format" in value and (
+                type(value["format"]) is not str or value["format"] in _ADAPTIVE_ENVELOPES):
+            raise BrainAuditError("malformed or nested protocol envelope")
         if private and value.get("format") in (
             "AIOS_DECISION_PACKET", "AIOS_BRAIN_AUDIT_PROFILES", "AIOS_BRAIN_SEMANTIC_AUDIT"
         ):
@@ -148,16 +173,20 @@ def _normal(value: Any, *, depth: int, max_depth: int, private: bool = False,
         for key, item in value.items():
             if type(key) is not str:
                 raise BrainAuditError("semantic mapping keys must be text")
-            normalized_key = _normal(key, depth=depth + 1, max_depth=max_depth)
+            normalized_key = _normal(key, depth=depth + 1, max_depth=max_depth,
+                                     private=private and adaptive)
             if normalized_key in result:
                 raise BrainAuditError("duplicate normalized mapping key")
             if private:
                 folded = normalized_key.lower().replace("-", "_")
                 compact = folded.replace("_", "")
                 if (folded in _RESERVED_SEMANTIC_KEYS or compact in _RESERVED_COMPACT_KEYS
-                        or v3 and (folded in _V3_RESERVED_KEYS or compact in _V3_RESERVED_KEYS)):
+                        or v3 and (folded in _V3_RESERVED_KEYS or compact in _V3_RESERVED_KEYS)
+                        or adaptive and (folded in _ADAPTIVE_RESERVED_KEYS
+                                         or compact in _ADAPTIVE_RESERVED_COMPACT)):
                     raise BrainAuditError("private metadata or nested audit envelope")
-            result[normalized_key] = _normal(item, depth=depth + 1, max_depth=max_depth, private=private, v3=v3)
+            result[normalized_key] = _normal(item, depth=depth + 1, max_depth=max_depth,
+                                           private=private, v3=v3, adaptive=adaptive)
         return result
     raise BrainAuditError("semantic material must be strict JSON")
 
@@ -210,14 +239,14 @@ _UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _u
 
 def _profile(value: Any) -> dict[str, Any]:
     normalized = _normal(value, depth=0, max_depth=32)
-    v3 = type(normalized) is dict and normalized.get("id") == "brain-high-value-v3"
-    profile = _fields(normalized, _PROFILE_FIELDS | ({"conformance"} if v3 else set()), "profile")
+    conformant = type(normalized) is dict and normalized.get("id") in ("brain-high-value-v3", _ADAPTIVE_ID)
+    profile = _fields(normalized, _PROFILE_FIELDS | ({"conformance"} if conformant else set()), "profile")
     if (type(profile["id"]) is not str or _ID.fullmatch(profile["id"]) is None
-            or profile["id"] != ("brain-high-value-v3" if v3 else "brain-high-value-v2")
-            or type(profile["version"]) is not int or profile["version"] != (3 if v3 else 2)):
-        raise BrainAuditError("invalid v2/v3 profile identity")
-    if v3 and _json(profile["conformance"]) != _json(_conformance_policy()):
-        raise BrainAuditError("invalid v3 conformance policy")
+            or profile["id"] not in _PROFILE_VERSIONS
+            or type(profile["version"]) is not int or profile["version"] != _PROFILE_VERSIONS[profile["id"]]):
+        raise BrainAuditError("invalid audit profile identity")
+    if conformant and _json(profile["conformance"]) != _json(_conformance_policy()):
+        raise BrainAuditError("invalid conformance policy")
     flows = profile["applicable_flows"]
     if type(flows) is not list or flows != [
         "ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"
@@ -258,6 +287,8 @@ def _profile(value: Any) -> dict[str, Any]:
     for lens in lenses:
         _text(lens["check"], bounds["lens_check_bytes"], "lens check")
     _bounded(profile, 32768, "profile material")
+    if profile["id"] == _ADAPTIVE_ID and _digest(profile) != _ADAPTIVE_DIGEST:
+        raise BrainAuditError("unsupported or partially adapted V1 profile content")
     return profile
 
 
@@ -282,8 +313,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     if registry["format"] != "AIOS_BRAIN_AUDIT_PROFILES" or type(registry["version"]) is not int or registry["version"] != 1:
         raise BrainAuditError("unknown audit-profile registry")
     profiles = registry["profiles"]
-    if type(profiles) is not list or not 1 <= len(profiles) <= 2:
-        raise BrainAuditError("registry requires one or two profiles")
+    if type(profiles) is not list or not 1 <= len(profiles) <= 3:
+        raise BrainAuditError("registry requires one to three profiles")
     normalized = [_profile(profile) for profile in profiles]
     if len({profile["id"] for profile in normalized}) != len(normalized):
         raise BrainAuditError("duplicate profile identity")
@@ -328,7 +359,7 @@ def profile_applies(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
 
 def _candidate(value: Any, policy: dict[str, Any]) -> dict[str, Any]:
     candidate = _normal(value, depth=0, max_depth=policy["bounds"]["max_depth"], private=True,
-                        v3=policy["version"] == 3)
+                        v3=_has_conformance(policy), adaptive=policy["id"] == _ADAPTIVE_ID)
     if type(candidate) is not dict:
         raise BrainAuditError("candidate must be a strict-JSON mapping")
     _bounded(candidate, policy["bounds"]["candidate_bytes"], "candidate")
@@ -480,8 +511,8 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
     first = _stage1(body, policy, stage1)
     material = _normal(semantic_output, depth=0, max_depth=policy["bounds"]["max_depth"])
     fields = _STAGE2_FIELDS
-    v3_task = policy["version"] == 3 and body["selected_flow"] == "TASK_AUTHORING"
-    if v3_task:
+    conformant_task = _has_conformance(policy) and body["selected_flow"] == "TASK_AUTHORING"
+    if conformant_task:
         fields = fields | set(_CONFORMANCE_LENSES)
     if type(material) is dict and "acceptance_phase_ledger" in material:
         if body["selected_flow"] != "TASK_AUTHORING":
@@ -493,8 +524,9 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
     for field in ("packet_fingerprint", "audit_profile_ref", "selected_flow", "construct_candidate", "construct_fingerprint"):
         if _json(material[field]) != _json(first[field]):
             raise BrainAuditError(f"Stage-2 {field} lineage mismatch")
-    _normal(material["construct_audit"], depth=0, max_depth=policy["bounds"]["max_depth"], private=True)
-    _normal(material["closure"], depth=0, max_depth=policy["bounds"]["max_depth"], private=True)
+    for field in ("construct_audit", "closure"):
+        _normal(material[field], depth=0, max_depth=policy["bounds"]["max_depth"], private=True,
+                v3=policy["id"] == _ADAPTIVE_ID, adaptive=policy["id"] == _ADAPTIVE_ID)
     ledger = _ordered_lenses(material["construct_audit"], policy, closure=False)
     reconciled = _candidate(material["reconciled_candidate"], policy)
     addressed = any(risk["disposition"] == "ADDRESSED_BY_RECONCILIATION"
@@ -503,10 +535,10 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
         raise BrainAuditError("reconciliation contradicts addressed-risk claims")
     closure = _ordered_lenses(material["closure"], policy, closure=True)
     final_fingerprint = _digest(reconciled)
-    if v3_task:
+    if conformant_task:
         sections = {name: _conformance_section(name, material[name], body["packet_fingerprint"],
                                                final_fingerprint) for name in _CONFORMANCE_LENSES}
-        _bounded(sections, _CONFORMANCE_BOUNDS["sections_bytes"], "v3 conformance sections")
+        _bounded(sections, _CONFORMANCE_BOUNDS["sections_bytes"], "conformance sections")
         for name, lens in _CONFORMANCE_LENSES.items():
             if sections[name]["status"] == "BLOCKED" and not any(
                     item["lens"] == lens and item["outcome"] == "BLOCKER" for item in closure):
@@ -527,7 +559,7 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
     }
     if "acceptance_phase_ledger" in material:
         result["acceptance_phase_ledger"] = material["acceptance_phase_ledger"]
-    if v3_task:
+    if conformant_task:
         result.update(sections)
     result["stage2_fingerprint"] = _digest({
         "stage1_construct_fingerprint": first["construct_fingerprint"],

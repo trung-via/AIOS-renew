@@ -33,10 +33,10 @@ def registry():
     return parse_return_contract_registry((ROOT / ".ai/brain-return-contracts.yaml").read_bytes())
 
 
-@pytest.fixture
-def profile_package():
-    profile = parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"][0]
-    assert (profile["id"], profile["version"]) == ("brain-high-value-v3", 3)
+@pytest.fixture(params=("brain-high-value-v3", "aios-adaptive-brain-audit-v1"))
+def profile_package(request):
+    profile = next(p for p in parse_profile_registry(
+        (ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"] if p["id"] == request.param)
     return {"profile": profile, "audit_profile_ref": profile_ref(profile)}
 
 
@@ -89,7 +89,7 @@ def stage2_response(req, candidate, *, blocker=False):
         "outcome": "NO_DECISION" if blocker else "CANDIDATE",
     }
     if req["decision_packet"]["selected_flow"] == "TASK_AUTHORING":
-        if req["audit_profile_package"]["profile"]["version"] == 3:
+        if "conformance" in req["audit_profile_package"]["profile"]:
             material.update(v3_sections(req["stage1_lineage"]["construct"], candidate))
         material["acceptance_phase_ledger"] = [
             {"id": entry["id"], "phase": "CLAIM_NOW"} for entry in candidate.get("acceptance", [])
@@ -436,3 +436,76 @@ def test_strict_bounds_and_normalization(registry, profile_package):
     current["x"] = {"beyond": 1}
     with pytest.raises(BrainProviderProtocolError):
         _normal(at_depth)
+
+
+@pytest.mark.parametrize("profile_id", ("brain-high-value-v2", "brain-high-value-v3", "aios-adaptive-brain-audit-v1"))
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"))
+def test_exact_profile_provider_replay_and_cross_profile_rejection(registry, profile_id, flow):
+    profiles = parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+    policy = next(p for p in profiles if p["id"] == profile_id)
+    package = {"profile": policy, "audit_profile_ref": profile_ref(policy)}
+    bindings = ({"task_id": "TASK-999", "revision": 1} if flow == "TASK_AUTHORING"
+                else {"repair_id": "REPAIR-999"} if flow == "REPAIR_AUTHORING" else {})
+    first = request(registry, package, flow=flow, bindings=bindings)
+    candidate = {**bindings, "proposal": "Same bounded subject"}
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]), first["return_contract_package"],
+                               bindings, package, request_mode="AUDIT_RECONCILE", stage1_decision=stage1)
+    for blocker in (False, True):
+        material = stage2_response(second, candidate, blocker=blocker)
+        final = validate_response(second, material)
+        assert revalidate_decision(final, second) == final
+        assert validate_response(second, material) == final
+        assert final["audit_profile_ref"] == profile_ref(policy)
+        if profile_id == "brain-high-value-v2":
+            assert "terminal_lifecycle" not in final["semantic_value"]
+        for other in profiles:
+            if other["id"] == profile_id:
+                continue
+            replacement = {"profile": other, "audit_profile_ref": profile_ref(other)}
+            with pytest.raises(BrainProviderProtocolError):
+                construct_request(DecisionPacket(first["decision_packet"]), first["return_contract_package"],
+                                  bindings, replacement, request_mode="AUDIT_RECONCILE", stage1_decision=stage1)
+            with pytest.raises(BrainProviderProtocolError):
+                revalidate_decision(final, request(registry, replacement, flow=flow, bindings=bindings))
+
+
+@pytest.mark.parametrize("fault", ("digest", "unknown_id", "partial", "renamed_v3"))
+def test_v1_provider_package_rejects_digest_unknown_and_partial_adaptation(registry, fault):
+    profiles = parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+    policy = deepcopy(next(p for p in profiles if p["id"] == "aios-adaptive-brain-audit-v1"))
+    reference = profile_ref(policy)
+    if fault == "digest":
+        reference["digest"] = "0" * 64
+    elif fault == "unknown_id":
+        policy["id"] = reference["id"] = "unknown-adaptive-v1"
+    elif fault == "partial":
+        policy["lenses"][3]["check"] = profiles[0]["lenses"][3]["check"]
+        reference["digest"] = digest(policy)
+    else:
+        policy = {**deepcopy(profiles[0]), "id": reference["id"], "version": 1}
+        reference["digest"] = digest(policy)
+    with pytest.raises(BrainProviderProtocolError):
+        request(registry, {"profile": policy, "audit_profile_ref": reference})
+
+
+@pytest.mark.parametrize("bad", (
+    {"nested": {"Canonical-Shape": {}}}, {"nested": {"terminalLifecycle": {}}},
+    {"nested": {"format": "AIOS_BRAIN_REQUEST", "candidate": {}}},
+    {"nested": {"format": []}}, {"nested": {"format": {"kind": "audit"}}},
+    {"nested": {"path": "C:/private/context"}}, {"nested": {"path": "/home/private/context"}},
+    {"nested": {"focus_notes": "Only F-F"}},
+))
+def test_v1_provider_rejects_nested_candidate_metadata_and_local_paths(registry, bad):
+    policy = next(p for p in parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+                  if p["id"] == "aios-adaptive-brain-audit-v1")
+    first = request(registry, {"profile": policy, "audit_profile_ref": profile_ref(policy)})
+    candidate = {"task_id": "TASK-999", "revision": 1}
+    with pytest.raises(BrainProviderProtocolError):
+        validate_response(first, response(first, {**candidate, **bad}))
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]), first["return_contract_package"],
+                               first["external_bindings"], first["audit_profile_package"],
+                               request_mode="AUDIT_RECONCILE", stage1_decision=stage1)
+    with pytest.raises(BrainProviderProtocolError):
+        validate_response(second, stage2_response(second, {**candidate, **bad}))

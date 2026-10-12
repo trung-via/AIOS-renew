@@ -13,7 +13,7 @@ import re
 from typing import Any, Mapping
 
 from .brain_audit import (
-    BrainAuditError, _CONFORMANCE_LENSES, _ordered_lenses, _packet, _stage1, construct_stage1, normalize_profile,
+    BrainAuditError, _CONFORMANCE_LENSES, _has_conformance, _ordered_lenses, _packet, _stage1, construct_stage1, normalize_profile,
     profile_ref, validate_stage2,
 )
 from .brain_return_contract import (
@@ -341,9 +341,9 @@ def _diagnostic(candidate: Any) -> dict[str, Any]:
 
 
 def _stage2_conformance_fields(request: Mapping[str, Any]) -> frozenset[str]:
-    """Carry exactly the prospective v3 TASK audit sections through the protocol."""
+    """Carry V3 protections for exact V3 and adaptive V1 TASK identities."""
     if (request["decision_packet"]["selected_flow"] == "TASK_AUTHORING"
-            and request["audit_profile_package"]["profile"]["version"] == 3):
+            and _has_conformance(request["audit_profile_package"]["profile"])):
         return frozenset(_CONFORMANCE_LENSES)
     return frozenset()
 

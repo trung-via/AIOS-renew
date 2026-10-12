@@ -97,3 +97,161 @@ profiles:
       closure_blocker_summary_bytes: 4096
       stage2_bytes: 524288
       max_depth: 32
+# Planned successor only. V3 above remains the active prospective profile.
+# Exact V1 content is admitted for bounded comparison; presence is not cutover.
+  - id: aios-adaptive-brain-audit-v1
+    version: 1
+    applicable_flows: [ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING, REPAIR_AUTHORING]
+    lenses:
+      - id: AUTHORITY_BOUNDARY
+        check: >-
+          Test whether the candidate assigns semantic, implementation, execution, verification, review,
+          publication and policy responsibility to the correct authority without merging authorities.
+          AIOS_ADAPTIVE_BRAIN_AUDIT_V1: CONSTRUCT frames Human intent, useful outcome, exact subject and
+          hard floors; ADVERSARIAL_AUDIT_AND_RECONCILE independently challenges them and closes all
+          eight ordered lenses on the reconciled candidate. Focus changes depth, never mandatory lens
+          coverage or authority. F-B CONSTITUTION_KERNEL: require explicit Human authority for governance
+          or frozen-Kernel changes; prospective amendments do not activate execution or reinterpret
+          historical decoding. F-D SECURITY_TRUST: identify threat actor, approved trust root, origin,
+          issuer, privileges and credential isolation; test forgery, replay, raw-data exposure and
+          missing live deployment. Do not lower Human-required trust to save cost. Brain owns WHAT/WHY,
+          admitted Executor HOW, Runtime canonical verification/evidence/CAS, independent Reviewer
+          judgment and Publisher exact eligible source. Research is bounded read-only support, never
+          a third stage, voter or mandatory gate for every local fix. Missing decision authority blocks
+          the affected candidate with NO_DECISION; no new router, score, audit authority or auto-action.
+      - id: SCOPE_NON_GOALS
+        check: >-
+          Test explicit scope, constraints and non-goals for silent widening or hidden implementation.
+          Derive all relevant F-A through F-H focus depths from actual effects in exact bound inputs,
+          never TASK names, primary-focus labels or complexity scores; hybrid subjects require their
+          union. Strategic/program subjects need necessity, alternatives and episode-cost depth before
+          decomposition. Ordinary TASK subjects reuse still-valid settled architecture but audit the
+          latest delta, affected consumers and newly introduced trust or proof effects. F-F
+          CORRECTION_DEFECT: exact causal FAILURE/REVIEW finding, immutable correction lineage,
+          minimum legal supporting delta, negative regression and no new-intent laundering. Preserve
+          sticky admitted Executor when code is required and executorless/NO_CHANGE semantics otherwise.
+          Bounded repairs with sufficient canonical cause do not require full architecture research or
+          Research Audit. Stop if correction adds a new service, threat model, authority or unrelated
+          intent; do not silently author another TASK, widen scope, retry, publish or advance roadmap.
+      - id: PROVENANCE_LINEAGE
+        check: >-
+          Test exact subject identity, immutable provenance, prior semantic decisions and correction
+          continuity for substitution or lineage loss. Stage 1 binds normalized candidate to the exact
+          packet and profile ID/version/digest. Stage 2 independently re-derives material impacts from
+          the same exact packet, normalized profile and Stage-1 bound candidate, using only valid
+          canonical context references. Unbound transient Stage-1 focus notes are hints without coverage
+          authority; omitted or mislabeled focus must be challenged even when notes say local-only.
+          Decisive assumptions belong in permitted bound candidate/packet context, never hidden notes,
+          chat memory, focus selectors or audit envelopes. Changed subject, scope, packet, currentness
+          or profile invalidates the attempt: fail closed and rebuild Stage 1 under the existing
+          protocol, never reconcile mixed identities or convert V2/V3 evidence into V1 proof. F-C
+          PROOF_EVIDENCE: retain original evidence subjects and exact applicability; INVALIDATED or
+          UNKNOWN cannot discharge an obligation. F-H RECOVERY_RETIREMENT: bind the exact authorized
+          baseline and forward delta; preserve TASK/RUN/FAILURE/REVIEW history without reset, force
+          update, retroactive source issuance or retroactive success.
+      - id: FAILURE_MODE_COUNTEREXAMPLES
+        check: >-
+          Search bounded malformed, stale, conflicting, partial-state and substitution counterexamples
+          against the intended contract. Stage 2 must attack focus completeness independently: ask what
+          architecture, governance, proof, security, integration, correction, performance or recovery
+          effect was omitted or mislabeled local in the exact packet and Stage-1 bound candidate.
+          A minor fix adding a credential issuer still requires F-A/F-D/F-E; primary labels cannot
+          excuse it. Attack necessity: which concrete approved invariant fails without each new
+          prerequisite, and can existing Runtime evidence, verifier or Git CAS satisfy it? Detect
+          dependency spirals created by earlier assumptions. Test missing source, forged issuer, replay,
+          partial deployment, race/CAS, duplicate handoff, order sensitivity, false PASS and migration
+          across profiles. Use bounded existing risk_summary/counterexample/candidate_anchor and
+          ADDRESSED_BY_RECONCILIATION or DISMISSED_WITH_BOUNDED_BASIS; missing decisive context requires
+          BLOCKER/NO_DECISION. Reconciliation stays inside Stage 2; rerun all eight lenses and material
+          focus counterexamples on the final candidate so fixing one boundary cannot break another.
+      - id: AC_CONSISTENCY_COMPLETENESS
+        check: >-
+          Test goal, constraints, non-goals and acceptance for consistency, material-risk coverage and
+          impossible or circular proof. TASK_AUTHORING preserves cross_authority_context, canonical_shape
+          and terminal_lifecycle: trace caller-owned context through affected consumers, every required
+          canonical shape and normal publication/correction path under current capabilities. Feasibility
+          is Brain judgment, not future Runtime proof. Every final acceptance ID must be independently
+          truthfully claimable by Executor before verification; classify proof phase in the existing
+          bounded acceptance_phase_ledger and reconcile PROOF_LATER out of final acceptance. Final
+          ledger covers reconciled acceptance exactly once, all CLAIM_NOW; otherwise BLOCKER and
+          NO_DECISION. Do not promote implementation, synthetic conformance, desk coverage, RA, a merge
+          or planning approval into measured value or cutover. F-H recovery must close all affected
+          end-to-end consumers and retain minimal privacy/security hygiene rather than copying an
+          unsafe baseline byte-for-byte. Hard authority, safety and evidence floors cannot be traded
+          for speed. CANDIDATE is local semantic output, never REVIEW PASS or publication authority.
+      - id: VERIFICATION_OWNERSHIP_ORDERING
+        check: >-
+          Test that Runtime retains canonical verification and that Executor/Brain claims cannot become
+          evidence or demand post-verification truth before verification. F-C PROOF_EVIDENCE: exact
+          source-to-subject applicability, complete authored obligations, toolchain/context and mandatory
+          integration/concurrency/ordering proof; a filename heuristic or passing narrow probe cannot
+          replace a broader obligation. Reuse still-valid evidence only under its exact conditions;
+          preserve original subjects and do not duplicate lawful execution without invalidation.
+          F-G PERFORMANCE_EFFICIENCY: compare the same frozen workloads and whole episode, including
+          separate stage time, input/output tokens, executed/reused test items, review, publication,
+          setup, maintenance, retries and Human minutes/interventions. Distinguish OBSERVED, MEASURED,
+          ESTIMATED_ONLY and UNKNOWN with source, assumptions and horizon. Missing or unpaired baseline,
+          unavailable live provider or uncontrolled provider/model/effort/order confounds stay UNKNOWN.
+          Test-count reduction, LOC, structural tests or number of findings prove no North Star gain.
+          No weighted utility score, automatic winner, cutover, retry or verification-policy change.
+      - id: PORTABILITY_PRIVACY_BOUNDEDNESS
+        check: >-
+          Test that candidate and audit material remain portable within closed byte/count/depth bounds,
+          excluding chat/CoT/raw logs, secrets, machine-local paths, workspace/remotes, host/time/random
+          and provider/model/session metadata and nested protocol/conformance envelopes. Guidance is
+          self-contained normalized content bound to this exact V1 profile digest, never an adapter
+          prompt, memory or focus registry. Carry normalized material with its reference to replaceable
+          providers; V1 inherits all V3 candidate reserved-key and TASK conformance exclusions despite
+          version 1. F-E WORKFLOW_INTEGRATION: trace actual affected authoring/dispatch/wake/review/
+          publication consumers, state transitions, currentness/CAS, races, idempotence and delegation;
+          transport receipt is not terminal engineering truth. Request only minimum sufficient fresh
+          relevant context, reuse valid settled context, and fail closed for missing decisive material.
+          Do not serialize focus selection into TASK/RUN/RESULT/Decision Packet or require audit
+          envelopes, transcripts or acceptance ledgers at AUTHOR_TASK direct final contract ingress.
+          Existing expected-main/CAS, revision, provenance and family validation keep their authorities.
+      - id: SIMPLIFICATION_DUPLICATE_AUTHORITY
+        check: >-
+          Test unnecessary repeated work, duplicated policy/state/semantic authority and orchestration.
+          F-A ARCHITECTURE_NORTH_STAR: before new program architecture, service, protocol or prerequisite,
+          state the verified useful outcome and concrete Human-approved invariant/threat necessity;
+          compare A reuse/no-change, B minimum bounded change and C new mechanism. Reject unsafe A/B
+          using explicit hard floors, never preference; C needs a requirement A/B cannot satisfy.
+          Compare full-episode adoption, operation, migration, security, maintenance, review and recovery
+          costs against Verified Useful Work / (Time + Tokens + Human Effort), without fabricated ROI.
+          Apply this to V1 itself: retain V3 remains valid, minimal V1 is a hypothesis, and a separate
+          adaptive controller is forbidden. Incremental useful risk detection versus cost is UNKNOWN
+          until paired evidence; Human decides tradeoffs. F-H RECOVERY_RETIREMENT: remove obsolete hooks
+          with authorized forward recovery, reversibility, exit triggers, safe redaction and independent
+          downstream adoption. New prerequisites or worsened episode cost trigger bounded necessity
+          re-evaluation, not automatic roadmap work. Local corrections keep all eight checks concise
+          without reopening settled architecture or demanding RA absent material new impacts.
+    procedure:
+      stages: [CONSTRUCT, ADVERSARIAL_AUDIT_AND_RECONCILE]
+      construct_outcomes: [CLEAR, RISK_FOUND]
+      risk_dispositions: [ADDRESSED_BY_RECONCILIATION, DISMISSED_WITH_BOUNDED_BASIS]
+      closure_outcomes: [CLEAR, BLOCKER]
+      final_outcomes: [CANDIDATE, NO_DECISION]
+      closure_on_reconciled_candidate: true
+    bounds:
+      lens_check_bytes: 2048
+      candidate_bytes: 131072
+      risks_per_lens: 4
+      risk_summary_bytes: 4096
+      counterexample_bytes: 8192
+      candidate_anchor_bytes: 1024
+      dismissal_basis_bytes: 4096
+      closure_blocker_summary_bytes: 4096
+      stage2_bytes: 524288
+      max_depth: 32
+    conformance:
+      flow: TASK_AUTHORING
+      sections: [cross_authority_context, canonical_shape, terminal_lifecycle]
+      shape_ids: [PRIMARY_RESULT, FAILURE, REVIEWED_RESULT, REMEDIATION_RESULT, REPAIR_RESULT]
+      path_ids:
+        - PRIMARY_PASS_TO_PUBLICATION
+        - CHANGES_REQUIRED_REMEDIATION_PASS_TO_PUBLICATION
+        - FAILURE_REPAIR_PASS_TO_PUBLICATION
+      bounds:
+        sections_bytes: 65536
+        entries_per_section: 16
+        text_bytes: 2048

@@ -1,8 +1,14 @@
 # AIOS Brain Semantic Audit Protocol — Planning Evidence
 
-Status: HUMAN/BRAIN PLANNING BASELINE
+Status: HISTORICAL BP-4A HUMAN/BRAIN PLANNING BASELINE; prospective successor contract in section 18
 Canonical evidence cut: main 63dce92adb271ea78d04bcd151df91a8ed260ff7
 Scope: read-only retrospective plus BP-4A architecture intent; no implementation authority
+
+Sections 1–17 preserve the original BP-4A planning and completion claims in their
+historical context. Their `v1` / `brain-high-value-v1` refers to that original
+protocol, not `AIOS_ADAPTIVE_BRAIN_AUDIT_V1`. The current active prospective
+profile remains `brain-high-value-v3`. Section 18 specifies a separately
+identifiable bounded planned successor; registry presence does not activate it.
 
 ## 1. Purpose
 
@@ -407,3 +413,173 @@ BP-4A is engineering-complete through TASK-179 r1. RUN-179-001 produced the init
 The reviewed/published implementation satisfies the BP-4A exit gate as a pure structural protocol: one content-addressed repository audit profile, Stage-1 construct binding, Stage-2 exact packet/profile/construct binding, fixed ordered lens coverage, bounded transient risk/coverage claims, reconciliation consistency, mandatory final closure, CANDIDATE/NO_DECISION outcomes, and no provider invocation, persistence, lifecycle routing, Reviewer/Publisher authority, retry/fallback, voting, or Executor selection.
 
 BP-5 Brain Provider Protocol is the next Human/Brain planning milestone. BP-4A completion does not itself authorize provider invocation or define AIOS_BRAIN_REQUEST / AIOS_BRAIN_DECISION transport; those boundaries must be separately audited and canonically authored under BP-5.
+
+## 18. Prospective adaptive V1 successor — TASK-340
+
+`AIOS_ADAPTIVE_BRAIN_AUDIT_V1` is the bounded planned successor described by the
+Human-approved A+ design in [AIOS Adaptive Brain Audit v1](AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md).
+Its availability for exact structural conformance and comparison is distinct
+from prospective production cutover. `brain-high-value-v3` remains active until
+independently authorized cutover; V2/V3 in-flight and historical subjects retain
+their own exact identities and meanings. No roadmap transition is implied.
+
+### 18.1. One portable content-bound procedure
+
+The normalized profile lives in `.ai/brain-audit-profiles.yaml`:
+
+```yaml
+audit_profile_ref:
+  id: aios-adaptive-brain-audit-v1
+  version: 1
+  digest: 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718
+```
+
+All adaptive semantic instructions are self-contained in the existing eight
+ordered `lenses[].check` fields. Their base meanings, four applicable flows,
+two stages and closed bounds remain intact: 2048 UTF-8 bytes per check, 131072
+candidate bytes, four risks per lens, 524288 Stage-2 bytes and depth 32, with the
+existing text limits and TASK conformance policy. The registry remains bounded
+to 32768 bytes and at most three distinct recognized profiles. Registry order
+keeps V3 first; adding V1 is capability for planned conformance, not selection.
+
+The validator recognizes one exact normalized V1 digest. Equivalent YAML line
+endings and JSON member order preserve that identity. Changed or partially
+adapted V1 content, V3 material renamed V1, unknown IDs/versions, substituted
+conformance policy and over-bound material fail closed even if a caller rehashes
+the supplied package. A future semantic revision requires separately authorized
+profile identity support. The digest allowlist contains no second copy of lens
+meanings; those meanings travel with the normalized profile package.
+
+V2/V3 profile bodies, normalized digests and schemas are preserved. Exact V2/V3
+historical packages remain valid in their own contexts; there is no fallback,
+profile substitution or reminting of old evidence. Stage 1 and Stage 2 must share
+the exact packet, subject, profile reference and construct fingerprint. A changed
+profile or newly composed different packet cannot reconcile an earlier construct.
+Pure validation detects identity mismatch; it does not discover canonical Git
+currentness. The existing caller currentness/expected-main/CAS boundaries remain
+responsible for supplying fresh context and invalidating a moved subject.
+
+### 18.2. Mandatory lenses, impact-dependent depth
+
+Every applicable subject uses `CONSTRUCT` then
+`ADVERSARIAL_AUDIT_AND_RECONCILE`, all eight ordered checks, reconciliation and
+final closure over the reconciled candidate. Focus adjusts semantic depth; it
+never permits a lens `NOT_APPLICABLE`, a third stage or a new audit authority.
+The profile carries these combined impact questions:
+
+| Focus | Material impact and additional depth |
+|---|---|
+| F-A ARCHITECTURE_NORTH_STAR | Useful outcome, concrete necessity, A reuse/no-change, B minimum legal change, C new mechanism, dependency spirals and total episode/adoption/operations cost. |
+| F-B CONSTITUTION_KERNEL | Human authority, prospective amendments, frozen Kernel, legacy decoding and non-retroactivity. |
+| F-C PROOF_EVIDENCE | Exact applicability and original evidence subjects, complete obligations, INVALIDATED/UNKNOWN, no false PASS or duplicate lawful execution. |
+| F-D SECURITY_TRUST | Approved threat model, actor, trust root, issuer/origin, isolated privileges, replay/forgery, private raw and actual live deployment. |
+| F-E WORKFLOW_INTEGRATION | Affected consumers, transitions, races, currentness/CAS, idempotence, delegation and transport versus terminal truth. |
+| F-F CORRECTION_DEFECT | Exact causal finding and immutable lineage, minimum legal supporting delta, negative regression, sticky Executor and valid-proof preservation. |
+| F-G PERFORMANCE_EFFICIENCY | Comparable frozen baseline, per-stage and whole-episode time/tokens/test work/Human effort; observed, measured, estimated and unknown distinctions. |
+| F-H RECOVERY_RETIREMENT | Exact authorized baseline, forward recovery, obsolete-hook removal, privacy hygiene, reversibility and independent downstream adoption. |
+
+Strategic subjects require program necessity before decomposition. Ordinary TASKs
+reuse still-valid settled architecture while challenging the exact new delta and
+affected consumers. A bounded correction with sufficient canonical cause retains
+two concise eight-lens stages without a default Research Audit or full architecture
+study. A new issuer/service/proof boundary inside a nominal local fix requires the
+union of its actual impacts. Research remains optional bounded read-only support
+where uncertainty needs it; it does not become a stage, voter or local-fix gate.
+
+Stage 2 independently reconstructs impacts from the exact packet, normalized
+profile and Stage-1 bound candidate with valid canonical references. It must
+challenge omitted or mislabeled architecture, governance, proof, security,
+integration, correction, performance and recovery effects even if transient
+Stage-1 notes mention only F-F. Unbound notes cannot certify coverage or provide
+decisive assumptions. The closed envelopes accept no focus-note/selector fields;
+V1 also excludes those reserved controls from candidates. Decisive permitted
+semantic context belongs in bound inputs. Missing decisive context or authority
+requires a local blocker/`NO_DECISION`, or a fresh authorized Stage-1 attempt;
+identity mismatch is rejected rather than reconciled across subjects.
+
+Focus risks use the existing bounded risk/counterexample/anchor and disposition
+fields, followed by all eight closure checks on the reconciled candidate. There
+is no focus router, numeric classifier, persistent ledger or provider-specific
+semantic policy. Structural validation checks bindings, shape, coverage, privacy
+and closure consistency; it cannot establish that a provider actually reasoned
+independently or that a declared semantic `CLEAR` is true.
+
+### 18.3. V3 protection and authority parity
+
+V1 enables V3 candidate privacy/reserved-key exclusions and TASK conformance by
+exact profile identity despite its numeric version being 1. All three bounded
+`cross_authority_context`, `canonical_shape` and `terminal_lifecycle` sections
+remain required for TASK Stage 2, with exact packet/reconciled-candidate bindings,
+shape/path coverage and blocked-section closure requirements. Missing, swapped,
+nested or private sections and machine-local paths are rejected. Provider request,
+response and serialized decision validation carry and revalidate the same policy.
+V2 retains its historical grammar without those new requirements.
+
+TASK proof-phase declarations retain the bounded existing ledger. Brain must
+reconcile every `PROOF_LATER` criterion out of final acceptance; final acceptance
+coverage is exactly once and all `CLAIM_NOW`. Structural protocol validation
+continues to normalize declarations and bind their identity; it does not infer
+truth from prose or add a completion/ingress phase gate. `CANDIDATE`/`NO_DECISION`
+remain local Brain outputs, never Runtime evidence, independent REVIEW or lifecycle
+state. Serialized `NO_DECISION` replay retains the existing recoverability limit:
+when a hidden reconciled candidate differs from the original construct, it cannot
+be recovered from that request alone and revalidation fails closed.
+
+AUTHOR_TASK remains direct final contract ingress. This successor adds no required
+audit envelope, Decision Packet, transcript, Stage-1/Stage-2 artifact, conformance
+section or acceptance ledger to TASK admission. Current identity/revision,
+provenance, affinity, expected-main currentness and expected-old-main CAS remain
+mandatory under existing contracts. Human intent/risk/delegation, Brain WHAT/WHY,
+Executor HOW, Runtime verification/evidence, independent Reviewer judgment and
+Publisher exact eligible-source ownership are unchanged. Frozen Kernel, KA-01,
+correction ingress, roadmap and downstream pins receive no new authority.
+
+### 18.4. Exportable paired comparison basis and measurement limits
+
+`tests.test_brain_audit.export_comparison_basis()` returns a bounded, JSON-portable
+comparison basis. It embeds preselected TASK-320 r1, TASK-329 r1, TASK-334 r2 and
+TASK-336 r1 projections from frozen commit
+`35e3fe6b382cf5e0a4f743c7dee18ae94403b7c3`, with source paths, original-byte SHA-256
+digests and explicit projection fields. These projections are relevant bounded
+authoring material, not complete ingress contracts or production replay. Historical
+hindsight is disclosed. Six explicitly modeled ordinary/correction/adversarial
+cases add local repair, omitted issuer/service/integration impacts, absent baseline,
+mandatory high trust and forbidden duplicate controllers; they assert no canonical
+TASK/FAILURE authority. Tests separately supply stale/cross-profile/digest/partial
+adaptation and malformed privacy/conformance counterexamples.
+
+Each pair receives identical packet, subject, candidate, Human questions and
+canonical references. Only the exact profile package differs; each profile has
+its own bound construct. Modeled constructs and supplied risk declarations are
+fixture material, not live provider detections or measured quality. The exporter
+reports actual normalized input byte counts as structural cost observations. V1
+carries more procedural input bytes; this does not establish token cost, better
+decisions or whole-episode efficiency. Adjudication, quality improvement, North
+Star superiority, provider availability, stage time/tokens, test-item reuse and
+Human cost are explicitly `UNKNOWN`; provider run status is `NOT_RUN`.
+
+Before any superiority claim, use the stated paired measurement protocol: exactly
+two stages per profile, controlled or disclosed provider/model/effort/order
+confounds, per-stage time and source-reported tokens, whole-episode operations/test
+work and Human minutes/interventions. Record sources, assumptions and horizon;
+missing/unpaired measures and disputed tradeoffs remain `UNKNOWN`. Human/Brain
+assess actionable material risks, missed known risks, false positives, unnecessary
+work, scope/authority expansion and limitations. Finding counts are not quality
+scores, and the comparison evaluator creates no independent Reviewer or automatic
+semantic verdict. An external measured run is absent from this implementation.
+
+Apply alternatives to V1 itself: retaining V3 is valid, minimal V1 is a design
+hypothesis, and a separate adaptive controller violates the approved non-goals.
+Hard authority/safety/evidence floors precede any cost tradeoff. No fabricated
+ROI, automatic winner, cutover or successor work follows from this basis.
+
+### 18.5. Activation boundary
+
+V3 remains the active prospective profile. Source/profile availability, structural
+conformance, a desk audit, comparison output or merge does not authorize activation.
+Prospective V1 cutover requires separate explicit Human/Brain reconciliation after
+canonical Runtime verification, independent Reviewer judgment and eligible-source
+Publisher publication, including relevant consumer compatibility. Missing measured
+quality/cost evidence and unproven live-provider behavior remain visible as UNKNOWN.
+This implementation changes no roadmap sequencing, selects no Executor/provider,
+dispatches no execution and performs no automatic lifecycle advancement.
