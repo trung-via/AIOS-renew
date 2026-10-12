@@ -61,7 +61,7 @@ adaptive_brain_audit_v1_priority_20261012:
     - brain-high-value-v3
     - brain-high-value-v2
   intended_semantic_path: MINIMAL_V3_SUCCESSOR_B_NOT_NEW_ROUTER
-  immediate_next: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  immediate_next: adaptive-brain-audit-v1-retire-v3-prospective-consumers
   preempts: verification-architecture-replacement-v1-vp03-runtime-lean-validity
   predecessor_current_main: c205acbfb76ed843580d6d97c9d1309a095a5e52
   human_instruction: >-
@@ -123,7 +123,7 @@ adaptive_brain_audit_v1_priority_20261012:
     selection: EXACT_PROFILE_ID_VERSION_DIGEST_ONLY_NO_V3_FALLBACK
     legacy_protection: V2_V3_IN_FLIGHT_EXACT_MATCH_OR_FAIL_CLOSED_RESTART_HISTORY_READ_ONLY
     prohibited: NO_PARALLEL_V3_V1_REASONING_NO_SECOND_SEMANTIC_VERDICT_NO_NEW_ROUTER
-    code_change_required_for_existing_EXPLICIT_PROFILE_PACKAGE_CONTRACT: NONE_IDENTIFIED
+    code_change_required_for_existing_EXPLICIT_PROFILE_PACKAGE_CONTRACT: AUTHORING_INGRESS_V3_HARDCODE_FOUND_REQUIRES_REVIEWED_MIGRATION
     consumers_without_EXPLICIT_V1_PROFILE_BINDING: MUST_NOT_CLAIM_V1_EXECUTION_OR_FALL_BACK_TO_V3
     measured_v1_superiority: UNKNOWN_NOT_ACTIVATION_BLOCKER_AS_ACCEPTED_BY_HUMAN
     changed_engineering_truth: NONE_PLANNING_PROFILE_SELECTION_ONLY
@@ -137,6 +137,33 @@ adaptive_brain_audit_v1_priority_20261012:
     - NO_RUNTIMES_OR_REVIEWERS_OR_PUBLISHERS_ADDED
     - NO_FORCE_PUSH_RESET_OR_HISTORY_REWRITE
     - NO_AUTHORING_FROM_STALE_MAIN_OR_UNREVIEWED_CANDIDATE
+
+adaptive_v1_production_consumer_retirement_20261012:
+  id: ADAPTIVE_BRAIN_AUDIT_V1_V3_PROSPECTIVE_RETIREMENT
+  status: HUMAN_APPROVED_IMMEDIATE_PRIORITY_PENDING_CANONICAL_TASK
+  authority: HUMAN_BRAIN_PLANNING
+  approved_on: "2026-10-12"
+  intent: RETIRE_V3_FROM_ALL_NEW_BRAIN_AUDIT_EXECUTION_AND_AUTHORING_CONSUMERS_USE_V1_EXCLUSIVELY
+  exact_active_profile: aios-adaptive-brain-audit-v1
+  profile_version: 1
+  profile_digest: 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718
+  root_cause: AUTHORING_INGRESS_SELECTS_PROFILES_ZERO_AND_REQUIRES_BRAIN_HIGH_VALUE_V3
+  no_duplicate_reasoning: true
+  effective_next: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  preempts: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  task_number: NOT_YET_AUTHORED
+  source_base: 06c969ba5786ccecf386c47d4dd57f793a592ac3
+  exact_failed_run: RUN-341-001
+  failure_artifacts_sha: 534b67966043a77b9690ade078c4a9f3a7d6bc98
+  failure_kind: CANONICAL_EXECUTION_FAILURE_MODEL_CAPACITY
+  already_authorized_repair: false
+  migration_boundary: AUTHOR_TASK_THEN_ADMITTED_EXECUTOR_RUNTIME_RESULT_REVIEW_PASS_PUBLISHER_EXACT_SOURCE
+  v3_policy: NO_PROSPECTIVE_SELECTION_OR_EXECUTION_HISTORICAL_READ_COMPATIBILITY_ONLY
+  v1_missing_profile: FAIL_CLOSED_NO_V3_FALLBACK
+  task341_continuation: PRESERVE_FAILURE_LINEAGE_AND_AUTHOR_REPAIR_AFTER_REVIEWED_MIGRATION_PUBLICATION
+  verification: EXACT_NEGATIVE_V3_FALLBACK_AND_V1_ONLY_CORRECTION_CONFORMANCE_NO_REGRESSION
+  human_executor_selection_for_new_task: NOT_YET_DELEGATED
+  no_automatic_next_or_lifecycle_mutation: true
 
 brain_optimization_preemption:
   id: brain-optimization-v1
@@ -742,7 +769,7 @@ publication_end_to_end_preemption:
 
 verification_architecture_replacement_preemption:
   id: aios-verification-architecture-replacement-v1
-  status: HUMAN_APPROVED_RESUMED_AFTER_TASK340_IMPLEMENTATION_CLOSURE
+  status: HUMAN_APPROVED_PAUSED_FOR_EXPLICIT_V1_ONLY_CONSUMER_RETIREMENT
   approved_on: "2026-10-08"
   authority: HUMAN_BRAIN_PLANNING
   planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
@@ -752,8 +779,8 @@ verification_architecture_replacement_preemption:
     command-driven scheduling, while preserving evidence, correctness,
     immutable legacy lineage and all authority boundaries. This planning
     decision is not a TASK, RUN, Runtime verification or source publication.
-  priority: RESUMED_PROSPECTIVE_VP03_LEAN_ONLY
-  effective_next: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  priority: TEMPORARILY_PREEMPTED_FOR_V1_ONLY_PRODUCTION_CONSUMER_MIGRATION
+  effective_next: adaptive-brain-audit-v1-retire-v3-prospective-consumers
   vp03d_runtime_git_credential_transport_reconciliation_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     reported_read_only_local_checkout: C_TOOLS_AIOS_RUNTIME_AIOS_RENEW_VALID_GIT_WORKTREE
@@ -1627,7 +1654,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  - adaptive-brain-audit-v1-retire-v3-prospective-consumers
 sequence:
 
   - id: TASK-309
@@ -2847,10 +2874,32 @@ sequence:
       force-push, and require Publisher for eligible reviewed source publication.
       Stale local planning or historical recovery source is not a valid base.
 
-  - id: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  - id: adaptive-brain-audit-v1-retire-v3-prospective-consumers
     status: NEXT
+    phase: RETIRE_V3_PROSPECTIVE_BRAIN_AUDIT_CONSUMERS_V1_ONLY
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-12"
+    task_authoring_status: NOT_AUTHORED
+    objective: >-
+      Ensure every current and future Brain ARCHITECTURE/TASK_AUTHORING/REPAIR_AUTHORING/
+      REMEDIATION_AUTHORING audit uses exact active aios-adaptive-brain-audit-v1
+      without invoking, selecting or falling back to brain-high-value-v3.
+      Remove legacy V3 assumptions from production authoring consumers;
+      preserve V3 parser/replay compatibility only for immutable historical subjects.
+      Prove functional V1-only correction handoff and negative regression
+      without duplicate audit calls, new router, or extra lifecycle authority.
+    bounded_scope: EXISTING_AUDIT_CONSUMER_AND_REGISTRY_DOCUMENTATION_TEST_CONFORMANCE
+    implement_by: SINGLE_CANONICAL_TASK_WITH_SEPARATE_HUMAN_EXECUTOR_DELEGATION
+    completion_boundary: RUNTIME_RESULT_INDEPENDENT_REVIEWER_PASS_PUBLISHER_EXACT_SOURCE_PUBLICATION
+    task341_failure: RUN-341-001
+    task341_repair: BLOCKED_UNTIL_V1_ONLY_AUTHOR_REPAIR_CANONICAL_CONSUMER_PUBLISHED
+    source_movement_guard: CANONICAL_MAIN_AND_EXACT_TASK_SHA
+    historical_v3_replay: PRESERVE_IMMUTABLE_DECODING_ONLY
+
+  - id: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+    status: PAUSED_FOR_HUMAN_V1_ONLY_MIGRATION
     phase: VP03_RUNTIME_INTEGRATED_MINIMAL_EVIDENCE_VALIDITY
-    resume_gate: HUMAN_BRAIN_RECONCILED_TASK340_PUBLISHED_IMPLEMENTATION_V1_ACTIVATION_NOT_GRANTED
+    resume_gate: HUMAN_PRIORITY_V1_ONLY_CONSUMER_RETIREMENT_PUBLISHED_AND_TASK341_REPAIR_RECONCILED
     next_action: FRESH_ADAPTIVE_DESIGN_AUDIT_THEN_MINIMUM_TASK_AUTHORING
     implementation_authorization_status: REQUIRES_NEW_TASK_AND_NEW_HUMAN_EXECUTOR_DELEGATION
     retired_vp03_guard: NEVER_REINTRODUCE_TASK339_RETIRED_BROKER_ISSUER_ATTESTATION_OR_SECOND_PROOF_ENGINE
