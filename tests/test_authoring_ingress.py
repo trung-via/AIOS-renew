@@ -794,6 +794,7 @@ V1_TASK_105_R2_SOURCE = V2_TASK_105_R2_SOURCE.replace("minimum-sufficient-v2", "
 
 def setup_test_repo(
     root: Path, *, task_id: str = "TASK-105", roadmap: dict | None = None,
+    audit_profiles: bytes | None = None,
 ) -> tuple[Path, Path, str]:
     """Create local repo and bare upstream git repo."""
     planning = copy.deepcopy(roadmap if roadmap is not None else {
@@ -813,6 +814,7 @@ def setup_test_repo(
             ".ai/roadmap-state.yaml": yaml.safe_dump(planning).encode("utf-8"),
             **{f".ai/{name}": (Path(__file__).resolve().parents[1] / ".ai" / name).read_bytes()
                for name in ("flow-cards.yaml", "brain-audit-profiles.yaml", "brain-return-contracts.yaml")},
+            **({".ai/brain-audit-profiles.yaml": audit_profiles} if audit_profiles is not None else {}),
         },
         user_name="AIOS Test",
         user_email="test@example.invalid",
@@ -882,14 +884,15 @@ def historical_repair_fixture(envelope: IngressEnvelope, *, repo: Path) -> Ingre
 
 
 def completion_gate_supersession_fixture(
-    tmp_path, *, roadmap=None, phase="COMPLETION_GATE", task_revision=2,
+    tmp_path, *, roadmap=None, phase="COMPLETION_GATE", task_revision=2, audit_profiles=None,
 ):
     """RUN-254-001's r2 blocker shape, with isolated Git identities.
 
     The r2 candidate is clean/transportable and fails only at COMPLETION_GATE.
     It is transported as a failed candidate, never published on fixture main.
     """
-    repo, remote, _ = setup_test_repo(tmp_path, task_id="TASK-254", roadmap=roadmap)
+    repo, remote, _ = setup_test_repo(
+        tmp_path, task_id="TASK-254", roadmap=roadmap, audit_profiles=audit_profiles)
     task_source = (TASK_105_R2_SOURCE if task_revision == 2 else TASK_105_SOURCE).replace("TASK-105", "TASK-254")
     task_path = repo / ".ai/tasks/TASK-254.yaml"
     task_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1118,8 +1121,10 @@ def setup_candidate_lineage(
     run_override: dict[str, object] | None = None,
     result_override: dict[str, object] | None = None,
     roadmap: dict | None = None,
+    audit_profiles: bytes | None = None,
 ) -> dict[str, object]:
-    repo, remote, base_sha = setup_test_repo(root, task_id=task_id, roadmap=roadmap)
+    repo, remote, base_sha = setup_test_repo(
+        root, task_id=task_id, roadmap=roadmap, audit_profiles=audit_profiles)
     task_dir = repo / ".ai" / "tasks"
     task_dir.mkdir(parents=True, exist_ok=True)
     (task_dir / f"{task_id}.yaml").write_bytes(task_source.encode("utf-8"))
@@ -4571,13 +4576,15 @@ def correction_planning_state(planning, task_id):
 
 def exact_correction_fixture(
     tmp_path, operation, planning, *, multiple_findings=False, repair_phase="VERIFICATION",
+    audit_profiles=None,
 ):
     if operation == "AUTHOR_REPAIR":
         return completion_gate_supersession_fixture(
             tmp_path, roadmap=correction_planning_state(planning, "TASK-254"),
-            phase=repair_phase, task_revision=1 if repair_phase == "VERIFICATION" else 2)
+            phase=repair_phase, task_revision=1 if repair_phase == "VERIFICATION" else 2,
+            audit_profiles=audit_profiles)
     lineage = setup_candidate_lineage(
-        tmp_path, roadmap=correction_planning_state(planning, "TASK-105"))
+        tmp_path, roadmap=correction_planning_state(planning, "TASK-105"), audit_profiles=audit_profiles)
     repo, remote = lineage["repo"], lineage["remote"]
     run_id, head = lineage["run_id"], lineage["candidate_sha"]
     review = {"review_id": "REVIEW-105-001", "reviewed_sha": head,
@@ -4600,14 +4607,27 @@ def exact_correction_fixture(
     return repo, remote, lineage["main_sha"], decision.canonical_sha, envelope
 
 
+def restore_canonical_authoring_fixture_bytes(repo, sha):
+    """Restore raw fixture blobs, including bytes hidden by Windows clean filters."""
+    for input_path in git(repo, "ls-tree", "-r", "--name-only", sha, "--", ".ai").splitlines():
+        committed = subprocess.run(
+            ("git", "-C", str(repo), "show", f"{sha}:{input_path}"),
+            capture_output=True, check=True).stdout
+        (repo / input_path).write_bytes(committed)
+        assert (repo / input_path).read_bytes() == committed
+
+
 def canonical_audit_fixture_update(repo, remote, path, document):
     """Change canonical fixture input, never the execution repository's refs."""
-    (repo / path).write_text(document if isinstance(document, str) else yaml.safe_dump(document), encoding="utf-8")
-    return commit_fixture_state(
+    content = document if isinstance(document, str) else yaml.safe_dump(document)
+    (repo / path).write_bytes(content.encode("utf-8"))
+    main = commit_fixture_state(
         repo, paths=(path,), message="canonical audit policy fixture",
         user_name="AIOS Test", user_email="test@example.invalid",
         remote=remote, remote_ref="refs/heads/main",
     )
+    restore_canonical_authoring_fixture_bytes(repo, main)
+    return main
 
 
 @pytest.mark.parametrize("operation", ("AUTHOR_REPAIR", "AUTHOR_REMEDIATION"))
@@ -4615,13 +4635,16 @@ def canonical_audit_fixture_update(repo, remote, path, document):
 def test_v1_correction_selection_ignores_registry_order_and_validates_once(tmp_path, monkeypatch, operation, position):
     from aios_renew import brain_audit
 
-    repo, remote, _, lineage_sha, initial = exact_correction_fixture(tmp_path, operation, "unrelated")
     path = ".ai/brain-audit-profiles.yaml"
-    registry = yaml.safe_load((repo / path).read_bytes())
+    registry = yaml.safe_load((Path(__file__).resolve().parents[1] / path).read_bytes())
     adaptive = next(p for p in registry["profiles"] if p["id"] == ACTIVE_PROFILE_REF["id"])
     registry["profiles"].remove(adaptive)
     registry["profiles"].insert(position, adaptive)
-    main = canonical_audit_fixture_update(repo, remote, path, registry)
+    # Commit the reordered registry before creating the reviewed/failed lineage;
+    # moving main afterwards would correctly require remediation integration.
+    repo, remote, main, lineage_sha, initial = exact_correction_fixture(
+        tmp_path, operation, "unrelated", audit_profiles=yaml.safe_dump(registry).encode("utf-8"))
+    restore_canonical_authoring_fixture_bytes(repo, main)
     packet, profile, _, _ = authoring_ingress_module._compose_authoring_packet(initial, repo)
     assert brain_audit.profile_ref(profile) == ACTIVE_PROFILE_REF
     assert packet.as_dict()["selected_flow"] == operation.replace("AUTHOR_", "") + "_AUTHORING"
@@ -5057,8 +5080,29 @@ def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=Tr
         _terminal_reconciliation_place_full_evidence,
         _reviewed_preservation_metadata,
     )
-    repo, state, task, lifecycle = _terminal_reconciliation_task336_fixture(
-        tmp_path, protected=protected, authoring=True)
+    from tests import test_operator as operator_fixtures
+
+    # Seed current prospective policy before the synthetic historical chain is
+    # committed. Its RUN/FAILURE identities then remain bound to that same base.
+    source_repo = Path(__file__).resolve().parents[1]
+    policy_key = "adaptive_brain_audit_v1_priority_20261012"
+    canonical_roadmap = subprocess.run(
+        ("git", "-C", str(source_repo), "show", "HEAD:.ai/roadmap-state.yaml"),
+        capture_output=True, check=True).stdout
+    policy = yaml.safe_load(canonical_roadmap)[policy_key]
+    make_repo = operator_fixtures.make_repo
+
+    def make_authoring_repo(*args, **kwargs):
+        fixture_repo = make_repo(*args, **kwargs)
+        (fixture_repo / ".ai").mkdir(exist_ok=True)
+        (fixture_repo / ".ai/roadmap-state.yaml").write_bytes(
+            yaml.safe_dump({policy_key: policy}).encode("utf-8"))
+        return fixture_repo
+
+    with pytest.MonkeyPatch.context() as fixture_setup:
+        fixture_setup.setattr(operator_fixtures, "make_repo", make_authoring_repo)
+        repo, state, task, lifecycle = _terminal_reconciliation_task336_fixture(
+            tmp_path, protected=protected, authoring=True)
     remote = tmp_path / "upstream.git"
     artifacts = {}
     terminals = list(lifecycle.terminals)
@@ -5116,12 +5160,7 @@ def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=Tr
     git(authoring_repo, "reset", "--hard", lifecycle.main_sha)
     # Git's clean conversion can conceal CRLF checkout bytes. Restore every raw
     # .ai input from the committed blob after the fixture's last reset.
-    for input_path in git(authoring_repo, "ls-tree", "-r", "--name-only", lifecycle.main_sha, "--", ".ai").splitlines():
-        committed = subprocess.run(
-            ("git", "-C", str(authoring_repo), "show", f"{lifecycle.main_sha}:{input_path}"),
-            capture_output=True, check=True).stdout
-        (authoring_repo / input_path).write_bytes(committed)
-        assert (authoring_repo / input_path).read_bytes() == committed
+    restore_canonical_authoring_fixture_bytes(authoring_repo, lifecycle.main_sha)
     payload = _terminal_reconciliation_repair(task, json.loads(lifecycle.terminals[-1].terminal), "REPAIR-336-004")
     envelope = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
         {"failed_run_id": "RUN-336-004"}, {"expected_failed_head_sha": payload["failed_head_sha"]}, payload)
