@@ -662,7 +662,7 @@ verification_architecture_replacement_preemption:
     immutable legacy lineage and all authority boundaries. This planning
     decision is not a TASK, RUN, Runtime verification or source publication.
   priority: PREEMPTS_BO2_BO3_TEMPORARILY
-  effective_next: verification-architecture-replacement-v1-vp03-evidence-validity
+  effective_next: verification-architecture-replacement-v1-vp03-runtime-lean-validity
   vp03d_runtime_git_credential_transport_reconciliation_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     reported_read_only_local_checkout: C_TOOLS_AIOS_RUNTIME_AIOS_RENEW_VALID_GIT_WORKTREE
@@ -1536,7 +1536,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - verification-architecture-replacement-v1-vp03-forward-recovery
+  - verification-architecture-replacement-v1-vp03-runtime-lean-validity
 sequence:
 
   - id: TASK-309
@@ -2404,7 +2404,7 @@ sequence:
       publishes eligible reviewed candidate or lawful integration descendant.
 
   - id: verification-architecture-replacement-v1-vp03-evidence-validity
-    status: SUPERSEDED_BY_HUMAN_PENDING_FORWARD_RECOVERY
+    status: SUPERSEDED_BY_HUMAN_FORWARD_RECOVERY_PUBLISHED
     phase: VP03_EVIDENCE_VALIDITY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
@@ -2644,12 +2644,29 @@ sequence:
       publishes eligible reviewed candidate or lawful integration descendant.
 
   - id: verification-architecture-replacement-v1-vp03-forward-recovery
-    status: NEXT
+    status: DONE
     phase: VP03_PRE_TASK330_FORWARD_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-10"
     task_id: TASK-339
-    task_authoring_status: NOT_AUTHORED
+    task_authoring_status: CANONICALIZED
+    completed_by:
+      task_id: TASK-339
+      task_revision: 1
+      original_failed_run_id: RUN-339-001
+      repair_authorization_sha: c4cab0eb53dc53626723bcaf06b08dae64b26a9f
+      repair_run_id: RUN-339-002
+      terminal_kind: RESULT
+      result_artifact_sha: 8312d59ac9b1e2cabb873d06a2ae2546a7a3ee0b
+      review_id: REVIEW-339-002
+      review_verdict: PASS
+      review_decision_sha: 14aee7535c9820fba90fb25be626e130f23324de
+      reviewed_published_source_sha: 1119a603f84e498d0169a5b216ce09f005924213
+      published_main_at_reconciliation: 1119a603f84e498d0169a5b216ce09f005924213
+      verified_candidate_test_counts: [342, 251]
+      verification_failure_count: 0
+      authority: HUMAN_BRAIN_PLANNING_RECONCILED_WITH_CANONICAL_RUNTIME_REVIEWER_PUBLISHER_LINEAGE
+      does_not_activate_vp03_lean_runtime_validity: true
     prospective_successor_human_decision_2026_10_12:
       authority: HUMAN_BRAIN_PLANNING
       decision: PROSPECTIVE_FORWARD_RECOVERY_NEW_TASK_FROM_CURRENT_MAIN
@@ -2701,7 +2718,7 @@ sequence:
       A source candidate commit must advance main normally, not rewrite history.
 
   - id: verification-architecture-replacement-v1-vp03-runtime-lean-validity
-    status: QUEUED_AFTER_FORWARD_RECOVERY
+    status: NEXT
     phase: VP03_RUNTIME_INTEGRATED_MINIMAL_EVIDENCE_VALIDITY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-10"
