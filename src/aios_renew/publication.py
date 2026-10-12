@@ -358,12 +358,6 @@ class PublicationReport:
 def _git(
     repo: Path, *args: str, allow_fail: bool = False
 ) -> tuple[int, str, str]:
-    from .runtime_writer_broker import broker_git_push
-    protected = broker_git_push(repo, args)
-    if protected is not None:
-        if protected[0] and not allow_fail:
-            raise RuntimeError(protected[2])
-        return protected
     try:
         completed = subprocess.run(
             ("git", "-C", str(repo), *args),
@@ -1489,13 +1483,14 @@ def _repair_review_lineage(
     embedded_failure = _mapping(lineage.get("failure"), "REPAIR execution.failure")
     expected_task = {"id": task.task_id, "revision": task.revision}
     failure_task = _mapping(failure.get("task"), "predecessor FAILURE.task")
-    from .runtime_provenance_issuer import public_metadata
+    predecessor_run_view = predecessor_run_data
+    if predecessor_run_data.get("kind") == "REMEDIATION":
+        predecessor_execution = _mapping(predecessor_run_data.get("execution"), "predecessor REMEDIATION.execution")
+        predecessor_run_view = _mapping(predecessor_execution.get("run"), "predecessor REMEDIATION RUN")
+    from .unified_state import _matches_canonical_failure
     if (
-        # Private diagnostics are unavailable in new public privacy views.
-        # Exact canonical artifact SHAs and all lifecycle identity fields still
-        # bind; this comparison grants no historical raw/source provenance.
-        public_metadata(json.dumps(dict(embedded_failure)).encode()) !=
-        public_metadata(json.dumps(dict(failure)).encode())
+        not _matches_canonical_failure(embedded_failure, failure,
+            canonical_workspace=predecessor_run_view.get("workspace", ""))
         or failure.get("kind") != "FAILURE"
         or failure.get("run_id") != failed_run_id
         or dict(failure_task) != expected_task
@@ -2396,6 +2391,23 @@ def _validate_recovery_reservation(repo: Path, *, remote: str, token: str, plan,
         raise ValueError("publication admission reservation identity mismatch")
 
 
+def _reused_evidence_representation(item, source_evidence_id: str) -> bool:
+    """Recognize the private receipt summary or its exact public privacy view.
+
+    This grants no proof validity: validate_publication_recovery separately pins
+    the receipt digest, reviewed source, base trees and verification conditions.
+    """
+    if item.result.exit_code != 0:
+        return False
+    private_path = item.verification.get("raw_path") if isinstance(item.verification, Mapping) else None
+    return (
+        (isinstance(private_path, str) and item.raw_path == private_path
+         and item.result.summary == "Runtime VALID: reused " + source_evidence_id)
+        or (item.raw_path == "protected-runtime-raw/" + item.evidence_id
+            and item.result.summary == "Runtime verification exit code 0")
+    )
+
+
 def validate_publication_recovery(repo: Path, *, remote: str, raw: bytes,
         run: Run, task, candidate_sha: str, package: ResultPackage | None = None,
         current_main_sha: str | None = None, local_repository: Path | None = None):
@@ -2526,7 +2538,7 @@ def validate_publication_recovery(repo: Path, *, remote: str, raw: bytes,
                            != {k: v for k, v in new["candidate"].items() if k != "subject_sha"}
                         or any(old["binding"][key] != new["binding"][key]
                                for key in ("command", "profile", "toolchain", "envelope_digest"))
-                        or not matching[0].result.summary.startswith("Runtime VALID: reused ")):
+                        or not _reused_evidence_representation(matching[0], originals[0].evidence_id)):
                     raise ValueError("publication reused proof conditions are incompatible")
         if not any(item.type == "PUBLICATION_INTEGRATION"
                    and item.source.command == "aios-publication-source-preservation-v1"

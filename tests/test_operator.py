@@ -14273,6 +14273,37 @@ def test_terminal_reconciliation_matches_exact_private_public_projection(tmp_pat
     assert str(repo) not in json.dumps(remote[-1].run_document)
 
 
+def test_terminal_reconciliation_new_public_repair_preserves_historical_private_parent(tmp_path):
+    from aios_renew.unified_state import _decode_remote_lifecycle, _local_pending_runs
+    repo, state, task, lifecycle = _private_public_terminal_fixture(tmp_path, repair=True)
+    parent, child = lifecycle.terminals
+    parent = replace(parent, run=(state.runs / (parent.run_id + ".json")).read_bytes(),
+        terminal=(state.failures / (parent.run_id + ".json")).read_bytes())
+    lifecycle = replace(lifecycle, terminals=(parent, child))
+    before = {path: path.read_bytes() for directory in (state.runs, state.results, state.failures, state.repairs)
+              for path in directory.glob("*.json")}
+    remote, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
+    assert _local_pending_runs(repo, state, task, remote, reviews) == ([], [])
+    assert json.loads(parent.terminal)["error"]["message"] == "private failed diagnostics"
+    assert json.loads(child.correction)["failure"]["error"]["message"] == "Protected Runtime diagnostics remain local."
+    assert {path: path.read_bytes() for path in before} == before
+
+
+def test_terminal_reconciliation_public_predecessor_cannot_hide_forged_diagnostics():
+    from aios_renew.unified_state import _matches_canonical_failure
+    private = dict(kind="FAILURE", run_id="RUN-339-001", failed_head_sha="a" * 40,
+        error=dict(type="RuntimeVerificationError", message="private diagnostic"))
+    public = json.loads(transport_module.public_metadata(json.dumps(private).encode()))
+    assert _matches_canonical_failure(private, public,
+        canonical_workspace="protected-runtime-workspace")
+    assert _matches_canonical_failure(public, private, canonical_workspace="historical-workspace")
+    forged = json.loads(json.dumps(public))
+    forged["error"]["message"] = "forged public diagnostic"
+    assert not _matches_canonical_failure(private, forged,
+        canonical_workspace="protected-runtime-workspace")
+    assert not _matches_canonical_failure(forged, private, canonical_workspace="historical-workspace")
+
+
 def test_terminal_reconciliation_private_repair_uses_canonical_public_counterpart(tmp_path):
     from aios_renew.unified_state import (
         _decode_remote_lifecycle, _local_pending_runs, _matches_public_document,

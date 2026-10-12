@@ -546,6 +546,25 @@ def _matches_public_document(
     return public == encoded(projected)
 
 
+def _matches_canonical_failure(
+    embedded: Mapping[str, Any], canonical: Mapping[str, Any], *, canonical_workspace: str,
+) -> bool:
+    """Bind correction content to an immutable predecessor in its known view.
+
+    A public predecessor must itself be exactly redacted. A historical private
+    predecessor may appear verbatim or as its exact public projection in a new
+    correction; projecting both sides would hide forged public diagnostics.
+    """
+    if canonical_workspace == "protected-runtime-workspace":
+        projected = _validated_private_public_view(canonical, "METADATA")
+        if json.dumps(canonical, sort_keys=True, allow_nan=False) != json.dumps(
+            projected, sort_keys=True, allow_nan=False
+        ):
+            return False
+        return _matches_public_document(embedded, canonical, "METADATA")
+    return _matches_public_document(canonical, embedded, "METADATA")
+
+
 def _decode_lifecycle_run(
     raw: bytes, *, run_id: str
 ) -> tuple[Run, str, str | None, str | None]:
@@ -676,7 +695,7 @@ def _validate_lifecycle_failure(
     if type(terminal["task"].get("revision")) is not int:
         raise ValueError("FAILURE TASK revision is malformed")
     if public_representation:
-        if not _matches_public_document(terminal, terminal, "METADATA"):
+        if not _matches_canonical_failure(terminal, terminal, canonical_workspace=run.workspace):
             raise ValueError("FAILURE privacy representation is invalid")
     else:
         _validated_private_public_view(terminal, "METADATA")
@@ -1002,7 +1021,8 @@ def _decode_remote_lifecycle(
             parent.terminal_kind != "FAILURE"
             or item.run.base_sha != parent.candidate_sha
             or item.correction is None
-            or not _matches_public_document(item.correction["failure"], parent.terminal, "METADATA")
+            or not _matches_canonical_failure(item.correction["failure"], parent.terminal,
+                                             canonical_workspace=parent.run.workspace)
             or parent.terminal.get("base_sha") != parent.run.base_sha
             or item.correction["root_base_sha"] != (
                 parent.correction["root_base_sha"]
@@ -1421,7 +1441,8 @@ def _local_pending_runs(
                 and parent.terminal_kind == "FAILURE"
                 and correction is not None
                 and isinstance(correction.get("failure"), Mapping)
-                and _matches_public_document(correction["failure"], parent.terminal, "METADATA")
+                and _matches_canonical_failure(correction["failure"], parent.terminal,
+                                               canonical_workspace=parent.run.workspace)
                 and parent.terminal.get("base_sha") == parent.run.base_sha
                 and correction["root_base_sha"] == (
                     parent.correction["root_base_sha"]

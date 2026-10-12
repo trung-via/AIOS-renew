@@ -1022,6 +1022,34 @@ def test_repair_of_failed_remediation_reconstructs_delta_review_lineage(
     assert remote_main(lineage) == lineage["candidate_sha"]
 
 
+@pytest.mark.parametrize("forged_public", [False, True])
+@pytest.mark.parametrize("predecessor_kind", ["PRIMARY", "REMEDIATION"])
+def test_repair_publication_requires_exact_canonical_public_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forged_public: bool, predecessor_kind: str,
+) -> None:
+    from aios_renew.review_transport import public_metadata
+    lineage = make_repair_lineage(tmp_path, predecessor_kind=predecessor_kind)
+    read_blob = publication_module._read_blob
+
+    def canonical_failure(repo, sha, path, **kwargs):
+        raw = read_blob(repo, sha, path, **kwargs)
+        if path == ".ai/transport/failure.json":
+            public = json.loads(public_metadata(raw))
+            if forged_public:
+                public["error"]["message"] = "forged public diagnostics"
+            return json.dumps(public).encode()
+        return raw
+
+    monkeypatch.setattr(publication_module, "_read_blob", canonical_failure)
+    if forged_public:
+        with pytest.raises(PublicationError, match="FAILURE identity mismatch"):
+            publish(lineage)
+        assert remote_main(lineage) == lineage["base_sha"]
+    else:
+        assert publish(lineage).outcome == "PUBLISHED"
+        assert remote_main(lineage) == lineage["candidate_sha"]
+
+
 def test_repair_before_semantic_finding_accepts_primary_review(
     tmp_path: Path,
 ) -> None:
@@ -4440,6 +4468,28 @@ def publication_proof_fixture(tmp_path, monkeypatch):
     arguments = dict(task=task, run=run, plan=plan, source_run=source_run, source_package=package,
         subject_sha=candidate, repository=tmp_path, raw_directory=tmp_path / "proof", cache_directory=tmp_path / "cache", environment={})
     return verification, arguments, item, raw
+
+
+def test_publication_recovery_reuse_accepts_only_exact_private_or_public_representation(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from aios_renew.artifacts import EvidenceOutcome
+    from aios_renew.review_transport import public_result
+    from aios_renew.runtime import result_package_data
+    _, arguments, source, _ = publication_proof_fixture(tmp_path, monkeypatch)
+    private = replace(source, result=EvidenceOutcome(0, "Runtime VALID: reused ORIGINAL"),
+        verification={**source.verification, "raw_path": source.raw_path})
+    assert publication_module._reused_evidence_representation(private, "ORIGINAL")
+    package = replace(arguments["source_package"], evidence=(private,))
+    data = json.loads(public_result(json.dumps(result_package_data(package)).encode()))["evidence"][0]
+    public = replace(private, raw_path=data["raw"]["path"], result=EvidenceOutcome(**data["result"]))
+    assert publication_module._reused_evidence_representation(public, "ORIGINAL")
+    assert public.verification == private.verification
+    assert not publication_module._reused_evidence_representation(private, "OTHER")
+    for forged in (replace(public, raw_path="protected-runtime-raw/OTHER"),
+                   replace(public, result=EvidenceOutcome(0, "forged public summary")),
+                   replace(private, raw_path="private/other-receipt"),
+                   replace(public, result=EvidenceOutcome(1, "Runtime verification exit code 0"))):
+        assert not publication_module._reused_evidence_representation(forged, "ORIGINAL")
 
 
 def test_publication_unchanged_proof_is_reused_with_distinct_integration_guard(tmp_path, monkeypatch):

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from .return_affinity import document_affinity
-from .runtime_provenance_issuer import public_run, public_result, public_metadata
 
 import hashlib
 import json
@@ -24,6 +23,103 @@ from .terminal_attention import (
 
 class ReviewTransportError(RuntimeError):
     """Raised when post-PASS review or artifact transport fails."""
+
+
+PUBLIC_ARTIFACT_MAX_BYTES = 1024 * 1024
+
+
+def _public_document(content: bytes) -> dict[str, Any]:
+    """Decode prospective writer input; historical readers retain their bounds."""
+    if len(content) > PUBLIC_ARTIFACT_MAX_BYTES:
+        raise ReviewTransportError("public artifact exceeds byte bound")
+    try:
+        data = _performance_json_mapping(content, "public artifact")
+
+        def bounded(value: Any, depth: int = 0) -> None:
+            if depth > 64:
+                raise ReviewTransportError("public artifact exceeds nesting bound")
+            if isinstance(value, dict):
+                for item in value.values():
+                    bounded(item, depth + 1)
+            elif isinstance(value, list):
+                for item in value:
+                    bounded(item, depth + 1)
+
+        bounded(data)
+        return dict(data)
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise ReviewTransportError("invalid public artifact JSON") from exc
+
+
+def _public_bytes(data: Any) -> bytes:
+    try:
+        return json.dumps(data, sort_keys=True, separators=(",", ":"),
+                          allow_nan=False).encode("utf-8")
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise ReviewTransportError("invalid public artifact projection") from exc
+
+
+def _redact_evidence(item: dict[str, Any]) -> None:
+    identity = item["evidence_id"]
+    if not isinstance(identity, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,96}", identity):
+        raise ReviewTransportError("unsafe public evidence identity")
+    item["raw"] = {"path": "protected-runtime-raw/" + identity}
+    item["result"]["summary"] = "Runtime verification exit code " + str(item["result"]["exit_code"])
+
+
+def public_result(content: bytes) -> bytes:
+    """Keep canonical EVIDENCE identities/digests while hiding raw and diagnostics."""
+    data = _public_document(content)
+    try:
+        for item in data.get("evidence", []):
+            _redact_evidence(item)
+        return _public_bytes(data)
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ReviewTransportError("invalid public RESULT projection") from exc
+
+
+def public_run(content: bytes) -> bytes:
+    """Hide the local workspace in PRIMARY, REPAIR and REMEDIATION RUNs."""
+    data = _public_document(content)
+    try:
+        run = data.get("execution", {}).get("run") if data.get("kind") == "REMEDIATION" else data
+        if isinstance(run, dict) and "workspace" in run:
+            run["workspace"] = "protected-runtime-workspace"
+        return _public_bytes(data)
+    except (TypeError, AttributeError) as exc:
+        raise ReviewTransportError("invalid public RUN projection") from exc
+
+
+def public_metadata(content: bytes) -> bytes:
+    """Redact nested correction records without changing verification metadata.
+
+    V2 observation references retain their immutable fields. Only full EVIDENCE
+    records have raw/summary privacy fields; the reducer validates their roles,
+    owners and exact authorized public representation independently.
+    """
+    def safe(value: Any) -> Any:
+        if isinstance(value, list):
+            return [safe(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        data = {key: safe(item) for key, item in value.items()}
+        if "run_id" in data and "workspace" in data and "task" in data:
+            data["workspace"] = "protected-runtime-workspace"
+        if "evidence_id" in data and "raw" in data:
+            _redact_evidence(data)
+        if data.get("kind") == "FAILURE" and isinstance(data.get("error"), dict):
+            error = data["error"]
+            error["message"] = "Protected Runtime diagnostics remain local."
+            error.pop("native_diagnostics", None)
+            error.pop("executor_diagnostics", None)
+            for item in error.get("verification", []):
+                item["summary"] = "Runtime verification exit code " + str(item["exit_code"])
+        return data
+
+    try:
+        return _public_bytes(safe(_public_document(content)))
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ReviewTransportError("invalid public correction projection") from exc
 
 
 class RemoteQueryError(ReviewTransportError):
@@ -254,12 +350,6 @@ PERFORMANCE_MAX_TERMINAL_RUNS = 256
 
 
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
-    from .runtime_writer_broker import broker_git_push
-    protected = broker_git_push(repo, args)
-    if protected is not None:
-        if protected[0] and not allow_fail:
-            raise ReviewTransportError(protected[2])
-        return protected
     try:
         completed = subprocess.run(
             ("git", "-C", str(repo), *args),

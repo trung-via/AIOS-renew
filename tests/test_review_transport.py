@@ -27,6 +27,75 @@ from aios_renew.review_transport import (
 )
 
 
+def test_public_transport_redacts_nested_private_records_and_preserves_bindings() -> None:
+    reference = {"policy": "minimum-sufficient-v2", "evidence_id": "E1",
+                 "raw_path": "immutable-reference", "raw_digest": "d" * 64}
+    evidence = dict(evidence_id="E1", run_id="RUN-339-001", subject_sha="a" * 40,
+        type="VERIFICATION", source=dict(command="git diff --check"),
+        result=dict(exit_code=0, summary="private diagnostic credential=fixture-secret"),
+        raw=dict(path="C:/private/runtime/raw.log"), verification=reference)
+    run = dict(run_id="RUN-339-001", task=dict(id="TASK-339", revision=1),
+        workspace="C:/private/runtime", executor="codex", base_sha="b" * 40,
+        head_sha=None, status="ACTIVE")
+    failure = dict(kind="FAILURE", run_id=run["run_id"], failed_head_sha="a" * 40,
+        error=dict(type="RuntimeVerificationError", message="private message fixture-secret",
+            native_diagnostics=dict(stderr="credential=fixture-secret"),
+            executor_diagnostics=dict(stdout="credential=fixture-secret"),
+            verification=[dict(command="git diff --check", exit_code=0,
+                summary="private outcome fixture-secret", verification=reference)], evidence=[evidence]))
+    correction = dict(run=run, failure=failure, failed_run_id=run["run_id"],
+        failed_head_sha="a" * 40, root_base_sha="b" * 40, task=run["task"], repair={})
+    raw = json.dumps(correction).encode()
+    public = review_transport.public_metadata(raw)
+    data = json.loads(public)
+    assert b"fixture-secret" not in public and b"C:/private" not in public
+    assert data["run"]["workspace"] == "protected-runtime-workspace"
+    error = data["failure"]["error"]
+    assert error["message"] == "Protected Runtime diagnostics remain local."
+    assert "native_diagnostics" not in error and "executor_diagnostics" not in error
+    assert error["verification"][0]["verification"] == reference
+    assert error["evidence"][0]["verification"] == reference
+    assert error["evidence"][0]["raw"] == {"path": "protected-runtime-raw/E1"}
+    assert error["evidence"][0]["subject_sha"] == evidence["subject_sha"]
+    assert json.loads(raw) == correction
+    assert review_transport.public_metadata(public) == public
+    assert json.loads(review_transport.public_result(json.dumps(dict(evidence=[evidence])).encode()))["evidence"] == error["evidence"]
+    for document in (run, dict(kind="REMEDIATION", execution=dict(run=run))):
+        projected = json.loads(review_transport.public_run(json.dumps(document).encode()))
+        public_run = projected["execution"]["run"] if "execution" in projected else projected
+        assert public_run == dict(run, workspace="protected-runtime-workspace")
+
+
+@pytest.mark.parametrize("project", [review_transport.public_run,
+    review_transport.public_result, review_transport.public_metadata])
+@pytest.mark.parametrize("content", [b'{"run_id":"one","run_id":"two"}',
+    b"[]", b'{"value":NaN}', b'"unterminated', b'\xff'])
+def test_public_transport_rejects_malformed_json(project, content) -> None:
+    with pytest.raises(ReviewTransportError):
+        project(content)
+
+
+@pytest.mark.parametrize("project", [review_transport.public_run,
+    review_transport.public_result, review_transport.public_metadata])
+def test_public_transport_writer_bounds_do_not_change_historical_readers(project) -> None:
+    large = json.dumps(dict(note="x" * review_transport.PUBLIC_ARTIFACT_MAX_BYTES)).encode()
+    with pytest.raises(ReviewTransportError, match="byte bound"):
+        project(large)
+    assert review_transport._performance_json_mapping(large, "historical")["note"]
+    nested = b'{"nested":' * 65 + b"0" + b"}" * 65
+    with pytest.raises(ReviewTransportError, match="nesting bound"):
+        project(nested)
+
+
+@pytest.mark.parametrize("identity", ["../private", "contains space", "", None])
+def test_public_transport_rejects_unsafe_raw_placeholder_identity(identity) -> None:
+    content = json.dumps(dict(evidence=[dict(evidence_id=identity, raw=dict(path="private"),
+        result=dict(exit_code=0, summary="private"))])).encode()
+    for project in (review_transport.public_result, review_transport.public_metadata):
+        with pytest.raises(ReviewTransportError, match="unsafe public evidence identity"):
+            project(content)
+
+
 TASK = {"id": "TASK-058", "revision": 2}
 PINNED_AIOS_RENEW_SHA = "26097405343150dc1b55015b94720528afad50ed"
 PINNED_PROVENANCE_PATH = (
