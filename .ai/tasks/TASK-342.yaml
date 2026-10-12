@@ -1,0 +1,152 @@
+task_id: TASK-342
+revision: 1
+goal: Complete the Human-approved prospective retirement of brain-high-value-v3 by
+  making aios-adaptive-brain-audit-v1 (exact profile ID/version/normalized digest)
+  the sole selectable and invoked semantic audit for all new eligible Brain authoring
+  and architecture decisions, including AUTHOR_REPAIR and AUTHOR_REMEDIATION. Remove
+  V3-first and V3-required assumptions from current producer/consumer paths, without
+  retiring immutable V3 historical replay and validation or introducing another router.
+problem: Human approved exclusive prospective Adaptive Brain Audit V1 in planning
+  commit 06c969ba5786ccecf386c47d4dd57f793a592ac3 after TASK-340 RESULT/REVIEW PASS/published
+  code, but canonical src/aios_renew/authoring_ingress.py still chooses parse_profile_registry(...)[profiles][0]
+  and then demands brain-high-value-v3 version 3. The registry also says V3 remains
+  active; historical protocol prose contains superseded live-profile statements. This
+  mismatch blocks lawful new REPAIR_AUTHORING for RUN-341-001 (EXECUTION FAILURE,
+  model at capacity) and risks invisible V3 fallback. The required outcome is one
+  V1-only prospective selection, not a second audit, not deletion of historical proofs,
+  and not an implementation workaround for TASK-341.
+assumptions:
+- Human priority supersedes the temporary VP03 NEXT; unique roadmap NEXT is adaptive-brain-audit-v1-retire-v3-prospective-consumers.
+  TASK-341 r1 and canonical RUN-341-001 FAILURE remain immutable and must be continued
+  only by subsequently authorized REPAIR after this migration is published.
+- TASK authoring binds exact canonical main ba2daf4a1a4926ed5b0ef029c55a44486f5c16a5;
+  implementation candidate must descend from current admissible main under Runtime/CAS
+  and Publisher ownership. TASK-342 has no delegated Executor/model/effort until Human
+  explicitly selects one.
+- Published Adaptive profile material ID aios-adaptive-brain-audit-v1 version 1 and
+  normalized digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718
+  is immutable for this migration. Do not silently recompute a different semantic
+  profile, change V3 historical digests, or claim live quality superiority.
+- Existing Brain auditing remains exactly two stages CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE,
+  all eight ordered lenses and previously published privacy, reserved-key and TASK
+  conformance hard floors. BO-1 AUTHOR_TASK ingress does not require serialized audit
+  handoff; AUTHOR_REPAIR and AUTHOR_REMEDIATION retain their existing authorized audited
+  handoff until a separately approved redesign.
+- User request 'retire V3' means stop all V3 selection/reasoning for prospective work;
+  preserve read-only decoding/conformance for previously V3-bound subjects and exact
+  ongoing in-flight historical references. Legacy support is not a second production
+  profile.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-340.yaml
+  - .ai/tasks/TASK-341.yaml
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  modify:
+  - src/aios_renew/authoring_ingress.py
+  - .ai/brain-audit-profiles.yaml
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+non_goals:
+- Do not remove historical V2/V3 normalized profile definitions, digests, legacy parser
+  validation or original artifact/replay compatibility; immutable RUN/REVIEW/FAILURE
+  cannot be reminted or upgraded.
+- No separate audit router, profile classifier, model scoring, extra Brain stages,
+  extra audit provider invocation, second semantic verdict, Runtime/Reviewer/Publisher
+  authority, persistent Brain state or in-band change to TASK/RUN/REVIEW schema.
+- No retry or correction attempt for RUN-341-001 inside TASK-342; no model change,
+  no PRIMARY rerun, no synthetic REVIEW/PASS, no VP03 Runtime evidence-validity implementation.
+- No new mandatory audit serializer for AUTHOR_TASK (BO-1 retired it); do not weaken
+  AUTHORED REPAIR/REMEDIATION binding guards to facilitate migration.
+- No modification outside listed scope.modify paths; report any additional live hardcode
+  consumer as a review blocker and request scope reconciliation, not unapproved implementation.
+constraints:
+  hard:
+  - 'Use one exact active prospective profile selected from canonical Human/Brain
+    profile policy: id aios-adaptive-brain-audit-v1, version 1, normalized digest
+    982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718. Never infer
+    active from registry ordinal, file name or historical comments.'
+  - All new ARCHITECTURE, TASK_AUTHORING, REPAIR_AUTHORING and REMEDIATION_AUTHORING
+    audit decisions must bind a single V1 package across Stage 1 and Stage 2 with
+    exact subject and digest; never evaluate V3 in parallel or silently fall back
+    to V3 on missing/malformed V1.
+  - Preserve backward-compatible V2/V3 validation strictly for historical evidence
+    or exact V3 in-flight completion, without allowing a historical profile to become
+    selected for a fresh authoring subject.
+  - Authoring ingress must retain exact canonical source/roadmap/profile identity
+    and freshness checks; profile selection cannot become independent lifecycle truth,
+    a new router, external mutable setting or noncanonical override.
+  - Retain V1 conformance/privacy/reserved-key/acceptance-phase guards at least as
+    strict as V3 for prospective correction and TASK flows, including exact packet/construct
+    binding and Stage 2 final eight-lens closure.
+  - No silent second invocation, extra comparison audit, broad evaluation prerequisite,
+    automatic retry/failover, source reset/force push, canonical FAILURE rewrite,
+    or downstream pin change.
+  - Docs and registry comments must reflect exact current V1-only status without rewriting
+    V3 historical facts. Historical V3 fixtures remain testable; measured V1 superiority
+    remains UNKNOWN.
+  - Where a legacy V3 handoff attempts to authorize a new authoring mutation after
+    the V1 cutover, fail closed with an explicit profile mismatch; do not transmute
+    its evidence or accept a mixed V3/V1 pair.
+  - Use minimum-sufficient-v2 focused Runtime verification, preserve existing valid
+    evidence, and ensure implementation and review do not conflate transport dispatch
+    with admitted RUN or PASS.
+acceptance:
+- id: AC1
+  condition: For every new covered flow, the active audit profile is selected by exact
+    canonical V1 ID/version/digest, not registry position or a V3 hard-coded literal.
+    The selected normalized profile material and reference match, with precisely one
+    active prospective semantic audit.
+- id: AC2
+  condition: The AUTHOR_REPAIR and AUTHOR_REMEDIATION audited authoring path accepts
+    a correctly bound V1 two-stage CANDIDATE and rejects new V3-only or mixed V3/V1
+    handoffs; it does not loosen exact FAILED RUN/REVIEW, canonical TASK, current-main,
+    return-contract or stage freshness checks.
+- id: AC3
+  condition: Absence, invalidity, stale profile ID/version/digest or changed canonical
+    policy fails closed; there is no hidden fallback to V3, silent bypass or added
+    third stage/audit invocation.
+- id: AC4
+  condition: Historical V2/V3 profile decoding and exact old subject replay remain
+    compatible, with existing digest/field safety rules and no retrospective profile
+    substitution; no historical refs/artifacts are modified.
+- id: AC5
+  condition: The V1 two-stage procedure retains eight mandatory ordered lenses, all
+    Stage-2 closures, privacy metadata exclusions and TASK conformance hard floors,
+    with negative regression tests for malicious or malformed authoring material.
+- id: AC6
+  condition: Existing prospective docs and registry annotations no longer claim V3
+    is the active default; implementation does not add a second selector, persistent
+    reasoning ledger, router or Runner/Publisher authority.
+- id: AC7
+  condition: Focused deterministic tests cover positive V1-only correction authoring,
+    V3 rejection for new subjects, missing/changed V1 selection, historical V3 replay,
+    mixed cross-profile rejection, preserved BO-1 TASK authoring semantics and no
+    duplicate profile invocation.
+- id: AC8
+  condition: Changed files are limited to scope.modify. No TASK-341 correction is
+    run from this TASK and the immutable RUN-341-001 FAILURE model-capacity history
+    remains intact; implementation gives lawful V1-only authoring readiness for a
+    separately authorized REPAIR.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_authoring_ingress.py tests/test_brain_audit.py
+    tests/test_brain_provider_protocol.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
