@@ -47,6 +47,43 @@ prospective_task_return_affinity_human_override:
     - DOWNSTREAM_REPOSITORIES_REQUIRE_SEPARATE_HUMAN_AND_CANONICAL_AUTHORITY
   engineering_effect: NONE_PLANNING_AND_AUTHORING_CHOICE_ONLY
 
+adaptive_brain_audit_v1_priority_20261012:
+  id: AIOS_ADAPTIVE_BRAIN_AUDIT_V1
+  status: HUMAN_APPROVED_IMMEDIATE_PRIORITY_PENDING_TASK_AUTHORING
+  approved_on: "2026-10-12"
+  authority: HUMAN_BRAIN_PLANNING
+  planning_document: docs/AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md
+  source_spec: A_PLUS_REFINED_2026_10_11
+  active_audit_profile_unchanged: brain-high-value-v3
+  requested_successor_profile: aios-adaptive-brain-audit-v1
+  intended_semantic_path: MINIMAL_V3_SUCCESSOR_B_NOT_NEW_ROUTER
+  immediate_next: adaptive-brain-audit-v1-minimal-successor-task-authoring
+  preempts: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  predecessor_current_main: c205acbfb76ed843580d6d97c9d1309a095a5e52
+  human_instruction: >-
+    Prioritize design-approved A+ minimal Adaptive Brain Audit implementation now,
+    before VP03 lean validity. Preserve one profile, two stages, eight mandatory
+    lenses, exact digests, historical compatibility, F01-F04 safeguards and
+    C01-C20 conformance. No extra router, planner, stage or authority.
+  sequencing: >-
+    Author a separately audited minimal implementation TASK from the exact fresh
+    canonical main after this planning mutation is lawfully merged. No TASK or
+    admitted Executor is assigned by this planning entry. Runtime verification,
+    Reviewer semantic verdict and Publisher eligible-source publication are
+    required before prospective cutover. No automatic roadmap advancement.
+  human_executor_delegation: NOT_YET_SELECTED_FOR_NEW_TASK
+  implementation_authorization: REQUIRES_CANONICAL_TASK_AND_EXPLICIT_HUMAN_DELEGATION
+  v1_profile_activation: NOT_AUTHORIZED
+  measured_north_star_superiority: UNKNOWN
+  vp03_lean_resume_gate: HUMAN_BRAIN_RECONCILIATION_AFTER_ADAPTIVE_AUDIT_CLOSURE_OR_NEW_HUMAN_PRIORITY
+  preservation:
+    - VP03_FORWARD_RECOVERY_TASK339_DONE_AND_EXACT_LINEAGE_IMMUTABLE
+    - VP03_LEAN_VALIDITY_QUEUED_NOT_CANCELLED
+    - NO_AUTOMATIC_KERNEL_OR_CONSTITUTION_AMENDMENT
+    - NO_RUNTIMES_OR_REVIEWERS_OR_PUBLISHERS_ADDED
+    - NO_FORCE_PUSH_RESET_OR_HISTORY_REWRITE
+    - NO_AUTHORING_FROM_STALE_MAIN_OR_UNREVIEWED_CANDIDATE
+
 brain_optimization_preemption:
   id: brain-optimization-v1
   status: HUMAN_APPROVED_ACTIVE_PRE_H4
@@ -651,7 +688,7 @@ publication_end_to_end_preemption:
 
 verification_architecture_replacement_preemption:
   id: aios-verification-architecture-replacement-v1
-  status: HUMAN_APPROVED_ACTIVE_PRE_BO2_3
+  status: HUMAN_APPROVED_PAUSED_BEHIND_ADAPTIVE_BRAIN_AUDIT_V1
   approved_on: "2026-10-08"
   authority: HUMAN_BRAIN_PLANNING
   planning_document: docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
@@ -661,8 +698,8 @@ verification_architecture_replacement_preemption:
     command-driven scheduling, while preserving evidence, correctness,
     immutable legacy lineage and all authority boundaries. This planning
     decision is not a TASK, RUN, Runtime verification or source publication.
-  priority: PREEMPTS_BO2_BO3_TEMPORARILY
-  effective_next: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  priority: TEMPORARILY_PREEMPTED_BY_ADAPTIVE_BRAIN_AUDIT_V1
+  effective_next: adaptive-brain-audit-v1-minimal-successor-task-authoring
   vp03d_runtime_git_credential_transport_reconciliation_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     reported_read_only_local_checkout: C_TOOLS_AIOS_RUNTIME_AIOS_RENEW_VALID_GIT_WORKTREE
@@ -1536,7 +1573,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  - adaptive-brain-audit-v1-minimal-successor-task-authoring
 sequence:
 
   - id: TASK-309
@@ -2717,9 +2754,36 @@ sequence:
       Executor owns code HOW; Runtime verifies and Publisher alone publishes.
       A source candidate commit must advance main normally, not rewrite history.
 
-  - id: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  - id: adaptive-brain-audit-v1-minimal-successor-task-authoring
     status: NEXT
+    phase: MINIMAL_V3_TO_ADAPTIVE_BRAIN_AUDIT_V1_SUCCESSOR
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-12"
+    planning_document: docs/AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md
+    human_priority: IMMEDIATE_PREEMPTS_VP03_LEAN_VALIDITY
+    task_authoring_status: NOT_AUTHORED
+    task_id: NOT_ASSIGNED
+    objective: >-
+      Author the minimum-sufficient prospective TASK implementing A+ adaptive
+      Brain semantic audit as successor to brain-high-value-v3, preserving exact
+      two-stage and eight-lens requirements, digest-bound profile identity,
+      V2/V3 legacy conformance and privacy metadata guards, Stage-2 independent
+      focus attack, and paired V3/V1 quality/cost evaluation. No new audit router
+      or lifecycle authority.
+    design_acceptance: F01_F02_F03_F04_AND_C01_THROUGH_C20_IN_PLANNING_DOCUMENT
+    implementation_authorization: REQUIRES_CANONICAL_TASK_AND_EXPLICIT_HUMAN_EXECUTOR_DELEGATION
+    activation: NOT_AUTHORIZED
+    completion_boundary: RUNTIME_RESULT_REVIEWER_PASS_PUBLISHER_PUBLICATION_THEN_HUMAN_BRAIN_CUTOVER_RECONCILIATION
+    branch_and_publication_safety: >-
+      Author from exact current canonical main after planning merge. Bind exact
+      expected-main CAS, use only descendant source candidate, never reset or
+      force-push, and require Publisher for eligible reviewed source publication.
+      Stale local planning or historical recovery source is not a valid base.
+
+  - id: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+    status: QUEUED_AFTER_ADAPTIVE_BRAIN_AUDIT_V1
     phase: VP03_RUNTIME_INTEGRATED_MINIMAL_EVIDENCE_VALIDITY
+    resume_gate: HUMAN_BRAIN_RECONCILIATION_AFTER_ADAPTIVE_AUDIT_V1_CLOSURE_OR_NEW_HUMAN_PRIORITY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-10"
     task_authoring_status: NOT_AUTHORED
