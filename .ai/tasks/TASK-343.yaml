@@ -1,0 +1,165 @@
+task_id: TASK-343
+revision: 1
+goal: Make the Human-selected fixed 12-worker pytest execution profile the default
+  for every ordinary AIOS-renew test execution, including minimum-sufficient-v2 affected,
+  projected, base, candidate, correction, and direct repository pytest entrypoints;
+  retain the existing selected 12-worker full-suite behavior and truthful exact-bound
+  Runtime evidence.
+problem: Canonical TASK-231 already selected workers=12 for the full-suite wrapper,
+  but main b21a50e79afa77230db11019a8a05c597e319dbd still sets workers=1 for non-full-suite
+  pytest in src/aios_renew/verification.py::_v2_profile. RUN-342-002 executed its
+  598-test authored scope with workers=1 and approximately 6025 verification seconds.
+  The prior Human-selected 12-worker policy is not consistently applied to the ordinary
+  pytest execution surface. Human now explicitly prioritizes an immediate fixed 12-worker
+  default, not an additional benchmark or automated worker tuner.
+assumptions:
+- This is prospective new Human intent, not correction of RUN-342-002; current canonical
+  main at task authoring is b21a50e79afa77230db11019a8a05c597e319dbd. TASK-342 RESULT,
+  REVIEW and publication remain immutable. Earlier tasks, commands and evidence stay
+  historically bound.
+- Human chose 12 fixed workers, load distribution and zero worker restart; .ai/verification-profiles.yaml
+  currently records that selection from TASK-231 for full-suite and historical workers=4
+  data separately. Do not require fresh 4/8/12/16 measurements or manufacture a new
+  performance baseline.
+- The prospective change applies to normal execution of pytest test items launched
+  within AIOS-renew, including Runtime V2 and developer-invoked pytest under repository
+  configuration. Collection-only probes do not execute test items; explicit historical
+  performance/diagnostic worker matrices retain their authored worker counts and exact
+  semantics.
+- The Human's current priority preempts older planning bookmarks for this task. New
+  TASK authoring does not itself advance the roadmap or create RUN, review or publication.
+  Executor implementation requires separate explicit Human delegation; preserve existing
+  manually selected Executor mode until automatic selection is fixed.
+- Pytest-xdist availability and 12-worker collection/isolation conformance must be
+  proven or fail closed; unsupported test commands and non-pytest verification operations
+  must not be silently rewritten.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/verification-profiles.yaml
+  - .ai/tasks/TASK-231.yaml
+  - .ai/tasks/TASK-342.yaml
+  - pyproject.toml
+  - scripts/aios_parallel_full_suite.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/parallel_verification.py
+  - src/aios_renew/verification_profile.py
+  - tests/bp_v4_probe_plugin.py
+  - tests/conftest.py
+  - tests/test_verification.py
+  - tests/test_verification_contract.py
+  - tests/test_parallel_verification.py
+  - tests/test_verification_profile.py
+  - tests/test_operator.py
+  modify:
+  - .ai/verification-profiles.yaml
+  - pyproject.toml
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/parallel_verification.py
+  - src/aios_renew/verification_profile.py
+  - tests/bp_v4_probe_plugin.py
+  - tests/conftest.py
+  - tests/test_verification.py
+  - tests/test_verification_contract.py
+  - tests/test_parallel_verification.py
+  - tests/test_verification_profile.py
+  - tests/test_operator.py
+non_goals:
+- Do not change fixed worker count, dynamically tune worker count, retry/fallback
+  to one/four/auto workers, silently suppress xdist failure or introduce a second
+  generic test-selection router.
+- Do not make collect-only perform tests, rewrite explicit historical 2/3/4 or 4/8/12/16
+  measurement/probe worker selections, change the immutable TASK-231 policy provenance
+  or re-label historical workers=4 evidence.
+- Do not broaden the authored verification command's semantic coverage or substitute
+  a different test scope merely to activate xdist; non-pytest shell checks remain
+  unchanged.
+- Do not weaken canonical collection/subject/worker identity, raw failure, environment/toolchain,
+  clean checkout, attribution, minimum-sufficient-v2 reuse and verification ownership
+  contracts, including candidate-vs-base failure classifications.
+- Do not require paired performance benchmarks, auto-select a new task, modify downstream
+  Python Agent adoption, change frozen Kernel, Reviewer, Publisher, GitHub workflow
+  or host-wide Python/Windows configuration.
+- Do not claim reduced elapsed time, Runtime verification success, Review PASS, publication
+  or roadmap completion from Executor implementation alone.
+constraints:
+  hard:
+  - For every ordinary executed pytest test scope under AIOS-renew Runtime and repository
+    default CLI, effective workers=12, distribution=load and max_worker_restart=0
+    must be unambiguous. The existing selected full-suite stays fixed to 12. Explicitly
+    worker-pinned diagnostic/measurement commands and collection-only operations are
+    not ordinary execution defaults.
+  - Use one canonical Human-selected worker policy, with no conflicting second selection
+    authority or silent environment/PYTEST_ADDOPTS override; bind the effective test
+    command and worker execution profile to canonical observation/evidence rather
+    than reporting an invented 12-worker label for serial execution.
+  - Minimum-sufficient-v2 candidate/base/affected/exact-projection/correction paths
+    must retain original authored test scope and execute real pytest test items at
+    12 workers, with collection-only operations correctly distinguished and comparable
+    base/candidate observations requiring matching worker/toolchain conditions.
+  - Exactly one execution of an authored required pytest command per planned execution,
+    subject to the existing explicitly authorized V2 exact probes and valid-evidence
+    reuse; no duplicated full-scope run, hidden fallback, swallowed exit status, premature
+    PASS, or shadow verification authority.
+  - Missing pytest-xdist, worker crash, worker collection divergence, unstable observation,
+    stale worker profile, oversized/incomplete evidence, or incompatible explicit
+    configuration must fail closed with an attributable error rather than reverting
+    to serial/four-worker execution.
+  - Preserve historical fixed-worker probes and 12-worker full-suite behavior; keep
+    process-local Git/temp isolation and host-safety invariants. Direct ordinary developer
+    pytest execution must observe the same fixed default without unexpectedly overriding
+    explicit diagnostic worker selections.
+  - All code changes must be inside scope.modify; report new necessary paths to Brain
+    for separate authorization instead of editing beyond scope. Runtime remains sole
+    canonical verifier, Reviewer owns verdict, Publisher owns publication.
+acceptance:
+- id: AC1
+  condition: The published repository policy/default surfaces express one Human-selected
+    fixed ordinary pytest worker setting of 12/load/max_worker_restart=0, with no
+    active ordinary 1-worker or 4-worker default or independent competing selector.
+- id: AC2
+  condition: Prospective minimum-sufficient-v2 ordinary authored pytest execution,
+    including candidate, base, affected-first, exact projected reproduction and REPAIR/REMEDIATION
+    paths, invokes actual 12-worker xdist runs while preserving original authored
+    command coverage and exact evidence source identity.
+- id: AC3
+  condition: Ordinary repository developer pytest invocations use 12 workers by default;
+    explicit worker-pinned measurement and historical diagnostic invocations remain
+    behaviorally unchanged; collect-only does not execute 12 test workers or get counted
+    as a 12-worker test run.
+- id: AC4
+  condition: Runtime-bound observations, profiles, command/toolchain records and reuse
+    comparisons truthfully identify actual 12-worker execution. Old 1-worker/4-worker
+    proof cannot be falsely treated as comparable or fresh 12-worker evidence.
+- id: AC5
+  condition: Worker admission, isolation, collection agreement, canonical failure
+    attribution, raw status, hard bounds and prior evidence validity gates remain
+    fail-closed, including missing xdist, worker crashes, profile mismatch and incomplete
+    or divergent observations; no retry/fallback.
+- id: AC6
+  condition: Targeted regression coverage distinguishes default 12-worker positive
+    paths from collection-only, explicit historical profile, unsupported command,
+    stale evidence, and malformed/failed worker conditions without introducing a duplicated
+    suite/probe execution.
+- id: AC7
+  condition: The implementation retains existing single fixed 12-worker full-suite
+    wrapper, historical measurement context, minimum-sufficient-v2 authority and six-file
+    TASK-342 reviewed/published state without any unrelated changes, auto task routing,
+    publisher/reviewer authority or downstream pin mutation.
+verification:
+  policy: minimum-sufficient-v2
+  full_suite_reason: This change alters the default behavior of every ordinary pytest
+    execution surface and can affect global test-fixture isolation. One exact 12-worker
+    selected full-suite execution, including newly authored default-path assertions
+    and fail-closed negative cases, is the minimum Runtime proof; do not run a duplicate
+    broad suite or benchmark matrix.
+  required:
+  - python scripts/aios_parallel_full_suite.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
