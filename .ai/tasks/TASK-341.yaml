@@ -1,0 +1,153 @@
+task_id: TASK-341
+revision: 1
+goal: Implement the smallest Runtime-internal, fail-closed VALID/INVALIDATED/UNKNOWN
+  evidence applicability semantics necessary for the Human-approved VP03 Runtime Lean
+  Validity NEXT, by extending existing minimum-sufficient-v2 verification contract
+  and Runtime only where existing proof binding/reuse is insufficient. Preserve exact
+  proof subjects, accepted evidence, semantic authority boundaries, and V2 production
+  behavior until separately authorized cutover; do not recreate any retired VP03 issuer,
+  broker, attestations, independent proof engine, or generic verification planner.
+problem: After TASK-339 restored pre-VP03 operational source and TASK-340 published
+  Adaptive Brain Audit capability without activation, the approved VP03 lean NEXT
+  must not repeat VP03A/B/C/D architecture. Current verification_contract.py and verification.py
+  already validate exact binding, tracked-tree and execution conditions and reuse
+  matching V2 evidence conservatively, but reuse planning currently reports commands/reused/fallback
+  rather than independently traceable per-obligation VALID, INVALIDATED or UNKNOWN
+  applicability and reasons. Without a bounded distinction, future proof applicability
+  changes risk false PASS, unnecessary reruns or a second validity authority. Existing
+  behavior is the no-change baseline; modify only a demonstrated deficit and preserve
+  all valid guards.
+assumptions:
+- Fresh Brain Sync for TASK-341 semantic construct observed canonical main 9c2d3a261a0ec5431794ceae44b1027820d586f6;
+  AUTHOR_TASK ingress binds expected-main/CAS and Runtime must independently revalidate
+  main and exact TASK blob before a RUN. No stale planning or reviewed candidate may
+  substitute.
+- Canonical roadmap unique NEXT is verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  following Human/Brain reconciliation after TASK-340 published; this only authorizes
+  bounded TASK authoring, not auto-activation or a new Executor delegation.
+- TASK-339 source recovery retired VP03-exclusive broker/issuer/attestation architecture.
+  Existing V2 verification records and exact identities must be reused, not migrated
+  into a second persistent evidence store.
+- VP-01 measurements and the full VP-02 proof-mapping exit are not established as
+  prerequisites satisfied. This TASK must preserve UNKNOWN and cannot claim global
+  V2 replacement, proof completeness across unmapped obligations, or VP-07 cutover.
+- Current active Brain audit profile remains brain-high-value-v3; Adaptive V1 is published
+  but not yet active or independently shown superior. No current Human Executor/model/effort
+  delegation applies to TASK-341.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-339.yaml
+  - .ai/tasks/TASK-340.yaml
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/artifacts.py
+  - tests/test_verification_contract.py
+  - tests/test_verification.py
+  modify:
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - tests/test_verification_contract.py
+  - tests/test_verification.py
+non_goals:
+- No new evidence validity service, state DB, attestation, provenance issuer, broker,
+  source journal, protocol transport, new Runtime verifier, second proof scheduler,
+  semantic dependency oracle or external API.
+- No switch from minimum-sufficient-v2 to new verification policy, no change to TASK/RUN/RESULT/EVIDENCE
+  schemas, Reviewer, Publisher, Kernel, Constitution, roadmap or downstream pins.
+- No automatic proof reuse based on filenames, changed-files disjointness, matching
+  nodeids, source coincidence or unchecked semantic equivalence; UNKNOWN never grants
+  PASS.
+- No broad-suite replay, base-run attribution cascade, double testing, raw-evidence
+  rewriting, synthetic cost improvements or test harness telemetry service.
+- No changes outside the four explicit scope.modify files; a necessary cross-scope
+  norm or consumer change blocks this candidate and requires Human/Brain reconciliation
+  rather than silent expansion.
+constraints:
+  hard:
+  - Preserve exact Human/Brain specification of WHAT/WHY and accepted proof obligations;
+    Runtime handles only deterministic applicability, verification and evidence; the
+    admitted Executor owns HOW; Reviewer and Publisher stay independent.
+  - Start by comparing A) no-change existing exact V2 guard, B) minimum extension
+    inside existing Runtime, C) new service/scheduler. Reject C; implement B only
+    for a proven gap, preserve A if already correct. No speculative optimization or
+    forced change.
+  - Any applicability assessment must distinguish VALID supported by exact original
+    canonical evidence and condition footprint, INVALIDATED supported by exact known
+    invalidator, UNKNOWN otherwise. Missing/forged/conflicting/stale or incomparable
+    conditions cannot become VALID.
+  - Source evidence identity, raw digest, historic subject/run, proof population,
+    source tree and relevant fixture/shared helper/policy, environment/toolchain,
+    runner worker/order/concurrency/integration conditions must remain authoritative
+    as appropriate. Do not invent provenance for legacy evidence.
+  - Preserve existing conservative complete-tracked-tree V2 guard, valid correction
+    reuse, original failure provenance and negative conformance. Only independently
+    approved, complete proof applicability may enable additional reuse; absent such
+    mapping default UNKNOWN or existing conservative V2 behavior.
+  - A separate required integration, concurrency, ordering or whole-command proof
+    must not be discharged by a narrower test or a different execution profile, even
+    if nodeids overlap. Correct blocking failure does not automatically demand base
+    attribution.
+  - Make effects and reasons bounded, deterministic and testable without storing a
+    second semantic ledger; expose what was reused, invalidated or unknown using existing
+    Runtime evidence/observation conventions only if schema-compatible.
+  - Use Runtime minimum-sufficient-v2 verification exactly once for affected test
+    obligations. Don't repeat unchanged broad/base checks solely for ceremony; tests/Executor
+    claims are not canonical verification truth.
+  - Maintain TASK-339 retired module boundaries and current Publisher/CAS/ref protection;
+    no reset/force-push/cherry-pick to publish a candidate. V1 activation remains
+    independently gated.
+acceptance:
+- id: AC1
+  condition: Within existing Runtime/verification contract, an exact bounded three-way
+    applicability judgment for a specified proof obligation correctly distinguishes
+    VALID, INVALIDATED, UNKNOWN with traceable reason and exact evidence/subject binding;
+    where current conservative V2 behavior suffices, retain it instead of duplicating
+    a mechanism.
+- id: AC2
+  condition: Only valid complete comparable bindings with still-lawful source evidence
+    and required original raw/phase/collection conditions can discharge a target obligation.
+    Evidence lineage retains historic subject and SHA and never re-labels an old result
+    as freshly executed.
+- id: AC3
+  condition: Evidence invalidation is explicit and conservative across changed test/fixture/helper/policy,
+    full tracked tree when no approved narrower mapping exists, environment/toolchain,
+    execution profile/worker/order/concurrency/integration obligations and correction
+    subjects. Unknown comparability fails closed, never PASS.
+- id: AC4
+  condition: Negative tests reject missing or forged provenance, swapped SHA/subject,
+    mutated raw/digest, incomplete/unstable/conflicting observations, ambiguous mapping
+    and serial/parallel or focused/integration substitution. Accepted legacy V2 evidence
+    and historical negative guards remain unchanged.
+- id: AC5
+  condition: For PRIMARY, REPAIR, REMEDIATION and DIRECT_CANDIDATE, valid unaffected
+    evidence remains eligible according to existing policy while actually invalidated/new
+    obligations require the minimum lawful verification. No cross-correction auto-authority
+    or new generic router is introduced.
+- id: AC6
+  condition: A decisive candidate failure does not automatically force broad base
+    replay or failure reproduction. Distinct mandatory comparison proofs still run
+    when independently required; equivalent already-proven verification is not executed
+    twice without an explicit distinct requirement.
+- id: AC7
+  condition: Focused deterministic fixtures compare no-change V2 against the minimum
+    delta on representative correction, unchanged evidence, changed helper, changed
+    fixture, unknown baseline and integration adversarial cases; record actual call
+    counts and limitations, not fabricated North-Star savings.
+- id: AC8
+  condition: Modified paths are exactly within scope.modify, current V2 policy and
+    Runtime/Reviewer/Publisher boundaries remain unaltered, retired VP03A/B/C/D architectures
+    are not reintroduced, and VP-01/VP-02/VP-07 cutover dependencies remain unproven
+    rather than silently passed.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_verification_contract.py tests/test_verification.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
