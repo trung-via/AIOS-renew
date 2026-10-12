@@ -3606,8 +3606,8 @@ def test_author_repair_failed_remediation_malformed_negatives(tmp_path):
     with pytest.raises(AuthoringIngressError, match="canonical REMEDIATION execution must be a mapping"):
         try_repair({"kind": "REMEDIATION"}, build_failure("RUN-105-N01"), "RUN-105-N01")
 
-    # 2. Non-mapping execution in REMEDIATION wrapper
-    with pytest.raises(AuthoringIngressError, match="canonical REMEDIATION execution must be a mapping"):
+    # 2. Public transport rejects a non-mapping execution before authoring.
+    with pytest.raises(ReviewTransportError, match="^invalid public RUN projection$"):
         try_repair({"kind": "REMEDIATION", "execution": "not-a-map"}, build_failure("RUN-105-N02"), "RUN-105-N02")
 
     # 3. Missing run in REMEDIATION.execution
@@ -3689,6 +3689,16 @@ def test_author_repair_failed_remediation_malformed_negatives(tmp_path):
         ref = f"refs/heads/aios/repair/{nid}"
         output = git(repo, "ls-remote", "--refs", "origin", ref)
         assert not output.strip(), f"repair ref unexpectedly created for {nid}"
+
+
+@pytest.mark.parametrize("execution", [None, "not-a-map", 123, []])
+def test_author_repair_rejects_non_mapping_remediation_execution(execution):
+    # Historical canonical inputs must fail at authoring independently of the
+    # prospective writer's earlier rejection of malformed public projections.
+    with pytest.raises(AuthoringIngressError, match="^canonical REMEDIATION execution must be a mapping$"):
+        authoring_ingress_module._resolve_underlying_run_view(
+            {"kind": "REMEDIATION", "execution": execution}, expected_run_id="RUN-105-N02",
+        )
 
 
 # ===========================================================================
@@ -4337,6 +4347,59 @@ findings:
         {"source_run_id": lineage["run_id"], "finding_id": "F2"},
         {"expected_reviewed_sha": lineage["repaired_sha"]}, remediation)
     return lineage, envelope
+
+
+def test_h2_integrated_repair_private_and_pending_bases_remain_bound(tmp_path):
+    from aios_renew import unified_state
+    from aios_renew.operator import load_task, runtime_paths
+
+    lineage, _ = h2_reviewed_repair_source(tmp_path)
+    repo = lineage["repo"]
+    task = load_task(repo, "TASK-140")
+    lifecycle = resolve_remote_task_lifecycle(repo, task_id=task.task_id, task_revision=task.revision)
+    remote, reviews = unified_state._decode_remote_lifecycle(repo, task, lifecycle)
+    state = runtime_paths(repo)
+    files = tmp_path / "integrated-review-state"
+    name = lineage["run_id"] + ".json"
+    run_bytes = (files / "repair-run.json").read_bytes()
+    result_bytes = (files / "repair-result.json").read_bytes()
+    correction_bytes = (files / "repair-lineage.json").read_bytes()
+    correction = json.loads(correction_bytes)
+    assert correction["root_base_sha"] == lineage["reviewed_sha"]
+    assert correction["result_base_sha"] == lineage["integration_candidate_sha"]
+    assert correction["root_base_sha"] != correction["result_base_sha"]
+    (state.runs / name).write_bytes(run_bytes)
+    (state.results / name).write_bytes(result_bytes)
+    (state.repairs / name).write_bytes(correction_bytes)
+
+    # The transported private record reconciles with its public counterpart;
+    # removing that child from observation retains the pending boundary.
+    pending_remote = [item for item in remote if item.run_id != lineage["run_id"]]
+    assert unified_state._local_pending_runs(repo, state, task, remote, reviews) == ([], [])
+    pending, active = unified_state._local_pending_runs(repo, state, task, pending_remote, reviews)
+    assert not active and len(pending) == 1
+    assert (pending[0].run_id, pending[0].family, pending[0].terminal_kind) == (
+        lineage["run_id"], "REPAIR", "RESULT",
+    )
+    assert pending[0].correction == correction
+    (state.results / name).unlink()
+    pending, active = unified_state._local_pending_runs(repo, state, task, pending_remote, reviews)
+    assert not pending and len(active) == 1
+    assert (active[0].run_id, active[0].family, active[0].terminal_kind) == (
+        lineage["run_id"], "REPAIR", "ACTIVE",
+    )
+    (state.results / name).write_bytes(result_bytes)
+    assert (state.runs / name).read_bytes() == run_bytes
+    assert (state.repairs / name).read_bytes() == correction_bytes
+
+    for field in ("root_base_sha", "result_base_sha"):
+        (state.repairs / name).write_text(
+            json.dumps(dict(correction, **{field: lineage["failed_head_sha"]})), encoding="utf-8",
+        )
+        for observed in (remote, pending_remote):
+            with pytest.raises(ValueError, match="^persisted REPAIR base lineage mismatch$"):
+                unified_state._local_pending_runs(repo, state, task, observed, reviews)
+    (state.repairs / name).write_bytes(correction_bytes)
 
 
 def test_h2_successful_repair_delta_changes_required_authors_and_admits_remediation(tmp_path):

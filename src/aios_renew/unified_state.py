@@ -734,6 +734,44 @@ def _decode_publication_continuation(
     return document, plan.source_run_id
 
 
+def _repair_predecessor_bases(
+    parent: _LifecycleRun,
+    lifecycle: list[_LifecycleRun],
+    *,
+    seen: frozenset[str] = frozenset(),
+) -> tuple[str, str]:
+    """Derive semantic root and result base from the exact decoded ancestry.
+
+    Integrated REMEDIATION changes Git attribution, while its semantic source
+    still supplies the original TASK root. REPAIR inherits both identities.
+    """
+    if parent.run_id in seen:
+        raise ValueError("REPAIR origin is cyclic")
+    if parent.family == "PRIMARY":
+        return parent.run.base_sha, parent.run.base_sha
+    predecessors = [item for item in lifecycle if item.run_id == parent.parent_run_id]
+    if len(predecessors) != 1:
+        raise ValueError("REPAIR origin is missing or ambiguous")
+    root, result_base = _repair_predecessor_bases(
+        predecessors[0], lifecycle, seen=seen.union((parent.run_id,)),
+    )
+    if parent.family == "REMEDIATION":
+        result_base = (
+            parent.execution_base.integration_candidate_sha
+            if parent.execution_base is not None and parent.execution_base.is_integrated
+            else root
+        )
+    elif parent.family == "REPAIR":
+        if (parent.correction is None
+                or parent.correction.get("root_base_sha") != root
+                or ("result_base_sha" in parent.correction
+                    and parent.correction["result_base_sha"] != result_base)):
+            raise ValueError("REPAIR origin base lineage mismatch")
+    else:
+        raise ValueError("REPAIR origin family is invalid")
+    return root, result_base
+
+
 def _decode_remote_lifecycle(
     repo: Path, task: Task, lifecycle: RemoteTaskLifecycle
 ) -> tuple[list[_LifecycleRun], dict[str, Review]]:
@@ -1017,6 +1055,7 @@ def _decode_remote_lifecycle(
         if len(parents) != 1:
             raise ValueError("REPAIR predecessor is missing or ambiguous")
         parent = parents[0]
+        root_base, result_base = _repair_predecessor_bases(parent, resolved)
         if (
             parent.terminal_kind != "FAILURE"
             or item.run.base_sha != parent.candidate_sha
@@ -1024,11 +1063,9 @@ def _decode_remote_lifecycle(
             or not _matches_canonical_failure(item.correction["failure"], parent.terminal,
                                              canonical_workspace=parent.run.workspace)
             or parent.terminal.get("base_sha") != parent.run.base_sha
-            or item.correction["root_base_sha"] != (
-                parent.correction["root_base_sha"]
-                if parent.family == "REPAIR" and parent.correction is not None
-                else parent.run.base_sha
-            )
+            or item.correction["root_base_sha"] != root_base
+            or ("result_base_sha" in item.correction
+                and item.correction["result_base_sha"] != result_base)
         ):
             raise ValueError("REPAIR predecessor identity or failed SHA mismatch")
         return correction_origin(parent, seen.union((item.run_id,)))
@@ -1444,15 +1481,15 @@ def _local_pending_runs(
                 and _matches_canonical_failure(correction["failure"], parent.terminal,
                                                canonical_workspace=parent.run.workspace)
                 and parent.terminal.get("base_sha") == parent.run.base_sha
-                and correction["root_base_sha"] == (
-                    parent.correction["root_base_sha"]
-                    if parent.family == "REPAIR" and parent.correction is not None
-                    else parent.run.base_sha
-                )
             ]
             if len(parents) != 1:
                 raise ValueError("persisted REPAIR predecessor is missing or ambiguous")
-            elif parents[0].family in ("REMEDIATION", "REPAIR"):
+            root_base, result_base = _repair_predecessor_bases(parents[0], remote)
+            if (correction["root_base_sha"] != root_base
+                    or ("result_base_sha" in correction
+                        and correction["result_base_sha"] != result_base)):
+                raise ValueError("persisted REPAIR base lineage mismatch")
+            if parents[0].family in ("REMEDIATION", "REPAIR"):
                 # Match canonical lifecycle decoding: correction identity belongs
                 # to the exact failed correction chain, never to repair prose or
                 # a task-wide finding search.  A PRIMARY origin intentionally

@@ -624,16 +624,26 @@ def test_resolves_canonical_failed_correction_chain_with_exact_transported_facts
         )
     ]
     by_run = {item.run_id: item for item in recovery.failures}
-    assert (by_run["RUN-058-001"].run, by_run["RUN-058-001"].failure) == first[:2]
-    assert (by_run["RUN-058-002"].run, by_run["RUN-058-002"].failure) == second[:2]
-    assert (by_run["RUN-058-003"].run, by_run["RUN-058-003"].failure) == third[:2]
-    assert by_run["RUN-058-002"].repair == second[2]
-    assert by_run["RUN-058-003"].repair == third[2]
+    for run_id, private in zip(recovery.remote_run_ids, (first, second, third)):
+        private_run, private_failure, private_repair, _ = private
+        public_run = dict(json.loads(private_run), workspace="protected-runtime-workspace")
+        expected_run = json.dumps(public_run, sort_keys=True, separators=(",", ":")).encode()
+        recovered = by_run[run_id]
+        assert (recovered.run, recovered.failure) == (expected_run, private_failure)
+        assert (files / run_id / "run.json").read_bytes() == private_run
+        assert json.loads(private_run)["workspace"] == "discarded-historical-workspace"
+        if private_repair is None:
+            assert recovered.repair is None
+        else:
+            public_repair = dict(json.loads(private_repair), run=public_run)
+            expected_repair = json.dumps(public_repair, sort_keys=True, separators=(",", ":")).encode()
+            assert recovered.repair == expected_repair
+            assert (files / run_id / "repair.json").read_bytes() == private_repair
     assert git(
         remote,
         "show",
         "refs/heads/aios/failure-artifacts/RUN-058-003:.ai/transport/repair.json",
-    ).encode() == third[2]
+    ).encode() == by_run["RUN-058-003"].repair
 
 
 def test_historical_repair_snapshot_failure_has_bounded_operational_provenance(
