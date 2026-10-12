@@ -1,0 +1,126 @@
+task_id: TASK-344
+revision: 1
+goal: Restore faithful, fail-closed canonical FAILURE decoding and Unified State AUTHOR_REPAIR
+  eligibility when minimum-sufficient-v2 candidate and base observations carry distinct,
+  truthful source-bound verifier/profile identities. Preserve proof non-comparability
+  and every historical artifact.
+problem: RUN-343-001 is an admitted canonical VERIFICATION FAILURE. The Runtime writer
+  records base and candidate profile identities independently by their Git commit;
+  their verifier, observer and selected-policy blob SHAs differ legitimately. The
+  published Unified State FAILURE reader nevertheless requires base.profile to equal
+  the candidate binding.profile byte-for-byte and throws 'verification reference base
+  binding mismatch', reducing TASK-343 to BLOCKED/MALFORMED_CANONICAL_STATE instead
+  of AUTHOR_REPAIR. This prerequisite blocks the separate bounded correction of TASK-343's
+  pytest observation export.
+assumptions:
+- Human explicitly approved this narrow prerequisite as separate TASK_AUTHORING; canonical
+  main bound at authoring is f3e048bacfef0bf7f5e3bac774f43c72eddabbb8. This TASK does
+  not change the older planning roadmap's semantic NEXT or claim VP03 completion.
+- Exact unresolved lineage is TASK-343 r1 / RUN-343-001 VERIFICATION FAILURE, failed
+  head 96d4a91cacc284c303f66d26a2096bb264719473, FAILURE artifacts ref SHA 94823a37b1d0a7587683ceabd955f74b22de6050;
+  these immutable subjects must remain unchanged.
+- The candidate and base observations have the same authored command, effective 12/load/zero-restart
+  execution settings and toolchain, but distinct per-commit verifier/policy/observer
+  blob identifiers. The canonical records state complete=false and unstable=true for
+  both observations; no valid PASS proof exists.
+- The current reader's strict equality of entire base and candidate profile is not
+  the same as a Runtime authorization to reuse/attribute base evidence. Compatibility
+  and evidence validity remain separately checked by existing verification contracts.
+- The historical TASK-343 original full-suite failure involving conflicting immutable
+  pytest observation is a separate causal defect to be addressed only through its
+  subsequently authorized REPAIR. No clean rerun or correction for RUN-343-001 is
+  included here.
+- For new AIOS-renew TASK authoring, the currently selected explicit return affinity
+  remains LEGACY_REPOSITORY_DEFAULT_ROUTE. Human will select one Executor manually
+  at execution admission.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_operator_unified_state.py
+  - tests/test_verification_contract.py
+  - .ai/tasks/TASK-343.yaml
+  - .ai/roadmap-state.yaml
+  modify:
+  - src/aios_renew/unified_state.py
+  - tests/test_operator_unified_state.py
+non_goals:
+- No alteration, replacement, redaction downgrade or reissuance of existing TASK/RUN/FAILURE/REVIEW/REPAIR
+  artifacts, source refs or immutable raw observations; no reset, force-push or fabricated
+  success.
+- Do not fix pytest nested observation-export collision, change the selected 12-worker
+  policy, tune pytest, alter minimum-sufficient-v2 verification routing/baseline attribution,
+  or rerun the historical full suite.
+- Do not equate distinct source-bound base/candidate profiles for canonical PASS,
+  comparable baseline, failure attribution, projection, or evidence reuse; no silent
+  compatibility fallback.
+- No changes to frozen Kernel, Roadmap, Runtime coordination/review/publication authority,
+  external carriers, credential trust or downstream adoption.
+- Do not expand modification scope, add a second verifier, execution/repair router,
+  retry behavior, duplicate tests or Executor auto-selection.
+constraints:
+  hard:
+  - Preserve exact TASK-343 r1, RUN-343-001, candidate/base commits, FAILURE artifacts,
+    and their existing recorded nonzero/incomplete/unstable verification truth; no
+    historical mutation or semantic relabeling.
+  - The canonical FAILURE reader must independently preserve and validate base/candidate
+    subject SHA, authored command, observation digest, failure-set/base digest, exact
+    toolchain, profile/worker facts and existing evidence roles. Source-bound verifier/policy/observer
+    blob IDs may legitimately differ between base and candidate.
+  - Differing source-bound profile identities must never silently discharge proof,
+    imply comparability, or produce PRE_EXISTING_BASELINE/PASS. Reuse and attribution
+    guards continue to be owned by minimum-sufficient-v2 Runtime verification logic.
+  - Malformed, forged, stale, mismatched-subject/command/toolchain, broken digest,
+    wrong effective worker configuration, incomplete required fields, and unrelated
+    historical FAILURE variants retain fail-closed behavior. The reader may not simply
+    discard profile validation.
+  - The fix must restore a well-formed canonical FAILURE to the existing CORRECTION/AUTHOR_REPAIR
+    selection path without authoring or dispatching any REPAIR, changing current candidate,
+    or bypassing canonical currentness/CAS gates.
+  - Only the two scope.modify files may change. Additional required production paths
+    must be surfaced to Human/Brain for a separate authorization; no hidden changes.
+  - Use focused minimum-sufficient-v2 verification once, reuse valid prior evidence,
+    and keep Executor HOW, Runtime verification, independent Reviewer and Publisher
+    authorities separate.
+acceptance:
+- id: AC1
+  condition: A fixture modeling the exact canonical RUN-343-001 FAILURE and source-bound
+    base/candidate profile divergence decodes as an admitted, non-PASS FAILURE without
+    changing any existing recorded observation bytes or semantics.
+- id: AC2
+  condition: With that valid immutable FAILURE and no repair selector or competing
+    terminal, Unified State yields CORRECTION / AUTHOR_REPAIR for TASK-343 r1, with
+    exact RUN-343-001 and failed-head identity; no invented continuation or authorization.
+- id: AC3
+  condition: Focused negative regressions retain fail-closed rejection for corrupted
+    base or candidate subject/command/toolchain, observation/base/failure-set digest,
+    verification-reference structural role and contradictory worker/profile facts.
+- id: AC4
+  condition: A valid source-bound profile difference cannot be classified as comparable
+    PASS, PRE_EXISTING_BASELINE, reusable proof or a false current 12-worker execution
+    claim; existing attribution and reuse contracts remain unchanged.
+- id: AC5
+  condition: Legacy valid matching-profile FAILURE observations and already valid
+    RESULT/review/correction lifecycle reductions remain readable and retain their
+    original outcomes; unrelated malformed historical variants remain blocked.
+- id: AC6
+  condition: Regression tests for AC1-AC5 are executable as one targeted verification
+    requirement in tests/test_operator_unified_state.py using a common verification_reference
+    test selector, with no new broad/full-suite or baseline-matrix run.
+- id: AC7
+  condition: Implementation changes are limited to src/aios_renew/unified_state.py
+    and tests/test_operator_unified_state.py, without mutation of canonical TASK-343/FAILURE-343-001
+    or any review, publication, roadmap, transport or Executor-selection authority.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_operator_unified_state.py -k verification_reference
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
