@@ -340,13 +340,84 @@ def _validated_private_public_view(
                 raise ValueError("invalid verification reference raw metadata")
         binding = validate_evidence_binding(item.get("binding"))
 
+        source_profile_fields = {"observer_blob", "selected_policy_blob", "repository_tool_blobs"}
+
+        def profile(value: Any) -> dict[str, Any]:
+            if not isinstance(value, dict) or not value:
+                raise ValueError("invalid verification reference profile")
+            # Historical matching profiles remain readable. Source-bound Runtime
+            # profiles must retain their own identities and execution facts.
+            if source_profile_fields & value.keys():
+                required = source_profile_fields | {
+                    "profile", "workers", "distribution", "max_worker_restart",
+                    "collect_only", "environment_digest", "isolation_policy",
+                }
+                tools = value.get("repository_tool_blobs")
+                if (not required <= value.keys()
+                        or not isinstance(value["profile"], str) or not value["profile"]
+                        or type(value["workers"]) is not int or value["workers"] < 0
+                        or value["distribution"] not in {"load", "no"}
+                        or type(value["max_worker_restart"]) is not int or value["max_worker_restart"] != 0
+                        or type(value["collect_only"]) is not bool
+                        or not isinstance(value["environment_digest"], str)
+                        or re.fullmatch(r"[0-9a-f]{64}", value["environment_digest"]) is None
+                        or value["isolation_policy"] != "clean-clone-external-temp-v1"
+                        or not isinstance(tools, dict) or not tools
+                        or any(not isinstance(path, str) or not path for path in tools)):
+                    raise ValueError("invalid verification reference source profile")
+                blobs = [value["observer_blob"], *tools.values()]
+                if value["selected_policy_blob"] is not None:
+                    blobs.append(value["selected_policy_blob"])
+                if any(not isinstance(blob, str) or re.fullmatch(r"[0-9a-f]{40}", blob) is None
+                       for blob in blobs):
+                    raise ValueError("invalid verification reference source identity")
+            if value.get("profile") == "bounded-parallel-full-suite-v1":
+                if (binding["command"] != "python scripts/aios_parallel_full_suite.py"
+                        or type(value.get("workers")) is not int or value["workers"] != 12
+                        or value.get("distribution") != "load"
+                        or type(value.get("max_worker_restart")) is not int or value["max_worker_restart"] != 0
+                        or value.get("collect_only") is not False
+                        or value.get("selected_policy_blob") is None
+                        or value.get("selection_provenance") != {"authority": "HUMAN", "task_id": "TASK-231"}):
+                    raise ValueError("contradictory verification reference worker profile")
+            if value.get("worker_execution_contract") == "fixed-human-pytest-v1" and (
+                    type(value.get("workers")) is not int
+                    or value["workers"] != (0 if value.get("collect_only") is True else 12)
+                    or value.get("distribution") != ("no" if value.get("collect_only") is True else "load")):
+                raise ValueError("contradictory verification reference worker contract")
+            return value
+
         def observation(name: str) -> dict[str, Any]:
             value = item.get(name)
             if (not isinstance(value, dict)
                     or type(value.get("complete")) is not bool
                     or type(value.get("unstable")) is not bool
+                    or type(value.get("exit_code")) is not int
                     or item.get(name + "_digest") != verification_digest(value)):
                 raise ValueError("invalid verification reference observation")
+            conditions = profile(value.get("profile"))
+            toolchain = value.get("toolchain")
+            if (not isinstance(toolchain, dict)
+                    or any(not isinstance(toolchain.get(key), str) or not toolchain[key] for key in (
+                        "python_implementation", "python_version", "python_executable", "platform_system",
+                        "platform_machine", "pytest_version", "pytest_xdist_version"))
+                    or not isinstance(value.get("reports"), list)
+                    or type(value.get("failure_count")) is not int or value["failure_count"] < 0):
+                raise ValueError("invalid verification reference observation conditions")
+            # Incomplete diagnostics cannot acquire proof authority, but their
+            # recorded failure conditions still cannot contradict the binding.
+            for report in value["reports"]:
+                if not isinstance(report, dict) or report.get("outcome") not in {"PASS", "FAIL", "SKIP"}:
+                    raise ValueError("invalid verification reference report")
+                if report.get("outcome") == "FAIL" and (
+                        report.get("profile") != conditions or report.get("toolchain") != toolchain
+                        or ("observed_profile" in report and report["observed_profile"] != {
+                            key: conditions.get(key) for key in (
+                                "profile", "workers", "distribution", "max_worker_restart", "collect_only")})
+                        or ("observed_toolchain" in report and report["observed_toolchain"] != toolchain)):
+                    raise ValueError("contradictory verification reference failure conditions")
+            if value["failure_count"] != sum(report["outcome"] == "FAIL" for report in value["reports"]):
+                raise ValueError("invalid verification reference failure population")
             if value["complete"]:
                 validate_observation(value)
             return value
@@ -374,8 +445,21 @@ def _validated_private_public_view(
             raise ValueError("verification reference subject binding mismatch")
         if "base" in item:
             base = observation("base")
+            base_profile, candidate_profile = base["profile"], binding["profile"]
+            # This is FAILURE readability, never proof comparability. Only the
+            # per-subject source identities may differ; Runtime attribution and
+            # reuse continue to compare the entire profile without this exception.
+            profiles_valid = base_profile == candidate_profile or (
+                source_profile_fields <= base_profile.keys()
+                and source_profile_fields <= candidate_profile.keys()
+                and base_profile["repository_tool_blobs"].keys() == candidate_profile["repository_tool_blobs"].keys()
+                and {key: value for key, value in base_profile.items() if key not in source_profile_fields}
+                == {key: value for key, value in candidate_profile.items() if key not in source_profile_fields}
+            )
             if (base.get("subject_sha") != binding["base_sha"]
-                    or any(base.get(key) != binding[key] for key in ("command", "profile", "toolchain"))
+                    or any(base.get(key) != binding[key] for key in ("command", "toolchain"))
+                    or not profiles_valid
+                    or not {"base_raw_path", "base_raw_digest"} <= item.keys()
                     or binding["failure_set_digest"] != item["base_digest"]):
                 raise ValueError("verification reference base binding mismatch")
         elif {"base_digest", "base_raw_path", "base_raw_digest"} & item.keys():

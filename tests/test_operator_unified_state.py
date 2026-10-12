@@ -1,5 +1,7 @@
 # Tests for Unified State + Next Action observation boundary.
 from contextlib import contextmanager
+from copy import deepcopy
+from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -36,6 +38,572 @@ from tests.operator_test_support import (
     publish_test_remediation_lineage,
     publish_upstream,
 )
+
+
+# Exact public RUN-343-001 FAILURE from artifacts commit
+# 94823a37b1d0a7587683ceabd955f74b22de6050. Tests need no historical Git objects
+# or protected raw locators; the compact serialization is pinned byte-for-byte.
+_RUN343_FAILURE_SHA256 = "edc05a0b53f7e7c984690c87ca64155146a8caa074dbbb6288a22053a8f3bac9"
+_RUN343_FAILURE_JSON = r'''{
+  "base_sha": "f3e048bacfef0bf7f5e3bac774f43c72eddabbb8",
+  "candidate": {
+    "changed_files": [
+      ".ai/verification-profiles.yaml",
+      "pyproject.toml",
+      "src/aios_renew/parallel_verification.py",
+      "src/aios_renew/verification.py",
+      "src/aios_renew/verification_contract.py",
+      "src/aios_renew/verification_profile.py",
+      "tests/bp_v4_probe_plugin.py",
+      "tests/conftest.py",
+      "tests/test_parallel_verification.py",
+      "tests/test_verification.py",
+      "tests/test_verification_contract.py",
+      "tests/test_verification_profile.py"
+    ],
+    "descends_from_base": true,
+    "dirty": false,
+    "outside_task_scope": [],
+    "repairable": true,
+    "transportable": true
+  },
+  "error": {
+    "message": "Protected Runtime diagnostics remain local.",
+    "type": "RuntimeVerificationError",
+    "verification": [
+      {
+        "command": "python scripts/aios_parallel_full_suite.py",
+        "exit_code": 2,
+        "summary": "Runtime verification exit code 2",
+        "verification": {
+          "attribution": [],
+          "base": {
+            "command": "python scripts/aios_parallel_full_suite.py",
+            "complete": false,
+            "exit_code": 2,
+            "failure_count": 0,
+            "profile": {
+              "collect_only": false,
+              "distribution": "load",
+              "environment_digest": "7c1e58fd7350b1e28323687e250d21bb51cd45b61202f7ca10a5cfc333633a47",
+              "isolation_policy": "clean-clone-external-temp-v1",
+              "max_worker_restart": 0,
+              "observer_blob": "d7378d05ea1b35515e3a4264c85516be2d624a46",
+              "profile": "bounded-parallel-full-suite-v1",
+              "repository_tool_blobs": {
+                "scripts/aios_parallel_full_suite.py": "3f84724ac18f28caa9cd7021b644530a24d2e71b",
+                "src/aios_renew/parallel_verification.py": "0c5d5df508f0cf4eef76ddddb54fd3ddbc1b1790",
+                "src/aios_renew/verification_contract.py": "179601140c292fe686ddd80196accea0ae4eb432",
+                "src/aios_renew/verification_profile.py": "22831a6181a122a1d0af230d4a3ba88591d9b961",
+                "tests/conftest.py": "eb1cda24b47567f19d18501373792ba9f5edecbe"
+              },
+              "selected_policy_blob": "2343089fd11e5432c7419c2f156d279cace19be4",
+              "selection_provenance": {
+                "authority": "HUMAN",
+                "task_id": "TASK-231"
+              },
+              "workers": 12
+            },
+            "reports": [],
+            "subject_sha": "f3e048bacfef0bf7f5e3bac774f43c72eddabbb8",
+            "toolchain": {
+              "installed_distributions_digest": "c670877610c04403bc3a513fa817b27b54b9ac42c93190a327125635892fb9cd",
+              "platform_machine": "AMD64",
+              "platform_system": "Windows",
+              "pytest_version": "8.4.2",
+              "pytest_xdist_version": "3.8.0",
+              "python_executable": "C:\\Users\\TRUNG\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+              "python_implementation": "CPython",
+              "python_version": "3.14.7"
+            },
+            "unstable": true
+          },
+          "base_digest": "0341765360e10130e3bd10992544360d541a23e2199e99d531e872df90175a5a",
+          "base_raw_digest": "5bd2d25698b116d5b0f01b50c0f5b1b38bf9d6f3855b444dbbcca7c948e276e4",
+          "base_raw_path": "C:\\TOOL\\AIOS-Runtime\\AIOS-renew\\.git\\aios\\verification\\RUN-343-001\\base\\RUN-343-001-BASE-V002.raw",
+          "binding": {
+            "base_sha": "f3e048bacfef0bf7f5e3bac774f43c72eddabbb8",
+            "changed_files_digest": "3c718dea907cb24f1be242242a4497cf9e4b92930df550f04defcd31da085c3f",
+            "command": "python scripts/aios_parallel_full_suite.py",
+            "correction_base_sha": "f3e048bacfef0bf7f5e3bac774f43c72eddabbb8",
+            "correction_changed_files_digest": "3c718dea907cb24f1be242242a4497cf9e4b92930df550f04defcd31da085c3f",
+            "envelope_digest": "6ccf26760ad82a10d448a08915b56658872a9250cefb06d47dbff1d406124587",
+            "failure_set_digest": "0341765360e10130e3bd10992544360d541a23e2199e99d531e872df90175a5a",
+            "profile": {
+              "collect_only": false,
+              "distribution": "load",
+              "environment_digest": "7c1e58fd7350b1e28323687e250d21bb51cd45b61202f7ca10a5cfc333633a47",
+              "isolation_policy": "clean-clone-external-temp-v1",
+              "max_worker_restart": 0,
+              "observer_blob": "779cdc0bf139e1328e3714104f01e6bfd9ae18ed",
+              "profile": "bounded-parallel-full-suite-v1",
+              "repository_tool_blobs": {
+                "scripts/aios_parallel_full_suite.py": "3f84724ac18f28caa9cd7021b644530a24d2e71b",
+                "src/aios_renew/parallel_verification.py": "1a4f9475a723d0fca58daffea0dcc43b001af323",
+                "src/aios_renew/verification_contract.py": "81ac91728c44495ee703e74466578b11d9c53af3",
+                "src/aios_renew/verification_profile.py": "baf8c9f6e7b2f0c2d9c0afcc748b2d9649ec2915",
+                "tests/conftest.py": "ff671a8375f900c020c4a1737723aeb74cdb0db4"
+              },
+              "selected_policy_blob": "3d4c02e20155327d4da28e432afb1c6ba7496597",
+              "selection_provenance": {
+                "authority": "HUMAN",
+                "task_id": "TASK-231"
+              },
+              "workers": 12
+            },
+            "subject_sha": "96d4a91cacc284c303f66d26a2096bb264719473",
+            "toolchain": {
+              "installed_distributions_digest": "c670877610c04403bc3a513fa817b27b54b9ac42c93190a327125635892fb9cd",
+              "platform_machine": "AMD64",
+              "platform_system": "Windows",
+              "pytest_version": "8.4.2",
+              "pytest_xdist_version": "3.8.0",
+              "python_executable": "C:\\Users\\TRUNG\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+              "python_implementation": "CPython",
+              "python_version": "3.14.7"
+            },
+            "tree_sha": "4d0ef18a529a07f8d75be26d954c9a521601b2c7"
+          },
+          "candidate": {
+            "command": "python scripts/aios_parallel_full_suite.py",
+            "complete": false,
+            "exit_code": 2,
+            "failure_count": 0,
+            "profile": {
+              "collect_only": false,
+              "distribution": "load",
+              "environment_digest": "7c1e58fd7350b1e28323687e250d21bb51cd45b61202f7ca10a5cfc333633a47",
+              "isolation_policy": "clean-clone-external-temp-v1",
+              "max_worker_restart": 0,
+              "observer_blob": "779cdc0bf139e1328e3714104f01e6bfd9ae18ed",
+              "profile": "bounded-parallel-full-suite-v1",
+              "repository_tool_blobs": {
+                "scripts/aios_parallel_full_suite.py": "3f84724ac18f28caa9cd7021b644530a24d2e71b",
+                "src/aios_renew/parallel_verification.py": "1a4f9475a723d0fca58daffea0dcc43b001af323",
+                "src/aios_renew/verification_contract.py": "81ac91728c44495ee703e74466578b11d9c53af3",
+                "src/aios_renew/verification_profile.py": "baf8c9f6e7b2f0c2d9c0afcc748b2d9649ec2915",
+                "tests/conftest.py": "ff671a8375f900c020c4a1737723aeb74cdb0db4"
+              },
+              "selected_policy_blob": "3d4c02e20155327d4da28e432afb1c6ba7496597",
+              "selection_provenance": {
+                "authority": "HUMAN",
+                "task_id": "TASK-231"
+              },
+              "workers": 12
+            },
+            "reports": [],
+            "subject_sha": "96d4a91cacc284c303f66d26a2096bb264719473",
+            "toolchain": {
+              "installed_distributions_digest": "c670877610c04403bc3a513fa817b27b54b9ac42c93190a327125635892fb9cd",
+              "platform_machine": "AMD64",
+              "platform_system": "Windows",
+              "pytest_version": "8.4.2",
+              "pytest_xdist_version": "3.8.0",
+              "python_executable": "C:\\Users\\TRUNG\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+              "python_implementation": "CPython",
+              "python_version": "3.14.7"
+            },
+            "unstable": true
+          },
+          "candidate_digest": "cdd57ac4989b20a070a8d6fbb2eb5ef93529ff3cced535591d25b7146f6f0629",
+          "disposition": "EXECUTED",
+          "evidence_id": "RUN-343-001-V001",
+          "policy": "minimum-sufficient-v2",
+          "raw_digest": "5bd2d25698b116d5b0f01b50c0f5b1b38bf9d6f3855b444dbbcca7c948e276e4",
+          "raw_path": "C:\\TOOL\\AIOS-Runtime\\AIOS-renew\\.git\\aios\\verification\\RUN-343-001\\candidate\\RUN-343-001-V001.raw",
+          "run_id": "RUN-343-001"
+        }
+      }
+    ]
+  },
+  "executor": "codex",
+  "failed_head_sha": "96d4a91cacc284c303f66d26a2096bb264719473",
+  "kind": "FAILURE",
+  "phase": "VERIFICATION",
+  "run_id": "RUN-343-001",
+  "task": {
+    "id": "TASK-343",
+    "revision": 1
+  }
+}'''
+_RUN343_RUN_JSON = r'''{"base_sha":"f3e048bacfef0bf7f5e3bac774f43c72eddabbb8","executor":"codex","head_sha":null,"return_affinity":{"kind":"LEGACY_REPOSITORY_DEFAULT_ROUTE"},"run_id":"RUN-343-001","status":"ACTIVE","task":{"id":"TASK-343","revision":1},"workspace":"protected-runtime-workspace"}'''
+
+
+@pytest.fixture
+def run343_failure():
+    return json.loads(_RUN343_FAILURE_JSON)
+
+
+def _verification_reference(failure):
+    return failure["error"]["verification"][0]["verification"]
+
+
+def _reference_digests(record):
+    from aios_renew.verification_contract import verification_digest
+
+    record["candidate_digest"] = verification_digest(record["candidate"])
+    record["base_digest"] = verification_digest(record["base"])
+    record["binding"]["failure_set_digest"] = record["base_digest"]
+
+
+def _run343_reference_lifecycle(tmp_path, monkeypatch, failure):
+    repo = make_repo(tmp_path, task_source=None)
+    changed = failure["candidate"]["changed_files"]
+    source = TASK_SOURCE.replace("TASK-101", "TASK-343").replace(
+        "    - OUTPUT.txt", "\n".join("    - " + path for path in changed))
+    (repo / ".ai" / "tasks").mkdir(parents=True, exist_ok=True)
+    (repo / ".ai" / "tasks" / "TASK-343.yaml").write_text(source, encoding="utf-8")
+    commit_setup_state(repo, ".ai/tasks/TASK-343.yaml", message="bounded TASK-343 fixture")
+    run = json.loads(_RUN343_RUN_JSON)
+    head = "96d4a91cacc284c303f66d26a2096bb264719473"
+    base = "f3e048bacfef0bf7f5e3bac774f43c72eddabbb8"
+    lifecycle = RemoteTaskLifecycle(base, (
+        RemoteLifecycleTerminal("RUN-343-001", "FAILURE", head,
+                                _reference_bytes(run), _reference_bytes(failure)),
+    ), (), (), (), ())
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    # Only historical Git availability is modeled. The real terminal reader,
+    # TASK/RUN binding, privacy roles and lifecycle reducer remain in use.
+    def descends(_repo, actual_base, actual_head):
+        assert (actual_base, actual_head) == (base, head)
+        return True
+
+    def changed_files(_repo, actual_base, actual_head):
+        assert (actual_base, actual_head) == (base, head)
+        return set(changed)
+
+    monkeypatch.setattr(operator_module, "_git_is_ancestor", descends)
+    monkeypatch.setattr(operator_module, "_committed_changed_files", changed_files)
+    return repo, lifecycle, source
+
+
+def _reference_bytes(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+
+
+def test_verification_reference_run343_preserves_exact_immutable_failure(run343_failure):
+    from aios_renew.verification_contract import (
+        attributed_task_passes, validate_observation, verification_digest,
+    )
+
+    original = _reference_bytes(run343_failure)
+    assert hashlib.sha256(original).hexdigest() == _RUN343_FAILURE_SHA256
+    projected = unified_state_module._validated_private_public_view(run343_failure, "METADATA")
+    assert _reference_bytes(projected) == original == _reference_bytes(run343_failure)
+    record = _verification_reference(projected)
+    assert record["base"]["profile"] != record["candidate"]["profile"]
+    for side in ("base", "candidate"):
+        observed = record[side]
+        assert observed["complete"] is False and observed["unstable"] is True
+        assert observed["exit_code"] == 2 and observed["failure_count"] == 0
+        assert observed["profile"]["workers"] == 12
+        assert record[side + "_digest"] == verification_digest(observed)
+        with pytest.raises(ValueError, match="incomplete or unstable"):
+            validate_observation(observed)
+    assert not attributed_task_passes(record, subject_sha=run343_failure["failed_head_sha"],
+                                     command=record["binding"]["command"], exit_code=2)
+
+
+def test_verification_reference_run343_reduces_to_exact_author_repair(
+    tmp_path, monkeypatch, run343_failure,
+):
+    repo, lifecycle, _ = _run343_reference_lifecycle(tmp_path, monkeypatch, run343_failure)
+    before = (git(repo, "status", "--porcelain"), git(repo, "show-ref"), lifecycle)
+
+    def forbidden_preflight(*_args, **_kwargs):
+        pytest.fail("No REPAIR selector or authorization exists in this fixture")
+
+    monkeypatch.setattr(operator_module, "preflight_repair", forbidden_preflight)
+    decoded, reviews = unified_state_module._decode_remote_lifecycle(
+        repo, operator_module.load_task(repo, "TASK-343"), lifecycle)
+    assert len(decoded) == 1 and reviews == {}
+    assert decoded[0].terminal_kind == "FAILURE" and decoded[0].family == "PRIMARY"
+    assert decoded[0].parent_run_id is None and decoded[0].correction is None
+    assert _reference_bytes(decoded[0].terminal) == lifecycle.terminals[0].terminal
+    observation = observe_unified_state("TASK-343", repo=repo).as_dict()
+    assert observation["task"] == {"id": "TASK-343", "revision": 1}
+    assert (observation["lifecycle_state"], observation["next_action"], observation["authority"]) == (
+        "CORRECTION", "AUTHOR_REPAIR", "BRAIN")
+    assert observation["run_id"] == observation["failed_run_id"] == "RUN-343-001"
+    assert observation["failed_head_sha"] == run343_failure["failed_head_sha"]
+    assert observation["correction_sha"] is None and observation["correction_preflight"] is None
+    assert observation["blocker"] is None
+    assert all(observation[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert before == (git(repo, "status", "--porcelain"), git(repo, "show-ref"), lifecycle)
+
+
+@pytest.mark.parametrize("side", ["base", "candidate"])
+@pytest.mark.parametrize("defect", [
+    "subject", "command", "toolchain", "toolchain_missing", "exit", "workers",
+    "distribution", "restart", "collect_only", "observer_blob", "policy_blob",
+    "tool_blob", "tool_paths", "profile_missing", "profile_extra", "environment",
+    "isolation", "provenance", "report_profile", "observed_workers", "failure_count",
+])
+def test_verification_reference_rejects_corrupted_observation_bindings(run343_failure, side, defect):
+    record = _verification_reference(run343_failure)
+    value = record[side]
+    conditions = value["profile"]
+    if defect == "subject":
+        value["subject_sha"] = "0" * 40
+    elif defect == "command":
+        value["command"] = "python -m pytest -q tests/test_sample.py"
+    elif defect == "toolchain":
+        value["toolchain"]["pytest_version"] = "different"
+    elif defect == "toolchain_missing":
+        del value["toolchain"]["python_version"]
+    elif defect == "exit":
+        value["exit_code"] = "2"
+    elif defect == "workers":
+        conditions["workers"] = 4
+    elif defect == "distribution":
+        conditions["distribution"] = "no"
+    elif defect == "restart":
+        conditions["max_worker_restart"] = 1
+    elif defect == "collect_only":
+        conditions["collect_only"] = True
+    elif defect == "observer_blob":
+        conditions["observer_blob"] = "invalid"
+    elif defect == "policy_blob":
+        conditions["selected_policy_blob"] = None
+    elif defect == "tool_blob":
+        conditions["repository_tool_blobs"]["tests/conftest.py"] = "invalid"
+    elif defect == "tool_paths":
+        del conditions["repository_tool_blobs"]["tests/conftest.py"]
+    elif defect == "profile_missing":
+        del conditions["environment_digest"]
+    elif defect == "profile_extra":
+        conditions["unrelated_fallback"] = True
+    elif defect == "environment":
+        conditions["environment_digest"] = "0" * 64
+    elif defect == "isolation":
+        conditions["isolation_policy"] = "untrusted"
+    elif defect == "provenance":
+        conditions["selection_provenance"]["authority"] = "EXECUTOR"
+    elif defect in {"report_profile", "observed_workers"}:
+        report = {"outcome": "FAIL", "profile": deepcopy(conditions),
+                  "toolchain": deepcopy(value["toolchain"])}
+        if defect == "report_profile":
+            report["profile"]["workers"] = 4
+        else:
+            report["observed_profile"] = {key: conditions[key] for key in (
+                "profile", "workers", "distribution", "max_worker_restart", "collect_only")}
+            report["observed_profile"]["workers"] = 4
+        value["reports"] = [report]
+        value["failure_count"] = 1
+    else:
+        value["failure_count"] = 99
+    # Rehash mutations to exercise independent conditions/binding validation,
+    # rather than merely failing the observation digest gate.
+    if side == "candidate" and defect not in {"subject", "command", "toolchain"}:
+        record["binding"]["profile"] = deepcopy(conditions)
+        record["binding"]["toolchain"] = deepcopy(value["toolchain"])
+    _reference_digests(record)
+    with pytest.raises(ValueError):
+        unified_state_module._validated_private_public_view(run343_failure, "METADATA")
+
+
+@pytest.mark.parametrize("defect", [
+    "candidate_digest", "base_digest", "failure_set_digest", "raw_digest", "base_raw_digest",
+    "raw_path", "base_raw_path", "orphan_base", "run", "reuse_source", "reuse_profile",
+    "reuse_subject", "binding_profile", "complete", "unstable", "reports",
+])
+def test_verification_reference_rejects_broken_digest_and_reference_binding(run343_failure, defect):
+    record = _verification_reference(run343_failure)
+    if defect in {"candidate_digest", "base_digest"}:
+        record[defect] = "0" * 64
+    elif defect == "failure_set_digest":
+        record["binding"][defect] = "0" * 64
+    elif defect in {"raw_digest", "base_raw_digest"}:
+        record[defect] = "invalid"
+    elif defect in {"raw_path", "base_raw_path"}:
+        del record[defect]
+    elif defect == "orphan_base":
+        del record["base"]
+    elif defect == "run":
+        record["run_id"] = "RUN-343-999"
+    elif defect.startswith("reuse_"):
+        reuse = {"binding": deepcopy(record["binding"]), "source_evidence_id": record["evidence_id"]}
+        record["reuse"] = reuse
+        if defect == "reuse_source":
+            reuse["source_evidence_id"] = "RUN-343-999-V001"
+        elif defect == "reuse_profile":
+            reuse["binding"]["profile"]["observer_blob"] = "0" * 40
+        else:
+            reuse["binding"]["subject_sha"] = "0" * 40
+    elif defect == "binding_profile":
+        record["binding"]["profile"]["observer_blob"] = "0" * 40
+    elif defect in {"complete", "unstable"}:
+        record["candidate"][defect] = "false"
+        _reference_digests(record)
+    else:
+        del record["candidate"]["reports"]
+        _reference_digests(record)
+    with pytest.raises(ValueError):
+        unified_state_module._validated_private_public_view(run343_failure, "METADATA")
+
+
+@pytest.mark.parametrize("defect", [
+    "generic_metadata", "full_evidence", "nested_identity", "source", "policy", "reference_list",
+])
+def test_verification_reference_retains_structural_role_rejection(run343_failure, defect):
+    record = _verification_reference(run343_failure)
+    if defect == "generic_metadata":
+        run343_failure["error"]["metadata"] = {"unknown": {"verification": deepcopy(record)}}
+    elif defect == "full_evidence":
+        run343_failure["error"]["evidence"] = [deepcopy(record)]
+    elif defect == "nested_identity":
+        record["candidate"]["metadata"] = {"evidence_id": "FORGED"}
+        _reference_digests(record)
+    elif defect == "source":
+        record["source"] = {"command": record["binding"]["command"]}
+    elif defect == "policy":
+        record["policy"] = "minimum-sufficient-v1"
+    else:
+        run343_failure["error"]["verification"][0]["verification"] = [record]
+    with pytest.raises(ValueError):
+        unified_state_module._validated_private_public_view(run343_failure, "METADATA")
+
+
+def test_verification_reference_malformed_canonical_failure_stays_blocked(
+    tmp_path, monkeypatch, run343_failure,
+):
+    _verification_reference(run343_failure)["base"]["profile"]["workers"] = 4
+    _reference_digests(_verification_reference(run343_failure))
+    repo, _, _ = _run343_reference_lifecycle(tmp_path, monkeypatch, run343_failure)
+    observation = observe_unified_state("TASK-343", repo=repo).as_dict()
+    assert (observation["lifecycle_state"], observation["next_action"]) == ("BLOCKED", "NONE")
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+
+def test_verification_reference_source_difference_never_discharges_attribution_or_reuse(run343_failure):
+    from aios_renew.verification_contract import (
+        attribute_failures, attributed_task_passes, derive_minimum_verification, verification_digest,
+    )
+
+    record = _verification_reference(run343_failure)
+    for side in ("base", "candidate"):
+        value = record[side]
+        detail = "AssertionError: same exact failure"
+        value.update(complete=True, unstable=False, exit_code=1, failure_count=1, reports=[{
+            "nodeid": "tests/test_sample.py::test_case", "phase": "call", "outcome": "FAIL",
+            "detail": detail, "fingerprint": verification_digest(detail),
+            "profile": deepcopy(value["profile"]), "toolchain": deepcopy(value["toolchain"]),
+        }])
+    run343_failure["error"]["verification"][0]["exit_code"] = 1
+    _reference_digests(record)
+    before = _reference_bytes(record)
+    projected = unified_state_module._validated_private_public_view(run343_failure, "METADATA")
+    assert _reference_bytes(_verification_reference(projected)) == before
+    binding = record["binding"]
+    assert attribute_failures(record["base"], record["candidate"], base_sha=binding["base_sha"],
+                              candidate_sha=binding["subject_sha"])[0]["classification"] == "UNRESOLVED"
+    # A recorded baseline label cannot override Runtime's independent comparison.
+    record["attribution"] = [{"nodeid": "tests/test_sample.py::test_case", "phase": "call",
+                              "classification": "PRE_EXISTING_BASELINE"}]
+    assert not attributed_task_passes(record, subject_sha=binding["subject_sha"],
+                                     command=binding["command"], exit_code=1)
+
+    def plan(proof, target):
+        return derive_minimum_verification((binding["command"],), base_sha=binding["base_sha"],
+            candidate_sha=binding["subject_sha"], changed_files=(), modification_scope=(),
+            operation="PRIMARY", bindings={binding["command"]: target}, still_valid_evidence=(proof,))
+
+    rejected = plan(record, deepcopy(binding))
+    assert rejected.reused == () and rejected.commands == (binding["command"],)
+    # Matching-profile proof still follows the existing attribution/reuse contract.
+    matching = deepcopy(record)
+    matching["base"]["profile"] = deepcopy(binding["profile"])
+    matching["base"]["reports"][0]["profile"] = deepcopy(binding["profile"])
+    _reference_digests(matching)
+    assert attributed_task_passes(matching, subject_sha=binding["subject_sha"],
+                                  command=binding["command"], exit_code=1)
+    assert plan(matching, deepcopy(matching["binding"])).reused == (matching,)
+    # Even valid old worker proof cannot become a fresh 12-worker observation.
+    old = deepcopy(matching)
+    for side in ("base", "candidate"):
+        old[side]["profile"] = {"workers": 4}
+        old[side]["reports"][0]["profile"] = {"workers": 4}
+    old["binding"]["profile"] = {"workers": 4}
+    _reference_digests(old)
+    target = deepcopy(old["binding"])
+    target["profile"] = {"workers": 12}
+    assert attributed_task_passes(old, subject_sha=binding["subject_sha"], command=binding["command"], exit_code=1)
+    assert plan(old, target).reused == () and old["candidate"]["profile"] == {"workers": 4}
+
+
+@pytest.mark.parametrize("legacy_profile", [False, True])
+def test_verification_reference_legacy_matching_failure_keeps_original_outcome(
+    tmp_path, monkeypatch, run343_failure, legacy_profile,
+):
+    record = _verification_reference(run343_failure)
+    matching = {"workers": 4} if legacy_profile else deepcopy(record["candidate"]["profile"])
+    for side in ("base", "candidate"):
+        record[side]["profile"] = deepcopy(matching)
+    record["binding"]["profile"] = deepcopy(matching)
+    _reference_digests(record)
+    before = _reference_bytes(run343_failure)
+    projected = unified_state_module._validated_private_public_view(run343_failure, "METADATA")
+    assert _reference_bytes(projected) == before
+    assert _verification_reference(projected)["candidate"]["profile"] == matching
+    repo, _, _ = _run343_reference_lifecycle(tmp_path, monkeypatch, run343_failure)
+    observation = observe_unified_state("TASK-343", repo=repo).as_dict()
+    assert (observation["lifecycle_state"], observation["next_action"]) == ("CORRECTION", "AUTHOR_REPAIR")
+
+
+@pytest.mark.parametrize("review_verdict, expected", [
+    (None, "SEMANTIC_REVIEW"), ("CHANGES_REQUIRED", "AUTHOR_REMEDIATION"), ("PASS", "PUBLICATION"),
+])
+def test_verification_reference_correction_result_and_review_keep_lifecycle_outcomes(
+    tmp_path, monkeypatch, run343_failure, review_verdict, expected,
+):
+    import yaml
+
+    repo, lifecycle, source = _run343_reference_lifecycle(tmp_path, monkeypatch, run343_failure)
+    parent = lifecycle.terminals[0]
+    child_id, head = "RUN-343-002", "a" * 40
+    run = {**json.loads(parent.run), "run_id": child_id, "base_sha": parent.candidate_sha}
+    authorization = {"repair_id": "REPAIR-343-001", "failed_run_id": parent.run_id,
+        "failed_head_sha": parent.candidate_sha, "task": {"id": "TASK-343", "revision": 1},
+        "action": "CODE_FIX", "modification_scope": ["tests/conftest.py"],
+        "instructions": ["Fix the bounded observation collision."], "constraints": ["Commit the output."]}
+    correction = {"failed_run_id": parent.run_id, "failed_head_sha": parent.candidate_sha,
+        "root_base_sha": lifecycle.main_sha, "task": yaml.safe_load(source), "run": run,
+        "repair": authorization, "failure": deepcopy(run343_failure)}
+    terminal = RemoteLifecycleTerminal(child_id, "RESULT", head, _reference_bytes(run),
+        _reference_bytes(canonical_result_payload(child_id, head)), _reference_bytes(correction))
+    reviews = ()
+    if review_verdict:
+        findings = "[]" if review_verdict == "PASS" else """
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: tests/conftest.py
+    issue: output is incomplete
+    expected: output is complete
+"""
+        review = f"""review_id: REVIEW-343-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: {review_verdict}
+acceptance: {{AC1: {'PASS' if review_verdict == 'PASS' else 'FAIL'}}}
+findings: {findings}
+""".encode()
+        reviews = (RemoteLifecycleReview(child_id, "b" * 40, review),)
+    lifecycle = replace(lifecycle, terminals=(parent, terminal), reviews=reviews,
+        repair_selectors=((parent.run_id, "c" * 40, _reference_bytes(authorization)),))
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    known_ancestry = {(lifecycle.main_sha, parent.candidate_sha), (head, head), (lifecycle.main_sha, head)}
+    monkeypatch.setattr(operator_module, "_git_is_ancestor",
+                        lambda _repo, base, candidate: (base, candidate) in known_ancestry)
+    decoded, _ = unified_state_module._decode_remote_lifecycle(
+        repo, operator_module.load_task(repo, "TASK-343"), lifecycle)
+    assert decoded[1].family == "REPAIR" and decoded[1].parent_run_id == parent.run_id
+    assert _reference_bytes(decoded[1].correction["failure"]) == parent.terminal
+    observation = observe_unified_state("TASK-343", repo=repo).as_dict()
+    assert observation["next_action"] == expected and observation["run_id"] == child_id
+    assert observation["blocker"] is None
 
 
 def test_publication_recovery_scope_selects_only_new_candidate_and_pass_is_provenance(tmp_path, monkeypatch):
