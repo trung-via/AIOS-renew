@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shlex
 import subprocess
 import sys
 import time
@@ -30,6 +31,8 @@ class ProbeError(RuntimeError):
     """Fail-closed verification construction or observation error."""
 
 def _version_prefix(value: str) -> tuple[int, int]:
+    if not isinstance(value, str):
+        raise ProbeError("malformed package version")
     parts = value.split(".")
     try:
         return int(parts[0]), int(parts[1])
@@ -153,7 +156,7 @@ def run_pytest(
         "-q",
     ]
     if collect_only:
-        command.append("--collect-only")
+        command.extend(["--collect-only", "-n", "0", "--dist", "no", "--max-worker-restart", "0"])
     elif workers > 1:
         command.extend(
             [
@@ -165,6 +168,9 @@ def run_pytest(
                 "0",
             ]
         )
+    else:
+        # Explicit serial historical measurements must bypass the ordinary default.
+        command.extend(["-n", "0", "--dist", "no", "--max-worker-restart", "0"])
 
     environment = os.environ.copy()
     environment.pop("PYTEST_ADDOPTS", None)
@@ -180,8 +186,8 @@ def run_pytest(
     )
     environment[PLUGIN_OUTPUT_ENV] = str(observation)
     environment["AIOS_V2_PROFILE"] = json.dumps({
-        "profile": "bounded-parallel-full-suite-v1" if workers == 12 and not collect_only else "pytest-parallel-observed-v2", "workers": workers,
-        "distribution": "load", "max_worker_restart": 0,
+        "profile": "bounded-parallel-full-suite-v1" if workers == 12 and not collect_only else "pytest-parallel-observed-v2", "workers": 0 if collect_only else workers,
+        "distribution": "no" if collect_only or workers == 1 else "load", "max_worker_restart": 0,
         "collect_only": collect_only,
     }, sort_keys=True)
 
@@ -211,6 +217,33 @@ def run_pytest(
 
 
 Runner = Callable[..., tuple[int, float, dict[str, Any]]]
+
+
+def validate_pytest_execution(observation: dict, profile: dict, effective_command: str) -> None:
+    """Require actual controller options, argv, workers and isolation for V2."""
+    tokens = shlex.split(effective_command)
+    offset = 1 if tokens[0] == "pytest" else 3
+    if observation.get("pytest_arguments") != tokens[offset:]:
+        raise ProbeError("actual pytest argv disagrees with effective command")
+    actual = observation.get("actual_execution")
+    expected = {k: profile[k] for k in ("workers", "distribution", "max_worker_restart", "collect_only")}
+    if (actual != expected or not isinstance(actual, dict) or type(actual.get("workers")) is not int
+            or type(actual.get("max_worker_restart")) is not int or type(actual.get("collect_only")) is not bool):
+        raise ProbeError("actual pytest worker configuration disagrees with bound profile")
+    toolchain = observation.get("toolchain", {})
+    if (not _in_range(toolchain.get("pytest_version", "absent"), PYTEST_RANGE)
+            or not _in_range(toolchain.get("pytest_xdist_version", "absent"), XDIST_RANGE)):
+        raise ProbeError("incompatible observed pytest/xdist toolchain")
+    if profile["collect_only"]:
+        if observation.get("workers") != {} or observation.get("worker_collections") != {}:
+            raise ProbeError("collection-only observation contains test workers")
+        return
+    _parallel_conformance(observation, collection_identity(observation.get("controller_collection")), profile["workers"])
+    for worker in observation["workers"].values():
+        if (worker.get("workercount") != profile["workers"]
+                or worker.get("profile") != observation.get("profile")
+                or worker.get("toolchain") != observation.get("toolchain")):
+            raise ProbeError("xdist worker profile or toolchain disagrees with controller")
 
 
 def _serial_conformance(

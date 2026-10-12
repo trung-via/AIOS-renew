@@ -497,11 +497,11 @@ def validate_exact_collection(value: object) -> tuple[str, ...]:
 
 
 def pytest_projection_command(command: str, nodeids: Sequence[str]) -> str:
-    """Encode an exact serial projection of a recognized authored requirement."""
+    """Encode exact coverage; Runtime applies the selected execution workers."""
     coverage = parse_pytest_coverage(command)
     if (coverage is None or coverage.measurement or coverage.selected_parallel
             or coverage.filter_expression is not None):
-        raise VerificationContractError("authored command has no comparable serial projection")
+        raise VerificationContractError("authored command has no comparable exact projection")
     nodes = exact_pytest_nodeids(nodeids)
     if (len(nodes) > MAX_EXACT_PROJECTION_NODES
             or not _path_scope_subsumes(coverage.paths, nodes)):
@@ -525,7 +525,21 @@ def pytest_collection_command(command: str) -> str:
 
 
 def _execution_conditions(value: dict) -> tuple[dict, dict]:
-    return ({k: v for k, v in value["profile"].items() if k != "collect_only"}, value["toolchain"])
+    return (pytest_test_execution_profile(value["profile"]), value["toolchain"])
+
+
+def pytest_test_execution_profile(profile: dict) -> dict:
+    """Compare a zero-worker collection probe with its selected test profile.
+
+    Historical serial collection profiles retain their historical conditions.
+    Zero-worker probes identify collection mode explicitly, never a test run.
+    """
+    result = {**profile, "collect_only": False}
+    if profile.get("collect_only") is True and profile.get("workers") == 0:
+        if profile.get("distribution") != "no" or profile.get("max_worker_restart") != 0:
+            raise VerificationContractError("incompatible zero-worker collection profile")
+        result.update(workers=12, distribution="load")
+    return result
 
 
 def exact_collection_observation(value: object, *, command: str, subject_sha: str) -> tuple[str, ...]:
@@ -684,6 +698,19 @@ def validate_observation(value: object) -> dict:
     for key in ("profile", "toolchain"):
         if not isinstance(value.get(key), dict) or not value[key]:
             raise VerificationContractError("missing observation conditions")
+    if value["profile"].get("worker_execution_contract") == "fixed-human-pytest-v1":
+        profile, execution = value["profile"], value.get("execution")
+        collect = profile.get("collect_only")
+        if (type(collect) is not bool or type(profile.get("workers")) is not int
+                or profile["workers"] != (0 if collect else 12)
+                or profile.get("distribution") != ("no" if collect else "load")
+                or type(profile.get("max_worker_restart")) is not int or profile["max_worker_restart"] != 0
+                or not isinstance(execution, dict)
+                or any(execution.get(k) != profile[k] for k in ("workers", "distribution", "max_worker_restart", "collect_only"))
+                or type(execution.get("workers")) is not int
+                or type(execution.get("max_worker_restart")) is not int or type(execution.get("collect_only")) is not bool
+                or not isinstance(execution.get("effective_command"), str) or not execution["effective_command"]):
+            raise VerificationContractError("missing or incompatible actual worker execution")
     if any(not isinstance(value["toolchain"].get(k), str) or not value["toolchain"][k] for k in (
         "python_implementation", "python_version", "python_executable", "platform_system",
         "platform_machine", "pytest_version", "pytest_xdist_version")):
@@ -694,6 +721,9 @@ def validate_observation(value: object) -> dict:
     reports = value.get("reports")
     if not isinstance(reports, list) or len(reports) > MAX_CANONICAL_REPORTS:
         raise VerificationContractError("canonical report population exceeds bound")
+    if (value["profile"].get("worker_execution_contract") == "fixed-human-pytest-v1"
+            and value["profile"]["collect_only"] and reports):
+        raise VerificationContractError("collection-only observation contains test reports")
     previous = None
     failures = 0
     for report in reports:

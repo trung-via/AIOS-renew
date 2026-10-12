@@ -20,6 +20,26 @@ from aios_renew.verification import (
 )
 
 
+def task343_execution_envelope(envelope, effective_argv):
+    """Injected actual worker facts; no nested pytest execution or probe."""
+    profile, toolchain = envelope["profile"], envelope["toolchain"]
+    collect = profile["collect_only"]
+    envelope["pytest_arguments"] = effective_argv[1 if effective_argv[0] == "pytest" else 3:]
+    envelope["actual_execution"] = {k: profile[k] for k in (
+        "workers", "distribution", "max_worker_restart", "collect_only")}
+    identity = envelope.get("controller_collection")
+    if identity is None:
+        from aios_renew.parallel_verification import collection_identity
+        identity = collection_identity(sorted({r["nodeid"] for r in envelope["failure_diagnostics"]["canonical"]["reports"]}))
+        envelope["controller_collection"] = identity
+    envelope["worker_collections"] = {} if collect else {f"gw{i}": identity for i in range(12)}
+    envelope["workers"] = {} if collect else {f"gw{i}": dict(
+        worker_id=f"gw{i}", process_id=100 + i, temporary_root=f"C:/temp/worker-{i}",
+        git_fixture_cache_root=f"C:/temp/git-{i}", collection=identity, workercount=12,
+        profile=profile, toolchain=toolchain) for i in range(12)}
+    return envelope
+
+
 @pytest.fixture
 def v2_injected_execution(tmp_path, monkeypatch):
     from tests.test_verification_contract import V2_BASE, V2_CANDIDATE, V2_TOOLCHAIN, v2_observation
@@ -55,7 +75,8 @@ def v2_injected_execution(tmp_path, monkeypatch):
 
     def runner(shell, **kwargs):
         sha = kwargs["cwd"].name
-        command = shell[-1]
+        effective_argv = shlex.split(shell[-1])
+        command = shell[-1] if shell[-1] == SELECTED_FULL_SUITE_COMMAND else shlex.join(effective_argv[:-8])
         state["calls"].append((sha, command))
         profile = json.loads(kwargs["env"]["AIOS_V2_PROFILE"])
         outcome = "PASS" if sha == V2_BASE and state["base_pass"] else "FAIL"
@@ -78,9 +99,9 @@ def v2_injected_execution(tmp_path, monkeypatch):
         else:
             output = Path(kwargs["env"]["AIOS_BP_V4_PLUGIN_OUTPUT"])
             output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text(json.dumps(dict(schema="AIOS_BP_V4_PYTEST_OBSERVATION", version=1,
+            output.write_text(json.dumps(task343_execution_envelope(dict(schema="AIOS_BP_V4_PYTEST_OBSERVATION", version=1,
                 profile=profile, toolchain=V2_TOOLCHAIN, exit_status=status,
-                failure_diagnostics=dict(canonical=canonical, reported_count=canonical["failure_count"]))), encoding="utf-8")
+                failure_diagnostics=dict(canonical=canonical, reported_count=canonical["failure_count"])), effective_argv)), encoding="utf-8")
             stdout = b"synthetic pytest output\n"
         return completed(status, stdout=stdout)
 
@@ -211,6 +232,8 @@ def task320_execution(tmp_path, monkeypatch):
             if state["observer_mismatch"] and args[1].startswith(V2_BASE):
                 return "9" * 40
             return "f" * 40
+        if args[0] == "show":
+            return (Path(__file__).resolve().parents[1] / ".ai/verification-profiles.yaml").read_text(encoding="utf-8")
         raise AssertionError(args)
 
     @contextmanager
@@ -223,6 +246,9 @@ def task320_execution(tmp_path, monkeypatch):
         sha, actual = kwargs["cwd"].name, shell[-1]
         native = shell[0] == "python"
         argv = list(shell) if native else shlex.split(actual)
+        effective_argv = list(argv)
+        argv = argv[:-8]
+        actual = shlex.join(argv)
         if native:
             actual = shlex.join(argv)
         collect = "--collect-only" in argv
@@ -241,6 +267,7 @@ def task320_execution(tmp_path, monkeypatch):
                         toolchain=dict(V2_TOOLCHAIN), exit_status=observed["exit_code"],
                         controller_collection=observed["collection"]["identity"], exact_collection=observed["collection"],
                         failure_diagnostics=dict(canonical=canonical, reported_count=canonical["failure_count"]))
+        task343_execution_envelope(envelope, effective_argv)
         if collect:
             defect = state["collection_defect"]
             if defect == "missing":
@@ -273,7 +300,8 @@ def task320_execution(tmp_path, monkeypatch):
                     if report["outcome"] == "FAIL":
                         report["phase"] = "collect"
         state["calls"].append(dict(sha=sha, command=actual, collect=collect, broad=broad, nodeids=nodes,
-                                   native_argv=tuple(shell) if native else None))
+                                   native_argv=tuple(shell) if native else None, effective_argv=effective_argv,
+                                   profile=profile, environment=dict(kwargs["env"])))
         output = Path(kwargs["env"]["AIOS_BP_V4_PLUGIN_OUTPUT"])
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(envelope), encoding="utf-8")
@@ -284,14 +312,19 @@ def task320_execution(tmp_path, monkeypatch):
     monkeypatch.setattr(verification_module, "_v2_toolchain", lambda: dict(V2_TOOLCHAIN))
     monkeypatch.setattr(verification_module, "materialize_verification_subject", materialize)
 
-    def seed_previous(failed_nodes, *, sha="d" * 40):
+    def seed_previous(failed_nodes, *, sha="d" * 40, historical_workers=None):
         profile = verification_module._v2_profile(tmp_path, sha, command, {})
+        if historical_workers is not None:
+            profile["workers"] = historical_workers
+            profile.pop("worker_execution_contract", None)
         previous = task320_observation(sha, command, state["candidate_nodes"], failures=failed_nodes, profile=profile)
         raw = tmp_path / "previous.raw"
         raw.write_bytes(b"bound previous failure population")
         binding = dict(subject_sha=sha, base_sha=V2_BASE, tree_sha=sha[0] * 40, command=command,
                        profile=profile, toolchain=dict(V2_TOOLCHAIN), envelope_digest=verification_digest([]),
                        changed_files_digest=verification_digest(["tests/test_sample.py"]), failure_set_digest=verification_digest([]))
+        if historical_workers is None:
+            binding["effective_command"] = verification_module._v2_effective_command(command, profile)
         record = dict(policy="minimum-sufficient-v2", binding=binding, candidate=previous,
                       candidate_digest=verification_digest(previous), evidence_id="RUN-previous-V001",
                       raw_path=str(raw), raw_digest=hashlib.sha256(raw.read_bytes()).hexdigest())
@@ -341,7 +374,7 @@ def test_task320_passing_delta_requires_the_entire_authored_focused_command(task
     assert len(list((tmp_path / "cache").glob("*.json"))) == 1
 
 
-@pytest.mark.parametrize("defect", ["missing", "conflicting", "unstable", "profile", "toolchain", "near-full", "observer"])
+@pytest.mark.parametrize("defect", ["missing", "toolchain", "near-full", "observer"])
 def test_task320_unavailable_or_uneconomical_delta_falls_back_to_authored_proof(task320_execution, defect):
     execute, state, _ = task320_execution
     if defect == "near-full":
@@ -439,6 +472,10 @@ def test_task320_candidate_projection_nonreproduction_uses_broad_attribution(tas
     with pytest.raises(RuntimeVerificationError) as caught:
         execute(operation="REPAIR")
     executed = [c for c in state["calls"] if not c["collect"]]
+    if defect in {"fingerprint", "profile", "phase"}:
+        assert [c["broad"] for c in executed] == [True, False]
+        assert caught.value.evidence[-1].verification["candidate"]["unstable"] is True
+        return
     assert [c["broad"] for c in executed] == [True, False, True]
     assert executed[-1]["sha"] == "a" * 40
     record = caught.value.evidence[0].verification
@@ -516,10 +553,118 @@ def test_task320_windows_generated_probe_transports_parameterized_nodeids_litera
     with pytest.raises(RuntimeVerificationError, match="candidate-only delta"):
         execute(platform="nt")
     native = state["calls"][-1]["native_argv"]
-    assert native == ("python", "-m", "pytest", "-q", node)
-    transported = subprocess.run((native[0], "-c", "import json,sys; print(json.dumps(sys.argv[1:]))", *native[4:]),
+    assert native[:5] == ("python", "-m", "pytest", "-q", node)
+    assert native[5:] == ("-p", "xdist.plugin", "-n", "12", "--dist", "load", "--max-worker-restart", "0")
+    transported = subprocess.run((native[0], "-c", "import json,sys; print(json.dumps(sys.argv[1:]))", *native[4:5]),
                                  capture_output=True, text=False, check=True)
     assert json.loads(transported.stdout.decode("utf-8")) == [node]
+
+
+def test_task343_candidate_base_and_exact_projections_bind_real_twelve_argv(task320_execution):
+    execute, state, _ = task320_execution
+    state["candidate_nodes"] = state["base_nodes"]
+    failed = state["base_nodes"][0]
+    state["candidate_failures"] = state["base_failures"] = {failed}
+    evidence = execute()
+    for call in state["calls"]:
+        argv = call["effective_argv"]
+        assert argv[-8:] == ["-p", "xdist.plugin", "-n", "0" if call["collect"] else "12",
+                            "--dist", "no" if call["collect"] else "load", "--max-worker-restart", "0"]
+        assert call["profile"]["workers"] == (0 if call["collect"] else 12)
+        assert call["environment"]["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+    assert len([c for c in state["calls"] if c["broad"] and not c["collect"] and c["sha"] == "b" * 40]) == 1
+    assert evidence[0].source.command == "python -m pytest -q tests/test_sample.py"
+    assert evidence[0].verification["binding"]["effective_command"].endswith("-n 12 --dist load --max-worker-restart 0")
+    assert evidence[0].verification["candidate"]["profile"]["workers"] == 12
+
+
+@pytest.mark.parametrize("defect", ["conflicting", "unstable", "profile"])
+def test_task343_invalid_collection_stops_without_worker_retry_or_broad_fallback(task320_execution, defect):
+    execute, state, _ = task320_execution
+    state["collection_defect"] = defect
+    with pytest.raises(RuntimeVerificationError, match="observation failed closed"):
+        execute()
+    assert len(state["calls"]) == 1 and state["calls"][0]["collect"]
+
+
+@pytest.mark.parametrize("operation", ["REPAIR", "REMEDIATION"])
+def test_task343_correction_exact_previous_failure_runs_twelve_once(task320_execution, operation):
+    execute, state, seed = task320_execution
+    failed = state["candidate_nodes"][0]
+    previous = seed({failed})
+    state["candidate_failures"] = {failed}
+    with pytest.raises(RuntimeVerificationError, match="previous-failure probe"):
+        execute(operation=operation, correction_base=previous)
+    assert len(state["calls"]) == 1
+    assert state["calls"][0]["effective_argv"][-6:] == ["-n", "12", "--dist", "load", "--max-worker-restart", "0"]
+
+
+@pytest.mark.parametrize("workers", [1, 4])
+def test_task343_historical_worker_proof_cannot_authorize_a_fresh_correction_probe(task320_execution, workers):
+    execute, state, seed = task320_execution
+    failed = state["candidate_nodes"][0]
+    previous = seed({failed}, historical_workers=workers)
+    execute(operation="REPAIR", correction_base=previous)
+    assert len(state["calls"]) == 1 and state["calls"][0]["broad"]
+    assert state["calls"][0]["profile"]["workers"] == 12
+
+
+@pytest.mark.parametrize("command", ["pytest -s tests/test_sample.py", "python -m pytest --maxfail=1", "pytest -n auto"])
+def test_task343_unsupported_runtime_pytest_is_not_silently_rewritten(command):
+    from aios_renew.verification_contract import VerificationContractError
+    with pytest.raises(VerificationContractError):
+        verification_module._v2_effective_command(command, dict(workers=12, distribution="load", max_worker_restart=0))
+
+
+@pytest.mark.parametrize("command", ["python -c 'print(1)'", "pytest -n 4 -q tests/test_sample.py",
+                                     "python scripts/bp_v4_parallel_probe.py --workers 2 3 4"])
+def test_task343_opaque_and_explicit_historical_commands_keep_exact_source(command):
+    assert verification_module._v2_effective_command(command, {}) == command
+
+
+@pytest.mark.parametrize("defect", ["serial", "four", "dist", "restart", "argv", "missing-worker", "shared-root", "collection", "worker-profile", "worker-toolchain", "absent-xdist", "boolean-exit", "boolean-version", "crash", "incomplete"])
+def test_task343_malformed_execution_cannot_be_labeled_comparable_twelve(tmp_path, defect):
+    from types import SimpleNamespace
+    from tests.test_verification_contract import v2_observation, V2_TOOLCHAIN
+    command = "python -m pytest -q tests/test_sample.py"
+    profile = dict(profile="pytest-observed-v2", workers=12, distribution="load", max_worker_restart=0, collect_only=False)
+    effective = verification_module._v2_effective_command(command, profile)
+    canonical = v2_observation(outcome="PASS")
+    envelope = task343_execution_envelope(dict(schema="AIOS_BP_V4_PYTEST_OBSERVATION", version=1,
+        profile=profile, toolchain=dict(V2_TOOLCHAIN), exit_status=0,
+        failure_diagnostics=dict(canonical={k: canonical[k] for k in ("reports", "failure_count", "complete", "unstable")}, reported_count=0)), shlex.split(effective))
+    if defect in {"serial", "four"}:
+        envelope["actual_execution"]["workers"] = 1 if defect == "serial" else 4
+    elif defect in {"dist", "restart"}:
+        envelope["actual_execution"]["distribution" if defect == "dist" else "max_worker_restart"] = "each" if defect == "dist" else 1
+    elif defect == "argv":
+        envelope["pytest_arguments"] = ["-q", "tests/test_other.py"]
+    elif defect == "missing-worker":
+        envelope["workers"].pop("gw11")
+    elif defect == "shared-root":
+        envelope["workers"]["gw1"]["temporary_root"] = envelope["workers"]["gw0"]["temporary_root"]
+    elif defect == "collection":
+        envelope["worker_collections"]["gw1"] = {**envelope["controller_collection"], "digest": "0" * 64}
+    elif defect in {"worker-profile", "worker-toolchain"}:
+        envelope["workers"]["gw1"]["profile" if defect == "worker-profile" else "toolchain"] = {"invalid": True}
+    elif defect == "absent-xdist":
+        envelope["toolchain"]["pytest_xdist_version"] = "absent"
+    elif defect == "boolean-exit":
+        envelope["exit_status"] = False
+    elif defect == "boolean-version":
+        envelope["version"] = True
+    else:
+        envelope["failure_diagnostics"]["canonical"].update(complete=False, unstable=True)
+        if defect == "crash":
+            envelope["exit_status"] = 2
+    output = tmp_path / "observation.json"
+    output.write_text(json.dumps(envelope), encoding="utf-8")
+    item = SimpleNamespace(subject_sha="b" * 40, source=SimpleNamespace(command=command),
+                           result=SimpleNamespace(exit_code=int(envelope["exit_status"])), raw_path=str(tmp_path / "raw"))
+    observed = verification_module._v2_observation(item, output, binding=dict(profile={**profile, "observer_blob": "f" * 40},
+        toolchain=dict(V2_TOOLCHAIN), effective_command=effective), selected=False)
+    assert observed["complete"] is False and observed["unstable"] is True
+    assert observed["exit_code"] == envelope["exit_status"]
 
 
 class RecordingRunner:

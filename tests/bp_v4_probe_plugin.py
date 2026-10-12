@@ -48,6 +48,15 @@ _subject_root = ""
 _condition_snapshot = None
 
 
+def _actual_execution(config: Any) -> dict:
+    option = getattr(config, "option", None)
+    collect = bool(getattr(option, "collectonly", False))
+    workers = getattr(option, "numprocesses", 0) or 0
+    return {"workers": 0 if collect else workers,
+            "distribution": "no" if collect or not workers else getattr(option, "dist", "no"),
+            "max_worker_restart": getattr(option, "maxworkerrestart", None), "collect_only": collect}
+
+
 def _resolve_conditions() -> tuple[dict, dict]:
     profile = json.loads(os.environ.get("AIOS_V2_PROFILE", '{"profile":"pytest-observed-v2"}'))
     toolchain = {
@@ -258,6 +267,10 @@ def _worker_facts(config: Any) -> dict[str, Any]:
         temporary_root = _resolved(factory.getbasetemp())
 
     git_cache_root = None
+    # Focused scopes and idle workers must also establish the same process-local
+    # Git cache isolation as the full suite. Importing allocates only its root.
+    if not any(name in sys.modules for name in ("git_fixture_support", "tests.git_fixture_support")):
+        import git_fixture_support
     for module_name in ("git_fixture_support", "tests.git_fixture_support"):
         module = sys.modules.get(module_name)
         root = getattr(module, "_cache_root", None) if module is not None else None
@@ -270,6 +283,8 @@ def _worker_facts(config: Any) -> dict[str, Any]:
         "process_id": os.getpid(),
         "temporary_root": temporary_root,
         "git_fixture_cache_root": git_cache_root,
+        "workercount": worker_input.get("workercount"),
+        "profile": _conditions()[0], "toolchain": _conditions()[1],
     }
 
 
@@ -360,10 +375,15 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
         "workers": _worker_payloads,
         "failure_diagnostics": failures,
         "profile": _conditions()[0], "toolchain": _conditions()[1],
+        "actual_execution": _actual_execution(config),
+        "pytest_arguments": list(getattr(getattr(config, "invocation_params", None), "args", ())),
     }
     exact = getattr(config, "_aios_v2_exact_collection", None)
-    if exact is not None and not _node_collections:
+    if _node_collections and os.environ.get("AIOS_V2_EXACT_COLLECTION") == "1" and _expected_nodeids is not None:
+        exact = {"identity": controller_collection, "nodeids": sorted(_expected_nodeids)}
+    if exact is not None:
         try:
+            validate_exact_collection(exact)
             verification_digest({**payload, "exact_collection": exact})
             payload["exact_collection"] = exact
         except VerificationContractError:
@@ -397,6 +417,8 @@ def pytest_testnodedown(node: Any, error: object) -> None:
     facts = node.workeroutput.get("aios_bp_v4_facts")
     collection = _collection_identity(node.workeroutput.get("aios_bp_v4_collection"))
     if isinstance(facts, dict):
+        if node.gateway.id in _worker_payloads:
+            _canonical_errors.append("duplicate worker completion observation")
         payload = dict(facts)
         payload["collection"] = collection
         _worker_payloads[node.gateway.id] = payload

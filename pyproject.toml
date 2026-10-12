@@ -33,5 +33,8 @@ aios_renew = ["schemas/*.json"]
 
 
 [tool.pytest.ini_options]
+# The repository plugin applies .ai/verification-profiles.yaml before xdist starts:
+# ordinary pytest uses 12/load/restart=0; collection and pinned diagnostics differ.
+addopts = "-p aios_renew.verification_profile"
 pythonpath = ["src"]
 testpaths = ["tests"]

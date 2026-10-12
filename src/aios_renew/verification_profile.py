@@ -1,7 +1,9 @@
-"""One repository-owned selected full-suite profile and soft attention rule."""
+"""One Human-selected worker policy shared by ordinary pytest and full-suite runs."""
 
 from __future__ import annotations
 
+import os
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,21 @@ COMPARABLE_TOOLCHAIN_KEYS = (
     "platform_system", "platform_machine", "python_implementation",
     "python_version", "pytest_version", "pytest_xdist_version",
 )
+
+
+def ordinary_profile_identity(policy: dict[str, Any]) -> dict[str, Any]:
+    """Apply the existing selection, including to exact historical base trees.
+
+    Pre-TASK-343 trees have the same Human selection but no application marker.
+    A present marker must be the single reference; it cannot select new workers.
+    """
+    selected = selected_profile_identity(policy)
+    if "ordinary_pytest" in policy and policy["ordinary_pytest"] != {
+        "uses": "ordinary_canonical_full_suite", "collect_only_workers": 0,
+        "explicit_worker_pinned_diagnostics": "preserve",
+    }:
+        raise ProbeError("incompatible ordinary pytest policy reference")
+    return selected
 
 
 def selected_profile_identity(policy: dict[str, Any]) -> dict[str, Any]:
@@ -43,6 +60,7 @@ def load_policy(repository: Path) -> dict[str, Any]:
         raise ProbeError("missing or malformed verification profile policy") from exc
     if not isinstance(data, dict) or data.get("format") != FORMAT or data.get("version") != 1:
         raise ProbeError("incompatible verification profile policy")
+    ordinary_profile_identity(data)
     selected = data.get("ordinary_canonical_full_suite")
     if not isinstance(selected, dict) or any((
         selected.get("profile") != PROFILE,
@@ -119,3 +137,61 @@ def performance_guard(
         "baseline_run_id": None,
         "baseline_evidence_id": None,
     }
+
+
+def pytest_configure(config: Any) -> None:
+    """Repository-configured plugin; xdist configures its session at trylast."""
+    configure_repository_pytest(config)
+
+
+def configure_repository_pytest(config: Any) -> None:
+    """Apply the single Human policy before xdist creates its distributed session."""
+    import pytest
+    from aios_renew.parallel_verification import ProbeError, load_toolchain
+
+    # Worker configuration is supplied by the controller. Never reselect it.
+    if hasattr(config, "workerinput"):
+        return
+    try:
+        environment_args = shlex.split(os.environ.get("PYTEST_ADDOPTS", ""))
+    except ValueError as exc:
+        raise pytest.UsageError("malformed PYTEST_ADDOPTS") from exc
+    worker_options = ("--numprocesses", "--dist", "--max-worker-restart", "--maxprocesses", "--tx")
+    if any(a == "-n" or a.startswith("-n") or any(a == p or a.startswith(p + "=") for p in worker_options)
+           for a in environment_args):
+        raise pytest.UsageError("PYTEST_ADDOPTS cannot select the repository worker policy; use explicit diagnostic argv")
+    if any(a.startswith("-n") or any(a == p or a.startswith(p + "=") for p in worker_options)
+           for a in config.getini("addopts")):
+        raise pytest.UsageError("pytest ini addopts cannot independently select repository workers")
+    if config.option.collectonly:
+        # Collection executes no test workers, even if -n was explicitly supplied.
+        if hasattr(config.option, "numprocesses"):
+            config.option.numprocesses = 0
+            config.option.dist = "no"
+            config.option.tx = []
+        return
+    if not (config.pluginmanager.hasplugin("xdist") or config.pluginmanager.hasplugin("xdist.plugin")):
+        raise pytest.UsageError("ordinary repository pytest requires pytest-xdist; no serial fallback")
+    if config.option.numprocesses is not None:
+        # An explicit fixed worker count is a historical diagnostic/measurement.
+        if not isinstance(config.option.numprocesses, int):
+            raise pytest.UsageError("repository pytest requires a fixed worker count")
+        return
+    try:
+        selected = load_policy(Path(__file__).resolve().parents[2])
+        load_toolchain()
+    except ProbeError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+    explicit_args = list(config.invocation_params.args)
+    explicit_dist = next((a.split("=", 1)[1] if "=" in a else explicit_args[i + 1]
+                          for i, a in enumerate(explicit_args)
+                          if a.startswith("--dist=") or a == "--dist"), None)
+    if (explicit_dist not in {None, selected["distribution"]}
+            or config.option.dist not in {"no", selected["distribution"]}
+            or config.option.maxworkerrestart not in {None, selected["max_worker_restart"]}
+            or config.option.tx or config.option.maxprocesses is not None):
+        raise pytest.UsageError("incompatible ordinary repository pytest worker configuration")
+    config.option.numprocesses = selected["workers"]
+    config.option.dist = selected["distribution"]
+    config.option.maxworkerrestart = selected["max_worker_restart"]
+    config.option.tx = ["popen"] * selected["workers"]

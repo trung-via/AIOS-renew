@@ -124,3 +124,80 @@ def test_policy_rejects_modified_historical_timing(tmp_path):
     write_policy(tmp_path, data)
     with pytest.raises(ProbeError, match="historical verification baseline"):
         load_policy(tmp_path)
+
+
+def task343_cli_config(**options):
+    from types import SimpleNamespace
+    defaults = dict(collectonly=False, numprocesses=None, dist="no",
+                    maxworkerrestart=None, maxprocesses=None, tx=[])
+    defaults.update(options)
+    return SimpleNamespace(option=SimpleNamespace(**defaults), getini=lambda name: [],
+                           invocation_params=SimpleNamespace(args=[]),
+                           pluginmanager=SimpleNamespace(hasplugin=lambda name: name == "xdist"))
+
+
+def test_task343_cli_applies_the_existing_single_human_selection(monkeypatch):
+    from aios_renew.verification_profile import configure_repository_pytest as pytest_cmdline_main
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    config = task343_cli_config()
+    pytest_cmdline_main(config)
+    selected = load_policy(REPOSITORY)
+    assert (config.option.numprocesses, config.option.dist, config.option.maxworkerrestart) == (
+        selected["workers"], selected["distribution"], selected["max_worker_restart"])
+
+
+@pytest.mark.parametrize("workers", [0, 1, 2, 3, 4, 8, 12, 16])
+def test_task343_cli_preserves_explicit_fixed_diagnostics(monkeypatch, workers):
+    from aios_renew.verification_profile import configure_repository_pytest as pytest_cmdline_main
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    config = task343_cli_config(numprocesses=workers, dist="each", maxworkerrestart=2)
+    before = vars(config.option).copy()
+    pytest_cmdline_main(config)
+    assert vars(config.option) == before
+
+
+def test_task343_collection_has_zero_workers_even_with_explicit_twelve(monkeypatch):
+    from aios_renew.verification_profile import configure_repository_pytest as pytest_cmdline_main
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    config = task343_cli_config(collectonly=True, numprocesses=12, tx=["popen"] * 12)
+    pytest_cmdline_main(config)
+    assert (config.option.numprocesses, config.option.dist, config.option.tx) == (0, "no", [])
+
+
+@pytest.mark.parametrize("defect", ["environment", "ini", "missing-xdist", "auto", "dist", "explicit-no-dist", "restart", "maxprocesses", "tx"])
+def test_task343_cli_conflicting_worker_selection_fails_closed(monkeypatch, defect):
+    from aios_renew.verification_profile import configure_repository_pytest as pytest_cmdline_main
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    config = task343_cli_config()
+    if defect == "environment":
+        monkeypatch.setenv("PYTEST_ADDOPTS", "-n 4")
+    elif defect == "ini":
+        config.getini = lambda name: ["-n", "1"]
+    elif defect == "missing-xdist":
+        config.pluginmanager.hasplugin = lambda name: False
+    elif defect == "explicit-no-dist":
+        config.invocation_params.args = ["--dist", "no"]
+    else:
+        key, value = {"auto": ("numprocesses", "auto"), "dist": ("dist", "each"),
+                      "restart": ("maxworkerrestart", 1), "maxprocesses": ("maxprocesses", 4),
+                      "tx": ("tx", ["popen"])}[defect]
+        setattr(config.option, key, value)
+    with pytest.raises(pytest.UsageError):
+        pytest_cmdline_main(config)
+
+
+def test_task343_ordinary_policy_reference_cannot_select_another_profile(tmp_path):
+    data = policy_data()
+    data["ordinary_pytest"]["workers"] = 4
+    write_policy(tmp_path, data)
+    with pytest.raises(ProbeError, match="ordinary pytest policy reference"):
+        load_policy(tmp_path)
+
+
+def test_task343_repository_entrypoint_starts_actual_twelve_workers_by_default(request):
+    config = request.config
+    args = config.workerinput["mainargv"] if hasattr(config, "workerinput") else config.invocation_params.args
+    if any(a.startswith("-n") or a.startswith("--numprocesses") for a in args):
+        return  # Explicit historical measurement matrices retain their counts.
+    assert hasattr(config, "workerinput")
+    assert config.workerinput["workercount"] == 12

@@ -1,5 +1,11 @@
 format: AIOS_VERIFICATION_PROFILE_POLICY
 version: 1
+# TASK-343 extends the existing Human selection to ordinary pytest execution.
+# This reference is an application of the selection below, not another selector.
+ordinary_pytest:
+  uses: ordinary_canonical_full_suite
+  collect_only_workers: 0
+  explicit_worker_pinned_diagnostics: preserve
 ordinary_canonical_full_suite:
   profile: bounded-parallel-full-suite-v1
   command: python scripts/aios_parallel_full_suite.py

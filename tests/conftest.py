@@ -12,6 +12,13 @@ _MAX_UNCHANGED_PARAMETER_LENGTH = 512
 _MAX_NODEID_LENGTH = 8192
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Reject disabling the ordinary policy through an alternate pytest config."""
+    if (not config.option.collectonly and config.getoption("numprocesses", None) is None
+            and not config.pluginmanager.hasplugin("aios_renew.verification_profile")):
+        raise pytest.UsageError("ordinary repository pytest requires its verification-profile plugin")
+
+
 def pytest_make_parametrize_id(
     config: pytest.Config, val: object, argname: str
 ) -> str | None:

@@ -71,8 +71,8 @@ def v2_plan(*, records=(), bindings=None, failures=(), changed=(), scope=(), ope
 
 
 def task320_observation(sha, command, nodes, *, failures=(), collect=False, profile=None):
-    profile = dict(profile or {"profile": "pytest-observed-v2", "workers": 1,
-                              "distribution": "load", "max_worker_restart": 0, "collect_only": collect})
+    profile = dict(profile or {"profile": "pytest-observed-v2", "workers": 0 if collect else 12,
+                              "distribution": "no" if collect else "load", "max_worker_restart": 0, "collect_only": collect})
     reports = []
     for node in sorted(nodes) if not collect else ():
         for phase in ("setup", "call", "teardown"):
@@ -82,10 +82,15 @@ def task320_observation(sha, command, nodes, *, failures=(), collect=False, prof
                 report.update(detail=detail, fingerprint=verification_digest(detail),
                               profile=profile, toolchain=dict(V2_TOOLCHAIN))
             reports.append(report)
-    return dict(subject_sha=sha, command=command, profile=profile, toolchain=dict(V2_TOOLCHAIN),
+    value = dict(subject_sha=sha, command=command, profile=profile, toolchain=dict(V2_TOOLCHAIN),
                 reports=reports, failure_count=len(failures) if not collect else 0,
                 exit_code=1 if failures and not collect else 0, complete=True, unstable=False,
                 collection={"identity": pytest_collection_identity(list(nodes)), "nodeids": sorted(nodes)})
+    if profile.get("worker_execution_contract") == "fixed-human-pytest-v1":
+        from aios_renew.verification import _v2_effective_command
+        value["execution"] = {k: profile[k] for k in ("workers", "distribution", "max_worker_restart", "collect_only")}
+        value["execution"]["effective_command"] = _v2_effective_command(command, profile, exact_projection=True)
+    return value
 
 
 def task320_projected_record(*, base_pass=False):
@@ -107,6 +112,30 @@ def task320_projected_record(*, base_pass=False):
                 failure_projection_digest=verification_digest(projection),
                 attribution=projected_failure_attribution(projection, candidate, command=command,
                     base_sha=V2_BASE, candidate_sha=V2_CANDIDATE))
+
+
+@pytest.mark.parametrize("defect", ["missing", "one", "four", "actual-one", "actual-bool", "actual-restart-bool", "actual-collect-int", "collection-reports"])
+def test_task343_new_worker_contract_rejects_missing_or_stale_actual_execution(defect):
+    profile = dict(profile="pytest-observed-v2", workers=12, distribution="load",
+                   max_worker_restart=0, collect_only=False, worker_execution_contract="fixed-human-pytest-v1")
+    value = task320_observation(V2_CANDIDATE, "python -m pytest -q tests/test_sample.py",
+                               ["tests/test_sample.py::test_one"], profile=profile)
+    validate_observation(value)
+    if defect == "missing":
+        value.pop("execution")
+    elif defect in {"one", "four"}:
+        value["profile"]["workers"] = 1 if defect == "one" else 4
+    elif defect == "collection-reports":
+        for target in (value["profile"], value["execution"]):
+            target.update(collect_only=True, workers=0, distribution="no")
+    elif defect == "actual-restart-bool":
+        value["execution"]["max_worker_restart"] = False
+    elif defect == "actual-collect-int":
+        value["execution"]["collect_only"] = 0
+    else:
+        value["execution"]["workers"] = 1 if defect == "actual-one" else True
+    with pytest.raises(VerificationContractError):
+        validate_observation(value)
 
 
 def test_task320_delta_is_exact_deterministic_and_economical():

@@ -18,6 +18,81 @@ SUBJECT = {"kind": "git-commit", "head_sha": "a" * 40, "worktree_clean": True}
 CALLS = [("collection", 1, True), ("parallel-12", 12, False)]
 
 
+@pytest.mark.parametrize("collect", [False, True])
+def test_task343_exact_collection_and_actual_execution_share_one_operation(tmp_path, monkeypatch, collect):
+    from tests import bp_v4_probe_plugin as plugin
+    from aios_renew.parallel_verification import validate_pytest_execution
+    from tests.test_verification_contract import V2_TOOLCHAIN
+    from aios_renew.verification import _v2_effective_command
+    profile = dict(profile="pytest-observed-v2", workers=0 if collect else 12,
+                   distribution="no" if collect else "load", max_worker_restart=0, collect_only=collect)
+    command = "python -m pytest -q tests/test_sample.py" + (" --collect-only" if collect else "")
+    effective = _v2_effective_command(command, profile)
+    import shlex
+    config = SimpleNamespace(rootpath=tmp_path, option=SimpleNamespace(collectonly=collect,
+        numprocesses=profile["workers"], dist=profile["distribution"], maxworkerrestart=0),
+        invocation_params=SimpleNamespace(args=shlex.split(effective)[3:]))
+    nodes = ["tests/test_sample.py::test_one", "tests/test_sample.py::test_two"]
+    session = SimpleNamespace(config=config, items=[SimpleNamespace(nodeid=n) for n in nodes])
+    monkeypatch.setattr(plugin, "_resolve_conditions", lambda: (profile, V2_TOOLCHAIN))
+    monkeypatch.setenv("AIOS_V2_EXACT_COLLECTION", "1")
+    output = tmp_path / "observed.json"
+    monkeypatch.setenv("AIOS_BP_V4_PLUGIN_OUTPUT", str(output))
+    plugin.pytest_sessionstart(session)
+    if collect:
+        plugin.pytest_collection_finish(session)
+    else:
+        identity = collection_identity(nodes)
+        for i in range(12):
+            worker = SimpleNamespace(gateway=SimpleNamespace(id=f"gw{i}"), workeroutput={
+                "aios_bp_v4_collection": identity,
+                "aios_bp_v4_facts": dict(worker_id=f"gw{i}", process_id=100 + i,
+                    temporary_root=f"C:/temp/worker-{i}", git_fixture_cache_root=f"C:/temp/git-{i}",
+                    workercount=12, profile=profile, toolchain=V2_TOOLCHAIN),
+                "aios_bp_v4_failures": dict(reported_count=0, displayed_identities=[],
+                    canonical=dict(complete=True, unstable=False, failure_count=0, reports=[]))})
+            plugin.pytest_xdist_node_collection_finished(worker, nodes)
+            plugin.pytest_testnodedown(worker, None)
+        for node in nodes:
+            for phase in ("setup", "call", "teardown"):
+                plugin._canonical_add(dict(nodeid=node, phase=phase, outcome="PASS"))
+    plugin.pytest_sessionfinish(session, 0)
+    observed = _load_observation(output)
+    validate_pytest_execution(observed, profile, effective)
+    assert observed["exact_collection"]["nodeids"] == nodes
+    assert observed["actual_execution"]["workers"] == (0 if collect else 12)
+    assert observed["failure_diagnostics"]["canonical"]["complete"] is True
+    assert len(observed["workers"]) == (0 if collect else 12)
+
+
+@pytest.mark.parametrize("workers,collect", [(1, False), (2, False), (3, False), (4, False),
+    (8, False), (12, False), (16, False), (1, True), (12, True)])
+def test_task343_historical_runner_pins_its_authored_count_once(tmp_path, monkeypatch, workers, collect):
+    import subprocess
+    from aios_renew import parallel_verification as parallel
+    calls = []
+    monkeypatch.delenv("AIOS_V2_OBSERVATION_DIRECTORY", raising=False)
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-n 16")
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        Path(kwargs["env"][parallel.PLUGIN_OUTPUT_ENV]).write_text(json.dumps(dict(
+            schema="AIOS_BP_V4_PYTEST_OBSERVATION", version=1, exit_status=0)), encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(parallel.subprocess, "run", run)
+    status, _, _ = parallel.run_pytest(REPOSITORY, tmp_path, label="historical",
+                                     workers=workers, collect_only=collect)
+    assert status == 0 and len(calls) == 1
+    argv, kwargs = calls[0]
+    expected = 0 if collect or workers == 1 else workers
+    assert argv[argv.index("-n") + 1] == str(expected)
+    assert argv[argv.index("--dist") + 1] == ("no" if expected == 0 else "load")
+    assert argv[argv.index("--max-worker-restart") + 1] == "0"
+    assert "PYTEST_ADDOPTS" not in kwargs["env"]
+    assert json.loads(kwargs["env"]["AIOS_V2_PROFILE"])["workers"] == (0 if collect else workers)
+
+
 def record_plugin_failure(plugin, index, *, phase="call", nodeid=None, detail="AssertionError: expected 1"):
     item = SimpleNamespace(config=SimpleNamespace(rootpath=Path("C:/exact-subject")))
     report = SimpleNamespace(failed=True, skipped=False, when=phase,
