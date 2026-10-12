@@ -1,0 +1,201 @@
+task_id: TASK-340
+revision: 1
+goal: >-
+  Implement a bounded, provider-neutral AIOS_ADAPTIVE_BRAIN_AUDIT_V1 A+ successor
+  to the existing brain-high-value-v3 Brain semantic audit discipline. Preserve
+  the mandatory eight ordered audit lenses, the exact two-stage construct and
+  adversarial-reconcile/final-closure contract, legacy v2/v3 validation and
+  history, and all existing Human, Brain, Executor, Runtime, Reviewer and
+  Publisher authorities. Add content-bound focus guidance for architecture,
+  governance, proof, security, integration, correction, efficiency and recovery,
+  with genuinely independent Stage-2 focus-completeness challenge. Deliver
+  bounded V3/V1 comparative evaluation capability without claiming unmeasured
+  North-Star superiority or automatically activating V1.
+problem: >-
+  Canonical brain-high-value-v3 applies the same eight adversarial lenses to
+  architecture, TASK, remediation and repair subjects but lacks self-contained
+  subject-impact guidance to reliably challenge globally unnecessary architecture,
+  total-system cost or omitted risk classes. VP03's observed architecture growth
+  and later Human-approved forward recovery demonstrate a need to challenge
+  program-level necessity separately from local TASK correctness. The current
+  parser/provider hard-codes v2/v3 IDs and v3-only privacy/conformance paths;
+  a simple profile rename would leave migration guards unproven and could
+  silently weaken protected candidate normalization. Human approved A+ as
+  canonical planning baseline at main b41a3865fad68c377f5bc83e2eca68bec2579d24
+  and explicitly prioritized it before VP03 runtime lean validity.
+assumptions:
+  - >-
+    Fresh Brain Sync for this draft observed main
+    b41a3865fad68c377f5bc83e2eca68bec2579d24. Before AUTHOR_TASK ingress and
+    PRIMARY admission, Runtime must bind and revalidate exact current canonical
+    main, TASK revision/blob and expected-main compare-and-swap; this observed
+    SHA does not authorize later use if main moves.
+  - >-
+    Human-approved A+ semantic planning is now in
+    docs/AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md. Its F01-F04 and C01-C20 are normative
+    design input, not proof of implementation performance or cutover.
+  - >-
+    The existing profile brain-high-value-v3 is the current prospective
+    baseline; v2/v3 historical packet/profile/construct identities and subject
+    lineages remain immutable. The new V1 profile requires a distinct exact
+    ID/version/digest with no cross-profile Stage-1/Stage-2 reconciliation.
+  - >-
+    Human has not yet named an Executor/model/effort for this new TASK. This
+    semantic TASK draft assigns none; execution needs a separate explicit
+    Human delegation and Runtime admission. TASK-340 is a provisional unclaimed
+    identity as of the observed main and must be rechecked during authoring.
+  - >-
+    The Human-approved prospective default new-TASK return affinity remains
+    LEGACY_REPOSITORY_DEFAULT_ROUTE; it does not establish origin-affine proof.
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+    - docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    - docs/AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md
+    - .ai/roadmap-state.yaml
+    - .ai/brain-audit-profiles.yaml
+    - .ai/research-audit-profiles.yaml
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/brain_audit.py
+    - src/aios_renew/brain_provider_protocol.py
+    - src/aios_renew/brain_return_contract.py
+    - tests/test_brain_audit.py
+    - tests/test_brain_provider_protocol.py
+  modify:
+    - .ai/brain-audit-profiles.yaml
+    - src/aios_renew/brain_audit.py
+    - src/aios_renew/brain_provider_protocol.py
+    - tests/test_brain_audit.py
+    - tests/test_brain_provider_protocol.py
+    - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+non_goals:
+  - >-
+    No change to Manifesto, Constitution, frozen Kernel v0.1, KA01,
+    roadmap sequencing, existing TASK or RUN identities, legacy artifacts,
+    Reviewer contracts, Runtime verification/policy, publication or downstream pins.
+  - >-
+    No second Brain, audit router, risk-score chooser, provider selector,
+    persistent memory/audit ledger, new model, third audit stage, RA gate,
+    automatic lifecycle routing, correction, retry or publication authority.
+  - >-
+    No new requirement to serialize or validate audit transcripts, Decision
+    Packets, Stage-1/Stage-2 artifacts, or acceptance-phase ledgers as a
+    prerequisite to AUTHOR_TASK admission; preserve direct final contract ingress.
+  - >-
+    No production cutover or declaration that V1 outperforms V3 on North Star
+    solely from implementing a profile, passing structural tests, an internal
+    illustrative audit, or a PR merge.
+  - >-
+    No full-suite test execution, unrelated baseline replay, broad normative
+    restructuring or changes outside the explicit scope.modify paths.
+constraints:
+  hard:
+    - >-
+      Preserve one Brain semantic audit authority and exactly two stages:
+      CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE, including mandatory final
+      closure on the reconciled candidate and CANDIDATE/NO_DECISION local outputs.
+    - >-
+      Preserve eight existing ordered required lens meanings and closed bounds;
+      additional adaptive focus instructions must be self-contained, portable,
+      normalized and content digest bound to one exact profile identity.
+      Do not make Stage 2 trust unbound transient Stage-1 focus notes.
+    - >-
+      Preserve all V3 TASK_AUTHORING phase/conformance protections, including
+      cross_authority_context, canonical_shape and terminal_lifecycle, private
+      reserved-key rejection, nested envelopes and machine-local path exclusion.
+      V1 must not weaken existing negative guards because its version is 1.
+    - >-
+      Historical V2/V3 identities, normalized fingerprints, schemas and replay
+      must remain valid in their own contexts. Cross-profile, stale or mixed
+      construct/stage2 material must fail closed, without reminting lineage.
+    - >-
+      Adaptive checks should depend on real subject impact, not TASK name or
+      classifier labels; program architecture requires North Star necessity,
+      no-change/minimal/new alternatives, security/trust and total-episode cost;
+      bounded repairs require exact causal finding, minimum legal delta and
+      reuse of still-valid evidence without unnecessary RA.
+    - >-
+      Comparative V3/V1 evaluation uses the same frozen canonical case inputs,
+      a stated measurement protocol and honest observed/estimated/unknown
+      distinctions. No fabricated cost/quality results or automatic cutover.
+    - >-
+      No production code/entrypoint or test outside scope.modify may change
+      under this TASK. If closing a safety-critical consumer requires a broader
+      normative or production mutation, stop and request Human/Brain scope
+      reconciliation instead of silently widening it.
+    - >-
+      Preserve canonical TASK authoring expected-main currentness and CAS,
+      Executor implementation authority, Runtime verification, independent
+      Reviewer semantics and eligible-source Publisher ownership.
+acceptance:
+  - id: AC1
+    condition: >-
+      The new adaptive profile is separately identifiable, self-contained,
+      normalized, digest bound and bounded, with exactly the existing eight
+      required ordered lenses and two stages; old v2/v3 profile material remains
+      recognized for exact historical subjects without substituting V1 semantics.
+  - id: AC2
+    condition: >-
+      Architecture, governance, proof, security, integration, correction,
+      performance and recovery focus guidance is present in one portable
+      profile/semantic procedure, including North Star and simpler alternatives,
+      without a new generic router, third stage or independent audit authority.
+  - id: AC3
+    condition: >-
+      Stage 2 challenges omitted or mislabeled focus classes from the exact
+      packet and Stage-1 bound candidate regardless of unbound transient
+      focus notes, and fails closed for stale/mismatched packet, subject or
+      profile identity.
+  - id: AC4
+    condition: >-
+      V1 preserves V3 candidate privacy and reserved metadata exclusions,
+      TASK_AUTHORING conformance/acceptance truthfulness and closed bounds;
+      representative malformed nested envelopes, local paths and missing or
+      substituted conformance sections are rejected.
+  - id: AC5
+    condition: >-
+      In-flight and historical V2/V3 validation remains unchanged and
+      cross-profile Stage-1/Stage-2, digest mismatch, partial adaptation and
+      unknown IDs are rejected without converting old evidence into V1 proof.
+  - id: AC6
+    condition: >-
+      For strategic, ordinary TASK and correction subjects, the implemented
+      semantic procedure distinguishes mandatory eight-lens checking from
+      focus-specific depth, preserves the existing two-stage closure and does
+      not require Research Audit for every local fix.
+  - id: AC7
+    condition: >-
+      A bounded comparison/conformance fixture or equivalent exportable test
+      basis covers representative TASK-320/329/334/336 and adversarial
+      cases on paired equivalent inputs, reports quality/cost observations
+      without fabricated superiority and exposes unresolved tradeoffs as
+      UNKNOWN rather than an automatic V1 activation decision.
+  - id: AC8
+    condition: >-
+      Provider request/response validation accepts valid exact V1 packages
+      while preserving existing V2/V3 binding, stage output, rejection and
+      historical replay semantics, with no audit-envelope requirement added
+      to AUTHOR_TASK direct ingress.
+  - id: AC9
+    condition: >-
+      Prospective normative audit documentation identifies V1 as a bounded
+      planned successor while preserving the meaning of older BP-4A/V3
+      historical claims and does not silently expand constitutional,
+      Runtime, Reviewer or Publisher authority.
+  - id: AC10
+    condition: >-
+      The implementation leaves V3 as the active prospective profile until
+      independently authorized cutover; any missing evidence, unavailable
+      live provider or unmeasured North Star claim is explicitly surfaced,
+      without changing roadmap or auto-advancing successor work.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+    - python -m pytest -q tests/test_brain_audit.py tests/test_brain_provider_protocol.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
