@@ -1,0 +1,182 @@
+acceptance:
+- condition: All six VP03-exclusive source modules, six focused test modules and six
+    versioned VP03 docs are absent from the prospective tree and no active source/test/entrypoint
+    requires the retired imports or broker service.
+  id: AC1
+- condition: Existing ingress, issue carrier, operator, Runtime, review transport
+    and Publisher behavior is restored toward pre-VP03 operational intent without
+    regressing current required admission/verification/CAS and independently reviewed
+    later improvements; no blanket historical revert.
+  id: AC2
+- condition: Public RESULT/FAILURE/REPAIR/REMEDIATION transport remains safely redacted,
+    canonical/private views reconcile iff exact authorized representations match,
+    and forged public representation or inconsistent identities fail closed; retired
+    issuer files are not required at runtime.
+  id: AC3
+- condition: 'Published TASK-337/338 positive and negative cases continue to hold:
+    V2 reference versus full EVIDENCE roles, owner/placement binding, correct post-transport
+    private/public equality, malformed-state rejection and pending correction classification;
+    no weakened guard or skipped test.'
+  id: AC4
+- condition: Publication recovery admits the exact eligible reviewed source, yields
+    a new independently reviewable result when SHA changes, and Unified State recognizes
+    the new SEMANTIC_REVIEW obligation. Exact replay and conflict rejection preserve
+    lease/currentness and expected-main CAS.
+  id: AC5
+- condition: PRIMARY, REPAIR, REMEDIATION, authoring ingress, terminal transport and
+    Publisher conformance remain valid for affected changes with no new authority,
+    scheduler, credential or proof engine.
+  id: AC6
+- condition: Immutable pre-VP03 and TASK-330 through TASK-338 history, including RUN-336-006
+    canonical VERIFICATION FAILURE, remains unchanged and readable. New TASK-339 produces
+    only its own prospective lineage.
+  id: AC7
+- condition: Candidate differences are confined to scope.modify; no roadmap/workflow,
+    Kernel/policy, authorization/permission or downstream change. Verification is
+    bounded, Runtime-owned, minimum-sufficient-v2, with no unnecessary equivalent
+    repeated candidate/base proof and no false PASS.
+  id: AC8
+assumptions:
+- Brain Sync observed canonical main 5a5d98211b3a6e749042bfa27351279f0d368a76 on 2026-10-12.
+  AUTHOR_TASK and PRIMARY must freshly revalidate exact canonical main and task identity
+  before mutation; this observation is not a future head pin.
+- Human approved prospective replacement of the TASK-336 historical repair strategy
+  on 2026-10-12. TASK-336, RUN-336-001 through RUN-336-006 and all prior canonical
+  FAILURE/REPAIR artifacts remain immutable engineering truth.
+- Exact historical pre-VP03 behavior reference is 84478a59405427ef932740eb26d8ce6292b0fe71;
+  the unreviewed TASK-336 candidate fc1cd55cb73cbbc13f530156877a14865d869da3 is inspection-only
+  implementation material, not an approved tree or transplantable patch.
+- REVIEW-338-001 PASS published source 5a5d98211b3a6e749042bfa27351279f0d368a76 and
+  the published TASK-337 private/public evidence-role protections are current mandatory
+  behavior.
+- Canonical roadmap contains a stale next_items value for superseded VP03 evidence
+  validity while the forward recovery sequence entry is NEXT and names historical
+  TASK-336. Human/Brain must canonicalize one planning NEXT and successor TASK-339
+  identity before a later generic continuation relies on this decision; Executor does
+  not edit planning state.
+- TASK-339 requires its own explicit Human executor/model/effort delegation; TASK-336's
+  existing Codex delegation does not automatically transfer.
+- The Human-approved prospective legacy return-affinity choice remains in force for
+  new AIOS-renew task identities; it is not H4 origin-affine proof.
+constraints:
+  hard:
+  - New implementation candidate must descend normally from the exact freshly admitted
+    canonical main; preserve source and history of TASK-337/338 fixes. Old source
+    SHA is an inspection reference only.
+  - Retire the six VP03-exclusive production modules, six focused tests and six associated
+    versioned docs only when no surviving production entrypoint or test imports them.
+    No dangling wrappers or silently dormant broker path.
+  - Existing public transport projection for RUN, RESULT, FAILURE and nested correction
+    records must remain available via existing bounded Runtime or transport responsibilities
+    after retired modules disappear. Preserve canonical identities and immutable digests
+    while redacting original raw locators, local workspaces, private diagnostic messages
+    and credentials.
+  - Retain published TASK-337 role-aware V2 reference/full EVIDENCE and TASK-338 canonical-private/public
+    matching for current and historical terminals, including adversarial/missing/forged
+    source rejection.
+  - Retain ingress expected-main/old-SHA CAS, repair/remediation lineage, PRIMARY
+    completion and failure semantics, Runtime-owned independent verification, Reviewer
+    judgment, Publisher exact-source/lease/CAS and publication-recovery fresh-review
+    requirement. No authority merge.
+  - Retire only VP03-exclusive behavior; do not erase unrelated changes since the
+    pre-VP03 reference. If the Executor finds a necessary cross-scope production change,
+    report an exact blocker rather than mutating it.
+  - Preserve minimum-sufficient-v2, frozen Kernel v0.1 and KA01 NOT_ACTIVATED. Runtime
+    chooses and validates verification/evidence and alone determines eligibility for
+    any proof reuse or baseline comparison.
+  - Use the smallest independent candidate conformance that covers the exact affected
+    integration surfaces. A decisive candidate failure remains a FAILURE; do not automatically
+    rerun the same broad baseline or fabricate comparative attribution. No duplicate
+    proof execution without necessity.
+  - Scope of code/test/doc modifications must remain within the declared paths. Roadmap
+    reconciliation and Human executor assignment are separate pre-authoring/pre-dispatch
+    decisions, not Executor-owned tasks.
+goal: Complete the Human-approved VP03 pre-TASK330 forward source recovery using a
+  new prospective candidate descending from current reviewed/published AIOS-renew
+  main. Retire VP03-only attestation, broker, provenance-owner and checkpoint/handoff
+  dependencies without regressing post-baseline canonical admission, publication recovery,
+  Runtime verification, protected public transport and the TASK-337/338 fail-closed
+  private/public reconciliation fixes. Preserve all historical lineage.
+non_goals:
+- Do not repair, reclassify, delete, reopen or overwrite TASK-336/RUN-336-006, earlier
+  TASK-330 through TASK-338 history or any immutable canonical artifacts.
+- Do not cherry-pick, reset, force-push, copy the historical candidate tree wholesale
+  or replace later published code with an older historical source.
+- Do not weaken TASK-337/338 protected public view, validation, origin, evidence role/owner,
+  SHA, canonical equality, REVIEW, Publisher or CAS gates.
+- No new evidence issuer/broker, proof engine, attestation API, independent Reviewer/Publisher,
+  planner, scheduler, lifecycle router or automatic correction.
+- Do not edit roadmap, other TASK records, .github workflows, rulesets, credentials,
+  GitHub Apps, Kernel specification, verification policy or downstream repositories
+  under this implementation TASK.
+- No broad baseline/full-suite test replay solely to label an attribution. No test
+  skip/xfail or evidence fabrication to gain a PASS verdict.
+problem: TASK-336 r1 remains an immutable six-RUN failed recovery chain ending in
+  RUN-336-006 canonical VERIFICATION FAILURE. Its candidate fc1cd55cb73cbbc13f530156877a14865d869da3
+  diverged from reviewed main and included old direct private-vs-public equality in
+  unified_state.py; an exact publication recovery fixture yielded MALFORMED_CANONICAL_STATE.
+  TASK-338 later published the bounded private/public reducer correction onto main.
+  Historical repair cannot safely replace these later fixes or mutate unified_state.py
+  under TASK-336's inspect-only scope. Human prospectively selected a fresh forward
+  recovery task rather than another historical REPAIR.
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
+revision: 1
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-BRAIN-PORTABILITY.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-336.yaml
+  - .ai/tasks/TASK-337.yaml
+  - .ai/tasks/TASK-338.yaml
+  - src/aios_renew/verification.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/verification_contract.py
+  modify:
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/proof_applicability.py
+  - src/aios_renew/proof_authority_handoff.py
+  - src/aios_renew/proof_checkpoint_lineage.py
+  - src/aios_renew/runtime_provenance_issuer.py
+  - src/aios_renew/runtime_provenance_owner.py
+  - src/aios_renew/runtime_writer_broker.py
+  - tests/test_operator.py
+  - tests/test_publication.py
+  - tests/test_review_transport.py
+  - tests/test_runtime.py
+  - tests/test_authoring_ingress.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_proof_applicability.py
+  - tests/test_proof_authority_handoff.py
+  - tests/test_proof_checkpoint_lineage.py
+  - tests/test_runtime_provenance_issuer.py
+  - tests/test_runtime_provenance_owner.py
+  - tests/test_runtime_writer_broker.py
+  - docs/AIOS-VP03-CANONICAL-PROOF-HANDOFF-v1.md
+  - docs/AIOS-VP03-CHECKPOINT-LINEAGE-AND-REPLAY-v1.md
+  - docs/AIOS-VP03-GITHUB-APP-WRITER-TRUST-v1.md
+  - docs/AIOS-VP03-OWNER-BOUND-PROVENANCE-AUTHORITY-v1.md
+  - docs/AIOS-VP03-PROVENANCE-APPLICABILITY-v1.md
+  - docs/AIOS-VP03-RUNTIME-SOURCE-ISSUANCE-CONTRACT-v1.md
+task_id: TASK-339
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_publication.py::test_publication_recovery_admits_once_then_requires_new_exact_review
+    tests/test_operator.py -k 'terminal_reconciliation or publication_recovery'
+  - python -m pytest -q tests/test_runtime.py tests/test_review_transport.py tests/test_authoring_ingress.py
+    tests/test_github_issue_ingress.py -k 'transport or failure or repair or redaction
+    or privacy'
