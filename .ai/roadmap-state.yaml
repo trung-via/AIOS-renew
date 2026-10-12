@@ -1536,7 +1536,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - verification-architecture-replacement-v1-vp03-evidence-validity
+  - verification-architecture-replacement-v1-vp03-forward-recovery
 sequence:
 
   - id: TASK-309
@@ -2648,8 +2648,24 @@ sequence:
     phase: VP03_PRE_TASK330_FORWARD_RECOVERY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-10"
-    task_id: TASK-336
+    task_id: TASK-339
     task_authoring_status: NOT_AUTHORED
+    prospective_successor_human_decision_2026_10_12:
+      authority: HUMAN_BRAIN_PLANNING
+      decision: PROSPECTIVE_FORWARD_RECOVERY_NEW_TASK_FROM_CURRENT_MAIN
+      approved_task: TASK-339
+      replaces_further_historical_repair_of: TASK-336
+      historical_last_run: RUN-336-006
+      historical_terminal_kind: FAILURE
+      historical_failure_artifact_sha: 5bb9864a83f10ad3d602d7dbd355e9af61d13aa6
+      historical_candidate_sha: fc1cd55cb73cbbc13f530156877a14865d869da3
+      preserve_historical_lineage: true
+      main_at_decision: 5a5d98211b3a6e749042bfa27351279f0d368a76
+      human_executor: codex
+      human_model: gpt-6.1-sol
+      human_reasoning_effort: xhigh
+      sticky_delegation: ENTIRE_TASK339_INCLUDING_LAWFUL_REPAIR_REMEDIATION
+      no_automatic_roadmap_completion: true
     baseline_commit: 84478a59405427ef932740eb26d8ce6292b0fe71
     source_main_at_decision: e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4
     predecessor_task334_r2_reviewed_published_sha: e951bd3fd896bdd5ad4082f8bc9b35a26b23f1f4
