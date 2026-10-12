@@ -474,19 +474,74 @@ def test_exact_profile_provider_replay_and_cross_profile_rejection(registry, pro
 def test_v1_provider_package_rejects_digest_unknown_and_partial_adaptation(registry, fault):
     profiles = parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
     policy = deepcopy(next(p for p in profiles if p["id"] == "aios-adaptive-brain-audit-v1"))
+    historical = next(p for p in profiles if p["id"] == "brain-high-value-v3")
     reference = profile_ref(policy)
     if fault == "digest":
         reference["digest"] = "0" * 64
     elif fault == "unknown_id":
         policy["id"] = reference["id"] = "unknown-adaptive-v1"
     elif fault == "partial":
-        policy["lenses"][3]["check"] = profiles[0]["lenses"][3]["check"]
+        policy["lenses"][3]["check"] = historical["lenses"][3]["check"]
         reference["digest"] = digest(policy)
     else:
-        policy = {**deepcopy(profiles[0]), "id": reference["id"], "version": 1}
+        policy = {**deepcopy(historical), "id": reference["id"], "version": 1}
         reference["digest"] = digest(policy)
     with pytest.raises(BrainProviderProtocolError):
         request(registry, {"profile": policy, "audit_profile_ref": reference})
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"))
+@pytest.mark.parametrize("fault", (None, "missing_profile", "changed_digest", "invalid_stage2"))
+def test_prospective_v1_provider_attempt_has_one_package_two_invocations_and_no_fallback(registry, flow, fault):
+    import yaml
+    from aios_renew.brain_provider import BrainAttemptError, MappingBrainProvider, attempt
+
+    cutover = yaml.safe_load((ROOT / ".ai/roadmap-state.yaml").read_bytes())[
+        "adaptive_brain_audit_v1_priority_20261012"]["exclusive_prospective_cutover_20261012"]
+    reference = {"id": cutover["profile_id"], "version": cutover["profile_version"],
+                 "digest": cutover["profile_digest"]}
+    assert reference == {"id": "aios-adaptive-brain-audit-v1", "version": 1,
+                         "digest": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718"}
+    policy = next(p for p in parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+                  if profile_ref(p) == reference)
+    package = {"profile": policy, "audit_profile_ref": deepcopy(reference)}
+    if fault == "missing_profile":
+        package = None
+    elif fault == "changed_digest":
+        package["audit_profile_ref"]["digest"] = "0" * 64
+    supplied, contract = inputs(registry, flow)
+    bindings = ({"task_id": "TASK-999", "revision": 1} if flow == "TASK_AUTHORING" else
+                {"repair_id": "REPAIR-999"} if flow == "REPAIR_AUTHORING" else {})
+    candidate = {**bindings, "proposal": "Single prospective V1 audit"}
+    calls, fresh_calls = [], []
+    def callback(req):
+        calls.append(deepcopy(req))
+        semantic = (response(req, candidate) if req["request_mode"] == "AUDIT_CONSTRUCT" else
+                    stage2_response(req, candidate))
+        if fault == "invalid_stage2" and req["request_mode"] == "AUDIT_RECONCILE":
+            semantic["closure"].pop()
+        return {"semantic_response": semantic, "attribution": {
+            "provider": "fixture", "model": "fixed", "session_id": None, "invocation_id": str(len(calls))}}
+    def fresh():
+        fresh_calls.append(None)
+        return DecisionPacket(supplied.as_dict())
+    provider = MappingBrainProvider("fixture", "fixed", callback)
+    if fault:
+        with pytest.raises(BrainAttemptError) as caught:
+            attempt(provider, supplied, contract, bindings, package, fresh)
+        expected_count = 2 if fault == "invalid_stage2" else 0
+        assert caught.value.invocation_count == len(calls) == expected_count
+        assert len(fresh_calls) == (1 if expected_count else 0)
+    else:
+        result = attempt(provider, supplied, contract, bindings, package, fresh)
+        assert len(calls) == len(result.attributions) == 2 and len(fresh_calls) == 1
+        assert result.decision["audit_profile_ref"] == reference
+        assert result.decision["semantic_value"]["outcome"] == "CANDIDATE"
+        assert revalidate_decision(result.decision, calls[1]) == result.decision
+    if calls:
+        assert [item["request_mode"] for item in calls] == ["AUDIT_CONSTRUCT", "AUDIT_RECONCILE"]
+        assert all(item["audit_profile_package"] == package for item in calls)
+        assert calls[1]["stage1_lineage"]["construct"]["audit_profile_ref"] == reference
 
 
 @pytest.mark.parametrize("bad", (

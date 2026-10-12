@@ -37,6 +37,12 @@ from aios_renew.review_transport import (
 from aios_renew.unified_state import observe_unified_state
 
 
+ACTIVE_PROFILE_REF = {
+    "id": "aios-adaptive-brain-audit-v1", "version": 1,
+    "digest": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718",
+}
+
+
 @pytest.mark.parametrize("review_fault", ["old-sha", "delta", "main-moved"])
 def test_publication_recovery_review_ingress_requires_fresh_exact_primary_and_current_main(tmp_path, monkeypatch, review_fault):
     from aios_renew import operator
@@ -404,7 +410,7 @@ def test_direct_authoring_semantic_formatting_and_read_only_replay(tmp_path):
 
 
 @pytest.mark.parametrize("fault", [
-    "stage1_only", "packet", "profile", "flow", "order", "missing_lens",
+    "stage1_only", "third_stage", "packet", "profile", "profile_version", "profile_digest", "flow", "order", "missing_lens",
     "no_decision", "substitution", "reconciliation", "payload",
 ])
 def test_correction_audited_authoring_rejects_invalid_handoff_before_mutation(tmp_path, fault):
@@ -413,10 +419,16 @@ def test_correction_audited_authoring_rejects_invalid_handoff_before_mutation(tm
     handoff = copy.deepcopy(envelope.audited_handoff)
     if fault == "stage1_only":
         del handoff["stage2"]
+    elif fault == "third_stage":
+        handoff["stage3"] = {}
     elif fault == "packet":
         handoff["stage1"]["packet_fingerprint"] = "0" * 64
     elif fault == "profile":
         handoff["stage1"]["audit_profile_ref"]["id"] = "wrong-profile"
+    elif fault == "profile_version":
+        handoff["stage1"]["audit_profile_ref"]["version"] = 3
+    elif fault == "profile_digest":
+        handoff["stage2"]["audit_profile_ref"]["digest"] = "0" * 64
     elif fault == "flow":
         handoff["stage2"]["selected_flow"] = "ARCHITECTURE"
     elif fault == "order":
@@ -607,7 +619,7 @@ def test_direct_author_task_rejects_unrelated_delta(tmp_path, monkeypatch):
     assert git(remote, "rev-parse", "refs/heads/main") == main_sha
 
 
-@pytest.mark.parametrize("movement", ("main", "correction", "input_at_publication"))
+@pytest.mark.parametrize("movement", ("main", "correction", "canonical_policy", "input_at_publication"))
 def test_correction_audited_authoring_rechecks_freshness(tmp_path, monkeypatch, movement):
     repo, remote, main_sha, _, initial = completion_gate_supersession_fixture(tmp_path)
     envelope = audited_envelope(initial, repo)
@@ -624,7 +636,13 @@ def test_correction_audited_authoring_rechecks_freshness(tmp_path, monkeypatch, 
         original = brain_audit.validate_stage2
         def move_ref(*args, **kwargs):
             audit = original(*args, **kwargs)
-            if movement == "main":
+            if movement == "canonical_policy":
+                path = ".ai/roadmap-state.yaml"
+                roadmap = yaml.safe_load((repo / path).read_bytes())
+                roadmap["adaptive_brain_audit_v1_priority_20261012"][
+                    "exclusive_prospective_cutover_20261012"]["profile_digest"] = "0" * 64
+                canonical_audit_fixture_update(repo, remote, path, roadmap)
+            elif movement == "main":
                 tree = git(repo, "rev-parse", f"{main_sha}^{{tree}}")
                 commit = authoring_ingress_module._commit_tree(repo, tree, [main_sha], "movement")
                 git(remote, "fetch", "--no-tags", str(repo), commit)
@@ -778,15 +796,21 @@ def setup_test_repo(
     root: Path, *, task_id: str = "TASK-105", roadmap: dict | None = None,
 ) -> tuple[Path, Path, str]:
     """Create local repo and bare upstream git repo."""
+    planning = copy.deepcopy(roadmap if roadmap is not None else {
+        "version": 1, "active_track": "ingress", "active_track_status": "ACTIVE",
+        "sequence": [{"id": task_id, "task_id": task_id, "status": "NEXT"}],
+    })
+    # Isolated canonical fixtures carry the real Human-approved profile policy,
+    # independently of which planning NEXT the correction tests exercise.
+    policy_key = "adaptive_brain_audit_v1_priority_20261012"
+    planning[policy_key] = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / ".ai/roadmap-state.yaml").read_bytes())[policy_key]
     return materialize_git_baseline(
         root,
         files={
             "README.md": "initial repo\n",
             ".gitattributes": ".ai/** -text\n",
-            ".ai/roadmap-state.yaml": yaml.safe_dump(roadmap if roadmap is not None else {
-                "version": 1, "active_track": "ingress", "active_track_status": "ACTIVE",
-                "sequence": [{"id": task_id, "task_id": task_id, "status": "NEXT"}],
-            }).encode("utf-8"),
+            ".ai/roadmap-state.yaml": yaml.safe_dump(planning).encode("utf-8"),
             **{f".ai/{name}": (Path(__file__).resolve().parents[1] / ".ai" / name).read_bytes()
                for name in ("flow-cards.yaml", "brain-audit-profiles.yaml", "brain-return-contracts.yaml")},
         },
@@ -4574,6 +4598,176 @@ def exact_correction_fixture(
         "AIOS_INGRESS_ENVELOPE", 1, operation, {"source_run_id": run_id, "finding_id": "F1"},
         {"expected_reviewed_sha": head}, payload)
     return repo, remote, lineage["main_sha"], decision.canonical_sha, envelope
+
+
+def canonical_audit_fixture_update(repo, remote, path, document):
+    """Change canonical fixture input, never the execution repository's refs."""
+    (repo / path).write_text(document if isinstance(document, str) else yaml.safe_dump(document), encoding="utf-8")
+    return commit_fixture_state(
+        repo, paths=(path,), message="canonical audit policy fixture",
+        user_name="AIOS Test", user_email="test@example.invalid",
+        remote=remote, remote_ref="refs/heads/main",
+    )
+
+
+@pytest.mark.parametrize("operation", ("AUTHOR_REPAIR", "AUTHOR_REMEDIATION"))
+@pytest.mark.parametrize("position", (0, 1, 2))
+def test_v1_correction_selection_ignores_registry_order_and_validates_once(tmp_path, monkeypatch, operation, position):
+    from aios_renew import brain_audit
+
+    repo, remote, _, lineage_sha, initial = exact_correction_fixture(tmp_path, operation, "unrelated")
+    path = ".ai/brain-audit-profiles.yaml"
+    registry = yaml.safe_load((repo / path).read_bytes())
+    adaptive = next(p for p in registry["profiles"] if p["id"] == ACTIVE_PROFILE_REF["id"])
+    registry["profiles"].remove(adaptive)
+    registry["profiles"].insert(position, adaptive)
+    main = canonical_audit_fixture_update(repo, remote, path, registry)
+    packet, profile, _, _ = authoring_ingress_module._compose_authoring_packet(initial, repo)
+    assert brain_audit.profile_ref(profile) == ACTIVE_PROFILE_REF
+    assert packet.as_dict()["selected_flow"] == operation.replace("AUTHOR_", "") + "_AUTHORING"
+    envelope = audited_envelope(initial, repo)
+    assert all(envelope.audited_handoff[stage]["audit_profile_ref"] == ACTIVE_PROFILE_REF
+               for stage in ("stage1", "stage2"))
+    calls = []
+    original = brain_audit.validate_stage2
+    def record_validation(packet, selected, stage1, stage2):
+        calls.append(brain_audit.profile_ref(selected))
+        return original(packet, selected, stage1, stage2)
+    monkeypatch.setattr(brain_audit, "validate_stage2", record_validation)
+    result = execute_ingress(envelope, repo=repo)
+    assert result.status == "CANONICALIZED" and calls == [ACTIVE_PROFILE_REF]
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+    lineage_ref = (f"refs/heads/aios/failure-artifacts/{initial.identity['failed_run_id']}"
+                   if operation == "AUTHOR_REPAIR" else
+                   f"refs/heads/aios/review-decision/{initial.identity['source_run_id']}")
+    assert git(remote, "rev-parse", lineage_ref) == lineage_sha
+    assert execute_ingress(initial, repo=repo).status == "IDEMPOTENT"
+    assert calls == [ACTIVE_PROFILE_REF]  # Read-only replay adds no semantic audit.
+
+
+@pytest.mark.parametrize("fault", (
+    "missing_v1", "changed_v1", "invalid_version", "unknown_id", "duplicate_v1",
+    "missing_policy", "malformed_policy", "duplicate_policy", "policy_id", "policy_version", "policy_digest", "policy_inactive",
+    "policy_authority", "policy_intent", "policy_selection", "policy_legacy", "policy_parallel", "policy_stages", "policy_lenses", "policy_flows",
+    "root_disagreement", "root_version_bool", "policy_version_bool",
+))
+def test_v1_correction_missing_changed_or_unauthorized_policy_fails_closed(tmp_path, monkeypatch, fault):
+    from aios_renew import brain_audit
+
+    repo, remote, _, _, initial = exact_correction_fixture(tmp_path, "AUTHOR_REPAIR", "matching")
+    envelope = audited_envelope(initial, repo)
+    registry_fault = fault in {"missing_v1", "changed_v1", "invalid_version", "unknown_id", "duplicate_v1"}
+    path = ".ai/brain-audit-profiles.yaml" if registry_fault else ".ai/roadmap-state.yaml"
+    document = yaml.safe_load((repo / path).read_bytes())
+    if registry_fault:
+        adaptive = next(p for p in document["profiles"] if p["id"] == ACTIVE_PROFILE_REF["id"])
+        if fault == "missing_v1":
+            document["profiles"].remove(adaptive)
+        elif fault == "changed_v1":
+            adaptive["lenses"][0]["check"] += " Changed canonical meaning."
+        elif fault == "invalid_version":
+            adaptive["version"] = 2
+        elif fault == "unknown_id":
+            adaptive["id"] = "unknown-v1"
+        else:
+            document["profiles"] = [adaptive, copy.deepcopy(adaptive)]
+    else:
+        key = "adaptive_brain_audit_v1_priority_20261012"
+        policy = document[key]
+        cutover = policy["exclusive_prospective_cutover_20261012"]
+        changes = {
+            "policy_id": ("profile_id", "brain-high-value-v3"),
+            "policy_version": ("profile_version", 3),
+            "policy_digest": ("profile_digest", "0" * 64),
+            "policy_inactive": ("status", "NOT_AUTHORIZED"),
+            "policy_authority": ("authority", "PROVIDER"),
+            "policy_intent": ("human_intent", "V3_ONLY"),
+            "policy_selection": ("selection", "REGISTRY_FIRST"),
+            "policy_legacy": ("legacy_protection", "ALLOW_NEW_V3_SUBJECTS"),
+            "policy_parallel": ("prohibited", "ALLOW_PARALLEL_AUDITS"),
+            "policy_stages": ("required_stages", ["CONSTRUCT", "ADVERSARIAL_AUDIT_AND_RECONCILE", "COMPARE"]),
+            "policy_lenses": ("mandatory_lenses", 7),
+            "policy_flows": ("new_flows", ["REPAIR_AUTHORING"]),
+            "policy_version_bool": ("profile_version", True),
+        }
+        if fault == "missing_policy":
+            del document[key]
+        elif fault == "malformed_policy":
+            document[key] = ["invalid policy mapping"]
+        elif fault == "duplicate_policy":
+            document = yaml.safe_dump(document) + yaml.safe_dump({key: policy})
+        elif fault == "root_disagreement":
+            policy["active_audit_profile"] = "brain-high-value-v3"
+        elif fault == "root_version_bool":
+            policy["profile_version"] = True
+        else:
+            field, value = changes[fault]
+            cutover[field] = value
+    canonical_audit_fixture_update(repo, remote, path, document)
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_correction_mutation(monkeypatch)
+    monkeypatch.setattr(brain_audit, "validate_stage2", lambda *a, **k: pytest.fail("audit before valid V1 selection"))
+    with pytest.raises(AuthoringIngressError):
+        execute_ingress(envelope, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+@pytest.mark.parametrize("operation", ("AUTHOR_REPAIR", "AUTHOR_REMEDIATION"))
+@pytest.mark.parametrize("first_id,second_id", (
+    ("brain-high-value-v3", "brain-high-value-v3"),
+    ("brain-high-value-v3", "aios-adaptive-brain-audit-v1"),
+    ("aios-adaptive-brain-audit-v1", "brain-high-value-v3"),
+))
+def test_historical_v3_replay_cannot_authorize_new_or_mixed_correction(tmp_path, monkeypatch, operation, first_id, second_id):
+    from aios_renew import brain_audit
+    from tests.test_brain_audit import stage2_input
+
+    repo, remote, _, _, initial = exact_correction_fixture(tmp_path, operation, "matching")
+    packet, _, _, _ = authoring_ingress_module._compose_authoring_packet(initial, repo)
+    profiles = {p["id"]: p for p in brain_audit.parse_profile_registry(
+        (repo / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]}
+    stages = {}
+    for profile_id in {first_id, second_id}:
+        profile = profiles[profile_id]
+        first = brain_audit.construct_stage1(packet, profile, initial.payload)
+        second = stage2_input(first, profile)
+        replay = brain_audit.validate_stage2(packet, profile, first, second)
+        assert replay["outcome"] == "CANDIDATE" and replay["handoff_candidate"] == initial.payload
+        assert replay["audit_profile_ref"] == brain_audit.profile_ref(profile)
+        assert brain_audit.validate_stage2(packet, profile, first, second) == replay
+        stages[profile_id] = (first, second)
+    handoff = {"format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1,
+               "stage1": stages[first_id][0], "stage2": stages[second_id][1]}
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_correction_mutation(monkeypatch)
+    monkeypatch.setattr(brain_audit, "validate_stage2", lambda *a, **k: pytest.fail("mismatched profile was audited"))
+    with pytest.raises(AuthoringIngressError, match="profile mismatch"):
+        execute_ingress(replace(initial, audited_handoff=handoff), repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+@pytest.mark.parametrize("bad", (
+    {"nested": {"provider_identity": "provider"}}, {"nested": {"chain_of_thought": "private"}},
+    {"nested": {"focus_notes": "Only correction"}},
+    {"nested": {"format": "AIOS_BRAIN_REQUEST"}}, {"nested": {"path": "C:/private/context"}},
+))
+def test_v1_correction_rejects_content_bound_malicious_material_before_mutation(tmp_path, monkeypatch, bad):
+    from tests.test_brain_audit import digest
+
+    repo, remote, _, _, initial = exact_correction_fixture(tmp_path, "AUTHOR_REPAIR", "matching")
+    envelope = audited_envelope(initial, repo)
+    handoff = copy.deepcopy(envelope.audited_handoff)
+    first, second = handoff["stage1"], handoff["stage2"]
+    first["construct_candidate"].update(bad)
+    first["construct_fingerprint"] = digest({k: v for k, v in first.items() if k != "construct_fingerprint"})
+    for key in ("construct_candidate", "construct_fingerprint"):
+        second[key] = copy.deepcopy(first[key])
+    second["reconciled_candidate"] = copy.deepcopy(first["construct_candidate"])
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_correction_mutation(monkeypatch)
+    with pytest.raises(AuthoringIngressError):
+        execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
 
 
 def forbid_correction_mutation(monkeypatch):

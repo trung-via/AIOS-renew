@@ -1518,6 +1518,13 @@ _AUTHORING_FLOWS = {
     "AUTHOR_REMEDIATION": "REMEDIATION_AUTHORING",
     "AUTHOR_REPAIR": "REPAIR_AUTHORING",
 }
+# The Human-approved prospective identity is immutable for this migration.
+# Canonical policy must still authorize it; registry presence is not selection.
+_ACTIVE_AUDIT_PROFILE_REF = {
+    "id": "aios-adaptive-brain-audit-v1",
+    "version": 1,
+    "digest": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718",
+}
 _AuthoringRefs = tuple[str | None, dict[str, str]]
 _AuthoringBinding = tuple[str, dict[str, Any], _AuthoringRefs]
 
@@ -1805,7 +1812,7 @@ def _compose_authoring_packet(
         raise AuthoringIngressError("audited authoring is only valid for correction operations")
     from .brain_context import compose_brain_work_context, resolve_flow
     from .decision_packet import compile_decision_packet
-    from .brain_audit import parse_profile_registry
+    from .brain_audit import parse_profile_registry, profile_ref
     from .brain_return_contract import parse_return_contract_registry, select_return_contract
 
     remote, refs = _authoring_refs(repo)
@@ -1893,9 +1900,41 @@ def _compose_authoring_packet(
             expected_refs=refs,
         )
     packet = compile_decision_packet(context, resolution, material)
-    profile = parse_profile_registry((repo / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"][0]
-    if profile["id"] != "brain-high-value-v3" or profile["version"] != 3:
-        raise AuthoringIngressError("new audited authoring requires brain-high-value-v3")
+    # Strictly decode the selected policy, without imposing TASK mapping-key
+    # rules on unrelated historical roadmap sections (which have numeric keys).
+    roadmap = yaml.compose(_authoring_blob(repo, main_sha, ".ai/roadmap-state.yaml", remote), Loader=yaml.SafeLoader)
+    policy_nodes = [value for key, value in roadmap.value
+                    if isinstance(key, yaml.ScalarNode) and key.tag == "tag:yaml.org,2002:str"
+                    and key.value == "adaptive_brain_audit_v1_priority_20261012"] if isinstance(roadmap, yaml.MappingNode) else []
+    if len(policy_nodes) != 1:
+        raise AuthoringIngressError("missing or ambiguous canonical prospective audit profile policy")
+    policy = yaml.load(yaml.serialize(policy_nodes[0]), Loader=_TaskLoader)
+    cutover = policy.get("exclusive_prospective_cutover_20261012") if isinstance(policy, Mapping) else None
+    if not isinstance(cutover, Mapping):
+        raise AuthoringIngressError("missing canonical prospective audit profile policy")
+    active_ref = {"id": policy.get("active_audit_profile"), "version": policy.get("profile_version"),
+                  "digest": policy.get("profile_digest")}
+    cutover_ref = {"id": cutover.get("profile_id"), "version": cutover.get("profile_version"),
+                   "digest": cutover.get("profile_digest")}
+    if (active_ref != _ACTIVE_AUDIT_PROFILE_REF or cutover_ref != active_ref
+            or type(active_ref["version"]) is not int or type(cutover_ref["version"]) is not int
+            or policy.get("status") != "ADAPTIVE_V1_EXCLUSIVE_PROSPECTIVE_ACTIVE_AFTER_HUMAN_CUTOVER"
+            or policy.get("authority") != "HUMAN_BRAIN_PLANNING"
+            or cutover.get("status") != "ACTIVE_FROM_THIS_CANONICAL_PLANNING_COMMIT_PROSPECTIVE_ONLY"
+            or cutover.get("authority") != "EXPLICIT_HUMAN_BRAIN_SEMANTIC_POLICY_DECISION"
+            or cutover.get("human_intent") != "V1_ONLY_NO_PARALLEL_V3_SEMANTIC_REASONING_FOR_NEW_SUBJECTS"
+            or cutover.get("selection") != "EXACT_PROFILE_ID_VERSION_DIGEST_ONLY_NO_V3_FALLBACK"
+            or cutover.get("legacy_protection") != "V2_V3_IN_FLIGHT_EXACT_MATCH_OR_FAIL_CLOSED_RESTART_HISTORY_READ_ONLY"
+            or cutover.get("prohibited") != "NO_PARALLEL_V3_V1_REASONING_NO_SECOND_SEMANTIC_VERDICT_NO_NEW_ROUTER"
+            or cutover.get("new_flows") != ["ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"]
+            or cutover.get("required_stages") != ["CONSTRUCT", "ADVERSARIAL_AUDIT_AND_RECONCILE"]
+            or type(cutover.get("mandatory_lenses")) is not int or cutover["mandatory_lenses"] != 8):
+        raise AuthoringIngressError("canonical prospective audit profile policy mismatch: exact V1 cutover required")
+    profiles = parse_profile_registry(_authoring_blob(repo, main_sha, ".ai/brain-audit-profiles.yaml", remote))["profiles"]
+    selected_profiles = [item for item in profiles if profile_ref(item) == active_ref]
+    if len(selected_profiles) != 1:
+        raise AuthoringIngressError("canonical prospective audit profile mismatch: exact V1 material required")
+    profile, = selected_profiles
     contract = select_return_contract(
         parse_return_contract_registry((repo / ".ai/brain-return-contracts.yaml").read_bytes()), packet)
     _prove_authoring_inputs(repo, main_sha, remote)
@@ -1927,13 +1966,17 @@ def _authoring_family_body(operation: str, value: Any, packet: DecisionPacket, r
 
 def _validate_authoring_handoff(envelope: IngressEnvelope, repo: Path) -> _AuthoringBinding:
     from .brain_sync import BrainSyncError
-    from .brain_audit import validate_stage2
+    from .brain_audit import profile_ref, validate_stage2
 
     if envelope.audited_handoff is None:
         raise AuthoringIngressError("new authoring mutation requires audited_handoff")
     try:
         _validate_handoff_shape(envelope.audited_handoff)
         packet, profile, contract, refs = _compose_authoring_packet(envelope, repo)
+        selected_ref = profile_ref(profile)
+        if any(envelope.audited_handoff[stage].get("audit_profile_ref") != selected_ref
+               for stage in ("stage1", "stage2")):
+            raise AuthoringIngressError("audited authoring profile mismatch: new mutations require the exact V1 profile in both stages")
         audit = validate_stage2(packet, profile, envelope.audited_handoff["stage1"], envelope.audited_handoff["stage2"])
         if audit["outcome"] != "CANDIDATE":
             raise AuthoringIngressError("audited authoring requires Stage-2 CANDIDATE")

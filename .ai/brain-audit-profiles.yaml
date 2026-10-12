@@ -1,3 +1,7 @@
+# Sole prospective profile: aios-adaptive-brain-audit-v1, version 1, normalized
+# digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718.
+# Canonical Human/Brain policy selects by exact identity, never registry order.
+# V2/V3 entries preserve historical decoding and exact in-flight bindings only.
 format: AIOS_BRAIN_AUDIT_PROFILES
 version: 1
 profiles:
@@ -97,8 +101,8 @@ profiles:
       closure_blocker_summary_bytes: 4096
       stage2_bytes: 524288
       max_depth: 32
-# Planned successor only. V3 above remains the active prospective profile.
-# Exact V1 content is admitted for bounded comparison; presence is not cutover.
+# Human approved exclusive prospective V1 cutover on 2026-10-12.
+# Missing or changed exact V1 material fails closed; no V3 fallback or dual audit.
   - id: aios-adaptive-brain-audit-v1
     version: 1
     applicable_flows: [ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING, REPAIR_AUTHORING]

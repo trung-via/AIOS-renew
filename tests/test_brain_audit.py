@@ -459,7 +459,8 @@ def test_semantic_vocabulary_is_accepted_and_fingerprint_bound(profile, flow):
 
 @pytest.fixture
 def v3_profile():
-    return parse_profile_registry(REGISTRY.read_bytes())["profiles"][0]
+    return next(p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"]
+                if p["id"] == "brain-high-value-v3")
 
 
 @pytest.fixture(params=("brain-high-value-v3", "aios-adaptive-brain-audit-v1"))
@@ -482,7 +483,7 @@ def v3_material(profile):
     return supplied, first, material
 
 
-def test_prospective_v3_and_immutable_v2_have_distinct_direct_protocols(profile, v3_profile):
+def test_historical_v3_and_immutable_v2_have_distinct_direct_protocols(profile, v3_profile):
     assert v3_profile["id"] == "brain-high-value-v3" and v3_profile["version"] == 3
     historical_registry = {"format": "AIOS_BRAIN_AUDIT_PROFILES", "version": 1, "profiles": [profile]}
     import yaml
@@ -649,7 +650,8 @@ def test_adaptive_exact_identity_rejects_rename_partial_adaptation_and_unknowns(
     assert adaptive_profile["procedure"] == v3_profile["procedure"]
     assert adaptive_profile["bounds"] == v3_profile["bounds"]
     assert adaptive_profile["conformance"] == v3_profile["conformance"]
-    for legacy in parse_profile_registry(REGISTRY.read_bytes())["profiles"][:2]:
+    for legacy in (p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"]
+                   if p["id"] in {"brain-high-value-v2", "brain-high-value-v3"}):
         renamed = {**deepcopy(legacy), "id": adaptive_profile["id"], "version": 1,
                    "conformance": deepcopy(adaptive_profile["conformance"])}
         with pytest.raises(BrainAuditError, match="partially adapted"):
@@ -679,6 +681,51 @@ def test_adaptive_exact_identity_rejects_rename_partial_adaptation_and_unknowns(
 def test_historical_normalized_profile_digests_remain_exact(profile_id, expected_digest):
     profile = next(p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"] if p["id"] == profile_id)
     assert profile_ref(profile)["digest"] == expected_digest
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"))
+def test_v1_single_profile_covers_exact_two_stages_and_ordered_final_closure(adaptive_profile, flow):
+    expected_ref = {"id": "aios-adaptive-brain-audit-v1", "version": 1,
+                    "digest": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718"}
+    assert profile_ref(adaptive_profile) == expected_ref
+    assert adaptive_profile["procedure"]["stages"] == ["CONSTRUCT", "ADVERSARIAL_AUDIT_AND_RECONCILE"]
+    lens_ids = [lens["id"] for lens in adaptive_profile["lenses"]]
+    assert len(lens_ids) == 8 and len(set(lens_ids)) == 8
+    supplied = packet(flow)
+    first = construct_stage1(supplied, adaptive_profile, {"proposal": "Exact new subject"})
+    material = stage2_input(first, adaptive_profile)
+    if flow == "TASK_AUTHORING":
+        material.update(v3_sections(first, material["reconciled_candidate"]))
+    final = validate_stage2(supplied, adaptive_profile, first, material)
+    assert first["audit_profile_ref"] == final["audit_profile_ref"] == expected_ref
+    assert [item["lens"] for item in final["construct_audit"]] == lens_ids
+    assert [item["lens"] for item in final["closure"]] == lens_ids
+    for field in ("construct_audit", "closure"):
+        malformed = deepcopy(material)
+        malformed[field].reverse()
+        with pytest.raises(BrainAuditError, match="out-of-order"):
+            validate_stage2(supplied, adaptive_profile, first, malformed)
+    with pytest.raises(BrainAuditError):
+        validate_stage2(supplied, adaptive_profile, first, {**material, "third_stage": {}})
+
+
+def test_historical_v3_exact_serialized_subject_replay_survives_v1_cutover(v3_profile):
+    supplied, first, material = v3_material(v3_profile)
+    serialized = json.dumps({"packet": supplied, "stage1": first, "stage2": material}, sort_keys=True)
+    original = validate_stage2(supplied, v3_profile, first, material)
+    assert original["audit_profile_ref"] == {
+        "id": "brain-high-value-v3", "version": 3,
+        "digest": "2a2d46f85b5d9d4e3653f3c3fb7b7354be44da6fdbf13894dc5d374039370425",
+    }
+    profiles = parse_profile_registry(REGISTRY.read_bytes())["profiles"]
+    replay = json.loads(serialized)
+    for ordered in (profiles, list(reversed(profiles))):
+        historical = next(p for p in ordered if profile_ref(p) == original["audit_profile_ref"])
+        assert validate_stage2(replay["packet"], historical, replay["stage1"], replay["stage2"]) == original
+        adaptive = next(p for p in ordered if p["id"] == "aios-adaptive-brain-audit-v1")
+        with pytest.raises(BrainAuditError, match="lineage mismatch"):
+            validate_stage2(replay["packet"], adaptive, replay["stage1"], replay["stage2"])
+    assert json.dumps(replay, sort_keys=True) == serialized
 
 
 @pytest.mark.parametrize("key", (

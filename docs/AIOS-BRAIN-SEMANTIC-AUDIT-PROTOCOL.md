@@ -6,9 +6,11 @@ Scope: read-only retrospective plus BP-4A architecture intent; no implementation
 
 Sections 1–17 preserve the original BP-4A planning and completion claims in their
 historical context. Their `v1` / `brain-high-value-v1` refers to that original
-protocol, not `AIOS_ADAPTIVE_BRAIN_AUDIT_V1`. The current active prospective
-profile remains `brain-high-value-v3`. Section 18 specifies a separately
-identifiable bounded planned successor; registry presence does not activate it.
+protocol, not `AIOS_ADAPTIVE_BRAIN_AUDIT_V1`. The sole active prospective
+profile is `aios-adaptive-brain-audit-v1`, version 1, normalized digest
+`982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`, under
+the explicit Human/Brain cutover in section 18.6. V2/V3 remain historical and
+exact in-flight compatibility material; registry order does not select a profile.
 
 ## 1. Purpose
 
@@ -416,12 +418,13 @@ BP-5 Brain Provider Protocol is the next Human/Brain planning milestone. BP-4A c
 
 ## 18. Prospective adaptive V1 successor — TASK-340
 
-`AIOS_ADAPTIVE_BRAIN_AUDIT_V1` is the bounded planned successor described by the
+`AIOS_ADAPTIVE_BRAIN_AUDIT_V1` is the bounded successor described by the
 Human-approved A+ design in [AIOS Adaptive Brain Audit v1](AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md).
-Its availability for exact structural conformance and comparison is distinct
-from prospective production cutover. `brain-high-value-v3` remains active until
-independently authorized cutover; V2/V3 in-flight and historical subjects retain
-their own exact identities and meanings. No roadmap transition is implied.
+TASK-340 delivered exact structural conformance and comparison capability before
+the separately authorized prospective cutover in section 18.6. V1 is now the sole
+prospective profile; V2/V3 in-flight and historical subjects retain their own exact
+identities and meanings. Capability, comparison output and source changes alone
+do not advance the roadmap or establish engineering completion.
 
 ### 18.1. One portable content-bound procedure
 
@@ -439,8 +442,9 @@ ordered `lenses[].check` fields. Their base meanings, four applicable flows,
 two stages and closed bounds remain intact: 2048 UTF-8 bytes per check, 131072
 candidate bytes, four risks per lens, 524288 Stage-2 bytes and depth 32, with the
 existing text limits and TASK conformance policy. The registry remains bounded
-to 32768 bytes and at most three distinct recognized profiles. Registry order
-keeps V3 first; adding V1 is capability for planned conformance, not selection.
+to 32768 bytes and at most three distinct recognized profiles. Registry order is
+irrelevant to selection: the exact canonical Human/Brain V1 ID/version/digest
+selects the single prospective package. V3 appearing first confers no authority.
 
 The validator recognizes one exact normalized V1 digest. Equivalent YAML line
 endings and JSON member order preserve that identity. Changed or partially
@@ -568,21 +572,23 @@ work, scope/authority expansion and limitations. Finding counts are not quality
 scores, and the comparison evaluator creates no independent Reviewer or automatic
 semantic verdict. An external measured run is absent from this implementation.
 
-Apply alternatives to V1 itself: retaining V3 is valid, minimal V1 is a design
-hypothesis, and a separate adaptive controller violates the approved non-goals.
+The pre-cutover design comparison considered retaining V3 and minimal V1;
+the Human subsequently selected V1 exclusively for prospective work. Minimal
+V1's measured benefit remains a hypothesis, and a separate adaptive controller
+violates the approved non-goals.
 Hard authority/safety/evidence floors precede any cost tradeoff. No fabricated
 ROI, automatic winner, cutover or successor work follows from this basis.
 
-### 18.5. Activation boundary
+### 18.5. Historical TASK-340 activation boundary (superseded by 18.6)
 
-V3 remains the active prospective profile. Source/profile availability, structural
-conformance, a desk audit, comparison output or merge does not authorize activation.
-Prospective V1 cutover requires separate explicit Human/Brain reconciliation after
-canonical Runtime verification, independent Reviewer judgment and eligible-source
-Publisher publication, including relevant consumer compatibility. Missing measured
-quality/cost evidence and unproven live-provider behavior remain visible as UNKNOWN.
-This implementation changes no roadmap sequencing, selects no Executor/provider,
-dispatches no execution and performs no automatic lifecycle advancement.
+At TASK-340 publication, V3 was the active prospective profile and V1 activation
+was not authorized. Source/profile availability, structural conformance, a desk
+audit, comparison output or merge did not authorize that transition. The separate
+explicit Human/Brain reconciliation followed canonical Runtime verification,
+independent Reviewer judgment and eligible-source Publisher publication, as
+recorded in section 18.6. Measured quality/cost evidence and unproven live-provider
+behavior remain UNKNOWN. TASK-340 did not select an Executor/provider, dispatch
+execution or perform automatic lifecycle advancement.
 
 ### 18.6. Human-approved exclusive prospective cutover (2026-10-12)
 
@@ -590,4 +596,33 @@ dispatches no execution and performs no automatic lifecycle advancement.
 
 For a new eligible Brain semantic flow, pass **one** V1 profile package, run only `CONSTRUCT` and `ADVERSARIAL_AUDIT_AND_RECONCILE` with its eight required ordered lenses and final closure, and carry its exact ID/version/digest between stages. **Never also invoke V3** or produce a second semantic verdict, never silently fall back to V3 when a V1 profile or consumer binding is missing; in that case fail closed on that invocation or present a bounded explicit blocker. Existing V2/V3 subjects, including a V3 Stage 1 already in flight, retain their historical exact profile identity and may only finish under their exact bound old profile or use separately authorized restart; no mixed V3 Stage 1/V1 Stage 2. Keeping legacy validators/profile entries is **read compatibility, not active dual reasoning**.
 
-Current repository code already validates and transports the exact V1 package without an additional audit router; the caller's existing explicit profile selection remains the single decision input. No new production-code mutation or Runtime/Reviewer/Publisher authority is authorized by this Human/Brain planning cutover. A caller that has not actually selected V1 must **not** claim live V1 invocation. TASK-341 remains a separate VP03 Runtime NEXT and is not an activation prerequisite, nor is its Executor implied by TASK-340. Human accepts activation while paired live V3/V1 comparative quality, latency, tokens and cost remain **UNKNOWN**; no North-Star superiority claim follows. A later optional evaluation must not run dual audits on ordinary production decisions or auto-advance any lifecycle.
+The audit and provider protocols validate and transport explicit exact V1 packages without an additional audit router; the caller's existing explicit profile selection remains the single semantic decision input. TASK-342 separately authorizes migration of the V3-dependent correction ingress consumer. A caller that has not actually selected V1 must **not** claim live V1 invocation. TASK-341 r1 and RUN-341-001's model-capacity FAILURE remain immutable; continuation requires separately authorized REPAIR after migration publication. TASK-342 performs no TASK-341 correction. Human accepts activation while paired live V3/V1 comparative quality, latency, tokens and cost remain **UNKNOWN**; no North-Star superiority claim follows. A later optional evaluation must not run dual audits on ordinary production decisions or auto-advance any lifecycle.
+
+### 18.7. Prospective correction consumer migration — TASK-342
+
+`AUTHOR_REPAIR` and `AUTHOR_REMEDIATION` reconstruct their existing exact canonical
+correction packet. The same composition path reads the canonical main roadmap's
+`adaptive_brain_audit_v1_priority_20261012.exclusive_prospective_cutover_20261012`
+policy, requires its active authorization and exact approved V1 identity, and
+requires agreement with the containing policy's active profile. It selects exactly
+one normalized canonical registry package by ID/version/digest. Missing, malformed,
+changed or contradictory policy/profile material fails closed without V3 fallback.
+
+Both supplied stages must carry that exact reference; a V3-only handoff or either
+mixed V3/V1 pairing receives an explicit profile mismatch before semantic handoff
+validation or authoring mutation. The existing Stage-2 validator runs once over
+the two-stage handoff. Packet/construct bindings, all eight ordered lenses and
+final closures, privacy/reserved-key rules, return-contract identity, canonical
+TASK and failed RUN/finding REVIEW lineage, current-main input proof and pre-mutation
+and pre-publication freshness checks remain required. Freshness reconstruction
+does not invoke another provider or audit.
+
+The provider protocol remains explicit-package transport, with one V1 package for
+each new covered flow and precisely `AUDIT_CONSTRUCT` then `AUDIT_RECONCILE`.
+Historical V2/V3 parsing, exact bound replay and in-flight completion retain their
+original content/digests and safety grammar, without prospective substitution.
+Identical canonical correction replay remains read-only and adds no audit.
+BO-1 `AUTHOR_TASK` remains direct final-contract ingress without a serialized
+audit prerequisite. No schema field, selector/router, persistent reasoning ledger,
+Runner/Reviewer/Publisher authority or lifecycle transition is added. Runtime owns
+canonical verification and EVIDENCE for the migration.
