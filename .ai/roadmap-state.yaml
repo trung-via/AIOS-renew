@@ -49,13 +49,17 @@ prospective_task_return_affinity_human_override:
 
 adaptive_brain_audit_v1_priority_20261012:
   id: AIOS_ADAPTIVE_BRAIN_AUDIT_V1
-  status: TASK340_IMPLEMENTATION_REVIEWED_PUBLISHED_V1_CUTOVER_SEPARATELY_GATED
+  status: ADAPTIVE_V1_EXCLUSIVE_PROSPECTIVE_ACTIVE_AFTER_HUMAN_CUTOVER
   approved_on: "2026-10-12"
   authority: HUMAN_BRAIN_PLANNING
   planning_document: docs/AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md
   source_spec: A_PLUS_REFINED_2026_10_11
-  active_audit_profile_unchanged: brain-high-value-v3
-  requested_successor_profile: aios-adaptive-brain-audit-v1
+  active_audit_profile: aios-adaptive-brain-audit-v1
+  profile_version: 1
+  profile_digest: 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718
+  legacy_validation_only_profiles:
+    - brain-high-value-v3
+    - brain-high-value-v2
   intended_semantic_path: MINIMAL_V3_SUCCESSOR_B_NOT_NEW_ROUTER
   immediate_next: verification-architecture-replacement-v1-vp03-runtime-lean-validity
   preempts: verification-architecture-replacement-v1-vp03-runtime-lean-validity
@@ -73,11 +77,11 @@ adaptive_brain_audit_v1_priority_20261012:
     required before prospective cutover. No automatic roadmap advancement.
   human_executor_delegation: TASK340_CODEX_GPT_6_1_SOL_XHIGH_CONFIRMED
   implementation_authorization: SATISFIED_FOR_TASK340_ONLY_NEW_TASK_REQUIRES_NEW_DELEGATION
-  v1_profile_activation: NOT_AUTHORIZED
+  v1_profile_activation: HUMAN_APPROVED_SINGLE_PROSPECTIVE_ACTIVE_PROFILE
   measured_north_star_superiority: UNKNOWN
   implementation_closure_20261012:
     authority: HUMAN_BRAIN_PLANNING_RECONCILED_WITH_CANONICAL_TASK_RUNTIME_REVIEWER_PUBLISHER
-    current_human_continuation: RESUME_QUEUED_ROADMAP_WITHOUT_V1_PRODUCTION_ACTIVATION
+    current_human_continuation: RESUME_QUEUED_ROADMAP_WITH_V1_SINGLE_PROSPECTIVE_SEMANTIC_PROFILE
     task_id: TASK-340
     task_revision: 1
     task_blob_sha: 9f19b60d5ed9ae630745bdd5a1ec53eef666d103
@@ -95,14 +99,37 @@ adaptive_brain_audit_v1_priority_20261012:
     exact_reviewed_published_source_sha: 3a06bdcd53065e7a83e455143b5cd3921b2b0ddc
     source_on_main_at_reconciliation: 3a06bdcd53065e7a83e455143b5cd3921b2b0ddc
     closure_scope: AUTHORING_AND_IMPLEMENTATION_ONLY
-    active_prospective_profile: brain-high-value-v3
-    adaptive_v1_production_cutover: NOT_AUTHORIZED
+    active_prospective_profile_at_task340_publication: brain-high-value-v3
+    adaptive_v1_production_cutover_at_task340_publication: NOT_AUTHORIZED
     paired_v3_v1_live_provider_measurements: NOT_RUN
     measured_north_star_superiority: UNKNOWN
-    cutover: REQUIRES_SEPARATE_EXPLICIT_HUMAN_BRAIN_DECISION_AND_RELEVANT_EVIDENCE
+    cutover_at_task340_publication: REQUIRES_SEPARATE_EXPLICIT_HUMAN_BRAIN_DECISION_AND_RELEVANT_EVIDENCE
     next_item_eligibility: VP03_LEAN_AUTHORING_AND_ARCHITECTURE_AUDIT_ONLY
     no_automatic_lifecycle_or_cutover: true
-  vp03_lean_resume_gate: RECONCILED_POST_TASK340_IMPLEMENTATION_CLOSURE_V1_CUTOVER_DEFERRED
+  exclusive_prospective_cutover_20261012:
+    authority: EXPLICIT_HUMAN_BRAIN_SEMANTIC_POLICY_DECISION
+    human_intent: V1_ONLY_NO_PARALLEL_V3_SEMANTIC_REASONING_FOR_NEW_SUBJECTS
+    status: ACTIVE_FROM_THIS_CANONICAL_PLANNING_COMMIT_PROSPECTIVE_ONLY
+    profile_id: aios-adaptive-brain-audit-v1
+    profile_version: 1
+    profile_digest: 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718
+    approved_against_main_sha: 6c51a8209d2918d3728e8577ac6cd013ad812821
+    published_implementation_sha: 3a06bdcd53065e7a83e455143b5cd3921b2b0ddc
+    runtime_result_artifact_sha: 6e57c2b306ed88c412c334fdb027c589ac5b033e
+    independent_review_decision_sha: 2354ab817644e2555a8cb52674ccdcd1b52e672b
+    new_flows: [ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING, REPAIR_AUTHORING]
+    required_stages: [CONSTRUCT, ADVERSARIAL_AUDIT_AND_RECONCILE]
+    mandatory_lenses: 8
+    selection: EXACT_PROFILE_ID_VERSION_DIGEST_ONLY_NO_V3_FALLBACK
+    legacy_protection: V2_V3_IN_FLIGHT_EXACT_MATCH_OR_FAIL_CLOSED_RESTART_HISTORY_READ_ONLY
+    prohibited: NO_PARALLEL_V3_V1_REASONING_NO_SECOND_SEMANTIC_VERDICT_NO_NEW_ROUTER
+    code_change_required_for_existing_EXPLICIT_PROFILE_PACKAGE_CONTRACT: NONE_IDENTIFIED
+    consumers_without_EXPLICIT_V1_PROFILE_BINDING: MUST_NOT_CLAIM_V1_EXECUTION_OR_FALL_BACK_TO_V3
+    measured_v1_superiority: UNKNOWN_NOT_ACTIVATION_BLOCKER_AS_ACCEPTED_BY_HUMAN
+    changed_engineering_truth: NONE_PLANNING_PROFILE_SELECTION_ONLY
+    task341_existing_authorization: AUTHOR_TASK_CANONICALIZED_ONLY_EXECUTOR_UNASSIGNED
+    keep_roadmap_next: verification-architecture-replacement-v1-vp03-runtime-lean-validity
+  vp03_lean_resume_gate: HUMAN_CUTOVER_V1_SEMANTIC_POLICY_ACTIVE_VP03_PLAN_CONTINUES
   preservation:
     - VP03_FORWARD_RECOVERY_TASK339_DONE_AND_EXACT_LINEAGE_IMMUTABLE
     - VP03_LEAN_VALIDITY_QUEUED_NOT_CANCELLED
@@ -2798,8 +2825,9 @@ sequence:
       review_verdict: PASS
       review_decision_sha: 2354ab817644e2555a8cb52674ccdcd1b52e672b
       published_sha: 3a06bdcd53065e7a83e455143b5cd3921b2b0ddc
-      activation: NOT_AUTHORIZED
-      active_profile: brain-high-value-v3
+      activation_at_task340_publication: NOT_AUTHORIZED
+      active_profile_at_task340_publication: brain-high-value-v3
+      prospective_v1_cutover_after_publication: HUMAN_APPROVED_2026_10_12
       v3_v1_superiority: UNKNOWN
       closure_scope: TASK_IMPLEMENTATION_AND_AUTHORING
     objective: >-
@@ -2827,10 +2855,15 @@ sequence:
     implementation_authorization_status: REQUIRES_NEW_TASK_AND_NEW_HUMAN_EXECUTOR_DELEGATION
     retired_vp03_guard: NEVER_REINTRODUCE_TASK339_RETIRED_BROKER_ISSUER_ATTESTATION_OR_SECOND_PROOF_ENGINE
     north_star_guard: EXPLICIT_NO_CHANGE_VS_MINIMAL_RUNTIME_ONLY_VS_NEW_MECHANISM_ALTERNATIVES
-    v1_profile_cutover: NOT_AUTHORIZED
+    v1_profile_cutover: ACTIVE_PROSPECTIVE_SEMANTIC_ONLY_VP03_RUNTIME_UNCHANGED
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-10"
-    task_authoring_status: NOT_AUTHORED
+    task_authoring_status: CANONICALIZED
+    task_id: TASK-341
+    task_revision: 1
+    task_blob_sha: 166fd9fc44dc13c8d044708f6cd432d25ed92860
+    task_author_commit_sha: 6c51a8209d2918d3728e8577ac6cd013ad812821
+    primary_dispatch: NOT_AUTHORIZED_EXECUTOR_NOT_SELECTED
     objective: >-
       Define and implement minimum sufficient VALID/INVALIDATED/UNKNOWN proof applicability
       directly inside the existing Runtime using exact canonical evidence and approved
