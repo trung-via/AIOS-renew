@@ -552,12 +552,7 @@ def test_verification_reference_legacy_matching_failure_keeps_original_outcome(
     assert (observation["lifecycle_state"], observation["next_action"]) == ("CORRECTION", "AUTHOR_REPAIR")
 
 
-@pytest.mark.parametrize("review_verdict, expected", [
-    (None, "SEMANTIC_REVIEW"), ("CHANGES_REQUIRED", "AUTHOR_REMEDIATION"), ("PASS", "PUBLICATION"),
-])
-def test_verification_reference_correction_result_and_review_keep_lifecycle_outcomes(
-    tmp_path, monkeypatch, run343_failure, review_verdict, expected,
-):
+def _run343_reference_correction_lifecycle(tmp_path, monkeypatch, run343_failure, review_verdict):
     import yaml
 
     repo, lifecycle, source = _run343_reference_lifecycle(tmp_path, monkeypatch, run343_failure)
@@ -601,9 +596,83 @@ findings: {findings}
         repo, operator_module.load_task(repo, "TASK-343"), lifecycle)
     assert decoded[1].family == "REPAIR" and decoded[1].parent_run_id == parent.run_id
     assert _reference_bytes(decoded[1].correction["failure"]) == parent.terminal
+    return repo, lifecycle
+
+
+@pytest.mark.parametrize("review_verdict, expected", [
+    (None, "SEMANTIC_REVIEW"), ("CHANGES_REQUIRED", "AUTHOR_REMEDIATION"),
+])
+def test_verification_reference_correction_result_and_review_keep_lifecycle_outcomes(
+    tmp_path, monkeypatch, run343_failure, review_verdict, expected,
+):
+    repo, lifecycle = _run343_reference_correction_lifecycle(
+        tmp_path, monkeypatch, run343_failure, review_verdict)
     observation = observe_unified_state("TASK-343", repo=repo).as_dict()
-    assert observation["next_action"] == expected and observation["run_id"] == child_id
+    assert observation["next_action"] == expected
+    assert observation["run_id"] == lifecycle.terminals[1].run_id
     assert observation["blocker"] is None
+
+
+def test_verification_reference_correction_pass_without_publication_provenance_stays_blocked(
+    tmp_path, monkeypatch, run343_failure,
+):
+    repo, lifecycle = _run343_reference_correction_lifecycle(
+        tmp_path, monkeypatch, run343_failure, "PASS")
+    terminal, decision = lifecycle.terminals[1], lifecycle.reviews[0]
+    before = (git(repo, "status", "--porcelain"), git(repo, "show-ref"), lifecycle)
+
+    # Parsed PASS bytes and modeled ancestry cannot replace the canonical
+    # decision commit, source ref and artifacts required by the Publisher.
+    # This synthetic fixture fails the first guard: its decision SHA has no
+    # inspectable Git object. Keep the real validator and its exact rejection.
+    with pytest.raises(publication_module.PublicationError,
+                       match="^cannot inspect canonical review decision$"):
+        publication_module._load_success_lineage(
+            repo, remote="origin", run_id=terminal.run_id, decision_sha=decision.decision_sha)
+    observation = observe_unified_state("TASK-343", repo=repo).as_dict()
+    assert (observation["lifecycle_state"], observation["next_action"]) == ("BLOCKED", "NONE")
+    assert observation["blocker"] == {"code": "PUBLICATION_LINEAGE_INVALID"}
+    assert observation["run_id"] == terminal.run_id
+    assert observation["review_id"] == "REVIEW-343-001"
+    assert observation["candidate_sha"] == observation["reviewed_sha"] == terminal.candidate_sha
+    assert before == (git(repo, "status", "--porcelain"), git(repo, "show-ref"), lifecycle)
+
+
+def test_verification_reference_eligible_correction_pass_keeps_publication_outcome(tmp_path):
+    from aios_renew.review_transport import resolve_remote_task_lifecycle
+    from tests.test_publication import make_repair_lineage
+
+    # Existing test infrastructure materializes real candidate/FAILURE,
+    # authorization, artifacts, source and decision commits in a local remote.
+    # Observe eligibility without invoking the Publisher or replacing its guard.
+    lineage = make_repair_lineage(
+        tmp_path, predecessor_kind="PRIMARY", include_repair_authorization_sha=True)
+    repo, run_id = lineage["repo"], lineage["run_id"]
+    lifecycle = resolve_remote_task_lifecycle(repo, task_id="TASK-063", task_revision=2)
+    decoded, _ = unified_state_module._decode_remote_lifecycle(
+        repo, operator_module.load_task(repo, "TASK-063"), lifecycle)
+    correction = next(item for item in decoded if item.run_id == run_id)
+    assert correction.family == "REPAIR" and correction.parent_run_id == lineage["failed_run_id"]
+    parent = next(item for item in lifecycle.terminals if item.run_id == lineage["failed_run_id"])
+    assert correction.correction["failure"] == json.loads(parent.terminal)
+    assert correction.correction["repair_authorization_sha"] == lineage["authorization_commit_sha"]
+    decision = next(item for item in lifecycle.reviews if item.run_id == run_id)
+    assert decision.decision_sha == lineage["decision_sha"]
+    candidate, package, _ = publication_module._load_success_lineage(
+        repo, remote="origin", run_id=run_id, decision_sha=decision.decision_sha)
+    assert candidate == package.result.head_sha == lineage["candidate_sha"]
+    assert operator_module._git_is_ancestor(repo, lifecycle.main_sha, candidate)
+    assert not operator_module._git_is_ancestor(repo, candidate, lifecycle.main_sha)
+
+    before = git(lineage["remote"], "show-ref")
+    observation = observe_unified_state("TASK-063", repo=repo).as_dict()
+    assert (observation["lifecycle_state"], observation["next_action"]) == ("PUBLICATION", "PUBLICATION")
+    assert observation["run_id"] == run_id and observation["review_id"] == "REVIEW-063-002"
+    assert observation["candidate_sha"] == observation["reviewed_sha"] == candidate
+    assert observation["blocker"] is None
+    assert all(observation[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert git(lineage["remote"], "show-ref") == before
 
 
 def test_publication_recovery_scope_selects_only_new_candidate_and_pass_is_provenance(tmp_path, monkeypatch):
