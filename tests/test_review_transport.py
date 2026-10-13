@@ -334,6 +334,85 @@ def test_failure_transport_recovery_legacy_writer_rejects_private_contamination(
             review_transport.failure_document(json.dumps(failure).encode())
 
 
+def test_failure_transport_recovery_inherited_public_diagnostics_are_rejected():
+    from aios_renew.unified_state import _validated_private_public_view
+
+    _, private, raw = _failure_transport_recovery_fixture(nodes=1, failures=1)
+    # The historical outer redaction preserved V2 raw paths and phase detail.
+    # Model that inherited representation using synthetic proof only.
+    historical_public = _validated_private_public_view(private, "METADATA")
+    assert historical_public["error"]["message"] == "Protected Runtime diagnostics remain local."
+    historical_bytes = json.dumps(historical_public).encode()
+    assert b"C:/private/runtime/" in historical_bytes and b"secret_fixture" in historical_bytes
+    for reader in (review_transport.failure_document, review_transport.public_failure,
+                   lambda content: review_transport._json_mapping(content, "FAILURE"),
+                   lambda content: review_transport._performance_json_mapping(content, "FAILURE")):
+        with pytest.raises(ReviewTransportError):
+            reader(historical_bytes)
+    # Exact private originals stay readable. The lawful prospective projection
+    # binds the same non-PASS facts without publishing or recreating raw proof.
+    assert review_transport.failure_document(raw) == private
+    public_bytes = review_transport.public_failure(raw)
+    assert all(text not in public_bytes for text in (
+        b"C:/private/", b"secret_fixture", b"captured_output", b"detail", b"raw_path"))
+    public = review_transport.failure_document(public_bytes)
+    original = private["error"]["verification"][0]["verification"]
+    projected = public["error"]["verification"][0]["verification"]
+    assert projected["raw_digest"] == original["raw_digest"]
+    assert projected["candidate_digest"] == original["candidate_digest"]
+    assert projected["candidate"]["exit_code"] == 2
+    assert projected["candidate"]["complete"] is False and projected["candidate"]["unstable"] is True
+    assert operator_failure_matches(private, public)
+    assert json.dumps(private, sort_keys=True, separators=(",", ":")).encode() == raw
+
+
+@pytest.mark.parametrize("placement", ["raw_path", "base_raw_path", "candidate_path",
+    "evidence_path", "evidence_summary", "captured_output"])
+def test_failure_transport_recovery_public_legacy_contamination_fails_closed(monkeypatch, placement):
+    private = dict(kind="FAILURE", run_id="RUN-058-001", task=TASK, executor="codex",
+        base_sha="a" * 40, failed_head_sha="b" * 40,
+        candidate=dict(repairable=True, changed_files=["subject.txt"]),
+        error=dict(type="OperatorError", message="synthetic private diagnostics", evidence=[
+            dict(evidence_id="E1", run_id="RUN-058-001", subject_sha="b" * 40, type="VERIFICATION",
+                 source=dict(command="git diff --check"), result=dict(exit_code=1, summary="synthetic capture"),
+                 raw=dict(path="C:/private/synthetic.raw"))]))
+    lawful = review_transport.public_failure(json.dumps(private).encode())
+    assert review_transport.public_failure(lawful) == lawful
+    public = json.loads(lawful)
+    if placement in {"raw_path", "base_raw_path"}:
+        public["error"][placement] = "C:/private/synthetic.raw"
+    elif placement == "candidate_path":
+        public["candidate"]["changed_files"] = ["C:/private/synthetic.py"]
+    elif placement == "evidence_path":
+        public["error"]["evidence"][0]["raw"]["path"] = "C:/private/synthetic.raw"
+    elif placement == "evidence_summary":
+        public["error"]["evidence"][0]["result"]["summary"] = "synthetic captured output secret_fixture"
+    else:
+        public["error"]["captured_output"] = "synthetic capture secret_fixture"
+    contaminated = json.dumps(public).encode()
+    for reader in (review_transport.failure_document, review_transport.public_failure,
+                   lambda content: review_transport._json_mapping(content, "FAILURE"),
+                   lambda content: review_transport._performance_json_mapping(content, "FAILURE")):
+        with pytest.raises(ReviewTransportError):
+            reader(contaminated)
+
+    def remote_blob(_repo, *args, **_kwargs):
+        if args[0] == "show":
+            assert args[1].endswith(":.ai/transport/failure.json")
+            return 0, contaminated.decode(), ""
+        assert args[0] == "fetch"
+        return 0, "", ""
+
+    monkeypatch.setattr(review_transport, "_git_cmd", remote_blob)
+    for reader in (
+        lambda: review_transport._read_remote_blob(Path("synthetic"), "origin", "a" * 40, ".ai/transport/failure.json"),
+        lambda: review_transport._read_lifecycle_blob(Path("synthetic"), "origin", "a" * 40, ".ai/transport/failure.json"),
+        lambda: review_transport._read_local_blob(Path("synthetic"), "a" * 40, ".ai/transport/failure.json"),
+    ):
+        with pytest.raises(ReviewTransportError):
+            reader()
+
+
 def test_public_transport_redacts_nested_private_records_and_preserves_bindings() -> None:
     reference = {"policy": "minimum-sufficient-v2", "evidence_id": "E1",
                  "raw_path": "immutable-reference", "raw_digest": "d" * 64}

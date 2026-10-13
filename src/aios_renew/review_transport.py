@@ -326,6 +326,13 @@ def _validate_legacy_failure_public(data: Mapping[str, Any]) -> None:
                 raise ValueError("private material in public FAILURE")
             if "evidence_id" in value and "source" in value:
                 _public_command(value["source"]["command"])
+                identity = value["evidence_id"]
+                if (not isinstance(identity, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,96}", identity) is None
+                        or value.get("raw") != {"path": "protected-runtime-raw/" + identity}
+                        or not isinstance(value.get("result"), dict)
+                        or type(value["result"].get("exit_code")) is not int
+                        or value["result"].get("summary") != "Runtime verification exit code " + str(value["result"]["exit_code"])):
+                    raise ValueError("unprojected public FAILURE evidence diagnostics")
             for item in value.values():
                 diagnostics(item)
 
@@ -339,6 +346,12 @@ def public_failure(content: bytes) -> bytes:
         raise ReviewTransportError("public FAILURE kind is invalid")
     try:
         error = data.get("error")
+        if (isinstance(error, dict)
+                and error.get("message") == "Protected Runtime diagnostics remain local."
+                and "public_projection" not in data):
+            # A purported public original must already be lawful. Re-redacting
+            # it would conceal contaminated or forged public diagnostics.
+            _validate_legacy_failure_public(data)
         outcomes = error.get("verification", []) if isinstance(error, dict) else []
         if not _has_failure_observations(data) and isinstance(outcomes, list) and any(
             isinstance(item, dict) and isinstance(item.get("verification"), dict)
@@ -551,6 +564,13 @@ def failure_document(content: bytes) -> Mapping[str, Any]:
 
         if captured(data):
             raise ReviewTransportError("private captured output in public FAILURE")
+        if "public_projection" not in data:
+            try:
+                # Match the prospective small FAILURE writer's privacy gate;
+                # historical private originals retain their exact read path.
+                _validate_legacy_failure_public(data)
+            except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
+                raise ReviewTransportError("invalid canonical public FAILURE privacy") from exc
     if "public_projection" in data:
         try:
             validate_public_failure(data)

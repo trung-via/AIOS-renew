@@ -25,6 +25,7 @@ from aios_renew.operator import (
     runtime_state_root,
 )
 from aios_renew.review_transport import (
+    ReviewTransportError,
     RemoteLifecycleReview,
     RemoteLifecycleTerminal,
     RemoteTaskLifecycle,
@@ -366,6 +367,22 @@ def test_failure_transport_recovery_lifecycle_invalid_states_remain_rejected(tmp
         other = (terminal if defect == "duplicate" else replace(terminal, kind="RESULT",
             terminal=_reference_bytes(canonical_result_payload(run["run_id"], head))))
         lifecycle = replace(lifecycle, terminals=(terminal, other))
+        # Both entries individually bind the same valid RUN/candidate. The
+        # reducer must reject their multiplicity, rather than a parse defect.
+        decoded, reviews = unified_state_module._decode_remote_lifecycle(
+            repo, operator_module.load_task(repo, "TASK-101"), lifecycle)
+        assert len(decoded) == 2 and reviews == {}
+        assert all(item.run_id == run["run_id"] and item.candidate_sha == head
+                   and item.parent_run_id is None for item in decoded)
+        assert [item.terminal_kind for item in decoded] == [
+            "FAILURE", "FAILURE" if defect == "duplicate" else "RESULT"]
+        if defect == "conflicting":
+            # No exact recovery proof exists. Do not let ambient remote state
+            # turn a conflict into an authorized recovery continuation.
+            def unavailable_recovery(*_args, **_kwargs):
+                raise ReviewTransportError("synthetic missing exact recovery proof")
+
+            monkeypatch.setattr(operator_module, "resolve_remote_primary_recovery", unavailable_recovery)
     else:
         if defect == "run_identity": run["run_id"] = "RUN-101-902"
         elif defect == "run_revision": run["task"]["revision"] = False
@@ -374,9 +391,19 @@ def test_failure_transport_recovery_lifecycle_invalid_states_remain_rejected(tmp
         if defect == "both_terminals":
             (state.results / "RUN-101-901.json").write_bytes(_reference_bytes(canonical_result_payload("RUN-101-901", head)))
     _stub_unified_remote(monkeypatch, repo, lifecycle)
+    before = {p: p.read_bytes() for directory in (state.runs, state.failures, state.results)
+              for p in directory.glob("*.json")}
+    refs = git(repo, "show-ref")
     observation = observe_unified_state("TASK-101", repo=repo).as_dict()
-    assert observation["next_action"] == "NONE"
-    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+    assert (observation["lifecycle_state"], observation["next_action"]) == ("BLOCKED", "NONE")
+    expected_code = {"duplicate": "AMBIGUOUS_LINEAGE_TIP", "conflicting": "TERMINAL_CONFLICT"}
+    assert observation["blocker"]["code"] == expected_code.get(defect, "MALFORMED_CANONICAL_STATE")
+    assert observation["correction_sha"] is None and observation["correction_preflight"] is None
+    assert all(observation[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert before == {p: p.read_bytes() for directory in (state.runs, state.failures, state.results)
+                      for p in directory.glob("*.json")}
+    assert git(repo, "show-ref") == refs
 
 
 def test_verification_reference_run343_preserves_exact_immutable_failure(run343_failure):
