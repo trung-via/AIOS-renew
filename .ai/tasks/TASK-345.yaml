@@ -1,5 +1,5 @@
 task_id: TASK-345
-revision: 2
+revision: 3
 goal: Restore safe, bounded canonical FAILURE transport, Unified State lifecycle
   readability, and Operator private/public correction admission for large minimum-sufficient-v2
   verification FAILURES, preserving exact RUN-343-002 without modifying failure truth
@@ -44,6 +44,25 @@ assumptions:
   contract; dispatch remains a separate Runtime admission event.
 - Human-approved prospective TASK return affinity is LEGACY_REPOSITORY_DEFAULT_ROUTE.
   Historical TASK/REPAIR affinity remains unchanged.
+- This prospective TASK-345 r3 retains the precise r2 transport-recovery
+  goal, six-file modification boundary, seven acceptance criteria and required
+  minimum-sufficient-v2 verification. Canonical authoring base is main
+  270a0135304258060e51c18135cd8b494872e6ca. This TASK revision does not authorize
+  historical rewriting, replay or retroactive success.
+- RUN-345-001 of TASK-345 r2 has immutable canonical EXECUTION FAILURE artifacts
+  at 751684468f99c4146807b48d6ac0b965e8c590f1. The model reached capacity
+  before completion; its recorded failed candidate is dirty, non-repairable,
+  non-transportable and never Runtime-verified. The revision is a new
+  prospective implementation authority, not a REPAIR of RUN-345-001.
+- The partial local changes from RUN-345-001 were independently preserved
+  outside canonical state and in a local stash; they are not canonical
+  candidate code, Runtime EVIDENCE, reviewed source or correction authority.
+  Future Executor may use them only as untrusted implementation reference
+  within task scope, with fresh source admission and Runtime verification.
+- Human approved continuing via the existing self-host execution pathway,
+  with executor/model/effort selectors supplied at dispatch separately from
+  this executor-neutral semantic TASK. AUTHOR_TASK itself must not dispatch
+  an Executor or claim completion.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -84,6 +103,9 @@ non_goals:
   Publisher, admission-selection policy, downstream projects or unrelated TEST fixtures.
   Only the exact Operator private/public correction consistency boundary may change;
   report any other necessary code paths to Human/Brain before editing.
+- Do not apply, publish or treat RUN-345-001 backup, stash, incomplete
+  edits, partial local tests or provider outputs as authoritative candidate,
+  RESULT, verifiable baseline, repair eligibility or admission bypass.
 constraints:
   hard:
   - Preserve exact RUN-343-002 local FAILURE bytes and the observed read-only
