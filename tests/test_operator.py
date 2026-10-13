@@ -187,6 +187,118 @@ def test_failure_transport_recovery_operator_original_equality_and_nested_correc
     assert not operator_module._matches_correction_document(correction, projected, "METADATA")
 
 
+def _native_execution_operator_fixture(tmp_path, monkeypatch, *, exit_code=None):
+    from tests.test_review_transport import _native_execution_failure_fixture
+
+    repo = make_repo(tmp_path)
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("synthetic failed native candidate\n", encoding="utf-8")
+    head = commit_setup_state(repo, "OUTPUT.txt", message="synthetic native candidate")
+    run, failure, raw = _native_execution_failure_fixture(exit_code=exit_code,
+        run_id="RUN-101-902", task={"id": "TASK-101", "revision": 1},
+        base_sha=base, head_sha=head, changed_files=("OUTPUT.txt",))
+    state = runtime_paths(repo)
+    run_path = state.runs / (run["run_id"] + ".json")
+    failure_path = state.failures / (run["run_id"] + ".json")
+    run_path.write_bytes(json.dumps(run).encode())
+    failure_path.write_bytes(raw)
+    monkeypatch.setattr(transport_module, "publish_terminal_attention", lambda *args, **kwargs: None)
+    transport_module.transport_failure(repo, run_id=run["run_id"], head_sha=head,
+        run_path=run_path, failure_path=failure_path)
+    (repo / "CONTROL.txt").write_text("synthetic later control\n", encoding="utf-8")
+    commit_setup_state(repo, "CONTROL.txt", message="synthetic later control")
+    repair = dict(repair_id="REPAIR-101-902", failed_run_id=run["run_id"], failed_head_sha=head,
+        task=run["task"], action="CONTINUE_IMPLEMENTATION", modification_scope=["OUTPUT.txt"],
+        instructions=["Continue the synthetic candidate."], constraints=[])
+    return repo, state, failure, raw, repair
+
+
+@pytest.mark.parametrize("exit_code", [None, 124])
+def test_native_execution_failure_operator_reads_exact_remote_origin_without_reuse(
+    tmp_path, monkeypatch, exit_code,
+):
+    repo, state, private, raw, repair = _native_execution_operator_fixture(
+        tmp_path, monkeypatch, exit_code=exit_code)
+    before = {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs, state.results)
+              for p in d.glob("*.json")}
+    refs = git(repo, "show-ref")
+    resolved = operator_module._resolve_repair_admission(private["run_id"], repo=repo,
+        state=state, repair=repair, admission={})
+    assert resolved.historical is True
+    assert resolved.failure == transport_module.failure_document(transport_module.public_failure(raw))
+    assert type(resolved.failure["error"]["exit_code"]) is type(exit_code)
+    assert resolved.root_base_sha == resolved.result_base_sha == private["base_sha"]
+    assert resolved.reusable_package is None and list(state.results.glob("*.json")) == []
+    recovery = transport_module.resolve_remote_repair_recovery(repo, failed_run_id=private["run_id"])
+    assert operator_module._nearest_same_head_repair_package(state=state, task=resolved.task,
+        failure=private, repo=repo, root_base_sha=resolved.root_base_sha,
+        result_base_sha=resolved.result_base_sha, transported_failures=recovery.failures) is None
+    assert before == {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs, state.results)
+                      for p in d.glob("*.json")}
+    assert git(repo, "show-ref") == refs
+
+
+@pytest.mark.parametrize("defect", ["local_exit", "remote_exit", "remote_missing_exit",
+    "remote_bool_exit", "remote_diagnostics", "authorization_subject"])
+def test_native_execution_failure_operator_refuses_conflicting_predecessors(tmp_path, monkeypatch, defect):
+    repo, state, private, raw, repair = _native_execution_operator_fixture(tmp_path, monkeypatch)
+    failure_path = state.failures / (private["run_id"] + ".json")
+    if defect == "local_exit":
+        private["error"]["exit_code"] = 0
+        failure_path.write_bytes(json.dumps(private).encode())
+    elif defect == "authorization_subject":
+        repair["failed_head_sha"] = "0" * 40
+    else:
+        recovery = transport_module.resolve_remote_repair_recovery(repo, failed_run_id=private["run_id"])
+        public = json.loads(recovery.failures[0].failure)
+        if defect == "remote_missing_exit": public["error"].pop("exit_code")
+        elif defect == "remote_bool_exit": public["error"]["exit_code"] = False
+        elif defect == "remote_diagnostics": public["error"]["native_diagnostics"] = {"stdout": "synthetic private"}
+        else: public["error"]["exit_code"] = 0
+        altered = replace(recovery.failures[0], failure=json.dumps(public).encode())
+        monkeypatch.setattr(operator_module, "resolve_remote_repair_recovery",
+                            lambda *args, **kwargs: replace(recovery, failures=(altered,)))
+    before = {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs, state.results)
+              for p in d.glob("*.json")}
+    refs = git(repo, "show-ref")
+    with pytest.raises(OperatorError, match="conflict|invalid canonical FAILURE|does not match failed committed state"):
+        operator_module._resolve_repair_admission(private["run_id"], repo=repo,
+            state=state, repair=repair, admission={})
+    assert before == {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs, state.results)
+                      for p in d.glob("*.json")}
+    assert git(repo, "show-ref") == refs
+    if defect != "local_exit": assert failure_path.read_bytes() == raw
+
+
+@pytest.mark.parametrize("exit_code,include_exit_code", [(None, True), (0, True), (124, True), (None, False)])
+def test_native_execution_failure_operator_exact_identity_and_nested_correction(exit_code, include_exit_code):
+    from copy import deepcopy
+    from tests.test_review_transport import _native_execution_failure_fixture
+
+    run, private, raw = _native_execution_failure_fixture(
+        exit_code=exit_code, include_exit_code=include_exit_code)
+    public = transport_module.failure_document(transport_module.public_failure(raw))
+    assert operator_module._matches_failure_projection(private, private)
+    assert operator_module._matches_failure_projection(private, public)
+    correction = dict(failed_run_id=run["run_id"], failed_head_sha=private["failed_head_sha"],
+        root_base_sha=run["base_sha"], task=dict(task_id="TASK-058", revision=2), run=run,
+        failure=private, repair=dict(repair_id="REPAIR-058-902"))
+    projected = json.loads(transport_module.public_metadata(json.dumps(correction).encode()))
+    assert projected["failure"] == public
+    assert operator_module._matches_correction_document(correction, projected, "METADATA")
+    for key, value in (("run_id", "RUN-058-999"), ("task", {"id": "TASK-058", "revision": 3}),
+        ("executor", "other"), ("base_sha", "0" * 40), ("failed_head_sha", "0" * 40),
+        ("phase", "COMPLETION_GATE")):
+        changed = deepcopy(public)
+        changed[key] = value
+        assert not operator_module._matches_failure_projection(private, changed)
+    changed = deepcopy(public)
+    changed["error"]["exit_code"] = 124 if exit_code is None and include_exit_code else None
+    assert not operator_module._matches_failure_projection(private, changed)
+    projected["failure"] = changed
+    assert not operator_module._matches_correction_document(correction, projected, "METADATA")
+
+
 def result_payload(
     run_id: str,
     head_sha: str,

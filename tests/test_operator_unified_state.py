@@ -323,6 +323,131 @@ def test_failure_transport_recovery_local_sidecar_and_canonical_projection(tmp_p
     assert rejected["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
 
 
+@pytest.mark.parametrize("exit_code,include_exit_code", [(None, True), (0, True), (124, True), (None, False)])
+def test_native_execution_failure_real_git_unified_state_roundtrip(
+    tmp_path, monkeypatch, exit_code, include_exit_code,
+):
+    from aios_renew.review_transport import failure_document, resolve_remote_repair_recovery, transport_failure
+    from tests.test_review_transport import _native_execution_failure_fixture
+
+    repo = make_repo(tmp_path)
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("synthetic failed native candidate\n", encoding="utf-8")
+    head = commit_setup_state(repo, "OUTPUT.txt", message="synthetic native candidate")
+    run, private, raw = _native_execution_failure_fixture(exit_code=exit_code,
+        include_exit_code=include_exit_code, run_id="RUN-101-902",
+        task={"id": "TASK-101", "revision": 1}, base_sha=base, head_sha=head, changed_files=("OUTPUT.txt",))
+    state = runtime_paths(repo)
+    run_path = state.runs / (run["run_id"] + ".json")
+    failure_path = state.failures / (run["run_id"] + ".json")
+    run_path.write_bytes(_reference_bytes(run))
+    failure_path.write_bytes(raw)
+    (state.failures / (run["run_id"] + ".transport.json")).write_bytes(
+        _reference_bytes(dict(run_id=run["run_id"], error="synthetic transport pending")))
+    pending = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (pending["lifecycle_state"], pending["next_action"]) == ("TRANSPORT", "RETRY_TRANSPORT")
+    # Only terminal attention is stubbed; Git publication and both readers are real.
+    monkeypatch.setattr("aios_renew.review_transport.publish_terminal_attention", lambda *args, **kwargs: None)
+    transport_failure(repo, run_id=run["run_id"], head_sha=head,
+                      run_path=run_path, failure_path=failure_path)
+    before = {p: p.read_bytes() for d in (state.runs, state.failures, state.results, state.repairs)
+              for p in d.glob("*.json")}
+    refs = git(repo, "show-ref")
+    recovery = resolve_remote_repair_recovery(repo, failed_run_id=run["run_id"])
+    public = failure_document(recovery.failures[0].failure)
+    assert public["phase"] == "EXECUTION" and public["candidate"] == private["candidate"]
+    assert ("exit_code" in public["error"]) is include_exit_code
+    if include_exit_code:
+        assert public["error"]["exit_code"] == exit_code
+        assert type(public["error"]["exit_code"]) is type(exit_code)
+    assert "verification" not in public["error"] and "evidence" not in public["error"]
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert observation == direct_observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (observation["lifecycle_state"], observation["next_action"], observation["authority"]) == (
+        "CORRECTION", "AUTHOR_REPAIR", "BRAIN")
+    assert observation["blocker"] is None and observation["failed_run_id"] == run["run_id"]
+    assert observation["failed_head_sha"] == head and observation["correction_preflight"] is None
+    assert all(observation[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert all(text not in json.dumps(observation) for text in (
+        "native-secret-fixture", "C:/private/", "native_diagnostics", "executor_diagnostics"))
+    assert list(state.results.glob("*.json")) == []
+    assert before == {p: p.read_bytes() for d in (state.runs, state.failures, state.results, state.repairs)
+                      for p in d.glob("*.json")}
+    assert failure_path.read_bytes() == raw and git(repo, "show-ref") == refs
+
+
+@pytest.mark.parametrize("defect", ["local_exit", "remote_exit", "missing_exit", "bool_exit",
+    "native_diagnostics", "public_origin", "run", "task", "base", "head", "candidate"])
+def test_native_execution_failure_unified_state_rejects_mismatched_public_predecessor(
+    tmp_path, monkeypatch, defect,
+):
+    from aios_renew.review_transport import public_failure, public_run
+    from tests.test_review_transport import _native_execution_failure_fixture
+
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, private, raw = _native_execution_failure_fixture(run_id="RUN-101-902",
+        task={"id": "TASK-101", "revision": 1}, base_sha=head, head_sha=head, changed_files=())
+    public = json.loads(public_failure(raw))
+    if defect == "local_exit":
+        private["error"]["exit_code"] = 0
+        raw = _reference_bytes(private)
+    elif defect == "remote_exit": public["error"]["exit_code"] = 0
+    elif defect == "missing_exit": public["error"].pop("exit_code")
+    elif defect == "bool_exit": public["error"]["exit_code"] = False
+    elif defect == "native_diagnostics": public["error"]["native_diagnostics"] = {"stdout": "synthetic private"}
+    elif defect == "public_origin": public["error"]["message"] = "synthetic forged public diagnostics"
+    elif defect == "run": public["run_id"] = "RUN-101-999"
+    elif defect == "task": public["task"]["revision"] = 2
+    elif defect == "base": public["base_sha"] = "0" * 40
+    elif defect == "head": public["failed_head_sha"] = "0" * 40
+    else: public["candidate"]["dirty"] = True
+    state = runtime_paths(repo)
+    (state.runs / (run["run_id"] + ".json")).write_bytes(_reference_bytes(run))
+    (state.failures / (run["run_id"] + ".json")).write_bytes(raw)
+    terminal = RemoteLifecycleTerminal(run["run_id"], "FAILURE", head,
+        public_run(_reference_bytes(run)), _reference_bytes(public))
+    _stub_unified_remote(monkeypatch, repo, RemoteTaskLifecycle(head, (terminal,), (), (), (), ()))
+    before = {p: p.read_bytes() for d in (state.runs, state.failures, state.results, state.repairs)
+              for p in d.glob("*.json")}
+    refs = git(repo, "show-ref")
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert observation == observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (observation["lifecycle_state"], observation["next_action"]) == ("BLOCKED", "NONE")
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+    assert observation["correction_sha"] is None and observation["correction_preflight"] is None
+    assert all(observation[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert before == {p: p.read_bytes() for d in (state.runs, state.failures, state.results, state.repairs)
+                      for p in d.glob("*.json")}
+    assert git(repo, "show-ref") == refs
+
+
+@pytest.mark.parametrize("exit_code", [None, 0, 124])
+def test_native_execution_failure_unified_state_keeps_nonrepairable_blocker(tmp_path, monkeypatch, exit_code):
+    from aios_renew.review_transport import public_failure, public_run
+    from tests.test_review_transport import _native_execution_failure_fixture
+
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, private, _ = _native_execution_failure_fixture(exit_code=exit_code, run_id="RUN-101-902",
+        task={"id": "TASK-101", "revision": 1}, base_sha=head, head_sha=head, changed_files=())
+    private["candidate"].update(dirty=True, repairable=False, transportable=False)
+    raw = _reference_bytes(private)
+    terminal = RemoteLifecycleTerminal(run["run_id"], "FAILURE", head,
+        public_run(_reference_bytes(run)), public_failure(raw))
+    _stub_unified_remote(monkeypatch, repo, RemoteTaskLifecycle(head, (terminal,), (), (), (), ()))
+    refs = git(repo, "show-ref")
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert observation == observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (observation["lifecycle_state"], observation["next_action"]) == ("BLOCKED", "NONE")
+    assert observation["blocker"]["code"] == "NON_REPAIRABLE_FAILURE"
+    assert all(observation[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert not runtime_state_root(repo).exists() and git(repo, "show-ref") == refs
+
+
 @pytest.mark.parametrize("runs_directory", [False, True])
 @pytest.mark.parametrize("owner", [False, True])
 def test_failure_transport_recovery_sidecar_without_run_has_no_terminal_truth(

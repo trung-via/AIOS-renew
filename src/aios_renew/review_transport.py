@@ -290,11 +290,18 @@ def _validate_legacy_failure_public(data: Mapping[str, Any]) -> None:
         raise ValueError("undeclared public FAILURE material")
     error = data.get("error")
     if error is not None:
-        if (not isinstance(error, dict) or set(error) - {"type", "message", "verification", "evidence"}
+        if (not isinstance(error, dict) or set(error) - {"type", "message", "verification", "evidence", "exit_code"}
                 or not isinstance(error.get("type"), str)
                 or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,127}", error["type"]) is None
                 or error.get("message") != "Protected Runtime diagnostics remain local."):
             raise ValueError("undeclared public FAILURE diagnostics")
+        # Native process status belongs to EXECUTION, never verification proof.
+        # An explicit null means no exit was obtained; absence stays distinct.
+        if "exit_code" in error and (
+            data.get("phase") != "EXECUTION"
+            or (error["exit_code"] is not None and type(error["exit_code"]) is not int)
+        ):
+            raise ValueError("invalid public FAILURE native exit code")
         outcomes = error.get("verification", [])
         if not isinstance(outcomes, list):
             raise ValueError("invalid public FAILURE outcomes")
