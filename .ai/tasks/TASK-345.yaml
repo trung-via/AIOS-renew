@@ -1,0 +1,154 @@
+task_id: TASK-345
+revision: 1
+goal: Restore safe, bounded canonical FAILURE transport and Unified State lifecycle
+  readability for large minimum-sufficient-v2 verification failures, including preserved
+  local RUN-343-002, without modifying failure truth or disclosing private diagnostics.
+problem: RUN-343-002 is an actual local TASK-343 r1 REPAIR continuation with VERIFICATION
+  FAILURE (84 distinct call-phase failures; 8101 observed nodes; 24303 phase reports;
+  incomplete/unstable, selected wrapper exit 2). Its unchanged 4491342-byte local
+  FAILURE is transportable by candidate contract but blocked by a global 1048576-byte
+  public metadata input bound; the public projection remains 4491269 bytes. The separate
+  canonical failed-candidate reader also checks a 1 MiB FAILURE limit. The failed
+  transport writes RUN-343-002.transport.json inside local failures; Unified State
+  mistakes this 69-byte operational sidecar for a RUN terminal and reports MALFORMED_CANONICAL_STATE
+  ('persisted terminal has no RUN'). The source repository is public. This is an operational
+  and canonicalization blockage, not evidence that the 84 failures passed.
+assumptions:
+- Explicit Human-approved prospective priority is to preserve RUN-343-002 local evidence
+  and restore its canonical FAILURE transport first, ahead of any new correction of
+  its verification failures; this change does not auto-advance older roadmap planning
+  NEXT. Brain Sync main for this authoring is c30c347ddce198efe6815f8a3080cb3692d4b082;
+  Runtime must recheck currentness.
+- Existing TASK-343 r1, RUN-343-001 canonical FAILURE (94823a37b1d0a7587683ceabd955f74b22de6050),
+  its REPAIR authorization 06e8f3c649cbf523cd1ba998bffe034150c54989, and local RUN-343-002
+  artifacts are immutable subjects; no remote failure-artifacts or failure-head ref
+  for RUN-343-002 exists at this Brain Sync.
+- Canonical verification_contract.py permits a bounded 16 MiB observation object and
+  100000 phase reports; the prospective transport writer currently limits any projected
+  input to 1 MiB, and prove_remote_failed_candidate independently refuses FAILURE
+  blobs above 1 MiB. Generic global budget increases are not acceptable.
+- Source repository is public; traceback, environment-specific paths, captured pytest
+  outputs, secrets and private verification details cannot be approved for public
+  publication merely because payload size is increased.
+- Human explicitly chose codex / gpt-6.1-sol / max for a subsequent authorized implementation
+  execution. These model selectors are not part of this executor-neutral TASK semantic
+  contract; dispatch remains a separate Runtime admission event.
+- Human-approved prospective TASK return affinity is LEGACY_REPOSITORY_DEFAULT_ROUTE.
+  Historical TASK/REPAIR affinity remains unchanged.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-343.yaml
+  - .ai/tasks/TASK-344.yaml
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/unified_state.py
+  - tests/test_review_transport.py
+  - tests/test_operator_unified_state.py
+  modify:
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/unified_state.py
+  - tests/test_review_transport.py
+  - tests/test_operator_unified_state.py
+non_goals:
+- No rewrite, truncate, replace, redaction downgrade, deletion, force-push, replay
+  or false reissue of RUN-343-002 private RUN/FAILURE/repair/preverification/observation/raw
+  data, nor of historical canonical TASK, RUN, FAILURE, RESULT, REVIEW or REPAIR.
+- No marking 84 FAIL as PASS, assuming complete/unstable evidence is reusable, changing
+  minimum-sufficient-v2 attribution, baseline or verification policy, changing the
+  12-worker selected/default settings, or re-running the existing full suite.
+- No blanket increase of all transport artifact limits, publication of private diagnostic
+  payload, new private data store, new credential issuer, reviewer/publisher authority,
+  lifecycle router, retry/failover, workflow dispatch, or automatic executor selection.
+- No modification to operator, verification engine, frozen Kernel, roadmap, GitHub
+  workflows, publisher, admission rules, downstream projects, or unrelated TEST fixtures.
+  Report any unavoidable out-of-scope change to Human/Brain without making it.
+constraints:
+  hard:
+  - Preserve the exact local RUN-343-002 FAILURE and its sha256 4171c67c1be72db749970ee5df05eb08f498bb38d762fa82ba7e4a4190540db5,
+    84 failed test identities, 24303 phase records, failure exit codes and incomplete/unstable
+    evidence. The task implements prospective compatibility; no local or remote historical
+    mutation by the Executor.
+  - Establish a distinct finite FAILURE-specific public transport size budget sufficient
+    to handle an artifact of 4491342 bytes, with a strict upper bound no larger than
+    16 MiB per FAILURE object; do not increase ordinary RUN/RESULT/correction/admission
+    transport budgets as a side effect. Apply coherent limits to both writer and exact
+    canonical FAILURE reader, including historical repair eligibility.
+  - GitHub public FAILURE material must exclude unapproved private Runtime diagnostic
+    content, credentials, raw paths, unbounded test captured output and arbitrary
+    failed test detail. Retain exact authoritative failed RUN/candidate/task/profile/command/exit,
+    truthful non-PASS status, report counts and required immutable evidence digest/identity
+    bindings. A redacted or digest-only report must never be treated as a complete
+    comparable baseline or verifiable PASS without its exact independently valid supporting
+    raw proof.
+  - Private/public reconciliation, canonical reader, V2 failure binding and historical
+    repair qualification must recognize only the exact lawful projection; malformed,
+    forged, conflicting, wrong-subject, wrong-hash, stale, over-budget or incomplete
+    proof remains fail-closed. If safe public projection is not representable without
+    breaking those floors, Executor must report a blocker rather than publish private
+    details or weaken a verification guard.
+  - Unified State must distinguish exact RUN terminal filenames from operational .transport.json
+    sidecars, including a valid sidecar without a matching RUN filename. Real orphaned
+    RUN terminal files must still be rejected as malformed; no sidecar may create,
+    delete or change canonical lifecycle truth.
+  - Test the actual integration of local private FAILURE, deterministic public projection,
+    remote canonical FAILURE reader, local/private-public consistency and Unified
+    State with a representative >=4491342-byte V2 FAILURE fixture; test old small
+    and malformed/historical fixtures for regression. Keep the full raw fixture synthetic
+    and generated during focused tests, never committed as sensitive content.
+  - Do not presume existence of failed candidate Git objects on public remote. Recovering
+    RUN-343-002 after reviewed publication must use existing Runtime transport and
+    exact candidate/terminal lineage/currentness checks only, and fail closed if the
+    candidate has no valid trusted local source.
+  - Only scope.modify paths are available to implementation. Keep all tests Runtime-owned
+    under minimum-sufficient-v2, reuse any still-valid evidence, avoid redundant full-suite/baseline
+    executions, and preserve Reviewer and Publisher independent authority.
+acceptance:
+- id: AC1
+  condition: The FAILURE-specific writer and all exact remote FAILURE reader gates
+    support one lawful bounded public representation of the 4491342-byte class of
+    V2 local FAILURES without globally widening unrelated artifact types or accepting
+    out-of-bound input.
+- id: AC2
+  condition: A deterministic privacy-safe public FAILURE projection for representative
+    24303-phase / 84-failure evidence preserves admitted immutable RUN, TASK, failed
+    candidate, command/profile/toolchain, outcome and required digest identities while
+    excluding private diagnostics, secret fixtures and raw machine-local test detail.
+- id: AC3
+  condition: Canonical FAILURE reader, local/private-public reducer, correction admission
+    and historical repair selectors consistently validate the exact projected non-PASS
+    FAILURE without fabricating complete/unstable PASS, base comparability or reusable
+    verification; malformed/forged/mismatched projections fail closed.
+- id: AC4
+  condition: Unified State ignores well-formed transport sidecars as RUN terminals
+    while continuing to reject genuine terminal-without-RUN, malformed RUN, duplicate/conflicting
+    identity and other historical invalid lifecycle states.
+- id: AC5
+  condition: Previously valid small FAILURE/RESULT and privacy-redacted transport
+    behavior remain interoperable; oversized and deeply nested public inputs, raw
+    secret/captured-output contamination and reader/writer limit mismatches are rejected
+    rather than silently truncated or published.
+- id: AC6
+  condition: One focused synthetic regression family named failure_transport_recovery
+    exercises AC1-AC5, including local FAILURE+sidecar and valid public/canonical
+    roundtrip; no 8101-node full suite, no mutation of RUN-343-002 state, and no independent
+    verification executor.
+- id: AC7
+  condition: Implementation delta is confined to the four scope.modify paths; no changes
+    to frozen Kernel, historical terminal artifacts, 12-worker/minimum-sufficient-v2
+    verification semantics, review, publication, roadmap or execution authorization.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_review_transport.py tests/test_operator_unified_state.py
+    -k failure_transport_recovery
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
