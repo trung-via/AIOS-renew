@@ -2564,7 +2564,7 @@ def _resolve_repair_admission(
     failure_path = state.failures / f"{failed_run_id}.json"
     local_failure: Any = None
     if failure_path.is_file():
-        local_failure = json.loads(failure_path.read_text(encoding="utf-8"))
+        local_failure = _decode_remote_mapping(failure_path.read_bytes(), "FAILURE")
         if (
             not isinstance(local_failure, Mapping)
             or local_failure.get("kind") != "FAILURE"
@@ -2597,7 +2597,7 @@ def _resolve_repair_admission(
         origin_affected_verification = (
             resolved_admission.origin_affected_verification
         )
-        if local_failure is not None and dict(local_failure) != dict(failure):
+        if local_failure is not None and not _matches_failure_projection(local_failure, failure):
             raise OperatorError("local and canonical remote FAILURE conflict")
     else:
         failure = local_failure
@@ -2811,7 +2811,7 @@ def _resolve_repair_admission(
                     source_repo, failed_run_id, admission=admission
                 )
                 if (
-                    dict(canonical.failure) != dict(failure)
+                    not _matches_failure_projection(failure, canonical.failure)
                     or canonical.task != task
                     or canonical.root_base_sha != root_base_sha
                     or canonical.result_base_sha != result_base_sha
@@ -3175,7 +3175,7 @@ def _resolve_historical_repair_admission(
                 or not isinstance(embedded_run, Mapping)
                 or dict(embedded_run) != dict(_decode_remote_mapping(artifact.run, "RUN"))
                 or not isinstance(embedded_failure, Mapping)
-                or dict(embedded_failure) != dict(predecessor[1])
+                or not _matches_failure_projection(embedded_failure, predecessor[1])
                 or (
                     authorization_sha is not None
                     and (
@@ -3434,6 +3434,8 @@ def _nearest_same_head_repair_package(
     def mapping(content: bytes | None, name: str) -> Mapping[str, Any]:
         if content is None:
             raise OperatorError(f"same-head {name} lineage is missing")
+        if name in {"FAILURE", "local FAILURE", "canonical FAILURE", "predecessor FAILURE"}:
+            return _decode_remote_mapping(content, "FAILURE")
         try:
             value = _json_no_duplicates(content, document=name)
         except ValueError as exc:
@@ -3466,8 +3468,13 @@ def _nearest_same_head_repair_package(
                     continue
                 if index == 3:
                     equal = local == canonical
+                elif index == 0:
+                    equal = canonical is not None and _matches_failure_projection(
+                        mapping(local, "local FAILURE"), mapping(canonical, "canonical FAILURE"))
                 else:
-                    equal = canonical is not None and mapping(local, "local lineage") == mapping(canonical, "canonical lineage")
+                    equal = canonical is not None and _matches_correction_document(
+                        mapping(local, "local lineage"), mapping(canonical, "canonical lineage"),
+                        "RUN" if index == 1 else "METADATA")
                 if not equal:
                     raise OperatorError("local and canonical remote same-head lineage conflict")
         else:
@@ -3480,7 +3487,7 @@ def _nearest_same_head_repair_package(
 
     current_id = failure["run_id"]
     current, run_data, lineage, content = read(current_id)
-    if dict(current) != dict(failure):
+    if not _matches_failure_projection(failure, current):
         raise OperatorError("conflicting same-head target FAILURE")
     subject = failure["failed_head_sha"]
     seen: set[str] = set()
@@ -3556,7 +3563,8 @@ def _nearest_same_head_repair_package(
                 task_data = lineage.get("task")
                 if (
                     lineage.get("run") != dict(run_data)
-                    or lineage.get("failure") != dict(predecessor)
+                    or not isinstance(lineage.get("failure"), Mapping)
+                    or not _matches_failure_projection(lineage["failure"], predecessor)
                     or lineage.get("failed_run_id") != predecessor_id
                     or lineage.get("failed_head_sha") != predecessor.get("failed_head_sha")
                     or lineage.get("root_base_sha") != root_base_sha
@@ -3956,9 +3964,36 @@ def _derive_remediation_source_root(
     return matches[0]
 
 
+def _matches_correction_document(
+    private: Mapping[str, Any], canonical: Mapping[str, Any], kind: str,
+) -> bool:
+    from .unified_state import _matches_public_document
+    try:
+        return _matches_public_document(private, canonical, kind)
+    except (KeyError, TypeError, ValueError, ReviewTransportError, RecursionError):
+        return False
+
+
+def _matches_failure_projection(private: Mapping[str, Any], canonical: Mapping[str, Any]) -> bool:
+    """Accept only an exact original or its bound public FAILURE representation."""
+    if "public_projection" in private and "public_projection" not in canonical:
+        return _matches_correction_document(canonical, private, "METADATA")
+    if "public_projection" not in private and "public_projection" not in canonical and dict(private) == dict(canonical):
+        # Two historical originals retain strict equality and the caller's
+        # existing identity/candidate checks; no public proof is substituted.
+        return True
+    return _matches_correction_document(private, canonical, "METADATA")
+
+
 def _decode_remote_mapping(content: bytes | None, name: str) -> Mapping[str, Any]:
     if content is None:
         raise OperatorError(f"canonical {name} is missing")
+    if name == "FAILURE":
+        from .review_transport import failure_document
+        try:
+            return failure_document(content)
+        except ReviewTransportError as exc:
+            raise OperatorError("invalid canonical FAILURE") from exc
     try:
         value = json.loads(content.decode("utf-8", errors="strict"))
     except (UnicodeError, json.JSONDecodeError) as exc:

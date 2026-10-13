@@ -97,6 +97,96 @@ def git(repo: Path, *args: str) -> str:
     return fixture_git(repo, *args)
 
 
+def _failure_transport_recovery_operator_fixture(tmp_path, monkeypatch, *, nodes=8101, failures=84):
+    from tests.test_review_transport import _failure_transport_recovery_fixture
+
+    repo = make_repo(tmp_path, task_source=TASK_SOURCE.replace(
+        "git status --porcelain", "python scripts/aios_parallel_full_suite.py"))
+    head = git(repo, "rev-parse", "HEAD")
+    run, failure, raw = _failure_transport_recovery_fixture(run_id="RUN-101-901",
+        task={"id": "TASK-101", "revision": 1}, base_sha=head, head_sha=head,
+        changed_files=(), nodes=nodes, failures=failures)
+    state = runtime_paths(repo)
+    run_path, failure_path = state.runs / (run["run_id"] + ".json"), state.failures / (run["run_id"] + ".json")
+    run_path.write_bytes(json.dumps(run).encode())
+    failure_path.write_bytes(raw)
+    monkeypatch.setattr(transport_module, "publish_terminal_attention", lambda *args, **kwargs: None)
+    transport_module.transport_failure(repo, run_id=run["run_id"], head_sha=head,
+        run_path=run_path, failure_path=failure_path)
+    (repo / "CONTROL.txt").write_text("synthetic later control state\n", encoding="utf-8")
+    commit_setup_state(repo, "CONTROL.txt", message="synthetic later control")
+    repair = dict(repair_id="REPAIR-101-901", failed_run_id=run["run_id"], failed_head_sha=head,
+        task=run["task"], action="CODE_FIX", modification_scope=["OUTPUT.txt"],
+        instructions=["Correct the synthetic failure."], constraints=[])
+    return repo, state, failure, raw, repair
+
+
+def test_failure_transport_recovery_operator_private_public_correction_admission(tmp_path, monkeypatch):
+    repo, state, private, raw, repair = _failure_transport_recovery_operator_fixture(tmp_path, monkeypatch)
+    assert len(raw) >= 4491342
+    before = {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs) for p in d.glob("*.json")}
+    refs = git(repo, "show-ref")
+    resolved = operator_module._resolve_repair_admission(private["run_id"], repo=repo,
+        state=state, repair=repair, admission={})
+    assert resolved.historical is True
+    assert resolved.failure == transport_module.failure_document(transport_module.public_failure(raw))
+    assert resolved.reusable_package is None
+    assert resolved.root_base_sha == resolved.result_base_sha == private["base_sha"]
+    # The same-head historical selector reconciles private RUN/FAILURE with their
+    # public counterparts, but absent exact raw structure cannot become reuse.
+    assert operator_module._nearest_same_head_repair_package(state=state, task=resolved.task,
+        failure=private, repo=repo, root_base_sha=resolved.root_base_sha,
+        result_base_sha=resolved.result_base_sha, transported_failures=transport_module.resolve_remote_repair_recovery(
+            repo, failed_run_id=private["run_id"]).failures) is None
+    assert before == {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs) for p in d.glob("*.json")}
+    assert git(repo, "show-ref") == refs
+
+
+@pytest.mark.parametrize("defect", ["private_origin", "public_origin", "authorization_subject"])
+def test_failure_transport_recovery_operator_conflict_fails_before_run(tmp_path, monkeypatch, defect):
+    from copy import deepcopy
+    repo, state, private, _, repair = _failure_transport_recovery_operator_fixture(
+        tmp_path, monkeypatch, nodes=1, failures=1)
+    if defect == "private_origin":
+        private["error"]["message"] = "changed private diagnostics"
+        (state.failures / (private["run_id"] + ".json")).write_bytes(json.dumps(private).encode())
+    elif defect == "public_origin":
+        recovery = transport_module.resolve_remote_repair_recovery(repo, failed_run_id=private["run_id"])
+        public = json.loads(recovery.failures[0].failure)
+        public["public_projection"]["private_failure_digest"] = "0" * 64
+        altered = replace(recovery.failures[0], failure=json.dumps(public).encode())
+        monkeypatch.setattr(operator_module, "resolve_remote_repair_recovery",
+                            lambda *args, **kwargs: replace(recovery, failures=(altered,)))
+    else:
+        repair = deepcopy(repair)
+        repair["failed_head_sha"] = "0" * 40
+    before = {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs) for p in d.glob("*.json")}
+    with pytest.raises(OperatorError, match="conflict|does not match failed committed state"):
+        operator_module._resolve_repair_admission(private["run_id"], repo=repo,
+            state=state, repair=repair, admission={})
+    assert before == {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs) for p in d.glob("*.json")}
+
+
+def test_failure_transport_recovery_operator_original_equality_and_nested_correction():
+    from copy import deepcopy
+    from tests.test_review_transport import _failure_transport_recovery_fixture
+    run, private, raw = _failure_transport_recovery_fixture(nodes=1, failures=1)
+    public = transport_module.failure_document(transport_module.public_failure(raw))
+    assert operator_module._matches_failure_projection(private, private)
+    assert operator_module._matches_failure_projection(private, public)
+    assert operator_module._matches_failure_projection(public, private)
+    different = deepcopy(private)
+    different["candidate"]["changed_files"] = ["other.txt"]
+    assert not operator_module._matches_failure_projection(different, private)
+    correction = dict(failed_run_id=run["run_id"], failed_head_sha=private["failed_head_sha"],
+        root_base_sha=run["base_sha"], task=dict(task_id="TASK-058", revision=2), run=run,
+        failure=private, repair=dict(repair_id="REPAIR-058-901"))
+    projected = json.loads(transport_module.public_metadata(json.dumps(correction).encode()))
+    assert operator_module._matches_correction_document(correction, projected, "METADATA")
+    projected["root_base_sha"] = "0" * 40
+    assert not operator_module._matches_correction_document(correction, projected, "METADATA")
+
+
 def result_payload(
     run_id: str,
     head_sha: str,
@@ -15110,6 +15200,14 @@ def test_terminal_reconciliation_task336_full_evidence_placement(tmp_path, monke
         private["unrelated"] = foreign_failure
     if surface != "remote":
         path.write_bytes(json.dumps(private).encode())
+    valid = placement in {"failure-error", "package", "nested-package"}
+    if not valid and protected and surface != "local":
+        before = {p: p.read_bytes() for directory in (state.runs, state.failures, state.repairs)
+                  for p in directory.glob("*.json")}
+        with pytest.raises(transport_module.ReviewTransportError):
+            transport_module.public_metadata(json.dumps(private).encode())
+        assert {p: p.read_bytes() for p in before} == before
+        return
     if surface != "local":
         public = json.loads(transport_module.public_metadata(json.dumps(private).encode())) if protected else private
         lifecycle = replace(lifecycle, terminals=lifecycle.terminals[:-1] + (
@@ -15117,7 +15215,6 @@ def test_terminal_reconciliation_task336_full_evidence_placement(tmp_path, monke
     before = {p: p.read_bytes() for directory in (state.runs, state.failures, state.repairs)
               for p in directory.glob("*.json")}
     refs = git(repo, "show-ref")
-    valid = placement in {"failure-error", "package", "nested-package"}
     if valid and surface == "both":
         _terminal_reconciliation_assert_fixture_contract(repo, state, task, lifecycle)
     elif not valid:

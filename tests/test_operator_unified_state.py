@@ -282,6 +282,103 @@ def _reference_bytes(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
 
 
+def test_failure_transport_recovery_local_sidecar_and_canonical_projection(tmp_path, monkeypatch):
+    from aios_renew.review_transport import public_failure, public_run
+    from tests.test_review_transport import _failure_transport_recovery_fixture
+
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, private, raw = _failure_transport_recovery_fixture(run_id="RUN-101-901",
+        task={"id": "TASK-101", "revision": 1}, base_sha=head, head_sha=head, changed_files=())
+    state = runtime_paths(repo)
+    run_path = state.runs / (run["run_id"] + ".json")
+    failure_path = state.failures / (run["run_id"] + ".json")
+    run_path.write_bytes(_reference_bytes(run))
+    failure_path.write_bytes(raw)
+    (state.failures / (run["run_id"] + ".transport.json")).write_bytes(
+        _reference_bytes(dict(run_id=run["run_id"], error="synthetic bounded transport error")))
+    empty = RemoteTaskLifecycle(head, (), (), (), (), ())
+    _stub_unified_remote(monkeypatch, repo, empty)
+    local = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (local["lifecycle_state"], local["next_action"]) == ("TRANSPORT", "RETRY_TRANSPORT")
+    public = public_failure(raw)
+    terminal = RemoteLifecycleTerminal(run["run_id"], "FAILURE", head,
+        public_run(_reference_bytes(run)), public)
+    canonical = replace(empty, terminals=(terminal,))
+    _stub_unified_remote(monkeypatch, repo, canonical)
+    before = {p: p.read_bytes() for d in (state.runs, state.failures) for p in d.glob("*.json")}
+    refs = git(repo, "show-ref")
+    reconciled = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (reconciled["lifecycle_state"], reconciled["next_action"]) == ("CORRECTION", "AUTHOR_REPAIR")
+    assert reconciled["blocker"] is None and reconciled["failed_run_id"] == run["run_id"]
+    assert all(reconciled[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert before == {p: p.read_bytes() for d in (state.runs, state.failures) for p in d.glob("*.json")}
+    assert git(repo, "show-ref") == refs and failure_path.read_bytes() == raw
+    # A changed private origin cannot be reconciled using a public digest summary.
+    private["error"]["verification"][0]["verification"]["raw_digest"] = "0" * 64
+    failure_path.write_bytes(_reference_bytes(private))
+    rejected = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert rejected["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+
+@pytest.mark.parametrize("runs_directory", [False, True])
+@pytest.mark.parametrize("owner", [False, True])
+def test_failure_transport_recovery_sidecar_without_run_has_no_terminal_truth(
+    tmp_path, runs_directory, owner,
+):
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    sidecar = dict(error="synthetic transport error")
+    if owner:
+        sidecar["run_id"] = "RUN-101-901"
+    (state.failures / "RUN-101-901.transport.json").write_bytes(_reference_bytes(sidecar))
+    if not runs_directory:
+        state = replace(state, runs=tmp_path / "absent-runs")
+    pending = unified_state_module._local_pending_runs(
+        repo, state, operator_module.load_task(repo, "TASK-101"), [], {})
+    assert pending == ([], [])
+
+
+@pytest.mark.parametrize("defect", ["orphan_failure", "orphan_result", "run_identity",
+    "run_revision", "both_terminals", "duplicate", "conflicting", "sidecar_identity", "sidecar_terminal"])
+def test_failure_transport_recovery_lifecycle_invalid_states_remain_rejected(tmp_path, monkeypatch, defect):
+    from aios_renew.review_transport import public_failure, public_run
+    from tests.test_review_transport import _failure_transport_recovery_fixture
+
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, _, raw = _failure_transport_recovery_fixture(run_id="RUN-101-901", nodes=1, failures=1,
+        task={"id": "TASK-101", "revision": 1}, base_sha=head, head_sha=head, changed_files=())
+    state = runtime_paths(repo)
+    lifecycle = RemoteTaskLifecycle(head, (), (), (), (), ())
+    if defect.startswith("sidecar"):
+        value = (dict(run_id="RUN-101-902", error="synthetic") if defect == "sidecar_identity"
+                 else json.loads(raw))
+        (state.failures / "RUN-101-901.transport.json").write_bytes(_reference_bytes(value))
+    elif defect.startswith("orphan"):
+        directory = state.failures if defect == "orphan_failure" else state.results
+        value = json.loads(raw) if defect == "orphan_failure" else canonical_result_payload(run["run_id"], head)
+        (directory / (run["run_id"] + ".json")).write_bytes(_reference_bytes(value))
+    elif defect in {"duplicate", "conflicting"}:
+        terminal = RemoteLifecycleTerminal(run["run_id"], "FAILURE", head,
+            public_run(_reference_bytes(run)), public_failure(raw))
+        other = (terminal if defect == "duplicate" else replace(terminal, kind="RESULT",
+            terminal=_reference_bytes(canonical_result_payload(run["run_id"], head))))
+        lifecycle = replace(lifecycle, terminals=(terminal, other))
+    else:
+        if defect == "run_identity": run["run_id"] = "RUN-101-902"
+        elif defect == "run_revision": run["task"]["revision"] = False
+        (state.runs / "RUN-101-901.json").write_bytes(_reference_bytes(run))
+        (state.failures / "RUN-101-901.json").write_bytes(raw)
+        if defect == "both_terminals":
+            (state.results / "RUN-101-901.json").write_bytes(_reference_bytes(canonical_result_payload("RUN-101-901", head)))
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert observation["next_action"] == "NONE"
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+
 def test_verification_reference_run343_preserves_exact_immutable_failure(run343_failure):
     from aios_renew.verification_contract import (
         attributed_task_passes, validate_observation, verification_digest,

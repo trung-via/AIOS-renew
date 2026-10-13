@@ -27,6 +27,313 @@ from aios_renew.review_transport import (
 )
 
 
+def _failure_transport_recovery_fixture(
+    *, run_id="RUN-058-901", task=None, base_sha="a" * 40, head_sha="b" * 40,
+    changed_files=("subject.txt",), nodes=8101, failures=84,
+):
+    """Generate private synthetic proof at test time; never store historical raw."""
+    from aios_renew.verification_contract import verification_digest
+
+    task = task or {"id": "TASK-058", "revision": 2}
+    command = "python scripts/aios_parallel_full_suite.py"
+    profile = dict(profile="bounded-parallel-full-suite-v1", workers=12,
+        distribution="load", max_worker_restart=0, collect_only=False,
+        environment_digest="c" * 64, isolation_policy="clean-clone-external-temp-v1",
+        observer_blob="d" * 40, selected_policy_blob="e" * 40,
+        repository_tool_blobs={"tests/conftest.py": "f" * 40},
+        selection_provenance={"authority": "HUMAN", "task_id": "TASK-231"})
+    toolchain = dict(python_implementation="CPython", python_version="3.14.7",
+        python_executable="C:/private/runtime/python.exe", platform_system="Windows",
+        platform_machine="AMD64", pytest_version="8.4.2", pytest_xdist_version="3.8.0",
+        installed_distributions_digest="1" * 64)
+    reports = []
+    for number in range(nodes):
+        node = f"tests/test_synthetic.py::test_case[{number:05d}-secret_fixture]"
+        for phase in ("setup", "call", "teardown"):
+            failed = phase == "call" and number < failures
+            report = dict(nodeid=node, phase=phase, outcome="FAIL" if failed else "PASS",
+                captured_output="private capture secret_fixture C:/private/runtime/ " + "x" * 80)
+            if failed:
+                detail = "private traceback secret_fixture C:/private/runtime/ " + "y" * 512
+                report.update(detail=detail, fingerprint=verification_digest(detail),
+                              profile=profile, toolchain=toolchain)
+            reports.append(report)
+    candidate = dict(subject_sha=head_sha, command=command, profile=profile,
+        toolchain=toolchain, complete=False, unstable=True, exit_code=2,
+        failure_count=failures, reports=reports)
+    base_profile = dict(profile, observer_blob="2" * 40,
+                        repository_tool_blobs={"tests/conftest.py": "3" * 40})
+    base = dict(candidate, subject_sha=base_sha, profile=base_profile, reports=[], failure_count=0)
+    binding = dict(subject_sha=head_sha, base_sha=base_sha, tree_sha="4" * 40, command=command,
+        profile=profile, toolchain=toolchain, envelope_digest="5" * 64,
+        changed_files_digest=verification_digest(list(changed_files)),
+        failure_set_digest=verification_digest(base))
+    reference = dict(policy="minimum-sufficient-v2", disposition="EXECUTED",
+        evidence_id=run_id + "-V001", run_id=run_id, binding=binding,
+        candidate=candidate, candidate_digest=verification_digest(candidate),
+        raw_path="C:/private/runtime/candidate.raw", raw_digest="6" * 64,
+        base=base, base_digest=verification_digest(base),
+        base_raw_path="C:/private/runtime/base.raw", base_raw_digest="7" * 64,
+        attribution=[dict(detail="private attribution secret_fixture")])
+    run = dict(run_id=run_id, task=task, executor="codex", base_sha=base_sha,
+               workspace="C:/private/runtime/workspace", head_sha=None, status="ACTIVE")
+    failure = dict(kind="FAILURE", run_id=run_id, task=task, executor="codex",
+        base_sha=base_sha, failed_head_sha=head_sha, phase="VERIFICATION",
+        candidate=dict(transportable=True, repairable=True, dirty=False, descends_from_base=True,
+                       changed_files=list(changed_files), outside_task_scope=[]),
+        error=dict(type="RuntimeVerificationError", message="private diagnostics secret_fixture",
+            native_diagnostics=dict(stdout="private capture secret_fixture"),
+            executor_diagnostics=dict(stderr="private traceback secret_fixture"),
+            verification=[dict(command=command, exit_code=2, summary="private secret_fixture",
+                               verification=reference)]))
+    content = json.dumps(failure, sort_keys=True, separators=(",", ":")).encode()
+    return run, failure, content
+
+
+def _failure_transport_recovery_reseal(public):
+    """Exercise schema/binding gates independently of summary integrity."""
+    from aios_renew.verification_contract import verification_digest
+    public["public_projection"]["projection_digest"] = verification_digest(
+        {key: value for key, value in public.items() if key != "public_projection"})
+
+
+def test_failure_transport_recovery_large_private_public_identity_and_privacy():
+    from aios_renew.unified_state import _matches_public_document
+    from aios_renew.verification_contract import (
+        attributed_task_passes, derive_minimum_verification, validate_observation, verification_digest,
+    )
+    _, private, raw = _failure_transport_recovery_fixture()
+    assert 4491342 <= len(raw) <= review_transport.PUBLIC_FAILURE_MAX_BYTES
+    public_bytes = review_transport.public_failure(raw)
+    public = review_transport.failure_document(public_bytes)
+    assert review_transport.public_failure(raw) == public_bytes
+    assert review_transport.public_failure(public_bytes) == public_bytes
+    assert len(public_bytes) < review_transport.PUBLIC_ARTIFACT_MAX_BYTES
+    assert all(text not in public_bytes for text in (
+        b"secret_fixture", b"C:/private", b"captured_output", b"traceback", b"raw_path"))
+    assert _matches_public_document(private, public, "METADATA")
+    assert json.dumps(private, sort_keys=True, separators=(",", ":")).encode() == raw
+    for key in ("run_id", "task", "executor", "base_sha", "failed_head_sha", "candidate", "phase"):
+        assert public[key] == private[key]
+    assert public["public_projection"]["private_failure_digest"] == verification_digest(private)
+    original = private["error"]["verification"][0]["verification"]
+    reference = public["error"]["verification"][0]["verification"]
+    assert reference["raw_digest"] == original["raw_digest"]
+    assert reference["binding_digest"] == verification_digest(original["binding"])
+    assert reference["private_reference_digest"] == verification_digest(original)
+    for side in ("candidate", "base"):
+        assert reference[side + "_digest"] == original[side + "_digest"]
+        assert reference[side]["complete"] is False and reference[side]["unstable"] is True
+        assert reference[side]["exit_code"] == 2
+        for conditions in ("profile", "toolchain"):
+            assert reference[side][conditions] == {"private_identity_digest": verification_digest(original[side][conditions])}
+        with pytest.raises(ValueError):
+            validate_observation(reference[side])
+    observed = reference["candidate"]
+    assert (observed["report_count"], observed["node_count"], observed["failure_count"]) == (24303, 8101, 84)
+    expected = sorted((verification_digest(report["nodeid"]), report["phase"], report["fingerprint"])
+                      for report in original["candidate"]["reports"] if report["outcome"] == "FAIL")
+    assert [(report["nodeid_digest"], report["phase"], report["fingerprint"])
+            for report in observed["failed_reports"]] == expected
+    command = original["binding"]["command"]
+    assert not attributed_task_passes(reference, subject_sha=private["failed_head_sha"], command=command, exit_code=2)
+    plan = derive_minimum_verification((command,), base_sha=private["base_sha"],
+        candidate_sha=private["failed_head_sha"], changed_files=("subject.txt",),
+        modification_scope=("subject.txt",), operation="PRIMARY", bindings={command: original["binding"]},
+        still_valid_evidence=(reference,), failed_observations=(observed,))
+    assert plan.reused == () and plan.commands == (command,)
+
+
+def test_failure_transport_recovery_remote_roundtrip(tmp_path):
+    repo, remote = make_repo(tmp_path)
+    base = git(repo, "rev-parse", "HEAD")
+    head = commit_candidate(repo, "synthetic failed candidate")
+    run, private, raw = _failure_transport_recovery_fixture(base_sha=base, head_sha=head)
+    files = tmp_path / "private"
+    run_path, failure_path = files / "run.json", files / "failure.json"
+    write_json(run_path, run)
+    failure_path.write_bytes(raw)
+    expected = review_transport.public_failure(raw)
+    for _ in range(2):
+        transport_failure(repo, run_id=run["run_id"], head_sha=head,
+                          run_path=run_path, failure_path=failure_path)
+    artifacts = git(remote, "rev-parse", f"refs/heads/aios/failure-artifacts/{run['run_id']}")
+    assert review_transport._read_local_blob(remote, artifacts, ".ai/transport/failure.json") == expected
+    recovery = resolve_remote_repair_recovery(repo, failed_run_id=run["run_id"])
+    assert len(recovery.failures) == 1 and recovery.failures[0].failure == expected
+    lifecycle = resolve_remote_task_lifecycle(repo, task_id="TASK-058", task_revision=2)
+    assert len(lifecycle.terminals) == 1 and lifecycle.terminals[0].terminal == expected
+    assert review_transport.prove_remote_failed_candidate(
+        repo, failed_run_id=run["run_id"], failed_head_sha=head)[0] == base
+    assert failure_path.read_bytes() == raw and json.loads(raw) == private
+
+
+def test_failure_transport_recovery_remote_failure_budget_and_historical_gate(tmp_path, monkeypatch):
+    repo, _ = make_repo(tmp_path)
+    base = git(repo, "rev-parse", "HEAD")
+    run, _, raw = _failure_transport_recovery_fixture(base_sha=base, head_sha=base, nodes=1, failures=1,
+                                                     changed_files=())
+    public = review_transport.public_failure(raw)
+    # Valid JSON whitespace exercises the actual remote blob gate above the old
+    # 1 MiB cap, independently of the compact writer's privacy reduction.
+    public += b" " * (4491342 - len(public))
+    directory = repo / ".ai" / "transport"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "run.json").write_bytes(review_transport.public_run(json.dumps(run).encode()))
+    (directory / "failure.json").write_bytes(public)
+    artifacts = commit_fixture_state(repo, paths=(".ai/transport/run.json", ".ai/transport/failure.json"),
+        message="synthetic bounded public FAILURE", user_name="Review Transport Test",
+        user_email="transport@example.invalid")
+    git(repo, "push", "origin", f"{base}:refs/heads/aios/failure/{run['run_id']}",
+        f"{artifacts}:refs/heads/aios/failure-artifacts/{run['run_id']}")
+    assert review_transport.prove_remote_failed_candidate(repo,
+        failed_run_id=run["run_id"], failed_head_sha=base)[0] == base
+    assert resolve_remote_repair_recovery(repo, failed_run_id=run["run_id"]).failures[0].failure == public
+    assert resolve_remote_task_lifecycle(repo, task_id="TASK-058", task_revision=2).terminals[0].terminal == public
+    monkeypatch.setattr(review_transport, "PUBLIC_FAILURE_MAX_BYTES", len(public) - 1)
+    for reader in (
+        lambda: review_transport.prove_remote_failed_candidate(repo, failed_run_id=run["run_id"], failed_head_sha=base),
+        lambda: resolve_remote_repair_recovery(repo, failed_run_id=run["run_id"]),
+        lambda: resolve_remote_task_lifecycle(repo, task_id="TASK-058", task_revision=2),
+    ):
+        with pytest.raises(ReviewTransportError, match="byte bound"):
+            reader()
+
+
+@pytest.mark.parametrize("defect", [
+    "origin", "digest", "subject", "run", "count", "node_count", "exit", "raw", "capture", "conditions", "failed_identity",
+])
+def test_failure_transport_recovery_rejects_forged_public_projection(defect):
+    from aios_renew.unified_state import _matches_public_document
+    _, private, raw = _failure_transport_recovery_fixture(nodes=1, failures=1)
+    public = json.loads(review_transport.public_failure(raw))
+    record = public["error"]["verification"][0]["verification"]
+    if defect == "origin": public["public_projection"]["private_failure_digest"] = "0" * 64
+    elif defect == "digest": record["candidate_digest"] = "0" * 64
+    elif defect == "subject": record["binding"]["subject_sha"] = "0" * 40
+    elif defect == "run": record["run_id"] = "RUN-058-999"
+    elif defect == "count": record["candidate"]["report_count"] += 1
+    elif defect == "node_count": record["candidate"]["node_count"] = 0
+    elif defect == "exit": record["candidate"]["exit_code"] = 0
+    elif defect == "raw": record["raw_path"] = "C:/private/secret_fixture.raw"
+    elif defect == "capture": record["candidate"]["captured_output"] = "secret_fixture"
+    elif defect == "conditions": record["candidate"]["profile"]["private_identity_digest"] = "0" * 64
+    else: record["candidate"]["failed_reports"][0]["nodeid_digest"] = "0" * 64
+    _failure_transport_recovery_reseal(public)
+    if defect in {"origin", "failed_identity"}:
+        # An authenticated remote digest is not independently raw proof. Exact
+        # local-origin reconciliation catches syntactically valid false claims.
+        assert not _matches_public_document(private, public, "METADATA")
+    else:
+        with pytest.raises((ReviewTransportError, ValueError)):
+            review_transport.failure_document(json.dumps(public).encode())
+    assert not operator_failure_matches(private, public)
+
+
+@pytest.mark.parametrize("defect", ["partial_binding", "private_digest", "wrong_subject", "complete", "report_conditions",
+                                     "duplicate_phase", "unsafe_command"])
+def test_failure_transport_recovery_private_projection_fails_closed(defect):
+    from aios_renew.verification_contract import verification_digest
+    _, private, _ = _failure_transport_recovery_fixture(nodes=1, failures=1)
+    outcome = private["error"]["verification"][0]
+    ref = outcome["verification"]
+    if defect == "partial_binding": private.pop("task")
+    elif defect == "private_digest": ref["candidate_digest"] = "0" * 64
+    elif defect == "wrong_subject": ref["binding"]["subject_sha"] = "0" * 40
+    elif defect == "complete": ref["candidate"]["complete"] = True
+    elif defect == "report_conditions":
+        ref["candidate"]["reports"][1]["profile"] = dict(ref["candidate"]["profile"], workers=4)
+    elif defect == "duplicate_phase": ref["candidate"]["reports"].append(ref["candidate"]["reports"][0])
+    else:
+        command = "python -m pytest credential=secret_fixture"
+        outcome["command"] = ref["binding"]["command"] = command
+        ref["base"]["command"] = ref["candidate"]["command"] = command
+        ref["base_digest"] = verification_digest(ref["base"])
+        ref["binding"]["failure_set_digest"] = ref["base_digest"]
+    if defect != "private_digest":
+        ref["candidate_digest"] = verification_digest(ref["candidate"])
+    with pytest.raises(ReviewTransportError):
+        review_transport.public_failure(json.dumps(private).encode())
+
+
+def operator_failure_matches(private, public):
+    from aios_renew.operator import _matches_failure_projection
+    return _matches_failure_projection(private, public)
+
+
+@pytest.mark.parametrize("reader", [review_transport.failure_document,
+    lambda data: review_transport._json_mapping(data, "FAILURE"),
+    lambda data: review_transport._performance_json_mapping(data, "FAILURE"), review_transport.public_failure])
+@pytest.mark.parametrize("content", [b'{"kind":"FAILURE","kind":"FAILURE"}',
+    b'{"kind":"FAILURE","value":NaN}', b'{"kind":"FAILURE","value":1e999}', b'\xff', b'[]',
+    b'{"kind":"FAILURE","nested":' + b'[' * 65 + b'0' + b']' * 65 + b'}'])
+def test_failure_transport_recovery_shared_json_depth_gates(reader, content):
+    with pytest.raises(ReviewTransportError):
+        reader(content)
+
+
+def test_failure_transport_recovery_limits_are_failure_specific(monkeypatch):
+    _, _, raw = _failure_transport_recovery_fixture(nodes=1, failures=1)
+    padded = raw + b" " * (review_transport.PUBLIC_ARTIFACT_MAX_BYTES + 1)
+    assert review_transport.public_failure(padded)
+    assert review_transport.failure_document(padded)
+    for project in (review_transport.public_run, review_transport.public_result, review_transport.public_metadata):
+        with pytest.raises(ReviewTransportError, match="byte bound"):
+            project(padded)
+    monkeypatch.setattr(review_transport, "PUBLIC_FAILURE_MAX_BYTES", len(raw))
+    for project in (review_transport.public_failure, review_transport.failure_document):
+        with pytest.raises(ReviewTransportError, match="byte bound"):
+            project(raw + b" ")
+    with pytest.raises(ReviewTransportError, match="byte bound"):
+        review_transport._public_bytes(dict(note="x" * review_transport.PUBLIC_ARTIFACT_MAX_BYTES))
+
+
+def test_failure_transport_recovery_small_legacy_interoperability():
+    legacy = dict(kind="FAILURE", run_id="RUN-058-001", task=TASK, executor="codex",
+        base_sha="a" * 40, failed_head_sha="b" * 40,
+        candidate=dict(repairable=True, changed_files=["subject.txt"]),
+        error=dict(type="OperatorError", message="private secret_fixture",
+                   native_diagnostics=dict(stdout="private capture secret_fixture")))
+    content = json.dumps(legacy).encode()
+    public = review_transport.public_failure(content)
+    assert public == review_transport.public_metadata(content)
+    assert b"secret_fixture" not in public
+    assert "public_projection" not in review_transport.failure_document(public)
+    evidence = dict(evidence_id="E1", run_id="RUN-058-001", subject_sha="b" * 40, type="VERIFICATION",
+        source=dict(command="git diff --check"), result=dict(exit_code=0, summary="private secret_fixture"),
+        raw=dict(path="C:/private/runtime/proof.raw"))
+    package = dict(result=dict(head_sha="b" * 40, claims=[], changed_files=[], unresolved=[]), evidence=[evidence])
+    projected = json.loads(review_transport.public_result(json.dumps(package).encode()))
+    assert projected["result"] == package["result"]
+    assert projected["evidence"][0]["raw"] == {"path": "protected-runtime-raw/E1"}
+    assert projected["evidence"][0]["result"] == {"exit_code": 0, "summary": "Runtime verification exit code 0"}
+    legacy["error"]["evidence"] = [evidence]
+    private_bytes = json.dumps(legacy).encode()
+    public_bytes = review_transport.public_failure(private_bytes)
+    assert public_bytes == review_transport.public_metadata(private_bytes)
+    assert operator_failure_matches(legacy, review_transport.failure_document(public_bytes))
+
+
+@pytest.mark.parametrize("placement", ["root", "error", "outcome", "command", "candidate_path"])
+def test_failure_transport_recovery_legacy_writer_rejects_private_contamination(placement):
+    failure = dict(kind="FAILURE", run_id="RUN-058-001", task=TASK, executor="codex",
+        base_sha="a" * 40, failed_head_sha="b" * 40,
+        candidate=dict(repairable=True, changed_files=["subject.txt"]),
+        error=dict(type="OperatorError", message="private diagnostics", verification=[
+            dict(command="git diff --check", exit_code=1, summary="private diagnostics")]))
+    if placement == "root": failure["captured_output"] = "secret_fixture"
+    elif placement == "error": failure["error"]["captured_output"] = "secret_fixture"
+    elif placement == "outcome": failure["error"]["verification"][0]["stdout"] = "secret_fixture"
+    elif placement == "command": failure["error"]["verification"][0]["command"] = "python -m pytest token=secret_fixture"
+    else: failure["candidate"]["changed_files"] = ["C:/private/secret_fixture"]
+    with pytest.raises(ReviewTransportError):
+        review_transport.public_failure(json.dumps(failure).encode())
+    if placement in {"root", "error", "outcome"}:
+        failure["error"]["message"] = "Protected Runtime diagnostics remain local."
+        with pytest.raises(ReviewTransportError, match="private captured output"):
+            review_transport.failure_document(json.dumps(failure).encode())
+
+
 def test_public_transport_redacts_nested_private_records_and_preserves_bindings() -> None:
     reference = {"policy": "minimum-sufficient-v2", "evidence_id": "E1",
                  "raw_path": "immutable-reference", "raw_digest": "d" * 64}

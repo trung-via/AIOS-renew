@@ -6,6 +6,7 @@ from .return_affinity import document_affinity
 
 import hashlib
 import json
+import math
 import re
 import subprocess
 import tempfile
@@ -26,11 +27,16 @@ class ReviewTransportError(RuntimeError):
 
 
 PUBLIC_ARTIFACT_MAX_BYTES = 1024 * 1024
+PUBLIC_FAILURE_MAX_BYTES = 16 * 1024 * 1024
+PUBLIC_FAILURE_FORMAT = "AIOS_PUBLIC_FAILURE_V1"
+PUBLIC_OBSERVATION_FORMAT = "AIOS_PRIVATE_OBSERVATION_V1"
 
 
-def _public_document(content: bytes) -> dict[str, Any]:
+def _public_document(
+    content: bytes, *, max_bytes: int = PUBLIC_ARTIFACT_MAX_BYTES,
+) -> dict[str, Any]:
     """Decode prospective writer input; historical readers retain their bounds."""
-    if len(content) > PUBLIC_ARTIFACT_MAX_BYTES:
+    if len(content) > max_bytes:
         raise ReviewTransportError("public artifact exceeds byte bound")
     try:
         data = _performance_json_mapping(content, "public artifact")
@@ -44,6 +50,8 @@ def _public_document(content: bytes) -> dict[str, Any]:
             elif isinstance(value, list):
                 for item in value:
                     bounded(item, depth + 1)
+            elif isinstance(value, float) and not math.isfinite(value):
+                raise ReviewTransportError("public artifact contains non-finite JSON")
 
         bounded(data)
         return dict(data)
@@ -51,10 +59,13 @@ def _public_document(content: bytes) -> dict[str, Any]:
         raise ReviewTransportError("invalid public artifact JSON") from exc
 
 
-def _public_bytes(data: Any) -> bytes:
+def _public_bytes(data: Any, *, max_bytes: int = PUBLIC_ARTIFACT_MAX_BYTES) -> bytes:
     try:
-        return json.dumps(data, sort_keys=True, separators=(",", ":"),
-                          allow_nan=False).encode("utf-8")
+        content = json.dumps(data, sort_keys=True, separators=(",", ":"),
+                             allow_nan=False).encode("utf-8")
+        if len(content) > max_bytes:
+            raise ReviewTransportError("public artifact exceeds byte bound")
+        return content
     except (ValueError, TypeError, RecursionError) as exc:
         raise ReviewTransportError("invalid public artifact projection") from exc
 
@@ -90,36 +101,462 @@ def public_run(content: bytes) -> bytes:
         raise ReviewTransportError("invalid public RUN projection") from exc
 
 
+def _public_metadata_value(value: Any) -> Any:
+    """Exact read projection, also used inside ordinary bounded corrections."""
+    if isinstance(value, list):
+        return [_public_metadata_value(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if value.get("kind") == "FAILURE" and _has_failure_observations(value):
+        return _project_failure(value)
+    data = {key: _public_metadata_value(item) for key, item in value.items()}
+    if "run_id" in data and "workspace" in data and "task" in data:
+        data["workspace"] = "protected-runtime-workspace"
+    if "evidence_id" in data and "raw" in data:
+        _redact_evidence(data)
+    if data.get("kind") == "FAILURE" and isinstance(data.get("error"), dict):
+        error = data["error"]
+        error["message"] = "Protected Runtime diagnostics remain local."
+        error.pop("native_diagnostics", None)
+        error.pop("executor_diagnostics", None)
+        for item in error.get("verification", []):
+            item["summary"] = "Runtime verification exit code " + str(item["exit_code"])
+    return data
+
+
 def public_metadata(content: bytes) -> bytes:
-    """Redact nested correction records without changing verification metadata.
-
-    V2 observation references retain their immutable fields. Only full EVIDENCE
-    records have raw/summary privacy fields; the reducer validates their roles,
-    owners and exact authorized public representation independently.
-    """
-    def safe(value: Any) -> Any:
-        if isinstance(value, list):
-            return [safe(item) for item in value]
-        if not isinstance(value, dict):
-            return value
-        data = {key: safe(item) for key, item in value.items()}
-        if "run_id" in data and "workspace" in data and "task" in data:
-            data["workspace"] = "protected-runtime-workspace"
-        if "evidence_id" in data and "raw" in data:
-            _redact_evidence(data)
-        if data.get("kind") == "FAILURE" and isinstance(data.get("error"), dict):
-            error = data["error"]
-            error["message"] = "Protected Runtime diagnostics remain local."
-            error.pop("native_diagnostics", None)
-            error.pop("executor_diagnostics", None)
-            for item in error.get("verification", []):
-                item["summary"] = "Runtime verification exit code " + str(item["exit_code"])
-        return data
-
+    """Redact correction metadata without widening its ordinary transport cap."""
     try:
-        return _public_bytes(safe(_public_document(content)))
-    except (KeyError, TypeError, AttributeError) as exc:
+        return _public_bytes(_public_metadata_value(_public_document(content)))
+    except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
         raise ReviewTransportError("invalid public correction projection") from exc
+
+
+def _has_failure_observations(data: Mapping[str, Any]) -> bool:
+    if "public_projection" in data:
+        return True
+    # Partial historical metadata is not an admitted terminal. Preserve its
+    # established diagnostic redaction; exact terminal readers bind full RUNs.
+    if not {"task", "executor", "base_sha", "candidate", "phase"} <= data.keys():
+        return False
+    def observation(value: Any) -> bool:
+        if isinstance(value, list):
+            return any(observation(item) for item in value)
+        return isinstance(value, Mapping) and (
+            (value.get("policy") == "minimum-sufficient-v2" and isinstance(value.get("candidate"), Mapping))
+            or any(observation(item) for item in value.values()))
+
+    return observation(data)
+
+
+def _failure_digest(value: Any) -> str:
+    from .verification_contract import verification_digest
+    return verification_digest(value)
+
+
+def _is_digest(value: Any) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _public_command(value: Any) -> str:
+    if (not isinstance(value, str) or not value or len(value) > 8192
+            or re.fullmatch(r"[A-Za-z0-9_ ./,:=+*?@%\[\]()-]+", value) is None
+            or re.search(r"(?i)(?:[a-z]:[/\\]|://|(?:password|secret|token|credential)=|(?:^| )/(?:Users|home|tmp|private)/)", value)):
+        raise ValueError("unsafe public verification command")
+    return value
+
+
+def _private_identity(value: Any) -> dict[str, str]:
+    return {"private_identity_digest": _failure_digest(value)}
+
+
+def _project_observation(value: Mapping[str, Any]) -> dict[str, Any]:
+    from .verification_contract import (
+        MAX_CANONICAL_REPORTS, MAX_CANONICAL_FAILURES, MAX_CANONICAL_NODEID_CHARS,
+        MAX_FAILURE_DETAIL_CHARS,
+    )
+    reports = value["reports"]
+    if len(reports) > MAX_CANONICAL_REPORTS:
+        raise ValueError("FAILURE report population exceeds bound")
+    counts = dict(PASS=0, FAIL=0, SKIP=0)
+    failed = []
+    nodes: set[str] = set()
+    seen: set[tuple[str, str]] = set()
+    for report in reports:
+        node, phase = report.get("nodeid"), report.get("phase")
+        if (not isinstance(node, str) or not node or len(node) > MAX_CANONICAL_NODEID_CHARS
+                or not isinstance(phase, str) or phase not in {"collect", "setup", "call", "teardown"}
+                or (node, phase) in seen):
+            raise ValueError("invalid FAILURE phase identity")
+        seen.add((node, phase))
+        nodes.add(node)
+        counts[report["outcome"]] += 1
+        if report["outcome"] == "FAIL":
+            detail = report.get("detail")
+            if (not isinstance(detail, str) or not detail or len(detail) > MAX_FAILURE_DETAIL_CHARS
+                    or report.get("fingerprint") != _failure_digest(detail)):
+                raise ValueError("invalid FAILURE detail digest")
+            failed.append(dict(nodeid_digest=_failure_digest(node), phase=phase,
+                               fingerprint=report["fingerprint"]))
+    if counts["FAIL"] > MAX_CANONICAL_FAILURES or counts["FAIL"] != value["failure_count"]:
+        raise ValueError("invalid FAILURE failure population")
+    return dict(public_observation=PUBLIC_OBSERVATION_FORMAT,
+        observation_digest=_failure_digest(value), subject_sha=value["subject_sha"],
+        command=_public_command(value["command"]), profile=_private_identity(value["profile"]),
+        toolchain=_private_identity(value["toolchain"]), complete=value["complete"],
+        unstable=value["unstable"], exit_code=value["exit_code"], failure_count=value["failure_count"],
+        report_count=len(reports), node_count=len(nodes), outcome_counts=counts,
+        reports_digest=_failure_digest(reports),
+        failed_reports=sorted(failed, key=lambda item: (item["nodeid_digest"], item["phase"])))
+
+
+def _project_binding(binding: Mapping[str, Any]) -> dict[str, Any]:
+    public = {key: binding[key] for key in (
+        "subject_sha", "base_sha", "tree_sha", "command", "envelope_digest",
+        "changed_files_digest", "failure_set_digest", "correction_base_sha",
+        "correction_changed_files_digest") if key in binding}
+    public["command"] = _public_command(binding["command"])
+    public.update(profile=_private_identity(binding["profile"]),
+                  toolchain=_private_identity(binding["toolchain"]))
+    return public
+
+
+def _project_reference(value: Mapping[str, Any]) -> dict[str, Any]:
+    projected = dict(policy=value["policy"], evidence_id=value["evidence_id"], run_id=value["run_id"],
+        private_reference_digest=_failure_digest(value), binding=_project_binding(value["binding"]),
+        binding_digest=_failure_digest(value["binding"]), raw_digest=value["raw_digest"],
+        candidate=_project_observation(value["candidate"]), candidate_digest=value["candidate_digest"])
+    if "base" in value:
+        projected.update(base=_project_observation(value["base"]), base_digest=value["base_digest"],
+                         base_raw_digest=value["base_raw_digest"])
+    if "reuse" in value:
+        projected["reuse_binding"] = _project_binding(value["reuse"]["binding"])
+    return projected
+
+
+def _project_failure(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Produce FAILURE metadata; omitted proof remains bound, never recreated."""
+    if "public_projection" in data:
+        validate_public_failure(data)
+        return dict(data)
+    from .unified_state import _validated_private_public_view
+    # Validate the original role, owner, conditions and observation digests first.
+    _validated_private_public_view(data, "METADATA")
+    projected = {key: data[key] for key in (
+        "kind", "run_id", "task", "executor", "base_sha", "failed_head_sha",
+        "candidate", "phase", "continuation_of") if key in data}
+    error = data["error"]
+    outcomes = []
+    for item in error.get("verification", []):
+        outcome = dict(command=_public_command(item["command"]), exit_code=item["exit_code"],
+                       summary="Runtime verification exit code " + str(item["exit_code"]))
+        if "verification" in item:
+            outcome["verification"] = _project_reference(item["verification"])
+        outcomes.append(outcome)
+    projected["error"] = dict(type=error["type"], message="Protected Runtime diagnostics remain local.",
+                              verification=outcomes)
+    # Full EVIDENCE in any validated package role retains identity/digest only.
+    identities: dict[str, dict[str, str]] = {}
+
+    def collect(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif isinstance(value, dict):
+            if "evidence_id" in value and "raw" in value:
+                item = dict(evidence_id=value["evidence_id"], run_id=value["run_id"],
+                            subject_sha=value["subject_sha"], record_digest=_failure_digest(value))
+                prior = identities.setdefault(item["evidence_id"], item)
+                if prior != item:
+                    raise ValueError("conflicting private FAILURE evidence identities")
+            for item in value.values():
+                collect(item)
+
+    collect(data)
+    if identities:
+        projected["error"]["evidence_identities"] = [identities[key] for key in sorted(identities)]
+    projected["public_projection"] = dict(format=PUBLIC_FAILURE_FORMAT,
+        private_failure_digest=_failure_digest(data), projection_digest=_failure_digest(projected),
+        proof="PRIVATE_NON_PASS_FAILURE")
+    validate_public_failure(projected)
+    return projected
+
+
+def _validate_legacy_failure_public(data: Mapping[str, Any]) -> None:
+    """Keep lawful small redaction, rejecting undeclared public diagnostics."""
+    allowed = {"kind", "run_id", "task", "executor", "base_sha", "failed_head_sha",
+               "candidate", "phase", "continuation_of", "error"}
+    if set(data) - allowed:
+        raise ValueError("undeclared public FAILURE material")
+    error = data.get("error")
+    if error is not None:
+        if (not isinstance(error, dict) or set(error) - {"type", "message", "verification", "evidence"}
+                or not isinstance(error.get("type"), str)
+                or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,127}", error["type"]) is None
+                or error.get("message") != "Protected Runtime diagnostics remain local."):
+            raise ValueError("undeclared public FAILURE diagnostics")
+        outcomes = error.get("verification", [])
+        if not isinstance(outcomes, list):
+            raise ValueError("invalid public FAILURE outcomes")
+        for item in outcomes:
+            if (not isinstance(item, dict) or set(item) != {"command", "exit_code", "summary"}
+                    or type(item["exit_code"]) is not int
+                    or item["summary"] != "Runtime verification exit code " + str(item["exit_code"])):
+                raise ValueError("unprojected public FAILURE verification material")
+            _public_command(item["command"])
+    candidate = data.get("candidate")
+    if isinstance(candidate, dict):
+        if set(candidate) - {"transportable", "repairable", "dirty", "descends_from_base",
+                             "changed_files", "outside_task_scope"}:
+            raise ValueError("undeclared public FAILURE candidate material")
+        for key in ("changed_files", "outside_task_scope"):
+            paths = candidate.get(key, [])
+            if (not isinstance(paths, list) or any(not isinstance(path, str)
+                    or re.fullmatch(r"[A-Za-z0-9_./@ -]{1,4096}", path) is None
+                    or path.startswith("/") or ".." in path.split("/") for path in paths)):
+                raise ValueError("unsafe public FAILURE repository paths")
+
+    def diagnostics(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                diagnostics(item)
+        elif isinstance(value, dict):
+            if set(value) & {"stdout", "stderr", "captured_output", "traceback", "longrepr", "detail",
+                             "raw_path", "base_raw_path", "python_executable", "workspace"}:
+                raise ValueError("private material in public FAILURE")
+            if "evidence_id" in value and "source" in value:
+                _public_command(value["source"]["command"])
+            for item in value.values():
+                diagnostics(item)
+
+    diagnostics(data)
+
+
+def public_failure(content: bytes) -> bytes:
+    """FAILURE-only finite budget; ordinary transport retains its existing cap."""
+    data = _public_document(content, max_bytes=PUBLIC_FAILURE_MAX_BYTES)
+    if data.get("kind") != "FAILURE":
+        raise ReviewTransportError("public FAILURE kind is invalid")
+    try:
+        error = data.get("error")
+        outcomes = error.get("verification", []) if isinstance(error, dict) else []
+        if not _has_failure_observations(data) and isinstance(outcomes, list) and any(
+            isinstance(item, dict) and isinstance(item.get("verification"), dict)
+            and "candidate" in item["verification"] for item in outcomes
+        ):
+            raise ValueError("public FAILURE observation has no admitted terminal binding")
+        projected = (_project_failure(data) if _has_failure_observations(data)
+                     else _public_metadata_value(data))
+        # A diagnostic-only record must still fit the ordinary legacy format.
+        if not _has_failure_observations(data) and len(content) > PUBLIC_ARTIFACT_MAX_BYTES:
+            raise ValueError("large FAILURE requires a private observation projection")
+        if not _has_failure_observations(data):
+            _validate_legacy_failure_public(projected)
+        return _public_bytes(projected, max_bytes=PUBLIC_FAILURE_MAX_BYTES)
+    except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
+        raise ReviewTransportError("invalid public FAILURE projection") from exc
+
+
+def validate_public_failure(data: Mapping[str, Any]) -> None:
+    """Validate an exact public non-PASS summary, without granting proof authority."""
+    from .verification_contract import (
+        MINIMUM_SUFFICIENT_V2, MAX_CANONICAL_REPORTS, MAX_CANONICAL_FAILURES,
+        validate_evidence_binding,
+    )
+    required = {"kind", "run_id", "task", "executor", "base_sha", "failed_head_sha",
+                "candidate", "phase", "error", "public_projection"}
+    marker = data.get("public_projection")
+    if (not required <= data.keys() or set(data) - required - {"continuation_of"}
+            or data["kind"] != "FAILURE" or not isinstance(marker, dict)
+            or set(marker) != {"format", "private_failure_digest", "projection_digest", "proof"}
+            or marker["format"] != PUBLIC_FAILURE_FORMAT or marker["proof"] != "PRIVATE_NON_PASS_FAILURE"
+            or not _is_digest(marker["private_failure_digest"])
+            or marker["projection_digest"] != _failure_digest({k: v for k, v in data.items() if k != "public_projection"})):
+        raise ValueError("invalid public FAILURE projection identity")
+    _public_document(_public_bytes(data, max_bytes=PUBLIC_FAILURE_MAX_BYTES), max_bytes=PUBLIC_FAILURE_MAX_BYTES)
+
+    def match(value: Any, pattern: str) -> bool:
+        return isinstance(value, str) and re.fullmatch(pattern, value) is not None
+
+    if (not match(data["run_id"], r"RUN-[A-Za-z0-9_-]+-\d{3,}")
+            or any(not match(data[k], r"[0-9a-f]{40}") for k in ("base_sha", "failed_head_sha"))
+            or not match(data["executor"], r"[A-Za-z0-9_-]{1,96}")
+            or data["phase"] not in {"EXECUTION", "VERIFICATION", "COMPLETION_GATE"}
+            or ("continuation_of" in data and not match(data["continuation_of"], r"RUN-[A-Za-z0-9_-]+-\d{3,}"))):
+        raise ValueError("invalid public FAILURE subject")
+    task = data["task"]
+    if (not isinstance(task, dict) or set(task) != {"id", "revision"}
+            or not match(task["id"], r"TASK-[A-Za-z0-9_-]+")
+            or type(task["revision"]) is not int or task["revision"] < 1):
+        raise ValueError("invalid public FAILURE TASK")
+    candidate = data["candidate"]
+    fields = {"transportable", "repairable", "dirty", "descends_from_base", "changed_files", "outside_task_scope"}
+    if not isinstance(candidate, dict) or set(candidate) != fields:
+        raise ValueError("invalid public FAILURE candidate")
+    if any(type(candidate[k]) is not bool for k in fields - {"changed_files", "outside_task_scope"}):
+        raise ValueError("invalid public FAILURE candidate flags")
+    for key in ("changed_files", "outside_task_scope"):
+        paths = candidate[key]
+        if (not isinstance(paths, list) or any(not match(p, r"[A-Za-z0-9_./@ -]{1,4096}")
+                or p.startswith("/") or ".." in p.split("/") for p in paths)
+                or len(set(paths)) != len(paths)):
+            raise ValueError("invalid public FAILURE repository paths")
+    repairable = not candidate["dirty"] and candidate["descends_from_base"]
+    if (candidate["repairable"] is not repairable
+            or not set(candidate["outside_task_scope"]) <= set(candidate["changed_files"])
+            or candidate["transportable"] is not (repairable and not candidate["outside_task_scope"])):
+        raise ValueError("invalid public FAILURE candidate binding")
+
+    def identity(value: Any) -> None:
+        if (not isinstance(value, dict) or set(value) != {"private_identity_digest"}
+                or not _is_digest(value["private_identity_digest"])):
+            raise ValueError("invalid public verification conditions")
+
+    def binding(value: Any) -> dict[str, Any]:
+        value = validate_evidence_binding(value)
+        if set(value) - {"subject_sha", "base_sha", "tree_sha", "command", "envelope_digest",
+                        "changed_files_digest", "failure_set_digest", "correction_base_sha",
+                        "correction_changed_files_digest", "profile", "toolchain"}:
+            raise ValueError("invalid public FAILURE binding fields")
+        _public_command(value["command"])
+        identity(value["profile"])
+        identity(value["toolchain"])
+        return value
+
+    def observation(value: Any, digest: str) -> None:
+        fields = {"public_observation", "observation_digest", "subject_sha", "command", "profile", "toolchain",
+                  "complete", "unstable", "exit_code", "failure_count", "report_count", "node_count",
+                  "outcome_counts", "reports_digest", "failed_reports"}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value["public_observation"] != PUBLIC_OBSERVATION_FORMAT
+                or not _is_digest(digest) or value["observation_digest"] != digest
+                or not _is_digest(value["reports_digest"]) or not match(value["subject_sha"], r"[0-9a-f]{40}")
+                or type(value["complete"]) is not bool or type(value["unstable"]) is not bool
+                or (value["complete"] and value["unstable"])
+                or type(value["exit_code"]) is not int):
+            raise ValueError("invalid public FAILURE observation")
+        _public_command(value["command"])
+        identity(value["profile"])
+        identity(value["toolchain"])
+        counts = value["outcome_counts"]
+        if (not isinstance(counts, dict) or set(counts) != {"PASS", "FAIL", "SKIP"}
+                or any(type(n) is not int or n < 0 for n in counts.values())
+                or any(type(value[k]) is not int for k in ("report_count", "failure_count", "node_count"))
+                or not 0 <= value["node_count"] <= value["report_count"] <= MAX_CANONICAL_REPORTS
+                or (value["node_count"] == 0) != (value["report_count"] == 0)
+                or value["report_count"] > 4 * value["node_count"]
+                or sum(counts.values()) != value["report_count"]
+                or not 0 <= value["failure_count"] == counts["FAIL"] <= MAX_CANONICAL_FAILURES
+                or (value["exit_code"] == 0 and counts["FAIL"])
+                or (value["exit_code"] == 1 and not counts["FAIL"])
+                or not isinstance(value["failed_reports"], list) or len(value["failed_reports"]) != counts["FAIL"]):
+            raise ValueError("invalid public FAILURE report counts")
+        previous = None
+        for report in value["failed_reports"]:
+            if (not isinstance(report, dict) or set(report) != {"nodeid_digest", "phase", "fingerprint"}
+                    or not _is_digest(report["nodeid_digest"]) or not _is_digest(report["fingerprint"])
+                    or not isinstance(report["phase"], str) or report["phase"] not in {"collect", "setup", "call", "teardown"}):
+                raise ValueError("invalid public FAILURE failed identity")
+            key = (report["nodeid_digest"], report["phase"])
+            if previous is not None and key <= previous:
+                raise ValueError("duplicate public FAILURE failed identity")
+            previous = key
+        if len({item["nodeid_digest"] for item in value["failed_reports"]}) > value["node_count"]:
+            raise ValueError("invalid public FAILURE failed node count")
+
+    error = data["error"]
+    if (not isinstance(error, dict) or not {"type", "message", "verification"} <= error.keys()
+            or set(error) - {"type", "message", "verification", "evidence_identities"}
+            or not match(error["type"], r"[A-Za-z_][A-Za-z0-9_.]{0,127}")
+            or error["message"] != "Protected Runtime diagnostics remain local."
+            or not isinstance(error["verification"], list)):
+        raise ValueError("invalid public FAILURE diagnostics")
+    identities = error.get("evidence_identities", [])
+    if not isinstance(identities, list):
+        raise ValueError("invalid public FAILURE evidence identities")
+    seen = set()
+    for item in identities:
+        if (not isinstance(item, dict) or set(item) != {"evidence_id", "run_id", "subject_sha", "record_digest"}
+                or not match(item["evidence_id"], r"[A-Za-z0-9_-]{1,96}") or item["evidence_id"] in seen
+                or item["run_id"] != data["run_id"] or item["subject_sha"] != data["failed_head_sha"]
+                or not _is_digest(item["record_digest"])):
+            raise ValueError("invalid public FAILURE evidence identity binding")
+        seen.add(item["evidence_id"])
+    if data["phase"] == "VERIFICATION" and not any(
+        isinstance(item, dict) and type(item.get("exit_code")) is int and item["exit_code"] != 0
+        for item in error["verification"]
+    ):
+        raise ValueError("public VERIFICATION FAILURE has no nonzero outcome")
+    for outcome in error["verification"]:
+        if (not isinstance(outcome, dict) or not {"command", "exit_code", "summary"} <= outcome.keys()
+                or set(outcome) - {"command", "exit_code", "summary", "verification"}
+                or type(outcome["exit_code"]) is not int
+                or outcome["summary"] != "Runtime verification exit code " + str(outcome["exit_code"])):
+            raise ValueError("invalid public FAILURE outcome")
+        _public_command(outcome["command"])
+        if "verification" not in outcome:
+            continue
+        ref = outcome["verification"]
+        fields = {"policy", "evidence_id", "run_id", "private_reference_digest", "binding", "binding_digest",
+                  "raw_digest", "candidate", "candidate_digest"}
+        if (not isinstance(ref, dict) or not fields <= ref.keys()
+                or set(ref) - fields - {"base", "base_digest", "base_raw_digest", "reuse_binding"}
+                or ref["policy"] != MINIMUM_SUFFICIENT_V2
+                or not match(ref["evidence_id"], r"[A-Za-z0-9_-]{1,96}")
+                or not match(ref["run_id"], r"RUN-[A-Za-z0-9_-]+-\d{3,}")
+                or any(not _is_digest(ref[k]) for k in ("private_reference_digest", "binding_digest", "raw_digest"))):
+            raise ValueError("invalid public FAILURE reference")
+        bound = binding(ref["binding"])
+        observation(ref["candidate"], ref["candidate_digest"])
+        observed = ref["candidate"]
+        if (any(observed[k] != bound[k] for k in ("subject_sha", "command", "profile", "toolchain"))
+                or observed["command"] != outcome["command"] or observed["exit_code"] != outcome["exit_code"]):
+            raise ValueError("public FAILURE outcome binding mismatch")
+        effective = bound
+        if "reuse_binding" in ref:
+            effective = binding(ref["reuse_binding"])
+            if {k: v for k, v in effective.items() if k != "subject_sha"} != {
+                    k: v for k, v in bound.items() if k != "subject_sha"}:
+                raise ValueError("public FAILURE reuse binding mismatch")
+        elif ref["run_id"] != data["run_id"]:
+            raise ValueError("public FAILURE RUN binding mismatch")
+        if effective["subject_sha"] != data["failed_head_sha"]:
+            raise ValueError("public FAILURE subject binding mismatch")
+        if "base" in ref:
+            if not {"base_digest", "base_raw_digest"} <= ref.keys() or not _is_digest(ref["base_raw_digest"]):
+                raise ValueError("invalid public FAILURE base metadata")
+            observation(ref["base"], ref["base_digest"])
+            base = ref["base"]
+            if (base["subject_sha"] != bound["base_sha"] or base["command"] != bound["command"]
+                    or base["toolchain"] != bound["toolchain"] or bound["failure_set_digest"] != ref["base_digest"]):
+                raise ValueError("public FAILURE base binding mismatch")
+        elif {"base_digest", "base_raw_digest"} & ref.keys():
+            raise ValueError("orphaned public FAILURE base metadata")
+
+
+def failure_document(content: bytes) -> Mapping[str, Any]:
+    """Shared finite JSON/depth/schema gate for exact canonical FAILURE readers."""
+    data = _public_document(content, max_bytes=PUBLIC_FAILURE_MAX_BYTES)
+    if data.get("kind") != "FAILURE":
+        raise ReviewTransportError("invalid canonical FAILURE kind")
+    error = data.get("error")
+    if isinstance(error, dict) and error.get("message") == "Protected Runtime diagnostics remain local.":
+        def captured(value: Any) -> bool:
+            if isinstance(value, list):
+                return any(captured(item) for item in value)
+            return isinstance(value, dict) and (
+                bool(set(value) & {"captured_output", "stdout", "stderr", "traceback", "longrepr",
+                                   "native_diagnostics", "executor_diagnostics"})
+                or any(captured(item) for item in value.values()))
+
+        if captured(data):
+            raise ReviewTransportError("private captured output in public FAILURE")
+    if "public_projection" in data:
+        try:
+            validate_public_failure(data)
+        except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
+            raise ReviewTransportError("invalid canonical public FAILURE projection") from exc
+    return data
 
 
 class RemoteQueryError(ReviewTransportError):
@@ -147,6 +584,8 @@ def validate_runtime_failure_binding(
 ) -> None:
     """Validate the Runtime FAILURE identity and repair-candidate contract."""
 
+    if "public_projection" in failure:
+        validate_public_failure(failure)
     task = failure.get("task")
     if (
         failure.get("kind") != "FAILURE"
@@ -413,7 +852,10 @@ def _read_remote_blob(repo: Path, remote: str, commit_sha: str, rel_path: str) -
     _git_cmd(repo, "fetch", "--no-tags", remote, commit_sha, allow_fail=True)
     code, content, _ = _git_cmd(repo, "show", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True)
     if code == 0:
-        return content.encode("utf-8")
+        raw = content.encode("utf-8")
+        if rel_path == ".ai/transport/failure.json":
+            failure_document(raw)
+        return raw
     return None
 
 
@@ -429,7 +871,10 @@ def _read_lifecycle_blob(
         repo, "show", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True
     )
     if code == 0:
-        return content.encode("utf-8")
+        raw = content.encode("utf-8")
+        if rel_path == ".ai/transport/failure.json":
+            failure_document(raw)
+        return raw
     if fetch_code:
         raise RemoteQueryError(
             "failed to acquire canonical lifecycle object",
@@ -444,7 +889,12 @@ def _read_local_blob(repo: Path, commit_sha: str, rel_path: str) -> bytes | None
     code, content, _ = _git_cmd(
         repo, "show", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True
     )
-    return content.encode("utf-8") if code == 0 else None
+    if code != 0:
+        return None
+    raw = content.encode("utf-8")
+    if rel_path == ".ai/transport/failure.json":
+        failure_document(raw)
+    return raw
 
 
 def task_run_prefix(task_id: str) -> str:
@@ -936,6 +1386,8 @@ def _bind_failure_identity(terminal: Mapping[str, Any], run: Any) -> str:
 
 
 def _performance_json_mapping(content: bytes, name: str) -> Mapping[str, Any]:
+    if name == "FAILURE":
+        return failure_document(content)
     def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
         value: dict[str, Any] = {}
         for key, item in items:
@@ -944,11 +1396,15 @@ def _performance_json_mapping(content: bytes, name: str) -> Mapping[str, Any]:
             value[key] = item
         return value
 
+    def constant(_value: str) -> Any:
+        raise ValueError("non-finite JSON")
+
     try:
         value = json.loads(
-            content.decode("utf-8", errors="strict"), object_pairs_hook=pairs
+            content.decode("utf-8", errors="strict"), object_pairs_hook=pairs,
+            parse_constant=constant,
         )
-    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+    except (UnicodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ReviewTransportError(f"invalid canonical {name} JSON: {exc}") from exc
     if not isinstance(value, Mapping):
         raise ReviewTransportError(f"canonical {name} must be a mapping")
@@ -1955,6 +2411,8 @@ def _exact_remote_refs(repo: Path, remote: str, *patterns: str) -> dict[str, str
 
 
 def _json_mapping(content: bytes, name: str) -> Mapping[str, Any]:
+    if name == "FAILURE":
+        return failure_document(content)
     try:
         value = json.loads(content.decode("utf-8", errors="strict"))
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -2183,7 +2641,8 @@ def _create_named_artifacts_commit(
                 ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
                 input=(public_run(path.read_bytes()) if name == "run.json" else
                        public_result(path.read_bytes()) if name == "result.json" else
-                       public_metadata(path.read_bytes()) if name in {"failure.json", "repair.json", "pre-verification-candidate.json"} else path.read_bytes()),
+                       public_failure(path.read_bytes()) if name == "failure.json" else
+                       public_metadata(path.read_bytes()) if name in {"repair.json", "pre-verification-candidate.json"} else path.read_bytes()),
                 capture_output=True, check=True,
             )
             blobs[name] = proc.stdout.decode("utf-8", errors="strict").strip()
@@ -2232,7 +2691,7 @@ def transport_failure(
                                  lineage_path.read_bytes() if lineage_path is not None else None)
     expected = {
         ".ai/transport/run.json": public_run(run_path.read_bytes()),
-        ".ai/transport/failure.json": public_metadata(failure_path.read_bytes()),
+        ".ai/transport/failure.json": public_failure(failure_path.read_bytes()),
     }
     if lineage_path is not None:
         expected[".ai/transport/repair.json"] = public_metadata(lineage_path.read_bytes())
@@ -2488,7 +2947,7 @@ def prove_remote_failed_candidate(
         _git_cmd(repo, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", remote, commit)
     run = _read_local_blob(repo, refs[artifact_ref], ".ai/transport/run.json")
     failure = _read_local_blob(repo, refs[artifact_ref], ".ai/transport/failure.json")
-    if run is None or failure is None or len(run) > 65536 or len(failure) > 1048576:
+    if run is None or failure is None or len(run) > 65536 or len(failure) > PUBLIC_FAILURE_MAX_BYTES:
         raise ReviewTransportError("missing or unbounded canonical FAILURE content")
     task_id = "TASK-" + _run_task_prefix(failed_run_id)[4:-1]
     _, _, base_sha, candidate_sha = _bind_performance_terminal_identity(

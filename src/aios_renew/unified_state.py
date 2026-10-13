@@ -280,9 +280,16 @@ def _bounded_admission_context(
 
 def _lifecycle_document(raw: bytes, name: str) -> Mapping[str, Any]:
     # Historical readers must not inherit the prospective public writer's size cap.
-    return publication_module._mapping(
+    if name == "FAILURE":
+        from .review_transport import failure_document
+        return failure_document(raw)
+    data = publication_module._mapping(
         publication_module._json_no_duplicates(raw, document=name), name
     )
+    if data.get("kind") == "FAILURE":
+        from .review_transport import failure_document
+        return failure_document(raw)
+    return data
 
 
 def _validated_private_public_view(
@@ -479,6 +486,17 @@ def _validated_private_public_view(
             return value
         if role in {"outcomes", "evidence"}:
             raise ValueError("terminal verification population must be a list")
+        if value.get("kind") == "FAILURE" and "public_projection" in value:
+            from .review_transport import validate_public_failure
+            if role not in {"root", "failure"}:
+                raise ValueError("FAILURE outside a validated structural role")
+            if owner is not None and (
+                value.get("run_id") != owner.get("run_id")
+                or value.get("failed_head_sha") != owner.get("failed_head_sha")
+            ):
+                raise ValueError("nested FAILURE does not bind its correction owner")
+            validate_public_failure(value)
+            return value
         if role == "reference":
             if owner is None:
                 raise ValueError("verification reference has no structural owner")
@@ -624,6 +642,19 @@ def _matches_public_document(
 
     original = encoded(private)
     public = encoded(canonical)
+    def has_projection(value: Any) -> bool:
+        if isinstance(value, list):
+            return any(has_projection(item) for item in value)
+        return isinstance(value, Mapping) and (
+            "public_projection" in value or any(has_projection(item) for item in value.values()))
+
+    if kind == "METADATA" and (has_projection(private) or has_projection(canonical)):
+        from .review_transport import _public_metadata_value
+        # Validate both structural roles, then project only the private side.
+        # Comparing two reprojected records would conceal forged public fields.
+        _validated_private_public_view(private, kind)
+        _validated_private_public_view(canonical, kind)
+        return public == encoded(_public_metadata_value(dict(private)))
     projected = _validated_private_public_view(private, kind)
     if public == original and not protected_view(canonical):
         return True
@@ -1429,14 +1460,31 @@ def _local_pending_runs(
     terminal_pending: list[_LifecycleRun] = []
     active_pending: list[_LifecycleRun] = []
     prefix = task_run_prefix(task.task_id)
+
+    def terminal_paths(directory: Path):
+        for path in directory.glob(f"{prefix}*.json"):
+            sidecar = re.fullmatch(re.escape(prefix) + r"\d{3,}\.transport\.json", path.name)
+            if sidecar:
+                if path.stat().st_size > 65536:
+                    raise ValueError("unbounded transport sidecar")
+                data = _lifecycle_document(path.read_bytes(), "transport sidecar")
+                if (set(data) not in ({"error"}, {"run_id", "error"})
+                        or not isinstance(data.get("error"), str) or not data["error"]
+                        or ("run_id" in data and data["run_id"] != path.name.removesuffix(".transport.json"))):
+                    raise ValueError("malformed transport sidecar")
+                continue
+            if not re.fullmatch(re.escape(prefix) + r"\d{3,}\.json", path.name):
+                raise ValueError("malformed persisted terminal filename")
+            yield path
+
     if not state.runs.is_dir():
-        if any(directory.is_dir() and any(directory.glob(f"{prefix}*.json"))
+        if any(directory.is_dir() and any(terminal_paths(directory))
                for directory in (state.results, state.failures)):
             raise ValueError("persisted terminal has no RUN")
         return terminal_pending, active_pending
     for directory in (state.results, state.failures):
         if directory.is_dir() and any(not (state.runs / path.name).is_file()
-                                     for path in directory.glob(f"{prefix}*.json")):
+                                     for path in terminal_paths(directory)):
             raise ValueError("persisted terminal has no RUN")
     for path in state.runs.glob(f"{prefix}*.json"):
         run_id = path.stem
