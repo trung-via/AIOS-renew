@@ -361,6 +361,63 @@ def test_issue_carrier_canonicalizes_direct_final_task_without_audit(tmp_path, m
     assert carrier.deliver_event(event, policy, repo=repo).ingress_result.replayed
 
 
+def test_issue_carrier_canonicalizes_direct_final_repair_without_audit(tmp_path, monkeypatch):
+    from tests.test_authoring_ingress import (completion_gate_supersession_fixture,
+                                            forbid_repair_audit_dependencies, git)
+
+    repo, remote, main, failure_sha, envelope = completion_gate_supersession_fixture(tmp_path)
+    forbid_repair_audit_dependencies(monkeypatch)
+    body = {"format": envelope.format, "version": 1, "operation": "AUTHOR_REPAIR",
+            "identity": envelope.identity, "expected_state": envelope.expected_state,
+            "payload": envelope.payload}
+    assert "audited_handoff" not in body
+    event = _write_event(tmp_path, _event(json.dumps(body)))
+    policy = _write_policy(tmp_path)
+    delivery = carrier.deliver_event(event, policy, repo=repo)
+    result = delivery.ingress_result
+    assert result.status == "CANONICALIZED"
+    assert delivery.repair_failed_run_id == "RUN-254-001"
+    assert delivery.repair_sha == result.canonical_sha
+    assert json.loads(git(repo, "show", f"{result.canonical_sha}:.ai/transport/repair.json")) == envelope.payload
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+    assert git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/RUN-254-001") == failure_sha
+    replay = carrier.deliver_event(event, policy, repo=repo)
+    assert replay.ingress_result.replayed and replay.repair_failed_run_id is None
+    assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/artifacts/*")
+
+
+@pytest.mark.parametrize("fault", ["actor", "repository", "origin_proof", "forged_final", "stale_failure"])
+def test_issue_carrier_direct_final_repair_keeps_actor_origin_and_subject_gates(tmp_path, monkeypatch, fault):
+    from tests.test_authoring_ingress import (completion_gate_supersession_fixture,
+                                            forbid_correction_mutation, git)
+
+    repo, remote, main, _, envelope = completion_gate_supersession_fixture(tmp_path)
+    body = {"format": envelope.format, "version": 1, "operation": "AUTHOR_REPAIR",
+            "identity": envelope.identity, "expected_state": dict(envelope.expected_state),
+            "payload": dict(envelope.payload)}
+    event_doc = _event(json.dumps(body))
+    if fault == "actor":
+        event_doc["issue"]["user"]["login"] = "unauthorized-actor"
+    elif fault == "repository":
+        event_doc["repository"]["full_name"] = "different/repository"
+    elif fault == "origin_proof":
+        body["origin_authoring_proof"] = "page-origin-proof-v1:" + "a" * 64
+    elif fault == "forged_final":
+        body["payload"]["modification_scope"] = ["outside.py"]
+        body["audited_handoff"] = {"stage2": {"outcome": "CANDIDATE"}}
+    else:
+        body["expected_state"]["expected_failure_artifacts_sha"] = main
+    if fault not in ("actor", "repository"):
+        event_doc["issue"]["body"] = json.dumps(body)
+    event = _write_event(tmp_path, event_doc)
+    policy = _write_policy(tmp_path)
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_correction_mutation(monkeypatch)
+    with pytest.raises((AuthoringIngressError, carrier.GitHubIssueIngressError)):
+        carrier.deliver_event(event, policy, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
 @pytest.mark.parametrize("origin", (False, True))
 @pytest.mark.parametrize("mode", ("frame", "deliver"))
 def test_issue_carrier_rejects_task_handoff_with_fail_receipt_and_no_mutation(

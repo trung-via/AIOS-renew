@@ -10,8 +10,8 @@ import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -55,6 +55,7 @@ from .review_transport import (
     REPAIR_SUPERSESSION_FORMAT,
     REPAIR_SUPERSESSION_PATH,
     REPAIR_SUPERSESSION_PREFIX,
+    RemoteRepairAuthorization,
     ReviewTransportError,
     resolve_remote_repair_authorization,
     resolve_transport_remote,
@@ -262,7 +263,9 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
     if operation == "AUTHOR_TASK" and "audited_handoff" in data:
         raise AuthoringIngressError("AUTHOR_TASK does not accept audited_handoff")
     handoff = data.get("audited_handoff")
-    if handoff is not None:
+    # Legacy REPAIR audit serialization is inert compatibility data. Only the
+    # final REPAIR and Runtime's canonical subject can authorize this mutation.
+    if handoff is not None and operation != "AUTHOR_REPAIR":
         _validate_handoff_shape(handoff)
         if operation == "SUBMIT_REVIEW":
             raise AuthoringIngressError("SUBMIT_REVIEW does not accept Brain audited handoff")
@@ -1169,287 +1172,328 @@ def _execute_author_remediation(envelope: IngressEnvelope, repo: Path) -> Ingres
 # Operation: AUTHOR_REPAIR
 # ---------------------------------------------------------------------------
 
-def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResult:
-    failed_run_id = envelope.identity["failed_run_id"]
-    if isinstance(envelope.payload, Mapping):
-        repair_data = dict(envelope.payload)
-    else:
-        try:
-            repair_data = json.loads(envelope.payload)
-        except json.JSONDecodeError as exc:
-            raise AuthoringIngressError(f"invalid REPAIR JSON: {exc}") from exc
+@dataclass(frozen=True)
+class _RepairBinding:
+    transport: tuple[str, str]
+    refs: Mapping[str, str]
+    task: Task
+    run: Run
+    failure: Mapping[str, Any]
+    authorization: RemoteRepairAuthorization | None
+    correction_state: tuple[Any, ...]
 
-    if not isinstance(repair_data, Mapping):
-        raise AuthoringIngressError("REPAIR payload must be a mapping")
 
-    expected_failed_head_sha = _get_expected_sha(
-        envelope.expected_state, "expected_failed_head_sha", "failed_head_sha"
-    )
+def _repair_expected_sha(expected: Mapping[str, Any], *keys: str,
+                         required: bool = True) -> str | None:
+    values = [expected[key] for key in keys if key in expected]
+    if not values and not required:
+        return None
+    if (not values or any(not isinstance(value, str)
+                         or re.fullmatch(r"[0-9a-f]{40}", value.strip()) is None
+                         for value in values)):
+        raise AuthoringIngressError(f"expected_state must specify a valid 40-char SHA for {' or '.join(keys)}")
+    shas = {value.strip() for value in values}
+    if len(shas) != 1:
+        raise AuthoringIngressError("conflicting REPAIR expected-state aliases")
+    return shas.pop()
 
-    remote = _resolve_remote(repo)
-    repair_ref = f"refs/heads/aios/repair/{failed_run_id}"
-    failure_artifacts_ref = f"refs/heads/aios/failure-artifacts/{failed_run_id}"
 
-    artifacts_sha = _resolve_ref_sha(repo, failure_artifacts_ref, remote)
-    if artifacts_sha is None:
-        raise AuthoringIngressError(
-            f"canonical failure artifacts missing for {failed_run_id}"
-        )
-    _fetch_if_remote(repo, remote, artifacts_sha)
+def _repair_transport(repo: Path) -> tuple[str, str]:
+    """Bind correction writes to one configured upstream and exact destination."""
+    _, branch, _ = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
+    code, output, _ = _git(repo, "config", "--null", "--get-all",
+                           f"branch.{branch}.remote", allow_fail=True, strip_stdout=False)
+    remotes = output.removesuffix("\0").split("\0")
+    if (code or len(remotes) != 1 or not remotes[0] or remotes[0] == "."
+            or remotes[0].startswith("-") or remotes[0] != remotes[0].strip()):
+        raise AuthoringIngressError("canonical REPAIR transport is missing or ambiguous")
+    remote = remotes[0]
+    code, output, _ = _git(repo, "config", "--null", "--get-all",
+                           f"remote.{remote}.url", allow_fail=True, strip_stdout=False)
+    configured = output.removesuffix("\0").split("\0")
+    if code or len(configured) != 1 or not configured[0]:
+        raise AuthoringIngressError("canonical REPAIR transport URL is missing or ambiguous")
+    urls = []
+    for options in ((), ("--push",)):
+        code, output, _ = _git(repo, "remote", "get-url", *options, "--all", remote,
+                               allow_fail=True, strip_stdout=False)
+        values = output.splitlines()
+        if (code or len(values) != 1 or not values[0] or values[0].startswith("-")
+                or values[0] != values[0].strip()):
+            raise AuthoringIngressError("canonical REPAIR transport URL is missing or ambiguous")
+        urls.append(values[0])
+    if urls[0] != urls[1]:
+        raise AuthoringIngressError("canonical REPAIR transport has conflicting fetch/push URLs")
+    return remote, urls[0]
 
-    run_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/run.json")
-    failure_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/failure.json")
-    if run_bytes is None or failure_bytes is None:
-        raise AuthoringIngressError(
-            f"canonical failure content missing for {failed_run_id}"
-        )
 
-    run_data = _json_no_dups(run_bytes, "RUN")
-    failure_data = _json_no_dups(failure_bytes, "FAILURE")
+def _read_direct_repair_binding(envelope: IngressEnvelope, repo: Path,
+                                *, require_current: bool = True) -> _RepairBinding:
+    """Observe only this TASK's canonical correction namespace and contract.
 
-    if failure_data.get("kind") != "FAILURE" or failure_data.get("run_id") != failed_run_id:
-        raise AuthoringIngressError("FAILURE artifact identity mismatch")
-
-    failed_head_sha = failure_data.get("failed_head_sha")
-    if failed_head_sha != expected_failed_head_sha:
-        raise AuthoringIngressError(
-            f"expected failed head SHA mismatch: expected {expected_failed_head_sha}, got {failed_head_sha}"
-        )
-
-    candidate = failure_data.get("candidate")
-    if not isinstance(candidate, Mapping):
-        raise AuthoringIngressError("FAILURE candidate must be a mapping")
-
-    if not candidate.get("repairable"):
-        raise AuthoringIngressError(
-            f"failed RUN {failed_run_id} is not repairable"
-        )
-    if candidate.get("dirty"):
-        raise AuthoringIngressError(
-            f"failed RUN {failed_run_id} candidate is dirty"
-        )
-    if not candidate.get("descends_from_base"):
-        raise AuthoringIngressError(
-            f"failed RUN {failed_run_id} candidate does not descend from base"
-        )
-
-    run_view = _resolve_underlying_run_view(run_data, expected_run_id=failed_run_id)
-    base_sha = _extract_base_sha(run_view)
-    if failure_data.get("base_sha") is not None and failure_data.get("base_sha") != base_sha:
-        raise AuthoringIngressError("FAILURE base_sha does not match RUN")
-
-    task_id = _extract_task_id(run_view)
-    task_revision = _extract_task_revision(run_view)
-    if isinstance(failure_data.get("task"), Mapping):
-        fail_task = failure_data["task"]
-        if fail_task.get("id") != task_id or fail_task.get("revision") != task_revision:
-            raise AuthoringIngressError("FAILURE task identity mismatch")
-
-    repair_json_bytes = json.dumps(
-        repair_data, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-
-    # A legacy authorization is revision 1.  Later authorizations are separate,
-    # immutable refs whose metadata binds the exact predecessor and FAILURE.
-    existing_repair_sha = _resolve_ref_sha(repo, repair_ref, remote)
-    current_authorization = None
-    if existing_repair_sha is not None:
-        try:
-            current_authorization = resolve_remote_repair_authorization(
-                repo, failed_run_id
-            )
-        except ReviewTransportError as exc:
-            raise AuthoringIngressError(
-                f"canonical repair authorization lineage is invalid: {exc}"
-            ) from exc
-        if current_authorization.revision == 1:
-            try:
-                _validate_metadata_commit(
-                    repo,
-                    current_authorization.commit_sha,
-                    expected_parent_sha=failed_head_sha,
-                    metadata_path=".ai/transport/repair.json",
-                    metadata_bytes=current_authorization.repair,
-                    operation="AUTHOR_REPAIR replay",
-                )
-            except AuthoringIngressError as exc:
-                raise AuthoringIngressError(
-                    f"conflicting canonical repair already exists on {repair_ref}"
-                ) from exc
-        if (
-            current_authorization.repair == repair_json_bytes
-            and current_authorization.revision == 1
-        ):
-            return IngressResult(
-                operation="AUTHOR_REPAIR",
-                status="IDEMPOTENT",
-                canonical_destination=current_authorization.ref,
-                canonical_sha=current_authorization.commit_sha,
-                replayed=True,
-                detail=f"identical REPAIR already canonicalized for {failed_run_id}",
-            )
-        if current_authorization.repair == repair_json_bytes:
-            replay_predecessor = _get_expected_sha(
-                envelope.expected_state,
-                "expected_current_repair_sha",
-                "expected_repair_sha",
-                "predecessor_repair_sha",
-            )
-            replay_failure = _get_expected_sha(
-                envelope.expected_state,
-                "expected_failure_artifacts_sha",
-                "expected_failure_sha",
-                "failure_artifacts_sha",
-            )
-            if replay_predecessor != current_authorization.commit_sha:
-                raise AuthoringIngressError(
-                    "expected current REPAIR SHA does not match canonical authorization"
-                )
-            if replay_failure != artifacts_sha:
-                raise AuthoringIngressError(
-                    "expected canonical FAILURE identity does not match failed RUN"
-                )
-            return IngressResult(
-                operation="AUTHOR_REPAIR",
-                status="IDEMPOTENT",
-                canonical_destination=current_authorization.ref,
-                canonical_sha=current_authorization.commit_sha,
-                replayed=True,
-                detail=f"identical REPAIR already canonicalized for {failed_run_id}",
-            )
-
-    # Check that continuation doesn't already exist
-    _check_continuation_does_not_exist(repo, remote, failed_run_id)
-
-    # Load task
-    _fetch_if_remote(repo, remote, base_sha)
-    code, kind, _ = _git(repo, "cat-file", "-t", base_sha, allow_fail=True)
-    if code != 0 or kind != "commit":
-        raise AuthoringIngressError(f"RUN base_sha is not a canonical commit: {base_sha}")
-
-    task_bytes = _read_commit_blob(repo, base_sha, f".ai/tasks/{task_id}.yaml")
-    if task_bytes is None:
-        task_bytes = _read_commit_blob(repo, failed_head_sha, f".ai/tasks/{task_id}.yaml")
-    if task_bytes is None:
-        raise AuthoringIngressError(f"canonical TASK {task_id} missing from base commit")
-    task = parse_task(task_bytes.decode("utf-8"))
-    if task.task_id != task_id or task.revision != task_revision:
-        raise AuthoringIngressError("RUN does not reference the supplied TASK")
-
-    failed_changed_files = set(candidate.get("changed_files", []))
+    Main supplies the current TASK for mutation admission. Historical identical
+    replay reads its immutable TASK and authorization without opening a new
+    mutation interval. Unrelated main commits and other TASK namespaces are
+    outside the freshness witness. Existing lifecycle/recovery owners remain.
+    """
     try:
-        _validate_repair_authorization(
-            repair_data,
-            failed_run_id=failed_run_id,
-            failed_head_sha=failed_head_sha,
-            task=task,
-            failed_changed_files=failed_changed_files,
+        _validate_operation_identity("AUTHOR_REPAIR", envelope.identity)
+        failed_run_id = envelope.identity["failed_run_id"]
+        if re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", failed_run_id) is None:
+            raise AuthoringIngressError("invalid canonical failed RUN id")
+        transport = _repair_transport(repo)
+        remote = transport[0]
+        prefix = failed_run_id.rsplit("-", 1)[0] + "-"
+        patterns = ("refs/heads/main", f"refs/heads/aios/*/{prefix}*")
+        refs = _query_matching_refs(repo, remote, *patterns)
+        main_sha = refs.get("refs/heads/main")
+        artifacts_sha = refs.get(f"refs/heads/aios/failure-artifacts/{failed_run_id}")
+        if main_sha is None or artifacts_sha is None:
+            raise AuthoringIngressError(f"canonical failure artifacts or main missing for {failed_run_id}")
+        run_data = _json_no_dups(_authoring_blob(repo, artifacts_sha, ".ai/transport/run.json", remote), "RUN")
+        run_view = _resolve_underlying_run_view(run_data, expected_run_id=failed_run_id)
+        _extract_task_id(run_view)
+        _extract_task_revision(run_view)
+        _extract_base_sha(run_view)
+        run = _run_from_data(run_view)
+        _fetch_if_remote(repo, remote, run.base_sha)
+        code, kind, _ = _git(repo, "cat-file", "-t", run.base_sha, allow_fail=True)
+        if code or kind != "commit":
+            raise AuthoringIngressError(f"RUN base_sha is not a canonical commit: {run.base_sha}")
+        task_path = f".ai/tasks/{run.task.id}.yaml"
+        failure = _json_no_dups(_authoring_blob(repo, artifacts_sha, ".ai/transport/failure.json", remote), "FAILURE")
+        if failure.get("base_sha") is not None and failure["base_sha"] != run.base_sha:
+            raise AuthoringIngressError("FAILURE base_sha does not match RUN")
+        head = failure.get("failed_head_sha")
+        expected_head = _repair_expected_sha(envelope.expected_state, "expected_failed_head_sha", "failed_head_sha")
+        if head != expected_head:
+            raise AuthoringIngressError("expected failed head SHA mismatch")
+        if (refs.get(f"refs/heads/aios/failure/{failed_run_id}") != head
+                or run.head_sha is not None and run.head_sha != head):
+            raise AuthoringIngressError("canonical failed candidate identity is missing or mismatched")
+        task = parse_task(_authoring_blob(repo, head, task_path, remote).decode("utf-8"))
+        if (run.task != RunTaskReference(task.task_id, task.revision)
+                or run.status not in ("ACTIVE", "FAILED")):
+            raise AuthoringIngressError("canonical failed RUN TASK or status mismatch")
+        require_same_affinity(task, run)
+        actual = {}
+        if require_current:
+            current_task = parse_task(_authoring_blob(repo, main_sha, task_path, remote).decode("utf-8"))
+            if parse_task((repo / task_path).read_text(encoding="utf-8")) != current_task:
+                raise AuthoringIngressError("local correction TASK differs from canonical contract")
+            if task != current_task:
+                raise AuthoringIngressError("canonical failed TASK differs from current TASK contract")
+            code, _, _ = _git(repo, "merge-base", "--is-ancestor", run.base_sha, head, allow_fail=True)
+            _, changed, _ = _git(repo, "diff", "--name-only", run.base_sha, head, "--")
+            actual = {"actual_descends_from_base": code == 0, "actual_changed_files": set(changed.splitlines())}
+        validate_runtime_failure_binding(
+            failure, run_id=failed_run_id, task_id=task.task_id, task_revision=task.revision,
+            executor=run.executor, base_sha=run.base_sha, candidate_sha=head,
+            modification_scope=task.scope.modify, **actual,
         )
-    except ValueError as exc:
-        raise AuthoringIngressError(f"repair authorization invalid: {exc}") from exc
-    if (
-        current_authorization is not None
-        and repair_data.get("action")
-        in ("CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE")
-        and failure_data.get("phase") not in ("EXECUTION", "COMPLETION_GATE")
-    ):
-        raise AuthoringIngressError(
-            "repair authorization action requires a pre-verification FAILURE"
-        )
-
-    if current_authorization is not None:
-        expected_predecessor = _get_expected_sha(
-            envelope.expected_state, "expected_current_repair_sha", "expected_repair_sha", "predecessor_repair_sha"
-        )
-        if expected_predecessor != current_authorization.commit_sha:
-            raise AuthoringIngressError("expected current REPAIR SHA does not match canonical authorization")
-        expected_failure_sha = _get_expected_sha(
-            envelope.expected_state, "expected_failure_artifacts_sha", "expected_failure_sha", "failure_artifacts_sha"
-        )
-        if expected_failure_sha != artifacts_sha:
+        if (failure["candidate"]["repairable"] is not True
+                or failure["candidate"]["transportable"] is not True
+                or failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE", "VERIFICATION")):
+            raise AuthoringIngressError("canonical FAILURE is not repairable/transportable or has an invalid phase")
+        expected_failure = _repair_expected_sha(envelope.expected_state, "expected_failure_artifacts_sha",
+                                                "expected_failure_sha", "failure_artifacts_sha", required=False)
+        if expected_failure is not None and expected_failure != artifacts_sha:
             raise AuthoringIngressError("expected canonical FAILURE identity does not match failed RUN")
 
-    audit_binding = _validate_authoring_handoff(envelope, repo)
-    _recheck_authoring_binding(envelope, repo, audit_binding)
-    if current_authorization is None:
-        root_tree = _tree_with_metadata(
-            repo, failed_head_sha, ".ai/transport/repair.json", repair_json_bytes
-        )
-        commit_sha = _commit_tree(
-            repo,
-            root_tree,
-            [failed_head_sha],
-            f"repair authorization for {failed_run_id}",
-        )
-        _validate_metadata_commit(
-            repo,
-            commit_sha,
-            expected_parent_sha=failed_head_sha,
-            metadata_path=".ai/transport/repair.json",
-            metadata_bytes=repair_json_bytes,
-            operation="AUTHOR_REPAIR",
-        )
-        destination_ref = repair_ref
+        repair_ref = f"refs/heads/aios/repair/{failed_run_id}"
+        successors = f"{REPAIR_SUPERSESSION_PREFIX}{failed_run_id}/"
+        authorization = None
+        if repair_ref in refs:
+            authorization = resolve_remote_repair_authorization(repo, failed_run_id, remote=remote)
+            if refs.get(authorization.ref) != authorization.commit_sha:
+                raise AuthoringIngressError("canonical repair authorization moved during observation")
+            # The resolver owns continuity and exact predecessor/FAILURE identity.
+            # Additionally prove every historical commit only authored metadata.
+            for ref, sha in refs.items():
+                if ref != repair_ref and not ref.startswith(successors):
+                    continue
+                content = _authoring_blob(repo, sha, ".ai/transport/repair.json", remote)
+                prior = _json_no_dups(content, "current REPAIR")
+                if (not isinstance(prior.get("task"), Mapping)
+                        or type(prior["task"].get("revision")) is not int):
+                    raise AuthoringIngressError("canonical REPAIR TASK revision is invalid")
+                _validate_repair_authorization(
+                    prior, failed_run_id=failed_run_id,
+                    failed_head_sha=head, task=task,
+                    failed_changed_files=set(failure["candidate"]["changed_files"]),
+                )
+                if ref == repair_ref:
+                    try:
+                        _validate_metadata_commit(repo, sha, expected_parent_sha=head,
+                            metadata_path=".ai/transport/repair.json", metadata_bytes=content,
+                            operation="AUTHOR_REPAIR replay")
+                    except AuthoringIngressError as exc:
+                        raise AuthoringIngressError("conflicting canonical repair already exists") from exc
+                else:
+                    metadata = _json_no_dups(_authoring_blob(repo, sha, REPAIR_SUPERSESSION_PATH, remote),
+                                             "REPAIR supersession")
+                    if type(metadata["version"]) is not int or type(metadata["authorization_revision"]) is not int:
+                        raise AuthoringIngressError("canonical REPAIR supersession revision is invalid")
+                    _, parents, _ = _git(repo, "show", "-s", "--format=%P", sha)
+                    _, paths, _ = _git(repo, "diff", "--name-only", metadata["predecessor_repair_sha"], sha, "--")
+                    if (parents.split() != [metadata["predecessor_repair_sha"]]
+                            or REPAIR_SUPERSESSION_PATH not in paths.splitlines()
+                            or set(paths.splitlines()) - {".ai/transport/repair.json", REPAIR_SUPERSESSION_PATH}):
+                        raise AuthoringIngressError("canonical REPAIR supersession has unauthorized metadata delta")
+                    for path in (".ai/transport/repair.json", REPAIR_SUPERSESSION_PATH):
+                        _, entry, _ = _git(repo, "ls-tree", sha, "--", path)
+                        if not entry.startswith("100644 blob ") or not entry.endswith(f"\t{path}"):
+                            raise AuthoringIngressError("canonical REPAIR supersession metadata mode is invalid")
+        elif any(ref.startswith(successors) for ref in refs):
+            raise AuthoringIngressError("canonical REPAIR supersession has no root authorization")
+
+        state = ()
+        if require_current:
+            _check_continuation_does_not_exist(repo, remote, failed_run_id, observed_refs=refs)
+            snapshot = _canonical_correction_snapshot("AUTHOR_REPAIR", envelope.identity, repo, (remote, refs))
+            unified = snapshot.unified_state
+            if authorization is not None and unified.get("correction_sha") != authorization.commit_sha:
+                raise AuthoringIngressError("canonical current REPAIR differs from correction state")
+            if authorization is None and snapshot.next_action != "AUTHOR_REPAIR":
+                raise AuthoringIngressError("canonical correction subject is not awaiting REPAIR authoring")
+            state = tuple(unified.get(key) for key in ("task", "lifecycle_state", "next_action", "authority",
+                         "run_id", "failed_run_id", "failed_head_sha", "correction_sha", "blocker"))
+        if _repair_transport(repo) != transport or _query_matching_refs(repo, remote, *patterns) != refs:
+            raise AuthoringIngressError("canonical REPAIR inputs moved during reconstruction")
+        return _RepairBinding(transport, {ref: sha for ref, sha in refs.items() if ref != "refs/heads/main"},
+                              task, run, failure, authorization, state)
+    except AuthoringIngressError:
+        raise
+    except (ValueError, TypeError, KeyError, OSError, ReviewTransportError, subprocess.SubprocessError) as exc:
+        raise AuthoringIngressError(f"canonical REPAIR subject rejected: {exc}") from exc
+
+
+def _recheck_direct_repair_binding(envelope: IngressEnvelope, repo: Path, binding: _RepairBinding) -> None:
+    try:
+        if _read_direct_repair_binding(envelope, repo, require_current=bool(binding.correction_state)) != binding:
+            raise AuthoringIngressError("binding is no longer current")
+    except AuthoringIngressError as exc:
+        raise AuthoringIngressError(f"canonical REPAIR freshness rejected: {exc}") from exc
+
+
+def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResult:
+    # A supplied handoff never enters this authority boundary, even on replay.
+    allowed_expected = {"expected_failed_head_sha", "failed_head_sha", "expected_current_repair_sha",
+                        "expected_repair_sha", "predecessor_repair_sha", "expected_failure_artifacts_sha",
+                        "expected_failure_sha", "failure_artifacts_sha"}
+    if not isinstance(envelope.expected_state, Mapping) or set(envelope.expected_state) - allowed_expected:
+        raise AuthoringIngressError("AUTHOR_REPAIR expected_state contains unsupported authority fields")
+    try:
+        repair_data = (dict(envelope.payload) if isinstance(envelope.payload, Mapping)
+                       else _json_no_dups(envelope.payload.encode("utf-8"), "REPAIR"))
+        repair_id = repair_data.get("repair_id")
+        task_ref = repair_data.get("task")
+        if (not isinstance(repair_id, str) or re.fullmatch(r"REPAIR-[A-Za-z0-9_-]+", repair_id) is None
+                or not isinstance(task_ref, Mapping) or type(task_ref.get("revision")) is not int):
+            raise AuthoringIngressError("malformed final REPAIR identity")
+        repair_json_bytes = json.dumps(repair_data, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise AuthoringIngressError(f"invalid final REPAIR payload: {exc}") from exc
+    binding = _read_direct_repair_binding(envelope, repo, require_current=False)
+    failed_run_id = binding.run.run_id
+    failed_head_sha = binding.failure["failed_head_sha"]
+    artifacts_sha = binding.refs[f"refs/heads/aios/failure-artifacts/{failed_run_id}"]
+    current = binding.authorization
+    try:
+        _validate_repair_authorization(repair_data, failed_run_id=failed_run_id,
+            failed_head_sha=failed_head_sha, task=binding.task,
+            failed_changed_files=set(binding.failure["candidate"]["changed_files"]))
+    except ValueError as exc:
+        raise AuthoringIngressError(f"repair authorization invalid: {exc}") from exc
+    expected_current = _repair_expected_sha(envelope.expected_state, "expected_current_repair_sha",
+                                           "expected_repair_sha", "predecessor_repair_sha", required=False)
+    identical = current is not None and _json_no_dups(current.repair, "current REPAIR") == repair_data
+    if current is None and expected_current is not None:
+        raise AuthoringIngressError("expected current REPAIR SHA has no canonical authorization")
+    if current is not None:
+        # The exact successful supersession request is replayable with its old
+        # predecessor; an explicit current-tip selector is also read-only replay.
+        replay_shas = {current.commit_sha, current.predecessor_sha} if identical else {current.commit_sha}
+        if ((current.revision > 1 or not identical or expected_current is not None)
+                and expected_current not in replay_shas):
+            raise AuthoringIngressError("expected current REPAIR SHA does not match canonical authorization")
+        if current.revision > 1 or not identical:
+            expected_failure = _repair_expected_sha(envelope.expected_state, "expected_failure_artifacts_sha",
+                                                    "expected_failure_sha", "failure_artifacts_sha")
+            if expected_failure != artifacts_sha:
+                raise AuthoringIngressError("expected canonical FAILURE identity does not match failed RUN")
+    if identical:
+        _recheck_direct_repair_binding(envelope, repo, binding)
+        return IngressResult(operation="AUTHOR_REPAIR", status="IDEMPOTENT",
+            canonical_destination=current.ref, canonical_sha=current.commit_sha, replayed=True,
+            detail=f"identical REPAIR already canonicalized for {failed_run_id}")
+
+    fresh = _read_direct_repair_binding(envelope, repo)
+    if replace(fresh, correction_state=()) != binding:
+        raise AuthoringIngressError("canonical REPAIR inputs moved before mutation admission")
+    binding = fresh
+
+    # Existing Runtime owners reconstruct historical origin, actual deltas and
+    # optional reusable structural state. No supplied support facts are consumed.
+    from .correction_preflight import canonical_repair_strategy_state, repair_strategy_facts
+    try:
+        strategy = canonical_repair_strategy_state(repo, failed_run_id=failed_run_id,
+            task=binding.task, failure=binding.failure, expected_refs=binding.refs)
+        facts = repair_strategy_facts(task=binding.task, failure=binding.failure, state=strategy)
+        if facts["action_structural_eligibility"][repair_data["action"]] != "ELIGIBLE":
+            raise AuthoringIngressError("repair authorization action is ineligible for canonical FAILURE/state")
+    except (ValueError, TypeError, KeyError, RuntimeError, ReviewTransportError) as exc:
+        raise AuthoringIngressError(f"repair authorization strategy rejected: {exc}") from exc
+    _recheck_direct_repair_binding(envelope, repo, binding)
+    if current is None:
+        destination_ref = f"refs/heads/aios/repair/{failed_run_id}"
+        root_tree = _tree_with_metadata(repo, failed_head_sha, ".ai/transport/repair.json", repair_json_bytes)
+        commit_sha = _commit_tree(repo, root_tree, [failed_head_sha], f"repair authorization for {failed_run_id}")
+        _validate_metadata_commit(repo, commit_sha, expected_parent_sha=failed_head_sha,
+            metadata_path=".ai/transport/repair.json", metadata_bytes=repair_json_bytes, operation="AUTHOR_REPAIR")
     else:
-        revision = current_authorization.revision + 1
-        destination_ref = (
-            f"{REPAIR_SUPERSESSION_PREFIX}{failed_run_id}/{revision}"
-        )
-        supersession = {
-            "format": REPAIR_SUPERSESSION_FORMAT,
-            "version": 1,
-            "failed_run_id": failed_run_id,
-            "authorization_revision": revision,
-            "predecessor_repair_sha": current_authorization.commit_sha,
-            "failure_artifacts_sha": artifacts_sha,
-        }
-        supersession_bytes = json.dumps(
-            supersession, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-        repair_tree = _tree_with_metadata(
-            repo,
-            current_authorization.commit_sha,
-            ".ai/transport/repair.json",
-            repair_json_bytes,
-            replace_existing=True,
-        )
-        # Build the second metadata delta from a temporary commit so the tree
-        # helper can remain the single path-authoring primitive.
-        repair_commit = _commit_tree(
-            repo, repair_tree, [current_authorization.commit_sha],
-            f"staged repair supersession for {failed_run_id}",
-        )
-        root_tree = _tree_with_metadata(
-            repo,
-            repair_commit,
-            REPAIR_SUPERSESSION_PATH,
-            supersession_bytes,
-            replace_existing=True,
-        )
-        commit_sha = _commit_tree(
-            repo,
-            root_tree,
-            [current_authorization.commit_sha],
-            f"repair authorization revision {revision} for {failed_run_id}",
-        )
-        if _read_commit_blob(repo, commit_sha, ".ai/transport/repair.json") != repair_json_bytes:
-            raise AuthoringIngressError("AUTHOR_REPAIR successor content mismatch")
-        if _read_commit_blob(repo, commit_sha, REPAIR_SUPERSESSION_PATH) != supersession_bytes:
-            raise AuthoringIngressError("AUTHOR_REPAIR supersession metadata mismatch")
-
-    _recheck_authoring_binding(envelope, repo, audit_binding)
-    _publish_ingress_ref(
-        repo, remote, destination_ref, commit_sha, expect_missing=True
-    )
-
-    return IngressResult(
-        operation="AUTHOR_REPAIR",
-        status="CANONICALIZED",
-        canonical_destination=destination_ref,
-        canonical_sha=commit_sha,
-        replayed=False,
-        detail=f"canonicalized repair authorization for {failed_run_id}",
-    )
+        revision = current.revision + 1
+        destination_ref = f"{REPAIR_SUPERSESSION_PREFIX}{failed_run_id}/{revision}"
+        supersession = {"format": REPAIR_SUPERSESSION_FORMAT, "version": 1,
+            "failed_run_id": failed_run_id, "authorization_revision": revision,
+            "predecessor_repair_sha": current.commit_sha, "failure_artifacts_sha": artifacts_sha}
+        supersession_bytes = json.dumps(supersession, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        repair_tree = _tree_with_metadata(repo, current.commit_sha, ".ai/transport/repair.json",
+                                          repair_json_bytes, replace_existing=True)
+        staged = _commit_tree(repo, repair_tree, [current.commit_sha], f"staged repair supersession for {failed_run_id}")
+        root_tree = _tree_with_metadata(repo, staged, REPAIR_SUPERSESSION_PATH,
+                                        supersession_bytes, replace_existing=True)
+        commit_sha = _commit_tree(repo, root_tree, [current.commit_sha], f"repair authorization revision {revision} for {failed_run_id}")
+        if (_read_commit_blob(repo, commit_sha, ".ai/transport/repair.json") != repair_json_bytes
+                or _read_commit_blob(repo, commit_sha, REPAIR_SUPERSESSION_PATH) != supersession_bytes):
+            raise AuthoringIngressError("AUTHOR_REPAIR supersession content mismatch")
+    # The immutable destination's expected-missing CAS reserves this revision.
+    # Recheck the subject at the writer, including after local CAS and before push.
+    try:
+        _publish_ingress_ref(repo, binding.transport[0], destination_ref, commit_sha, expect_missing=True,
+            push_destination=binding.transport[1],
+            before_publish=lambda: _recheck_direct_repair_binding(envelope, repo, binding))
+    except AuthoringIngressError as admission_error:
+        # One read classifies an identical concurrent winner. This grants no
+        # retry or replacement authority, and all other subject witnesses agree.
+        try:
+            fresh = _read_direct_repair_binding(envelope, repo)
+        except AuthoringIngressError:
+            raise admission_error
+        winner = fresh.authorization
+        if (winner is None or winner.ref != destination_ref
+                or winner.revision != (1 if current is None else current.revision + 1)
+                or winner.predecessor_sha != (None if current is None else current.commit_sha)
+                or _json_no_dups(winner.repair, "current REPAIR") != repair_data
+                or fresh.transport != binding.transport or fresh.task != binding.task
+                or fresh.run != binding.run or fresh.failure != binding.failure
+                or fresh.refs != {**binding.refs, destination_ref: winner.commit_sha}):
+            raise
+        return IngressResult(operation="AUTHOR_REPAIR", status="IDEMPOTENT",
+            canonical_destination=winner.ref, canonical_sha=winner.commit_sha, replayed=True,
+            detail=f"identical concurrent REPAIR already canonicalized for {failed_run_id}")
+    return IngressResult(operation="AUTHOR_REPAIR", canonical_destination=destination_ref,
+        canonical_sha=commit_sha, detail=f"canonicalized repair authorization for {failed_run_id}")
 
 
 # ---------------------------------------------------------------------------
@@ -2166,13 +2210,16 @@ def _resolve_prior_review(
 
 
 def _check_continuation_does_not_exist(
-    repo: Path, remote: str | None, failed_run_id: str
+    repo: Path, remote: str | None, failed_run_id: str,
+    *, observed_refs: Mapping[str, str] | None = None,
 ) -> None:
     patterns = [
         f"refs/heads/aios/failure-artifacts/*",
         f"refs/heads/aios/artifacts/*",
     ]
-    refs = _query_matching_refs(repo, remote, *patterns)
+    refs = (_query_matching_refs(repo, remote, *patterns) if observed_refs is None else
+            {ref: sha for ref, sha in observed_refs.items()
+             if ref.startswith(("refs/heads/aios/failure-artifacts/", "refs/heads/aios/artifacts/"))})
     for ref, sha in refs.items():
         run_id = ref.rsplit("/", 1)[-1]
         if run_id == failed_run_id:
@@ -2567,11 +2614,18 @@ def _publish_ingress_ref(
     *,
     expect_missing: bool = False,
     reservation: PublicationReservation | None = None,
+    before_publish: Callable[[], None] | None = None,
+    push_destination: str | None = None,
 ) -> None:
     if expect_missing and expected_old_sha is not None:
         raise AuthoringIngressError(
             "ingress ref publication cannot expect both a missing and existing ref"
         )
+    if push_destination is not None and (
+        remote is None or not expect_missing or before_publish is None
+        or not ref.startswith(("refs/heads/aios/repair/", REPAIR_SUPERSESSION_PREFIX))
+    ):
+        raise AuthoringIngressError("captured push destination requires a bound immutable REPAIR writer")
 
     critical = ref == "refs/heads/main"
     if ref.startswith("refs/heads/aios/review-decision/"):
@@ -2605,6 +2659,9 @@ def _publish_ingress_ref(
         except PublicationError as exc:
             raise AuthoringIngressError(f"{exc.report.cause}: {exc}") from exc
 
+    if before_publish is not None:
+        before_publish()
+
     # 1. Update local ref
     local_expected_sha = "0" * 40 if expect_missing else expected_old_sha
     if local_expected_sha is not None:
@@ -2623,6 +2680,15 @@ def _publish_ingress_ref(
 
     # 2. Push to remote if configured
     if remote is not None:
+        if before_publish is not None:
+            try:
+                before_publish()
+            except Exception:
+                if expect_missing:
+                    _git(repo, "update-ref", "-d", ref, new_sha, allow_fail=True)
+                elif expected_old_sha is not None:
+                    _git(repo, "update-ref", ref, expected_old_sha, new_sha, allow_fail=True)
+                raise
         if critical:
             try:
                 check_publication_reservation(repo, remote, reservation)
@@ -2641,7 +2707,7 @@ def _publish_ingress_ref(
             args.append(f"--force-with-lease={ref}:")
         elif expected_old_sha is not None:
             args.append(f"--force-with-lease={ref}:{expected_old_sha}")
-        args.extend([remote, f"{new_sha}:{ref}"])
+        args.extend([remote if push_destination is None else push_destination, f"{new_sha}:{ref}"])
         code, _, err = _git(repo, *args, allow_fail=True)
         if code != 0:
             if expect_missing:
