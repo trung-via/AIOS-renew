@@ -1,5 +1,5 @@
 task_id: TASK-352
-revision: 1
+revision: 2
 goal: Restore the existing auto-Publisher workflow's correctly attached, upstream-bound,
   exact-main control context for lawful clean-recovery attempts and repeatable publication
   of exact reviewed source decisions, without creating a second Publisher or weakening
@@ -13,9 +13,10 @@ problem: 'On 2026-10-14 GitHub Actions auto-publication workflow 38508560771 (RU
   RUN-349-001 (cb155241...) and omits TASK-349: this is a distinct canonical source-lineage
   issue, not proof that detached-checkout repair alone can publish the stranded source.'
 assumptions:
-- Fresh Brain Sync main 679c3b22ae09bb139f425fba9c2d88e5fc67bc8a; TASK-352 r1 absent.
-  Canonical remote main, revision, origin and expected-old-main CAS are rechecked
-  by Runtime, not inferred from this draft.
+- Fresh Brain Sync main c82e79daa59f3a03db758394626d329ab4c70311 after
+  reviewed publication of TASK-353. TASK-352 revision 1 already exists on main;
+  this is the immediately successive prospective revision 2. Runtime independently
+  rechecks exact remote main, revision continuity and expected-old-main CAS.
 - Human explicitly prioritized publication integrity before TASK-351 End-to-End Failure
   Diagnostic Handoff. This separate prospective TASK does not overwrite or change
   the already approved TASK-351 draft, TASK-350 lineage or roadmap state.
@@ -31,8 +32,25 @@ assumptions:
   guards, candidate currentness and branch/source authorization. This TASK only corrects
   the workflow context supplied to that Runtime, without implementing or selecting
   a recovery outcome.
-- No new TASK-352 Executor/model/effort choice is inferred from the separate Human
-  Codex GPT-6.1 Sol Max delegation for TASK-351.
+- RUN-352-001 remains an immutable VERIFICATION FAILURE at candidate
+  394bf60aec1771963bd4082335f169ed7fa25509, with full-suite exit code 2
+  and conflicting immutable pytest observation; no old RUN, FAILURE or evidence
+  is rewritten or retroactively made PASS.
+- Published TASK-353 source c82e79daa59f3a03db758394626d329ab4c70311
+  isolates AIOS_V2_OBSERVATION_DIRECTORY ownership at the nested pytest process
+  boundary. That fix exists on main but not on the immutable RUN-352-001 candidate;
+  the new revision must develop from published current main rather than replay
+  verification of the stale failed head as if it contained TASK-353.
+- Human explicitly approved prospective replacement of TASK-352 r1's full-suite
+  obligation with two bounded targeted pytest requirements for TASK-352 r2.
+  This is a new Human-owned verification-scope choice, not Runtime evidence
+  waiver, policy bypass or retroactive alteration of revision 1.
+- The failed candidate's implementation and local regressions may be inspected
+  and reused as bounded source context; they are not canonical PASS, automatically
+  transferred code, valid proof on the new candidate, or a publication decision.
+- The prior TASK-352 RUN used Codex gpt-6.1-sol Max. Executor/model/effort for
+  the new revision remains a separate admission/delegation decision; authoring
+  this TASK does not dispatch or merge implementation.
 scope:
   inspect:
   - .github/workflows/aios-auto-publish.yml
@@ -91,9 +109,18 @@ constraints:
   - Modify only listed scope.modify files; if correct behavior requires changing publication.py,
     Runtime gates or TASK lineage, stop and request new exact authorized scope instead
     of silently expanding.
-  - Runtime owns minimum-sufficient-v2 canonical verification and proof reuse; run
-    targeted regressions during implementation, then one justified repository twelve-worker
-    full-suite verification with no duplicate equivalent suite.
+  - Runtime owns minimum-sufficient-v2 canonical verification and valid exact-subject
+    evidence reuse. For this prospective revision its complete authored proof
+    consists of the two focused commands in verification.required only; do not
+    append or substitute the repository full suite, or duplicate equivalent probes.
+    Preserve Runtime fail-closed handling of any failing, missing or unstable proof.
+  - A selected -k filter remains part of each exact authored command, including the
+    newly introduced workflow-regression module; Runtime must not treat a filtered
+    proof as repository-wide coverage. The bounded remaining cross-repository
+    regression risk is accepted by Human for this revision, not silently waived.
+  - Preserve all prior TASK-352 acceptance obligations, Runtime Publisher
+    eligibility/recovery authority, Git ref and CAS validation and negative-path
+    conformance. A change requiring wider scope returns to Human/Brain.
   - Executor claims implementation properties only. Reviewer owns PASS/CHANGES_REQUIRED;
     Publisher owns exact source publication. No claim of live deployment success,
     RUN-349 recovery or TASK-351 readiness based only on test PASS or workflow change.
@@ -125,11 +152,10 @@ acceptance:
     REVIEW PASS or canonical main inclusion.
 verification:
   policy: minimum-sufficient-v2
-  full_suite_reason: Auto-Publisher workflow checkout/upstream changes touch Git ref
-    identity, recovery admission, CAS, replay and consumer status. A single repository
-    12-worker suite after focused publication regressions is justified; reuse valid
-    evidence and do not run equivalent suites twice.
   required:
-  - python scripts/aios_parallel_full_suite.py
+  - python -m pytest -q tests/test_auto_publish_workflow.py -k test_
+  - >-
+    python -m pytest -q tests/test_publication.py -k
+    "publication_recovery_admits_once_then_requires_new_exact_review or publication_recovery_competing_divergent_pass_cannot_select_a_winner or main_movement_during_lineage_validation_is_rechecked_before_push"
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
