@@ -1,0 +1,236 @@
+task_id: TASK-350
+revision: 1
+goal: 'Implement prospective HUMAN_DIRECTIVE_PRECEDENCE as a systemwide constitutional
+  and operational invariant: authenticated explicit Human directives within Human-owned
+  authority control all applicable AIOS handoffs ahead of incompatible defaults or
+  automatic-policy choices, while preserving independent canonical proof and role
+  authority.'
+problem: AIOS recognizes Human authority but live audit, provider, ingress, dispatch,
+  and profile consumers can still drop or reject a Human choice due only to an older
+  default or a transport convention. Human explicitly approved one systemic authority-fidelity
+  correction on 2026-10-14, rather than a collection of incident-specific exceptions.
+assumptions:
+- At authoring Brain Sync canonical main is c1cc051134284c62d902f051eb70dc8b918a9e6f;
+  TASK-350 is new. Runtime must recheck current main, exact identity, revision and
+  CAS independently.
+- Human expressly prioritizes this prospective systemwide policy and implementation
+  ahead of older planning bookmarks. This TASK does not automatically advance or edit
+  roadmap semantics.
+- Current canonical audit policy selects aios-adaptive-brain-audit-v1, version 1,
+  digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718. Brain applied
+  CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE with all eight lenses and final closure
+  to this design; future policy changes do not retroactively waive this authoring.
+- Human approval of the governance change is explicit; Human Executor/model/effort
+  delegation for this new TASK has not yet been provided. Task authoring must not
+  infer or choose it.
+- Canonical TASK-349 / RUN-349-001 review and publication lineage is an independent
+  subject. No older RUN/REVIEW/FAILURE/PASS is modified or inferred by this new work.
+- Human-approved prospective return affinity is LEGACY_REPOSITORY_DEFAULT_ROUTE, not
+  a fallback from failed ORIGIN_AFFINE proof.
+- The complete acceptance contract appears in this TASK. Executor must not depend
+  on chat memory or a noncanonical draft for essential requirements.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/human_surface.py
+  - src/aios_renew/execution_profile.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/repair_dispatch.py
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-approved-remediation-intent.yml
+  - .github/workflows/aios-approved-remediation-wakeup.yml
+  - tests/test_authoring_ingress.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_repair_wakeup.py
+  - tests/test_repair_dispatch.py
+  - tests/test_operator.py
+  - tests/test_execution_profile.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - tests/test_operator_human_surface.py
+  - tests/test_operator_unified_state.py
+  - tests/test_github_issue_ingress_workflow.py
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-ADAPTIVE-BRAIN-AUDIT-v1.md
+  - docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/flow-cards.yaml
+  - .ai/executor-profiles.yaml
+  - .ai/tasks/TASK-348.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/github_issue_wakeup.py
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/review_transport.py
+  - .github/workflows/aios-issue-carrier.yml
+  modify:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/human_surface.py
+  - src/aios_renew/execution_profile.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/repair_dispatch.py
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-approved-remediation-intent.yml
+  - .github/workflows/aios-approved-remediation-wakeup.yml
+  - tests/test_authoring_ingress.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_repair_wakeup.py
+  - tests/test_repair_dispatch.py
+  - tests/test_operator.py
+  - tests/test_execution_profile.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - tests/test_operator_human_surface.py
+  - tests/test_operator_unified_state.py
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_human_directive_fidelity.py
+non_goals:
+- No incident-by-incident patch catalog, override/bypass transport switch, second
+  semantic policy router, memory/consent database, new planner or independent lifecycle/review/publication
+  authority.
+- No invented Human consent from bot identity, provider choice, issue body claim,
+  historic RUN defaults or user session heuristics. No automatic Executor/model selection
+  or replacement.
+- No retroactive change to frozen Kernel, TASK/RUN/RESULT/FAILURE/REVIEW/REPAIR evidence,
+  historical audit profile bytes/digests or downstream dependency pins; no fabricated
+  PASS, publication or verification.
+- No use of future systemwide policy change to bypass current valid authentication,
+  origin proof, subject/currentness checks, immutable lineage, CAS, independent review
+  or publisher gates.
+- No automatic roadmap mutation, task continuation, retry/fallback, repair selection,
+  source push, Executor dispatch or claims of live activation solely from a TASK,
+  carrier acceptance or test output.
+constraints:
+  hard:
+  - 'Add the exact prospective constitutional rule HUMAN_DIRECTIVE_PRECEDENCE: an
+    authenticated explicit current Human directive within Human-owned authority governs
+    its exact scope over older incompatible generic defaults, agent preferences and
+    transport behavior. Newer competent scoped Human intent prospectively supersedes
+    conflicting older intent only on overlapping dimensions. Explicit negative directives
+    prohibit silent fallback.'
+  - Human owns intent, policy change, delegation, risks and priority, not proof fabrication.
+    Existing Runtime deterministic admission/verification/evidence, Reviewer semantic
+    verdict and Publisher exact reviewed source remain independent. Prospective Kernel/version
+    change cannot reinterpret historical immutable artifacts.
+  - One closed-world inventory of every live path that carries, consumes, forwards,
+    stores, restores or rejects Human decisions; classify each affected authority
+    edge, its trusted source, scope, precedence and currentness. Implement consistent
+    behavior across existing active manual and automated carriers; do not define completion
+    by a finite list of incidents.
+  - For authenticated and equivalent canonical Human decisions, manual or automatic
+    transport must preserve exact chosen and prohibited values. Bot/workflow may convey
+    prior Human authority, never mint, drop, reinterpret or override it. Unapproved
+    inferred or repository-default fallback contradicting Human choice is forbidden.
+  - Honor lawful explicit Human prospective audit-procedure choices at the affected
+    Brain/authoring interfaces, without silently executing a forbidden default, spoofing
+    DIAGNOSTIC, reminting older profile packages or weakening independently required
+    audit/Reviewer/trust rules.
+  - Carry an exact already-authorized Human Executor/model/effort/other supported
+    parameter selection through applicable Task/PRIMARY/coding correction delivery
+    when executor_required=true. Preserve executorless where canonically required;
+    an admitted immutable delivery keeps its bound generation until lawful prospective
+    supersession.
+  - Authentication, exact subject/scope binding, currentness, proof of Human source,
+    expected-main CAS, replay/idempotence and one admitted Executor remain mandatory.
+    Untrusted/bot-generated claims cannot self-authorize a policy exception. Ambiguous/missing
+    authorization fails only the affected mutation with an accurate actionable blocker.
+  - A still-valid canonical decision must survive provider/chat replacement, workflow
+    handoffs and restart without repeated Human consent. Use existing canonical authority
+    surfaces; do not create a generic persistent policy oracle, planner, router or
+    memory store.
+  - Where existing code cannot lawfully apply Human direction, expose the exact blocking
+    independent rule or deployment gap; never silently substitute another method or
+    report success. Preserve truthful stage-specific transport, Runtime, review and
+    publication receipts.
+  - Modification authority is limited to scope.modify. Any essential additional file
+    or new trust/Kernel authority must be surfaced to Human/Brain for new exact authorization
+    rather than silent widening. Executor owns HOW and does not author roadmap policy
+    itself.
+  - Acceptance describes implementation properties claimable before Runtime verification.
+    Preserve minimum-sufficient-v2 evidence reuse, no ceremonial base/full suite repeats
+    and exact original authoritative test obligations.
+acceptance:
+- id: AC1
+  condition: Published governance source defines unambiguous prospective Human directive
+    precedence and prospective scoped supersession for both positive and negative
+    directives, preserving independently verified engineering truth.
+- id: AC2
+  condition: Every in-scope supported active Human-decision consumer carries the same
+    valid current Human choices across manual and automated boundaries without old
+    defaults, inferred model choices or bot preferences substituting them.
+- id: AC3
+  condition: Human authority is authenticated and bound to exact subject, scope, precedence
+    and effective generation using existing legitimate sources, with no bot/agent
+    self-certification, wrong-subject replay or stale substitution.
+- id: AC4
+  condition: An authorized explicit Human audit-method policy change is respected
+    in applicable prospective semantic flows without hidden profile fallback or reinterpretation
+    of frozen historical audit packages.
+- id: AC5
+  condition: All applicable current Human-chosen Executor/model/effort and supported
+    execution options remain exact across entrusted manual/auto delivery and correction,
+    while executorless and immutable already-admitted selections stay unchanged.
+- id: AC6
+  condition: A genuine unsupported, stale or independently prohibited request yields
+    an exact actionable blocker and no silent default substitution, duplicate approval
+    ceremony or false carrier/success claim.
+- id: AC7
+  condition: Existing Runtime admission, TASK/RUN/REVIEW/REPAIR/REMEDIATION lineage,
+    evidence, origin authenticity, security/privacy, publication, CAS and idempotence
+    retain unchanged authority and reject forged or cross-subject inputs.
+- id: AC8
+  condition: The implementation produces a closed-world repository-based inventory
+    of currently reachable Human-directive consumers, identifies each authoritative/transport/validation
+    edge and reconciles every in-scope path rather than relying on issue-specific
+    reproductions.
+- id: AC9
+  condition: Focused contract/property and composed live-path-shape synthetic tests
+    cover directive precedence, explicit prohibition, transport parity, prospective
+    supersession, continuity, absent/stale/forged authority and truthful negative
+    outcomes across affected consumers.
+- id: AC10
+  condition: Final implementation changes only scope.modify, introduces no second
+    policy/semantic/lifecycle owner, new generic store/router, model-driven Executor
+    fallback, retroactive state rewrite or unauthorized publication.
+verification:
+  policy: minimum-sufficient-v2
+  full_suite_reason: Cross-cutting governance, authoring, provider and manual/automated
+    dispatch fidelity affects multiple integration boundaries. One selected repository-wide
+    twelve-worker full suite after targeted regression work is justified; Runtime
+    must avoid duplicated equivalent suites and reuse valid evidence.
+  required:
+  - python scripts/aios_parallel_full_suite.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
