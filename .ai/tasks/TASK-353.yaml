@@ -1,0 +1,116 @@
+task_id: TASK-353
+revision: 1
+goal: Eliminate inherited selected-full-suite observation export ownership from nested
+  pytest workers so legitimate nested run_pytest calls cannot poison the outer Runtime-owned
+  observation file, while preserving exact fail-closed immutable export validation.
+problem: 'RUN-352-001 FAILURE in VERIFICATION: selected full suite exit code 2 on
+  both base and candidate; bound raw evidence hashes to ''selected full-suite failed:
+  conflicting immutable pytest observation''. Current verification.py supplies AIOS_V2_OBSERVATION_DIRECTORY
+  to the selected wrapper; parallel_verification.run_pytest copies the environment
+  into pytest children, and tests/test_bp_v4_parallel_rebaseline.py contains a real
+  nested run_pytest invocation with label parallel-12. The conflicting writer''s exact
+  historical process is not publicly evidenced; the Executor must reproduce the causal
+  collision in a tiny bounded test, not claim that historical actor identity has been
+  observed.'
+assumptions:
+- Fresh Brain Sync main 93097cc2d6a8070b935d2bbde2e29d57ea598006; TASK-353 r1 absent
+  at authoring. Runtime independently validates current main, identity, scope and
+  expected-old-main CAS.
+- 'Active prospective Brain audit: aios-adaptive-brain-audit-v1 v1 normalized digest
+  982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718. Brain performed
+  CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE across eight mandatory lenses and
+  final closure on reconciled candidate.'
+- RUN-352-001 immutable FAILED source 394bf60aec1771963bd4082335f169ed7fa25509 remains
+  unchanged; it and TASK-352 independently retain full-suite requirement. This TASK
+  does not author REPAIR or reclassify history.
+- The selected parent wrapper alone owns AIOS_V2_OBSERVATION_DIRECTORY as export destination;
+  the child pytest and its nested run_pytest do not receive parent export ownership
+  by environment inheritance.
+- Human explicitly prioritized minimum tests and delegated Codex gpt-6.1-sol Max for
+  TASK-353 execution, as separate dispatch intent rather than TASK or Runtime-verification
+  authority.
+- Fresh inspection of current minimum-sufficient-v2 shows unfiltered new test path
+  might trigger avoidable delta collection on base without the file. A precisely selected
+  -k observation_export_boundary bypasses that step through existing Runtime policy
+  and still executes the full two-scenario requirement.
+scope:
+  inspect:
+  - src/aios_renew/verification.py
+  - src/aios_renew/parallel_verification.py
+  - scripts/aios_parallel_full_suite.py
+  - tests/test_parallel_verification.py
+  - tests/test_bp_v4_parallel_rebaseline.py
+  - src/aios_renew/verification_contract.py
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/brain-audit-profiles.yaml
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-352.yaml
+  modify:
+  - src/aios_renew/parallel_verification.py
+  - tests/test_parallel_verification_export_boundary.py
+non_goals:
+- No bypass, overwrite, truncate, clear, ignore, weaken or reclassify the existing
+  immutable export conflict gate; different bytes at the same lawful destination must
+  still fail.
+- No new test orchestrator, database, lifecycle router, retry, environment-wide mutable
+  flag registry, full-suite runner or independent evidence source.
+- No changes to worker count, xdist settings, Runtime V2 derivation/attribution, evidence,
+  Kernel, TASK-352 requirements, historical FAILURE/RESULT/REVIEW, Publisher or roadmap.
+- No real full repository suite as this narrow TASK's authored acceptance proof; no
+  claim that all future verification errors are fixed or RUN-352 retroactively PASS.
+- No reset or modification of the original RUN-352 or TASK-350 dirty 23-file workspace.
+  No autonomous correction selection.
+constraints:
+  hard:
+  - Retain caller-authorized AIOS_V2_OBSERVATION_DIRECTORY only in the parent wrapper's
+    process and preserve its existing post-child immutable byte comparison. Prevent
+    the pytest child, workers, and nested in-pytest run_pytest calls from inheriting
+    the parent writer destination.
+  - Use only existing run_pytest process/environment boundary; do not change unrelated
+    subprocess environment, plugin observation path, exact subject, exported raw evidence
+    or canonical profile/worker semantics. No global mutable environment state.
+  - Implement a tiny synthetic composed parent/child reproduction of the parallel-12
+    label collision, showing red behavior before the fix and non-poisoning authorized
+    parent export after the fix. No recursive actual repository full suite.
+  - Independently test idempotent equal-byte existing exports and hard failure on
+    conflicting existing bytes; malformed or incomplete observations never yield PASS.
+  - 'Exactly two new tests must match the selector observation_export_boundary in
+    tests/test_parallel_verification_export_boundary.py. One canonical authored verification
+    command only: python -m pytest -q tests/test_parallel_verification_export_boundary.py
+    -k observation_export_boundary; no 12-worker suite or redundant equivalent tests.'
+  - No production file other than src/aios_renew/parallel_verification.py and no test
+    file other than tests/test_parallel_verification_export_boundary.py may be changed.
+    If wider production changes are necessary, stop for Human/Brain rescoping.
+  - Executor owns HOW and truthful preverification implementation claims; Runtime
+    owns minimum-sufficient-v2 verification/binding/evidence; Reviewer owns semantic
+    verdict; Publisher owns exact source. Existing TASK-352 required full suite and
+    clean-candidate recovery remain separately authorized.
+acceptance:
+- id: AC1
+  condition: The selected wrapper retains the authorized external export and deterministic
+    immutable output identity, while its pytest child and workers do not inherit the
+    wrapper's export destination as an environment capability.
+- id: AC2
+  condition: A bounded nested run_pytest invocation with exact label parallel-12 cannot
+    overwrite or preempt the outer wrapper observation; parent still exports authentic
+    result with no retry, worker/profile changes or lost diagnostic context.
+- id: AC3
+  condition: An already existing export containing identical bytes remains idempotent;
+    different bytes fail closed. Invalid/missing/incomplete observations remain non-PASS,
+    and no overwrite, deletion or conflict downgrade occurs.
+- id: AC4
+  condition: Exactly two deterministic, self-contained tests in the authorized new
+    module cover the observed failure-shaped parent-child-nested writer boundary and
+    real immutable conflict protection; both match observation_export_boundary and
+    do not recursively run the repository full suite.
+- id: AC5
+  condition: Only the two listed scope.modify paths change, without new orchestrator,
+    Kernel/Runtime evidence ownership, retroactive task/lineage proof, Planner/Reviewer/Publisher,
+    test worker policy or automatic REPAIR.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_parallel_verification_export_boundary.py -k observation_export_boundary
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
