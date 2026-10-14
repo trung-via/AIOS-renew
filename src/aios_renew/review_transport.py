@@ -234,8 +234,17 @@ def _project_reference(value: Mapping[str, Any]) -> dict[str, Any]:
     return projected
 
 
+def _validate_native_failure_exit_code(data: Mapping[str, Any]) -> None:
+    error = data.get("error")
+    if isinstance(error, dict) and "exit_code" in error and (
+            data.get("phase") != "EXECUTION" or _has_failure_observations(data)
+            or (error["exit_code"] is not None and type(error["exit_code"]) is not int)):
+        raise ValueError("invalid native FAILURE exit code")
+
+
 def _project_failure(data: Mapping[str, Any]) -> dict[str, Any]:
     """Produce FAILURE metadata; omitted proof remains bound, never recreated."""
+    _validate_native_failure_exit_code(data)
     if "public_projection" in data:
         validate_public_failure(data)
         return dict(data)
@@ -282,19 +291,41 @@ def _project_failure(data: Mapping[str, Any]) -> dict[str, Any]:
     return projected
 
 
+def _validate_legacy_failure_error(data: Mapping[str, Any], *, public: bool) -> None:
+    """Validate the source before redaction, including optional native status."""
+    if "phase" in data and (not isinstance(data["phase"], str)
+            or data["phase"] not in {"EXECUTION", "VERIFICATION", "COMPLETION_GATE"}):
+        raise ValueError("invalid legacy FAILURE phase")
+    if "error" not in data:
+        return
+    error = data["error"]
+    allowed = {"type", "message", "verification", "evidence", "exit_code"}
+    if not public:
+        allowed.update({"native_diagnostics", "executor_diagnostics"})
+    if (not isinstance(error, dict) or set(error) - allowed
+            or not isinstance(error.get("type"), str)
+            or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,127}", error["type"]) is None
+            or not isinstance(error.get("message"), str)
+            or (public and error["message"] != "Protected Runtime diagnostics remain local.")):
+        raise ValueError("undeclared public FAILURE diagnostics")
+    _validate_native_failure_exit_code(data)
+    for key in ("native_diagnostics", "executor_diagnostics"):
+        if key in error and not isinstance(error[key], dict):
+            raise ValueError("invalid private FAILURE diagnostics")
+    # Redaction must not hide malformed records or grant nested EVIDENCE roles.
+    from .unified_state import _validated_private_public_view
+    _validated_private_public_view(data, "METADATA")
+
+
 def _validate_legacy_failure_public(data: Mapping[str, Any]) -> None:
     """Keep lawful small redaction, rejecting undeclared public diagnostics."""
     allowed = {"kind", "run_id", "task", "executor", "base_sha", "failed_head_sha",
                "candidate", "phase", "continuation_of", "error"}
     if set(data) - allowed:
         raise ValueError("undeclared public FAILURE material")
+    _validate_legacy_failure_error(data, public=True)
     error = data.get("error")
     if error is not None:
-        if (not isinstance(error, dict) or set(error) - {"type", "message", "verification", "evidence"}
-                or not isinstance(error.get("type"), str)
-                or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,127}", error["type"]) is None
-                or error.get("message") != "Protected Runtime diagnostics remain local."):
-            raise ValueError("undeclared public FAILURE diagnostics")
         outcomes = error.get("verification", [])
         if not isinstance(outcomes, list):
             raise ValueError("invalid public FAILURE outcomes")
@@ -358,8 +389,11 @@ def public_failure(content: bytes) -> bytes:
             and "candidate" in item["verification"] for item in outcomes
         ):
             raise ValueError("public FAILURE observation has no admitted terminal binding")
-        projected = (_project_failure(data) if _has_failure_observations(data)
-                     else _public_metadata_value(data))
+        if _has_failure_observations(data):
+            projected = _project_failure(data)
+        else:
+            _validate_legacy_failure_error(data, public=False)
+            projected = _public_metadata_value(data)
         # A diagnostic-only record must still fit the ordinary legacy format.
         if not _has_failure_observations(data) and len(content) > PUBLIC_ARTIFACT_MAX_BYTES:
             raise ValueError("large FAILURE requires a private observation projection")
@@ -576,6 +610,13 @@ def failure_document(content: bytes) -> Mapping[str, Any]:
             validate_public_failure(data)
         except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
             raise ReviewTransportError("invalid canonical public FAILURE projection") from exc
+    else:
+        try:
+            _validate_native_failure_exit_code(data)
+            if not _has_failure_observations(data):
+                _validate_legacy_failure_error(data, public=False)
+        except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
+            raise ReviewTransportError("invalid canonical legacy FAILURE diagnostics") from exc
     return data
 
 

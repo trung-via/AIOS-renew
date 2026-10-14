@@ -314,6 +314,285 @@ def test_failure_transport_recovery_small_legacy_interoperability():
     assert operator_failure_matches(legacy, review_transport.failure_document(public_bytes))
 
 
+def _native_execution_failure_fixture(
+    *, error_fields=None, base_sha="a" * 40, head_sha="b" * 40,
+):
+    """Synthetic native status and diagnostics, independent of local terminals."""
+    run = dict(run_id="RUN-058-950", task=TASK, executor="codex", base_sha=base_sha,
+        workspace="C:/private/native/workspace", head_sha=None, status="ACTIVE")
+    failure = dict(kind="FAILURE", run_id=run["run_id"], task=TASK, executor="codex",
+        base_sha=base_sha, failed_head_sha=head_sha, phase="EXECUTION",
+        candidate=dict(transportable=True, repairable=True, dirty=False, descends_from_base=True,
+                       changed_files=["subject.txt"], outside_task_scope=[]),
+        error=dict(type="CodexExecutionError", message="private native secret_fixture",
+            native_diagnostics=dict(limit_chars=4096, stdout="secret_fixture",
+                stderr="token=secret_fixture C:/private/native/stderr.log",
+                nested=dict(captured_output="secret_fixture", traceback="private traceback",
+                            workspace="C:/private/native/workspace")),
+            executor_diagnostics=dict(unresolved=["secret_fixture C:/private/native/unresolved"])))
+    failure["error"].update(error_fields or {})
+    raw = json.dumps(failure, indent=2).encode() + b"\n"
+    return run, failure, raw
+
+
+@pytest.mark.parametrize("error_fields", [{}, {"exit_code": None}, {"exit_code": 0},
+    {"exit_code": 1}, {"exit_code": -9}], ids=["absent", "null", "zero", "one", "negative"])
+def test_native_execution_failure_projection_preserves_status_and_private_bytes(tmp_path, error_fields):
+    from aios_renew.unified_state import _matches_public_document
+
+    _, private, raw = _native_execution_failure_fixture(error_fields=error_fields)
+    private["continuation_of"] = "RUN-058-949"
+    raw = json.dumps(private, indent=2).encode() + b"\n"
+    path = tmp_path / "private-failure.json"
+    path.write_bytes(raw)
+    public_bytes = review_transport.public_failure(path.read_bytes())
+    public = review_transport.failure_document(public_bytes)
+    assert review_transport.failure_document(raw) == private
+    assert review_transport._json_mapping(public_bytes, "FAILURE") == public
+    assert review_transport.public_failure(public_bytes) == public_bytes
+    assert public_bytes == review_transport.public_metadata(raw)
+    assert "public_projection" not in public
+    assert public["error"] == dict(type="CodexExecutionError",
+        message="Protected Runtime diagnostics remain local.", **error_fields)
+    if "exit_code" in error_fields:
+        assert type(public["error"]["exit_code"]) is type(error_fields["exit_code"])
+        assert public["error"]["exit_code"] == error_fields["exit_code"]
+    else:
+        assert "exit_code" not in public["error"]
+    for key in ("run_id", "task", "executor", "base_sha", "failed_head_sha", "candidate", "phase", "continuation_of"):
+        assert public[key] == private[key]
+    assert all(value not in public_bytes for value in (b"secret_fixture", b"C:/private", b"token=",
+        b"native_diagnostics", b"executor_diagnostics", b"stdout", b"stderr", b"captured_output", b"traceback"))
+    assert _matches_public_document(private, public, "METADATA")
+    assert operator_failure_matches(private, public)
+    assert path.read_bytes() == raw and json.loads(raw) == private
+
+
+@pytest.mark.parametrize("public_origin", [False, True], ids=["private", "public"])
+@pytest.mark.parametrize("exit_code", [True, False, 1.0, 1.5, "1", "", [], [1], {}, {"value": 1}])
+def test_native_execution_failure_rejects_malformed_exit_code(public_origin, exit_code):
+    _, private, raw = _native_execution_failure_fixture(error_fields={"exit_code": 1})
+    data = json.loads(review_transport.public_failure(raw)) if public_origin else private
+    data["error"]["exit_code"] = exit_code
+    content = json.dumps(data).encode()
+    for reader in (review_transport.public_failure, review_transport.failure_document,
+                   lambda value: review_transport._json_mapping(value, "FAILURE")):
+        with pytest.raises(ReviewTransportError):
+            reader(content)
+    if public_origin:
+        with pytest.raises(ValueError):
+            review_transport._validate_legacy_failure_public(data)
+
+
+@pytest.mark.parametrize("public_origin", [False, True], ids=["private", "public"])
+def test_native_execution_failure_rejects_duplicate_exit_code(public_origin):
+    _, private, raw = _native_execution_failure_fixture(error_fields={"exit_code": 1})
+    data = json.loads(review_transport.public_failure(raw)) if public_origin else private
+    content = json.dumps(data, separators=(",", ":")).encode().replace(
+        b'"exit_code":1', b'"exit_code":1,"exit_code":null')
+    for reader in (review_transport.public_failure, review_transport.failure_document,
+                   lambda value: review_transport._json_mapping(value, "FAILURE")):
+        with pytest.raises(ReviewTransportError, match="duplicate key"):
+            reader(content)
+
+
+@pytest.mark.parametrize("public_origin", [False, True], ids=["private", "public"])
+@pytest.mark.parametrize("phase", ["VERIFICATION", "COMPLETION_GATE", "PASS", "execution", "ABSENT", None, True, [], {}])
+@pytest.mark.parametrize("exit_code", [None, 1])
+def test_native_execution_failure_rejects_exit_code_outside_execution(public_origin, phase, exit_code):
+    _, private, raw = _native_execution_failure_fixture(error_fields={"exit_code": exit_code})
+    data = json.loads(review_transport.public_failure(raw)) if public_origin else private
+    if phase == "ABSENT":
+        data.pop("phase")
+    else:
+        data["phase"] = phase
+    for reader in (review_transport.public_failure, review_transport.failure_document):
+        with pytest.raises(ReviewTransportError):
+            reader(json.dumps(data).encode())
+
+
+@pytest.mark.parametrize("public_origin", [False, True], ids=["private", "public"])
+@pytest.mark.parametrize("phase", ["PASS", "execution", None, True, [], {}])
+def test_native_execution_failure_rejects_invalid_phase_without_exit_code(public_origin, phase):
+    _, private, raw = _native_execution_failure_fixture()
+    data = json.loads(review_transport.public_failure(raw)) if public_origin else private
+    data["phase"] = phase
+    for reader in (review_transport.public_failure, review_transport.failure_document):
+        with pytest.raises(ReviewTransportError):
+            reader(json.dumps(data).encode())
+
+
+@pytest.mark.parametrize("public_origin", [False, True], ids=["private", "public"])
+@pytest.mark.parametrize("error_fields", [
+    {"unknown_exit_code": 1}, {"captured_output": "secret_fixture"},
+    {"type": None}, {"type": True}, {"type": []}, {"type": "C:/private/Error"},
+    {"message": None}, {"message": 1}, {"message": []}, {"message": {}},
+    {"native_diagnostics": None}, {"native_diagnostics": []}, {"native_diagnostics": "secret_fixture"},
+    {"executor_diagnostics": None}, {"executor_diagnostics": []},
+    {"evidence": {}}, {"evidence": [1]}, {"evidence": [{"evidence_id": "E1"}]},
+    {"verification": {}}, {"verification": [1]},
+    {"native_diagnostics": {"evidence_id": "E1", "raw": {"path": "C:/private/native.raw"}}},
+])
+def test_native_execution_failure_validates_error_source_before_redaction(public_origin, error_fields):
+    _, private, raw = _native_execution_failure_fixture(error_fields={"exit_code": 1})
+    data = json.loads(review_transport.public_failure(raw)) if public_origin else private
+    data["error"].update(error_fields)
+    for reader in (review_transport.public_failure, review_transport.failure_document):
+        with pytest.raises(ReviewTransportError):
+            reader(json.dumps(data).encode())
+
+
+@pytest.mark.parametrize("error", [None, 1, [], "native failure"])
+def test_native_execution_failure_rejects_malformed_error_record(error):
+    _, data, _ = _native_execution_failure_fixture()
+    data["error"] = error
+    for reader in (review_transport.public_failure, review_transport.failure_document):
+        with pytest.raises(ReviewTransportError):
+            reader(json.dumps(data).encode())
+
+
+@pytest.mark.parametrize("placement", ["native_diagnostics", "executor_diagnostics", "stdout", "stderr",
+    "captured_output", "root_capture", "candidate_path"])
+def test_native_execution_failure_rejects_contaminated_public_original(placement):
+    _, _, raw = _native_execution_failure_fixture(error_fields={"exit_code": None})
+    data = json.loads(review_transport.public_failure(raw))
+    if placement == "root_capture":
+        data["captured_output"] = "secret_fixture"
+    elif placement == "candidate_path":
+        data["candidate"]["changed_files"] = ["C:/private/native/secret_fixture"]
+    else:
+        data["error"][placement] = dict(captured_output="secret_fixture", path="C:/private/native")
+    for reader in (review_transport.public_failure, review_transport.failure_document,
+                   lambda value: review_transport._json_mapping(value, "FAILURE")):
+        with pytest.raises(ReviewTransportError):
+            reader(json.dumps(data).encode())
+
+
+@pytest.mark.parametrize("field", ["run_id", "task", "executor", "base_sha", "failed_head_sha", "candidate",
+    "continuation_of", "error_type", "error_message", "exit_code", "absent_exit_code", "null_exit_code", "bool_exit_code"])
+def test_native_execution_failure_public_mutations_do_not_match_private_origin(field):
+    from aios_renew.unified_state import _matches_public_document
+
+    _, private, raw = _native_execution_failure_fixture(error_fields={"exit_code": 1})
+    public = json.loads(review_transport.public_failure(raw))
+    if field == "run_id": public[field] = "RUN-058-951"
+    elif field == "task": public[field] = dict(TASK, revision=3)
+    elif field == "executor": public[field] = "antigravity"
+    elif field in {"base_sha", "failed_head_sha"}: public[field] = "c" * 40
+    elif field == "candidate": public[field]["changed_files"] = ["other.txt"]
+    elif field == "continuation_of": public[field] = "RUN-058-949"
+    elif field == "error_type": public["error"]["type"] = "OtherExecutionError"
+    elif field == "error_message": public["error"]["message"] = "altered public diagnostics"
+    elif field == "absent_exit_code": public["error"].pop("exit_code")
+    else: public["error"]["exit_code"] = {"exit_code": 2, "null_exit_code": None, "bool_exit_code": True}[field]
+    assert not _matches_public_document(private, public, "METADATA")
+    assert not operator_failure_matches(private, public)
+    if field not in {"bool_exit_code", "error_message"}:
+        # A lawful shape may be reprojected, but does not acquire origin identity.
+        reprojected = review_transport.failure_document(review_transport.public_failure(json.dumps(public).encode()))
+        assert not operator_failure_matches(private, reprojected)
+
+
+def test_native_execution_failure_preserves_nested_correction_identity():
+    from aios_renew.unified_state import _matches_public_document
+
+    run, private, raw = _native_execution_failure_fixture(error_fields={"exit_code": None})
+    correction = dict(run=run, failure=private, failed_run_id=run["run_id"],
+        failed_head_sha=private["failed_head_sha"], root_base_sha=run["base_sha"],
+        task=dict(task_id=TASK["id"], revision=TASK["revision"]),
+        repair=dict(repair_id="REPAIR-058-950", failed_run_id=run["run_id"], task=TASK))
+    content = json.dumps(correction, indent=2).encode()
+    public_bytes = review_transport.public_metadata(content)
+    public = json.loads(public_bytes)
+    assert public["failure"] == review_transport.failure_document(review_transport.public_failure(raw))
+    assert public["run"] == json.loads(review_transport.public_run(json.dumps(run).encode()))
+    assert public["repair"] == correction["repair"]
+    assert review_transport.public_metadata(public_bytes) == public_bytes
+    assert _matches_public_document(correction, public, "METADATA")
+    public["failure"]["error"]["exit_code"] = 0
+    assert not _matches_public_document(correction, public, "METADATA")
+    assert json.loads(content) == correction and json.loads(raw) == private
+
+
+@pytest.mark.parametrize("error_fields", [{}, {"exit_code": None}, {"exit_code": 0}, {"exit_code": 1}],
+    ids=["absent", "null", "zero", "one"])
+def test_native_execution_failure_transport_and_recovery_preserve_exact_facts(tmp_path, error_fields):
+    from aios_renew.unified_state import _matches_canonical_failure
+
+    repo, remote = make_repo(tmp_path)
+    base = git(repo, "rev-parse", "HEAD")
+    head = commit_candidate(repo, "synthetic native failed candidate")
+    run, private, raw = _native_execution_failure_fixture(error_fields=error_fields, base_sha=base, head_sha=head)
+    run_path, failure_path = tmp_path / "private" / "run.json", tmp_path / "private" / "failure.json"
+    run_bytes = write_json(run_path, run)
+    failure_path.write_bytes(raw)
+    expected_run, expected_failure = review_transport.public_run(run_bytes), review_transport.public_failure(raw)
+    transport_failure(repo, run_id=run["run_id"], head_sha=head, run_path=run_path, failure_path=failure_path)
+    refs = git(remote, "show-ref")
+    candidate_ref = f"refs/heads/aios/failure/{run['run_id']}"
+    artifacts_ref = f"refs/heads/aios/failure-artifacts/{run['run_id']}"
+    assert git(remote, "rev-parse", candidate_ref) == head
+    artifacts = git(remote, "rev-parse", artifacts_ref)
+    assert review_transport._read_local_blob(remote, artifacts, ".ai/transport/run.json") == expected_run
+    assert review_transport._read_local_blob(remote, artifacts, ".ai/transport/failure.json") == expected_failure
+    transport_failure(repo, run_id=run["run_id"], head_sha=head, run_path=run_path, failure_path=failure_path)
+    assert git(remote, "show-ref") == refs
+    recovery = resolve_remote_repair_recovery(repo, failed_run_id=run["run_id"])
+    assert recovery.remote_run_ids == (run["run_id"],) and len(recovery.failures) == 1
+    recovered = recovery.failures[0]
+    assert (recovered.run_id, recovered.candidate_sha, recovered.run, recovered.failure) == (
+        run["run_id"], head, expected_run, expected_failure)
+    assert recovered.repair is None and recovered.preverification is None
+    lifecycle = resolve_remote_task_lifecycle(repo, task_id="TASK-058", task_revision=2)
+    assert len(lifecycle.terminals) == 1 and not lifecycle.reviews
+    terminal = lifecycle.terminals[0]
+    assert (terminal.kind, terminal.run_id, terminal.candidate_sha, terminal.run, terminal.terminal) == (
+        "FAILURE", run["run_id"], head, expected_run, expected_failure)
+    public = review_transport.failure_document(recovered.failure)
+    assert public["phase"] == "EXECUTION" and "verification" not in public["error"]
+    assert public["error"] == dict(type="CodexExecutionError",
+        message="Protected Runtime diagnostics remain local.", **error_fields)
+    assert _matches_canonical_failure(private, public, canonical_workspace="protected-runtime-workspace")
+    assert review_transport.prove_remote_failed_candidate(repo,
+        failed_run_id=run["run_id"], failed_head_sha=head)[0] == base
+    assert not git(repo, "ls-remote", "origin", f"refs/heads/aios/artifacts/{run['run_id']}",
+                   f"refs/heads/aios/review/{run['run_id']}")
+    conflict = json.loads(raw)
+    conflict["error"]["exit_code"] = 2
+    conflict_path = tmp_path / "conflicting-failure.json"
+    write_json(conflict_path, conflict)
+    with pytest.raises(ReviewTransportError, match="different artifact content"):
+        transport_failure(repo, run_id=run["run_id"], head_sha=head,
+                          run_path=run_path, failure_path=conflict_path)
+    assert git(remote, "show-ref") == refs
+    assert git(remote, "rev-parse", "refs/heads/main") == base
+    assert git(repo, "rev-parse", "HEAD") == head and not git(repo, "status", "--porcelain")
+    assert failure_path.read_bytes() == raw and run_path.read_bytes() == run_bytes
+
+
+@pytest.mark.parametrize("exit_code", [None, 1])
+def test_native_execution_failure_exit_code_does_not_widen_v2_schema(exit_code):
+    _, private, _ = _failure_transport_recovery_fixture(nodes=1, failures=1)
+    private["error"]["exit_code"] = exit_code
+    for phase in ("VERIFICATION", "EXECUTION"):
+        private["phase"] = phase
+        for reader in (review_transport.public_failure, review_transport.failure_document):
+            with pytest.raises(ReviewTransportError):
+                reader(json.dumps(private).encode())
+
+
+def test_native_execution_failure_keeps_legacy_and_ordinary_artifact_bounds():
+    _, _, raw = _native_execution_failure_fixture(error_fields={"exit_code": None})
+    padded = raw + b" " * (review_transport.PUBLIC_ARTIFACT_MAX_BYTES + 1 - len(raw))
+    with pytest.raises(ReviewTransportError, match="invalid public FAILURE projection") as rejected:
+        review_transport.public_failure(padded)
+    assert str(rejected.value.__cause__) == "large FAILURE requires a private observation projection"
+    assert review_transport.failure_document(padded) == json.loads(raw)
+    for project in (review_transport.public_run, review_transport.public_result, review_transport.public_metadata):
+        with pytest.raises(ReviewTransportError, match="byte bound"):
+            project(padded)
+
+
 @pytest.mark.parametrize("placement", ["root", "error", "outcome", "command", "candidate_path"])
 def test_failure_transport_recovery_legacy_writer_rejects_private_contamination(placement):
     failure = dict(kind="FAILURE", run_id="RUN-058-001", task=TASK, executor="codex",
