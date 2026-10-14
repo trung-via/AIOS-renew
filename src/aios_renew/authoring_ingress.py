@@ -1293,8 +1293,12 @@ def _read_direct_repair_binding(envelope: IngressEnvelope, repo: Path,
         )
         if (failure["candidate"]["repairable"] is not True
                 or failure["candidate"]["transportable"] is not True
-                or failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE", "VERIFICATION")):
+                or (failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE", "VERIFICATION")
+                    and (require_current or "phase" in failure))):
             raise AuthoringIngressError("canonical FAILURE is not repairable/transportable or has an invalid phase")
+        # Some immutable historical FAILUREs predate phase serialization. Only
+        # an identical existing authorization can return through this read path;
+        # every new write reconstructs again with require_current=True.
         expected_failure = _repair_expected_sha(envelope.expected_state, "expected_failure_artifacts_sha",
                                                 "expected_failure_sha", "failure_artifacts_sha", required=False)
         if expected_failure is not None and expected_failure != artifacts_sha:

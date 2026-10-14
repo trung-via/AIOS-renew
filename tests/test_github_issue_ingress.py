@@ -323,9 +323,11 @@ def test_audited_handoff_remains_opaque_and_semantic_rejection_has_no_success_ou
     event = _write_event(tmp_path, _event(body))
     policy = _write_policy(tmp_path)
     calls = []
+    rejection = ("repair authorization invalid: final REPAIR identity mismatch"
+                 if operation == "AUTHOR_REPAIR" else "audited authoring requires Stage-2 CANDIDATE")
     def reject(source, *, repo, stdin_bytes=None):
         calls.append((source, stdin_bytes))
-        raise AuthoringIngressError("audited authoring requires Stage-2 CANDIDATE")
+        raise AuthoringIngressError(rejection)
     monkeypatch.setattr(carrier, "ingest_carrier", reject)
     output = tmp_path / "github-output"
     assert carrier.main(["--event", str(event), "--policy", str(policy),
@@ -333,7 +335,7 @@ def test_audited_handoff_remains_opaque_and_semantic_rejection_has_no_success_ou
     assert calls == [("-", body.encode("utf-8"))]
     receipt = capsys.readouterr().out
     assert "status: FAIL" in receipt
-    assert "CANDIDATE" in receipt
+    assert rejection in receipt
     assert "status: PASS" not in receipt
     assert not output.exists()
 
@@ -383,6 +385,16 @@ def test_issue_carrier_canonicalizes_direct_final_repair_without_audit(tmp_path,
     assert git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/RUN-254-001") == failure_sha
     replay = carrier.deliver_event(event, policy, repo=repo)
     assert replay.ingress_result.replayed and replay.repair_failed_run_id is None
+    # Legacy audit differences remain opaque carrier data, including retired
+    # profile material; only the identical final contract owns this replay.
+    body["audited_handoff"] = {"stage1": {"audit_profile_ref": {"id": "brain-high-value-v3"}},
+                               "stage2": {"outcome": "NO_DECISION"}}
+    body["payload"] = json.dumps(envelope.payload, indent=2)
+    legacy_event = _write_event(tmp_path, _event(json.dumps(body)))
+    legacy_replay = carrier.deliver_event(legacy_event, policy, repo=repo)
+    assert legacy_replay.ingress_result.replayed
+    assert legacy_replay.ingress_result.canonical_sha == result.canonical_sha
+    assert legacy_replay.repair_failed_run_id is None
     assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/artifacts/*")
 
 

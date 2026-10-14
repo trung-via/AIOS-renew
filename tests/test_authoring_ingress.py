@@ -314,6 +314,45 @@ def test_direct_author_repair_historical_replay_is_read_only_after_local_continu
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
 
 
+@pytest.mark.parametrize("phase", ["absent", None, "FORGED_PHASE"])
+def test_direct_author_repair_historical_missing_phase_is_replay_only(tmp_path, monkeypatch, phase):
+    repo, remote, _, _, initial = completion_gate_supersession_fixture(tmp_path)
+    failure_ref = "refs/heads/aios/failure-artifacts/RUN-254-001"
+    def change_phase(document):
+        if phase == "absent":
+            document.pop("phase")
+        else:
+            document["phase"] = phase
+    substitute_transport_document(repo, remote, failure_ref, ".ai/transport/failure.json", change_phase)
+    failure_sha = git(remote, "rev-parse", failure_ref)
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    with monkeypatch.context() as guard:
+        forbid_repair_audit_dependencies(guard)
+        forbid_correction_mutation(guard)
+        with pytest.raises(AuthoringIngressError, match="invalid phase"):
+            execute_ingress(initial, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+    authorization = historical_repair_fixture(initial, repo=repo)
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    with monkeypatch.context() as guard:
+        forbid_repair_audit_dependencies(guard)
+        forbid_correction_mutation(guard)
+        if phase == "absent":
+            replay = execute_ingress(initial, repo=repo)
+            assert replay.replayed and replay.canonical_sha == authorization.canonical_sha
+        else:
+            with pytest.raises(AuthoringIngressError, match="invalid phase"):
+                execute_ingress(initial, repo=repo)
+        successor = replace(initial, expected_state={**initial.expected_state,
+            "expected_current_repair_sha": authorization.canonical_sha,
+            "expected_failure_artifacts_sha": failure_sha},
+            payload={**initial.payload, "instructions": ["Changed historical authorization."]})
+        with pytest.raises(AuthoringIngressError, match="invalid phase"):
+            execute_ingress(successor, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
 @pytest.mark.parametrize("next_action", ["WAIT", "NONE", "EXECUTE_PRIMARY", "RETRY_TRANSPORT"])
 def test_direct_author_repair_resolved_or_noncurrent_subject_is_non_mutating(tmp_path, monkeypatch, next_action):
     repo, remote, _, _, initial = completion_gate_supersession_fixture(tmp_path)
@@ -714,15 +753,15 @@ def test_correction_audited_authoring_rejects_invalid_handoff_before_mutation(tm
         handoff["stage2"]["closure"][0].update(outcome="BLOCKER", blocker_summary="Material blocker.")
         handoff["stage2"]["outcome"] = "NO_DECISION"
     elif fault in {"substitution", "reconciliation"}:
-        handoff["stage2"]["reconciled_candidate"]["instructions"] = ["A different strategy."]
+        handoff["stage2"]["reconciled_candidate"]["constraints"] = []
         if fault == "substitution":
             handoff["stage2"]["construct_audit"][0] = {
                 "lens": handoff["stage2"]["construct_audit"][0]["lens"], "outcome": "RISK_FOUND",
                 "risks": [{"risk_summary": "Strategy mismatch.", "counterexample": "Different strategy.",
-                           "candidate_anchor": "instructions", "disposition": "ADDRESSED_BY_RECONCILIATION"}],
+                           "candidate_anchor": "constraints", "disposition": "ADDRESSED_BY_RECONCILIATION"}],
             }
     else:
-        envelope = replace(envelope, payload={**envelope.payload, "instructions": ["Changed strategy."]})
+        envelope = replace(envelope, payload={**envelope.payload, "constraints": []})
     with pytest.raises(AuthoringIngressError):
         execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
     assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/remediation/RUN-105-001-F1")
@@ -5346,7 +5385,7 @@ def test_exact_remediation_invalid_lineage_fails_closed(tmp_path, monkeypatch, p
 def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=True, evidence_placement=None):
     from aios_renew.publication import _repair_review_lineage
     from aios_renew.operator import _run_from_data
-    from aios_renew.review_transport import public_metadata
+    from aios_renew.review_transport import _public_metadata_value, public_metadata
     from tests.test_operator import (
         _terminal_reconciliation_task336_fixture, _terminal_reconciliation_repair,
         _terminal_reconciliation_assert_fixture_contract, _terminal_reconciliation_fixture_selectors,
@@ -5376,7 +5415,23 @@ def _terminal_reconciliation_task336_authoring_fixture(tmp_path, *, protected=Tr
     with pytest.MonkeyPatch.context() as fixture_setup:
         fixture_setup.setattr(operator_fixtures, "make_repo", make_authoring_repo)
         repo, state, task, lifecycle = _terminal_reconciliation_task336_fixture(
-            tmp_path, protected=protected, authoring=True)
+            tmp_path, protected=False, authoring=True)
+    if protected:
+        # Preserve the private historical records, but transport them through
+        # the actual privacy projection rather than hand-written redaction of
+        # a V2 observation that leaves private reports in a public FAILURE.
+        # Historical originals exceed the prospective writer's input cap; the
+        # projection still passes the real immutable reader/privacy validators.
+        def project_historical(content):
+            return json.dumps(_public_metadata_value(json.loads(content)),
+                              sort_keys=True, separators=(",", ":")).encode("utf-8")
+        terminals = tuple(replace(terminal,
+            run=project_historical(terminal.run), terminal=project_historical(terminal.terminal),
+            correction=(project_historical(terminal.correction) if terminal.correction is not None else None))
+            for terminal in lifecycle.terminals)
+        lifecycle = replace(lifecycle, terminals=terminals,
+            repair_selectors=_terminal_reconciliation_fixture_selectors(terminals))
+        _terminal_reconciliation_assert_fixture_contract(repo, state, task, lifecycle)
     remote = tmp_path / "upstream.git"
     artifacts = {}
     terminals = list(lifecycle.terminals)
@@ -5463,10 +5518,11 @@ def test_terminal_reconciliation_task336_normal_authoring_admission(tmp_path, mo
         facts = packet.as_dict()["canonical_facts"]
         assert facts["canonical_next_action"] == facts["unified_state_next_action"] == "AUTHOR_REPAIR"
         assert facts["correction_subject"]["artifacts_sha"] == artifacts["RUN-336-004"]
-        with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
-            execute_ingress(envelope, repo=repo)
+        binding = authoring_ingress_module._read_direct_repair_binding(envelope, repo)
+        assert binding.run.run_id == "RUN-336-004"
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
-    admitted = execute_audited_ingress(envelope, repo=repo)
+    forbid_repair_audit_dependencies(monkeypatch)
+    admitted = execute_ingress(envelope, repo=repo)
     assert admitted.status == "CANONICALIZED"
     assert admitted.canonical_destination == "refs/heads/aios/repair/RUN-336-004"
     assert git(remote, "rev-parse", "refs/heads/main") == lifecycle.main_sha
@@ -5527,7 +5583,6 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         assert git(repo, "status", "--porcelain", "--", ".ai/tasks/TASK-336.yaml") == ""
     elif fault.startswith("misplaced-evidence-"):
         from aios_renew.artifacts import validate_evidence
-        from aios_renew.review_transport import public_metadata
         from tests.test_operator import (
             _terminal_reconciliation_full_evidence, _terminal_reconciliation_reference,
             _terminal_reconciliation_place_full_evidence,
@@ -5543,8 +5598,8 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         if fault == "misplaced-evidence-foreign-failure":
             source_failure["error"]["evidence"] = [evidence]
             document["unrelated"] = source_failure
-        if protected:
-            document = json.loads(public_metadata(json.dumps(document).encode()))
+        # Inject malformed immutable metadata directly. The actual public reader
+        # must reject undeclared evidence before any authoring mutation.
     elif fault.startswith("embedded-evidence-"):
         from aios_renew.artifacts import validate_evidence
         from aios_renew.review_transport import public_metadata
@@ -5584,19 +5639,26 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
     if corrupted_metadata:
         from aios_renew.unified_state import _decode_remote_lifecycle
         from aios_renew.operator import load_task
-        # Read the replacement object through real remote transport and require
-        # the exact parser boundary, before checking the ingress projection.
-        canonical = resolve_remote_task_lifecycle(repo, task_id="TASK-336", task_revision=1)
-        parser_message = ("persisted repair_authorization_sha does not match current canonical authorization"
-                          if fault == "changed-correction" else r"EVIDENCE\.raw is required"
-                          if fault == "missing-raw" else "EVIDENCE identity outside a validated structural role"
-                          if fault in {"misplaced-evidence-direct", "misplaced-evidence-unrelated-package",
-                                       "misplaced-evidence-metadata-unrelated-package"}
-                          else "FAILURE outside a validated structural role"
-                          if fault == "misplaced-evidence-foreign-failure"
-                          else "full EVIDENCE does not bind its FAILURE owner")
-        with pytest.raises(ValueError, match=parser_message):
-            _decode_remote_lifecycle(repo, load_task(repo, "TASK-336"), canonical)
+        if protected and fault != "changed-correction":
+            # A public FAILURE cannot contain these unprojected raw records.
+            # Preserve the earlier privacy gate as well as direct-ingress denial.
+            with pytest.raises(ReviewTransportError, match="invalid canonical public FAILURE privacy"):
+                resolve_remote_task_lifecycle(repo, task_id="TASK-336", task_revision=1)
+            with pytest.raises(AuthoringIngressError, match="canonical correction subject differs from Unified State"):
+                execute_ingress(envelope, repo=repo)
+        else:
+            # Historical private records retain their exact role/owner parser.
+            canonical = resolve_remote_task_lifecycle(repo, task_id="TASK-336", task_revision=1)
+            parser_message = ("persisted repair_authorization_sha does not match current canonical authorization"
+                              if fault == "changed-correction" else r"EVIDENCE\.raw is required"
+                              if fault == "missing-raw" else "EVIDENCE identity outside a validated structural role"
+                              if fault in {"misplaced-evidence-direct", "misplaced-evidence-unrelated-package",
+                                           "misplaced-evidence-metadata-unrelated-package"}
+                              else "FAILURE outside a validated structural role"
+                              if fault == "misplaced-evidence-foreign-failure"
+                              else "full EVIDENCE does not bind its FAILURE owner")
+            with pytest.raises(ValueError, match=parser_message):
+                _decode_remote_lifecycle(repo, load_task(repo, "TASK-336"), canonical)
     expected_message = {
         "stale-head": "expected failed head SHA mismatch",
         "wrong-tip": "REPAIR target differs from canonical failed RUN",
