@@ -1,0 +1,121 @@
+task_id: TASK-349
+revision: 1
+goal: Restore lawful, narrowly typed public transport of an admitted native EXECUTION
+  FAILURE carrying optional error.exit_code, so Runtime can retry transport of the
+  already-persisted RUN-348-002 terminal without changing that RUN or re-invoking
+  Codex.
+problem: Current canonical review_transport.public_failure redacts native_diagnostics
+  for small non-V2 EXECUTION FAILURES but retains error.exit_code; _validate_legacy_failure_public
+  rejects that undeclared field and raises invalid public FAILURE projection. RUN-348-002
+  has a local clean, transportable EXECUTION FAILURE (Codex exit 1; prompt input too
+  large) but no remote FAILURE artifacts, with local transport error invalid public
+  FAILURE projection. TASK-347 already authored the same general transport repair
+  but RUN-347-004 remains a canonical COMPLETION_GATE FAILURE with no reviewed RESULT
+  or published code; it is not an eligible publication shortcut.
+assumptions:
+- 'Brain Sync 2026-10-14: canonical main is 732c7d71e0ff2337b03f2c9c6015b4f1589536db;
+  TASK-349 is absent, TASK-347 RUN-347-004 is still unreviewed/failed, and TASK-348
+  RUN-348-002 is terminal only in private local Runtime with no canonical failure
+  ref.'
+- Human approved a bounded transport bootstrap before recovering RUN-348-002; this
+  TASK changes published prospective Runtime source only upon independent verification,
+  REVIEW PASS and exact Publisher publication. No RUN, transport replay, correction,
+  or roadmap advancement is authorized by authoring.
+- RUN-348-002 private FAILURE is not copied or modified by this TASK. Its displayed
+  terminal facts are read-only Human diagnostics; Runtime independently reconstructs
+  and verifies byte-exact state when transport is later retried.
+- Published public writer/validator currently disagree on optional error.exit_code;
+  the unreviewed TASK-347 candidate offers bounded design context but no runtime evidence
+  or permission to cherry-pick blindly.
+- Only a native EXECUTION FAILURE may carry an explicit optional int-or-null exit
+  code in legacy public metadata. Absence is distinct from null and may not be invented.
+- Current active semantic audit profile is aios-adaptive-brain-audit-v1 version 1
+  bound to digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718;
+  Brain performed both required semantic stages and eight adversarial lenses. Serialized
+  audit handoff is not AUTHOR_TASK mutation authority.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-347.yaml
+  - .ai/tasks/TASK-348.yaml
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/operator.py
+  - tests/test_review_transport.py
+  - tests/test_operator.py
+  modify:
+  - src/aios_renew/review_transport.py
+  - tests/test_review_transport.py
+non_goals:
+- Do not alter immutable TASK/RUN/FAILURE/REPAIR/RESULT/REVIEW artifacts, including
+  RUN-348-002 local private FAILURE, its transport sidecar, or RUN-347 candidates.
+  No direct pushes to transport refs.
+- Do not edit TASK-347 or TASK-348 contracts, verification engine, Codex prompt serializer,
+  12-worker/direct-Git settings, native timeouts, dispatch workflow, policy files,
+  Kernel or roadmap; native PROMPT_INPUT_TOO_LARGE remains a separate follow-up.
+- Do not loosen public FAILURE error allowlists generally, introduce a second transport
+  pipeline, private diagnostics projection, automatic retry, or a new authority for
+  Runtime/Reviewer/Publisher.
+- Do not claim that a successful synthetic test alone proves RUN-348-002 transported,
+  TASK-347 fixed, Runtime verification PASS, semantic REVIEW PASS or publication.
+constraints:
+  hard:
+  - Limit source changes strictly to scope.modify. Make the existing public writer
+    and legacy public validator/reader agree on an explicitly present error.exit_code
+    only for EXECUTION-phase native status, type exactly int or null (bool is forbidden),
+    preserving absent-versus-null identity and retaining deterministic malformed/unknown-field
+    rejection.
+  - Preserve private original byte immutability and redact native_diagnostics, executor_diagnostics,
+    stdout/stderr, private paths, tokens and nested captured output. Neither a public
+    document claiming already-protected origin nor post-projection mutations may bypass
+    the private/public source and identity validation.
+  - Preserve exact TASK/RUN/base/failed head, candidate repairable/dirty/transportable
+    flags and any lawful correction lineage. Existing small-legacy and large-V2 FAILURE
+    bounds, other 1MiB artifact bounds, duplicate JSON and canonical digest/provenance
+    tests retain their authority.
+  - Tests must cover positive null/integer/absent native exit code, malformed/bool/string/float/nested
+    fields, non-EXECUTION injection, public idempotency and unchanged private bytes;
+    exercise the existing synthetic real-Git transport and recovery path without the
+    user's private RUN-348-002 data.
+  - Runtime owns minimum-sufficient-v2 canonical verification. Executor may inspect
+    and run implementation-local focused checks but must not fabricate RUN, evidence,
+    review, publication or transport success.
+  - 'Completion requires independently reviewable implementation properties and negative
+    regression coverage. Stop if another production file must be modified: no silent
+    scope expansion or importing unreviewed TASK-347 code outside authorized scope.'
+acceptance:
+- id: AC1
+  condition: The existing small public FAILURE projector accepts a bona fide EXECUTION
+    error with explicitly present native exit_code of integer or null and preserves
+    its exact typed value; when absent, it remains absent.
+- id: AC2
+  condition: Legacy writer, canonical reader and idempotent public re-projection reject
+    bool, float, string, list/map, unknown error fields, invalid phase, malformed
+    or contaminated already-public originals, without weakening explicit type and
+    role checks.
+- id: AC3
+  condition: For lawful native FAILURE input the public output omits raw/private native
+    diagnostics and machine-local content, and private input bytes remain unchanged
+    through projection.
+- id: AC4
+  condition: Synthetic real-Git native EXECUTION FAILURE transport publishes and reads
+    exact public run/failure identity and immutable candidate in the existing transport/recovery
+    path, including an optional native exit code, without mistaking transport for
+    PASS.
+- id: AC5
+  condition: Existing bounded legacy and V2 verification FAILURE projections, canonical
+    readers, private/public integrity, and ordinary non-FAILURE transport budgets
+    remain unchanged and covered by focused regressions.
+- id: AC6
+  condition: The source delta is confined to review_transport.py and its focused tests;
+    no TASK-347/348 code or original local terminal state is rewritten, and neither
+    automatic correction nor native prompt behavior is introduced.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_review_transport.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
