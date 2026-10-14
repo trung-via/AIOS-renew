@@ -167,6 +167,8 @@ def run_pytest(
         )
 
     environment = os.environ.copy()
+    # Only this wrapper owns the export; pytest and nested runners must not inherit it.
+    export = environment.pop("AIOS_V2_OBSERVATION_DIRECTORY", None)
     environment.pop("PYTEST_ADDOPTS", None)
     environment.pop("PYTEST_PLUGINS", None)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -196,7 +198,6 @@ def run_pytest(
     )
     elapsed = time.perf_counter() - started
     loaded = _load_observation(observation)
-    export = environment.get("AIOS_V2_OBSERVATION_DIRECTORY")
     if export:
         directory = Path(export)
         directory.mkdir(parents=True, exist_ok=True)
