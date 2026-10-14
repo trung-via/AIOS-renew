@@ -1,0 +1,30 @@
+review_id: REVIEW-353-001
+reviewed_sha: c82e79daa59f3a03db758394626d329ab4c70311
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+findings: []
+notes:
+- Exact TASK-353 revision 1 and admitted RUN-353-001 canonical RESULT artifact 87b25715233473a3d014a57dc41fd726f7c33cc1
+  were reviewed against source c82e79daa59f3a03db758394626d329ab4c70311, with unresolved=[]
+  and changed files constrained to the two TASK-authorized paths.
+- 'Runtime minimum-sufficient-v2 evidence RUN-353-001-V001: python -m pytest -q tests/test_parallel_verification_export_boundary.py
+  -k observation_export_boundary; 2 collected, 2 PASS, zero failures, exit code 0.'
+- Production run_pytest now removes AIOS_V2_OBSERVATION_DIRECTORY solely from the
+  pytest child environment while retaining its parent-owned destination and existing
+  immutable post-child byte check. The plugin observation destination, worker/profile
+  settings, and other child environment remain preserved.
+- A bounded synthetic parent/worker/nested run_pytest parallel-12 regression demonstrates
+  pre-fix inherited writer collision and post-fix isolation while retaining authentic
+  parent diagnostic context. A second regression proves equal-byte idempotence, conflicting-byte
+  fail-closed behavior, and missing/malformed/incomplete observations do not become
+  PASS.
+- This PASS is for the exact narrow TASK-353 change only. It does not claim actual
+  repository full-suite recovery, identify the historical conflicting process for
+  RUN-352-001, alter RUN-352-001 FAILURE or TASK-352 requirements, or bypass Publisher's
+  independent publication and CAS checks.
