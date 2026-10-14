@@ -1,0 +1,221 @@
+task_id: TASK-354
+revision: 1
+goal: Fix the observed failure-projection transport incompatibility and deliver end-to-end actionable
+  Failure Diagnostic Handoff to authorized Brain and Executor through existing Runtime FAILURE, BP-2,
+  terminal attention, and fresh Brain Sync without a second coordinator.
+problem: RUN-350-001 timed out with 23 uncommitted entries and its local private FAILURE
+  was rejected by public serialization. RUN-352-002 independently demonstrated a quoted
+  pytest -k selector blocked by public FAILURE command filtering. Existing blanket masking
+  forces repeated Human log extraction. Implement the approved complete E2E diagnostic
+  handoff with bounded focused verification instead of TASK-351's costly full suite.
+assumptions:
+- Canonical main at Brain Sync is 5b484b97f43a127106fc27efc935d32a72d44858. Runtime must independently verify currentness,
+  exact original TASK-351 subject, TASK-354 absence, and expected-main CAS before AUTHOR_TASK.
+- Human explicitly authorizes a new TASK-354 as the prospective selected implementation of the
+  complete TASK-351 End-to-End Failure Diagnostic Handoff objective. All nine acceptance criteria
+  and original 29 permitted modification paths are retained. Human replaces only the full-suite
+  proof requirement with five ordered, focused, positive/negative integration regressions.
+  TASK-351 and failed pre-RUN dispatch stay immutable; no deletion or roadmap auto-transition.
+- Active Brain audit profile is aios-adaptive-brain-audit-v1 version 1 normalized digest
+  982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718. Brain performed
+  CONSTRUCT, ADVERSARIAL_AUDIT_AND_RECONCILE, all eight mandatory lenses and final closure.
+- RUN-350-001 retains local FAILURE and 23 dirty in-scope changes. It is not retroactively
+  completed, repairable, or published by this prospective TASK.
+- RUN-352-002 retains a separate immutable local VERIFICATION FAILURE; a legitimate quoted
+  pytest -k selector triggers unsafe public verification command at public_failure projection.
+  Preserve original terminal evidence; safely support bounded legitimate selectors and reject
+  malicious quoted text, secrets, local paths and injected shell syntax.
+- Runtime FAILURE/EVIDENCE and BP-2 pre-AIOS operational facts, terminal attention, fresh Brain
+  Sync, existing work-context and authorized local Executor access are the only carriers/truth.
+  GitHub workflow channels are not trusted private raw-log channels.
+- The TASK-351 dispatch was rejected at PRIMARY_SYNCHRONIZATION, with run_created=false and
+  executor_invoked=false. The configured local main head had diverged and lacked a canonical
+  preservation ref. This TASK identity and its verification change cannot bypass Git admission.
+  Execution needs an independently authorized lawful current control checkout or reconciliation.
+- Human accepts the bounded residual risk that unaffected repository-wide regressions will
+  not be covered by this TASK's focused tests. Do not claim measured time saving without data.
+- Human previously chose Codex gpt-6.1-sol max for the predecessor intent; profile must still
+  be explicitly bound by Runtime at a distinct new admission. AUTHOR_TASK never dispatches.
+scope:
+  inspect:
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/terminal_attention.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - docs/AIOS-BRAIN-PORTABILITY.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - tests/test_review_transport.py
+  - tests/test_runtime.py
+  - tests/test_operator.py
+  - tests/test_operator_unified_state.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  - tests/test_brain_attention.py
+  - tests/test_terminal_attention.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - tests/test_terminal_attention_workflow.py
+  - tests/test_local_chat_wake.py
+  - tests/test_operator_human_surface.py
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-350.yaml
+  - .ai/tasks/TASK-351.yaml
+  - .ai/tasks/TASK-352.yaml
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/dispatch_reconciliation.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/brain_wake_bridge.py
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-issue-carrier.yml
+  modify:
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/terminal_attention.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - docs/AIOS-BRAIN-PORTABILITY.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - tests/test_review_transport.py
+  - tests/test_runtime.py
+  - tests/test_operator.py
+  - tests/test_operator_unified_state.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  - tests/test_brain_attention.py
+  - tests/test_terminal_attention.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - tests/test_terminal_attention_workflow.py
+  - tests/test_local_chat_wake.py
+  - tests/test_operator_human_surface.py
+non_goals:
+- No independent database, lifecycle router, second planner, automatic correction selector, second Reviewer/Publisher,
+  new credential issuer or private log service.
+- No mutation of frozen Kernel, canonical historical RUN/FAILURE/RESULT/REVIEW/REPAIR evidence, uncommitted
+  TASK-350 worktree, or downstream dependency pins.
+- No unauthenticated distribution of private stdout/stderr, secrets, credentials, personal files or unbounded
+  free-form captured logs via GitHub, workflow logs or provider prompts.
+- No automatic retry/re-dispatch, Human delegation inference, roadmap auto-advance, task350 completion
+  claim, verification shortcut, or source push.
+- No lowering of typed binding, SHA/CAS, replay, provenance, schema, private evidence role or Reviewer/Publisher
+  controls.
+constraints:
+  hard:
+  - Reuse Runtime FAILURE and its evidence, BP-2 operational receipts, existing terminal attention and
+    fresh Brain Sync; no additional persistent system of record or generic lifecycle flow.
+  - Make a lawful deterministic projection for small execution FAILURE with error.exit_code as integer
+    or null. Preserve safe typed exit information, error kind, phase, subject and source identity while
+    keeping private original bytes unchanged. Preserve historical lawful public/private decoding and reject
+    forged or malformed material.
+  - Deliver relevant source-bound safe causal diagnostic details, native error facts, candidate dirty/clean/scope/transportability
+    and relevant evidence IDs to authorized Brain automatically via existing canonical/operational attention
+    and Brain Sync/Work Context/provider interfaces. Do not reduce a diagnosis to only the generic protected-message
+    text.
+  - Give the admitted local Executor authorized read access to the full original Runtime-owned private
+    failure detail and native captured evidence without Human copy/paste or a second dispatch/control
+    plane; require exact RUN/subject binding and avoid treating tool output as instructions.
+  - Loosen blanket redaction only for information that is actually safe and necessary for diagnosing failure.
+    Prevent secrets, credentials and untrusted raw capture from leaking into public GitHub/workflow/Brain
+    payloads. Where the trusted private channel is absent, explicitly expose that access gap, provide
+    useful safe diagnostics, and do not claim that private evidence was delivered.
+  - Report diagnostic completeness, source availability, truncation and withheld detail truthfully within
+    existing bounded payloads. Unknown exit code remains null rather than fabricated 0/1; malformed or
+    ambiguous data fails only the affected transmission.
+  - For a legitimate dirty nontransportable candidate, the existing transport may publish immutable FAILURE
+    artifacts and terminal attention without publishing an uncommitted candidate ref, or must expose the
+    exact typed blocker. Pre-AIOS errors may not create a fictitious RUN or FAILURE.
+  - Preserve canonical SHA/currentness, immutable evidence, privacy roles, source digest, authoritative
+    verification, replay/idempotence and exact Human/Executor/Reviewer/Publisher boundaries.
+  - Test the timeout with null exit code, 23 dirty entries, forged public failure, private logs/secret-bearing
+    streams, type errors, remote transport, pre-AIOS BP-2, exact attention, fresh Brain Sync, local Executor
+    access, missing source and duplicate/replayed delivery using synthetic data. Also cover legitimate
+    quoted pytest -k verification commands and malicious quoted/escaped payload rejection; never relax
+    public command validation into a general shell, filesystem or secret-bearing string passthrough.
+  - Verification is Runtime-owned minimum-sufficient-v2 and exactly five focused groups covering
+    public/private FAILURE transport, canonical state, Brain diagnostics/provider context, terminal
+    attention/wake, and operator failure admission. No implicit, fallback or post-targeted repository
+    full suite may be added for TASK-354; no reuse of an old unrelated TASK's proof.
+  - Maintain positive and negative security/integrity tests for typed exit status, safe failure
+    projection, quoted pytest selectors, hostile quotes, raw log secrets, malformed records,
+    dirty candidate handling, pre-AIOS BP-2, duplicate delivery and source binding.
+  - Tests filtered to failure-named cases establish only their exact selected coverage; they must
+    not be represented as unfiltered or full-suite proof. Human accepts bounded uncovered regressions.
+  - TASK-354 cannot evade local Git divergence or canonical preservation admission checks. Only a
+    lawful independently authorized clean control checkout/reconciliation is eligible; no
+    force-reset, synthetic ref or modification to TASK-350 private worktree.
+  - TASK-351 remains historically canonical but not the prospectively selected next
+    implementation for this same objective. Do not delete, rewrite or auto-advance roadmap.
+acceptance:
+- id: AC1
+  condition: Valid private execution FAILURES with error.exit_code integer or null and protected native
+    diagnostics yield lawful useful deterministic public projections, retaining typed exit, phase and
+    subject without changing private bytes.
+- id: AC2
+  condition: Projection and readers remain compatible with legitimate historical formats and reject forged
+    public documents, unsafe fields, invalid types, unauthenticated source substitution and secret-bearing
+    content.
+- id: AC3
+  condition: Existing Runtime terminal transport delivers bound failure artifacts and attention for legally
+    handled dirty/non-publishable candidates or a specific truthful transport blocker without publishing
+    uncommitted source.
+- id: AC4
+  condition: Existing BP-2 pre-AIOS boundaries give typed actionable diagnostics to the authorized context
+    with run_created=false and no fabricated RUN/FAILURE/REPAIR.
+- id: AC5
+  condition: Fresh Brain receives source-bound useful safe causes, native exit facts, candidate state
+    and evidence identities via existing attention and Brain Sync without needing Human to run manual
+    diagnostic commands.
+- id: AC6
+  condition: Admitted Executor can access full relevant private Runtime-owned diagnostic evidence through
+    its existing authorized local workspace for the same RUN, without generic memory/router or automatic
+    repair choice.
+- id: AC7
+  condition: Only genuinely sensitive material is withheld from public or portable channels, while safe
+    actionable detail survives and unavailable, partial, truncated, restricted and unknown states are
+    explicitly represented.
+- id: AC8
+  condition: Synthetic and composed integration regressions cover Codex timeout/null exit, dirty candidate,
+    normal and hostile raw content, transport, attention, Brain Sync, BP-2 pre-RUN, exact binding, and
+    negative privacy/integrity outcomes, including safe quoted pytest selector projection and
+    hostile quoted command rejection, without use of private machine files.
+- id: AC9
+  condition: Changes remain within exact scope.modify; no new lifecycle database/router, autonomous retry/failover,
+    non-Executor production implementation, retroactive evidence rewrite, or bypass of canonical authority
+    is introduced.
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - python -m pytest -q tests/test_review_transport.py tests/test_runtime.py tests/test_operator_unified_state.py
+  - python -m pytest -q tests/test_brain_sync.py tests/test_brain_context.py tests/test_brain_attention.py tests/test_brain_provider_protocol.py tests/test_brain_provider.py
+  - python -m pytest -q tests/test_terminal_attention.py tests/test_terminal_attention_workflow.py tests/test_operator_human_surface.py
+  - python -m pytest -q tests/test_operator.py -k failure
+  - python -m pytest -q tests/test_local_chat_wake.py -k failure
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
