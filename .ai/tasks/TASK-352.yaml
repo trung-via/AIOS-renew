@@ -1,0 +1,135 @@
+task_id: TASK-352
+revision: 1
+goal: Restore the existing auto-Publisher workflow's correctly attached, upstream-bound,
+  exact-main control context for lawful clean-recovery attempts and repeatable publication
+  of exact reviewed source decisions, without creating a second Publisher or weakening
+  canonical publication guards.
+problem: 'On 2026-10-14 GitHub Actions auto-publication workflow 38508560771 (RUN-348-003)
+  failed with "Runtime publication continuation failed: no configured upstream Git
+  remote for current branch". The published workflow explicitly checks out the canonical
+  main SHA using detached HEAD immediately before calling continue_publication(...,
+  --recover-clean), while existing Runtime clean recovery requires one configured
+  branch upstream. Separately, current canonical main diverges from previously reviewed/published
+  RUN-349-001 (cb155241...) and omits TASK-349: this is a distinct canonical source-lineage
+  issue, not proof that detached-checkout repair alone can publish the stranded source.'
+assumptions:
+- Fresh Brain Sync main 679c3b22ae09bb139f425fba9c2d88e5fc67bc8a; TASK-352 r1 absent.
+  Canonical remote main, revision, origin and expected-old-main CAS are rechecked
+  by Runtime, not inferred from this draft.
+- Human explicitly prioritized publication integrity before TASK-351 End-to-End Failure
+  Diagnostic Handoff. This separate prospective TASK does not overwrite or change
+  the already approved TASK-351 draft, TASK-350 lineage or roadmap state.
+- Prospective Brain semantic audit profile aios-adaptive-brain-audit-v1 version 1
+  digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718; Brain used
+  CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE, eight ordered lenses and final closure.
+  Audit support is not an AUTHOR_TASK ingress prerequisite.
+- RUN-348-003 reviewed source c1cc051134284c62d902f051eb70dc8b918a9e6f is in current
+  main ancestry; RUN-349-001 reviewed source cb155241dc554864ba193a07fcf36a65d55fb260
+  is divergent and not a main ancestor. RUN-254-004 remains a separate reviewed source
+  requiring exact Runtime proof before any reconciliation decision.
+- Runtime publication.py already owns ordinary publication, clean recovery, competing-PASS
+  guards, candidate currentness and branch/source authorization. This TASK only corrects
+  the workflow context supplied to that Runtime, without implementing or selecting
+  a recovery outcome.
+- No new TASK-352 Executor/model/effort choice is inferred from the separate Human
+  Codex GPT-6.1 Sol Max delegation for TASK-351.
+scope:
+  inspect:
+  - .github/workflows/aios-auto-publish.yml
+  - src/aios_renew/publication.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/correction_integration.py
+  - tests/test_publication.py
+  - tests/test_auto_publish_workflow.py
+  - .ai/tasks/TASK-348.yaml
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  modify:
+  - .github/workflows/aios-auto-publish.yml
+  - tests/test_publication.py
+  - tests/test_auto_publish_workflow.py
+non_goals:
+- No second publisher/reviewer, new planning or lifecycle router, mutation database,
+  repair chooser, generic retry/recovery engine, or new default recovery policy.
+- No force-push, history reset, unreviewed merge/cherry-pick, synthetic RUN, fabricated
+  RESULT/REVIEW/PASS or rewriting existing immutable lineage.
+- No automatic authorization of recovery for RUN-349-001, RUN-254-004 or other competing
+  reviewed sources; they require separate exact-currentness/lineage reconciliation
+  and fresh independent review where mandated.
+- No implementation of TASK-351 failure diagnostic handoff; no mutation of source/runtime/worktree
+  for TASK-350 or local RUN-350-001 dirty 23-file candidate.
+- No changes to frozen Kernel, Runtime verifier, authorship, secure transport, reviewed-source
+  selection policy, publication CAS or existing private state.
+constraints:
+  hard:
+  - The auto-Publisher GitHub Actions workflow must provide an attached canonical
+    main branch with exactly one correct configured upstream and retain exact current
+    main SHA binding before any Runtime publication call, including --recover-clean;
+    avoid substituting branch name for immutable control-SHA proof.
+  - Use existing publication.py continue_publication and Publisher authority as-is
+    for source eligibility and exact recovery, including current review decision SHA,
+    currentness recheck, publication reservation/CAS and distinct awaiting-review
+    versus published outcomes.
+  - Any missing or ambiguous upstream, mismatched exact main, remote substitution,
+    stale ref, divergent eligible source, competing PASS, overlapping material, changed
+    TASK or unsupported recovery MUST remain an actionable accurate blocker rather
+    than force-rewriting history or choosing a source winner.
+  - The workflow must preserve accurate bounded publication failure/recovery attention,
+    including a separated Chat wake/delivery status. A successful Publisher job must
+    not be downgraded to failed publication merely because local chat wake failed.
+  - Provide deterministic negative and positive tests for the workflow-to-Runtime
+    attached-upstream contract, including GitHub runner checkout shape, independent
+    control SHA, idempotent replay, source competition/stranded source, missing TASK
+    and stale main. Test without externally invoking real publication or needing secrets.
+  - Modify only listed scope.modify files; if correct behavior requires changing publication.py,
+    Runtime gates or TASK lineage, stop and request new exact authorized scope instead
+    of silently expanding.
+  - Runtime owns minimum-sufficient-v2 canonical verification and proof reuse; run
+    targeted regressions during implementation, then one justified repository twelve-worker
+    full-suite verification with no duplicate equivalent suite.
+  - Executor claims implementation properties only. Reviewer owns PASS/CHANGES_REQUIRED;
+    Publisher owns exact source publication. No claim of live deployment success,
+    RUN-349 recovery or TASK-351 readiness based only on test PASS or workflow change.
+acceptance:
+- id: AC1
+  condition: The existing auto-Publisher workflow supplies a clean attached canonical
+    main checkout with an exact correct upstream while independently binding the immutable
+    current control SHA before invoking Runtime clean recovery.
+- id: AC2
+  condition: The workflow preserves the exact selected RUN/decision selectors, origin
+    transport authority, live main recheck, existing Runtime CAS and no automatic
+    alternative source selection or history rewrite.
+- id: AC3
+  condition: A supported valid clean-recovery invocation reaches existing Runtime
+    eligibility without failing solely due to detached HEAD or missing upstream; blocked
+    currentness/overlap/competing PASS cases keep their truthful specific cause and
+    do not publish.
+- id: AC4
+  condition: Hosted workflow status separates Publisher outcome from asynchronous
+    local-chat-wake delivery, so successful exact publication remains accurately represented
+    when delivery fails.
+- id: AC5
+  condition: Regression tests include the exact detached-upstream failure reproduction,
+    attached branch success shape, stale or mismatched remote/main, replay, and divergent
+    PASS/changed TASK rejection under existing Publisher rules.
+- id: AC6
+  condition: Change set remains confined to scope.modify and neither publishes RUN-349-001
+    nor asserts that clean Git merging or a successful workflow implies fresh exact
+    REVIEW PASS or canonical main inclusion.
+verification:
+  policy: minimum-sufficient-v2
+  full_suite_reason: Auto-Publisher workflow checkout/upstream changes touch Git ref
+    identity, recovery admission, CAS, replay and consumer status. A single repository
+    12-worker suite after focused publication regressions is justified; reuse valid
+    evidence and do not run equivalent suites twice.
+  required:
+  - python scripts/aios_parallel_full_suite.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
