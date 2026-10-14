@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   publish:
+    name: Publisher
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -40,6 +41,7 @@ jobs:
           AIOS_DECISION_REF: ${{ github.ref }}
           AIOS_DECISION_SHA: ${{ github.sha }}
           AIOS_REPLAY_RUN_ID: ${{ inputs.run_id }}
+          AIOS_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
           PYTHONPATH: src
           AIOS_PUBLICATION_REPORT: ${{ runner.temp }}/aios-publication-report.json
           AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-publication/source.json
@@ -78,9 +80,49 @@ jobs:
           # workflow never supplies a verdict, test plan or publication truth.
           printf 'run_id=%s\ndecision_sha=%s\n' "$run_id" "$decision_sha" >> "$GITHUB_OUTPUT"
 
-          git fetch --no-tags origin refs/heads/main
-          control_sha="$(git rev-parse FETCH_HEAD)"
-          git checkout --detach "$control_sha"
+          # checkout(ref: main) supplies attached main and its upstream. Reject
+          # missing/ambiguous authority instead of repairing or replacing it.
+          if [[ "$(git symbolic-ref --quiet HEAD)" != "refs/heads/main" ]]; then
+            echo "Publication control must be attached to canonical main" >&2
+            exit 1
+          fi
+          mapfile -t upstream_remotes < <(git config --get-all branch.main.remote)
+          mapfile -t upstream_refs < <(git config --get-all branch.main.merge)
+          if [[ ${#upstream_remotes[@]} -ne 1 || ${#upstream_refs[@]} -ne 1 ||
+                "${upstream_remotes[0]:-}" != "origin" ||
+                "${upstream_refs[0]:-}" != "refs/heads/main" ||
+                "$(git rev-parse --symbolic-full-name '@{upstream}')" != "refs/remotes/origin/main" ]]; then
+            echo "Publication control requires exactly one upstream: origin/main" >&2
+            exit 1
+          fi
+          mapfile -t origin_urls < <(git config --get-all remote.origin.url)
+          mapfile -t fetch_urls < <(git remote get-url --all origin)
+          mapfile -t push_urls < <(git remote get-url --push --all origin)
+          if [[ ${#origin_urls[@]} -ne 1 || ${#fetch_urls[@]} -ne 1 || ${#push_urls[@]} -ne 1 ||
+                "${origin_urls[0]%.git}" != "${AIOS_REPOSITORY_URL%.git}" ||
+                "${fetch_urls[0]%.git}" != "${AIOS_REPOSITORY_URL%.git}" ||
+                "${push_urls[0]%.git}" != "${AIOS_REPOSITORY_URL%.git}" ]]; then
+            echo "Publication origin must retain the canonical repository fetch/push URL" >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Publication control requires a clean main checkout" >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          # This immutable object identity remains independent of the branch
+          # name. Only a native fast-forward may align the attached checkout.
+          control_sha="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          readonly control_sha
+          git merge --ff-only "$control_sha"
+          if [[ "$(git rev-parse HEAD)" != "$control_sha" ||
+                "$(git rev-parse '@{upstream}')" != "$control_sha" ||
+                -n "$(git status --porcelain)" ]]; then
+            echo "Publication main and its upstream must equal the exact fetched control SHA" >&2
+            exit 1
+          fi
+          # Runtime still rechecks live main/decision refs, eligibility and CAS.
           python -m aios_renew.publication \
             --repo . \
             --remote origin \
@@ -140,19 +182,43 @@ jobs:
           --source-digest "$AIOS_SOURCE_DIGEST" --repository "$AIOS_SOURCE_REPOSITORY"
           --output "$GITHUB_OUTPUT"
 
-  local-chat-wake:
-    needs: publish
-    # Eligible failure/conflict observations survive a failed publication job.
-    if: >-
-      always() &&
-      needs.publish.outputs.event_id != '' &&
-      github.repository == 'trung-via/AIOS-renew' &&
-      vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true'
-    uses: ./.github/workflows/aios-local-chat-wake.yml
-    permissions:
-      contents: read
-      # Cover the reusable workflow's declared job permissions.
-      actions: read
-    with:
-      event_id: ${{ needs.publish.outputs.event_id }}
-      repository: trung-via/AIOS-renew
+      - name: Report Publisher outcome and separate chat delivery
+        id: publication-status
+        if: always()
+        continue-on-error: true
+        env:
+          AIOS_PUBLICATION_REPORT: ${{ runner.temp }}/aios-publication-report.json
+          AIOS_PUBLICATION_STEP_OUTCOME: ${{ steps.publication.outcome }}
+          AIOS_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
+          AIOS_REPOSITORY: ${{ github.repository }}
+          AIOS_SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        # The existing local-chat-wake workflow_run listener reconstructs the
+        # exported source after this run completes, including failed attempts.
+        # Delivery has its own workflow status and cannot change Publisher's.
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          try:
+              report = json.loads(Path(os.environ["AIOS_PUBLICATION_REPORT"]).read_text(encoding="utf-8"))
+          except (OSError, ValueError):
+              report = {}
+          outcomes = {"PUBLISHED", "ALREADY_PUBLISHED", "ALREADY_INCLUDED", "AWAITING_REVIEW",
+                      "FAILED", "RECOVERY_BLOCKED", "RECOVERY_REVIEW_REQUIRED"}
+          outcome = report.get("outcome") if isinstance(report, dict) else None
+          outcome = outcome if isinstance(outcome, str) and outcome in outcomes else "UNAVAILABLE"
+          lines = [f"Publisher step: **{os.environ['AIOS_PUBLICATION_STEP_OUTCOME']}**.",
+                   f"Runtime publication outcome: **{outcome}**."]
+          if os.environ["AIOS_CHAT_WAKE_ENABLED"] == "true" and os.environ["AIOS_REPOSITORY"] == "trung-via/AIOS-renew":
+              url = (os.environ["AIOS_SERVER_URL"] + "/" + os.environ["AIOS_REPOSITORY"]
+                     + "/actions/workflows/aios-local-chat-wake.yml")
+              lines.append(f"Local chat wake: asynchronous; see the [separate delivery workflow]({url}). "
+                           "Delivery status does not change the Publisher outcome.")
+          else:
+              lines.append("Local chat wake: disabled by the existing repository/Human gate.")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
+              summary.write("\n\n".join(lines) + "\n")
+          PY

@@ -1939,7 +1939,8 @@ def test_workflow_has_canonical_trigger_and_minimum_authority() -> None:
     assert "ref: ${{ github.sha }}" not in workflow
     assert "git ls-remote --refs origin \"$decision_ref\"" in workflow
     assert "git fetch --no-tags origin refs/heads/main" in workflow
-    assert 'git checkout --detach "$control_sha"' in workflow
+    assert 'git merge --ff-only "$control_sha"' in workflow
+    assert "git checkout --detach" not in workflow
     assert "AIOS_REPLAY_RUN_ID: ${{ inputs.run_id }}" in workflow
     assert "candidate_sha" not in workflow
     assert "decision-sha \"$decision_sha\"" in workflow
@@ -1965,11 +1966,11 @@ def publication_condition(expression, context, prior_failed=False):
     return bool(eval("(" + expression.replace("&&", " and ") + ")", {"__builtins__": {}}, {}))
 
 
-def test_publication_direct_handoff_reuses_only_existing_selector_boundary():
+def test_publication_exports_only_existing_selector_boundary_for_async_delivery():
     parsed, text = publication_workflow()
     assert set(parsed["on"]) == {"push", "workflow_dispatch"}
     assert parsed["permissions"] == {"contents": "write"}
-    assert set(parsed["jobs"]) == {"publish", "local-chat-wake"}
+    assert set(parsed["jobs"]) == {"publish"}
     publish_job = parsed["jobs"]["publish"]
     assert publish_job["outputs"] == {"event_id": "${{ steps.attention.outputs.event_id }}"}
     steps = publish_job["steps"]
@@ -1993,40 +1994,35 @@ def test_publication_direct_handoff_reuses_only_existing_selector_boundary():
         "AIOS_SOURCE_DIGEST": "${{ steps.attention-source.outputs.source_digest }}",
         "AIOS_SOURCE_REPOSITORY": "${{ github.repository }}",
     }
-    handoff = parsed["jobs"]["local-chat-wake"]
-    assert handoff["needs"] == "publish"
-    assert handoff["uses"] == "./.github/workflows/aios-local-chat-wake.yml"
-    assert handoff["permissions"] == {"contents": "read", "actions": "read"}
-    assert handoff["with"] == {"event_id": "${{ needs.publish.outputs.event_id }}", "repository": brain.REPOSITORY}
-    assert set(handoff) == {"needs", "if", "uses", "permissions", "with"}
+    status = by_id["publication-status"]
+    assert status["if"] == "always()"
+    assert status["continue-on-error"] == "true"
+    assert steps.index(by_id["attention"]) < steps.index(status)
+    assert "asynchronous" in status["run"]
+    assert "aios-local-chat-wake.yml" in status["run"]
+    assert all("aios-local-chat-wake.yml" not in step.get("uses", "") for step in steps)
     for forbidden in ("actions: write", "repository_dispatch", "createWorkflowDispatch", "gh workflow run",
-                      "secrets.", "issues:", "comments", "workflow_run", "schedule:", "next_action",
+                      "secrets.", "issues:", "comments", "schedule:", "next_action",
                       "review_verdict", "roadmap_successor", "cdp_endpoint", "assistant_output",
                       "PUBLICATION_PROVEN", "PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING"):
         assert forbidden not in text
 
 
-def test_publication_reusable_handoff_covers_callee_permission_ceiling() -> None:
+def test_publication_uses_existing_completed_workflow_listener_without_new_authority() -> None:
     parsed, _ = publication_workflow()
-    handoff = parsed["jobs"]["local-chat-wake"]
-    caller_permissions = handoff["permissions"]
-    assert set(caller_permissions.values()) == {"read"}
     callee = yaml.load(
-        Path(handoff["uses"]).read_text(encoding="utf-8"), Loader=yaml.BaseLoader
+        Path(".github/workflows/aios-local-chat-wake.yml").read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,
     )
-    levels = {"none": 0, "read": 1, "write": 2}
-    required_permissions = set()
-    # The call chain must cover declared permissions even on gated/skipped jobs.
-    for job_name, job in callee["jobs"].items():
-        permissions = job.get("permissions", callee.get("permissions", {}))
-        assert isinstance(permissions, dict), job_name
-        for permission, level in permissions.items():
-            assert levels[level] <= levels[caller_permissions.get(permission, "none")], (
-                job_name, permission, level
-            )
-            if level != "none":
-                required_permissions.add(permission)
-    assert set(caller_permissions) == required_permissions
+    listener = callee["on"]["workflow_run"]
+    assert parsed["name"] in listener["workflows"]
+    assert listener["types"] == ["completed"]
+    assert parsed["permissions"] == {"contents": "write"}
+    assert "local-chat-wake" not in parsed["jobs"]
+    project = next(step for step in callee["jobs"]["project"]["steps"] if step.get("id") == "project")
+    assert project["env"]["AIOS_SOURCE_RUN"] == "${{ github.event.workflow_run.id }}"
+    assert project["env"]["AIOS_SOURCE_ATTEMPT"] == "${{ github.event.workflow_run.run_attempt }}"
+    assert "aios_renew.brain_attention collect" in project["run"]
 
 
 @pytest.mark.parametrize("prior_failed", [False, True])
@@ -2050,21 +2046,25 @@ def test_publication_direct_projection_requires_exact_export_even_after_failure(
     assert publication_condition(steps["attention-source"]["if"], context, prior_failed)
 
 
-@pytest.mark.parametrize("prior_failed", [False, True])
+@pytest.mark.parametrize("source_conclusion", ["success", "failure"])
 @pytest.mark.parametrize("changed,value,allowed", [
-    (None, None, True), ("needs.publish.outputs.event_id", "", False),
+    (None, None, True), ("github.event_name", "push", False),
     ("github.repository", "other/repository", False),
+    ("github.event.workflow_run.head_repository.full_name", "other/repository", False),
     ("vars.AIOS_LOCAL_CHAT_WAKE_ENABLED", "", False),
     ("vars.AIOS_LOCAL_CHAT_WAKE_ENABLED", "false", False),
     ("vars.AIOS_LOCAL_CHAT_WAKE_ENABLED", "TRUE", False),
 ])
-def test_publication_reusable_handoff_preserves_human_gate_without_success_only_filter(prior_failed, changed, value, allowed):
-    parsed, _ = publication_workflow()
-    context = {"needs.publish.outputs.event_id": "exact-projected-identity", "github.repository": brain.REPOSITORY,
+def test_publication_async_delivery_preserves_human_gate_for_success_and_failure(source_conclusion, changed, value, allowed):
+    callee = yaml.load(Path(".github/workflows/aios-local-chat-wake.yml").read_text(encoding="utf-8"),
+                      Loader=yaml.BaseLoader)
+    context = {"github.event_name": "workflow_run", "github.repository": brain.REPOSITORY,
+               "github.event.workflow_run.head_repository.full_name": brain.REPOSITORY,
+               "github.event.workflow_run.conclusion": source_conclusion,
                "vars.AIOS_LOCAL_CHAT_WAKE_ENABLED": "true"}
     if changed:
         context[changed] = value
-    assert publication_condition(parsed["jobs"]["local-chat-wake"]["if"], context, prior_failed) is allowed
+    assert publication_condition(callee["jobs"]["project"]["if"], context) is allowed
 
 
 def test_exact_reviewed_publication_and_replay_export_same_direct_planning_identity(tmp_path: Path) -> None:
