@@ -1,22 +1,22 @@
 task_id: TASK-357
-revision: 1
+revision: 2
 goal: >-
-  Prospectively increase the existing provider-neutral native coding Executor response
-  budget to 180 minutes and the bounded process watchdog to 185 minutes, consistently
-  across admitted PRIMARY, REMEDIATION and REPAIR paths without changing Runtime
-  verification or correction authority.
+  Establish one provider-neutral 180-minute coding Executor response budget and finite
+  185-minute process watchdog across admitted PRIMARY, REMEDIATION and REPAIR as well as
+  directly constructed native adapters, eliminating competing adapter-local 60/65-minute
+  defaults while preserving Runtime verification and correction authority.
 problem: >-
-  The published native execution policy currently permits 60 minutes of model response
-  and a 65-minute process watchdog. Legitimate long-running engineering invocations
-  can exceed that budget before producing a structural ResultPackage. The desired
-  bounded default should be consistently applied through existing native adapters
-  rather than per-TASK overrides, new services or automatic retries.
+  Published main still has 60/65-minute defaults in Dispatcher and separate native
+  adapters. A dispatcher-only increase would leave direct adapter construction on
+  the old budgets, conflicting with a single-default requirement. This prospective
+  TASK revision must remove the competing defaults and verify both direct and admitted
+  paths without creating a new execution authority, router or retry policy.
 assumptions:
   - >-
-    This is a new independent TASK revision 1 against the canonical published main
-    current at AUTHOR_TASK admission; Runtime rechecks expected-main currentness,
-    schema, scope, provenance and CAS. Unreviewed worktrees or earlier failed RUN
-    candidates are not input sources or execution bases.
+    This is prospective TASK-357 revision 2 against canonical published main at
+    AUTHOR_TASK admission. Runtime checks currentness, scope, provenance and CAS.
+    Historical TASK-357 r1 RUN/FAILURE/RESULT artifacts remain immutable; no previous
+    unreviewed candidate is a new execution base or proof for this revision.
   - >-
     Human owns acceptance of the longer possible stall exposure and chooses the
     Executor separately. This TASK does not select a model or create a RUN.
@@ -39,6 +39,10 @@ scope:
     - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
   modify:
     - src/aios_renew/dispatcher.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - src/aios_renew/native_execution_policy.py
     - tests/test_dispatcher.py
     - tests/test_codex_adapter.py
     - tests/test_antigravity_adapter.py
@@ -47,16 +51,22 @@ non_goals:
   - No public FAILURE diagnostic projection, Brain Sync, transport or private-evidence redesign.
   - No new Kernel semantics, planner, controller, watchdog service, retry/failover selector or mutation authority.
   - No per-TASK or per-provider deadline exceptions, ambient overrides or unbounded waiting.
+  - No source substitution from unreviewed TASK-357 r1 RUN candidates or rewriting
+    their historical evidence.
   - No rewriting historical RUN, FAILURE, RESULT, EVIDENCE, REVIEW or publication states.
 constraints:
   hard:
     - >-
-      Use the existing provider-neutral NativeExecutionPolicy rather than a second
-      deadline source. Preserve the response budget versus process-watchdog distinction.
+      Preserve the existing provider-neutral NativeExecutionPolicy interface as
+      the single default budget authority. Any optional cycle-free shared policy
+      module must not introduce a second policy source or break existing imports.
+      Preserve the response budget versus process-watchdog distinction.
     - >-
       Keep precisely one admitted Executor call; early successful returns complete
       immediately, timeout remains terminal, and unknown native exit codes remain
-      unknown instead of fabricated success or failure.
+      unknown instead of fabricated success or failure. Direct construction without
+      an explicit mutation grant must remain non-mutating; preserve explicit
+      injected synthetic policies used by tests.
     - >-
       Do not change Runtime verification requirements, review/publication boundaries,
       native lease ownership, sandbox policy, source mutation rights or failure provenance.
@@ -66,9 +76,11 @@ constraints:
 acceptance:
   - id: AC1
     condition: >-
-      The existing provider-neutral native execution policy has a 180-minute
-      response budget and a finite 185-minute process watchdog, with no alternative
-      default or task-specific override.
+      One provider-neutral default supplies a 180-minute response budget and finite
+      185-minute process watchdog to Dispatcher and all three native adapters,
+      including direct adapter construction without an injected execution policy.
+      No adapter-local 60/65-minute default or task/provider-specific override
+      remains; direct construction does not implicitly authorize mutation.
   - id: AC2
     condition: >-
       PRIMARY, REMEDIATION and REPAIR invocation construction exposes the same
@@ -86,9 +98,11 @@ acceptance:
       dispatch.
   - id: AC5
     condition: >-
-      Deterministic synthetic regression coverage exists for the exact budget,
-      watchdog, provider/operation propagation, normal early completion and
-      timeout/error behaviors of the existing native paths.
+      Deterministic synthetic regressions cover the 180/185 default in both
+      directly constructed and Runtime-injected Codex, Antigravity and Minimax
+      adapters, authorized versus read-only permission behavior, PRIMARY /
+      REMEDIATION / REPAIR propagation, early completion, timeout/error diagnostics,
+      and preservation of explicit injected synthetic test policies.
 verification:
   policy: minimum-sufficient-v1
   required:
