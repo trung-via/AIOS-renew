@@ -1,9 +1,9 @@
 task_id: TASK-355
-revision: 2
-goal: Complete the unchanged TASK-354 End-to-End Failure Diagnostic Handoff using a
-  newly admitted PRIMARY and Human-preserved SHA-256-bound RUN-354-001 partial implementation;
-  extend the provider-neutral native Executor response budget to 180 minutes with a bounded
-  watchdog grace interval, without repository-wide full-suite testing or new lifecycle authority.
+revision: 3
+goal: Complete the unchanged TASK-354 End-to-End Failure Diagnostic Handoff with a new admitted
+  PRIMARY that reuses Human-preserved, SHA-256-bound RUN-354-001 partial implementation as
+  nonauthoritative source input; close remaining real call-site integration while retaining
+  all nine original acceptance criteria and the same five focused verification groups.
 problem: RUN-354-001, admitted for the full TASK-354 E2E Failure Diagnostic Handoff,
   ended EXECUTION FAILURE when Codex exceeded its native 60-minute response deadline.
   Its local private FAILURE at source base f0529a0f4291d748f08220f766d732b63ece2147 records a dirty,
@@ -17,6 +17,12 @@ assumptions:
 - Fresh canonical main f0529a0f4291d748f08220f766d732b63ece2147 and exact TASK-354 r1 blob
   ea67e30a07505780541a84f85dd04dda8fad987e. Runtime must recheck TASK-355
   identity/revision currentness, upstream ancestry and expected-main CAS.
+- Human prospectively withdrew the request to impose a 180-minute native Executor budget
+  on TASK-355. Revision 3 carries no native deadline increase or 180-minute activation
+  prerequisite. The selected Codex gpt-6.1-sol max uses the current approved Runtime
+  native execution policy at admission; deadline, eligibility, actual outcome, and
+  terminal behavior remain Runtime facts. This waiver does not claim work within
+  the existing 60/65-minute budget is certain to finish or authorize retuning it.
 - Human approved preserving TASK-354's complete nine E2E acceptance conditions and
   minimum-sufficient-v2 five targeted/integration verification groups while reusing
   the RUN-354-001 uncommitted partial source. This is a new prospective PRIMARY,
@@ -47,20 +53,6 @@ assumptions:
   ordered lenses and final closure. This audit is not an AUTHOR_TASK ingress gate.
 - Human previously selected Codex gpt-6.1-sol max. The exact new Executor profile
   must be bound explicitly on admission; no presumed retry/failover or roadmap advance.
-- Human prospectively expanded TASK-355 r2 to include raising the current common native Executor
-  response budget from 60 to 180 minutes, preserving the existing bounded five-minute process
-  watchdog grace; expected effective policy is response_budget_minutes=180 and
-  process_watchdog_seconds=185*60. This is a provider-neutral Runtime-admitted default and
-  necessarily applies to PRIMARY, REMEDIATION and REPAIR across supported native adapters
-  after the candidate is independently reviewed and published; it is not a silent per-TASK
-  runtime override. Human prioritizes fewer premature Executor timeouts while accepting
-  longer stuck-execution exposure, subject to immutable Runtime failure and observation gates.
-- Source policy remains 60/65 at the authoring base. Simply recording 180 in TASK-355 r2
-  cannot alter the current native Executor subprocess limit for RUN-355's first dispatch.
-  Activation of the 180-minute budget for that first dispatch requires an independent
-  already-reviewed/published Runtime policy implementation; no monkeypatch, dynamic source
-  override, environment-only spoof, or unauthorized upstream mutation may fabricate it.
-  Neither this TASK nor the Issue receipt proves an effective 180-minute admission.
 scope:
   inspect:
   - src/aios_renew/review_transport.py
@@ -108,23 +100,10 @@ scope:
   - src/aios_renew/dispatcher.py
   - src/aios_renew/brain_wake_bridge.py
   - src/aios_renew/local_chat_wake.py
-  - src/aios_renew/dispatcher.py
-  - src/aios_renew/codex_adapter.py
-  - src/aios_renew/antigravity_adapter.py
-  - src/aios_renew/antigravity_minimax_adapter.py
-  - tests/test_dispatcher.py
-  - tests/test_codex_adapter.py
-  - tests/test_antigravity_adapter.py
-  - tests/test_antigravity_minimax_adapter.py
   - .github/workflows/aios-brain-wakeup.yml
   - .github/workflows/aios-brain-repair-wakeup.yml
   - .github/workflows/aios-issue-carrier.yml
   modify:
-  - src/aios_renew/dispatcher.py
-  - tests/test_dispatcher.py
-  - tests/test_codex_adapter.py
-  - tests/test_antigravity_adapter.py
-  - tests/test_antigravity_minimax_adapter.py
   - src/aios_renew/review_transport.py
   - src/aios_renew/runtime.py
   - src/aios_renew/operator.py
@@ -169,19 +148,6 @@ constraints:
   hard:
   - Reuse Runtime FAILURE and its evidence, BP-2 operational receipts, existing terminal attention and
     fresh Brain Sync; no additional persistent system of record or generic lifecycle flow.
-  - Set the existing provider-neutral NativeExecutionPolicy response budget to 180 minutes
-    and retain its bounded five-minute watchdog grace (process watchdog 185 minutes).
-    This prospective default must be consistent through existing supported native Codex,
-    Antigravity and Minimax adapter dispatch paths for PRIMARY, REMEDIATION and REPAIR.
-    Do not introduce task-ID special cases, a second watchdog service, autonomous retry,
-    a separate authority, unbounded waiting, or misleading deadline messages.
-  - Preserve watchdog native TIMEOUT semantics, exit_code=null where unknown, original
-    diagnostic bytes and canonical terminal handling. Test exact policy values and
-    propagation through existing adapter/dispatcher call sites with deterministic
-    synthetic runners; do not run an actual 180-minute timeout as a verification probe.
-  - Longer execution policy becomes operational only when the policy implementation
-    is lawfully active at admission. Do not assert that authoring TASK-355 changes the
-    current 60-minute runtime or enables self-applying policy before publication.
   - In the independently admitted clean PRIMARY workspace, the Executor must first examine only
     the Human-staged SHA-256-bound advisory patch at git-dir relative
     aios-human-input/RUN-354-001-uncommitted.patch, then inspect its 22-file permitted
@@ -277,16 +243,10 @@ acceptance:
   condition: Changes remain within exact scope.modify; no new lifecycle database/router, autonomous retry/failover,
     non-Executor production implementation, retroactive evidence rewrite, or bypass of canonical authority
     is introduced.
-- id: AC10
-  condition: The existing provider-neutral native Executor policy defaults to a 180-minute
-    response budget with a bounded 185-minute process watchdog, consistently exposing the
-    correct values through Codex, Antigravity and Minimax PRIMARY/REMEDIATION/REPAIR
-    dispatch paths, without unbounded waiting, ad hoc per-TASK overrides or altered
-    Runtime timeout/failure authority.
 verification:
   policy: minimum-sufficient-v2
   required:
-  - python -m pytest -q tests/test_review_transport.py tests/test_runtime.py tests/test_operator_unified_state.py tests/test_dispatcher.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_antigravity_minimax_adapter.py
+  - python -m pytest -q tests/test_review_transport.py tests/test_runtime.py tests/test_operator_unified_state.py
   - python -m pytest -q tests/test_brain_sync.py tests/test_brain_context.py tests/test_brain_attention.py tests/test_brain_provider_protocol.py tests/test_brain_provider.py
   - python -m pytest -q tests/test_terminal_attention.py tests/test_terminal_attention_workflow.py tests/test_operator_human_surface.py
   - python -m pytest -q tests/test_operator.py -k failure
