@@ -444,7 +444,7 @@ def test_native_policy_propagates_and_early_completion_does_not_wait_or_redispat
         assert ("--mode" in command) is authorizes_mutation
         if authorizes_mutation:
             assert command[command.index("--mode") + 1] == "accept-edits"
-        assert "--dangerously-skip-permissions" not in command
+        assert ("--dangerously-skip-permissions" in command) is authorizes_mutation
     else:
         assert command[command.index("--operation") + 1] == operation
         assert command[command.index("--response-timeout") + 1] == "10800"
