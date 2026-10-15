@@ -1,0 +1,1 @@
+{"base_sha":"40e11d1cfdd99ada89f62851576ff9b605728f82","executor":"codex","head_sha":null,"return_affinity":{"kind":"LEGACY_REPOSITORY_DEFAULT_ROUTE"},"run_id":"RUN-355-002","status":"ACTIVE","task":{"id":"TASK-355","revision":6},"workspace":"protected-runtime-workspace"}
