@@ -248,6 +248,8 @@ def _reference_digests(record):
 
 
 def _run343_reference_lifecycle(tmp_path, monkeypatch, failure):
+    from aios_renew.review_transport import public_failure
+
     repo = make_repo(tmp_path, task_source=None)
     changed = failure["candidate"]["changed_files"]
     source = TASK_SOURCE.replace("TASK-101", "TASK-343").replace(
@@ -258,9 +260,17 @@ def _run343_reference_lifecycle(tmp_path, monkeypatch, failure):
     run = json.loads(_RUN343_RUN_JSON)
     head = "96d4a91cacc284c303f66d26a2096bb264719473"
     base = "f3e048bacfef0bf7f5e3bac774f43c72eddabbb8"
+    # The immutable snapshot predates role-safe transport and retains machine
+    # locators. Keep it pinned above for reference-reader tests, but never model
+    # it as a lawful current public artifact. This independent synthetic source
+    # exercises the real writer and reader without claiming original private
+    # diagnostics or rewriting the historical snapshot.
+    synthetic = deepcopy(failure)
+    synthetic["error"]["message"] = "Synthetic verification failure."
+    public = public_failure(_reference_bytes(synthetic))
     lifecycle = RemoteTaskLifecycle(base, (
         RemoteLifecycleTerminal("RUN-343-001", "FAILURE", head,
-                                _reference_bytes(run), _reference_bytes(failure)),
+                                _reference_bytes(run), public),
     ), (), (), (), ())
     _stub_unified_remote(monkeypatch, repo, lifecycle)
 
@@ -281,6 +291,21 @@ def _run343_reference_lifecycle(tmp_path, monkeypatch, failure):
 
 def _reference_bytes(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+
+
+@pytest.mark.parametrize("extra", [
+    {"captured_output": "token=synthetic-private-value"},
+    {"raw_path": "C:/private/synthetic.raw"},
+    {"error": None},
+    {"error": {"message": 1}},
+])
+def test_failure_diagnostic_absent_legacy_error_cannot_hide_private_or_malformed_fields(extra):
+    legacy = dict(kind="FAILURE", run_id="RUN-101-001", failed_head_sha="a" * 40,
+                  candidate=dict(repairable=True, changed_files=[]))
+    assert unified_state_module._validated_private_public_view(legacy, "METADATA") == legacy
+    assert "error" not in legacy
+    with pytest.raises(ValueError):
+        unified_state_module._validated_private_public_view(dict(legacy, **extra), "METADATA")
 
 
 def test_failure_diagnostic_local_transport_blocker_remains_typed_and_safe(tmp_path, monkeypatch):
@@ -455,7 +480,24 @@ def test_verification_reference_run343_preserves_exact_immutable_failure(run343_
 def test_verification_reference_run343_reduces_to_exact_author_repair(
     tmp_path, monkeypatch, run343_failure,
 ):
+    from aios_renew.review_transport import failure_document, public_failure
+    from aios_renew.verification_contract import verification_digest
+
+    original = _reference_bytes(run343_failure)
+    # Reading a historical reference cannot make its retained private locators
+    # lawful public transport. Both public gates continue to reject that form.
+    for reader in (failure_document, public_failure):
+        with pytest.raises(ReviewTransportError):
+            reader(original)
     repo, lifecycle, _ = _run343_reference_lifecycle(tmp_path, monkeypatch, run343_failure)
+    public = json.loads(lifecycle.terminals[0].terminal)
+    synthetic = deepcopy(run343_failure)
+    synthetic["error"]["message"] = "Synthetic verification failure."
+    assert public["public_projection"]["private_failure_digest"] == verification_digest(synthetic)
+    reference = _verification_reference(public)
+    assert reference["private_reference_digest"] == verification_digest(_verification_reference(run343_failure))
+    assert all(key not in lifecycle.terminals[0].terminal for key in (b'"raw_path"', b'"base_raw_path"', b'"python_executable"'))
+    assert _reference_bytes(run343_failure) == original
     before = (git(repo, "status", "--porcelain"), git(repo, "show-ref"), lifecycle)
 
     def forbidden_preflight(*_args, **_kwargs):
@@ -616,9 +658,19 @@ def test_verification_reference_retains_structural_role_rejection(run343_failure
 def test_verification_reference_malformed_canonical_failure_stays_blocked(
     tmp_path, monkeypatch, run343_failure,
 ):
+    repo, lifecycle, _ = _run343_reference_lifecycle(tmp_path, monkeypatch, run343_failure)
     _verification_reference(run343_failure)["base"]["profile"]["workers"] = 4
     _reference_digests(_verification_reference(run343_failure))
-    repo, _, _ = _run343_reference_lifecycle(tmp_path, monkeypatch, run343_failure)
+    # Deliberately inject the malformed source after the lawful fixture writer.
+    # The writer must reject it too; no permissive fixture fallback is used.
+    from aios_renew.review_transport import public_failure
+    malformed = deepcopy(run343_failure)
+    malformed["error"]["message"] = "Synthetic verification failure."
+    with pytest.raises(ReviewTransportError):
+        public_failure(_reference_bytes(malformed))
+    lifecycle = replace(lifecycle, terminals=(replace(
+        lifecycle.terminals[0], terminal=_reference_bytes(malformed)),))
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
     observation = observe_unified_state("TASK-343", repo=repo).as_dict()
     assert (observation["lifecycle_state"], observation["next_action"]) == ("BLOCKED", "NONE")
     assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
@@ -712,7 +764,7 @@ def _run343_reference_correction_lifecycle(tmp_path, monkeypatch, run343_failure
         "instructions": ["Fix the bounded observation collision."], "constraints": ["Commit the output."]}
     correction = {"failed_run_id": parent.run_id, "failed_head_sha": parent.candidate_sha,
         "root_base_sha": lifecycle.main_sha, "task": yaml.safe_load(source), "run": run,
-        "repair": authorization, "failure": deepcopy(run343_failure)}
+        "repair": authorization, "failure": json.loads(parent.terminal)}
     terminal = RemoteLifecycleTerminal(child_id, "RESULT", head, _reference_bytes(run),
         _reference_bytes(canonical_result_payload(child_id, head)), _reference_bytes(correction))
     reviews = ()
@@ -4093,7 +4145,8 @@ prior_finding_id: F1
     }
     repair_rem_execution = {
         "failed_run_id": remediation_id,
-        "root_base_sha": int_result.integration_candidate_sha,
+        "root_base_sha": topo["head"],
+        "result_base_sha": int_result.integration_candidate_sha,
         "failed_head_sha": int_result.integration_candidate_sha,
         "failure": json.loads(failed_rem_terminal.terminal),
         "task": {"task_id": "TASK-101", "revision": 1},
@@ -4141,6 +4194,17 @@ prior_finding_id: F1
     assert scope["prior_review_run_id"] == topo["repair_2_id"]
     assert scope["prior_review_id"] == f"REVIEW-{topo['repair_2_id']}"
     assert scope["prior_finding_id"] == "F1"
+
+    # The semantic TASK root and integrated result base remain distinct. The old
+    # fixture conflated them; reject each incorrect identity independently.
+    for field, wrong_base in (("root_base_sha", int_result.integration_candidate_sha),
+                              ("result_base_sha", topo["head"])):
+        malformed = dict(repair_rem_execution, **{field: wrong_base})
+        terminal = replace(unreviewed_repair.terminals[-1], correction=_reference_bytes(malformed))
+        invalid = replace(unreviewed_repair, terminals=unreviewed_repair.terminals[:-1] + (terminal,))
+        with pytest.raises(ValueError, match="REPAIR predecessor identity or failed SHA mismatch"):
+            unified_state_module._decode_remote_lifecycle(
+                repo, operator_module.load_task(repo, "TASK-101"), invalid)
 
     _stub_unified_remote(monkeypatch, repo, lifecycle_repaired_rem)
 

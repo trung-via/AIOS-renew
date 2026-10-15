@@ -471,8 +471,12 @@ def _validated_private_public_view(
                     raise ValueError("contradictory verification reference failure conditions")
             retained_failures = sum(report["outcome"] == "FAIL" for report in value["reports"])
             if (value["failure_count"] < retained_failures
-                    or value["complete"] and value["failure_count"] != retained_failures):
+                    or (value["complete"] or owner.get("historical_public") is True)
+                    and value["failure_count"] != retained_failures):
                 raise ValueError("invalid verification reference failure population")
+            # A private incomplete source may retain a partial population. An
+            # already-public historical reference had exact population counts;
+            # it cannot acquire new incompleteness by changing those counts.
             # Failure readability is separate from attribution. Missing bounded
             # detail on an explicitly incomplete observation remains unavailable;
             # identities, known fingerprints and source digests still must bind.
@@ -606,7 +610,8 @@ def _validated_private_public_view(
                     raise ValueError("FAILURE verification has no structural owner")
                 child_role = "reference"
                 child_owner = dict(command=value.get("command"), exit_code=value.get("exit_code"),
-                    run_id=owner.get("run_id"), subject_sha=owner.get("failed_head_sha"))
+                    run_id=owner.get("run_id"), subject_sha=owner.get("failed_head_sha"),
+                    historical_public=owner.get("error", {}).get("message") == "Protected Runtime diagnostics remain local.")
             elif key == "verification" and full_evidence:
                 # validate_evidence owns a full record's verification binding.
                 # It cannot contain another full record masquerading as one.
@@ -636,6 +641,12 @@ def _validated_private_public_view(
                 raise ValueError("full EVIDENCE has no structural owner")
             evidence(data, owner)
         if data.get("kind") == "FAILURE":
+            # Legacy structural terminals may omit diagnostics. Preserve that
+            # absence without inventing an error or relaxing present records.
+            if "error" not in data:
+                from .review_transport import _validate_legacy_failure_public
+                _validate_legacy_failure_public(data)
+                return data
             error = data.get("error")
             if not isinstance(error, dict) or not isinstance(error.get("message"), str):
                 raise ValueError("invalid private FAILURE diagnostics")
