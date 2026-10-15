@@ -31,9 +31,9 @@ from .verification_contract import (
     validate_observation, verification_digest,
     validate_evidence_binding,
     toolchain_inventory_digest,
-    candidate_delta_projection, exact_collection_observation,
+    exact_collection_observation,
     projected_failure_attribution, pytest_collection_command, pytest_projection_command,
-    validate_exact_collection, validate_exact_projection, validate_failure_reproduction,
+    validate_exact_collection, validate_failure_reproduction,
 )
 
 
@@ -706,10 +706,11 @@ def execute_minimum_verification(
 ) -> tuple[Evidence, ...]:
     """Runtime V2 execution of the single derived plan and mandatory guards.
 
-    Reuse is conservative (complete tracked tree equality). Bounded candidate
-    deltas and exact previous failures are early failure gates; their success
-    never discharges authored proof. Reproduced exact failures prefer projected
-    base attribution, with the existing broad path as conservative fallback.
+    Reuse is conservative (complete tracked tree equality). PRIMARY runs the
+    authored verification directly without a candidate-only delta preflight.
+    Exact previous failures in correction runs remain early failure gates.
+    Reproduced exact failures prefer projected base attribution, with the
+    existing broad path as conservative fallback.
     No correction or integration guard is selected by this execution strategy.
     """
     authored = tuple(dict.fromkeys(commands))
@@ -900,43 +901,6 @@ def execute_minimum_verification(
             collections.setdefault(command, {})["base" if base else "candidate"] = (item, observation)
             return item, observation
 
-        def delta_first(command: str) -> None:
-            coverage = parse_pytest_coverage(command)
-            if (operation != "PRIMARY" or coverage is None or coverage.is_full_suite
-                    or coverage.measurement or coverage.selected_parallel or coverage.filter_expression is not None):
-                return
-            try:
-                # A known condition mismatch already makes exact comparison
-                # ineligible; no collection subprocess is needed to rediscover it.
-                if bindings[command]["profile"] != _v2_profile(repository, base_sha, command, env):
-                    raise VerificationContractError("base/candidate execution profiles differ")
-                candidate_item, candidate_collection = collect(command, base=False)
-                base_item, base_collection = collect(command, base=True)
-                nodes = candidate_delta_projection(base_collection, candidate_collection, command=command,
-                                                   base_sha=base_sha, candidate_sha=subject_sha)
-                probe = pytest_projection_command(command, nodes)
-                item, candidate, binding = run_once(probe, sha=subject_sha, base=False, authored_command=command)
-                record = probe_record(item, candidate, binding, kind="CANDIDATE_DELTA")
-                validate_exact_projection(candidate, command=command, nodeids=nodes, subject_sha=subject_sha)
-                if (candidate["profile"] != {**candidate_collection["profile"], "collect_only": False}
-                        or candidate["toolchain"] != candidate_collection["toolchain"]):
-                    raise VerificationContractError("delta probe conditions changed after collection")
-                if item.result.exit_code == 1:
-                    record["delta"] = {"nodeids": list(nodes),
-                        **projection_material(base_item, base_collection, key="base_collection"),
-                        **projection_material(candidate_item, candidate_collection, key="candidate_collection")}
-                    record["binding"]["failure_set_digest"] = verification_digest(record["delta"])
-                    record["attribution"] = tuple({"nodeid": node, "phase": phase, "classification": "CANDIDATE_ONLY"}
-                                                  for node, phase in failed_identities(candidate))
-                    evidence.append(replace(item, verification=record))
-                    audit["records"].append({"evidence_id": item.evidence_id, "command": probe,
-                        "disposition": "EARLY_BLOCK", "raw_exit_code": item.result.exit_code,
-                        "attribution": record["attribution"]})
-                    raise RuntimeVerificationError("V2 candidate-only delta remains blocking: " + command, evidence=evidence)
-            except VerificationContractError as exc:
-                audit["projection_fallback"].append({"command": command, "kind": "CANDIDATE_DELTA", "reason": str(exc)})
-            # Neither success nor ineligibility discharges the authored command.
-
         def failure_projection(command: str, candidate: dict) -> dict | None:
             try:
                 validate_observation(candidate)
@@ -984,8 +948,7 @@ def execute_minimum_verification(
                 audit["records"].append({"evidence_id": item.evidence_id, "disposition": "REUSED", "source_evidence_id": previous["evidence_id"]})
             for command in (*plan.affected_first, *plan.commands):
                 affected = command in plan.affected_first and command not in authored
-                if not affected:
-                    delta_first(command)
+                # Retired PRIMARY candidate-only delta gate; authored tests remain mandatory.
                 item, candidate, binding = run_once(command, sha=subject_sha, base=False, affected=affected)
                 if affected:
                     record = probe_record(item, candidate, binding, kind="PREVIOUS_FAILURE")
