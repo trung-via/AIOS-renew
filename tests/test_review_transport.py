@@ -235,6 +235,77 @@ def test_historical_versions_and_bounded_protected_incomplete_reference_remain_r
         review_transport.failure_document(json.dumps(private).encode())
 
 
+@pytest.mark.parametrize("recorded", [False, True])
+def test_historical_verification_failure_without_outcomes_retains_unavailable_non_pass_context(recorded):
+    from aios_renew.verification_contract import verification_digest
+
+    _, private = _native_failure_fixture()
+    private["phase"] = "VERIFICATION"
+    private["error"] = dict(type="RuntimeVerificationError", message="private synthetic-secret")
+    if recorded:
+        private["error"]["verification"] = []
+    original = json.dumps(private, indent=2).encode()
+    public_bytes = review_transport.public_failure(original)
+    public = review_transport.failure_document(public_bytes)
+    assert public["error"]["verification"] == []
+    assert public["error"]["diagnostic"]["category"] == "VERIFICATION_COMMAND_FAILED"
+    assert public["error"]["diagnostic"]["cause_source"] == "UNAVAILABLE"
+    assert public["public_projection"]["private_failure_digest"] == verification_digest(private)
+    assert review_transport.public_failure(public_bytes) == public_bytes
+    assert operator_failure_matches(private, public)
+    context = review_transport.failure_context(public)
+    assert context["verification"] == [] and context["proof"] == "NON_PASS_DIAGNOSTIC"
+    assert b"synthetic-secret" not in public_bytes
+    assert json.dumps(private, indent=2).encode() == original
+
+    # An explicitly recorded successful outcome is a different assertion from
+    # unavailable diagnostics and cannot stand in for a verification failure.
+    private["error"]["verification"] = [dict(command="git diff --check", exit_code=0, summary="private")]
+    with pytest.raises(review_transport.FailureDiagnosticError):
+        review_transport.public_failure(json.dumps(private).encode())
+    public["error"]["verification"] = [dict(command="git diff --check", exit_code=0,
+                                            summary="Runtime verification exit code 0")]
+    _failure_transport_recovery_reseal(public)
+    with pytest.raises(review_transport.FailureDiagnosticError):
+        review_transport.failure_document(json.dumps(public).encode())
+
+
+@pytest.mark.parametrize("defect", ["digest", "run", "subject", "source", "evidence", "capture", "annotation_capture"])
+def test_protected_incomplete_annotations_do_not_bypass_reference_roles_or_source_binding(defect):
+    from aios_renew.verification_contract import verification_digest
+
+    _, private, _ = _failure_transport_recovery_fixture(nodes=1, failures=1)
+    error = private["error"]
+    error.pop("native_diagnostics"); error.pop("executor_diagnostics")
+    error["message"] = "Protected Runtime diagnostics remain local."
+    reference = error["verification"][0]["verification"]
+    for report in reference["candidate"]["reports"]:
+        for key in ("captured_output", "detail", "fingerprint"):
+            report.pop(key, None)
+    reference["candidate_digest"] = verification_digest(reference["candidate"])
+    original = json.dumps(private).encode()
+    public_bytes = review_transport.public_failure(original)
+    public = review_transport.failure_document(public_bytes)
+    assert operator_failure_matches(private, public)
+    assert b"secret_fixture" not in public_bytes and b"C:/private" not in public_bytes
+    if defect == "digest": reference["candidate_digest"] = "0" * 64
+    elif defect == "run": reference["run_id"] = "RUN-058-999"
+    elif defect == "subject": reference["binding"]["subject_sha"] = "0" * 40
+    elif defect == "source": reference["raw_digest"] = "0" * 64
+    elif defect == "evidence": reference["attribution"][0]["evidence_id"] = "FORGED"
+    elif defect == "annotation_capture": reference["attribution"][0]["stdout"] = "secret_fixture"
+    else:
+        reference["candidate"]["reports"][0]["captured_output"] = "secret_fixture"
+        reference["candidate_digest"] = verification_digest(reference["candidate"])
+    if defect not in {"source", "capture", "annotation_capture"}:
+        with pytest.raises(review_transport.FailureDiagnosticError):
+            review_transport.failure_document(json.dumps(private).encode())
+    elif defect in {"capture", "annotation_capture"}:
+        with pytest.raises(ReviewTransportError, match="private captured output"):
+            review_transport.failure_document(json.dumps(private).encode())
+    assert not operator_failure_matches(private, public)
+
+
 @pytest.mark.parametrize("defect", ["detail", "category", "capture", "exit", "digest"])
 def test_typed_public_failure_rejects_tampering_and_secret_fields(defect):
     _, private = _native_failure_fixture()

@@ -324,6 +324,38 @@ def _reference_bytes(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
 
 
+@pytest.mark.parametrize("workspace", ["bounded-away", "protected-runtime-workspace"])
+def test_historical_predecessor_without_diagnostics_requires_exact_correction_content(workspace):
+    from aios_renew.review_transport import failure_context
+    from tests.test_review_transport import _native_failure_fixture
+
+    _, predecessor = _native_failure_fixture()
+    predecessor.pop("error")
+    original = _reference_bytes(predecessor)
+    assert unified_state_module._validated_private_public_view(predecessor, "METADATA") == predecessor
+    assert failure_context(predecessor) is None
+    assert unified_state_module._matches_canonical_failure(
+        deepcopy(predecessor), predecessor, canonical_workspace=workspace)
+    for key, replacement in (("run_id", "RUN-358-999"), ("failed_head_sha", "0" * 40),
+                             ("task", dict(id="TASK-358", revision=2)),
+                             ("error", dict(type="RuntimeError", message="invented diagnostics"))):
+        forged = dict(predecessor, **{key: replacement})
+        assert not unified_state_module._matches_canonical_failure(
+            forged, predecessor, canonical_workspace=workspace)
+    assert _reference_bytes(predecessor) == original
+
+
+@pytest.mark.parametrize("error", [None, [], {}, {"message": "private"}, {"type": "RuntimeError"},
+                                   {"type": "RuntimeError", "message": "private", "exit_code": True}])
+def test_historical_predecessor_present_malformed_diagnostics_are_not_absence(error):
+    from tests.test_review_transport import _native_failure_fixture
+
+    _, predecessor = _native_failure_fixture()
+    predecessor["error"] = error
+    with pytest.raises(ValueError):
+        unified_state_module._validated_private_public_view(predecessor, "METADATA")
+
+
 def test_failure_transport_recovery_local_sidecar_and_canonical_projection(tmp_path, monkeypatch):
     from aios_renew.review_transport import public_failure, public_run
     from tests.test_review_transport import _failure_transport_recovery_fixture
@@ -4111,7 +4143,8 @@ prior_finding_id: F1
     }
     repair_rem_execution = {
         "failed_run_id": remediation_id,
-        "root_base_sha": int_result.integration_candidate_sha,
+        "root_base_sha": topo["head"],
+        "result_base_sha": int_result.integration_candidate_sha,
         "failed_head_sha": int_result.integration_candidate_sha,
         "failure": json.loads(failed_rem_terminal.terminal),
         "task": {"task_id": "TASK-101", "revision": 1},
@@ -4148,6 +4181,17 @@ prior_finding_id: F1
         new_main, lifecycle_repaired_rem.terminals, topo["base_reviews"],
         lifecycle_repaired_rem.remediation_selectors, (), (),
     )
+    # Integration changes the result attribution base, not the semantic TASK
+    # root. The formerly conflated synthetic predecessor remains inadmissible.
+    forged_execution = dict(repair_rem_execution, root_base_sha=int_result.integration_candidate_sha)
+    forged_terminal = replace(unreviewed_repair.terminals[-1],
+                              correction=json.dumps(forged_execution).encode())
+    forged_lifecycle = replace(unreviewed_repair,
+                               terminals=unreviewed_repair.terminals[:-1] + (forged_terminal,))
+    _stub_unified_remote(monkeypatch, repo, forged_lifecycle)
+    forged = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (forged["lifecycle_state"], forged["next_action"]) == ("BLOCKED", "NONE")
+    assert forged["blocker"] == {"code": "MALFORMED_CANONICAL_STATE"}
     _stub_unified_remote(monkeypatch, repo, unreviewed_repair)
     scope = observe_semantic_review_scope("TASK-101", repo=repo)
     assert scope["review_mode"] == "DELTA"

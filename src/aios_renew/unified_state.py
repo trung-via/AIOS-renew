@@ -602,7 +602,10 @@ def _validated_private_public_view(
             if owner is None:
                 raise ValueError("full EVIDENCE has no structural owner")
             evidence(data, owner)
-        if data.get("kind") == "FAILURE":
+        # Early historical predecessors may have no diagnostics at all. Their
+        # immutable identity/candidate still binds the correction; absence must
+        # not manufacture an error, an observation or proof.
+        if data.get("kind") == "FAILURE" and "error" in data:
             error = data.get("error")
             if not isinstance(error, dict) or not isinstance(error.get("message"), str):
                 raise ValueError("invalid private FAILURE diagnostics")

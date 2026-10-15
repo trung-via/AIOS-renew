@@ -131,7 +131,7 @@ def _safe_failure_diagnostic(data: Mapping[str, Any]) -> dict[str, Any]:
                     break
     elif data["phase"] == "VERIFICATION":
         failed = [item for item in error.get("verification", []) if item["exit_code"] != 0]
-        category, source = "VERIFICATION_COMMAND_FAILED", "VERIFICATION_EXIT"
+        category, source = "VERIFICATION_COMMAND_FAILED", "VERIFICATION_EXIT" if failed else "UNAVAILABLE"
         if failed:
             command = failed[0]["command"]
             if re.match(r"^python(?:3)? -m pytest(?: |$)", command) or command == "python scripts/aios_parallel_full_suite.py":
@@ -204,7 +204,7 @@ def _validate_failure_diagnostic(data: Mapping[str, Any]) -> None:
 
 
 def failure_context(data: Mapping[str, Any], *, artifact_sha: str | None = None,
-                    candidate_available: bool | None = None) -> dict[str, Any]:
+                    candidate_available: bool | None = None) -> dict[str, Any] | None:
     """Useful portable facts from an already source-bound terminal, never proof.
 
     Callers bind the RUN/TASK and immutable artifact before invoking this pure
@@ -217,6 +217,13 @@ def failure_context(data: Mapping[str, Any], *, artifact_sha: str | None = None,
     if "public_projection" in data:
         validate_public_failure(data)
         public = dict(data)
+    elif not {"error", "phase"} <= data.keys():
+        # Older canonical predecessors need not contain a diagnostic source.
+        # Validate present roles, but do not invent a phase, cause or projection
+        # identity merely to enrich the existing FAILURE lifecycle fact.
+        from .unified_state import _validated_private_public_view
+        _validated_private_public_view(data, "METADATA")
+        return None
     else:
         public = _project_failure(data)
     error = public["error"]
@@ -823,7 +830,10 @@ def validate_public_failure(data: Mapping[str, Any]) -> None:
                 or not _is_digest(item["record_digest"])):
             raise ValueError("invalid public FAILURE evidence identity binding")
         seen.add(item["evidence_id"])
-    if data["phase"] == "VERIFICATION" and not any(
+    # Historical verification failures can lack outcomes. An empty population
+    # conveys unavailable diagnostics, never a successful command or PASS proof.
+    # A recorded population must still contain an actual nonzero outcome.
+    if data["phase"] == "VERIFICATION" and error["verification"] and not any(
         isinstance(item, dict) and type(item.get("exit_code")) is int and item["exit_code"] != 0
         for item in error["verification"]
     ):
@@ -891,12 +901,30 @@ def failure_document(content: bytes) -> Mapping[str, Any]:
         raise FailureDiagnosticError("FAILURE_KIND_INVALID")
     error = data.get("error")
     if isinstance(error, dict) and error.get("message") == "Protected Runtime diagnostics remain local.":
+        outcomes = error.get("verification", [])
+        historical_references = [item["verification"] for item in outcomes
+            if isinstance(item, dict) and isinstance(item.get("verification"), dict)
+            and item["verification"].get("policy") == "minimum-sufficient-v2"
+            and isinstance(item["verification"].get("candidate"), dict)
+            and item["verification"]["candidate"].get("complete") is False
+        ] if isinstance(outcomes, list) else []
+        historical_annotations = {id(annotation) for ref in historical_references
+            if isinstance(ref.get("attribution"), list) for annotation in ref["attribution"]
+            if isinstance(annotation, dict) and isinstance(annotation.get("detail"), str)}
+
         def captured(value: Any) -> bool:
             if isinstance(value, list):
                 return any(captured(item) for item in value)
+            # Authenticated incomplete historical references retain private
+            # attribution annotations. They are not report detail or public
+            # diagnostics, and the projection binds them only by source digest.
+            # The role-aware validator below still checks their entire contents.
+            forbidden = {"captured_output", "stdout", "stderr", "traceback", "longrepr",
+                         "native_diagnostics", "executor_diagnostics", "detail"}
+            if id(value) in historical_annotations:
+                forbidden.remove("detail")
             return isinstance(value, dict) and (
-                bool(set(value) & {"captured_output", "stdout", "stderr", "traceback", "longrepr",
-                                   "native_diagnostics", "executor_diagnostics", "detail"})
+                bool(set(value) & forbidden)
                 or any(captured(item) for item in value.values()))
 
         if "public_projection" not in data and captured(data):
