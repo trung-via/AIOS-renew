@@ -1,0 +1,81 @@
+task_id: TASK-356
+revision: 1
+goal: "Restore existing minimum-sufficient-v1 direct authored-command verification as the sole prospective default for new TASK identities/revisions, retiring V2 candidate-only/baseline-attribution/collection gating from new work without weakening Runtime raw nonzero failure semantics or altering historical V2 artifacts."
+problem: "The current default minimum-sufficient-v2 adds candidate/base collection, phase attribution and V2-specific early/final gates to ordinary focused verification. During TASK-355 r4 and r5 efforts, these produced repeated blocking and private FAILURE transport difficulties. Human explicitly prioritizes removing the prospective V2 gate and requires TASK-356 to use only minimum-sufficient targeted tests with no full-suite command. The repository already implements minimum-sufficient-v1 direct execution and accepts legacy V1 schema, so a new verification engine or policy is unnecessary."
+assumptions:
+- "Fresh canonical main 6e208053bc8aaed26f30a6b89ca61f3fae6b73cb, TASK-355 r5 at that main, and no existing TASK-356. Runtime must recheck the canonical main identity and exact expected-main CAS at ingress."
+- "Human explicitly approved a new TASK-356 for prospective V2 gate retirement, requires minimal targeted tests and expressly forbids a full-suite verification command in this TASK. This current priority prospectively preempts ordinary roadmap bookmark sequencing without granting automatic roadmap mutation."
+- "The current authoring policy CURRENT_VERIFICATION_POLICY is minimum-sufficient-v2; therefore this bootstrap TASK-356 itself uses minimum-sufficient-v2 under the still-published Runtime. Switching new TASK default to existing minimum-sufficient-v1 takes effect only after TASK-356 Runtime RESULT, independent Reviewer PASS and Publisher publication."
+- "Existing minimum-sufficient-v1 already executes only TASK verification.required commands in authored order via Runtime execute_verification and requires raw exit_code 0 for success; failure, interruption, invalid command and missing evidence cannot be reported as PASS."
+- "Historical TASK/RUN verification policies and exact minimum-sufficient-v2 records remain readable and preserve original decisions and immutable raw evidence. Switching the prospective default does not reinterpret or reopen any prior V2 failure."
+- "TASK-355 r5 remains minimum-sufficient-v2 and must not be silently converted, rerun or published. A later explicit TASK-355 revision plus separately admitted PRIMARY is necessary if Human elects to use the V1 default for that objective."
+- "Brain semantic audit profile is aios-adaptive-brain-audit-v1 version 1 digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718, distinct from Runtime minimum-sufficient-v1/V2 verification policy."
+- "Native Executor selection and model/effort are not set by this TASK; a separately admitted Executor owns implementation and HOW. No automatic dispatch, correction, publication or downstream pin adoption follows from authoring."
+scope:
+  inspect:
+  - "src/aios_renew/verification_contract.py"
+  - "src/aios_renew/verification.py"
+  - "src/aios_renew/runtime.py"
+  - "src/aios_renew/task.py"
+  - "src/aios_renew/artifacts.py"
+  - "src/aios_renew/authoring_ingress.py"
+  - "src/aios_renew/review_transport.py"
+  - "src/aios_renew/operator.py"
+  - "docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md"
+  - "docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md"
+  - ".ai/tasks/TASK-355.yaml"
+  modify:
+  - "src/aios_renew/verification_contract.py"
+  - "tests/test_verification_contract.py"
+  - "tests/test_authoring_ingress.py"
+  - "tests/test_runtime.py"
+  - "tests/test_artifacts.py"
+  - "tests/test_verification.py"
+  - "tests/test_task.py"
+  - "docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md"
+  - "docs/CHATGPT_PROJECT_CONTRACT.md"
+non_goals:
+- "No new V3 policy, verification engine, proof layer, test dependency graph, classification system, planner, retry/failover manager or extra lifecycle gate."
+- "No bypass of Runtime, no converting any nonzero test result or malformed/absent proof into PASS, and no suppressing actual failing tests."
+- "No deletion, mutation, reclassification, republication or retroactive migration of historical V2 TASK/RUN/FAILURE/RESULT/REVIEW evidence."
+- "No implicit full-suite testing, hidden fallback suite, parallel suite, default twelve-worker full-run, or verification commands not authored in TASK-356 verification.required."
+- "No authoring or execution of TASK-355 r6, no retry of TASK-355 or dispatch of TASK-356, no new downstream pin, no roadmap auto-advance."
+- "No change to frozen Kernel, KA-01 opt-in semantic proof design, Human/Brain/Executor/Runtime/Reviewer/Publisher authority or user security/trust policy."
+constraints:
+  hard:
+  - "Prefer reactivation of the existing minimum-sufficient-v1 direct verification path rather than implementing a new policy or removing historical V2 schema/decoder/validator compatibility."
+  - "After reviewed Publisher activation, new TASK identities and revisions must require explicit verification.policy minimum-sufficient-v1. Existing same-revision replay remains exact and non-mutating; historical V2 identities retain their original policy and binding."
+  - "The bootstrap TASK-356 is still minimum-sufficient-v2 under current published ingress. Do not preactivate the new default, monkeypatch local Runtime admission, change Task356 source after admission or claim it bypasses V2."
+  - "For prospective V1 tasks, Runtime runs only the exact nonempty ordered authored verification.required command list in an isolated exact candidate subject, using existing capture of immutable raw evidence and ordinary stop-on-nonzero. No baseline/candidate collection, attribution, candidate-only delta, implicit additional suite or invented reuse."
+  - "Runtime preserves authoritative verification and transport; nonzero, malformed, missing, interrupted or conflicting evidence fails closed, and Reviewer retains semantic acceptance authority. Never convert a pre-existing failing command into allowed PASS merely because attribution is retired."
+  - "Preserve all primary, remediation and repair execution boundaries and required correction/affected verification semantics, and reject any missing required command evidence; don't create alternative success path."
+  - "Keep V2 historical decoding, exact fingerprint/provenance validation, review/publication compatibility and already admitted RUN policies unchanged; preserve raw private evidence without widening public access."
+  - "Update the two current authoring governance documents prospectively to distinguish the new V1 default from the historical TASK-317 V2 rule. Do not edit frozen Kernel or historical KA-01 amendment to rewrite history."
+  - "For TASK-356 only, use exactly the four focused required verification commands below: no repository full-suite and no automatic post-targeted suite. Coverage applies only to selected files/tests, not a claim of full-repository regression proof."
+  - "Changes are limited to scope.modify and must cover positive/negative policy admission, exact ordering/no-extra tests, raw nonzero failure, V2 backwards compatibility, and no false-PASS or full-suite default."
+  - "If existing V1 code does not actually satisfy a material requirement without changing outside scope, return an explicit unresolved scope blocker rather than silently enlarging scope."
+  - "Don't push implementation as Executor; Publisher alone publishes the exact eligible reviewed source candidate."
+acceptance:
+- id: AC1
+  condition: "The published kernel source makes the existing minimum-sufficient-v1 policy the one explicit required default for newly authored TASK identities and revisions, while keeping old V1/V2 policy identities valid in their historical contexts."
+- id: AC2
+  condition: "The existing direct Runtime verification path for the prospective V1 policy executes exactly the authored nonempty ordered verification.required commands and introduces no V2 candidate-only, base-collection, comparison, attributed-success or implicit full-suite work."
+- id: AC3
+  condition: "Raw exit 0 remains necessary for each exact required command to count as successful; nonzero/interrupt/missing/invalid evidence stays blocking for PRIMARY, REMEDIATION and REPAIR without a baseline-based nonzero waiver or fictitious PASS."
+- id: AC4
+  condition: "Current TASK ingress rejects a newly authored V2 policy once the new default activates, while identical historical replay and already admitted or historical V2 TASK/RUN/FAILURE/RESULT/REVIEW decoding remain unchanged."
+- id: AC5
+  condition: "Focused regression coverage proves V1 direct success/failure, no implicit extra work, prospective admission policy, historical V2 compatibility, and preservation of strict evidence/source identity with existing verification and transport boundaries."
+- id: AC6
+  condition: "The current Project Contract and Brain TASK Authoring Contract describe the precise prospective V1 default and historical V2 compatibility without changing frozen Kernel, KA-01, publication roles or Executor authority."
+- id: AC7
+  condition: "TASK-356 implementation stays within scope.modify and requires no full-suite verification, no new Runtime authority/service and no change to TASK-355 r5 or its immutable previous RUN/FAILURE evidence."
+verification:
+  policy: minimum-sufficient-v2
+  required:
+  - "python -m pytest -q tests/test_verification_contract.py tests/test_task.py"
+  - "python -m pytest -q tests/test_runtime.py tests/test_artifacts.py"
+  - "python -m pytest -q tests/test_authoring_ingress.py -k author_task"
+  - "python -m pytest -q tests/test_verification.py -k nonzero"
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
