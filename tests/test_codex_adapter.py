@@ -20,7 +20,10 @@ from aios_renew import (
     parse_review,
     parse_task,
 )
-from aios_renew.dispatcher import NativeExecutionPolicy
+from aios_renew.dispatcher import (
+    NativeExecutionPolicy,
+    resolve_native_execution_policy,
+)
 from aios_renew.review import RemediationExecution
 from aios_renew.codex_adapter import (
     FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH,
@@ -198,30 +201,51 @@ def test_codex_timeout_is_terminal_to_one_native_invocation() -> None:
         calls.append((command, kwargs))
         raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
-    adapter = CodexAdapter(runner=runner)
-    with pytest.raises(CodexExecutionError, match="60-minute"):
+    adapter = CodexAdapter(
+        runner=runner,
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
+    )
+    with pytest.raises(CodexExecutionError, match="180-minute") as captured:
         adapter.execute(task=task, run=run)
 
     assert len(calls) == 1
-    assert calls[0][1]["timeout"] == 65 * 60
+    assert calls[0][1]["timeout"] == 185 * 60
+    assert captured.value.exit_code is None
+    assert captured.value.stdout is None
+    assert captured.value.stderr is None
+    assert isinstance(captured.value.__cause__, subprocess.TimeoutExpired)
 
 
-def test_codex_timeout_preserves_process_supplied_partial_output() -> None:
+@pytest.mark.parametrize(
+    ("stdout", "stderr"),
+    [
+        (b"partial native progress\xff", b"provider deadline\xfe"),
+        ("partial native progress", "provider deadline"),
+        (None, None),
+    ],
+)
+def test_codex_timeout_preserves_process_supplied_partial_output(
+    stdout, stderr,
+) -> None:
     task, run, _, _ = make_execution()
 
     def runner(command, **kwargs):
         raise subprocess.TimeoutExpired(
             command,
             kwargs["timeout"],
-            output=b"partial native progress",
-            stderr=b"provider deadline",
+            output=stdout,
+            stderr=stderr,
         )
 
-    with pytest.raises(CodexExecutionError) as captured:
-        CodexAdapter(runner=runner).execute(task=task, run=run)
+    with pytest.raises(CodexExecutionError, match="180-minute") as captured:
+        CodexAdapter(
+            runner=runner,
+            execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
+        ).execute(task=task, run=run)
 
-    assert captured.value.stdout == b"partial native progress"
-    assert captured.value.stderr == b"provider deadline"
+    assert captured.value.stdout is stdout
+    assert captured.value.stderr is stderr
+    assert captured.value.exit_code is None
 
 
 def test_codex_early_native_return_is_accepted_immediately() -> None:
@@ -237,11 +261,14 @@ def test_codex_early_native_return_is_accepted_immediately() -> None:
             stderr="",
         )
 
-    package = CodexAdapter(runner=runner).execute(task=task, run=run)
+    package = CodexAdapter(
+        runner=runner,
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
+    ).execute(task=task, run=run)
 
     assert package.result.head_sha == "def456"
     assert len(calls) == 1
-    assert calls[0][1]["timeout"] == 65 * 60
+    assert calls[0][1]["timeout"] == 185 * 60
 
 
 def test_utf8_output_outside_cp1252_is_preserved() -> None:

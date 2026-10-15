@@ -22,7 +22,10 @@ from aios_renew import (
     parse_review,
 )
 from aios_renew.review import RemediationExecution
-from aios_renew.dispatcher import NativeExecutionPolicy
+from aios_renew.dispatcher import (
+    NativeExecutionPolicy,
+    resolve_native_execution_policy,
+)
 from aios_renew.antigravity_adapter import (
     FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH,
     AIOS_ANTIGRAVITY_ACTIVE_ENV,
@@ -441,8 +444,8 @@ def test_native_adapter_owns_read_only_command_handoff_and_envelope(
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
     assert command[command.index("--json-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
-    assert command[command.index("--print-timeout") + 1] == "60m"
-    assert kwargs["timeout"] == 65 * 60
+    assert command[command.index("--print-timeout") + 1] == "180m"
+    assert kwargs["timeout"] == 185 * 60
     handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
     assert "verification" not in handoff["task"]
     assert "Runtime is the canonical verification owner" in command[2]
@@ -788,16 +791,27 @@ def test_native_antigravity_timeout_is_terminal_to_one_invocation(
         runner=runner,
         repo=tmp_path,
         handoff_path=tmp_path / "handoff.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
     )
-    with pytest.raises(AntigravityExecutionError, match="60-minute"):
+    with pytest.raises(AntigravityExecutionError, match="180-minute") as captured:
         adapter.execute(task=task, run=run)
 
     assert len(calls) == 1
-    assert calls[0][1]["timeout"] == 65 * 60
+    assert calls[0][1]["timeout"] == 185 * 60
+    assert getattr(captured.value, "exit_code", None) is None
+    assert isinstance(captured.value.__cause__, subprocess.TimeoutExpired)
 
 
+@pytest.mark.parametrize(
+    ("stdout", "stderr"),
+    [
+        (b"partial native progress\xff", b"provider deadline\xfe"),
+        ("partial native progress", "provider deadline"),
+        (None, None),
+    ],
+)
 def test_native_antigravity_timeout_preserves_process_supplied_partial_output(
-    tmp_path: Path,
+    tmp_path: Path, stdout, stderr,
 ) -> None:
     task, run, _, _ = make_execution()
 
@@ -805,20 +819,22 @@ def test_native_antigravity_timeout_preserves_process_supplied_partial_output(
         raise subprocess.TimeoutExpired(
             command,
             kwargs["timeout"],
-            output=b"partial native progress",
-            stderr=b"provider deadline",
+            output=stdout,
+            stderr=stderr,
         )
 
     adapter = AntigravityAdapter(
         runner=runner,
         repo=tmp_path,
         handoff_path=tmp_path / "handoff.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
     )
-    with pytest.raises(AntigravityExecutionError) as captured:
+    with pytest.raises(AntigravityExecutionError, match="180-minute") as captured:
         adapter.execute(task=task, run=run)
 
-    assert captured.value.stdout == b"partial native progress"
-    assert captured.value.stderr == b"provider deadline"
+    assert captured.value.stdout is stdout
+    assert captured.value.stderr is stderr
+    assert getattr(captured.value, "exit_code", None) is None
 
 
 def test_antigravity_early_native_return_is_accepted_immediately(
@@ -849,13 +865,14 @@ def test_antigravity_early_native_return_is_accepted_immediately(
         runner=runner,
         repo=tmp_path,
         handoff_path=tmp_path / "handoff.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
     ).execute(task=task, run=run)
 
     assert package.result.head_sha == "def456"
     assert len(calls) == 1
     command, kwargs = calls[0]
-    assert command[command.index("--print-timeout") + 1] == "60m"
-    assert kwargs["timeout"] == 65 * 60
+    assert command[command.index("--print-timeout") + 1] == "180m"
+    assert kwargs["timeout"] == 185 * 60
 
 
 def test_antigravity_command_deterministic_model_and_effort_across_operations(

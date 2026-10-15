@@ -1,13 +1,21 @@
 import inspect
-from collections.abc import Mapping
-from dataclasses import fields
+import json
+import subprocess
+import time
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from aios_renew.antigravity_minimax_adapter import AntigravityMinimaxAdapter
+from aios_renew.antigravity_adapter import AntigravityExecutionError
+from aios_renew.antigravity_minimax_adapter import (
+    AntigravityMinimaxAdapter,
+    AntigravityMinimaxExecutionError,
+)
 from aios_renew.artifacts import Claim, Result, ResultPackage
+from aios_renew.codex_adapter import CodexExecutionError
 from aios_renew.dispatcher import (
     Dispatcher,
     DispatcherError,
@@ -17,6 +25,7 @@ from aios_renew.dispatcher import (
     repair_dispatcher,
     resolve_native_execution_policy,
 )
+from aios_renew.execution_profile import ResolvedExecutionProfile
 from aios_renew.review import Finding, Remediation, RemediationExecution
 from aios_renew.run import Run, RunLeaseRegistry
 from aios_renew.task import Task, parse_task
@@ -251,8 +260,14 @@ def test_execution_policy_is_provider_neutral_and_bounded(
         "response_budget_minutes",
         "process_watchdog_seconds",
     }
-    assert policy.response_budget_minutes == 60
-    assert policy.process_watchdog_seconds == 65 * 60
+    assert policy.response_budget_minutes == 180
+    assert policy.process_watchdog_seconds == 185 * 60
+    assert (
+        policy.process_watchdog_seconds - policy.response_budget_minutes * 60
+    ) == 5 * 60
+    assert set(inspect.signature(resolve_native_execution_policy).parameters) == {
+        "authorizes_mutation"
+    }
 
 
 def test_dispatcher_factory_surface_exposes_only_provider_neutral_policy() -> None:
@@ -268,6 +283,249 @@ def test_dispatcher_factory_surface_exposes_only_provider_neutral_policy() -> No
     assert "execution_policy" in signatures
     for provider_native_field in ("sandbox", "mode", "permission", "command"):
         assert provider_native_field not in signatures.lower()
+
+
+@pytest.fixture(params=["codex", "antigravity", "antigravity-minimax"])
+def native_executor(request: pytest.FixtureRequest) -> str:
+    return request.param
+
+
+@pytest.fixture(
+    params=[
+        (primary_dispatcher, "PRIMARY"),
+        (remediation_dispatcher, "REMEDIATION"),
+        (repair_dispatcher, "REPAIR"),
+    ],
+    ids=["PRIMARY", "REMEDIATION", "REPAIR"],
+)
+def native_operation(request: pytest.FixtureRequest) -> tuple[Any, str]:
+    return request.param
+
+
+def native_invocation(
+    *,
+    selected: str,
+    operation: str,
+    factory: Any,
+    repo: Path,
+    runner: Callable[..., Any],
+    authorizes_mutation: bool = True,
+) -> Callable[[], ResultPackage]:
+    task, run = execution(selected)
+    policy = resolve_native_execution_policy(
+        authorizes_mutation=authorizes_mutation
+    )
+    profile = (
+        ResolvedExecutionProfile(
+            run_id=run.run_id,
+            executor=selected,
+            model="test/native-budget-model",
+            reasoning_effort="high",
+            model_source="EXPLICIT",
+            effort_source="EXPLICIT",
+        )
+        if selected != "antigravity-minimax"
+        else None
+    )
+    dispatcher = factory(
+        selected_executor=selected,
+        repo=repo,
+        handoff_path=repo / "handoff.json",
+        execution_policy=policy,
+        native_runner=runner,
+        execution_profile=profile,
+    )
+    leases = RunLeaseRegistry()
+    lease = leases.acquire(run)
+    remediation = RemediationExecution(
+        review_id="REVIEW-051-001",
+        finding=Finding(
+            id="F1",
+            basis="AC1",
+            action="CODE_FIX",
+            location="src/aios_renew/dispatcher.py",
+            issue="Boundary missing.",
+            expected="Add boundary.",
+        ),
+        remediation=Remediation(
+            finding_id="F1",
+            action="CODE_FIX",
+            reviewed_sha=run.base_sha,
+            modification_scope=("src/aios_renew/dispatcher.py",),
+        ),
+        run=run,
+    )
+
+    def invoke() -> ResultPackage:
+        if operation == "PRIMARY":
+            return dispatcher.dispatch_primary(
+                task=task, run=run, lease=lease, leases=leases
+            )
+        if operation == "REMEDIATION":
+            return dispatcher.dispatch_remediation(execution=remediation)
+        return dispatcher.dispatch_repair(
+            execution={
+                "run": run,
+                "failed_run_id": "RUN-051-002",
+                "repair": {"action": "CODE_FIX"},
+            }
+        )
+
+    return invoke
+
+
+@pytest.mark.parametrize("authorizes_mutation", [True, False])
+def test_native_policy_propagates_and_early_completion_does_not_wait_or_redispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    native_executor: str,
+    native_operation: tuple[Any, str],
+    authorizes_mutation: bool,
+) -> None:
+    factory, operation = native_operation
+    payload = asdict(structural_package())
+    if native_executor == "antigravity":
+        output = {"status": "SUCCESS", "structured_output": payload}
+    elif native_executor == "antigravity-minimax":
+        output = {
+            "schema_version": "agym.result.v1",
+            "status": "PASS",
+            "exit_code": 0,
+            "state_guard": "PASS",
+            "workspace": str(tmp_path),
+            "head_before": "abc123",
+            "head_after": "def456",
+            "response": json.dumps(payload),
+        }
+    else:
+        output = payload
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command, 0, json.dumps(output).encode("utf-8"), b""
+        )
+
+    def unexpected_wait(*args, **kwargs):
+        pytest.fail("An early native response must not wait for its deadline")
+
+    monkeypatch.setattr(time, "sleep", unexpected_wait)
+    invoke = native_invocation(
+        selected=native_executor,
+        operation=operation,
+        factory=factory,
+        repo=tmp_path,
+        runner=runner,
+        authorizes_mutation=authorizes_mutation,
+    )
+
+    assert invoke() == structural_package()
+    with pytest.raises(DispatcherError, match="already dispatched"):
+        invoke()
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert kwargs["timeout"] == 185 * 60
+    assert kwargs["capture_output"] is True
+    assert kwargs["text"] is False
+    assert kwargs["check"] is False
+    if native_executor == "codex":
+        assert command[0] == "codex"
+        assert command[command.index("-m") + 1] == "test/native-budget-model"
+        assert 'model_reasoning_effort="high"' in command
+        assert command[command.index("--sandbox") + 1] == (
+            "danger-full-access" if authorizes_mutation else "read-only"
+        )
+    elif native_executor == "antigravity":
+        assert command[0] == "agy"
+        assert command[command.index("--print-timeout") + 1] == "180m"
+        assert command[command.index("--model") + 1] == "test/native-budget-model"
+        assert command[command.index("--effort") + 1] == "high"
+        assert ("--mode" in command) is authorizes_mutation
+        if authorizes_mutation:
+            assert command[command.index("--mode") + 1] == "accept-edits"
+        assert "--dangerously-skip-permissions" not in command
+    else:
+        assert command[command.index("--operation") + 1] == operation
+        assert command[command.index("--response-timeout") + 1] == "10800"
+        assert command[command.index("--timeout") + 1] == "11100"
+        assert command[command.index("--model") + 1] == "MiniMax-M3"
+        assert ("--allow-commit" in command) is authorizes_mutation
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    ["timeout", "missing-executable", "nonzero", "unknown-exit", "malformed"],
+)
+def test_native_deadline_and_errors_are_terminal_with_original_diagnostics(
+    tmp_path: Path,
+    native_executor: str,
+    native_operation: tuple[Any, str],
+    outcome: str,
+) -> None:
+    factory, operation = native_operation
+    calls = []
+    partial_stdout = b"partial native progress\xff"
+    partial_stderr = b"provider diagnostic\xfe"
+    native_failure = None
+
+    def runner(command, **kwargs):
+        nonlocal native_failure
+        calls.append((command, kwargs))
+        if outcome == "timeout":
+            native_failure = subprocess.TimeoutExpired(
+                command,
+                kwargs["timeout"],
+                output=partial_stdout,
+                stderr=partial_stderr,
+            )
+            raise native_failure
+        if outcome == "missing-executable":
+            native_failure = FileNotFoundError("synthetic missing native executable")
+            raise native_failure
+        return subprocess.CompletedProcess(
+            command,
+            None if outcome == "unknown-exit" else 7 if outcome == "nonzero" else 0,
+            b"partial native progress" if outcome != "malformed" else b"not-json",
+            b"provider diagnostic",
+        )
+
+    invoke = native_invocation(
+        selected=native_executor,
+        operation=operation,
+        factory=factory,
+        repo=tmp_path,
+        runner=runner,
+    )
+    error_type = {
+        "codex": CodexExecutionError,
+        "antigravity": AntigravityExecutionError,
+        "antigravity-minimax": AntigravityMinimaxExecutionError,
+    }[native_executor]
+
+    with pytest.raises(error_type) as captured:
+        invoke()
+    error = captured.value
+    if outcome == "timeout":
+        assert "180-minute native response deadline" in str(error)
+        assert error.__cause__ is native_failure
+        assert error.stdout is partial_stdout
+        assert error.stderr is partial_stderr
+        assert getattr(error, "exit_code", None) is None
+    elif outcome == "missing-executable":
+        assert error.__cause__ is native_failure
+        assert getattr(error, "exit_code", None) is None
+    elif outcome in ("nonzero", "unknown-exit"):
+        assert error.stdout == "partial native progress"
+        assert error.stderr == "provider diagnostic"
+        if native_executor == "codex":
+            assert error.exit_code == (7 if outcome == "nonzero" else None)
+        if outcome == "unknown-exit":
+            assert getattr(error, "exit_code", None) is None
+    with pytest.raises(DispatcherError, match="already dispatched"):
+        invoke()
+    assert len(calls) == 1
+    assert calls[0][1]["timeout"] == 185 * 60
 
 
 @pytest.mark.parametrize(

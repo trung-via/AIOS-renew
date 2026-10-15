@@ -38,7 +38,10 @@ from aios_renew.antigravity_minimax_adapter import (
     select_agym_launcher,
 )
 from aios_renew.artifacts import Claim, Result
-from aios_renew.dispatcher import NativeExecutionPolicy
+from aios_renew.dispatcher import (
+    NativeExecutionPolicy,
+    resolve_native_execution_policy,
+)
 from aios_renew.review import Finding, Remediation, RemediationExecution
 from aios_renew.task import Task
 
@@ -240,8 +243,8 @@ def test_command_contract_primary_flags_and_no_credentials(tmp_path: Path) -> No
     assert cmd[cmd.index("--model") + 1] == ANTIGRAVITY_MINIMAX_DEFAULT_MODEL
     assert cmd[cmd.index("--expected-head") + 1] == "abc123"
     assert "--allow-commit" in cmd
-    assert cmd[cmd.index("--response-timeout") + 1] == "3600"
-    assert cmd[cmd.index("--timeout") + 1] == str(65 * 60)
+    assert cmd[cmd.index("--response-timeout") + 1] == "10800"
+    assert cmd[cmd.index("--timeout") + 1] == str(185 * 60)
 
     # Prove no MiniMax credentials or provider URLs in arguments
     joined = " ".join(cmd)
@@ -373,7 +376,7 @@ def test_native_invocation_writes_handoff_excluding_verification(
 
     assert len(calls) == 1
     assert calls[0][1]["cwd"] == str(repo)
-    assert calls[0][1]["timeout"] == 65 * 60
+    assert calls[0][1]["timeout"] == 185 * 60
 
     # Verify handoff file was written without Runtime verification
     handoff_content = json.loads(handoff_path.read_text(encoding="utf-8"))
@@ -630,28 +633,45 @@ def test_negative_missing_executable(tmp_path: Path) -> None:
         adapter.execute(task=task, run=run)
 
 
-def test_negative_watchdog_timeout(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("stdout", "stderr"),
+    [
+        (b"partial native progress\xff", b"provider deadline\xfe"),
+        ("partial native progress", "provider deadline"),
+        (None, None),
+    ],
+)
+def test_negative_watchdog_timeout(tmp_path: Path, stdout, stderr) -> None:
     task, run, _, _ = make_execution(workspace=str(tmp_path.resolve()))
     repo = tmp_path.resolve()
+    calls = []
 
     def runner(command, **kwargs):
+        calls.append((command, kwargs))
         raise subprocess.TimeoutExpired(
             command,
             kwargs["timeout"],
-            output=b'{"partial": true}',
-            stderr=b"timeout",
+            output=stdout,
+            stderr=stderr,
         )
 
     adapter = AntigravityMinimaxAdapter(
-        runner=runner, repo=repo, handoff_path=repo / "h.json"
+        runner=runner,
+        repo=repo,
+        handoff_path=repo / "h.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
     )
     with pytest.raises(
-        AntigravityMinimaxExecutionError, match="response deadline"
+        AntigravityMinimaxExecutionError, match="180-minute native response deadline"
     ) as exc_info:
         adapter.execute(task=task, run=run)
 
-    assert exc_info.value.stdout == b'{"partial": true}'
-    assert exc_info.value.stderr == b"timeout"
+    assert len(calls) == 1
+    assert calls[0][1]["timeout"] == 185 * 60
+    assert exc_info.value.stdout is stdout
+    assert exc_info.value.stderr is stderr
+    assert getattr(exc_info.value, "exit_code", None) is None
+    assert isinstance(exc_info.value.__cause__, subprocess.TimeoutExpired)
 
 
 def test_negative_nonzero_process_exit(tmp_path: Path) -> None:
@@ -1017,7 +1037,11 @@ def test_negative_zero_exit_bare_result_package_rejected(tmp_path: Path) -> None
 
 def test_platform_aware_launcher_selection_and_command_args(tmp_path: Path) -> None:
     repo = tmp_path.resolve()
-    adapter = AntigravityMinimaxAdapter(repo=repo, handoff_path=repo / "h.json")
+    adapter = AntigravityMinimaxAdapter(
+        repo=repo,
+        handoff_path=repo / "h.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
+    )
 
     # AC1: Platform-aware launcher selection returns agym.cmd for Windows and agym for non-Windows
     assert resolve_agym_launcher("win32") == "agym.cmd"
@@ -1055,8 +1079,8 @@ def test_platform_aware_launcher_selection_and_command_args(tmp_path: Path) -> N
         RESULT_PACKAGE_SCHEMA_PATH
     )
     assert cmd_win[cmd_win.index("--model") + 1] == ANTIGRAVITY_MINIMAX_DEFAULT_MODEL
-    assert cmd_win[cmd_win.index("--response-timeout") + 1] == "3600"
-    assert cmd_win[cmd_win.index("--timeout") + 1] == str(65 * 60)
+    assert cmd_win[cmd_win.index("--response-timeout") + 1] == "10800"
+    assert cmd_win[cmd_win.index("--timeout") + 1] == str(185 * 60)
     assert "--allow-commit" in cmd_win
 
     # Custom launcher override via adapter init and command_for
@@ -1153,11 +1177,7 @@ def test_native_invocation_runner_contract_and_missing_launcher_fail_closed(
         runner=runner,
         repo=repo,
         handoff_path=repo / "h.json",
-        execution_policy=NativeExecutionPolicy(
-            authorizes_mutation=True,
-            response_budget_minutes=45,
-            process_watchdog_seconds=50 * 60,
-        ),
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
     )
 
     with pytest.raises(
@@ -1179,7 +1199,7 @@ def test_native_invocation_runner_contract_and_missing_launcher_fail_closed(
     assert kwargs["capture_output"] is True
     assert kwargs["text"] is False
     assert kwargs["check"] is False
-    assert kwargs["timeout"] == 50 * 60
+    assert kwargs["timeout"] == 185 * 60
 
 
 # ============================================================================
@@ -1355,11 +1375,7 @@ def test_task132_command_contract_single_invocation_retains_all_options_and_no_f
         runner=runner,
         repo=repo,
         handoff_path=handoff_path,
-        execution_policy=NativeExecutionPolicy(
-            authorizes_mutation=True,
-            response_budget_minutes=60,
-            process_watchdog_seconds=65 * 60,
-        ),
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
     )
     package = adapter.execute(task=task, run=run)
 
@@ -1384,8 +1400,8 @@ def test_task132_command_contract_single_invocation_retains_all_options_and_no_f
     assert cmd[cmd.index("--model") + 1] == ANTIGRAVITY_MINIMAX_DEFAULT_MODEL
     assert cmd[cmd.index("--expected-head") + 1] == run.base_sha
     assert "--allow-commit" in cmd
-    assert cmd[cmd.index("--response-timeout") + 1] == "3600"
-    assert cmd[cmd.index("--timeout") + 1] == str(65 * 60)
+    assert cmd[cmd.index("--response-timeout") + 1] == "10800"
+    assert cmd[cmd.index("--timeout") + 1] == str(185 * 60)
     assert kwargs["cwd"] == str(repo)
 
     # ResultPackage normalized properly
