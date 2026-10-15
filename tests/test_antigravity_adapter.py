@@ -441,8 +441,8 @@ def test_native_adapter_owns_read_only_command_handoff_and_envelope(
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
     assert command[command.index("--json-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
-    assert command[command.index("--print-timeout") + 1] == "60m"
-    assert kwargs["timeout"] == 65 * 60
+    assert command[command.index("--print-timeout") + 1] == "180m"
+    assert kwargs["timeout"] == 185 * 60
     handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
     assert "verification" not in handoff["task"]
     assert "Runtime is the canonical verification owner" in command[2]
@@ -789,11 +789,13 @@ def test_native_antigravity_timeout_is_terminal_to_one_invocation(
         repo=tmp_path,
         handoff_path=tmp_path / "handoff.json",
     )
-    with pytest.raises(AntigravityExecutionError, match="60-minute"):
+    with pytest.raises(AntigravityExecutionError, match="180-minute") as captured:
         adapter.execute(task=task, run=run)
 
     assert len(calls) == 1
-    assert calls[0][1]["timeout"] == 65 * 60
+    assert calls[0][1]["timeout"] == 185 * 60
+    assert captured.value.exit_code is None
+    assert "11100-second process watchdog" in str(captured.value)
 
 
 def test_native_antigravity_timeout_preserves_process_supplied_partial_output(
@@ -819,6 +821,7 @@ def test_native_antigravity_timeout_preserves_process_supplied_partial_output(
 
     assert captured.value.stdout == b"partial native progress"
     assert captured.value.stderr == b"provider deadline"
+    assert captured.value.exit_code is None
 
 
 def test_antigravity_early_native_return_is_accepted_immediately(
@@ -854,8 +857,8 @@ def test_antigravity_early_native_return_is_accepted_immediately(
     assert package.result.head_sha == "def456"
     assert len(calls) == 1
     command, kwargs = calls[0]
-    assert command[command.index("--print-timeout") + 1] == "60m"
-    assert kwargs["timeout"] == 65 * 60
+    assert command[command.index("--print-timeout") + 1] == "180m"
+    assert kwargs["timeout"] == 185 * 60
 
 
 def test_antigravity_command_deterministic_model_and_effort_across_operations(
@@ -914,6 +917,7 @@ def test_antigravity_command_deterministic_model_and_effort_across_operations(
         runner=runner,
         repo=repo,
         handoff_path=repo / ".git" / "aios" / "handoff.json",
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
         execution_profile=profile,
     )
 

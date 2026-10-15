@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -14,6 +13,12 @@ from .artifacts import ResultPackage
 from .codex_adapter import CodexAdapter
 from .execution_profile import ResolvedExecutionProfile
 from .executor import ExecutorBoundary
+from .native_execution_policy import (
+    NATIVE_PROCESS_WATCHDOG_SECONDS,
+    NATIVE_RESPONSE_BUDGET_MINUTES,
+    NativeExecutionPolicy,
+    resolve_native_execution_policy,
+)
 from .review import RemediationExecution
 from .run import Run, RunLease, RunLeaseRegistry
 from .task import Task
@@ -21,8 +26,6 @@ from .task import Task
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 Operation = Literal["PRIMARY", "REMEDIATION", "REPAIR"]
-NATIVE_RESPONSE_BUDGET_MINUTES = 60
-NATIVE_PROCESS_WATCHDOG_SECONDS = 65 * 60
 
 
 class DispatcherError(RuntimeError):
@@ -46,23 +49,6 @@ class NativeAdapter(Protocol):
 
 
 AdapterFactory = Callable[[], NativeAdapter]
-
-
-@dataclass(frozen=True)
-class NativeExecutionPolicy:
-    """Provider-neutral policy derived from admitted execution authority."""
-
-    authorizes_mutation: bool
-    response_budget_minutes: int = NATIVE_RESPONSE_BUDGET_MINUTES
-    process_watchdog_seconds: int = NATIVE_PROCESS_WATCHDOG_SECONDS
-
-
-def resolve_native_execution_policy(
-    *, authorizes_mutation: bool
-) -> NativeExecutionPolicy:
-    """Resolve the bounded provider-neutral policy before dispatch."""
-
-    return NativeExecutionPolicy(authorizes_mutation=authorizes_mutation)
 
 
 class Dispatcher:

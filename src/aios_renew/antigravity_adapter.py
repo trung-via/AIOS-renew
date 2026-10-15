@@ -6,7 +6,7 @@ import json
 import os
 import subprocess
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -17,6 +17,7 @@ from .artifacts import (
     validate_result,
     validate_structural_result,
 )
+from .native_execution_policy import resolve_native_execution_policy
 from .run import Run
 from .run_observation import TokenUsage
 from .review import RemediationExecution
@@ -45,13 +46,6 @@ class ExecutionPolicy(Protocol):
     authorizes_mutation: bool
     response_budget_minutes: int
     process_watchdog_seconds: int
-
-
-@dataclass(frozen=True)
-class _DefaultExecutionPolicy:
-    authorizes_mutation: bool = True
-    response_budget_minutes: int = 60
-    process_watchdog_seconds: int = 65 * 60
 
 
 _NATIVE_EXECUTOR_INSTRUCTION = (
@@ -115,10 +109,12 @@ class AntigravityExecutionError(RuntimeError):
         self,
         message: str,
         *,
+        exit_code: int | None = None,
         stdout: bytes | str | None = None,
         stderr: bytes | str | None = None,
     ) -> None:
         super().__init__(message)
+        self.exit_code = exit_code
         self.stdout = stdout
         self.stderr = stderr
 
@@ -145,7 +141,11 @@ class AntigravityAdapter:
     ) -> None:
         self._transport = transport
         self._runner = runner
-        self._execution_policy = execution_policy or _DefaultExecutionPolicy()
+        self._execution_policy = (
+            execution_policy
+            if execution_policy is not None
+            else resolve_native_execution_policy(authorizes_mutation=False)
+        )
         self._repo = Path(repo).resolve() if repo is not None else None
         self._handoff_path = (
             Path(handoff_path) if handoff_path is not None else None
@@ -291,8 +291,10 @@ class AntigravityAdapter:
         except subprocess.TimeoutExpired as exc:
             raise AntigravityExecutionError(
                 "Antigravity CLI exceeded the "
-                f"{self._execution_policy.response_budget_minutes}-minute "
-                "native response deadline",
+                f"{self._execution_policy.process_watchdog_seconds}-second "
+                "process watchdog "
+                f"({self._execution_policy.response_budget_minutes}-minute "
+                "native response budget)",
                 stdout=exc.stdout,
                 stderr=exc.stderr,
             ) from exc
@@ -310,7 +312,7 @@ class AntigravityAdapter:
             if detail:
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(
-                message, stdout=stdout, stderr=stderr
+                message, exit_code=completed.returncode, stdout=stdout, stderr=stderr
             )
         return _structured_output(stdout, stderr=stderr)
 

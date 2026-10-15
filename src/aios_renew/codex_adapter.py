@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -15,6 +15,7 @@ from .artifacts import (
     validate_evidence,
     validate_structural_result,
 )
+from .native_execution_policy import resolve_native_execution_policy
 from .run import Run
 from .run_observation import TokenUsage
 from .review import RemediationExecution
@@ -30,15 +31,6 @@ class ExecutionPolicy(Protocol):
     authorizes_mutation: bool
     response_budget_minutes: int
     process_watchdog_seconds: int
-
-
-@dataclass(frozen=True)
-class _DefaultExecutionPolicy:
-    # Preserve the standalone adapter's historical workspace-write default.
-    # Admitted operator executions always provide an explicit boolean policy.
-    authorizes_mutation: bool | None = None
-    response_budget_minutes: int = 60
-    process_watchdog_seconds: int = 65 * 60
 
 
 RESULT_PACKAGE_SCHEMA_PATH = (
@@ -126,7 +118,11 @@ class CodexAdapter:
     ) -> None:
         self._runner = runner
         self._schema_path = Path(schema_path)
-        self._execution_policy = execution_policy or _DefaultExecutionPolicy()
+        self._execution_policy = (
+            execution_policy
+            if execution_policy is not None
+            else resolve_native_execution_policy(authorizes_mutation=False)
+        )
         self._execution_profile = execution_profile
 
     @property
@@ -158,8 +154,10 @@ class CodexAdapter:
         except subprocess.TimeoutExpired as exc:
             raise CodexExecutionError(
                 "Codex CLI exceeded the "
-                f"{self._execution_policy.response_budget_minutes}-minute "
-                "native response deadline",
+                f"{self._execution_policy.process_watchdog_seconds}-second "
+                "process watchdog "
+                f"({self._execution_policy.response_budget_minutes}-minute "
+                "native response budget)",
                 exit_code=None,
                 stdout=exc.stdout,
                 stderr=exc.stderr,
@@ -214,8 +212,10 @@ class CodexAdapter:
         except subprocess.TimeoutExpired as exc:
             raise CodexExecutionError(
                 "Codex CLI exceeded the "
-                f"{self._execution_policy.response_budget_minutes}-minute "
-                "native response deadline",
+                f"{self._execution_policy.process_watchdog_seconds}-second "
+                "process watchdog "
+                f"({self._execution_policy.response_budget_minutes}-minute "
+                "native response budget)",
                 exit_code=None,
                 stdout=exc.stdout,
                 stderr=exc.stderr,
@@ -271,8 +271,10 @@ class CodexAdapter:
         except subprocess.TimeoutExpired as exc:
             raise CodexExecutionError(
                 "Codex CLI exceeded the "
-                f"{self._execution_policy.response_budget_minutes}-minute "
-                "native response deadline",
+                f"{self._execution_policy.process_watchdog_seconds}-second "
+                "process watchdog "
+                f"({self._execution_policy.response_budget_minutes}-minute "
+                "native response budget)",
                 exit_code=None,
                 stdout=exc.stdout,
                 stderr=exc.stderr,
@@ -336,8 +338,6 @@ class CodexAdapter:
                 "danger-full-access"
                 if authorizes_mutation is True
                 else "read-only"
-                if authorizes_mutation is False
-                else "workspace-write"
             ),
             "--output-schema",
             str(schema_path),

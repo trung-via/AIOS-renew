@@ -149,7 +149,7 @@ def test_constructs_and_invokes_native_codex_command() -> None:
         "-c",
         'model_reasoning_effort="low"',
         "--sandbox",
-        "workspace-write",
+        "read-only",
         "--output-schema",
         str(RESULT_PACKAGE_SCHEMA_PATH),
         "--color",
@@ -163,7 +163,7 @@ def test_constructs_and_invokes_native_codex_command() -> None:
     assert "errors" not in calls[0][1]
     assert isinstance(calls[0][1]["input"], bytes)
     assert calls[0][1]["check"] is False
-    assert calls[0][1]["timeout"] == 65 * 60
+    assert calls[0][1]["timeout"] == 185 * 60
 
 
 def test_codex_adapter_owns_read_only_sandbox_mapping() -> None:
@@ -199,11 +199,13 @@ def test_codex_timeout_is_terminal_to_one_native_invocation() -> None:
         raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
     adapter = CodexAdapter(runner=runner)
-    with pytest.raises(CodexExecutionError, match="60-minute"):
+    with pytest.raises(CodexExecutionError, match="180-minute") as captured:
         adapter.execute(task=task, run=run)
 
     assert len(calls) == 1
-    assert calls[0][1]["timeout"] == 65 * 60
+    assert calls[0][1]["timeout"] == 185 * 60
+    assert captured.value.exit_code is None
+    assert "11100-second process watchdog" in str(captured.value)
 
 
 def test_codex_timeout_preserves_process_supplied_partial_output() -> None:
@@ -222,6 +224,7 @@ def test_codex_timeout_preserves_process_supplied_partial_output() -> None:
 
     assert captured.value.stdout == b"partial native progress"
     assert captured.value.stderr == b"provider deadline"
+    assert captured.value.exit_code is None
 
 
 def test_codex_early_native_return_is_accepted_immediately() -> None:
@@ -241,7 +244,7 @@ def test_codex_early_native_return_is_accepted_immediately() -> None:
 
     assert package.result.head_sha == "def456"
     assert len(calls) == 1
-    assert calls[0][1]["timeout"] == 65 * 60
+    assert calls[0][1]["timeout"] == 185 * 60
 
 
 def test_utf8_output_outside_cp1252_is_preserved() -> None:
@@ -1097,7 +1100,11 @@ def test_codex_command_deterministic_model_and_reasoning_across_operations(
         model_source="EXPLICIT",
         effort_source="EXPLICIT",
     )
-    adapter = CodexAdapter(runner=runner, execution_profile=profile)
+    adapter = CodexAdapter(
+        runner=runner,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
+        execution_profile=profile,
+    )
 
     # 1. PRIMARY
     adapter.execute(task=task, run=run)
@@ -1120,7 +1127,7 @@ def test_codex_command_deterministic_model_and_reasoning_across_operations(
 
     # Preserves sandbox, output-schema, color, cd
     assert cmd_primary[cmd_primary.index("--cd") + 1] == "C:/workspace"
-    assert cmd_primary[cmd_primary.index("--sandbox") + 1] == "workspace-write"
+    assert cmd_primary[cmd_primary.index("--sandbox") + 1] == "danger-full-access"
     assert cmd_primary[cmd_primary.index("--output-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
     assert cmd_remediation[cmd_remediation.index("--output-schema") + 1] == str(
         REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH
