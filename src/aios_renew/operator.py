@@ -627,6 +627,127 @@ def _runtime_paths_readonly(repo: str | Path) -> RuntimePaths:
     )
 
 
+def read_executor_private_failure(
+    repo: str | Path, *, admitted_run: Run, subject_sha: str,
+    locator: str, expected_sha256: str,
+) -> bytes:
+    """Read the original local record under an existing exact workspace admission.
+
+    The caller supplies its admitted RUN, not an attention selector or a dispatch
+    receipt. This is a read-only local API; its bytes must never enter a portable
+    context, provider request, or transport. The locator is virtual and cannot
+    select a host path or a different RUN.
+    """
+    from .review_transport import (
+        FailureDiagnosticError, PUBLIC_FAILURE_MAX_BYTES, failure_document,
+    )
+    root = Path(repo).resolve()
+    if (not isinstance(admitted_run, Run) or admitted_run.status != "ACTIVE"
+            or re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", admitted_run.run_id) is None
+            or Path(admitted_run.workspace).resolve() != root
+            or locator != "runtime-failure:" + admitted_run.run_id):
+        raise FailureDiagnosticError("PRIVATE_FAILURE_ACCESS_DENIED")
+    if (not isinstance(subject_sha, str) or re.fullmatch(r"[0-9a-f]{40}", subject_sha) is None
+            or not isinstance(expected_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None):
+        raise FailureDiagnosticError("PRIVATE_FAILURE_IDENTITY_INVALID")
+    state = _runtime_paths_readonly(root)
+    run_path = state.runs / (admitted_run.run_id + ".json")
+    path = state.failures / (admitted_run.run_id + ".json")
+    try:
+        if any(p.is_symlink() or p.resolve() != p.absolute() for p in (path, run_path)):
+            raise FailureDiagnosticError("PRIVATE_FAILURE_LOCATOR_INVALID")
+        with run_path.open("rb") as stream:
+            run_bytes = stream.read(1024 * 1024 + 1)
+        if len(run_bytes) > 1024 * 1024:
+            raise FailureDiagnosticError("PRIVATE_FAILURE_INTEGRITY_INVALID")
+        persisted = _decode_remote_mapping(run_bytes, "RUN")
+        if persisted.get("kind") == "REMEDIATION":
+            persisted = persisted["execution"]["run"]
+        if (_run_from_data(persisted) != admitted_run or type(persisted["task"]["revision"]) is not int
+                or admitted_run.head_sha not in (None, subject_sha)):
+            raise FailureDiagnosticError("PRIVATE_FAILURE_ACCESS_DENIED")
+        with path.open("rb") as stream:
+            original = stream.read(PUBLIC_FAILURE_MAX_BYTES + 1)
+        if len(original) > PUBLIC_FAILURE_MAX_BYTES:
+            raise FailureDiagnosticError("PRIVATE_FAILURE_SIZE_EXCEEDED")
+        if hashlib.sha256(original).hexdigest() != expected_sha256:
+            raise FailureDiagnosticError("PRIVATE_FAILURE_DIGEST_MISMATCH")
+        failure = failure_document(original)
+        if "public_projection" in failure:
+            raise FailureDiagnosticError("PRIVATE_FAILURE_ORIGINAL_UNAVAILABLE")
+        if failure.get("failed_head_sha") != subject_sha:
+            raise FailureDiagnosticError("PRIVATE_FAILURE_ACCESS_DENIED")
+        task = load_task(root, admitted_run.task.id)
+        if task.revision != admitted_run.task.revision:
+            raise FailureDiagnosticError("PRIVATE_FAILURE_ACCESS_DENIED")
+        descends = _git_is_ancestor(root, admitted_run.base_sha, subject_sha)
+        changed = _committed_changed_files(root, admitted_run.base_sha, subject_sha) if descends else set()
+        validate_runtime_failure_binding(
+            failure, run_id=admitted_run.run_id, task_id=admitted_run.task.id,
+            task_revision=admitted_run.task.revision, executor=admitted_run.executor,
+            base_sha=admitted_run.base_sha, candidate_sha=subject_sha,
+            modification_scope=task.scope.modify,
+            actual_descends_from_base=descends, actual_changed_files=changed,
+        )
+        from .unified_state import _validated_private_public_view
+        _validated_private_public_view(failure, "METADATA")
+        return original
+    except FailureDiagnosticError:
+        raise
+    except OSError as exc:
+        raise FailureDiagnosticError("PRIVATE_FAILURE_SOURCE_UNAVAILABLE") from exc
+    except (ReviewTransportError, ValueError, KeyError, TypeError, OperatorError) as exc:
+        raise FailureDiagnosticError("PRIVATE_FAILURE_INTEGRITY_INVALID") from exc
+
+
+def read_executor_private_diagnostic(
+    repo: str | Path, *, admitted_run: Run, subject_sha: str, locator: str,
+    expected_sha256: str, failure_sha256: str,
+) -> bytes:
+    """Read one candidate raw capture referenced by the authenticated local FAILURE.
+
+    Base captures and reused captures owned by another RUN are deliberately not
+    capabilities of this admission. Locators never contain host paths.
+    """
+    from .review_transport import FailureDiagnosticError, PUBLIC_FAILURE_MAX_BYTES, failure_document
+    original = read_executor_private_failure(repo, admitted_run=admitted_run, subject_sha=subject_sha,
+        locator="runtime-failure:" + admitted_run.run_id, expected_sha256=failure_sha256)
+    if locator == "runtime-failure:" + admitted_run.run_id:
+        if expected_sha256 != failure_sha256:
+            raise FailureDiagnosticError("PRIVATE_FAILURE_DIGEST_MISMATCH")
+        return original
+    failure = failure_document(original)
+    references = [item["verification"] for item in failure["error"].get("verification", [])
+                  if isinstance(item.get("verification"), dict)
+                  and locator == "runtime-verification:" + admitted_run.run_id + ":" + item["verification"]["evidence_id"]]
+    if len(references) != 1:
+        raise FailureDiagnosticError("PRIVATE_DIAGNOSTIC_LOCATOR_INVALID")
+    ref = references[0]
+    if (ref["run_id"] != admitted_run.run_id or ref["binding"]["subject_sha"] != subject_sha
+            or ref["candidate"]["subject_sha"] != subject_sha or "reuse" in ref):
+        raise FailureDiagnosticError("PRIVATE_DIAGNOSTIC_ACCESS_DENIED")
+    if expected_sha256 != ref["raw_digest"]:
+        raise FailureDiagnosticError("PRIVATE_DIAGNOSTIC_DIGEST_MISMATCH")
+    root = Path(repo).resolve()
+    path = Path(ref["raw_path"])
+    if not path.is_absolute():
+        path = root / path
+    permitted = _runtime_paths_readonly(root).verification / admitted_run.run_id
+    if (path.is_symlink() or path.resolve() != path.absolute() or permitted.resolve() != permitted.absolute()
+            or not path.resolve().is_relative_to(permitted.resolve())):
+        raise FailureDiagnosticError("PRIVATE_DIAGNOSTIC_LOCATOR_INVALID")
+    try:
+        with path.open("rb") as stream:
+            content = stream.read(PUBLIC_FAILURE_MAX_BYTES + 1)
+    except OSError as exc:
+        raise FailureDiagnosticError("PRIVATE_DIAGNOSTIC_SOURCE_UNAVAILABLE") from exc
+    if len(content) > PUBLIC_FAILURE_MAX_BYTES:
+        raise FailureDiagnosticError("PRIVATE_DIAGNOSTIC_SIZE_EXCEEDED")
+    if hashlib.sha256(content).hexdigest() != expected_sha256:
+        raise FailureDiagnosticError("PRIVATE_DIAGNOSTIC_DIGEST_MISMATCH")
+    return content
+
+
 @contextmanager
 def _remote_observation_repository(control_repo: Path) -> Iterator[Path]:
     """Provide an isolated Git object/config store for read-only remote resolution."""

@@ -33,6 +33,28 @@ def wrapper(request, *, provider="mapping", model="one", semantic=None, attribut
                 "provider": provider, "model": model, "session_id": None, "invocation_id": "call"}}
 
 
+@pytest.mark.parametrize("kind", ["mapping", "json"])
+def test_provider_receives_safe_bound_failure_context_without_native_capture(registry, kind):
+    from aios_renew.review_transport import failure_context
+    from test_brain_provider_protocol import digest
+    from tests.test_review_transport import _native_failure_fixture
+    packet, package = inputs(registry, "DIAGNOSTIC")
+    _, private = _native_failure_fixture()
+    context = failure_context(private, artifact_sha="c" * 40)
+    body = packet.as_dict()
+    body["canonical_facts"]["failure_context"] = context
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    calls = []
+    def callback(request):
+        calls.append(deepcopy(request))
+        return wrapper(request, provider=kind, model="model")
+    result = attempt(adapter(kind, native(kind, callback), kind, "model"), DecisionPacket(body), package, {})
+    received = calls[0]["decision_packet"]["canonical_facts"]["failure_context"]
+    assert received == context and received["source"]["artifact_sha"] == "c" * 40
+    assert "synthetic-secret" not in json.dumps(calls)
+    assert result.decision["semantic_value"] == DIRECT
+
+
 def setup(registry, flow="TASK_AUTHORING"):
     packet, package = inputs(registry, flow)
     bindings = {} if flow == "DIAGNOSTIC" else deepcopy(TASK)

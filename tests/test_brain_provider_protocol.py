@@ -23,6 +23,25 @@ from tests.test_brain_audit import v3_sections
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_provider_protocol_transports_only_closed_failure_context_and_rejects_raw_fields(registry):
+    from aios_renew.review_transport import failure_context
+    from tests.test_review_transport import _native_failure_fixture
+    supplied, package = inputs(registry, "DIAGNOSTIC")
+    _, private = _native_failure_fixture()
+    context = failure_context(private, artifact_sha="c" * 40)
+    body = supplied.as_dict()
+    body["canonical_facts"]["failure_context"] = context
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    request = construct_request(DecisionPacket(body), package, {}, request_mode="DIRECT")
+    assert request["decision_packet"]["canonical_facts"]["failure_context"] == context
+    assert revalidate_request(request) == request
+    assert "synthetic-secret" not in json.dumps(request)
+    body["canonical_facts"]["failure_context"]["diagnostic"]["detail"] = "credential=synthetic-secret"
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError, match="FAILURE context"):
+        construct_request(DecisionPacket(body), package, {}, request_mode="DIRECT")
+
+
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
                                      ensure_ascii=False, allow_nan=False).encode("utf-8")).hexdigest()

@@ -230,6 +230,40 @@ Pre-AIOS failure must carry a typed bounded boundary/reason without fabricating 
 
 Human-facing projections must preserve typed lower-layer causes rather than collapsing all delegated failures to a generic code when an authoritative typed cause exists.
 
+Runtime FAILURE diagnostics use `AIOS_PUBLIC_FAILURE_V2`. The public record binds
+RUN, exact TASK revision, phase, candidate and the original private record's
+canonical JSON digest. Its projection digest detects inconsistent public content;
+the immutable artifact selector and exact local-origin comparison establish source
+binding. A digest by itself grants no Runtime or correction authority. V1
+projections and legitimate bounded historical observations remain readable in
+their original formats. Missing historical detail stays unavailable; readers do
+not create detail, fingerprints, V2 policy attribution or comparable PASS evidence.
+
+`AIOS_FAILURE_CONTEXT` carries only typed causes, admissible exact commands,
+candidate flags, observation/evidence identities and digests, and explicit capture
+availability, partial, truncation and withholding facts. Native stdout/stderr,
+exception messages, raw locators and unrestricted verification output remain local.
+Unknown native exit is JSON null with `UNKNOWN` availability; absent capture is
+`UNAVAILABLE`. Attention resolves this context from its exact FAILURE artifact;
+Unified State includes it on both repairable and blocked failures. Fresh Brain Sync
+and work-context fingerprints retain that source identity. Provider request
+construction and revalidation enforce the same closed context schema.
+
+The existing BP-2 receipt/attention source retains only its allowlisted
+authority/phase/reason cause. Old source observations without a cause report it
+unavailable. Operational context keeps `run_created=false` and cannot supply a
+RUN, FAILURE, REPAIR or correction identity.
+
+An already admitted Executor may call `operator.read_executor_private_failure`
+with its exact persisted RUN, workspace, subject, virtual
+`runtime-failure:<RUN>` locator and SHA-256 of the original file bytes. The bounded
+read returns those exact local bytes. `read_executor_private_diagnostic` also
+accepts `runtime-verification:<RUN>:<evidence-id>` for a candidate capture referenced
+by that authenticated FAILURE, with both the FAILURE byte digest and capture
+digest. It rejects other RUNs, base/reused captures, substituted files, path
+locators and symlinks. These APIs neither transport captures nor create authority
+from an attention or dispatch receipt.
+
 ## 14. Explicit non-goals
 
 BP-0 does not authorize:

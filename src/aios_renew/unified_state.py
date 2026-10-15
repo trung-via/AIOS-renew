@@ -127,6 +127,7 @@ class UnifiedStateObservation:
     blocker: Mapping[str, Any] | None = None
     outstanding_findings: tuple[Mapping[str, str], ...] = ()
     admission_failures: tuple[Mapping[str, Any], ...] = ()
+    failure_context: Mapping[str, Any] | None = None
     # Private handoff from the one canonical reduction to the read-only scope.
     _scope_context: _SemanticScopeContext | None = field(
         default=None, repr=False, compare=False
@@ -171,6 +172,7 @@ class UnifiedStateObservation:
             "outstanding_findings": [dict(item) for item in self.outstanding_findings],
             "blocker": dict(self.blocker) if self.blocker is not None else None,
             "admission_failures": [dict(item) for item in self.admission_failures],
+            "failure_context": dict(self.failure_context) if self.failure_context is not None else None,
             "run_created": False,
             "executor_invoked": False,
             "verification_invoked": False,
@@ -205,6 +207,7 @@ class _LifecycleRun:
     execution_base_run_id: str | None = None
     execution_base: Any | None = None
     publication_recovery: Mapping[str, Any] | None = None
+    transport_blocker: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -247,13 +250,19 @@ def _bounded_admission_context(
 ) -> tuple[Mapping[str, Any], ...]:
     """Return structural v2 context without interpreting historical prose."""
 
-    contexts: set[tuple[str, str, str]] = set()
+    contexts: set[tuple[str, str, str, str]] = set()
+    op = _operator()
     if not state.admission_failures.is_dir():
         return ()
     for path in state.admission_failures.glob("*.json"):
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
+            with path.open("rb") as stream:
+                original = stream.read(1024 * 1024 + 1)
+            if len(original) > 1024 * 1024:
+                continue
+            from .review_transport import _public_document
+            value = _public_document(original)
+        except (OSError, UnicodeError, json.JSONDecodeError, ReviewTransportError):
             continue
         if not isinstance(value, Mapping):
             continue
@@ -262,19 +271,26 @@ def _bounded_admission_context(
         exact = (
             isinstance(bound, Mapping)
             and bound.get("id") == task.task_id
+            and type(bound.get("revision")) is int
             and bound.get("revision") == task.revision
         ) or (bound is None and requested == task.task_id)
         identity = (value.get("operation"), value.get("phase"), value.get("reason_code"))
         if (
             value.get("format") == "AIOS_ADMISSION_FAILURE"
-            and value.get("version") == 2
+            and type(value.get("version")) is int and value.get("version") == 2
+            and value.get("kind") == "ADMISSION_FAILURE" and value.get("executor_invoked") is False
+            and value.get("run_id") is None and ("run_created" not in value or value["run_created"] is False)
             and exact
-            and all(isinstance(item, str) and item for item in identity)
+            and all(isinstance(item, str) for item in identity)
+            and identity[0] in op._ADMISSION_OPERATIONS
+            and identity[1] in (op._ADMISSION_PHASES | {"MIGRATION_PRE_HANDOFF"})
+            and identity[2] in (op._ADMISSION_REASONS | {"MIGRATION_PRE_HANDOFF_REJECTED"})
         ):
-            contexts.add(identity)  # type: ignore[arg-type]
+            contexts.add((*identity, hashlib.sha256(original).hexdigest()))
     return tuple(
-        {"operation": operation, "phase": phase, "reason_code": reason}
-        for operation, phase, reason in sorted(contexts)[:32]
+        {"operation": operation, "phase": phase, "reason_code": reason, "source_digest": source_digest,
+         "run_created": False, "executor_invoked": False}
+        for operation, phase, reason, source_digest in sorted(contexts)[:32]
     )
 
 
@@ -417,7 +433,8 @@ def _validated_private_public_view(
                 if not isinstance(report, dict) or report.get("outcome") not in {"PASS", "FAIL", "SKIP"}:
                     raise ValueError("invalid verification reference report")
                 if report.get("outcome") == "FAIL" and (
-                        report.get("profile") != conditions or report.get("toolchain") != toolchain
+                        ((value["complete"] or "profile" in report) and report.get("profile") != conditions)
+                        or ((value["complete"] or "toolchain" in report) and report.get("toolchain") != toolchain)
                         or ("observed_profile" in report and report["observed_profile"] != {
                             key: conditions.get(key) for key in (
                                 "profile", "workers", "distribution", "max_worker_restart", "collect_only")})
@@ -427,6 +444,9 @@ def _validated_private_public_view(
                 raise ValueError("invalid verification reference failure population")
             if value["complete"]:
                 validate_observation(value)
+            else:
+                from .review_transport import _project_observation
+                _project_observation(value)  # Validate recorded identities; do not fill missing detail.
             return value
 
         candidate = observation("candidate")
@@ -586,6 +606,15 @@ def _validated_private_public_view(
             error = data.get("error")
             if not isinstance(error, dict) or not isinstance(error.get("message"), str):
                 raise ValueError("invalid private FAILURE diagnostics")
+            if (not isinstance(error.get("type"), str)
+                    or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,127}", error["type"]) is None):
+                raise ValueError("invalid private FAILURE error type")
+            if "native_reason" in error:
+                from .review_transport import _NATIVE_REASONS
+                if not isinstance(error["native_reason"], str) or error["native_reason"] not in _NATIVE_REASONS:
+                    raise ValueError("invalid private FAILURE native reason")
+            if "exit_code" in error and error["exit_code"] is not None and type(error["exit_code"]) is not int:
+                raise ValueError("invalid private native exit code")
             error["message"] = "Protected Runtime diagnostics remain local."
             error.pop("native_diagnostics", None)
             error.pop("executor_diagnostics", None)
@@ -654,7 +683,7 @@ def _matches_public_document(
         # Comparing two reprojected records would conceal forged public fields.
         _validated_private_public_view(private, kind)
         _validated_private_public_view(canonical, kind)
-        return public == encoded(_public_metadata_value(dict(private)))
+        return public == encoded(_public_metadata_value(dict(private), canonical))
     projected = _validated_private_public_view(private, kind)
     if public == original and not protected_view(canonical):
         return True
@@ -1460,6 +1489,7 @@ def _local_pending_runs(
     terminal_pending: list[_LifecycleRun] = []
     active_pending: list[_LifecycleRun] = []
     prefix = task_run_prefix(task.task_id)
+    transport_blockers: dict[str, Mapping[str, Any]] = {}
 
     def terminal_paths(directory: Path):
         for path in directory.glob(f"{prefix}*.json"):
@@ -1468,10 +1498,19 @@ def _local_pending_runs(
                 if path.stat().st_size > 65536:
                     raise ValueError("unbounded transport sidecar")
                 data = _lifecycle_document(path.read_bytes(), "transport sidecar")
-                if (set(data) not in ({"error"}, {"run_id", "error"})
+                typed = set(data) == {"kind", "run_id", "subject_sha", "code", "error"}
+                if (set(data) not in ({"error"}, {"run_id", "error"}) and not typed
                         or not isinstance(data.get("error"), str) or not data["error"]
                         or ("run_id" in data and data["run_id"] != path.name.removesuffix(".transport.json"))):
                     raise ValueError("malformed transport sidecar")
+                if typed:
+                    from .review_transport import FAILURE_TRANSPORT_CODES
+                    if (data["kind"] != "FAILURE_TRANSPORT_BLOCKER" or not isinstance(data["code"], str)
+                            or data["code"] not in FAILURE_TRANSPORT_CODES or not isinstance(data["subject_sha"], str)
+                            or re.fullmatch(r"[0-9a-f]{40}", data["subject_sha"]) is None):
+                        raise ValueError("invalid typed transport blocker")
+                    transport_blockers[data["run_id"]] = dict(code=data["code"], subject_sha=data["subject_sha"],
+                                                             source_digest=verification_digest(data))
                 continue
             if not re.fullmatch(re.escape(prefix) + r"\d{3,}\.json", path.name):
                 raise ValueError("malformed persisted terminal filename")
@@ -1705,6 +1744,9 @@ def _local_pending_runs(
                 package=package,
                 local_repository=local_repository,
             )
+        transport_blocker = transport_blockers.get(run_id)
+        if transport_blocker is not None and transport_blocker["subject_sha"] != candidate_sha:
+            raise ValueError("transport blocker does not bind its candidate")
         if same_run:
             canonical = same_run[0] if len(same_run) == 1 else None
             if (
@@ -1735,6 +1777,7 @@ def _local_pending_runs(
                 execution_base_run_id=execution_base_run_id,
                 execution_base=execution_base,
                 publication_recovery=recovery_document,
+                transport_blocker=transport_blocker,
             )
         )
     return terminal_pending, active_pending
@@ -1803,12 +1846,16 @@ def observe_unified_state(
                 )
             if pending_terminal:
                 tip = pending_terminal[0]
+                from .review_transport import failure_context
                 return UnifiedStateObservation(
                     task.task_id, task.revision, "TRANSPORT", "RETRY_TRANSPORT",
                     run_id=tip.run_id, candidate_sha=tip.candidate_sha,
                     failed_run_id=(tip.run_id if tip.terminal_kind == "FAILURE" else None),
                     failed_head_sha=(tip.candidate_sha if tip.terminal_kind == "FAILURE" else None),
                     admission_failures=admission_context,
+                    failure_context=(failure_context(tip.terminal, candidate_available=tip.candidate_available)
+                                     if tip.terminal_kind == "FAILURE" else None),
+                    blocker=tip.transport_blocker,
                 )
             if len(pending_active) > 1 or (
                 pending_active
@@ -1886,6 +1933,9 @@ def observe_unified_state(
                 )
             tip = tips[0]
             if tip.terminal_kind == "FAILURE":
+                from .review_transport import failure_context
+                context = failure_context(tip.terminal, artifact_sha=dict(lifecycle.observed_refs).get(
+                    "refs/heads/aios/failure-artifacts/" + tip.run_id), candidate_available=tip.candidate_available)
                 candidate = tip.terminal.get("candidate")
                 if (
                     not tip.candidate_available
@@ -1897,6 +1947,7 @@ def observe_unified_state(
                         task, "NON_REPAIRABLE_FAILURE", admission_failures=admission_context,
                         run_id=tip.run_id, failed_run_id=tip.run_id,
                         failed_head_sha=tip.candidate_sha,
+                        failure_context=context,
                     )
                 selectors = [
                     item for item in lifecycle.repair_selectors if item[0] == tip.run_id
@@ -1907,12 +1958,14 @@ def observe_unified_state(
                         run_id=tip.run_id, failed_run_id=tip.run_id,
                         failed_head_sha=tip.candidate_sha,
                         admission_failures=admission_context,
+                        failure_context=context,
                     )
                 if len(selectors) != 1:
                     return _unified_blocked(
                         task, "COMPETING_REPAIRS", admission_failures=admission_context,
                         run_id=tip.run_id, failed_run_id=tip.run_id,
                         failed_head_sha=tip.candidate_sha,
+                        failure_context=context,
                     )
                 repair_authorization = json.loads(
                     selectors[0][2].decode("utf-8", errors="strict")
@@ -1932,6 +1985,7 @@ def observe_unified_state(
                         admission_failures=admission_context, run_id=tip.run_id,
                         failed_run_id=tip.run_id, failed_head_sha=tip.candidate_sha,
                         correction_sha=selectors[0][1], correction=correction,
+                        failure_context=context,
                     )
                 return UnifiedStateObservation(
                     task.task_id, task.revision, "CORRECTION", "EXECUTE_REPAIR",
@@ -1940,6 +1994,7 @@ def observe_unified_state(
                     correction_sha=selectors[0][1],
                     correction_document=repair_authorization,
                     admission_failures=admission_context,
+                    failure_context=context,
                 )
 
             review = reviews.get(tip.run_id)
@@ -2164,6 +2219,10 @@ def observe_unified_state(
         raise op.OperatorError(
             f"Unified State canonical observation unavailable ({exc.category})"
         ) from exc
+    except ReviewTransportError as exc:
+        from .review_transport import FailureDiagnosticError
+        return _unified_blocked(task, exc.code if isinstance(exc, FailureDiagnosticError) else "MALFORMED_CANONICAL_STATE",
+                                admission_failures=admission_context)
     except (ReviewTransportError, publication_module.PublicationError,
             ArtifactValidationError, ReviewValidationError,
             KeyError, OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:

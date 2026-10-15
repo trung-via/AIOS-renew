@@ -635,7 +635,7 @@ def persist_failure(
             observation_path = persist_terminal_observation(
                 state, observation_tracker, "FAILURE"
             )
-        cause = failure.__cause__
+        cause = failure if isinstance(failure, (CodexExecutionError, AntigravityExecutionError, RuntimeVerificationError)) else failure.__cause__
         if isinstance(failure, KeyboardInterrupt) and interruption_phase is not None:
             phase = interruption_phase
         elif isinstance(
@@ -707,8 +707,15 @@ def persist_failure(
             record["continuation_of"] = json.loads(
                 repair_execution.read_text(encoding="utf-8")
             ).get("failed_run_id")
-        if isinstance(cause, CodexExecutionError):
-            record["error"]["exit_code"] = cause.exit_code
+        if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
+            record["error"]["exit_code"] = getattr(cause, "exit_code", None)
+            record["error"]["native_reason"] = (
+                "TIMEOUT" if _is_native_timeout(cause) else
+                "OUTPUT_INVALID" if type(cause).__name__ in {"CodexOutputError", "AntigravityOutputError"} else
+                "INVOCATION_FAILED" if isinstance(cause.__cause__, (OSError, UnicodeError)) else
+                "PROCESS_EXIT")
+        elif isinstance(failure, KeyboardInterrupt) and phase == "EXECUTION":
+            record["error"]["native_reason"] = "INTERRUPTED"
         if isinstance(
             cause, (CodexExecutionError, AntigravityExecutionError)
         ) or isinstance(failure, KeyboardInterrupt):
@@ -734,7 +741,15 @@ def persist_failure(
                 "unresolved": executor_unresolved
             }
         failure_path = state.failures / f"{run.run_id}.json"
-        _write_json(failure_path, record)
+        failure_path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        try:
+            with failure_path.open("xb") as stream:
+                stream.write(encoded)
+        except FileExistsError:
+            # Recording/replay cannot rewrite an original terminal's diagnostics.
+            if failure_path.read_bytes() != encoded:
+                return
         preverification_path = state.preverification / f"{run.run_id}.json"
         reusable_candidate_path = (
             preverification_path
@@ -756,10 +771,14 @@ def persist_failure(
                     observation_path=observation_path,
                     preverification_path=reusable_candidate_path,
                 )
-            except ReviewTransportError as transport_error:
+            except (ReviewTransportError, OSError) as transport_error:
                 _write_json(
                     state.failures / f"{run.run_id}.transport.json",
-                    {"run_id": run.run_id, "error": str(transport_error)},
+                    {"run_id": run.run_id, "subject_sha": head_sha,
+                     "kind": "FAILURE_TRANSPORT_BLOCKER",
+                     "code": getattr(transport_error, "code", "FAILURE_TRANSPORT_SOURCE_UNAVAILABLE"
+                                     if isinstance(transport_error, OSError) else "FAILURE_TRANSPORT_UNAVAILABLE"),
+                     "error": str(transport_error)},
                 )
     except Exception:
         # Failure recording is subordinate and never replaces the original failure.

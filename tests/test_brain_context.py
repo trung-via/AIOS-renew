@@ -328,3 +328,22 @@ def test_registry_rejects_duplicate_yaml_keys(tmp_path: Path):
     path.write_text("format: AIOS_FLOW_CARDS\nformat: AIOS_FLOW_CARDS\n", encoding="utf-8")
     with pytest.raises(BrainContextError):
         load_flow_cards(path)
+
+
+def test_fresh_failure_work_context_carries_safe_cause_and_invalidates_on_source_movement():
+    from copy import deepcopy
+    from aios_renew.review_transport import failure_context
+    from tests.test_review_transport import _native_failure_fixture
+    source = snapshot("AUTHOR_REPAIR")
+    _, private = _native_failure_fixture()
+    private.update(run_id="RUN-177-001", task=dict(id="TASK-177", revision=2))
+    diagnostic = failure_context(private, artifact_sha="c" * 40)
+    unified = dict(source.unified_state, failed_run_id=private["run_id"], failed_head_sha=private["failed_head_sha"],
+                   failure_context=diagnostic)
+    first = compose_brain_work_context(replace(source, unified_state=unified))
+    assert first.canonical_observation["unified_state"]["failure_context"]["diagnostic"]["category"] == "NATIVE_TIMEOUT"
+    assert "synthetic-secret" not in first.render()
+    changed = deepcopy(unified); changed["failure_context"]["source"]["artifact_sha"] = "d" * 40
+    second = compose_brain_work_context(replace(source, unified_state=changed))
+    assert first.invalidation_fingerprint != second.invalidation_fingerprint
+    assert resolve_flow(first).selected_flow == resolve_flow(second).selected_flow == "REPAIR_AUTHORING"

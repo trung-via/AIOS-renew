@@ -183,6 +183,28 @@ authority; historical ACK/Work observations do not substitute for those proofs.
 | Publication report + canonical main inclusion | Publisher outcome; not wake arrival, semantic resume, planning closure or next-work selection. |
 | Wake receipt / exact user-turn proof / ACK | Delivery observation only; not RUN, verification, review, publication or H4B semantic-resume proof. |
 
+Runtime's public FAILURE projection preserves a nullable native exit code and
+emits fixed native/verification/completion cause categories. Capture facts state
+whether output was available, partial, truncated or withheld; no native text or
+host-local raw locator enters a public artifact or provider packet. Incomplete
+historical observations retain recorded identities and missing-detail status,
+without newly generated fingerprints or PASS comparability.
+
+A dirty or otherwise non-publishable candidate can publish an isolated
+FAILURE-artifacts commit and its bound attention selector. This commit contains
+only projected terminal material; it does not contain the working tree or create a
+candidate ref. A failed projection/identity transport emits a bound
+`FAILURE_TRANSPORT_BLOCKER` sidecar with its typed code, leaving original FAILURE
+bytes intact. Existing artifact replay preserves earlier lawful representations.
+
+`AttentionAdmission.failure_context` and terminal attention source resolution read
+the exact artifact before and after the observation. They distinguish unavailable
+source, invalid source and moved source. Unified State includes the safe context
+even for non-repairable candidates; Brain Sync and provider work contexts preserve
+its RUN, subject and artifact identity. Existing lifecycle authorities continue to
+choose any next action. BP-2 failures retain typed operational causes and
+`run_created=false`, without creating a terminal lineage.
+
 ## 9. Bounded impact map before scope closure
 
 This finite reference exposes known contract/call/transport edges, not an execution

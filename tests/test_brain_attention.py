@@ -178,6 +178,23 @@ def test_pre_aios_operational_receipts_are_subordinate_selector_only_and_do_not_
         brain.operational_observation(forged)
 
 
+def test_bp2_cause_remains_source_bound_and_old_observations_do_not_invent_cause():
+    receipt = workflow_failure_receipt("PRIMARY", "delivery-synthetic", "CONFIGURED_REPOSITORY_UNAVAILABLE")
+    observation = brain.operational_observation(receipt.as_dict())
+    item, source, pointer = source_event(observation)
+    context = brain.operational_context(source, item, pointer)
+    assert context["cause"] == receipt.as_dict()["cause"]
+    assert context["source"] == pointer and context["run_created"] is False
+    assert all(key not in context for key in ("run_id", "failure", "correction", "repair_id"))
+    historical = dict(observation); historical.pop("operational_cause")
+    old, source, pointer = source_event(historical)
+    assert brain.operational_context(source, old, pointer)["cause_availability"] == "UNAVAILABLE"
+    hostile = dict(observation, operational_cause=dict(authority="WORKFLOW", phase="PRE_AIOS",
+                                                     reason_code="credential=synthetic-secret"))
+    with pytest.raises(brain.AttentionError):
+        source_event(hostile)
+
+
 class Sources:
     def __init__(self, verdict="CHANGES_REQUIRED"):
         self.identity = dict(IDENTITY)

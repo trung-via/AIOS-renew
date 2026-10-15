@@ -28,6 +28,41 @@ PINNED_PROVENANCE_PATH = (
 )
 
 
+@pytest.mark.parametrize("defect", [None, "missing", "integrity", "moved"])
+def test_terminal_attention_resolves_safe_source_context_and_distinguishes_blockers(monkeypatch, defect):
+    import json
+    import aios_renew.review_transport as transport
+    import aios_renew.terminal_attention as terminal
+    from tests.test_review_transport import _native_failure_fixture
+    run, private = _native_failure_fixture(dirty=True)
+    sha = "c" * 40
+    item = selector(run["run_id"], "FAILURE", sha)
+    admission = terminal.AttentionAdmission(item, item.signal_ref, "d" * 40, "REF_EVENT")
+    public = json.loads(transport.public_failure(json.dumps(private).encode()))
+    if defect == "integrity":
+        public["error"]["diagnostic"]["detail"] = "credential=synthetic-secret"
+    docs = {".ai/transport/run.json": transport.public_run(json.dumps(run).encode()),
+            ".ai/transport/failure.json": json.dumps(public).encode()}
+    if defect == "missing": docs.pop(".ai/transport/failure.json")
+    reads = []
+    def refs(*args):
+        reads.append(None)
+        return {item.terminal_ref: "e" * 40 if defect == "moved" and len(reads) > 1 else sha}
+    monkeypatch.setattr(terminal, "_remote_refs", refs)
+    monkeypatch.setattr(transport, "_read_remote_blob", lambda _repo, _remote, _sha, name: docs.get(name))
+    if defect:
+        code = {"missing": "FAILURE_SOURCE_UNAVAILABLE", "integrity": "FAILURE_SOURCE_INTEGRITY_INVALID",
+                "moved": "FAILURE_SOURCE_MOVED"}[defect]
+        with pytest.raises(TerminalAttentionError, match=code):
+            admission.failure_context(Path("synthetic"))
+    else:
+        context = admission.failure_context(Path("synthetic"))
+        assert context["source"]["artifact_sha"] == sha
+        assert context["candidate"]["dirty"] is True and context["candidate_availability"] == "UNAVAILABLE"
+        assert context["diagnostic"]["category"] == "NATIVE_TIMEOUT"
+        assert "synthetic-secret" not in json.dumps(context)
+
+
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(
         ("git", "-C", str(repo), *args),

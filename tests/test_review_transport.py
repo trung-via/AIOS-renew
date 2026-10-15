@@ -90,6 +90,194 @@ def _failure_transport_recovery_fixture(
     return run, failure, content
 
 
+def _native_failure_fixture(*, exit_code=None, reason="TIMEOUT", dirty=False):
+    """Entirely synthetic native record, including deliberately private strings."""
+    run = dict(run_id="RUN-358-001", task=dict(id="TASK-358", revision=1), executor="codex",
+               base_sha="a" * 40, workspace="C:/private/synthetic-workspace", status="ACTIVE", head_sha=None)
+    failure = dict(kind="FAILURE", run_id=run["run_id"], task=run["task"], executor=run["executor"],
+        base_sha=run["base_sha"], failed_head_sha="b" * 40, phase="EXECUTION",
+        candidate=dict(transportable=not dirty, repairable=not dirty, dirty=dirty,
+                       descends_from_base=True, changed_files=[], outside_task_scope=[]),
+        error=dict(type="CodexExecutionError", message="private credential=synthetic-secret",
+            exit_code=exit_code, native_reason=reason,
+            native_diagnostics=dict(limit_chars=4096,
+                stdout=dict(availability="captured", text="credential=synthetic-secret C:/private/host", truncated=True),
+                stderr=dict(availability="unavailable"))))
+    return run, failure
+
+
+@pytest.mark.parametrize("exit_code", [None, -1, 0, 17])
+def test_native_failure_diagnostics_preserve_identity_unknown_exit_and_original_bytes(exit_code):
+    from aios_renew.verification_contract import verification_digest
+    run, private = _native_failure_fixture(exit_code=exit_code)
+    original = json.dumps(private, indent=2).encode()
+    public_bytes = review_transport.public_failure(original)
+    public = review_transport.failure_document(public_bytes)
+    assert review_transport.public_failure(original) == review_transport.public_failure(public_bytes) == public_bytes
+    for key in ("run_id", "task", "executor", "base_sha", "failed_head_sha", "phase", "candidate"):
+        assert public[key] == private[key]
+    diagnostic = public["error"]["diagnostic"]
+    assert diagnostic["category"] == "NATIVE_TIMEOUT"
+    assert diagnostic["native_exit"] == dict(availability="UNKNOWN" if exit_code is None else "AVAILABLE", value=exit_code)
+    assert diagnostic["capture"]["stdout"] == dict(availability="CAPTURED", truncated=True, partial=True, withheld=True)
+    assert diagnostic["capture"]["stderr"]["availability"] == "UNAVAILABLE"
+    assert public["public_projection"]["private_failure_digest"] == verification_digest(private)
+    assert operator_failure_matches(private, public)
+    assert json.dumps(private, indent=2).encode() == original
+    assert all(value not in public_bytes for value in (b"synthetic-secret", b"C:/private", b"credential="))
+    context = review_transport.failure_context(public, artifact_sha="c" * 40, candidate_available=True)
+    review_transport.validate_failure_context(context)
+    assert context["source"]["artifact_sha"] == "c" * 40
+    assert context["proof"] == "NON_PASS_DIAGNOSTIC" and context["run_id"] == run["run_id"]
+
+
+@pytest.mark.parametrize("text,category", [
+    ("error: invalid api key: credential=synthetic-secret", "NATIVE_AUTHENTICATION"),
+    ("rate limit exceeded credential=synthetic-secret", "NATIVE_RATE_LIMIT"),
+    ("insufficient_quota credential=synthetic-secret", "NATIVE_QUOTA"),
+    ("connection refused C:/private/host", "NATIVE_TRANSPORT"),
+    ("unrecognized credential=synthetic-secret", "NATIVE_EXIT"),
+])
+def test_recognized_native_causes_export_only_allowlisted_categories(text, category):
+    _, private = _native_failure_fixture(exit_code=9, reason="PROCESS_EXIT")
+    private["error"]["native_diagnostics"]["stderr"] = dict(availability="captured", text=text, truncated=False)
+    public = review_transport.public_failure(json.dumps(private).encode())
+    assert json.loads(public)["error"]["diagnostic"]["category"] == category
+    assert b"synthetic-secret" not in public and b"C:/private" not in public
+
+
+@pytest.mark.parametrize("exit_code", [True, False, "1", 1.5, []])
+def test_native_failure_exit_rejects_forged_non_integer_values(exit_code):
+    _, private = _native_failure_fixture(exit_code=exit_code)
+    for reader in (review_transport.public_failure, review_transport.failure_document):
+        with pytest.raises(review_transport.FailureDiagnosticError):
+            reader(json.dumps(private).encode())
+
+
+@pytest.mark.parametrize("selector", ['"native and (timeout or dirty)"', "'native and not timeout'", '"test_token or test_secret"'])
+def test_public_failure_preserves_exact_safe_quoted_pytest_identity(selector):
+    _, private = _native_failure_fixture()
+    command = "python -m pytest tests/test_synthetic.py -k " + selector
+    private["phase"] = "VERIFICATION"
+    private["error"] = dict(type="RuntimeVerificationError", message="private synthetic-secret",
+                            verification=[dict(command=command, exit_code=1, summary="private synthetic-secret")])
+    public = review_transport.failure_document(review_transport.public_failure(json.dumps(private).encode()))
+    assert public["error"]["verification"][0]["command"] == command
+    context = review_transport.failure_context(public)
+    assert context["diagnostic"]["category"] == "VERIFICATION_TEST_FAILURE"
+    assert context["verification"][0]["observation_availability"] == "UNAVAILABLE"
+
+
+@pytest.mark.parametrize("command", [
+    'python -m pytest -k "safe; echo synthetic-secret"',
+    'python -m pytest -k "$(echo synthetic-secret)"',
+    'python -m pytest -k "`echo synthetic-secret`"',
+    "python -m pytest -k 'safe' && echo synthetic-secret",
+    'python -m pytest -k "safe', 'python -m pytest -k "safe"suffix',
+    "python -m pytest --token synthetic-secret", "python -m pytest credential=synthetic-secret",
+    "python -m pytest --access-token=synthetic-secret", "python -m pytest --basetemp=/home/private/host",
+    "python -m pytest C:/private/synthetic-secret", 'python -c "print(synthetic-secret)"',
+])
+def test_failure_commands_reject_malicious_quoting_and_credentials(command):
+    with pytest.raises(ValueError, match="unsafe public verification command"):
+        review_transport._public_command(command)
+
+
+@pytest.mark.parametrize("missing", ["detail", "fingerprint", "both", "conditions"])
+def test_incomplete_historical_observation_never_manufactures_detail_or_fingerprints(missing):
+    from aios_renew.verification_contract import verification_digest, validate_observation
+    _, private, _ = _failure_transport_recovery_fixture(nodes=1, failures=1)
+    ref = private["error"]["verification"][0]["verification"]
+    report = next(item for item in ref["candidate"]["reports"] if item["outcome"] == "FAIL")
+    if missing in {"detail", "both", "conditions"}:
+        report.pop("detail")
+    if missing in {"fingerprint", "both", "conditions"}:
+        report.pop("fingerprint")
+    if missing == "conditions":
+        report.pop("profile"); report.pop("toolchain")
+    ref["candidate_digest"] = verification_digest(ref["candidate"])
+    original = json.dumps(private).encode()
+    public = review_transport.failure_document(review_transport.public_failure(original))
+    observation = public["error"]["verification"][0]["verification"]["candidate"]
+    assert "fingerprint" not in observation["failed_reports"][0]
+    assert observation["failed_reports"][0]["detail_status"] in {"UNAVAILABLE", "WITHHELD"}
+    assert observation["complete"] is False
+    with pytest.raises(ValueError):
+        validate_observation(observation)
+    assert json.dumps(private).encode() == original
+
+
+def test_historical_versions_and_bounded_protected_incomplete_reference_remain_readable():
+    from aios_renew.verification_contract import verification_digest
+    _, private, raw = _failure_transport_recovery_fixture(nodes=1, failures=1)
+    v1 = review_transport._project_failure(private, projection_format=review_transport.LEGACY_PUBLIC_FAILURE_FORMAT)
+    assert review_transport.failure_document(json.dumps(v1).encode()) == v1
+    assert operator_failure_matches(private, v1)
+    legacy = dict(kind="FAILURE", run_id="RUN-358-001", error=dict(type="CodexExecutionError",
+                  message="Protected Runtime diagnostics remain local.", exit_code=None))
+    assert review_transport.failure_document(json.dumps(legacy).encode()) == legacy
+    private["error"].pop("native_diagnostics"); private["error"].pop("executor_diagnostics")
+    private["error"]["message"] = "Protected Runtime diagnostics remain local."
+    ref = private["error"]["verification"][0]["verification"]
+    for report in ref["candidate"]["reports"]:
+        for key in ("captured_output", "detail", "fingerprint"):
+            report.pop(key, None)
+    ref["candidate_digest"] = verification_digest(ref["candidate"])
+    original = json.dumps(private).encode()
+    assert review_transport.failure_document(original) == private
+    context = review_transport.failure_context(private)
+    assert context["verification"][0]["complete"] is False
+    assert context["verification"][0]["detail_status"] == "UNAVAILABLE"
+    assert b"C:/private" not in json.dumps(context).encode()
+    assert json.dumps(private).encode() == original and raw != original
+    ref.pop("policy")
+    with pytest.raises(ReviewTransportError):
+        review_transport.failure_document(json.dumps(private).encode())
+
+
+@pytest.mark.parametrize("defect", ["detail", "category", "capture", "exit", "digest"])
+def test_typed_public_failure_rejects_tampering_and_secret_fields(defect):
+    _, private = _native_failure_fixture()
+    public = json.loads(review_transport.public_failure(json.dumps(private).encode()))
+    diagnostic = public["error"]["diagnostic"]
+    if defect == "detail": diagnostic["detail"] = "credential=synthetic-secret"
+    elif defect == "category": diagnostic["category"] = "PASS"
+    elif defect == "capture": diagnostic["capture"]["stdout"]["text"] = "synthetic-secret"
+    elif defect == "exit": diagnostic["native_exit"]["value"] = 0
+    else: public["public_projection"]["private_failure_digest"] = "0" * 64
+    _failure_transport_recovery_reseal(public)
+    if defect != "digest":
+        with pytest.raises(ReviewTransportError):
+            review_transport.failure_document(json.dumps(public).encode())
+    assert not operator_failure_matches(private, public)
+
+
+def test_dirty_failure_transports_artifacts_and_attention_without_candidate_or_uncommitted_bytes(tmp_path, monkeypatch):
+    repo, remote = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, private = _native_failure_fixture(dirty=True)
+    run.update(task=TASK, base_sha=head)
+    private.update(task=TASK, base_sha=head, failed_head_sha=head)
+    (repo / "subject.txt").write_text("uncommitted credential=synthetic-secret", encoding="utf-8")
+    run_path, failure_path = tmp_path / "private/run.json", tmp_path / "private/failure.json"
+    write_json(run_path, run)
+    original = write_json(failure_path, private)
+    attention_calls = []
+    monkeypatch.setattr(review_transport, "publish_terminal_attention", lambda *a, **kw: attention_calls.append(kw))
+    transport_failure(repo, run_id=run["run_id"], head_sha=head, run_path=run_path,
+                      failure_path=failure_path, publish_candidate=False)
+    refs = git(remote, "for-each-ref", "--format=%(refname)")
+    assert "refs/heads/aios/failure/" not in refs
+    artifact = git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/" + run["run_id"])
+    names = git(remote, "ls-tree", "-r", "--name-only", artifact).splitlines()
+    assert set(names) == {".ai/transport/run.json", ".ai/transport/failure.json"}
+    assert attention_calls[0]["artifact_sha"] == artifact
+    assert failure_path.read_bytes() == original
+    assert (repo / "subject.txt").read_text(encoding="utf-8") == "uncommitted credential=synthetic-secret"
+    with pytest.raises(review_transport.FailureDiagnosticError, match="FAILURE_CANDIDATE_NOT_PUBLISHABLE"):
+        transport_failure(repo, run_id=run["run_id"], head_sha=head, run_path=run_path, failure_path=failure_path)
+
+
 def _failure_transport_recovery_reseal(public):
     """Exercise schema/binding gates independently of summary integrity."""
     from aios_renew.verification_contract import verification_digest

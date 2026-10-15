@@ -79,6 +79,12 @@ def _normal(value: Any, depth: int = 0, *, response: bool = False) -> Any:
     if type(value) is list:
         return [_normal(item, depth + 1, response=response) for item in value]
     if type(value) is dict:
+        if value.get("format") == "AIOS_FAILURE_CONTEXT":
+            from .review_transport import validate_failure_context, ReviewTransportError
+            try:
+                validate_failure_context(value)
+            except (ValueError, TypeError, KeyError, ReviewTransportError) as exc:
+                raise BrainProviderProtocolError("invalid bounded FAILURE context") from exc
         if depth > 0 and value.get("format") in {"AIOS_BRAIN_REQUEST", "AIOS_BRAIN_DECISION"}:
             raise BrainProviderProtocolError("nested Brain protocol envelope")
         if response and value.get("format") in _NESTED_FORMATS:
@@ -258,6 +264,7 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
         raise BrainProviderProtocolError("constructor requires a fresh DecisionPacket object")
     try:
         body = _packet(packet)
+        _normal(body)  # Validate portable diagnostics without changing packet identity.
         contract = _contract_package(return_contract_package, body)
         bindings = _bindings(external_bindings, contract)
         flow = body["selected_flow"]

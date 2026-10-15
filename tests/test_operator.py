@@ -97,6 +97,99 @@ def git(repo: Path, *args: str) -> str:
     return fixture_git(repo, *args)
 
 
+def _private_executor_failure_fixture(tmp_path):
+    from tests.test_review_transport import _native_failure_fixture
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, failure = _native_failure_fixture()
+    run.update(run_id="RUN-101-901", task=dict(id="TASK-101", revision=1), base_sha=head, workspace=str(repo))
+    failure.update(run_id=run["run_id"], task=run["task"], base_sha=head, failed_head_sha=head)
+    state = runtime_paths(repo)
+    (state.runs / (run["run_id"] + ".json")).write_bytes(json.dumps(run).encode())
+    path = state.failures / (run["run_id"] + ".json")
+    original = json.dumps(failure, indent=2).encode()
+    path.write_bytes(original)
+    return repo, operator_module._run_from_data(run), path, original
+
+
+def test_admitted_executor_private_failure_read_is_exact_local_and_read_only(tmp_path):
+    import hashlib
+    repo, run, path, original = _private_executor_failure_fixture(tmp_path)
+    refs = git(repo, "show-ref")
+    content = operator_module.read_executor_private_failure(repo, admitted_run=run,
+        subject_sha=run.base_sha, locator="runtime-failure:" + run.run_id,
+        expected_sha256=hashlib.sha256(original).hexdigest())
+    assert content == original and b"synthetic-secret" in content
+    assert path.read_bytes() == original and git(repo, "show-ref") == refs
+
+
+@pytest.mark.parametrize("defect,code", [
+    ("cross_run", "PRIVATE_FAILURE_ACCESS_DENIED"), ("host_path", "PRIVATE_FAILURE_ACCESS_DENIED"),
+    ("workspace", "PRIVATE_FAILURE_ACCESS_DENIED"), ("subject", "PRIVATE_FAILURE_ACCESS_DENIED"),
+    ("digest", "PRIVATE_FAILURE_DIGEST_MISMATCH"), ("substitution", "PRIVATE_FAILURE_DIGEST_MISMATCH"),
+    ("persisted_run", "PRIVATE_FAILURE_ACCESS_DENIED"), ("missing", "PRIVATE_FAILURE_SOURCE_UNAVAILABLE"),
+    ("forged_record", "PRIVATE_FAILURE_INTEGRITY_INVALID"),
+])
+def test_private_failure_rejects_forged_locator_identity_and_substituted_original(tmp_path, defect, code):
+    import hashlib
+    from aios_renew.review_transport import FailureDiagnosticError
+    repo, run, path, original = _private_executor_failure_fixture(tmp_path)
+    args = dict(admitted_run=run, subject_sha=run.base_sha, locator="runtime-failure:" + run.run_id,
+                expected_sha256=hashlib.sha256(original).hexdigest())
+    if defect == "cross_run": args["locator"] = "runtime-failure:RUN-101-902"
+    elif defect == "host_path": args["locator"] = str(path)
+    elif defect == "workspace": args["admitted_run"] = replace(run, workspace=str(repo.parent))
+    elif defect == "subject": args["subject_sha"] = "0" * 40
+    elif defect == "digest": args["expected_sha256"] = "0" * 64
+    elif defect == "substitution": path.write_bytes(original + b" ")
+    elif defect == "persisted_run":
+        stored = operator_module._runtime_paths_readonly(repo).runs / (run.run_id + ".json")
+        data = json.loads(stored.read_bytes()); data["executor"] = "antigravity"
+        stored.write_bytes(json.dumps(data).encode())
+    elif defect == "missing": path.unlink()
+    else:
+        data = json.loads(original); data["run_id"] = "RUN-101-902"
+        path.write_bytes(json.dumps(data).encode())
+        args["expected_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(FailureDiagnosticError) as caught:
+        operator_module.read_executor_private_failure(repo, **args)
+    assert caught.value.code == code
+
+
+@pytest.mark.parametrize("defect", [None, "substitution", "cross_run", "locator"])
+def test_private_verification_capture_requires_exact_same_run_locator_and_digests(tmp_path, defect):
+    import hashlib
+    from aios_renew.review_transport import FailureDiagnosticError
+    from tests.test_review_transport import _failure_transport_recovery_fixture
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, private, _ = _failure_transport_recovery_fixture(run_id="RUN-101-901", task=dict(id="TASK-101", revision=1),
+        base_sha=head, head_sha=head, changed_files=(), nodes=1, failures=1)
+    run["workspace"] = str(repo)
+    state = runtime_paths(repo)
+    capture = state.verification / run["run_id"] / "synthetic.raw"
+    capture.parent.mkdir(parents=True)
+    original = b"private credential=synthetic-secret\n"
+    capture.write_bytes(original)
+    ref = private["error"]["verification"][0]["verification"]
+    ref.update(raw_path=str(capture), raw_digest=hashlib.sha256(original).hexdigest())
+    (state.runs / (run["run_id"] + ".json")).write_bytes(json.dumps(run).encode())
+    failure = json.dumps(private).encode()
+    (state.failures / (run["run_id"] + ".json")).write_bytes(failure)
+    locator = "runtime-verification:" + run["run_id"] + ":" + ref["evidence_id"]
+    if defect == "substitution": capture.write_bytes(original + b"changed")
+    elif defect == "cross_run": locator = locator.replace("RUN-101-901", "RUN-101-902")
+    elif defect == "locator": locator = str(capture)
+    args = dict(admitted_run=operator_module._run_from_data(run), subject_sha=head, locator=locator,
+                expected_sha256=ref["raw_digest"], failure_sha256=hashlib.sha256(failure).hexdigest())
+    if defect:
+        with pytest.raises(FailureDiagnosticError):
+            operator_module.read_executor_private_diagnostic(repo, **args)
+    else:
+        assert operator_module.read_executor_private_diagnostic(repo, **args) == original
+        assert capture.read_bytes() == original
+
+
 def _failure_transport_recovery_operator_fixture(tmp_path, monkeypatch, *, nodes=8101, failures=84):
     from tests.test_review_transport import _failure_transport_recovery_fixture
 

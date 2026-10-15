@@ -235,6 +235,47 @@ def run343_failure():
     return json.loads(_RUN343_FAILURE_JSON)
 
 
+@pytest.mark.parametrize("dirty", [False, True])
+def test_unified_failure_context_retains_safe_cause_candidate_and_exact_source(tmp_path, monkeypatch, dirty):
+    from aios_renew.review_transport import public_failure, public_run
+    from tests.test_review_transport import _native_failure_fixture
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, private = _native_failure_fixture(dirty=dirty)
+    run.update(run_id="RUN-101-358", task=dict(id="TASK-101", revision=1), base_sha=head)
+    private.update(run_id=run["run_id"], task=run["task"], base_sha=head, failed_head_sha=head)
+    original = _reference_bytes(private)
+    artifact_sha = "c" * 40
+    lifecycle = RemoteTaskLifecycle(head, (RemoteLifecycleTerminal(run["run_id"], "FAILURE", head,
+        public_run(_reference_bytes(run)), public_failure(original), candidate_available=not dirty),), (), (), (),
+        (("refs/heads/aios/failure-artifacts/" + run["run_id"], artifact_sha),))
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    observed = observe_unified_state("TASK-101", repo=repo).as_dict()
+    context = observed["failure_context"]
+    assert context["diagnostic"]["category"] == "NATIVE_TIMEOUT"
+    assert context["candidate"]["dirty"] is dirty
+    assert context["source"]["artifact_sha"] == artifact_sha
+    assert context["run_id"] == observed["failed_run_id"] == run["run_id"]
+    assert context["subject_sha"] == observed["failed_head_sha"] == head
+    assert observed["next_action"] == ("NONE" if dirty else "AUTHOR_REPAIR")
+    if dirty:
+        assert observed["blocker"]["code"] == "NON_REPAIRABLE_FAILURE"
+    assert b"synthetic-secret" not in _reference_bytes(observed)
+    assert _reference_bytes(private) == original
+    state = runtime_paths(repo)
+    (state.runs / (run["run_id"] + ".json")).write_bytes(_reference_bytes(run))
+    (state.failures / (run["run_id"] + ".json")).write_bytes(original)
+    sidecar = dict(kind="FAILURE_TRANSPORT_BLOCKER", run_id=run["run_id"], subject_sha=head,
+                   code="FAILURE_PROJECTION_INVALID", error="private credential=synthetic-secret")
+    (state.failures / (run["run_id"] + ".transport.json")).write_bytes(_reference_bytes(sidecar))
+    _stub_unified_remote(monkeypatch, repo, replace(lifecycle, terminals=(), observed_refs=()))
+    pending = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert pending["next_action"] == "RETRY_TRANSPORT"
+    assert pending["blocker"]["code"] == "FAILURE_PROJECTION_INVALID"
+    assert pending["blocker"]["subject_sha"] == head
+    assert b"synthetic-secret" not in _reference_bytes(pending)
+
+
 def _verification_reference(failure):
     return failure["error"]["verification"][0]["verification"]
 
@@ -598,7 +639,7 @@ def test_verification_reference_malformed_canonical_failure_stays_blocked(
     repo, _, _ = _run343_reference_lifecycle(tmp_path, monkeypatch, run343_failure)
     observation = observe_unified_state("TASK-343", repo=repo).as_dict()
     assert (observation["lifecycle_state"], observation["next_action"]) == ("BLOCKED", "NONE")
-    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+    assert observation["blocker"]["code"] == "FAILURE_PUBLIC_PRIVACY_INVALID"
 
 
 def test_verification_reference_source_difference_never_discharges_attribution_or_reuse(run343_failure):

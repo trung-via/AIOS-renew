@@ -129,6 +129,62 @@ def completion_fixture(tmp_path: Path):
     return task, run, state, run_path, package
 
 
+@pytest.mark.parametrize("dirty", [False, True])
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_native_timeout_terminal_records_unknown_exit_and_preserves_original(tmp_path, monkeypatch, dirty, wrapped):
+    from aios_renew.codex_adapter import CodexExecutionError
+    from aios_renew.review_transport import public_failure, failure_document
+    task, run, state, run_path, _ = completion_fixture(tmp_path)
+    run = replace(run, base_sha="a" * 40)
+    monkeypatch.setattr(runtime_module, "_git", lambda _repo, *args: "b" * 40 if args == ("rev-parse", "HEAD") else " M OUTPUT.txt" if dirty else "")
+    monkeypatch.setattr(runtime_module, "_git_is_ancestor", lambda *args: True)
+    monkeypatch.setattr(runtime_module, "_committed_changed_files", lambda *args: set())
+    native = CodexExecutionError("private synthetic-secret", exit_code=None,
+                                stdout=b"credential=synthetic-secret", stderr=None)
+    native.__cause__ = subprocess.TimeoutExpired("synthetic-native", 1, output=native.stdout)
+    failure = BoundaryError("executor failed") if wrapped else native
+    if wrapped:
+        failure.__cause__ = native
+    calls = []
+    monkeypatch.setattr(runtime_module, "transport_failure", lambda *args, **kw: calls.append(kw))
+    persist_failure(tmp_path, state=state, task=task, run=run, run_path=run_path, failure=failure)
+    path = state.failures / (run.run_id + ".json")
+    original = path.read_bytes()
+    record = json.loads(original)
+    assert record["phase"] == "EXECUTION" and record["error"]["exit_code"] is None
+    assert record["error"]["native_reason"] == "TIMEOUT"
+    assert record["candidate"]["dirty"] is dirty
+    assert calls[0]["publish_candidate"] is (not dirty)
+    public = failure_document(public_failure(original))
+    assert public["error"]["diagnostic"]["category"] == "NATIVE_TIMEOUT"
+    assert b"synthetic-secret" not in public_failure(original)
+    persist_failure(tmp_path, state=state, task=task, run=run, run_path=run_path,
+                    failure=BoundaryError("a different later error"), transport=False)
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_failure_transport_blocker_is_typed_and_bound_to_subject(tmp_path, monkeypatch, missing):
+    from aios_renew.codex_adapter import CodexExecutionError
+    from aios_renew.review_transport import FailureDiagnosticError
+    task, run, state, run_path, _ = completion_fixture(tmp_path)
+    run = replace(run, base_sha="a" * 40)
+    monkeypatch.setattr(runtime_module, "_git", lambda _repo, *args: "b" * 40 if args == ("rev-parse", "HEAD") else " M OUTPUT.txt")
+    monkeypatch.setattr(runtime_module, "_git_is_ancestor", lambda *args: True)
+    monkeypatch.setattr(runtime_module, "_committed_changed_files", lambda *args: set())
+    def rejected(*args, **kwargs):
+        if missing:
+            raise FileNotFoundError("private synthetic source unavailable")
+        raise FailureDiagnosticError("FAILURE_PROJECTION_INVALID")
+    monkeypatch.setattr(runtime_module, "transport_failure", rejected)
+    persist_failure(tmp_path, state=state, task=task, run=run, run_path=run_path,
+                    failure=CodexExecutionError("private synthetic-secret", exit_code=None))
+    sidecar = json.loads((state.failures / (run.run_id + ".transport.json")).read_bytes())
+    assert sidecar["kind"] == "FAILURE_TRANSPORT_BLOCKER"
+    assert sidecar["run_id"] == run.run_id and sidecar["subject_sha"] == "b" * 40
+    assert sidecar["code"] == ("FAILURE_TRANSPORT_SOURCE_UNAVAILABLE" if missing else "FAILURE_PROJECTION_INVALID")
+
+
 def evidence_for(run_id: str, subject_sha: str, commands: tuple[str, ...]):
     return tuple(
         Evidence(

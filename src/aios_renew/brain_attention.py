@@ -310,6 +310,8 @@ def project_observation(observation, pointer):
         raise AttentionError("INVALID_OBSERVATION")
     boundary = observation["boundary"]
     fields = {k: v for k, v in observation.items() if k != "boundary"}
+    if "operational_cause" in fields:
+        _operational_cause(fields.pop("operational_cause"), boundary)
     # Optional bounded source context is digest-bound in the existing conflict
     # selectors. It adds no family, routing decision, or free-text selector.
     if "publication_attempt" in fields:
@@ -408,8 +410,50 @@ def _current_publication_context(sources, context):
         return False
 
 
+def _operational_cause(cause, boundary):
+    from .operational_receipt import WORKFLOW_REASONS
+    if (not isinstance(cause, dict) or set(cause) != {"authority", "phase", "reason_code"}
+            or any(not isinstance(item, str) for item in cause.values())):
+        raise AttentionError("INVALID_OPERATIONAL_CAUSE")
+    if boundary == "PRE_AIOS_FAILED":
+        valid = (cause["authority"] == "WORKFLOW" and cause["phase"] == "PRE_AIOS"
+                 and cause["reason_code"] in WORKFLOW_REASONS)
+    elif boundary == "DISPATCH_REJECTED":
+        if cause["authority"] == "CARRIER":
+            valid = cause == dict(authority="CARRIER", phase="DISPATCH", reason_code="DISPATCH_REJECTED")
+        else:
+            from .operator import _ADMISSION_PHASES, _ADMISSION_REASONS
+            valid = (cause["authority"] in {"AIOS_ADMISSION_FAILURE", "CORRECTION_PREFLIGHT"}
+                     and cause["phase"] in (_ADMISSION_PHASES | {"MIGRATION_PRE_HANDOFF"})
+                     and cause["reason_code"] in (_ADMISSION_REASONS | {"MIGRATION_PRE_HANDOFF_REJECTED"}))
+    else:
+        valid = False
+    if not valid:
+        raise AttentionError("UNPROVEN_OPERATIONAL_CAUSE")
+    return dict(cause)
+
+
+def operational_context(source, item, pointer):
+    """Expose a source-bound BP-2 cause without creating terminal identity."""
+    if item.family not in {DISPATCH, PRE_AIOS} or item.event_id not in {
+        candidate.event_id for candidate in project_source(source, pointer)
+    }:
+        raise AttentionError("UNPROVEN_OPERATIONAL_CONTEXT")
+    matches = [obs for obs in source["observations"]
+               if (candidate := project_observation(obs, pointer)) is not None and candidate.event_id == item.event_id]
+    if len(matches) != 1:
+        raise AttentionError("AMBIGUOUS_OPERATIONAL_CONTEXT")
+    cause = matches[0].get("operational_cause")
+    return dict(format="AIOS_OPERATIONAL_FAILURE_CONTEXT", version=1,
+                boundary=matches[0]["boundary"], operation=item.selectors["operation"],
+                delivery_id=item.selectors["delivery_id"], run_created=False, executor_invoked=False,
+                cause_availability="AVAILABLE" if cause is not None else "UNAVAILABLE",
+                cause=_operational_cause(cause, matches[0]["boundary"]) if cause is not None else None,
+                source=dict(pointer))
+
+
 def operational_observation(receipt):
-    """Strip execution profile and cause text before the transport boundary."""
+    """Keep the allowlisted BP-2 cause; exclude execution profiles and prose."""
     from .operational_receipt import BOUNDARIES, FAMILIES, WORKFLOW_REASONS, _bounded_selectors
     required = {"format", "version", "kind", "family", "delivery", "boundary", "selectors"}
     allowed = required | {"run_created", "executor_invoked", "cause", "run_id", "terminal_pointer", "control_sha"}
@@ -451,7 +495,47 @@ def operational_observation(receipt):
     else:
         raise AttentionError("UNPROVEN_OPERATIONAL_FAILURE")
     subject = _delivery_subject(receipt["family"], receipt.get("selectors", {}))
-    return dict(boundary=projected, operation=receipt["family"], delivery_id=delivery["id"], run_created=False, **subject)
+    return dict(boundary=projected, operation=receipt["family"], delivery_id=delivery["id"], run_created=False,
+                operational_cause=_operational_cause(cause, projected), **subject)
+
+
+def terminal_failure_context(item, sources):
+    """Resolve useful diagnostics from the exact terminal attention source."""
+    if item.family != FAILURE:
+        raise AttentionError("FAILURE_CONTEXT_REQUIRES_FAILURE_ATTENTION")
+    from .review_transport import (
+        ReviewTransportError, _bind_performance_terminal_identity, failure_context, failure_document,
+    )
+    run_id, sha = item.selectors["run_id"], item.selectors["artifact_sha"]
+    root = "refs/heads/aios/"
+    terminal_ref, candidate_ref = root + "failure-artifacts/" + run_id, root + "failure/" + run_id
+    patterns = [root + name + "/" + run_id for name in ("failure-artifacts", "failure", "artifacts", "review")]
+    try:
+        before = sources.refs(*patterns)
+        if before.get(terminal_ref) != sha or root + "artifacts/" + run_id in before or root + "review/" + run_id in before:
+            raise AttentionError("FAILURE_SOURCE_IDENTITY_MISMATCH")
+        try:
+            run = sources.document(sha, ".ai/transport/run.json")
+            failure = sources.document(sha, ".ai/transport/failure.json")
+        except (KeyError, OSError) as exc:
+            raise AttentionError("FAILURE_SOURCE_UNAVAILABLE") from exc
+        terminal = failure_document(canonical(failure))
+        head = _bind_performance_terminal_identity(
+            canonical(run), canonical(terminal), ref=terminal_ref, run_id=run_id,
+            task_id=terminal["task"]["id"], terminal_kind="FAILURE")[3]
+        if before.get(candidate_ref) not in (None, head):
+            raise AttentionError("FAILURE_CANDIDATE_IDENTITY_MISMATCH")
+        context = failure_context(terminal, artifact_sha=sha,
+                                  candidate_available=before.get(candidate_ref) == head)
+        if sources.refs(*patterns) != before:
+            raise AttentionError("FAILURE_SOURCE_MOVED")
+        return context
+    except AttentionError:
+        raise
+    except OSError as exc:
+        raise AttentionError("FAILURE_SOURCE_UNAVAILABLE") from exc
+    except (ReviewTransportError, KeyError, TypeError, ValueError) as exc:
+        raise AttentionError("FAILURE_SOURCE_INTEGRITY_INVALID") from exc
 
 
 def _delivery_subject(operation, selectors):

@@ -102,6 +102,35 @@ class AttentionAdmission:
     signal_sha: str
     delivery: str
 
+    def failure_context(self, repo: Path, *, remote: str = "origin") -> dict[str, Any] | None:
+        """Read safe context from this selector; the carrier body stays immutable."""
+        if self.selector.terminal_kind != "FAILURE":
+            return None
+        from .brain_attention import AttentionError, attention, terminal_failure_context, FAILURE
+        from .review_transport import ReviewTransportError, _read_remote_blob, failure_document, _public_document
+
+        class Sources:
+            def refs(self, *patterns):
+                try:
+                    return _remote_refs(repo, remote, *patterns)
+                except TerminalAttentionError as exc:
+                    raise OSError("source unavailable") from exc
+
+            def document(self, sha, name):
+                try:
+                    raw = _read_remote_blob(repo, remote, sha, name)
+                except ReviewTransportError as exc:
+                    raise OSError("source unavailable") from exc
+                if raw is None:
+                    raise OSError("source unavailable")
+                return failure_document(raw) if name.endswith("failure.json") else _public_document(raw)
+
+        try:
+            return terminal_failure_context(attention(FAILURE, dict(run_id=self.selector.run_id,
+                artifact_sha=self.selector.artifact_sha)), Sources())
+        except (AttentionError, ReviewTransportError) as exc:
+            raise TerminalAttentionError(str(exc)) from exc
+
     def github_outputs(self) -> str:
         return (
             f"run_id={self.selector.run_id}\n"

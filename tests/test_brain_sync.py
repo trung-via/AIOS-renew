@@ -381,7 +381,26 @@ def test_brain_sync_observation_is_strictly_read_only(tmp_path: Path) -> None:
     assert git(repo, "status", "--porcelain=v1") == before_status
     assert git(repo, "rev-parse", "HEAD") == before_head
     assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+
     assert not state_root.exists()
+
+
+def test_brain_sync_checkpoint_exposes_typed_failure_and_rejects_substituted_context():
+    from dataclasses import replace
+    from aios_renew.review_transport import failure_context
+    from tests.test_brain_context import snapshot
+    from tests.test_review_transport import _native_failure_fixture
+    source = snapshot("AUTHOR_REPAIR")
+    _, private = _native_failure_fixture()
+    private.update(run_id="RUN-177-001", task=dict(id="TASK-177", revision=2))
+    unified = dict(source.unified_state, failed_run_id=private["run_id"], failed_head_sha=private["failed_head_sha"],
+                   failure_context=failure_context(private, artifact_sha="c" * 40))
+    fresh = replace(source, unified_state=unified)
+    assert "FAILURE CAUSE: NATIVE_TIMEOUT" in fresh.checkpoint()
+    assert "synthetic-secret" not in fresh.render()
+    mismatched = dict(unified, failed_run_id="RUN-177-002")
+    with pytest.raises(BrainSyncError, match="does not bind Unified State"):
+        replace(fresh, unified_state=mismatched).as_dict()
 
 
 def test_brain_sync_exact_detached_candidate_observes_published_main(

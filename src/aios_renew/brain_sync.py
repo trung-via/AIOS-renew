@@ -65,6 +65,19 @@ class BrainSyncSnapshot:
     correction_subject: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        if self.unified_state and self.unified_state.get("failure_context") is not None:
+            from .review_transport import validate_failure_context, ReviewTransportError
+            context = self.unified_state["failure_context"]
+            try:
+                validate_failure_context(context)
+            except (ValueError, TypeError, KeyError, ReviewTransportError) as exc:
+                raise BrainSyncError("FAILURE_CONTEXT_INTEGRITY_INVALID") from exc
+            task = self.unified_state.get("task")
+            if (not isinstance(task, Mapping) or type(task.get("revision")) is not int
+                    or context["run_id"] != self.unified_state.get("failed_run_id")
+                    or context["subject_sha"] != self.unified_state.get("failed_head_sha")
+                    or context["task"] != self.unified_state.get("task")):
+                raise BrainSyncError("FAILURE context does not bind Unified State")
         body = {
             "format": self.format,
             "version": self.version,
@@ -104,6 +117,10 @@ class BrainSyncSnapshot:
             failed_run_id = self.unified_state.get("failed_run_id") or "none"
         state = "BLOCKED" if self.blocker is not None else "READY"
         last_pub = self.roadmap.get("last_published_task") or "none"
+        failure_cause = "unavailable"
+        if self.unified_state and self.unified_state.get("failure_context"):
+            self.as_dict()  # Apply the same source/schema gate as portable snapshots.
+            failure_cause = self.unified_state["failure_context"]["diagnostic"]["category"]
         return (
             f"PROJECT: {repo_name}\n"
             f"MAIN: {self.main_sha}\n"
@@ -112,6 +129,7 @@ class BrainSyncSnapshot:
             f"ACTIVE RUN: {run_id}\n"
             f"ACTIVE FINDING: {finding_id}\n"
             f"ACTIVE FAILURE: {failed_run_id}\n"
+            f"FAILURE CAUSE: {failure_cause}\n"
             f"STATE: {state}"
         )
 
