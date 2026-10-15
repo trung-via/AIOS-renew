@@ -13,6 +13,7 @@ from aios_renew.brain_sync import (
 )
 from aios_renew.operator import (
     OperatorError,
+    load_task,
     runtime_state_root,
 )
 from aios_renew.verification import materialize_verification_subject
@@ -541,11 +542,21 @@ def test_brain_sync_live_repository_smoke() -> None:
     roadmap = yaml.safe_load(
         (repo / ".ai" / "roadmap-state.yaml").read_text(encoding="utf-8")
     )
+    assert isinstance(roadmap, dict), "live roadmap must be a mapping"
     next_item_ids = roadmap["next_items"]
+    assert isinstance(next_item_ids, list) and len(next_item_ids) == 1, (
+        "live roadmap must identify exactly one NEXT item"
+    )
+    assert isinstance(next_item_ids[0], str) and next_item_ids[0]
+    assert isinstance(roadmap["sequence"], list)
+    assert all(isinstance(item, dict) for item in roadmap["sequence"])
     next_items = [
         item for item in roadmap["sequence"] if item.get("id") in next_item_ids
     ]
     assert len(next_items) == 1
+    assert [item for item in roadmap["sequence"] if item.get("status") == "NEXT"] == next_items, (
+        "live roadmap next_items and sequence NEXT must agree"
+    )
     expected_next = next_items[0]
     before_status = git(repo, "status", "--porcelain=v1")
     before_head = git(repo, "rev-parse", "HEAD")
@@ -559,15 +570,54 @@ def test_brain_sync_live_repository_smoke() -> None:
     assert snapshot.roadmap["active_track"] == roadmap["active_track"]
     assert snapshot.roadmap["active_track_status"] == roadmap["active_track_status"]
     assert snapshot.roadmap["next_items"] == next_item_ids
-    assert snapshot.selection_status == "SELECTED"
-    assert snapshot.selected_task == {
-        "id": expected_next["task_id"],
-        "revision": expected_next["task_revision"],
-    }
-    assert snapshot.unified_state is not None
-    assert snapshot.lifecycle_state == snapshot.unified_state["lifecycle_state"]
-    assert snapshot.next_action == snapshot.unified_state["next_action"]
-    assert snapshot.authority == snapshot.unified_state["authority"]
+
+    # Derive authorship from the planning binding and canonical TASK file, not
+    # from the observed status: malformed TASKs must not count as unauthored.
+    task_id = expected_next.get("task_id")
+    if task_id is None and expected_next["id"].startswith("TASK-"):
+        task_id = expected_next["id"]
+    task_revision = expected_next.get("task_revision")
+    if task_revision is not None:
+        assert type(task_revision) is int and task_revision > 0
+    if task_id is None:
+        assert task_revision is None, "NEXT has a task_revision without a TASK identity"
+        task_file = None
+    else:
+        assert isinstance(task_id, str) and task_id
+        assert "/" not in task_id and "\\" not in task_id, "invalid NEXT TASK identity"
+        task_file = repo / ".ai" / "tasks" / f"{task_id}.yaml"
+
+    if task_file is None or not task_file.exists():
+        assert snapshot.selection_status == "UNAUTHORED_TASK"
+        assert snapshot.selected_task is None
+        assert snapshot.unified_state is None
+        assert snapshot.lifecycle_state == "BLOCKED"
+        assert snapshot.next_action == "NONE"
+        assert snapshot.authority == "NONE"
+        if task_id is None:
+            assert snapshot.blocker == {
+                "code": "UNAUTHORED_TASK",
+                "item_id": expected_next["id"],
+                "message": "NEXT item has no associated task_id",
+            }
+        else:
+            assert snapshot.blocker == {
+                "code": "UNAUTHORED_TASK",
+                "task_id": task_id,
+                "message": f"task file {task_file} does not exist",
+            }
+    else:
+        assert task_file.is_file(), "NEXT TASK path must be a file"
+        task = load_task(repo, task_id)
+        if task_revision is not None:
+            assert task.revision == task_revision, "NEXT TASK revision conflicts with canonical TASK"
+        assert snapshot.selection_status == "SELECTED"
+        assert snapshot.selected_task == {"id": task.task_id, "revision": task.revision}
+        assert snapshot.unified_state is not None
+        assert snapshot.unified_state["task"] == snapshot.selected_task
+        assert snapshot.lifecycle_state == snapshot.unified_state["lifecycle_state"]
+        assert snapshot.next_action == snapshot.unified_state["next_action"]
+        assert snapshot.authority == snapshot.unified_state["authority"]
     assert snapshot.run_created is False
     assert snapshot.executor_invoked is False
     assert snapshot.verification_invoked is False
