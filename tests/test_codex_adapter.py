@@ -224,6 +224,24 @@ def test_codex_timeout_preserves_process_supplied_partial_output() -> None:
     assert captured.value.stderr == b"provider deadline"
 
 
+def test_codex_admitted_default_budget_keeps_unknown_exit_and_original_timeout_capture():
+    task, run, _, _ = make_execution()
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(kwargs)
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"],
+            output=b"synthetic progress", stderr=b"synthetic deadline")
+
+    policy = NativeExecutionPolicy(authorizes_mutation=True)
+    with pytest.raises(CodexExecutionError, match="180-minute") as captured:
+        CodexAdapter(runner=runner, execution_policy=policy).execute(task=task, run=run)
+    assert policy.response_budget_minutes == 180 and policy.process_watchdog_seconds == 185 * 60
+    assert len(calls) == 1 and calls[0]["timeout"] == 185 * 60
+    assert captured.value.exit_code is None and captured.value.stdout == b"synthetic progress"
+    assert captured.value.stderr == b"synthetic deadline"
+
+
 def test_codex_early_native_return_is_accepted_immediately() -> None:
     task, run, _, _ = make_execution()
     calls = []

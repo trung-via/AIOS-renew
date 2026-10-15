@@ -7157,7 +7157,9 @@ def _new_admission(
 def _bounded_admission_message(failure: BaseException) -> str:
     """Bound one operator error line and redact common credential shapes."""
 
-    message = str(failure).splitlines()[0][:2048]
+    from .review_transport import safe_admission_message
+    lines = str(failure).splitlines()
+    message = lines[0][:2048] if lines else ""
     message = re.sub(
         r"(?i)(https?://)[^/@\s]+@",
         r"\1[REDACTED]@",
@@ -7169,7 +7171,7 @@ def _bounded_admission_message(failure: BaseException) -> str:
         r"\1=[REDACTED]",
         message,
     )
-    return message[:512]
+    return safe_admission_message(message[:512])
 
 
 def _bind_admission_task(admission: dict[str, Any], task: Task) -> None:

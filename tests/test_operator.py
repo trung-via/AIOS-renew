@@ -142,6 +142,46 @@ def test_failure_transport_recovery_operator_private_public_correction_admission
     assert git(repo, "show-ref") == refs
 
 
+def test_failure_diagnostic_bp2_preserves_typed_pre_run_cause_and_source_without_execution(tmp_path, monkeypatch):
+    from aios_renew.unified_state import _bounded_admission_context
+    repo = make_repo(tmp_path)
+    task = operator_module.load_task(repo, "TASK-101")
+    head = git(repo, "rev-parse", "HEAD")
+    admission = operator_module._new_admission("PRIMARY", phase="PRIMARY_SYNCHRONIZATION",
+        reason_code="PRIMARY_SYNCHRONIZATION_REJECTED", task_id=task.task_id, executor="codex",
+        task=dict(id=task.task_id, revision=task.revision), dispatch_id="synthetic-bp2-delivery", current_head_sha=head)
+    transported = []
+    monkeypatch.setattr(operator_module, "transport_admission_failure", lambda _repo, **kwargs: transported.append(kwargs["diagnostic_path"].read_bytes()))
+    failure = OperatorError("local main has diverged and lacks a canonical preservation ref")
+    for _ in range(2):
+        operator_module._persist_and_transport_admission_failure(repo, admission=admission, failure=failure)
+    state = runtime_paths(repo)
+    assert not list(state.runs.glob("*.json")) and not list(state.failures.glob("*.json")) and not list(state.repairs.glob("*.json"))
+    records = list(state.admission_failures.glob("*.json"))
+    assert len(records) == 1 and transported[0] == transported[1]
+    context = _bounded_admission_context(state, task)
+    assert len(context) == 1
+    assert context[0]["run_created"] is False and context[0]["executor_invoked"] is False
+    assert context[0]["source_digest"] == records[0].stem
+    assert context[0]["facts"]["current_head_sha"] == head
+    assert "lawful clean control checkout" in context[0]["action"]
+    assert "canonical preservation ref" in context[0]["summary"]
+    assert str(failure) == "local main has diverged and lacks a canonical preservation ref"
+
+
+def test_failure_diagnostic_bp2_unknown_secret_capture_does_not_enter_public_receipt(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    admission = operator_module._new_admission("PRIMARY", phase="TASK_ADMISSION",
+        reason_code="TASK_CONTRACT_REJECTED", task_id="TASK-101", dispatch_id="synthetic-secret-bp2")
+    transported = []
+    monkeypatch.setattr(operator_module, "transport_admission_failure", lambda _repo, **kwargs: transported.append(kwargs["diagnostic_path"].read_bytes()))
+    failure = OperatorError("Authorization: Bearer synthetic-private-value C:/synthetic-private/native.log")
+    operator_module._persist_and_transport_admission_failure(repo, admission=admission, failure=failure)
+    assert transported and all(b"synthetic-private-value" not in item and b"C:/synthetic-private" not in item for item in transported)
+    assert "synthetic-private-value" in str(failure)
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
 @pytest.mark.parametrize("defect", ["private_origin", "public_origin", "authorization_subject"])
 def test_failure_transport_recovery_operator_conflict_fails_before_run(tmp_path, monkeypatch, defect):
     from copy import deepcopy
@@ -1244,7 +1284,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     )
 
     assert len(runner.calls) == 1
-    assert runner.calls[0][1]["timeout"] == 65 * 60
+    assert runner.calls[0][1]["timeout"] == 185 * 60
     assert staged["result"]["claims"] == []
     assert staged["result"]["unresolved"] == []
     assert staged["evidence"] == []
@@ -1258,7 +1298,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     assert "errors" not in runner.calls[0][1]
     if executor == "antigravity":
         command = runner.calls[0][0]
-        assert command[command.index("--print-timeout") + 1] == "60m"
+        assert command[command.index("--print-timeout") + 1] == "180m"
         instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
         assert "CODE_FIX" in instruction
         assert "EVIDENCE_ONLY" in instruction
@@ -3008,7 +3048,7 @@ def test_mutating_codex_capability_is_resolved_before_invocation(tmp_path: Path)
 
     command = runner.calls[0][0]
     assert command[command.index("--sandbox") + 1] == "danger-full-access"
-    assert runner.calls[0][1]["timeout"] == 65 * 60
+    assert runner.calls[0][1]["timeout"] == 185 * 60
     assert len(runner.calls) == 1
 
 
@@ -3045,7 +3085,7 @@ def test_native_watchdog_expiry_is_one_terminal_execution_failure(
         raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
     with pytest.raises(
-        OperatorError, match="60-minute native response deadline"
+        OperatorError, match="180-minute native response deadline"
     ):
         run_task(
             "TASK-101",
@@ -3058,8 +3098,8 @@ def test_native_watchdog_expiry_is_one_terminal_execution_failure(
         )
 
     assert len(native_calls) == 1
-    assert native_calls[0][1]["timeout"] == 65 * 60
-    assert native_calls[0][1]["timeout"] <= 66 * 60
+    assert native_calls[0][1]["timeout"] == 185 * 60
+    assert native_calls[0][1]["timeout"] <= 185 * 60
     assert verification_calls == []
     state = runtime_paths(repo)
     failure = json.loads(
@@ -3144,7 +3184,9 @@ def test_primary_keyboard_interrupt_terminalizes_without_altering_candidate(
             ".ai/transport/failure.json",
         )
     )
-    assert remote_failure == failure
+    assert operator_module._matches_failure_projection(failure, remote_failure)
+    assert "native_diagnostics" not in remote_failure["error"]
+    assert remote_failure["error"]["diagnostics"]["native_streams"]["stdout"]["truncated"] is True
     assert not git(
         tmp_path / "upstream.git",
         "for-each-ref",
@@ -3187,7 +3229,9 @@ def test_runtime_verification_interrupt_records_truthful_portable_failure(
             ".ai/transport/failure.json",
         )
     )
-    assert remote_failure == failure
+    assert operator_module._matches_failure_projection(failure, remote_failure)
+    assert remote_failure["phase"] == "VERIFICATION"
+    assert remote_failure["error"]["diagnostics"]["verification_availability"] == "UNAVAILABLE"
 
 
 def test_remediation_keyboard_interrupt_preserves_exact_lineage(tmp_path: Path) -> None:
@@ -3229,14 +3273,16 @@ def test_remediation_keyboard_interrupt_preserves_exact_lineage(tmp_path: Path) 
         "stdout": {"availability": "unavailable"},
         "stderr": {"availability": "unavailable"},
     }
-    assert json.loads(
+    remote_failure = json.loads(
         git(
             tmp_path / "upstream.git",
             "show",
             "refs/heads/aios/failure-artifacts/RUN-101-001:"
             ".ai/transport/failure.json",
         )
-    ) == failure
+    )
+    assert operator_module._matches_failure_projection(failure, remote_failure)
+    assert "native_diagnostics" not in remote_failure["error"]
 
 
 def test_repair_keyboard_interrupt_preserves_continuation_lineage(tmp_path: Path) -> None:
@@ -3270,14 +3316,16 @@ def test_repair_keyboard_interrupt_preserves_continuation_lineage(tmp_path: Path
     assert failure["candidate"]["repairable"] is True
     assert repair_execution["failed_run_id"] == failed_run_id
     assert repair_execution["repair"] == repair
-    assert json.loads(
+    remote_failure = json.loads(
         git(
             tmp_path / "upstream.git",
             "show",
             "refs/heads/aios/failure-artifacts/RUN-101-001:"
             ".ai/transport/failure.json",
         )
-    ) == failure
+    )
+    assert operator_module._matches_failure_projection(failure, remote_failure)
+    assert "native_diagnostics" not in remote_failure["error"]
 
     continuation = dict(repair)
     continuation.update(
@@ -3313,7 +3361,7 @@ def test_native_timeout_failure_retains_bounded_partial_diagnostics(
             stderr=b"z" * 5000,
         )
 
-    with pytest.raises(OperatorError, match="60-minute native response deadline"):
+    with pytest.raises(OperatorError, match="180-minute native response deadline"):
         run_task(
             "TASK-101",
             executor=executor,
@@ -3362,8 +3410,8 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
     assert "--json-schema" in command
-    assert command[command.index("--print-timeout") + 1] == "60m"
-    assert kwargs["timeout"] == 65 * 60
+    assert command[command.index("--print-timeout") + 1] == "180m"
+    assert kwargs["timeout"] == 185 * 60
     assert kwargs["cwd"] == workspace
     assert kwargs["text"] is False
     assert "encoding" not in kwargs
@@ -4845,13 +4893,13 @@ def test_no_change_repair_retains_zero_mutation_contract(
 
     assert summary.head_sha == failed_head
     assert len(runner.calls) == 1
-    assert runner.calls[0][1]["timeout"] == 65 * 60
+    assert runner.calls[0][1]["timeout"] == 185 * 60
     assert json.loads(summary.result_path.read_text(encoding="utf-8"))["result"][
         "changed_files"
     ] == []
     if executor == "antigravity":
         command = runner.calls[0][0]
-        assert command[command.index("--print-timeout") + 1] == "60m"
+        assert command[command.index("--print-timeout") + 1] == "180m"
         handoff = json.loads(
             next(runtime_paths(repo).handoffs.glob("*.json")).read_text(
                 encoding="utf-8"

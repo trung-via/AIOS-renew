@@ -328,3 +328,61 @@ def test_registry_rejects_duplicate_yaml_keys(tmp_path: Path):
     path.write_text("format: AIOS_FLOW_CARDS\nformat: AIOS_FLOW_CARDS\n", encoding="utf-8")
     with pytest.raises(BrainContextError):
         load_flow_cards(path)
+
+
+def failure_context_fixture():
+    from tests.test_review_transport import diagnostic_failure_fixture
+    from aios_renew.review_transport import failure_diagnostic_handoff
+    _, failure, _ = diagnostic_failure_fixture(run_id="RUN-177-902", task=dict(id="TASK-177", revision=2))
+    source = snapshot("RETRY_TRANSPORT")
+    unified = dict(source.unified_state, failed_run_id=failure["run_id"], failed_head_sha=failure["failed_head_sha"],
+                   failure_diagnostics=failure_diagnostic_handoff(failure))
+    return compose_brain_work_context(replace(source, unified_state=unified), {"flow_selector": "DIAGNOSTIC"})
+
+
+def test_failure_diagnostic_context_has_safe_cause_and_changes_invalidate_freshness():
+    context = failure_context_fixture()
+    assert "widgets" in context.render() and "synthetic-private-value" not in context.render()
+    changed = json.loads(context.render())["canonical_observation"]
+    changed["unified_state"]["failure_diagnostics"]["transport_blocker"] = "ATTENTION_DELIVERY_FAILED"
+    source = snapshot("RETRY_TRANSPORT")
+    replacement = compose_brain_work_context(replace(source, unified_state=changed["unified_state"]), {"flow_selector": "DIAGNOSTIC"})
+    assert replacement.invalidation_fingerprint != context.invalidation_fingerprint
+    assert resolve_flow(context).selected_flow == "DIAGNOSTIC"
+    assert resolve_flow(context).canonical_next_action == "RETRY_TRANSPORT"
+
+
+def test_failure_diagnostic_doorbell_automatically_binds_fresh_sync_without_manual_extraction(monkeypatch):
+    from tests.test_brain_attention import diagnostic_sources
+    from aios_renew.brain_attention import resolve_diagnostic_context
+    from aios_renew.local_chat_wake import doorbell
+    event, sources, _ = diagnostic_sources()
+    diagnostic = resolve_diagnostic_context(event, sources)
+    source = snapshot("EXECUTE_PRIMARY")
+    source = replace(source, repository={**source.repository, "name": "trung-via/AIOS-renew"}, diagnostic_attention=diagnostic)
+    calls = []
+    def observe(**kwargs):
+        calls.append(kwargs)
+        return source
+    monkeypatch.setattr("aios_renew.brain_context.observe_brain_sync", observe)
+    body = doorbell(event, "trung-via/AIOS-renew")
+    context = compose_brain_work_context(current_request={"flow_selector": "DIAGNOSTIC", "human_input": body})
+    assert calls == [dict(repo=None, attention_event_id=event)]
+    assert context.canonical_observation["diagnostic_attention"] == diagnostic
+    assert context.canonical_observation["next_action"] == "EXECUTE_PRIMARY"
+    assert "widgets" in context.render() and "synthetic-private-value" not in context.render()
+    with pytest.raises(BrainContextError, match="source substitution"):
+        compose_brain_work_context(current_request={"human_input": body}, attention_event_id="terminal:FAILURE:RUN-101-999:" + "c" * 40)
+
+
+@pytest.mark.parametrize("defect", ["raw", "subject", "run", "secret"])
+def test_failure_diagnostic_context_rejects_unsafe_or_unbound_sources(defect):
+    context = failure_context_fixture()
+    unified = json.loads(context.render())["canonical_observation"]["unified_state"]
+    diagnostic = unified["failure_diagnostics"]
+    if defect == "raw": diagnostic["stdout"] = "synthetic-private-value"
+    elif defect == "subject": diagnostic["source"]["subject_sha"] = "0" * 40
+    elif defect == "run": diagnostic["source"]["run_id"] = "RUN-177-999"
+    else: diagnostic["diagnostics"]["safe_causes"][0]["summary"] = "token=synthetic-private-value"
+    with pytest.raises(BrainContextError):
+        compose_brain_work_context(replace(snapshot("RETRY_TRANSPORT"), unified_state=unified), {"flow_selector": "DIAGNOSTIC"})

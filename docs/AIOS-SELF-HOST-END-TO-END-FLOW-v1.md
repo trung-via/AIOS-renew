@@ -13,6 +13,36 @@ remains Human/Brain planning authority; navigation supplies no engineering-state
 
 ## 1. Authority and minimum fresh context
 
+For a failure doorbell, forward its existing exact `event_id` into fresh Brain
+Sync/Work Context as `attention_event_id`. Sync reconstructs the bound Runtime
+FAILURE or BP-2 operational source and supplies safe causes, native exit facts,
+candidate state, evidence identities and explicit detail/access gaps. Pass the
+same fresh Work Context to the existing Brain provider request/attempt when a
+provider is used. The diagnostic view does not replace the lifecycle reducer or
+authorize a repair; Human/Brain still determine WHAT/WHY from the existing
+authority boundaries. No separate manual diagnostic command is a prerequisite.
+
+A dirty or otherwise nontransportable candidate may publish only the isolated
+immutable FAILURE artifacts and their exact terminal attention. Its uncommitted
+source is never published as a candidate ref. Unified State keeps that failure
+non-repairable and reports a typed blocker if artifact/attention transport fails.
+Replay reuses exact immutable identities and rejects content conflicts. Original
+private FAILURE and captured evidence remain available to the admitted Executor
+in its authorized local Runtime workspace; Brain and workflow channels receive
+the safe projection and an explicit private-channel restriction.
+
+Quoted verification selectors are bounded pytest boolean expressions following
+`-k` or `-m`, for example `python -m pytest -k "failure or timeout"`. Their exact
+command binding survives projection. Quoting other commands, escaped quotes,
+credential values, local paths and injected shell syntax remain rejected.
+
+TASK-354's proof is Runtime-owned and limited to its five ordered focused groups:
+failure transport/canonical state; Brain diagnostics/provider context; terminal
+attention/wake; failure-named operator cases; failure-named local-chat cases.
+The filtered groups establish only their selected coverage. They do not establish
+repository-wide proof, and no fallback full suite or historical unrelated proof
+is implied. Historical TASK/RUN evidence and roadmap state remain immutable.
+
 Fresh canonical Git/lineage outranks navigation. Use the published
 [Project Contract](CHATGPT_PROJECT_CONTRACT.md) and frozen Kernel for their own
 governance/protocol obligations. Human owns intent, priority, risk and delegation;

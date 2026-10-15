@@ -7,7 +7,7 @@ creating RUNs, invoking Executors, running verification, or mutating runtime sta
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 import re
@@ -63,6 +63,7 @@ class BrainSyncSnapshot:
     kind: str = "BRAIN_SYNC_SNAPSHOT"
     # Exact correction observations supply this; ordinary planning never does.
     correction_subject: Mapping[str, Any] | None = None
+    diagnostic_attention: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         body = {
@@ -86,6 +87,8 @@ class BrainSyncSnapshot:
         }
         if self.correction_subject is not None:
             body["correction_subject"] = dict(self.correction_subject)
+        if self.diagnostic_attention is not None:
+            body["diagnostic_attention"] = dict(self.diagnostic_attention)
         return body
 
     def render(self) -> str:
@@ -206,7 +209,7 @@ def _extract_next_candidates(
     return [dict(item) for item in seq_next]
 
 
-def observe_brain_sync(
+def _observe_brain_sync(
     repo: str | Path | None = None,
 ) -> BrainSyncSnapshot:
     """Reconstruct Brain Sync continuity facts deterministically without mutation."""
@@ -516,6 +519,30 @@ def observe_brain_sync(
         unified_state=unified_obs.as_dict(),
         blocker=unified_obs.blocker,
     )
+
+
+def observe_brain_sync(
+    repo: str | Path | None = None, *, attention_event_id: str | None = None,
+) -> BrainSyncSnapshot:
+    """Fresh lifecycle observation plus the existing doorbell's exact diagnostics.
+
+    The optional selector scopes a read; it never selects a repair or changes
+    roadmap/lifecycle authority. Missing private channels are reported as gaps.
+    """
+    snapshot = _observe_brain_sync(repo)
+    if attention_event_id is None:
+        return snapshot
+    from .brain_attention import GitSources, ArtifactSources, _git, parse_event_id, resolve_diagnostic_context
+    parse_event_id(attention_event_id)  # Validate before any network read.
+    root = resolve_repository(repo)
+    try:
+        with op._remote_observation_repository(root) as observer:
+            remote = resolve_transport_remote(observer)
+            diagnostic = resolve_diagnostic_context(attention_event_id,
+                GitSources(observer, _git, remote), ArtifactSources(snapshot.repository["name"]))
+    except (OperatorError, ReviewTransportError, OSError, ValueError):
+        diagnostic = dict(event_id=attention_event_id, availability="UNAVAILABLE", reason_code="DIAGNOSTIC_SOURCE_UNAVAILABLE")
+    return replace(snapshot, diagnostic_attention=diagnostic)
 
 
 build_brain_sync_snapshot = observe_brain_sync

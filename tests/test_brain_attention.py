@@ -21,6 +21,77 @@ IDENTITY = dict(run_id="RUN-fixture-001", artifact_sha="a" * 40,
 BODY = "a rejected immutable carrier"
 
 
+def diagnostic_sources():
+    """An artifact-only synthetic failure with the real admitted TASK schema."""
+    import yaml
+    from tests.operator_test_support import TASK_SOURCE
+    from tests.test_review_transport import diagnostic_failure_fixture
+    from aios_renew.review_transport import public_failure, public_run
+    run, private, original = diagnostic_failure_fixture(run_id="RUN-101-902", task=dict(id="TASK-101", revision=1))
+    artifact = "b" * 40
+    values = {"refs/heads/aios/failure-artifacts/" + run["run_id"]: artifact}
+    docs = {(artifact, ".ai/transport/run.json"): json.loads(public_run(json.dumps(run).encode())),
+            (artifact, ".ai/transport/failure.json"): json.loads(public_failure(original)),
+            (run["base_sha"], ".ai/tasks/TASK-101.yaml"): yaml.safe_load(TASK_SOURCE)}
+    sources = SimpleNamespace(values=values, docs=docs)
+    sources.refs = lambda *patterns: {ref: sha for ref, sha in values.items() if any(fnmatchcase(ref, pattern) for pattern in patterns)}
+    sources.document = lambda sha, name: copy.deepcopy(docs[sha, name])
+    sources.optional_document = lambda sha, name: copy.deepcopy(docs.get((sha, name)))
+    sources.included = lambda *_args: True
+    event = brain.attention(brain.FAILURE, dict(run_id=run["run_id"], artifact_sha=artifact)).event_id
+    return event, sources, private
+
+
+def test_failure_diagnostic_exact_attention_survives_artifact_only_candidate_and_duplicate_delivery():
+    event, sources, private = diagnostic_sources()
+    first = brain.resolve_diagnostic_context(event, sources)
+    assert first == brain.resolve_diagnostic_context(event, sources)
+    assert first["availability"] == "AVAILABLE"
+    handoff = first["failure_diagnostics"]
+    assert handoff["source"]["run_id"] == private["run_id"]
+    assert handoff["source"]["artifact_sha"] == "b" * 40
+    assert handoff["diagnostics"]["native_exit"] == dict(code=None, state="UNKNOWN")
+    assert handoff["diagnostics"]["candidate_workspace"]["dirty_entry_count"] == 23
+    assert handoff["candidate"]["transportable"] is False
+    assert handoff["private_evidence"]["availability"] == "RESTRICTED"
+    assert brain.resolve_return_affinity(event, sources) is not None
+    assert "synthetic-private-value" not in json.dumps(first)
+
+
+@pytest.mark.parametrize("defect", ["artifact", "run", "candidate", "forged_cause", "private_capture", "missing"])
+def test_failure_diagnostic_attention_rejects_source_substitution_or_private_public_capture(defect):
+    event, sources, private = diagnostic_sources()
+    artifact = "b" * 40
+    terminal = sources.docs[artifact, ".ai/transport/failure.json"]
+    if defect == "artifact": sources.values["refs/heads/aios/failure-artifacts/" + private["run_id"]] = "c" * 40
+    elif defect == "run": sources.docs[artifact, ".ai/transport/run.json"]["run_id"] = "RUN-101-999"
+    elif defect == "candidate": sources.values["refs/heads/aios/failure/" + private["run_id"]] = "c" * 40
+    elif defect == "forged_cause": terminal["error"]["diagnostics"]["safe_causes"][0]["summary"] = "token=synthetic-private-value"
+    elif defect == "private_capture": terminal["error"]["stdout"] = "token=synthetic-private-value"
+    else: sources.docs.pop((artifact, ".ai/transport/failure.json"))
+    result = brain.resolve_diagnostic_context(event, sources)
+    assert result == dict(event_id=event, availability="UNAVAILABLE", reason_code="DIAGNOSTIC_SOURCE_UNAVAILABLE")
+    assert "synthetic-private-value" not in json.dumps(result)
+
+
+def test_failure_diagnostic_bp2_receipt_has_action_and_no_fabricated_run():
+    receipt = workflow_failure_receipt("PRIMARY", "synthetic-delivery", "CONFIGURED_REPOSITORY_UNAVAILABLE").as_dict()
+    observation = brain.operational_observation(receipt)
+    item, source, pointer = source_event(observation)
+    artifacts = SimpleNamespace(artifact=lambda _pointer, receipt=False: copy.deepcopy(globals_receipt if receipt else source))
+    globals_receipt = receipt
+    sources = SimpleNamespace(refs=lambda *_patterns: {})
+    result = brain.resolve_diagnostic_context(item.event_id, sources, artifacts)
+    assert result["availability"] == "AVAILABLE"
+    diagnostic = result["admission_diagnostics"]
+    assert diagnostic["reason_code"] == "CONFIGURED_REPOSITORY_UNAVAILABLE"
+    assert diagnostic["run_created"] is False and diagnostic["executor_invoked"] is False
+    assert diagnostic["source_digest"] == brain.digest(source) and diagnostic["action"]
+    assert all(key not in diagnostic for key in ("run_id", "failure", "repair", "evidence"))
+    from aios_renew.review_transport import validate_diagnostic_attention
+    validate_diagnostic_attention(result)
+
+
 def source_event(observation):
     source = brain.source_document([observation])
     pointer = dict(workflow_run_id=100, run_attempt=1, artifact_id=200, source_digest=brain.digest(source))

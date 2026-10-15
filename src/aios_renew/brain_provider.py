@@ -223,7 +223,8 @@ class BrainAttemptError(Exception):
 def attempt(provider: BrainProvider, packet: DecisionPacket,
             return_contract_package: Mapping[str, Any], external_bindings: Mapping[str, Any],
             audit_profile_package: Mapping[str, Any] | None = None,
-            fresh_packet_supplier: Callable[[], DecisionPacket] | None = None) -> AttemptResult:
+            fresh_packet_supplier: Callable[[], DecisionPacket] | None = None,
+            *, work_context: Any = None) -> AttemptResult:
     """Invoke DIRECT once or an audited attempt twice, with one freshness gate."""
     count = 0
     phase = "INPUT"
@@ -238,7 +239,7 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
         if mode != "DIRECT" and not callable(fresh_packet_supplier):
             raise ValueError("fresh packet supplier required")
         first_request = construct_request(packet, return_contract_package, external_bindings,
-                                          audit_profile_package, request_mode=mode)
+                                          audit_profile_package, request_mode=mode, work_context=work_context)
     except (BrainProviderProtocolError, ProviderResponseError, AttributeError, KeyError, TypeError, ValueError):
         invalid_input = True
     else:
@@ -309,7 +310,7 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
         second_request = construct_request(fresh, first_request["return_contract_package"],
                                            first_request["external_bindings"],
                                            first_request["audit_profile_package"], request_mode="AUDIT_RECONCILE",
-                                           stage1_decision=first)
+                                           stage1_decision=first, work_context=work_context)
     except BrainAttemptError:
         raise
     except (BrainProviderProtocolError, AttributeError, KeyError, TypeError, ValueError):

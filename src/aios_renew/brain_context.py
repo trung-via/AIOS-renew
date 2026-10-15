@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -161,7 +162,21 @@ def _invalidation_basis(observed: Mapping[str, Any], request: Mapping[str, str] 
     if "correction_subject" in observed:
         # Immutable ref movement invalidates an audit even when facts are equal.
         basis["correction_subject_sha256"] = _digest(observed["correction_subject"])
+    if "diagnostic_attention" in observed:
+        basis["diagnostic_attention_sha256"] = _digest(observed["diagnostic_attention"])
+    diagnostics = _diagnostic_material(observed)
+    if any(diagnostics.values()):
+        basis["diagnostic_context_sha256"] = _digest(diagnostics)
     return basis
+
+
+def _diagnostic_material(observed: Mapping[str, Any]) -> dict[str, Any]:
+    """One safe supplement, bound into the existing request freshness identity."""
+    unified = observed.get("unified_state") or {}
+    return dict(failure_diagnostics=unified.get("failure_diagnostics"),
+        admission_diagnostics=[item for item in unified.get("admission_failures", [])
+                               if item.get("format") == "AIOS_ADMISSION_DIAGNOSTICS_V1"],
+        diagnostic_attention=observed.get("diagnostic_attention"))
 
 
 def _supersession_facts(material: Mapping[str, Any]) -> dict[str, Any]:
@@ -206,14 +221,35 @@ def compose_brain_work_context(
     current_request: Mapping[str, Any] | None = None,
     *,
     repo: str | Path | None = None,
+    attention_event_id: str | None = None,
 ) -> BrainWorkContext:
     """Compose one request-scoped view from current Brain Sync observation."""
+    request = _request(current_request)
+    wake_repository = None
+    if request and "human_input" in request:
+        # The existing doorbell is selector-only. Bind its read automatically;
+        # arbitrary prose, embedded snippets and tool output cannot select it.
+        wake = re.fullmatch(r"\[AIOS LOCAL CHAT WAKE\]\nevent_id: ([^\n]{1,8192})\nrepository: ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\nfresh_brain_sync_required: true", request["human_input"])
+        if wake:
+            from .brain_attention import parse_event_id
+            try:
+                parse_event_id(wake[1])
+            except ValueError as exc:
+                raise BrainContextError("invalid diagnostic doorbell selector") from exc
+            if attention_event_id is not None and attention_event_id != wake[1]:
+                raise BrainContextError("diagnostic doorbell source substitution")
+            attention_event_id, wake_repository = wake[1], wake[2]
     if snapshot is None:
-        snapshot = observe_brain_sync(repo=repo)
+        snapshot = (observe_brain_sync(repo=repo) if attention_event_id is None
+                    else observe_brain_sync(repo=repo, attention_event_id=attention_event_id))
     elif repo is not None or not isinstance(snapshot, BrainSyncSnapshot):
         raise BrainContextError("supply either a Brain Sync snapshot or repository")
-    request = _request(current_request)
+    elif attention_event_id is not None and (snapshot.diagnostic_attention is None
+            or snapshot.diagnostic_attention.get("event_id") != attention_event_id):
+        raise BrainContextError("a fresh Brain Sync snapshot for the doorbell is required")
     observed = snapshot.as_dict()
+    if wake_repository is not None and observed["repository"]["name"] != wake_repository:
+        raise BrainContextError("diagnostic doorbell repository substitution")
     # Brain Sync may expose a transport URL for operators. It is not needed by
     # reasoning and can contain credentials, so only canonical identity is copied.
     repository = observed["repository"]
@@ -221,6 +257,27 @@ def compose_brain_work_context(
         key: repository.get(key) for key in ("root", "name", "main_sha", "remote")
     }
     observed = _stable_copy(observed)
+    from .review_transport import validate_failure_context, validate_diagnostic_attention, validate_admission_context
+    unified = observed.get("unified_state")
+    if isinstance(unified, Mapping) and unified.get("failure_diagnostics") is not None:
+        diagnostic = unified["failure_diagnostics"]
+        try:
+            validate_failure_context(diagnostic)
+            source = diagnostic.get("source", diagnostic)
+            if (source["run_id"] != unified.get("failed_run_id")
+                    or source["subject_sha"] != unified.get("failed_head_sha")
+                    or "task" in source and source["task"] != unified.get("task")):
+                raise ValueError("failure diagnostic source substitution")
+        except (ValueError, TypeError, KeyError) as exc:
+            raise BrainContextError("unsafe failure diagnostic context") from exc
+    try:
+        if isinstance(unified, Mapping):
+            for diagnostic in unified.get("admission_failures", []):
+                validate_admission_context(diagnostic)
+        if "diagnostic_attention" in observed:
+            validate_diagnostic_attention(observed["diagnostic_attention"])
+    except (ValueError, TypeError, KeyError) as exc:
+        raise BrainContextError("unsafe attention diagnostic context") from exc
     if observed["format"] != "AIOS_BRAIN_SYNC_SNAPSHOT" or observed["version"] != 1:
         raise BrainContextError("unsupported Brain Sync snapshot")
     supersession = None

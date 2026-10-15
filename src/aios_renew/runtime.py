@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import math
+import re
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
@@ -10,6 +13,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from .antigravity_adapter import AntigravityExecutionError
+from .antigravity_minimax_adapter import AntigravityMinimaxExecutionError
 from .artifacts import (
     ArtifactValidationError,
     Evidence,
@@ -55,6 +59,7 @@ class RuntimeState(Protocol):
 BoundaryError = type[Exception]
 CompletionKind = Literal["PRIMARY", "REMEDIATION", "REPAIR", "DIRECT_CANDIDATE"]
 NATIVE_DIAGNOSTIC_LIMIT = 4096
+_NATIVE_EXECUTION_ERRORS = (CodexExecutionError, AntigravityExecutionError, AntigravityMinimaxExecutionError)
 
 
 @dataclass(frozen=True)
@@ -639,7 +644,7 @@ def persist_failure(
         if isinstance(failure, KeyboardInterrupt) and interruption_phase is not None:
             phase = interruption_phase
         elif isinstance(
-            cause, (CodexExecutionError, AntigravityExecutionError)
+            cause, _NATIVE_EXECUTION_ERRORS
         ) or isinstance(failure, KeyboardInterrupt):
             phase = "EXECUTION"
         elif isinstance(cause, RuntimeVerificationError):
@@ -673,8 +678,9 @@ def persist_failure(
         repairable = not dirty and descendant
         transportable = repairable and not outside_scope
         error_message = str(failure)
-        if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
-            error_message = str(cause).splitlines()[0][:512]
+        if isinstance(cause, _NATIVE_EXECUTION_ERRORS):
+            lines = str(cause).splitlines()
+            error_message = lines[0][:512] if lines else ""
         elif isinstance(failure, KeyboardInterrupt):
             error_message = {
                 "EXECUTION": "native execution interrupted by Human",
@@ -702,6 +708,11 @@ def persist_failure(
                 "outside_task_scope": sorted(outside_scope),
             },
         }
+        # These are workspace observations, never a committed candidate tree.
+        # Keep dirty paths private and publish only typed counts.
+        workspace = _failure_workspace_state(root, dirty=dirty, modification_scope=task.scope.modify)
+        if workspace is not None:
+            record["workspace_state"] = workspace
         repair_execution = state.repairs / f"{run.run_id}.json"
         if repair_execution.is_file():
             record["continuation_of"] = json.loads(
@@ -709,8 +720,14 @@ def persist_failure(
             ).get("failed_run_id")
         if isinstance(cause, CodexExecutionError):
             record["error"]["exit_code"] = cause.exit_code
+        if _is_native_timeout(cause):
+            record["error"]["native_kind"] = "TIMEOUT"
+            record["error"].setdefault("exit_code", None)
+            timeout = cause.__cause__.timeout
+            if type(timeout) in (int, float) and math.isfinite(timeout) and 0 <= timeout <= 31536000:
+                record["error"]["native_timeout_seconds"] = timeout
         if isinstance(
-            cause, (CodexExecutionError, AntigravityExecutionError)
+            cause, _NATIVE_EXECUTION_ERRORS
         ) or isinstance(failure, KeyboardInterrupt):
             diagnostic_source: BaseException = cause or failure
             record["error"]["native_diagnostics"] = {
@@ -718,6 +735,7 @@ def persist_failure(
                 "stdout": _bounded_native_stream(diagnostic_source, "stdout"),
                 "stderr": _bounded_native_stream(diagnostic_source, "stderr"),
             }
+            record["error"]["native_captures"] = _persist_native_captures(state, run, diagnostic_source)
         if isinstance(cause, RuntimeVerificationError):
             record["error"]["verification"] = [
                 {
@@ -728,13 +746,54 @@ def persist_failure(
                 }
                 for item in cause.evidence
             ]
+            # Direct V1 observations have no V2 reference. Retain their original
+            # EVIDENCE identity and locator in the private FAILURE so the same
+            # admitted local Executor can read the actual capture.
+            direct_evidence = [
+                dict(evidence_id=item.evidence_id, run_id=item.run_id,
+                     subject_sha=item.subject_sha, type=item.type,
+                     source=asdict(item.source), result=asdict(item.result),
+                     raw={"path": item.raw_path})
+                for item in cause.evidence if item.verification is None
+            ]
+            if direct_evidence:
+                record["error"]["evidence"] = direct_evidence
+                digests = {}
+                for item in direct_evidence:
+                    try:
+                        owned = (state.verification / run.run_id).resolve()
+                        path = Path(item["raw"]["path"])
+                        if not path.is_absolute():
+                            path = root / path
+                        # A missing/restricted capture cannot erase the FAILURE.
+                        if (owned == state.verification.parent.resolve() / state.verification.name / run.run_id
+                                and path.resolve().is_relative_to(owned) and path.is_file()):
+                            digest = hashlib.sha256()
+                            with path.open("rb") as raw:
+                                for chunk in iter(lambda: raw.read(1024 * 1024), b""):
+                                    digest.update(chunk)
+                            digests[item["evidence_id"]] = digest.hexdigest()
+                    except (OSError, ValueError, RuntimeError):
+                        continue
+                if digests:
+                    record["error"]["evidence_raw_digests"] = digests
         executor_unresolved = _read_staged_executor_unresolved(state, task, run)
         if executor_unresolved:
             record["error"]["executor_diagnostics"] = {
                 "unresolved": executor_unresolved
             }
         failure_path = state.failures / f"{run.run_id}.json"
-        _write_json(failure_path, record)
+        content = json.dumps(record, sort_keys=True, indent=2).encode("utf-8")
+        failure_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with failure_path.open("xb") as stream:
+                stream.write(content)
+        except FileExistsError:
+            if json.loads(failure_path.read_bytes()) != record:
+                _write_json(state.failures / f"{run.run_id}.transport.json",
+                    dict(run_id=run.run_id, error="conflicting immutable Runtime FAILURE", reason_code="ARTIFACT_IDENTITY_CONFLICT"))
+                return
+            # A replay transports the existing bytes; it never rewrites them.
         preverification_path = state.preverification / f"{run.run_id}.json"
         reusable_candidate_path = (
             preverification_path
@@ -759,11 +818,182 @@ def persist_failure(
             except ReviewTransportError as transport_error:
                 _write_json(
                     state.failures / f"{run.run_id}.transport.json",
-                    {"run_id": run.run_id, "error": str(transport_error)},
+                    {"run_id": run.run_id, "error": str(transport_error),
+                     "reason_code": failure_transport_blocker(transport_error)},
                 )
     except Exception:
         # Failure recording is subordinate and never replaces the original failure.
         return
+
+
+def _failure_workspace_state(root: Path, *, dirty: bool, modification_scope: Sequence[str]) -> dict[str, int] | None:
+    """A subordinate status read cannot erase the admitted FAILURE on failure."""
+    try:
+        status = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all", strip_stdout=False) if dirty else ""
+        entries = status.split("\0")
+        dirty_entries: list[tuple[str, ...]] = []
+        index = 0
+        while index < len(entries):
+            entry = entries[index]
+            index += 1
+            if not entry:
+                continue
+            if len(entry) < 4 or entry[2] != " ":
+                return None
+            paths = (entry[3:],)
+            if "R" in entry[:2] or "C" in entry[:2]:
+                if index >= len(entries) or not entries[index]:
+                    return None
+                paths += (entries[index],)
+                index += 1
+            dirty_entries.append(paths)
+        if bool(dirty_entries) is not dirty:
+            return None  # A racing status snapshot has unknown counts.
+        return dict(dirty_entry_count=len(dirty_entries),
+                    outside_task_scope_count=sum(any(path not in modification_scope for path in paths) for paths in dirty_entries))
+    except Exception:
+        return None
+
+
+def failure_transport_blocker(error: BaseException) -> str:
+    """Typed transport facts without forwarding private exceptions or Git stderr."""
+    from .review_transport import FAILURE_TRANSPORT_BLOCKERS, _FAILURE_BLOCKER_MESSAGES
+    current: BaseException | None = error
+    for _ in range(8):
+        reason = getattr(current, "reason_code", None)
+        if isinstance(reason, str) and reason in FAILURE_TRANSPORT_BLOCKERS:
+            return reason
+        current = current.__cause__ if current is not None else None
+    text = str(error)
+    if text in _FAILURE_BLOCKER_MESSAGES:
+        return _FAILURE_BLOCKER_MESSAGES[text]
+    if "projection" in text or "public FAILURE" in text:
+        return "FAILURE_PROJECTION_REJECTED"
+    if "attention" in text:
+        return "ATTENTION_DELIVERY_FAILED"
+    if "conflict" in text or "different" in text:
+        return "ARTIFACT_IDENTITY_CONFLICT"
+    if "query" in text or "remote" in text and "unavailable" in text:
+        return "REMOTE_QUERY_UNAVAILABLE"
+    if "push" in text:
+        return "REMOTE_PUBLICATION_FAILED"
+    return "FAILURE_TRANSPORT_UNAVAILABLE"
+
+
+def read_private_failure_diagnostics(
+    root: Path, *, state: RuntimeState, task: Task, run: Run, subject_sha: str,
+) -> dict[str, Any]:
+    """Read original Runtime evidence for an admitted RUN in its local workspace.
+
+    This local-only API returns bytes, including sensitive captured text. It must
+    never be serialized into Brain/provider/workflow payloads. The RUN, TASK and
+    subject supplied by admission are checked before any diagnostic locator is
+    opened. Evidence is data and conveys no execution or repair instructions.
+    """
+    from .review_transport import failure_document, validate_runtime_failure_binding
+
+    if (run.status != "ACTIVE" or run.task.id != task.task_id or run.task.revision != task.revision
+            or type(run.task.revision) is not int or type(task.revision) is not int
+            or Path(run.workspace).resolve() != root.resolve()
+            or re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", run.run_id) is None
+            or re.fullmatch(r"[0-9a-f]{40}", subject_sha) is None):
+        raise ValueError("private diagnostics require the admitted local RUN workspace")
+    from .operator import _runtime_paths_readonly
+    authorized = _runtime_paths_readonly(root)
+    if any(getattr(state, key).resolve() != getattr(authorized, key).resolve() for key in ("failures", "verification")):
+        raise ValueError("private diagnostics require the workspace's Runtime-owned state")
+    for directory in (state.failures.parent, state.failures, authorized.runs, state.verification):
+        if directory.is_symlink() or directory.resolve() != directory.parent.resolve() / directory.name:
+            raise ValueError("private diagnostic source substitution")
+    run_path = state.failures.parent / "runs" / f"{run.run_id}.json"
+    failure_path = state.failures / f"{run.run_id}.json"
+    if (run_path.is_symlink() or failure_path.is_symlink()
+            or run_path.resolve().parent != authorized.runs.resolve()
+            or failure_path.resolve().parent != authorized.failures.resolve()):
+        raise ValueError("private diagnostic source substitution")
+    from .review_transport import _public_document
+    original_run = _public_document(run_path.read_bytes())
+    bound_run = original_run.get("execution", {}).get("run") if original_run.get("kind") == "REMEDIATION" else original_run
+    expected_run = asdict(run)
+    if "return_affinity" not in bound_run:
+        from .return_affinity import document_affinity
+        if document_affinity(bound_run) != run.return_affinity:
+            raise ValueError("private diagnostic RUN affinity mismatch")
+        expected_run.pop("return_affinity", None)
+    if json.dumps(bound_run, sort_keys=True) != json.dumps(expected_run, sort_keys=True):
+        raise ValueError("private diagnostic RUN admission binding mismatch")
+    raw_failure = failure_path.read_bytes()
+    failure = failure_document(raw_failure)
+    if "public_projection" in failure or failure.get("error", {}).get("message") == "Protected Runtime diagnostics remain local.":
+        raise ValueError("original private FAILURE is unavailable")
+    validate_runtime_failure_binding(failure, run_id=run.run_id, task_id=task.task_id,
+        task_revision=task.revision, executor=run.executor, base_sha=run.base_sha,
+        candidate_sha=subject_sha, modification_scope=task.scope.modify)
+    from .unified_state import _validated_private_public_view
+    _validated_private_public_view(failure, "METADATA")
+    records = []
+    for outcome in failure.get("error", {}).get("verification", []):
+        reference = outcome.get("verification")
+        if not isinstance(reference, Mapping):
+            continue
+        for prefix in ("", "base_"):
+            path = reference.get(prefix + "raw_path")
+            if path is not None:
+                records.append((reference["evidence_id"], prefix or "candidate", path, reference[prefix + "raw_digest"], reference["run_id"]))
+    def evidence_records(value: Any) -> None:
+        if isinstance(value, list):
+            for item in value:
+                evidence_records(item)
+        elif isinstance(value, Mapping):
+            if "evidence_id" in value and "raw" in value:
+                records.append((value["evidence_id"], "evidence", value["raw"]["path"],
+                                failure["error"].get("evidence_raw_digests", {}).get(value["evidence_id"]), run.run_id))
+            for item in value.values():
+                evidence_records(item)
+    evidence_records(failure)
+    captures = []
+    owned_root = state.verification.resolve()
+
+    def local_capture(path: str, expected_digest: str | None, source_run_id: str) -> dict[str, Any]:
+        locator = Path(path)
+        if not locator.is_absolute():
+            locator = root / locator
+        resolved = locator.resolve()
+        if not resolved.is_relative_to(owned_root):
+            raise ValueError("private evidence locator is outside the exact RUN")
+        relative = resolved.relative_to(owned_root)
+        if not relative.parts or not (relative.parts[0] == source_run_id
+                or len(relative.parts) == 1 and resolved.name.startswith(source_run_id + "-")):
+            raise ValueError("private evidence locator is outside the exact RUN")
+        if not resolved.is_file():
+            return dict(availability="UNAVAILABLE", bytes=None)
+        raw = resolved.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        if expected_digest is not None and expected_digest != digest:
+            raise ValueError("private evidence digest mismatch")
+        return dict(availability="AVAILABLE", bytes=raw, sha256=digest,
+                    integrity="BOUND_DIGEST" if expected_digest is not None else "RUNTIME_LOCAL_ONLY")
+
+    for identity, role, path, expected_digest, source_run_id in records:
+        captures.append(dict(evidence_id=identity, role=role, **local_capture(path, expected_digest, source_run_id)))
+    from .review_transport import validate_private_native_captures
+    native = failure.get("error", {}).get("native_captures", {})
+    validate_private_native_captures(native)
+    native_captures = {}
+    for stream in ("stdout", "stderr"):
+        reference = native.get(stream)
+        if reference is None:
+            native_captures[stream] = dict(availability="UNKNOWN", bytes=None)
+        elif reference["availability"] == "UNAVAILABLE":
+            native_captures[stream] = dict(availability="UNAVAILABLE", bytes=None)
+        else:
+            capture = local_capture(reference["raw_path"], reference["raw_digest"], run.run_id)
+            if capture["availability"] == "AVAILABLE" and len(capture["bytes"]) != reference["raw_bytes"]:
+                raise ValueError("private native capture byte count mismatch")
+            native_captures[stream] = capture
+    return dict(run_id=run.run_id, subject_sha=subject_sha, authority="RUNTIME_OBSERVATION_DATA",
+                availability="AVAILABLE", failure_bytes=raw_failure,
+                failure_sha256=hashlib.sha256(raw_failure).hexdigest(), captures=captures, native_captures=native_captures)
 
 
 def result_package_data(package: ResultPackage) -> dict[str, Any]:
@@ -943,8 +1173,44 @@ def _is_native_timeout(failure: BaseException | None) -> bool:
     """Recognize the adapter's directly chained process timeout."""
 
     return isinstance(
-        failure, (CodexExecutionError, AntigravityExecutionError)
+        failure, _NATIVE_EXECUTION_ERRORS
     ) and isinstance(failure.__cause__, subprocess.TimeoutExpired)
+
+
+def _persist_native_captures(state: RuntimeState, run: Run, failure: BaseException) -> dict[str, Any]:
+    """Keep original capture bytes in existing private RUN verification storage.
+
+    Content-addressed files are immutable and never enter terminal transport.
+    Failure to retain a stream affects only its availability, not terminalization.
+    """
+    captures = {}
+    for name in ("stdout", "stderr"):
+        value = getattr(failure, name, None)
+        if value is None and name == "stdout":
+            value = getattr(failure, "output", None)
+        if not isinstance(value, (str, bytes)):
+            captures[name] = dict(availability="UNAVAILABLE")
+            continue
+        try:
+            raw = value if isinstance(value, bytes) else value.encode("utf-8", errors="strict")
+            identity = hashlib.sha256(raw).hexdigest()
+            directory = state.verification / run.run_id
+            path = directory / ("native-" + name + "-" + identity + ".raw")
+            if (state.verification.is_symlink() or directory.is_symlink() or path.is_symlink()
+                    or directory.resolve() != state.verification.parent.resolve() / state.verification.name / run.run_id):
+                raise ValueError("private native capture source substitution")
+            directory.mkdir(parents=True, exist_ok=True)
+            try:
+                with path.open("xb") as capture:
+                    capture.write(raw)
+            except FileExistsError:
+                if path.read_bytes() != raw:
+                    raise ValueError("conflicting immutable native capture")
+            captures[name] = dict(availability="AVAILABLE", raw_path=str(path.resolve()),
+                                  raw_digest=identity, raw_bytes=len(raw))
+        except (OSError, UnicodeError, ValueError, AttributeError):
+            captures[name] = dict(availability="UNAVAILABLE")
+    return captures
 
 
 def _bounded_native_stream(

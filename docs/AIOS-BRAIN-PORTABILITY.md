@@ -18,6 +18,96 @@ Card field or second semantic resolver is introduced by the navigation pointer.
 
 ## 1. Purpose
 
+### Runtime failure diagnostic handoff
+
+Runtime FAILURE remains the engineering source of truth. Prospective full public
+projections use `AIOS_PUBLIC_FAILURE_V2`; lawful historical private records,
+small protected records and `AIOS_PUBLIC_FAILURE_V1` remain readable. The
+projection preserves TASK/RUN/subject, phase, error type, native integer or null
+exit, committed candidate facts and source digests. Serialization never rewrites
+the private original. A null native exit means UNKNOWN; it is never converted to
+a successful or failed numeric exit.
+
+The bounded diagnostic view extracts causes from a closed grammar: timeout,
+interruption, connection/authentication/rate-limit failures, missing Python
+modules, numeric assertion differences, typed verification outcomes and candidate
+state. Credential-shaped values, local paths, shell syntax, instructions and
+unclassified capture remain private. Safe module names and assertion differences
+survive alongside the verification command and evidence identities. Message and
+stream availability, capture truncation, withheld capture, summary truncation and
+diagnostic completeness are explicit. Historical missing facts remain UNKNOWN or
+UNAVAILABLE. The public/private digest binds the original representation; a
+self-consistent digest alone is not authentication. Readers still require exact
+canonical refs and RUN/TASK/subject binding, and compare only the private side's
+lawful projection when reconciling representations.
+
+Explicitly incomplete historical V2 observations can retain missing detail or
+fingerprints without blocking their diagnostic transport. The bounded
+`AIOS_PRIVATE_OBSERVATION_V2` view reports unavailable or oversized detail,
+unavailable or unverified fingerprints, and partial failure populations. Missing
+fingerprints stay null; original observation, report and reference digests remain
+bound. This view supplies no comparable PASS proof or new attribution. Malformed
+identity, contradictory known fingerprints and source-digest substitutions still
+block transport with a typed cause. Private observations and historical
+UNRESOLVED classifications remain unchanged.
+
+Unified State includes this safe view for its exact failure tip and typed local
+transport blockers. Fresh Brain Sync can also accept the existing attention
+`event_id` as `attention_event_id`, reconstructing that immutable source even
+when the roadmap selects another TASK. Work Context carries the observation and
+includes its identity in freshness invalidation. When the current request is the
+existing exact local-chat doorbell, Work Context binds its selector to fresh Sync
+automatically and checks the repository identity; free prose or embedded snippets
+cannot select a diagnostic source. Provider callers pass that same
+fresh Work Context as `work_context` to the existing request/attempt interface;
+the optional bounded diagnostic supplement is fingerprint-bound and revalidated
+before invocation. These reads choose no repair strategy and grant no execution
+or publication authority. Doorbells and Issues remain selector-only; raw logs are
+never attached to them or to workflow artifacts/provider prompts.
+
+BP-2 diagnostics retain their original admission receipt/source identity, typed
+phase and reason, relevant Git identities and bounded actionable explanation.
+They state `run_created=false` and `executor_invoked=false`. A missing transported
+admission source leaves an explicitly partial receipt-derived explanation, not a
+fabricated RUN, FAILURE or REPAIR.
+
+An admitted local Executor uses Runtime's
+`read_private_failure_diagnostics(root, state=..., task=..., run=..., subject_sha=...)`
+inside its already authorized RUN workspace. The read checks the persisted RUN,
+TASK, subject, workspace and Runtime-owned directories before returning original
+FAILURE bytes and relevant capture bytes. Verification locators remain within the
+declared RUN's Runtime evidence, including exactly bound reused references; known
+raw digests must match. Missing capture files are reported as UNAVAILABLE. Local
+legacy records without raw digests are labeled `RUNTIME_LOCAL_ONLY`, not claimed
+as independently authenticated raw proof. Returned bytes are observation data,
+not instructions, and must remain in that private local channel. A portable Brain
+view reports the channel restriction and never claims that private bytes were
+delivered. No Human log extraction, new dispatch, memory router or automatic
+correction choice is required.
+
+Prospective native failures retain original stdout/stderr bytes, including binary
+or summary-truncated streams, in the existing private RUN verification directory.
+The original FAILURE binds these captures by digest and byte count. Public
+projections carry only safe facts and availability; they omit capture locators
+and bytes. The local reader distinguishes missing captures from historical
+UNKNOWN availability and rejects substituted bytes or cross-RUN locators.
+Direct V1 failures also retain their full private EVIDENCE identities and capture
+locators. Runtime records raw digests for available captures in the same RUN's
+owned evidence directory; the authorized local reader checks those digests.
+Portable channels receive safe verification outcomes and evidence identities,
+never the locators or capture bytes. Quoted verification commands are admitted
+only for the closed pytest selector grammar; shell, escape and credential-bearing
+payloads remain rejected.
+
+The common admitted native execution policy gives a 180-minute response budget
+and a bounded 185-minute process watchdog, including the existing five-minute
+grace. Dispatcher passes this same policy to Codex, Antigravity and MiniMax for
+PRIMARY, REMEDIATION and REPAIR. This prospective default becomes effective for
+later admissions through the existing verification, review and publication
+boundaries; it does not change the policy already bound to the implementing RUN.
+Standalone adapter compatibility defaults and Runtime timeout authority remain
+owned by their existing boundaries.
+
 This baseline records the Human-approved BP-0 architecture for making AIOS-renew independent of any one Brain model/provider while preserving the existing authority model, canonical engineering truth, exact immutable lineage, GitHub/self-hosted execution path, and frozen Kernel v0.1 semantics.
 
 The target is not a larger agent framework. The target is a deterministic cognitive-support layer that prepares exact bounded context for a replaceable Brain or Reviewer, validates the returned semantic decision, and then delegates only to existing canonical AIOS surfaces.

@@ -223,23 +223,75 @@ def _decision(request: dict[str, Any], semantic_value: dict[str, Any]) -> dict[s
     return result
 
 
+def _validate_diagnostic_context(value: Any, packet: Mapping[str, Any]) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    from .review_transport import validate_failure_context, validate_admission_diagnostics, validate_diagnostic_attention
+    from .brain_context import _digest as context_digest
+    body = _exact(_normal(value), {"work_context_fingerprint", "work_context_basis", "failure_diagnostics", "admission_diagnostics", "diagnostic_attention"}, "diagnostic context")
+    if body["work_context_fingerprint"] != packet["work_context_fingerprint"]:
+        raise BrainProviderProtocolError("diagnostic work context source substitution")
+    _bound(body, 98304, "diagnostic context")
+    try:
+        basis = body["work_context_basis"]
+        required = {"repository_identity_sha256", "main_sha", "roadmap_selection_sha256",
+                    "semantic_subject_lifecycle_sha256", "blocker_sha256", "current_request_sha256",
+                    "diagnostic_context_sha256"}
+        optional = {"repair_supersession_sha256", "correction_subject_sha256", "diagnostic_attention_sha256"}
+        material = {key: body[key] for key in ("failure_diagnostics", "admission_diagnostics", "diagnostic_attention")}
+        if (not isinstance(basis, dict) or not required <= basis.keys() or set(basis) - required - optional
+                or any(not isinstance(item, str) or re.fullmatch(r"[0-9a-f]{40}" if key == "main_sha" else r"[0-9a-f]{64}", item) is None
+                       for key, item in basis.items())
+                or context_digest(basis) != body["work_context_fingerprint"]
+                or context_digest(material) != basis["diagnostic_context_sha256"]):
+            raise ValueError("diagnostic context differs from its fresh observation")
+        if body["failure_diagnostics"] is not None:
+            validate_failure_context(body["failure_diagnostics"])
+        if not isinstance(body["admission_diagnostics"], list) or len(body["admission_diagnostics"]) > 32:
+            raise ValueError("unbounded admission diagnostics")
+        for diagnostic in body["admission_diagnostics"]:
+            validate_admission_diagnostics(diagnostic)
+        if body["diagnostic_attention"] is not None:
+            validate_diagnostic_attention(body["diagnostic_attention"])
+    except (ValueError, TypeError, KeyError) as exc:
+        raise BrainProviderProtocolError("unsafe diagnostic provider context") from exc
+    return body
+
+
+def _context_diagnostics(work_context: Any, packet: Mapping[str, Any]) -> dict[str, Any] | None:
+    if work_context is None:
+        return None
+    from .brain_context import BrainWorkContext, _invalidation_basis, _digest as context_digest, _diagnostic_material
+    if (not isinstance(work_context, BrainWorkContext)
+            or _invalidation_basis(work_context.canonical_observation, work_context.current_request) != work_context.invalidation_basis
+            or context_digest(work_context.invalidation_basis) != work_context.invalidation_fingerprint):
+        raise BrainProviderProtocolError("fresh Brain Work Context required for diagnostics")
+    material = _diagnostic_material(work_context.canonical_observation)
+    if not any(material.values()):
+        return None
+    return _validate_diagnostic_context(dict(work_context_fingerprint=work_context.invalidation_fingerprint,
+        work_context_basis=dict(work_context.invalidation_basis), **material), packet)
+
+
 def _stage1_request(packet: dict[str, Any], contract: dict[str, Any], bindings: dict[str, Any],
-                    profile: dict[str, Any]) -> dict[str, Any]:
+                    profile: dict[str, Any], diagnostic_context: dict[str, Any] | None = None) -> dict[str, Any]:
     result = {
         "format": "AIOS_BRAIN_REQUEST", "version": 1, "kind": "BRAIN_REQUEST",
         "request_mode": "AUDIT_CONSTRUCT", "decision_packet": packet,
         "return_contract_package": contract, "external_bindings": bindings,
         "audit_profile_package": profile, "stage1_lineage": None,
     }
+    if diagnostic_context is not None:
+        result["diagnostic_context"] = diagnostic_context
     result["request_fingerprint"] = _digest(result)
     _bound(result, 393216, "Brain request")
     return result
 
 
 def _lineage(packet: dict[str, Any], contract: dict[str, Any], bindings: dict[str, Any],
-             profile: dict[str, Any], value: Any) -> dict[str, Any]:
+             profile: dict[str, Any], value: Any, diagnostic_context: dict[str, Any] | None = None) -> dict[str, Any]:
     lineage = _exact(_normal(value), _STAGE1_LINEAGE_FIELDS, "Stage-1 lineage")
-    first_request = _stage1_request(packet, contract, bindings, profile)
+    first_request = _stage1_request(packet, contract, bindings, profile, diagnostic_context)
     if lineage["stage1_request_fingerprint"] != first_request["request_fingerprint"]:
         raise BrainProviderProtocolError("Stage-1 request replay or substitution")
     construct = _stage1(packet, profile["profile"], lineage["construct"])
@@ -252,12 +304,14 @@ def _lineage(packet: dict[str, Any], contract: dict[str, Any], bindings: dict[st
 
 def construct_request(packet: DecisionPacket, return_contract_package: Mapping[str, Any],
                       external_bindings: Mapping[str, Any], audit_profile_package: Mapping[str, Any] | None = None,
-                      *, request_mode: str, stage1_decision: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                      *, request_mode: str, stage1_decision: Mapping[str, Any] | None = None,
+                      work_context: Any = None) -> dict[str, Any]:
     """Construct one request from an actual freshly compiled packet object."""
     if not isinstance(packet, DecisionPacket):
         raise BrainProviderProtocolError("constructor requires a fresh DecisionPacket object")
     try:
         body = _packet(packet)
+        diagnostics = _context_diagnostics(work_context, body)
         contract = _contract_package(return_contract_package, body)
         bindings = _bindings(external_bindings, contract)
         flow = body["selected_flow"]
@@ -274,9 +328,9 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
         elif request_mode == "AUDIT_CONSTRUCT":
             if stage1_decision is not None:
                 raise BrainProviderProtocolError("Stage 1 has no prior decision")
-            return _stage1_request(body, contract, bindings, profile)
+            return _stage1_request(body, contract, bindings, profile, diagnostics)
         else:
-            first_request = _stage1_request(body, contract, bindings, profile)
+            first_request = _stage1_request(body, contract, bindings, profile, diagnostics)
             first = revalidate_decision(stage1_decision, first_request)
             construct = _stage1(body, profile["profile"], first["semantic_value"])
             _enforce_bindings(construct["construct_candidate"], bindings)
@@ -291,6 +345,8 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
             "return_contract_package": contract, "external_bindings": bindings,
             "audit_profile_package": profile, "stage1_lineage": lineage,
         }
+        if diagnostics is not None:
+            result["diagnostic_context"] = diagnostics
         result["request_fingerprint"] = _digest(result)
         _bound(result, 393216, "Brain request")
         return result
@@ -301,11 +357,12 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
 def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
     """Revalidate a serialized request, including its complete packet mapping."""
     try:
-        request = _exact(_normal(value), _REQUEST_FIELDS, "Brain request")
+        request = _exact(_normal(value), _REQUEST_FIELDS | ({"diagnostic_context"} if "diagnostic_context" in value else set()), "Brain request")
         if request["format"] != "AIOS_BRAIN_REQUEST" or type(request["version"]) is not int or request["version"] != 1 or request["kind"] != "BRAIN_REQUEST":
             raise BrainProviderProtocolError("invalid request format")
         _bound(request, 393216, "Brain request")
         packet = _packet(request["decision_packet"])
+        diagnostics = _validate_diagnostic_context(request.get("diagnostic_context"), packet)
         contract = _contract_package(request["return_contract_package"], packet)
         bindings = _bindings(request["external_bindings"], contract)
         flow, mode = packet["selected_flow"], request["request_mode"]
@@ -316,7 +373,7 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
             raise BrainProviderProtocolError("flow and request mode do not apply")
         profile = _profile_package(request["audit_profile_package"], flow)
         if mode == "AUDIT_RECONCILE":
-            _lineage(packet, contract, bindings, profile, request["stage1_lineage"])
+            _lineage(packet, contract, bindings, profile, request["stage1_lineage"], diagnostics)
         elif request["stage1_lineage"] is not None or mode == "DIRECT" and bindings:
             raise BrainProviderProtocolError("forbidden lineage or DIRECT bindings")
         supplied = _fingerprint(request["request_fingerprint"], "request fingerprint")

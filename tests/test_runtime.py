@@ -1,8 +1,9 @@
 import json
 import subprocess
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
+import hashlib
 from types import SimpleNamespace
 
 import pytest
@@ -38,6 +39,154 @@ from aios_renew.verification import RuntimeVerificationError
 
 class BoundaryError(RuntimeError):
     pass
+
+
+def test_failure_diagnostic_v1_direct_capture_is_bound_private_and_available_to_executor(tmp_path):
+    from aios_renew.operator import load_task, runtime_paths
+    from aios_renew.review_transport import public_failure, failure_document, failure_diagnostic_handoff, transport_failure
+    from tests.operator_test_support import make_repo, git
+    repo = make_repo(tmp_path)
+    task = load_task(repo, "TASK-101")
+    head = git(repo, "rev-parse", "HEAD")
+    run = Run.from_task(run_id="RUN-101-905", task=task, executor="codex", base_sha=head, workspace=str(repo))
+    state = runtime_paths(repo)
+    run_path = state.runs / (run.run_id + ".json")
+    run_path.write_text(json.dumps(asdict(run)), encoding="utf-8")
+    directory = state.verification / run.run_id
+    directory.mkdir()
+    raw_path = directory / (run.run_id + "-V001.raw")
+    raw = b"STDOUT\nModuleNotFoundError: No module named 'widgets'\nSTDERR\ntoken=synthetic-private-value\xff"
+    raw_path.write_bytes(raw)
+    item = Evidence(evidence_id=run.run_id + "-V001", run_id=run.run_id, subject_sha=head, type="TEST",
+        source=EvidenceSource('python -m pytest -q tests/test_runtime.py -k "failure or timeout"'),
+        result=EvidenceOutcome(2, "ModuleNotFoundError: No module named 'widgets'"), raw_path=str(raw_path))
+    failure = BoundaryError("verification failed")
+    failure.__cause__ = RuntimeVerificationError("direct command failed", evidence=(item,))
+    persist_failure(repo, state=state, task=task, run=run, run_path=run_path, failure=failure, transport=False)
+    path = state.failures / (run.run_id + ".json")
+    original = path.read_bytes()
+    private = json.loads(original)
+    assert private["error"]["evidence_raw_digests"] == {item.evidence_id: hashlib.sha256(raw).hexdigest()}
+    local = runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=head)
+    assert local["failure_bytes"] == original
+    assert local["captures"] == [dict(evidence_id=item.evidence_id, role="evidence", availability="AVAILABLE",
+        bytes=raw, sha256=hashlib.sha256(raw).hexdigest(), integrity="BOUND_DIGEST")]
+    public = failure_document(public_failure(original))
+    handoff = failure_diagnostic_handoff(public)
+    assert handoff["evidence_identities"][0]["evidence_id"] == item.evidence_id
+    assert handoff["verification"] == [dict(command=item.source.command, exit_code=2)]
+    assert any(cause["code"] == "MODULE_UNAVAILABLE" for cause in handoff["diagnostics"]["safe_causes"])
+    assert "synthetic-private-value" not in json.dumps(handoff)
+    transport_failure(repo, run_id=run.run_id, head_sha=head, run_path=run_path, failure_path=path)
+    assert path.read_bytes() == original and raw_path.read_bytes() == raw
+    raw_path.write_bytes(b"substituted capture")
+    with pytest.raises(ValueError, match="digest"):
+        runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=head)
+    raw_path.unlink()
+    assert runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run,
+        subject_sha=head)["captures"][0]["availability"] == "UNAVAILABLE"
+
+
+@pytest.mark.parametrize("executor,error_type", [
+    ("codex", runtime_module.CodexExecutionError),
+    ("antigravity", runtime_module.AntigravityExecutionError),
+    ("antigravity-minimax", runtime_module.AntigravityMinimaxExecutionError),
+])
+def test_failure_diagnostic_runtime_timeout_counts_23_dirty_entries_and_keeps_private_bytes(tmp_path, executor, error_type):
+    from aios_renew.operator import load_task, runtime_paths
+    from tests.operator_test_support import make_repo, git
+    from aios_renew.review_transport import public_failure
+    repo = make_repo(tmp_path)
+    task = load_task(repo, "TASK-101")
+    names = tuple(f"scratch-{index:02}.txt" for index in range(23))
+    task = replace(task, scope=TaskScope(inspect=(), modify=names))
+    for name in names:
+        (repo / name).write_text("uncommitted synthetic bytes", encoding="utf-8")
+    subject = git(repo, "rev-parse", "HEAD")
+    run = Run.from_task(run_id="RUN-101-901", task=task, executor=executor, base_sha=subject, workspace=str(repo))
+    state = runtime_paths(repo)
+    run_path = state.runs / (run.run_id + ".json")
+    run_path.write_text(json.dumps(asdict(run)), encoding="utf-8")
+    native = error_type("native execution timed out", **({"exit_code": None} if executor == "codex" else {}),
+        stdout="AssertionError: expected 2, got 3\n" + "synthetic progress\n" * 400,
+        stderr=b"token=synthetic-private-value\xff")
+    native.__cause__ = subprocess.TimeoutExpired("synthetic-codex", 60)
+    boundary = BoundaryError("native failed")
+    boundary.__cause__ = native
+    persist_failure(repo, state=state, task=task, run=run, run_path=run_path, failure=boundary, transport=False)
+    path = state.failures / (run.run_id + ".json")
+    original = path.read_bytes()
+    failure = json.loads(original)
+    assert failure["workspace_state"] == dict(dirty_entry_count=23, outside_task_scope_count=0)
+    assert failure["error"]["native_kind"] == "TIMEOUT" and failure["error"]["exit_code"] is None
+    assert failure["error"]["native_timeout_seconds"] == 60
+    assert failure["candidate"]["dirty"] is True and failure["candidate"]["transportable"] is False
+    public = json.loads(public_failure(original))
+    assert public["error"]["diagnostics"]["native_timeout_seconds"] == 60
+    assert public["error"]["diagnostics"]["candidate_workspace"]["dirty_entry_count"] == 23
+    local = runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=subject)
+    assert local["failure_bytes"] == original
+    assert local["failure_sha256"] == hashlib.sha256(original).hexdigest()
+    assert local["native_captures"]["stdout"]["bytes"] == native.stdout.encode()
+    assert local["native_captures"]["stderr"]["bytes"] == native.stderr
+    assert b"synthetic-private-value" in local["native_captures"]["stderr"]["bytes"]
+    assert local["native_captures"]["stdout"]["integrity"] == "BOUND_DIGEST"
+    assert path.read_bytes() == original and git(repo, "rev-parse", "HEAD") == subject
+    persist_failure(repo, state=state, task=task, run=run, run_path=run_path, failure=boundary, transport=False)
+    assert path.read_bytes() == original
+    native.stderr = "changed private capture"
+    persist_failure(repo, state=state, task=task, run=run, run_path=run_path, failure=boundary, transport=False)
+    assert path.read_bytes() == original
+    assert json.loads((state.failures / (run.run_id + ".transport.json")).read_bytes())["reason_code"] == "ARTIFACT_IDENTITY_CONFLICT"
+    with pytest.raises(ValueError, match="identity"):
+        runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha="0" * 40)
+    with pytest.raises(ValueError, match="workspace"):
+        runtime_module.read_private_failure_diagnostics(tmp_path, state=state, task=task, run=run, subject_sha=subject)
+    capture = Path(failure["error"]["native_captures"]["stdout"]["raw_path"])
+    capture.write_bytes(b"substituted capture")
+    with pytest.raises(ValueError, match="digest"):
+        runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=subject)
+    capture.unlink()
+    missing = runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=subject)
+    assert missing["native_captures"]["stdout"] == dict(availability="UNAVAILABLE", bytes=None)
+
+
+def test_failure_diagnostic_private_captured_evidence_enforces_run_locator_and_digest(tmp_path):
+    from aios_renew.operator import load_task, runtime_paths
+    from tests.operator_test_support import make_repo, git
+    from tests.test_review_transport import _failure_transport_recovery_fixture
+    repo = make_repo(tmp_path)
+    task = load_task(repo, "TASK-101")
+    subject = git(repo, "rev-parse", "HEAD")
+    run = Run.from_task(run_id="RUN-101-902", task=task, executor="codex", base_sha=subject, workspace=str(repo))
+    state = runtime_paths(repo)
+    (state.runs / (run.run_id + ".json")).write_text(json.dumps(asdict(run)), encoding="utf-8")
+    _, private, _ = _failure_transport_recovery_fixture(run_id=run.run_id, task=dict(id=task.task_id, revision=task.revision),
+        base_sha=subject, head_sha=subject, changed_files=(), nodes=1, failures=1)
+    ref = private["error"]["verification"][0]["verification"]
+    directory = state.verification / run.run_id
+    directory.mkdir()
+    for prefix in ("", "base_"):
+        path = directory / (prefix + "synthetic.raw")
+        content = (prefix + "token=synthetic-private-capture").encode()
+        path.write_bytes(content)
+        ref[prefix + "raw_path"] = str(path)
+        ref[prefix + "raw_digest"] = hashlib.sha256(content).hexdigest()
+    failure_path = state.failures / (run.run_id + ".json")
+    failure_path.write_text(json.dumps(private), encoding="utf-8")
+    local = runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=subject)
+    assert len(local["captures"]) == 2 and all(item["availability"] == "AVAILABLE" for item in local["captures"])
+    assert all(b"synthetic-private-capture" in item["bytes"] for item in local["captures"])
+    (directory / "synthetic.raw").write_bytes(b"substituted content")
+    with pytest.raises(ValueError, match="digest"):
+        runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=subject)
+    (directory / "synthetic.raw").unlink()
+    missing = runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=subject)
+    assert missing["captures"][0]["availability"] == "UNAVAILABLE"
+    ref["raw_path"] = str(tmp_path / "unowned-synthetic.raw")
+    failure_path.write_text(json.dumps(private), encoding="utf-8")
+    with pytest.raises(ValueError, match="outside the exact RUN"):
+        runtime_module.read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=subject)
 
 
 @pytest.fixture(autouse=True)

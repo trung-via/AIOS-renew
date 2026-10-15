@@ -240,8 +240,8 @@ def test_command_contract_primary_flags_and_no_credentials(tmp_path: Path) -> No
     assert cmd[cmd.index("--model") + 1] == ANTIGRAVITY_MINIMAX_DEFAULT_MODEL
     assert cmd[cmd.index("--expected-head") + 1] == "abc123"
     assert "--allow-commit" in cmd
-    assert cmd[cmd.index("--response-timeout") + 1] == "3600"
-    assert cmd[cmd.index("--timeout") + 1] == str(65 * 60)
+    assert cmd[cmd.index("--response-timeout") + 1] == str(180 * 60)
+    assert cmd[cmd.index("--timeout") + 1] == str(185 * 60)
 
     # Prove no MiniMax credentials or provider URLs in arguments
     joined = " ".join(cmd)
@@ -373,7 +373,7 @@ def test_native_invocation_writes_handoff_excluding_verification(
 
     assert len(calls) == 1
     assert calls[0][1]["cwd"] == str(repo)
-    assert calls[0][1]["timeout"] == 65 * 60
+    assert calls[0][1]["timeout"] == 185 * 60
 
     # Verify handoff file was written without Runtime verification
     handoff_content = json.loads(handoff_path.read_text(encoding="utf-8"))

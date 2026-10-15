@@ -441,8 +441,8 @@ def test_native_adapter_owns_read_only_command_handoff_and_envelope(
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
     assert command[command.index("--json-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
-    assert command[command.index("--print-timeout") + 1] == "60m"
-    assert kwargs["timeout"] == 65 * 60
+    assert command[command.index("--print-timeout") + 1] == "180m"
+    assert kwargs["timeout"] == 185 * 60
     handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
     assert "verification" not in handoff["task"]
     assert "Runtime is the canonical verification owner" in command[2]

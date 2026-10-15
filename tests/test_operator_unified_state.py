@@ -283,6 +283,29 @@ def _reference_bytes(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
 
 
+def test_failure_diagnostic_local_transport_blocker_remains_typed_and_safe(tmp_path, monkeypatch):
+    from tests.test_review_transport import diagnostic_failure_fixture
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, private, original = diagnostic_failure_fixture(run_id="RUN-101-902", task=dict(id="TASK-101", revision=1), subject=head)
+    run["workspace"] = str(repo)
+    state = runtime_paths(repo)
+    (state.runs / (run["run_id"] + ".json")).write_bytes(_reference_bytes(run))
+    (state.failures / (run["run_id"] + ".json")).write_bytes(original)
+    (state.failures / (run["run_id"] + ".transport.json")).write_bytes(_reference_bytes(dict(
+        run_id=run["run_id"], error="private remote exception token=synthetic-private-value",
+        reason_code="FAILURE_PROJECTION_REJECTED")))
+    _stub_unified_remote(monkeypatch, repo, RemoteTaskLifecycle(head, (), (), (), (), ()))
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert observation["next_action"] == "RETRY_TRANSPORT"
+    diagnostic = observation["failure_diagnostics"]
+    assert diagnostic["transport_blocker"] == "FAILURE_PROJECTION_REJECTED"
+    assert diagnostic["diagnostics"]["native_exit"]["state"] == "UNKNOWN"
+    assert diagnostic["source"]["run_id"] == run["run_id"] and diagnostic["candidate"]["dirty"] is True
+    assert "synthetic-private-value" not in json.dumps(observation)
+    assert (state.failures / (run["run_id"] + ".json")).read_bytes() == original
+
+
 def test_failure_transport_recovery_local_sidecar_and_canonical_projection(tmp_path, monkeypatch):
     from aios_renew.review_transport import public_failure, public_run
     from tests.test_review_transport import _failure_transport_recovery_fixture

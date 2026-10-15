@@ -39,6 +39,21 @@ def setup(registry, flow="TASK_AUTHORING"):
     return packet, package, bindings
 
 
+def test_failure_diagnostic_context_reaches_existing_provider_without_private_capture(registry):
+    from tests.test_brain_provider_protocol import failure_provider_inputs
+    context, packet, package = failure_provider_inputs(registry)
+    calls = []
+    def invoke(request):
+        calls.append(deepcopy(request))
+        return wrapper(request)
+    result = attempt(MappingBrainProvider("mapping", "one", invoke), packet, package, {}, work_context=context)
+    assert len(calls) == 1 and result.decision["selected_flow"] == "DIAGNOSTIC"
+    diagnostic = calls[0]["diagnostic_context"]["failure_diagnostics"]
+    assert diagnostic["diagnostics"]["native_exit"]["state"] == "UNKNOWN"
+    assert diagnostic["source"]["run_id"] == "RUN-177-902"
+    assert "widgets" in json.dumps(calls) and "synthetic-private-value" not in json.dumps(calls)
+
+
 def adapter(kind, callback, provider="mapping", model="one"):
     if kind == "mapping":
         return MappingBrainProvider(provider, model, callback)

@@ -127,6 +127,7 @@ class UnifiedStateObservation:
     blocker: Mapping[str, Any] | None = None
     outstanding_findings: tuple[Mapping[str, str], ...] = ()
     admission_failures: tuple[Mapping[str, Any], ...] = ()
+    failure_diagnostics: Mapping[str, Any] | None = None
     # Private handoff from the one canonical reduction to the read-only scope.
     _scope_context: _SemanticScopeContext | None = field(
         default=None, repr=False, compare=False
@@ -135,7 +136,7 @@ class UnifiedStateObservation:
     def as_dict(self) -> dict[str, Any]:
         if self.next_action not in _UNIFIED_NEXT_ACTIONS:
             raise ValueError("invalid Unified State next action")
-        return {
+        body = {
             "format": "AIOS_UNIFIED_STATE",
             "version": 1,
             "kind": "UNIFIED_STATE",
@@ -176,6 +177,9 @@ class UnifiedStateObservation:
             "verification_invoked": False,
             "state_mutated": False,
         }
+        if self.failure_diagnostics is not None:
+            body["failure_diagnostics"] = dict(self.failure_diagnostics)
+        return body
 
     def render(self) -> str:
         return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
@@ -247,12 +251,15 @@ def _bounded_admission_context(
 ) -> tuple[Mapping[str, Any], ...]:
     """Return structural v2 context without interpreting historical prose."""
 
-    contexts: set[tuple[str, str, str]] = set()
+    contexts: dict[tuple[str, str, str], Mapping[str, Any]] = {}
     if not state.admission_failures.is_dir():
         return ()
-    for path in state.admission_failures.glob("*.json"):
+    for path in sorted(state.admission_failures.glob("*.json")):
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
+            if path.stat().st_size > 65536:
+                continue
+            content = path.read_bytes()
+            value = json.loads(content)
         except (OSError, UnicodeError, json.JSONDecodeError):
             continue
         if not isinstance(value, Mapping):
@@ -262,20 +269,59 @@ def _bounded_admission_context(
         exact = (
             isinstance(bound, Mapping)
             and bound.get("id") == task.task_id
+            and type(bound.get("revision")) is int
             and bound.get("revision") == task.revision
         ) or (bound is None and requested == task.task_id)
         identity = (value.get("operation"), value.get("phase"), value.get("reason_code"))
         if (
             value.get("format") == "AIOS_ADMISSION_FAILURE"
-            and value.get("version") == 2
+            and type(value.get("version")) is int and value.get("version") == 2
             and exact
-            and all(isinstance(item, str) and item for item in identity)
+            and all(isinstance(item, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", item) for item in identity)
         ):
-            contexts.add(identity)  # type: ignore[arg-type]
-    return tuple(
-        {"operation": operation, "phase": phase, "reason_code": reason}
-        for operation, phase, reason in sorted(contexts)[:32]
-    )
+            # Historical minimal contexts remain readable. New Runtime records
+            # are content-addressed and expose only typed source-bound facts.
+            from .review_transport import admission_diagnostic_handoff
+            try:
+                contexts[identity] = admission_diagnostic_handoff(value, content=content, identity=path.stem)
+            except (ValueError, TypeError, KeyError, ReviewTransportError):
+                from .correction_preflight import _ADMISSION_PHASES, _ADMISSION_REASONS
+                if (not re.fullmatch(r"[0-9a-f]{64}", path.stem)
+                        and identity[0] in {"PRIMARY", "REMEDIATION", "REPAIR"}
+                        and identity[1] in _ADMISSION_PHASES
+                        and identity[2] in _ADMISSION_REASONS
+                        and not {"run_id", "run_created", "evidence", "result", "terminal_pointer"} & value.keys()
+                        and ("executor_invoked" not in value or value["executor_invoked"] is False)):
+                    contexts.setdefault(identity, dict(zip(("operation", "phase", "reason_code"), identity)))
+    return tuple(contexts[key] for key in sorted(contexts)[:32])
+
+
+def _failure_context(tip: _LifecycleRun, state: Any, lifecycle: RemoteTaskLifecycle | None = None) -> Mapping[str, Any] | None:
+    if tip.terminal_kind != "FAILURE":
+        return None
+    from .review_transport import failure_diagnostic_handoff, FAILURE_TRANSPORT_BLOCKERS
+    from .runtime import failure_transport_blocker
+    artifact_sha = dict(lifecycle.observed_refs).get("refs/heads/aios/failure-artifacts/" + tip.run_id) if lifecycle is not None else None
+    private_available = False
+    blocker = None
+    try:
+        path = state.failures / (tip.run_id + ".json")
+        if path.is_file():
+            private = _lifecycle_document(path.read_bytes(), "private FAILURE")
+            private_available = ("public_projection" not in private
+                and private.get("error", {}).get("message") != "Protected Runtime diagnostics remain local."
+                and _matches_public_document(private, tip.terminal, "METADATA"))
+        sidecar = state.failures / (tip.run_id + ".transport.json")
+        if artifact_sha is None and sidecar.is_file() and sidecar.stat().st_size <= 65536:
+            transport = _lifecycle_document(sidecar.read_bytes(), "transport sidecar")
+            blocker = transport.get("reason_code")
+            if blocker not in FAILURE_TRANSPORT_BLOCKERS:
+                blocker = failure_transport_blocker(RuntimeError(transport["error"]))
+        return failure_diagnostic_handoff(tip.terminal, artifact_sha=artifact_sha,
+                                         private_available=private_available, transport_blocker=blocker)
+    except (ValueError, KeyError, TypeError, OSError, ReviewTransportError):
+        return dict(format="AIOS_FAILURE_DIAGNOSTIC_GAP_V1", run_id=tip.run_id,
+                    subject_sha=tip.candidate_sha, availability="UNAVAILABLE", reason_code="INVALID_OR_MISSING_DIAGNOSTIC_SOURCE")
 
 
 def _lifecycle_document(raw: bytes, name: str) -> Mapping[str, Any]:
@@ -423,8 +469,15 @@ def _validated_private_public_view(
                                 "profile", "workers", "distribution", "max_worker_restart", "collect_only")})
                         or ("observed_toolchain" in report and report["observed_toolchain"] != toolchain)):
                     raise ValueError("contradictory verification reference failure conditions")
-            if value["failure_count"] != sum(report["outcome"] == "FAIL" for report in value["reports"]):
+            retained_failures = sum(report["outcome"] == "FAIL" for report in value["reports"])
+            if (value["failure_count"] < retained_failures
+                    or value["complete"] and value["failure_count"] != retained_failures):
                 raise ValueError("invalid verification reference failure population")
+            # Failure readability is separate from attribution. Missing bounded
+            # detail on an explicitly incomplete observation remains unavailable;
+            # identities, known fingerprints and source digests still must bind.
+            from .review_transport import _project_observation
+            _project_observation(value)
             if value["complete"]:
                 validate_observation(value)
             return value
@@ -586,8 +639,16 @@ def _validated_private_public_view(
             error = data.get("error")
             if not isinstance(error, dict) or not isinstance(error.get("message"), str):
                 raise ValueError("invalid private FAILURE diagnostics")
+            if "exit_code" in error and error["exit_code"] is not None and type(error["exit_code"]) is not int:
+                raise ValueError("invalid private FAILURE native exit type")
+            digests = error.get("evidence_raw_digests", {})
+            if (not isinstance(digests, dict)
+                    or not digests.keys() <= {item["evidence_id"] for item in error.get("evidence", [])}
+                    or any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None for value in digests.values())):
+                raise ValueError("invalid private FAILURE evidence capture identity")
             error["message"] = "Protected Runtime diagnostics remain local."
             error.pop("native_diagnostics", None)
+            error.pop("native_captures", None)
             error.pop("executor_diagnostics", None)
             for item in error.get("verification", []):
                 if (not isinstance(item, dict) or type(item.get("exit_code")) is not int
@@ -654,7 +715,9 @@ def _matches_public_document(
         # Comparing two reprojected records would conceal forged public fields.
         _validated_private_public_view(private, kind)
         _validated_private_public_view(canonical, kind)
-        return public == encoded(_public_metadata_value(dict(private)))
+        if public == encoded(_public_metadata_value(dict(private))):
+            return True
+        return public == encoded(_public_metadata_value(dict(private), historical_failure_view=True))
     projected = _validated_private_public_view(private, kind)
     if public == original and not protected_view(canonical):
         return True
@@ -689,6 +752,7 @@ def _decode_lifecycle_run(
     run_data = (execution_data.get("run") if isinstance(execution_data, Mapping) else None
                 ) if value.get("kind") == "REMEDIATION" else value
     if (not isinstance(run_data, Mapping)
+            or run_data.get("run_id") != run_id
             or not isinstance(run_data.get("task"), Mapping)
             or type(run_data["task"].get("revision")) is not int
             or run_data["task"]["revision"] < 1
@@ -1468,10 +1532,14 @@ def _local_pending_runs(
                 if path.stat().st_size > 65536:
                     raise ValueError("unbounded transport sidecar")
                 data = _lifecycle_document(path.read_bytes(), "transport sidecar")
-                if (set(data) not in ({"error"}, {"run_id", "error"})
+                if (set(data) not in ({"error"}, {"run_id", "error"}, {"run_id", "error", "reason_code"})
                         or not isinstance(data.get("error"), str) or not data["error"]
                         or ("run_id" in data and data["run_id"] != path.name.removesuffix(".transport.json"))):
                     raise ValueError("malformed transport sidecar")
+                if "reason_code" in data:
+                    from .review_transport import FAILURE_TRANSPORT_BLOCKERS
+                    if data["reason_code"] not in FAILURE_TRANSPORT_BLOCKERS:
+                        raise ValueError("invalid typed transport blocker")
                 continue
             if not re.fullmatch(re.escape(prefix) + r"\d{3,}\.json", path.name):
                 raise ValueError("malformed persisted terminal filename")
@@ -1809,6 +1877,7 @@ def observe_unified_state(
                     failed_run_id=(tip.run_id if tip.terminal_kind == "FAILURE" else None),
                     failed_head_sha=(tip.candidate_sha if tip.terminal_kind == "FAILURE" else None),
                     admission_failures=admission_context,
+                    failure_diagnostics=_failure_context(tip, state),
                 )
             if len(pending_active) > 1 or (
                 pending_active
@@ -1886,6 +1955,7 @@ def observe_unified_state(
                 )
             tip = tips[0]
             if tip.terminal_kind == "FAILURE":
+                diagnostic_context = _failure_context(tip, state, lifecycle)
                 candidate = tip.terminal.get("candidate")
                 if (
                     not tip.candidate_available
@@ -1897,6 +1967,7 @@ def observe_unified_state(
                         task, "NON_REPAIRABLE_FAILURE", admission_failures=admission_context,
                         run_id=tip.run_id, failed_run_id=tip.run_id,
                         failed_head_sha=tip.candidate_sha,
+                        failure_diagnostics=diagnostic_context,
                     )
                 selectors = [
                     item for item in lifecycle.repair_selectors if item[0] == tip.run_id
@@ -1907,12 +1978,14 @@ def observe_unified_state(
                         run_id=tip.run_id, failed_run_id=tip.run_id,
                         failed_head_sha=tip.candidate_sha,
                         admission_failures=admission_context,
+                        failure_diagnostics=diagnostic_context,
                     )
                 if len(selectors) != 1:
                     return _unified_blocked(
                         task, "COMPETING_REPAIRS", admission_failures=admission_context,
                         run_id=tip.run_id, failed_run_id=tip.run_id,
                         failed_head_sha=tip.candidate_sha,
+                        failure_diagnostics=diagnostic_context,
                     )
                 repair_authorization = json.loads(
                     selectors[0][2].decode("utf-8", errors="strict")
@@ -1932,6 +2005,7 @@ def observe_unified_state(
                         admission_failures=admission_context, run_id=tip.run_id,
                         failed_run_id=tip.run_id, failed_head_sha=tip.candidate_sha,
                         correction_sha=selectors[0][1], correction=correction,
+                        failure_diagnostics=diagnostic_context,
                     )
                 return UnifiedStateObservation(
                     task.task_id, task.revision, "CORRECTION", "EXECUTE_REPAIR",
@@ -1940,6 +2014,7 @@ def observe_unified_state(
                     correction_sha=selectors[0][1],
                     correction_document=repair_authorization,
                     admission_failures=admission_context,
+                    failure_diagnostics=diagnostic_context,
                 )
 
             review = reviews.get(tip.run_id)

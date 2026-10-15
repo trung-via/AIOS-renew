@@ -64,6 +64,65 @@ def inputs(registry, flow):
     return supplied, select_return_contract(registry, supplied)
 
 
+def failure_provider_inputs(registry):
+    from tests.test_brain_context import failure_context_fixture
+    from aios_renew.brain_context import resolve_flow
+    from aios_renew.decision_packet import compile_decision_packet
+    context = failure_context_fixture()
+    supplied = compile_decision_packet(context, resolve_flow(context), {"kind": "DIAGNOSTIC"})
+    return context, supplied, select_return_contract(registry, supplied)
+
+
+def test_failure_diagnostic_provider_request_is_bound_safe_and_revalidated(registry):
+    context, supplied, package = failure_provider_inputs(registry)
+    req = construct_request(supplied, package, {}, request_mode="DIRECT", work_context=context)
+    assert revalidate_request(req) == req
+    diagnostic = req["diagnostic_context"]["failure_diagnostics"]
+    assert req["diagnostic_context"]["work_context_fingerprint"] == context.invalidation_fingerprint
+    assert diagnostic["diagnostics"]["native_exit"] == dict(code=None, state="UNKNOWN")
+    assert diagnostic["diagnostics"]["candidate_workspace"]["dirty_entry_count"] == 23
+    assert "widgets" in json.dumps(req) and "synthetic-private-value" not in json.dumps(req)
+    assert diagnostic["private_evidence"]["delivered_to_brain"] is False
+    stale = deepcopy(supplied.as_dict())
+    stale["work_context_fingerprint"] = "0" * 64
+    stale["packet_fingerprint"] = digest({k: v for k, v in stale.items() if k != "packet_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError, match="source substitution"):
+        construct_request(DecisionPacket(stale), package, {}, request_mode="DIRECT", work_context=context)
+
+
+@pytest.mark.parametrize("defect", ["raw", "secret", "fingerprint", "safe_cause", "source", "missing"])
+def test_failure_diagnostic_provider_rejects_unsafe_serialized_supplement(registry, defect):
+    context, supplied, package = failure_provider_inputs(registry)
+    req = construct_request(supplied, package, {}, request_mode="DIRECT", work_context=context)
+    diagnostic = req["diagnostic_context"]["failure_diagnostics"]
+    if defect == "raw": diagnostic["stdout"] = "token=synthetic-private-value"
+    elif defect == "secret": diagnostic["diagnostics"]["safe_causes"][0]["summary"] = "synthetic-private-value"
+    elif defect == "fingerprint": req["diagnostic_context"]["work_context_fingerprint"] = "0" * 64
+    elif defect == "safe_cause": diagnostic["diagnostics"]["safe_causes"] = []
+    elif defect == "source": diagnostic["source"]["run_id"] = "RUN-177-999"
+    else: req["diagnostic_context"]["failure_diagnostics"] = None
+    req["request_fingerprint"] = digest({k: v for k, v in req.items() if k != "request_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_request(req)
+
+
+def test_failure_diagnostic_unavailable_context_survives_provider_projection(registry):
+    from dataclasses import replace
+    from tests.test_brain_context import snapshot
+    from aios_renew.brain_context import compose_brain_work_context, resolve_flow
+    from aios_renew.decision_packet import compile_decision_packet
+    source = snapshot("RETRY_TRANSPORT")
+    gap = dict(format="AIOS_FAILURE_DIAGNOSTIC_GAP_V1", run_id="RUN-177-902", subject_sha="a" * 40,
+               availability="UNAVAILABLE", reason_code="INVALID_OR_MISSING_DIAGNOSTIC_SOURCE")
+    context = compose_brain_work_context(replace(source, unified_state={**source.unified_state,
+        "failed_run_id": gap["run_id"], "failed_head_sha": gap["subject_sha"], "failure_diagnostics": gap}),
+        {"flow_selector": "DIAGNOSTIC"})
+    supplied = compile_decision_packet(context, resolve_flow(context), {"kind": "DIAGNOSTIC"})
+    req = construct_request(supplied, select_return_contract(registry, supplied), {}, request_mode="DIRECT", work_context=context)
+    assert req["diagnostic_context"]["failure_diagnostics"] == gap
+    assert revalidate_request(req) == req
+
+
 def request(registry, profile_package, flow="TASK_AUTHORING", bindings=None):
     supplied, package = inputs(registry, flow)
     if bindings is None:

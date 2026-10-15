@@ -1,6 +1,7 @@
 import inspect
+import subprocess
 from collections.abc import Mapping
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -251,8 +252,61 @@ def test_execution_policy_is_provider_neutral_and_bounded(
         "response_budget_minutes",
         "process_watchdog_seconds",
     }
-    assert policy.response_budget_minutes == 60
-    assert policy.process_watchdog_seconds == 65 * 60
+    assert policy.response_budget_minutes == 180
+    assert policy.process_watchdog_seconds == 185 * 60
+    assert policy.process_watchdog_seconds - policy.response_budget_minutes * 60 == 5 * 60
+
+
+@pytest.mark.parametrize("selected", ["codex", "antigravity", "antigravity-minimax"])
+@pytest.mark.parametrize("operation", ["PRIMARY", "REMEDIATION", "REPAIR"])
+def test_native_budget_propagates_through_each_admitted_dispatch_path(tmp_path, selected, operation):
+    from aios_renew.codex_adapter import CodexExecutionError
+    from aios_renew.antigravity_adapter import AntigravityExecutionError
+    from aios_renew.antigravity_minimax_adapter import AntigravityMinimaxExecutionError
+
+    task, original = execution(selected)
+    run = replace(original, workspace=str(tmp_path))
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"],
+            output=b"synthetic partial output", stderr=b"synthetic provider deadline")
+
+    factory = {"PRIMARY": primary_dispatcher, "REMEDIATION": remediation_dispatcher,
+               "REPAIR": repair_dispatcher}[operation]
+    dispatcher = factory(selected_executor=selected, repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True), native_runner=runner)
+    error_type = {"codex": CodexExecutionError, "antigravity": AntigravityExecutionError,
+                  "antigravity-minimax": AntigravityMinimaxExecutionError}[selected]
+    with pytest.raises(error_type, match="180-minute") as captured:
+        if operation == "PRIMARY":
+            leases = RunLeaseRegistry()
+            dispatcher.dispatch_primary(task=task, run=run, lease=leases.acquire(run), leases=leases)
+        elif operation == "REMEDIATION":
+            dispatcher.dispatch_remediation(execution=RemediationExecution(
+                review_id="REVIEW-051-001",
+                finding=Finding(id="F1", basis="AC1", action="CODE_FIX",
+                    location="src/aios_renew/dispatcher.py", issue="Boundary missing.", expected="Add boundary."),
+                remediation=Remediation(finding_id="F1", action="CODE_FIX", reviewed_sha=run.base_sha,
+                    modification_scope=("src/aios_renew/dispatcher.py",)), run=run))
+        else:
+            dispatcher.dispatch_repair(execution={"run": run, "failed_run_id": "RUN-051-002",
+                "task": {"task_id": task.task_id}, "repair": {"action": "CODE_FIX"}})
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert kwargs["timeout"] == 185 * 60
+    assert isinstance(captured.value.__cause__, subprocess.TimeoutExpired)
+    assert captured.value.stdout == b"synthetic partial output"
+    assert captured.value.stderr == b"synthetic provider deadline"
+    if selected == "codex":
+        assert captured.value.exit_code is None
+    elif selected == "antigravity":
+        assert command[command.index("--print-timeout") + 1] == "180m"
+    else:
+        assert command[command.index("--response-timeout") + 1] == str(180 * 60)
+        assert command[command.index("--timeout") + 1] == str(185 * 60)
 
 
 def test_dispatcher_factory_surface_exposes_only_provider_neutral_policy() -> None:

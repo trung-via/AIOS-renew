@@ -567,6 +567,25 @@ def test_canonical_remote_failure_is_sanitized_unknown(monkeypatch):
     assert wake.CanonicalFreshness(wake.REPOSITORY).observe(EVENT) == "UNKNOWN"
 
 
+def test_failure_diagnostic_artifact_only_attention_wakes_once_with_selector_only_body(binding):
+    from tests.test_brain_attention import diagnostic_sources
+    from aios_renew.brain_attention import resolve_return_affinity, resolve_diagnostic_context
+    event, sources, private = diagnostic_sources()
+    projection = Projection("UNKNOWN")
+    projection.affinity = lambda identity: resolve_return_affinity(identity, sources)
+    adapter = RecoveryAdapter(binding)
+    first = deliver(event, binding.repository, binding, lambda _: adapter, projection=projection)
+    assert first["status"] == "SUBMITTED"
+    second = deliver(event, binding.repository, binding, lambda _: adapter, projection=projection)
+    assert second["status"] == "NOOP" and len(adapter.submits) == 1
+    body = adapter.submits[0]
+    assert event in body and "fresh_brain_sync_required: true" in body
+    assert "widgets" not in body and "synthetic-private-value" not in body
+    handoff = resolve_diagnostic_context(event, sources)
+    assert handoff["failure_diagnostics"]["diagnostics"]["candidate_workspace"]["dirty_entry_count"] == 23
+    assert private["candidate"]["transportable"] is False
+
+
 @pytest.mark.parametrize("reason", ["DRAFT_PRESENT", "GENERATION_ACTIVE", "TARGET_PAGE_NOT_UNIQUE", "SURFACE_UNPROVEN"])
 def test_deferred_attention_survives_and_repeats_freshness_before_retry(binding, reason):
     adapter, projection = RecoveryAdapter(binding, reason), Projection()

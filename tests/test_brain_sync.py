@@ -77,6 +77,189 @@ def test_brain_sync_ready_single_next_rehydration(tmp_path: Path) -> None:
     assert json.loads(snapshot.render()) == as_dict
 
 
+def test_failure_diagnostic_handoff_composes_runtime_transport_fresh_sync_and_work_context(tmp_path):
+    from aios_renew.operator import load_task, runtime_paths
+    from aios_renew.review_transport import transport_failure
+    from aios_renew.brain_context import compose_brain_work_context
+    from tests.test_review_transport import diagnostic_failure_fixture
+    repo = make_repo(tmp_path)
+    roadmap = dict(version=1, active_track="synthetic", active_track_status="ACTIVE",
+                   sequence=[dict(id="synthetic-failure", status="NEXT", task_id="TASK-101", task_revision=1)])
+    (repo / ".ai/roadmap-state.yaml").write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    git(repo, "add", ".ai/roadmap-state.yaml")
+    git(repo, "commit", "-m", "synthetic failure diagnostic selection")
+    git(repo, "push", "origin", "main")
+    head = git(repo, "rev-parse", "HEAD")
+    run, private, original = diagnostic_failure_fixture(run_id="RUN-101-902", task=dict(id="TASK-101", revision=1), subject=head)
+    run["workspace"] = str(repo)
+    state = runtime_paths(repo)
+    run_path, failure_path = state.runs / (run["run_id"] + ".json"), state.failures / (run["run_id"] + ".json")
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    failure_path.write_bytes(original)
+    local = observe_brain_sync(repo)
+    local_diagnostic = local.unified_state["failure_diagnostics"]
+    assert local_diagnostic["private_evidence"]["availability"] == "AVAILABLE"
+    assert local_diagnostic["source"]["artifact_sha"] is None
+    transport_failure(repo, run_id=run["run_id"], head_sha=head, run_path=run_path, failure_path=failure_path, publish_candidate=False)
+    remote = tmp_path / "upstream.git"
+    artifact = git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/" + run["run_id"])
+    event = f"terminal:FAILURE:{run['run_id']}:{artifact}"
+    snapshot = observe_brain_sync(repo, attention_event_id=event)
+    assert snapshot.next_action == "NONE" and snapshot.blocker["code"] == "NON_REPAIRABLE_FAILURE"
+    diagnostic = snapshot.unified_state["failure_diagnostics"]
+    assert diagnostic["source"]["artifact_sha"] == artifact and diagnostic["diagnostics"]["native_exit"]["code"] is None
+    assert snapshot.diagnostic_attention["failure_diagnostics"]["source"]["artifact_sha"] == artifact
+    context = compose_brain_work_context(snapshot, {"flow_selector": "DIAGNOSTIC"})
+    assert "synthetic-private-value" not in context.render() and "widgets" in context.render()
+    assert context.canonical_observation["unified_state"]["failure_diagnostics"] == diagnostic
+    assert failure_path.read_bytes() == original and git(repo, "rev-parse", "HEAD") == head
+    assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/failure/")
+    failure_path.unlink()
+    run_path.unlink()
+    fresh = observe_brain_sync(repo, attention_event_id=event)
+    assert fresh.unified_state["failure_diagnostics"]["private_evidence"]["availability"] == "RESTRICTED"
+    assert fresh.diagnostic_attention == snapshot.diagnostic_attention
+    assert fresh.run_created is False and fresh.executor_invoked is False and fresh.verification_invoked is False
+
+
+def test_failure_diagnostic_runtime_timeout_reaches_fresh_provider_and_private_executor(tmp_path):
+    import subprocess
+    from dataclasses import asdict
+    from aios_renew.codex_adapter import CodexExecutionError
+    from aios_renew.run import Run
+    from aios_renew.runtime import persist_failure, read_private_failure_diagnostics
+    from aios_renew.operator import load_task, runtime_paths
+    from aios_renew.brain_context import compose_brain_work_context, resolve_flow
+    from aios_renew.decision_packet import compile_decision_packet
+    from aios_renew.brain_return_contract import parse_return_contract_registry, select_return_contract
+    from aios_renew.brain_provider import MappingBrainProvider, attempt
+    from aios_renew.local_chat_wake import doorbell
+    from tests.test_brain_provider import wrapper
+
+    repo = make_repo(tmp_path)
+    # The synthetic repository needs its own procedural registry, just like a
+    # real fresh Brain workspace. Missing registries must never use a fallback.
+    (repo / ".ai/flow-cards.yaml").write_bytes(
+        (Path(__file__).resolve().parents[1] / ".ai/flow-cards.yaml").read_bytes())
+    roadmap = dict(version=1, active_track="synthetic", active_track_status="ACTIVE",
+        sequence=[dict(id="synthetic-timeout", status="NEXT", task_id="TASK-101", task_revision=1)])
+    (repo / ".ai/roadmap-state.yaml").write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    git(repo, "add", ".ai/roadmap-state.yaml", ".ai/flow-cards.yaml")
+    git(repo, "commit", "-m", "synthetic timeout selection")
+    git(repo, "push", "origin", "main")
+    task = load_task(repo, "TASK-101")
+    head = git(repo, "rev-parse", "HEAD")
+    run = Run.from_task(run_id="RUN-101-903", task=task, executor="codex", base_sha=head, workspace=str(repo))
+    state = runtime_paths(repo)
+    run_path = state.runs / (run.run_id + ".json")
+    run_path.write_text(json.dumps(asdict(run)), encoding="utf-8")
+    for index in range(23):
+        (repo / f"scratch-{index:02}.txt").write_text("synthetic private candidate", encoding="utf-8")
+    stdout = b"ModuleNotFoundError: No module named 'widgets'\n" + b"synthetic progress\n" * 400
+    stderr = b"token=synthetic-private-value\xff"
+    native = CodexExecutionError("native execution timed out", exit_code=None, stdout=stdout, stderr=stderr)
+    native.__cause__ = subprocess.TimeoutExpired("synthetic-native", 185 * 60, output=stdout, stderr=stderr)
+    boundary = RuntimeError("synthetic invocation failed")
+    boundary.__cause__ = native
+    persist_failure(repo, state=state, task=task, run=run, run_path=run_path, failure=boundary)
+    failure_path = state.failures / (run.run_id + ".json")
+    original = failure_path.read_bytes()
+    local = read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=head)
+    assert local["failure_bytes"] == original
+    assert local["native_captures"]["stdout"]["bytes"] == stdout
+    assert local["native_captures"]["stderr"]["bytes"] == stderr
+    remote = tmp_path / "upstream.git"
+    artifact = git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/" + run.run_id)
+    event = f"terminal:FAILURE:{run.run_id}:{artifact}"
+    snapshot = observe_brain_sync(repo, attention_event_id=event)
+    context = compose_brain_work_context(snapshot,
+        {"flow_selector": "DIAGNOSTIC", "human_input": doorbell(event, snapshot.repository["name"])})
+    packet = compile_decision_packet(context, resolve_flow(context), {"kind": "DIAGNOSTIC"})
+    registry = parse_return_contract_registry((Path(__file__).resolve().parents[1] / ".ai/brain-return-contracts.yaml").read_bytes())
+    requests = []
+
+    def invoke(request):
+        requests.append(request)
+        return wrapper(request)
+
+    result = attempt(MappingBrainProvider("mapping", "one", invoke), packet,
+        select_return_contract(registry, packet), {}, work_context=context)
+    assert result.decision["selected_flow"] == "DIAGNOSTIC" and len(requests) == 1
+    diagnostic = requests[0]["diagnostic_context"]["diagnostic_attention"]["failure_diagnostics"]
+    assert diagnostic["source"]["artifact_sha"] == artifact
+    assert diagnostic["diagnostics"]["native_exit"] == dict(code=None, state="UNKNOWN")
+    assert diagnostic["diagnostics"]["native_timeout_seconds"] == 185 * 60
+    assert diagnostic["diagnostics"]["candidate_workspace"]["dirty_entry_count"] == 23
+    assert diagnostic["diagnostics"]["native_streams"]["stdout"]["truncated"] is True
+    assert diagnostic["diagnostics"]["native_streams"]["stderr"]["availability"] == "UNAVAILABLE"
+    assert "widgets" in json.dumps(requests) and "synthetic-private-value" not in json.dumps(requests)
+    assert failure_path.read_bytes() == original and git(repo, "rev-parse", "HEAD") == head
+    assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/failure/")
+    assert git(remote, "ls-tree", "-r", "--name-only", artifact).splitlines() == [".ai/transport/failure.json", ".ai/transport/run.json"]
+
+
+def test_failure_diagnostic_incomplete_v2_transports_and_rehydrates_without_reclassifying_private_evidence(tmp_path):
+    import hashlib
+    from dataclasses import asdict
+    from aios_renew.run import Run
+    from aios_renew.operator import load_task, runtime_paths
+    from aios_renew.runtime import read_private_failure_diagnostics
+    from aios_renew.review_transport import transport_failure
+    from aios_renew.brain_context import compose_brain_work_context
+    from tests.test_review_transport import incomplete_failure_fixture
+
+    repo = make_repo(tmp_path)
+    roadmap = dict(version=1, active_track="synthetic", active_track_status="ACTIVE",
+        sequence=[dict(id="synthetic-incomplete", status="NEXT", task_id="TASK-101", task_revision=1)])
+    (repo / ".ai/roadmap-state.yaml").write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    git(repo, "add", ".ai/roadmap-state.yaml")
+    git(repo, "commit", "-m", "synthetic incomplete diagnostic selection")
+    git(repo, "push", "origin", "main")
+    head = git(repo, "rev-parse", "HEAD")
+    task = load_task(repo, "TASK-101")
+    run = Run.from_task(run_id="RUN-101-904", task=task, executor="codex", base_sha=head, workspace=str(repo))
+    _, private = incomplete_failure_fixture("missing", run_id=run.run_id,
+        task=dict(id=task.task_id, revision=task.revision), base_sha=head, head_sha=head, changed_files=())
+    private["candidate"].update(dirty=True, repairable=False, transportable=False)
+    private["workspace_state"] = dict(dirty_entry_count=23, outside_task_scope_count=0)
+    state = runtime_paths(repo)
+    run_path = state.runs / (run.run_id + ".json")
+    run_path.write_text(json.dumps(asdict(run)), encoding="utf-8")
+    directory = state.verification / run.run_id
+    directory.mkdir()
+    ref = private["error"]["verification"][0]["verification"]
+    for prefix in ("", "base_"):
+        capture = directory / (prefix + "incomplete.raw")
+        content = (prefix + "token=synthetic-private-value").encode()
+        capture.write_bytes(content)
+        ref[prefix + "raw_path"] = str(capture)
+        ref[prefix + "raw_digest"] = hashlib.sha256(content).hexdigest()
+    failure_path = state.failures / (run.run_id + ".json")
+    original = json.dumps(private, sort_keys=True).encode()
+    failure_path.write_bytes(original)
+    local = read_private_failure_diagnostics(repo, state=state, task=task, run=run, subject_sha=head)
+    assert local["failure_bytes"] == original and len(local["captures"]) == 2
+    assert all(item["availability"] == "AVAILABLE" and item["integrity"] == "BOUND_DIGEST" for item in local["captures"])
+    transport_failure(repo, run_id=run.run_id, head_sha=head, run_path=run_path, failure_path=failure_path, publish_candidate=False)
+    remote = tmp_path / "upstream.git"
+    artifact = git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/" + run.run_id)
+    event = f"terminal:FAILURE:{run.run_id}:{artifact}"
+    snapshot = observe_brain_sync(repo, attention_event_id=event)
+    handoff = snapshot.diagnostic_attention["failure_diagnostics"]
+    assert snapshot.diagnostic_attention["availability"] == "AVAILABLE"
+    assert handoff["diagnostics"]["completeness"] == "PARTIAL"
+    assert handoff["source"]["artifact_sha"] == artifact
+    assert handoff["evidence_identities"][0]["evidence_id"] == ref["evidence_id"]
+    assert snapshot.blocker["code"] == "NON_REPAIRABLE_FAILURE" and snapshot.next_action == "NONE"
+    context = compose_brain_work_context(snapshot, {"flow_selector": "DIAGNOSTIC"})
+    assert "VERIFICATION_OBSERVATION_INCOMPLETE" in context.render() and "synthetic-private-value" not in context.render()
+    transport_failure(repo, run_id=run.run_id, head_sha=head, run_path=run_path, failure_path=failure_path, publish_candidate=False)
+    assert failure_path.read_bytes() == original and all(item["classification"] == "UNRESOLVED" for item in ref["attribution"])
+    assert len(ref["attribution"]) == 18
+    assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/failure/")
+    assert git(repo, "rev-parse", "HEAD") == head
+
+
 def test_brain_sync_completed_no_next(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     head = git(repo, "rev-parse", "HEAD")

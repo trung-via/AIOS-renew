@@ -102,6 +102,32 @@ def publish_terminal(repo: Path, item) -> None:
     )
 
 
+def test_failure_diagnostic_artifact_only_transport_emits_exact_attention_and_reuses_identity(tmp_path):
+    import json
+    from tests.test_review_transport import diagnostic_failure_fixture
+    from aios_renew.review_transport import transport_failure
+    repo, remote, head = make_repo(tmp_path)
+    run, private, original = diagnostic_failure_fixture(subject=head)
+    files = tmp_path / "synthetic-private"
+    files.mkdir()
+    run_path, failure_path = files / "run.json", files / "failure.json"
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    failure_path.write_bytes(original)
+    transport_failure(repo, run_id=run["run_id"], head_sha=head, run_path=run_path, failure_path=failure_path, publish_candidate=False)
+    sha = git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/" + run["run_id"])
+    item = selector(run["run_id"], "FAILURE", sha)
+    assert git(remote, "rev-parse", item.signal_ref) == head
+    assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/failure/")
+    policy = load_policy(POLICY_PATH)
+    admitted = validate_remote_admission(repo, remote="origin", item=item, signal_ref=item.signal_ref,
+                                        push_signal_sha=head, event_sha=head, policy=policy)
+    assert admitted.selector == item
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    transport_failure(repo, run_id=run["run_id"], head_sha=head, run_path=run_path, failure_path=failure_path, publish_candidate=False)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+    assert "synthetic-private-value" not in item.body()
+
+
 def artifact_selector(repo: Path, *, kind: str = "RESULT"):
     empty_tree = git(repo, "mktree")
     artifact = git(repo, "commit-tree", empty_tree, "-m", "terminal artifact")

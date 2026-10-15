@@ -615,6 +615,14 @@ class GitSources:
         self.fetch(sha)
         return _load_yaml(self.git(self.path, "show", sha + ":" + name), "attention source identity")
 
+    def raw_document(self, sha, name):
+        self.fetch(sha)
+        from .review_transport import _read_local_blob
+        content = _read_local_blob(self.path, sha, name)
+        if content is None or len(content) > 65536:
+            raise AttentionError("DIAGNOSTIC_SOURCE_UNAVAILABLE")
+        return content
+
     def optional_document(self, sha, name):
         self.fetch(sha)
         paths = self.git(self.path, "ls-tree", "-r", "--name-only", sha, "--", name).splitlines()
@@ -742,7 +750,15 @@ def resolve_return_affinity(event_id, sources, artifacts=None):
             raise AttentionError("AFFINITY_TERMINAL_UNPROVEN")
         sha = success or failure
         _value(sha, "sha")
+        terminal = sources.document(sha, ".ai/transport/" + ("result.json" if success else "failure.json"))
         head = current.get(root + ("review/" if success else "failure/") + run_id)
+        artifact_only = failure and head is None
+        if artifact_only:
+            from .review_transport import failure_document, _public_bytes, PUBLIC_FAILURE_MAX_BYTES
+            terminal = failure_document(_public_bytes(terminal, max_bytes=PUBLIC_FAILURE_MAX_BYTES))
+            if terminal.get("candidate", {}).get("transportable") is not False:
+                raise AttentionError("AFFINITY_UNPUBLISHED_CANDIDATE")
+            head = terminal.get("failed_head_sha")
         _value(head, "sha")
         if (artifact_sha is not None and artifact_sha != sha
                 or candidate_sha is not None and candidate_sha != head):
@@ -767,7 +783,6 @@ def resolve_return_affinity(event_id, sources, artifacts=None):
                   status=value["status"], return_affinity=document_affinity(value))
         if run.run_id != run_id or run.status != "ACTIVE" or run.head_sha not in (None, head):
             raise AttentionError("AFFINITY_RUN_MISMATCH")
-        terminal = sources.document(sha, ".ai/transport/" + ("result.json" if success else "failure.json"))
         if success:
             if terminal["result"]["head_sha"] != head:
                 raise AttentionError("AFFINITY_RESULT_MISMATCH")
@@ -775,7 +790,12 @@ def resolve_return_affinity(event_id, sources, artifacts=None):
             raise AttentionError("AFFINITY_FAILURE_MISMATCH")
         task = task_at(run.base_sha, reference)
         require_same_affinity(task, run)
-        if task_at(head, reference).return_affinity != task.return_affinity or not sources.included(run.base_sha, head):
+        if failure:
+            from .review_transport import validate_runtime_failure_binding
+            validate_runtime_failure_binding(terminal, run_id=run_id, task_id=task.task_id,
+                task_revision=task.revision, executor=run.executor, base_sha=run.base_sha,
+                candidate_sha=head, modification_scope=task.scope.modify)
+        if not artifact_only and (task_at(head, reference).return_affinity != task.return_affinity or not sources.included(run.base_sha, head)):
             raise AttentionError("AFFINITY_CANDIDATE_DRIFT")
         if execution is not None:
             from .review import parse_remediation
@@ -1117,6 +1137,93 @@ def _delivery_resolution(s, sources, artifacts, successor):
     if head != candidate or run.get("head_sha") not in (None, head) or sources.refs(*patterns) != before:
         return "UNKNOWN"
     return "RESOLVED"
+
+
+def resolve_diagnostic_context(event_id, sources, artifacts=None):
+    """Read the doorbell's exact source as bounded diagnostic data for Brain Sync.
+
+    No issue body, raw workflow log or provider output supplies diagnostic facts.
+    Missing/moving sources affect this handoff only, never lifecycle admission.
+    """
+    from .review_transport import (
+        failure_document, failure_diagnostic_handoff, validate_runtime_failure_binding,
+        admission_diagnostic_handoff, _public_bytes, PUBLIC_FAILURE_MAX_BYTES,
+    )
+    from .unified_state import _decode_lifecycle_run
+    from .task import validate_task
+    item = parse_event_id(event_id)
+    if item.family == RECOVERY:
+        item = parse_event_id(item.selectors["original_event_id"])
+    selectors = dict(item.selectors)
+    gap = dict(event_id=event_id, availability="UNAVAILABLE", reason_code="DIAGNOSTIC_SOURCE_UNAVAILABLE")
+    try:
+        if item.family == FAILURE:
+            run_id = selectors["run_id"]
+            before = sources.refs(*_review_patterns(run_id))
+            artifact_ref = "refs/heads/aios/failure-artifacts/" + run_id
+            candidate_ref = "refs/heads/aios/failure/" + run_id
+            if (before.get(artifact_ref) != selectors["artifact_sha"]
+                    or any("refs/heads/aios/" + lane + "/" + run_id in before for lane in ("artifacts", "review"))):
+                raise AttentionError("DIAGNOSTIC_SOURCE_SUBSTITUTION")
+            run_data = sources.document(selectors["artifact_sha"], ".ai/transport/run.json")
+            run, _, _, _ = _decode_lifecycle_run(_public_bytes(run_data), run_id=run_id)
+            raw = sources.document(selectors["artifact_sha"], ".ai/transport/failure.json")
+            failure = failure_document(_public_bytes(raw, max_bytes=PUBLIC_FAILURE_MAX_BYTES))
+            task = validate_task(sources.document(run.base_sha, ".ai/tasks/" + run.task.id + ".yaml"))
+            head = failure["failed_head_sha"]
+            if (task.task_id != run.task.id or task.revision != run.task.revision
+                    or run.status != "ACTIVE" or run.head_sha not in (None, head)
+                    or before.get(candidate_ref, head) != head
+                    or candidate_ref not in before and failure["candidate"]["transportable"] is not False):
+                raise AttentionError("DIAGNOSTIC_CANDIDATE_SUBSTITUTION")
+            validate_runtime_failure_binding(failure, run_id=run_id, task_id=task.task_id,
+                task_revision=task.revision, executor=run.executor, base_sha=run.base_sha,
+                candidate_sha=head, modification_scope=task.scope.modify)
+            from .return_affinity import require_same_affinity
+            require_same_affinity(task, run)
+            diagnostic = failure_diagnostic_handoff(failure, artifact_sha=selectors["artifact_sha"])
+            if sources.refs(*_review_patterns(run_id)) != before:
+                raise AttentionError("DIAGNOSTIC_SOURCE_MOVED")
+            return dict(event_id=event_id, availability="AVAILABLE", failure_diagnostics=diagnostic)
+        if item.family in {PRE_AIOS, DISPATCH}:
+            if artifacts is None:
+                return gap
+            pointer = {key: selectors[key] for key in _POINTER}
+            source = artifacts.artifact(pointer)
+            if item.event_id not in {candidate.event_id for candidate in project_source(source, pointer)}:
+                raise AttentionError("DIAGNOSTIC_SOURCE_SUBSTITUTION")
+            receipt = artifacts.artifact(pointer, receipt=True)
+            if source_document([operational_observation(receipt)]) != source:
+                raise AttentionError("DIAGNOSTIC_RECEIPT_SUBSTITUTION")
+            cause = receipt["cause"]
+            # Receipts supply typed causes even when a private admission source
+            # could not be transported. There is never an invented RUN pointer.
+            diagnostic = dict(format="AIOS_ADMISSION_DIAGNOSTICS_V1", operation=receipt["family"], phase=cause["phase"], reason_code=cause["reason_code"],
+                source_digest=digest(source), run_created=False, executor_invoked=False,
+                error_type=None, summary="Protected pre-AIOS detail remains local.", facts={},
+                completeness="PARTIAL", private_access="RESTRICTED")
+            from .review_transport import _ADMISSION_ACTIONS, admission_failure_delivery_ref, _admission_delivery_cause
+            diagnostic["action"] = _ADMISSION_ACTIONS.get(cause["reason_code"], "Resolve the reported admission boundary before requesting execution.")
+            alias = admission_failure_delivery_ref(selectors["operation"], selectors["delivery_id"])
+            before = sources.refs(alias)
+            if alias in before:
+                record = sources.document(before[alias], ".ai/transport/admission-failure.json")
+                # GitSources preserves the original bytes for content identity.
+                content = sources.raw_document(before[alias], ".ai/transport/admission-failure.json")
+                bound = _admission_delivery_cause(content, family=selectors["operation"], delivery_id=selectors["delivery_id"])
+                if bound != cause:
+                    raise AttentionError("DIAGNOSTIC_CAUSE_SUBSTITUTION")
+                identity = hashlib.sha256(content).hexdigest()
+                content_ref = "refs/heads/aios/admission-failure/" + identity
+                if sources.refs(alias, content_ref) != {alias: before[alias], content_ref: before[alias]}:
+                    raise AttentionError("DIAGNOSTIC_SOURCE_SUBSTITUTION")
+                diagnostic = admission_diagnostic_handoff(record, content=content, identity=identity)
+            return dict(event_id=event_id, availability="AVAILABLE", admission_diagnostics=diagnostic)
+        return dict(event_id=event_id, availability="UNAVAILABLE", reason_code="NO_FAILURE_DIAGNOSTIC_SOURCE")
+    except Exception:
+        # The source may be unavailable, expired, restricted, malformed or moving.
+        # Never forward an exception containing raw source bytes or local paths.
+        return gap
 
 
 def freshness(item, sources, artifacts):
