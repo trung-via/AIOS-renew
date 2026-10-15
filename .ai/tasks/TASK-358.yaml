@@ -1,0 +1,176 @@
+task_id: TASK-358
+revision: 1
+goal: >-
+  Deliver useful, bounded and trustworthy end-to-end FAILURE diagnostics through
+  existing Runtime terminal records, BP-2 operational receipts, terminal attention,
+  Unified State, fresh Brain Sync and authorized Executor-local private reading,
+  with no new lifecycle authority or separate diagnostic service.
+problem: >-
+  The published failure diagnostic path can reject otherwise lawful execution
+  FAILURE projection and may mask useful safe causes, leaving Humans to manually
+  extract private logs. A normal dirty candidate, native timeout with unknown
+  exit code, lawful quoted pytest selector and legitimately incomplete historical
+  observation need correct bounded diagnostics, exact identity binding and safe
+  transport. The implementation must be established from published canonical
+  source and independently verifiable synthetic cases, not unreviewed past candidates.
+assumptions:
+  - >-
+    This is a new independent TASK revision 1 against canonical published main
+    current at AUTHOR_TASK admission. Runtime must recheck expected-main CAS,
+    identity, exact scope and source clean admission. No previous candidate, patch,
+    bundle, staged RESULT, private worktree or failed RUN becomes implementation
+    base, canonical proof or correction authorization.
+  - >-
+    Existing Runtime FAILURE and evidence remain engineering truth; BP-2 handles
+    pre-AIOS operational failure; existing attention/Brain Sync/provider channels
+    may expose safe diagnostic facts, but never raw private capture.
+  - >-
+    Existing terminal lineage, including legitimately incomplete historical V2
+    observations, remains immutable and non-PASS unless originally proven.
+  - >-
+    This TASK is independent of any separate execution-budget change and does
+    not require a particular native response timeout to establish its outcomes.
+scope:
+  inspect:
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/brain_attention.py
+    - src/aios_renew/brain_sync.py
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/brain_provider_protocol.py
+    - src/aios_renew/brain_provider.py
+    - src/aios_renew/terminal_attention.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/codex_adapter.py
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - .github/workflows/aios-terminal-attention.yml
+    - .github/workflows/aios-local-chat-wake.yml
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+    - tests/test_review_transport.py
+    - tests/test_runtime.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator.py
+    - tests/test_brain_attention.py
+    - tests/test_brain_sync.py
+    - tests/test_brain_context.py
+    - tests/test_brain_provider_protocol.py
+    - tests/test_brain_provider.py
+    - tests/test_terminal_attention.py
+    - tests/test_terminal_attention_workflow.py
+    - tests/test_operator_human_surface.py
+    - tests/test_local_chat_wake.py
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  modify:
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/brain_attention.py
+    - src/aios_renew/brain_sync.py
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/brain_provider_protocol.py
+    - src/aios_renew/brain_provider.py
+    - src/aios_renew/terminal_attention.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+    - tests/test_review_transport.py
+    - tests/test_runtime.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator.py
+    - tests/test_brain_attention.py
+    - tests/test_brain_sync.py
+    - tests/test_brain_context.py
+    - tests/test_brain_provider_protocol.py
+    - tests/test_brain_provider.py
+    - tests/test_terminal_attention.py
+    - tests/test_terminal_attention_workflow.py
+    - tests/test_operator_human_surface.py
+    - tests/test_local_chat_wake.py
+non_goals:
+  - No native Executor response-budget or watchdog-policy changes.
+  - No new database, general diagnostic store, semantic router, planner, correction selector, Reviewer or Publisher.
+  - No automatic retry/failover, lifecycle advancement, evidence substitution or new private-log upload surface.
+  - No global declassification of sensitive native streams, credentials, secrets or host-local paths.
+  - No retroactive alteration of historical FAILURE/EVIDENCE or conversion of partial observations into PASS.
+  - No workflow-created RUN for pre-AIOS failure and no authority from a GitHub dispatch receipt alone.
+constraints:
+  hard:
+    - >-
+      Retain existing Runtime/Brain/Executor/Reviewer/Publisher boundaries and
+      trustworthy SHA/subject/RUN/evidence/provenance binding across all readers.
+    - >-
+      Original Runtime-owned private diagnostics stay byte-exact and local;
+      authorized same-RUN/same-subject Executor reading remains read-only and
+      bounded, with exact locator and digest rejection for substitution.
+    - >-
+      Public and portable diagnoses contain only a closed allowlist of useful
+      typed failure facts, bounded safe causes and explicit availability,
+      incompleteness, truncation and withholding indicators.
+    - >-
+      Historical legitimate incomplete observations may be described as incomplete
+      without fabricated detail/fingerprint, implicit V2 attribution, waiver or
+      source identity mismatch. Irreducibly invalid records expose typed blockers.
+    - >-
+      Reuse existing BP-2, attention, Unified State, Brain Sync and provider work
+      context; no second lifecycle state store, private capture distributor or
+      autonomous correction recommendation authority.
+    - >-
+      Implement positive and hostile synthetic fixtures, including unknown native
+      exit, dirty candidate, safe quoted pytest -k, malicious quoting and secret
+      strings. Do not use actual private machine logs as public test data.
+acceptance:
+  - id: AC1
+    condition: >-
+      Lawful Runtime private FAILURE records with native exit code integer or null
+      yield deterministic typed public diagnostics preserving RUN, TASK, phase,
+      candidate and source identity while private original bytes remain unchanged.
+  - id: AC2
+    condition: >-
+      Public/private FAILURE readers correctly distinguish legitimate historical
+      formats and bounded incomplete historical observations from forged,
+      inconsistent, substituted or secret-bearing records, without manufacturing
+      detail, fingerprints or comparable PASS evidence.
+  - id: AC3
+    condition: >-
+      Safe, bounded cause projection preserves actionable recognized native and
+      verification failure categories, exact admissible command identity, and
+      truthful availability, partial/truncation and withheld statuses without
+      disclosing unrestricted native output.
+  - id: AC4
+    condition: >-
+      Runtime terminal handling for dirty or non-publishable candidates can produce
+      bound FAILURE artifacts and attention without publishing uncommitted source,
+      or exposes an exact typed transport blocker if that transport is invalid.
+  - id: AC5
+    condition: >-
+      Existing BP-2 pre-AIOS operational paths expose bounded typed causes with
+      run_created=false and do not invent RUN, FAILURE or correction identity.
+  - id: AC6
+    condition: >-
+      Existing attention, Unified State, fresh Brain Sync and provider/work-context
+      consumers expose source-bound useful safe failure context, relevant candidate
+      state and evidence identities without requiring raw-log hand copy.
+  - id: AC7
+    condition: >-
+      An authorized admitted Executor can read relevant original private Runtime
+      diagnostics locally only for its exact RUN and subject through existing
+      workspace authority, rejecting cross-RUN, forged locator or mismatched digest.
+  - id: AC8
+    condition: >-
+      Bounded regression fixtures exercise normal and hostile failure projection,
+      timeout/null exit, dirty candidate, BP-2, attention, Brain context, authorized
+      local private access, safe quoted pytest selectors and malicious commands,
+      keeping unavailable source and integrity failures distinguishable from PASS.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_review_transport.py tests/test_runtime.py tests/test_operator_unified_state.py
+    - python -m pytest -q tests/test_brain_sync.py tests/test_brain_context.py tests/test_brain_attention.py tests/test_brain_provider_protocol.py tests/test_brain_provider.py
+    - python -m pytest -q tests/test_terminal_attention.py tests/test_terminal_attention_workflow.py tests/test_operator_human_surface.py
+    - python -m pytest -q tests/test_operator.py -k failure
+    - python -m pytest -q tests/test_local_chat_wake.py -k failure
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
