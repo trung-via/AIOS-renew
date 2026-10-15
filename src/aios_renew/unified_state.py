@@ -294,17 +294,19 @@ def _bounded_admission_context(
     )
 
 
-def _lifecycle_document(raw: bytes, name: str) -> Mapping[str, Any]:
+def _lifecycle_document(
+    raw: bytes, name: str, *, private_original: bool = False,
+) -> Mapping[str, Any]:
     # Historical readers must not inherit the prospective public writer's size cap.
     if name == "FAILURE":
         from .review_transport import failure_document
-        return failure_document(raw)
+        return failure_document(raw, private_original=private_original)
     data = publication_module._mapping(
         publication_module._json_no_duplicates(raw, document=name), name
     )
     if data.get("kind") == "FAILURE":
         from .review_transport import failure_document
-        return failure_document(raw)
+        return failure_document(raw, private_original=private_original)
     return data
 
 
@@ -1701,7 +1703,8 @@ def _local_pending_runs(
             continue
         kind = "RESULT" if has_result else "FAILURE"
         value = _lifecycle_document(
-            (result_path if has_result else failure_path).read_bytes(), "persisted terminal"
+            (result_path if has_result else failure_path).read_bytes(), "persisted terminal",
+            private_original=True,
         )
         if not isinstance(value, Mapping):
             raise ValueError("persisted terminal document must be a mapping")

@@ -123,6 +123,40 @@ def test_admitted_executor_private_failure_read_is_exact_local_and_read_only(tmp
     assert path.read_bytes() == original and git(repo, "show-ref") == refs
 
 
+def test_private_failure_sentinel_retains_local_origin_and_strict_public_projection(tmp_path):
+    import hashlib
+    from aios_renew.unified_state import _matches_public_document
+
+    repo, run, path, _ = _private_executor_failure_fixture(tmp_path)
+    private = json.loads(path.read_bytes())
+    private["error"]["message"] = "Protected Runtime diagnostics remain local."
+    original = json.dumps(private, indent=2).encode()
+    path.write_bytes(original)
+    refs = git(repo, "show-ref")
+    content = operator_module.read_executor_private_failure(repo, admitted_run=run,
+        subject_sha=run.base_sha, locator="runtime-failure:" + run.run_id,
+        expected_sha256=hashlib.sha256(original).hexdigest())
+    assert content == original and b"synthetic-secret" in content
+    assert transport_module.failure_document(original, private_original=True) == private
+    for reader in (transport_module.failure_document, transport_module.public_failure):
+        with pytest.raises(transport_module.ReviewTransportError, match="private captured output"):
+            reader(original)
+    projected = transport_module.public_failure(original, private_original=True)
+    public = transport_module.failure_document(projected)
+    assert b"synthetic-secret" not in projected and b"C:/private" not in projected
+    assert public["error"]["diagnostic"]["category"] == "NATIVE_TIMEOUT"
+    assert public["error"]["diagnostic"]["native_exit"] == dict(availability="UNKNOWN", value=None)
+    assert _matches_public_document(private, public, "METADATA")
+    forged = json.loads(projected)
+    forged["error"]["native_diagnostics"] = private["error"]["native_diagnostics"]
+    forged["public_projection"]["projection_digest"] = transport_module._failure_digest(
+        {key: value for key, value in forged.items() if key != "public_projection"})
+    for private_original in (False, True):
+        with pytest.raises(transport_module.FailureDiagnosticError, match="^FAILURE_PUBLIC_INTEGRITY_INVALID$"):
+            transport_module.failure_document(json.dumps(forged).encode(), private_original=private_original)
+    assert path.read_bytes() == original and git(repo, "show-ref") == refs
+
+
 @pytest.mark.parametrize("defect,code", [
     ("cross_run", "PRIVATE_FAILURE_ACCESS_DENIED"), ("host_path", "PRIVATE_FAILURE_ACCESS_DENIED"),
     ("workspace", "PRIVATE_FAILURE_ACCESS_DENIED"), ("subject", "PRIVATE_FAILURE_ACCESS_DENIED"),
@@ -156,7 +190,7 @@ def test_private_failure_rejects_forged_locator_identity_and_substituted_origina
     assert caught.value.code == code
 
 
-@pytest.mark.parametrize("defect", [None, "substitution", "cross_run", "locator"])
+@pytest.mark.parametrize("defect", [None, "substitution", "cross_run", "locator", "protected_message"])
 def test_private_verification_capture_requires_exact_same_run_locator_and_digests(tmp_path, defect):
     import hashlib
     from aios_renew.review_transport import FailureDiagnosticError
@@ -173,6 +207,8 @@ def test_private_verification_capture_requires_exact_same_run_locator_and_digest
     capture.write_bytes(original)
     ref = private["error"]["verification"][0]["verification"]
     ref.update(raw_path=str(capture), raw_digest=hashlib.sha256(original).hexdigest())
+    if defect == "protected_message":
+        private["error"]["message"] = "Protected Runtime diagnostics remain local."
     (state.runs / (run["run_id"] + ".json")).write_bytes(json.dumps(run).encode())
     failure = json.dumps(private).encode()
     (state.failures / (run["run_id"] + ".json")).write_bytes(failure)
@@ -182,7 +218,7 @@ def test_private_verification_capture_requires_exact_same_run_locator_and_digest
     elif defect == "locator": locator = str(capture)
     args = dict(admitted_run=operator_module._run_from_data(run), subject_sha=head, locator=locator,
                 expected_sha256=ref["raw_digest"], failure_sha256=hashlib.sha256(failure).hexdigest())
-    if defect:
+    if defect not in (None, "protected_message"):
         with pytest.raises(FailureDiagnosticError):
             operator_module.read_executor_private_diagnostic(repo, **args)
     else:
@@ -3130,6 +3166,7 @@ def test_native_watchdog_expiry_is_one_terminal_execution_failure(
     tmp_path: Path, executor: str
 ) -> None:
     repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
+    policy = operator_module.resolve_native_execution_policy(authorizes_mutation=False)
     native_calls = []
     verification_calls = []
 
@@ -3138,7 +3175,10 @@ def test_native_watchdog_expiry_is_one_terminal_execution_failure(
         raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
     with pytest.raises(
-        OperatorError, match="60-minute native response deadline"
+        OperatorError, match=(
+            rf"{policy.process_watchdog_seconds}-second process watchdog "
+            rf"\({policy.response_budget_minutes}-minute native response budget\)"
+        )
     ):
         run_task(
             "TASK-101",
@@ -3151,8 +3191,9 @@ def test_native_watchdog_expiry_is_one_terminal_execution_failure(
         )
 
     assert len(native_calls) == 1
-    assert native_calls[0][1]["timeout"] == 65 * 60
-    assert native_calls[0][1]["timeout"] <= 66 * 60
+    assert native_calls[0][1]["timeout"] == policy.process_watchdog_seconds
+    assert policy.process_watchdog_seconds > policy.response_budget_minutes * 60
+    assert policy.process_watchdog_seconds <= (policy.response_budget_minutes + 6) * 60
     assert verification_calls == []
     state = runtime_paths(repo)
     failure = json.loads(
@@ -3166,6 +3207,8 @@ def test_native_watchdog_expiry_is_one_terminal_execution_failure(
         if executor == "codex"
         else "AntigravityExecutionError"
     )
+    assert failure["error"]["native_reason"] == "TIMEOUT"
+    assert failure["error"]["exit_code"] is None
     assert not list(state.results.glob("RUN-101-001.json"))
 
 
@@ -3264,9 +3307,9 @@ def test_runtime_verification_interrupt_records_truthful_portable_failure(
         )
 
     state = runtime_paths(repo)
-    failure = json.loads(
-        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
-    )
+    failure_path = state.failures / "RUN-101-001.json"
+    original = failure_path.read_bytes()
+    failure = json.loads(original)
     assert runner.count == 1
     assert failure["phase"] == "VERIFICATION"
     assert failure["error"]["message"] == (
@@ -3280,7 +3323,13 @@ def test_runtime_verification_interrupt_records_truthful_portable_failure(
             ".ai/transport/failure.json",
         )
     )
-    assert remote_failure == failure
+    assert remote_failure == json.loads(transport_module.public_failure(original))
+    assert remote_failure["error"]["type"] == "KeyboardInterrupt"
+    assert remote_failure["error"]["message"] == "Protected Runtime diagnostics remain local."
+    assert remote_failure["error"]["verification"] == []
+    assert remote_failure["error"]["diagnostic"]["native_exit"] == dict(availability="UNAVAILABLE", value=None)
+    assert remote_failure["public_projection"]["proof"] == "PRIVATE_NON_PASS_FAILURE"
+    assert failure_path.read_bytes() == original
 
 
 def test_remediation_keyboard_interrupt_preserves_exact_lineage(tmp_path: Path) -> None:
@@ -3397,6 +3446,7 @@ def test_native_timeout_failure_retains_bounded_partial_diagnostics(
     tmp_path: Path, executor: str
 ) -> None:
     repo = make_repo(tmp_path)
+    policy = operator_module.resolve_native_execution_policy(authorizes_mutation=True)
 
     def expire(command, **kwargs):
         raise subprocess.TimeoutExpired(
@@ -3406,7 +3456,10 @@ def test_native_timeout_failure_retains_bounded_partial_diagnostics(
             stderr=b"z" * 5000,
         )
 
-    with pytest.raises(OperatorError, match="60-minute native response deadline"):
+    with pytest.raises(OperatorError, match=(
+        rf"{policy.process_watchdog_seconds}-second process watchdog "
+        rf"\({policy.response_budget_minutes}-minute native response budget\)"
+    )):
         run_task(
             "TASK-101",
             executor=executor,
@@ -3671,6 +3724,7 @@ def test_executor_failure_transports_compact_boundary_diagnostic(
         "type": "CodexExecutionError",
         "message": "Codex CLI exited with code 124: request timed out after 300s",
         "exit_code": 124,
+        "native_reason": "PROCESS_EXIT",
         "native_diagnostics": {
             "limit_chars": 4096,
             "stdout": {"availability": "empty"},
@@ -5722,6 +5776,26 @@ def test_historical_remediation_failure_persists_exact_subject_candidate(
         "rev-parse",
         "refs/heads/aios/failure/RUN-101-001",
     ) == failure["failed_head_sha"]
+    run_path = runtime_paths(repo).runs / "RUN-101-001.json"
+    run_document = json.loads(run_path.read_bytes())
+    remote_run = json.loads(git(tmp_path / "upstream.git", "show",
+        "refs/heads/aios/failure-artifacts/RUN-101-001:.ai/transport/run.json"))
+    assert remote_run["remediation_authorization_sha"] == run_document["remediation_authorization_sha"]
+    legacy_run = {key: value for key, value in run_document.items() if key != "remediation_authorization_sha"}
+    for lawful_run in (run_document, dict(run_document, remediation_authorization_sha="a" * 64), legacy_run):
+        assert transport_module._bind_performance_terminal_identity(
+            transport_module.public_run(json.dumps(lawful_run).encode()),
+            transport_module.public_failure(json.dumps(failure).encode()),
+            ref="refs/heads/aios/failure-artifacts/RUN-101-001", run_id="RUN-101-001",
+            task_id="TASK-101", terminal_kind="FAILURE")[3] == failure["failed_head_sha"]
+    for malformed in (None, True, "invalid-sha", "a" * 39):
+        forged_run = dict(run_document, remediation_authorization_sha=malformed)
+        with pytest.raises(transport_module.ReviewTransportError, match="REMEDIATION authorization SHA is invalid"):
+            transport_module._bind_performance_terminal_identity(
+                transport_module.public_run(json.dumps(forged_run).encode()),
+                transport_module.public_failure(json.dumps(failure).encode()),
+                ref="refs/heads/aios/failure-artifacts/RUN-101-001", run_id="RUN-101-001",
+                task_id="TASK-101", terminal_kind="FAILURE")
     assert not (runtime_paths(repo).results / "RUN-101-001.json").exists()
 
 
@@ -14565,6 +14639,27 @@ def test_terminal_reconciliation_private_pending_repair_retains_boundary(tmp_pat
         "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
 
 
+def test_terminal_reconciliation_private_pending_failure_sentinel_is_not_public(tmp_path):
+    from aios_renew.unified_state import _decode_remote_lifecycle, _local_pending_runs, _matches_public_document
+
+    repo, state, task, lifecycle = _terminal_reconciliation_pending_repair_fixture(tmp_path, "FAILURE")
+    path = state.failures / "RUN-101-002.json"
+    private = json.loads(path.read_bytes())
+    private["error"].update(message="Protected Runtime diagnostics remain local.",
+        native_diagnostics=dict(stdout="synthetic private capture"))
+    original = json.dumps(private, indent=2).encode()
+    path.write_bytes(original)
+    refs = git(repo, "show-ref")
+    remote, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
+    terminals, active = _local_pending_runs(repo, state, task, remote, reviews)
+    assert not active and len(terminals) == 1
+    assert terminals[0].run_id == "RUN-101-002" and terminals[0].terminal == private
+    projected = transport_module.public_failure(original, private_original=True)
+    assert b"synthetic private capture" not in projected
+    assert _matches_public_document(private, json.loads(projected), "METADATA")
+    assert path.read_bytes() == original and git(repo, "show-ref") == refs
+
+
 @pytest.mark.parametrize("kind", ["ACTIVE", "RESULT", "FAILURE"])
 @pytest.mark.parametrize("mutation", ["parent", "root", "authorization", "authorization-sha", "embedded-run",
     "embedded-failure", "task", "workspace", "evidence-placement", "evidence-owner", "reference-owner",
@@ -14641,7 +14736,9 @@ def test_terminal_reconciliation_private_pending_terminal_rejects_malformed_evid
     monkeypatch.setattr(operator_module, "resolve_remote_task_lifecycle", lambda *a, **k: lifecycle)
     observation = observe_unified_state(task.task_id, repo=repo)
     assert observation.lifecycle_state == "BLOCKED" and observation.next_action == "NONE"
-    assert observation.blocker["code"] == "MALFORMED_CANONICAL_STATE"
+    assert observation.blocker["code"] == (
+        "FAILURE_PRIVATE_INTEGRITY_INVALID" if kind == "FAILURE" else "MALFORMED_CANONICAL_STATE"
+    )
     assert {p: p.read_bytes() for p in before} == before
 
 
@@ -15186,11 +15283,8 @@ def _terminal_reconciliation_task336_fixture(
                 repair_authorization_sha="a" * 40)
         # Exercise historical reader sizes independently of prospective writer caps.
         public_run = dict(run, workspace="protected-runtime-workspace") if protected else run
-        public_failure = json.loads(json.dumps(failure))
-        if protected:
-            public_failure["error"]["message"] = "Protected Runtime diagnostics remain local."
-            for outcome in public_failure["error"].get("verification", []):
-                outcome["summary"] = "Runtime verification exit code " + str(outcome["exit_code"])
+        public_failure = (json.loads(transport_module.public_failure(json.dumps(failure).encode()))
+                          if protected else json.loads(json.dumps(failure)))
         public_correction = None if correction is None else dict(correction, run=public_run, failure=prior_public)
         name = run_id + ".json"
         (state.runs / name).write_bytes(json.dumps(run).encode())
@@ -15313,9 +15407,12 @@ def test_terminal_reconciliation_task336_full_evidence_placement(tmp_path, monke
     elif not valid:
         message = ("FAILURE outside a validated structural role" if placement == "foreign-failure"
                    else "EVIDENCE identity outside a validated structural role")
-        with pytest.raises(ValueError, match=message):
+        with pytest.raises(transport_module.FailureDiagnosticError,
+                           match="^FAILURE_PRIVATE_INTEGRITY_INVALID$") as rejected:
             decoded, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
             _local_pending_runs(repo, state, task, decoded, reviews)
+        assert isinstance(rejected.value.__cause__, ValueError)
+        assert str(rejected.value.__cause__) == message
     @contextmanager
     def observer(_root):
         yield repo
@@ -15327,7 +15424,9 @@ def test_terminal_reconciliation_task336_full_evidence_placement(tmp_path, monke
         assert observation.failed_run_id == "RUN-336-004"
     else:
         assert observation.lifecycle_state == "BLOCKED" and observation.next_action == "NONE"
-        assert observation.blocker["code"] == "MALFORMED_CANONICAL_STATE"
+        assert observation.blocker["code"] == (
+            "MALFORMED_CANONICAL_STATE" if valid else "FAILURE_PRIVATE_INTEGRITY_INVALID"
+        )
     assert {p: p.read_bytes() for p in before} == before
     assert git(repo, "show-ref") == refs
     assert all(observation.as_dict()[key] is False for key in (
@@ -15385,7 +15484,11 @@ def test_terminal_reconciliation_task336_historical_lineage_blockers(tmp_path, m
         if mutation == "public-summary": document["error"]["message"] = "fabricated public summary"
         elif mutation == "public-placeholder": document["error"]["verification"] = [{"evidence_id": "OTHER"}]
         elif mutation == "boolean-failure-task": document["task"]["revision"] = True
-        elif mutation == "nonrepairable": document["candidate"].update(dirty=True, repairable=False, transportable=False)
+        elif mutation == "nonrepairable":
+            document = json.loads((state.failures / (tip.run_id + ".json")).read_bytes())
+            document["candidate"].update(dirty=True, repairable=False, transportable=False)
+            if protected:
+                document = json.loads(transport_module.public_failure(json.dumps(document).encode()))
         lifecycle = replace(lifecycle, terminals=lifecycle.terminals[:-1] + (replace(tip,
             terminal=json.dumps(document).encode(), candidate_available=mutation != "missing-candidate"),))
         if mutation == "nonrepairable":
@@ -15405,7 +15508,12 @@ def test_terminal_reconciliation_task336_historical_lineage_blockers(tmp_path, m
     observation = observe_unified_state("TASK-336", repo=repo)
     assert observation.lifecycle_state == "BLOCKED" and observation.next_action == "NONE"
     expected = ("NON_REPAIRABLE_FAILURE" if mutation in {"nonrepairable", "missing-candidate"}
-                else "COMPETING_REPAIRS" if mutation == "competing-repair" else "MALFORMED_CANONICAL_STATE")
+                else "COMPETING_REPAIRS" if mutation == "competing-repair"
+                else "FAILURE_PRIVATE_INTEGRITY_INVALID" if mutation in {"reference-run", "reference-source"}
+                or (not protected and mutation == "public-placeholder")
+                else "FAILURE_PUBLIC_INTEGRITY_INVALID" if protected and mutation in {
+                    "public-summary", "public-placeholder", "boolean-failure-task"}
+                else "MALFORMED_CANONICAL_STATE")
     assert observation.blocker["code"] == expected
     assert {p: p.read_bytes() for p in before} == before
     assert git(repo, "show-ref") == refs

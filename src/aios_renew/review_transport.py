@@ -441,8 +441,7 @@ def _has_failure_observations(data: Mapping[str, Any]) -> bool:
 def _needs_failure_projection(data: Mapping[str, Any]) -> bool:
     return _has_failure_observations(data) or (
         {"task", "executor", "base_sha", "failed_head_sha", "candidate", "phase", "error"} <= data.keys()
-        and isinstance(data["error"], Mapping)
-        and data["error"].get("message") != _PROTECTED_DIAGNOSTICS)
+        and isinstance(data["error"], Mapping))
 
 
 def _failure_digest(value: Any) -> str:
@@ -665,14 +664,16 @@ def _validate_legacy_failure_public(data: Mapping[str, Any]) -> None:
     diagnostics(data)
 
 
-def public_failure(content: bytes) -> bytes:
+def public_failure(content: bytes, *, private_original: bool = False) -> bytes:
     """FAILURE-only finite budget; ordinary transport retains its existing cap."""
     data = _failure_input(content)
     if data.get("kind") != "FAILURE":
         raise FailureDiagnosticError("FAILURE_KIND_INVALID")
     try:
         error = data.get("error")
-        if (isinstance(error, dict)
+        if private_original and "public_projection" not in data:
+            failure_document(content, private_original=True)
+        elif (isinstance(error, dict)
                 and error.get("message") == "Protected Runtime diagnostics remain local."
                 and "public_projection" not in data):
             # A purported public original must already be lawful. Re-redacting
@@ -894,11 +895,25 @@ def _failure_input(content: bytes) -> dict[str, Any]:
         raise FailureDiagnosticError("FAILURE_SOURCE_DOCUMENT_INVALID") from exc
 
 
-def failure_document(content: bytes) -> Mapping[str, Any]:
-    """Shared finite JSON/depth/schema gate for exact canonical FAILURE readers."""
+def failure_document(content: bytes, *, private_original: bool = False) -> Mapping[str, Any]:
+    """Read an exact FAILURE; only a known local source grants the private role.
+
+    A message is not provenance. Callers authenticating a Runtime-owned local
+    original may retain its private diagnostics even if its message happens to
+    equal the public sentinel. Public input keeps the strict redaction gate.
+    """
     data = _failure_input(content)
     if data.get("kind") != "FAILURE":
         raise FailureDiagnosticError("FAILURE_KIND_INVALID")
+    if private_original and "public_projection" not in data:
+        try:
+            from .unified_state import _validated_private_public_view
+            _validated_private_public_view(data, "METADATA")
+            if {"phase", "error", "candidate"} <= data.keys():
+                _safe_failure_diagnostic(data)
+        except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
+            raise FailureDiagnosticError("FAILURE_PRIVATE_INTEGRITY_INVALID") from exc
+        return data
     error = data.get("error")
     if isinstance(error, dict) and error.get("message") == "Protected Runtime diagnostics remain local.":
         outcomes = error.get("verification", [])
@@ -1596,10 +1611,17 @@ def _bind_remediation_wrapper(
     from .review import REMEDIATION_ACTIONS, parse_remediation
 
     required = {"kind", "execution"}
-    allowed = required | {"predecessor", "execution_base", "acceptance"}
+    allowed = required | {"predecessor", "execution_base", "acceptance", "remediation_authorization_sha"}
     if not required.issubset(document) or set(document).difference(allowed):
         raise ReviewTransportError(
             f"canonical REMEDIATION wrapper is invalid for {run_id}"
+        )
+    if "remediation_authorization_sha" in document and (
+        not isinstance(document["remediation_authorization_sha"], str)
+        or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", document["remediation_authorization_sha"]) is None
+    ):
+        raise ReviewTransportError(
+            f"canonical REMEDIATION authorization SHA is invalid for {run_id}"
         )
     finding = execution.get("finding")
     remediation_data = execution.get("remediation")
@@ -3044,7 +3066,7 @@ def _create_named_artifacts_commit(
                 input=(projected_inputs[".ai/transport/" + name] if projected_inputs is not None else
                        public_run(path.read_bytes()) if name == "run.json" else
                        public_result(path.read_bytes()) if name == "result.json" else
-                       public_failure(path.read_bytes()) if name == "failure.json" else
+                       public_failure(path.read_bytes(), private_original=True) if name == "failure.json" else
                        public_metadata(path.read_bytes()) if name in {"repair.json", "pre-verification-candidate.json"} else path.read_bytes()),
                 capture_output=True, check=True,
             )
@@ -3097,7 +3119,7 @@ def transport_failure(
         raise FailureDiagnosticError("FAILURE_TRANSPORT_AFFINITY_INVALID") from exc
     expected = {
         ".ai/transport/run.json": public_run(run_path.read_bytes()),
-        ".ai/transport/failure.json": public_failure(failure_path.read_bytes()),
+        ".ai/transport/failure.json": public_failure(failure_path.read_bytes(), private_original=True),
     }
     failure = failure_document(expected[".ai/transport/failure.json"])
     if "public_projection" in failure:

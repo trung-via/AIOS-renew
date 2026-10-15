@@ -672,7 +672,7 @@ def read_executor_private_failure(
             raise FailureDiagnosticError("PRIVATE_FAILURE_SIZE_EXCEEDED")
         if hashlib.sha256(original).hexdigest() != expected_sha256:
             raise FailureDiagnosticError("PRIVATE_FAILURE_DIGEST_MISMATCH")
-        failure = failure_document(original)
+        failure = failure_document(original, private_original=True)
         if "public_projection" in failure:
             raise FailureDiagnosticError("PRIVATE_FAILURE_ORIGINAL_UNAVAILABLE")
         if failure.get("failed_head_sha") != subject_sha:
@@ -716,7 +716,7 @@ def read_executor_private_diagnostic(
         if expected_sha256 != failure_sha256:
             raise FailureDiagnosticError("PRIVATE_FAILURE_DIGEST_MISMATCH")
         return original
-    failure = failure_document(original)
+    failure = failure_document(original, private_original=True)
     references = [item["verification"] for item in failure["error"].get("verification", [])
                   if isinstance(item.get("verification"), dict)
                   and locator == "runtime-verification:" + admitted_run.run_id + ":" + item["verification"]["evidence_id"]]
