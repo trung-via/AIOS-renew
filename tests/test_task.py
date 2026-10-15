@@ -125,10 +125,13 @@ def test_rejects_unknown_mapping_fields(source: str, path: str) -> None:
         parse_task(source)
 
 
-def test_rejects_empty_required_verification() -> None:
+@pytest.mark.parametrize("policy", (None, "minimum-sufficient-v1", "minimum-sufficient-v2"))
+def test_rejects_empty_required_verification(policy) -> None:
     source = VALID_TASK.replace(
         "  required:\n    - pytest tests/test_task.py\n", "  required: []\n"
     )
+    if policy is not None:
+        source = source.replace("verification:\n", f"verification:\n  policy: {policy}\n")
 
     with pytest.raises(
         TaskValidationError, match="must contain at least one command"
@@ -168,6 +171,20 @@ def test_v2_task_is_one_policy_and_preserves_v1_readability() -> None:
     for independent in ("attributed-minimum-verification", "deterministic-delta-minimum-verification"):
         with pytest.raises(TaskValidationError, match="verification.policy"):
             parse_task(VALID_TASK.replace("verification:\n", f"verification:\n  policy: {independent}\n"))
+
+
+@pytest.mark.parametrize("policy", (None, "minimum-sufficient-v1", "minimum-sufficient-v2"))
+def test_task_decoding_keeps_historical_policy_and_exact_authored_order(policy):
+    import yaml
+    body = yaml.safe_load(VALID_TASK)
+    commands = ["opaque  second --literal='two  spaces'", "python -m pytest -q tests/test_task.py"]
+    body["verification"]["required"] = commands
+    if policy is not None:
+        body["verification"]["policy"] = policy
+    task = parse_task(yaml.safe_dump(body))
+    assert task.verification.policy == policy
+    assert task.verification.required == tuple(commands)
+    assert task.verification.full_suite_reason is None
 
 
 def test_v1_task_rejects_known_redundant_verification() -> None:

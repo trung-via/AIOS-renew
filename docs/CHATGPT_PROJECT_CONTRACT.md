@@ -76,7 +76,7 @@ to authorize AUTHOR_TASK mutation. Brain still performs `CONSTRUCT` then
 `ADVERSARIAL_AUDIT_AND_RECONCILE` as mandatory semantic authoring discipline.
 
 Direct admission preserves final TASK schema and identity/revision continuity,
-`minimum-sufficient-v2` for new identities/revisions, authored return-affinity rules,
+the explicit current verification policy for new identities/revisions, authored return-affinity rules,
 expected-main currentness, unrelated-delta rejection and expected-old-main
 compare-and-swap publication. Identical historical replay remains non-mutating.
 AUTHOR_REMEDIATION and AUTHOR_REPAIR retain their existing audited handoff, canonical
@@ -122,6 +122,38 @@ records. Deployment-owned key/registry configuration remains operational setup
 outside canonical artifacts. See [the TASK-309 provenance gate](AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md#new-task-origin-provenance-gate-task-309).
 This changes no Runtime verification, Reviewer verdict, Publisher publication,
 TASK-308 disposition, TASK-303 pause, or Human/Brain phase-closure authority.
+
+### Verification authoring after TASK-356
+
+After TASK-356 has a Runtime RESULT, independent Reviewer PASS and Publisher
+publication, every newly authored TASK identity or revision must explicitly declare
+`verification.policy: minimum-sufficient-v1`. This prospectively supersedes the
+TASK-317 V2 authoring rule. Until that activation the published V2 gate still applies;
+TASK-356 itself remains a V2 bootstrap TASK. Identical same-revision historical replay
+stays exact and non-mutating. Historical V1/V2 TASKs, already admitted RUNs and their
+FAILURE/RESULT/EVIDENCE/REVIEW lineage retain their original policy, decisions and
+immutable raw evidence. TASK-355 r5 remains V2; using V1 for that objective would require
+an explicit later revision and a separately admitted PRIMARY.
+
+For V1 PRIMARY, Runtime uses the existing direct path to execute only the nonempty,
+ordered authored `verification.required` commands in an isolated exact candidate
+subject. It captures immutable raw output and stops on raw nonzero. There is no V2
+candidate-only probe, candidate/base collection, comparison, attributed success,
+invented reuse or implicit full-suite command. REMEDIATION still requires its exact
+authorized affected verification; REPAIR retains its existing TASK/origin-command
+combination and overlap normalization. Each required command needs exact-command,
+RUN- and subject-bound evidence with raw exit 0. Nonzero, interrupt, missing, malformed
+or conflicting evidence stays blocking; baseline attribution cannot waive a V1 failure.
+Full-suite proof is included only when explicitly authored and justified by TASK
+semantics. TASK-356 authorizes only its four focused required commands and no full suite.
+
+Runtime remains the canonical verification and transport owner; Reviewer retains
+semantic acceptance and Publisher alone publishes the exact eligible reviewed source.
+Executor authority ends at the permitted final local commit, without push. This default
+change creates no service, execution, automatic correction or roadmap advancement and
+changes neither the frozen Kernel nor KA-01's separately opted-in semantic proof design.
+The Brain audit profile `aios-adaptive-brain-audit-v1` is distinct from either Runtime
+verification policy.
 
 ## 4. Executor Responsibilities
 

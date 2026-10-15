@@ -1,9 +1,11 @@
 """One deterministic minimum-sufficient verification contract.
 
-V1 declarations remain readable. V2 derives executions, exact covered probes
-and reuse from bounded canonical material inside the authored envelope. This
-module executes nothing and owns no semantic or lifecycle decisions. Commands
-outside the deliberately small coverage grammar remain opaque.
+V1 is the explicit policy required for new TASK identities and revisions.
+Historical V1/V2 declarations remain readable; already admitted V2 work still
+derives executions, exact covered probes and reuse from bounded canonical
+material inside its authored envelope. This module executes nothing and owns
+no semantic or lifecycle decisions. Commands outside the deliberately small
+coverage grammar remain opaque.
 """
 
 from __future__ import annotations
@@ -21,7 +23,9 @@ from typing import Sequence
 MINIMUM_SUFFICIENT_V1 = "minimum-sufficient-v1"
 MINIMUM_SUFFICIENT_V2 = "minimum-sufficient-v2"
 VERIFICATION_POLICIES = frozenset({MINIMUM_SUFFICIENT_V1, MINIMUM_SUFFICIENT_V2})
-CURRENT_VERIFICATION_POLICY = MINIMUM_SUFFICIENT_V2
+# Prospective authoring gate only. Historical decoding and admitted execution
+# select the exact policy on the TASK, never this current-authoring constant.
+CURRENT_VERIFICATION_POLICY = MINIMUM_SUFFICIENT_V1
 MAX_CANONICAL_REPORTS = 100_000
 MAX_CANONICAL_FAILURES = 10_000
 MAX_CANONICAL_NODEID_CHARS = 16_384

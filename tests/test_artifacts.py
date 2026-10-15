@@ -102,8 +102,10 @@ raw:
 """
 
 
-def make_contracts():
+def make_contracts(policy=None):
     task = parse_task(TASK_SOURCE)
+    if policy is not None:
+        task = replace(task, verification=replace(task.verification, policy=policy))
     run = Run.from_task(
         run_id="RUN-005-001",
         task=task,
@@ -130,8 +132,9 @@ def test_parses_evidence_contract() -> None:
     assert evidence.raw_path == ".ai/evidence/E1.log"
 
 
-def test_builds_sha_bound_result_package() -> None:
-    task, run, result, evidence = make_contracts()
+@pytest.mark.parametrize("policy", (None, "minimum-sufficient-v1"))
+def test_builds_sha_bound_result_package(policy) -> None:
+    task, run, result, evidence = make_contracts(policy)
 
     package = validate_result_package(
         task=task,
@@ -162,8 +165,9 @@ def test_rejects_missing_referenced_evidence() -> None:
         )
 
 
-def test_rejects_evidence_for_different_sha() -> None:
-    task, run, result, _ = make_contracts()
+@pytest.mark.parametrize("policy", (None, "minimum-sufficient-v1"))
+def test_rejects_evidence_for_different_sha(policy) -> None:
+    task, run, result, _ = make_contracts(policy)
     wrong_sha = parse_evidence(
         EVIDENCE_SOURCE.replace("subject_sha: def456", "subject_sha: other")
     )
@@ -190,8 +194,9 @@ def test_rejects_unknown_acceptance_reference() -> None:
         )
 
 
-def test_rejects_missing_required_verification_evidence() -> None:
-    task, run, result, _ = make_contracts()
+@pytest.mark.parametrize("policy", (None, "minimum-sufficient-v1"))
+def test_rejects_missing_required_verification_evidence(policy) -> None:
+    task, run, result, _ = make_contracts(policy)
     unrelated = parse_evidence(
         EVIDENCE_SOURCE.replace(
             "command: pytest tests/test_artifacts.py",
@@ -210,9 +215,11 @@ def test_rejects_missing_required_verification_evidence() -> None:
         )
 
 
-def test_rejects_failed_required_verification_evidence() -> None:
-    task, run, result, _ = make_contracts()
-    failed = parse_evidence(EVIDENCE_SOURCE.replace("exit_code: 0", "exit_code: 1"))
+@pytest.mark.parametrize("policy", (None, "minimum-sufficient-v1"))
+@pytest.mark.parametrize("exit_code", (1, 2, -2, 9))
+def test_rejects_failed_required_verification_evidence(policy, exit_code) -> None:
+    task, run, result, _ = make_contracts(policy)
+    failed = parse_evidence(EVIDENCE_SOURCE.replace("exit_code: 0", f"exit_code: {exit_code}"))
 
     with pytest.raises(ArtifactValidationError, match="no successful evidence"):
         validate_result_package(
@@ -223,8 +230,9 @@ def test_rejects_failed_required_verification_evidence() -> None:
         )
 
 
-def test_required_verification_uses_exact_command_equality() -> None:
-    task, run, result, _ = make_contracts()
+@pytest.mark.parametrize("policy", (None, "minimum-sufficient-v1"))
+def test_required_verification_uses_exact_command_equality(policy) -> None:
+    task, run, result, _ = make_contracts(policy)
     different = parse_evidence(
         EVIDENCE_SOURCE.replace(
             "command: pytest tests/test_artifacts.py",
@@ -324,3 +332,21 @@ def test_canonical_package_still_rejects_structural_empty_claim_evidence() -> No
             result=structural,
             evidence=[evidence],
         )
+
+
+@pytest.mark.parametrize("exit_code", (None, False, True, "0", 0.0))
+def test_v1_evidence_decoder_rejects_invalid_raw_exit_instead_of_success(exit_code):
+    import yaml
+    decoded = yaml.safe_load(EVIDENCE_SOURCE)
+    decoded["result"]["exit_code"] = exit_code
+    with pytest.raises(ArtifactValidationError, match="exit_code must be an integer"):
+        validate_evidence(decoded)
+
+
+@pytest.mark.parametrize("section, field", (("result", "exit_code"), ("source", "command"), ("raw", "path")))
+def test_v1_evidence_decoder_rejects_missing_proof_fields(section, field):
+    import yaml
+    decoded = yaml.safe_load(EVIDENCE_SOURCE)
+    del decoded[section][field]
+    with pytest.raises(ArtifactValidationError, match="required"):
+        validate_evidence(decoded)

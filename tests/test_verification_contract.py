@@ -6,6 +6,7 @@ import hashlib
 import shlex
 
 from aios_renew.verification_contract import (
+    CURRENT_VERIFICATION_POLICY, MINIMUM_SUFFICIENT_V1, VERIFICATION_POLICIES,
     VerificationContractError,
     normalize_verification,
     parse_bp_v4_probe_workers,
@@ -19,6 +20,24 @@ from aios_renew.verification_contract import (
     pytest_collection_identity, pytest_projection_command, projected_failure_attribution,
     validate_exact_collection, MAX_DELTA_PROJECTION_NODES, MAX_EXACT_PROJECTION_NODES,
 )
+
+
+def test_prospective_default_is_v1_with_both_historical_policy_identities():
+    assert CURRENT_VERIFICATION_POLICY == MINIMUM_SUFFICIENT_V1
+    assert VERIFICATION_POLICIES == frozenset({MINIMUM_SUFFICIENT_V1, MINIMUM_SUFFICIENT_V2})
+
+
+def test_v1_requires_nonempty_authored_commands_without_rewriting_order():
+    commands = [
+        "python -m pytest -q tests/test_task.py",
+        "opaque  check --literal='two  spaces'",
+        "pytest -q tests/test_artifacts.py",
+    ]
+    authored = list(commands)
+    validate_v1_verification(commands, full_suite_reason=None, path="verification.required")
+    assert commands == authored
+    with pytest.raises(VerificationContractError, match="at least one command"):
+        validate_v1_verification([], full_suite_reason=None, path="verification.required")
 
 
 V2_BASE = "a" * 40

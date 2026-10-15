@@ -1,4 +1,5 @@
 import json
+import subprocess
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -141,6 +142,165 @@ def evidence_for(run_id: str, subject_sha: str, commands: tuple[str, ...]):
         )
         for index, command in enumerate(commands, start=1)
     )
+
+
+def v1_completion_fixture(tmp_path, kind):
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    commands = ("python -m pytest -q tests/test_task.py", "opaque  check --literal='two  spaces'")
+    affected = ("affected-first", "affected-second")
+    task = replace(task, verification=TaskVerification(commands, policy="minimum-sufficient-v1"))
+    run = replace(run, base_sha="a" * 40)
+    package = replace(package, result=replace(package.result, head_sha="b" * 40))
+    if kind == "PRIMARY":
+        policy = primary_completion_policy(task, base_sha=run.base_sha)
+        expected = commands
+    elif kind == "REPAIR":
+        policy = repair_completion_policy(
+            task, root_base_sha=run.base_sha, failed_head_sha="c" * 40,
+            action="CODE_FIX", modification_scope=("OUTPUT.txt",),
+            lineage_path=state.repairs / f"{run.run_id}.json",
+            origin_affected_verification=affected,
+        )
+        expected = (*commands, *affected)
+    else:
+        assert kind in ("REMEDIATION", "DIRECT_CANDIDATE")
+        remediation = Remediation(
+            finding_id="F1", action="CODE_FIX", reviewed_sha=run.base_sha,
+            modification_scope=("OUTPUT.txt",), affected_verification=affected,
+        )
+        execution = RemediationExecution(
+            review_id="REVIEW-052-001",
+            finding=Finding("F1", "AC1", "CODE_FIX", "OUTPUT.txt", "Defect", "Fix"),
+            remediation=remediation, run=run,
+        )
+        policy = remediation_completion_policy(execution, direct_candidate=kind == "DIRECT_CANDIDATE")
+        package = replace(package, result=replace(package.result, claims=()))
+        expected = affected
+    assert policy.verification_commands == expected
+    return task, run, state, run_path, package, policy, expected
+
+
+@pytest.mark.parametrize("kind", ("PRIMARY", "REMEDIATION", "REPAIR", "DIRECT_CANDIDATE"))
+def test_v1_direct_completion_runs_only_exact_authorized_order_in_candidate(tmp_path, monkeypatch, kind):
+    task, run, state, run_path, package, policy, commands = v1_completion_fixture(tmp_path, kind)
+    subject = tmp_path / "isolated-candidate"
+    subject.mkdir()
+    materializations, direct_calls, executions, transports = [], [], [], []
+
+    @contextmanager
+    def materialize(repository, **kwargs):
+        materializations.append((repository, kwargs))
+        yield subject
+
+    execute = runtime_module.execute_verification
+    def direct(authored, **kwargs):
+        direct_calls.append((tuple(authored), kwargs))
+        return execute(authored, platform="posix", environment={}, **kwargs)
+
+    def runner(shell, **kwargs):
+        executions.append((shell, kwargs))
+        return subprocess.CompletedProcess(shell, 0, stdout=b"passed\n", stderr=b"")
+
+    def transport(*args, **kwargs):
+        assert kwargs["result_path"].is_file()
+        transports.append(kwargs["head_sha"])
+
+    monkeypatch.setattr(runtime_module, "materialize_verification_subject", materialize)
+    monkeypatch.setattr(runtime_module, "execute_verification", direct)
+    monkeypatch.setattr(runtime_module, "execute_minimum_verification", lambda *a, **k: pytest.fail("V1 entered V2 derivation"))
+    monkeypatch.setattr(runtime_module, "transport_post_pass", transport)
+    outcome = StubRuntimeCompletion(
+        repo=tmp_path, state=state, task=task, run=run, run_path=run_path,
+        verification_runner=runner, observation_tracker=None, error_type=BoundaryError,
+        head_sha=package.result.head_sha, changed_files={"OUTPUT.txt"},
+    ).complete(package, policy)
+
+    assert materializations == [(tmp_path, {"run_id": run.run_id, "subject_sha": package.result.head_sha})]
+    assert len(direct_calls) == 1 and direct_calls[0][0] == commands
+    assert direct_calls[0][1]["repository"] == subject
+    assert "stop_on_failure" not in direct_calls[0][1]
+    assert [shell for shell, _ in executions] == [("/bin/sh", "-c", command) for command in commands]
+    assert all(kwargs["cwd"] == subject and kwargs["env"] == {} for _, kwargs in executions)
+    assert transports == [package.result.head_sha]
+    stored = json.loads(outcome.result_path.read_text(encoding="utf-8"))
+    assert [item["source"]["command"] for item in stored["evidence"]] == list(commands)
+    assert all(item["result"]["exit_code"] == 0 and item.get("verification") is None for item in stored["evidence"])
+    assert all(item["subject_sha"] == package.result.head_sha and item["run_id"] == run.run_id for item in stored["evidence"])
+    assert len(list((state.verification / run.run_id).iterdir())) == len(commands)
+    assert all(Path(item["raw"]["path"]).read_bytes() == b"STDOUT\npassed\n\nSTDERR\n" for item in stored["evidence"])
+
+
+@pytest.mark.parametrize("kind", ("PRIMARY", "REMEDIATION", "REPAIR", "DIRECT_CANDIDATE"))
+@pytest.mark.parametrize("fault", (1, 2, -2, "interrupt", "invalid_output"))
+def test_v1_direct_failure_never_transports_pass_or_runs_later_work(tmp_path, monkeypatch, kind, fault):
+    task, run, state, run_path, package, policy, commands = v1_completion_fixture(tmp_path, kind)
+    executions = []
+    execute = runtime_module.execute_verification
+    monkeypatch.setattr(runtime_module, "execute_verification",
+        lambda authored, **kwargs: execute(authored, platform="posix", environment={}, **kwargs))
+    monkeypatch.setattr(runtime_module, "execute_minimum_verification", lambda *a, **k: pytest.fail("V1 entered V2 attribution"))
+    monkeypatch.setattr(runtime_module, "transport_post_pass", lambda *a, **k: pytest.fail("failed V1 transported as PASS"))
+
+    def runner(shell, **kwargs):
+        executions.append(shell)
+        if len(executions) == 2:
+            if fault == "interrupt":
+                raise KeyboardInterrupt()
+            if fault == "invalid_output":
+                return subprocess.CompletedProcess(shell, 0, stdout=b"\xff", stderr=b"")
+            return subprocess.CompletedProcess(shell, fault, stdout=b"", stderr=b"failed\n")
+        return subprocess.CompletedProcess(shell, 0, stdout=b"passed\n", stderr=b"")
+
+    boundary = StubRuntimeCompletion(
+        repo=tmp_path, state=state, task=task, run=run, run_path=run_path,
+        verification_runner=runner, observation_tracker=None, error_type=BoundaryError,
+        head_sha=package.result.head_sha, changed_files={"OUTPUT.txt"},
+    )
+    with pytest.raises(KeyboardInterrupt if fault == "interrupt" else BoundaryError) as caught:
+        boundary.complete(package, policy)
+    assert executions == [("/bin/sh", "-c", command) for command in commands[:2]]
+    assert boundary.interruption_phase == "VERIFICATION"
+    assert boundary.verification_subject_sha == package.result.head_sha
+    assert not (state.results / f"{run.run_id}.json").exists()
+    if isinstance(fault, int):
+        failure = caught.value.__cause__
+        assert isinstance(failure, RuntimeVerificationError)
+        assert [item.source.command for item in failure.evidence] == list(commands[:2])
+        assert failure.evidence[-1].result.exit_code == fault
+        assert Path(failure.evidence[-1].raw_path).read_bytes().endswith(b"failed\n")
+
+
+@pytest.mark.parametrize("kind", ("PRIMARY", "REMEDIATION", "REPAIR", "DIRECT_CANDIDATE"))
+@pytest.mark.parametrize("fault", ("missing", "command", "subject", "run", "duplicate"))
+def test_v1_completion_rejects_missing_or_conflicting_required_evidence(tmp_path, monkeypatch, kind, fault):
+    task, run, state, run_path, package, policy, _ = v1_completion_fixture(tmp_path, kind)
+    def verify(commands, **kwargs):
+        items = list(evidence_for(kwargs["run_id"], kwargs["subject_sha"], tuple(commands)))
+        if fault == "missing":
+            return tuple(items[1:])
+        if fault == "command":
+            items[0] = replace(items[0], source=EvidenceSource(items[0].source.command + " "))
+        elif fault == "subject":
+            items[0] = replace(items[0], subject_sha="d" * 40)
+        elif fault == "run":
+            items[0] = replace(items[0], run_id="RUN-OTHER-999")
+        else:
+            items[1] = replace(items[1], evidence_id=items[0].evidence_id)
+        return tuple(items)
+    monkeypatch.setattr(runtime_module, "execute_verification", verify)
+    monkeypatch.setattr(runtime_module, "execute_minimum_verification", lambda *a, **k: pytest.fail("V1 entered V2 derivation"))
+    monkeypatch.setattr(runtime_module, "transport_post_pass", lambda *a, **k: pytest.fail("invalid V1 evidence transported as PASS"))
+    boundary = StubRuntimeCompletion(
+        repo=tmp_path, state=state, task=task, run=run, run_path=run_path,
+        verification_runner=lambda *a, **k: pytest.fail("unexpected additional work"),
+        observation_tracker=None, error_type=BoundaryError,
+        head_sha=package.result.head_sha, changed_files={"OUTPUT.txt"},
+    )
+    message = {"missing": "missing .*verification evidence", "command": "missing .*verification evidence",
+               "subject": "subject_sha", "run": "does not reference RUN", "duplicate": "duplicate evidence_id"}[fault]
+    with pytest.raises(BoundaryError, match=message):
+        boundary.complete(package, policy)
+    assert not (state.results / f"{run.run_id}.json").exists()
 
 
 def test_v2_completion_uses_one_derivation_boundary_with_admitted_bindings(tmp_path, monkeypatch):
@@ -445,10 +605,13 @@ def test_v1_repair_normalizes_task_and_origin_verification_without_mutation(
     assert origin_commands == ("pytest tests", "opaque command")
 
 
+@pytest.mark.parametrize("policy", (None, "minimum-sufficient-v1", "minimum-sufficient-v2"))
 def test_verification_failure_stays_bound_to_candidate_after_control_moves(
     tmp_path: Path,
+    policy,
 ) -> None:
     task, _, state, run_path, _ = completion_fixture(tmp_path)
+    task = replace(task, verification=replace(task.verification, policy=policy))
     repo = tmp_path / "repo"
     repo.mkdir()
 
@@ -480,8 +643,15 @@ def test_verification_failure_stays_bound_to_candidate_after_control_moves(
         workspace=str(repo),
     )
     git("checkout", "--detach", base_sha)
+    raw_path = repo / ".git" / "private-failure.raw"
+    raw_bytes = b"STDOUT\n\nSTDERR\noriginal raw nonzero\n"
+    raw_path.write_bytes(raw_bytes)
+    failed_evidence = replace(
+        evidence_for(run.run_id, candidate_sha, task.verification.required)[0],
+        result=EvidenceOutcome(9, "original raw nonzero"), raw_path=str(raw_path),
+    )
     failure = BoundaryError("verification failed")
-    failure.__cause__ = RuntimeVerificationError("command failed")
+    failure.__cause__ = RuntimeVerificationError("command failed", evidence=(failed_evidence,))
 
     persist_failure(
         repo,
@@ -502,6 +672,10 @@ def test_verification_failure_stays_bound_to_candidate_after_control_moves(
     assert stored["failed_head_sha"] == candidate_sha
     assert stored["candidate"]["dirty"] is False
     assert stored["candidate"]["changed_files"] == ["OUTPUT.txt"]
+    assert stored["error"]["verification"] == [{
+        "command": task.verification.required[0], "exit_code": 9, "summary": "original raw nonzero",
+    }]
+    assert raw_path.read_bytes() == raw_bytes
 
 
 @pytest.mark.parametrize("action", ("CODE_FIX", "CONTINUE_IMPLEMENTATION"))

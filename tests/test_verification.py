@@ -1351,6 +1351,33 @@ def test_first_nonzero_records_raw_evidence_and_stops(tmp_path: Path) -> None:
     assert (raw / "RUN-027-003-V002.raw").read_bytes().endswith(b"failed\n")
 
 
+@pytest.mark.parametrize("platform", ("posix", "nt"))
+@pytest.mark.parametrize("exit_code", (0, 1, 2, -2, 9))
+def test_v1_nonzero_direct_path_never_adds_collection_attribution_or_suite(tmp_path, monkeypatch, platform, exit_code):
+    commands = ("python -m pytest -q tests/test_task.py", "opaque  check", "last-authored-check")
+    runner = RecordingRunner([completed(), completed(returncode=exit_code, stderr=b"raw outcome\n"), completed()])
+    raw = tmp_path / "verification"
+    for name in ("execute_minimum_verification", "derive_minimum_verification", "attribute_failures",
+                 "attributed_task_passes", "candidate_delta_projection"):
+        monkeypatch.setattr(verification_module, name, lambda *a, **k: pytest.fail("direct V1 invoked V2 work"))
+    arguments = dict(run_id="RUN-356-UNIT", subject_sha="b" * 40, repository=tmp_path,
+                     raw_directory=raw, runner=runner, platform=platform, environment={})
+    if exit_code == 0:
+        evidence = execute_verification(commands, **arguments)
+        expected = commands
+    else:
+        with pytest.raises(RuntimeVerificationError, match=f"exit code {exit_code}") as caught:
+            execute_verification(commands, **arguments)
+        evidence = caught.value.evidence
+        expected = commands[:2]
+    assert len(runner.calls) == len(expected)
+    assert [item.source.command for item in evidence] == list(expected)
+    assert [item.result.exit_code for item in evidence] == ([0, exit_code, 0] if exit_code == 0 else [0, exit_code])
+    assert all(item.subject_sha == "b" * 40 and item.verification is None for item in evidence)
+    assert len(list(raw.iterdir())) == len(expected)
+    assert Path(evidence[1].raw_path).read_bytes().endswith(b"raw outcome\n")
+
+
 def test_invalid_utf8_fails_closed_after_storing_raw_bytes(tmp_path: Path) -> None:
     runner = RecordingRunner([completed(stdout=b"\xff")])
     raw = tmp_path / ".git" / "aios" / "verification"
@@ -1371,12 +1398,12 @@ def test_invalid_utf8_fails_closed_after_storing_raw_bytes(tmp_path: Path) -> No
     )
 
 
-def test_invalid_utf8_command_fails_before_shell_invocation(tmp_path: Path) -> None:
+def test_nonzero_policy_rejects_invalid_utf8_command_before_shell_invocation(tmp_path: Path) -> None:
     runner = RecordingRunner([completed()])
 
     with pytest.raises(RuntimeVerificationError, match="command must be strict UTF-8"):
         execute_verification(
-            ("bad-\udcff",),
+            ("bad-\udcff", "never"),
             run_id="RUN-027-006",
             subject_sha="abc123",
             repository=tmp_path,
