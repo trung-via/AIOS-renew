@@ -308,36 +308,36 @@ def task320_execution(tmp_path, monkeypatch):
     return execute, state, seed_previous
 
 
-def test_task320_run313007_shaped_delta_finds_five_failures_without_broad_replay(task320_execution):
+def test_task320_candidate_only_failures_block_authored_verification_not_early_delta(task320_execution):
     execute, state, _ = task320_execution
     state["base_nodes"] = [f"tests/test_sample.py::test_{i:03d}" for i in range(776)]
     new = [f"tests/test_sample.py::test_new_{i:03d}" for i in range(20)]
     state["candidate_nodes"] = state["base_nodes"] + new
     state["candidate_failures"] = set(new[:5])
-    with pytest.raises(RuntimeVerificationError, match="candidate-only delta") as caught:
+    with pytest.raises(RuntimeVerificationError) as caught:
         execute()
     executed = [c for c in state["calls"] if not c["collect"]]
-    assert len(executed) == 1 and len(executed[0]["nodeids"]) == 20
-    assert executed[0]["sha"] == "b" * 40 and not executed[0]["broad"]
+    assert [len(c["nodeids"]) for c in executed] == [796, 5]
+    assert all(c["sha"] == "b" * 40 for c in executed)
+    assert executed[0]["broad"]
     record = caught.value.evidence[0].verification
     assert record["candidate"]["failure_count"] == 5
     assert {r["classification"] for r in record["attribution"]} == {"CANDIDATE_ONLY"}
     assert {r["nodeid"] for r in record["attribution"]} == set(new[:5])
-    assert record["early_probe"] is True
+    assert "early_probe" not in record
 
 
-def test_task320_passing_delta_requires_the_entire_authored_focused_command(task320_execution, tmp_path):
+def test_task320_passing_primary_runs_only_the_authored_focused_command(task320_execution, tmp_path):
     execute, state, _ = task320_execution
     result = execute()
     executed = [c for c in state["calls"] if not c["collect"]]
-    assert [len(c["nodeids"]) for c in executed] == [1, 9]
-    assert [c["broad"] for c in executed] == [False, True]
-    assert len(result) == 1 and result[0].source.command == executed[-1]["command"]
+    assert len(executed) == 1
+    assert executed[0]["broad"] and len(executed[0]["nodeids"]) == 9
+    assert len(result) == 1 and result[0].source.command == executed[0]["command"]
     assert "early_probe" not in result[0].verification
     audit = json.loads((tmp_path / "RUN-task320" / "minimum-sufficient-v2-plan.json").read_text(encoding="utf-8"))
     assert audit["policy"] == "minimum-sufficient-v2"
-    assert [p["kind"] for p in audit["probes"]] == ["EXACT_COLLECTION", "EXACT_COLLECTION", "CANDIDATE_DELTA"]
-    assert all(p["early_probe"] for p in audit["probes"])
+    assert audit["probes"] == []
     assert len(list((tmp_path / "cache").glob("*.json"))) == 1
 
 
@@ -513,7 +513,7 @@ def test_task320_windows_generated_probe_transports_parameterized_nodeids_litera
     node = "tests/test_sample.py::test_value[space 'single' \"double\" \\path $() & ; [nested]]"
     state["candidate_nodes"] = state["base_nodes"] + [node]
     state["candidate_failures"] = {node}
-    with pytest.raises(RuntimeVerificationError, match="candidate-only delta"):
+    with pytest.raises(RuntimeVerificationError):
         execute(platform="nt")
     native = state["calls"][-1]["native_argv"]
     assert native == ("python", "-m", "pytest", "-q", node)
