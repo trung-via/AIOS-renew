@@ -126,6 +126,6 @@ def test_local_wake_handoff_uses_only_successful_admission_identity() -> None:
         "event_id": "${{ needs.admit-and-notify.outputs.event_id }}",
         "repository": "trung-via/AIOS-renew",
     }
-    assert handoff["permissions"] == {"contents": "read"}
+    assert handoff["permissions"] == {"contents": "read", "actions": "read"}
     assert "actions: write" not in text and "createWorkflowDispatch" not in text
     assert set(parsed["on"]) == {"push", "workflow_dispatch"}
