@@ -1,0 +1,56 @@
+task_id: TASK-362
+revision: 1
+goal: "Remove false SOURCE_UNPROVEN on the existing publication/ingress attention projection for a canonical, Runtime-admitted PASS REVIEW whose valid review_id is independent of its RUN suffix. Reuse canonical Git review/decision metadata and preserve all existing security and lifecycle boundaries; no historical artifact rewrite."
+problem: "TASK-361 r1 RUN-361-003 RESULT passed both exact Runtime verification commands and REVIEW-361-001 PASS was canonicalized, then Publisher advanced main exactly to e99ccd6f3bdc26823d66b69acc63a9a5a5b5cc30. Publication workflow 38866049194 failed only in 'Project canonical review and exact publication attempt' with attention SOURCE_UNPROVEN. The canonical REVIEW-361-001 metadata file is .ai/reviews/REVIEW-361-001.yaml while src/aios_renew/brain_attention.py GitSources.review hard-requires REVIEW-361-003 derived from RUN-361-003. This stricter attention-only identity rule conflicts with the actual accepted SUBMIT_REVIEW metadata contract, suppresses bounded publication/ingress attention and falsely marks the overall workflow failed despite a successful main push."
+assumptions:
+  - "At authoring, canonical main is e99ccd6f3bdc26823d66b69acc63a9a5a5b5cc30; authored TASK ingress must CAS against this exact main and bind task/blob/revision before any implementation mutation."
+  - "Canonical source refs: RUN-361-003 candidate e99ccd6f3bdc26823d66b69acc63a9a5a5b5cc30, RESULT artifacts fea4028a4ca4e9a0a1a5489ccbb926c08a294e14, PASS review decision 6ce20ac62a9b57baf5ce6a6b68f167509cd576fe; historical publish workflow 38866049194 has terminal failure only in post-publication attention projection."
+  - "Published Publisher postcondition and the old workflow's FAILED status are both historical facts. A fix must not rewrite REVIEW-361-001, fabricate a prior successful workflow/notification, replay the original publication, or treat attention projection as publication truth."
+  - "Human intent is to fix the documented false post-publication projection and prevent recurrence with the minimum existing-code delta; Executor/model/effort selection remains separate Human authority."
+scope:
+  inspect:
+    - "docs/AIOS-MANIFESTO.md"
+    - "docs/AIOS-CONSTITUTION.md"
+    - "docs/CHATGPT_PROJECT_CONTRACT.md"
+    - "docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md"
+    - ".ai/roadmap-state.yaml"
+    - ".ai/brain-audit-profiles.yaml"
+    - "docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md"
+    - ".ai/tasks/TASK-361.yaml"
+    - "src/aios_renew/authoring_ingress.py"
+    - "src/aios_renew/review.py"
+    - "src/aios_renew/publication.py"
+    - "src/aios_renew/brain_attention.py"
+    - "tests/test_brain_attention.py"
+    - ".github/workflows/aios-auto-publish.yml"
+  modify:
+    - "src/aios_renew/brain_attention.py"
+    - "tests/test_brain_attention.py"
+non_goals:
+  - "No amendment of Constitution, frozen Kernel, REVIEW parser/admission semantics, Runtime verification, Reviewer authority, Publisher/CAS/publish logic, workflows, cross-checkout Runtime state or executor/delegation policy."
+  - "No retry of historical publication or substitution/reissue of REVIEW-361-001, review-decision, RESULT/EVIDENCE or main; no rewriting GitHub workflow terminal status."
+  - "No new router, attention family, background service, database, event issuer, notification bypass or untrusted observation authority."
+  - "No loosening of canonical identity, ancestry or metadata proof to accept arbitrary review trees/files, unmatched IDs, altered decisions, stale source, forged PASS or fabricated publication."
+constraints:
+  hard:
+    - "Within the existing read-only GitSources.review/capture_publication path, accept a REVIEW metadata filename only when it is the unique validated .ai/reviews/<review_id>.yaml or .yml leaf on the exact canonical decision commit, with the identifier taken from its parsed canonical metadata rather than synthesized from RUN id. Preserve canonical source, RESULT, artifact and decision refs, reviewed SHA, immutable parent/metadata binding and fresh-ref snapshot checks."
+    - "Reject extra/replaced review document, path/ID disagreement, unsafe path, wrong reviewed_sha/RUN/decision/ref, forged review content, malformed metadata, bad parent or unrelated changed paths, mutable decision movement and mixed FAILURE/RESULT. Do not replace a strong security predicate with an unbound filename heuristic."
+    - "Use the same bounded selector-only attention sources for canonical review ingress and exact publication PUBLISHED/ALREADY_INCLUDED outcomes. A successful canonical main push cannot be relabeled as failed publication solely by attention source projection, but false positive publication attention also remains impossible."
+    - "Include regression that reproduces real RUN-361-003 / REVIEW-361-001 canonical naming shape plus adversarial contrasting names, substituted metadata and stale refs. Exercise existing publication projector via locally simulated Git fixture without claiming any historical workflow replay or live re-delivery."
+    - "Touch exactly the listed two production/test paths. Preserve provider-neutral Brain/Reviewer/Runtime/Publisher authority and private-data isolation. If the defect requires additional out-of-scope production changes or distinct governance decision, report blocker instead of silently widening."
+    - "Runtime alone verifies the authored minimum-sufficient-v1 command on the final source candidate. Do not run a full repository suite, add a v2 gate, or treat Executor assertions or historical verification as new evidence."
+acceptance:
+  - id: AC1
+    condition: "A canonical RUN-361-003-style PASS review with a distinct valid REVIEW-361-001 id and uniquely matching metadata path is resolved by GitSources.review to the exact review/RESULT/artifact/decision identities, without requiring REVIEW id to equal RUN suffix."
+  - id: AC2
+    condition: "The existing publication projector can emit a bounded PUBLICATION_PROVEN observation for a genuinely included/published source carrying a valid nonmatching REVIEW ID, and ordinary canonical REVIEW ingress projection remains compatible; no workflow status or publication mutation is inferred or replayed."
+  - id: AC3
+    condition: "Malformed, ambiguous, mismatched-ID/path, substituted source/decision, wrong reviewed SHA, extra metadata delta, missing proof, mixed terminal and drifting refs are rejected rather than producing a review or false publication-success attention."
+  - id: AC4
+    condition: "Only source and tests in exact scope.modify differ from canonical main; historical TASK-361/RUN/RESULT/REVIEW/publication evidence and the terminal failed workflow remain immutable, with no alternative review/pub authority, routing mechanism or policy change."
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - "python -m pytest -q tests/test_brain_attention.py"
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
