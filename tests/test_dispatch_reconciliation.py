@@ -538,6 +538,51 @@ def test_terminal_nonzero_replay_preserves_failure_without_reexecution(
     assert first.run_id is replay.run_id is None
 
 
+@pytest.mark.parametrize("succeeded", [False, True], ids=["failed-without-run", "succeeded-with-run"])
+def test_terminal_h1r_delivery_preserves_original_journal_and_missing_journal_is_unknown(
+    tmp_path: Path, succeeded: bool,
+) -> None:
+    state_root = tmp_path / "original" / ".git/aios"
+    other_state = tmp_path / "independent-clean" / ".git/aios"
+    dispatch_id = "h1r-terminal-361"
+
+    def original_invocation():
+        if succeeded:
+            admit_dispatch_run(state_root, dispatch_id, "RUN-068-001")
+            write_terminal(state_root, "results", "RUN-068-001")
+            return DispatchInvocation(0, "RUN-068-001")
+        return DispatchInvocation(1)
+
+    first = execute_dispatch(
+        state_root=state_root, dispatch_id=dispatch_id, task_id="TASK-068",
+        executor="codex", invoke_primary=original_invocation,
+    )
+    path = next((state_root / "dispatches").glob("*.json"))
+    original_bytes = path.read_bytes()
+
+    def forbidden():
+        pytest.fail("terminal journal cannot authorize a new PRIMARY")
+
+    replay = execute_dispatch(
+        state_root=state_root, dispatch_id=dispatch_id, task_id="TASK-068",
+        executor="codex", invoke_primary=forbidden,
+    )
+    assert replay.status == first.status == ("SUCCEEDED" if succeeded else "FAILED")
+    assert replay.run_id == first.run_id == ("RUN-068-001" if succeeded else None)
+    assert replay.replayed and path.read_bytes() == original_bytes
+    # Absence in an independent checkout is absence of continuity, not evidence
+    # that the original terminal delivery can be retried or copied there.
+    with pytest.raises(DispatchError, match="dispatch record does not exist"):
+        dispatch.inspect_dispatch(repo=SOURCE_REPO, state_root=other_state, dispatch_id=dispatch_id)
+    assert not other_state.exists() and path.read_bytes() == original_bytes
+    with pytest.raises(DispatchError, match="existing request binding does not match"):
+        execute_dispatch(
+            state_root=state_root, dispatch_id=dispatch_id, task_id="TASK-068", executor="codex",
+            task_blob_sha="c" * 40, invoke_primary=forbidden,
+        )
+    assert path.read_bytes() == original_bytes
+
+
 def test_duplicate_while_original_invocation_is_active_reports_in_progress(
     tmp_path: Path,
 ) -> None:

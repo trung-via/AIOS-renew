@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -579,6 +580,174 @@ def test_dispatch_id_injection_is_data_bound_and_rejected_ac1(tmp_path: Path) ->
         assert result.returncode != 0
         assert "Invalid dispatch_id format" in result.stdout + result.stderr
         assert not marker_file.exists()
+
+
+def _capture_nonpass_workflow_delivery(tmp_path, fixture, monkeypatch, dispatch_id):
+    """Capture the real workflow step's transport; do not launch a live self-host."""
+    profile = default_execution_profile("codex", dispatch_id, fixture.repo)
+    from tests.test_operator import git
+
+    blob = git(fixture.remote, "rev-parse", f"{fixture.target}:.ai/tasks/TASK-360.yaml")
+    control_source = tmp_path / "transient control"
+    control_source.mkdir()
+    capture = tmp_path / "captured-argv.json"
+    recorder = tmp_path / "record_transport.py"
+    recorder.write_text(
+        "import json, os, pathlib, sys\n"
+        "pathlib.Path(os.environ['AIOS_TEST_CAPTURE']).write_text(json.dumps(sys.argv[1:]), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / "transport-bin"
+    bin_dir.mkdir()
+    (bin_dir / "python.bat").write_text(
+        f'@echo off\n"{sys.executable}" "{recorder}" %*\nexit /b %errorlevel%\n',
+        encoding="utf-8",
+    )
+    receipt_path = tmp_path / "operational-receipt.json"
+    selectors = {
+        "AIOS_REPO_ROOT": str(fixture.repo), "AIOS_CONTROL_ROOT": str(control_source),
+        "AIOS_CONTROL_SHA": fixture.target, "AIOS_DISPATCH_ID": dispatch_id,
+        "AIOS_TASK_ID": "TASK-360", "AIOS_TASK_REVISION": "1", "AIOS_TASK_BLOB_SHA": blob,
+        "AIOS_TASK_COMMIT_SHA": fixture.target, "AIOS_EXECUTOR": "codex",
+        "AIOS_MODEL": profile.model, "AIOS_REASONING_EFFORT": profile.reasoning_effort,
+        "AIOS_MODEL_SOURCE": "EXPLICIT", "AIOS_EFFORT_SOURCE": "EXPLICIT",
+        "AIOS_OPERATIONAL_RECEIPT_PATH": str(receipt_path), "AIOS_TEST_CAPTURE": str(capture),
+    }
+    for name, value in selectors.items():
+        monkeypatch.setenv(name, value)
+    env = dict(os.environ)
+    env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
+    workflow = load_workflow()
+    step = workflow["jobs"]["wakeup"]["steps"][1]
+    transported = run_powershell_script(step["run"], env=env)
+    assert transported.returncode == 0, transported.stderr
+    args = json.loads(capture.read_text(encoding="utf-8"))
+    assert args == [
+        str(control_source / "scripts/aios_control_entry.py"), str(control_source),
+        "wakeup", dispatch_id, "TASK-360", "--task-revision", "1", "--task-blob-sha", blob,
+        "--task-commit-sha", fixture.target, "--executor", "codex", "--model", profile.model,
+        "--reasoning-effort", profile.reasoning_effort, "--model-source", "EXPLICIT",
+        "--effort-source", "EXPLICIT", "--repo", str(fixture.repo),
+    ]
+    # Successful workflow transport alone makes no RUN or verification assertion.
+    progress = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
+    assert progress["boundary"] == "AIOS_INVOKED"
+    assert progress["run_created"] is False and progress["executor_invoked"] is False
+    assert not list(fixture.state.runs.glob("RUN-360-*.json"))
+    assert not (control_source / ".git/aios").exists()
+    return args[2:], receipt_path, blob, profile, control_source
+
+
+@pytest.mark.parametrize("qualified", [True, False], ids=["reviewed-changes-required", "deficient-reviewed-result"])
+def test_nonpass_primary_workflow_bindings_runtime_admission_and_terminal_redelivery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qualified: bool,
+) -> None:
+    """Synthetic real Git and real admission with simulated native/verification I/O.
+
+    This exercises the existing route's layers; it asserts no live self-host result.
+    """
+    from aios_renew.dispatch_reconciliation import DispatchError, inspect_dispatch
+    from tests.test_operator import (
+        FakeCodexRunner, _nonpass_primary_divergence, _replace_nonpass_proof, git,
+    )
+
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    fixture = _nonpass_primary_divergence(tmp_path)
+    dispatch_id = "synthetic-361-positive" if qualified else "synthetic-361-negative"
+    if not qualified:
+        # Private error text may be captured locally, never in the public receipt.
+        fixture.review["findings"][0]["basis"] = "credential=synthetic-secret C:/private/no-share"
+        _replace_nonpass_proof(fixture, review=True)
+    source_refs = git(fixture.remote, "for-each-ref", "--format=%(refname) %(objectname)",
+                      "refs/heads/aios/review/RUN-359-002", "refs/heads/aios/artifacts/RUN-359-002",
+                      "refs/heads/aios/review-decision/RUN-359-002", "refs/heads/main")
+    argv, receipt_path, blob, profile, control_source = _capture_nonpass_workflow_delivery(
+        tmp_path, fixture, monkeypatch, dispatch_id,
+    )
+    native = FakeCodexRunner(fixture.repo)
+    restarts = []
+    verification_calls = []
+
+    def verify(command, **kwargs):
+        verification_calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+    def runner(command, **kwargs):
+        if command[:3] == [sys.executable, "-m", "aios_renew.operator"]:
+            restarts.append((command, kwargs))
+            assert command[3:] == argv
+            assert git(fixture.repo, "rev-parse", "HEAD") == fixture.target
+            assert str(fixture.repo / "src") not in kwargs["env"]["PYTHONPATH"].split(os.pathsep)
+            with monkeypatch.context() as child:
+                child.setenv("AIOS_RESTART_ATTEMPTED", kwargs["env"]["AIOS_RESTART_ATTEMPTED"])
+                code = operator.main(command[3:], native_runner=runner, verification_runner=verify)
+            return subprocess.CompletedProcess(command, code)
+        return native(command, **kwargs)
+
+    code = operator.main(argv, native_runner=runner, verification_runner=verify)
+    assert code == (0 if qualified else 1)
+    assert git(fixture.remote, "for-each-ref", "--format=%(refname) %(objectname)",
+               "refs/heads/aios/review/RUN-359-002", "refs/heads/aios/artifacts/RUN-359-002",
+               "refs/heads/aios/review-decision/RUN-359-002", "refs/heads/main") == source_refs
+    journal_path = next((fixture.state.root / "dispatches").glob("*.json"))
+    journal_bytes = journal_path.read_bytes()
+    journal = json.loads(journal_bytes)
+    assert journal["dispatch_id"] == dispatch_id and journal["task_id"] == "TASK-360"
+    assert journal["task_revision"] == 1 and journal["task_blob_sha"] == blob
+    assert journal["task_commit_sha"] == fixture.target and journal["executor"] == "codex"
+    assert journal["model"] == profile.model and journal["reasoning_effort"] == profile.reasoning_effort
+    assert journal["model_source"] == journal["effort_source"] == "EXPLICIT"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
+    assert receipt["format"] == "AIOS_OPERATIONAL_RECEIPT" and receipt["version"] == 2
+    if qualified:
+        assert len(restarts) == native.count == 1 and verification_calls
+        assert journal["status"] == "SUCCEEDED" and journal["run_id"] == "RUN-360-001"
+        run = json.loads((fixture.state.runs / "RUN-360-001.json").read_bytes())
+        assert run["base_sha"] == fixture.target and run["task"] == {"id": "TASK-360", "revision": 1}
+        assert run["workspace"] == str(fixture.repo) and run["executor"] == "codex"
+        assert len(list(fixture.state.runs.glob("RUN-360-*.json"))) == 1
+        assert receipt["boundary"] == "TERMINAL_POINTER" and receipt["run_created"] is True
+        # This receipt reports attribution only; actual invocation was counted
+        # independently by the simulated native boundary above.
+        assert receipt["executor_invoked"] is False
+    else:
+        assert not restarts and native.count == 0 and not verification_calls
+        assert journal["status"] == "FAILED" and journal["run_id"] is None
+        assert git(fixture.repo, "rev-parse", "HEAD") == fixture.candidate
+        assert not list(fixture.state.runs.glob("RUN-360-*.json"))
+        assert receipt["run_created"] is False and receipt["executor_invoked"] is False
+        assert receipt["boundary"] == "ADMISSION_REJECTED"
+        assert receipt["cause"]["phase"] == "PRIMARY_SYNCHRONIZATION"
+        assert receipt["cause"]["reason_code"] == "PRIMARY_SYNCHRONIZATION_REJECTED"
+        public_receipt = json.dumps(receipt)
+        assert len(public_receipt) < 4096
+        for private in ("synthetic-secret", "C:/private", str(fixture.repo)):
+            assert private not in public_receipt
+        for directory in ("failures", "repairs", "remediations"):
+            assert not list((fixture.state.root / directory).glob("*.json"))
+        # Even after proof is repaired, this delivery remains terminal without RUN.
+        fixture.review["findings"][0]["basis"] = "AC4"
+        _replace_nonpass_proof(fixture, review=True)
+
+    # A new clean checkout is observable, but cannot replace the configured journal.
+    clean = tmp_path / "independent-clean"
+    subprocess.run(["git", "clone", "--quiet", str(fixture.remote), str(clean)], check=True)
+    clean_head = git(clean, "rev-parse", "HEAD")
+    with pytest.raises(DispatchError, match="dispatch record does not exist"):
+        inspect_dispatch(repo=clean, state_root=clean / ".git/aios", dispatch_id=dispatch_id)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("terminal re-delivery must not preflight, rearm, migrate or execute")
+
+    monkeypatch.setattr(operator, "_preflight_primary_admission", forbidden)
+    monkeypatch.setattr(operator, "run_task", forbidden)
+    assert operator.main(argv, native_runner=forbidden, verification_runner=forbidden) == code
+    assert journal_path.read_bytes() == journal_bytes
+    assert os.environ["AIOS_REPO_ROOT"] == str(fixture.repo)
+    assert git(clean, "rev-parse", "HEAD") == clean_head
+    assert not (clean / ".git/aios").exists()
+    assert not (control_source / ".git/aios").exists()
+    assert native.count == int(qualified)
 
 
 def test_readme_documents_self_hosted_wakeup_ac7() -> None:

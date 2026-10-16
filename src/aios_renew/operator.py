@@ -4331,7 +4331,12 @@ def _require_primary_reconciliation_worktree(
 def _prove_primary_reviewed_result(
     observer: Path, *, remote: str, run_id: str, local_sha: str,
 ) -> tuple[str, dict[str, str], tuple[str, ...]]:
-    """Read-only preservation proof; no publication eligibility is inferred."""
+    """Prove reviewed history preservation independently of semantic success.
+
+    CHANGES_REQUIRED and BLOCKED retain their canonical verdict and findings.
+    Neither verdict waives RESULT/EVIDENCE, review or correction-lineage validation,
+    nor grants correction, publication or planning authority.
+    """
     from . import publication as pub
     from .authoring_ingress import (
         _read_commit_blob, _validate_metadata_commit, _validate_repair_review_semantics,
@@ -4450,8 +4455,8 @@ def _prove_primary_reviewed_result(
             return decision
 
         review = canonical_review(run_id, local_sha)
-        if review.reviewed_sha != local_sha or review.verdict != "PASS":
-            raise ValueError("canonical reviewed RESULT requires exact PASS decision")
+        # parse_review and validate_review own verdict structure and semantics.
+        # Preservation needs their complete bound proof, not a Reviewer PASS.
         repair = pub._read_optional_blob(observer, refs[artifact_ref], ".ai/transport/repair.json")
         if repair is not None:
             if remediation is not None:
@@ -4493,7 +4498,21 @@ def _prove_primary_reviewed_result(
                 observer, task=task, run_data=run_data, run=run,
                 package=ResultPackage(result=result, evidence=evidence), review=review, repair=None,
             )
-            validate_result_package(task=task, run=run, result=result, evidence=evidence)
+            if review.verdict == "PASS":
+                validate_result_package(task=task, run=run, result=result, evidence=evidence)
+            else:
+                # Reuse the canonical full-package/delta validator. A non-PASS
+                # decision cannot stand in for independent Runtime completion.
+                pub._validate_repair_package(
+                    observer, source_sha=local_sha, result_base_sha=run.base_sha,
+                    task=task, run=run, result=result, evidence=evidence,
+                )
+        if review.verdict != "PASS" and remediation is None:
+            # PRIMARY (including REPAIR) completes the whole TASK. REMEDIATION
+            # instead has its existing claims-empty, finding-bound DELTA contract.
+            satisfied = {acceptance_id for claim in result.claims for acceptance_id in claim.satisfies}
+            if any(item.id not in satisfied for item in task.acceptance):
+                raise ValueError("reviewed RESULT lacks complete TASK acceptance coverage")
         validate_review(task=task, result=result, review=review, prior_review=prior)
         if _exact_remote_refs(observer, remote, *patterns) != refs:
             raise ValueError("canonical reviewed RESULT proof drift")
@@ -4654,6 +4673,7 @@ def _reconcile_primary_divergence(
             require_proof()
             require_binding()
             _require_primary_reconciliation_worktree(root, observer, local_sha, target_sha)
+            require_proof()
             require_binding()
             _git(root, "reset", "--hard", target_sha)
             if (
