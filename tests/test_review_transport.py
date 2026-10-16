@@ -341,7 +341,17 @@ def test_historical_versions_and_bounded_protected_incomplete_reference_remain_r
     assert operator_failure_matches(private, v1)
     legacy = dict(kind="FAILURE", run_id="RUN-358-001", error=dict(type="CodexExecutionError",
                   message="Protected Runtime diagnostics remain local.", exit_code=None))
+    # Small historical records still require an EXECUTION owner for native status.
+    for reader in (review_transport.failure_document, review_transport.public_failure):
+        with pytest.raises(review_transport.FailureDiagnosticError) as caught:
+            reader(json.dumps(legacy).encode())
+        assert caught.value.code == "FAILURE_PUBLIC_PRIVACY_INVALID"
+    legacy["error"].pop("exit_code")
     assert review_transport.failure_document(json.dumps(legacy).encode()) == legacy
+    legacy["phase"] = "EXECUTION"
+    legacy["error"]["exit_code"] = None
+    assert review_transport.failure_document(json.dumps(legacy).encode()) == legacy
+    assert review_transport.failure_document(review_transport.public_failure(json.dumps(legacy).encode())) == legacy
     private["error"].pop("native_diagnostics"); private["error"].pop("executor_diagnostics")
     private["error"]["message"] = "Protected Runtime diagnostics remain local."
     ref = private["error"]["verification"][0]["verification"]
