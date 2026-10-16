@@ -14344,7 +14344,10 @@ def _nonpass_primary_divergence(root: Path, *, verdict: str = "CHANGES_REQUIRED"
     ]
     task_path = ".ai/tasks/TASK-359.yaml"
     (repo / task_path).write_text(json.dumps(task_data), encoding="utf-8")
-    base = commit_setup_state(repo, task_path, message="synthetic authorized TASK-359")
+    # Real wakeup admission needs the governed profile policy on both histories.
+    policy_path = ".ai/executor-profiles.yaml"
+    (repo / policy_path).write_bytes((Path(__file__).resolve().parents[1] / policy_path).read_bytes())
+    base = commit_setup_state(repo, task_path, policy_path, message="synthetic authorized TASK-359")
     git(repo, "push", "--quiet", "origin", f"{base}:refs/heads/main")
     # New TASK authoring on main is independent of the unpublished source history.
     target = publish_upstream(repo, {
