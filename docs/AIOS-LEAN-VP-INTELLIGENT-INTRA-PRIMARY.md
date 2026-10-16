@@ -8,11 +8,17 @@
 **Audit basis:** Human-accepted `AIOS_Lean_VP_Final_Semantic_Audit_2026-10-16.md` and its roadmap entry candidate, reconciled against current canonical source at admission. These prior cognitive-support artifacts are not standalone canonical engineering or audit authority.  
 **Brain audit policy at authoring:** `aios-adaptive-brain-audit-v1` v1, digest `982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`; use only the then-current selected policy for any future new material architecture/TASK decision.
 
+## Canonical predecessor evidence reconciled on 2026-10-17
+
+- TASK-360: `RUN-360-002`, `REVIEW-360-001 PRIMARY PASS`, exact reviewed/published source `d5452b452431a2245e05c11a22b215bf5db916bf`.
+- TASK-359: `RUN-359-003`, `REVIEW-359-003 DELTA PASS` closing `FINDING-359-002-001`, exact reviewed/published source `a48667c2913193c9af312fd4d5092d16794e091e`.
+- Canonical policy transition: R2.1 NEXT only after this Human/Brain planning record is lawfully published to `main`; Lean VP follows actual R2.1 completion and **never** becomes NEXT from a source merge alone.
+
 ## 1. Roadmap dependency, not active NEXT
 
 This is a **planning-only successor** to `four-specialized-audits-r21-human-optional-adaptive-v1`. It must **not** become NEXT merely because R2.1 has been proposed, reviewed, or merged. The R2.1 implementation program must reach its exact Human-approved completion boundary through separately admitted engineering, Runtime verification, independent Reviewer judgment and Publisher publication, followed by explicit Human/Brain reconciliation. Only then may the Human/Brain select Lean VP as NEXT.
 
-This proposed planning amendment is stacked after the still-unmerged R2.1 planning PR and is **not canonical main** until separately reviewed and lawfully published. Preserve the sole currently intended NEXT `TASK-360` in its parent proposal; do not invent TASK-360 completion, TASK-359 remediation closure, R2.1 completion, new TASK identity, Executor/model/effort selection, or downstream adoption.
+After exact Human/Brain reconciliation of the reviewed and published TASK-360 / TASK-359 lineage, **R2.1 is the sole selected roadmap NEXT**, and Lean VP remains **QUEUED_AFTER_R21**. This document is a planning source only until lawful publication in canonical main; it does not assert completion of R2.1, invent a new TASK identity, select Executor/model/effort, or authorize downstream adoption.
 
 The prior VP-03 runtime-lean item remains historically paused. Its obsolete V1-exclusive resume assumptions, if still present after R2.1's cutover, require a **fresh Human/Brain reconciliation** before reuse; they must not silently block Lean VP forever or auto-authorize an old implementation TASK. Do not rewrite historical decisions.
 
@@ -98,4 +104,4 @@ Compare the actual published minimum-sufficient V1 baseline to matched Lean VP e
 
 This planning document becomes canonical **only after lawful review and publication** of the stacked planning change. Its dependent R2.1 parent must first be reconciled, published and completed as required; the Human/Brain explicitly selects any future Lean VP NEXT after real evidence, not by R2.1 source merge alone. Future implementation requires fresh current main Brain Sync, approved versioned TASK, explicit Human Executor delegation, Runtime verified evidence, independent Reviewer verdict, Publisher exact-source publication and the separate KA-01 activation decision.
 
-**Current effect:** QUEUED_AFTER_R21 only. `TASK-360` remains the sole intended NEXT in the parent planning proposal. There is **no** Runtime activation, TASK/RUN creation, Worker change, default correction budget or downstream pin mutation.
+**Current planning effect:** Lean VP stays QUEUED_AFTER_R21. R2.1 is the only intended NEXT after exact TASK-360 and TASK-359 reviewed/publication reconciliation. There is **no** Runtime activation, TASK/RUN creation, worker change, default correction budget or downstream pin mutation.
