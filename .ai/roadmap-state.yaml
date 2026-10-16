@@ -2,6 +2,95 @@ version: 1
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+human_four_specialized_audits_r21_priority_20261016:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING
+  approved_on: "2026-10-16"
+  status: HUMAN_APPROVED_ARCHITECTURE_NEXT_NOT_IMPLEMENTATION_OR_PROFILE_CUTOVER
+  architecture_document: docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  current_effective_next: four-specialized-audits-r21-human-optional-adaptive-v1
+  ordered_commitments:
+    - task_id: TASK-360
+      task_revision: 1
+      status: FIRST_COMPLETED_REVIEWED_PUBLISHED
+      final_run_id: RUN-360-002
+      review_id: REVIEW-360-001
+      review_verdict: PASS
+      review_decision_sha: 6ab9b84e42a8579657db51aedc8ebf05dba3a46e
+      reviewed_source_in_main_sha: d5452b452431a2245e05c11a22b215bf5db916bf
+      completion_rule: EXACT_RUNTIME_RESULT_REVIEW_PASS_PUBLISHER_PUBLICATION_AND_HUMAN_BRAIN_RECONCILIATION
+    - task_id: TASK-359
+      task_revision: 1
+      status: SECOND_COMPLETED_REMEDIATION_REVIEWED_PUBLISHED
+      initial_review_id: REVIEW-359-002
+      initial_finding_id: FINDING-359-002-001
+      initial_verdict: CHANGES_REQUIRED
+      remediation_authorization_sha: c4a3949ed6fe92e3f75ccef8924870d286d5e110
+      final_run_id: RUN-359-003
+      final_review_id: REVIEW-359-003
+      final_review_verdict: PASS
+      review_decision_sha: 86597fe0901ab5ef55b8c7b53f539f087351a4b3
+      reviewed_source_in_main_sha: a48667c2913193c9af312fd4d5092d16794e091e
+      completion_rule: EXACT_REMEDIATION_REVIEW_PASS_PUBLISHER_PUBLICATION_AND_HUMAN_BRAIN_RECONCILIATION
+    - planning_id: four-specialized-audits-r21-human-optional-adaptive-v1
+      status: THIRD_CURRENT_NEXT_AFTER_TASK359
+      task_authoring_status: NOT_AUTHORIZED_NOT_AUTHORED
+    - planning_id: lean-vp-intelligent-intra-primary-after-r21
+      status: FOURTH_AFTER_R21
+      task_authoring_status: NOT_AUTHORIZED_NOT_AUTHORED
+      predecessor_gate: R21_EXACT_COMPLETION_AND_HUMAN_BRAIN_RECONCILIATION
+  target_profiles:
+    ARCHITECTURE: AOA-1
+    TASK_AUTHORING: TCA-1
+    REMEDIATION_AUTHORING: MOA-1
+    REPAIR_AUTHORING: ROA-1-R2
+  adaptive_v1_target:
+    default_policy: FOUR_SPECIALIZED_PROCEDURES_AFTER_APPROVED_CUTOVER
+    human_opt_in: ONE_DEEP_V1_INSTEAD_OF_DEFAULT_FOR_ARCHITECTURE_OR_TASK_AUTHORING
+    correction_opt_in: READ_ONLY_DEEP_SUPPORT_NOT_SECOND_NORMATIVE_AUDIT
+    current_production_v1: UNCHANGED_UNTIL_ELIGIBLE_REVIEWED_PUBLISHED_CUTOVER
+    historical_profiles: EXACT_READ_COMPATIBILITY_PRESERVED
+  superseded_prior_current_next: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  preserved_history: HUMAN_V1_EXCLUSIVE_DECISION_20261012
+  non_goals:
+    - NO_AUTOMATIC_TASK_RUN_REVIEW_PUBLICATION_OR_NEXT_ADVANCEMENT
+    - NO_NEW_EXECUTOR_DELEGATION_FROM_PLANNING
+    - NO_NEW_AUDIT_ROUTER_PLANNER_DATABASE_OR_SECOND_REVIEWER
+    - NO_V1_AND_SPECIALIZED_DUAL_NORMATIVE_AUDIT
+    - NO_REBUILD_DIRECT_AUTHOR_TASK_OR_AUTHOR_REPAIR
+    - NO_DUPLICATE_TASK360_DIRECT_REMEDIATION
+    - NO_DOWNSTREAM_ADOPTION_OR_KERNEL_CHANGE
+
+human_lean_vp_after_r21_priority_20261017:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING
+  approved_on: "2026-10-17"
+  status: HUMAN_APPROVED_QUEUED_AFTER_R21_NOT_IMPLEMENTED
+  architecture_document: docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  audit_basis: AIOS_Lean_VP_Final_Semantic_Audit_2026-10-16.md
+  predecessor: four-specialized-audits-r21-human-optional-adaptive-v1
+  predecessor_completion_gate: R21_LAWFUL_IMPLEMENTATION_AND_EXPLICIT_HUMAN_BRAIN_RECONCILIATION
+  effective_next_effect: NONE_KEEP_R21_AS_CURRENT_NEXT
+  implementation_authorization: REQUIRES_SEPARATE_TASK_EXPLICIT_HUMAN_EXECUTOR_RUNTIME_REVIEWER_PUBLISHER
+  ka01: HUMAN_RATIFIED_PROSPECTIVE_SPEC_NOT_ACTIVATED
+  core_capability: BOUNDED_SAME_EXECUTOR_INTRA_PRIMARY_FACTUAL_PROOF_FEEDBACK
+  policy_scope: FUTURE_OPTED_IN_PRIMARY_ONLY
+  v1_interim_default: PRESERVE_MINIMUM_SUFFICIENT_V1_UNTIL_LAWFUL_CUTOVER
+  v2_retirement: PROSPECTIVE_COMMAND_DRIVEN_SCHEDULING_ONLY_PRESERVE_HISTORICAL_DECODING
+  grouping: L1_BASELINE_L2_VALIDITY_L3_SINGLE_SCHEDULER_AND_CORRECTION_L4_MEASURED_CUTOVER
+  dependencies:
+    - EXACT_R21_COMPLETION_AND_HUMAN_BRAIN_ROADMAP_RECONCILIATION
+    - LEGACY_VP03_PAUSE_RESUME_GATE_FRESH_RECONCILIATION
+    - KA01_G1_TO_G6_WITH_SEPARATE_ACTIVATION
+    - VP01_MEASUREMENT_DEPENDENCY_NOT_WAIVED
+  non_goals:
+    - NO_NEXT_CHANGE_FROM_THIS_APPEND
+    - NO_TASK_RUN_OR_EXECUTOR_SELECTED
+    - NO_KERNEL_KA01_PRODUCTION_ACTIVATION
+    - NO_SECOND_PROOF_SCHEDULER_ROUTER_REPAIR_AGENT_OR_EVIDENCE_STORE
+    - NO_AUTO_RETRY_REPAIR_OR_SCOPE_RISK_EXPANSION
+    - NO_FALSE_PASS_FROM_UNKNOWN_OR_INCOMPLETE_PROOF
+    - NO_HISTORICAL_V1_V2_REINTERPRETATION
+    - NO_AUTOMATIC_ROADMAP_OR_DOWNSTREAM_ADVANCEMENT
+
 human_task_351_354_355_retirement_20261016:
   authority: EXPLICIT_HUMAN_BRAIN_PLANNING
   status: HUMAN_APPROVED_RETIRED_NO_FURTHER_EXECUTION
@@ -183,7 +272,9 @@ adaptive_brain_audit_v1_priority_20261012:
     - brain-high-value-v3
     - brain-high-value-v2
   intended_semantic_path: MINIMAL_V3_SUCCESSOR_B_NOT_NEW_ROUTER
-  immediate_next: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  immediate_next: four-specialized-audits-r21-human-optional-adaptive-v1
+  historical_immediate_next_before_20261016: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  current_next_override_authority: HUMAN_R21_20261016
   preempts: verification-architecture-replacement-v1-vp03-runtime-lean-validity
   predecessor_current_main: c205acbfb76ed843580d6d97c9d1309a095a5e52
   human_instruction: >-
@@ -262,7 +353,7 @@ adaptive_brain_audit_v1_priority_20261012:
 
 adaptive_v1_production_consumer_retirement_20261012:
   id: ADAPTIVE_BRAIN_AUDIT_V1_V3_PROSPECTIVE_RETIREMENT
-  status: HUMAN_APPROVED_IMMEDIATE_PRIORITY_PENDING_CANONICAL_TASK
+  status: HISTORICAL_HUMAN_PRIORITY_SUPERSEDED_PROSPECTIVELY
   authority: HUMAN_BRAIN_PLANNING
   approved_on: "2026-10-12"
   intent: RETIRE_V3_FROM_ALL_NEW_BRAIN_AUDIT_EXECUTION_AND_AUTHORING_CONSUMERS_USE_V1_EXCLUSIVELY
@@ -271,7 +362,9 @@ adaptive_v1_production_consumer_retirement_20261012:
   profile_digest: 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718
   root_cause: AUTHORING_INGRESS_SELECTS_PROFILES_ZERO_AND_REQUIRES_BRAIN_HIGH_VALUE_V3
   no_duplicate_reasoning: true
-  effective_next: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  effective_next: four-specialized-audits-r21-human-optional-adaptive-v1
+  historical_effective_next_before_20261016: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  current_next_override_authority: HUMAN_R21_20261016
   preempts: verification-architecture-replacement-v1-vp03-runtime-lean-validity
   task_number: NOT_YET_AUTHORED
   source_base: 06c969ba5786ccecf386c47d4dd57f793a592ac3
@@ -901,8 +994,11 @@ verification_architecture_replacement_preemption:
     command-driven scheduling, while preserving evidence, correctness,
     immutable legacy lineage and all authority boundaries. This planning
     decision is not a TASK, RUN, Runtime verification or source publication.
-  priority: TEMPORARILY_PREEMPTED_FOR_V1_ONLY_PRODUCTION_CONSUMER_MIGRATION
-  effective_next: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  priority: TEMPORARILY_PREEMPTED_FOR_R21_THEN_LEAN_VP_HUMAN_SEQUENCE
+  historical_preemption_before_20261016: TEMPORARILY_PREEMPTED_FOR_V1_ONLY_PRODUCTION_CONSUMER_MIGRATION
+  effective_next: four-specialized-audits-r21-human-optional-adaptive-v1
+  historical_effective_next_before_20261016: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  current_next_override_authority: HUMAN_R21_20261016
   vp03d_runtime_git_credential_transport_reconciliation_2026_10_10:
     authority: HUMAN_BRAIN_PLANNING
     reported_read_only_local_checkout: C_TOOLS_AIOS_RUNTIME_AIOS_RENEW_VALID_GIT_WORKTREE
@@ -1776,7 +1872,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  - four-specialized-audits-r21-human-optional-adaptive-v1
 sequence:
 
   - id: TASK-309
@@ -2996,8 +3092,84 @@ sequence:
       force-push, and require Publisher for eligible reviewed source publication.
       Stale local planning or historical recovery source is not a valid base.
 
-  - id: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+  - id: TASK-360
+    status: DONE_REVIEWED_PUBLISHED
+    phase: DIRECT_AUTHOR_REMEDIATION_INGRESS_CLOSURE
+    task_id: TASK-360
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-16"
+    goal: Finish the already-authored TASK-360 through exact current canonical lineage.
+    completion_boundary: RUNTIME_RESULT_REVIEW_PASS_PUBLICATION_THEN_HUMAN_BRAIN_RECONCILIATION
+    final_run_id: RUN-360-002
+    review_id: REVIEW-360-001
+    review_verdict: PASS
+    review_decision_sha: 6ab9b84e42a8579657db51aedc8ebf05dba3a46e
+    reviewed_source_in_main_sha: d5452b452431a2245e05c11a22b215bf5db916bf
+    successor: TASK-359
+  - id: TASK-359
+    status: DONE_REMEDIATION_REVIEWED_PUBLISHED
+    phase: REVIEW359002_AC4_REMEDIATION_CLOSURE
+    task_id: TASK-359
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-16"
+    historical_review: REVIEW-359-002
+    historical_verdict: CHANGES_REQUIRED
+    exact_finding: FINDING-359-002-001
+    final_run_id: RUN-359-003
+    final_review_id: REVIEW-359-003
+    final_review_verdict: PASS
+    review_decision_sha: 86597fe0901ab5ef55b8c7b53f539f087351a4b3
+    reviewed_source_in_main_sha: a48667c2913193c9af312fd4d5092d16794e091e
+    remediation_authorization_sha: c4a3949ed6fe92e3f75ccef8924870d286d5e110
+    goal: >-
+      Correct exact AC4 historical FAILURE compatibility finding without PRIMARY
+      replay or false PASS; retain independent Reviewer and Publisher.
+    predecessor_gate: TASK360_EXACT_CLOSURE_AND_EXPLICIT_HUMAN_BRAIN_RECONCILIATION
+    successor: four-specialized-audits-r21-human-optional-adaptive-v1
+  - id: four-specialized-audits-r21-human-optional-adaptive-v1
     status: NEXT
+    phase: FOUR_SPECIALIZED_AUDITS_DEFAULT_HUMAN_OPTIONAL_V1
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-16"
+    planning_document: docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+    task_authoring_status: NOT_AUTHORIZED_NOT_AUTHORED
+    predecessor_gate: SATISFIED_BY_EXACT_TASK360_AND_TASK359_REVIEWED_PUBLISHED_LINEAGE_RECONCILED_20261017
+    goal: >-
+      Replace exclusive default V1 with four flow-specific audits only after
+      lawful cutover, retaining V1 as Human-optional deep audit and preserving
+      exact historical replay, no dual audit or new router.
+    roadmap_phases: R0_R1_ROA_R2_MOA_R3_TCA_R4_AOA_R5_OPTIONAL_V1
+    successor: lean-vp-intelligent-intra-primary-after-r21
+  - id: lean-vp-intelligent-intra-primary-after-r21
+    status: QUEUED_AFTER_R21
+    phase: INTELLIGENT_LEAN_VERIFICATION_AND_BOUNDED_INTRA_PRIMARY_CORRECTION
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-17"
+    planning_document: docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+    task_authoring_status: NOT_AUTHORIZED_NOT_AUTHORED
+    predecessor: four-specialized-audits-r21-human-optional-adaptive-v1
+    predecessor_gate: R21_EXACT_IMPLEMENTATION_CLOSURE_AND_HUMAN_BRAIN_RECONCILIATION
+    implementation_authorization: REQUIRES_NEW_TASK_AND_EXPLICIT_HUMAN_EXECUTOR_DELEGATION
+    goal: >-
+      Replace prospective V2 command-driven proof scheduling with one Runtime-owned
+      sound evidence-validity/proof engine and bounded factual checkpoint feedback
+      to the same Executor for correction inside one admitted opted-in PRIMARY RUN.
+      Reuse still-VALID proof, preserve mandatory semantic coverage, stop on UNKNOWN
+      or lost authority, and finish with exactly one terminal RESULT or FAILURE.
+    architecture_crosswalk: L1_VP01_VP02_L2_VP03_L3_VP04_VP05_L4_VP06_VP07
+    ka01_activation: NOT_ACTIVATED_REQUIRES_EXPLICIT_G1_TO_G6_AND_HUMAN_OPT_IN
+    historical_policy: V1_V2_EXACT_DECODING_PRESERVED
+    current_next_effect: NONE_PRESERVE_R21_AS_CURRENT_NEXT
+    legacy_vp03_resume: RECONCILE_AFTER_R21_NO_AUTOMATIC_RESUME
+    measured_performance: UNKNOWN_REQUIRES_PAIRED_WHOLE_EPISODE_EVIDENCE
+  - id: adaptive-brain-audit-v1-retire-v3-prospective-consumers
+    status: SUPERSEDED_PROSPECTIVE_PRIORITY
+    historical_next_before_20261016: true
+    superseded_by: four-specialized-audits-r21-human-optional-adaptive-v1
     phase: RETIRE_V3_PROSPECTIVE_BRAIN_AUDIT_CONSUMERS_V1_ONLY
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-12"
