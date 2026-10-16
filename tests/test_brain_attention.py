@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 import zipfile
 
@@ -201,6 +202,8 @@ class Sources:
         self.decision = dict(review_id="REVIEW-fixture-001", verdict=verdict,
                              findings=[{"id": "F1", "action": "CODE_FIX"}, {"id": "F2", "action": "EVIDENCE_ONLY"}])
         self.values = {"refs/heads/main": "d" * 40}
+        self.values.update({f"refs/heads/aios/{namespace}/{IDENTITY['run_id']}": IDENTITY[key] for namespace, key in
+                           (("artifacts", "artifact_sha"), ("review", "reviewed_sha"), ("review-decision", "decision_sha"))})
         self.docs = {("d" * 40, ".ai/roadmap-state.yaml"): {"version": 1, "sequence": []}}
         self.is_included = False
 
@@ -807,7 +810,12 @@ def test_canonical_review_reader_binds_run_result_candidate_and_decision_and_rec
             sha, name = args[1].split(":", 1)
             return json.dumps(blobs[sha, name])
         if args[0] == "ls-tree":
-            return ".ai/reviews/REVIEW-fixture-001.yaml"
+            name = ".ai/reviews/REVIEW-fixture-001.yaml"
+            return name if "--name-only" in args else "100644 blob " + "e" * 40 + "\t" + name
+        if args[0] == "rev-list":
+            return "b" * 40 + " " + "c" * 40
+        if args[0] == "diff-tree":
+            return "A\t.ai/reviews/REVIEW-fixture-001.yaml"
         assert args[0] == "fetch"
         return ""
     sources = brain.GitSources(tmp_path, git, "fixture")
@@ -823,6 +831,243 @@ def test_canonical_review_reader_binds_run_result_candidate_and_decision_and_rec
     refs[root + "failure-artifacts/RUN-fixture-001"] = "e" * 40
     with pytest.raises(brain.AttentionError):
         sources.review("RUN-fixture-001", "b" * 40)
+
+
+@pytest.fixture
+def independent_review_repo(tmp_path):
+    """Local Git objects/refs model the naming shape, never historical delivery."""
+    origin, reader = tmp_path / "origin", tmp_path / "reader"
+    origin.mkdir()
+    reader.mkdir()
+
+    def git(*args, repo=origin, data=None):
+        return subprocess.run(["git", "-C", str(repo), "-c", "core.autocrlf=false",
+            "-c", "user.name=Synthetic fixture", "-c", "user.email=fixture@example.invalid", *args],
+            input=data, text=True, encoding="utf-8", capture_output=True, check=True, timeout=15).stdout.strip()
+
+    git("init", "--quiet")
+    git("init", "--quiet", repo=reader)
+    git("remote", "add", "origin", str(origin), repo=reader)
+
+    def commit(files, parents=()):
+        git("read-tree", parents[0] if parents else "--empty")
+        for name, value in files.items():
+            mode, raw = value if isinstance(value, tuple) else ("100644", value)
+            blob = git("hash-object", "-w", "--stdin", data=raw if isinstance(raw, str) else json.dumps(raw))
+            git("update-index", "--add", "--cacheinfo", f"{mode},{blob},{name}")
+        tree = git("write-tree")
+        return git("commit-tree", tree, *[arg for parent in parents for arg in ("-p", parent)], data="Synthetic fixture\n")
+
+    run_id, name = "RUN-361-003", ".ai/reviews/REVIEW-361-001.yaml"
+    base = commit({"src/sample.py": "before\n"})
+    head = commit({"src/sample.py": "after\n"}, (base,))
+    run = dict(run_id=run_id, task=dict(id="TASK-361", revision=1), head_sha=None)
+    result = dict(result=dict(head_sha=head))
+    artifact = commit({".ai/transport/run.json": run, ".ai/transport/result.json": result}, (head,))
+    review = dict(review_id="REVIEW-361-001", reviewed_sha=head, mode="PRIMARY",
+                  verdict="PASS", acceptance={"AC1": "PASS"}, findings=[])
+    decision = commit({name: review}, (head,))
+    identity = dict(run_id=run_id, artifact_sha=artifact, decision_sha=decision, reviewed_sha=head)
+
+    def set_ref(namespace, sha):
+        git("update-ref", "refs/heads/aios/" + namespace + "/" + run_id, sha)
+
+    for namespace, sha in (("artifacts", artifact), ("review", head), ("review-decision", decision)):
+        set_ref(namespace, sha)
+    git("update-ref", "refs/heads/main", head)
+    report = dict(source_run=run_id, reviewed_sha=head, prior_main_sha=base,
+                  outcome="PUBLISHED", detail="private synthetic diagnostic",
+                  lineage=dict(decision_sha=decision, artifacts_sha=artifact, reservation_sha=None))
+    report_path, source_path = tmp_path / "report.json", tmp_path / "source.json"
+
+    def capture():
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        return brain.capture_publication(report_path, source_path, run_id, identity["decision_sha"], repo=reader)
+
+    return SimpleNamespace(repo=reader, origin=origin, git=git, commit=commit, set_ref=set_ref,
+        identity=identity, base=base, review=review, name=name, run=run, result=result,
+        report=report, capture=capture, source_path=source_path)
+
+
+@pytest.mark.parametrize("review_id,extension", [
+    ("REVIEW-361-001", "yaml"), ("REVIEW-361-001", "yml"),
+    ("REVIEW-361-003", "yaml"), ("REVIEW-independent.9_test-027", "yaml"),
+])
+def test_independent_review_id_resolves_exact_canonical_git_identity(independent_review_repo, review_id, extension):
+    fixture = independent_review_repo
+    review = dict(fixture.review, review_id=review_id)
+    name = f".ai/reviews/{review_id}.{extension}"
+    decision = fixture.commit({name: review}, (fixture.identity["reviewed_sha"],))
+    fixture.set_ref("review-decision", decision)
+    fixture.identity["decision_sha"] = decision
+    sources = brain.GitSources(fixture.repo, brain._git, "origin")
+    assert sources.review(fixture.identity["run_id"], decision) == (fixture.identity, review)
+
+
+@pytest.mark.parametrize("outcome", ["PUBLISHED", "ALREADY_PUBLISHED", "ALREADY_INCLUDED"])
+def test_independent_review_id_publication_uses_inclusion_and_bounded_selectors(independent_review_repo, outcome):
+    fixture = independent_review_repo
+    if outcome == "ALREADY_INCLUDED":
+        main = fixture.commit({"docs/later.md": "Later source\n"}, (fixture.identity["reviewed_sha"],))
+        fixture.git("update-ref", "refs/heads/main", main)
+    fixture.report["outcome"] = outcome
+    before = fixture.git("for-each-ref", "--format=%(refname) %(objectname)")
+    source = fixture.capture()
+    assert source["observations"] == [dict(boundary="PUBLICATION_PROVEN", **fixture.identity,
+                                           published_sha=fixture.identity["reviewed_sha"])]
+    assert brain.load_json(fixture.source_path.read_bytes()) == source
+    item, _, _ = source_event(source["observations"][0])
+    assert item.family == brain.PUBLICATION_SUCCESS
+    assert set(item.selectors) == set(fixture.identity) | {"published_sha", "source_boundary"}
+    assert "private" not in item.render() and "REVIEW-361-001" not in item.render()
+    assert fixture.git("for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+@pytest.mark.parametrize("verdict", ["PASS", "CHANGES_REQUIRED", "BLOCKED"])
+def test_independent_review_id_ingress_uses_same_canonical_reader(independent_review_repo, monkeypatch, verdict):
+    fixture = independent_review_repo
+    review = dict(fixture.review, verdict=verdict)
+    if verdict == "CHANGES_REQUIRED":
+        review.update(acceptance={"AC1": "FAIL"}, findings=[dict(id="F1", basis="AC1", action="CODE_FIX",
+            location="src/sample.py", issue="Synthetic finding", expected="Synthetic correction")])
+    decision = fixture.commit({fixture.name: review}, (fixture.identity["reviewed_sha"],))
+    fixture.set_ref("review-decision", decision)
+    fixture.identity["decision_sha"] = decision
+    monkeypatch.setenv("AIOS_ATTENTION_SOURCE_PATH", str(fixture.source_path))
+    delivery_result = SimpleNamespace(ingress_result=SimpleNamespace(operation="SUBMIT_REVIEW", status="CANONICALIZED",
+        canonical_destination="refs/heads/aios/review-decision/" + fixture.identity["run_id"], canonical_sha=decision))
+    before = fixture.git("for-each-ref", "--format=%(refname) %(objectname)")
+    brain.record_ingress_success(delivery_result, fixture.repo)
+    source = brain.load_json(fixture.source_path.read_bytes())
+    assert source["observations"] == ([] if verdict == "PASS" else [dict(boundary="REVIEW_FOLLOWUP", **fixture.identity)])
+    if verdict != "PASS":
+        assert source_event(source["observations"][0])[0].family == brain.REVIEW
+    assert fixture.git("for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+@pytest.mark.parametrize("fault", [
+    "missing_review", "extra_review", "ambiguous_extension", "nested_path", "wrong_extension", "wrong_prefix", "id_mismatch", "unsafe_id",
+    "wrong_reviewed_sha", "malformed", "duplicate_key", "forged_pass", "invalid_verdict",
+    "bad_parent", "merge_parent", "unrelated_delta", "executable_mode", "symlink", "replaced_review",
+])
+def test_independent_review_id_rejects_unbound_metadata(independent_review_repo, fault):
+    fixture = independent_review_repo
+    review, name = dict(fixture.review), fixture.name
+    parents, extra, mode = (fixture.identity["reviewed_sha"],), {}, "100644"
+    if fault == "nested_path":
+        name = ".ai/reviews/nested/REVIEW-361-001.yaml"
+    elif fault == "wrong_extension":
+        name = ".ai/reviews/REVIEW-361-001.json"
+    elif fault == "wrong_prefix":
+        name = ".ai/reviews/RUN-361-003.yaml"
+    elif fault == "id_mismatch":
+        review["review_id"] = "REVIEW-361-003"
+    elif fault == "unsafe_id":
+        review["review_id"] = "REVIEW-../361-001"
+    elif fault == "wrong_reviewed_sha":
+        review["reviewed_sha"] = fixture.base
+    elif fault == "malformed":
+        review = "review_id: [unterminated"
+    elif fault == "duplicate_key":
+        review = json.dumps(review)[:-1] + ',"review_id":"REVIEW-361-003"}'
+    elif fault == "forged_pass":
+        review["findings"] = [dict(id="F1", basis="AC1", action="CODE_FIX", location="src/sample.py",
+                                  issue="Unresolved finding", expected="Correction")]
+    elif fault == "invalid_verdict":
+        review["verdict"] = "APPROVED"
+    elif fault == "extra_review":
+        extra[".ai/reviews/REVIEW-361-003.yaml"] = dict(review, review_id="REVIEW-361-003")
+    elif fault == "ambiguous_extension":
+        extra[".ai/reviews/REVIEW-361-001.yml"] = review
+    elif fault == "bad_parent":
+        parents = (fixture.base,)
+    elif fault == "merge_parent":
+        parents += (fixture.base,)
+    elif fault == "unrelated_delta":
+        extra["src/sample.py"] = "Substituted source\n"
+    elif fault == "executable_mode":
+        mode = "100755"
+    elif fault == "symlink":
+        mode = "120000"
+    elif fault == "replaced_review":
+        head = fixture.commit({name: "Prior review metadata\n"}, parents)
+        fixture.identity["reviewed_sha"] = review["reviewed_sha"] = head
+        fixture.set_ref("review", head)
+        fixture.result["result"]["head_sha"] = head
+        artifact = fixture.commit({".ai/transport/run.json": fixture.run,
+                                   ".ai/transport/result.json": fixture.result}, (head,))
+        fixture.identity["artifact_sha"] = artifact
+        fixture.set_ref("artifacts", artifact)
+        parents = (head,)
+    files = {} if fault == "missing_review" else {name: (mode, review), **extra}
+    decision = fixture.commit(files, parents)
+    fixture.identity["decision_sha"] = decision
+    fixture.set_ref("review-decision", decision)
+    fixture.report.update(reviewed_sha=fixture.identity["reviewed_sha"], lineage=dict(decision_sha=decision,
+                          artifacts_sha=fixture.identity["artifact_sha"], reservation_sha=None))
+    with pytest.raises(ValueError):
+        brain.GitSources(fixture.repo, brain._git, "origin").review(fixture.identity["run_id"], decision)
+    with pytest.raises(ValueError):
+        fixture.capture()
+    assert not fixture.source_path.exists()
+
+
+@pytest.mark.parametrize("fault", ["wrong_run", "wrong_result", "wrong_candidate", "wrong_decision",
+                                  "missing_artifact", "failure", "failure-artifacts", "not_included", "wrong_lineage"])
+def test_independent_review_id_publication_rejects_substitution_and_missing_proof(independent_review_repo, fault):
+    fixture = independent_review_repo
+    if fault in {"wrong_run", "wrong_result"}:
+        if fault == "wrong_run":
+            fixture.run["run_id"] = "RUN-361-001"
+        else:
+            fixture.result["result"]["head_sha"] = fixture.base
+        artifact = fixture.commit({".ai/transport/run.json": fixture.run,
+                                   ".ai/transport/result.json": fixture.result}, (fixture.identity["reviewed_sha"],))
+        fixture.set_ref("artifacts", artifact)
+    elif fault == "wrong_candidate":
+        fixture.set_ref("review", fixture.base)
+    elif fault == "wrong_decision":
+        replacement = fixture.commit({fixture.name: dict(fixture.review, verdict="BLOCKED")},
+                                     (fixture.identity["reviewed_sha"],))
+        fixture.set_ref("review-decision", replacement)
+    elif fault == "missing_artifact":
+        fixture.git("update-ref", "-d", "refs/heads/aios/artifacts/" + fixture.identity["run_id"])
+    elif fault in {"failure", "failure-artifacts"}:
+        fixture.set_ref(fault, fixture.base)
+    elif fault == "not_included":
+        fixture.git("update-ref", "refs/heads/main", fixture.base)
+    elif fault == "wrong_lineage":
+        fixture.report["lineage"]["decision_sha"] = fixture.base
+    with pytest.raises(brain.AttentionError):
+        fixture.capture()
+    assert not fixture.source_path.exists()
+
+
+@pytest.mark.parametrize("snapshot,namespace", [
+    (snapshot, namespace) for snapshot in (1, 2, 3)
+    for namespace in ("artifacts", "review", "review-decision", "failure")
+] + [(3, "main")])
+def test_independent_review_id_publication_rejects_ref_drift(independent_review_repo, monkeypatch, snapshot, namespace):
+    fixture = independent_review_repo
+    original_git, reads = brain._git, []
+
+    def git(path, *args):
+        output = original_git(path, *args)
+        if args[0] == "ls-remote":
+            reads.append(args)
+            if len(reads) == snapshot:
+                # Move after returning a snapshot, including after review proof
+                # or after main was sampled for the inclusion proof.
+                if namespace == "main":
+                    fixture.git("update-ref", "refs/heads/main", fixture.base)
+                else:
+                    fixture.set_ref(namespace, fixture.base)
+        return output
+
+    monkeypatch.setattr(brain, "_git", git)
+    with pytest.raises(brain.AttentionError):
+        fixture.capture()
+    assert len(reads) > snapshot and not fixture.source_path.exists()
 
 
 def test_shared_projector_has_no_generic_semantic_router_or_downstream_activation():
@@ -851,7 +1096,9 @@ def publication_reader():
                  mode="PRIMARY", verdict="PASS", acceptance={"AC1": "PASS"}, findings=[]),
         ("d" * 40, ".ai/roadmap-state.yaml"): dict(version=1, sequence=[]),
     }
-    calls, snapshots, parents, changed = [], [], {}, {}
+    calls, snapshots = [], []
+    parents = {IDENTITY["decision_sha"]: [IDENTITY["reviewed_sha"]]}
+    changed = {IDENTITY["decision_sha"]: [".ai/reviews/REVIEW-fixture-001.yaml"]}
     change = [None]
 
     def git(path, *args):
@@ -870,11 +1117,12 @@ def publication_reader():
             blob = blobs[sha, name]
             return blob if isinstance(blob, str) else json.dumps(blob)
         if args[0] == "ls-tree":
-            return args[-1] if args[-1] != ".ai/reviews" else ".ai/reviews/REVIEW-fixture-001.yaml"
+            name = args[-1] if args[-1] != ".ai/reviews" else ".ai/reviews/REVIEW-fixture-001.yaml"
+            return name if "--name-only" in args else "100644 blob " + "e" * 40 + "\t" + name
         if args[0] == "rev-list" and "--parents" in args:
             return " ".join([args[-1], *parents[args[-1]]])
         if args[0] == "diff-tree":
-            return "\n".join(changed[args[-1]])
+            return "\n".join(("A\t" if "--name-status" in args else "") + name for name in changed[args[-1]])
         assert args[0] in {"init", "fetch", "rev-list", "cat-file"}
         return ""
 

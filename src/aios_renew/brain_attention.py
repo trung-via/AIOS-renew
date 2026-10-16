@@ -731,14 +731,27 @@ class GitSources:
             raise AttentionError("UNPROVEN_RUN_BINDING")
         self.fetch(decision)
         paths = self.git(self.path, "ls-tree", "-r", "--name-only", decision, "--", ".ai/reviews").splitlines()
-        if len(paths) != 1 or paths[0] not in {f".ai/reviews/REVIEW-{run_id[4:]}.yaml", f".ai/reviews/REVIEW-{run_id[4:]}.yml"}:
+        if len(paths) != 1 or not re.fullmatch(r"\.ai/reviews/REVIEW-[A-Za-z0-9][A-Za-z0-9._-]{0,95}\.ya?ml", paths[0]):
             raise AttentionError("UNPROVEN_REVIEW_IDENTITY")
         review = self.document(decision, paths[0])
         from .review import parse_review
-        parse_review(json.dumps(review))
-        if (not {"review_id", "reviewed_sha", "mode", "verdict", "acceptance", "findings"}.issubset(review)
-                or review["review_id"] != "REVIEW-" + run_id[4:] or review["reviewed_sha"] != head
-                or review["verdict"] not in {"PASS", "CHANGES_REQUIRED", "BLOCKED"} or self.refs(*patterns) != before):
+        try:
+            parsed = parse_review(json.dumps(review))
+        except (ValueError, TypeError):
+            raise AttentionError("UNPROVEN_REVIEW_IDENTITY") from None
+        if (review["review_id"] != parsed.review_id or review["reviewed_sha"] != head
+                or review["verdict"] != parsed.verdict
+                or paths[0] not in {f".ai/reviews/{parsed.review_id}.yaml", f".ai/reviews/{parsed.review_id}.yml"}):
+            raise AttentionError("UNPROVEN_REVIEW_IDENTITY")
+        # REVIEW identity comes from canonical metadata, independently of RUN.
+        # The decision must still be precisely one new regular metadata blob
+        # on the exact reviewed candidate, never a replaced review or source delta.
+        parents = self.git(self.path, "rev-list", "--parents", "--max-count=1", decision).split()
+        changed = self.git(self.path, "diff-tree", "--no-commit-id", "--name-status", "--no-renames", "-r", head, decision).splitlines()
+        entry = self.git(self.path, "ls-tree", decision, "--", paths[0])
+        if (parents != [decision, head] or changed != ["A\t" + paths[0]]
+                or not re.fullmatch(r"100644 blob [0-9a-f]{40}\t" + re.escape(paths[0]), entry)
+                or self.refs(*patterns) != before):
             raise AttentionError("UNPROVEN_REVIEW_IDENTITY")
         return dict(run_id=run_id, artifact_sha=artifact, decision_sha=decision, reviewed_sha=head), review
 
@@ -1466,10 +1479,15 @@ def capture_publication(report_path, source_path, run_id, decision_sha, repo="."
         if (report.get("cause", "NONE") != "NONE" or report.get("recovery") is not None
                 or report.get("blocker") is not None):
             raise AttentionError("UNPROVEN_PUBLICATION_ATTEMPT")
-        main = sources.refs("refs/heads/main").get("refs/heads/main")
-        if main is None or not sources.included(identity["reviewed_sha"], main):
+        patterns = ["refs/heads/main", *_review_patterns(run_id)]
+        before = sources.refs(*patterns)
+        main = before.get("refs/heads/main")
+        expected = {f"refs/heads/aios/{namespace}/{run_id}": identity[key] for namespace, key in
+                    (("artifacts", "artifact_sha"), ("review", "reviewed_sha"), ("review-decision", "decision_sha"))}
+        if (main is None or before != {"refs/heads/main": main, **expected}
+                or not sources.included(identity["reviewed_sha"], main)):
             raise AttentionError("UNPROVEN_PUBLICATION")
-        if sources.refs("refs/heads/main").get("refs/heads/main") != main:
+        if sources.refs(*patterns) != before:
             raise AttentionError("UNPROVEN_PUBLICATION")
         observation = dict(boundary="PUBLICATION_PROVEN", **identity, published_sha=identity["reviewed_sha"])
     elif outcome == "AWAITING_REVIEW":
