@@ -1,0 +1,34 @@
+review_id: REVIEW-359-003
+reviewed_sha: a48667c2913193c9af312fd4d5092d16794e091e
+mode: DELTA
+verdict: PASS
+acceptance:
+  AC4: PASS
+findings: []
+prior_finding_id: FINDING-359-002-001
+notes:
+- Reviewer assessed exact canonical TASK-359 r1 REMEDIATION RUN-359-003 at reviewed
+  candidate a48667c2913193c9af312fd4d5092d16794e091e, RESULT artifact 4fa38891243392ee36a418eb134408292a2fb3ef,
+  and immutable predecessor REVIEW-359-002 CHANGES_REQUIRED / FINDING-359-002-001.
+  Correction authorization c4a3949ed6fe92e3f75ccef8924870d286d5e110. Execution base
+  86e2bd95dbcf057d5d5310b08f1cd715abb41f37 is the exact validated two-parent integration
+  of RUN-359-002 source aeeffd4dceae4e5409fa7449d1150428b97251b5 and then-published
+  main d5452b452431a2245e05c11a22b215bf5db916bf.
+- Runtime-owned EVIDENCE RUN-359-003-V001 binds this exact candidate and the sole
+  authored minimum-sufficient-v1 command python -m pytest -q tests/test_review_transport.py
+  tests/test_operator_unified_state.py with exit_code 0 and no unresolved. REMEDIATION
+  ResultPackage claims are correctly empty under the exact remediation contract; no
+  full suite, inferred raw output, or retroactive historical PASS is claimed.
+- The only new SOURCE changes are src/aios_renew/review_transport.py and tests/test_review_transport.py.
+  Fixed prior AC4 failure by restoring lawful historical minimal FAILURE reads with
+  absent phase, strict native status typing and exact allowed legacy status/type/shape,
+  without admitting that record to native execution writer or forged private provenance.
+  Hostile fixtures prove public writers, private-original role, Runtime binding, phase
+  forgery, metadata, identity, wrong subject, bad types, malformed duplicate keys
+  and re-sealed V1/V2 projection reject. Synthetic real-Git historical read binds
+  bytes to immutable commit rather than dirty local filesystem.
+- 'Retains original positive historical compatibility test instead of rewriting it
+  as rejection. Preserves earlier PRIMARY AC1, AC2, AC3, AC5, AC6 judgments from REVIEW-359-002:
+  this DELTA PASS reviews the exact AC4 finding, does not replace the original review,
+  and does not authorize direct publication or roadmap advancement. Publisher alone
+  decides exact candidate publication eligibility.'
