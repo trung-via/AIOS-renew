@@ -175,6 +175,7 @@ def _materialize_layout(
 
     git_dir = repo / ".git"
     for directory in (
+        git_dir / "info",
         git_dir / "objects",
         git_dir / "refs" / "heads",
         git_dir / "refs" / "remotes" / "origin",

@@ -23,6 +23,10 @@ import aios_renew.runtime as runtime_module
 import aios_renew.review_transport as transport_module
 
 from aios_renew.codex_adapter import CodexAdapter
+from aios_renew.native_execution_policy import (
+    NATIVE_PROCESS_WATCHDOG_SECONDS,
+    NATIVE_RESPONSE_BUDGET_MINUTES,
+)
 from aios_renew.parallel_verification import git_executable, installed_git_identity
 from aios_renew.review_transport import (
     RemoteFailureArtifacts,
@@ -1391,7 +1395,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     )
 
     assert len(runner.calls) == 1
-    assert runner.calls[0][1]["timeout"] == 65 * 60
+    assert runner.calls[0][1]["timeout"] == NATIVE_PROCESS_WATCHDOG_SECONDS
     assert staged["result"]["claims"] == []
     assert staged["result"]["unresolved"] == []
     assert staged["evidence"] == []
@@ -1405,7 +1409,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     assert "errors" not in runner.calls[0][1]
     if executor == "antigravity":
         command = runner.calls[0][0]
-        assert command[command.index("--print-timeout") + 1] == "60m"
+        assert command[command.index("--print-timeout") + 1] == f"{NATIVE_RESPONSE_BUDGET_MINUTES}m"
         instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
         assert "CODE_FIX" in instruction
         assert "EVIDENCE_ONLY" in instruction
@@ -3155,7 +3159,7 @@ def test_mutating_codex_capability_is_resolved_before_invocation(tmp_path: Path)
 
     command = runner.calls[0][0]
     assert command[command.index("--sandbox") + 1] == "danger-full-access"
-    assert runner.calls[0][1]["timeout"] == 65 * 60
+    assert runner.calls[0][1]["timeout"] == NATIVE_PROCESS_WATCHDOG_SECONDS
     assert len(runner.calls) == 1
 
 
@@ -3526,8 +3530,8 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
     assert "--json-schema" in command
-    assert command[command.index("--print-timeout") + 1] == "60m"
-    assert kwargs["timeout"] == 65 * 60
+    assert command[command.index("--print-timeout") + 1] == f"{NATIVE_RESPONSE_BUDGET_MINUTES}m"
+    assert kwargs["timeout"] == NATIVE_PROCESS_WATCHDOG_SECONDS
     assert kwargs["cwd"] == workspace
     assert kwargs["text"] is False
     assert "encoding" not in kwargs
@@ -5010,13 +5014,13 @@ def test_no_change_repair_retains_zero_mutation_contract(
 
     assert summary.head_sha == failed_head
     assert len(runner.calls) == 1
-    assert runner.calls[0][1]["timeout"] == 65 * 60
+    assert runner.calls[0][1]["timeout"] == NATIVE_PROCESS_WATCHDOG_SECONDS
     assert json.loads(summary.result_path.read_text(encoding="utf-8"))["result"][
         "changed_files"
     ] == []
     if executor == "antigravity":
         command = runner.calls[0][0]
-        assert command[command.index("--print-timeout") + 1] == "60m"
+        assert command[command.index("--print-timeout") + 1] == f"{NATIVE_RESPONSE_BUDGET_MINUTES}m"
         handoff = json.loads(
             next(runtime_paths(repo).handoffs.glob("*.json")).read_text(
                 encoding="utf-8"
@@ -12603,9 +12607,7 @@ def test_continue_json_selection_survives_existing_restart_argv_path(
 
 
 def test_operator_cli_ingress_and_ingest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from dataclasses import asdict
-    from aios_renew.authoring_ingress import parse_envelope
-    from tests.test_authoring_ingress import audited_envelope, setup_test_repo
+    from tests.test_authoring_ingress import setup_test_repo
 
     repo, _, _ = setup_test_repo(tmp_path, task_id="TASK-200")
     main_sha = git(repo, "rev-parse", "HEAD")
@@ -12641,9 +12643,9 @@ verification:
         "expected_state": {"expected_main_sha": main_sha},
         "payload": task_payload,
     }
-    envelope = asdict(audited_envelope(parse_envelope(envelope), repo))
-    # Optional proof carriers must be absent, rather than serialized as null.
-    assert envelope.pop("origin_authoring_proof") is None
+    # Direct AUTHOR_TASK ingress carries no correction audit or optional proof.
+    assert "audited_handoff" not in envelope
+    assert "origin_authoring_proof" not in envelope
 
     envelope_file = tmp_path / "envelope.json"
     envelope_file.write_text(json.dumps(envelope), encoding="utf-8")
