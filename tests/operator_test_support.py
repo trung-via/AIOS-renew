@@ -6,6 +6,7 @@ import subprocess
 from aios_renew.parallel_verification import git_executable
 
 import aios_renew.operator as operator_module
+import aios_renew.review_transport as transport_module
 from aios_renew.operator import runtime_paths, runtime_state_root
 from aios_renew.review_transport import transport_post_pass
 from tests.git_fixture_support import (
@@ -61,6 +62,55 @@ def git(repo: Path, *args: str) -> str:
         text=True,
         check=True,
     ).stdout.strip()
+
+
+def assert_public_artifact(
+    remote: Path, artifacts_ref: str, name: str, private_path: Path,
+) -> dict:
+    """Check exact public transport, privacy, and unchanged local source bytes."""
+    original = private_path.read_bytes()
+    project = {
+        "run.json": transport_module.public_run,
+        "result.json": transport_module.public_result,
+        "failure.json": lambda content: transport_module.public_failure(
+            content, private_original=True,
+        ),
+        "repair.json": transport_module.public_metadata,
+    }[name]
+    published = subprocess.check_output(
+        (git_executable(), "-C", str(remote), "show", f"{artifacts_ref}:.ai/transport/{name}"),
+    )
+    assert published == project(original)
+    assert len(published) <= (
+        transport_module.PUBLIC_FAILURE_MAX_BYTES if name == "failure.json"
+        else transport_module.PUBLIC_ARTIFACT_MAX_BYTES
+    )
+    document = json.loads(published)
+
+    def assert_private_fields_withheld(value):
+        if isinstance(value, list):
+            for item in value:
+                assert_private_fields_withheld(item)
+        elif isinstance(value, dict):
+            if {"run_id", "task", "workspace"} <= value.keys():
+                assert value["workspace"] == "protected-runtime-workspace"
+            if {"evidence_id", "raw"} <= value.keys():
+                assert value["raw"] == {"path": "protected-runtime-raw/" + value["evidence_id"]}
+                assert value["result"]["summary"] == (
+                    "Runtime verification exit code " + str(value["result"]["exit_code"])
+                )
+            if value.get("kind") == "FAILURE" and isinstance(value.get("error"), dict):
+                assert value["error"]["message"] == "Protected Runtime diagnostics remain local."
+                assert not {"native_diagnostics", "executor_diagnostics", "native_reason"} & value["error"].keys()
+                if "public_projection" in value:
+                    transport_module.validate_public_failure(value)
+            for item in value.values():
+                assert_private_fields_withheld(item)
+
+    assert_private_fields_withheld(document)
+    assert private_path.read_bytes() == original
+    return document
+
 
 def make_repo(
     root: Path,

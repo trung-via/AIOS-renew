@@ -82,6 +82,7 @@ from tests.operator_test_support import (
     READONLY_MULTI_ACCEPTANCE_TASK_SOURCE,
     READONLY_TASK_SOURCE,
     TASK_SOURCE,
+    assert_public_artifact,
     canonical_result_payload,
     commit_setup_state,
     git as fixture_git,
@@ -3294,15 +3295,10 @@ def test_primary_keyboard_interrupt_terminalizes_without_altering_candidate(
         "text": "provider interrupted",
         "truncated": False,
     }
-    remote_failure = json.loads(
-        git(
-            tmp_path / "upstream.git",
-            "show",
-            "refs/heads/aios/failure-artifacts/RUN-101-001:"
-            ".ai/transport/failure.json",
-        )
+    assert_public_artifact(
+        tmp_path / "upstream.git", "refs/heads/aios/failure-artifacts/RUN-101-001",
+        "failure.json", runtime_paths(repo).failures / "RUN-101-001.json",
     )
-    assert remote_failure == failure
     assert not git(
         tmp_path / "upstream.git",
         "for-each-ref",
@@ -3393,14 +3389,10 @@ def test_remediation_keyboard_interrupt_preserves_exact_lineage(tmp_path: Path) 
         "stdout": {"availability": "unavailable"},
         "stderr": {"availability": "unavailable"},
     }
-    assert json.loads(
-        git(
-            tmp_path / "upstream.git",
-            "show",
-            "refs/heads/aios/failure-artifacts/RUN-101-001:"
-            ".ai/transport/failure.json",
-        )
-    ) == failure
+    assert_public_artifact(
+        tmp_path / "upstream.git", "refs/heads/aios/failure-artifacts/RUN-101-001",
+        "failure.json", state.failures / "RUN-101-001.json",
+    )
 
 
 def test_repair_keyboard_interrupt_preserves_continuation_lineage(tmp_path: Path) -> None:
@@ -3434,14 +3426,10 @@ def test_repair_keyboard_interrupt_preserves_continuation_lineage(tmp_path: Path
     assert failure["candidate"]["repairable"] is True
     assert repair_execution["failed_run_id"] == failed_run_id
     assert repair_execution["repair"] == repair
-    assert json.loads(
-        git(
-            tmp_path / "upstream.git",
-            "show",
-            "refs/heads/aios/failure-artifacts/RUN-101-001:"
-            ".ai/transport/failure.json",
-        )
-    ) == failure
+    assert_public_artifact(
+        tmp_path / "upstream.git", "refs/heads/aios/failure-artifacts/RUN-101-001",
+        "failure.json", state.failures / "RUN-101-001.json",
+    )
 
     continuation = dict(repair)
     continuation.update(
@@ -4764,21 +4752,18 @@ def test_primary_run_transports_review_and_artifacts_refs(tmp_path: Path) -> Non
     # Verify review ref points exactly to head_sha on upstream
     assert git(upstream, "rev-parse", review_ref) == summary.head_sha
 
-    # Verify artifacts ref contains byte-exact run.json and result.json
-    remote_run_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/run.json")
-    remote_result_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/result.json")
+    # Public documents must exactly project the private originals.
+    state = runtime_paths(repo)
+    assert_public_artifact(upstream, artifacts_ref, "run.json", state.runs / f"{summary.run_id}.json")
+    assert_public_artifact(upstream, artifacts_ref, "result.json", summary.result_path)
     remote_observation_json = git(
         upstream, "show", f"{artifacts_ref}:.ai/transport/observation.json"
     )
 
-    local_run_json = (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(encoding="utf-8")
-    local_result_json = summary.result_path.read_text(encoding="utf-8")
     local_observation_json = (
         runtime_paths(repo).observations / f"{summary.run_id}.json"
     ).read_text(encoding="utf-8")
 
-    assert remote_run_json == local_run_json
-    assert remote_result_json == local_result_json
     assert remote_observation_json == local_observation_json
 
 
@@ -4800,11 +4785,9 @@ def test_remediation_run_transports_review_and_artifacts_refs(tmp_path: Path) ->
 
     assert git(upstream, "rev-parse", review_ref) == summary.head_sha
 
-    remote_run_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/run.json")
-    remote_result_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/result.json")
-
-    local_run_json = (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(encoding="utf-8")
-    local_result_json = summary.result_path.read_text(encoding="utf-8")
+    state = runtime_paths(repo)
+    assert_public_artifact(upstream, artifacts_ref, "run.json", state.runs / f"{summary.run_id}.json")
+    assert_public_artifact(upstream, artifacts_ref, "result.json", summary.result_path)
     local_observation_json = (
         runtime_paths(repo).observations / f"{summary.run_id}.json"
     ).read_text(encoding="utf-8")
@@ -4812,8 +4795,6 @@ def test_remediation_run_transports_review_and_artifacts_refs(tmp_path: Path) ->
         upstream, "show", f"{artifacts_ref}:.ai/transport/observation.json"
     )
 
-    assert remote_run_json == local_run_json
-    assert remote_result_json == local_result_json
     assert remote_observation_json == local_observation_json
     assert json.loads(local_observation_json)["operation"] == "REMEDIATION"
 
@@ -5522,16 +5503,10 @@ def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
     )
     continuation_head = continuation_failure["failed_head_sha"]
     assert continuation_failure["continuation_of"] == first_run_id
-    transported_lineage = git(
-        tmp_path / "upstream.git",
-        "show",
-        "refs/heads/aios/failure-artifacts/RUN-101-002:"
-        ".ai/transport/repair.json",
+    assert_public_artifact(
+        tmp_path / "upstream.git", "refs/heads/aios/failure-artifacts/RUN-101-002",
+        "repair.json", state.repairs / "RUN-101-002.json",
     )
-    persisted_lineage = (state.repairs / "RUN-101-002.json").read_text(
-        encoding="utf-8"
-    ).strip()
-    assert transported_lineage == persisted_lineage
 
     summary = run_repair(
         continuation_run_id,
@@ -5663,9 +5638,7 @@ def test_historical_repair_isolates_subject_and_preserves_control_checkout(
     review_ref = f"refs/heads/aios/review/{summary.run_id}"
     artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
     assert git(upstream, "rev-parse", review_ref) == summary.head_sha
-    assert git(
-        upstream, "show", f"{artifacts_ref}:.ai/transport/result.json"
-    ) == summary.result_path.read_text(encoding="utf-8")
+    assert_public_artifact(upstream, artifacts_ref, "result.json", summary.result_path)
 
 
 def test_remote_remediation_executes_historical_reviewed_subject_in_isolation(
@@ -5733,14 +5706,10 @@ def test_remote_remediation_executes_historical_reviewed_subject_in_isolation(
     review_ref = f"refs/heads/aios/review/{summary.run_id}"
     artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
     assert git(upstream, "rev-parse", review_ref) == summary.head_sha
-    assert git(
-        upstream, "show", f"{artifacts_ref}:.ai/transport/run.json"
-    ) == (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(
-        encoding="utf-8"
+    assert_public_artifact(
+        upstream, artifacts_ref, "run.json", runtime_paths(repo).runs / f"{summary.run_id}.json",
     )
-    assert git(
-        upstream, "show", f"{artifacts_ref}:.ai/transport/result.json"
-    ) == summary.result_path.read_text(encoding="utf-8")
+    assert_public_artifact(upstream, artifacts_ref, "result.json", summary.result_path)
 
 
 def test_historical_remediation_failure_persists_exact_subject_candidate(
@@ -7043,8 +7012,8 @@ def publish_conflicting_primary_failure(
                 "failed_head_sha": base_sha,
                 "phase": "EXECUTION",
                 "candidate": {
-                    "repairable": False,
-                    "transportable": False,
+                    "repairable": True,
+                    "transportable": True,
                     "dirty": False,
                     "descends_from_base": True,
                     "changed_files": [],
@@ -13476,8 +13445,15 @@ def test_human_reconciliation_proof_gates_preserve_repository(
     elif gate in {"ahead-only", "equal"}:
         expected_target = failure["base_sha"] if gate == "ahead-only" else failed
         git(remote, "update-ref", "refs/heads/main", expected_target)
+    elif gate in {"malformed-json", "malformed-run-json"}:
+        # Corrupt a valid public artifact after projection, at the reader boundary.
+        ref = "refs/heads/aios/failure-artifacts/RUN-231-004"
+        artifact = git(remote, "rev-parse", ref)
+        name = "run.json" if gate == "malformed-run-json" else "failure.json"
+        corrupt = _corrupt_preservation_artifact(repo, artifact, f".ai/transport/{name}", b"{")
+        git(repo, "push", "--quiet", "--force", "origin", f"{corrupt}:{ref}")
     else:
-        if gate in {"wrong-task", "wrong-run-status", "malformed-run-json", "artifact-head-drift"}:
+        if gate in {"wrong-task", "wrong-run-status", "artifact-head-drift"}:
             run_path = state.runs / "RUN-231-004.json"
             run = json.loads(run_path.read_text())
             if gate == "wrong-task":
@@ -13486,7 +13462,7 @@ def test_human_reconciliation_proof_gates_preserve_repository(
                 run["status"] = "FAILURE"
             elif gate == "artifact-head-drift":
                 run["head_sha"] = target
-            run_path.write_text("{" if gate == "malformed-run-json" else json.dumps(run), encoding="utf-8")
+            run_path.write_text(json.dumps(run), encoding="utf-8")
         if gate == "wrong-run":
             failure["run_id"] = "RUN-231-005"
         elif gate == "wrong-head":
@@ -13504,7 +13480,7 @@ def test_human_reconciliation_proof_gates_preserve_repository(
             run["base_sha"] = failure["base_sha"]
             run_path.write_text(json.dumps(run), encoding="utf-8")
         (state.failures / "RUN-231-004.json").write_text(
-            "{" if gate == "malformed-json" else json.dumps(failure), encoding="utf-8",
+            json.dumps(failure), encoding="utf-8",
         )
         _publish_reconciliation_artifact(repo)
 
@@ -15731,7 +15707,22 @@ def test_terminal_reconciliation_task336_historical_lineage(tmp_path, monkeypatc
               for path in directory.glob("*.json")}
     refs = git(repo, "show-ref")
     _terminal_reconciliation_assert_fixture_contract(repo, state, task, lifecycle)
-    assert len(lifecycle.terminals[0].terminal) > 1048576
+    first = lifecycle.terminals[0]
+    private = before[state.failures / (first.run_id + ".json")]
+    assert len(private) > transport_module.PUBLIC_ARTIFACT_MAX_BYTES
+    assert "historical_annotations" in json.loads(private)["error"]["verification"][0]["verification"]
+    if protected:
+        public = json.loads(first.terminal)
+        assert public == json.loads(transport_module.public_failure(private, private_original=True))
+        transport_module.validate_public_failure(public)
+        assert len(first.terminal) <= transport_module.PUBLIC_FAILURE_MAX_BYTES
+        assert len(first.terminal) < len(private)
+        assert b"historical_annotations" not in first.terminal
+        assert b"private fixture diagnostics" not in first.terminal
+        assert b"fixture-unavailable-base-raw" not in first.terminal
+        assert json.loads(first.run)["workspace"] == "protected-runtime-workspace"
+    else:
+        assert first.terminal == private
     @contextmanager
     def observer(_root):
         yield repo
