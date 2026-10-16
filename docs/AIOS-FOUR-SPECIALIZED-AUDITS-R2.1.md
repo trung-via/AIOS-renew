@@ -7,6 +7,15 @@
 **Target sequence:** finish `TASK-360` → finish `TASK-359` → start the R2.1 audit modernization program.  
 **Status:** HUMAN-APPROVED TARGET DESIGN; NOT AN IMPLEMENTATION TASK; NOT A PRODUCTION PROFILE CUTOVER.
 
+## Planning reconciliation — 2026-10-17
+
+Human/Brain rechecked canonical `main` at `a48667c2913193c9af312fd4d5092d16794e091e` and the exact reviewed lineage.
+`TASK-360 r1` closed at `RUN-360-002 / REVIEW-360-001 PRIMARY PASS`; reviewed/published source `d5452b452431a2245e05c11a22b215bf5db916bf`.
+`TASK-359 r1` closed its historical `REVIEW-359-002 / FINDING-359-002-001` through `RUN-359-003 / REVIEW-359-003 DELTA PASS`; exact reviewed source `a48667c2913193c9af312fd4d5092d16794e091e` is in `main`.
+This planning reconciliation prospectively selects **R2.1 as the sole roadmap NEXT**, without marking any R2.1 implementation completed, changing the active Adaptive V1 production policy, authorizing an Executor, or advancing Lean VP.
+The Human-approved successor after **R2.1 completion** is `lean-vp-intelligent-intra-primary-after-r21`, documented in `docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md`.
+The original dated task-order and outstanding-state statements below remain historical context and are superseded prospectively only for planning sequence; no TASK/RUN/REVIEW history is rewritten.
+
 ## 1. Purpose and North Star
 
 Maintain four outcome-specific default semantic audits plus one optional, Human-invoked, in-depth Adaptive V1 capability. Improve *Verified Useful Work / (Time + Tokens + Human Effort)*. Preserve deterministic Runtime admission, identity, provenance, CAS, evidence and verification; independent Reviewer verdict; Publisher exact eligible source; and immutable history. Neither planning approval nor an audit claim proves a RUN/RESULT/REVIEW/PUBLISH state.
