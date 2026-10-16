@@ -52,6 +52,78 @@ human_task_351_354_355_retirement_20261016:
   current_next_effect: NONE_PRESERVE_EXISTING_NEXT_ITEMS_AND_SEQUENCE
   future_override: REQUIRES_NEW_EXPLICIT_HUMAN_DECISION_AND_FRESH_CANONICAL_RECONCILIATION
 
+
+human_task_347_retirement_and_349_publication_reconciliation_20261016:
+  authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+  decided_on: "2026-10-16"
+  source_main_at_decision: 7a13c1a17ff5885661a2b0881bd8d1b80d31b61b
+  task347:
+    task_id: TASK-347
+    canonical_revision: 1
+    status: RETIRED_NO_FURTHER_EXECUTION
+    human_intent: NO_MORE_PRIMARY_REPAIR_REMEDIATION_OR_REDISPATCH_FOR_THIS_OBJECTIVE
+    last_canonical_terminal:
+      run_id: RUN-347-006
+      kind: FAILURE
+      phase: COMPLETION_GATE
+      failure_artifacts_sha: 95fddb70a28baf677f07e807be8b05a9e4f34e37
+    replacement_objective:
+      task_id: TASK-358
+      run_id: RUN-358-005
+      review_id: REVIEW-358-005
+      reviewed_published_sha: 36cf9a97090f315cfe574decd0614a4046947d8b
+    historical_effect: NONE_KEEP_ALL_RUN_FAILURE_REPAIR_AND_UNREVIEWED_CANDIDATES
+  task349:
+    task_id: TASK-349
+    canonical_revision: 1
+    status: FUNCTIONAL_OVERLAP_RECONCILED_EXACT_SOURCE_NOT_INCLUDED
+    original_terminal:
+      run_id: RUN-349-001
+      kind: RESULT
+      result_artifact_sha: a4dc99fc971637356409b267c17796afdbcb74bf
+      review_id: REVIEW-349-001
+      review_verdict: PASS
+      review_decision_sha: 2f484634db1262c7251f4bf0fac857307398f325
+      exact_reviewed_source_sha: cb155241dc554864ba193a07fcf36a65d55fb260
+    current_source:
+      reviewed_and_published_replacement:
+        task_id: TASK-358
+        run_id: RUN-358-005
+        review_id: REVIEW-358-005
+        sha: 36cf9a97090f315cfe574decd0614a4046947d8b
+      observed_functional_overlap:
+        - NATIVE_EXECUTION_FAILURE_OPTIONAL_INT_OR_NULL_EXIT_CODE
+        - UNKNOWN_VS_UNAVAILABLE_NATIVE_EXIT_STATUS
+        - PRIVATE_CAPTURE_REDACTION_AND_TYPED_PUBLIC_VALIDATION
+        - PRESERVED_RUNTIME_PRIVATE_FAILURE_AND_EXACT_SOURCE_IDENTITY
+      evidence_scope: CANONICAL_SOURCE_AND_TASK358_OWN_VERIFICATION_ONLY
+      original_349_ac_equivalence: NOT_FULLY_REVERIFIED_ON_INTEGRATED_HISTORICAL_DELTA
+    blocking_publication_condition:
+      kind: OVERLAPPING_DIVERGENT_REVIEWED_SOURCE
+      reviewed_source_on_main_ancestry: false
+      overlapping_source_paths:
+        - src/aios_renew/review_transport.py
+        - tests/test_review_transport.py
+      publisher_recovery_policy: NO_PATH_OVERLAP_NO_SEMANTIC_MERGE_OR_CHERRY_PICK
+      exact_349_source_published_in_current_main: false
+      forbidden:
+        - DO_NOT_FORCE_PUSH_OR_REBASE_MAIN
+        - DO_NOT_DIRECT_CHERRY_PICK_UNREVIEWED_MERGE
+        - DO_NOT_TREAT_TASK358_RESULT_AS_RESULT_FOR_TASK349
+        - DO_NOT_CLAIM_AUTOMATIC_PUBLICATION_OR_REVIEW_EQUIVALENCE
+    continuation_if_exact_integrated_source_is_still_required: >-
+      Reconcile current source and every remaining material TASK-349 acceptance gap
+      on then-current canonical main under a fresh lawful prospective implementation
+      authorization. Runtime owns admission and verification, independent Reviewer
+      owns the new integrated candidate verdict, and Publisher alone owns its
+      publication. No direct code mutation is granted to Brain by this record.
+  planning_effect: RETIRE_TASK347_RECORD_BOUNDED_TASK349_SOURCE_RECONCILIATION
+  runtime_and_publication_effect: NONE_NO_UNREVIEWED_SOURCE_ADMISSION_OR_PUBLISH
+  historical_truth_effect: NONE_PRESERVE_ALL_TERMINALS_AND_REVIEWS
+  other_tasks_and_next_effect: NONE_PRESERVE_ROADMAP_NEXT
+  future_override: NEW_EXPLICIT_HUMAN_DIRECTIVE_WITH_FRESH_CANONICAL_RECONCILIATION
+
+
 planning_baseline:
   id: bp-0-architecture-baseline
   status: HUMAN_APPROVED
