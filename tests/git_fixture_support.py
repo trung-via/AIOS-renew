@@ -19,6 +19,8 @@ from threading import Lock
 from typing import Iterable, Mapping
 import zlib
 
+from aios_renew.parallel_verification import git_executable
+
 
 _cache_root = Path(tempfile.mkdtemp(prefix="aios-git-fixtures-"))
 atexit.register(shutil.rmtree, _cache_root, ignore_errors=True)
@@ -362,7 +364,7 @@ def _read_object(repo: Path, object_id: str) -> tuple[str, bytes]:
     environment["GIT_NO_REPLACE_OBJECTS"] = "1"
     try:
         result = subprocess.run(
-            ("git", "-C", str(repo), "cat-file", "--batch"),
+            (git_executable(environment), "-C", str(repo), "cat-file", "--batch"),
             input=f"{object_id}\n".encode("ascii"),
             capture_output=True,
             check=False,
@@ -621,6 +623,8 @@ def materialize_git_baseline(
     each sandbox retains its own writable object directory and Git state.
     """
 
+    if root.resolve().is_relative_to(_cache_root.resolve()):
+        raise ValueError("writable Git fixture overlaps its immutable cache")
     cache_key = _key(
         files,
         user_name=user_name,
@@ -644,6 +648,9 @@ def materialize_git_baseline(
     root.mkdir(parents=True, exist_ok=True)
     repo = root / "repo"
     remote = root / "upstream.git"
+    # Exclusive directory creation also rejects concurrent cross-worker reuse.
+    repo.mkdir()
+    remote.mkdir()
     _materialize_layout(
         repo=repo,
         remote=remote,

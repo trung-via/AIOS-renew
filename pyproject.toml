@@ -33,5 +33,6 @@ aios_renew = ["schemas/*.json"]
 
 
 [tool.pytest.ini_options]
+addopts = "-n 12 --dist load --max-worker-restart 0"
 pythonpath = ["src"]
 testpaths = ["tests"]

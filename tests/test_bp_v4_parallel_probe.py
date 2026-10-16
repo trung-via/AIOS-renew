@@ -218,13 +218,20 @@ def test_pytest_command_is_fixed_and_uses_only_requested_workers(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     captured: dict[str, object] = {}
+    from tests.test_verification_contract import V2_TOOLCHAIN, bound_execution
+    monkeypatch.setattr("aios_renew.parallel_verification.load_toolchain", lambda: dict(V2_TOOLCHAIN))
 
     def run(command, **kwargs):
         captured["command"] = command
         captured["environment"] = kwargs["env"]
-        Path(kwargs["env"][probe.PLUGIN_OUTPUT_ENV]).write_text(
-            json.dumps(observation(workers=3)), encoding="utf-8"
-        )
+        profile = json.loads(kwargs["env"]["AIOS_V2_PROFILE"])
+        data = observation(workers=3)
+        data.update(bound_execution(profile, V2_TOOLCHAIN, "a" * 40, collection_nodes=NODEIDS),
+                    profile=profile, toolchain=V2_TOOLCHAIN)
+        reports = [dict(nodeid=node.replace("\\", "/"), phase=phase, outcome="PASS")
+                   for node in sorted(NODEIDS) for phase in ("setup", "call", "teardown")]
+        data["failure_diagnostics"]["canonical"] = dict(complete=True, unstable=False, reports=reports, failure_count=0)
+        Path(kwargs["env"][probe.PLUGIN_OUTPUT_ENV]).write_text(json.dumps(data), encoding="utf-8")
         return SimpleNamespace(returncode=0, stderr=b"")
 
     monkeypatch.setattr(probe.subprocess, "run", run)

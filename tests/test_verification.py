@@ -11,6 +11,9 @@ import pytest
 
 import aios_renew.verification as verification_module
 from aios_renew.artifacts import Claim, Result
+from aios_renew.parallel_verification import git_executable
+from tests.test_verification_contract import bound_execution
+from tests.test_parallel_verification import pytest_process_sandbox
 from aios_renew.verification import (
     RuntimeVerificationError,
     attach_verification_evidence,
@@ -28,6 +31,8 @@ def v2_injected_execution(tmp_path, monkeypatch):
              "base_pass": False, "probe_divergent": False, "probe_pass": False, "calls": []}
 
     def observe_git(repository, *args, **kwargs):
+        if args[0] == "show" and args[1].endswith(":pyproject.toml"):
+            return '[tool.pytest.ini_options]\naddopts = "-n 12 --dist load --max-worker-restart 0"\n'
         if args[:2] == ("rev-parse", "--verify"):
             return args[2].split("^")[0]
         if args[:2] == ("diff", "--name-only"):
@@ -65,21 +70,27 @@ def v2_injected_execution(tmp_path, monkeypatch):
         if state["probe_divergent"] and command != SELECTED_FULL_SUITE_COMMAND and sha != V2_BASE:
             detail = "AssertionError: divergent candidate probe"
         value = v2_observation(sha, outcome=outcome, count=51, detail=detail, command=command)
+        value["reports"] = [phase for report in value["reports"] for phase in (
+            dict(nodeid=report["nodeid"], phase="setup", outcome="PASS"), report,
+            dict(nodeid=report["nodeid"], phase="teardown", outcome="PASS"))]
         for report in value["reports"]:
             if report["outcome"] == "FAIL":
                 report.update(profile=profile, toolchain=V2_TOOLCHAIN)
         canonical = {k: value[k] for k in ("complete", "unstable", "reports", "failure_count")}
         status = value["exit_code"]
         if command == SELECTED_FULL_SUITE_COMMAND:
+            execution = bound_execution(profile, V2_TOOLCHAIN, sha, collection_nodes=sorted({r["nodeid"] for r in value["reports"]}))
             envelope = {"result": dict(canonical=canonical, observation_profile=profile,
                 observation_toolchain=V2_TOOLCHAIN, conformance={"all_workers_reported": True},
-                exit_status=status, pytest_exit_status=status)}
+                execution=execution, exit_status=status, pytest_exit_status=status),
+                "subject": {"head_sha": sha}, "toolchain": V2_TOOLCHAIN}
             stdout = json.dumps(envelope).encode("utf-8")
         else:
             output = Path(kwargs["env"]["AIOS_BP_V4_PLUGIN_OUTPUT"])
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(dict(schema="AIOS_BP_V4_PYTEST_OBSERVATION", version=1,
                 profile=profile, toolchain=V2_TOOLCHAIN, exit_status=status,
+                **bound_execution(profile, V2_TOOLCHAIN, sha, collection_nodes=sorted({r["nodeid"] for r in value["reports"]})),
                 failure_diagnostics=dict(canonical=canonical, reported_count=canonical["failure_count"]))), encoding="utf-8")
             stdout = b"synthetic pytest output\n"
         return completed(status, stdout=stdout)
@@ -201,6 +212,8 @@ def task320_execution(tmp_path, monkeypatch):
                  projection_defect=None, observer_mismatch=False)
 
     def observe_git(repository, *args, **kwargs):
+        if args[0] == "show" and args[1].endswith(":pyproject.toml"):
+            return '[tool.pytest.ini_options]\naddopts = "-n 12 --dist load --max-worker-restart 0"\n'
         if args[:2] == ("rev-parse", "--verify"):
             return args[2].split("^")[0]
         if args[:2] == ("diff", "--name-only"):
@@ -239,7 +252,7 @@ def task320_execution(tmp_path, monkeypatch):
         canonical = {k: observed[k] for k in ("complete", "unstable", "reports", "failure_count")}
         envelope = dict(schema="AIOS_BP_V4_PYTEST_OBSERVATION", version=1, profile=profile,
                         toolchain=dict(V2_TOOLCHAIN), exit_status=observed["exit_code"],
-                        controller_collection=observed["collection"]["identity"], exact_collection=observed["collection"],
+                        **bound_execution(profile, V2_TOOLCHAIN, sha, collection_nodes=nodes), exact_collection=observed["collection"],
                         failure_diagnostics=dict(canonical=canonical, reported_count=canonical["failure_count"]))
         if collect:
             defect = state["collection_defect"]
@@ -538,9 +551,93 @@ def completed(returncode=0, stdout=b"ok\n", stderr=b""):
     )
 
 
+def test_task346_v1_exact_authored_scope_executes_twelve_workers_in_isolated_commit(pytest_process_sandbox, tmp_path):
+    root, _ = pytest_process_sandbox
+    git(root, "init")
+    git(root, "config", "user.name", "V1 process test")
+    git(root, "config", "user.email", "v1@example.invalid")
+    git(root, "add", ".")
+    git(root, "commit", "-m", "isolated bounded pytest subject")
+    sha = git(root, "rev-parse", "HEAD")
+    diagnostics = tmp_path / "v1-diagnostics"
+    diagnostics.mkdir()
+    output = tmp_path / "v1-pytest.json"
+    repository = Path(__file__).resolve().parents[1]
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith(("AIOS_V2_", "PYTEST_XDIST_")) and key not in {
+                       "AIOS_BP_V4_PLUGIN_OUTPUT", "AIOS_VERIFY_SUBJECT_SHA", "PYTEST_ADDOPTS",
+                       "PYTEST_PLUGINS", "PYTEST_DISABLE_PLUGIN_AUTOLOAD"}}
+    environment.update(PYTHONPATH=str(repository / "src"), PYTHONDONTWRITEBYTECODE="1",
+                       AIOS_BP_V4_PLUGIN_OUTPUT=str(output), AIOS_VERIFY_SUBJECT_SHA=sha,
+                       AIOS_TASK346_DIAGNOSTIC_ROOT=str(diagnostics))
+    command = "python -m pytest -q tests/test_scope.py -k chosen"
+    with materialize_verification_subject(root, run_id="RUN-v1-process", subject_sha=sha) as subject:
+        assert subject != root and git(subject, "rev-parse", "HEAD") == sha
+        items = execute_verification((command,), run_id="RUN-v1-process", subject_sha=sha,
+            repository=subject, raw_directory=tmp_path / "v1-raw", environment=environment)
+        observed = json.loads(output.read_text(encoding="utf-8"))
+        assert observed["subject_sha"] == sha and observed["profile"]["workers"] == len(observed["workers"]) == 12
+        assert observed["controller_collection"]["count"] == len(list(diagnostics.glob("*.json"))) == 24
+        assert items[0].source.command == command and items[0].result.exit_code == 0
+        assert git(subject, "rev-parse", "HEAD") == sha and git(subject, "status", "--porcelain") == ""
+    assert git(root, "rev-parse", "HEAD") == sha and git(root, "status", "--porcelain") == ""
+
+
+@pytest.mark.parametrize("arguments,configuration,workers", [
+    ("", '-n 12 --dist load --max-worker-restart 0', 12),
+    (" -n4", '-n 12 --dist load --max-worker-restart 0', 4),
+    ("", '', 0), (" -n0", '-n 12 --dist load --max-worker-restart 0', 0),
+])
+def test_task346_v2_profile_derives_actual_committed_or_explicit_worker_count(monkeypatch, tmp_path, arguments, configuration, workers):
+    def blob(repository, *args):
+        if args[0] == "show":
+            return '[tool.pytest.ini_options]\naddopts = ' + json.dumps(configuration)
+        return "f" * 40
+    monkeypatch.setattr(verification_module, "_optional_git", blob)
+    profile = verification_module._v2_profile(tmp_path, "a" * 40, "python -m pytest -q tests/test_scope.py" + arguments, {})
+    assert profile["workers"] == workers
+    assert profile["distribution"] == ("load" if workers else "no")
+    assert "pyproject.toml" in profile["repository_tool_blobs"]
+
+
+def test_task346_v1_rejects_conflicting_hidden_workers_without_invocation(tmp_path):
+    runner = RecordingRunner((completed(),))
+    with pytest.raises(RuntimeVerificationError, match="conflicting pytest"):
+        execute_verification(("python -m pytest -q tests/test_scope.py",), run_id="RUN-env-conflict",
+            subject_sha="a" * 40, repository=tmp_path, raw_directory=tmp_path / "raw", runner=runner,
+            platform="posix", environment={"PYTEST_ADDOPTS": "-n4"})
+    assert runner.calls == []
+
+
+def test_task346_v1_keeps_authored_command_and_removes_hidden_scope_filter(tmp_path):
+    command = "python -m pytest -q tests/test_scope.py -k chosen"
+    runner = RecordingRunner((completed(),))
+    result = execute_verification((command,), run_id="RUN-authored-scope", subject_sha="a" * 40,
+        repository=tmp_path, raw_directory=tmp_path / "raw", runner=runner, platform="posix",
+        environment={"PYTEST_ADDOPTS": "-k hidden_filter"})
+    assert runner.calls[0][0] == ("/bin/sh", "-c", command)
+    assert "PYTEST_ADDOPTS" not in runner.calls[0][1]["env"]
+    assert result[0].source.command == command
+
+
+def test_task346_v2_distinct_valid_processes_do_not_manufacture_a_condition_conflict():
+    from copy import deepcopy
+    from tests.test_verification_contract import task346_observation
+    first = task346_observation()
+    second = deepcopy(first)
+    for facts in second["execution"]["workers"].values():
+        facts["process_id"] += 1000
+        facts["temporary_root"] += "-second"
+        facts["git_fixture_cache_root"] += "-second"
+    assert verification_module.verification_digest(first) != verification_module.verification_digest(second)
+    assert verification_module._v2_observation_truth(first) == verification_module._v2_observation_truth(second)
+    second["execution"]["workers"]["gw0"]["toolchain"]["git_executable_sha256"] = "0" * 64
+    assert verification_module._v2_observation_truth(first) != verification_module._v2_observation_truth(second)
+
+
 def git(repository: Path, *args: str) -> str:
     completed = subprocess.run(
-        ("git", "-C", str(repository), *args),
+        (git_executable(), "-C", str(repository), *args),
         capture_output=True,
         text=True,
         check=True,
@@ -571,7 +668,7 @@ def test_materializes_one_clean_exact_subject_with_independent_git_state(
         git(subject, "config", "aios.subject", "isolated")
         git(subject, "branch", "subject-only")
         control_config = subprocess.run(
-            ("git", "-C", str(control), "config", "--get", "aios.subject"),
+            (git_executable(), "-C", str(control), "config", "--get", "aios.subject"),
             capture_output=True,
             text=True,
             check=False,
@@ -620,7 +717,7 @@ def test_materialized_subject_ignores_ambient_and_control_checkout_policy(
         control, run_id="RUN-205-001", subject_sha=candidate
     ) as subject:
         blob = subprocess.run(
-            ("git", "-C", str(control), "show", f"{candidate}:sentinel.txt"),
+            (git_executable(), "-C", str(control), "show", f"{candidate}:sentinel.txt"),
             capture_output=True,
             check=True,
         )

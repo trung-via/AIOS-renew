@@ -2,12 +2,91 @@ import hashlib
 import os
 from pathlib import Path
 import tempfile
+import shutil
+import subprocess
 
 import pytest
 
 from aios_renew.operator import runtime_state_root
 import tests.git_fixture_support as git_fixture_support
 from tests.operator_test_support import git, make_repo
+from aios_renew.parallel_verification import installed_git_identity, git_executable, ProbeError
+
+
+def test_task346_direct_installed_git_preserves_process_config_hooks_remotes_and_locks(tmp_path):
+    identity = installed_git_identity()
+    binary = identity["git_executable"]
+    assert Path(binary).is_absolute()
+    assert hashlib.sha256(Path(binary).read_bytes()).hexdigest() == identity["git_executable_sha256"]
+    if os.name == "nt":
+        assert Path(shutil.which("git")).resolve() == Path(binary)
+        assert git_executable() == binary
+        assert Path(binary).name.lower() == "git.exe" and Path(binary).read_bytes()[:2] == b"MZ"
+    repo = make_repo(tmp_path / "real-process")
+    config = tmp_path / "global.gitconfig"
+    config.write_text('[aios]\n    process-marker = inherited config\n', encoding="utf-8")
+    environment = {**os.environ, "GIT_CONFIG_GLOBAL": str(config)}
+
+    def process(*arguments):
+        return subprocess.run((binary, "-C", str(repo), *arguments), env=environment,
+                              capture_output=True, check=False, shell=False)
+
+    result = process("config", "--get", "aios.process-marker")
+    assert result.returncode == 0 and result.stdout.strip() == b"inherited config"
+    hooks = repo / ".git" / "hooks"
+    hooks.mkdir()
+    assert process("config", "--local", "core.hooksPath", str(hooks)).returncode == 0
+    hook = hooks / "pre-commit"
+    hook.write_bytes(b"#!/bin/sh\nprintf 'real hook\\n' >&2\nexit 37\n")
+    hook.chmod(0o755)
+    (repo / "new file.txt").write_text("argv and real Git\n", encoding="utf-8")
+    assert process("add", "new file.txt").returncode == 0
+    before = git(repo, "rev-parse", "HEAD")
+    result = process("commit", "-m", "hook veto")
+    assert result.returncode != 0 and b"real hook" in result.stderr
+    assert git(repo, "rev-parse", "HEAD") == before
+    hook.unlink()
+    assert process("commit", "-m", "ordinary real commit").returncode == 0
+    assert process("push", "--quiet", "origin", "HEAD:refs/heads/process-test").returncode == 0
+    assert process("ls-remote", "--refs", "origin", "refs/heads/process-test").stdout.strip()
+    result = process("rev-parse", "--verify", "refs/heads/missing-ref")
+    assert result.returncode == 128 and result.stderr
+    lock = repo / ".git" / "index.lock"
+    lock.write_bytes(b"owned lock\n")
+    result = process("add", "new file.txt")
+    assert result.returncode == 128 and b"index.lock" in result.stderr
+    assert lock.read_bytes() == b"owned lock\n"
+
+
+def test_task346_missing_and_untrusted_git_identity_fail_explicitly(tmp_path, monkeypatch):
+    with pytest.raises(ProbeError, match="missing"):
+        installed_git_identity({**os.environ, "PATH": ""})
+    if os.name == "nt":
+        directory = tmp_path / "untrusted"
+        directory.mkdir()
+        (directory / "git.exe").write_bytes(b"not a PE executable")
+        with pytest.raises(ProbeError, match="unrecognized|untrusted|missing"):
+            installed_git_identity({**os.environ, "PATH": str(directory)})
+        monkeypatch.setenv("ProgramFiles", str(tmp_path))
+        entries = []
+        for name in ("installation-a", "installation-b"):
+            root = tmp_path / name
+            for relative in ("cmd/git.exe", "mingw64/bin/git.exe", "usr/bin/sh.exe"):
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"deliberately unexecutable identity candidate")
+            (root / "mingw64/libexec/git-core").mkdir(parents=True)
+            entries.append(str(root / "cmd"))
+        with pytest.raises(ProbeError, match="ambiguous"):
+            installed_git_identity({**os.environ, "PATH": os.pathsep.join(entries)})
+
+
+def test_task346_git_fixture_refuses_writable_root_or_cache_reuse(tmp_path):
+    make_repo(tmp_path / "owned")
+    with pytest.raises(FileExistsError):
+        make_repo(tmp_path / "owned")
+    with pytest.raises(ValueError, match="immutable cache"):
+        make_repo(git_fixture_support._cache_root / "writable-collision")
 
 
 def _runtime_files(repo: Path) -> dict[str, bytes]:

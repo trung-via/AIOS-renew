@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import subprocess
 
+from aios_renew.parallel_verification import git_executable
+
 import aios_renew.operator as operator_module
 from aios_renew.operator import runtime_paths, runtime_state_root
 from aios_renew.review_transport import transport_post_pass
@@ -54,7 +56,7 @@ def git(repo: Path, *args: str) -> str:
     if args == ("rev-parse", "HEAD"):
         return read_git_ref(repo)
     return subprocess.run(
-        ("git", "-C", str(repo), *args),
+        (git_executable(), "-C", str(repo), *args),
         capture_output=True,
         text=True,
         check=True,
@@ -226,7 +228,7 @@ def publish_upstream(
     if not publisher.exists():
         subprocess.run(
             (
-                "git",
+                git_executable(),
                 "clone",
                 "--quiet",
                 git(repo, "remote", "get-url", "origin"),
@@ -307,7 +309,7 @@ def publish_test_remediation_lineage(
         )
     author = root / f"author-{source_run_id}-{finding_id}"
     subprocess.run(
-        ("git", "clone", "--quiet", str(root / "upstream.git"), str(author)),
+        (git_executable(), "clone", "--quiet", str(root / "upstream.git"), str(author)),
         check=True,
     )
     review_dir = author / ".ai" / "reviews"

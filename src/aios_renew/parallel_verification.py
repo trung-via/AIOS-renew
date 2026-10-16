@@ -4,18 +4,24 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
+import hashlib
 import json
 import os
 from pathlib import Path
 import platform
+import shlex
+import shutil
+import struct
 import subprocess
 import sys
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from .verification_contract import (
     validate_observation, VerificationContractError, MAX_CANONICAL_BYTES,
     pytest_collection_identity,
+    toolchain_inventory_digest,
+    validate_pytest_execution_binding,
 )
 
 PYTEST_RANGE = ((8, 2), (9, 0))
@@ -25,9 +31,177 @@ PLUGIN_OUTPUT_ENV = "AIOS_BP_V4_PLUGIN_OUTPUT"
 MAX_FAILURE_IDENTITIES = 20
 MAX_NODEID_DISPLAY_CHARS = 240
 FAILURE_PHASES = {"collect", "setup", "call", "teardown"}
+EXECUTION_CONTRACT = "fixed-xdist-direct-git-v1"
+_git_binding = None
 
 class ProbeError(RuntimeError):
     """Fail-closed verification construction or observation error."""
+
+
+def installed_git_identity(environment: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Identify installed Git, selecting the direct Git-for-Windows PE binary.
+
+    PATH is an input to discovery, never an authority to execute an arbitrary
+    repository-supplied git.exe. No shim, router, install or host setting is used.
+    """
+    environment = os.environ if environment is None else environment
+    if os.name != "nt":
+        executable = shutil.which("git", path=environment.get("PATH", os.defpath))
+        if not executable:
+            raise ProbeError("installed Git is missing")
+        binary = Path(executable).resolve(strict=True)
+    else:
+        candidates = set()
+        for entry in environment.get("PATH", "").split(os.pathsep):
+            directory = Path(entry.strip('"'))
+            if not directory.is_absolute():
+                if (directory / "git.exe").exists():
+                    raise ProbeError("untrusted relative Git search path")
+                continue
+            launcher = directory / "git.exe"
+            if not launcher.is_file():
+                if any((directory / name).exists() for name in ("git.cmd", "git.bat", "git.com")):
+                    raise ProbeError("untrusted Git shell intermediary")
+                continue
+            directory = directory.resolve(strict=True)
+            if any((parent / ".git").exists() for parent in (directory, *directory.parents)):
+                raise ProbeError("repository-owned Git executable is untrusted")
+            if directory.name.lower() in {"cmd", "bin"}:
+                root = directory.parent
+                if root.name.lower() in {"mingw64", "mingw32", "mingwarm64"}:
+                    root = root.parent
+            else:
+                raise ProbeError("unrecognized installed Git layout")
+            installation = root.resolve(strict=True)
+            installed_roots = [Path(value).resolve() for key in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432")
+                               if (value := os.environ.get(key))]
+            if local := os.environ.get("LOCALAPPDATA"):
+                installed_roots.append((Path(local) / "Programs").resolve())
+            if not any(installation.is_relative_to(base) for base in installed_roots):
+                raise ProbeError("Git executable is outside supported installed program roots")
+            direct = [root / arch / "bin" / "git.exe" for arch in ("mingw64", "mingw32", "mingwarm64")
+                      if (root / arch / "bin" / "git.exe").is_file()]
+            if len(direct) != 1 or not (root / "usr" / "bin" / "sh.exe").is_file():
+                raise ProbeError("missing or ambiguous direct installed Git binary")
+            binary = direct[0].resolve(strict=True)
+            if not binary.is_relative_to(installation):
+                raise ProbeError("direct Git executable escapes its installation")
+            if not (binary.parent.parent / "libexec" / "git-core").is_dir():
+                raise ProbeError("incomplete installed Git layout")
+            candidates.add(binary)
+        if len(candidates) != 1:
+            raise ProbeError("missing or ambiguous installed Git identity")
+        binary = candidates.pop()
+        # Bare 'git' calls in existing production boundaries use CreateProcess.
+        # Reject an executable that would shadow our process-local PATH choice.
+        system = Path(environment.get("SystemRoot", os.environ.get("SystemRoot", "C:/Windows")))
+        for directory in (Path(sys.executable).resolve().parent, Path.cwd(), system / "System32", system / "System", system):
+            shadow = directory / "git.exe"
+            if shadow.exists() and shadow.resolve() != binary:
+                raise ProbeError("Git executable shadows verified process search path")
+        with binary.open("rb") as stream:
+            header = stream.read(64)
+            if len(header) != 64 or header[:2] != b"MZ":
+                raise ProbeError("direct installed Git is not a PE executable")
+            stream.seek(struct.unpack_from("<I", header, 60)[0])
+            if stream.read(4) != b"PE\0\0":
+                raise ProbeError("direct installed Git is not a PE executable")
+    before = hashlib.sha256(binary.read_bytes()).hexdigest()
+    try:
+        version = subprocess.run((str(binary), "--version"), env=environment, capture_output=True, check=False, text=True, encoding="utf-8")
+        exec_path = subprocess.run((str(binary), "--exec-path"), env=environment, capture_output=True, check=False, text=True, encoding="utf-8")
+    except OSError as exc:
+        raise ProbeError(f"installed Git could not start: {exc}") from exc
+    if version.returncode or exec_path.returncode or not version.stdout.startswith("git version "):
+        raise ProbeError("installed Git identity command failed")
+    core = Path(exec_path.stdout.strip()).resolve()
+    if not core.is_dir() or (os.name == "nt" and core != (binary.parent.parent / "libexec" / "git-core").resolve()):
+        raise ProbeError("conflicting installed Git exec-path")
+    if hashlib.sha256(binary.read_bytes()).hexdigest() != before:
+        raise ProbeError("installed Git changed during identity observation")
+    return {"git_executable": str(binary), "git_executable_sha256": before,
+            "git_version": version.stdout.strip(), "git_exec_path": str(core),
+            "git_selection": "installed-git-for-windows-direct-v1" if os.name == "nt" else "posix-path-v1"}
+
+
+def git_executable(environment: Mapping[str, str] | None = None) -> str:
+    """Use an absolute direct binary on Windows; retain POSIX command lookup."""
+    if os.name != "nt":
+        return "git"
+    global _git_binding
+    environment = os.environ if environment is None else environment
+    key = (environment.get("PATH"), environment.get("GIT_EXEC_PATH"))
+    if _git_binding is None or _git_binding[0] != key:
+        identity = installed_git_identity(environment)
+        binary = Path(identity["git_executable"])
+        _git_binding = (key, identity, binary.stat())
+    _, identity, previous = _git_binding
+    current = Path(identity["git_executable"]).stat()
+    if (current.st_size, current.st_mtime_ns, current.st_ino) != (previous.st_size, previous.st_mtime_ns, previous.st_ino):
+        raise ProbeError("bound Git executable changed")
+    return identity["git_executable"]
+
+
+def pytest_worker_options(arguments) -> dict[str, list[str]]:
+    """Read worker controls without interpreting selectors or rewriting argv."""
+    values = {key: [] for key in ("workers", "distribution", "restart", "unsupported", "collect")}
+    arguments = list(arguments)
+    index = 0
+    names = {"-n": "workers", "--numprocesses": "workers", "--dist": "distribution",
+             "--max-worker-restart": "restart"}
+    value_options = {"-k", "-m", "-o", "--override-ini", "-p", "--basetemp", "--deselect",
+                     "--ignore", "--ignore-glob", "--confcutdir", "-c", "--rootdir", "--import-mode",
+                     "--tb", "--capture", "--junitxml", "--junit-xml", "--color", "--code-highlight",
+                     "--durations", "--durations-min", "--maxfail", "--assert"}
+    while index < len(arguments):
+        token = arguments[index]
+        if token == "--":
+            break
+        name, equals, value = token.partition("=")
+        if name in names:
+            if not equals:
+                index += 1
+                value = arguments[index] if index < len(arguments) else ""
+            values[names[name]].append(value)
+        elif token.startswith("-n") and not token.startswith("--") and len(token) > 2:
+            values["workers"].append(token[2:])
+        elif name in {"--tx", "--px", "--maxprocesses", "--looponfail", "-f", "-d"}:
+            values["unsupported"].append(token)
+        elif token in {"--collect-only", "--co"}:
+            values["collect"].append(token)
+        elif name in value_options and not equals:
+            index += 1
+        index += 1
+    return values
+
+
+def effective_pytest_profile(arguments, *, environment=None, default_workers=12) -> dict:
+    """Explicit CLI pins are diagnostics; hidden contradictory controls fail."""
+    environment = os.environ if environment is None else environment
+    arguments = list(arguments)
+    cli = pytest_worker_options(arguments)
+    hidden = pytest_worker_options(shlex.split(environment.get("PYTEST_ADDOPTS", "")))
+    if cli["unsupported"] or hidden["unsupported"]:
+        raise ProbeError("unsupported pytest worker population override")
+    for key in ("workers", "distribution", "restart"):
+        if len(set(cli[key])) > 1 or len(set(hidden[key])) > 1:
+            raise ProbeError("conflicting pytest worker overrides")
+    pin = cli["workers"][-1] if cli["workers"] else str(default_workers)
+    if not pin.isdecimal():
+        raise ProbeError("pytest requires an exact numeric worker pin")
+    workers = int(pin)
+    expected = {"workers": pin, "distribution": "load", "restart": "0"}
+    for key, wanted in expected.items():
+        allowed = {"load", "no"} if key == "distribution" and workers == 0 else {wanted}
+        if (hidden[key] and hidden[key][-1] not in allowed
+                or key != "workers" and cli[key] and cli[key][-1] not in allowed):
+            raise ProbeError("conflicting pytest worker/environment configuration")
+    if environment.get("PYTEST_XDIST_AUTO_NUM_WORKERS"):
+        raise ProbeError("conflicting automatic pytest worker environment")
+    collect = bool(cli["collect"])
+    return {"workers": 0 if collect else workers,
+            "distribution": "no" if collect or workers == 0 else "load",
+            "max_worker_restart": 0, "collect_only": collect}
 
 def _version_prefix(value: str) -> tuple[int, int]:
     parts = value.split(".")
@@ -69,6 +243,8 @@ def load_toolchain() -> dict[str, str]:
         "platform_machine": platform.machine(),
         "pytest_version": pytest_version,
         "pytest_xdist_version": xdist_version,
+        "installed_distributions_digest": toolchain_inventory_digest(),
+        **installed_git_identity(),
     }
 
 
@@ -84,7 +260,7 @@ def subject_identity(repository: Path) -> dict[str, Any]:
     """Return exact Git identity when the verification subject provides it."""
 
     completed = subprocess.run(
-        ["git", "rev-parse", "--verify", "HEAD"],
+        [git_executable(), "rev-parse", "--verify", "HEAD"],
         cwd=repository,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
@@ -96,7 +272,7 @@ def subject_identity(repository: Path) -> dict[str, Any]:
         character in "0123456789abcdef" for character in head
     ):
         status = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=all"],
+            [git_executable(), "status", "--porcelain", "--untracked-files=all"],
             cwd=repository,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -136,6 +312,7 @@ def run_pytest(
 ) -> tuple[int, float, dict[str, Any]]:
     """Run one fixed pytest operation and return its structured observation."""
 
+    toolchain = load_toolchain()
     observation = temporary_root / f"{label}.json"
     basetemp = temporary_root / f"{label}-tmp"
     command = [
@@ -152,23 +329,19 @@ def run_pytest(
         str(basetemp),
         "-q",
     ]
+    if type(workers) is not int or workers < 1:
+        raise ProbeError("pytest runner requires an exact positive worker count")
+    # A historical serial measurement is explicitly pinned; repository addopts
+    # must never turn it into a second twelve-worker population.
+    command.extend(["-n", "0" if collect_only or workers == 1 else str(workers),
+                    "--dist", "load", "--max-worker-restart", "0"])
     if collect_only:
         command.append("--collect-only")
-    elif workers > 1:
-        command.extend(
-            [
-                "-n",
-                str(workers),
-                "--dist",
-                "load",
-                "--max-worker-restart",
-                "0",
-            ]
-        )
 
     environment = os.environ.copy()
     # Only this wrapper owns the export; pytest and nested runners must not inherit it.
     export = environment.pop("AIOS_V2_OBSERVATION_DIRECTORY", None)
+    effective_pytest_profile(command[3:], environment=environment)
     environment.pop("PYTEST_ADDOPTS", None)
     environment.pop("PYTEST_PLUGINS", None)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -182,8 +355,8 @@ def run_pytest(
     )
     environment[PLUGIN_OUTPUT_ENV] = str(observation)
     environment["AIOS_V2_PROFILE"] = json.dumps({
-        "profile": "bounded-parallel-full-suite-v1" if workers == 12 and not collect_only else "pytest-parallel-observed-v2", "workers": workers,
-        "distribution": "load", "max_worker_restart": 0,
+        "profile": "bounded-parallel-full-suite-v1" if workers == 12 and not collect_only else "pytest-parallel-observed-v2", "workers": 0 if collect_only or workers == 1 else workers,
+        "distribution": "no" if collect_only or workers == 1 else "load", "max_worker_restart": 0,
         "collect_only": collect_only,
     }, sort_keys=True)
 
@@ -193,11 +366,15 @@ def run_pytest(
         cwd=repository,
         env=environment,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         check=False,
     )
     elapsed = time.perf_counter() - started
-    loaded = _load_observation(observation)
+    try:
+        loaded = _load_observation(observation)
+    except ProbeError as exc:
+        detail = (getattr(completed, "stderr", b"") or b"").decode("utf-8", errors="replace")
+        raise ProbeError(f"{exc}; pytest exit {completed.returncode}: {detail}") from exc
     if export:
         directory = Path(export)
         directory.mkdir(parents=True, exist_ok=True)
@@ -208,7 +385,38 @@ def run_pytest(
                 raise ProbeError("conflicting immutable pytest observation")
         else:
             destination.write_bytes(encoded)
+    if completed.returncode != _observation_exit_status(loaded):
+        raise ProbeError("raw pytest status disagrees with observation")
+    if load_toolchain() != toolchain:
+        raise ProbeError("pytest toolchain changed during subprocess execution")
+    validate_pytest_execution(loaded, json.loads(environment["AIOS_V2_PROFILE"]), toolchain)
     return completed.returncode, elapsed, loaded
+
+
+def validate_pytest_execution(observation: dict, profile: dict, toolchain: dict,
+                             *, subject_sha: str | None = None) -> None:
+    """Require actual controller/worker conditions for prospective observations."""
+    if (observation.get("execution_contract") != EXECUTION_CONTRACT
+            or observation.get("profile") != profile or observation.get("toolchain") != toolchain):
+        raise ProbeError("missing or conflicting actual pytest execution binding")
+    if subject_sha is not None and observation.get("subject_sha") != subject_sha:
+        raise ProbeError("pytest observation subject binding mismatch")
+    canonical = observation.get("failure_diagnostics", {}).get("canonical", {})
+    if canonical.get("complete") is not True or canonical.get("unstable") is not False:
+        raise ProbeError("incomplete or unstable pytest execution")
+    try:
+        validate_pytest_execution_binding(observation, profile=profile, toolchain=toolchain,
+                                         reports=canonical["reports"], subject_sha=subject_sha)
+    except (VerificationContractError, KeyError, TypeError) as exc:
+        raise ProbeError(str(exc)) from exc
+    workers = profile["workers"]
+    if workers and not profile["collect_only"]:
+        _parallel_conformance(observation, collection_identity(observation.get("controller_collection")), workers)
+        for facts in observation["workers"].values():
+            if facts.get("profile") != profile or facts.get("toolchain") != toolchain:
+                raise ProbeError("xdist worker profile or toolchain binding mismatch")
+    elif observation.get("workers") or observation.get("worker_collections"):
+        raise ProbeError("collection-only or serial diagnostic launched xdist workers")
 
 
 Runner = Callable[..., tuple[int, float, dict[str, Any]]]
@@ -337,6 +545,9 @@ def _profile_result(
         result["canonical"] = diagnostics["canonical"]
         result["observation_profile"] = observation["profile"]
         result["observation_toolchain"] = observation["toolchain"]
+    if observation.get("execution_contract") == EXECUTION_CONTRACT:
+        result["execution"] = {key: observation[key] for key in (
+            "execution_contract", "subject_sha", "workers", "worker_collections", "controller_collection")}
     if status != 0 or result["pytest_exit_status"] != 0:
         result["failure_diagnostics"] = diagnostics
     elif diagnostics["reported_count"] != 0:
@@ -396,6 +607,12 @@ def _parallel_conformance(
         or len(set(process_ids)) != expected
     ):
         raise ProbeError("xdist workers share mutable roots or process identity")
+    for left in range(expected):
+        for right in range(left + 1, expected):
+            for first in (Path(temp_roots[left]), Path(git_roots[left])):
+                for second in (Path(temp_roots[right]), Path(git_roots[right])):
+                    if first.is_relative_to(second) or second.is_relative_to(first):
+                        raise ProbeError("xdist worker writable roots overlap")
     return {
         "all_workers_reported": True,
         "collections_match_canonical": True,

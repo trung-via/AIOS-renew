@@ -4,19 +4,17 @@ from __future__ import annotations
 
 import errno
 import hashlib
-import importlib.metadata
 import json
 import os
-import platform as platform_module
 import re
 import shlex
 import shutil
 import stat
 import subprocess
-import sys
 import yaml
 import tempfile
 import time
+import tomllib
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
@@ -30,10 +28,14 @@ from .verification_contract import (
     derive_minimum_verification, failed_identities, parse_pytest_coverage,
     validate_observation, verification_digest,
     validate_evidence_binding,
-    toolchain_inventory_digest,
     candidate_delta_projection, exact_collection_observation,
     projected_failure_attribution, pytest_collection_command, pytest_projection_command,
     validate_exact_collection, validate_exact_projection, validate_failure_reproduction,
+    pytest_execution_profile,
+)
+from .parallel_verification import (
+    EXECUTION_CONTRACT, ProbeError, effective_pytest_profile, git_executable,
+    load_toolchain, pytest_worker_options, validate_pytest_execution,
 )
 
 
@@ -249,8 +251,23 @@ def execute_verification(
             exact_command = _strict_utf8_command(command)
             evidence_id = f"{run_id}-V{order:03d}"
             raw_path = raw_directory / f"{evidence_id}.raw"
+            if raw_path.exists():
+                raise RuntimeVerificationError("verification raw evidence already exists; refusing overwrite", evidence=evidence)
             shell_command = _shell_command(exact_command, platform=platform)
             command_env = dict(env)
+            try:
+                tokens = shlex.split(exact_command)
+            except ValueError:
+                tokens = []  # The unchanged shell command retains its raw syntax failure.
+            if tokens[:3] == ["python", "-m", "pytest"] or tokens[:1] == ["pytest"]:
+                arguments = tokens[3:] if tokens[:3] == ["python", "-m", "pytest"] else tokens[1:]
+                try:
+                    effective_pytest_profile(arguments, environment=command_env)
+                except ProbeError as exc:
+                    raise RuntimeVerificationError(f"conflicting pytest execution environment: {exc}", evidence=evidence) from exc
+                # Hidden selectors cannot narrow an exact authored subset.
+                # Reject conflicting worker controls before removing addopts.
+                command_env.pop("PYTEST_ADDOPTS", None)
             if command == SELECTED_FULL_SUITE_COMMAND:
                 command_env["AIOS_V2_OBSERVATION_DIRECTORY"] = str(raw_directory / f"{evidence_id}-observations")
             try:
@@ -270,7 +287,8 @@ def execute_verification(
 
             stdout = _require_bytes(completed.stdout, "stdout")
             stderr = _require_bytes(completed.stderr, "stderr")
-            raw_path.write_bytes(b"STDOUT\n" + stdout + b"\nSTDERR\n" + stderr)
+            with raw_path.open("xb") as stream:
+                stream.write(b"STDOUT\n" + stdout + b"\nSTDERR\n" + stderr)
             try:
                 decoded_stdout = stdout.decode("utf-8", errors="strict")
                 decoded_stderr = stderr.decode("utf-8", errors="strict")
@@ -480,29 +498,31 @@ def execute_publication_verification(*, task, run, plan, source_run,
 
 
 def _v2_toolchain() -> dict[str, str]:
-    values = {
-        "python_implementation": platform_module.python_implementation(),
-        "python_version": platform_module.python_version(),
-        "python_executable": str(Path(sys.executable).resolve()),
-        "platform_system": platform_module.system(),
-        "platform_machine": platform_module.machine(),
-        "installed_distributions_digest": toolchain_inventory_digest(),
-    }
-    for package, key in (("pytest", "pytest_version"), ("pytest-xdist", "pytest_xdist_version")):
-        try:
-            values[key] = importlib.metadata.version(package)
-        except importlib.metadata.PackageNotFoundError:
-            values[key] = "absent"
-    return values
+    return load_toolchain()
 
 
 def _v2_profile(repository: Path, sha: str, command: str, environment: Mapping[str, str],
                 *, affected: bool = False) -> dict:
     selected = command == SELECTED_FULL_SUITE_COMMAND
+    options = {"workers": 12, "distribution": "load", "max_worker_restart": 0, "collect_only": False}
+    if not selected:
+        configuration = _optional_git(repository, "show", f"{sha}:pyproject.toml")
+        settings = tomllib.loads(configuration or "").get("tool", {}).get("pytest", {}).get("ini_options", {})
+        addopts = settings.get("addopts", "")
+        configured = pytest_worker_options(shlex.split(addopts) if isinstance(addopts, str) else addopts)
+        # Historical subjects without a default really execute in-process.
+        default = configured["workers"][-1] if configured["workers"] else "0"
+        if not default.isdecimal() or any(len(set(configured[k])) > 1 for k in ("workers", "distribution", "restart")):
+            raise RuntimeVerificationError("conflicting committed pytest worker configuration")
+        if (configured["unsupported"] or configured["distribution"] not in ([], ["load"])
+                or configured["restart"] not in ([], ["0"])):
+            raise RuntimeVerificationError("incompatible committed pytest worker configuration")
+        tokens = shlex.split(command)
+        arguments = tokens[3:] if tokens[:3] == ["python", "-m", "pytest"] else tokens[1:]
+        options = effective_pytest_profile(arguments, environment=environment, default_workers=int(default))
     description = {
         "profile": "bounded-parallel-full-suite-v1" if selected else "exact-affected-pytest-v2" if affected else "pytest-observed-v2",
-        "workers": 12 if selected else 1, "distribution": "load",
-        "max_worker_restart": 0, "collect_only": False,
+        **options, "execution_contract": EXECUTION_CONTRACT,
     }
     if selected:
         from .verification_profile import selected_profile_identity
@@ -512,13 +532,14 @@ def _v2_profile(repository: Path, sha: str, command: str, environment: Mapping[s
     # dependencies. An altered observer or selected policy prevents comparison.
     observer = _optional_git(repository, "rev-parse", f"{sha}:tests/bp_v4_probe_plugin.py")
     policy = _optional_git(repository, "rev-parse", f"{sha}:.ai/verification-profiles.yaml")
-    tool_paths = ["src/aios_renew/verification_contract.py", "tests/conftest.py"]
+    tool_paths = ["pyproject.toml", "src/aios_renew/verification_contract.py", "tests/conftest.py",
+                  "src/aios_renew/parallel_verification.py", "tests/git_fixture_support.py"]
     if selected:
-        tool_paths.extend(("scripts/aios_parallel_full_suite.py", "src/aios_renew/parallel_verification.py",
+        tool_paths.extend(("scripts/aios_parallel_full_suite.py",
                            "src/aios_renew/verification_profile.py"))
     owned_tools = {path: _optional_git(repository, "rev-parse", f"{sha}:{path}") for path in tool_paths}
     bound_environment = {k: v for k, v in environment.items()
-                         if k.upper() not in {"TEMP", "TMP", "TMPDIR", "AIOS_BP_V4_PLUGIN_OUTPUT", "AIOS_V2_PROFILE", "AIOS_V2_OBSERVATION_DIRECTORY", "AIOS_V2_EXACT_COLLECTION"}}
+                         if k.upper() not in {"TEMP", "TMP", "TMPDIR", "AIOS_BP_V4_PLUGIN_OUTPUT", "AIOS_V2_PROFILE", "AIOS_V2_OBSERVATION_DIRECTORY", "AIOS_V2_EXACT_COLLECTION", "AIOS_VERIFY_SUBJECT_SHA"}}
     return {**description, "observer_blob": observer, "selected_policy_blob": policy if selected else None,
             "repository_tool_blobs": owned_tools,
             "environment_digest": verification_digest(bound_environment),
@@ -537,9 +558,27 @@ def _v2_known_observation(records: Iterable[dict], *, sha: str, command: str,
     if not matches:
         return None
     result = dict(matches[0])
-    if len({verification_digest(v) for v in matches}) != 1:
+    try:
+        for value in matches:
+            validate_observation(value)
+    except VerificationContractError:
+        result.update(complete=False, unstable=True)
+    if len({_v2_observation_truth(v) for v in matches}) != 1:
         result.update(complete=False, unstable=True)
     return result
+
+
+def _v2_observation_truth(value: dict) -> str:
+    # Process IDs and writable roots are per-execution proof, not comparable
+    # workload conditions. Validate that proof before comparing phase truth;
+    # the immutable record digest still covers every original process fact.
+    if value.get("profile", {}).get("execution_contract") == EXECUTION_CONTRACT:
+        try:
+            validate_observation(value)
+        except VerificationContractError:
+            return verification_digest(value)
+        return verification_digest({key: item for key, item in value.items() if key != "execution"})
+    return verification_digest(value)
 
 
 def _v2_cache_records(directory: Path, *, repository: Path | None = None) -> tuple[dict, ...]:
@@ -615,6 +654,11 @@ def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bo
             observed_toolchain = result["observation_toolchain"]
             valid_exit = result["exit_status"] == item.result.exit_code == result["pytest_exit_status"]
             valid_conditions = bool(result["conformance"]) and all(v is True for v in result["conformance"].values())
+            execution = {**result["execution"], "profile": observed_profile, "toolchain": observed_toolchain,
+                         "failure_diagnostics": {"canonical": canonical}}
+            validate_pytest_execution(execution, observed_profile, binding["toolchain"], subject_sha=item.subject_sha)
+            valid_conditions = (valid_conditions and envelope["subject"].get("head_sha") == item.subject_sha
+                                and envelope["toolchain"] == observed_toolchain)
         else:
             if output.stat().st_size > MAX_CANONICAL_BYTES:
                 raise VerificationContractError("canonical observation exceeds byte bound")
@@ -625,15 +669,15 @@ def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bo
             valid_conditions = (envelope.get("schema") == "AIOS_BP_V4_PYTEST_OBSERVATION"
                                 and envelope.get("version") == 1
                                 and envelope["failure_diagnostics"].get("reported_count") == canonical["failure_count"])
+            validate_pytest_execution(envelope, observed_profile, binding["toolchain"], subject_sha=item.subject_sha)
         description = {k: binding["profile"][k] for k in (
             "profile", "workers", "distribution", "max_worker_restart", "collect_only")}
         valid_conditions = (valid_conditions and observed_profile == description
                             and isinstance(observed_toolchain, dict)
                             and binding["profile"]["observer_blob"] is not None)
-        # The authored launcher may resolve a different interpreter from Runtime
-        # itself. Bind the actually observed toolchain; prediction uncertainty
-        # prevents cache reuse, not a truthful raw successful execution.
-        binding["toolchain"] = observed_toolchain
+        # A different launcher/toolchain is raw diagnostic truth, never a
+        # comparable PASS or a reason to relabel the originally bound proof.
+        valid_conditions = valid_conditions and observed_toolchain == binding["toolchain"]
         reports = [dict(r) for r in canonical["reports"]]
         for report in reports:
             if report["outcome"] == "FAIL":
@@ -642,7 +686,9 @@ def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bo
                 report["profile"], report["toolchain"] = binding["profile"], binding["toolchain"]
         value = {**canonical, "reports": reports, "subject_sha": item.subject_sha,
                  "command": item.source.command, "exit_code": item.result.exit_code,
-                 "profile": binding["profile"], "toolchain": binding["toolchain"]}
+                 "profile": binding["profile"], "toolchain": binding["toolchain"],
+                 "execution": result["execution"] if selected else {key: envelope[key] for key in (
+                     "execution_contract", "subject_sha", "workers", "worker_collections", "controller_collection")}}
         if not selected and "exact_collection" in envelope:
             value["collection"] = envelope["exact_collection"]
             validate_exact_collection(value["collection"])
@@ -652,7 +698,7 @@ def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bo
             value.update(complete=False, unstable=True)
         validate_observation(value)
         return value
-    except (OSError, UnicodeError, KeyError, ValueError, TypeError, VerificationContractError):
+    except (OSError, UnicodeError, KeyError, ValueError, TypeError, ProbeError, VerificationContractError):
         if value is not None:
             # Preserve parsed canonical identities even when comparability fails.
             value.update(complete=False, unstable=True)
@@ -798,6 +844,9 @@ def execute_minimum_verification(
             output = directory / f"observation-{order:03d}.json"
             profile = _v2_profile(repository, sha, authored_command or command, env, affected=affected)
             profile["collect_only"] = collect_only
+            if collect_only:
+                profile.update(collected_for_workers=profile["workers"], collected_for_distribution=profile["distribution"],
+                               workers=0, distribution="no")
             binding = {**bindings.get(authored_command or command, {}),
                        "base_sha": base_sha, "tree_sha": _git(repository, "rev-parse", f"{sha}^{{tree}}"),
                        "envelope_digest": envelope_digest, "changed_files_digest": verification_digest(changed),
@@ -813,6 +862,7 @@ def execute_minimum_verification(
             selected = command == SELECTED_FULL_SUITE_COMMAND
             command_env = dict(env)
             command_env.update(PYTHONDONTWRITEBYTECODE="1", AIOS_BP_V4_PLUGIN_OUTPUT=str(output),
+                AIOS_VERIFY_SUBJECT_SHA=sha,
                 AIOS_V2_PROFILE=json.dumps({k: profile[k] for k in (
                     "profile", "workers", "distribution", "max_worker_restart", "collect_only")}))
             command_env["PYTHONPATH"] = os.pathsep.join((str(checkout / "src"), str(checkout / "tests"), env.get("PYTHONPATH", "")))
@@ -822,6 +872,8 @@ def execute_minimum_verification(
                 # Hidden environment selection/maxfail flags cannot narrow an
                 # authored requirement. Repository configuration is still bound
                 # to the exact tree and completion is checked by the observer.
+                effective_pytest_profile(shlex.split(command)[3:] if command.startswith("python -m pytest") else shlex.split(command)[1:],
+                                         environment=command_env, default_workers=profile.get("collected_for_workers", profile["workers"]))
                 command_env.pop("PYTEST_ADDOPTS", None)
                 command_env["PYTEST_PLUGINS"] = ",".join(filter(None, (env.get("PYTEST_PLUGINS", ""), "bp_v4_probe_plugin")))
                 command_env["AIOS_V2_EXACT_COLLECTION"] = "1"
@@ -849,11 +901,11 @@ def execute_minimum_verification(
             observation = _v2_observation(item, output, binding=binding, selected=selected) if observed else None
             if observation is not None:
                 previous = _v2_known_observation(records, sha=sha, command=command, profile=profile, toolchain=binding["toolchain"])
-                if previous is not None and verification_digest(previous) != verification_digest(observation):
+                if previous is not None and _v2_observation_truth(previous) != _v2_observation_truth(observation):
                     observation.update(complete=False, unstable=True)
                 for previous in observations:
                     if (all(previous.get(k) == observation.get(k) for k in ("subject_sha", "command", "profile", "toolchain"))
-                            and verification_digest(previous) != verification_digest(observation)):
+                            and _v2_observation_truth(previous) != _v2_observation_truth(observation)):
                         observation.update(complete=False, unstable=True)
                 observations.append(observation)
             return item, observation, binding
@@ -918,7 +970,7 @@ def execute_minimum_verification(
                 item, candidate, binding = run_once(probe, sha=subject_sha, base=False, authored_command=command)
                 record = probe_record(item, candidate, binding, kind="CANDIDATE_DELTA")
                 validate_exact_projection(candidate, command=command, nodeids=nodes, subject_sha=subject_sha)
-                if (candidate["profile"] != {**candidate_collection["profile"], "collect_only": False}
+                if (pytest_execution_profile(candidate["profile"]) != pytest_execution_profile(candidate_collection["profile"])
                         or candidate["toolchain"] != candidate_collection["toolchain"]):
                     raise VerificationContractError("delta probe conditions changed after collection")
                 if item.result.exit_code == 1:
@@ -957,7 +1009,7 @@ def execute_minimum_verification(
                     base_item, base_collection = collect(command, base=True)
                 projection.update(projection_material(base_item, base_collection, key="base_collection"))
                 before = exact_collection_observation(base_collection, command=command, subject_sha=base_sha)
-                if (reproduced["profile"] != {**base_collection["profile"], "collect_only": False}
+                if (pytest_execution_profile(reproduced["profile"]) != pytest_execution_profile(base_collection["profile"])
                         or reproduced["toolchain"] != base_collection["toolchain"]):
                     raise VerificationContractError("base collection conditions are not comparable to candidate reproduction")
                 if not set(nodes).difference(before):
@@ -1002,7 +1054,7 @@ def execute_minimum_verification(
                     continue
                 collected = collections.get(command, {}).get("candidate", (None, None))[1]
                 if candidate is not None and collected is not None:
-                    if (candidate["profile"] != {**collected["profile"], "collect_only": False}
+                    if (pytest_execution_profile(candidate["profile"]) != pytest_execution_profile(collected["profile"])
                             or candidate["toolchain"] != collected["toolchain"]
                             or ("collection" in candidate and candidate["collection"] != collected["collection"])):
                         candidate.update(complete=False, unstable=True)
@@ -1038,7 +1090,7 @@ def execute_minimum_verification(
                                 record["base"].update(complete=False, unstable=True)
                             collected_base = collections.get(command, {}).get("base", (None, None))[1]
                             if collected_base is not None and (
-                                    record["base"]["profile"] != {**collected_base["profile"], "collect_only": False}
+                                    pytest_execution_profile(record["base"]["profile"]) != pytest_execution_profile(collected_base["profile"])
                                     or record["base"]["toolchain"] != collected_base["toolchain"]
                                     or ("collection" in record["base"] and record["base"]["collection"] != collected_base["collection"])):
                                 record["base"].update(complete=False, unstable=True)
@@ -1227,7 +1279,7 @@ def _git(
 ) -> str:
     try:
         completed = subprocess.run(
-            ("git", "-C", str(repository), *args),
+            (git_executable(environment), "-C", str(repository), *args),
             capture_output=True,
             text=False,
             check=False,
@@ -1248,7 +1300,7 @@ def _optional_git(
 ) -> str | None:
     try:
         completed = subprocess.run(
-            ("git", "-C", str(repository), *args),
+            (git_executable(environment), "-C", str(repository), *args),
             capture_output=True,
             text=False,
             check=False,

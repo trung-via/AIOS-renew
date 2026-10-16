@@ -23,6 +23,7 @@ import aios_renew.runtime as runtime_module
 import aios_renew.review_transport as transport_module
 
 from aios_renew.codex_adapter import CodexAdapter
+from aios_renew.parallel_verification import git_executable, installed_git_identity
 from aios_renew.review_transport import (
     RemoteFailureArtifacts,
     RemoteLifecycleReview,
@@ -92,9 +93,26 @@ def git(repo: Path, *args: str) -> str:
     # Separate migration Git storage must be read through real Git instead.
     if args == ("rev-parse", "HEAD") and (repo / ".git").is_file():
         return subprocess.check_output(
-            ["git", "-C", str(repo), *args], text=True, encoding="utf-8",
+            [git_executable(), "-C", str(repo), *args], text=True, encoding="utf-8",
         ).strip()
     return fixture_git(repo, *args)
+
+
+def test_task346_operator_real_git_process_resolves_the_verified_installed_binary(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    identity = installed_git_identity()
+    calls = []
+    real_process = subprocess.run
+
+    def observe(command, **kwargs):
+        calls.append((command, kwargs.get("shell", False)))
+        return real_process(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", observe)
+    assert operator_module._git(repo, "config", "--local", "user.email") == "operator@example.invalid"
+    assert calls and all(shell is False for _, shell in calls)
+    if os.name == "nt":
+        assert Path(shutil.which(calls[-1][0][0])).resolve() == Path(identity["git_executable"])
 
 
 def _private_executor_failure_fixture(tmp_path):
