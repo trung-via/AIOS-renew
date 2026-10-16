@@ -13328,6 +13328,20 @@ def _publish_reconciliation_artifact(repo: Path) -> str:
     return commit
 
 
+def _corrupt_preservation_artifact(repo: Path, artifact: str, path: str, content: bytes) -> str:
+    """Inject malformed bytes after projection, retaining the isolated artifact shape."""
+    from aios_renew.authoring_ingress import _commit_tree, _read_commit_blob, _tree_with_metadata
+
+    tree = _tree_with_metadata(repo, artifact, path, content, replace_existing=True)
+    replacement = _commit_tree(repo, tree, [], "malformed preservation fixture")
+    assert git(repo, "show", "-s", "--format=%P", replacement) == ""
+    assert git(repo, "ls-tree", "-r", "--name-only", replacement) == git(
+        repo, "ls-tree", "-r", "--name-only", artifact,
+    )
+    assert _read_commit_blob(repo, replacement, path) == content
+    return replacement
+
+
 def _reconciliation_snapshot(repo: Path) -> tuple:
     state = runtime_paths(repo)
     git_dir = Path(git(repo, "rev-parse", "--absolute-git-dir"))
@@ -13818,7 +13832,15 @@ def test_primary_reconciliation_rejects_unproven_states_without_reset_or_run(
         (state.failures / "RUN-231-004.json").write_text(
             "{" if gate == "malformed-json" else json.dumps(failure), encoding="utf-8",
         )
-        _publish_reconciliation_artifact(repo)
+        if gate == "malformed-json":
+            artifact_ref = "refs/heads/aios/failure-artifacts/RUN-231-004"
+            replacement = _corrupt_preservation_artifact(
+                repo, git(remote, "rev-parse", artifact_ref), ".ai/transport/failure.json", b"{",
+            )
+            git(remote, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", str(repo), replacement)
+            git(remote, "update-ref", artifact_ref, replacement)
+        else:
+            _publish_reconciliation_artifact(repo)
     calls = []
     real_git = operator_module._git
 
@@ -13833,7 +13855,9 @@ def test_primary_reconciliation_rejects_unproven_states_without_reset_or_run(
     monkeypatch.setattr(operator_module, "reconcile_control_main", forbidden)
     monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
     before = _reconciliation_snapshot(repo)
-    with pytest.raises(OperatorError):
+    with pytest.raises(
+        OperatorError, match="FAILURE_SOURCE_DOCUMENT_INVALID" if gate == "malformed-json" else None,
+    ):
         operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"], runner=forbidden)
     assert _reconciliation_snapshot(repo) == before
     assert not any(root == repo and args[0] in {"reset", "merge", "push", "update-ref"}
@@ -14223,6 +14247,14 @@ def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
             documents[".ai/transport/result.json"] = result_bytes
         if gate in {"source-tree-artifacts", "missing-result"}:
             replacement = _reviewed_preservation_metadata(repo, base, documents)
+        elif gate in {"malformed-result", "duplicate-json", "malformed-run"}:
+            # Prospective writers reject these bytes; corrupt only the synthetic
+            # remote artifact so the reader's JSON rejection is exercised.
+            path = ".ai/transport/run.json" if gate == "malformed-run" else ".ai/transport/result.json"
+            replacement = _corrupt_preservation_artifact(
+                repo, git(remote, "rev-parse", artifact_ref), path,
+                run_bytes if gate == "malformed-run" else result_bytes,
+            )
         else:
             # Keep the canonical artifact tree shape so these cases exercise
             # JSON and identity validation, rather than a tree-shape rejection.
@@ -14250,7 +14282,12 @@ def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
     monkeypatch.setattr(operator_module, "_git", record_git)
     monkeypatch.setattr(operator_module, "run_task", forbidden)
     monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
-    with pytest.raises(OperatorError):
+    expected_error = {
+        "malformed-result": "invalid canonical ResultPackage JSON",
+        "duplicate-json": "duplicate key: result",
+        "malformed-run": "canonical RUN JSON invalid",
+    }.get(gate)
+    with pytest.raises(OperatorError, match=expected_error):
         operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"], runner=forbidden)
     assert _reconciliation_snapshot(repo) == before
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
