@@ -91,6 +91,28 @@ human_lean_vp_after_r21_priority_20261017:
     - NO_HISTORICAL_V1_V2_REINTERPRETATION
     - NO_AUTOMATIC_ROADMAP_OR_DOWNSTREAM_ADVANCEMENT
 
+human_bo_lean_post_vp_priority_20261017:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING
+  approved_on: "2026-10-17"
+  status: HUMAN_APPROVED_QUEUED_AFTER_LEAN_VP_NOT_IMPLEMENTED
+  architecture_document: docs/AIOS-BRAIN-OPTIMIZATION-LEAN-POST-VP-v1.md
+  historical_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+  current_effective_next: four-specialized-audits-r21-human-optional-adaptive-v1
+  predecessor: lean-vp-intelligent-intra-primary-after-r21
+  predecessor_completion_gate: LEAN_VP_EXACT_ELIGIBLE_REVIEWED_PUBLISHED_CLOSURE_AND_HUMAN_BRAIN_ROADMAP_RECONCILIATION
+  successor_gate: LEAN_BO_EXACT_CLOSURE_AND_SEPARATE_HUMAN_BRAIN_H4_RECONCILIATION
+  purpose: >-
+    Execute only BO's remaining verified semantic/control-plane deltas after Lean VP;
+    reuse reviewed and published direct authoring and transport, then resume H4 only
+    after distinct canonical and Human/Brain gates.
+  exclusions:
+    - NO_CHANGE_TO_CURRENT_R21_NEXT
+    - NO_TASK_RUN_EXECUTOR_OR_IMPLEMENTATION_AUTHORIZED
+    - NO_KA01_ACTIVATION_OR_VERIFICATION_POLICY_CHANGE
+    - NO_DUPLICATE_REPAIR_REMEDIATION_OR_REVIEWER_AUTHORITY
+    - NO_AUTO_ROADMAP_OR_DOWNSTREAM_ADVANCEMENT
+    - NO_FULL_BO9B_PRECONDITION_ON_VP01
+
 human_task_351_354_355_retirement_20261016:
   authority: EXPLICIT_HUMAN_BRAIN_PLANNING
   status: HUMAN_APPROVED_RETIRED_NO_FURTHER_EXECUTION
@@ -3190,6 +3212,23 @@ sequence:
     source_movement_guard: CANONICAL_MAIN_AND_EXACT_TASK_SHA
     historical_v3_replay: PRESERVE_IMMUTABLE_DECODING_ONLY
 
+  - id: brain-optimization-v1-lean-post-vp-after-lean-vp
+    status: QUEUED_AFTER_LEAN_VP_COMPLETION
+    phase: LEAN_BO_DELTA_CONFORMANCE_AFTER_VP
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-17"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-LEAN-POST-VP-v1.md
+    historical_planning_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    task_authoring_status: NOT_AUTHORIZED_NOT_AUTHORED
+    predecessor: lean-vp-intelligent-intra-primary-after-r21
+    predecessor_gate: LEAN_VP_LAWFUL_COMPLETION_AND_HUMAN_BRAIN_ROADMAP_RECONCILIATION
+    goal: >-
+      Finish only still-needed bounded Brain Optimization deltas, no duplicate ingress,
+      no older default V1 audit reinstatement, no new lifecycle authority, and no
+      automatic return to H4 before exact BO closure and Human/Brain reconciliation.
+    current_next_effect: NONE_PRESERVE_R21
+    return_to: h4-device-independent-origin-capture-correction-v1
+    return_gate: BO_LEAN_COMPLETION_AND_EXPLICIT_HUMAN_BRAIN_RECONCILIATION
   - id: verification-architecture-replacement-v1-vp03-runtime-lean-validity
     status: PAUSED_FOR_HUMAN_V1_ONLY_MIGRATION
     phase: VP03_RUNTIME_INTEGRATED_MINIMAL_EVIDENCE_VALIDITY
