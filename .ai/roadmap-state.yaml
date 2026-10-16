@@ -2,6 +2,56 @@ version: 1
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+human_task_351_354_355_retirement_20261016:
+  authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+  status: HUMAN_APPROVED_RETIRED_NO_FURTHER_EXECUTION
+  decided_on: "2026-10-16"
+  decision: >-
+    Do not continue implementation, PRIMARY, REPAIR, REMEDIATION, or redispatch
+    for TASK-351, TASK-354, or TASK-355. Their overlapping original objectives
+    are superseded by independently reviewed and published TASK-357 and TASK-358.
+  affected_tasks:
+    - task_id: TASK-351
+      canonical_revision: 1
+      status: RETIRED_NO_FURTHER_EXECUTION
+      original_objective: END_TO_END_FAILURE_DIAGNOSTIC_HANDOFF
+      superseded_by: [TASK-358]
+    - task_id: TASK-354
+      canonical_revision: 1
+      status: RETIRED_NO_FURTHER_EXECUTION
+      original_objective: END_TO_END_FAILURE_DIAGNOSTIC_HANDOFF
+      superseded_by: [TASK-358]
+    - task_id: TASK-355
+      canonical_revision: 6
+      status: RETIRED_NO_FURTHER_EXECUTION
+      original_objective: FAILURE_DIAGNOSTIC_HANDOFF_AND_NATIVE_180_185_BUDGET
+      superseded_by: [TASK-357, TASK-358]
+  published_replacement_evidence:
+    - task_id: TASK-357
+      canonical_revision: 2
+      run_id: RUN-357-003
+      review_id: REVIEW-357-003
+      review_verdict: PASS
+      reviewed_and_published_sha: 03a4681962b7a5740d73a1374bc30a413a876fe3
+      covers: PROVIDER_NEUTRAL_NATIVE_RESPONSE_180_MIN_WATCHDOG_185_MIN
+    - task_id: TASK-358
+      canonical_revision: 1
+      run_id: RUN-358-005
+      review_id: REVIEW-358-005
+      review_verdict: PASS
+      reviewed_and_published_sha: 36cf9a97090f315cfe574decd0614a4046947d8b
+      covers: BOUNDED_E2E_FAILURE_DIAGNOSTIC_HANDOFF
+  preservation:
+    - RETAIN_ALL_CANONICAL_TASK_REVISIONS_AND_HISTORICAL_RUN_TERMINALS
+    - RETAIN_FAILURE_RESULT_REVIEW_REPAIR_REMEDIATION_AND_LOCAL_EVIDENCE_AS_RECORDED
+    - DO_NOT_RECLASSIFY_FAILED_OR_INCOMPLETE_RUNS_AS_PASS
+    - DO_NOT_DELETE_REWRITE_FORCE_RESET_OR_RETROACTIVE_PUBLISH
+    - DO_NOT_ASSUME_PUBLISHED_REPLACEMENTS_COMPLETE_UNRELATED_SCOPES
+  planning_effect: PROSPECTIVE_NO_FURTHER_EXECUTION_FOR_THREE_TASK_IDENTITIES
+  runtime_effect: NONE_PLANNING_IS_NOT_ADMISSION_OR_TERMINAL_TRUTH
+  current_next_effect: NONE_PRESERVE_EXISTING_NEXT_ITEMS_AND_SEQUENCE
+  future_override: REQUIRES_NEW_EXPLICIT_HUMAN_DECISION_AND_FRESH_CANONICAL_RECONCILIATION
+
 planning_baseline:
   id: bp-0-architecture-baseline
   status: HUMAN_APPROVED
