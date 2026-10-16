@@ -347,12 +347,12 @@ def test_receipts_are_bounded() -> None:
 
 
 def test_issue_carrier_canonicalizes_direct_final_task_without_audit(tmp_path, monkeypatch):
-    from tests.test_authoring_ingress import setup_test_repo, V2_TASK_105_SOURCE, git
+    from tests.test_authoring_ingress import setup_test_repo, V1_TASK_105_SOURCE, git
 
     repo, remote, main_sha = setup_test_repo(tmp_path)
     body = {"format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_TASK",
             "identity": {"task_id": "TASK-105"}, "expected_state": {"expected_main_sha": main_sha},
-            "payload": V2_TASK_105_SOURCE}
+            "payload": V1_TASK_105_SOURCE}
     event = _write_event(tmp_path, _event(json.dumps(body)))
     policy = _write_policy(tmp_path)
     monkeypatch.setattr(carrier, "admit_local", lambda *a, **k: pytest.fail("legacy TASK cannot consume origin proof"))
@@ -361,6 +361,30 @@ def test_issue_carrier_canonicalizes_direct_final_task_without_audit(tmp_path, m
     assert git(remote, "rev-parse", "refs/heads/main") == delivery.ingress_result.canonical_sha
     assert delivery.github_outputs() == ""
     assert carrier.deliver_event(event, policy, repo=repo).ingress_result.replayed
+
+
+@pytest.mark.parametrize("task_policy", ["legacy", "minimum-sufficient-v2"])
+def test_issue_carrier_rejects_noncurrent_task_policy_before_mutation(tmp_path, monkeypatch, task_policy):
+    from tests.test_authoring_ingress import (
+        setup_test_repo, TASK_105_SOURCE, V2_TASK_105_SOURCE, forbid_correction_mutation, git,
+    )
+    from aios_renew.operator import _runtime_paths_readonly
+
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    body = {"format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_TASK",
+            "identity": {"task_id": "TASK-105"}, "expected_state": {"expected_main_sha": main_sha},
+            "payload": TASK_105_SOURCE if task_policy == "legacy" else V2_TASK_105_SOURCE}
+    event = _write_event(tmp_path, _event(json.dumps(body)))
+    policy = _write_policy(tmp_path)
+    refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    local_refs = git(repo, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_correction_mutation(monkeypatch)
+    with pytest.raises(AuthoringIngressError, match="new TASK identities and revisions require verification.policy minimum-sufficient-v1"):
+        carrier.deliver_event(event, policy, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
+    assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == local_refs
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert not _runtime_paths_readonly(repo).runs.exists()
 
 
 def test_issue_carrier_canonicalizes_direct_final_repair_without_audit(tmp_path, monkeypatch):
