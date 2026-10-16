@@ -84,11 +84,21 @@ def _capture_fact(value: Any, *, partial: bool) -> dict[str, Any]:
                 withheld=availability == "CAPTURED")
 
 
-def _validate_native_failure_exit(data: Mapping[str, Any]) -> None:
-    """Native process status belongs only to an EXECUTION FAILURE owner."""
+def _validate_native_failure_exit(data: Mapping[str, Any], *, historical_read: bool = False) -> None:
+    """Require an EXECUTION owner, except for the minimal historical read format."""
     error = data.get("error")
     if isinstance(error, Mapping) and "exit_code" in error:
-        if data.get("phase") != "EXECUTION":
+        # This closed historical payload is only a lifecycle fact. Immutable
+        # source readers authenticate it independently; neither its sentinel nor
+        # its shape grants a private role, a projection or admission authority.
+        historical = (historical_read and set(data) == {"kind", "run_id", "error"}
+            and data.get("kind") == "FAILURE" and isinstance(data.get("run_id"), str)
+            and re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", data["run_id"]) is not None
+            and set(error) == {"type", "message", "exit_code"}
+            and error.get("type") in {"CodexExecutionError", "CodexOutputError",
+                "AntigravityExecutionError", "AntigravityOutputError", "KeyboardInterrupt"}
+            and error.get("message") == _PROTECTED_DIAGNOSTICS)
+        if data.get("phase") != "EXECUTION" and not historical:
             raise ValueError("native FAILURE exit code outside EXECUTION")
         if error["exit_code"] is not None and type(error["exit_code"]) is not int:
             raise ValueError("invalid native FAILURE exit code")
@@ -613,7 +623,7 @@ def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC
     return projected
 
 
-def _validate_legacy_failure_public(data: Mapping[str, Any]) -> None:
+def _validate_legacy_failure_public(data: Mapping[str, Any], *, historical_read: bool = False) -> None:
     """Keep lawful small redaction, rejecting undeclared public diagnostics."""
     allowed = {"kind", "run_id", "task", "executor", "base_sha", "failed_head_sha",
                "candidate", "phase", "continuation_of", "error"}
@@ -626,7 +636,7 @@ def _validate_legacy_failure_public(data: Mapping[str, Any]) -> None:
                 or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,127}", error["type"]) is None
                 or error.get("message") != "Protected Runtime diagnostics remain local."):
             raise ValueError("undeclared public FAILURE diagnostics")
-        _validate_native_failure_exit(data)
+        _validate_native_failure_exit(data, historical_read=historical_read)
         outcomes = error.get("verification", [])
         if not isinstance(outcomes, list):
             raise ValueError("invalid public FAILURE outcomes")
@@ -908,6 +918,8 @@ def failure_document(content: bytes, *, private_original: bool = False) -> Mappi
     A message is not provenance. Callers authenticating a Runtime-owned local
     original may retain its private diagnostics even if its message happens to
     equal the public sentinel. Public input keeps the strict redaction gate.
+    Minimal protected historical records can omit phase; accepting that read
+    format neither authenticates their source nor permits a new native write.
     """
     data = _failure_input(content)
     if data.get("kind") != "FAILURE":
@@ -959,7 +971,7 @@ def failure_document(content: bytes, *, private_original: bool = False) -> Mappi
                     from .unified_state import _validated_private_public_view
                     _validated_private_public_view(data, "METADATA")
                 else:
-                    _validate_legacy_failure_public(data)
+                    _validate_legacy_failure_public(data, historical_read=True)
                     if {"run_id", "failed_head_sha"} <= data.keys():
                         from .unified_state import _validated_private_public_view
                         _validated_private_public_view(data, "METADATA")
@@ -972,7 +984,7 @@ def failure_document(content: bytes, *, private_original: bool = False) -> Mappi
             raise FailureDiagnosticError("FAILURE_PUBLIC_INTEGRITY_INVALID") from exc
     else:
         try:
-            _validate_native_failure_exit(data)
+            _validate_native_failure_exit(data, historical_read=True)
             if _needs_failure_projection(data):
                 from .unified_state import _validated_private_public_view
                 _validated_private_public_view(data, "METADATA")
@@ -1007,6 +1019,7 @@ def validate_runtime_failure_binding(
 ) -> None:
     """Validate the Runtime FAILURE identity and repair-candidate contract."""
 
+    _validate_native_failure_exit(failure)
     if "public_projection" in failure:
         validate_public_failure(failure)
     task = failure.get("task")

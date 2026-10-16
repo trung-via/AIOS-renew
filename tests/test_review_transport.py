@@ -133,6 +133,9 @@ def test_native_failure_diagnostics_preserve_identity_unknown_exit_and_original_
     assert diagnostic["capture"]["stderr"]["availability"] == "UNAVAILABLE"
     assert public["public_projection"]["private_failure_digest"] == verification_digest(private)
     assert operator_failure_matches(private, public)
+    validate_runtime_failure_binding(private, run_id=run["run_id"], task_id=run["task"]["id"],
+        task_revision=run["task"]["revision"], executor=run["executor"], base_sha=run["base_sha"],
+        candidate_sha=private["failed_head_sha"], modification_scope=())
     assert json.dumps(private, indent=2).encode() == original
     assert all(value not in public_bytes for value in (b"synthetic-secret", b"C:/private", b"credential="))
     context = review_transport.failure_context(public, artifact_sha="c" * 40, candidate_available=True)
@@ -163,7 +166,13 @@ def test_native_failure_exit_rejects_forged_non_integer_values(exit_code):
     private["error"]["exit_code"] = public["error"]["exit_code"] = exit_code
     public["error"]["diagnostic"]["native_exit"] = dict(availability="AVAILABLE", value=exit_code)
     _failure_transport_recovery_reseal(public)
-    for value in (private, public):
+    with pytest.raises(ValueError, match="invalid native FAILURE exit code"):
+        validate_runtime_failure_binding(private, run_id=private["run_id"], task_id=private["task"]["id"],
+            task_revision=private["task"]["revision"], executor=private["executor"], base_sha=private["base_sha"],
+            candidate_sha=private["failed_head_sha"], modification_scope=())
+    historical = dict(kind="FAILURE", run_id=private["run_id"], error=dict(type="CodexExecutionError",
+        message="Protected Runtime diagnostics remain local.", exit_code=exit_code))
+    for value in (private, public, historical):
         original = json.dumps(value).encode()
         for reader in (review_transport.public_failure, review_transport.failure_document,
                        lambda raw: review_transport.failure_document(raw, private_original=True),
@@ -201,6 +210,10 @@ def test_native_exit_phase_conformance_rejects_private_and_legacy_laundering(pha
     original = json.dumps(private).encode()
     with pytest.raises(ValueError, match="native FAILURE exit code outside EXECUTION"):
         _validated_private_public_view(private, "METADATA")
+    with pytest.raises(ValueError, match="native FAILURE exit code outside EXECUTION"):
+        validate_runtime_failure_binding(private, run_id=private["run_id"], task_id=private["task"]["id"],
+            task_revision=private["task"]["revision"], executor=private["executor"], base_sha=private["base_sha"],
+            candidate_sha=private["failed_head_sha"], modification_scope=())
     with pytest.raises(review_transport.FailureDiagnosticError) as caught:
         review_transport.failure_document(original, private_original=True)
     assert caught.value.code == "FAILURE_PRIVATE_INTEGRITY_INVALID"
@@ -280,6 +293,91 @@ def test_native_exit_phase_conformance_keeps_independent_command_outcome(phase, 
     assert json.dumps(private, indent=2).encode() == original
 
 
+@pytest.mark.parametrize("exit_code", [None, -9, 0, 17])
+def test_native_exit_phase_conformance_historical_minimal_read_cannot_authorize_a_write(exit_code):
+    legacy = dict(kind="FAILURE", run_id="RUN-358-001", error=dict(type="CodexExecutionError",
+        message="Protected Runtime diagnostics remain local.", exit_code=exit_code))
+    original = json.dumps(legacy, indent=2).encode()
+    for reader in (review_transport.failure_document,
+                   lambda raw: review_transport._json_mapping(raw, "FAILURE"),
+                   lambda raw: review_transport._performance_json_mapping(raw, "FAILURE")):
+        assert reader(original) == legacy
+    for writer in (review_transport.public_failure, review_transport.public_metadata,
+                   lambda raw: review_transport.public_failure(raw, private_original=True),
+                   lambda raw: review_transport._public_bytes(review_transport._project_failure(json.loads(raw)))):
+        with pytest.raises((ReviewTransportError, ValueError)):
+            writer(original)
+    with pytest.raises(review_transport.FailureDiagnosticError):
+        review_transport.failure_document(original, private_original=True)
+    with pytest.raises(ValueError, match="native FAILURE exit code outside EXECUTION"):
+        validate_runtime_failure_binding(legacy, run_id=legacy["run_id"], task_id="TASK-358", task_revision=1,
+            executor="codex", base_sha="a" * 40, candidate_sha="b" * 40, modification_scope=())
+    assert json.dumps(legacy, indent=2).encode() == original
+
+
+@pytest.mark.parametrize("defect", ["null_phase", "verification_phase", "forged_phase", "metadata",
+    "error_metadata", "candidate", "task", "verification", "evidence", "type", "run"])
+def test_native_exit_phase_conformance_historical_read_has_no_forged_roles(defect):
+    legacy = dict(kind="FAILURE", run_id="RUN-358-001", error=dict(type="CodexExecutionError",
+        message="Protected Runtime diagnostics remain local.", exit_code=None))
+    if defect == "null_phase": legacy["phase"] = None
+    elif defect == "verification_phase": legacy["phase"] = "VERIFICATION"
+    elif defect == "forged_phase": legacy["phase"] = "FORGED"
+    elif defect == "metadata": legacy["metadata"] = dict(historical_read=True, private_original=True)
+    elif defect == "error_metadata": legacy["error"]["metadata"] = dict(phase="EXECUTION")
+    elif defect == "candidate": legacy["candidate"] = dict(repairable=True)
+    elif defect == "task": legacy["task"] = dict(id="TASK-358", revision=1)
+    elif defect == "verification": legacy["error"]["verification"] = []
+    elif defect == "evidence": legacy["error"]["evidence"] = []
+    elif defect == "type": legacy["error"]["type"] = "RuntimeVerificationError"
+    else: legacy["run_id"] = "../private/synthetic-secret"
+    original = json.dumps(legacy).encode()
+    for reader in (review_transport.failure_document, review_transport.public_failure,
+                   review_transport.public_metadata,
+                   lambda raw: review_transport.failure_document(raw, private_original=True),
+                   lambda raw: review_transport.public_failure(raw, private_original=True),
+                   lambda raw: review_transport._json_mapping(raw, "FAILURE"),
+                   lambda raw: review_transport._performance_json_mapping(raw, "FAILURE")):
+        with pytest.raises(ReviewTransportError):
+            reader(original)
+    assert json.dumps(legacy).encode() == original
+
+
+@pytest.mark.parametrize("exit_code", [pytest.param(..., id="absent"), None, 17])
+@pytest.mark.parametrize("format", ["small", review_transport.LEGACY_PUBLIC_FAILURE_FORMAT,
+                                   review_transport.PUBLIC_FAILURE_FORMAT])
+def test_native_exit_phase_conformance_binds_exact_source_before_historical_compatibility(exit_code, format):
+    _, private = _native_failure_fixture(exit_code=None if exit_code is ... else exit_code)
+    if exit_code is ...:
+        private["error"].pop("exit_code")
+    if format == "small":
+        private.pop("candidate")
+        private["error"].pop("native_reason")
+    original = json.dumps(private, indent=2).encode()
+    public_bytes = (review_transport.public_failure(original) if format == "small" else
+        review_transport._public_bytes(review_transport._project_failure(private, projection_format=format)))
+    public = review_transport.failure_document(public_bytes)
+    assert operator_failure_matches(private, public)
+    assert public["phase"] == "EXECUTION"
+    assert b"synthetic-secret" not in public_bytes and b"C:/private" not in public_bytes
+    for defect in ("phase", "exit", "run", "subject", "metadata", "origin"):
+        forged = json.loads(public_bytes)
+        if defect == "phase": forged.pop("phase")
+        elif defect == "exit": forged["error"]["exit_code"] = -9
+        elif defect == "run": forged["run_id"] = "RUN-358-999"
+        elif defect == "subject": forged["failed_head_sha"] = "0" * 40
+        elif defect == "metadata": forged["error"]["metadata"] = dict(historical_read=True)
+        elif "public_projection" in forged:
+            forged["public_projection"]["private_failure_digest"] = "0" * 64
+        else:
+            forged["phase"] = "VERIFICATION"
+        if "public_projection" in forged:
+            _failure_transport_recovery_reseal(forged)
+        assert not operator_failure_matches(private, forged)
+    assert json.dumps(private, indent=2).encode() == original
+    assert review_transport.failure_document(public_bytes) == public
+
+
 @pytest.mark.parametrize("selector", ['"native and (timeout or dirty)"', "'native and not timeout'", '"test_token or test_secret"'])
 def test_public_failure_preserves_exact_safe_quoted_pytest_identity(selector):
     _, private = _native_failure_fixture()
@@ -341,11 +439,7 @@ def test_historical_versions_and_bounded_protected_incomplete_reference_remain_r
     assert operator_failure_matches(private, v1)
     legacy = dict(kind="FAILURE", run_id="RUN-358-001", error=dict(type="CodexExecutionError",
                   message="Protected Runtime diagnostics remain local.", exit_code=None))
-    # Small historical records still require an EXECUTION owner for native status.
-    for reader in (review_transport.failure_document, review_transport.public_failure):
-        with pytest.raises(review_transport.FailureDiagnosticError) as caught:
-            reader(json.dumps(legacy).encode())
-        assert caught.value.code == "FAILURE_PUBLIC_PRIVACY_INVALID"
+    assert review_transport.failure_document(json.dumps(legacy).encode()) == legacy
     legacy["error"].pop("exit_code")
     assert review_transport.failure_document(json.dumps(legacy).encode()) == legacy
     legacy["phase"] = "EXECUTION"
@@ -406,8 +500,12 @@ def test_historical_verification_failure_without_outcomes_retains_unavailable_no
         review_transport.failure_document(json.dumps(public).encode())
 
 
-@pytest.mark.parametrize("defect", ["digest", "run", "subject", "source", "evidence", "capture", "annotation_capture"])
-def test_protected_incomplete_annotations_do_not_bypass_reference_roles_or_source_binding(defect):
+@pytest.mark.parametrize("counterpart", ["legacy", review_transport.LEGACY_PUBLIC_FAILURE_FORMAT,
+                                       review_transport.PUBLIC_FAILURE_FORMAT])
+@pytest.mark.parametrize("defect", ["digest", "run", "subject", "source", "evidence", "capture",
+                                   "annotation_capture", "native_exit"])
+def test_protected_incomplete_annotations_do_not_bypass_reference_roles_or_source_binding(defect, counterpart):
+    from aios_renew.unified_state import _validated_private_public_view
     from aios_renew.verification_contract import verification_digest
 
     _, private, _ = _failure_transport_recovery_fixture(nodes=1, failures=1)
@@ -420,16 +518,45 @@ def test_protected_incomplete_annotations_do_not_bypass_reference_roles_or_sourc
             report.pop(key, None)
     reference["candidate_digest"] = verification_digest(reference["candidate"])
     original = json.dumps(private).encode()
-    public_bytes = review_transport.public_failure(original)
+    prospective = review_transport.public_failure(original)
+    public_bytes = json.dumps(_validated_private_public_view(private, "METADATA") if counterpart == "legacy"
+        else review_transport._project_failure(private, projection_format=counterpart)).encode()
     public = review_transport.failure_document(public_bytes)
     assert operator_failure_matches(private, public)
-    assert b"secret_fixture" not in public_bytes and b"C:/private" not in public_bytes
+    assert b"secret_fixture" not in prospective and b"C:/private" not in prospective
+    assert public["error"]["verification"][0]["exit_code"] == 2
+    assert "exit_code" not in public["error"]
+    written = review_transport.public_failure(public_bytes)
+    if counterpart == "legacy":
+        written_document = review_transport.failure_document(written)
+        assert written_document["public_projection"]["private_failure_digest"] == verification_digest(public)
+        assert written_document["error"]["verification"][0]["verification"]["private_reference_digest"] == verification_digest(
+            public["error"]["verification"][0]["verification"])
+    else:
+        assert written == review_transport._public_bytes(public)
+    assert b"secret_fixture" not in written and b"C:/private" not in written
+    assert json.dumps(private).encode() == original
+    assert json.loads(public_bytes) == public
     if defect == "digest": reference["candidate_digest"] = "0" * 64
     elif defect == "run": reference["run_id"] = "RUN-058-999"
     elif defect == "subject": reference["binding"]["subject_sha"] = "0" * 40
     elif defect == "source": reference["raw_digest"] = "0" * 64
     elif defect == "evidence": reference["attribution"][0]["evidence_id"] = "FORGED"
     elif defect == "annotation_capture": reference["attribution"][0]["stdout"] = "secret_fixture"
+    elif defect == "native_exit":
+        private["error"]["exit_code"] = None
+        forged = json.loads(public_bytes)
+        forged["error"]["exit_code"] = None
+        if counterpart == review_transport.PUBLIC_FAILURE_FORMAT:
+            forged["error"]["diagnostic"]["native_exit"] = dict(availability="UNKNOWN", value=None)
+        if "public_projection" in forged:
+            _failure_transport_recovery_reseal(forged)
+        for reader in (review_transport.failure_document, review_transport.public_failure,
+                       lambda raw: review_transport.failure_document(raw, private_original=True),
+                       lambda raw: review_transport._json_mapping(raw, "FAILURE"),
+                       lambda raw: review_transport._performance_json_mapping(raw, "FAILURE")):
+            with pytest.raises(ReviewTransportError):
+                reader(json.dumps(forged).encode())
     else:
         reference["candidate"]["reports"][0]["captured_output"] = "secret_fixture"
         reference["candidate_digest"] = verification_digest(reference["candidate"])
@@ -440,6 +567,30 @@ def test_protected_incomplete_annotations_do_not_bypass_reference_roles_or_sourc
         with pytest.raises(ReviewTransportError, match="private captured output"):
             review_transport.failure_document(json.dumps(private).encode())
     assert not operator_failure_matches(private, public)
+
+
+def test_native_exit_phase_conformance_authenticated_historical_git_read_is_immutable(tmp_path):
+    repo, _ = make_repo(tmp_path)
+    legacy = dict(kind="FAILURE", run_id="RUN-358-001", error=dict(type="CodexExecutionError",
+        message="Protected Runtime diagnostics remain local.", exit_code=None))
+    original = json.dumps(legacy, indent=2).encode()
+    relative = ".ai/transport/failure.json"
+    path = repo / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(original)
+    source = commit_fixture_state(repo, paths=(relative,), message="synthetic historical protected FAILURE",
+        user_name="Review Transport Test", user_email="transport@example.invalid")
+    source_blob = git(repo, "rev-parse", source + ":" + relative)
+    # Authenticate by immutable Git source, independently of the sentinel and
+    # despite a different uncommitted file at the same local path.
+    path.write_text('{"kind":"FAILURE","phase":"FORGED"}', encoding="utf-8")
+    observed = review_transport._read_local_blob(repo, source, relative)
+    assert observed == original
+    assert review_transport.failure_document(observed) == legacy
+    assert git(repo, "rev-parse", source + ":" + relative) == source_blob
+    with pytest.raises(review_transport.FailureDiagnosticError):
+        review_transport.public_failure(observed)
+    assert review_transport._read_local_blob(repo, source, relative) == original
 
 
 @pytest.mark.parametrize("defect", ["detail", "category", "capture", "exit", "digest",
