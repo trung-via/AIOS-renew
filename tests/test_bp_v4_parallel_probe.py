@@ -184,10 +184,33 @@ def test_unit_plugin_fail_closed_paths_do_not_mutate_registered_observer(
     assert plugin is not observer
 
     def state(module):
-        return deepcopy({
+        values = {
             name: value for name, value in vars(module).items()
             if name.startswith("_") and not name.startswith("__") and not callable(value)
-        })
+        }
+        config = values.pop("_session_config")
+        # The retained live pytest Config contains modules/plugin managers that
+        # cannot be copied. Check its identity and copy observer-owned fields.
+        values["_session_config"] = (id(config), {
+            name: value for name, value in vars(config).items() if name.startswith("_aios_")
+        } if config is not None else {})
+        return deepcopy(values)
+
+    counterexample = _load_unit_plugin()
+    counterexample._session_config = SimpleNamespace(
+        pluginmanager=pytest, _aios_execution_profile={"workers": 12})
+    original = state(counterexample)
+    counterexample._reports[("tests/test_sample.py::test_one", "call")] = {"outcome": "FAIL"}
+    assert state(counterexample) != original
+    counterexample._reports.clear()
+    assert state(counterexample) == original
+    counterexample._session_config._aios_execution_profile["workers"] = 4
+    assert state(counterexample) != original
+    counterexample._session_config._aios_execution_profile["workers"] = 12
+    assert state(counterexample) == original
+    counterexample._session_config = SimpleNamespace(
+        pluginmanager=pytest, _aios_execution_profile={"workers": 12})
+    assert state(counterexample) != original
 
     before = state(observer)
     plugin.pytest_sessionstart(None)

@@ -265,7 +265,8 @@ def task320_execution(tmp_path, monkeypatch):
             elif defect == "profile":
                 envelope["profile"] = {**profile, "workers": 2}
             elif defect == "toolchain" and sha == V2_BASE:
-                envelope["toolchain"]["python_version"] = "changed"
+                key = state.get("collection_toolchain_field", "python_version")
+                envelope["toolchain"][key] = "0" * 64 if key.endswith(("_sha256", "_digest")) else "changed"
         if not broad and not collect:
             defect = state["projection_defect"]
             if defect == "collection":
@@ -486,17 +487,34 @@ def test_task320_nonreproduction_pass_is_discharged_only_by_complete_broad_base_
     assert result[0].result.exit_code == 1
 
 
-def test_task320_collection_toolchain_change_stays_blocking_even_after_broad_fallback(task320_execution):
+@pytest.mark.parametrize("toolchain_field", ["python_version", "git_executable_sha256", "installed_distributions_digest"])
+def test_task320_collection_toolchain_change_stays_blocking_even_after_broad_fallback(task320_execution, tmp_path, toolchain_field):
+    from tests.test_verification_contract import V2_BASE, V2_TOOLCHAIN
     execute, state, _ = task320_execution
     node = state["base_nodes"][0]
     state["candidate_failures"] = state["base_failures"] = {node}
     state["collection_defect"] = "toolchain"
+    state["collection_toolchain_field"] = toolchain_field
     with pytest.raises(RuntimeVerificationError) as caught:
         execute(operation="REPAIR")
     assert state["calls"][-1]["broad"] and state["calls"][-1]["sha"] == "a" * 40
     record = caught.value.evidence[0].verification
+    assert record["candidate"]["exit_code"] == record["base"]["exit_code"] == 1
     assert record["base"]["unstable"] is True
     assert record["attribution"][0]["classification"] == "UNRESOLVED"
+    collections = [json.loads(path.read_text(encoding="utf-8"))
+                   for path in (tmp_path / "RUN-task320" / "projections").glob("*.json")]
+    rejected = next(item for item in collections if item["binding"]["subject_sha"] == V2_BASE
+                    and item["binding"]["profile"]["collect_only"])
+    assert rejected["binding"]["toolchain"] == V2_TOOLCHAIN
+    assert rejected["candidate"]["complete"] is False
+    assert rejected["candidate"]["observed_toolchain"][toolchain_field] != V2_TOOLCHAIN[toolchain_field]
+    cached = verification_module._v2_cache_records(tmp_path / "cache")
+    known = verification_module._v2_known_observation(cached, sha=V2_BASE, command=record["base"]["command"],
+        profile=record["base"]["profile"], toolchain=V2_TOOLCHAIN)
+    assert known is None or known["complete"] is False
+    assert not verification_module.attributed_task_passes(record,
+        subject_sha=record["candidate"]["subject_sha"], command=record["binding"]["command"], exit_code=1)
 
 
 def test_task320_collection_disagreement_cannot_make_a_passing_broad_command_permissive(task320_execution):

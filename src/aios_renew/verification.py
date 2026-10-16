@@ -644,6 +644,7 @@ def _v2_cache_records(directory: Path, *, repository: Path | None = None) -> tup
 
 def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bool) -> dict:
     value = None
+    observed_toolchain = None
     try:
         if selected:
             raw = Path(item.raw_path).read_bytes().split(b"\nSTDERR\n", 1)[0]
@@ -699,9 +700,14 @@ def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bo
         validate_observation(value)
         return value
     except (OSError, UnicodeError, KeyError, ValueError, TypeError, ProbeError, VerificationContractError):
+        # Rejected proof must retain an observed condition conflict. Otherwise
+        # broad fallback could erase collection-time toolchain/Git drift while
+        # leaving the original expected binding looking comparable.
+        diagnostics = ({"observed_toolchain": observed_toolchain}
+                       if observed_toolchain is not None and observed_toolchain != binding["toolchain"] else {})
         if value is not None:
             # Preserve parsed canonical identities even when comparability fails.
-            value.update(complete=False, unstable=True)
+            value.update(complete=False, unstable=True, **diagnostics)
             return value
         if selected:
             # Collection/conformance errors can stop the selected wrapper before
@@ -729,7 +735,7 @@ def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bo
                          "reports": sorted(reports.values(), key=lambda r: (r["nodeid"], {"collect": -1, "setup": 0, "call": 1, "teardown": 2}[r["phase"]])),
                          "failure_count": sum(r["outcome"] == "FAIL" for r in reports.values()),
                          "observation_sources": source_paths,
-                         "errors": ["selected wrapper observation is not comparable"]}
+                         "errors": ["selected wrapper observation is not comparable"], **diagnostics}
                 verification_digest(value)
                 return value
             except (OSError, UnicodeError, KeyError, TypeError, ValueError, VerificationContractError):
@@ -738,7 +744,7 @@ def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bo
         return {"subject_sha": item.subject_sha, "command": item.source.command,
                 "exit_code": item.result.exit_code, "profile": binding["profile"],
                 "toolchain": binding["toolchain"], "complete": False, "unstable": True,
-                "failure_count": 0, "reports": []}
+                "failure_count": 0, "reports": [], **diagnostics}
 
 
 def execute_minimum_verification(
@@ -948,8 +954,10 @@ def execute_minimum_verification(
             item, observation, binding = run_once(pytest_collection_command(command), sha=sha, base=base,
                                                 authored_command=command, collect_only=True)
             probe_record(item, observation, binding, kind="EXACT_COLLECTION")
-            exact_collection_observation(observation, command=command, subject_sha=sha)
+            # Retain rejected collection diagnostics for the covering command's
+            # condition check; this does not make them eligible collection proof.
             collections.setdefault(command, {})["base" if base else "candidate"] = (item, observation)
+            exact_collection_observation(observation, command=command, subject_sha=sha)
             return item, observation
 
         def delta_first(command: str) -> None:
@@ -1055,8 +1063,9 @@ def execute_minimum_verification(
                 collected = collections.get(command, {}).get("candidate", (None, None))[1]
                 if candidate is not None and collected is not None:
                     if (pytest_execution_profile(candidate["profile"]) != pytest_execution_profile(collected["profile"])
-                            or candidate["toolchain"] != collected["toolchain"]
-                            or ("collection" in candidate and candidate["collection"] != collected["collection"])):
+                            or candidate["toolchain"] != collected.get("observed_toolchain", collected["toolchain"])
+                            or ("collection" in candidate and "collection" in collected
+                                and candidate["collection"] != collected["collection"])):
                         candidate.update(complete=False, unstable=True)
                 evidence.append(item)
                 record = None
@@ -1091,8 +1100,9 @@ def execute_minimum_verification(
                             collected_base = collections.get(command, {}).get("base", (None, None))[1]
                             if collected_base is not None and (
                                     pytest_execution_profile(record["base"]["profile"]) != pytest_execution_profile(collected_base["profile"])
-                                    or record["base"]["toolchain"] != collected_base["toolchain"]
-                                    or ("collection" in record["base"] and record["base"]["collection"] != collected_base["collection"])):
+                                    or record["base"]["toolchain"] != collected_base.get("observed_toolchain", collected_base["toolchain"])
+                                    or ("collection" in record["base"] and "collection" in collected_base
+                                        and record["base"]["collection"] != collected_base["collection"])):
                                 record["base"].update(complete=False, unstable=True)
                         elif projection is None:
                             record["base"] = known
