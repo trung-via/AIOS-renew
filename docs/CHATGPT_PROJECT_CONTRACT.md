@@ -79,8 +79,42 @@ Direct admission preserves final TASK schema and identity/revision continuity,
 the explicit current verification policy for new identities/revisions, authored return-affinity rules,
 expected-main currentness, unrelated-delta rejection and expected-old-main
 compare-and-swap publication. Identical historical replay remains non-mutating.
-AUTHOR_REMEDIATION and AUTHOR_REPAIR retain their existing audited handoff, canonical
-reconstruction, correction-lineage and freshness gates; BO-1 changes AUTHOR_TASK only.
+BO-1 changes AUTHOR_TASK only. The published TASK-348 direct AUTHOR_REPAIR boundary
+independently validates its final contract and canonical correction bindings without
+serialized Brain audit prerequisites. After TASK-360 publication, AUTHOR_REMEDIATION
+also admits one final `parse_remediation` / `validate_remediation` family contract,
+with explicit `source_run_id`, `finding_id` and expected reviewed-source SHA. Runtime
+reconstructs the exact TASK revision, RUN/RESULT/EVIDENCE, correction predecessor,
+CHANGES_REQUIRED REVIEW decision and chosen outstanding finding from authenticated
+canonical Git objects and current refs. It validates action, bounded scope, original
+constraints, the TASK's exact verification policy and authorized affected commands.
+
+Neither correction ingress consumes Decision Packet fingerprints, Stage-1/Stage-2
+serialization, derived support hashes or global packet recomposition as mutation
+authority. Legacy supplied `audited_handoff` on AUTHOR_REMEDIATION or AUTHOR_REPAIR is
+inert compatibility data: it is not validated as a second contract, persisted in the
+correction metadata or echoed in public receipts. It cannot make an invalid final
+contract admissible or change admissibility through audit hashing or serialization.
+Unknown authority fields in the active final envelope or payload still fail closed.
+
+AUTHOR_REMEDIATION rechecks the exact REVIEW/ref, source and outstanding correction
+state before the metadata commit and at local ref CAS and remote publication, using
+the captured canonical transport and an expected-missing destination lease. Moved or
+conflicting subjects fail closed. Identical canonical remediation replay, including
+equivalent final-family formatting, is read-only and retains immutable original bytes.
+Unrelated local `.ai` files and main movement with unchanged correction state are
+not admission prerequisites. The exact local TASK consumed by the existing state
+observer must still match authenticated canonical main; missing/forged consumed inputs, dirty executable
+checkout, unauthenticated checkout ancestry, malformed canonical content, unavailable
+refs or insufficient fetch fail closed. An older clean checkout with absent unrelated
+TASK files does not require Human restoration.
+
+Brain still performs the exact V1 `CONSTRUCT` then `ADVERSARIAL_AUDIT_AND_RECONCILE`
+semantic audit. Runtime owns verification and EVIDENCE; Reviewer and Publisher retain
+their independent authority. The GitHub Issue carrier retains actor, repository,
+provenance and allowlist gates. Authoring creates no RUN or execution approval: Human
+A3 / REMEDIATION INTENT and self-host delegation remain separate, with no Executor,
+model or reasoning-effort selection in AUTHOR_REMEDIATION.
 This rule supersedes the historical H1/H3 AUTHOR_TASK mutation prerequisites in the
 [semantic-handoff hardening baseline](AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md),
 without changing their history or the two-stage Brain audit obligation.

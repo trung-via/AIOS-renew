@@ -77,6 +77,53 @@ TASK from the then-current canonical main. Unrelated main movement cannot silent
 substitute a changed TASK. A carrier receipt, workflow dispatch or `RUNNER_STARTED`
 does not prove RUN creation or Executor invocation; inspect canonical RUN separately.
 
+Runtime's existing H1R reconciliation runs only under the PRIMARY pre-RUN repository
+mutation lock. Equal main and clean stale-behind fast-forward retain their existing
+behavior. A clean diverged local main can synchronize automatically only when one
+unique exact canonical candidate preserves its complete local-only ancestry and
+the current canonical main is independently reproved. Existing canonical FAILURE
+and reviewed-PASS preservation remain eligible. A reviewed CHANGES_REQUIRED or
+BLOCKED RESULT is also eligible **solely as history-preservation proof**: Runtime
+must independently validate the exact TASK/revision, RUN/base/candidate, complete
+RESULT/EVIDENCE, byte-exact canonical REVIEW metadata and applicable correction
+predecessor lineage. CHANGES_REQUIRED requires acceptance FAIL and precise valid
+findings. BLOCKED alone supplies no proof; a deficient or unreviewed candidate
+remains ineligible. The original verdict, findings and remote refs remain unchanged.
+
+At the mutation edge Runtime rechecks immutable proof refs, current remote main,
+full ancestry, local HEAD, attached main/upstream binding and worktree safety.
+Tracked/untracked edits, hidden assume-unchanged or sparse content, ignored-path
+collisions, submodules, ambiguous upstream, remote unavailability, ahead-only
+history and any unpreserved extra commit retain rejection or their existing safe
+behavior. Only the existing single reset to the exactly reproved main is permitted,
+followed by clean attached-main postconditions. TASK/source changes require the
+existing safe generation restart with the same TASK/blob, Human-selected
+Executor/model/effort and durable dispatch identity. Workflow transport and its
+transient control source acquire no Git recovery or RUN-admission authority.
+
+| PRIMARY observation | Operational handling |
+| --- | --- |
+| Exact clean divergence with complete immutable preservation proof | Runtime may reconcile inside H1R, then independently admit the pending exact TASK through normal PRIMARY. Preservation grants no Reviewer PASS, correction, Publisher eligibility or roadmap progression. |
+| Missing, malformed, stale, conflicting or moved proof; unsafe local state; lock or generation conflict | Fail closed before RUN/Executor. Inspect the existing admission boundary and canonical source facts; never infer repair authority or perform a transport-side retry/reset. |
+| Pre-RUN synchronization refusal | Existing admission failure uses `phase=PRIMARY_SYNCHRONIZATION`, `reason_code=PRIMARY_SYNCHRONIZATION_REJECTED`; the bounded public operational receipt reports `run_created=false`, `executor_invoked=false`. Raw/private Git or host diagnostics stay local. |
+| Terminal dispatch or absent local continuity | Observe the original configured repository's durable dispatch record. A clean independent checkout cannot establish its terminal status or substitute its journal. |
+
+Dispatch idempotency is local to the original `.git/aios` journal. Existing terminal
+FAILED-without-RUN and SUCCEEDED-with-RUN deliveries are non-executing replays on
+that journal, even if preservation proof later becomes valid. A fresh clone's
+missing journal is unknown continuity, not authorization to rearm the old delivery.
+H1R does not select another checkout, copy/migrate a journal or update
+`AIOS_REPO_ROOT`; there is no cross-checkout deduplication guarantee. Preserve the
+configured checkout and terminal record when diagnosing delivery. Any later
+execution requires its own existing Human authorization and delivery boundary.
+
+For the RUN-359-002 / TASK-360 shape, CHANGES_REQUIRED preservation does not correct
+the AC4 finding. The historical workflow refusal before RUN supplies no FAILURE
+for REPAIR and no REMEDIATION authorization. Independent Reviewer, explicitly
+authorized REMEDIATION/REPAIR and Publisher boundaries in sections 5–7 still apply.
+Synthetic real-Git/native-I/O simulations exercise this route; they do not establish
+live self-host wakeup, Runtime verification or semantic success.
+
 Runtime validates the Human delegation/profile binding, admits the bound RUN, and
 admits and invokes exactly one Human-delegated native Executor/profile. Runtime
 does not select or override Executor delegation; delegation and overrides remain

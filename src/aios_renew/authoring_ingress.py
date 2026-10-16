@@ -216,8 +216,14 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
     if not isinstance(data, Mapping):
         raise AuthoringIngressError("ingress envelope must be a mapping")
 
-    # Check for forbidden fields in the entire structure
-    _scan_for_prohibited_fields(data)
+    # Check every active envelope and payload field for forbidden authority.
+    # Retired REMEDIATION audit support is never consumed, persisted or echoed.
+    # Its shape, private contents and serialization cannot grant or deny final
+    # contract admission. All active envelope/payload fields keep their gates.
+    _scan_for_prohibited_fields(
+        {key: value for key, value in data.items() if key != "audited_handoff"}
+        if data.get("operation") == "AUTHOR_REMEDIATION" else data
+    )
 
     unknown = set(data) - _ALLOWED_TOP_LEVEL_KEYS
     if unknown:
@@ -263,9 +269,9 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
     if operation == "AUTHOR_TASK" and "audited_handoff" in data:
         raise AuthoringIngressError("AUTHOR_TASK does not accept audited_handoff")
     handoff = data.get("audited_handoff")
-    # Legacy REPAIR audit serialization is inert compatibility data. Only the
-    # final REPAIR and Runtime's canonical subject can authorize this mutation.
-    if handoff is not None and operation != "AUTHOR_REPAIR":
+    # Legacy correction audit serialization is inert compatibility data. Only
+    # the final contract and Runtime's canonical subject authorize mutation.
+    if handoff is not None and operation not in _AUTHORING_FLOWS:
         _validate_handoff_shape(handoff)
         if operation == "SUBMIT_REVIEW":
             raise AuthoringIngressError("SUBMIT_REVIEW does not accept Brain audited handoff")
@@ -933,239 +939,265 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
 # Operation: AUTHOR_REMEDIATION
 # ---------------------------------------------------------------------------
 
-def _execute_author_remediation(envelope: IngressEnvelope, repo: Path) -> IngressResult:
-    source_run_id = envelope.identity["source_run_id"]
-    finding_id = envelope.identity["finding_id"]
-    payload_str = _payload_to_str(envelope.payload)
+@dataclass(frozen=True)
+class _RemediationBinding:
+    transport: tuple[str, str]
+    refs: Mapping[str, str]
+    task: Task
+    run: Run
+    package: ResultPackage
+    review: Review
+    existing_sha: str | None
+    correction_state: Mapping[str, Any] | None = None
+    checkout_sha: str | None = None
 
+
+def _direct_remediation_payload(payload: str | Mapping[str, Any]) -> tuple[str, Remediation]:
+    """Decode the final family contract once, without silently dropping authority."""
     try:
-        remediation = parse_remediation(payload_str)
-    except ReviewValidationError as exc:
+        raw = _payload_to_str(payload)
+        data = yaml.load(raw, Loader=_TaskLoader)
+        allowed = {"finding_id", "action", "reviewed_sha", "modification_scope", "scope",
+                   "affected_verification", "verification", "verification_policy", "full_suite_reason", "constraints"}
+        if not isinstance(data, Mapping) or set(data) - allowed:
+            raise ValueError("final REMEDIATION contains unsupported fields")
+        for key, fields in (("scope", {"modify"}), ("verification", {"policy", "affected", "required", "full_suite_reason"}),
+                            ("constraints", {"hard"})):
+            if key in data and (key != "constraints" or isinstance(data[key], Mapping)):
+                if not isinstance(data[key], Mapping) or set(data[key]) - fields:
+                    raise ValueError(f"final REMEDIATION {key} contains unsupported fields")
+        # Family aliases may agree; none may hide a competing contract.
+        scope = data.get("scope", {})
+        verification = data.get("verification", {})
+        for values in ([data[k] for k in ("modification_scope",) if k in data]
+                       + ([scope["modify"]] if "modify" in scope else []),
+                       [data[k] for k in ("affected_verification",) if k in data]
+                       + [verification[k] for k in ("affected", "required") if k in verification],
+                       [data[k] for k in ("verification_policy",) if data.get(k) is not None]
+                       + ([verification["policy"]] if "policy" in verification else []),
+                       [data[k] for k in ("full_suite_reason",) if data.get(k) is not None]
+                       + ([verification["full_suite_reason"]] if "full_suite_reason" in verification else [])):
+            if values and any(value != values[0] for value in values):
+                raise ValueError("conflicting final REMEDIATION aliases")
+        remediation = parse_remediation(raw)
+        for container, key, actual in ((data, "verification_policy", remediation.verification_policy),
+                                       (data, "full_suite_reason", remediation.full_suite_reason),
+                                       (verification, "full_suite_reason", remediation.full_suite_reason)):
+            if container.get(key) is not None and container[key] != actual:
+                raise ValueError(f"final REMEDIATION {key} is not bound by its family contract")
+        return raw, remediation
+    except (ValueError, TypeError, RecursionError, yaml.YAMLError) as exc:
         raise AuthoringIngressError(f"invalid REMEDIATION contract: {exc}") from exc
 
-    if remediation.finding_id != finding_id:
-        raise AuthoringIngressError(
-            f"REMEDIATION finding_id mismatch: identity specified {finding_id}, payload contains {remediation.finding_id}"
-        )
 
-    expected_reviewed_sha = _get_expected_sha(
-        envelope.expected_state, "expected_reviewed_sha", "reviewed_sha"
-    )
+def _direct_remediation_blob(repo: Path, sha: str, path: str) -> bytes:
+    # The caller has fetched this exact authenticated canonical commit. Reject
+    # symlinks and missing blobs rather than consulting a working-tree fallback.
+    _, entry, _ = _git(repo, "ls-tree", sha, "--", path)
+    content = _read_commit_blob(repo, sha, path)
+    if not entry.startswith("100644 blob ") or not entry.endswith(f"\t{path}") or content is None:
+        raise AuthoringIngressError(f"missing or invalid canonical REMEDIATION source: {path}")
+    return content
 
-    remote = _resolve_remote(repo)
-    remediation_ref = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
-    decision_ref = f"refs/heads/aios/review-decision/{source_run_id}"
 
-    decision_sha = _resolve_ref_sha(repo, decision_ref, remote)
-    if decision_sha is None:
-        raise AuthoringIngressError(
-            f"canonical review decision missing for source run {source_run_id}"
-        )
-    _fetch_if_remote(repo, remote, decision_sha)
+def _prove_remediation_checkout(repo: Path, task_path: str, task_bytes: bytes,
+                                main_sha: str, reviewed_sha: str) -> str:
+    # Unified State consumes exactly this local TASK and local Runtime records.
+    # Prove those inputs, never parity of the unrelated .ai directory.
+    path = repo / task_path
+    if any(part.is_symlink() for part in (repo / ".ai", path.parent, path)) or path.read_bytes() != task_bytes:
+        raise AuthoringIngressError("local correction TASK differs from canonical contract")
+    from .operator import _runtime_paths_readonly
+    state = _runtime_paths_readonly(repo)
+    for directory in (state.runs, state.admission_failures):
+        if directory.exists() and any(directory.iterdir()):
+            raise AuthoringIngressError("local Runtime observations cannot supply canonical authoring inputs")
+    _, dirty, _ = _git(repo, "status", "--porcelain", "--untracked-files=all", "--", ".", ":(exclude).ai")
+    if dirty:
+        raise AuthoringIngressError("dirty executable checkout cannot author REMEDIATION")
+    _, head, _ = _git(repo, "rev-parse", "HEAD")
+    if not any(_git(repo, "merge-base", "--is-ancestor", head, canonical, allow_fail=True)[0] == 0
+               for canonical in (main_sha, reviewed_sha)):
+        raise AuthoringIngressError("executable checkout has no authenticated canonical ancestry")
+    return head
 
-    review_paths = [
-        p
-        for p in _ls_tree(repo, decision_sha, ".ai/reviews")
-        if p.endswith((".yaml", ".yml"))
-    ]
-    if len(review_paths) != 1:
-        raise AuthoringIngressError(
-            f"canonical review decision for {source_run_id} is missing or ambiguous"
-        )
 
-    review_bytes = _read_commit_blob(repo, decision_sha, review_paths[0])
-    if review_bytes is None:
-        raise AuthoringIngressError(
-            f"canonical review decision content missing for {source_run_id}"
-        )
-    review = parse_review(review_bytes.decode("utf-8"))
+def _remediation_transport(repo: Path) -> tuple[str, str]:
+    transport = _resolve_author_task_transport(repo)
+    code, _, _ = _git(repo, "symbolic-ref", "--quiet", "HEAD", allow_fail=True)
+    if code == 0:
+        if _repair_transport(repo) != transport:
+            raise AuthoringIngressError("correction checkout conflicts with canonical main transport")
+    else:
+        from .review_transport import resolve_detached_observation_remote
+        if resolve_detached_observation_remote(repo) != transport[0]:
+            raise AuthoringIngressError("detached correction observer conflicts with canonical main transport")
+    return transport
 
-    if review.verdict != "CHANGES_REQUIRED":
-        raise AuthoringIngressError(
-            f"source review verdict is {review.verdict}, expected CHANGES_REQUIRED"
-        )
 
-    if review.reviewed_sha != expected_reviewed_sha:
-        raise AuthoringIngressError(
-            f"expected reviewed SHA mismatch: expected {expected_reviewed_sha}, got {review.reviewed_sha}"
-        )
+def _read_direct_remediation_binding(envelope: IngressEnvelope, repo: Path,
+                                     *, require_current: bool = True) -> _RemediationBinding:
+    """Reconstruct the chosen finding through existing canonical lifecycle owners.
 
-    if remediation.reviewed_sha != review.reviewed_sha:
-        raise AuthoringIngressError(
-            f"REMEDIATION reviewed_sha does not match REVIEW reviewed_sha: remediation={remediation.reviewed_sha}, review={review.reviewed_sha}"
-        )
-
-    matching_findings = [f for f in review.findings if f.id == finding_id]
-    if not matching_findings:
-        raise AuthoringIngressError(
-            f"finding {finding_id} not found in source review {review.review_id}"
-        )
-    finding = matching_findings[0]
-
-    if review.acceptance.get(finding.basis) != "FAIL":
-        raise AuthoringIngressError(
-            f"finding {finding_id} basis {finding.basis} is not marked FAIL in review"
-        )
-
-    if remediation.action != finding.action:
-        raise AuthoringIngressError(
-            f"REMEDIATION action {remediation.action} does not match finding action {finding.action}"
-        )
-
-    # Check for idempotent replay or conflicting remediation
-    existing_remediation_sha = _resolve_ref_sha(repo, remediation_ref, remote)
-    if existing_remediation_sha is not None:
-        _fetch_if_remote(repo, remote, existing_remediation_sha)
-        remediation_path = (
-            f".ai/remediations/REMEDIATION-{source_run_id}-{finding_id}.yaml"
-        )
-        remediation_bytes = payload_str.encode("utf-8")
-        try:
-            _validate_metadata_commit(
-                repo,
-                existing_remediation_sha,
-                expected_parent_sha=decision_sha,
-                metadata_path=remediation_path,
-                metadata_bytes=remediation_bytes,
-                operation="AUTHOR_REMEDIATION replay",
-            )
-        except AuthoringIngressError:
-            pass
-        else:
-            return IngressResult(
-                operation="AUTHOR_REMEDIATION",
-                status="IDEMPOTENT",
-                canonical_destination=remediation_ref,
-                canonical_sha=existing_remediation_sha,
-                replayed=True,
-                detail=f"identical REMEDIATION already canonicalized for {source_run_id}-{finding_id}",
-            )
-        raise AuthoringIngressError(
-            f"conflicting canonical remediation already exists on {remediation_ref}"
-        )
-
-    # Load task from candidate
-    artifacts_ref = f"refs/heads/aios/artifacts/{source_run_id}"
-    artifacts_sha = _resolve_ref_sha(repo, artifacts_ref, remote)
-    if artifacts_sha is None:
-        raise AuthoringIngressError(
-            f"canonical source artifacts missing for {source_run_id}"
-        )
-    _fetch_if_remote(repo, remote, artifacts_sha)
-    run_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/run.json")
-    if run_bytes is None:
-        raise AuthoringIngressError(
-            f"canonical source RUN missing for {source_run_id}"
-        )
-    run_data = _json_no_dups(run_bytes, "RUN")
-    task_id = _extract_task_id(run_data)
-
-    task_bytes = _read_commit_blob(repo, review.reviewed_sha, f".ai/tasks/{task_id}.yaml")
-    if task_bytes is None:
-        raise AuthoringIngressError(
-            f"canonical TASK {task_id} missing from reviewed candidate"
-        )
-    task = parse_task(task_bytes.decode("utf-8"))
-
+    Only this TASK namespace and its exact TASK contract enter the witness. Main
+    movement with unchanged relevant inputs is harmless. Historical identical
+    replay reads immutable sources without opening a mutation interval.
+    """
     try:
-        from .operator import (
-            _run_from_data as source_run_from_data,
-            _remediation_execution_from_data,
-            _validated_repair_remediation_source,
-        )
-        result_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/result.json")
-        if result_bytes is None:
-            raise ValueError("canonical source RESULT is missing")
-        result_data = _json_no_dups(result_bytes, "source ResultPackage")
-        package = ResultPackage(
-            result=validate_result(result_data["result"]),
-            evidence=tuple(validate_evidence(item) for item in result_data["evidence"]),
-        )
-        source_run = (
-            _remediation_execution_from_data(run_data["execution"]).run
-            if run_data.get("kind") == "REMEDIATION" else source_run_from_data(run_data)
-        )
-        if source_run.run_id != source_run_id or source_run.task.id != task.task_id or source_run.task.revision != task.revision:
-            raise ValueError("canonical source RUN/TASK identity mismatch")
-        _validated_repair_remediation_source(
-            repo, task=task, run_data=run_data, run=source_run, package=package,
-            review=review, repair=_read_commit_blob(repo, artifacts_sha, ".ai/transport/repair.json"),
-        )
-        validate_remediation(review=review, remediation=remediation, task=task)
-    except (ReviewValidationError, ValueError, TypeError, KeyError) as exc:
+        _validate_operation_identity("AUTHOR_REMEDIATION", envelope.identity)
+        source_id, finding_id = envelope.identity["source_run_id"], envelope.identity["finding_id"]
+        if (re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", source_id) is None
+                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", finding_id) is None):
+            raise AuthoringIngressError("invalid canonical REMEDIATION subject identity")
+        expected = envelope.expected_state
+        if not isinstance(expected, Mapping) or set(expected) - {
+                "expected_reviewed_sha", "reviewed_sha", "expected_review_decision_sha", "review_decision_sha"}:
+            raise AuthoringIngressError("AUTHOR_REMEDIATION expected_state contains unsupported authority fields")
+        expected_head = _repair_expected_sha(expected, "expected_reviewed_sha", "reviewed_sha")
+        expected_decision = _repair_expected_sha(expected, "expected_review_decision_sha", "review_decision_sha", required=False)
+        transport = _remediation_transport(repo)
+        remote = transport[0]
+        prefix = source_id.rsplit("-", 1)[0] + "-"
+        patterns = ("refs/heads/main", f"refs/heads/aios/*/{prefix}*")
+        refs = _query_matching_refs(repo, remote, *patterns)
+        main_sha = refs.get("refs/heads/main")
+        artifacts_sha = refs.get(f"refs/heads/aios/artifacts/{source_id}")
+        decision_sha = refs.get(f"refs/heads/aios/review-decision/{source_id}")
+        if not all((main_sha, artifacts_sha, decision_sha)):
+            raise AuthoringIngressError("canonical source artifacts, review decision or main missing")
+        if expected_decision is not None and expected_decision != decision_sha:
+            raise AuthoringIngressError("expected canonical REVIEW decision identity mismatch")
+        if refs.get(f"refs/heads/aios/review/{source_id}") != expected_head:
+            raise AuthoringIngressError("canonical reviewed candidate identity mismatch")
+        # Fetch failure is fatal even if stale objects happen to be cached locally.
+        _git(repo, "fetch", "--no-tags", remote, *sorted(set(refs.values())))
+        run_data = _json_no_dups(_direct_remediation_blob(repo, artifacts_sha, ".ai/transport/run.json"), "RUN")
+        run_view = _resolve_underlying_run_view(run_data, expected_run_id=source_id)
+        task_id = _extract_task_id(run_view)
+        if prefix != "RUN-" + task_id.removeprefix("TASK-") + "-":
+            raise AuthoringIngressError("canonical source RUN/TASK namespace mismatch")
+        run = _run_from_data(run_view)
+        code, kind, _ = _git(repo, "cat-file", "-t", run.base_sha, allow_fail=True)
+        if code or kind != "commit" or _git(repo, "merge-base", "--is-ancestor", run.base_sha,
+                                            expected_head, allow_fail=True)[0]:
+            raise AuthoringIngressError("canonical source candidate does not descend from RUN base")
+        task_path = f".ai/tasks/{task_id}.yaml"
+        task = parse_task(_direct_remediation_blob(repo, expected_head, task_path).decode("utf-8"))
+        if run.task != RunTaskReference(task.task_id, task.revision) or run.status != ACTIVE:
+            raise AuthoringIngressError("canonical source RUN/TASK identity or status mismatch")
+        require_same_affinity(task, run)
+        result_doc = _json_no_dups(_direct_remediation_blob(repo, artifacts_sha, ".ai/transport/result.json"), "ResultPackage")
+        if not isinstance(result_doc.get("evidence"), list):
+            raise AuthoringIngressError("canonical ResultPackage evidence must be a list")
+        package = ResultPackage(result=validate_result(result_doc["result"]),
+            evidence=tuple(validate_evidence(item) for item in result_doc["evidence"]))
+        if package.result.head_sha != expected_head or run.head_sha not in (None, expected_head):
+            raise AuthoringIngressError("canonical source RESULT/RUN reviewed SHA mismatch")
+        paths = [p for p in _ls_tree(repo, decision_sha, ".ai/reviews") if p.endswith((".yaml", ".yml"))]
+        if len(paths) != 1:
+            raise AuthoringIngressError("canonical review decision is missing or ambiguous")
+        review_bytes = _direct_remediation_blob(repo, decision_sha, paths[0])
+        yaml.load(review_bytes, Loader=_TaskLoader)
+        review = parse_review(review_bytes.decode("utf-8"))
+        _validate_metadata_commit(repo, decision_sha, expected_parent_sha=expected_head,
+            metadata_path=f".ai/reviews/{review.review_id}.yaml", metadata_bytes=review_bytes,
+            operation="canonical REVIEW decision")
+        if review.verdict != "CHANGES_REQUIRED" or review.reviewed_sha != expected_head:
+            raise AuthoringIngressError("source review must bind the exact CHANGES_REQUIRED candidate")
+        if sum(f.id == finding_id for f in review.findings) != 1:
+            raise AuthoringIngressError(f"finding {finding_id} not found in source review {review.review_id}")
+        from .operator import _validated_repair_remediation_source
+        repaired = _validated_repair_remediation_source(repo, task=task, run_data=run_data, run=run,
+            package=package, review=review, repair=_read_commit_blob(repo, artifacts_sha, ".ai/transport/repair.json"),
+            remote=remote)
+        prior = None if repaired is None else repaired[1]
+        if repaired is None:
+            if run_data.get("kind") == "REMEDIATION":
+                _, origin_remediation = _parse_remediation_run(run_data, run_id=source_id)
+                prior = _resolve_prior_review(repo, remote, run_data, review)
+                if prior is None:
+                    raise AuthoringIngressError("canonical REMEDIATION source requires prior REVIEW")
+                _validate_remediation_package(repo, source_sha=expected_head, task=task, run=run,
+                    remediation=origin_remediation, prior_review=prior, result=package.result,
+                    evidence=package.evidence, execution_base_sha=run.base_sha if "execution_base" in run_data else None)
+            else:
+                validate_result_package(task=task, run=run, result=package.result, evidence=package.evidence)
+        validate_review(task=task, result=package.result, review=review, prior_review=prior)
+        state = checkout = None
+        if require_current:
+            current_bytes = _direct_remediation_blob(repo, main_sha, task_path)
+            if parse_task(current_bytes.decode("utf-8")) != task:
+                raise AuthoringIngressError("canonical reviewed TASK differs from current TASK contract")
+            checkout = _prove_remediation_checkout(repo, task_path, current_bytes, main_sha, expected_head)
+            snapshot = _canonical_correction_snapshot("AUTHOR_REMEDIATION", envelope.identity, repo, (remote, refs))
+            state = snapshot.unified_state
+            if _prove_remediation_checkout(repo, task_path, current_bytes, main_sha, expected_head) != checkout:
+                raise AuthoringIngressError("executable checkout moved during reconstruction")
+        if _remediation_transport(repo) != transport or _query_matching_refs(repo, remote, *patterns) != refs:
+            raise AuthoringIngressError("canonical REMEDIATION inputs moved during reconstruction")
+        return _RemediationBinding(transport, {ref: sha for ref, sha in refs.items() if ref != "refs/heads/main"},
+            task, run, package, review, refs.get(f"refs/heads/aios/remediation/{source_id}-{finding_id}"), state, checkout)
+    except AuthoringIngressError:
+        raise
+    except (ValueError, TypeError, KeyError, OSError, RuntimeError, yaml.YAMLError, subprocess.SubprocessError) as exc:
+        raise AuthoringIngressError(f"canonical REMEDIATION subject rejected: {exc}") from exc
+
+
+def _recheck_direct_remediation_binding(envelope: IngressEnvelope, repo: Path, binding: _RemediationBinding) -> None:
+    try:
+        if _read_direct_remediation_binding(envelope, repo, require_current=binding.correction_state is not None) != binding:
+            raise AuthoringIngressError("binding is no longer current")
+    except AuthoringIngressError as exc:
+        raise AuthoringIngressError(f"canonical REMEDIATION freshness rejected: {exc}") from exc
+
+
+def _execute_author_remediation(envelope: IngressEnvelope, repo: Path) -> IngressResult:
+    payload_str, remediation = _direct_remediation_payload(envelope.payload)
+    binding = _read_direct_remediation_binding(envelope, repo, require_current=False)
+    source_id, finding_id = envelope.identity["source_run_id"], envelope.identity["finding_id"]
+    if remediation.finding_id != finding_id:
+        raise AuthoringIngressError("REMEDIATION finding_id mismatch")
+    decision_sha = binding.refs[f"refs/heads/aios/review-decision/{source_id}"]
+    remediation_ref = f"refs/heads/aios/remediation/{source_id}-{finding_id}"
+    remediation_path = f".ai/remediations/REMEDIATION-{source_id}-{finding_id}.yaml"
+    if binding.existing_sha is not None:
+        # Native historical metadata bytes, modes and parent remain immutable.
+        # Equivalent final family serialization is a read-only replay as well.
+        try:
+            content = _direct_remediation_blob(repo, binding.existing_sha, remediation_path)
+            _validate_metadata_commit(repo, binding.existing_sha, expected_parent_sha=decision_sha,
+                metadata_path=remediation_path, metadata_bytes=content, operation="AUTHOR_REMEDIATION replay")
+            if parse_remediation(content.decode("utf-8")) != remediation:
+                raise AuthoringIngressError("different final contract")
+        except ValueError as exc:
+            raise AuthoringIngressError("conflicting canonical remediation already exists") from exc
+        _recheck_direct_remediation_binding(envelope, repo, binding)
+        return IngressResult(operation="AUTHOR_REMEDIATION", status="IDEMPOTENT",
+            canonical_destination=remediation_ref, canonical_sha=binding.existing_sha, replayed=True,
+            detail=f"identical REMEDIATION already canonicalized for {source_id}-{finding_id}")
+    try:
+        validate_remediation(review=binding.review, remediation=remediation, task=binding.task)
+        if remediation.action == "CODE_FIX" and not remediation.modification_scope:
+            raise ValueError("CODE_FIX remediation modification scope is empty")
+        if not remediation.affected_verification or set(remediation.affected_verification) - set(binding.task.verification.required):
+            raise ValueError("REMEDIATION affected verification must select authorized TASK commands")
+    except ValueError as exc:
         raise AuthoringIngressError(f"remediation validation failed: {exc}") from exc
-
-    # Check if finding is already resolved by subsequent published main
-    main_sha = _resolve_ref_sha(repo, "refs/heads/main", remote)
-    if main_sha is not None:
-        _fetch_if_remote(repo, remote, main_sha)
-        code, _, _ = _git(
-            repo,
-            "merge-base",
-            "--is-ancestor",
-            review.reviewed_sha,
-            main_sha,
-            allow_fail=True,
-        )
-        if code == 0 and main_sha != review.reviewed_sha:
-            # Main has advanced past reviewed_sha; verify finding isn't already resolved
-            try:
-                obs = observe_unified_state(task_id, repo=repo)
-            except Exception as exc:
-                raise AuthoringIngressError(
-                    f"failed to resolve canonical correction state: {exc}"
-                ) from exc
-
-            is_outstanding = any(
-                f.get("source_run_id") == source_run_id
-                and f.get("finding_id") == finding_id
-                and f.get("review_id") == review.review_id
-                and f.get("reviewed_sha") == review.reviewed_sha
-                for f in obs.outstanding_findings
-            )
-            if not is_outstanding:
-                raise AuthoringIngressError(
-                    f"finding {finding_id} is already resolved, superseded, or otherwise no longer outstanding"
-                )
-
+    fresh = _read_direct_remediation_binding(envelope, repo)
+    if replace(fresh, correction_state=None, checkout_sha=None) != binding:
+        raise AuthoringIngressError("canonical REMEDIATION inputs moved before mutation admission")
+    binding = fresh
     remediation_bytes = payload_str.encode("utf-8")
-    remediation_path = (
-        f".ai/remediations/REMEDIATION-{source_run_id}-{finding_id}.yaml"
-    )
-    audit_binding = _validate_authoring_handoff(envelope, repo)
-    _recheck_authoring_binding(envelope, repo, audit_binding)
-    root_tree = _tree_with_metadata(
-        repo, decision_sha, remediation_path, remediation_bytes
-    )
-
-    commit_sha = _commit_tree(
-        repo,
-        root_tree,
-        [decision_sha],
-        f"remediation: {source_run_id}-{finding_id}",
-    )
-
-    _validate_metadata_commit(
-        repo,
-        commit_sha,
-        expected_parent_sha=decision_sha,
-        metadata_path=remediation_path,
-        metadata_bytes=remediation_bytes,
-        operation="AUTHOR_REMEDIATION",
-    )
-    _recheck_authoring_binding(envelope, repo, audit_binding)
-    _publish_ingress_ref(
-        repo, remote, remediation_ref, commit_sha, expect_missing=True
-    )
-
-    return IngressResult(
-        operation="AUTHOR_REMEDIATION",
-        status="CANONICALIZED",
-        canonical_destination=remediation_ref,
-        canonical_sha=commit_sha,
-        replayed=False,
-        detail=f"canonicalized remediation for {source_run_id}-{finding_id}",
-    )
+    root_tree = _tree_with_metadata(repo, decision_sha, remediation_path, remediation_bytes)
+    _recheck_direct_remediation_binding(envelope, repo, binding)
+    commit_sha = _commit_tree(repo, root_tree, [decision_sha], f"remediation: {source_id}-{finding_id}")
+    _validate_metadata_commit(repo, commit_sha, expected_parent_sha=decision_sha,
+        metadata_path=remediation_path, metadata_bytes=remediation_bytes, operation="AUTHOR_REMEDIATION")
+    _publish_ingress_ref(repo, binding.transport[0], remediation_ref, commit_sha, expect_missing=True,
+        push_destination=binding.transport[1],
+        before_publish=lambda: _recheck_direct_remediation_binding(envelope, repo, binding))
+    return IngressResult(operation="AUTHOR_REMEDIATION", canonical_destination=remediation_ref,
+        canonical_sha=commit_sha, detail=f"canonicalized remediation for {source_id}-{finding_id}")
 
 
 # ---------------------------------------------------------------------------
@@ -2627,9 +2659,10 @@ def _publish_ingress_ref(
         )
     if push_destination is not None and (
         remote is None or not expect_missing or before_publish is None
-        or not ref.startswith(("refs/heads/aios/repair/", REPAIR_SUPERSESSION_PREFIX))
+        or not ref.startswith(("refs/heads/aios/repair/", REPAIR_SUPERSESSION_PREFIX,
+                               "refs/heads/aios/remediation/"))
     ):
-        raise AuthoringIngressError("captured push destination requires a bound immutable REPAIR writer")
+        raise AuthoringIngressError("captured push destination requires a bound immutable correction writer")
 
     critical = ref == "refs/heads/main"
     if ref.startswith("refs/heads/aios/review-decision/"):

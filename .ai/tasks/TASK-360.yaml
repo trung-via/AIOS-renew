@@ -1,0 +1,209 @@
+task_id: TASK-360
+revision: 1
+goal: >-
+  Complete the approved BO-7 direct final-contract correction authoring cutover
+  by enabling AUTHOR_REMEDIATION to canonicalize one valid final REMEDIATION
+  contract without any serialized Brain audit handoff, Decision Packet fingerprint
+  or derived support hashes as mutation admission prerequisites, matching the
+  published direct AUTHOR_REPAIR boundary without expanding its authority.
+problem: >-
+  Published AUTHOR_REPAIR already admits an exact final contract using Runtime-owned
+  deterministic canonical reconstruction. AUTHOR_REMEDIATION still calls
+  _validate_authoring_handoff and _recheck_authoring_binding, which require
+  Stage-1/Stage-2 serialization, complete Decision Packet reconstruction and
+  broad working-tree .ai parity. A Human-approved bounded AC4 correction for
+  REVIEW-359-002 / FINDING-359-002-001 is blocked before authoring because that
+  serialized support cannot be produced through the GitHub Brain carrier and a
+  local helper encounters missing .ai/tasks files under an older checkout.
+  This is duplicate pre-authorization support plumbing, not a reason to waive
+  exact REVIEW/finding/TASK/RESULT/correction provenance or automatically run it.
+assumptions:
+  - >-
+    At TASK authoring, canonical main is
+    79d2f2fab7bd3389adef9b1cb7bed2137b10fdbb. Runtime must recheck
+    currentness, expected-main CAS and exact TASK identity before admission.
+    TASK-360 is prospective and does not mutate or repair earlier lineage.
+  - >-
+    Human expressly prioritizes completing AUTHOR_REMEDIATION direct final-contract
+    ingress now as the remaining BO-7 correction-authoring slice. Canonical TASK-348
+    established the direct AUTHOR_REPAIR precedent, not generic authority to skip
+    review or verification for remediation.
+  - >-
+    Current prospective semantic audit identity is aios-adaptive-brain-audit-v1,
+    version 1, digest
+    982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718.
+    Brain still owns CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE for new
+    REMEDIATION_AUTHORING decisions; Runtime no longer uses their serialized
+    material as an independent mutation gate after this TASK is published.
+  - >-
+    REVIEW-359-002 CHANGES_REQUIRED decision
+    2379c6d7f10f0a7aa67d4ec0a7d18c147ba773c6 concerns source candidate
+    aeeffd4dceae4e5409fa7449d1150428b97251b5 and one AC4 finding.
+    It is an immutable representative regression, not a remediation authorization
+    or permission for TASK-360 to execute its correction.
+  - >-
+    Existing GitHub Issue ingress already delivers AUTHOR_REMEDIATION envelopes
+    and existing REMEDIATION INTENT/A3 can hand an independently authorized
+    correction to self-host. Executor selection remains a later explicit Human
+    delegation, not a TASK field or authoring default.
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+    - docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+    - .ai/roadmap-state.yaml
+    - .ai/brain-audit-profiles.yaml
+    - .ai/tasks/TASK-348.yaml
+    - .ai/tasks/TASK-359.yaml
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/review.py
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/github_issue_ingress.py
+    - src/aios_renew/remote_surface.py
+    - src/aios_renew/operator.py
+    - tests/test_authoring_ingress.py
+    - tests/test_github_issue_ingress.py
+  modify:
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_authoring_ingress.py
+    - tests/test_github_issue_ingress.py
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+non_goals:
+  - No production code implemented by Brain; Executor owns all HOW.
+  - No waiver of two-stage Brain semantic audit, Human correction strategy,
+    reviewed source binding, Runtime mutation authority, semantic Reviewer,
+    Publisher or existing independent Human A3 execution approval.
+  - No direct AUTHOR_REPAIR/AUTHOR_TASK behavioral redesign, second planner,
+    lifecycle router, state database, dynamic executor selector, automatic
+    remediation selector, retry/failover, broader exception or workflow rewrite.
+  - No change to frozen Kernel, constitutional governance, Human roadmap NEXT,
+    upstream/downstream pins, publication policy or historical TASK/RUN/RESULT/
+    FAILURE/REVIEW/REMEDIATION/REPAIR identities and terminal outcomes.
+  - No automatic AUTHOR_REMEDIATION for TASK-359, auto-dispatch of its finding,
+    replay of PRIMARY or conversion of REVIEW-359-002 CHANGES_REQUIRED into PASS.
+  - No broad trust of arbitrary dirty working-tree .ai content or private
+    verification output in public correction metadata.
+constraints:
+  hard:
+    - >-
+      A final AUTHOR_REMEDIATION envelope shall be admitted directly from the
+      final parse_remediation/validate_remediation family contract, one exact
+      source_run_id, finding_id and expected reviewed-source SHA. Omission of
+      audited_handoff, packet fingerprint, Stage-1/Stage-2 audit serialization,
+      derived support hashes and global packet-recomposition proof must not
+      reject an otherwise valid final contract. Any legacy supplied support
+      material is either explicitly rejected as a new mutation input or treated
+      strictly as inert compatibility data; never an alternate admission route.
+    - >-
+      Reconstruct source TASK identity/revision, original RUN/RESULT/EVIDENCE,
+      correction predecessor where applicable, immutable REVIEW decision,
+      CHANGES_REQUIRED verdict, exact finding, action, legal modification scope,
+      exact TASK verification policy/affected commands and outstanding canonical
+      correction state from current canonical refs, not caller assertions or a
+      second Brain/Runtime semantic verdict. Preserve native historical read
+      semantics and corrected-result DELTA ancestry.
+    - >-
+      Bind mutation to exact source RUN, unique chosen finding, reviewed source,
+      REVIEW decision commit/ref and current correction state. Recheck relevant
+      canonical ref and outstanding finding currentness immediately before
+      the single-owner metadata commit and expected-old-ref CAS. Reject wrong
+      TASK, stale decision, replaced/superseded/resolved finding, conflicting
+      correction, replay collision and moved remote; identical canonical
+      remediation replay remains non-mutating.
+    - >-
+      Remove only unrelated broad local .ai directory parity and derived
+      context serialization as admission prerequisites for AUTHOR_REMEDIATION.
+      Read exact needed source from authenticated canonical Git objects and
+      remote refs and independently verify source/identity/trust. Never accept
+      an actually consumed stale or forged local file, unbound bytes, dirty
+      executable source, missing required canonical object, insufficient
+      fetch or non-canonical repository identity. Older checkout with absent
+      unrelated TASK files must not by itself force Human-side restore.
+    - >-
+      Preserve the existing GitHub Issue carrier actor, origin/provenance and
+      allowlist checks; current correction admission/freshness/immutable
+      metadata safety; all role/private/public redaction; the distinct
+      post-authorization Human A3 REMEDIATION INTENT and self-host wake flow.
+      No Executor/model/reasoning-effort selection inside AUTHOR_REMEDIATION.
+    - >-
+      Preserve strict current-family verification policy including minimum-
+      sufficient-v1 for new V1 correction, allowed selected affected commands
+      and no implicit full-suite tests. Historical V1/V2 contract decoding and
+      immutable replay remain compatible; reusing existing correct Runtime
+      EVIDENCE requires original exact bindings. Any effect requiring another
+      file, new trust root or authority must block, not silently widen scope.
+    - >-
+      Revise only current prospective AUTHOR_REMEDIATION admission language
+      in the three listed normative documents to reflect the reviewed
+      implementation; leave archived audit-profile/history assertions and
+      Human planning state intact. Distinguish semantic audit obligation from
+      support serialization and from Runtime verification/EVIDENCE.
+acceptance:
+  - id: AC1
+    condition: >-
+      A synthetic fresh and otherwise valid AUTHOR_REMEDIATION request without
+      audited_handoff or any Decision Packet/hash support is validated and
+      canonicalized as the exact final REMEDIATION contract via the existing
+      one-owner GitHub Issue/Runtime ingress boundary.
+  - id: AC2
+    condition: >-
+      Direct authoring independently binds canonical TASK revision, source
+      RUN/RESULT/EVIDENCE, source REVIEW decision and reviewed SHA, one
+      CHANGES_REQUIRED finding, action, scope, verification policy and affected
+      commands, including a repaired PRIMARY or REMEDIATION source case,
+      without trusting caller-supplied derived facts.
+  - id: AC3
+    condition: >-
+      Missing, malformed, stale, forged, cross-task, wrong-finding, resolved,
+      superseded, conflicting, scope-widening, wrong-verification-policy and
+      wrong-source requests fail closed with zero unauthorized canonical ref
+      mutations or RUN creation; legitimate outstanding findings remain
+      individually authorable without a hidden automatic selector.
+  - id: AC4
+    condition: >-
+      Direct AUTHOR_REMEDIATION uses exact subject-specific currentness and
+      expected-old Git ref CAS at all mutation boundaries; it preserves
+      identical-payload read-only replay and rejects moved REVIEW/ref,
+      concurrent remediation collisions or changed canonical correction state
+      without consulting obsolete blanket serialized-audit fingerprints.
+  - id: AC5
+    condition: >-
+      Fresh canonical-source-backed authoring remains usable when local .ai
+      contains missing unrelated TASK files or an older non-authoritative
+      checkout, without accepting any actually used untrusted local files,
+      dirty executable checkout, malformed canonical content or missing exact
+      authenticated canonical source; focused real-Git tests distinguish
+      these positive and negative boundaries.
+  - id: AC6
+    condition: >-
+      Existing correction carrier handles a final-only AUTHOR_REMEDIATION
+      request and preserves separate Human A3/REMEDIATION INTENT and self-host
+      delegation, while AUTHOR_TASK direct admission, AUTHOR_REPAIR direct
+      admission, Review submission, Publisher and historical correction
+      lineage retain their previously lawful independent behavior.
+  - id: AC7
+    condition: >-
+      Historical serialized audit handoffs cannot become a second final-
+      contract authority or alter admissibility based only on hashing or
+      serialization differences, and all prospective contract guidance in
+      the three permitted normative documents accurately states the final-
+      contract boundary while retaining V1 Brain semantic audit discipline.
+  - id: AC8
+    condition: >-
+      Focused deterministic positive and adversarial tests cover all above
+      direct admission, currentness, scope, historical and carrier surfaces
+      with code/document changes confined to exactly the permitted files
+      and no new lifecycle database, router, Executor picker or automatic
+      correction/publication path.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_authoring_ingress.py tests/test_github_issue_ingress.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

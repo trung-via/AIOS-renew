@@ -56,9 +56,49 @@ cannot consume a new origin proof; revisions preserve canonical affinity.
 
 Brain must still perform `CONSTRUCT` then `ADVERSARIAL_AUDIT_AND_RECONCILE`. Its support
 material is semantic discipline, not canonical engineering truth or Runtime mutation
-authority. AUTHOR_REMEDIATION and AUTHOR_REPAIR retain their existing audited handoff,
-canonical reconstruction, lineage and freshness contracts. These changes apply upon
-publication of BO-1; the bounded transition TASK may use the previously published gate.
+authority. These TASK changes apply upon publication of BO-1; the bounded transition
+TASK may use the previously published gate. The published TASK-348 AUTHOR_REPAIR
+boundary independently admits its final contract without serialized audit support.
+
+## Direct final REMEDIATION mutation boundary after TASK-360
+
+After TASK-360 publication, AUTHOR_REMEDIATION accepts the final
+`parse_remediation` / `validate_remediation` family contract through the existing
+single-owner Issue/Runtime ingress. Select exactly one `source_run_id`, `finding_id`
+and expected reviewed-source SHA. Runtime reconstructs the canonical TASK identity
+and revision, RUN/RESULT/EVIDENCE, correction ancestry, immutable CHANGES_REQUIRED
+REVIEW decision and that unique outstanding finding. Successful repaired PRIMARY
+and REMEDIATION sources retain their original result base and DELTA ancestry.
+Action, scope within TASK.scope.modify, original constraints, exact TASK verification
+policy and selected authorized affected commands remain mandatory. New V1 correction
+uses `minimum-sufficient-v1`; historical V1/V2 families keep their exact policy.
+
+Omit `audited_handoff` and all Decision Packet/hash support. If legacy handoff data
+is supplied, it remains inert: no shape, hash, profile, stage serialization or candidate
+inside it grants authority or affects final-contract admissibility. It is neither
+persisted in canonical correction metadata nor exposed in receipts. Active final
+payload/envelope fields cannot supply derived facts, arbitrary authority, destinations,
+Executor, model or reasoning effort. There is no alternate serialized-audit route.
+
+Currentness binds the exact source, REVIEW decision/ref, chosen finding and current
+canonical correction state. Runtime rechecks before its metadata commit and at local
+ref CAS and push, with the captured upstream destination and expected-missing ref
+lease. Stale, resolved, superseded or competing subjects fail closed; no automatic
+finding selector is introduced. Identical immutable canonical replay is read-only,
+including equivalent final contract formatting; original metadata bytes stay intact.
+
+Admission does not prove broad local `.ai` parity or recompute serialized audit
+context. Unrelated missing TASK files and an older clean non-authoritative checkout
+are allowed. The exact TASK consumed by the existing state observer must match its
+authenticated canonical source. Missing or forged consumed local files, local Runtime
+substitution, dirty executable checkout, unauthenticated checkout ancestry, malformed
+canonical objects and missing exact remote/fetched source remain blocking.
+
+Brain's V1 `CONSTRUCT` and `ADVERSARIAL_AUDIT_AND_RECONCILE` remain mandatory semantic
+discipline. Their support is independent of Runtime's deterministic contract checks,
+verification and EVIDENCE. Authoring creates no RUN, execution, approval, publication
+or roadmap advancement. Existing carrier checks and separate Human A3 / REMEDIATION
+INTENT, followed by explicit self-host delegation, retain their existing owners.
 
 ## Declare acceptance proof phase in Stage 2 as Brain semantic discipline
 
@@ -93,9 +133,10 @@ ledger gate is superseded for AUTHOR_TASK only by the post-BO-1 direct boundary 
 The ledger is transient cognitive support, never lifecycle truth, evidence or a
 persistent reasoning record. Do not add it to the TASK candidate or canonical TASK
 bytes; frozen acceptance entries still contain only `id` and `condition`.
-REMEDIATION_AUTHORING, REPAIR_AUTHORING and other flows retain their existing
-contracts and reject this TASK-only material. Identical historical TASK replay
-remains non-mutating; new TASK identities and revisions also do not require a Runtime
+Within Brain's semantic audit protocol, REMEDIATION_AUTHORING, REPAIR_AUTHORING
+and other flows retain their existing contracts and reject this TASK-only material.
+Runtime does not inspect a legacy correction audit handoff as a mutation authority.
+Identical historical TASK replay remains non-mutating; new TASK identities and revisions also do not require a Runtime
 ledger gate. This contract creates no RUN, execution, verification, verdict,
 publication or roadmap advancement.
 

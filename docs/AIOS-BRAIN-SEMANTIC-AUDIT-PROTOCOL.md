@@ -600,6 +600,11 @@ The audit and provider protocols validate and transport explicit exact V1 packag
 
 ### 18.7. Prospective correction consumer migration — TASK-342
 
+Historical migration record: the following describes TASK-342's published consumer
+gate. Its prospective serialized admission requirements are superseded by the
+published TASK-348 repair boundary and, after TASK-360 publication, section 18.8 below.
+The original audit/profile and historical lineage assertions remain unchanged.
+
 `AUTHOR_REPAIR` and `AUTHOR_REMEDIATION` reconstruct their existing exact canonical
 correction packet. The same composition path reads the canonical main roadmap's
 `adaptive_brain_audit_v1_priority_20261012.exclusive_prospective_cutover_20261012`
@@ -626,3 +631,49 @@ BO-1 `AUTHOR_TASK` remains direct final-contract ingress without a serialized
 audit prerequisite. No schema field, selector/router, persistent reasoning ledger,
 Runner/Reviewer/Publisher authority or lifecycle transition is added. Runtime owns
 canonical verification and EVIDENCE for the migration.
+
+
+### 18.8. Direct final correction contracts: TASK-348 / TASK-360
+
+The published AUTHOR_REPAIR boundary admits the final REPAIR contract directly.
+After TASK-360 publication, AUTHOR_REMEDIATION likewise admits one final
+`parse_remediation` / `validate_remediation` family contract with explicit source RUN,
+finding and expected reviewed-source SHA through the existing one-owner ingress.
+Runtime reconstructs TASK revision, RUN/RESULT/EVIDENCE, correction predecessor,
+exact CHANGES_REQUIRED REVIEW decision/ref and chosen outstanding finding from
+authenticated canonical objects and current refs. Repaired PRIMARY and REMEDIATION
+sources preserve their native historical result base and DELTA ancestry. Action,
+bounded scope, original constraints, exact TASK verification policy and authorized
+affected commands remain subject to the existing family and canonical source checks.
+New V1 corrections use `minimum-sufficient-v1`; historical V1/V2 decoding and immutable
+replay retain their original bindings.
+
+Brain still selects only the exact approved `aios-adaptive-brain-audit-v1`, version 1,
+digest `982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`, for new
+REMEDIATION_AUTHORING decisions. It performs `CONSTRUCT` then
+`ADVERSARIAL_AUDIT_AND_RECONCILE`, with all eight ordered lenses and final closure.
+This semantic obligation does not require Runtime to revalidate serialized stages,
+Decision Packet fingerprints, derived support hashes or global context recomposition
+as another mutation authority. Supplied legacy correction `audited_handoff` is inert
+compatibility data, never an alternative contract, canonical metadata or receipt
+content; differences in its hashing, profile or serialization cannot change final
+contract admission. Historical Brain audit validators retain their read semantics.
+
+AUTHOR_REMEDIATION checks subject-specific currentness before the metadata commit
+and at local ref CAS and push: exact source, REVIEW decision/ref, outstanding finding
+and canonical correction state, with captured upstream and expected-missing destination
+lease. It rejects moved, resolved, superseded or conflicting subjects without a hidden
+finding selector. Identical canonical replay, including equivalent final-family
+formatting, is read-only and preserves the immutable stored bytes. Main movement
+with unchanged correction state and broad unrelated local `.ai` serialization/parity
+are outside this witness. An older
+clean checkout missing unrelated TASK files is usable, while every consumed local
+TASK must still equal authenticated canonical main. Dirty executable checkout,
+unauthenticated ancestry, substituted local Runtime state, malformed canonical content
+or missing exact authenticated/fetched sources fail closed.
+
+The existing GitHub Issue actor, origin/provenance and allowlist checks remain.
+Authoring creates no RUN and grants no Human A3 / REMEDIATION INTENT or self-host
+execution delegation. No Executor/model selector, correction router, automatic
+correction or publication is introduced. Runtime alone executes verification and
+constructs EVIDENCE; independent Reviewer and Publisher authority are unchanged.

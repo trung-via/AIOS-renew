@@ -13328,6 +13328,20 @@ def _publish_reconciliation_artifact(repo: Path) -> str:
     return commit
 
 
+def _corrupt_preservation_artifact(repo: Path, artifact: str, path: str, content: bytes) -> str:
+    """Inject malformed bytes after projection, retaining the isolated artifact shape."""
+    from aios_renew.authoring_ingress import _commit_tree, _read_commit_blob, _tree_with_metadata
+
+    tree = _tree_with_metadata(repo, artifact, path, content, replace_existing=True)
+    replacement = _commit_tree(repo, tree, [], "malformed preservation fixture")
+    assert git(repo, "show", "-s", "--format=%P", replacement) == ""
+    assert git(repo, "ls-tree", "-r", "--name-only", replacement) == git(
+        repo, "ls-tree", "-r", "--name-only", artifact,
+    )
+    assert _read_commit_blob(repo, replacement, path) == content
+    return replacement
+
+
 def _reconciliation_snapshot(repo: Path) -> tuple:
     state = runtime_paths(repo)
     git_dir = Path(git(repo, "rev-parse", "--absolute-git-dir"))
@@ -13818,7 +13832,15 @@ def test_primary_reconciliation_rejects_unproven_states_without_reset_or_run(
         (state.failures / "RUN-231-004.json").write_text(
             "{" if gate == "malformed-json" else json.dumps(failure), encoding="utf-8",
         )
-        _publish_reconciliation_artifact(repo)
+        if gate == "malformed-json":
+            artifact_ref = "refs/heads/aios/failure-artifacts/RUN-231-004"
+            replacement = _corrupt_preservation_artifact(
+                repo, git(remote, "rev-parse", artifact_ref), ".ai/transport/failure.json", b"{",
+            )
+            git(remote, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", str(repo), replacement)
+            git(remote, "update-ref", artifact_ref, replacement)
+        else:
+            _publish_reconciliation_artifact(repo)
     calls = []
     real_git = operator_module._git
 
@@ -13833,7 +13855,9 @@ def test_primary_reconciliation_rejects_unproven_states_without_reset_or_run(
     monkeypatch.setattr(operator_module, "reconcile_control_main", forbidden)
     monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
     before = _reconciliation_snapshot(repo)
-    with pytest.raises(OperatorError):
+    with pytest.raises(
+        OperatorError, match="FAILURE_SOURCE_DOCUMENT_INVALID" if gate == "malformed-json" else None,
+    ):
         operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"], runner=forbidden)
     assert _reconciliation_snapshot(repo) == before
     assert not any(root == repo and args[0] in {"reset", "merge", "push", "update-ref"}
@@ -13991,8 +14015,10 @@ def _reviewed_preservation_metadata(repo: Path, parent: str, documents: dict[str
     return tree_parent
 
 
-def _reviewed_divergence(root: Path, *, delta: bool = True, merge_ancestry: bool = False) -> tuple:
-    """RUN-262-004-shaped DELTA PASS with separate source/artifacts/decision."""
+def _reviewed_divergence(
+    root: Path, *, delta: bool = True, merge_ancestry: bool = False, verdict: str = "PASS",
+) -> tuple:
+    """Reviewed PRIMARY/DELTA with separate source/artifacts/decision."""
     repo = make_repo(root)
     remote = root / "upstream.git"
     task_path = repo / ".ai/tasks/TASK-262.yaml"
@@ -14081,8 +14107,11 @@ def _reviewed_divergence(root: Path, *, delta: bool = True, merge_ancestry: bool
     artifacts("RUN-262-004", run, package)
     review = {
         "review_id": "REVIEW-262-002", "reviewed_sha": candidate,
-        "mode": "DELTA" if delta else "PRIMARY", "verdict": "PASS",
-        "acceptance": {"AC1": "PASS"}, "findings": [],
+        "mode": "DELTA" if delta else "PRIMARY", "verdict": verdict,
+        "acceptance": {"AC1": "PASS" if verdict == "PASS" else "FAIL"},
+        "findings": [] if verdict == "PASS" else [{
+            **finding, "id": "FINDING-262-002", "issue": "The correction still needs independent review work.",
+        }],
     }
     if delta:
         review["prior_finding_id"] = finding["id"]
@@ -14096,10 +14125,14 @@ def _reviewed_divergence(root: Path, *, delta: bool = True, merge_ancestry: bool
 
 
 @pytest.mark.parametrize(("delta", "merge_ancestry"), [(True, False), (False, False), (True, True)])
+@pytest.mark.parametrize("verdict", ["PASS", "CHANGES_REQUIRED", "BLOCKED"])
 def test_primary_reviewed_result_preserves_complete_history_without_lifecycle_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, delta: bool, merge_ancestry: bool,
+    verdict: str,
 ) -> None:
-    repo, remote, candidate, target, *_ = _reviewed_divergence(tmp_path, delta=delta, merge_ancestry=merge_ancestry)
+    repo, remote, candidate, target, *_ = _reviewed_divergence(
+        tmp_path, delta=delta, merge_ancestry=merge_ancestry, verdict=verdict,
+    )
     before = _reconciliation_snapshot(repo)
     refs_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
     local_only = git(repo, "rev-list", candidate, "--not", target).splitlines()
@@ -14139,7 +14172,7 @@ def test_primary_reviewed_result_preserves_complete_history_without_lifecycle_mu
 @pytest.mark.parametrize("gate", [
     "unreviewed", "missing-artifacts", "substituted-artifacts", "source-tree-artifacts", "missing-result", "malformed-result",
     "duplicate-json", "wrong-result-head", "wrong-evidence-run", "wrong-run", "wrong-task", "wrong-revision",
-    "non-pass", "wrong-reviewed-sha", "substituted-decision", "ambiguous-decision", "decision-alias",
+    "changes-required-without-findings", "wrong-reviewed-sha", "substituted-decision", "ambiguous-decision", "decision-alias",
     "ambiguous-run", "mixed-families", "conflicting-terminal", "wrong-prior-finding",
     "extra-local-commit", "malformed-run", "wrong-decision-path", "unrelated-base", "substituted-prior",
 ])
@@ -14164,9 +14197,9 @@ def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
         # Import the replacement's object closure without changing other refs.
         git(remote, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", str(repo), replacement)
         git(remote, "update-ref", "refs/heads/aios/review-decision/RUN-262-003", replacement)
-    elif gate in {"non-pass", "wrong-reviewed-sha", "substituted-decision", "ambiguous-decision",
+    elif gate in {"changes-required-without-findings", "wrong-reviewed-sha", "substituted-decision", "ambiguous-decision",
                   "wrong-prior-finding", "wrong-decision-path"}:
-        if gate == "non-pass":
+        if gate == "changes-required-without-findings":
             review["verdict"] = "CHANGES_REQUIRED"
             review["acceptance"] = {"AC1": "FAIL"}
         elif gate == "wrong-reviewed-sha":
@@ -14214,6 +14247,14 @@ def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
             documents[".ai/transport/result.json"] = result_bytes
         if gate in {"source-tree-artifacts", "missing-result"}:
             replacement = _reviewed_preservation_metadata(repo, base, documents)
+        elif gate in {"malformed-result", "duplicate-json", "malformed-run"}:
+            # Prospective writers reject these bytes; corrupt only the synthetic
+            # remote artifact so the reader's JSON rejection is exercised.
+            path = ".ai/transport/run.json" if gate == "malformed-run" else ".ai/transport/result.json"
+            replacement = _corrupt_preservation_artifact(
+                repo, git(remote, "rev-parse", artifact_ref), path,
+                run_bytes if gate == "malformed-run" else result_bytes,
+            )
         else:
             # Keep the canonical artifact tree shape so these cases exercise
             # JSON and identity validation, rather than a tree-shape rejection.
@@ -14241,7 +14282,12 @@ def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
     monkeypatch.setattr(operator_module, "_git", record_git)
     monkeypatch.setattr(operator_module, "run_task", forbidden)
     monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
-    with pytest.raises(OperatorError):
+    expected_error = {
+        "malformed-result": "invalid canonical ResultPackage JSON",
+        "duplicate-json": "duplicate key: result",
+        "malformed-run": "canonical RUN JSON invalid",
+    }.get(gate)
+    with pytest.raises(OperatorError, match=expected_error):
         operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"], runner=forbidden)
     assert _reconciliation_snapshot(repo) == before
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
@@ -14250,10 +14296,11 @@ def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
 
 
 @pytest.mark.parametrize("drift", ["candidate", "artifact", "decision", "predecessor", "target", "mixed-proof"])
+@pytest.mark.parametrize("verdict", ["PASS", "CHANGES_REQUIRED", "BLOCKED"])
 def test_primary_reviewed_result_reproves_moved_transport_at_mutation_edge(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, drift: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, drift: str, verdict: str,
 ) -> None:
-    repo, remote, candidate, _, base, *_ = _reviewed_divergence(tmp_path)
+    repo, remote, candidate, _, base, *_ = _reviewed_divergence(tmp_path, verdict=verdict)
     real_git = operator_module._git
     calls = []
     edge_snapshot = None
@@ -14281,6 +14328,362 @@ def test_primary_reviewed_result_reproves_moved_transport_at_mutation_edge(
     assert edge_snapshot is not None
     assert _reconciliation_snapshot(repo) == edge_snapshot
     assert not any(root == repo and args[0] == "reset" for root, args in calls)
+
+
+# TASK-361: synthetic historical shape, never a replay of the real RUN-359-002.
+def _nonpass_primary_divergence(root: Path, *, verdict: str = "CHANGES_REQUIRED") -> SimpleNamespace:
+    import yaml
+
+    repo = make_repo(root)
+    remote = root / "upstream.git"
+    task_data = yaml.safe_load(TASK_SOURCE)
+    task_data["task_id"] = "TASK-359"
+    task_data["acceptance"] = [
+        {"id": f"AC{index}", "condition": f"Synthetic criterion {index} has independent proof."}
+        for index in range(1, 5)
+    ]
+    task_path = ".ai/tasks/TASK-359.yaml"
+    (repo / task_path).write_text(json.dumps(task_data), encoding="utf-8")
+    # Real wakeup admission needs the governed profile policy on both histories.
+    policy_path = ".ai/executor-profiles.yaml"
+    (repo / policy_path).write_bytes((Path(__file__).resolve().parents[1] / policy_path).read_bytes())
+    base = commit_setup_state(repo, task_path, policy_path, message="synthetic authorized TASK-359")
+    git(repo, "push", "--quiet", "origin", f"{base}:refs/heads/main")
+    # New TASK authoring on main is independent of the unpublished source history.
+    target = publish_upstream(repo, {
+        ".ai/tasks/TASK-360.yaml": TASK_SOURCE.replace("TASK-101", "TASK-360"),
+        "NEW_MAIN.txt": "synthetic newer canonical main\n",
+    }, message="synthetic TASK-360 authoring after RUN-359-002")
+    (repo / "OUTPUT.txt").write_text("earlier candidate work\n", encoding="utf-8")
+    earlier = commit_setup_state(repo, "OUTPUT.txt", message="synthetic earlier local work")
+    (repo / "OUTPUT.txt").write_text("candidate still requiring review changes\n", encoding="utf-8")
+    candidate = commit_setup_state(repo, "OUTPUT.txt", message="synthetic RUN-359-002 candidate")
+    state = runtime_paths(repo)
+    run = {
+        "run_id": "RUN-359-002", "task": {"id": "TASK-359", "revision": 1},
+        "executor": "codex", "base_sha": base, "workspace": str(repo),
+        "head_sha": None, "status": "ACTIVE",
+    }
+    package = canonical_result_payload("RUN-359-002", candidate, changed_files=["OUTPUT.txt"])
+    package["result"]["claims"] = [{
+        "id": "C1", "satisfies": [f"AC{index}" for index in range(1, 5)],
+        "claim": "Synthetic implementation is available for independent review.",
+        "evidence": [package["evidence"][0]["evidence_id"]],
+    }]
+    run_path = state.runs / "RUN-359-002.json"
+    result_path = state.results / "RUN-359-002.json"
+    run_path.write_bytes(json.dumps(run).encode())
+    result_path.write_bytes(json.dumps(package).encode())
+    transport_module.transport_post_pass(
+        repo, run_id=run["run_id"], head_sha=candidate, run_path=run_path, result_path=result_path,
+    )
+    review = {
+        "review_id": "REVIEW-359-002", "reviewed_sha": candidate, "mode": "PRIMARY",
+        "verdict": verdict, "acceptance": {f"AC{index}": "PASS" for index in range(1, 4)} | {"AC4": "FAIL"},
+        "findings": [{
+            "id": "FINDING-359-002-001", "basis": "AC4", "action": "CODE_FIX",
+            "location": "OUTPUT.txt:1", "issue": "The synthetic AC4 behavior is incomplete.",
+            "expected": "Provide the independently reviewed AC4 behavior.",
+        }],
+    }
+    content = json.dumps(review, indent=2).encode().replace(b"\n", b"\r\n") + b"  \r\n"
+    review_path = ".ai/reviews/REVIEW-359-002.yaml"
+    decision = _reviewed_preservation_metadata(repo, candidate, {review_path: content})
+    git(repo, "push", "--quiet", "origin", f"{decision}:refs/heads/aios/review-decision/RUN-359-002")
+    with RepositoryLock(state.lock):
+        pass
+    return SimpleNamespace(
+        repo=repo, remote=remote, state=state, base=base, earlier=earlier, candidate=candidate,
+        target=target, run=run, package=package, review=review, content=content,
+        decision=decision, review_path=review_path, run_path=run_path, result_path=result_path,
+    )
+
+
+def _replace_nonpass_proof(fixture: SimpleNamespace, *, review: bool = False) -> str:
+    """Replace only a synthetic remote proof, to exercise fail-closed readers."""
+    if review:
+        replacement = _reviewed_preservation_metadata(fixture.repo, fixture.candidate, {
+            fixture.review_path: json.dumps(fixture.review).encode(),
+        })
+        ref = "refs/heads/aios/review-decision/RUN-359-002"
+    else:
+        fixture.run_path.write_bytes(json.dumps(fixture.run).encode())
+        fixture.result_path.write_bytes(json.dumps(fixture.package).encode())
+        replacement = transport_module._create_artifacts_commit(
+            fixture.repo, run_path=fixture.run_path, result_path=fixture.result_path, run_id="RUN-359-002",
+        )
+        ref = "refs/heads/aios/artifacts/RUN-359-002"
+    git(fixture.remote, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", str(fixture.repo), replacement)
+    git(fixture.remote, "update-ref", ref, replacement)
+    return replacement
+
+
+@pytest.mark.parametrize("verdict", ["CHANGES_REQUIRED", "BLOCKED"])
+def test_primary_nonpass_historical_shape_preserves_verdict_findings_and_exact_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verdict: str,
+) -> None:
+    from aios_renew.authoring_ingress import _read_commit_blob
+
+    fixture = _nonpass_primary_divergence(tmp_path, verdict=verdict)
+    repo, remote = fixture.repo, fixture.remote
+    before = _reconciliation_snapshot(repo)
+    refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    restarted = []
+    profile = default_execution_profile("codex", "pending-361", repo)
+    blob = git(remote, "rev-parse", f"{fixture.target}:.ai/tasks/TASK-360.yaml")
+    argv = [
+        "wakeup", "pending-361", "TASK-360", "--task-revision", "1", "--task-blob-sha", blob,
+        "--task-commit-sha", fixture.target, "--executor", "codex", "--model", profile.model,
+        "--reasoning-effort", profile.reasoning_effort, "--model-source", "EXPLICIT",
+        "--effort-source", "EXPLICIT", "--repo", str(repo),
+    ]
+
+    def restart(command, **kwargs):
+        restarted.append((command, kwargs))
+        assert git(repo, "symbolic-ref", "HEAD") == "refs/heads/main"
+        assert git(repo, "rev-parse", "HEAD") == fixture.target
+        assert git(repo, "status", "--porcelain", "--untracked-files=all") == ""
+        return subprocess.CompletedProcess(command, 23)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("preservation cannot select correction, review, publication or execution")
+
+    for name in ("run_task", "run_repair", "run_remediation", "reconcile_control_main"):
+        monkeypatch.setattr(operator_module, name, forbidden)
+    monkeypatch.setattr(publication_module, "publish_review_decision", forbidden)
+    outcome = operator_module._preflight_primary_sync(repo, argv=argv, runner=restart)
+    assert outcome.restart_code == 23 and outcome.preflight_sha is None
+    assert len(restarted) == 1
+    assert restarted[0][0] == [sys.executable, "-m", "aios_renew.operator", *argv]
+    assert restarted[0][1]["env"]["AIOS_RESTART_ATTEMPTED"] == "1"
+    assert (repo / ".ai/tasks/TASK-360.yaml").is_file()
+    assert _reconciliation_snapshot(repo)[-1] == before[-1]
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
+    assert _read_commit_blob(remote, fixture.decision, fixture.review_path) == fixture.content
+    preserved_review = operator_module.parse_review(fixture.content.decode())
+    assert preserved_review.verdict == verdict
+    assert preserved_review.findings[0].id == "FINDING-359-002-001"
+    assert preserved_review.acceptance["AC4"] == "FAIL"
+    assert git(remote, "rev-parse", "refs/heads/aios/review/RUN-359-002") == fixture.candidate
+    assert operator_module._git_is_ancestor(remote, fixture.earlier, fixture.candidate)
+
+
+@pytest.mark.parametrize("gate", [
+    "unreviewed", "stale-candidate", "candidate-alias", "mixed-families", "extra-local-commit",
+    "wrong-run", "wrong-task", "wrong-revision", "unpreserved-base", "wrong-result-head",
+    "wrong-evidence-subject", "failed-evidence", "forged-evidence-reference", "unresolved-result", "wrong-changed-files",
+    "missing-finding-detail", "unknown-finding-basis", "finding-with-passing-basis", "no-failed-acceptance",
+    "blocked-missing-acceptance", "blocked-missing-structure", "blocked-no-evidence", "blocked-no-claims",
+])
+def test_primary_nonpass_proof_deficiencies_never_reset_restart_or_admit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gate: str,
+) -> None:
+    fixture = _nonpass_primary_divergence(
+        tmp_path, verdict="BLOCKED" if gate.startswith("blocked-") else "CHANGES_REQUIRED",
+    )
+    repo, remote = fixture.repo, fixture.remote
+    candidate_ref = "refs/heads/aios/review/RUN-359-002"
+    if gate == "unreviewed":
+        git(remote, "update-ref", "-d", "refs/heads/aios/review-decision/RUN-359-002")
+    elif gate == "stale-candidate":
+        git(remote, "update-ref", candidate_ref, fixture.base)
+    elif gate == "candidate-alias":
+        git(remote, "update-ref", "-d", candidate_ref)
+        git(remote, "update-ref", candidate_ref + "/alias", fixture.candidate)
+    elif gate == "mixed-families":
+        git(remote, "update-ref", "refs/heads/aios/failure/RUN-359-003", fixture.candidate)
+    elif gate == "extra-local-commit":
+        (repo / "OUTPUT.txt").write_text("unpreserved local commit\n", encoding="utf-8")
+        commit_setup_state(repo, "OUTPUT.txt", message="unpreserved extra work")
+    elif gate in {"missing-finding-detail", "unknown-finding-basis", "finding-with-passing-basis",
+                  "no-failed-acceptance", "blocked-missing-acceptance", "blocked-missing-structure"}:
+        if gate == "missing-finding-detail":
+            del fixture.review["findings"][0]["expected"]
+        elif gate == "unknown-finding-basis":
+            fixture.review["findings"][0]["basis"] = "AC999"
+        elif gate == "finding-with-passing-basis":
+            fixture.review["findings"][0]["basis"] = "AC1"
+        elif gate == "no-failed-acceptance":
+            fixture.review["acceptance"]["AC4"] = "PASS"
+        elif gate == "blocked-missing-acceptance":
+            del fixture.review["acceptance"]["AC4"]
+        else:
+            del fixture.review["findings"]
+        _replace_nonpass_proof(fixture, review=True)
+    else:
+        if gate == "wrong-run":
+            fixture.run["run_id"] = "RUN-359-003"
+        elif gate == "wrong-task":
+            fixture.run["task"]["id"] = "TASK-360"
+        elif gate == "wrong-revision":
+            fixture.run["task"]["revision"] = 2
+        elif gate == "unpreserved-base":
+            fixture.run["base_sha"] = fixture.decision
+        elif gate == "wrong-result-head":
+            fixture.package["result"]["head_sha"] = fixture.base
+        elif gate == "wrong-evidence-subject":
+            fixture.package["evidence"][0]["subject_sha"] = fixture.target
+        elif gate == "failed-evidence":
+            fixture.package["evidence"][0]["result"]["exit_code"] = 1
+        elif gate == "forged-evidence-reference":
+            fixture.package["result"]["claims"][0]["evidence"] = ["E-NOT-TRANSPORTED"]
+        elif gate == "unresolved-result":
+            fixture.package["result"]["unresolved"] = ["Remaining implementation"]
+        elif gate == "wrong-changed-files":
+            fixture.package["result"]["changed_files"] = []
+        elif gate == "blocked-no-evidence":
+            fixture.package["evidence"] = []
+        elif gate == "blocked-no-claims":
+            fixture.package["result"]["claims"] = []
+        _replace_nonpass_proof(fixture)
+    before = _reconciliation_snapshot(repo)
+    refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    calls = []
+    real_git = operator_module._git
+
+    def record(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("deficient proof cannot restart, admit or invoke")
+
+    monkeypatch.setattr(operator_module, "_git", record)
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
+    with pytest.raises(OperatorError):
+        operator_module._preflight_primary_sync(repo, argv=["wakeup", "pending-361", "TASK-360"], runner=forbidden)
+    assert _reconciliation_snapshot(repo) == before
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
+    assert not any(root == repo and args[0] == "reset" for root, args in calls)
+    assert not list(fixture.state.runs.glob("RUN-360-*.json"))
+
+
+@pytest.mark.parametrize("drift", ["target", "decision", "head", "upstream", "assume-unchanged", "ignored"])
+def test_primary_nonpass_rechecks_proof_after_final_worktree_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, drift: str,
+) -> None:
+    fixture = _nonpass_primary_divergence(tmp_path)
+    repo = fixture.repo
+    real_check = operator_module._require_primary_reconciliation_worktree
+    checks = 0
+    edge_snapshot = None
+    calls = []
+    real_git = operator_module._git
+
+    def record(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    def mutate_after_check(*args):
+        nonlocal checks, edge_snapshot
+        checks += 1
+        # Introduce worktree hazards before the second independent safety check;
+        # introduce proof/binding movement just after that check completes.
+        if checks == 2 and drift == "assume-unchanged":
+            git(repo, "update-index", "--assume-unchanged", "OUTPUT.txt")
+            (repo / "OUTPUT.txt").write_text("hidden local edit\n", encoding="utf-8")
+            edge_snapshot = _reconciliation_snapshot(repo)
+        elif checks == 2 and drift == "ignored":
+            with (repo / ".git/info/exclude").open("a", encoding="utf-8") as stream:
+                stream.write("\nNEW_MAIN.txt\n")
+            (repo / "NEW_MAIN.txt").write_text("ignored local content\n", encoding="utf-8")
+            edge_snapshot = _reconciliation_snapshot(repo)
+        real_check(*args)
+        if checks == 2:
+            if drift == "target":
+                git(fixture.remote, "update-ref", "refs/heads/main", fixture.base)
+            elif drift == "decision":
+                fixture.review["verdict"] = "BLOCKED"
+                _replace_nonpass_proof(fixture, review=True)
+            elif drift == "head":
+                git(repo, "reset", "--hard", fixture.base)
+            elif drift == "upstream":
+                git(repo, "config", "branch.main.merge", "refs/heads/other")
+            edge_snapshot = _reconciliation_snapshot(repo)
+
+    monkeypatch.setattr(operator_module, "_git", record)
+    monkeypatch.setattr(operator_module, "_require_primary_reconciliation_worktree", mutate_after_check)
+    with pytest.raises(OperatorError):
+        operator_module._preflight_primary_sync(repo, argv=["wakeup", "pending-361", "TASK-360"])
+    assert edge_snapshot is not None and _reconciliation_snapshot(repo) == edge_snapshot
+    assert not any(root == repo and args[0] == "reset" for root, args in calls)
+
+
+def test_primary_nonpass_lock_and_unsafe_generation_remain_pre_reset_blockers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _nonpass_primary_divergence(tmp_path)
+    before = _reconciliation_snapshot(fixture.repo)
+    with RepositoryLock(fixture.state.lock):
+        with pytest.raises(OperatorError, match="active"):
+            operator_module._preflight_primary_sync(fixture.repo)
+    assert _reconciliation_snapshot(fixture.repo) == before
+    monkeypatch.setenv("AIOS_RESTART_ATTEMPTED", "1")
+    with pytest.raises(OperatorError, match="unsafe reload/restart"):
+        operator_module._preflight_primary_sync(fixture.repo)
+    assert _reconciliation_snapshot(fixture.repo) == before
+
+
+@pytest.mark.parametrize("unsafe", [
+    "tracked", "untracked", "assume-unchanged", "ignored-collision", "submodule",
+    "detached", "wrong-branch", "ahead-only", "missing-upstream", "ambiguous-upstream", "remote-unavailable",
+])
+def test_primary_nonpass_preservation_never_overrides_repository_safety(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unsafe: str,
+) -> None:
+    fixture = _nonpass_primary_divergence(tmp_path)
+    repo = fixture.repo
+    if unsafe in {"tracked", "assume-unchanged"}:
+        if unsafe == "assume-unchanged":
+            git(repo, "update-index", "--assume-unchanged", "OUTPUT.txt")
+        (repo / "OUTPUT.txt").write_text("local edit must survive\n", encoding="utf-8")
+    elif unsafe == "untracked":
+        (repo / "UNTRACKED.txt").write_text("local work\n", encoding="utf-8")
+    elif unsafe == "ignored-collision":
+        with (repo / ".git/info/exclude").open("a", encoding="utf-8") as stream:
+            stream.write("\nNEW_MAIN.txt\n")
+        (repo / "NEW_MAIN.txt").write_text("ignored local work\n", encoding="utf-8")
+    elif unsafe == "submodule":
+        publisher = tmp_path / "publisher"
+        git(publisher, "update-index", "--add", "--cacheinfo", f"160000,{fixture.base},vendor")
+        git(publisher, "-c", "user.name=Synthetic Publisher", "-c", "user.email=synthetic@example.invalid",
+            "commit", "--quiet", "-m", "synthetic target gitlink")
+        git(publisher, "push", "--quiet", "origin", "HEAD:refs/heads/main")
+    elif unsafe == "detached":
+        git(repo, "checkout", "--quiet", "--detach", fixture.candidate)
+    elif unsafe == "wrong-branch":
+        git(repo, "checkout", "--quiet", "-b", "other")
+    elif unsafe == "ahead-only":
+        git(fixture.remote, "update-ref", "refs/heads/main", fixture.base)
+    elif unsafe == "missing-upstream":
+        git(repo, "config", "--unset", "branch.main.remote")
+    elif unsafe == "ambiguous-upstream":
+        git(repo, "config", "--add", "branch.main.merge", "refs/heads/other")
+    else:
+        git(repo, "remote", "set-url", "origin", str(tmp_path / "unavailable.git"))
+    before = _reconciliation_snapshot(repo)
+    refs = git(fixture.remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    real_git = operator_module._git
+    mutations = []
+
+    def record(root, *args, **kwargs):
+        if Path(root) == repo and args[0] in {"reset", "stash", "clean", "merge", "rebase", "push"}:
+            mutations.append(args)
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("repository safety rejection must precede restart or admission")
+
+    monkeypatch.setattr(operator_module, "_git", record)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
+    with pytest.raises(OperatorError):
+        operator_module._preflight_primary_sync(repo, runner=forbidden)
+    after = _reconciliation_snapshot(repo)
+    # The existing ahead-only path may refresh tracking/FETCH_HEAD observationally.
+    assert after[:2] == before[:2] and after[3:5] == before[3:5] and after[6:] == before[6:]
+    assert not mutations
+    assert git(fixture.remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
 
 
 # TASK-270: RUN-268 preservation before TASK-269 must retain exact REVIEW bytes.

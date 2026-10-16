@@ -27,7 +27,10 @@ from aios_renew.authoring_ingress import (
     execute_ingress,
 )
 from aios_renew.publication import publish_review_decision
+from aios_renew.review import parse_remediation
+from aios_renew.task import parse_task
 from aios_renew.review_transport import (
+    FailureDiagnosticError,
     ReviewTransportError,
     resolve_remote_repair_authorization,
     resolve_remote_task_lifecycle,
@@ -319,6 +322,10 @@ def test_direct_author_repair_historical_missing_phase_is_replay_only(tmp_path, 
     repo, remote, _, _, initial = completion_gate_supersession_fixture(tmp_path)
     failure_ref = "refs/heads/aios/failure-artifacts/RUN-254-001"
     def change_phase(document):
+        # Model an unprojected historical FAILURE, not a tampered current
+        # projection whose digest must reject before phase/replay handling.
+        document.pop("public_projection")
+        document["error"] = {"type": "OperatorError", "message": "historical fixture diagnostics"}
         if phase == "absent":
             document.pop("phase")
         else:
@@ -351,6 +358,30 @@ def test_direct_author_repair_historical_missing_phase_is_replay_only(tmp_path, 
         with pytest.raises(AuthoringIngressError, match="invalid phase"):
             execute_ingress(successor, repo=repo)
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+@pytest.mark.parametrize("phase", ["absent", None, "FORGED_PHASE"])
+def test_direct_author_repair_tampered_public_phase_never_replays(tmp_path, monkeypatch, phase):
+    repo, remote, _, _, initial = completion_gate_supersession_fixture(tmp_path)
+    historical_repair_fixture(initial, repo=repo)
+    failure_ref = "refs/heads/aios/failure-artifacts/RUN-254-001"
+    def change_phase(document):
+        assert "public_projection" in document
+        if phase == "absent":
+            document.pop("phase")
+        else:
+            document["phase"] = phase
+    substitute_transport_document(repo, remote, failure_ref, ".ai/transport/failure.json", change_phase)
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_repair_audit_dependencies(monkeypatch)
+    forbid_correction_mutation(monkeypatch)
+    # Even an otherwise identical historical authorization cannot bypass the
+    # integrity gate for a digest-bound public FAILURE.
+    with pytest.raises(AuthoringIngressError, match="invalid public FAILURE projection identity"):
+        execute_ingress(initial, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+    from aios_renew.operator import _runtime_paths_readonly
+    assert not _runtime_paths_readonly(repo).runs.exists()
 
 
 @pytest.mark.parametrize("next_action", ["WAIT", "NONE", "EXECUTE_PRIMARY", "RETRY_TRANSPORT"])
@@ -727,7 +758,7 @@ def test_direct_authoring_semantic_formatting_and_read_only_replay(tmp_path):
     "stage1_only", "third_stage", "packet", "profile", "profile_version", "profile_digest", "flow", "order", "missing_lens",
     "no_decision", "substitution", "reconciliation", "payload",
 ])
-def test_correction_audited_authoring_rejects_invalid_handoff_before_mutation(tmp_path, fault):
+def test_historical_correction_audit_decoder_rejects_invalid_handoff(tmp_path, fault):
     repo, remote, _, _, initial = exact_correction_fixture(tmp_path, "AUTHOR_REMEDIATION", "matching")
     envelope = audited_envelope(initial, repo)
     handoff = copy.deepcopy(envelope.audited_handoff)
@@ -763,7 +794,7 @@ def test_correction_audited_authoring_rejects_invalid_handoff_before_mutation(tm
     else:
         envelope = replace(envelope, payload={**envelope.payload, "constraints": []})
     with pytest.raises(AuthoringIngressError):
-        execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
+        authoring_ingress_module._validate_authoring_handoff(replace(envelope, audited_handoff=handoff), repo)
     assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/remediation/RUN-105-001-F1")
 
 
@@ -934,39 +965,29 @@ def test_direct_author_task_rejects_unrelated_delta(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("movement", ("main", "correction", "canonical_policy", "input_at_publication"))
-def test_correction_audited_authoring_rechecks_freshness(tmp_path, monkeypatch, movement):
+def test_historical_correction_audit_binding_rechecks_its_own_inputs(tmp_path, monkeypatch, movement):
     repo, remote, main_sha, _, initial = exact_correction_fixture(tmp_path, "AUTHOR_REMEDIATION", "matching")
     envelope = audited_envelope(initial, repo)
+    binding = authoring_ingress_module._validate_authoring_handoff(envelope, repo)
     if movement == "input_at_publication":
-        original = authoring_ingress_module._commit_tree
-        def move_input(*args, **kwargs):
-            commit = original(*args, **kwargs)
-            path = repo / ".ai/brain-return-contracts.yaml"
-            path.write_bytes(path.read_bytes() + b"\n# moved after audit\n")
-            return commit
-        monkeypatch.setattr(authoring_ingress_module, "_commit_tree", move_input)
+        path = repo / ".ai/brain-return-contracts.yaml"
+        path.write_bytes(path.read_bytes() + b"\n# historical audit input drift\n")
+    elif movement == "canonical_policy":
+        path = ".ai/roadmap-state.yaml"
+        roadmap = yaml.safe_load((repo / path).read_bytes())
+        roadmap["adaptive_brain_audit_v1_priority_20261012"][
+            "exclusive_prospective_cutover_20261012"]["profile_digest"] = "0" * 64
+        canonical_audit_fixture_update(repo, remote, path, roadmap)
+    elif movement == "main":
+        tree = git(repo, "rev-parse", f"{main_sha}^{{tree}}")
+        commit = authoring_ingress_module._commit_tree(repo, tree, [main_sha], "movement")
+        git(remote, "fetch", "--no-tags", str(repo), commit)
+        git(remote, "update-ref", "refs/heads/main", commit)
     else:
-        from aios_renew import brain_audit
-        original = brain_audit.validate_stage2
-        def move_ref(*args, **kwargs):
-            audit = original(*args, **kwargs)
-            if movement == "canonical_policy":
-                path = ".ai/roadmap-state.yaml"
-                roadmap = yaml.safe_load((repo / path).read_bytes())
-                roadmap["adaptive_brain_audit_v1_priority_20261012"][
-                    "exclusive_prospective_cutover_20261012"]["profile_digest"] = "0" * 64
-                canonical_audit_fixture_update(repo, remote, path, roadmap)
-            elif movement == "main":
-                tree = git(repo, "rev-parse", f"{main_sha}^{{tree}}")
-                commit = authoring_ingress_module._commit_tree(repo, tree, [main_sha], "movement")
-                git(remote, "fetch", "--no-tags", str(repo), commit)
-                git(remote, "update-ref", "refs/heads/main", commit)
-            else:
-                git(remote, "update-ref", "refs/heads/aios/repair/RUN-OTHER", main_sha)
-            return audit
-        monkeypatch.setattr(brain_audit, "validate_stage2", move_ref)
+        git(remote, "update-ref", "refs/heads/aios/repair/RUN-OTHER", main_sha)
+    forbid_correction_mutation(monkeypatch)
     with pytest.raises(AuthoringIngressError, match="freshness"):
-        execute_ingress(envelope, repo=repo)
+        authoring_ingress_module._recheck_authoring_binding(envelope, repo, binding)
     assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/remediation/RUN-105-001-F1")
 
 
@@ -978,10 +999,9 @@ def test_audited_handoff_has_one_closed_correction_surface_and_excludes_reviewer
         "audited_handoff": {"format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1, "stage1": {}, "stage2": {}},
     }
     for key in ("decision_packet", "canonical_state", "provider", "model", "session"):
-        invalid = copy.deepcopy(envelope)
-        invalid["audited_handoff"][key] = {}
-        with pytest.raises(AuthoringIngressError, match="two-stage"):
-            parse_envelope(invalid)
+        legacy = copy.deepcopy(envelope)
+        legacy["audited_handoff"][key] = {}
+        assert parse_envelope(legacy).audited_handoff == legacy["audited_handoff"]
     envelope.update(operation="SUBMIT_REVIEW", identity={"run_id": "RUN-105-001"})
     with pytest.raises(AuthoringIngressError, match="SUBMIT_REVIEW"):
         parse_envelope(envelope)
@@ -1431,12 +1451,16 @@ def setup_candidate_lineage(
     result_override: dict[str, object] | None = None,
     roadmap: dict | None = None,
     audit_profiles: bytes | None = None,
+    task_only_checkpoint: bool = False,
 ) -> dict[str, object]:
     repo, remote, base_sha = setup_test_repo(
         root, task_id=task_id, roadmap=roadmap, audit_profiles=audit_profiles)
     task_dir = repo / ".ai" / "tasks"
     task_dir.mkdir(parents=True, exist_ok=True)
     (task_dir / f"{task_id}.yaml").write_bytes(task_source.encode("utf-8"))
+    if task_only_checkpoint:
+        commit_fixture_state(repo, paths=(f".ai/tasks/{task_id}.yaml",), message="older TASK-only checkout",
+                             user_name="AIOS Test", user_email="test@example.invalid")
     if roadmap is not None:
         (task_dir / "TASK-999.yaml").write_bytes(task_source.replace(task_id, "TASK-999").encode("utf-8"))
     workflow = repo / ".github" / "workflows" / "aios-auto-publish.yml"
@@ -2703,29 +2727,7 @@ constraints:
         expected_state={"expected_reviewed_sha": candidate_sha},
         payload=remediation_payload,
     )
-    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
-        execute_ingress(rem_env, repo=repo)
-    rem_env = audited_envelope(rem_env, repo)
-    assert "acceptance_phase_ledger" not in rem_env.audited_handoff["stage2"]
-    cross_flow = copy.deepcopy(rem_env.audited_handoff)
-    cross_flow["stage2"]["acceptance_phase_ledger"] = []
-    with pytest.raises(AuthoringIngressError, match="TASK_AUTHORING-only"):
-        execute_ingress(replace(rem_env, audited_handoff=cross_flow), repo=repo)
-    assert git(remote, "for-each-ref", "--format=%(objectname)", f"refs/heads/aios/remediation/{run_id}-F1") == ""
-    from aios_renew import brain_audit
-    validate = brain_audit.validate_stage2
-    movement_ref = "refs/heads/aios/repair/RUN-OTHER"
-    main_sha = git(repo, "rev-parse", "refs/heads/main")
-    def move_canonical_input(*args, **kwargs):
-        audit = validate(*args, **kwargs)
-        git(remote, "update-ref", movement_ref, main_sha)
-        return audit
-    with monkeypatch.context() as drift:
-        drift.setattr(brain_audit, "validate_stage2", move_canonical_input)
-        with pytest.raises(AuthoringIngressError, match="freshness"):
-            execute_ingress(rem_env, repo=repo)
-    assert git(remote, "for-each-ref", "--format=%(objectname)", f"refs/heads/aios/remediation/{run_id}-F1") == ""
-    git(remote, "update-ref", "-d", movement_ref)
+    forbid_repair_audit_dependencies(monkeypatch)
     result = execute_ingress(rem_env, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/remediation/{run_id}-F1"
@@ -2968,7 +2970,7 @@ constraints:
     # Rejection: finding is no longer outstanding after canonical main advanced past reviewed_sha
     with pytest.raises(
         AuthoringIngressError,
-        match="already resolved, superseded, or otherwise no longer outstanding",
+        match="canonically outstanding|canonical correction subject differs",
     ):
         execute_ingress(rem_env, repo=repo)
 
@@ -4480,13 +4482,18 @@ constraints: [Bounded mutation authority only.]
     failure_path = state / "failure.json"
     remediation_run_path.write_text(json.dumps(remediation_run_payload), encoding="utf-8")
     failure_path.write_text(json.dumps(failure), encoding="utf-8")
-    transport_failure(
-        repo,
-        run_id=remediation_run_id,
-        head_sha=failed_head_sha,
-        run_path=remediation_run_path,
-        failure_path=failure_path,
-    )
+    # This integrated wrapper is an immutable historical private carrier. The
+    # current public projection deliberately accepts only its simpler wrapper;
+    # seed the historical bytes directly so the real canonical readers, not the
+    # prospective public writer, exercise the native integrated ancestry.
+    from tests.test_operator import _reviewed_preservation_metadata
+    historical_failure = _reviewed_preservation_metadata(repo, failed_head_sha, {
+        ".ai/transport/run.json": remediation_run_path.read_bytes(),
+        ".ai/transport/failure.json": failure_path.read_bytes(),
+    })
+    git(remote, "fetch", "--no-tags", str(repo), historical_failure)
+    git(remote, "update-ref", f"refs/heads/aios/failure-artifacts/{remediation_run_id}", historical_failure)
+    git(remote, "update-ref", f"refs/heads/aios/failure/{remediation_run_id}", failed_head_sha)
 
     repair = {
         "repair_id": "REPAIR-140-009",
@@ -4950,7 +4957,7 @@ def correction_planning_state(planning, task_id):
 
 def exact_correction_fixture(
     tmp_path, operation, planning, *, multiple_findings=False, repair_phase="VERIFICATION",
-    audit_profiles=None,
+    audit_profiles=None, task_source=TASK_105_SOURCE, task_only_checkpoint=False,
 ):
     if operation == "AUTHOR_REPAIR":
         return completion_gate_supersession_fixture(
@@ -4958,7 +4965,8 @@ def exact_correction_fixture(
             phase=repair_phase, task_revision=1 if repair_phase == "VERIFICATION" else 2,
             audit_profiles=audit_profiles)
     lineage = setup_candidate_lineage(
-        tmp_path, roadmap=correction_planning_state(planning, "TASK-105"), audit_profiles=audit_profiles)
+        tmp_path, roadmap=correction_planning_state(planning, "TASK-105"), audit_profiles=audit_profiles,
+        task_source=task_source, task_only_checkpoint=task_only_checkpoint)
     repo, remote = lineage["repo"], lineage["remote"]
     run_id, head = lineage["run_id"], lineage["candidate_sha"]
     review = {"review_id": "REVIEW-105-001", "reviewed_sha": head,
@@ -4975,6 +4983,9 @@ def exact_correction_fixture(
     payload = {"finding_id": "F1", "action": "CODE_FIX", "reviewed_sha": head,
                "modification_scope": ["src/sample.py"], "affected_verification": ["git diff --check"],
                "constraints": ["Bounded mutation authority only."]}
+    policy = parse_task(task_source).verification.policy
+    if policy is not None:
+        payload["verification"] = {"policy": policy, "affected": payload.pop("affected_verification")}
     envelope = IngressEnvelope(
         "AIOS_INGRESS_ENVELOPE", 1, operation, {"source_run_id": run_id, "finding_id": "F1"},
         {"expected_reviewed_sha": head}, payload)
@@ -5032,14 +5043,14 @@ def test_v1_correction_selection_ignores_registry_order_and_validates_once(tmp_p
         return original(packet, selected, stage1, stage2)
     monkeypatch.setattr(brain_audit, "validate_stage2", record_validation)
     result = execute_ingress(envelope, repo=repo)
-    assert result.status == "CANONICALIZED" and calls == ([] if operation == "AUTHOR_REPAIR" else [ACTIVE_PROFILE_REF])
+    assert result.status == "CANONICALIZED" and calls == []
     assert git(remote, "rev-parse", "refs/heads/main") == main
     lineage_ref = (f"refs/heads/aios/failure-artifacts/{initial.identity['failed_run_id']}"
                    if operation == "AUTHOR_REPAIR" else
                    f"refs/heads/aios/review-decision/{initial.identity['source_run_id']}")
     assert git(remote, "rev-parse", lineage_ref) == lineage_sha
     assert execute_ingress(initial, repo=repo).status == "IDEMPOTENT"
-    assert calls == ([] if operation == "AUTHOR_REPAIR" else [ACTIVE_PROFILE_REF])  # Read-only replay adds no semantic audit.
+    assert calls == []  # Read-only replay adds no semantic audit.
 
 
 @pytest.mark.parametrize("fault", (
@@ -5105,7 +5116,7 @@ def test_v1_correction_missing_changed_or_unauthorized_policy_fails_closed(tmp_p
     forbid_correction_mutation(monkeypatch)
     monkeypatch.setattr(brain_audit, "validate_stage2", lambda *a, **k: pytest.fail("audit before valid V1 selection"))
     with pytest.raises(AuthoringIngressError):
-        execute_ingress(envelope, repo=repo)
+        authoring_ingress_module._validate_authoring_handoff(envelope, repo)
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
 
 
@@ -5115,7 +5126,7 @@ def test_v1_correction_missing_changed_or_unauthorized_policy_fails_closed(tmp_p
     ("brain-high-value-v3", "aios-adaptive-brain-audit-v1"),
     ("aios-adaptive-brain-audit-v1", "brain-high-value-v3"),
 ))
-def test_historical_v3_replay_cannot_authorize_new_or_mixed_correction(tmp_path, monkeypatch, operation, first_id, second_id):
+def test_historical_correction_audit_gate_rejects_mixed_profile_inputs(tmp_path, monkeypatch, operation, first_id, second_id):
     from aios_renew import brain_audit
     from tests.test_brain_audit import stage2_input
 
@@ -5139,7 +5150,7 @@ def test_historical_v3_replay_cannot_authorize_new_or_mixed_correction(tmp_path,
     forbid_correction_mutation(monkeypatch)
     monkeypatch.setattr(brain_audit, "validate_stage2", lambda *a, **k: pytest.fail("mismatched profile was audited"))
     with pytest.raises(AuthoringIngressError, match="profile mismatch"):
-        execute_ingress(replace(initial, audited_handoff=handoff), repo=repo)
+        authoring_ingress_module._validate_authoring_handoff(replace(initial, audited_handoff=handoff), repo)
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
 
 
@@ -5163,7 +5174,7 @@ def test_v1_correction_rejects_content_bound_malicious_material_before_mutation(
     before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
     forbid_correction_mutation(monkeypatch)
     with pytest.raises(AuthoringIngressError):
-        execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
+        authoring_ingress_module._validate_authoring_handoff(replace(envelope, audited_handoff=handoff), repo)
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
 
 
@@ -5205,8 +5216,7 @@ def test_exact_correction_packet_and_audited_ingress_ignore_planning_next(tmp_pa
         assert work.canonical_observation["unified_state"]["task"] == task
         assert resolve_flow(work).selected_flow == operation.replace("AUTHOR_", "") + "_AUTHORING"
         if operation == "AUTHOR_REMEDIATION":
-            with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
-                execute_ingress(envelope, repo=repo)
+            assert authoring_ingress_module._read_direct_remediation_binding(envelope, repo).run.run_id == envelope.identity["source_run_id"]
         else:
             assert authoring_ingress_module._read_direct_repair_binding(envelope, repo).run.run_id == envelope.identity["failed_run_id"]
     facts = packet.as_dict()["canonical_facts"]
@@ -5371,8 +5381,11 @@ def test_moved_immutable_correction_identity_invalidates_prior_audit(tmp_path, m
     if operation == "AUTHOR_REPAIR":
         audited = replace(audited, expected_state={**audited.expected_state,
                           "expected_failure_artifacts_sha": lineage_sha})
+    else:
+        audited = replace(audited, expected_state={**audited.expected_state,
+                          "expected_review_decision_sha": lineage_sha})
     expected_error = ("expected canonical FAILURE identity" if operation == "AUTHOR_REPAIR" else
-                      "Stage-1 packet, profile or construct lineage mismatch")
+                      "expected canonical REVIEW decision identity")
     with pytest.raises(AuthoringIngressError, match=expected_error):
         execute_ingress(audited, repo=repo)
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
@@ -5442,10 +5455,12 @@ def test_exact_remediation_invalid_lineage_fails_closed(tmp_path, monkeypatch, p
         substitute_transport_document(repo, remote, ref, path, change)
     before_refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
     forbid_correction_mutation(monkeypatch)
-    if fault == "review_identity":
-        with pytest.raises(AuthoringIngressError):
-            execute_ingress(audited, repo=repo)
+    if fault == "competing_lineage":
+        assert execute_ingress(envelope, repo=repo).replayed  # Identical immutable read only.
     else:
+        with pytest.raises(AuthoringIngressError):
+            execute_ingress(envelope, repo=repo)
+    if fault != "review_identity":
         with pytest.raises((ValueError, ReviewTransportError)):
             authoring_ingress_module._compose_authoring_packet(envelope, repo)
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
@@ -5708,28 +5723,34 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
               for path in directory.glob("*.json")}
     forbid_correction_mutation(monkeypatch)
     if corrupted_metadata:
-        from aios_renew.unified_state import _decode_remote_lifecycle
-        from aios_renew.operator import load_task
-        if protected and fault != "changed-correction":
-            # A public FAILURE cannot contain these unprojected raw records.
-            # Preserve the earlier privacy gate as well as direct-ingress denial.
-            with pytest.raises(ReviewTransportError, match="invalid canonical public FAILURE privacy"):
-                resolve_remote_task_lifecycle(repo, task_id="TASK-336", task_revision=1)
-            with pytest.raises(AuthoringIngressError, match="canonical correction subject differs from Unified State"):
-                execute_ingress(envelope, repo=repo)
-        else:
-            # Historical private records retain their exact role/owner parser.
+        if fault == "changed-correction":
+            from aios_renew.unified_state import _decode_remote_lifecycle
+            from aios_renew.operator import load_task
             canonical = resolve_remote_task_lifecycle(repo, task_id="TASK-336", task_revision=1)
-            parser_message = ("persisted repair_authorization_sha does not match current canonical authorization"
-                              if fault == "changed-correction" else r"EVIDENCE\.raw is required"
-                              if fault == "missing-raw" else "EVIDENCE identity outside a validated structural role"
+            with pytest.raises(ValueError, match="persisted repair_authorization_sha does not match current canonical authorization"):
+                _decode_remote_lifecycle(repo, load_task(repo, "TASK-336"), canonical)
+        else:
+            # Exact FAILURE readers now reject malformed records before lifecycle
+            # decoding. Keep both the public digest gate and private role/owner
+            # validation, including the concrete private rejection cause.
+            code = "FAILURE_PUBLIC_INTEGRITY_INVALID" if protected else "FAILURE_PRIVATE_INTEGRITY_INVALID"
+            with pytest.raises(FailureDiagnosticError, match="^" + code + "$") as rejected:
+                resolve_remote_task_lifecycle(repo, task_id="TASK-336", task_revision=1)
+            parser_message = ("invalid public FAILURE projection identity" if protected
+                              else "EVIDENCE.raw is required" if fault == "missing-raw"
+                              else "EVIDENCE identity outside a validated structural role"
                               if fault in {"misplaced-evidence-direct", "misplaced-evidence-unrelated-package",
                                            "misplaced-evidence-metadata-unrelated-package"}
                               else "FAILURE outside a validated structural role"
                               if fault == "misplaced-evidence-foreign-failure"
                               else "full EVIDENCE does not bind its FAILURE owner")
-            with pytest.raises(ValueError, match=parser_message):
-                _decode_remote_lifecycle(repo, load_task(repo, "TASK-336"), canonical)
+            assert isinstance(rejected.value.__cause__, ValueError)
+            assert str(rejected.value.__cause__) == parser_message
+        ingress_message = ("invalid public FAILURE projection identity"
+                           if protected and fault != "changed-correction"
+                           else "canonical correction subject differs from Unified State")
+        with pytest.raises(AuthoringIngressError, match=ingress_message):
+            execute_ingress(envelope, repo=repo)
     expected_message = {
         "stale-head": "expected failed head SHA mismatch",
         "wrong-tip": "REPAIR target differs from canonical failed RUN",
@@ -5745,6 +5766,8 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         "misplaced-evidence-unrelated-package": "canonical correction subject differs from Unified State",
         "misplaced-evidence-metadata-unrelated-package": "canonical correction subject differs from Unified State",
     }[fault]
+    if protected and corrupted_metadata and fault != "changed-correction":
+        expected_message = "invalid public FAILURE projection identity"
     with pytest.raises((AuthoringIngressError, ValueError), match=expected_message):
         authoring_ingress_module._compose_authoring_packet(envelope, repo)
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs
@@ -5753,3 +5776,351 @@ def test_terminal_reconciliation_task336_authoring_admission_blockers(tmp_path, 
         assert task_path.read_bytes() == task_bytes
     elif fault == "local-runtime-state":
         assert hosted_run.read_bytes() == lifecycle.terminals[-1].run
+
+
+# TASK-360: final-contract admission, independently authenticated canonical source,
+# exact correction currentness and existing one-owner carrier boundaries.
+@pytest.mark.parametrize("handoff", [None, {}, {"stage1": {}},
+    {"stage1": {"packet_fingerprint": "forged", "audit_profile_ref": {"id": "brain-high-value-v3"}},
+     "stage2": {"outcome": "NO_DECISION", "reconciled_candidate": {"action": "EVIDENCE_ONLY"}}},
+    {"command": "opaque historical serialization", "chain_of_thought": "private inert support"}])
+def test_direct_author_remediation_final_contract_and_read_only_replay(tmp_path, monkeypatch, handoff):
+    repo, remote, main, decision, initial = exact_correction_fixture(
+        tmp_path, "AUTHOR_REMEDIATION", "unrelated", task_source=V1_TASK_105_SOURCE)
+    body = {"format": initial.format, "version": 1, "operation": initial.operation,
+            "identity": initial.identity, "expected_state": initial.expected_state, "payload": initial.payload}
+    if handoff is not None:
+        body["audited_handoff"] = handoff
+    forbid_repair_audit_dependencies(monkeypatch)
+    result = execute_ingress(parse_envelope(body), repo=repo)
+    path = f".ai/remediations/REMEDIATION-{initial.identity['source_run_id']}-F1.yaml"
+    assert result.status == "CANONICALIZED" and not result.replayed
+    assert_exact_metadata_delta(repo, result.canonical_sha, decision, path,
+                               yaml.safe_dump(initial.payload, sort_keys=False).encode())
+    assert parse_remediation(git(repo, "show", f"{result.canonical_sha}:{path}")) == parse_remediation(yaml.safe_dump(initial.payload))
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+    from aios_renew.operator import _runtime_paths_readonly
+    state = _runtime_paths_readonly(repo)
+    assert not state.runs.exists()
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    # Historical replay does not reopen current authoring or use local execution.
+    state.runs.mkdir(parents=True)
+    (state.runs / "RUN-105-002.json").write_text('{"untrusted": "continuation"}', encoding="utf-8")
+    (repo / ".ai/tasks/TASK-105.yaml").unlink()
+    forbid_correction_mutation(monkeypatch)
+    replay = execute_ingress(replace(initial, payload=json.dumps(initial.payload, indent=3),
+        audited_handoff={"different": "serialization"}), repo=repo)
+    assert replay.replayed and replay.canonical_sha == result.canonical_sha
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+@pytest.mark.parametrize("finding_id", ["F1", "F2"])
+def test_direct_author_remediation_explicit_outstanding_finding_has_no_selector(tmp_path, monkeypatch, finding_id):
+    repo, remote, _, _, initial = exact_correction_fixture(
+        tmp_path, "AUTHOR_REMEDIATION", "split_brain", multiple_findings=True)
+    forbid_repair_audit_dependencies(monkeypatch)
+    selected = replace(initial, identity={**initial.identity, "finding_id": finding_id},
+                       payload={**initial.payload, "finding_id": finding_id})
+    result = execute_ingress(selected, repo=repo)
+    assert result.canonical_destination.endswith("-" + finding_id)
+    refs = git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/remediation/*").splitlines()
+    assert refs == [result.canonical_destination]
+
+
+@pytest.mark.parametrize("fault", ["duplicate_yaml", "duplicate_json", "unknown", "scope_alias", "verification_alias",
+    "empty_scope", "scope", "action", "finding", "reviewed", "policy", "missing_policy", "empty_commands",
+    "unauthorized_command", "full_suite", "constraints", "expected_alias", "derived_support", "executor"])
+def test_direct_author_remediation_invalid_final_contract_is_non_mutating(tmp_path, monkeypatch, fault):
+    repo, remote, main, _, initial = exact_correction_fixture(
+        tmp_path, "AUTHOR_REMEDIATION", "matching", task_source=V1_TASK_105_SOURCE)
+    payload, expected = copy.deepcopy(initial.payload), dict(initial.expected_state)
+    if fault == "duplicate_yaml":
+        payload = yaml.safe_dump(payload) + "action: CODE_FIX\n"
+    elif fault == "duplicate_json":
+        payload = json.dumps(payload)[:-1] + ', "action": "CODE_FIX"}'
+    elif fault == "unknown":
+        payload["strategy_state"] = {"eligible": True}
+    elif fault == "scope_alias":
+        payload["scope"] = {"modify": ["outside.py"]}
+    elif fault == "verification_alias":
+        payload["affected_verification"] = ["unauthorized command"]
+    elif fault in {"empty_scope", "scope"}:
+        payload["modification_scope"] = [] if fault == "empty_scope" else ["outside.py"]
+    elif fault == "action":
+        payload["action"] = "EVIDENCE_ONLY"
+    elif fault == "finding":
+        payload["finding_id"] = "F999"
+    elif fault == "reviewed":
+        payload["reviewed_sha"] = main
+    elif fault == "policy":
+        payload["verification"]["policy"] = "minimum-sufficient-v2"
+    elif fault == "missing_policy":
+        payload["verification"].pop("policy")
+    elif fault in {"empty_commands", "unauthorized_command", "full_suite"}:
+        payload["verification"]["affected"] = ([] if fault == "empty_commands" else
+            ["python -m pytest"] if fault == "full_suite" else ["python -m pytest tests/foreign.py"])
+    elif fault == "constraints":
+        payload["constraints"] = ["New Human authority."]
+    elif fault == "expected_alias":
+        expected["reviewed_sha"] = main
+    elif fault == "derived_support":
+        expected["packet_fingerprint"] = "0" * 64
+    else:
+        payload["executor"] = "codex"
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_repair_audit_dependencies(monkeypatch)
+    forbid_correction_mutation(monkeypatch)
+    with pytest.raises(AuthoringIngressError):
+        execute_ingress(replace(initial, payload=payload, expected_state=expected,
+            audited_handoff={"stage2": {"outcome": "CANDIDATE"}}), repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+@pytest.mark.parametrize("boundary", ["before_commit", "after_commit", "after_local_cas"])
+@pytest.mark.parametrize("movement", ["decision", "artifacts", "candidate", "correction", "task", "remote", "state"])
+def test_direct_author_remediation_currentness_at_each_mutation_boundary(tmp_path, monkeypatch, boundary, movement):
+    repo, remote, main, decision, initial = exact_correction_fixture(tmp_path, "AUTHOR_REMEDIATION", "matching")
+    ref = f"refs/heads/aios/remediation/{initial.identity['source_run_id']}-F1"
+    decision_ref = f"refs/heads/aios/review-decision/{initial.identity['source_run_id']}"
+    artifacts_ref = f"refs/heads/aios/artifacts/{initial.identity['source_run_id']}"
+    original_commit, original_git = authoring_ingress_module._commit_tree, authoring_ingress_module._git
+    subject = git(remote, "rev-parse", artifacts_ref) if movement == "artifacts" else decision
+    tree = git(repo, "rev-parse", f"{subject}^{{tree}}")
+    parents = git(repo, "show", "-s", "--format=%P", subject).split()
+    alternate = original_commit(repo, tree, parents, "competing canonical decision or artifacts")
+    git(remote, "fetch", "--no-tags", str(repo), alternate)
+    observation = observe_unified_state("TASK-105", repo=repo)
+    moved = []
+    def move():
+        if moved:
+            return
+        moved.append(True)
+        if movement in {"decision", "artifacts"}:
+            git(remote, "update-ref", decision_ref if movement == "decision" else artifacts_ref, alternate)
+        elif movement == "candidate":
+            git(remote, "update-ref", f"refs/heads/aios/review/{initial.identity['source_run_id']}", main)
+        elif movement == "correction":
+            git(remote, "update-ref", ref, alternate)
+        elif movement == "task":
+            path = repo / ".ai/tasks/TASK-105.yaml"
+            path.write_bytes(path.read_bytes().replace(b"Bounded mutation authority only.", b"Forged local authority."))
+        elif movement == "remote":
+            git(repo, "remote", "set-url", "origin", str(tmp_path / "moved-remote"))
+        else:
+            monkeypatch.setattr(authoring_ingress_module, "observe_unified_state",
+                                lambda *a, **k: replace(observation, outstanding_findings=()))
+    if boundary == "before_commit":
+        original_tree = authoring_ingress_module._tree_with_metadata
+        def moved_tree(*args, **kwargs):
+            result = original_tree(*args, **kwargs)
+            move()
+            return result
+        monkeypatch.setattr(authoring_ingress_module, "_tree_with_metadata", moved_tree)
+        monkeypatch.setattr(authoring_ingress_module, "_commit_tree", lambda *a, **k: pytest.fail("stale metadata commit"))
+    elif boundary == "after_commit":
+        def moved_commit(*args, **kwargs):
+            result = original_commit(*args, **kwargs)
+            move()
+            return result
+        monkeypatch.setattr(authoring_ingress_module, "_commit_tree", moved_commit)
+    else:
+        def moved_cas(repo, *args, **kwargs):
+            result = original_git(repo, *args, **kwargs)
+            if args[:2] == ("update-ref", ref):
+                move()
+            return result
+        monkeypatch.setattr(authoring_ingress_module, "_git", moved_cas)
+    forbid_repair_audit_dependencies(monkeypatch)
+    with pytest.raises(AuthoringIngressError, match="freshness"):
+        execute_ingress(initial, repo=repo)
+    assert moved
+    assert git(remote, "show-ref", "--verify", "--hash", ref, check=False) == (alternate if movement == "correction" else "")
+    assert not git(repo, "show-ref", "--verify", "--hash", ref, check=False)
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+
+
+@pytest.mark.parametrize("identical", [False, True])
+def test_direct_author_remediation_destination_cas_preserves_concurrent_winner(tmp_path, monkeypatch, identical):
+    repo, remote, main, decision, initial = exact_correction_fixture(tmp_path, "AUTHOR_REMEDIATION", "matching")
+    ref = f"refs/heads/aios/remediation/{initial.identity['source_run_id']}-F1"
+    path = f".ai/remediations/REMEDIATION-{initial.identity['source_run_id']}-F1.yaml"
+    payload = initial.payload if identical else {**initial.payload, "constraints": []}
+    tree = authoring_ingress_module._tree_with_metadata(repo, decision, path, yaml.safe_dump(payload).encode())
+    competitor = authoring_ingress_module._commit_tree(repo, tree, [decision], "concurrent remediation")
+    git(remote, "fetch", "--no-tags", str(repo), competitor)
+    original = authoring_ingress_module._git
+    def collide(repo, *args, **kwargs):
+        if args[:3] == ("push", "--porcelain", "--no-tags"):
+            assert f"--force-with-lease={ref}:" in args
+            git(remote, "update-ref", ref, competitor)
+        return original(repo, *args, **kwargs)
+    monkeypatch.setattr(authoring_ingress_module, "_git", collide)
+    with pytest.raises(AuthoringIngressError, match="failed to push ingress ref"):
+        execute_ingress(initial, repo=repo)
+    assert git(remote, "rev-parse", ref) == competitor
+    assert not git(repo, "show-ref", "--verify", "--hash", ref, check=False)
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+    forbid_correction_mutation(monkeypatch)
+    if identical:
+        assert execute_ingress(initial, repo=repo).canonical_sha == competitor
+    else:
+        with pytest.raises(AuthoringIngressError, match="conflicting canonical remediation"):
+            execute_ingress(initial, repo=repo)
+
+
+def test_direct_author_remediation_older_checkout_ignores_unrelated_ai_parity(tmp_path, monkeypatch):
+    repo, remote, main, _, initial = exact_correction_fixture(
+        tmp_path, "AUTHOR_REMEDIATION", "matching", task_only_checkpoint=True)
+    task_bytes = (repo / ".ai/tasks/TASK-105.yaml").read_bytes()
+    older = git(repo, "rev-parse", f"{main}^")
+    git(repo, "reset", "--hard", older)
+    assert not (repo / ".ai/tasks/TASK-999.yaml").exists()
+    assert git(repo, "show", f"{main}:.ai/tasks/TASK-999.yaml")
+    (repo / ".ai/roadmap-state.yaml").write_bytes(b"malformed unused local planning: [\n")
+    original_commit = authoring_ingress_module._commit_tree
+    def unrelated_movement(*args, **kwargs):
+        commit = original_commit(*args, **kwargs)
+        (repo / ".ai/brain-return-contracts.yaml").write_bytes(b"unused serialization\n")
+        git(remote, "update-ref", "refs/heads/aios/repair/RUN-999-001", main)
+        return commit
+    monkeypatch.setattr(authoring_ingress_module, "_commit_tree", unrelated_movement)
+    forbid_repair_audit_dependencies(monkeypatch)
+    result = execute_ingress(initial, repo=repo)
+    assert result.status == "CANONICALIZED"
+    assert git(repo, "rev-parse", "HEAD") == older
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+    assert not (repo / ".ai/tasks/TASK-999.yaml").exists()
+    assert (repo / ".ai/tasks/TASK-105.yaml").read_bytes() == task_bytes
+
+
+@pytest.mark.parametrize("fault", ["forged_task", "missing_used_task", "crlf_task", "dirty_executable", "staged_executable",
+    "untracked_executable", "unauthenticated_head", "offline", "insufficient_fetch", "push_identity", "malformed_canonical_task",
+    "evidence_run", "evidence_subject", "evidence_command", "missing_evidence", "missing_canonical_task",
+    "conflicting_checkout_remote", "local_runtime_state"])
+def test_direct_author_remediation_canonical_source_and_checkout_trust_fail_closed(tmp_path, monkeypatch, fault):
+    repo, remote, main, _, initial = exact_correction_fixture(tmp_path, "AUTHOR_REMEDIATION", "matching")
+    task_path = repo / ".ai/tasks/TASK-105.yaml"
+    if fault == "forged_task":
+        task_path.write_bytes(task_path.read_bytes().replace(b"Bounded mutation authority only.", b"Forged authority."))
+    elif fault == "missing_used_task":
+        task_path.unlink()
+    elif fault == "crlf_task":
+        task_path.write_bytes(task_path.read_bytes().replace(b"\n", b"\r\n"))
+    elif fault in {"dirty_executable", "staged_executable", "untracked_executable"}:
+        path = repo / ("untracked.py" if fault == "untracked_executable" else "README.md")
+        path.write_text("dirty executable input\n", encoding="utf-8")
+        if fault == "staged_executable":
+            git(repo, "add", "README.md")
+    elif fault == "unauthenticated_head":
+        tree = git(repo, "rev-parse", f"{main}^{{tree}}")
+        local = authoring_ingress_module._commit_tree(repo, tree, [main], "untrusted local commit")
+        git(repo, "reset", "--hard", local)
+    elif fault == "offline":
+        git(repo, "remote", "set-url", "origin", str(tmp_path / "missing-remote"))
+    elif fault == "insufficient_fetch":
+        original = authoring_ingress_module._git
+        def no_fetch(repo, *args, **kwargs):
+            if args[0] == "fetch":
+                raise AuthoringIngressError("exact canonical fetch unavailable")
+            return original(repo, *args, **kwargs)
+        monkeypatch.setattr(authoring_ingress_module, "_git", no_fetch)
+    elif fault == "push_identity":
+        git(repo, "remote", "set-url", "--push", "origin", str(tmp_path / "noncanonical"))
+    elif fault in {"evidence_run", "evidence_subject", "evidence_command", "missing_evidence"}:
+        def alter_evidence(document):
+            if fault == "missing_evidence":
+                document["evidence"] = []
+            elif fault == "evidence_run":
+                document["evidence"][0]["run_id"] = "RUN-999-001"
+            elif fault == "evidence_subject":
+                document["evidence"][0]["subject_sha"] = main
+            else:
+                document["evidence"][0]["source"]["command"] = "unauthorized verification"
+        substitute_transport_document(repo, remote, f"refs/heads/aios/artifacts/{initial.identity['source_run_id']}",
+                                      ".ai/transport/result.json", alter_evidence)
+    elif fault == "missing_canonical_task":
+        git(repo, "rm", "--", ".ai/tasks/TASK-105.yaml")
+        git(repo, "commit", "--quiet", "-m", "missing canonical source TASK")
+        git(repo, "push", "--quiet", "origin", "HEAD:refs/heads/main")
+    elif fault == "conflicting_checkout_remote":
+        git(repo, "remote", "add", "decoy", str(remote))
+        git(repo, "switch", "--quiet", "-c", "decoy-checkout")
+        git(repo, "config", "branch.decoy-checkout.remote", "decoy")
+        git(repo, "config", "branch.decoy-checkout.merge", "refs/heads/main")
+    elif fault == "local_runtime_state":
+        from aios_renew.operator import _runtime_paths_readonly
+        local = _runtime_paths_readonly(repo)
+        local.runs.mkdir(parents=True)
+        (local.runs / "RUN-105-002.json").write_text('{"untrusted": "local state"}', encoding="utf-8")
+    else:
+        substitute_correction_blob(repo, remote, "refs/heads/main", ".ai/tasks/TASK-105.yaml", b"task_id: [\n")
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_repair_audit_dependencies(monkeypatch)
+    forbid_correction_mutation(monkeypatch)
+    with pytest.raises(AuthoringIngressError):
+        execute_ingress(initial, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+    from aios_renew.operator import _runtime_paths_readonly
+    local_runs = _runtime_paths_readonly(repo).runs
+    assert (sorted(path.name for path in local_runs.iterdir()) == ["RUN-105-002.json"]
+            if fault == "local_runtime_state" else not local_runs.exists())
+
+
+def test_direct_author_remediation_repaired_remediation_source_keeps_delta_ancestry(tmp_path, monkeypatch):
+    lineage, initial = h2_reviewed_repair_source(tmp_path)
+    repo, remote = lineage["repo"], lineage["remote"]
+    decision = git(remote, "rev-parse", f"refs/heads/aios/review-decision/{initial.identity['source_run_id']}")
+    forbid_repair_audit_dependencies(monkeypatch)
+    result = execute_ingress(initial, repo=repo)
+    assert result.status == "CANONICALIZED"
+    assert git(repo, "rev-parse", f"{result.canonical_sha}^") == decision
+    assert initial.payload["reviewed_sha"] == lineage["repaired_sha"]
+    assert git(remote, "rev-parse", f"refs/heads/aios/review/{initial.identity['source_run_id']}") == lineage["repaired_sha"]
+
+
+
+def test_direct_author_remediation_successful_repair_of_primary_uses_original_result_base(tmp_path, monkeypatch):
+    repo, remote, main, _, repair_envelope = completion_gate_supersession_fixture(
+        tmp_path, phase="VERIFICATION", task_revision=1)
+    authorization = execute_ingress(repair_envelope, repo=repo)
+    failed_head = repair_envelope.payload["failed_head_sha"]
+    git(repo, "switch", "--quiet", "failed-candidate")
+    (repo / "src/sample.py").write_text("# successfully repaired PRIMARY\n", encoding="utf-8")
+    git(repo, "add", "src/sample.py")
+    git(repo, "commit", "--quiet", "-m", "synthetic successful repair")
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-254-002"
+    run = {"run_id": run_id, "task": {"id": "TASK-254", "revision": 1}, "executor": "codex",
+           "base_sha": failed_head, "head_sha": None, "workspace": str(repo), "status": "ACTIVE"}
+    failure = json.loads((tmp_path / "failure-material/failure.json").read_text(encoding="utf-8"))
+    repair = {"failed_run_id": "RUN-254-001", "root_base_sha": main,
+              "failed_head_sha": failed_head, "failure": failure,
+              "task": {"task_id": "TASK-254", "revision": 1}, "repair": repair_envelope.payload,
+              "repair_authorization_sha": authorization.canonical_sha, "run": run}
+    package = {"result": {"head_sha": head, "claims": [{"id": "C1", "satisfies": ["AC1"],
+                   "claim": "Synthetic successful repair.", "evidence": ["E1"]}],
+                   "changed_files": ["src/sample.py"], "unresolved": []},
+               "evidence": [{"evidence_id": "E1", "run_id": run_id, "subject_sha": head, "type": "TEST",
+                   "source": {"command": "git diff --check"}, "result": {"exit_code": 0, "summary": "fixture"},
+                   "raw": {"path": ".ai/evidence/E1.log"}}]}
+    material = tmp_path / "successful-repair"
+    material.mkdir()
+    for name, doc in (("run", run), ("result", package), ("repair", repair)):
+        (material / f"{name}.json").write_text(json.dumps(doc), encoding="utf-8")
+    transport_post_pass(repo, run_id=run_id, head_sha=head, run_path=material / "run.json",
+                        result_path=material / "result.json", lineage_path=material / "repair.json")
+    review = {"review_id": "REVIEW-254-002", "reviewed_sha": head, "mode": "PRIMARY",
+              "verdict": "CHANGES_REQUIRED", "acceptance": {"AC1": "FAIL"},
+              "findings": [{"id": "F1", "basis": "AC1", "action": "CODE_FIX", "location": "src/sample.py",
+                            "issue": "One bounded remaining defect.", "expected": "Correct it."}]}
+    decision = execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW",
+        {"run_id": run_id}, {"expected_candidate_sha": head}, review), repo=repo)
+    forbid_repair_audit_dependencies(monkeypatch)
+    result = execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REMEDIATION",
+        {"source_run_id": run_id, "finding_id": "F1"}, {"expected_reviewed_sha": head},
+        {"finding_id": "F1", "action": "CODE_FIX", "reviewed_sha": head,
+         "modification_scope": ["src/sample.py"], "affected_verification": ["git diff --check"]}), repo=repo)
+    assert result.status == "CANONICALIZED"
+    assert git(repo, "rev-parse", f"{result.canonical_sha}^") == decision.canonical_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+    assert git(remote, "rev-parse", "refs/heads/aios/repair/RUN-254-001") == authorization.canonical_sha
