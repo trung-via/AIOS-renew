@@ -1,56 +1,39 @@
 task_id: TASK-346
-revision: 1
-goal: Prospectively make actual fixed 12-worker xdist execution the default throughout
-  ordinary AIOS-renew pytest and minimum-sufficient-v2 test-item runs while selecting
-  the direct trusted Git executable for Windows pytest Git subprocesses, reducing
-  avoidable process startup without weakening test truth, isolation, Git semantics
-  or Runtime authority.
-problem: The canonical source at the end of TASK-345, ddcb55c5136b0ad45c11e3cdd90459ebc4010534,
-  retains workers=1 for non-full-suite V2 pytest in verification.py::_v2_profile and
-  has no equivalent ordinary repository pytest 12-worker default. Windows pytest fixture
-  subprocesses commonly invoke a PATH-resolved `git` that need not be the direct installation
-  binary. The Human explicitly selected a combined Direct Git executable plus fixed-12-worker
-  ordinary pytest successor, superseding further implementation work on TASK-343 without
-  rewriting its historical failure records. The prior RUN-343-002 full-n12 failures
-  are not proof that current code is green.
+revision: 2
+goal: Implement an actual fixed 12-worker xdist/load/zero-restart default for ordinary
+  AIOS-renew pytest and verified direct installed Git executable invocation for supported
+  Windows pytest subprocesses, retaining Git correctness, per-worker isolation, historical
+  compatibility and Runtime verification authority.
+problem: TASK-346 r1 mandated historical minimum-sufficient-v2 and one full suite.
+  At current main 7ef9993dfa76e1747bf3c215d95ef387df0331bb, ordinary pytest has no
+  12-worker default in pyproject.toml, verification.py::_v2_profile records workers=1
+  for ordinary non-full-suite observations, and Windows pytest subprocesses resolve
+  git without verified direct-binary selection. The published TASK-356 prospective
+  policy instead requires new TASK revisions to author focused minimum-sufficient-v1
+  verification. This r2 preserves the combined intended feature while removing an
+  obsolete V2/full-suite authoring obligation.
 assumptions:
-- Human now authorizes one new prospective combined TASK, not a TASK-343 revision
-  or REPAIR. TASK-343 r1, RUN-343-001, the original local RUN-343-002 and its 84 reported
-  failures remain immutable. No additional TASK-343 execution is authorized by this
-  TASK; historical archival and recovery truth is unaffected.
-- Authoring baseline is the exact source-reviewed and source-published TASK-345 r3
-  / RUN-345-003 candidate on canonical main ddcb55c5136b0ad45c11e3cdd90459ebc4010534.
-  REVIEW-345-003 PRIMARY PASS has immutable decision SHA d7e968c75f1e0c31d3818b94823d21fdb6e1e9a4;
-  publication source identity is checked separately from GitHub workflow conclusion.
-- Human selected workers=12, distribution=load, max_worker_restart=0 for ordinary
-  executed pytest tests; selected full-suite TASK-231 policy already uses 12. Explicit
-  historical diagnostic/measurement configurations and pytest collect-only are not
-  ordinary test-item execution.
-- The direct Git executable requirement is a Windows ordinary-pytest process-selection
-  optimization, not permission to write raw Git object files, change Git command semantics,
-  bypass Git or replace Git by an in-memory mock. Exact binary selection must be validated
-  for the supported runner; no path, username or machine-specific executable location
-  is hardcoded into the TASK.
-- Existing process-local Git fixture materialization and GIT_OPTIONAL_LOCKS optimizations
-  remain subject to real-Git correctness and isolation. A direct binary may already
-  be selected on some hosts; report unchanged/no-op behavior honestly rather than
-  fabricate a measured improvement.
-- Current 12-worker full-suite and RUN-343 failures contain unresolved environment/collection/worker
-  issues. The proposed semantics must preserve fail-closed detection and cannot assume
-  a green suite, retrospectively fix 84 failures, retry automatically or weaken evidence
-  to claim success.
-- Current Human priority prospectively overrides the older .ai/roadmap-state.yaml
-  bookmark for this named TASK. AUTHOR_TASK does not edit the planning roadmap or
-  automatically advance NEXT; a separately authorized Human/Brain planning-state canonical
-  transition is still required before later generic continuation may rely on that
-  new bookmark.
-- 'Brain performs exclusive aios-adaptive-brain-audit-v1 two-stage semantic audit
-  at authoring, but audit support is not serialized into the TASK ingress. Executor/model/effort
-  selection is separate and explicit: the Human chose codex / gpt-6.1-sol / max for
-  admitted implementation, not as a TASK contract field.'
-- The existing Human-approved prospective return route remains LEGACY_REPOSITORY_DEFAULT_ROUTE.
-  The old historical affinity, Runtime verification authority, independent Reviewer
-  and exact-source Publisher are unchanged.
+- TASK-346 r1 remains immutable at blob fcebf5bb53fe4dae565e48e00b3b82f4f567ebc0,
+  authored by commit 5257fbefb611d9c41a193b83fba50eb15deb67e6. This is an explicit
+  prospective revision of the same task, not TASK-343 resumption or historical REPAIR.
+- Previously reported RUN-346-001 native timeout and failed candidate 66c0f4bc799ff6459621b2f19afbce98bf2d1877
+  were local diagnostic facts, not presumed current remote canonical FAILURE, PASS,
+  reviewed or published source. All exact historical local/canonical lineage remains
+  as recorded. This r2 does not import, replay, reset or cherry-pick that unreviewed
+  candidate.
+- Human fixed ordinary xdist workers=12, distribution=load and max_worker_restart=0.
+  The selected TASK-231 full suite already uses 12. Explicit historically pinned diagnostic
+  and measurement runs retain their precise authored counts.
+- TASK-356 has activated minimum-sufficient-v1 for new TASK identities and revisions.
+  Old V2 TASK/RUN/EVIDENCE identity, source and original policy remain immutable;
+  any prospective historical V2 observation must accurately reflect actual workers
+  and Git/toolchain context.
+- Existing real-Git fixture layout optimization is not authority to add a generic
+  raw object generator, fake Git or a new subprocess router. Speedup must remain UNKNOWN
+  until measured on paired comparable workloads.
+- Human's named TASK-346 r2 priority is an explicit prospective override of the current
+  R2.1 planning bookmark for this named authoring only; it does not advance roadmap
+  NEXT, choose an Executor or admit RUN. Return affinity must preserve r1 LEGACY_REPOSITORY_DEFAULT_ROUTE.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -61,8 +44,8 @@ scope:
   - .ai/roadmap-state.yaml
   - .ai/tasks/TASK-231.yaml
   - .ai/tasks/TASK-343.yaml
-  - .ai/tasks/TASK-344.yaml
-  - .ai/tasks/TASK-345.yaml
+  - .ai/tasks/TASK-346.yaml
+  - .ai/tasks/TASK-356.yaml
   - .ai/verification-profiles.yaml
   - pyproject.toml
   - scripts/aios_parallel_full_suite.py
@@ -100,115 +83,91 @@ scope:
   - tests/test_git_fixture_isolation.py
   - tests/test_operator.py
   - tests/test_bp_v4_parallel_probe.py
+  - tests/test_bp_v4_parallel_rebaseline.py
 non_goals:
-- No resumption, re-admission, REPAIR, remediation, historical mutation, cancellation,
-  deletion or retrospective PASS/FAIL reclassification of TASK-343 or RUN-343-001/002;
-  no automation that selects an alternative TASK or Executor.
-- No new generic Git subprocess router, emulator, raw object writer, global monkeypatch
-  of subprocess, privileged host installation, filesystem/Defender/security-policy
-  modification, registry, machine PATH rewrite or hardcoded Git executable path.
-- No adaptive worker tuning, CPU-based count, automatic retries, hidden 1/4-worker
-  fallback, replacement of fixed explicit historic 2/3/4/8/12/16 diagnostic/measurement
-  profiles or conversion of collect-only into executed test work.
-- No changed verification scope, second canonical test runner, duplicate full-suite
-  pass, semantic baseline reclassification, relaxed failure attribution, arbitrary
-  evidence reuse, altered subprocess exit truth, or altered underlying TASK-231 selection
-  provenance.
-- No new lifecycle, Reviewer, Publisher, origin proof, carrier transport, secrets/config
-  trust, frozen Kernel or downstream Python Agent adoption change; no future Runtime
-  verification outcome claimed by Executor.
-- No speculative elapsed-time or token savings asserted as measured; cost/performance
-  measurement is read-only observation, not an automatic adoption decision.
+- No TASK-343 re-execution, no RUN-346-001 REPAIR/replay/re-admission, no historical
+  revision or source rewrite, no unreviewed candidate cherry-pick, no retrospective
+  PASS or publication.
+- No new Git process router/emulator, raw object writer, machine PATH/registry/security
+  change, privileged install, global subprocess monkeypatch or hardcoded host-specific
+  Git path.
+- No adaptive worker sizing, hidden serial/four-worker fallback, automatic rerun,
+  skip/xfail suppression, new generic verifier, silent test coverage change, duplicated
+  full suite or speculative time savings.
+- No change to Kernel, Runtime/Reviewer/Publisher ownership, roadmap state, origin
+  proof, Executor delegation, carrier transport, downstream repositories or dependency
+  pins.
 constraints:
   hard:
-  - Use one Human-selected fixed ordinary pytest execution default of exactly 12 xdist
-    workers, load distribution and zero worker restarts across repository CLI and
-    minimum-sufficient-v2 Runtime candidate, base, affected, exact projected, correction
-    and comparable verification. Preserve exact authored test selections, launchers,
-    toolchain identity and command coverage.
-  - Collection-only invocations must collect rather than execute test items or spawn
-    a 12-worker test run. Explicit worker-pinned historical performance/diagnostic
-    cases must retain their authored worker count. Fail closed on ambiguous conflicting
-    PYTEST_ADDOPTS, command/worker config, missing xdist or unsupported test launcher
-    rather than fabricating worker facts.
-  - On supported Windows pytest sessions, select and use a verified direct installed
-    Git executable for real Git subprocess calls without an intermediary shell/launcher
-    on ordinary exercised test paths. The resolution must be safe, process-scoped,
-    deterministic under the supported environment and not disturb external host configuration
-    or unrelated binary lookup. On unsupported/missing/ambiguous installation, fail
-    clearly without silently selecting an unverified different Git binary.
-  - Preserve real Git command argv semantics, stdout/stderr/exit status, Git config,
-    hooks, remotes, repository integrity, locks and per-worker writable Git/temp isolation.
-    Existing fixture acceleration must not make a mock appear as actual Git or weaken
-    Git object/ref/transport correctness.
-  - Bind effective pytest workers, profile and relevant toolchain/binary provenance
-    truthfully to Runtime observations and evidence. No source/toolchain/profile mismatch
-    may be treated as a comparable base/candidate, reusable proof, PRE_EXISTING_BASELINE
-    or PASS; preserve complete/unstable/failed identity gates and original selected
-    policy provenance.
-  - Worker divergence, missing worker reports, process crashes, repository checkout
-    mutation, stale evidence, incomplete/overbudget observations, Git executable provenance
-    ambiguity and other existing fail-closed paths remain deterministically rejected;
-    no suppressions, no skip/xfail, no fallback, no automatic rerun.
-  - The existing selected 12-worker full-suite wrapper remains one canonical collection
-    followed by one real 12-worker suite execution; ordinary pytest and wrapper defaults
-    must not create nested/double worker populations, duplicate authored full-suite
-    executions or duplicate verification on unchanged subject. Execute the full selected
-    suite no more than once per explicitly planned Runtime verification.
-  - All implementation changes must be limited to scope.modify. Discovering essential
-    additional files is a Brain/Human scope decision, not permission for the Executor
-    to edit outside scope, self-author a TASK or mutate roadmap planning semantics.
-  - Preserve Human/Brain planning and risk authority, one admitted Executor implementation
-    authority, Runtime-only canonical verification and evidence, Reviewer semantic
-    verdict, Publisher exact source, immutable RUN-343 history, no forced ref updates
-    and no downstream dependency pin change.
+  - Ordinary supported repository pytest CLI and Runtime-authored pytest execution
+    must actually use exactly 12 xdist workers, load distribution and zero restarts,
+    not merely labels; preserve exact authored test subset, command/launcher behavior
+    and raw exit status.
+  - Collection-only remains non-executing. Explicitly pinned diagnostics/measurements
+    retain their counts. The existing selected full-suite wrapper retains one collection
+    then one actual fixed 12-worker execution without default-induced nested/double
+    populations.
+  - Conflicting explicit worker/environment configuration, missing or incompatible
+    xdist, worker crash/restart, incomplete or divergent collection/reports fail closed.
+    No hidden fallback, retry or mock-as-pass.
+  - On supported Windows pytest Git-process paths, select a verified installed direct
+    git.exe; invoke real Git as a process without a cmd/batch/shell intermediary;
+    preserve argv/config/hooks/remotes/locks/stdout/stderr/exit code and each worker's
+    writable repo/temp isolation. Fail explicitly for ambiguous/missing/untrusted
+    Git identity; preserve lawful behavior on unsupported hosts.
+  - Existing Runtime observations and evidence must bind effective worker/profile/observer/toolchain,
+    direct Git executable provenance and exact subject when relevant. Missing, changed,
+    stale, partially reported or conflicting proof never discharges existing verification
+    or becomes comparable base PASS.
+  - Historical V2 decoding and already admitted evidence remain immutable. R2's PRIMARY
+    uses only exact ordered V1 commands on an isolated committed candidate with stop-on-raw-nonzero,
+    no V2 base attribution, no implicit full suite.
+  - Use only the focused verification.required command here; do not repeat unchanged
+    base verification or add any full-suite work outside this contract. Preserve TASK-231
+    selected full-suite provenance and avoid duplicate execution.
+  - Executor may modify only scope.modify and must not push/publish or own canonical
+    verification. Extra files/new architecture, risk or trust decisions need new Human/Brain
+    scope authority. Runtime owns admission/evidence, Reviewer verdict, Publisher
+    exact source, Human roadmap priority.
 acceptance:
 - id: AC1
-  condition: Repository and Runtime ordinary executed pytest surfaces express one
-    effective Human-fixed 12/load/zero-restart policy, with no independent ordinary
-    serial/4-worker default or selector; the existing full-suite selection remains
-    fixed at 12.
+  condition: Ordinary repository pytest CLI and relevant Runtime pytest surfaces enforce
+    one truthful actual 12/load/zero-restart default without ordinary independent
+    serial/four-worker selection or cosmetic labels.
 - id: AC2
-  condition: Minimum-sufficient-v2 normal pytest candidate/base/affected/projected/correction
-    execution paths retain the original authored scope while starting actual 12-worker
-    xdist runs, with true execution profile and subject/toolchain bindings instead
-    of a cosmetic 12-worker label.
+  condition: V1 authored pytest runs the exact selected test scope with actual 12
+    workers; historical V2 candidate/base/affected/projected/correction support retains
+    truthful worker/profile binding and original evidence immutable.
 - id: AC3
-  condition: Normal repository pytest CLI uses 12 workers by default; collect-only
-    remains collection-only and explicitly worker-pinned historical measurement/diagnostic
-    commands preserve their authored semantics without double worker activation.
+  condition: Collect-only and explicitly worker-pinned diagnostics remain distinct,
+    and the selected full-suite wrapper does not create nested worker populations
+    or duplicate suite execution.
 - id: AC4
-  condition: Ordinary Windows pytest Git-process invocations on supported paths select
-    a verified installed direct Git binary without intermediary cmd/shell/batch wrapper,
-    retain actual Git behavior and return codes, and preserve process-local isolation
-    without machine-wide PATH, Git or security configuration mutations.
+  condition: Supported ordinary Windows pytest subprocess Git operations invoke a
+    verified direct installed Git binary with real command status/output/config/hooks/remotes/locks
+    and separate writable worker state, without host-wide mutations.
 - id: AC5
-  condition: Runtime evidence and existing test harness surfaces retain truthful worker,
-    toolchain and repository subject identities; incompatible candidate/base worker
-    or Git context, stale proof and incomplete observation cannot be reused, attributed
-    as baseline or turned into PASS.
+  condition: Applicable Runtime observation and reuse gates reject stale, missing,
+    conflicting or changed worker/Git/toolchain/observer/subject bindings rather than
+    manufacturing comparable PASS or baseline truth.
 - id: AC6
-  condition: The implementation fails closed on missing/mismatched xdist or direct
-    Git binary, worker collision or restart, collection divergence, unstable reports,
-    conflicting overrides, Git failures and broken repository/fixture isolation, with
-    no hidden retry, alternate selector or permissive fallback.
+  condition: Missing xdist or Git, conflicting overrides, crashes, incomplete worker
+    reports and repository/fixture isolation violations fail visibly without retries,
+    permissive fallbacks, or suppression.
 - id: AC7
-  condition: Synthetic/targeted regression cases cover ordinary fixed-12 and direct-Git
-    positives plus collect-only, explicit diagnostic overrides, actual worker/command
-    provenance, Git failure/isolation and malformed/partial profile negatives without
-    changing historical diagnostic subjects or introducing another verifier.
+  condition: Focused positive and negative regression coverage exercises supported
+    real Windows Git process and actual 12-worker behavior, collection-only, diagnostic
+    pins, evidence mismatch, Git failure propagation and cross-worker fixture isolation
+    rather than only synthetic claims.
 - id: AC8
-  condition: The implementation preserves the single selected 12-worker full-suite
-    wrapper and immutable TASK-343/RUN-343 history, changes only scope.modify, creates
-    no duplicated lifecycle/planning authority, and exposes a single authored Runtime
-    full-suite verification obligation rather than overlapping commands.
+  condition: Changes are within scope.modify, selected TASK-231 full-suite semantics
+    and independent authorities are preserved, and TASK-346 r1, RUN-346 and TASK-343
+    historical records are not modified.
 verification:
-  policy: minimum-sufficient-v2
-  full_suite_reason: Changing ordinary pytest defaults, V2 execution profiles and
-    Windows Git fixture-process selection affects all test isolation and collection
-    behavior. One exact selected twelve-worker suite is the minimum sufficient whole-repository
-    proof; do not duplicate the suite or substitute a narrower command.
+  policy: minimum-sufficient-v1
   required:
-  - python scripts/aios_parallel_full_suite.py
+  - python -m pytest -q tests/test_verification.py tests/test_verification_contract.py
+    tests/test_parallel_verification.py tests/test_verification_profile.py tests/test_git_fixture_isolation.py
+    tests/test_operator.py tests/test_bp_v4_parallel_probe.py tests/test_bp_v4_parallel_rebaseline.py
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
