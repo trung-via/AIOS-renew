@@ -1005,9 +1005,9 @@ def test_independent_review_id_rejects_unbound_metadata(independent_review_repo,
     fixture.set_ref("review-decision", decision)
     fixture.report.update(reviewed_sha=fixture.identity["reviewed_sha"], lineage=dict(decision_sha=decision,
                           artifacts_sha=fixture.identity["artifact_sha"], reservation_sha=None))
-    with pytest.raises(ValueError):
+    with pytest.raises(brain.AttentionError, match="^UNPROVEN_REVIEW_IDENTITY$"):
         brain.GitSources(fixture.repo, brain._git, "origin").review(fixture.identity["run_id"], decision)
-    with pytest.raises(ValueError):
+    with pytest.raises(brain.AttentionError, match="^UNPROVEN_REVIEW_IDENTITY$"):
         fixture.capture()
     assert not fixture.source_path.exists()
 

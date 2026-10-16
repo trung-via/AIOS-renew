@@ -23,7 +23,7 @@ from types import MappingProxyType
 from urllib.request import Request, urlopen
 import zipfile
 
-from .terminal_attention import _load_yaml
+from .terminal_attention import TerminalAttentionError, _load_yaml
 
 FORMAT = "AIOS_BRAIN_ATTENTION"
 VERSION = 1
@@ -733,11 +733,11 @@ class GitSources:
         paths = self.git(self.path, "ls-tree", "-r", "--name-only", decision, "--", ".ai/reviews").splitlines()
         if len(paths) != 1 or not re.fullmatch(r"\.ai/reviews/REVIEW-[A-Za-z0-9][A-Za-z0-9._-]{0,95}\.ya?ml", paths[0]):
             raise AttentionError("UNPROVEN_REVIEW_IDENTITY")
-        review = self.document(decision, paths[0])
         from .review import parse_review
         try:
+            review = self.document(decision, paths[0])
             parsed = parse_review(json.dumps(review))
-        except (ValueError, TypeError):
+        except (TerminalAttentionError, ValueError, TypeError):
             raise AttentionError("UNPROVEN_REVIEW_IDENTITY") from None
         if (review["review_id"] != parsed.review_id or review["reviewed_sha"] != head
                 or review["verdict"] != parsed.verdict
