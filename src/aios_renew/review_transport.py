@@ -84,10 +84,19 @@ def _capture_fact(value: Any, *, partial: bool) -> dict[str, Any]:
                 withheld=availability == "CAPTURED")
 
 
+def _validate_native_failure_exit(data: Mapping[str, Any]) -> None:
+    """Native process status belongs only to an EXECUTION FAILURE owner."""
+    error = data.get("error")
+    if isinstance(error, Mapping) and "exit_code" in error:
+        if data.get("phase") != "EXECUTION":
+            raise ValueError("native FAILURE exit code outside EXECUTION")
+        if error["exit_code"] is not None and type(error["exit_code"]) is not int:
+            raise ValueError("invalid native FAILURE exit code")
+
+
 def _safe_failure_diagnostic(data: Mapping[str, Any]) -> dict[str, Any]:
+    _validate_native_failure_exit(data)
     error = data["error"]
-    if "exit_code" in error and error["exit_code"] is not None and type(error["exit_code"]) is not int:
-        raise ValueError("invalid native FAILURE exit code")
     reason = error.get("native_reason")
     if reason is not None and reason not in _NATIVE_REASONS:
         raise ValueError("invalid native FAILURE reason")
@@ -153,6 +162,7 @@ def _safe_failure_diagnostic(data: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _validate_failure_diagnostic(data: Mapping[str, Any]) -> None:
+    _validate_native_failure_exit(data)
     error = data["error"]
     diagnostic = error.get("diagnostic")
     if (error["type"] not in _PUBLIC_ERROR_TYPES or not isinstance(diagnostic, dict)
@@ -164,8 +174,7 @@ def _validate_failure_diagnostic(data: Mapping[str, Any]) -> None:
     exit_fact = diagnostic["native_exit"]
     expected_exit = dict(availability=("AVAILABLE" if type(error.get("exit_code")) is int else
                          "UNKNOWN" if "exit_code" in error else "UNAVAILABLE"), value=error.get("exit_code"))
-    if ("exit_code" in error and error["exit_code"] is not None and type(error["exit_code"]) is not int
-            or not isinstance(exit_fact, dict) or exit_fact != expected_exit
+    if (not isinstance(exit_fact, dict) or exit_fact != expected_exit
             or (exit_fact.get("value") is not None and type(exit_fact.get("value")) is not int)):
         raise ValueError("invalid typed FAILURE native exit")
     capture = diagnostic["capture"]
@@ -401,9 +410,8 @@ def _public_metadata_value(value: Any, template: Any = None) -> Any:
     if "evidence_id" in data and "raw" in data:
         _redact_evidence(data)
     if data.get("kind") == "FAILURE" and isinstance(data.get("error"), dict):
+        _validate_native_failure_exit(data)
         error = data["error"]
-        if "exit_code" in error and error["exit_code"] is not None and type(error["exit_code"]) is not int:
-            raise ValueError("invalid native FAILURE exit code")
         error["message"] = "Protected Runtime diagnostics remain local."
         error.pop("native_diagnostics", None)
         error.pop("executor_diagnostics", None)
@@ -618,8 +626,7 @@ def _validate_legacy_failure_public(data: Mapping[str, Any]) -> None:
                 or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,127}", error["type"]) is None
                 or error.get("message") != "Protected Runtime diagnostics remain local."):
             raise ValueError("undeclared public FAILURE diagnostics")
-        if "exit_code" in error and error["exit_code"] is not None and type(error["exit_code"]) is not int:
-            raise ValueError("invalid native FAILURE exit code")
+        _validate_native_failure_exit(data)
         outcomes = error.get("verification", [])
         if not isinstance(outcomes, list):
             raise ValueError("invalid public FAILURE outcomes")
@@ -963,11 +970,13 @@ def failure_document(content: bytes, *, private_original: bool = False) -> Mappi
             validate_public_failure(data)
         except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
             raise FailureDiagnosticError("FAILURE_PUBLIC_INTEGRITY_INVALID") from exc
-    elif _needs_failure_projection(data):
+    else:
         try:
-            from .unified_state import _validated_private_public_view
-            _validated_private_public_view(data, "METADATA")
-            _safe_failure_diagnostic(data)
+            _validate_native_failure_exit(data)
+            if _needs_failure_projection(data):
+                from .unified_state import _validated_private_public_view
+                _validated_private_public_view(data, "METADATA")
+                _safe_failure_diagnostic(data)
         except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
             raise FailureDiagnosticError("FAILURE_PRIVATE_INTEGRITY_INVALID") from exc
     return data

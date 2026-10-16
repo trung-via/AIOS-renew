@@ -614,12 +614,11 @@ def _validated_private_public_view(
             if (not isinstance(error.get("type"), str)
                     or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,127}", error["type"]) is None):
                 raise ValueError("invalid private FAILURE error type")
+            from .review_transport import _NATIVE_REASONS, _validate_native_failure_exit
             if "native_reason" in error:
-                from .review_transport import _NATIVE_REASONS
                 if not isinstance(error["native_reason"], str) or error["native_reason"] not in _NATIVE_REASONS:
                     raise ValueError("invalid private FAILURE native reason")
-            if "exit_code" in error and error["exit_code"] is not None and type(error["exit_code"]) is not int:
-                raise ValueError("invalid private native exit code")
+            _validate_native_failure_exit(data)
             error["message"] = "Protected Runtime diagnostics remain local."
             error.pop("native_diagnostics", None)
             error.pop("executor_diagnostics", None)

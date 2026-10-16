@@ -236,12 +236,15 @@ def run343_failure():
 
 
 @pytest.mark.parametrize("dirty", [False, True])
-def test_unified_failure_context_retains_safe_cause_candidate_and_exact_source(tmp_path, monkeypatch, dirty):
+@pytest.mark.parametrize("exit_code", [pytest.param(..., id="absent"), None, 17])
+def test_unified_failure_context_retains_safe_cause_candidate_and_exact_source(tmp_path, monkeypatch, dirty, exit_code):
     from aios_renew.review_transport import public_failure, public_run
     from tests.test_review_transport import _native_failure_fixture
     repo = make_repo(tmp_path)
     head = git(repo, "rev-parse", "HEAD")
-    run, private = _native_failure_fixture(dirty=dirty)
+    run, private = _native_failure_fixture(dirty=dirty, exit_code=None if exit_code is ... else exit_code)
+    if exit_code is ...:
+        private["error"].pop("exit_code")
     run.update(run_id="RUN-101-358", task=dict(id="TASK-101", revision=1), base_sha=head)
     private.update(run_id=run["run_id"], task=run["task"], base_sha=head, failed_head_sha=head)
     original = _reference_bytes(private)
@@ -253,6 +256,9 @@ def test_unified_failure_context_retains_safe_cause_candidate_and_exact_source(t
     observed = observe_unified_state("TASK-101", repo=repo).as_dict()
     context = observed["failure_context"]
     assert context["diagnostic"]["category"] == "NATIVE_TIMEOUT"
+    assert context["diagnostic"]["native_exit"] == dict(
+        availability="UNAVAILABLE" if exit_code is ... else "UNKNOWN" if exit_code is None else "AVAILABLE",
+        value=None if exit_code is ... else exit_code)
     assert context["candidate"]["dirty"] is dirty
     assert context["source"]["artifact_sha"] == artifact_sha
     assert context["run_id"] == observed["failed_run_id"] == run["run_id"]
@@ -274,6 +280,91 @@ def test_unified_failure_context_retains_safe_cause_candidate_and_exact_source(t
     assert pending["blocker"]["code"] == "FAILURE_PROJECTION_INVALID"
     assert pending["blocker"]["subject_sha"] == head
     assert b"synthetic-secret" not in _reference_bytes(pending)
+
+
+@pytest.mark.parametrize("phase", ["VERIFICATION", "COMPLETION_GATE"])
+@pytest.mark.parametrize("exit_code", [None, 17])
+@pytest.mark.parametrize("source", ["local", "public"])
+def test_unified_native_exit_phase_conformance_blocks_wrong_owner(tmp_path, monkeypatch, phase, exit_code, source):
+    from aios_renew.review_transport import public_failure, public_run
+    from tests.test_review_transport import _command_failure_fixture, _failure_transport_recovery_reseal
+
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, private = _command_failure_fixture(phase)
+    run.update(run_id="RUN-101-359", task=dict(id="TASK-101", revision=1), base_sha=head)
+    private.update(run_id=run["run_id"], task=run["task"], base_sha=head, failed_head_sha=head)
+    state = runtime_paths(repo)
+    lifecycle = RemoteTaskLifecycle(head, (), (), (), (), ())
+    if source == "local":
+        private["error"]["exit_code"] = exit_code
+        (state.runs / (run["run_id"] + ".json")).write_bytes(_reference_bytes(run))
+        (state.failures / (run["run_id"] + ".json")).write_bytes(_reference_bytes(private))
+    else:
+        public = json.loads(public_failure(_reference_bytes(private)))
+        public["error"]["exit_code"] = exit_code
+        public["error"]["diagnostic"]["native_exit"] = dict(
+            availability="UNKNOWN" if exit_code is None else "AVAILABLE", value=exit_code)
+        _failure_transport_recovery_reseal(public)
+        terminal = RemoteLifecycleTerminal(run["run_id"], "FAILURE", head,
+            public_run(_reference_bytes(run)), _reference_bytes(public))
+        lifecycle = replace(lifecycle, terminals=(terminal,))
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    before = {path: path.read_bytes() for directory in (state.runs, state.failures)
+              for path in directory.glob("*.json")}
+    refs = git(repo, "show-ref")
+    observed = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (observed["lifecycle_state"], observed["next_action"]) == ("BLOCKED", "NONE")
+    assert observed["blocker"]["code"] == (
+        "FAILURE_PRIVATE_INTEGRITY_INVALID" if source == "local" else "FAILURE_PUBLIC_INTEGRITY_INVALID")
+    assert observed["failure_context"] is None
+    assert all(observed[key] is False for key in (
+        "run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert b"synthetic-secret" not in _reference_bytes(observed)
+    assert before == {path: path.read_bytes() for directory in (state.runs, state.failures)
+                      for path in directory.glob("*.json")}
+    assert git(repo, "show-ref") == refs
+
+
+@pytest.mark.parametrize("exit_code", [pytest.param(..., id="absent"), None, 17])
+def test_native_exit_phase_conformance_preserves_executor_local_origin_boundary(tmp_path, exit_code):
+    from aios_renew.review_transport import FailureDiagnosticError, public_failure
+    from tests.test_review_transport import _native_failure_fixture
+
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run, private = _native_failure_fixture(exit_code=None if exit_code is ... else exit_code)
+    run.update(run_id="RUN-101-359", task=dict(id="TASK-101", revision=1), base_sha=head, workspace=str(repo))
+    private.update(run_id=run["run_id"], task=run["task"], base_sha=head, failed_head_sha=head)
+    if exit_code is ...:
+        private["error"].pop("exit_code")
+    # The public sentinel does not confer the authenticated local source role.
+    private["error"]["message"] = "Protected Runtime diagnostics remain local."
+    original = _reference_bytes(private)
+    state = runtime_paths(repo)
+    run_path, failure_path = state.runs / (run["run_id"] + ".json"), state.failures / (run["run_id"] + ".json")
+    run_path.write_bytes(_reference_bytes(run))
+    failure_path.write_bytes(original)
+    refs = git(repo, "show-ref")
+    read_args = dict(admitted_run=operator_module._run_from_data(run), subject_sha=head,
+        locator="runtime-failure:" + run["run_id"], expected_sha256=hashlib.sha256(original).hexdigest())
+    assert operator_module.read_executor_private_failure(repo, **read_args) == original
+    for replacement, code in (
+        (dict(locator="C:/private/synthetic-secret"), "PRIVATE_FAILURE_ACCESS_DENIED"),
+        (dict(locator="runtime-failure:RUN-101-999"), "PRIVATE_FAILURE_ACCESS_DENIED"),
+        (dict(subject_sha="0" * 40), "PRIVATE_FAILURE_ACCESS_DENIED"),
+        (dict(expected_sha256="0" * 64), "PRIVATE_FAILURE_DIGEST_MISMATCH"),
+        (dict(admitted_run=replace(read_args["admitted_run"], executor="antigravity")), "PRIVATE_FAILURE_ACCESS_DENIED"),
+    ):
+        with pytest.raises(FailureDiagnosticError) as caught:
+            operator_module.read_executor_private_failure(repo, **dict(read_args, **replacement))
+        assert caught.value.code == code
+    with pytest.raises(ReviewTransportError):
+        public_failure(original)
+    public = public_failure(original, private_original=True)
+    assert b"synthetic-secret" not in public and b"C:/private" not in public
+    assert failure_path.read_bytes() == original and run_path.read_bytes() == _reference_bytes(run)
+    assert git(repo, "show-ref") == refs
 
 
 def _verification_reference(failure):
