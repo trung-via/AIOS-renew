@@ -324,7 +324,7 @@ def test_audited_handoff_remains_opaque_and_semantic_rejection_has_no_success_ou
     policy = _write_policy(tmp_path)
     calls = []
     rejection = ("repair authorization invalid: final REPAIR identity mismatch"
-                 if operation == "AUTHOR_REPAIR" else "audited authoring requires Stage-2 CANDIDATE")
+                 if operation == "AUTHOR_REPAIR" else "remediation validation failed: final finding identity mismatch")
     def reject(source, *, repo, stdin_bytes=None):
         calls.append((source, stdin_bytes))
         raise AuthoringIngressError(rejection)
@@ -992,3 +992,78 @@ payload:
     assert replay_delivery.repair_sha is None
     assert replay_delivery.repair_dispatch_id is None
     assert replay_delivery.github_outputs() == ""
+
+
+@pytest.mark.parametrize("legacy_support", [False, True])
+def test_issue_carrier_direct_final_remediation_preserves_separate_a3_and_delegation(tmp_path, monkeypatch, legacy_support):
+    from aios_renew import operator
+    from aios_renew.remote_surface import RemoteSurfaceError, require_current_approval
+    from tests.test_authoring_ingress import (exact_correction_fixture, forbid_repair_audit_dependencies,
+                                            V1_TASK_105_SOURCE, git)
+    repo, remote, main, decision, envelope = exact_correction_fixture(
+        tmp_path, "AUTHOR_REMEDIATION", "unrelated", task_source=V1_TASK_105_SOURCE)
+    forbid_repair_audit_dependencies(monkeypatch)
+    for name in ("run_task", "run_remediation", "run_approved_remediation_intent"):
+        monkeypatch.setattr(operator, name, lambda *a, **k: pytest.fail("authoring cannot execute a correction"))
+    monkeypatch.setattr(carrier, "admit_local", lambda *a, **k: pytest.fail("correction cannot consume TASK origin proof"))
+    body = {"format": envelope.format, "version": 1, "operation": envelope.operation,
+            "identity": envelope.identity, "expected_state": envelope.expected_state, "payload": envelope.payload}
+    if legacy_support:
+        body["audited_handoff"] = {"stage1": {"packet_fingerprint": "retired"},
+                                   "stage2": {"outcome": "NO_DECISION", "provider_identity": "private"}}
+    event = _write_event(tmp_path, _event(json.dumps(body)))
+    policy = _write_policy(tmp_path)
+    delivery = carrier.deliver_event(event, policy, repo=repo)
+    result = delivery.ingress_result
+    assert result.status == "CANONICALIZED" and not result.replayed
+    assert git(repo, "rev-parse", f"{result.canonical_sha}^") == decision
+    path = f".ai/remediations/REMEDIATION-{envelope.identity['source_run_id']}-F1.yaml"
+    assert yaml.safe_load(git(repo, "show", f"{result.canonical_sha}:{path}")) == envelope.payload
+    assert delivery.publication_run_id is None and delivery.repair_failed_run_id is None
+    assert delivery.github_outputs() == ""
+    assert all(value not in delivery.render_receipt() for value in ("private", "packet_fingerprint", "NO_DECISION"))
+    from aios_renew.operator import _runtime_paths_readonly, runtime_state_root
+    assert not _runtime_paths_readonly(repo).runs.exists()
+    assert not (runtime_state_root(repo) / "approvals").exists()
+    with pytest.raises(RemoteSurfaceError, match="approval is missing"):
+        require_current_approval(envelope.identity["source_run_id"], "F1", repo=repo)
+    replay = carrier.deliver_event(event, policy, repo=repo)
+    assert replay.ingress_result.replayed and replay.ingress_result.canonical_sha == result.canonical_sha
+    assert replay.github_outputs() == ""
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+
+
+@pytest.mark.parametrize("fault", ["actor", "repository", "origin_proof", "finding", "source", "stale_review",
+                                   "scope", "derived_support"])
+def test_issue_carrier_direct_final_remediation_keeps_all_carrier_and_subject_gates(tmp_path, monkeypatch, fault):
+    from tests.test_authoring_ingress import exact_correction_fixture, forbid_correction_mutation, git
+    repo, remote, main, _, envelope = exact_correction_fixture(tmp_path, "AUTHOR_REMEDIATION", "matching")
+    body = {"format": envelope.format, "version": 1, "operation": envelope.operation,
+            "identity": dict(envelope.identity), "expected_state": dict(envelope.expected_state),
+            "payload": dict(envelope.payload)}
+    event_doc = _event(json.dumps(body))
+    if fault == "actor":
+        event_doc["issue"]["user"]["login"] = "unauthorized-actor"
+    elif fault == "repository":
+        event_doc["repository"]["full_name"] = "different/repository"
+    elif fault == "origin_proof":
+        body["origin_authoring_proof"] = "page-origin-proof-v1:" + "a" * 64
+    elif fault == "finding":
+        body["identity"]["finding_id"] = "F999"
+    elif fault == "source":
+        body["identity"]["source_run_id"] = "RUN-999-001"
+    elif fault == "stale_review":
+        body["expected_state"]["expected_reviewed_sha"] = main
+    elif fault == "scope":
+        body["payload"]["modification_scope"] = ["outside.py"]
+    else:
+        body["expected_state"]["canonical_state_fingerprint"] = "0" * 64
+    if fault not in {"actor", "repository"}:
+        body["audited_handoff"] = {"stage2": {"outcome": "CANDIDATE"}}
+        event_doc["issue"]["body"] = json.dumps(body)
+    event, policy = _write_event(tmp_path, event_doc), _write_policy(tmp_path)
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    forbid_correction_mutation(monkeypatch)
+    with pytest.raises((AuthoringIngressError, carrier.GitHubIssueIngressError)):
+        carrier.deliver_event(event, policy, repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
