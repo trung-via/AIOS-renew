@@ -8248,8 +8248,12 @@ findings: []
     assert operator_module._git_is_ancestor(repo, primary_sha, summary.head_sha)
 
 
+@pytest.mark.parametrize(
+    "remote_failure", ["valid", "missing", "orphaned", "substituted", "conflicting"]
+)
 def test_integrated_remediation_repair_completion_preserves_result_base_ac5_ac6(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    remote_failure: str,
 ) -> None:
     repo = make_repo(tmp_path)
     head = git(repo, "rev-parse", "HEAD")
@@ -8384,6 +8388,63 @@ findings:
     failed_remediation = json.loads(
         (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
     )
+    # The current terminal writer rejects the INTEGRATED wrapper before
+    # publishing refs. Seed this historical recovery fixture from the exact
+    # emitted documents using real Git; do not replace remote admission.
+    transport_blocker = json.loads(
+        (state.failures / "RUN-101-001.transport.json").read_text(encoding="utf-8")
+    )
+    assert transport_blocker["code"] == "FAILURE_TRANSPORT_IDENTITY_INVALID"
+    artifacts_sha = transport_module._create_named_artifacts_commit(
+        repo,
+        run_id="RUN-101-001",
+        run_path=state.runs / "RUN-101-001.json",
+        artifact_path=state.failures / "RUN-101-001.json",
+        artifact_name="failure.json",
+        observation_path=state.observations / "RUN-101-001.json",
+        preverification_path=state.preverification / "RUN-101-001.json",
+        execution_profile_path=state.execution_profiles / "RUN-101-001.json",
+    )
+    candidate_ref = "refs/heads/aios/failure/RUN-101-001"
+    artifacts_ref = "refs/heads/aios/failure-artifacts/RUN-101-001"
+    git(
+        repo, "push", "--quiet", "--atomic",
+        f"--force-with-lease={candidate_ref}:",
+        f"--force-with-lease={artifacts_ref}:",
+        "origin",
+        f"{failed_remediation['failed_head_sha']}:{candidate_ref}",
+        f"{artifacts_sha}:{artifacts_ref}",
+    )
+    upstream = tmp_path / "upstream.git"
+    assert git(upstream, "rev-parse", candidate_ref) == failed_remediation["failed_head_sha"]
+    assert_public_artifact(upstream, artifacts_ref, "run.json", state.runs / "RUN-101-001.json")
+    assert_public_artifact(upstream, artifacts_ref, "failure.json", state.failures / "RUN-101-001.json")
+    recovery = transport_module.resolve_remote_repair_recovery(
+        repo, failed_run_id="RUN-101-001"
+    )
+    assert len(recovery.failures) == 1
+    assert recovery.failures[0].candidate_sha == failed_remediation["failed_head_sha"]
+    assert json.loads(recovery.failures[0].run)["execution_base"] == run_doc["execution_base"]
+
+    if remote_failure != "valid":
+        if remote_failure == "missing":
+            git(upstream, "update-ref", "-d", artifacts_ref)
+            git(upstream, "update-ref", "-d", candidate_ref)
+            message = "canonical failed RUN not found"
+        elif remote_failure == "orphaned":
+            git(upstream, "update-ref", "-d", candidate_ref)
+            message = "canonical failed RUN refs missing"
+        elif remote_failure == "substituted":
+            git(upstream, "update-ref", candidate_ref, head)
+            message = "canonical failed-head ref mismatch"
+        else:
+            git(upstream, "update-ref", "refs/heads/aios/artifacts/RUN-101-001", artifacts_sha)
+            message = "canonical RUN has conflicting terminal artifacts"
+        assert_historical_repair_rejected_before_mutation(
+            repo, monkeypatch, failed_run_id="RUN-101-001", message=message,
+        )
+        return
+
     repair = {
         "repair_id": "REPAIR-101-001",
         "failed_run_id": "RUN-101-001",
