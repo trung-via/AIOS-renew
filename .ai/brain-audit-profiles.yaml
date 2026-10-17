@@ -3,6 +3,7 @@
 # Canonical Human/Brain policy selects by exact identity, never registry order.
 # V2/V3 entries preserve historical decoding and exact in-flight bindings only.
 # ROA-1 R2 is isolated conformance support, not a prospective policy cutover.
+# MOA-1 is also isolated support; registry membership grants no selection authority.
 format: AIOS_BRAIN_AUDIT_PROFILES
 version: 1
 profiles:
@@ -316,4 +317,83 @@ profiles:
       evidence_refs_per_check: 4
       closure_summary_bytes: 4096
       outcome_bytes: 196608
+      max_depth: 32
+  - id: moa-1
+    version: 1
+    applicable_flows: [REMEDIATION_AUTHORING]
+    passes:
+      - id: CONSTRUCT
+        checks:
+          - id: EXACT_REVIEW_FINDING
+            check: >-
+              Bind the current canonical source RUN, TASK revision, REVIEW id and
+              CHANGES_REQUIRED verdict, reviewed SHA and exactly outstanding finding
+              id, basis, action, location, issue and expected outcome. Compare supplied
+              canonical source material with the packet and immutable correction refs.
+              A hash binds content, never authenticates it. Missing, conflicting,
+              duplicate, stale or cross-review sources require UNKNOWN and a blocker.
+          - id: FINDING_CAUSE_AND_MINIMUM_DELTA
+            check: >-
+              Explain the evidence-supported cause and smallest supporting correction
+              for the exact finding. Mark OBSERVED, INFERRED or UNKNOWN and cite bound
+              sources; a plausible shared cause without discriminating support blocks.
+              Use only authorized finding identities. A CORRECTION_FRONTIER permits
+              bounded cross-finding analysis, never selection by order, score, guessed
+              priority, similarity or proposed fix. It cannot expose a draft or final
+              REMEDIATION; await a separate exact selected canonical subject.
+          - id: ORIGINAL_TASK_AUTHORITY
+            check: >-
+              Preserve original modification_scope, hard constraints and verification
+              policy/commands, source-family predecessor and available prior correction
+              provenance. Bind the return contract, profile and current Brain context.
+              Missing authority stays UNKNOWN. EVIDENCE_ONLY cannot authorize code edits.
+              A semantic draft confers no mutation, execution, Human A3, Reviewer PASS,
+              finding resolution, Runtime verification or publication authority.
+      - id: ADVERSARIAL_AUDIT_AND_RECONCILE
+        checks:
+          - id: SOURCE_AND_CURRENTNESS_CHALLENGE
+            check: >-
+              Independently rederive source identity from the same bound material.
+              State and reject or reconcile a concrete wrong, stale, swapped, duplicate
+              or cross-review finding counterexample, including reviewed SHA/action
+              mismatch and moved/revoked authority. Missing evidence requires UNKNOWN.
+          - id: FINDING_CLOSURE_CHALLENGE
+            check: >-
+              Challenge whether the final proposed delta addresses precisely the finding's
+              issue and expected outcome under its required CODE_FIX or EVIDENCE_ONLY
+              action. State a concrete falsifier; reject misapplied EVIDENCE_ONLY and
+              false or mixed PASS. Close this semantic challenge on the final candidate,
+              without claiming canonical finding closure or independent Reviewer PASS.
+          - id: NON_INTERFERENCE_CHALLENGE
+            check: >-
+              Challenge unsupported shared cause, unrelated edits, unauthorized findings,
+              scope widening and corrected-one-but-broke-another. Cite discriminating
+              sources and a concrete counterexample. Reconcile only the minimum legal
+              delta; original constraints, predecessor and permitted affected verification
+              must survive. Unresolved support or non-interference blocks the proposal.
+          - id: SINGLE_AUDIT_AND_AUTHORITY_CHALLENGE
+            check: >-
+              Challenge forged profile/digest, mixed stages, duplicate or ROA/MOA/V1 dual
+              normative audits, stale context, changed original verification/predecessor
+              and absent exact target authority. A frontier always blocks final authoring.
+              End this second pass in one CANDIDATE or NO_DECISION closure. No hidden
+              third audit, default activation, retry, selector, ingress gate, execution,
+              Human A3 approval, Runtime proof, publication or roadmap advancement.
+    procedure:
+      name: REMEDIATION_OUTCOME_AUDIT
+      stages: [CONSTRUCT, ADVERSARIAL_AUDIT_AND_RECONCILE]
+      check_outcomes: [CLEAR, BLOCKER]
+      knowledge_states: [OBSERVED, INFERRED, UNKNOWN]
+      challenge_dispositions: [REJECTED_WITH_BOUNDED_BASIS, ADDRESSED_BY_RECONCILIATION, BLOCKER]
+      final_outcomes: [CANDIDATE, NO_DECISION]
+      final_closure: true
+    bounds:
+      check_bytes: 2048
+      candidate_bytes: 131072
+      basis_bytes: 2048
+      evidence_refs_per_check: 4
+      finding_refs_per_check: 16
+      closure_summary_bytes: 2048
+      outcome_bytes: 196608
+      source_context_bytes: 65536
       max_depth: 32

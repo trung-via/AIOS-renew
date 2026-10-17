@@ -706,7 +706,7 @@ and `LAWFUL_READINESS`. The single `REPAIR_OUTCOME_AUDIT` procedure makes one
 decision with one final closure. It has no CONSTRUCT/reconcile stages, universal
 eight-lens ledger, second normative V1 audit or implicit V1/V3 fallback.
 
-The registry count ceiling is exactly four recognized identities, still at most
+At R1 the registry count ceiling was exactly four recognized identities, at most
 32768 UTF-8 bytes. ROA requires its exact normalized digest, including procedure,
 instructions and bounds. Rehashing modified instructions, adding a check/stage,
 renaming another profile, changing bounds or supplying another version cannot
@@ -792,3 +792,185 @@ subject, native duplicate output, mixed/dual audits, unauthorized live selection
 no fallback, both native transports and unchanged historical replay. Runtime owns
 the focused canonical verification and EVIDENCE. Conformance support and one-call
 structure establish no measured quality, token, latency or episode-cost gain.
+
+## 20. R2.1 / R2: isolated MOA-1 remediation conformance
+
+MOA-1 adds bounded semantic support for the existing `REMEDIATION_AUTHORING` flow.
+It does not activate the R2.1 successor policy. Sections 18.6 and 18.8 still govern
+prospective Adaptive V1 selection and direct final `AUTHOR_REMEDIATION` ingress.
+Human A3, Runtime admission/currentness/verification/EVIDENCE/CAS, independent
+Reviewer judgment and Publisher authority retain their existing owners. Neither
+a conformance decision nor its hashes resolve a finding or grant mutation rights.
+
+### 20.1. Exact fifth profile and two focused passes
+
+The finite registry recognizes exactly one additional identity:
+
+```yaml
+audit_profile_ref:
+  id: moa-1
+  version: 1
+  digest: 49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903
+```
+
+It applies only to `REMEDIATION_AUTHORING`. `passes` contains exactly:
+
+1. `CONSTRUCT`: `EXACT_REVIEW_FINDING`, `FINDING_CAUSE_AND_MINIMUM_DELTA`,
+   `ORIGINAL_TASK_AUTHORITY`.
+2. `ADVERSARIAL_AUDIT_AND_RECONCILE`: `SOURCE_AND_CURRENTNESS_CHALLENGE`,
+   `FINDING_CLOSURE_CHALLENGE`, `NON_INTERFERENCE_CHALLENGE`,
+   `SINGLE_AUDIT_AND_AUTHORITY_CHALLENGE`.
+
+The first pass frames the exact finding, evidence-supported cause, minimum delta
+and original authority. It returns a non-final draft and typed judgments, with no
+closure or handoff. The second pass independently challenges and reconciles that
+draft on the same exact subject, then returns one final `CANDIDATE` or
+`NO_DECISION` closure. Concrete counterexamples address wrong/stale/duplicate or
+cross-review findings, action/SHA mismatch, unsupported shared cause, unrelated
+edits, interference, missing evidence, misapplied EVIDENCE_ONLY, false/mixed PASS,
+changed predecessor or verification, stale/revoked authority, forged profile,
+mixed stages and duplicate normative audits. These are remediation-specific
+checks, without a universal eight-lens ledger, V1 follow-up or third audit.
+
+The registry now permits one to five recognized identities within the unchanged
+32768-byte ceiling. Exact historical V1/V2/V3 and ROA contents/digests and their
+existing serialization/replay remain intact. MOA requires its pinned normalized
+digest over all instructions, stages and bounds; changing content and rehashing
+an outer package cannot remint it. Registry order carries no policy authority.
+
+MOA bounds: 2048 UTF-8 bytes per profile instruction, judgment basis,
+counterexample and closure summary; 131072 candidate JSON bytes; four exact
+source references and sixteen finding identities per judgment; sixteen source
+REVIEW records and findings per source REVIEW; 65536 source-context JSON bytes;
+196608 bytes per pass's semantic material; depth 32. Existing request, decision,
+native response and attribution bounds remain. Closed fields, duplicate JSON/YAML
+key rejection, private-path/metadata exclusions and protected candidate
+normalization apply. No raw logs/evidence, credentials, chat/reasoning traces,
+provider/model/session identity or nested protocol/support envelopes may enter
+judgments, source projections or candidates.
+
+### 20.2. Existing packet plus bounded canonical source projections
+
+`construct_moa_subject(packet, profile, return_contract_ref, external_bindings,
+source_context=None)` accepts the existing `UNIQUE_FINDING` or
+`CORRECTION_FRONTIER` packet. It binds packet/work-context fingerprints, exact
+profile and return-contract references, original TASK id/revision, every supplied
+finding's RUN/REVIEW/id/reviewed SHA/basis/action/location/issue/expected, immutable
+correction refs, outstanding status and available prior correction provenance.
+It uses the existing compiler's `UNIFIED_STATE` selection basis. The packet's
+`requires_fresh_context_for_continuation: false` is the ordinary flow-resolution
+value; isolated MOA attempts independently require fresh composition between
+passes and before return. No Decision Packet or return-contract schema changes.
+External bindings are empty: they cannot smuggle in a selected frontier target.
+
+The ordinary packet can lack full canonical REVIEW and RUN material. The optional
+`moa_source_context` is an isolated, read-only protocol input supplied by the
+caller before provider invocation. It has exactly `reviews`, an array of records
+with exactly:
+
+- `run`: `run_id`, `task` (`id`, `revision`), `head_sha`, `kind`
+  (`PRIMARY`, `REPAIR` or `REMEDIATION`) and `prior_correction`.
+- `review`: the existing canonical REVIEW fields `review_id`, `reviewed_sha`,
+  `mode`, `verdict`, `acceptance`, `findings`, and optional `prior_finding_id`.
+  Finding records have exactly `id`, `basis`, `action`, `location`, `issue`,
+  `expected`. The existing REVIEW parser supplies structural grammar.
+- `artifacts_sha` and `review_decision_sha`: the immutable source refs.
+
+PRIMARY has null prior correction and PRIMARY review mode. REPAIR and REMEDIATION
+carry the existing bounded prior-correction projection (kind, authorization SHA,
+authorization and failed RUN/head or exact predecessor); REMEDIATION uses DELTA mode
+and preserves its prior finding. Any available packet prior decision must agree.
+The package must cover exactly the packet's source RUN set, with no duplicate or
+unrelated source records. Each selected finding must occur exactly once in its
+CHANGES_REQUIRED REVIEW and agree with every finding field, failed acceptance,
+TASK identity, RUN head, canonical REVIEW ref and available original provenance.
+The packet's canonical correction projection must bind the exact outstanding set,
+source artifact, REVIEW decision and current authoring authority. A selector in
+that pre-existing provenance does not select a frontier target.
+
+The pure protocol reads no Git and cannot authenticate a caller's canonical
+projections. Authenticated canonical reads, source-family validation and live
+freshness remain the supplying caller's responsibility. Model-written strings,
+source-looking names or content hashes provide no authenticity. Derived
+`{path, digest}` references only bind those supplied values to this procedure;
+the model cannot add or replace sources in its response. Missing or conflicting
+material leaves `review`, `task` or `lineage` unavailable and records an explicit
+bounded blocker. Parsing malformed input fails closed. Neither outer rehashing
+nor an optimistic model declaration can discharge an unavailable role.
+
+### 20.3. Typed judgments, frontier limit and one closure
+
+`construct_moa` accepts exactly `subject_fingerprint`, `checks`, `draft_candidate`.
+The three ordered checks each contain `id`, `outcome` (`CLEAR|BLOCKER`),
+`knowledge` (`OBSERVED|INFERRED|UNKNOWN`), bounded `basis`, `evidence_refs` and
+`finding_refs`. References must be unique and exactly match the derived sources
+and authorized four-field finding identities. Source checks cover the complete
+outstanding set. Non-UNKNOWN judgments require their discriminating sources;
+UNKNOWN requires BLOCKER. A missing source or authority forces UNKNOWN/BLOCKER
+for every dependent check. A draft with unavailable authority is forbidden.
+
+`validate_moa` accepts exactly `subject_fingerprint`, `construct_fingerprint`,
+`challenges`, `closure`, `reconciled_candidate`. The four ordered challenge records
+add non-empty `counterexample` and `disposition` (`REJECTED_WITH_BOUNDED_BASIS`,
+`ADDRESSED_BY_RECONCILIATION` or `BLOCKER`). A blocking disposition matches a
+blocking judgment. Reconciliation claims must agree with an actual change from
+the bound draft to the final candidate. The final closure contains exactly
+`outcome`, `knowledge`, bounded `summary`, `candidate_fingerprint`; it binds the
+reconciled candidate. Any challenge BLOCKER forces NO_DECISION with null candidate
+and fingerprint. Final knowledge is UNKNOWN if any challenge is UNKNOWN,
+otherwise INFERRED if any is INFERRED, otherwise OBSERVED. No PASS is emitted.
+
+For `UNIQUE_FINDING`, only a closed second pass can expose a typed final proposal
+matching the selected finding's exact id, required CODE_FIX/EVIDENCE_ONLY action
+and reviewed SHA. It uses the existing preferred six-field candidate body:
+`finding_id`, `action`, `reviewed_sha`, `modification_scope`, `verification`
+(`policy`, `affected`, optional original `full_suite_reason`), `constraints`
+(`hard`). Scope is a unique subset of original TASK scope; CODE_FIX requires a
+non-empty supporting scope and EVIDENCE_ONLY has no code modification scope.
+Original hard constraints and verification policy are
+preserved; affected commands are unique, non-empty and authorized by the original
+TASK's required commands. The existing remediation parser validates family
+grammar. Semantic cause and non-interference remain Brain judgments about bound
+sources, never machine proof of repair or canonical Reviewer finding closure.
+
+A `CORRECTION_FRONTIER` with two or more outstanding findings supports bounded
+cross-finding causal analysis only within that exact set. No ordered element,
+ranking, guessed priority, shared-cause claim, external binding or proposed fix
+can select a target or enlarge one correction's scope. Both draft and final
+candidate remain null; the authority challenge must be UNKNOWN/BLOCKER and the
+one closure NO_DECISION. This slice requires a separate exact selected canonical
+subject before final remediation authoring. It introduces no frontier selector.
+
+### 20.4. Isolated transport, freshness and unchanged downstream authority
+
+`construct_request` accepts MOA only in explicit `MOA_CONSTRUCT` then
+`MOA_RECONCILE` modes, carrying one exact profile, `moa_subject` and
+`moa_source_context`. The second request revalidates the first request/decision
+fingerprints and complete construct. All packet, profile, return, source and
+stage bindings are reconstructed during request/decision revalidation. Rehashed
+stale, swapped, mixed or malformed material fails closed. Historical modes reject
+MOA; MOA modes reject V1/V2/V3/ROA. Lists of profiles/decisions, a prior audit on
+construct, extra normative audits or a third pass are forbidden.
+
+`attempt(..., conformance_only=True, moa_source_context=...)` uses the same mapping
+or JSON provider for exactly two focused calls. It requires a fresh packet before
+the second pass and again before returning the final decision. It rebuilds the
+same first request with captured normalized packages and requires the identical
+fingerprint. These structural freshness reconstructions invoke no provider or
+semantic audit. Source, intent, original verification or authority movement,
+unavailable freshness, malformed output and duplicate native JSON keys abort
+without a decision, retry or profile fallback. Ordinary prospective attempts
+cannot select MOA from registry membership; Adaptive V1 policy is unchanged.
+
+The source package, stages and closure are transient conformance material, never
+a second correction validator, persistent evidence store or new ingress
+prerequisite. Existing direct AUTHOR_REMEDIATION independently checks its exact
+canonical source RUN, REVIEW, outstanding finding, correction lineage, final
+contract and current authority. Human A3/REMEDIATION INTENT, admitted Executor,
+Runtime verification/EVIDENCE, Reviewer and Publisher are not inferred from MOA.
+This slice changes no roadmap or downstream adoption and introduces no full-suite
+or V2 verification gate. Focused modeled tests cover positive/UNKNOWN unique and
+frontier cases, concrete adversarial challenges, profile/byte/depth bounds,
+malformed/currentness and dual-audit cases, both native transports and historical
+and ROA regressions. They establish no live provider quality or cost superiority;
+Runtime owns canonical verification and EVIDENCE on the committed candidate.

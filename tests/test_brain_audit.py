@@ -10,10 +10,375 @@ import pytest
 from aios_renew.brain_audit import (
     BrainAuditError, construct_roa_subject, construct_stage1, normalize_profile, parse_profile_registry,
     profile_applies, profile_ref, validate_roa, validate_stage2,
+    construct_moa_subject, construct_moa, validate_moa,
 )
 
 
 REGISTRY = Path(__file__).resolve().parents[1] / ".ai" / "brain-audit-profiles.yaml"
+
+
+@pytest.fixture
+def moa_profile():
+    return next(p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"] if p["id"] == "moa-1")
+
+
+def moa_packet(*, frontier=False, action="CODE_FIX", prior_kind=None):
+    """Use the existing compiler; no new Decision Packet field or target selector."""
+    from tests.test_decision_packet import authoring, context, item
+    from aios_renew.decision_packet import compile_decision_packet
+
+    items = [item("RUN-002-001", "REVIEW-002-001", "F1")]
+    items[0]["finding"]["action"] = action
+    if frontier:
+        items.append(item("RUN-002-002", "REVIEW-002-002", "F2", "b" * 40))
+    work, flow, material = authoring(items, selected=not frontier)
+    contract = material["task"]
+    contract["verification"]["policy"] = "minimum-sufficient-v1"
+    identities = [{"source_run_id": i["source_run_id"], "review_id": i["review_id"],
+                   "finding_id": i["finding"]["id"], "reviewed_sha": i["reviewed_sha"]} for i in items]
+    correction = {"policy": "EXACT_CORRECTION_SUBJECT_LINEAGE_V1", "operation": "AUTHOR_REMEDIATION",
+        "selectors": {"source_run_id": items[0]["source_run_id"], "finding_id": "F1"},
+        "task": {"id": "TASK-002", "revision": 1}, "artifacts_sha": "c" * 40,
+        **identities[0], "review_decision_sha": "d" * 40,
+        "outstanding_reviews": [{**identity, "review_decision_sha": str(index + 4) * 40}
+                                for index, identity in enumerate(identities)]}
+    correction["review_decision_sha"] = correction["outstanding_reviews"][0]["review_decision_sha"]
+    work, flow = context("AUTHOR_REMEDIATION", work.canonical_observation["unified_state"], correction_subject=correction)
+    canonical = compile_decision_packet(work, flow, material).as_dict()
+    records = []
+    for index, entry in enumerate(items):
+        prior = None
+        if prior_kind == "REPAIR":
+            prior = {"kind": "REPAIR", "authorization_sha": "e" * 40, "failed_run_id": "RUN-002-000", "failed_head_sha": "f" * 40,
+                     "authorization": {"failed_run_id": "RUN-002-000", "failed_head_sha": "f" * 40}}
+        elif prior_kind == "REMEDIATION":
+            prior = {"kind": "REMEDIATION", "authorization_sha": "e" * 40,
+                     "predecessor": {**identities[0], "finding_id": "F0", "reviewed_sha": "f" * 40},
+                     "authorization": {"finding_id": "F0", "reviewed_sha": "f" * 40}}
+        review = {"review_id": entry["review_id"], "reviewed_sha": entry["reviewed_sha"],
+                  "mode": "DELTA" if prior_kind == "REMEDIATION" else "PRIMARY", "verdict": "CHANGES_REQUIRED",
+                  "acceptance": {"AC1": "FAIL", "AC2": "PASS"}, "findings": [deepcopy(entry["finding"])]}
+        if prior_kind == "REMEDIATION":
+            review["prior_finding_id"] = "F0"
+        records.append({"run": {"run_id": entry["source_run_id"], "task": correction["task"],
+                                "head_sha": entry["reviewed_sha"], "kind": prior_kind or "PRIMARY", "prior_correction": prior},
+                        "artifacts_sha": "c" * 40, "review_decision_sha": correction["outstanding_reviews"][index]["review_decision_sha"],
+                        "review": review})
+    canonical["packet_fingerprint"] = digest({k: v for k, v in canonical.items() if k != "packet_fingerprint"})
+    return canonical, {"reviews": records}
+
+
+def moa_subject(body, profile, sources):
+    return construct_moa_subject(body, profile, {"selected_flow": "REMEDIATION_AUTHORING", "version": 1,
+                                                "digest": "a" * 64}, {}, sources)
+
+
+def moa_candidate(body):
+    target = body["subject"]
+    task = body["canonical_facts"]["task_contract"]
+    return {**{k: target[k] for k in ("finding_id", "action", "reviewed_sha")},
+            "modification_scope": [] if target["action"] == "EVIDENCE_ONLY" else list(task["scope"]["modify"]),
+            "verification": {"policy": task["verification"]["policy"], "affected": list(task["verification"]["required"])},
+            "constraints": deepcopy(task["constraints"])}
+
+
+def moa_checks(subject, profile, *, challenge=False):
+    roles = (("review", "lineage"), ("finding", "review"), ("review", "task"), ("task", "lineage")) if challenge else (
+        ("finding", "review", "lineage"), ("finding", "review"), ("task", "lineage"))
+    counterexamples = (
+        "Another REVIEW can reuse F1 at a different SHA; compare all four identity fields and immutable REVIEW refs.",
+        "A proof-only response cannot repair a CODE_FIX finding; preserve the exact action and expected behavior.",
+        "Fixing F1 by changing an unrelated authorized file can break F2; restrict the supporting delta and challenge shared cause.",
+        "A moved authority ref or a second V1 audit cannot authorize this proposal; require one exact current two-pass lineage.",
+    )
+    results = []
+    for index, (spec, required) in enumerate(zip(profile["passes"][int(challenge)]["checks"], roles)):
+        missing = any(subject["sources"][role] is None for role in required)
+        missing = missing or challenge and index == 3 and subject["kind"] == "CORRECTION_FRONTIER"
+        result = {"id": spec["id"], "outcome": "BLOCKER" if missing else "CLEAR",
+                  "knowledge": "UNKNOWN" if missing else "INFERRED" if index == 1 else "OBSERVED",
+                  "basis": "Missing exact support/target; await canonical context." if missing else
+                           "Bound finding issue and expected behavior support this minimum delta; compare exact sources without claiming proof.",
+                  "evidence_refs": [deepcopy(subject["sources"][r]) for r in required if subject["sources"][r] is not None],
+                  "finding_refs": [{k: f[k] for k in ("source_run_id", "review_id", "finding_id", "reviewed_sha")}
+                                   for f in subject["findings"]]}
+        if challenge:
+            result.update(counterexample=counterexamples[index],
+                          disposition="BLOCKER" if missing else "REJECTED_WITH_BOUNDED_BASIS")
+        results.append(result)
+    return results
+
+
+def moa_first(body, profile, subject):
+    return {"subject_fingerprint": subject["subject_fingerprint"], "checks": moa_checks(subject, profile),
+            "draft_candidate": None if subject["blockers"] else moa_candidate(body)}
+
+
+def moa_final(body, profile, subject, first):
+    challenges = moa_checks(subject, profile, challenge=True)
+    blocked = any(c["outcome"] == "BLOCKER" for c in challenges)
+    candidate = None if blocked else moa_candidate(body)
+    return {"subject_fingerprint": subject["subject_fingerprint"], "construct_fingerprint": first["construct_fingerprint"],
+            "challenges": challenges, "reconciled_candidate": candidate,
+            "closure": {"outcome": "NO_DECISION" if blocked else "CANDIDATE",
+                        "knowledge": "UNKNOWN" if blocked else "INFERRED", "summary": "One bounded semantic closure; no canonical finding resolution.",
+                        "candidate_fingerprint": None if blocked else digest(candidate)}}
+
+
+@pytest.mark.parametrize("action", ("CODE_FIX", "EVIDENCE_ONLY"))
+@pytest.mark.parametrize("prior_kind", (None, "REPAIR", "REMEDIATION"))
+def test_moa_unique_two_focused_passes_preserve_family_and_original_authority(moa_profile, action, prior_kind):
+    body, sources = moa_packet(action=action, prior_kind=prior_kind)
+    subject = moa_subject(body, moa_profile, sources)
+    assert subject["blockers"] == {}
+    first = construct_moa(body, moa_profile, subject, moa_first(body, moa_profile, subject), sources)
+    assert "closure" not in first and "handoff_candidate" not in first
+    final = validate_moa(body, moa_profile, subject, first, moa_final(body, moa_profile, subject, first), sources)
+    assert final["closure"]["outcome"] == "CANDIDATE"
+    assert final["handoff_candidate"] == moa_candidate(body)
+    assert "verdict" not in final and "finding_resolved" not in final
+    with pytest.raises(BrainAuditError):
+        construct_stage1(body, moa_profile, {"proposal": "Cannot mix with V1"})
+
+
+def test_moa_frontier_is_bounded_analysis_without_an_implicit_target(moa_profile):
+    body, sources = moa_packet(frontier=True)
+    subject = moa_subject(body, moa_profile, sources)
+    assert set(subject["blockers"]) == {"target"}
+    first_material = moa_first(body, moa_profile, subject)
+    first = construct_moa(body, moa_profile, subject, first_material, sources)
+    material = moa_final(body, moa_profile, subject, first)
+    assert validate_moa(body, moa_profile, subject, first, material, sources)["handoff_candidate"] is None
+    # Neither an externally proposed winner nor the first sorted element selects.
+    first_material["draft_candidate"] = {"finding_id": "F1"}
+    with pytest.raises(BrainAuditError):
+        construct_moa(body, moa_profile, subject, first_material, sources)
+    with pytest.raises(BrainAuditError):
+        construct_moa_subject(body, moa_profile, subject["return_contract_ref"], {"finding_id": "F1"}, sources)
+    material["challenges"][-1].update(outcome="CLEAR", knowledge="OBSERVED", disposition="REJECTED_WITH_BOUNDED_BASIS")
+    material["closure"].update(outcome="CANDIDATE", knowledge="INFERRED")
+    with pytest.raises(BrainAuditError):
+        validate_moa(body, moa_profile, subject, first, material, sources)
+
+
+@pytest.mark.parametrize("fault", (
+    "missing_review", "duplicate_review", "wrong_run", "wrong_review", "wrong_action", "wrong_sha",
+    "wrong_finding", "duplicate_finding", "false_pass", "pass_empty", "mixed_pass", "basis", "issue", "expected",
+    "stale_ref", "resolved", "revoked", "task", "verification", "prior_missing", "prior_changed",
+))
+def test_moa_missing_conflicting_sources_force_unknown_without_model_source_laundering(moa_profile, fault):
+    body, sources = moa_packet(prior_kind="REMEDIATION" if fault.startswith("prior_") else None)
+    record = sources["reviews"][0]
+    review, finding = record["review"], record["review"]["findings"][0]
+    lineage = body["canonical_facts"]["correction_subject"]
+    if fault == "missing_review":
+        sources["reviews"] = []
+    elif fault == "duplicate_review":
+        sources["reviews"].append(deepcopy(record))
+    elif fault == "wrong_run":
+        record["run"]["run_id"] = "RUN-002-099"
+    elif fault == "wrong_review":
+        review["review_id"] = "REVIEW-002-099"
+    elif fault == "wrong_action":
+        finding["action"] = "EVIDENCE_ONLY"
+    elif fault == "wrong_sha":
+        review["reviewed_sha"] = "f" * 40
+    elif fault == "wrong_finding":
+        finding["id"] = "F99"
+    elif fault == "duplicate_finding":
+        review["findings"].append(deepcopy(finding))
+    elif fault == "false_pass":
+        review["verdict"] = "PASS"
+    elif fault == "pass_empty":
+        review.update(verdict="PASS", findings=[], acceptance={"AC1": "PASS", "AC2": "PASS"})
+    elif fault == "mixed_pass":
+        review["acceptance"]["AC1"] = "PASS"
+    elif fault in ("basis", "issue", "expected"):
+        finding[fault] = "AC2" if fault == "basis" else "Another finding contract"
+    elif fault == "stale_ref":
+        record["review_decision_sha"] = "f" * 40
+    elif fault == "resolved":
+        lineage["outstanding_reviews"] = []
+    elif fault == "revoked":
+        body["canonical_blocker"] = {"reason": "Authority revoked"}
+    elif fault == "task":
+        record["run"]["task"] = {"id": "TASK-003", "revision": 1}
+    elif fault == "verification":
+        body["canonical_facts"]["task_contract"].pop("verification")
+    elif fault == "prior_missing":
+        record["run"]["prior_correction"] = None
+    else:
+        body["prior_semantic_decisions"] = deepcopy(record["run"]["prior_correction"])
+        record["run"]["prior_correction"]["authorization_sha"] = "f" * 40
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    subject = moa_subject(body, moa_profile, sources)
+    assert subject["blockers"]
+    first = construct_moa(body, moa_profile, subject, moa_first(body, moa_profile, subject), sources)
+    material = moa_final(body, moa_profile, subject, first)
+    final = validate_moa(body, moa_profile, subject, first, material, sources)
+    assert final["closure"]["knowledge"] == "UNKNOWN" and final["handoff_candidate"] is None
+    for check in material["challenges"]:
+        if check["knowledge"] == "UNKNOWN":
+            check.update(knowledge="INFERRED", outcome="CLEAR", disposition="REJECTED_WITH_BOUNDED_BASIS")
+            break
+    with pytest.raises(BrainAuditError):
+        validate_moa(body, moa_profile, subject, first, material, sources)
+
+
+@pytest.mark.parametrize("fault", ("action", "reviewed_sha", "finding_id", "scope", "empty_code_fix", "constraints", "policy", "command", "duplicate_command", "evidence_only"))
+def test_moa_final_proposal_cannot_escape_exact_finding_and_original_policy(moa_profile, fault):
+    body, sources = moa_packet(action="EVIDENCE_ONLY" if fault == "evidence_only" else "CODE_FIX")
+    subject = moa_subject(body, moa_profile, sources)
+    first = construct_moa(body, moa_profile, subject, moa_first(body, moa_profile, subject), sources)
+    material = moa_final(body, moa_profile, subject, first)
+    candidate = material["reconciled_candidate"]
+    if fault == "scope":
+        candidate["modification_scope"].append("src/unrelated.py")
+    elif fault == "empty_code_fix":
+        candidate["modification_scope"] = []
+    elif fault == "constraints":
+        candidate["constraints"]["hard"] = []
+    elif fault == "policy":
+        candidate["verification"]["policy"] = "minimum-sufficient-v2"
+    elif fault == "command":
+        candidate["verification"]["affected"] = ["pytest tests/unrelated.py"]
+    elif fault == "duplicate_command":
+        candidate["verification"]["affected"] *= 2
+    elif fault == "evidence_only":
+        candidate["modification_scope"] = body["canonical_facts"]["task_contract"]["scope"]["modify"]
+    else:
+        candidate[fault] = {"action": "EVIDENCE_ONLY", "reviewed_sha": "f" * 40, "finding_id": "F2"}[fault]
+    material["closure"]["candidate_fingerprint"] = digest(candidate)
+    material["challenges"][2]["disposition"] = "ADDRESSED_BY_RECONCILIATION"
+    with pytest.raises(BrainAuditError):
+        validate_moa(body, moa_profile, subject, first, material, sources)
+
+
+@pytest.mark.parametrize("fault", ("no_counterexample", "forged_evidence", "unauthorized_finding", "missing_evidence", "unknown_clear", "double_closure", "third_pass", "false_closure", "hidden_support"))
+def test_moa_second_pass_requires_concrete_bound_challenges_and_one_closure(moa_profile, fault):
+    body, sources = moa_packet()
+    subject = moa_subject(body, moa_profile, sources)
+    first = construct_moa(body, moa_profile, subject, moa_first(body, moa_profile, subject), sources)
+    material = moa_final(body, moa_profile, subject, first)
+    challenge = material["challenges"][2]
+    if fault == "no_counterexample":
+        challenge["counterexample"] = ""
+    elif fault == "forged_evidence":
+        challenge["evidence_refs"][0]["digest"] = "f" * 64
+    elif fault == "unauthorized_finding":
+        challenge["finding_refs"][0]["review_id"] = "REVIEW-002-099"
+    elif fault == "missing_evidence":
+        challenge["evidence_refs"] = []
+    elif fault == "unknown_clear":
+        challenge["knowledge"] = "UNKNOWN"
+    elif fault == "double_closure":
+        material["closure"] = [material["closure"], deepcopy(material["closure"])]
+    elif fault == "third_pass":
+        material["v1_audit"] = {}
+    elif fault == "false_closure":
+        material["closure"]["outcome"] = "PASS"
+    else:
+        material["reconciled_candidate"]["support"] = {"format": "AIOS_MOA_SUBJECT"}
+    with pytest.raises(BrainAuditError):
+        validate_moa(body, moa_profile, subject, first, material, sources)
+
+
+def test_moa_reconciles_a_concrete_non_interference_risk_without_a_third_audit(moa_profile):
+    body, sources = moa_packet()
+    subject = moa_subject(body, moa_profile, sources)
+    draft = moa_first(body, moa_profile, subject)
+    draft["draft_candidate"]["modification_scope"].append("src/unrelated.py")
+    first = construct_moa(body, moa_profile, subject, draft, sources)
+    material = moa_final(body, moa_profile, subject, first)
+    material["challenges"][2].update(disposition="ADDRESSED_BY_RECONCILIATION",
+        basis="Remove the unrelated file; the final candidate now limits the correction to the exact finding's supporting delta.")
+    assert validate_moa(body, moa_profile, subject, first, material, sources)["handoff_candidate"] == moa_candidate(body)
+    material["challenges"][2]["disposition"] = "REJECTED_WITH_BOUNDED_BASIS"
+    with pytest.raises(BrainAuditError):
+        validate_moa(body, moa_profile, subject, first, material, sources)
+
+
+@pytest.mark.parametrize("counterexample", (
+    "F1 and F2 have similar wording but no evidence of a shared cause; grouping them cannot authorize a larger correction.",
+    "The proposed F1 fix disables a still-required F2 behavior; non-interference remains unsupported.",
+    "The source requires CODE_FIX but only rerunning evidence leaves the reported issue unchanged.",
+    "A prior correction can change the execution predecessor while preserving a finding label; current lineage is decisive.",
+))
+def test_moa_valid_draft_does_not_discharge_an_unresolved_semantic_counterexample(moa_profile, counterexample):
+    body, sources = moa_packet()
+    subject = moa_subject(body, moa_profile, sources)
+    first = construct_moa(body, moa_profile, subject, moa_first(body, moa_profile, subject), sources)
+    material = moa_final(body, moa_profile, subject, first)
+    material["challenges"][2].update(outcome="BLOCKER", knowledge="UNKNOWN", disposition="BLOCKER",
+                                    counterexample=counterexample, basis="Discriminating support is absent; do not assume closure.")
+    material["reconciled_candidate"] = None
+    material["closure"].update(outcome="NO_DECISION", knowledge="UNKNOWN", candidate_fingerprint=None)
+    final = validate_moa(body, moa_profile, subject, first, material, sources)
+    assert final["handoff_candidate"] is None and final["closure"]["outcome"] == "NO_DECISION"
+    material["reconciled_candidate"] = first["draft_candidate"]
+    with pytest.raises(BrainAuditError):
+        validate_moa(body, moa_profile, subject, first, material, sources)
+
+
+@pytest.mark.parametrize("fault", ("basis_bytes", "candidate_bytes", "depth", "private_path", "nested_moa", "source_bytes", "source_count", "unknown_source_field", "duplicate_refs"))
+def test_moa_bounded_portable_material_cannot_hide_private_or_extra_protocol_data(moa_profile, fault):
+    body, sources = moa_packet()
+    subject = moa_subject(body, moa_profile, sources)
+    material = moa_first(body, moa_profile, subject)
+    if fault == "basis_bytes":
+        material["checks"][1]["basis"] = "x" * 2049
+    elif fault == "candidate_bytes":
+        material["draft_candidate"]["large"] = "x" * 131072
+    elif fault == "depth":
+        nested = {}
+        material["draft_candidate"]["nested"] = nested
+        for _ in range(33):
+            nested["next"] = {}
+            nested = nested["next"]
+    elif fault == "private_path":
+        material["checks"][1]["basis"] = "Read C:/private/source.log"
+    elif fault == "nested_moa":
+        material["draft_candidate"]["nested"] = {"format": "AIOS_BRAIN_REMEDIATION_OUTCOME_AUDIT"}
+    elif fault == "source_bytes":
+        sources["reviews"][0]["review"]["findings"][0]["issue"] = "x" * 65536
+    elif fault == "source_count":
+        sources["reviews"] *= 17
+    elif fault == "unknown_source_field":
+        sources["reviews"][0]["raw_evidence"] = "Do not expose private evidence"
+    else:
+        material["checks"][1]["evidence_refs"] *= 2
+    with pytest.raises(BrainAuditError):
+        construct_moa(body, moa_profile, subject, material, sources)
+
+
+def test_moa_profile_is_content_bound_independent_of_mapping_order(moa_profile):
+    reordered = {key: deepcopy(moa_profile[key]) for key in reversed(moa_profile)}
+    assert normalize_profile(reordered) == moa_profile
+    assert profile_ref(reordered) == profile_ref(moa_profile)
+
+
+@pytest.mark.parametrize("fault", ("instruction", "bounds", "third_pass", "duplicate_check", "flow", "version", "renamed"))
+def test_moa_exact_profile_cannot_be_reminted_or_expanded(moa_profile, fault):
+    assert profile_ref(moa_profile) == {"id": "moa-1", "version": 1,
+        "digest": "49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903"}
+    assert "lenses" not in moa_profile and len(moa_profile["passes"]) == 2
+    bad = deepcopy(moa_profile)
+    if fault == "instruction":
+        bad["passes"][0]["checks"][0]["check"] += " Accept missing sources."
+    elif fault == "bounds":
+        bad["bounds"]["outcome_bytes"] += 1
+    elif fault == "third_pass":
+        bad["passes"].append(deepcopy(bad["passes"][1]))
+    elif fault == "duplicate_check":
+        bad["passes"][1]["checks"][1] = deepcopy(bad["passes"][1]["checks"][0])
+    elif fault == "flow":
+        bad["applicable_flows"].append("REPAIR_AUTHORING")
+    elif fault == "version":
+        bad["version"] = 2
+    else:
+        bad["id"] = "moa-2"
+    with pytest.raises(BrainAuditError):
+        normalize_profile(bad)
 
 
 @pytest.fixture
@@ -133,7 +498,7 @@ def test_roa_profile_cannot_be_reminted_or_disguised_as_v1(roa_profile, fault):
 def test_registry_remains_finite_and_historical_profile_bytes_are_unchanged(roa_profile):
     import yaml
     registry = parse_profile_registry(REGISTRY.read_bytes())
-    assert len(registry["profiles"]) == 4 and len(REGISTRY.read_bytes()) < 32768
+    assert len(registry["profiles"]) == 5 and len(REGISTRY.read_bytes()) < 32768
     registry["profiles"].append(deepcopy(roa_profile))
     with pytest.raises(BrainAuditError):
         parse_profile_registry(yaml.safe_dump(registry))

@@ -13,9 +13,10 @@ import re
 from typing import Any, Mapping
 
 from .brain_audit import (
-    BrainAuditError, _CONFORMANCE_LENSES, _ROA_ID, _has_conformance, _ordered_lenses, _packet,
-    _stage1, construct_roa_subject, construct_stage1, normalize_profile, profile_ref,
-    validate_roa, validate_stage2,
+    BrainAuditError, _CONFORMANCE_LENSES, _ROA_ID, _MOA_ID, _MOA_FINAL_FIELDS,
+    _has_conformance, _ordered_lenses, _packet, _moa_construct, _moa_source_context,
+    _stage1, construct_roa_subject, construct_stage1, construct_moa_subject, construct_moa,
+    normalize_profile, profile_ref, validate_roa, validate_stage2, validate_moa,
 )
 from .brain_return_contract import (
     BrainReturnContractError, _BOUNDS, _CANDIDATE_FIELDS, _CONTRACT_FIELDS,
@@ -257,14 +258,44 @@ def _lineage(packet: dict[str, Any], contract: dict[str, Any], bindings: dict[st
     return lineage
 
 
+def _moa_request(packet: dict[str, Any], contract: dict[str, Any], bindings: dict[str, Any],
+                 profile: dict[str, Any], sources: Any, mode: str,
+                 lineage: dict[str, Any] | None = None) -> dict[str, Any]:
+    context = _moa_source_context(sources)
+    subject = construct_moa_subject(packet, profile["profile"], contract["return_contract_ref"], bindings, context)
+    result = {
+        "format": "AIOS_BRAIN_REQUEST", "version": 1, "kind": "BRAIN_REQUEST", "request_mode": mode,
+        "decision_packet": packet, "return_contract_package": contract, "external_bindings": bindings,
+        "audit_profile_package": profile, "stage1_lineage": lineage,
+        "moa_subject": subject, "moa_source_context": context,
+    }
+    result["request_fingerprint"] = _digest(result)
+    _bound(result, 393216, "Brain request")
+    return result
+
+
+def _moa_lineage(packet: dict[str, Any], contract: dict[str, Any], bindings: dict[str, Any],
+                 profile: dict[str, Any], sources: Any, value: Any) -> dict[str, Any]:
+    lineage = _exact(_normal(value), _STAGE1_LINEAGE_FIELDS, "MOA construct lineage")
+    first_request = _moa_request(packet, contract, bindings, profile, sources, "MOA_CONSTRUCT")
+    first = _moa_construct(packet, profile["profile"], first_request["moa_subject"], lineage["construct"], sources)
+    if (lineage["stage1_request_fingerprint"] != first_request["request_fingerprint"]
+            or lineage["stage1_decision_fingerprint"] != _decision(first_request, first)["decision_fingerprint"]):
+        raise BrainProviderProtocolError("MOA first-pass request/decision lineage mismatch")
+    return lineage
+
+
 def _mode(packet: dict[str, Any], profile: dict[str, Any] | None, mode: Any) -> None:
-    """ROA has an explicit isolated mode; registry presence never selects it live."""
+    """Outcome profiles have explicit isolated modes, never live selection."""
     if type(mode) is not str or packet["authority_owner"] != "BRAIN":
         raise BrainProviderProtocolError("flow and request mode do not apply")
     flow = packet["selected_flow"]
     if profile is not None and profile["profile"]["id"] == _ROA_ID:
         if flow != "REPAIR_AUTHORING" or mode != "ROA_CONFORMANCE":
             raise BrainProviderProtocolError("ROA is isolated conformance only; no live selection or mixed stages")
+    elif profile is not None and profile["profile"]["id"] == _MOA_ID:
+        if flow != "REMEDIATION_AUTHORING" or mode not in {"MOA_CONSTRUCT", "MOA_RECONCILE"}:
+            raise BrainProviderProtocolError("MOA is isolated conformance only; no live selection or mixed stages")
     elif not ((flow in _AUDITED and mode in {"AUDIT_CONSTRUCT", "AUDIT_RECONCILE"}) or
               (flow == "DIAGNOSTIC" and mode == "DIRECT")):
         raise BrainProviderProtocolError("flow and request mode do not apply")
@@ -272,7 +303,8 @@ def _mode(packet: dict[str, Any], profile: dict[str, Any] | None, mode: Any) -> 
 
 def construct_request(packet: DecisionPacket, return_contract_package: Mapping[str, Any],
                       external_bindings: Mapping[str, Any], audit_profile_package: Mapping[str, Any] | None = None,
-                      *, request_mode: str, stage1_decision: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                      *, request_mode: str, stage1_decision: Mapping[str, Any] | None = None,
+                      moa_source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Construct one request from an actual freshly compiled packet object."""
     if not isinstance(packet, DecisionPacket):
         raise BrainProviderProtocolError("constructor requires a fresh DecisionPacket object")
@@ -284,6 +316,18 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
         flow = body["selected_flow"]
         profile = _profile_package(audit_profile_package, flow)
         _mode(body, profile, request_mode)
+        if request_mode in {"MOA_CONSTRUCT", "MOA_RECONCILE"}:
+            first_request = _moa_request(body, contract, bindings, profile, moa_source_context, "MOA_CONSTRUCT")
+            if request_mode == "MOA_CONSTRUCT":
+                if stage1_decision is not None:
+                    raise BrainProviderProtocolError("MOA construct cannot accept an earlier or dual audit")
+                return first_request
+            first = revalidate_decision(stage1_decision, first_request)
+            lineage = {"stage1_request_fingerprint": first_request["request_fingerprint"],
+                       "stage1_decision_fingerprint": first["decision_fingerprint"], "construct": first["semantic_value"]}
+            return _moa_request(body, contract, bindings, profile, moa_source_context, request_mode, lineage)
+        if moa_source_context is not None:
+            raise BrainProviderProtocolError("MOA source context is isolated conformance only")
         if request_mode == "DIRECT":
             if bindings or stage1_decision is not None:
                 raise BrainProviderProtocolError("DIRECT has no bindings or lineage")
@@ -327,7 +371,9 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
     try:
         request = _normal(value)
         roa = type(request) is dict and request.get("request_mode") == "ROA_CONFORMANCE"
-        request = _exact(request, _REQUEST_FIELDS | ({"roa_subject"} if roa else set()), "Brain request")
+        moa = type(request) is dict and request.get("request_mode") in ("MOA_CONSTRUCT", "MOA_RECONCILE")
+        request = _exact(request, _REQUEST_FIELDS | ({"roa_subject"} if roa else set()) |
+                          ({"moa_subject", "moa_source_context"} if moa else set()), "Brain request")
         if request["format"] != "AIOS_BRAIN_REQUEST" or type(request["version"]) is not int or request["version"] != 1 or request["kind"] != "BRAIN_REQUEST":
             raise BrainProviderProtocolError("invalid request format")
         _bound(request, 393216, "Brain request")
@@ -337,7 +383,9 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
         flow, mode = packet["selected_flow"], request["request_mode"]
         profile = _profile_package(request["audit_profile_package"], flow)
         _mode(packet, profile, mode)
-        if mode == "AUDIT_RECONCILE":
+        if mode == "MOA_RECONCILE":
+            _moa_lineage(packet, contract, bindings, profile, request["moa_source_context"], request["stage1_lineage"])
+        elif mode == "AUDIT_RECONCILE":
             _lineage(packet, contract, bindings, profile, request["stage1_lineage"])
         elif request["stage1_lineage"] is not None or mode == "DIRECT" and bindings:
             raise BrainProviderProtocolError("forbidden lineage or DIRECT bindings")
@@ -346,6 +394,11 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
                                                       contract["return_contract_ref"], bindings)
             if _bytes(request["roa_subject"]) != _bytes(expected_subject):
                 raise BrainProviderProtocolError("ROA packet/return/subject binding mismatch")
+        if moa:
+            expected_subject = construct_moa_subject(packet, profile["profile"], contract["return_contract_ref"],
+                                                      bindings, request["moa_source_context"])
+            if _bytes(request["moa_subject"]) != _bytes(expected_subject):
+                raise BrainProviderProtocolError("MOA packet/return/source/subject binding mismatch")
         supplied = _fingerprint(request["request_fingerprint"], "request fingerprint")
         if supplied != _digest({k: v for k, v in request.items() if k != "request_fingerprint"}):
             raise BrainProviderProtocolError("request fingerprint mismatch")
@@ -382,7 +435,11 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
         response = _normal(semantic_response, response=True)
         _bound(response, 655360, "provider semantic response")
         mode, packet = req["request_mode"], req["decision_packet"]
-        expected = ({"request_fingerprint", "subject_fingerprint", "checks", "closure", "candidate"}
+        expected = ({"request_fingerprint", "subject_fingerprint", "checks", "draft_candidate"}
+                    if mode == "MOA_CONSTRUCT" else
+                    {"request_fingerprint", "subject_fingerprint", "construct_fingerprint", "challenges", "closure", "reconciled_candidate"}
+                    if mode == "MOA_RECONCILE" else
+                    {"request_fingerprint", "subject_fingerprint", "checks", "closure", "candidate"}
                     if mode == "ROA_CONFORMANCE" else
                     {"request_fingerprint", "construct_audit", "reconciled_candidate", "closure", "outcome"}
                     if mode == "AUDIT_RECONCILE" else {"request_fingerprint", "candidate"})
@@ -393,6 +450,13 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
             raise BrainProviderProtocolError("request echo mismatch")
         if mode == "DIRECT":
             semantic = _diagnostic(response["candidate"])
+        elif mode in {"MOA_CONSTRUCT", "MOA_RECONCILE"}:
+            material = {k: v for k, v in response.items() if k != "request_fingerprint"}
+            args = (packet, req["audit_profile_package"]["profile"], req["moa_subject"])
+            if mode == "MOA_CONSTRUCT":
+                semantic = construct_moa(*args, material, req["moa_source_context"])
+            else:
+                semantic = validate_moa(*args, req["stage1_lineage"]["construct"], material, req["moa_source_context"])
         elif mode == "ROA_CONFORMANCE":
             semantic = validate_roa(packet, req["audit_profile_package"]["profile"], req["roa_subject"],
                                     {k: v for k, v in response.items() if k != "request_fingerprint"})
@@ -431,6 +495,17 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
         mode = req["request_mode"]
         if mode == "DIRECT":
             validated = _diagnostic(semantic)
+        elif mode == "MOA_CONSTRUCT":
+            validated = _moa_construct(req["decision_packet"], req["audit_profile_package"]["profile"],
+                                       req["moa_subject"], semantic, req["moa_source_context"])
+        elif mode == "MOA_RECONCILE":
+            _exact(semantic, _MOA_FINAL_FIELDS, "MOA final semantic result")
+            material = {k: semantic[k] for k in ("subject_fingerprint", "construct_fingerprint", "challenges", "closure")}
+            material["reconciled_candidate"] = semantic["handoff_candidate"]
+            validated = validate_moa(req["decision_packet"], req["audit_profile_package"]["profile"], req["moa_subject"],
+                                      req["stage1_lineage"]["construct"], material, req["moa_source_context"])
+            if _bytes(validated) != _bytes(semantic):
+                raise BrainProviderProtocolError("MOA result does not match its two focused passes")
         elif mode == "ROA_CONFORMANCE":
             _exact(semantic, {"format", "version", "procedure", "packet_fingerprint", "audit_profile_ref",
                               "selected_flow", "subject_fingerprint", "checks", "closure", "handoff_candidate",

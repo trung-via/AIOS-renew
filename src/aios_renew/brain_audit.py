@@ -1,4 +1,4 @@
-"""Pure historical BP-4A and bounded ROA conformance over portable profiles.
+"""Pure historical BP-4A and bounded ROA/MOA conformance over portable profiles.
 
 All packet, profile and candidate material is supplied by the caller. Audit
 outcomes are transient Brain claims, never canonical findings or evidence.
@@ -108,7 +108,36 @@ _ADAPTIVE_ID = "aios-adaptive-brain-audit-v1"
 _ADAPTIVE_DIGEST = "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718"
 _ROA_ID = "roa-1-r2"
 _ROA_DIGEST = "aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4"
-_PROFILE_VERSIONS = {"brain-high-value-v2": 2, "brain-high-value-v3": 3, _ADAPTIVE_ID: 1, _ROA_ID: 2}
+_MOA_ID = "moa-1"
+_MOA_DIGEST = "49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903"
+_PROFILE_VERSIONS = {"brain-high-value-v2": 2, "brain-high-value-v3": 3,
+                     _ADAPTIVE_ID: 1, _ROA_ID: 2, _MOA_ID: 1}
+_MOA_CONSTRUCT_IDS = ("EXACT_REVIEW_FINDING", "FINDING_CAUSE_AND_MINIMUM_DELTA", "ORIGINAL_TASK_AUTHORITY")
+_MOA_CHALLENGE_IDS = (
+    "SOURCE_AND_CURRENTNESS_CHALLENGE", "FINDING_CLOSURE_CHALLENGE",
+    "NON_INTERFERENCE_CHALLENGE", "SINGLE_AUDIT_AND_AUTHORITY_CHALLENGE",
+)
+_MOA_BOUNDS = {
+    "check_bytes": 2048, "candidate_bytes": 131072, "basis_bytes": 2048,
+    "evidence_refs_per_check": 4, "finding_refs_per_check": 16,
+    "closure_summary_bytes": 2048, "outcome_bytes": 196608,
+    "source_context_bytes": 65536, "max_depth": 32,
+}
+_MOA_PROCEDURE = {
+    "name": "REMEDIATION_OUTCOME_AUDIT", "stages": ["CONSTRUCT", "ADVERSARIAL_AUDIT_AND_RECONCILE"],
+    "check_outcomes": ["CLEAR", "BLOCKER"], "knowledge_states": ["OBSERVED", "INFERRED", "UNKNOWN"],
+    "challenge_dispositions": ["REJECTED_WITH_BOUNDED_BASIS", "ADDRESSED_BY_RECONCILIATION", "BLOCKER"],
+    "final_outcomes": ["CANDIDATE", "NO_DECISION"], "final_closure": True,
+}
+_FINDING_IDENTITY = ("source_run_id", "review_id", "finding_id", "reviewed_sha")
+_MOA_FINDING_FIELDS = set(_FINDING_IDENTITY) | {"basis", "action", "location", "issue", "expected"}
+_MOA_CONSTRUCT_FIELDS = {
+    "format", "version", "stage", "subject_fingerprint", "checks", "draft_candidate", "construct_fingerprint",
+}
+_MOA_FINAL_FIELDS = {
+    "format", "version", "stage", "subject_fingerprint", "construct_fingerprint",
+    "challenges", "closure", "handoff_candidate", "audit_fingerprint",
+}
 _ROA_CHECK_IDS = (
     "EXACT_FAILURE_BOUNDARY", "EVIDENCE_DISCRIMINATING_CAUSE", "MATERIAL_REPAIR_LEVER",
     "FALSIFYING_CHALLENGE", "LAWFUL_READINESS",
@@ -257,6 +286,8 @@ def _profile(value: Any) -> dict[str, Any]:
     normalized = _normal(value, depth=0, max_depth=32)
     if type(normalized) is dict and normalized.get("id") == _ROA_ID:
         return _roa_profile(normalized)
+    if type(normalized) is dict and normalized.get("id") == _MOA_ID:
+        return _moa_profile(normalized)
     conformant = type(normalized) is dict and normalized.get("id") in ("brain-high-value-v3", _ADAPTIVE_ID)
     profile = _fields(normalized, _PROFILE_FIELDS | ({"conformance"} if conformant else set()), "profile")
     if (type(profile["id"]) is not str or _ID.fullmatch(profile["id"]) is None
@@ -331,6 +362,32 @@ def _roa_profile(value: dict[str, Any]) -> dict[str, Any]:
     return profile
 
 
+def _moa_profile(value: dict[str, Any]) -> dict[str, Any]:
+    profile = _fields(value, (_PROFILE_FIELDS - {"lenses"}) | {"passes"}, "MOA profile")
+    if (type(profile["version"]) is not int or profile["version"] != 1
+            or profile["applicable_flows"] != ["REMEDIATION_AUTHORING"]
+            or _json(profile["procedure"]) != _json(_MOA_PROCEDURE)
+            or _json(profile["bounds"]) != _json(_MOA_BOUNDS)):
+        raise BrainAuditError("invalid bounded MOA identity or procedure")
+    passes = profile["passes"]
+    if type(passes) is not list or len(passes) != 2:
+        raise BrainAuditError("MOA requires exactly two focused passes")
+    for stage, identities, item in zip(_MOA_PROCEDURE["stages"],
+                                        (_MOA_CONSTRUCT_IDS, _MOA_CHALLENGE_IDS), passes):
+        _fields(item, {"id", "checks"}, "MOA pass")
+        if item["id"] != stage or type(item["checks"]) is not list or len(item["checks"]) != len(identities):
+            raise BrainAuditError("invalid MOA focused pass")
+        for identity, check in zip(identities, item["checks"]):
+            _fields(check, _LENS_FIELDS, "MOA instruction")
+            if check["id"] != identity:
+                raise BrainAuditError("unknown, duplicate or out-of-order MOA instruction")
+            _text(check["check"], _MOA_BOUNDS["check_bytes"], "MOA instruction")
+    _bounded(profile, 8192, "MOA profile")
+    if _digest(profile) != _MOA_DIGEST:
+        raise BrainAuditError("unsupported MOA profile content")
+    return profile
+
+
 def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     """Parse caller-supplied YAML; never opens a repository path."""
     if type(raw) is str:
@@ -352,8 +409,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     if registry["format"] != "AIOS_BRAIN_AUDIT_PROFILES" or type(registry["version"]) is not int or registry["version"] != 1:
         raise BrainAuditError("unknown audit-profile registry")
     profiles = registry["profiles"]
-    if type(profiles) is not list or not 1 <= len(profiles) <= 4:
-        raise BrainAuditError("registry requires one to four recognized profiles")
+    if type(profiles) is not list or not 1 <= len(profiles) <= 5:
+        raise BrainAuditError("registry requires one to five recognized profiles")
     normalized = [_profile(profile) for profile in profiles]
     if len({profile["id"] for profile in normalized}) != len(normalized):
         raise BrainAuditError("duplicate profile identity")
@@ -398,8 +455,8 @@ def profile_applies(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
 
 def _candidate(value: Any, policy: dict[str, Any]) -> dict[str, Any]:
     candidate = _normal(value, depth=0, max_depth=policy["bounds"]["max_depth"], private=True,
-                        v3=_has_conformance(policy) or policy["id"] == _ROA_ID,
-                        adaptive=policy["id"] in {_ADAPTIVE_ID, _ROA_ID})
+                        v3=_has_conformance(policy) or policy["id"] in {_ROA_ID, _MOA_ID},
+                        adaptive=policy["id"] in {_ADAPTIVE_ID, _ROA_ID, _MOA_ID})
     if type(candidate) is not dict:
         raise BrainAuditError("candidate must be a strict-JSON mapping")
     _bounded(candidate, policy["bounds"]["candidate_bytes"], "candidate")
@@ -412,6 +469,8 @@ def construct_stage1(packet: DecisionPacket | Mapping[str, Any], profile: Mappin
     body, policy = _packet(packet), _profile(profile)
     if policy["id"] == _ROA_ID:
         raise BrainAuditError("ROA has one procedure and cannot construct a historical stage")
+    if policy["id"] == _MOA_ID:
+        raise BrainAuditError("MOA cannot construct a historical stage")
     if body["authority_owner"] != "BRAIN" or body["selected_flow"] not in policy["applicable_flows"]:
         raise BrainAuditError("profile does not apply to selected flow")
     candidate = _candidate(construct_candidate, policy)
@@ -550,6 +609,8 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
     body, policy = _packet(packet), _profile(profile)
     if policy["id"] == _ROA_ID:
         raise BrainAuditError("ROA cannot reconcile a historical stage")
+    if policy["id"] == _MOA_ID:
+        raise BrainAuditError("MOA cannot reconcile a historical stage")
     if body["authority_owner"] != "BRAIN" or body["selected_flow"] not in policy["applicable_flows"]:
         raise BrainAuditError("profile does not apply to selected flow")
     first = _stage1(body, policy, stage1)
@@ -831,7 +892,418 @@ def validate_roa(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[st
     return result
 
 
+def _moa_private(value: Any) -> None:
+    """MOA support cannot be smuggled into a proposal or a semantic basis."""
+    _normal(value, depth=0, max_depth=32, private=True, v3=True, adaptive=True)
+    reserved = {"moasubject", "moasourcecontext", "draftcandidate", "challenges", "auditfingerprint"}
+    if type(value) is dict:
+        if value.get("format") in {"AIOS_MOA_SUBJECT", "AIOS_BRAIN_REMEDIATION_OUTCOME_AUDIT",
+                                    "AIOS_ROA_SUBJECT", "AIOS_BRAIN_REPAIR_OUTCOME_AUDIT"}:
+            raise BrainAuditError("nested outcome-audit support envelope")
+        for key, item in value.items():
+            if key.lower().replace("_", "").replace("-", "") in reserved:
+                raise BrainAuditError("nested MOA support material")
+            _moa_private(item)
+    elif type(value) is list:
+        for item in value:
+            _moa_private(item)
+
+
+def _moa_identity(value: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value[key] for key in _FINDING_IDENTITY}
+
+
+def _moa_source_context(value: Any) -> dict[str, Any]:
+    # These are caller-supplied canonical projections, never provider replacements
+    # or an authenticity assertion. The caller owns authenticated reads and freshness.
+    context = {"reviews": []} if value is None else _normal(value, depth=0, max_depth=32)
+    _fields(context, {"reviews"}, "MOA source context")
+    _bounded(context, _MOA_BOUNDS["source_context_bytes"], "MOA source context")
+    reviews = context["reviews"]
+    if type(reviews) is not list or len(reviews) > 16:
+        raise BrainAuditError("MOA source REVIEW count exceeds bound")
+    for record in reviews:
+        _fields(record, {"run", "review", "artifacts_sha", "review_decision_sha"}, "MOA source record")
+        run = _fields(record["run"], {"run_id", "task", "head_sha", "kind", "prior_correction"}, "MOA source RUN")
+        _text(run["run_id"], 256, "MOA source RUN identity")
+        _fields(run["task"], {"id", "revision"}, "MOA source RUN TASK")
+        if (type(run["task"]["id"]) is not str or type(run["task"]["revision"]) is not int
+                or run["task"]["revision"] < 1):
+            raise BrainAuditError("invalid MOA source RUN TASK identity")
+        _git_sha(run["head_sha"], "MOA source RUN head")
+        review = record["review"]
+        fields = {"review_id", "reviewed_sha", "mode", "verdict", "acceptance", "findings"}
+        _fields(review, fields | ({"prior_finding_id"} if type(review) is dict and "prior_finding_id" in review else set()),
+                "MOA source REVIEW")
+        if type(review["findings"]) is not list or len(review["findings"]) > 16:
+            raise BrainAuditError("MOA source findings are unbounded")
+        for finding in review["findings"]:
+            _fields(finding, {"id", "basis", "action", "location", "issue", "expected"}, "MOA source finding")
+        _moa_private(record)
+    return context
+
+
+def _moa_prior_matches(run: dict[str, Any], review: Any) -> bool:
+    """Check available canonical projection lineage, without issuing authority."""
+    prior = run["prior_correction"]
+    if run["kind"] == "PRIMARY":
+        return prior is None and review.mode == "PRIMARY"
+    if (run["kind"] not in ("REPAIR", "REMEDIATION") or type(prior) is not dict
+            or prior.get("kind") != run["kind"] or type(prior.get("authorization")) is not dict
+            or type(prior.get("authorization_sha")) is not str
+            or re.fullmatch(r"[0-9a-f]{40}", prior["authorization_sha"]) is None):
+        return False
+    authorization = prior["authorization"]
+    if run["kind"] == "REPAIR":
+        return (set(prior) == {"kind", "authorization_sha", "failed_run_id", "failed_head_sha", "authorization"}
+                and type(prior["failed_run_id"]) is str
+                and re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", prior["failed_run_id"]) is not None
+                and prior["failed_run_id"] == authorization.get("failed_run_id")
+                and prior["failed_head_sha"] == authorization.get("failed_head_sha")
+                and type(authorization.get("failed_head_sha")) is str
+                and re.fullmatch(r"[0-9a-f]{40}", authorization["failed_head_sha"]) is not None
+                and review.mode == "PRIMARY")
+    predecessor = prior.get("predecessor")
+    return (set(prior) == {"kind", "authorization_sha", "predecessor", "authorization"}
+            and type(predecessor) is dict and set(predecessor) == set(_FINDING_IDENTITY)
+            and all(type(predecessor[k]) is str and predecessor[k].strip() for k in _FINDING_IDENTITY)
+            and re.fullmatch(r"[0-9a-f]{40}", predecessor["reviewed_sha"]) is not None
+            and predecessor["finding_id"] == authorization.get("finding_id") == review.prior_finding_id
+            and predecessor["reviewed_sha"] == authorization.get("reviewed_sha")
+            and review.mode == "DELTA")
+
+
+def construct_moa_subject(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[str, Any],
+                          return_contract_ref: Mapping[str, Any], external_bindings: Mapping[str, Any],
+                          source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Bind existing REMEDIATION subjects to bounded, explicitly supplied sources.
+
+    This function reads no Git and authenticates no source. Missing/conflicting
+    facts produce explicit unavailable roles; a provider cannot fill them in.
+    No frontier selector or Decision Packet extension is introduced.
+    """
+    from .review import ReviewValidationError, parse_review
+
+    body, policy = _packet(packet), _profile(profile)
+    if (policy["id"] != _MOA_ID or body["selected_flow"] != "REMEDIATION_AUTHORING"
+            or body["authority_owner"] != "BRAIN"
+            or body["decision_family_ref"] != "review.validate_remediation"
+            or body["handoff_target"] != "AUTHORING_INGRESS"
+            or body["expected_return_shape"] != "REMEDIATION_CONTRACT_PROPOSAL"
+            or body["requires_fresh_context_for_continuation"] is not False):
+        raise BrainAuditError("MOA requires the exact Brain REMEDIATION_AUTHORING boundary")
+    reference = _fields(_normal(return_contract_ref, depth=0, max_depth=32),
+                        {"selected_flow", "version", "digest"}, "MOA return contract reference")
+    if (reference["selected_flow"] != "REMEDIATION_AUTHORING"
+            or type(reference["version"]) is not int or reference["version"] != 1):
+        raise BrainAuditError("MOA return contract mismatch")
+    _sha(reference["digest"], "MOA return contract digest")
+    bindings = _fields(_normal(external_bindings, depth=0, max_depth=32), set(), "MOA external bindings")
+    facts, target = body["canonical_facts"], body["subject"]
+    if type(facts) is not dict or type(target) is not dict:
+        raise BrainAuditError("MOA canonical subject is missing")
+    task = _fields(facts.get("selected_task"), {"id", "revision"}, "MOA TASK identity")
+    if (type(task["id"]) is not str or re.fullmatch(r"TASK-[A-Za-z0-9_-]+", task["id"]) is None
+            or type(task["revision"]) is not int or task["revision"] < 1):
+        raise BrainAuditError("invalid MOA TASK identity")
+    _git_sha(facts.get("main_sha"), "MOA source main")
+    _sha(body["work_context_fingerprint"], "MOA work context")
+    kind = target.get("kind")
+    if kind == "UNIQUE_FINDING":
+        _fields(target, _MOA_FINDING_FIELDS | {"kind"}, "MOA unique finding")
+        findings = [{k: v for k, v in target.items() if k != "kind"}]
+    elif kind == "CORRECTION_FRONTIER":
+        _fields(target, {"kind", "execution_base", "findings"}, "MOA frontier")
+        findings = target["findings"]
+        if (type(findings) is not list or not 2 <= len(findings) <= 16
+                or type(target["execution_base"]) is not dict or not target["execution_base"]):
+            raise BrainAuditError("MOA frontier must be a bounded unselected set")
+    else:
+        raise BrainAuditError("unknown MOA subject kind")
+    for finding in findings:
+        _fields(finding, _MOA_FINDING_FIELDS, "MOA finding")
+        for key in _MOA_FINDING_FIELDS - {"reviewed_sha"}:
+            _text(finding[key], 2048, f"MOA finding {key}")
+        _git_sha(finding["reviewed_sha"], "MOA reviewed source")
+        if finding["action"] not in ("CODE_FIX", "EVIDENCE_ONLY"):
+            raise BrainAuditError("unknown MOA finding action")
+        _moa_private(finding)
+    identities = [_moa_identity(f) for f in findings]
+    if len({_json(i) for i in identities}) != len(identities):
+        raise BrainAuditError("duplicate MOA finding identity")
+    context = _moa_source_context(source_context)
+    sources: dict[str, Any] = {"finding": _roa_source("decision_packet.subject", target),
+                               "review": None, "task": None, "lineage": None}
+    blockers = {"review": "Exact canonical RUN/CHANGES_REQUIRED REVIEW material is missing or conflicting.",
+                "task": "Original TASK scope, constraints or verification authority is missing or conflicting.",
+                "lineage": "Current canonical correction provenance/outstanding status is missing or conflicting."}
+    contract = facts.get("task_contract")
+    if (type(contract) is dict and contract.get("task_id") == task["id"]
+            and type(contract.get("revision")) is int and contract["revision"] == task["revision"]
+            and type(contract.get("scope")) is dict and type(contract["scope"].get("modify")) is list
+            and all(type(p) is str and p for p in contract["scope"]["modify"])
+            and type(contract.get("constraints")) is dict and type(contract["constraints"].get("hard")) is list
+            and all(type(c) is str and c.strip() for c in contract["constraints"]["hard"])
+            and type(contract.get("verification")) is dict
+            and contract["verification"].get("policy") in ("minimum-sufficient-v1", "minimum-sufficient-v2")
+            and type(contract["verification"].get("required")) is list and contract["verification"]["required"]
+            and all(type(c) is str and c.strip() for c in contract["verification"]["required"])
+            and type(contract.get("acceptance")) is list and contract["acceptance"]
+            and all(type(a) is dict and type(a.get("id")) is str and a["id"].strip()
+                    for a in contract["acceptance"])):
+        sources["task"] = _roa_source("decision_packet.canonical_facts.task_contract", contract)
+        blockers.pop("task")
+    correction = facts.get("correction_subject")
+    outstanding = correction.get("outstanding_reviews") if type(correction) is dict else None
+    lineage_ok = (
+        type(correction) is dict and correction.get("policy") == "EXACT_CORRECTION_SUBJECT_LINEAGE_V1"
+        and correction.get("operation") == "AUTHOR_REMEDIATION" and _json(correction.get("task")) == _json(task)
+        and facts.get("canonical_next_action") == facts.get("unified_state_next_action") == "AUTHOR_REMEDIATION"
+        and body["selection_basis"] == "UNIFIED_STATE" and body["canonical_blocker"] is None
+        and type(outstanding) is list and len(outstanding) == len(identities)
+    )
+    if lineage_ok:
+        for entry in outstanding:
+            _fields(entry, set(_FINDING_IDENTITY) | {"review_decision_sha"}, "MOA outstanding REVIEW")
+            _git_sha(entry["review_decision_sha"], "MOA outstanding REVIEW ref")
+        lineage_ok = ({_json(_moa_identity(i)) for i in outstanding} == {_json(i) for i in identities}
+                      and len({_json(_moa_identity(i)) for i in outstanding}) == len(outstanding))
+        selected = {k: correction.get(k) for k in _FINDING_IDENTITY}
+        lineage_ok = lineage_ok and selected in identities
+        if kind == "UNIQUE_FINDING":
+            lineage_ok = lineage_ok and selected == identities[0]
+        lineage_ok = (lineage_ok and correction.get("selectors") == {
+            "source_run_id": selected["source_run_id"], "finding_id": selected["finding_id"]})
+        if lineage_ok:
+            _git_sha(correction.get("artifacts_sha"), "MOA source artifacts")
+            _git_sha(correction.get("review_decision_sha"), "MOA source REVIEW ref")
+            lineage_ok = any(_moa_identity(i) == selected and i["review_decision_sha"] == correction["review_decision_sha"]
+                             for i in outstanding)
+    if lineage_ok:
+        sources["lineage"] = _roa_source("decision_packet.canonical_facts.correction_subject", correction)
+        blockers.pop("lineage")
+    # Use the established REVIEW parser, without assuming that parsing issues a
+    # canonical REVIEW or repeats ingress's source-family authorization checks.
+    records = context["reviews"]
+    review_ok = bool(records) and lineage_ok and sources["task"] is not None
+    seen: set[str] = set()
+    for record in records:
+        run, review = record["run"], record["review"]
+        relevant = [f for f in findings if f["source_run_id"] == run["run_id"]]
+        try:
+            parsed = parse_review(_json(review).decode("utf-8"))
+        except (ReviewValidationError, ValueError, TypeError):
+            review_ok = False
+            continue
+        acceptance_ids = {a.get("id") for a in contract["acceptance"] if type(a) is dict} if sources["task"] else set()
+        prior = run["prior_correction"]
+        prior_ok = _moa_prior_matches(run, parsed)
+        if body["prior_semantic_decisions"] is not None:
+            prior_ok = prior_ok and _json(prior) == _json(body["prior_semantic_decisions"])
+        if (not relevant or run["run_id"] in seen or _json(run["task"]) != _json(task) or not prior_ok
+                or parsed.verdict != "CHANGES_REQUIRED" or parsed.reviewed_sha != run["head_sha"]
+                or any(f.basis not in acceptance_ids or parsed.acceptance.get(f.basis) != "FAIL" for f in parsed.findings)
+                or set(parsed.acceptance) - acceptance_ids):
+            review_ok = False
+        seen.add(run["run_id"])
+        for finding in relevant:
+            expected = {"id": finding["finding_id"], **{k: finding[k] for k in ("basis", "action", "location", "issue", "expected")}}
+            if (parsed.review_id != finding["review_id"] or parsed.reviewed_sha != finding["reviewed_sha"]
+                    or sum(f == expected for f in review["findings"]) != 1
+                    or not lineage_ok or not any(_moa_identity(i) == _moa_identity(finding)
+                        and i["review_decision_sha"] == record["review_decision_sha"] for i in outstanding)):
+                review_ok = False
+        if lineage_ok and run["run_id"] == correction["source_run_id"]:
+            if (record["artifacts_sha"] != correction["artifacts_sha"]
+                    or record["review_decision_sha"] != correction["review_decision_sha"]):
+                review_ok = False
+        _git_sha(record["artifacts_sha"], "MOA supplied artifacts")
+        _git_sha(record["review_decision_sha"], "MOA supplied REVIEW ref")
+    if review_ok and seen == {f["source_run_id"] for f in findings}:
+        sources["review"] = _roa_source("moa_source_context.reviews", records)
+        blockers.pop("review")
+    if kind == "CORRECTION_FRONTIER":
+        blockers["target"] = "Unselected frontier: await a separate exact selected canonical subject; no implicit target."
+    result = {
+        "format": "AIOS_MOA_SUBJECT", "version": 1, "selected_flow": "REMEDIATION_AUTHORING",
+        "packet_fingerprint": body["packet_fingerprint"], "work_context_fingerprint": body["work_context_fingerprint"],
+        "audit_profile_ref": profile_ref(policy), "return_contract_ref": reference, "external_bindings": bindings,
+        "task": task, "kind": kind, "findings": findings, "sources": sources, "blockers": blockers,
+    }
+    result["subject_fingerprint"] = _digest(result)
+    return result
+
+
+def _moa_bound(packet: Any, profile: Any, subject: Any, source_context: Any) -> tuple[dict, dict, dict]:
+    body, policy = _packet(packet), _profile(profile)
+    supplied = _normal(subject, depth=0, max_depth=32)
+    if type(supplied) is not dict:
+        raise BrainAuditError("MOA subject required")
+    bound = construct_moa_subject(body, policy, supplied.get("return_contract_ref"),
+                                  supplied.get("external_bindings"), source_context)
+    if _json(bound) != _json(supplied):
+        raise BrainAuditError("MOA subject binding mismatch")
+    return body, policy, bound
+
+
+def _moa_checks(value: Any, bound: dict[str, Any], *, challenge: bool) -> list[dict[str, Any]]:
+    identities = _MOA_CHALLENGE_IDS if challenge else _MOA_CONSTRUCT_IDS
+    roles = (("review", "lineage"), ("finding", "review"), ("review", "task"), ("task", "lineage")) if challenge else (
+        ("finding", "review", "lineage"), ("finding", "review"), ("task", "lineage"))
+    if type(value) is not list or len(value) != len(identities):
+        raise BrainAuditError("MOA requires exact focused check coverage")
+    allowed = [_moa_identity(f) for f in bound["findings"]]
+    sources = bound["sources"]
+    for identity, required, check in zip(identities, roles, value):
+        fields = {"id", "outcome", "knowledge", "basis", "evidence_refs", "finding_refs"}
+        _fields(check, fields | ({"counterexample", "disposition"} if challenge else set()), "MOA check")
+        _moa_private(check)
+        if (check["id"] != identity or check["outcome"] not in ("CLEAR", "BLOCKER")
+                or check["knowledge"] not in ("OBSERVED", "INFERRED", "UNKNOWN")):
+            raise BrainAuditError("invalid or out-of-order MOA judgment")
+        _text(check["basis"], _MOA_BOUNDS["basis_bytes"], "MOA basis")
+        refs, findings = check["evidence_refs"], check["finding_refs"]
+        if (type(refs) is not list or len(refs) > _MOA_BOUNDS["evidence_refs_per_check"]
+                or len({_json(r) for r in refs}) != len(refs)
+                or any(r not in [s for s in sources.values() if s is not None] for r in refs)):
+            raise BrainAuditError("forged, duplicate or unbounded MOA evidence reference")
+        if (type(findings) is not list or not 1 <= len(findings) <= _MOA_BOUNDS["finding_refs_per_check"]
+                or len({_json(f) for f in findings}) != len(findings) or any(f not in allowed for f in findings)):
+            raise BrainAuditError("MOA check includes unauthorized or duplicate findings")
+        if identity in (_MOA_CONSTRUCT_IDS[0], _MOA_CHALLENGE_IDS[0]) and {_json(f) for f in findings} != {_json(f) for f in allowed}:
+            raise BrainAuditError("MOA source check must cover the exact outstanding set")
+        missing = any(sources[r] is None for r in required)
+        if challenge and identity == _MOA_CHALLENGE_IDS[-1] and bound["kind"] == "CORRECTION_FRONTIER":
+            missing = True
+        if missing and (check["knowledge"] != "UNKNOWN" or check["outcome"] != "BLOCKER"):
+            raise BrainAuditError("missing decisive MOA source/target requires UNKNOWN blocker")
+        if check["knowledge"] == "UNKNOWN":
+            if check["outcome"] != "BLOCKER":
+                raise BrainAuditError("UNKNOWN cannot discharge a MOA check")
+        elif any(sources[r] not in refs for r in required):
+            raise BrainAuditError("MOA judgment lacks discriminating source references")
+        if challenge:
+            _text(check["counterexample"], _MOA_BOUNDS["basis_bytes"], "MOA counterexample")
+            if (check["disposition"] not in _MOA_PROCEDURE["challenge_dispositions"]
+                    or (check["outcome"] == "BLOCKER") != (check["disposition"] == "BLOCKER")):
+                raise BrainAuditError("MOA counterexample disposition contradicts judgment")
+    return value
+
+
+def construct_moa(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[str, Any],
+                  subject: Mapping[str, Any], semantic_output: Mapping[str, Any],
+                  source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """First focused pass: source/cause/authority judgments and a non-final draft."""
+    _, policy, bound = _moa_bound(packet, profile, subject, source_context)
+    material = _fields(_normal(semantic_output, depth=0, max_depth=32),
+                       {"subject_fingerprint", "checks", "draft_candidate"}, "MOA construct")
+    _bounded(material, policy["bounds"]["outcome_bytes"], "MOA construct")
+    if material["subject_fingerprint"] != bound["subject_fingerprint"]:
+        raise BrainAuditError("stale MOA construct subject")
+    checks = _moa_checks(material["checks"], bound, challenge=False)
+    draft = material["draft_candidate"]
+    if draft is not None:
+        if bound["kind"] != "UNIQUE_FINDING" or bound["blockers"]:
+            raise BrainAuditError("MOA frontier/missing authority cannot expose a speculative draft")
+        draft = _candidate(draft, policy)
+        _moa_private(draft)
+    result = {"format": "AIOS_BRAIN_REMEDIATION_OUTCOME_AUDIT", "version": 1, "stage": "CONSTRUCT",
+              "subject_fingerprint": bound["subject_fingerprint"], "checks": checks, "draft_candidate": draft}
+    result["construct_fingerprint"] = _digest(result)
+    return result
+
+
+def _moa_construct(packet: Any, profile: Any, subject: Any, value: Any, source_context: Any) -> dict[str, Any]:
+    first = _fields(_normal(value, depth=0, max_depth=32), _MOA_CONSTRUCT_FIELDS, "MOA first pass")
+    expected = construct_moa(packet, profile, subject,
+                             {k: first[k] for k in ("subject_fingerprint", "checks", "draft_candidate")}, source_context)
+    if _json(first) != _json(expected):
+        raise BrainAuditError("MOA construct lineage mismatch")
+    return expected
+
+
+def _moa_candidate(value: Any, policy: dict[str, Any], body: dict[str, Any], bound: dict[str, Any]) -> dict[str, Any]:
+    from .review import ReviewValidationError, parse_remediation
+
+    candidate = _fields(_candidate(value, policy), {
+        "finding_id", "action", "reviewed_sha", "modification_scope", "verification", "constraints",
+    }, "MOA final REMEDIATION proposal")
+    _moa_private(candidate)
+    if bound["kind"] != "UNIQUE_FINDING" or bound["blockers"]:
+        raise BrainAuditError("MOA requires an exact authorized unique finding")
+    finding = bound["findings"][0]
+    if any(candidate[k] != finding[k] for k in ("finding_id", "action", "reviewed_sha")):
+        raise BrainAuditError("MOA candidate finding/action/reviewed SHA mismatch")
+    contract = body["canonical_facts"]["task_contract"]
+    scope = candidate["modification_scope"]
+    if (type(scope) is not list or any(type(p) is not str for p in scope)
+            or len(scope) != len(set(scope)) or not set(scope) <= set(contract["scope"]["modify"])
+            or candidate["action"] == "EVIDENCE_ONLY" and scope
+            or candidate["action"] == "CODE_FIX" and not scope):
+        raise BrainAuditError("MOA candidate exceeds TASK/action scope")
+    constraints = _fields(candidate["constraints"], {"hard"}, "MOA original constraints")["hard"]
+    if _json(constraints) != _json(contract["constraints"]["hard"]):
+        raise BrainAuditError("MOA candidate changes original constraints")
+    verification = candidate["verification"]
+    fields = {"policy", "affected"}
+    _fields(verification, fields | ({"full_suite_reason"} if type(verification) is dict and "full_suite_reason" in verification else set()),
+            "MOA affected verification")
+    affected = verification["affected"]
+    original = contract["verification"]
+    if (verification["policy"] != original["policy"] or type(affected) is not list or not affected
+            or any(type(c) is not str for c in affected) or len(affected) != len(set(affected))
+            or not set(affected) <= set(original["required"])
+            or verification.get("full_suite_reason") != original.get("full_suite_reason")):
+        raise BrainAuditError("MOA candidate changes original verification authority")
+    try:
+        parse_remediation(_json(candidate).decode("utf-8"))
+    except (ReviewValidationError, ValueError, TypeError) as exc:
+        raise BrainAuditError("invalid MOA remediation family proposal") from exc
+    return candidate
+
+
+def validate_moa(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[str, Any],
+                 subject: Mapping[str, Any], stage1: Mapping[str, Any], semantic_output: Mapping[str, Any],
+                 source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Independent finding-closure/non-interference challenge and one final closure."""
+    body, policy, bound = _moa_bound(packet, profile, subject, source_context)
+    first = _moa_construct(body, policy, bound, stage1, source_context)
+    material = _fields(_normal(semantic_output, depth=0, max_depth=32), {
+        "subject_fingerprint", "construct_fingerprint", "challenges", "closure", "reconciled_candidate",
+    }, "MOA second pass")
+    _bounded(material, policy["bounds"]["outcome_bytes"], "MOA second pass")
+    if (material["subject_fingerprint"] != bound["subject_fingerprint"]
+            or material["construct_fingerprint"] != first["construct_fingerprint"]):
+        raise BrainAuditError("MOA second-pass lineage mismatch")
+    challenges = _moa_checks(material["challenges"], bound, challenge=True)
+    closure = _fields(material["closure"], {"outcome", "knowledge", "summary", "candidate_fingerprint"}, "MOA final closure")
+    _text(closure["summary"], policy["bounds"]["closure_summary_bytes"], "MOA closure summary")
+    _moa_private(closure["summary"])
+    outcome = "NO_DECISION" if any(c["outcome"] == "BLOCKER" for c in challenges) else "CANDIDATE"
+    knowledge = ("UNKNOWN" if any(c["knowledge"] == "UNKNOWN" for c in challenges) else
+                 "INFERRED" if any(c["knowledge"] == "INFERRED" for c in challenges) else "OBSERVED")
+    if closure["outcome"] != outcome or closure["knowledge"] != knowledge:
+        raise BrainAuditError("MOA final closure contradicts focused challenges")
+    candidate = material["reconciled_candidate"]
+    if outcome == "NO_DECISION":
+        if candidate is not None or closure["candidate_fingerprint"] is not None:
+            raise BrainAuditError("MOA blocker cannot expose a final remediation")
+    else:
+        candidate = _moa_candidate(candidate, policy, body, bound)
+        changed = _json(candidate) != _json(first["draft_candidate"])
+        addressed = any(c["disposition"] == "ADDRESSED_BY_RECONCILIATION" for c in challenges)
+        if changed != addressed or closure["candidate_fingerprint"] != _digest(candidate):
+            raise BrainAuditError("MOA reconciliation/closure does not bind the final candidate")
+    result = {"format": "AIOS_BRAIN_REMEDIATION_OUTCOME_AUDIT", "version": 1,
+              "stage": "ADVERSARIAL_AUDIT_AND_RECONCILE", "subject_fingerprint": bound["subject_fingerprint"],
+              "construct_fingerprint": first["construct_fingerprint"], "challenges": challenges,
+              "closure": closure, "handoff_candidate": candidate}
+    result["audit_fingerprint"] = _digest(result)
+    return result
+
+
 __all__ = [
     "BrainAuditError", "parse_profile_registry", "normalize_profile", "profile_ref",
     "profile_applies", "construct_stage1", "validate_stage2", "construct_roa_subject", "validate_roa",
+    "construct_moa_subject", "construct_moa", "validate_moa",
 ]

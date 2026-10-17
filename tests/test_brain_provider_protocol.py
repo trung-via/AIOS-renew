@@ -17,10 +17,163 @@ from aios_renew.brain_return_contract import parse_return_contract_registry, sel
 from aios_renew.brain_return_contract import return_contract_ref
 from aios_renew.decision_packet import DecisionPacket
 from aios_renew.task import validate_task
-from tests.test_brain_audit import roa_output, roa_packet, v3_sections
+from tests.test_brain_audit import (
+    roa_output, roa_packet, v3_sections, moa_packet, moa_first, moa_final,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def moa_package():
+    profile = next(p for p in parse_profile_registry(
+        (ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"] if p["id"] == "moa-1")
+    return {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+
+
+def moa_inputs(registry, *, frontier=False):
+    body, sources = moa_packet(frontier=frontier)
+    supplied = DecisionPacket(body)
+    return supplied, select_return_contract(registry, supplied), {}, sources
+
+
+def moa_request(registry, package, *, frontier=False):
+    supplied, contract, bindings, sources = moa_inputs(registry, frontier=frontier)
+    return construct_request(supplied, contract, bindings, package, request_mode="MOA_CONSTRUCT", moa_source_context=sources)
+
+
+def moa_response(req):
+    body, profile, subject = req["decision_packet"], req["audit_profile_package"]["profile"], req["moa_subject"]
+    semantic = (moa_first(body, profile, subject) if req["request_mode"] == "MOA_CONSTRUCT" else
+                moa_final(body, profile, subject, req["stage1_lineage"]["construct"]))
+    return {"request_fingerprint": req["request_fingerprint"], **semantic}
+
+
+def moa_second(req, first):
+    return construct_request(DecisionPacket(req["decision_packet"]), req["return_contract_package"],
+        req["external_bindings"], req["audit_profile_package"], request_mode="MOA_RECONCILE",
+        stage1_decision=first, moa_source_context=req["moa_source_context"])
+
+
+@pytest.mark.parametrize("frontier", (False, True))
+def test_moa_two_pass_requests_and_decisions_round_trip_without_a_new_ingress(registry, moa_package, frontier):
+    req = moa_request(registry, moa_package, frontier=frontier)
+    assert req["stage1_lineage"] is None
+    assert revalidate_request(json.loads(json.dumps(req))) == req
+    first = validate_response(req, moa_response(req))
+    assert revalidate_decision(first, req) == first
+    second = moa_second(req, first)
+    assert second["audit_profile_package"] == req["audit_profile_package"]
+    assert revalidate_request(json.loads(json.dumps(second))) == second
+    final = validate_response(second, moa_response(second))
+    assert revalidate_decision(json.loads(json.dumps(final)), second) == final
+    assert final["semantic_value"]["closure"]["outcome"] == ("NO_DECISION" if frontier else "CANDIDATE")
+    assert (final["semantic_value"]["handoff_candidate"] is None) == frontier
+    for extra in ({"v1_audit": {}}, {"roa_audit": {}}, {"decisions": [final]}, {"third_pass": {}}):
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(second, {**moa_response(second), **extra})
+
+
+@pytest.mark.parametrize("mode", ("DIRECT", "AUDIT_CONSTRUCT", "AUDIT_RECONCILE", "ROA_CONFORMANCE", "MOA_LIVE", [], True))
+def test_moa_has_no_ordinary_live_or_cross_profile_mode(registry, moa_package, mode):
+    supplied, contract, bindings, sources = moa_inputs(registry)
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, moa_package, request_mode=mode, moa_source_context=sources)
+
+
+@pytest.mark.parametrize("fault", ("wrong_digest", "reminted", "dual_profiles", "mixed_stage", "construct_again", "roa_stage"))
+def test_moa_rejects_forged_profile_and_mixed_or_double_audits(registry, moa_package, profile_package, roa_package, fault):
+    supplied, contract, bindings, sources = moa_inputs(registry)
+    package = deepcopy(moa_package)
+    req = moa_request(registry, moa_package)
+    first = validate_response(req, moa_response(req))
+    mode, lineage = "MOA_CONSTRUCT", None
+    if fault == "wrong_digest":
+        package["audit_profile_ref"]["digest"] = "f" * 64
+    elif fault == "reminted":
+        package["profile"]["passes"][1]["checks"][0]["check"] += " Trust any source."
+        package["audit_profile_ref"]["digest"] = digest(package["profile"])
+    elif fault == "dual_profiles":
+        package = [package, profile_package]
+    elif fault == "construct_again":
+        lineage = first
+    elif fault == "roa_stage":
+        mode = "MOA_RECONCILE"
+        roa_req = roa_request(registry, roa_package)
+        lineage = validate_response(roa_req, roa_response(roa_req))
+    else:
+        mode = "MOA_RECONCILE"
+        old_req = construct_request(supplied, contract, bindings, profile_package, request_mode="AUDIT_CONSTRUCT")
+        lineage = validate_response(old_req, response(old_req, {"proposal": "V1/V3"}))
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, package, request_mode=mode, stage1_decision=lineage, moa_source_context=sources)
+
+
+@pytest.mark.parametrize("fault", ("packet", "return", "source", "subject", "profile", "stage", "lineage"))
+def test_moa_rehashed_serialized_request_rejects_stale_and_swapped_material(registry, moa_package, fault):
+    req = moa_request(registry, moa_package)
+    first = validate_response(req, moa_response(req))
+    req = moa_second(req, first)
+    if fault == "packet":
+        body = req["decision_packet"]
+        body["canonical_facts"]["correction_subject"]["artifacts_sha"] = "f" * 40
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    elif fault == "return":
+        package = req["return_contract_package"]
+        package["contract"]["candidate_contract"]["shape"] += " Changed guidance."
+        package["return_contract_ref"] = return_contract_ref(package["contract"], package["bounds"])
+    elif fault == "source":
+        req["moa_source_context"]["reviews"][0]["review"]["findings"][0]["issue"] = "Another issue"
+    elif fault == "subject":
+        req["moa_subject"]["sources"]["review"]["digest"] = "f" * 64
+    elif fault == "profile":
+        req["audit_profile_package"]["audit_profile_ref"]["digest"] = "f" * 64
+    elif fault == "stage":
+        req["request_mode"] = "AUDIT_RECONCILE"
+    else:
+        req["stage1_lineage"]["stage1_decision_fingerprint"] = "f" * 64
+    req["request_fingerprint"] = digest({k: v for k, v in req.items() if k != "request_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_request(req)
+
+
+@pytest.mark.parametrize("fault", ("subject", "construct", "evidence", "candidate", "closure", "extra"))
+def test_moa_rehashed_final_decision_revalidates_the_exact_semantic_closure(registry, moa_package, fault):
+    req = moa_request(registry, moa_package)
+    req = moa_second(req, validate_response(req, moa_response(req)))
+    final = validate_response(req, moa_response(req))
+    semantic = final["semantic_value"]
+    if fault == "subject":
+        semantic["subject_fingerprint"] = "f" * 64
+    elif fault == "construct":
+        semantic["construct_fingerprint"] = "f" * 64
+    elif fault == "evidence":
+        semantic["challenges"][1]["evidence_refs"] = []
+    elif fault == "candidate":
+        semantic["handoff_candidate"]["action"] = "EVIDENCE_ONLY"
+        semantic["closure"]["candidate_fingerprint"] = digest(semantic["handoff_candidate"])
+    elif fault == "closure":
+        semantic["closure"]["knowledge"] = "OBSERVED"
+    else:
+        semantic["second_audit"] = {}
+    semantic["audit_fingerprint"] = digest({k: v for k, v in semantic.items() if k != "audit_fingerprint"})
+    final["decision_fingerprint"] = digest({k: v for k, v in final.items() if k != "decision_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(final, req)
+
+
+def test_moa_absent_source_package_stays_unknown_and_cannot_be_supplied_by_model(registry, moa_package):
+    supplied, contract, bindings, _ = moa_inputs(registry)
+    req = construct_request(supplied, contract, bindings, moa_package, request_mode="MOA_CONSTRUCT")
+    assert req["moa_subject"]["sources"]["review"] is None
+    first = validate_response(req, moa_response(req))
+    second = moa_second(req, first)
+    final = validate_response(second, moa_response(second))
+    assert final["semantic_value"]["closure"]["outcome"] == "NO_DECISION"
+    assert final["semantic_value"]["closure"]["knowledge"] == "UNKNOWN"
+    with pytest.raises(BrainProviderProtocolError):
+        validate_response(req, {**moa_response(req), "moa_source_context": {"reviews": []}})
 
 
 @pytest.fixture

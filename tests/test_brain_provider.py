@@ -16,11 +16,137 @@ from aios_renew.brain_provider_protocol import (
 from aios_renew.decision_packet import DecisionPacket
 from test_brain_provider_protocol import (
     digest, inputs, profile_package, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
+    moa_inputs, moa_package, moa_response,
 )
 
 
 DIRECT = {"proposal": "Investigate", "uncertainty": {"status": "NONE", "summary": None}}
 TASK = {"task_id": "TASK-999", "revision": 1}
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("frontier", (False, True))
+def test_moa_exactly_two_focused_calls_and_fresh_final_closure(registry, moa_package, kind, frontier):
+    supplied, contract, bindings, sources = moa_inputs(registry, frontier=frontier)
+    calls, freshness = [], []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, provider=kind, model=kind, semantic=moa_response(req))
+    def fresh():
+        freshness.append(None)
+        return DecisionPacket(supplied.as_dict())
+    result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
+                     moa_package, fresh, conformance_only=True, moa_source_context=sources)
+    assert [r["request_mode"] for r in calls] == ["MOA_CONSTRUCT", "MOA_RECONCILE"]
+    assert len(freshness) == len(result.attributions) == 2
+    assert revalidate_decision(result.decision, calls[1]) == result.decision
+    assert result.decision["semantic_value"]["closure"]["outcome"] == ("NO_DECISION" if frontier else "CANDIDATE")
+    assert all(req["audit_profile_package"] == moa_package for req in calls)
+
+
+def test_moa_native_transports_produce_the_same_portable_semantic_decision(registry, moa_package):
+    supplied, contract, bindings, sources = moa_inputs(registry)
+    decisions = []
+    for kind in ("mapping", "json"):
+        def callback(req):
+            return wrapper(req, provider=kind, semantic=moa_response(req))
+        decisions.append(attempt(adapter(kind, native(kind, callback), kind), supplied, contract, bindings,
+            moa_package, lambda: DecisionPacket(supplied.as_dict()), conformance_only=True,
+            moa_source_context=sources).decision)
+    assert decisions[0] == decisions[1]
+
+
+@pytest.mark.parametrize("flag,supplier", ((False, True), ("true", True), (True, False)))
+def test_moa_registry_presence_cannot_activate_an_ordinary_attempt(registry, moa_package, flag, supplier):
+    supplied, contract, bindings, sources = moa_inputs(registry)
+    calls = []
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(MappingBrainProvider("mapping", "one", lambda req: calls.append(req)), supplied, contract, bindings,
+                moa_package, (lambda: supplied) if supplier else None, conformance_only=flag, moa_source_context=sources)
+    assert caught.value.reason_code == "PROTOCOL_INPUT_INVALID"
+    assert caught.value.invocation_count == 0 and not calls
+
+
+@pytest.mark.parametrize("after", (1, 2))
+@pytest.mark.parametrize("fault", ("main", "review_ref", "authority", "predecessor", "verification", "invalid", "unavailable"))
+def test_moa_currentness_movement_aborts_without_retry_or_another_audit(registry, moa_package, after, fault):
+    supplied, contract, bindings, sources = moa_inputs(registry)
+    calls, freshness = [], []
+    def callback(req):
+        calls.append(req)
+        return wrapper(req, semantic=moa_response(req))
+    def fresh():
+        freshness.append(None)
+        if len(freshness) < after:
+            return DecisionPacket(supplied.as_dict())
+        if fault == "unavailable":
+            raise ValueError("Canonical source moved")
+        if fault == "invalid":
+            return DecisionPacket({})
+        body = supplied.as_dict()
+        facts = body["canonical_facts"]
+        if fault == "main":
+            facts["main_sha"] = "f" * 40
+        elif fault == "review_ref":
+            facts["correction_subject"]["review_decision_sha"] = "f" * 40
+        elif fault == "authority":
+            body["canonical_blocker"] = {"reason": "Authority moved"}
+        elif fault == "predecessor":
+            body["prior_semantic_decisions"] = {"kind": "REPAIR", "authorization_sha": "f" * 40}
+        else:
+            facts["task_contract"]["verification"]["required"].append("pytest tests/another.py")
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        return DecisionPacket(body)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings, moa_package,
+                fresh, conformance_only=True, moa_source_context=sources)
+    expected = ("FRESH_PACKET_UNAVAILABLE" if fault == "unavailable" else "FRESH_PACKET_INVALID" if fault == "invalid" else
+                "STALE_BEFORE_STAGE2" if after == 1 else "STALE_BEFORE_MOA_RETURN")
+    # A malformed DecisionPacket at the between-pass boundary fails before access
+    # can be interpreted as a successful or unknown semantic decision.
+    assert caught.value.reason_code == expected
+    assert caught.value.invocation_count == len(calls) == after
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("stage", ("MOA_CONSTRUCT", "MOA_RECONCILE"))
+@pytest.mark.parametrize("fault", ("double_audit", "duplicate_output", "missing_evidence", "profile_substitution"))
+def test_moa_bad_provider_output_stops_at_its_pass_without_fallback(registry, moa_package, kind, stage, fault):
+    supplied, contract, bindings, sources = moa_inputs(registry)
+    calls = []
+    def callback(req):
+        calls.append(req)
+        semantic = moa_response(req)
+        if req["request_mode"] == stage:
+            if fault == "double_audit":
+                semantic["v1_audit"] = {}
+            elif fault == "duplicate_output":
+                semantic = [semantic, deepcopy(semantic)]
+            elif fault == "missing_evidence":
+                semantic["checks" if stage == "MOA_CONSTRUCT" else "challenges"][0]["evidence_refs"] = []
+            else:
+                semantic["subject_fingerprint"] = "f" * 64
+        return wrapper(req, provider=kind, semantic=semantic)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(adapter(kind, native(kind, callback), kind), supplied, contract, bindings, moa_package,
+                lambda: supplied, conformance_only=True, moa_source_context=sources)
+    assert caught.value.reason_code == "PROVIDER_RESPONSE_INVALID"
+    assert caught.value.invocation_count == len(calls) == (1 if stage == "MOA_CONSTRUCT" else 2)
+    assert caught.value.phase == stage
+
+
+def test_moa_duplicate_native_json_closure_is_rejected(registry, moa_package):
+    supplied, contract, bindings, sources = moa_inputs(registry)
+    calls = []
+    def callback(raw):
+        req = json.loads(raw)
+        calls.append(req)
+        encoded = json.dumps(wrapper(req, provider="json", semantic=moa_response(req)))
+        return encoded.replace('"closure": {', '"closure": null, "closure": {', 1)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(JsonBrainProvider("json", "one", callback), supplied, contract, bindings, moa_package,
+                lambda: supplied, conformance_only=True, moa_source_context=sources)
+    assert caught.value.reason_code == "PROVIDER_RESPONSE_INVALID" and len(calls) == 2
 
 
 @pytest.mark.parametrize("unknown", (None, 1))
