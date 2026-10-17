@@ -1,0 +1,89 @@
+review_id: REVIEW-369-001
+reviewed_sha: b4559d0fb58db3839548b1667f4389a2593e2599
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: FAIL
+  AC3: PASS
+  AC4: FAIL
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: FAIL
+findings:
+- id: FINDING-369-001-001
+  basis: AC1
+  action: CODE_FIX
+  location: 'src/aios_renew/brain_context.py: _canonical_audit_source (R5 canonical
+    RUN/RESULT binding and activation status); tests/test_brain_context.py: CanonicalAuditRepository
+    fixture and test_canonical_audit_inputs_authenticate_git_source_and_exact_r5_bindings;
+    tests/test_brain_provider.py: test_first_party_ordinary_attempt_reads_canonical_policy_and_runs_exact_default'
+  issue: The new first-party activation cannot authenticate the actual already reviewed/published
+    R5 artifact RUN-368-001. Canonical refs/heads/aios/artifacts/RUN-368-001 at f178?
+    is not relevant; exact artifact SHA 356d320a919f0b0df5df254702e0a0c17780e042 stores
+    .ai/transport/run.json with status ACTIVE and head_sha=null, and .ai/transport/result.json
+    with result.head_sha=f4d944474b4450da3d49376b6b034c9f9d413d60 (top-level result.head_sha
+    absent). _canonical_audit_source incorrectly requires run.get('head_sha') == reviewed
+    source AND result.get('head_sha') == reviewed source. The preserved _resolve_underlying_run_view
+    returns the raw RUN view without filling head_sha. Thus both conditions are false
+    and the canonical first-party default rejects before provider invocation for every
+    flow, despite Runtime V001/V002 both passing. Synthetic tests fabricate run.head_sha=source
+    and a flat result.json {'head_sha':source}, so they mask the live contract mismatch.
+    In the same routine, exact equality to the transitional roadmap status HUMAN_APPROVED_CANONICALIZED_LIVE_PRODUCTION_CONFORMANCE_OUTSTANDING
+    makes successful future Human/Brain reconciliation to an ACTIVE status invalidate
+    the producer's own claimed default. Consequently AC1, AC2, AC4 and AC8 cannot
+    be accepted as real canonical production activation; non-fallback and isolated
+    flow semantics may remain valid.
+  expected: Within TASK-369 authorized scope, make the existing first-party policy
+    supplier parse and bind the actual immutable primary RUN-368-001 and RESULT package
+    schemas using established canonical Runtime structures, with source from nested
+    result.head_sha and required corroborating exact reviewed candidate, evidence/lineage
+    and publication ancestry rather than fabricating a RUN head_sha. Replace the synthetic
+    flat RUN/RESULT fixture with faithful real-shaped positive and malicious negative
+    canonical Git artifacts, including original RUN status ACTIVE/head_sha=null and
+    nested result.head_sha. Show the public first-party attempt for each of the four
+    flows can authenticate the current actual R5 artifact and select its specialized
+    default; reject forged/mismatched source safely. Reconcile the finite activation-state
+    transition so current valid Human/Brain ACTIVE policy remains accepted without
+    trusting an arbitrary status, while conflicting/revoked policy fails closed. Keep
+    exact Human V1 option, no mixed/dual audit, direct-final ingress isolation and
+    bounded source freshness; reuse the two original focused minimum-sufficient-v1
+    commands, no full-suite and no new task or renewed Human approval. If a substantive
+    consumer blocker remains beyond the authorized scope, report it rather than a
+    fixture-only PASS.
+notes:
+- Reviewed canonical TASK-369 r1 blob 2b3e2af964d2833631f731a2a4453897aaa8e79f, base
+  491903e00630abb9e39e91310358fe4464bf487a, PRIMARY RUN-369-001 terminal RESULT artifact
+  f1787e315644973e561bb41230ed2d1840837e1b, exact candidate b4559d0fb58db3839548b1667f4389a2593e2599.
+  Candidate is one commit ahead of task base, modified exactly the eight authorized
+  files. Runtime V001 and V002 are exit_code=0 on exact candidate, match original
+  focused minimum-sufficient-v1 commands, and RESULT unresolved is empty. These are
+  valid structural verification but not independent semantic proof of real production
+  activation.
+- 'AC1 FAIL/AC2 FAIL: The claimed canonical first-party authenticated source read
+  is incompatible with exact published R5 primary run/result transport artifacts:
+  RUN head_sha is null and RESULT head_sha is nested under result. The live approved
+  Git read consequently rejects instead of selecting AOA/TCA/MOA/ROA; test fixture
+  rewrites both records into different shapes. A test using a fabricated canonical
+  R5 artifact does not prove current real main consumer conformance.'
+- 'AC4 FAIL as a real first-party production default/option path: subject-bound Human
+  V1_ONLY/V1_READ_ONLY cases pass on artificial fixture but actual canonical R5 policy
+  supplier fails earlier, so real option availability is not yet established. No claim
+  that isolated option protocol itself is broken.'
+- 'AC8 FAIL: Tests do call the public attempt API and use a temporary Git remote,
+  but its R5 artifact fixture does not match the existing canonical terminal schema,
+  so the integration test misses the exact approved deployment input. The same supplier
+  hardcodes a transitional status that would block subsequent lawful activation closure.'
+- AC3 PASS for fail-closed missing-policy/no-fallback behavior as implemented; this
+  does not discharge the positive activation requirement. AC5 PASS for reusing published
+  specialized procedure implementation and correct pass counts on structurally valid
+  inputs. AC6 PASS for existing captured-profile historical/in-flight request/decision
+  preservation and stale-continuation rejection. AC7 PASS because direct final AUTHOR_TASK,
+  AUTHOR_REPAIR and AUTHOR_REMEDIATION source and Runtime/Reviewer/Publisher authority
+  remain untouched.
+- 'One bounded causal finding: first-party canonical R5 policy supplier''s real-source/state
+  binding. Do not retroactively alter RUN-368-001 immutable artifacts or change R5
+  reviewed source, TASK-369 scope, policy registry, Reviewer authority, Publisher
+  or Human roadmap. CHANGES_REQUIRED preserves Runtime verification truth while preventing
+  false activation.'
