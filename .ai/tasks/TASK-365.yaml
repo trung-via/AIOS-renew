@@ -1,0 +1,211 @@
+task_id: TASK-365
+revision: 1
+goal: Repair the REPAIR automatic-Executor selection/delivery asymmetry with REMEDIATION
+  by supporting one explicit, exact-subject Human-opted-in automatic reuse of an authenticated
+  existing failed-RUN coding Executor/profile through the current GitHub/self-host
+  REPAIR flow, while keeping manual Executor choices highest priority, Runtime preflight
+  authority, executorless repair paths and all original lifecycle boundaries intact.
+problem: 'Canonical main REPAIR transport currently permits github-actions[bot] workflow_dispatch
+  only with executor empty and deterministic repair-<RUN>-<SHA> identity; self-host
+  preparation explicitly rejects automation carrying a coding Executor. Runtime separately
+  requires an explicit coding Executor when correction preflight executor_required=true.
+  REMEDIATION does not exhibit this exact symptom because its Human A3 path carries
+  an explicit bound Executor/profile. Historically TASK-315 fixed executorless FINALIZE_CANDIDATE
+  reachability, not this Human-opted-in automatic coding profile reuse. Recent REPAIR
+  Issue #2033 reports downstream workflow failure while #2037 reached SELF_HOST_COMPLETED
+  with explicit Codex; these receipts alone do NOT prove the cause of any particular
+  REPAIR failure. Distinguish the intended bot safety guard from wrongly rejected
+  genuinely Human-authorized automatic profile reuse, and correct only the verified
+  failing boundary without silently authorizing bots to select an Executor.'
+assumptions:
+- Fresh Brain Sync resolved canonical main e773588078c6646d6df9fae416a402103969ea64
+  and exact current source paths in .github/workflows/aios-self-hosted-repair-wakeup.yml,
+  src/aios_renew/github_issue_repair_wakeup.py, src/aios_renew/operator.py and src/aios_renew/repair_dispatch.py.
+  Runtime must compare expected main SHA and current TASK identity and reject later
+  drift independently.
+- Current Human request explicitly prioritizes an independent REPAIR Executor-auto
+  handling fix ahead of R2.1/R3 continuation. This is prospective TASK authoring,
+  not an authorization to execute an unrelated REPAIR, launch this TASK, or mutate
+  roadmap state.
+- Auto means explicit per-REPAIR Human delegation to reuse a single previously authenticated
+  coding Executor/profile from the exact failed-RUN lineage, not autonomous selection
+  of any provider/model, repository-default Executor or policy-driven optimizer. If
+  Human does not authorize AUTO for that correction or authentic source profile is
+  absent/invalid, it is not eligible.
+- Human explicit executor/model/effort for one exact REPAIR always takes precedence.
+  REPAIR already supports manually specified coding Executor, and legitimate executorless
+  NO_CHANGE/eligible FINALIZE_CANDIDATE must not be forced to invent a profile.
+- Production prospective Brain semantic TASK_AUTHORING audit uses exactly aios-adaptive-brain-audit-v1
+  version 1 digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718;
+  Brain performed CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE over the eight ordered
+  lenses and one closure. R2.1 ROA/MOA are isolated conformance, not a default audit
+  policy cutover.
+- Historical bot workflow_dispatch exclusion and immutable repair dispatch journal
+  must be preserved for unapproved automation. Any requested delegated mode must be
+  authenticated at the pre-RUN boundary against Human actor/source, exact canonical
+  RUN/REPAIR and selection, not inferred from GitHub runner identity.
+- This TASK is Executor-neutral. No coding Executor/model/effort has been delegated
+  by Human for implementation of TASK-365; choice is separate from authoring.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/executor-profiles.yaml
+  - .ai/tasks/TASK-315.yaml
+  - .ai/tasks/TASK-348.yaml
+  - .ai/tasks/TASK-360.yaml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-brain-remediation-intent.yml
+  - .github/workflows/aios-approved-remediation-intent.yml
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/github_issue_remediation_intent.py
+  - src/aios_renew/repair_dispatch.py
+  - src/aios_renew/correction_dispatch.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/execution_profile.py
+  - src/aios_renew/correction_preflight.py
+  - tests/test_github_issue_repair_wakeup.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_operator.py
+  - tests/test_operator_correction_preflight.py
+  - tests/test_repair_dispatch.py
+  - tests/test_github_issue_remediation_intent_workflow.py
+  modify:
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/repair_dispatch.py
+  - tests/test_github_issue_repair_wakeup.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_operator.py
+  - tests/test_operator_correction_preflight.py
+  - tests/test_repair_dispatch.py
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+non_goals:
+- No globally enabled automatic coding Executor, synthetic Human A3, implicit delegation
+  inferred from old RUN/profile/Issue, arbitrary model recommendation, optimizing
+  executor chooser, silent failover, policy router, retry scheduler, persistent selector
+  database or second Runtime.
+- No rewrite of REMEDIATION INTENT, approved remediation wakeup, source FAILED RUN
+  or FAILURE, immutable REPAIR authorization, historic dispatch journal, Review/Publisher,
+  the frozen Kernel, Constitution or canonical roadmap state.
+- No expansion of the valid executorless NO_CHANGE or structurally reusable FINALIZE_CANDIDATE
+  into coding, and no forced Executor on an eligible noncoding repair.
+- No alteration to existing execution-profile policy/default definitions, credential
+  handling, background approval, broad workflow permissions or elevated automation
+  actor trust.
+- 'No assumption that #2033 or #1978 downstream workflow failures were solely due
+  to the bot guard without precise operational evidence; do not fabricate a RUN from
+  pre-AIOS failures.'
+- No full pytest suite, nonfocused infrastructure refactor, private stdout/stderr
+  in public Issue artifacts or blanket relaxation of GitHub carrier provenance.
+- No automatic dispatch/implementation of this newly authored TASK and no automatic
+  R2.1 completion inference.
+constraints:
+  hard:
+  - Use exact current Human-authenticated REPAIR request/approved delegation as the
+    only entrypoint for optional AUTO. A bounded explicit selector must bind to this
+    exact failed_run_id and canonical repair_sha and cannot arise solely from github-actions[bot],
+    default GitHub workflow inputs, prior Human preferences, or an untrusted source
+    string. A Bot may transport a proven Human-owned selection but never mint or broaden
+    it; reject absent, mixed, replayed against a different subject or unauthenticated
+    delegation.
+  - 'AUTO must be deterministic reuse only: resolve the exact eligible, authenticated
+    failed-RUN Executor and execution-profile identity through existing canonical
+    Runtime/repair admission, retaining supported provider/model/effort identity and
+    truthful source attribution. Never choose among multiple executors, invent a model,
+    silently use changed repo default as an inherited old model, or proceed if authentic
+    source profile is absent/incompatible. Allow Human explicit supported Executor/profile
+    in the existing route without invoking AUTO.'
+  - Do not create a new selection/router subsystem or change generic admission APIs
+    to confer semantic choice. Respect canonical preflight executor_required/action.
+    For CODE_FIX/CONTINUE_IMPLEMENTATION and nonreusable FINALIZE_CANDIDATE, coding
+    authorization requires an exact valid Human-manual or explicitly Human-delegated
+    AUTO coding profile. For NO_CHANGE and reusable FINALIZE_CANDIDATE, preserve executorless
+    profileless invocation, with no coding model and no Executor activity.
+  - Before RUN or executor invocation, validate exact failed TASK/RUN, protected/published
+    FAILURE as available, current authorized REPAIR commit, source profile, binding,
+    task scope, clean checkout and currentness through existing owners. If missing/ambiguous/stale,
+    fail closed with bounded actionable operational reason; do not fabricate a canonical
+    FAILURE or RUN.
+  - Preserve immutable request identity, one dispatch and journal collision semantics.
+    Bind any resolved AUTO profile exactly once under the existing repair_dispatch_id
+    and replay without re-resolving changed defaults/lineage or changing profile on
+    retry. Reject same-id mixed AUTO/manual profile conflicts, unauthorized bot-coded
+    dispatch, cross-RUN source substitution and changed repair SHA.
+  - 'Preserve explicitly Human-selected Executor/model/effort precedence: never downgrade
+    an explicit supported choice to source inheritance, repository defaults or empty
+    executor; reject invalid selections with actionable reasons. Existing manual REPAIR
+    and A3 REMEDIATION workflows remain independently usable.'
+  - Keep GitHub Issue carrier as transport and its existing actor/allowlist/main-ref
+    provenance; repair any exact orchestration boundary only under a verified authenticated
+    Human delegation. Do not allow bare github-actions[bot] workflow_dispatch with
+    coding inputs as equivalent to Human approval. Reuse existing source/receipt path,
+    do not add new workflow writers or secret transport.
+  - Distinguish pre-AIOS REJECTED/OPERATIONAL_FAILED, admitted canonical REPAIR RUN,
+    executor invocation, verification, review and publication. Public receipt must
+    not claim more than independently proved; preserve source-level bounded diagnostics
+    without leaking private raw verification or model trace.
+  - Executor modifies only scope.modify. If implementable authenticated delegation
+    would require editing out-of-scope production paths or broad redesign, return
+    a bounded blocker/rescope request; no silent scope creep. Runtime uses only authored
+    focused verification, not a full suite or V2 gate.
+acceptance:
+- id: AC1
+  condition: A grounded reproducible REPAIR vs REMEDIATION delivery matrix identifies
+    exact AUTO/manual/executorless success and failure boundaries, discriminates the
+    intended bot safety gate from an unauthorized coding run and from other downstream
+    workflow failures, and does not conflate operational receipts with RUN truth.
+- id: AC2
+  condition: One explicitly Human-opted-in AUTO REPAIR request for a unique exact
+    failed RUN plus current REPAIR authorization can reuse only a validated canonical
+    source coding Executor/profile with a deterministic bound result; missing/invalid/ambiguous
+    source profile or authorization yields actionable no-RUN rejection, not guessing
+    or silent defaults.
+- id: AC3
+  condition: Explicit Human coding Executor/model/effort continues to win over AUTO/inheritance/defaults
+    and is transported unaltered to Runtime; invalid or mixed authorization is rejected.
+    The same exact repaired subject can be delivered through the existing Human Issue
+    carrier with legitimate source/provenance checks.
+- id: AC4
+  condition: 'The repaired durable gate follows canonical preflight executor_required:
+    CODE_FIX, CONTINUE_IMPLEMENTATION and nonreusable FINALIZE_CANDIDATE require authorized
+    coding selection; eligible executorless FINALIZE_CANDIDATE and NO_CHANGE remain
+    profileless with zero coding Executor invocation.'
+- id: AC5
+  condition: Existing Issue/reusable self-host workflow transports a proven Human
+    AUTO delegation without wrongly treating its Bot delivery actor as newly choosing
+    coding authority; unsupported Bot-only workflow_dispatch, stale ref, forged Human
+    proof, wrong repo/actor, malformed selector or wrong REPAIR SHA fail before RUN.
+- id: AC6
+  condition: Canonical source/selector SHA binding, immutable dispatch journal, same-id
+    replay, profile provenance, repaired candidate ancestry and per-source CAS reject
+    stale/swapped/conflicting AUTO/explicit identity while preserving legitimate idempotent
+    delivery; no duplicate RUN, retry router, or fabricated terminal.
+- id: AC7
+  condition: Bounded operational receipts distinguish carrier rejection, pre-AIOS
+    delivery failure, admission, RUN and invocation where independently observed,
+    with sufficient actionable reason to identify an AUTO authorization/profile mismatch
+    without private raw payload or false success.
+- id: AC8
+  condition: Focused tests exercise Human opted-in inherited coding AUTO, explicit
+    manual overrides, no-profile/ambiguous/forged/bot cases, both executor_required
+    branches, workflow event truth table, replay/profile conflicts and unaffected
+    existing remediation/manually selected REPAIR behavior within scope; original
+    focused required commands exit 0 under Runtime and no full-suite/V2 gate is introduced.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_github_issue_repair_wakeup.py tests/test_github_issue_repair_wakeup_workflow.py
+    tests/test_repair_dispatch.py tests/test_operator_correction_preflight.py
+  - python -m pytest -q tests/test_operator.py -k "repair_wakeup or repair_dispatch"
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
