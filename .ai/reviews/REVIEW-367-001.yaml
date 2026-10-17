@@ -1,0 +1,71 @@
+review_id: REVIEW-367-001
+reviewed_sha: 3c9fb1dfa4f27dc54ff9d73285289e89aa29a04e
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- "Reviewer independently evaluated exact canonical TASK-367 r1 blob 25a93782e2eabd0d702d5bebe1597e83c7a24e17\
+  \ at base main 46434f5745f79cf821ce56297b2e261190ce1cac against PRIMARY RUN-367-001\
+  \ RESULT source 3c9fb1dfa4f27dc54ff9d73285289e89aa29a04e. Candidate has exactly\
+  \ one parent, the TASK main commit. RESULT lists eight claims AC1\u2013AC8, no unresolved\
+  \ items. Runtime verification V001 and V002 each bind exact candidate and returned\
+  \ exit code 0. Eight changed files equal TASK.scope.modify, and the explicitly selected\
+  \ Executor profile was codex gpt-6.1-sol max."
+- 'AC1 PASS: Exact digest-pinned aoa-1 v1 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b
+  is confined to ARCHITECTURE, with five architecture-specific CONSTRUCT checks, six
+  architecture-specific adversarial checks and one final CANDIDATE/NO_DECISION closure;
+  this is not mandatory V1 eight-lens duplication or a new generic selector.'
+- 'AC2 PASS: construct_aoa_subject binds the exact ARCHITECTURE Decision Packet, explicit
+  selector and work context, BOUNDED_SEMANTIC_PROPOSAL return identity, externally
+  provided Human objective, constraints, bounded authorization/consumers and canonical
+  snapshot. Supplied provenance must match canonical repository/main/fingerprint;
+  unauthenticated or missing decisive sources remain UNKNOWN/BLOCKER, and provenance
+  bytes alone never authenticate actual Human authority.'
+- 'AC3 PASS: Both stages bind three ordered A/B/C alternatives, concrete feasibility,
+  necessity, expected outcome, scope, threats, reversibility, externalities, all five
+  cost dimensions and relative episode costs, plus source-grounded discriminator and
+  value of information. OBSERVED/INFERRED quantities require matching explicit caller-provided
+  bound evidence and attribution; UNKNOWN costs remain null, not fabricated numbers.'
+- 'AC4 PASS: Six targeted adversarial checks challenge no-build vs B/C, minimum-delta
+  vs C, omitted consumers, hidden costs, risk ownership, irreversibility and stale
+  or improperly authorized closure. _aoa_reconcile accounts every first-pass CHECK/ALTERNATIVE/INFORMATION
+  blocker; RESOLVED needs bound sources and real changed anchors while UNRESOLVED
+  survives all-CLEAR later checks. NO_DECISION has no candidate; no-build and deferral
+  are permitted. Semantic preference and missing critical risks are Brain judgments,
+  not automatically inferred from deterministic status.'
+- 'AC5 PASS: Existing mapping/JSON provider attempts and protocol now transport isolated
+  AOA_CONSTRUCT and AOA_RECONCILE with exact first-pass decision lineage, strict closed
+  requests/decisions, current packet and source reconstruction and freshness before
+  stage two/final handoff. Tampered/rehashed source, digest, return, flow, mode or
+  private/nested material fails closed per implemented tests.'
+- 'AC6 PASS: Externally supplied Human V1_ONLY option is extended to ARCHITECTURE
+  with exact flow/subject/context/profile reference checks and two V1-only modes;
+  it cannot invoke AOA as an additional normative pass, silently use V3 or authorize
+  Human intent by untrusted selected_by text. Caller retains external authentication
+  responsibility. Published TASK_AUTHORING V1 option and ordinary production V1 behavior
+  are preserved.'
+- 'AC7 PASS: Existing V1/V2/V3, ROA-1 R2, MOA-1 and TCA-1 recognized normalized profile
+  identities remain unchanged, with finite registry expanded solely for AOA. Focused
+  positive/negative tests cover A/B/C, missing decisive data, unsupported risk, quoted
+  cost evidence, retained blockers, stale identity, private material, native transport
+  and Human-option compatibility; both required focused verification commands succeeded
+  with exit code 0; no broad full-suite claim is made.'
+- 'AC8 PASS: Candidate changes only the eight authorized registry/brain audit/provider/protocol/targeted
+  tests/documentation files. Direct TASK ingress, Runtime, Reviewer, Publisher, roadmap
+  selection, frozen Kernel, downstream pins and production default Adaptive V1 policy
+  have not been mutated; isolated semantic conformance makes no empirical quality/cost
+  or publication success claim.'
+- Reviewer verdict is limited to implementation conformance on the bound source. Runtime
+  owns canonical verification; Publisher owns exact source publication; R5 prospective
+  cutover, Human-optional V1 activation and roadmap advancement require separate exact
+  authority and evidence. This review does not certify live model planning quality
+  or measured superiority.
