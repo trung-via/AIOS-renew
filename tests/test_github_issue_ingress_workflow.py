@@ -17,6 +17,24 @@ def _workflow() -> tuple[dict, str]:
     return yaml.load(text, Loader=yaml.BaseLoader), text
 
 
+def repair_consumer_steps(outputs: dict, *, repair_outcome="skipped") -> dict[str, bool]:
+    """Evaluate the checked-in consumer's actual bounded Actions conditions."""
+    from types import SimpleNamespace
+
+    workflow, _ = _workflow()
+    values = {"publication_run_id": "", "repair_sha": "", "repair_wakeup_route": "", **outputs}
+    steps = SimpleNamespace(
+        ingress=SimpleNamespace(outcome="success", outputs=SimpleNamespace(**values)),
+        dispatch=SimpleNamespace(outcome="skipped"),
+        repair_dispatch=SimpleNamespace(outcome=repair_outcome),
+    )
+    names = {"Dispatch safe REPAIR wakeup once", "Observe rejected REPAIR dispatch", "Preserve failed delivery outcome"}
+    return {step["name"]: bool(eval(
+        step["if"].replace("&&", " and ").replace("||", " or "),
+        {"__builtins__": {}, "always": lambda: True, "steps": steps},
+    )) for step in workflow["jobs"]["deliver"]["steps"] if step.get("name") in names}
+
+
 def _assert_required_origin_secret(workflow: dict) -> None:
     assert workflow["on"] == {
         "workflow_call": {
@@ -182,12 +200,15 @@ def test_workflow_posts_one_bounded_receipt_and_only_closes_success() -> None:
         "AIOS_REPAIR_DISPATCH_ID": "${{ steps.ingress.outputs.repair_dispatch_id }}",
         "AIOS_FAILED_RUN_ID": "${{ steps.ingress.outputs.failed_run_id }}",
         "AIOS_REPAIR_SHA": "${{ steps.ingress.outputs.repair_sha }}",
+        "AIOS_REPAIR_WAKEUP_ROUTE": "${{ steps.ingress.outputs.repair_wakeup_route }}",
     }
     assert "if (fullySuccessful)" in text
     assert "(!publicationRequested || dispatchAccepted)" in text
     assert "(!repairRequested || repairAccepted)" in text
+    assert "const repairRequested = Boolean(repairSha) && repairRoute === 'EXECUTORLESS';" in text
+    assert "&& !humanWakeupRequired" in text
     assert (
-        "always() && (steps.ingress.outcome != 'success' || (steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome != 'success') || (steps.ingress.outputs.repair_sha != '' && steps.repair_dispatch.outcome != 'success'))"
+        "always() && (steps.ingress.outcome != 'success' || (steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome != 'success') || (steps.ingress.outputs.repair_wakeup_route == 'EXECUTORLESS' && steps.repair_dispatch.outcome != 'success'))"
         in text
     )
 
@@ -217,7 +238,7 @@ def test_workflow_fails_closed_when_publication_dispatch_is_not_accepted() -> No
     assert "steps.dispatch.outcome != 'success'" in fail_step["if"]
     assert "steps.ingress.outputs.publication_run_id != ''" in fail_step["if"]
     assert "steps.repair_dispatch.outcome != 'success'" in fail_step["if"]
-    assert "steps.ingress.outputs.repair_sha != ''" in fail_step["if"]
+    assert "steps.ingress.outputs.repair_wakeup_route == 'EXECUTORLESS'" in fail_step["if"]
 
 
 def test_workflow_dispatches_safe_publisher_once_with_only_canonical_run_selector() -> None:
@@ -269,7 +290,7 @@ def test_workflow_dispatches_safe_repair_wakeup_once_with_bounded_canonical_sele
     assert dispatch["uses"] == "actions/github-script@v7"
     assert (
         dispatch["if"]
-        == "steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_sha != ''"
+        == "steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_wakeup_route == 'EXECUTORLESS'"
     )
     assert dispatch["env"] == {
         "AIOS_REPAIR_DISPATCH_ID": "${{ steps.ingress.outputs.repair_dispatch_id }}",
@@ -299,6 +320,29 @@ def test_workflow_dispatches_safe_repair_wakeup_once_with_bounded_canonical_sele
         "command",
     ):
         assert forbidden not in script
+
+
+def test_repair_sha_and_action_or_missing_route_cannot_schedule_executorless_dispatch() -> None:
+    for route in ("", "HUMAN_WAKEUP_REQUIRED", "CODE_FIX", "NO_CHANGE", "FINALIZE_CANDIDATE", "false"):
+        scheduled = repair_consumer_steps({"repair_sha": "a" * 40, "repair_wakeup_route": route})
+        assert not any(scheduled.values())
+    scheduled = repair_consumer_steps(
+        {"repair_sha": "a" * 40, "repair_wakeup_route": "EXECUTORLESS"}, repair_outcome="failure",
+    )
+    assert all(scheduled.values())
+
+
+def test_human_wait_uses_original_issue_writer_without_new_discovery_or_lifecycle_surface() -> None:
+    workflow, text = _workflow()
+    assert set(workflow["jobs"]) == {"origin_request", "origin_provenance", "deliver"}
+    assert text.count("github.rest.issues.createComment") == 1
+    assert "issue_number: context.issue.number" in text
+    assert "const humanWakeupRequired = Boolean(repairSha) && !repairRequested;" in text
+    assert "&& !humanWakeupRequired" in text
+    assert "if (ingressOutcome === 'success' && repairRequested)" in text
+    for forbidden in ("listWorkflowRuns", "listJobsForWorkflowRun", "getWorkflowRun", "getJobForWorkflowRun",
+                      "downloadWorkflowRunLogs", "downloadJobLogsForWorkflowRun", "secrets: inherit"):
+        assert forbidden not in text
 
 
 def test_carrier_workflow_never_directly_mutates_main_or_invokes_publication_module() -> None:

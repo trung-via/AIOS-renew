@@ -676,7 +676,7 @@ def test_main_cli_writes_github_output_when_requested(
     assert not task_output.exists() or task_output.read_text(encoding="utf-8") == ""
 
 
-def test_successful_author_repair_emits_deterministic_repair_handoff(
+def test_successful_author_repair_exposes_subject_without_granting_wakeup_from_sha(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     body = "format: AIOS_INGRESS_ENVELOPE\nversion: 1\noperation: AUTHOR_REPAIR\n"
@@ -704,8 +704,11 @@ def test_successful_author_repair_emits_deterministic_repair_handoff(
         "failed_run_id=RUN-121-005\n"
         "repair_failed_run_id=RUN-121-005\n"
         f"repair_sha={canonical_sha}\n"
+        "repair_wakeup_route=HUMAN_WAKEUP_REQUIRED\n"
+        "repair_wakeup_reason=CURRENT_PREFLIGHT_REQUIRED\n"
     )
     assert delivery.github_outputs() == expected_outputs
+    assert delivery.repair_wakeup_route == "HUMAN_WAKEUP_REQUIRED"
 
     emitted = dict(
         line.split("=", 1) for line in delivery.github_outputs().splitlines()
@@ -876,6 +879,8 @@ def test_main_cli_writes_repair_github_output_when_requested(
         "failed_run_id=RUN-121-005\n"
         "repair_failed_run_id=RUN-121-005\n"
         f"repair_sha={sha}\n"
+        "repair_wakeup_route=HUMAN_WAKEUP_REQUIRED\n"
+        "repair_wakeup_reason=CURRENT_PREFLIGHT_REQUIRED\n"
     )
     assert output_path.read_text(encoding="utf-8") == expected
 
@@ -1091,3 +1096,271 @@ def test_issue_carrier_direct_final_remediation_keeps_all_carrier_and_subject_ga
     with pytest.raises((AuthoringIngressError, carrier.GitHubIssueIngressError)):
         carrier.deliver_event(event, policy, repo=repo)
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+def repair_ingress_fixture(tmp_path, *, action, reuse="absent", coding_profile=False):
+    """Isolated transported FAILURE and structural package; never a verification PASS."""
+    from tests.operator_test_support import make_repo, git
+    from aios_renew.review_transport import transport_failure
+
+    repo = make_repo(tmp_path)
+    if coding_profile:
+        (repo / ".ai/executor-profiles.yaml").write_bytes((ROOT / ".ai/executor-profiles.yaml").read_bytes())
+        git(repo, "add", ".ai/executor-profiles.yaml")
+        git(repo, "commit", "--quiet", "-m", "fixture coding policy")
+        git(repo, "push", "--quiet", "origin", "main")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "switch", "--quiet", "-c", "failed-candidate")
+    git(repo, "config", "branch.failed-candidate.remote", "origin")
+    git(repo, "config", "branch.failed-candidate.merge", "refs/heads/main")
+    (repo / "OUTPUT.txt").write_text("committed candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "fixture candidate")
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    task = {"id": "TASK-101", "revision": 1}
+    run = {"run_id": run_id, "task": task, "executor": "codex", "base_sha": base,
+           "head_sha": head, "workspace": str(repo), "status": "ACTIVE"}
+    failure = {"kind": "FAILURE", "run_id": run_id, "task": task, "executor": "codex",
+               "base_sha": base, "failed_head_sha": head,
+               "phase": "VERIFICATION" if action == "NO_CHANGE" else "COMPLETION_GATE",
+               "error": {"type": "OperatorError", "message": "protected fixture diagnostic"},
+               "candidate": {"transportable": True, "repairable": True, "dirty": False,
+                             "descends_from_base": True, "changed_files": ["OUTPUT.txt"],
+                             "outside_task_scope": []}}
+    material = tmp_path / "source-material"
+    material.mkdir()
+    run_path, failure_path = material / "run.json", material / "failure.json"
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    preverification_path = None
+    profile_path = None
+    if coding_profile:
+        from aios_renew.execution_profile import ResolvedExecutionProfile
+        profile_path = material / "execution-profile.json"
+        profile_path.write_text(ResolvedExecutionProfile(
+            run_id, "codex", "source/authenticated-model", "low", "REPOSITORY_DEFAULT", "EXPLICIT",
+        ).to_json(), encoding="utf-8")
+    if reuse != "absent":
+        structural = {"kind": "PRE_VERIFICATION_CANDIDATE", "run_id": run_id, "task": task,
+                      "subject_sha": head, "package": {"result": {
+                          "head_sha": head, "changed_files": ["OUTPUT.txt"], "unresolved": [],
+                          "claims": [{"id": "C1", "satisfies": ["AC1"],
+                                      "claim": "OUTPUT.txt contains the committed fixture candidate.",
+                                      "evidence": []}]}, "evidence": []}}
+        if reuse == "stale":
+            structural["subject_sha"] = base
+        preverification_path = material / "preverification.json"
+        preverification_path.write_text(
+            "not-json" if reuse == "malformed" else json.dumps(structural), encoding="utf-8",
+        )
+    transport_failure(repo, run_id=run_id, head_sha=head, run_path=run_path,
+                      failure_path=failure_path, preverification_path=preverification_path,
+                      execution_profile_path=profile_path)
+    git(repo, "switch", "--quiet", "main")
+    payload = {"repair_id": "REPAIR-101-001", "failed_run_id": run_id,
+               "failed_head_sha": head, "task": task, "action": action,
+               "modification_scope": [] if action in ("NO_CHANGE", "FINALIZE_CANDIDATE") else ["OUTPUT.txt"],
+               "instructions": ["Use the exact authorized correction."],
+               "constraints": ["Commit the output."]}
+    body = {"format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_REPAIR",
+            "identity": {"failed_run_id": run_id},
+            "expected_state": {"expected_failed_head_sha": head}, "payload": payload}
+    event_doc = _event(json.dumps(body))
+    event_doc["issue"]["number"] = 168
+    return repo, _write_event(tmp_path, event_doc), _write_policy(tmp_path)
+
+
+@pytest.mark.parametrize("action,reuse,route", [
+    ("CODE_FIX", "absent", "HUMAN_WAKEUP_REQUIRED"),
+    ("CONTINUE_IMPLEMENTATION", "absent", "HUMAN_WAKEUP_REQUIRED"),
+    ("FINALIZE_CANDIDATE", "absent", "HUMAN_WAKEUP_REQUIRED"),
+    ("FINALIZE_CANDIDATE", "eligible", "EXECUTORLESS"),
+    ("NO_CHANGE", "eligible", "EXECUTORLESS"),
+])
+def test_ingress_repair_real_transport_routes_once_without_run_or_verification(tmp_path, action, reuse, route):
+    from tests.operator_test_support import _runtime_bytes, git
+    from aios_renew.operator import _runtime_paths_readonly
+    from tests.test_github_issue_ingress_workflow import repair_consumer_steps
+
+    repo, event, policy = repair_ingress_fixture(tmp_path, action=action, reuse=reuse)
+    before = _runtime_bytes(repo)
+    main = git(repo, "rev-parse", "HEAD")
+    delivery = carrier.deliver_event(event, policy, repo=repo)
+    assert delivery.ingress_result.status == "CANONICALIZED"
+    outputs = dict(line.split("=", 1) for line in delivery.github_outputs().splitlines())
+    assert outputs["repair_wakeup_route"] == route
+    consumer = repair_consumer_steps(outputs)
+    assert consumer["Dispatch safe REPAIR wakeup once"] is (route == "EXECUTORLESS")
+    assert not consumer["Observe rejected REPAIR dispatch"]
+    assert consumer["Preserve failed delivery outcome"] is (route == "EXECUTORLESS")
+    assert outputs["repair_dispatch_id"] == f"repair-{outputs['failed_run_id']}-{outputs['repair_sha']}"
+    assert delivery.repair_wakeup_reason == (
+        "EXECUTOR_REQUIRED" if route == "HUMAN_WAKEUP_REQUIRED" else "CURRENT_EXECUTORLESS_REPAIR"
+    )
+    receipt = delivery.render_receipt()
+    assert "github-issue:trung-via/AIOS-renew#168@trung-via" in receipt
+    for key in ("failed_run_id", "repair_sha", "repair_dispatch_id"):
+        assert f"{key}: {outputs[key]}" in receipt
+    assert "run_created: false" in receipt and "executor_invoked: false" in receipt
+    assert "protected fixture diagnostic" not in receipt
+    replay = carrier.deliver_event(event, policy, repo=repo)
+    assert replay.ingress_result.replayed and replay.github_outputs() == ""
+    assert not any(repair_consumer_steps({}).values())
+    assert git(repo, "rev-parse", "HEAD") == main
+    assert git(repo, "ls-remote", "--refs", "origin", "refs/heads/main").split()[0] == main
+    assert not _runtime_paths_readonly(repo).runs.exists()
+    assert _runtime_bytes(repo) == before
+    assert not git(repo, "ls-remote", "--refs", "origin", "refs/heads/aios/artifacts/*")
+
+
+def _repair_attestations(action="FINALIZE_CANDIDATE", required=False):
+    from aios_renew.correction_preflight import CorrectionPreflightResult
+    from aios_renew.unified_state import UnifiedStateObservation
+
+    proof = CorrectionPreflightResult(
+        "REPAIR", "READY", "READY", "READY", task_id="TASK-101", task_revision=1,
+        failed_run_id="RUN-101-001", failed_head_sha="b" * 40, subject_mode="HISTORICAL",
+        action=action, executor_required=required, authorization_sha="a" * 40,
+    ).as_dict()
+    document = {"task": proof["task"], "failed_run_id": proof["failed_run_id"],
+                "failed_head_sha": proof["failed_head_sha"], "action": action}
+    state = UnifiedStateObservation(
+        "TASK-101", 1, "CORRECTION", "EXECUTE_REPAIR", run_id="RUN-101-001",
+        failed_run_id="RUN-101-001", failed_head_sha="b" * 40, correction_sha="a" * 40,
+        correction=proof, correction_document=document,
+    ).as_dict()
+    # Keep the independent attestations independent under adversarial mutation.
+    return json.loads(json.dumps(proof)), json.loads(json.dumps(state)), document
+
+
+def _install_repair_attestations(monkeypatch, proof, state, document, *, current=None):
+    from types import SimpleNamespace
+    from aios_renew import correction_preflight, unified_state
+
+    calls = []
+    def preflight(failed_run_id, *, repo, required_repair_sha):
+        calls.append((failed_run_id, repo, required_repair_sha))
+        value = current if current is not None and len(calls) > 1 else proof
+        return SimpleNamespace(as_dict=lambda: value)
+    monkeypatch.setattr(correction_preflight, "preflight_repair", preflight)
+    monkeypatch.setattr(unified_state, "observe_unified_state", lambda *a, **k: SimpleNamespace(
+        as_dict=lambda: state, correction_document=document,
+    ))
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **k: IngressResult(
+        operation="AUTHOR_REPAIR", canonical_destination="refs/heads/aios/repair/RUN-101-001",
+        canonical_sha="a" * 40,
+    ))
+    return calls
+
+
+@pytest.mark.parametrize("fault", [
+    "proof_missing", "proof_blocked", "proof_requirement_missing", "proof_requirement_string",
+    "proof_requirement_number", "proof_sha", "proof_run", "proof_version", "proof_task_revision",
+    "proof_family", "proof_head", "state_missing", "state_requirement", "state_requirement_number",
+    "state_proof_missing", "state_sha", "state_run", "state_head", "state_task", "state_task_boolean",
+    "state_blocker", "state_action", "state_effect", "document_missing", "document_action",
+    "document_run", "document_task", "moved_proof", "moved_requirement", "contradictory_action",
+])
+def test_ingress_repair_missing_conflicting_or_moved_attestation_never_grants_dispatch(tmp_path, monkeypatch, fault):
+    proof, state, document = _repair_attestations()
+    current = None
+    if fault == "proof_missing":
+        proof = None
+    elif fault.startswith("proof_"):
+        key, value = {
+            "proof_blocked": ("status", "BLOCKED"), "proof_requirement_missing": ("executor_required", None),
+            "proof_requirement_string": ("executor_required", "false"), "proof_requirement_number": ("executor_required", 0),
+            "proof_sha": ("authorization_sha", "c" * 40), "proof_run": ("failed_run_id", "RUN-102-001"),
+            "proof_version": ("version", True), "proof_family": ("family", "REMEDIATION"),
+            "proof_head": ("failed_head_sha", "not-a-sha"), "proof_task_revision": ("task", {"id": "TASK-101", "revision": True}),
+        }[fault]
+        proof[key] = value
+    elif fault == "state_missing":
+        state = None
+    elif fault in ("state_requirement", "state_requirement_number"):
+        state["correction_preflight"]["executor_required"] = True if fault == "state_requirement" else 0
+    elif fault.startswith("state_"):
+        key, value = {
+            "state_proof_missing": ("correction_preflight", None), "state_sha": ("correction_sha", "c" * 40),
+            "state_run": ("failed_run_id", "RUN-102-001"), "state_head": ("failed_head_sha", "c" * 40),
+            "state_task": ("task", {"id": "TASK-102", "revision": 1}),
+            "state_task_boolean": ("task", {"id": "TASK-101", "revision": True}),
+            "state_blocker": ("blocker", {"code": "STALE"}), "state_action": ("next_action", "WAIT"),
+            "state_effect": ("run_created", True),
+        }[fault]
+        state[key] = value
+    elif fault == "document_missing":
+        document = None
+    elif fault.startswith("document_"):
+        key, value = {"document_action": ("action", "CODE_FIX"),
+                      "document_run": ("failed_run_id", "RUN-102-001"),
+                      "document_task": ("task", {"id": "TASK-102", "revision": 1})}[fault]
+        document[key] = value
+    elif fault.startswith("moved_"):
+        current = dict(proof)
+        current["authorization_sha" if fault == "moved_proof" else "executor_required"] = (
+            "c" * 40 if fault == "moved_proof" else True
+        )
+    else:
+        proof, state, document = _repair_attestations(action="CODE_FIX", required=False)
+    _install_repair_attestations(monkeypatch, proof, state, document, current=current)
+    delivery = carrier.deliver_event(_write_event(tmp_path, _event()), _write_policy(tmp_path), repo=tmp_path)
+    assert delivery.repair_wakeup_route == "HUMAN_WAKEUP_REQUIRED"
+    assert "repair_wakeup_route=EXECUTORLESS" not in delivery.github_outputs()
+    assert "human_action:" in delivery.render_receipt()
+
+
+@pytest.mark.parametrize("boundary", ["preflight", "unified"])
+def test_ingress_repair_observation_exception_is_bounded_and_does_not_undo_authoring(tmp_path, monkeypatch, boundary):
+    from aios_renew import correction_preflight, unified_state
+
+    proof, state, document = _repair_attestations()
+    _install_repair_attestations(monkeypatch, proof, state, document)
+    def unavailable(*a, **k):
+        raise RuntimeError("private path / token / transport stderr")
+    module, name = (correction_preflight, "preflight_repair") if boundary == "preflight" else (unified_state, "observe_unified_state")
+    monkeypatch.setattr(module, name, unavailable)
+    output = tmp_path / "output"
+    event, policy = _write_event(tmp_path, _event()), _write_policy(tmp_path)
+    assert carrier.main(["--event", str(event), "--policy", str(policy), "--repo", str(tmp_path),
+                         "--output", str(output)]) == 0
+    assert "repair_wakeup_reason=CURRENTNESS_UNAVAILABLE" in output.read_text(encoding="utf-8")
+    delivery = carrier.deliver_event(event, policy, repo=tmp_path)
+    assert delivery.ingress_result.status == "CANONICALIZED"
+    assert "private path" not in delivery.render_receipt()
+
+
+def test_ingress_repair_human_action_and_exact_selectors_survive_receipt_bound():
+    delivery = carrier.IssueDelivery(
+        "github-issue:trung-via/AIOS-renew#168@trung-via",
+        IngressResult(operation="AUTHOR_REPAIR", canonical_sha="a" * 40,
+                      canonical_destination="refs/heads/aios/repair/RUN-101-001", detail="x" * 10_000),
+        repair_wakeup_reason="EXECUTOR_REQUIRED",
+    )
+    receipt = delivery.render_receipt()
+    assert len(receipt) <= 3500 and receipt.endswith("[truncated]")
+    assert "repair_wakeup: HUMAN_WAKEUP_REQUIRED" in receipt
+    assert "reason: EXECUTOR_REQUIRED" in receipt and "human_action:" in receipt
+    assert f"repair_sha: {delivery.repair_sha}" in receipt
+    assert f"repair_dispatch_id: {delivery.repair_dispatch_id}" in receipt
+    assert "failed_run_id: RUN-101-001" in receipt
+
+
+@pytest.mark.parametrize("action", ["NO_CHANGE", "FINALIZE_CANDIDATE"])
+def test_ingress_repair_executorless_route_rechecks_exact_subject_and_replay_is_read_only(tmp_path, monkeypatch, action):
+    from aios_renew import correction_preflight, unified_state
+
+    proof, state, document = _repair_attestations(action=action)
+    calls = _install_repair_attestations(monkeypatch, proof, state, document)
+    event, policy = _write_event(tmp_path, _event()), _write_policy(tmp_path)
+    delivery = carrier.deliver_event(event, policy, repo=tmp_path)
+    assert delivery.repair_wakeup_route == "EXECUTORLESS"
+    assert calls == [("RUN-101-001", tmp_path, "a" * 40)] * 2
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **k: IngressResult(
+        operation="AUTHOR_REPAIR", status="IDEMPOTENT", replayed=True,
+        canonical_destination=delivery.ingress_result.canonical_destination, canonical_sha="a" * 40,
+    ))
+    for module, name in ((correction_preflight, "preflight_repair"), (unified_state, "observe_unified_state")):
+        monkeypatch.setattr(module, name, lambda *a, **k: pytest.fail("replay must not observe or reschedule"))
+    assert carrier.deliver_event(event, policy, repo=tmp_path).github_outputs() == ""

@@ -55,6 +55,73 @@ def _control_repository_snapshot(repo: Path) -> dict[str, object]:
         },
     }
 
+
+def test_incident_168_missing_executor_is_pre_run_and_distinct_from_task365_human_auto(tmp_path):
+    """The omitted ingress consumer sent empty selection; TASK-365 never delegated it."""
+    from aios_renew import github_issue_ingress
+    from tests.test_github_issue_ingress import repair_ingress_fixture
+
+    repo, event, policy = repair_ingress_fixture(tmp_path, action="CODE_FIX")
+    delivery = github_issue_ingress.deliver_event(event, policy, repo=repo)
+    before = _runtime_bytes(repo)
+    preflight = preflight_repair(delivery.repair_failed_run_id, repo=repo,
+                                 required_repair_sha=delivery.repair_sha)
+    assert preflight.status == "READY" and preflight.executor_required is True
+    def forbidden(*a, **k):
+        pytest.fail("missing-Executor boundary must precede RUN, native execution and verification")
+    with pytest.raises(operator_module.OperatorError, match="coding REPAIR requires an explicit Executor"):
+        operator_module.run_repair_wakeup(
+            delivery.repair_dispatch_id, delivery.repair_failed_run_id, delivery.repair_sha,
+            executor=None, repo=repo, native_runner=forbidden, verification_runner=forbidden,
+        )
+    assert _runtime_bytes(repo) == before
+    assert not operator_module._runtime_paths_readonly(repo).runs.exists()
+    assert delivery.repair_wakeup_route == "HUMAN_WAKEUP_REQUIRED"
+    assert delivery.repair_wakeup_reason == "EXECUTOR_REQUIRED"
+    assert "[AIOS REPAIR WAKEUP]" in delivery.render_receipt()
+    assert "Human opt-in AUTO" in delivery.render_receipt()
+
+
+@pytest.mark.parametrize("reuse", ["stale", "malformed"])
+def test_ingress_repair_cannot_turn_invalid_transported_package_into_executorless_authority(tmp_path, reuse):
+    from aios_renew import github_issue_ingress
+    from tests.test_github_issue_ingress import repair_ingress_fixture
+
+    repo, event, policy = repair_ingress_fixture(tmp_path, action="FINALIZE_CANDIDATE", reuse=reuse)
+    before = _runtime_bytes(repo)
+    delivery = github_issue_ingress.deliver_event(event, policy, repo=repo)
+    assert delivery.ingress_result.status == "CANONICALIZED"
+    preflight = preflight_repair(delivery.repair_failed_run_id, repo=repo,
+                                 required_repair_sha=delivery.repair_sha)
+    assert preflight.status == "BLOCKED" and preflight.executor_required is None
+    assert delivery.repair_wakeup_route == "HUMAN_WAKEUP_REQUIRED"
+    assert delivery.repair_wakeup_reason == "CURRENT_PREFLIGHT_REQUIRED"
+    assert _runtime_bytes(repo) == before
+
+
+def test_ingress_repair_rechecks_real_authorization_moved_after_unified_observation(tmp_path, monkeypatch):
+    from aios_renew import github_issue_ingress, unified_state
+    from tests.test_github_issue_ingress import repair_ingress_fixture
+
+    repo, event, policy = repair_ingress_fixture(tmp_path, action="FINALIZE_CANDIDATE", reuse="eligible")
+    observe = unified_state.observe_unified_state
+    moved = []
+    def move_after_observation(*args, **kwargs):
+        observation = observe(*args, **kwargs)
+        assert observation.next_action == "EXECUTE_REPAIR"
+        # Competing remote delivery moves the exact selector after the proof was
+        # read. The second real Runtime preflight must authenticate it afresh.
+        git(repo, "push", "--quiet", "--force", "origin",
+            f"HEAD:refs/heads/aios/repair/{observation.failed_run_id}")
+        moved.append(observation.correction_sha)
+        return observation
+    monkeypatch.setattr(unified_state, "observe_unified_state", move_after_observation)
+    delivery = github_issue_ingress.deliver_event(event, policy, repo=repo)
+    assert moved == [delivery.repair_sha]
+    assert delivery.repair_wakeup_route == "HUMAN_WAKEUP_REQUIRED"
+    assert delivery.repair_wakeup_reason == "CURRENT_PREFLIGHT_CHANGED"
+    assert not operator_module._runtime_paths_readonly(repo).runs.exists()
+
 def test_correction_preflight_remediation_is_read_only_for_current_and_historical_subjects(
     tmp_path: Path,
 ) -> None:

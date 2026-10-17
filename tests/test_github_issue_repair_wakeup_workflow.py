@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import json
 from pathlib import Path
 
 import pytest
@@ -437,3 +438,83 @@ def test_carrier_auto_receipt_does_not_claim_resolved_coding_executor() -> None:
     assert "['codex', 'antigravity'].includes(process.env.AIOS_EXECUTOR)" in text
     assert "name: Expose bounded admission reason" in text
     assert "admitted ? 'OPERATIONAL_FAILED' : 'REJECTED'" in text
+
+
+@pytest.mark.parametrize("mode", ["codex", "AUTO"])
+def test_ingress_human_action_preserves_authenticated_manual_auto_profile_and_journal(tmp_path, monkeypatch, mode):
+    from aios_renew import github_issue_ingress, github_issue_repair_wakeup as repair_carrier
+    from tests.test_github_issue_ingress import repair_ingress_fixture
+    from tests.test_github_issue_repair_wakeup import _body, _event, _delivery_environment
+
+    repo, event, policy = repair_ingress_fixture(tmp_path, action="CODE_FIX", coding_profile=True)
+    delivery = github_issue_ingress.deliver_event(event, policy, repo=repo)
+    assert delivery.repair_wakeup_route == "HUMAN_WAKEUP_REQUIRED"
+    human = _event(_body(
+        version=3, executor=mode, repair_dispatch_id=delivery.repair_dispatch_id,
+        failed_run_id=delivery.repair_failed_run_id, repair_sha=delivery.repair_sha,
+        model="human/explicit-model" if mode == "codex" else None,
+        reasoning_effort="high" if mode == "codex" else None,
+    ))
+    env = _delivery_environment(tmp_path, human)
+    request = repair_carrier.authenticated_delivery(policy_path=POLICY, environ=env)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    expected = ("codex", "human/explicit-model", "high", "EXPLICIT", "EXPLICIT") if mode == "codex" else (
+        "codex", "source/authenticated-model", "low", "REPOSITORY_DEFAULT", "EXPLICIT",
+    )
+    if mode == "codex":
+        monkeypatch.setattr(operator, "_resolve_auto_repair_profile", lambda *a, **k: pytest.fail("manual choice reached AUTO"))
+        assert (request.executor, request.model, request.reasoning_effort, request.model_source, request.effort_source) == expected
+    else:
+        assert request.executor == "AUTO" and request.model is request.model_source is None
+    calls = []
+    def stop_before_run(*args, **kwargs):
+        calls.append(kwargs)
+        raise operator.OperatorError("fixture stops before RUN and verification")
+    monkeypatch.setattr(operator, "run_repair", stop_before_run)
+    selectors = (delivery.repair_dispatch_id, delivery.repair_failed_run_id, delivery.repair_sha)
+    profile = {key: getattr(request, key) for key in ("model", "reasoning_effort", "model_source", "effort_source")}
+    outcome = operator.run_repair_wakeup(*selectors, executor=mode, repo=repo, **profile)
+    assert outcome.run_id is None and len(calls) == 1
+    fields = ("executor", "model", "reasoning_effort", "model_source", "effort_source")
+    assert tuple(calls[0][key] for key in fields) == expected
+    state = operator.runtime_state_root(repo)
+    record_path = next((state / "repair-dispatches").glob("*.json"))
+    before = record_path.read_bytes()
+    record = json.loads(before)
+    assert record["repair_sha"] == delivery.repair_sha
+    assert record["failed_run_id"] == delivery.repair_failed_run_id
+    if mode == "AUTO":
+        assert record["auto_authorization"]["actor"] == "trung-via"
+        assert record["auto_authorization"]["source_run_id"] == delivery.repair_failed_run_id
+    monkeypatch.setattr(operator, "preflight_repair", lambda *a, **k: pytest.fail("journal replay repeated admission"))
+    monkeypatch.setattr(operator, "_resolve_auto_repair_profile", lambda *a, **k: pytest.fail("journal replay changed profile"))
+    replay = operator.run_repair_wakeup(*selectors, executor=mode, repo=repo, **profile)
+    assert replay.replayed and len(calls) == 1 and record_path.read_bytes() == before
+    conflicting_body = yaml.safe_load(human["issue"]["body"])
+    conflicting_body["repair_sha"] = "f" * 40
+    conflicting = _event(yaml.safe_dump(conflicting_body))
+    conflicting["issue"]["number"] = 112
+    for key, value in _delivery_environment(tmp_path, conflicting).items():
+        monkeypatch.setenv(key, value)
+    with pytest.raises(operator.OperatorError, match="collision"):
+        operator.run_repair_wakeup(selectors[0], selectors[1], "f" * 40, executor=mode, repo=repo, **profile)
+    assert record_path.read_bytes() == before and not operator._runtime_paths_readonly(repo).runs.exists()
+
+
+@pytest.mark.parametrize("executor", ["codex", "AUTO"])
+def test_bare_bot_dispatch_cannot_use_ingress_subject_to_mint_human_coding_selection(tmp_path, executor):
+    from aios_renew import github_issue_repair_wakeup as repair_carrier
+    from tests.test_github_issue_repair_wakeup import _body, _event, _delivery_environment, _write
+
+    event = _event(_body(version=3, executor=executor))
+    env = _delivery_environment(tmp_path, event, actor="github-actions[bot]", event_name="workflow_dispatch")
+    forged = {"sender": {"login": "trung-via", "type": "User"},
+              "repository": event["repository"], "ref": "refs/heads/main", "inputs": {
+                  key: env.get("AIOS_" + key.upper(), "") for key in (
+                      "repair_dispatch_id", "failed_run_id", "repair_sha", "executor", "model",
+                      "reasoning_effort", "model_source", "effort_source",
+                  )}}
+    _write(tmp_path, "delivery.json", forged)
+    with pytest.raises(repair_carrier.GitHubIssueRepairWakeupError, match="Human event proof"):
+        repair_carrier.authenticated_delivery(policy_path=POLICY, environ=env)

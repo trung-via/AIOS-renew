@@ -262,6 +262,45 @@ RUN truth or the cause of #2033. A Bot coding safety rejection, an authorization
 profile mismatch, runner/control failure and later Runtime failure are distinct
 diagnoses requiring the exact corresponding observation.
 
+### AUTHOR_REPAIR ingress continuation (TASK-371, Gap 1)
+
+The original `[AIOS BRAIN INGRESS]` Issue is an authoring receipt source, separate
+from TASK-365's authenticated Human `[AIOS REPAIR WAKEUP]` manual/AUTO request.
+The incident-#168-shaped regression reproduces the reported TASK-369 pre-RUN
+`coding REPAIR requires an explicit Executor` boundary: the old ingress workflow
+sent an empty Executor after every AUTHOR_REPAIR. That omitted consumer did not
+carry Human AUTO opt-in and does not establish a defect in published TASK-365.
+An operational rejection before RUN creation supplies no new RUN or FAILURE.
+
+After new canonicalization, the ingress consumer calls Runtime correction preflight
+with the exact failed RUN and required current REPAIR SHA, cross-checks Unified
+State's exact TASK/revision, failed RUN/head, correction SHA/document and complete
+preflight attestation, then repeats preflight to reject moved proof. Only consistent
+`executor_required=false` for eligible `NO_CHANGE` or preserved-ResultPackage
+`FINALIZE_CANDIDATE` emits `repair_wakeup_route=EXECUTORLESS`. The workflow gates
+its one bot executorless dispatch on that route. A repair SHA, action text, bot
+identity or carrier-supplied selection/attestation cannot authorize this dispatch.
+Runtime still re-admits the exact subject at delivery; a carrier route is no RUN,
+Executor invocation, verification result, Reviewer verdict or publication.
+
+For coding-required repairs, the existing original-Issue receipt instead reports
+`repair_wakeup: HUMAN_WAKEUP_REQUIRED`, reason `EXECUTOR_REQUIRED`, and exact
+`failed_run_id`, `repair_sha`, `repair_dispatch_id`. The action is a separate Human
+manual wakeup with explicit Executor/model/effort or exact-subject Human opt-in AUTO.
+Missing, malformed, contradictory or unavailable currentness reports a bounded
+preflight/Unified State/currentness reason and requires restoring that observation
+before wakeup. Hosted transport may lack protected reusable state; uncertainty
+cannot schedule the bot route. These Issues stay open for Human action, without
+reporting a rejected dispatch or failed workflow job when no dispatch was attempted.
+The same bounded Issue receipt writer and permissions are retained; private Runtime
+diagnostics are withheld. No workflow run/job/step/log discovery is added (Gap 2).
+
+Identical authoring replay emits no repair route or repeated wakeup. Existing Human
+manual/AUTO carriers keep exact selection/provenance and manual priority; immutable
+dispatch-id/profile conflicts, replay, journal locking and source CAS remain with
+their existing owners. Focused ingress/repair tests cover both consumers and the
+pre-RUN boundary using structural packages without fabricated verification PASS.
+
 ## 7. PUBLISH
 
 Use [PUBLICATION_END_TO_END_FLOW_V1](AIOS-PUBLICATION-END-TO-END-FLOW-v1.md)

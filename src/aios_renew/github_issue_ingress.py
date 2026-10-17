@@ -8,7 +8,7 @@ import os
 import re
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +96,9 @@ class AdmittedIssue:
 class IssueDelivery:
     carrier_identity: str
     ingress_result: IngressResult
+    # These are observations made here through Runtime, never carrier inputs.
+    repair_wakeup_route: str = "HUMAN_WAKEUP_REQUIRED"
+    repair_wakeup_reason: str = "CURRENT_PREFLIGHT_REQUIRED"
 
     @property
     def publication_run_id(self) -> str | None:
@@ -162,16 +165,137 @@ class IssueDelivery:
                 f"failed_run_id={failed_run_id}\n"
                 f"repair_failed_run_id={failed_run_id}\n"
                 f"repair_sha={repair_sha}\n"
+                f"repair_wakeup_route={self.repair_wakeup_route}\n"
+                f"repair_wakeup_reason={self.repair_wakeup_reason}\n"
             )
         return ""
 
     def render_receipt(self) -> str:
+        repair = ""
+        if self.repair_dispatch_id is not None:
+            repair = (
+                f"repair_wakeup: {self.repair_wakeup_route}\n"
+                f"reason: {self.repair_wakeup_reason}\n"
+                f"failed_run_id: {self.repair_failed_run_id}\n"
+                f"repair_sha: {self.repair_sha}\n"
+                f"repair_dispatch_id: {self.repair_dispatch_id}\n"
+                "run_created: false\nexecutor_invoked: false\n"
+            )
+            if self.repair_wakeup_route == "HUMAN_WAKEUP_REQUIRED":
+                if self.repair_wakeup_reason == "EXECUTOR_REQUIRED":
+                    repair += (
+                        "human_action: Open [AIOS REPAIR WAKEUP] for these exact selectors with "
+                        "your explicit coding Executor/model/effort or exact-subject Human opt-in AUTO.\n"
+                    )
+                else:
+                    repair += (
+                        "human_action: Restore current canonical correction preflight and Unified State "
+                        "for these exact selectors before requesting [AIOS REPAIR WAKEUP]; select a "
+                        "coding Executor/model/effort or Human opt-in AUTO only when Runtime requires coding.\n"
+                    )
         receipt = (
             "AIOS BRAIN INGRESS RECEIPT\n"
             f"carrier: {self.carrier_identity}\n"
+            f"{repair}"
             f"{self.ingress_result.render()}"
         )
         return _bounded_text(receipt)
+
+
+def _repair_wakeup_observation(delivery: IssueDelivery, repo: Path) -> IssueDelivery:
+    """Consume fresh Runtime truth for this one ingress continuation, without dispatch.
+
+    No supplied action, attestation file, bot identity or Human profile can grant
+    this route. Runtime still repeats admission/currentness at actual delivery.
+    An unavailable hosted observation is an ordinary Human action, not a FAILURE.
+    """
+    failed_run_id, repair_sha = delivery.repair_failed_run_id, delivery.repair_sha
+    if delivery.repair_dispatch_id is None:
+        return delivery
+
+    def human(reason: str) -> IssueDelivery:
+        return replace(delivery, repair_wakeup_route="HUMAN_WAKEUP_REQUIRED", repair_wakeup_reason=reason)
+
+    def same(left: Any, right: Any) -> bool:
+        # JSON scalar types matter: false/0 and true/1 are not attestations of
+        # the same authority, despite Python mapping equality accepting them.
+        return json.dumps(left, sort_keys=True, allow_nan=False) == json.dumps(
+            right, sort_keys=True, allow_nan=False,
+        )
+
+    try:
+        from .correction_preflight import preflight_repair
+        from .unified_state import observe_unified_state
+
+        preflight = preflight_repair(
+            failed_run_id, repo=repo, required_repair_sha=repair_sha,
+        ).as_dict()
+        task = preflight.get("task")
+        if (
+            preflight.get("format") != "AIOS_CORRECTION_PREFLIGHT"
+            or type(preflight.get("version")) is not int or preflight["version"] != 1
+            or preflight.get("kind") != "CORRECTION_PREFLIGHT"
+            or preflight.get("family") != "REPAIR"
+            or any(preflight.get(key) != "READY" for key in ("status", "phase", "reason_code"))
+            or preflight.get("failed_run_id") != failed_run_id
+            or preflight.get("authorization_sha") != repair_sha
+            or not isinstance(task, Mapping)
+            or set(task) != {"id", "revision"}
+            or not isinstance(task.get("id"), str) or not task["id"] or len(task["id"]) > 128
+            or type(task.get("revision")) is not int or task["revision"] < 1
+            or not isinstance(preflight.get("failed_head_sha"), str)
+            or not REPAIR_SHA_PATTERN.fullmatch(preflight["failed_head_sha"])
+            or preflight.get("subject_mode") not in ("CURRENT", "HISTORICAL")
+            or preflight.get("action") not in (
+                "CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE", "NO_CHANGE",
+            )
+            or type(preflight.get("executor_required")) is not bool
+            or preflight.get("run_created") is not False
+            or preflight.get("executor_invoked") is not False
+        ):
+            return human("CURRENT_PREFLIGHT_REQUIRED")
+        observation = observe_unified_state(task["id"], repo=repo)
+        state, document = observation.as_dict(), observation.correction_document
+        if (
+            state.get("format") != "AIOS_UNIFIED_STATE"
+            or type(state.get("version")) is not int or state["version"] != 1
+            or state.get("kind") != "UNIFIED_STATE"
+            or not same(state.get("task"), task)
+            or state.get("lifecycle_state") != "CORRECTION"
+            or state.get("next_action") != "EXECUTE_REPAIR"
+            or state.get("authority") != "HUMAN_RUNTIME"
+            or state.get("run_id") != failed_run_id
+            or state.get("failed_run_id") != failed_run_id
+            or state.get("failed_head_sha") != preflight["failed_head_sha"]
+            or state.get("correction_sha") != repair_sha
+            or state.get("blocker") is not None
+            or not same(state.get("correction_preflight"), preflight)
+            or any(state.get(key) is not False for key in (
+                "run_created", "executor_invoked", "verification_invoked", "state_mutated",
+            ))
+            or not isinstance(document, Mapping)
+            or not same(document.get("task"), task)
+            or document.get("failed_run_id") != failed_run_id
+            or document.get("failed_head_sha") != preflight["failed_head_sha"]
+            or document.get("action") != preflight["action"]
+        ):
+            return human("CONSISTENT_UNIFIED_STATE_REQUIRED")
+        # A later preflight must still authenticate the exact current correction
+        # and reusable state after Unified State's independent remote reduction.
+        current = preflight_repair(
+            failed_run_id, repo=repo, required_repair_sha=repair_sha,
+        ).as_dict()
+        if not same(current, preflight):
+            return human("CURRENT_PREFLIGHT_CHANGED")
+        if preflight["executor_required"] is True:
+            return human("EXECUTOR_REQUIRED")
+        if preflight["action"] not in ("NO_CHANGE", "FINALIZE_CANDIDATE"):
+            return human("INCONSISTENT_EXECUTOR_REQUIREMENT")
+        return replace(delivery, repair_wakeup_route="EXECUTORLESS",
+                       repair_wakeup_reason="CURRENT_EXECUTORLESS_REPAIR")
+    except Exception:
+        # Never publish private Runtime/transport diagnostics or guess permission.
+        return human("CURRENTNESS_UNAVAILABLE")
 
 
 def _read_bounded_file(path: Path, *, maximum: int, kind: str) -> bytes:
@@ -332,7 +456,10 @@ def deliver_event(
                 raise GitHubIssueIngressError(str(exc)) from None
     kwargs = {"origin_admission": admission} if admission is not None else {}
     result = ingest_carrier("-", repo=Path(repo), stdin_bytes=issue.body_bytes, **kwargs)
-    return IssueDelivery(carrier_identity=issue.identity, ingress_result=result)
+    delivery = IssueDelivery(carrier_identity=issue.identity, ingress_result=result)
+    if delivery.repair_dispatch_id is not None:
+        return _repair_wakeup_observation(delivery, Path(repo))
+    return delivery
 
 
 def _origin_request(issue):
