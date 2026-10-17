@@ -76,8 +76,11 @@ class CanonicalAuditRepository:
 
     @staticmethod
     def git(repo, *args, input=None):
-        return subprocess.run(("git", "-C", str(repo), *args), check=True, capture_output=True,
-                              input=input, text=True, encoding="utf-8").stdout.strip()
+        # Match Runtime's byte-exact Git input: text mode translates tree-record
+        # LF delimiters to CRLF on Windows, adding carriage returns to paths.
+        output = subprocess.run(("git", "-C", str(repo), *args), check=True, capture_output=True,
+                                input=None if input is None else input.encode("utf-8")).stdout
+        return output.decode("utf-8").strip()
 
     def write(self, name, raw):
         path = self.canonical / name
