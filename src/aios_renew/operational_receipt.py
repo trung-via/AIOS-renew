@@ -46,6 +46,7 @@ WORKFLOW_REASONS = frozenset({
     "NONCANONICAL_WORKFLOW_REF",
     "UNAUTHORIZED_DELIVERY_ACTOR",
     "DOWNSTREAM_WORKFLOW_FAILED",
+    "DIAGNOSTIC_UNAVAILABLE",
 })
 _DELIVERY_FIELDS = {
     "PRIMARY": ("dispatch_id", "dispatches"),
@@ -80,6 +81,7 @@ class OperationalReceipt:
     run_id: str | None = None
     terminal_pointer: Mapping[str, str] | None = None
     control_sha: str | None = None
+    workflow: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         _validate_family_delivery(self.family, self.delivery_id)
@@ -137,6 +139,8 @@ class OperationalReceipt:
             ):
                 raise OperationalReceiptError("invalid canonical terminal pointer")
             payload["terminal_pointer"] = pointer
+        if self.workflow is not None:
+            payload["workflow"] = validate_repair_workflow(self.workflow)
         return payload
 
     def render(self) -> str:
@@ -358,6 +362,93 @@ def write_environment_receipt(receipt: OperationalReceipt) -> None:
         write_receipt(path, receipt)
 
 
+def validate_repair_workflow(value: Mapping[str, Any]) -> dict[str, Any]:
+    """GitHub-owned attempt identity, separate from canonical RUN attribution."""
+    required = {"repository", "workflow_run_id", "run_attempt", "event", "control_sha",
+                "origin_issue_id", "origin_issue_number", "job_result"}
+    if (not isinstance(value, Mapping) or set(value) != required
+            or value.get("repository") != "trung-via/AIOS-renew"
+            or value.get("event") not in {"issues", "workflow_dispatch"}
+            or value.get("job_result") not in {"success", "failure", "cancelled", "skipped"}
+            or not isinstance(value.get("control_sha"), str)
+            or not _SHA_PATTERN.fullmatch(value["control_sha"])):
+        raise OperationalReceiptError("invalid repair workflow identity")
+    for name in ("workflow_run_id", "run_attempt"):
+        if type(value.get(name)) is not int or not 0 < value[name] < 10**20:
+            raise OperationalReceiptError("invalid repair workflow identity")
+    for name in ("origin_issue_id", "origin_issue_number"):
+        item = value.get(name)
+        if value["event"] == "issues":
+            if type(item) is not int or not 0 < item < 10**20:
+                raise OperationalReceiptError("invalid repair origin Issue")
+        elif item is not None:
+            raise OperationalReceiptError("dispatch cannot invent origin Issue")
+    return dict(value)
+
+
+def finalize_repair_workflow_receipt(
+    path: str | Path, outcome: str, *, environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Seal this command's bounded receipt with its GitHub-owned attempt.
+
+    No log scraping, remote mutation, RUN inference or canonical state writes.
+    A failed step cannot leave AIOS_INVOKED as its final operational outcome.
+    """
+    env = os.environ if environ is None else environ
+    delivery = env.get("AIOS_REPAIR_DISPATCH_ID", "")
+    selectors = {"failed_run_id": env.get("AIOS_FAILED_RUN_ID"),
+                 "repair_sha": env.get("AIOS_REPAIR_SHA")}
+    _validate_family_delivery("REPAIR", delivery)
+    if (not isinstance(selectors["failed_run_id"], str)
+            or not _RUN_PATTERN.fullmatch(selectors["failed_run_id"])
+            or not isinstance(selectors["repair_sha"], str)
+            or not _SHA_PATTERN.fullmatch(selectors["repair_sha"])):
+        raise OperationalReceiptError("invalid repair workflow selectors")
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        payload = workflow_failure_receipt(
+            "REPAIR", delivery, "DIAGNOSTIC_UNAVAILABLE", selectors=selectors,
+        ).as_dict()
+    if (payload.get("format") != "AIOS_OPERATIONAL_RECEIPT" or payload.get("version") != 2
+            or payload.get("family") != "REPAIR"
+            or payload.get("delivery") != {"kind": "repair_dispatch_id", "id": delivery}
+            or any(payload.get("selectors", {}).get(k) != v for k, v in selectors.items())):
+        raise OperationalReceiptError("repair workflow receipt binding mismatch")
+    if payload.get("control_sha") not in (None, env.get("AIOS_CONTROL_SHA")):
+        raise OperationalReceiptError("repair workflow control source mismatch")
+    payload["control_sha"] = env.get("AIOS_CONTROL_SHA")
+    if outcome != "success" and payload.get("boundary") in {
+        "AIOS_INVOKED", "RUNNER_STARTED", "CARRIER_ADMITTED", "SELF_HOST_COMPLETED",
+    }:
+        payload["boundary"] = "OPERATIONAL_FAILED"
+        payload["cause"] = {"authority": "WORKFLOW", "phase": "PRE_AIOS",
+                            "reason_code": "DIAGNOSTIC_UNAVAILABLE"}
+    issue_id = issue_number = None
+    if env.get("GITHUB_EVENT_NAME") == "issues":
+        event = json.loads(Path(env["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+        if (event.get("action") != "opened"
+                or event.get("repository", {}).get("full_name") != env.get("GITHUB_REPOSITORY")):
+            raise OperationalReceiptError("invalid repair workflow event")
+        issue_id, issue_number = event["issue"]["id"], event["issue"]["number"]
+    payload["workflow"] = validate_repair_workflow({
+        "repository": env.get("GITHUB_REPOSITORY"),
+        "workflow_run_id": int(env.get("GITHUB_RUN_ID", "0")),
+        "run_attempt": int(env.get("GITHUB_RUN_ATTEMPT", "0")),
+        "event": env.get("GITHUB_EVENT_NAME"), "control_sha": env.get("AIOS_CONTROL_SHA"),
+        "origin_issue_id": issue_id, "origin_issue_number": issue_number,
+        "job_result": outcome,
+    })
+    # Validate through the existing Attention projection before exporting it.
+    from .brain_attention import operational_observation
+    operational_observation(payload)
+    target = Path(path)
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    os.replace(temporary, target)
+    return payload
+
+
 def _validate_family_delivery(family: str, delivery_id: str) -> None:
     if family not in FAMILIES:
         raise OperationalReceiptError("invalid operational family")
@@ -426,10 +517,12 @@ __all__ = [
     "OperationalReceipt",
     "OperationalReceiptError",
     "correction_preflight_receipt",
+    "finalize_repair_workflow_receipt",
     "invoked_receipt",
     "new_admission_blocker",
     "project_delivery_receipt",
     "workflow_failure_receipt",
+    "validate_repair_workflow",
     "write_environment_receipt",
     "write_receipt",
 ]

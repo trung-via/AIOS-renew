@@ -9059,6 +9059,15 @@ def run_repair_wakeup(
                 "actor": request.actor, "source_run_id": failed_run_id,
                 "source_profile_sha256": digest,
             }
+        if executor_required is True and executor is None:
+            # This exact Runtime preflight/Unified State pair established the
+            # cause. Do not classify arbitrary stderr or create FAILURE pre-RUN.
+            _project_blocked_correction_delivery(
+                family="REPAIR", delivery_id=repair_dispatch_id,
+                preflight={"status": "BLOCKED", "phase": "EXECUTOR_SELECTION",
+                           "reason_code": "EXECUTOR_REQUIRED"},
+                selectors={"failed_run_id": failed_run_id, "repair_sha": repair_sha},
+            )
         validate_repair_executor_requirement(action, executor_required, executor)
 
         def invoke_repair() -> RepairInvocation:
@@ -9450,6 +9459,22 @@ def _project_operational_delivery(
             delivery_id=delivery_id,
             selectors=selectors,
         )
+        # The invocation's typed pre-RUN rejection is stronger than a journal
+        # with no RUN. In particular, finally must not erase EXECUTOR_REQUIRED
+        # (or a blocked preflight) with the transient AIOS_INVOKED projection.
+        path = os.environ.get("AIOS_OPERATIONAL_RECEIPT_PATH")
+        if receipt.boundary == "AIOS_INVOKED" and path:
+            try:
+                prior = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+                if (prior.get("format") == "AIOS_OPERATIONAL_RECEIPT"
+                        and prior.get("version") == 2 and prior.get("family") == family
+                        and prior.get("delivery", {}).get("id") == delivery_id
+                        and prior.get("boundary") in {"ADMISSION_REJECTED", "OPERATIONAL_FAILED"}
+                        and all(prior.get("selectors", {}).get(name) == value
+                                for name, value in selectors.items() if value is not None)):
+                    return
+            except (OSError, ValueError, AttributeError):
+                pass
         write_environment_receipt(receipt)
     except Exception:
         return

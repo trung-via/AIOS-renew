@@ -8,7 +8,7 @@ import os
 import re
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +96,8 @@ class AdmittedIssue:
 class IssueDelivery:
     carrier_identity: str
     ingress_result: IngressResult
+    repair_route: str = "HUMAN_WAKEUP_REQUIRED"
+    repair_route_reason: str = "CURRENTNESS_UNAVAILABLE"
 
     @property
     def publication_run_id(self) -> str | None:
@@ -162,6 +164,8 @@ class IssueDelivery:
                 f"failed_run_id={failed_run_id}\n"
                 f"repair_failed_run_id={failed_run_id}\n"
                 f"repair_sha={repair_sha}\n"
+                f"repair_route={self.repair_route}\n"
+                f"repair_route_reason={self.repair_route_reason}\n"
             )
         return ""
 
@@ -332,7 +336,48 @@ def deliver_event(
                 raise GitHubIssueIngressError(str(exc)) from None
     kwargs = {"origin_admission": admission} if admission is not None else {}
     result = ingest_carrier("-", repo=Path(repo), stdin_bytes=issue.body_bytes, **kwargs)
-    return IssueDelivery(carrier_identity=issue.identity, ingress_result=result)
+    delivery = IssueDelivery(carrier_identity=issue.identity, ingress_result=result)
+    if delivery.repair_sha is not None:
+        route, reason = repair_wakeup_route(
+            Path(repo), delivery.repair_failed_run_id, delivery.repair_sha,
+        )
+        delivery = replace(delivery, repair_route=route, repair_route_reason=reason)
+    return delivery
+
+
+def repair_wakeup_route(repo: Path, failed_run_id: str, repair_sha: str) -> tuple[str, str]:
+    """Consume current Runtime observations; never select or infer an Executor.
+
+    Hosted callers may lack protected reusable state. That is an unavailable
+    observation, not permission to guess from the authored action. Runtime still
+    independently rechecks admission and the existing delivery journal at execution.
+    """
+    from .correction_preflight import preflight_repair
+    from .unified_state import observe_unified_state
+
+    try:
+        preflight = preflight_repair(failed_run_id, repo=repo, required_repair_sha=repair_sha)
+        if (preflight.status != "READY" or preflight.failed_run_id != failed_run_id
+                or preflight.authorization_sha != repair_sha or preflight.task_id is None
+                or type(preflight.executor_required) is not bool):
+            return "HUMAN_WAKEUP_REQUIRED", "CURRENTNESS_UNAVAILABLE"
+        current = observe_unified_state(preflight.task_id, repo=repo)
+        if (current.next_action != "EXECUTE_REPAIR" or current.failed_run_id != failed_run_id
+                or current.correction_sha != repair_sha
+                or not isinstance(current.correction, Mapping)
+                or current.correction.get("executor_required") is not preflight.executor_required
+                or not isinstance(current.correction_document, Mapping)
+                or current.correction_document.get("action") != preflight.action):
+            return "HUMAN_WAKEUP_REQUIRED", "CURRENTNESS_UNAVAILABLE"
+        if preflight.executor_required:
+            return "HUMAN_WAKEUP_REQUIRED", "EXECUTOR_REQUIRED"
+        # The bool comes from verified reusable state, including conditional
+        # FINALIZE_CANDIDATE. Action text alone never authorizes this route.
+        if preflight.action not in {"NO_CHANGE", "FINALIZE_CANDIDATE"}:
+            return "HUMAN_WAKEUP_REQUIRED", "CURRENTNESS_UNAVAILABLE"
+        return "EXECUTORLESS_READY", "READY"
+    except Exception:
+        return "HUMAN_WAKEUP_REQUIRED", "CURRENTNESS_UNAVAILABLE"
 
 
 def _origin_request(issue):

@@ -22,6 +22,47 @@ def test_operational_flags_cannot_substitute_for_canonical_run_creation():
             receipt.as_dict()
 
 
+@pytest.mark.parametrize("boundary", ["AIOS_INVOKED", "TERMINAL_POINTER"])
+def test_workflow_failure_sealing_keeps_canonical_pointer_or_explicit_unknown(tmp_path, boundary):
+    from aios_renew.operational_receipt import finalize_repair_workflow_receipt
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(dict(action="opened", repository={"full_name": "trung-via/AIOS-renew"},
+                                     issue=dict(id=2075000, number=2075))), encoding="utf-8")
+    env = dict(GITHUB_EVENT_PATH=str(event), GITHUB_EVENT_NAME="issues", GITHUB_REPOSITORY="trung-via/AIOS-renew",
+               GITHUB_RUN_ID="39026366429", GITHUB_RUN_ATTEMPT="1", AIOS_CONTROL_SHA="a" * 40,
+               AIOS_REPAIR_DISPATCH_ID="fixture-repair", AIOS_FAILED_RUN_ID="RUN-fixture-001", AIOS_REPAIR_SHA="b" * 40)
+    terminal = boundary == "TERMINAL_POINTER"
+    receipt = OperationalReceipt("REPAIR", "fixture-repair", boundary,
+        dict(failed_run_id="RUN-fixture-001", repair_sha="b" * 40), run_created=terminal,
+        control_sha="a" * 40,
+        run_id="RUN-fixture-002" if terminal else None,
+        terminal_pointer=dict(kind="FAILURE", run_id="RUN-fixture-002", artifact=".git/aios/failures/RUN-fixture-002.json") if terminal else None)
+    path = tmp_path / "operational.json"
+    path.write_text(receipt.render(), encoding="utf-8")
+    sealed = finalize_repair_workflow_receipt(path, "failure", environ=env)
+    assert sealed["workflow"]["workflow_run_id"] == 39026366429
+    assert sealed["workflow"]["job_result"] == "failure"
+    if terminal:
+        assert sealed["boundary"] == "TERMINAL_POINTER"
+        assert sealed["terminal_pointer"]["run_id"] == "RUN-fixture-002"
+        assert "cause" not in sealed
+    else:
+        assert sealed["boundary"] == "OPERATIONAL_FAILED"
+        assert sealed["cause"]["reason_code"] == "DIAGNOSTIC_UNAVAILABLE"
+        assert sealed["run_created"] is False and "terminal_pointer" not in sealed
+
+
+@pytest.mark.parametrize("field,value", [("workflow_run_id", True), ("run_attempt", 0),
+    ("origin_issue_number", None), ("control_sha", "https://example.invalid/source"), ("job_result", "private error")])
+def test_workflow_identity_is_bounded_and_versioned(field, value):
+    from aios_renew.operational_receipt import validate_repair_workflow
+    workflow = dict(repository="trung-via/AIOS-renew", workflow_run_id=39026366429, run_attempt=1,
+        event="issues", control_sha="a" * 40, origin_issue_id=2075000, origin_issue_number=2075, job_result="failure")
+    workflow[field] = value
+    with pytest.raises(OperationalReceiptError):
+        validate_repair_workflow(workflow)
+
+
 def test_attention_projection_excludes_execution_profile_and_retains_explicit_no_run():
     receipt = workflow_failure_receipt("REPAIR", "fixture-delivery", "CONTROL_SOURCE_DIRTY",
                                        selectors={"executor": "codex", "model": "private-model", "reasoning_effort": "private-effort"})

@@ -469,6 +469,13 @@ def authenticated_delivery(
 def delivery_main() -> int:
     """Self-host pre-AIOS proof check, using the exact materialized control source."""
     try:
+        event = _json_no_duplicates(_read_bounded_file(
+            Path(os.environ.get("GITHUB_EVENT_PATH", "")), maximum=_MAX_EVENT_FILE_BYTES, kind="event",
+        ))
+        if (os.environ.get("AIOS_DELIVERY_EVENT") == "issues"
+                and event.get("issue", {}).get("title") == "[AIOS BRAIN INGRESS]"):
+            authenticate_ingress_executorless_delivery()
+            return 0
         authenticated_delivery(
             policy_path=Path(__file__).resolve().parents[2] / ".ai/brain-repair-wakeup-carriers.yaml",
         )
@@ -481,6 +488,161 @@ def delivery_main() -> int:
                 stream.write(render_rejection(exc) + "\n")
         return 1
     return 0
+
+
+def _origin_request(event_path, failed_run_id, *, profile_policy=None):
+    """Authenticate one original Human Issue and its exact failed-RUN selector."""
+    from . import github_issue_ingress as ingress
+    event = _json_no_duplicates(_read_bounded_file(Path(event_path), maximum=_MAX_EVENT_FILE_BYTES, kind="event"))
+    if event.get("issue", {}).get("title") == "[AIOS BRAIN INGRESS]":
+        try:
+            issue = ingress.admit_event(event_path, ingress.load_policy(
+                Path(__file__).resolve().parents[2] / ".ai/brain-ingress-carriers.yaml",
+            ))
+            sender = event.get("sender", {})
+            if (sender.get("login") != issue.actor or sender.get("type") != "User"
+                    or event["issue"]["user"].get("type") != "User"):
+                raise GitHubIssueRepairWakeupError("origin requires authenticated Human Issue")
+            envelope = ingress.parse_envelope(issue.body_bytes)
+            if envelope.operation != "AUTHOR_REPAIR" or envelope.identity.get("failed_run_id") != failed_run_id:
+                raise GitHubIssueRepairWakeupError("origin REPAIR subject mismatch")
+        except (ingress.GitHubIssueIngressError, ingress.AuthoringIngressError) as exc:
+            raise GitHubIssueRepairWakeupError("origin REPAIR proof rejected") from exc
+    else:
+        request = admit_event(event_path, load_policy(
+            Path(__file__).resolve().parents[2] / ".ai/brain-repair-wakeup-carriers.yaml",
+        ), profile_policy=profile_policy)
+        if request.failed_run_id != failed_run_id:
+            raise GitHubIssueRepairWakeupError("origin REPAIR subject mismatch")
+    return event
+
+
+def authenticate_ingress_executorless_delivery():
+    """The existing ingress may transport only Runtime-proved executorless work."""
+    from .github_issue_ingress import repair_wakeup_route
+    env = os.environ
+    if (env.get("GITHUB_REPOSITORY") != "trung-via/AIOS-renew"
+            or env.get("AIOS_CONTROL_REF") != "refs/heads/main"
+            or env.get("AIOS_DELIVERY_ACTOR") not in {"trung-via", "github-actions[bot]"}
+            or not REPAIR_SHA_PATTERN.fullmatch(env.get("AIOS_CONTROL_SHA", ""))
+            or any(env.get("AIOS_" + key) for key in (
+                "EXECUTOR", "MODEL", "REASONING_EFFORT", "MODEL_SOURCE", "EFFORT_SOURCE"))):
+        raise GitHubIssueRepairWakeupError("ingress cannot select a coding Executor")
+    failed, sha = env.get("AIOS_FAILED_RUN_ID", ""), env.get("AIOS_REPAIR_SHA", "")
+    if (not FAILED_RUN_ID_PATTERN.fullmatch(failed) or not REPAIR_SHA_PATTERN.fullmatch(sha)
+            or env.get("AIOS_REPAIR_DISPATCH_ID") != f"repair-{failed}-{sha}"):
+        raise GitHubIssueRepairWakeupError("ingress delivery selectors mismatch")
+    _origin_request(env["GITHUB_EVENT_PATH"], failed)
+    if repair_wakeup_route(Path(env["AIOS_REPO_ROOT"]), failed, sha)[0] != "EXECUTORLESS_READY":
+        raise GitHubIssueRepairWakeupError("current Runtime executorless authority required")
+
+
+def publish_workflow_receipt(*, phase, route, route_reason, downstream_result=None, sources=None, environ=None):
+    """The existing hosted Issue writer's one bounded, updatable observation.
+
+    The self-hosted runner exports only Operational Receipt v2. It receives no
+    Issue-write token. This writer has no dispatch or engineering-state authority.
+    """
+    import hashlib
+    from .brain_attention import (AttentionError, RepairWorkflowSources, REPAIR_WORKFLOW_MARKER,
+                                 repair_workflow_link, canonical)
+    env = os.environ if environ is None else environ
+    if phase not in {"waiting", "completed"} or route not in {"HUMAN_WAKEUP_REQUIRED", "EXECUTORLESS_READY", "HUMAN_AUTHENTICATED"}:
+        raise GitHubIssueRepairWakeupError("invalid workflow observation phase")
+    if route_reason not in {"READY", "EXECUTOR_REQUIRED", "CURRENTNESS_UNAVAILABLE"}:
+        raise GitHubIssueRepairWakeupError("invalid workflow route reason")
+    failed, sha, delivery = (env.get("AIOS_FAILED_RUN_ID", ""), env.get("AIOS_REPAIR_SHA", ""),
+                             env.get("AIOS_REPAIR_DISPATCH_ID", ""))
+    if (not FAILED_RUN_ID_PATTERN.fullmatch(failed) or not REPAIR_SHA_PATTERN.fullmatch(sha)
+            or not REPAIR_DISPATCH_ID_PATTERN.fullmatch(delivery)):
+        raise GitHubIssueRepairWakeupError("invalid workflow observation selectors")
+    event = _origin_request(env["GITHUB_EVENT_PATH"], failed)
+    issue = event["issue"]
+    if (env.get("GITHUB_REPOSITORY") != "trung-via/AIOS-renew"
+            or env.get("GITHUB_REF") != "refs/heads/main"
+            or env.get("GITHUB_EVENT_NAME") != "issues"):
+        raise GitHubIssueRepairWakeupError("workflow observation origin mismatch")
+    if issue["title"] == "[AIOS REPAIR WAKEUP]":
+        request = admit_event(env["GITHUB_EVENT_PATH"], load_policy(
+            Path(__file__).resolve().parents[2] / ".ai/brain-repair-wakeup-carriers.yaml"))
+        if request.repair_dispatch_id != delivery or request.repair_sha != sha or route != "HUMAN_AUTHENTICATED":
+            raise GitHubIssueRepairWakeupError("workflow observation Human request mismatch")
+    elif delivery != f"repair-{failed}-{sha}" or route == "HUMAN_AUTHENTICATED":
+        raise GitHubIssueRepairWakeupError("workflow observation ingress request mismatch")
+    link = repair_workflow_link(dict(
+        format="AIOS_REPAIR_WORKFLOW", version=1, repository=env["GITHUB_REPOSITORY"],
+        workflow_run_id=int(env["GITHUB_RUN_ID"]), run_attempt=int(env["GITHUB_RUN_ATTEMPT"]),
+        control_sha=env["GITHUB_SHA"], origin_issue_id=issue["id"], origin_issue_number=issue["number"],
+        origin_body_digest=hashlib.sha256(issue["body"].encode("utf-8")).hexdigest(),
+        repair_dispatch_id=delivery, failed_run_id=failed, repair_sha=sha,
+        route=route, route_reason=route_reason,
+    ))
+    api = sources or RepairWorkflowSources()
+    # Bind the immutable event to the current GitHub-owned Issue before writing.
+    current = api.request(f"/issues/{issue['number']}")
+    if (any(current.get(k) != issue.get(k) for k in ("id", "number", "body", "title"))
+            or current.get("url") != f"https://api.github.com/repos/{link['repository']}/issues/{issue['number']}"
+            or current.get("user", {}).get("login") != "trung-via"
+            or current.get("user", {}).get("type") != "User" or "pull_request" in current):
+        raise GitHubIssueRepairWakeupError("workflow observation Issue moved")
+    try:
+        observation = api.observe(link)
+    except AttentionError as exc:
+        if str(exc) not in {"SOURCE_UNAVAILABLE", "SOURCE_TIMEOUT"}:
+            raise
+        # This producer still has GitHub-owned context for its own attempt.
+        # Restricted Actions reads do not require more credentials or block a
+        # separately authenticated Human delivery. Fresh readers revalidate it.
+        observation = dict(state="PENDING", jobs=[],
+            workflow=dict(status="UNAVAILABLE", url=f"https://github.com/{link['repository']}/actions/runs/{link['workflow_run_id']}/attempts/{link['run_attempt']}"),
+            diagnostic=dict(availability="UNAVAILABLE", reason_code="DIAGNOSTIC_UNAVAILABLE"))
+    if downstream_result in {"failure", "cancelled", "skipped"} and observation["state"] == "PENDING":
+        observation["state"] = "OPERATIONAL_FAILED"
+    elif downstream_result == "success" and observation["state"] == "PENDING":
+        observation["state"] = "SELF_HOST_COMPLETED"
+    state = "HUMAN_WAKEUP_REQUIRED" if route == "HUMAN_WAKEUP_REQUIRED" else observation["state"]
+    marker = REPAIR_WORKFLOW_MARKER + canonical(link)
+    reason = route_reason if route == "HUMAN_WAKEUP_REQUIRED" else observation["diagnostic"]["reason_code"]
+    lines = ["AIOS REPAIR WORKFLOW RECEIPT v1", f"phase: {phase}", f"status: {state}",
+             f"repair_dispatch_id: {delivery}", f"failed_run_id: {failed}", f"repair_sha: {sha}",
+             f"workflow_run_id: {link['workflow_run_id']}", f"run_attempt: {link['run_attempt']}",
+             f"workflow_url: {observation['workflow']['url']}",
+             f"workflow_status: {observation['workflow']['status']}",
+             f"reason_code: {reason}",
+             f"cause_availability: {'AVAILABLE' if route == 'HUMAN_WAKEUP_REQUIRED' and route_reason == 'EXECUTOR_REQUIRED' else observation['diagnostic']['availability']}"]
+    if route == "HUMAN_WAKEUP_REQUIRED":
+        lines += ["dispatch_attempted: false", "required_action: Human-authenticated manual Executor or exact-subject AUTO wakeup.",
+                  "run_created: false", "executor_invoked: false"]
+    for job in observation["jobs"]:
+        lines.append(f"job_id: {job['id']}; status: {job['status']}; conclusion: {job['conclusion']}")
+        for step in job["steps"]:
+            if step["conclusion"] in {"failure", "cancelled", "timed_out"}:
+                lines.append(f"step: {step['number']} {step['name']}; conclusion: {step['conclusion']}")
+    receipt = observation.get("operational_receipt")
+    if receipt is not None:
+        lines.append("AIOS_OPERATIONAL_RECEIPT_V2=" + canonical(receipt))
+    lines += ["repair_run_outcome: not_asserted_by_carrier", "verification: not_asserted_by_carrier",
+              "semantic_review: not_asserted_by_carrier", "publication: not_asserted_by_carrier", marker]
+    body = "\n".join(lines)
+    if len(body) > 3500:
+        # Preserve identity and typed outcome; the exact artifact remains queryable.
+        body = "\n".join(line for line in lines if not line.startswith("AIOS_OPERATIONAL_RECEIPT_V2="))
+    if len(body) > 3500:
+        raise GitHubIssueRepairWakeupError("workflow observation exceeds bound")
+    matches = [c for c in api.comments(issue["number"])
+               if c.get("user", {}).get("login") == "github-actions[bot]"
+               and c.get("user", {}).get("type") == "Bot" and marker in c.get("body", "").splitlines()]
+    if len(matches) > 1:
+        raise GitHubIssueRepairWakeupError("duplicate workflow observation")
+    if matches:
+        comment = matches[0]
+        if phase != "waiting" or "phase: completed" not in comment["body"].splitlines():
+            api.write_comment(issue["number"], body, comment_id=comment["id"])
+    else:
+        comment = api.write_comment(issue["number"], body)
+    if phase == "completed" and downstream_result == "success" and state == "SELF_HOST_COMPLETED":
+        api.close_issue(issue["number"])
+    return {"issue_id": issue["id"], "issue_number": issue["number"], "comment_id": comment["id"]}
 
 
 def _bounded_text(value: str) -> str:
@@ -549,11 +711,32 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
     parser.add_argument("--receipt", required=True)
+    parser.add_argument("--mode", choices=("admit", "workflow-receipt", "finalize-operational"), default="admit")
+    parser.add_argument("--phase", choices=("waiting", "completed"), default="waiting")
+    parser.add_argument("--route", default="HUMAN_AUTHENTICATED")
+    parser.add_argument("--route-reason", default="READY")
+    parser.add_argument("--job-result", default="failure")
+    parser.add_argument("--downstream-result", choices=("success", "failure", "cancelled", "skipped"))
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.mode != "admit":
+        try:
+            if args.mode == "finalize-operational":
+                from .operational_receipt import finalize_repair_workflow_receipt
+                finalize_repair_workflow_receipt(args.receipt, args.job_result)
+            else:
+                outputs = publish_workflow_receipt(phase=args.phase, route=args.route, route_reason=args.route_reason,
+                                                   downstream_result=args.downstream_result)
+                if args.output:
+                    _write_text(args.output, "".join(f"{name}={value}\n" for name, value in outputs.items()))
+        except Exception:
+            # API failures must not disclose tokens, response bodies or local paths.
+            print("AIOS REPAIR workflow observation unavailable", file=sys.stderr)
+            return 1
+        return 0
     try:
         if not args.event:
             raise GitHubIssueRepairWakeupError("GITHUB_EVENT_PATH is required")

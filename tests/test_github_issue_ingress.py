@@ -704,6 +704,8 @@ def test_successful_author_repair_emits_deterministic_repair_handoff(
         "failed_run_id=RUN-121-005\n"
         "repair_failed_run_id=RUN-121-005\n"
         f"repair_sha={canonical_sha}\n"
+        "repair_route=HUMAN_WAKEUP_REQUIRED\n"
+        "repair_route_reason=CURRENTNESS_UNAVAILABLE\n"
     )
     assert delivery.github_outputs() == expected_outputs
 
@@ -715,7 +717,7 @@ def test_successful_author_repair_emits_deterministic_repair_handoff(
     )
 
     ingress_workflow = BRAIN_INGRESS_WORKFLOW.read_text(encoding="utf-8")
-    assert "workflow_id: 'aios-self-hosted-repair-wakeup.yml'" in ingress_workflow
+    assert "uses: ./.github/workflows/aios-self-hosted-repair-wakeup.yml" in ingress_workflow
     assert (
         "AIOS_REPAIR_DISPATCH_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}"
         in ingress_workflow
@@ -725,7 +727,7 @@ def test_successful_author_repair_emits_deterministic_repair_handoff(
         in ingress_workflow
     )
     assert "AIOS_REPAIR_SHA: ${{ steps.ingress.outputs.repair_sha }}" in ingress_workflow
-    assert "executor: ''," in ingress_workflow
+    assert "executor: ''" in ingress_workflow
 
     target_workflow = SELF_HOSTED_REPAIR_WORKFLOW.read_text(encoding="utf-8")
     assert "$env:AIOS_DELIVERY_ACTOR -ceq 'github-actions[bot]'" in target_workflow
@@ -735,6 +737,29 @@ def test_successful_author_repair_emits_deterministic_repair_handoff(
         in target_workflow
     )
     assert "$env:AIOS_REPAIR_DISPATCH_ID -cne $expectedRepairDispatchId" in target_workflow
+
+
+@pytest.mark.parametrize("fault", ["unavailable", "stale_sha", "unknown_requirement", "active_human", "disagreement"])
+def test_ingress_never_dispatches_without_exact_current_runtime_observations(tmp_path, monkeypatch, fault):
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from aios_renew import correction_preflight, unified_state
+    preflight = correction_preflight.CorrectionPreflightResult(
+        family="REPAIR", status="READY", phase="READY", reason_code="READY", task_id="TASK-370",
+        task_revision=1, failed_run_id="RUN-fixture-001", authorization_sha="a" * 40,
+        action="FINALIZE_CANDIDATE", executor_required=False)
+    current = SimpleNamespace(next_action="EXECUTE_REPAIR", failed_run_id="RUN-fixture-001",
+        correction_sha="a" * 40, correction={"executor_required": False},
+        correction_document={"action": "FINALIZE_CANDIDATE"})
+    if fault == "unavailable": preflight = replace(preflight, status="BLOCKED")
+    elif fault == "stale_sha": preflight = replace(preflight, authorization_sha="b" * 40)
+    elif fault == "unknown_requirement": preflight = replace(preflight, executor_required=None)
+    elif fault == "active_human": current.next_action = "WAIT_FOR_EXECUTOR"
+    else: current.correction["executor_required"] = True
+    monkeypatch.setattr(correction_preflight, "preflight_repair", lambda *a, **k: preflight)
+    monkeypatch.setattr(unified_state, "observe_unified_state", lambda *a, **k: current)
+    assert carrier.repair_wakeup_route(tmp_path, "RUN-fixture-001", "a" * 40) == (
+        "HUMAN_WAKEUP_REQUIRED", "CURRENTNESS_UNAVAILABLE")
 
 
 @pytest.mark.parametrize("revision", [2, 3])
@@ -876,6 +901,8 @@ def test_main_cli_writes_repair_github_output_when_requested(
         "failed_run_id=RUN-121-005\n"
         "repair_failed_run_id=RUN-121-005\n"
         f"repair_sha={sha}\n"
+        "repair_route=HUMAN_WAKEUP_REQUIRED\n"
+        "repair_route_reason=CURRENTNESS_UNAVAILABLE\n"
     )
     assert output_path.read_text(encoding="utf-8") == expected
 

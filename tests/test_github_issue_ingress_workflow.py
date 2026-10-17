@@ -128,7 +128,7 @@ def test_deployment_key_is_consumed_only_by_origin_gate_and_hosted_delivery() ->
     reference = "${{ secrets.AIOS_ORIGIN_ADMISSION_KEY }}"
     consumers = []
     for name, job in workflow["jobs"].items():
-        for step in job["steps"]:
+        for step in job.get("steps", []):
             env = step.get("env", {})
             if key in env:
                 assert env[key] == reference
@@ -164,49 +164,27 @@ def test_workflow_has_one_event_file_carrier_invocation_and_no_body_interpolatio
 
 def test_workflow_posts_one_bounded_receipt_and_only_closes_success() -> None:
     workflow, text = _workflow()
-    receipt_step = next(
-        step
-        for step in workflow["jobs"]["deliver"]["steps"]
-        if step.get("name") == "Post bounded transport receipt"
-    )
-    assert receipt_step["if"] == "always()"
-    assert text.count("github.rest.issues.createComment") == 1
-    assert ".slice(0, 3500)" in text
-    assert text.count("github.rest.issues.update") == 1
-    assert receipt_step["env"] == {
-        "AIOS_RECEIPT_PATH": "${{ runner.temp }}/aios-brain-ingress-receipt.txt",
-        "AIOS_INGRESS_OUTCOME": "${{ steps.ingress.outcome }}",
-        "AIOS_DISPATCH_OUTCOME": "${{ steps.dispatch.outcome }}",
-        "AIOS_PUBLICATION_RUN_ID": "${{ steps.ingress.outputs.publication_run_id }}",
-        "AIOS_REPAIR_DISPATCH_OUTCOME": "${{ steps.repair_dispatch.outcome }}",
-        "AIOS_REPAIR_DISPATCH_ID": "${{ steps.ingress.outputs.repair_dispatch_id }}",
-        "AIOS_FAILED_RUN_ID": "${{ steps.ingress.outputs.failed_run_id }}",
-        "AIOS_REPAIR_SHA": "${{ steps.ingress.outputs.repair_sha }}",
-    }
-    assert "if (fullySuccessful)" in text
-    assert "(!publicationRequested || dispatchAccepted)" in text
-    assert "(!repairRequested || repairAccepted)" in text
-    assert (
-        "always() && (steps.ingress.outcome != 'success' || (steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome != 'success') || (steps.ingress.outputs.repair_sha != '' && steps.repair_dispatch.outcome != 'success'))"
-        in text
-    )
+    steps = workflow['jobs']['deliver']['steps']
+    ordinary = next(s for s in steps if s.get('name') == 'Post bounded transport receipt')
+    repair = next(s for s in steps if s.get('id') == 'repair_observation')
+    assert ordinary['if'] == "always() && steps.ingress.outputs.repair_sha == ''"
+    assert "repair_sha != ''" in repair['if']
+    assert '--mode workflow-receipt' in repair['run']
+    assert text.count('github.rest.issues.createComment') == 1
+    assert '.slice(0, 3500)' in text
+    assert 'if (fullySuccessful)' in text
+    assert '(!publicationRequested || dispatchAccepted)' in text
+    assert 'steps.repair_observation.outputs.comment_id || steps.wake_source.outputs.comment_id' in text
 
 
 def test_workflow_distinguishes_ingress_success_from_publication_dispatch_acceptance() -> None:
     _, text = _workflow()
-    assert "publication_dispatch: ACCEPTED" in text
-    assert "dispatch_accepted: true" in text
-    assert (
-        "detail: GitHub accepted safe publication dispatch; this is not publication success or verdict."
-        in text
-    )
-    assert "publication_dispatch: REJECTED" in text
-    assert "dispatch_accepted: false" in text
-    assert "reason: GitHub did not accept safe publication dispatch." in text
-    assert "repair_dispatch: ACCEPTED" in text
-    assert "detail: GitHub accepted safe REPAIR dispatch;" in text
-    assert "repair_dispatch: REJECTED" in text
-    assert "reason: GitHub did not accept safe REPAIR dispatch." in text
+    assert 'publication_dispatch: ACCEPTED' in text
+    assert 'publication_dispatch: REJECTED' in text
+    assert 'dispatch_accepted: true' in text
+    assert 'dispatch_accepted: false' in text
+    assert '--route "$AIOS_REPAIR_ROUTE" --route-reason "$AIOS_REPAIR_ROUTE_REASON"' in text
+    assert 'AIOS_REPAIR_ROUTE: ${{ steps.ingress.outputs.repair_route }}' in text
 
 
 def test_workflow_fails_closed_when_publication_dispatch_is_not_accepted() -> None:
@@ -216,8 +194,6 @@ def test_workflow_fails_closed_when_publication_dispatch_is_not_accepted() -> No
     assert fail_step["name"] == "Preserve failed delivery outcome"
     assert "steps.dispatch.outcome != 'success'" in fail_step["if"]
     assert "steps.ingress.outputs.publication_run_id != ''" in fail_step["if"]
-    assert "steps.repair_dispatch.outcome != 'success'" in fail_step["if"]
-    assert "steps.ingress.outputs.repair_sha != ''" in fail_step["if"]
 
 
 def test_workflow_dispatches_safe_publisher_once_with_only_canonical_run_selector() -> None:
@@ -238,7 +214,7 @@ def test_workflow_dispatches_safe_publisher_once_with_only_canonical_run_selecto
     }
 
     script = dispatch["with"]["script"]
-    assert text.count("createWorkflowDispatch") == 2
+    assert text.count("createWorkflowDispatch") == 1
     assert script.count("createWorkflowDispatch") == 1
     assert "workflow_id: 'aios-auto-publish.yml'" in script
     assert "ref: 'main'" in script
@@ -259,46 +235,25 @@ def test_workflow_dispatches_safe_publisher_once_with_only_canonical_run_selecto
 
 
 def test_workflow_dispatches_safe_repair_wakeup_once_with_bounded_canonical_selectors() -> None:
-    workflow, _ = _workflow()
-    steps = workflow["jobs"]["deliver"]["steps"]
-    dispatch = next(
-        (step for step in steps if step.get("id") == "repair_dispatch"),
-        None,
-    )
-    assert dispatch is not None
-    assert dispatch["uses"] == "actions/github-script@v7"
-    assert (
-        dispatch["if"]
-        == "steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_sha != ''"
-    )
-    assert dispatch["env"] == {
-        "AIOS_REPAIR_DISPATCH_ID": "${{ steps.ingress.outputs.repair_dispatch_id }}",
-        "AIOS_FAILED_RUN_ID": "${{ steps.ingress.outputs.failed_run_id }}",
-        "AIOS_REPAIR_SHA": "${{ steps.ingress.outputs.repair_sha }}",
+    workflow, text = _workflow()
+    dispatch = workflow['jobs']['repair_dispatch']
+    assert dispatch['needs'] == 'deliver'
+    assert dispatch['if'] == "needs.deliver.outputs.repair_route == 'EXECUTORLESS_READY' && needs.deliver.outputs.repair_receipt == 'success'"
+    assert dispatch['uses'] == './.github/workflows/aios-self-hosted-repair-wakeup.yml'
+    assert dispatch['with'] == {
+        'repair_dispatch_id': '${{ needs.deliver.outputs.repair_dispatch_id }}',
+        'failed_run_id': '${{ needs.deliver.outputs.failed_run_id }}',
+        'repair_sha': '${{ needs.deliver.outputs.repair_sha }}', 'executor': '',
     }
-
-    script = dispatch["with"]["script"]
-    assert script.count("createWorkflowDispatch") == 1
-    assert "workflow_id: 'aios-self-hosted-repair-wakeup.yml'" in script
-    assert "ref: 'main'" in script
-    assert "repair_dispatch_id: process.env.AIOS_REPAIR_DISPATCH_ID" in script
-    assert "failed_run_id: process.env.AIOS_FAILED_RUN_ID" in script
-    assert "repair_sha: process.env.AIOS_REPAIR_SHA" in script
-    assert "executor: ''" in script
-    assert "owner: context.repo.owner" in script
-    assert "repo: context.repo.repo" in script
-
-    for forbidden in (
-        "github.event.issue.body",
-        "GITHUB_EVENT_PATH",
-        "publication_run_id",
-        "candidate_sha",
-        "target_ref",
-        "force",
-        "verdict",
-        "command",
-    ):
-        assert forbidden not in script
+    assert "workflow_id: 'aios-self-hosted-repair-wakeup.yml'" not in text
+    final = workflow['jobs']['repair_receipt']
+    assert final['needs'] == ['deliver', 'repair_dispatch']
+    assert final['permissions'] == {'contents': 'read', 'issues': 'write', 'actions': 'read'}
+    assert all('--mode workflow-receipt' in s['run'] for s in final['steps']
+               if 'aios_renew.github_issue_repair_wakeup' in s.get('run', ''))
+    # Existing top-level permission includes actions:write; the new receipt job
+    # uses a strict subset. Self-hosted permissions remain contents:read.
+    assert workflow['permissions']['actions'] == 'write'
 
 
 def test_carrier_workflow_never_directly_mutates_main_or_invokes_publication_module() -> None:
@@ -347,7 +302,7 @@ def test_wake_pointer_export_preserves_source_lifecycle_and_attempt_binding() ->
     assert upload["uses"] == "actions/upload-artifact@v4"
     assert upload["if"] == "always() && steps.wake_pointer.outputs.ready == 'true'"
     assert upload["with"]["name"] == "aios-wake-source-v1-attempt-${{ github.run_attempt }}"
-    assert upload["with"]["retention-days"] == "1"
+    assert upload["with"]["retention-days"] == "90"
     assert text.count("source_kind:") == 1
     assert "attention_family" not in text
     assert "[AIOS BRAIN WAKE]" not in text

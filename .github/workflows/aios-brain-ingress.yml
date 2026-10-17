@@ -81,6 +81,13 @@ jobs:
     if: always() && github.event.issue.title == '[AIOS BRAIN INGRESS]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      repair_dispatch_id: ${{ steps.ingress.outputs.repair_dispatch_id }}
+      failed_run_id: ${{ steps.ingress.outputs.failed_run_id }}
+      repair_sha: ${{ steps.ingress.outputs.repair_sha }}
+      repair_route: ${{ steps.ingress.outputs.repair_route }}
+      repair_route_reason: ${{ steps.ingress.outputs.repair_route_reason }}
+      repair_receipt: ${{ steps.repair_observation.outcome }}
     steps:
       - name: Check out canonical main
         uses: actions/checkout@v4
@@ -133,30 +140,6 @@ jobs:
               },
             });
 
-      - name: Dispatch safe REPAIR wakeup once
-        id: repair_dispatch
-        if: steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_sha != ''
-        continue-on-error: true
-        uses: actions/github-script@v7
-        env:
-          AIOS_REPAIR_DISPATCH_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}
-          AIOS_FAILED_RUN_ID: ${{ steps.ingress.outputs.failed_run_id }}
-          AIOS_REPAIR_SHA: ${{ steps.ingress.outputs.repair_sha }}
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'aios-self-hosted-repair-wakeup.yml',
-              ref: 'main',
-              inputs: {
-                repair_dispatch_id: process.env.AIOS_REPAIR_DISPATCH_ID,
-                failed_run_id: process.env.AIOS_FAILED_RUN_ID,
-                repair_sha: process.env.AIOS_REPAIR_SHA,
-                executor: '',
-              },
-            });
-
       # Initial and recovered-source PASS use this same transport continuation.
       # Ingress/Python bind exact RUN, candidate and provenance; dispatch does
       # not infer review, recovery admission, evidence or publication success.
@@ -168,18 +151,6 @@ jobs:
         run: >-
           python -m aios_renew.brain_attention dispatch --operation PUBLICATION
           --run-id "$AIOS_PUBLICATION_RUN_ID" --source "$AIOS_ATTENTION_SOURCE_PATH"
-
-      - name: Observe rejected REPAIR dispatch
-        if: always() && steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_sha != '' && steps.repair_dispatch.outcome == 'failure'
-        env:
-          AIOS_DELIVERY_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}
-          AIOS_FAILED_RUN_ID: ${{ steps.ingress.outputs.failed_run_id }}
-          AIOS_REPAIR_SHA: ${{ steps.ingress.outputs.repair_sha }}
-          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-dispatch/source.json
-        run: >-
-          python -m aios_renew.brain_attention dispatch --operation REPAIR
-          --delivery-id "$AIOS_DELIVERY_ID" --subject-id "$AIOS_FAILED_RUN_ID"
-          --subject-sha "$AIOS_REPAIR_SHA" --source "$AIOS_ATTENTION_SOURCE_PATH"
 
       - name: Export bounded ingress attention observations
         if: always()
@@ -199,8 +170,24 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
+      - name: Post bounded REPAIR workflow observation
+        id: repair_observation
+        if: always() && steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_sha != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AIOS_REPAIR_DISPATCH_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}
+          AIOS_FAILED_RUN_ID: ${{ steps.ingress.outputs.failed_run_id }}
+          AIOS_REPAIR_SHA: ${{ steps.ingress.outputs.repair_sha }}
+          AIOS_REPAIR_ROUTE: ${{ steps.ingress.outputs.repair_route }}
+          AIOS_REPAIR_ROUTE_REASON: ${{ steps.ingress.outputs.repair_route_reason }}
+        run: >-
+          python -m aios_renew.github_issue_repair_wakeup --mode workflow-receipt
+          --receipt "$RUNNER_TEMP/aios-repair-observation.txt" --phase waiting
+          --route "$AIOS_REPAIR_ROUTE" --route-reason "$AIOS_REPAIR_ROUTE_REASON"
+          --output "$GITHUB_OUTPUT"
+
       - name: Post bounded transport receipt
-        if: always()
+        if: always() && steps.ingress.outputs.repair_sha == ''
         id: wake_source
         uses: actions/github-script@v7
         env:
@@ -208,10 +195,6 @@ jobs:
           AIOS_INGRESS_OUTCOME: ${{ steps.ingress.outcome }}
           AIOS_DISPATCH_OUTCOME: ${{ steps.dispatch.outcome }}
           AIOS_PUBLICATION_RUN_ID: ${{ steps.ingress.outputs.publication_run_id }}
-          AIOS_REPAIR_DISPATCH_OUTCOME: ${{ steps.repair_dispatch.outcome }}
-          AIOS_REPAIR_DISPATCH_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}
-          AIOS_FAILED_RUN_ID: ${{ steps.ingress.outputs.failed_run_id }}
-          AIOS_REPAIR_SHA: ${{ steps.ingress.outputs.repair_sha }}
         with:
           script: |
             const fs = require('fs');
@@ -221,15 +204,8 @@ jobs:
             const publicationRequested = Boolean(publicationRunId);
             const dispatchAccepted = dispatchOutcome === 'success';
 
-            const repairDispatchOutcome = process.env.AIOS_REPAIR_DISPATCH_OUTCOME;
-            const repairDispatchId = process.env.AIOS_REPAIR_DISPATCH_ID || '';
-            const failedRunId = process.env.AIOS_FAILED_RUN_ID || '';
-            const repairSha = process.env.AIOS_REPAIR_SHA || '';
-            const repairRequested = Boolean(repairSha);
-            const repairAccepted = repairDispatchOutcome === 'success';
             const fullySuccessful = ingressOutcome === 'success'
-              && (!publicationRequested || dispatchAccepted)
-              && (!repairRequested || repairAccepted);
+              && (!publicationRequested || dispatchAccepted);
 
             let receipt = 'AIOS BRAIN INGRESS RECEIPT\nstatus: FAIL\nreason: carrier produced no receipt';
             try {
@@ -258,32 +234,6 @@ jobs:
               }
             }
 
-            if (ingressOutcome === 'success' && repairRequested) {
-              if (repairAccepted) {
-                receipt += [
-                  '',
-                  '',
-                  'repair_dispatch: ACCEPTED',
-                  'dispatch_accepted: true',
-                  `repair_dispatch_id: ${repairDispatchId}`,
-                  `failed_run_id: ${failedRunId}`,
-                  `repair_sha: ${repairSha}`,
-                  'detail: GitHub accepted safe REPAIR dispatch; this is not repair execution, verification, semantic review, publication, or TASK resolution.',
-                ].join('\n');
-              } else {
-                receipt += [
-                  '',
-                  '',
-                  'repair_dispatch: REJECTED',
-                  'dispatch_accepted: false',
-                  `repair_dispatch_id: ${repairDispatchId}`,
-                  `failed_run_id: ${failedRunId}`,
-                  `repair_sha: ${repairSha}`,
-                  'reason: GitHub did not accept safe REPAIR dispatch.',
-                ].join('\n');
-              }
-            }
-
             receipt = receipt.replaceAll('\0', '?').slice(0, 3500);
             const source = await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -304,17 +254,17 @@ jobs:
             }
 
       - name: Preserve failed delivery outcome
-        if: always() && (steps.ingress.outcome != 'success' || (steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome != 'success') || (steps.ingress.outputs.repair_sha != '' && steps.repair_dispatch.outcome != 'success'))
+        if: always() && (steps.ingress.outcome != 'success' || (steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome != 'success'))
         run: exit 1
 
       - name: Write exact wake source selectors
         id: wake_pointer
-        if: always() && steps.wake_source.outputs.comment_id != ''
+        if: always() && (steps.repair_observation.outputs.comment_id != '' || steps.wake_source.outputs.comment_id != '')
         uses: actions/github-script@v7
         env:
-          AIOS_ISSUE_ID: ${{ steps.wake_source.outputs.issue_id }}
-          AIOS_ISSUE_NUMBER: ${{ steps.wake_source.outputs.issue_number }}
-          AIOS_COMMENT_ID: ${{ steps.wake_source.outputs.comment_id }}
+          AIOS_ISSUE_ID: ${{ steps.repair_observation.outputs.issue_id || steps.wake_source.outputs.issue_id }}
+          AIOS_ISSUE_NUMBER: ${{ steps.repair_observation.outputs.issue_number || steps.wake_source.outputs.issue_number }}
+          AIOS_COMMENT_ID: ${{ steps.repair_observation.outputs.comment_id || steps.wake_source.outputs.comment_id }}
           AIOS_WAKE_SOURCE_PATH: ${{ runner.temp }}/aios-wake-source/source.json
         with:
           script: |
@@ -335,4 +285,49 @@ jobs:
           name: aios-wake-source-v1-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/aios-wake-source/source.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
+
+  # One existing executorless transport, inside the originating GitHub attempt.
+  # Runtime independently checks exact current authority and its delivery journal.
+  repair_dispatch:
+    needs: deliver
+    if: needs.deliver.outputs.repair_route == 'EXECUTORLESS_READY' && needs.deliver.outputs.repair_receipt == 'success'
+    uses: ./.github/workflows/aios-self-hosted-repair-wakeup.yml
+    with:
+      repair_dispatch_id: ${{ needs.deliver.outputs.repair_dispatch_id }}
+      failed_run_id: ${{ needs.deliver.outputs.failed_run_id }}
+      repair_sha: ${{ needs.deliver.outputs.repair_sha }}
+      executor: ''
+
+  repair_receipt:
+    needs: [deliver, repair_dispatch]
+    if: always() && needs.deliver.outputs.repair_sha != '' && needs.deliver.outputs.repair_route == 'EXECUTORLESS_READY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check .
+      - name: Update originating Issue with actual REPAIR job outcome
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AIOS_REPAIR_DISPATCH_ID: ${{ needs.deliver.outputs.repair_dispatch_id }}
+          AIOS_FAILED_RUN_ID: ${{ needs.deliver.outputs.failed_run_id }}
+          AIOS_REPAIR_SHA: ${{ needs.deliver.outputs.repair_sha }}
+          AIOS_DOWNSTREAM_RESULT: ${{ needs.repair_dispatch.result }}
+        run: >-
+          python -m aios_renew.github_issue_repair_wakeup --mode workflow-receipt
+          --receipt "$RUNNER_TEMP/aios-repair-observation.txt" --phase completed
+          --route EXECUTORLESS_READY --route-reason READY --downstream-result "$AIOS_DOWNSTREAM_RESULT"
+      - name: Preserve failed REPAIR delivery outcome
+        if: always() && needs.repair_dispatch.result != 'success'
+        run: exit 1

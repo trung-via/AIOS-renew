@@ -262,6 +262,90 @@ RUN truth or the cause of #2033. A Bot coding safety rejection, an authorization
 profile mismatch, runner/control failure and later Runtime failure are distinct
 diagnoses requiring the exact corresponding observation.
 
+### AUTHOR_REPAIR continuation and discoverable workflow outcomes (TASK-370)
+
+TASK-365's published source `9f70b6b1dabad4234794db74c4d7c1f43f9a4a60`,
+with exact-source PRIMARY PASS `REVIEW-365-001`, implements the Human manual and
+explicit exact-subject AUTO paths above. The omitted consumer was the independent
+`aios-brain-ingress.yml` caller. TASK-370's supplied incident anchors are originating
+Issue #2075 and GitHub Actions run **39026366429**, attempt **1**, run number **168**,
+actor `github-actions[bot]`, event `workflow_dispatch`, control source
+`491903e00630abb9e39e91310358fe4464bf487a`, job **117378039859**. For canonical repair
+SHA `800e7dabd1e91d07407d9c745201ce322404beb7`, its empty Executor reached
+`Deliver one immutable REPAIR intent` and failed with
+`coding REPAIR requires an explicit Executor`. The old artifact's `AIOS_INVOKED`,
+`run_created=false`, `executor_invoked=false` and Issue's `DISPATCH_ACCEPTED` did not
+describe that final operational cause. This was a pre-RUN rejection, with no new
+canonical FAILURE or Codex invocation. It does not show that Human AUTO failed.
+The active Human-authorized TASK-369 correction is independent; do not replay it.
+
+New AUTHOR_REPAIR delivery consumes read-only Runtime correction preflight and
+matching exact Unified State. Only READY, the current failed RUN/authorization SHA,
+and both owners' literal `executor_required=false` permit `EXECUTORLESS_READY`.
+The conditional FINALIZE case must have verified reusable state; its action name
+alone grants nothing. Coding required, disagreement, moved/active correction or
+unavailable facts yields one bounded **HUMAN_WAKEUP_REQUIRED** receipt on the
+originating Issue, with exact failed RUN, repair SHA and `EXECUTOR_REQUIRED` or
+`CURRENTNESS_UNAVAILABLE`. Use the existing authenticated manual v2 or exact Human
+AUTO v3 wakeup. Authoring/ingress cannot invent a profile or consume another Human
+wakeup. Identical authoring replay emits no additional execution selectors.
+
+Eligible automatic executorless delivery calls the existing reusable self-host
+workflow inside the originating GitHub workflow attempt. The self-host preparation
+re-authenticates that original opened Human ingress event, forbids all coding/profile
+inputs and re-observes current Runtime executorless authority. Runtime still owns
+the final admission, journal lock, same-id replay and source-level CAS. Human manual
+and AUTO reuse their original event, selection and profile provenance unchanged.
+
+The existing hosted Issue writer creates a pending receipt, then updates that same
+comment after self-host delivery. `AIOS_REPAIR_WORKFLOW_V1` selectors bind the Issue
+id/body digest, dispatch id, failed RUN, exact repair/control SHA, actual GitHub
+workflow run id and attempt. They are operational pointers, not lifecycle truth.
+While the parent workflow is running, its status remains running even if the repair
+job has finished. Job id, bounded known step status and the attempt URL come from
+GitHub; no screenshot or Human-supplied workflow URL is required.
+
+From a known originating Issue, a fresh read-only consumer can use:
+
+```text
+python -m aios_renew.brain_attention repair-outcome --issue-number <origin-issue-number>
+```
+
+For a direct workflow_dispatch, use `--delivery-id <exact-repair-dispatch-id>`
+instead. The fixed target's GitHub run name carries that identity. Discovery reads
+at most 100 comments/runs/artifacts/jobs and fails explicitly when the bound is
+insufficient. It verifies the allowlisted GitHub producer/main/actor and exact
+attempt. Issue mapping additionally requires the existing same-attempt wake-source
+artifact's exact Issue/comment selectors or the v2 artifact's GitHub-event origin
+binding. A copied URL, untrusted comment, mismatched Issue/run/job, changed body,
+different source SHA or different correction cannot establish provenance.
+
+The observation supplies the real `/actions/jobs/<job-id>/logs` selector.
+`RepairWorkflowSources.job_logs` rechecks the attributable job before reading its
+real GitHub logs with the reader's existing permissions. Logs are private read
+results; they are never uploaded or copied into the public receipt. Missing or
+restricted diagnostics stay explicitly `UNAVAILABLE` / `DIAGNOSTIC_UNAVAILABLE`.
+No credential expansion is required. The self-host job remains contents-read-only;
+the hosted writer retains its existing Issue permissions.
+
+Workflow sealing attaches its GitHub-owned attempt to Operational Receipt v2.
+The exact missing-Executor Runtime branch emits the operational cause
+`CORRECTION_PREFLIGHT / EXECUTOR_SELECTION / EXECUTOR_REQUIRED`; the final CLI
+projection preserves that stronger cause rather than overwriting it with
+`AIOS_INVOKED`. A failed command with only a transient marker becomes operational
+failure with unavailable diagnostics. Parent/carrier success cannot conceal a
+failed repair job. Canonical RUN attribution or terminal pointers remain separate
+and require their canonical Runtime artifacts; workflow success never asserts
+verification, REVIEW, publication or TASK completion. Existing Brain Attention
+projects these bounded pre-RUN causes without a new family, monitor or state store.
+
+The focused workflow integration fixtures exercise real AUTHOR_REPAIR admission,
+Runtime preflight/Unified State, durable repair delivery, Runtime completion and
+the origin-Issue reader across coding-required, executorless and Human manual/AUTO
+branches. GitHub HTTP/native process boundaries are fixtures; no live correction
+is replayed. Runtime owns running the TASK's authored focused verification on the
+exact candidate and constructing EVIDENCE. This navigation asserts no test result.
+
 ## 7. PUBLISH
 
 Use [PUBLICATION_END_TO_END_FLOW_V1](AIOS-PUBLICATION-END-TO-END-FLOW-v1.md)
@@ -368,8 +452,9 @@ Scope closure for any change to this preflight contract must surface **all** of:
 Check canonical preflight/Unified State agreement, explicit Executor/profile presence
 or prohibition, exact authorization/failed-RUN binding, durable record version/replay
 compatibility, nullable carrier/workflow selectors and final Runtime continuation.
-The hosted AUTHOR_REPAIR ingress also directly dispatches the same self-host repair
-workflow; omitting the Issue route or direct route misses an outer transport consumer.
+The hosted AUTHOR_REPAIR ingress is also a consumer: its Runtime-backed gate may
+call the same reusable self-host workflow only for proved executorless work.
+Omitting that caller or the Human Issue route misses an outer transport consumer.
 A successful inner preflight alone cannot establish complete impact coverage.
 These are navigation review questions and regression scenarios, not changes to REPAIR
 strategy, schemas, Runtime behavior or profile delegation.

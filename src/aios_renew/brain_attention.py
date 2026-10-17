@@ -426,6 +426,8 @@ def _operational_cause(cause, boundary):
             valid = (cause["authority"] in {"AIOS_ADMISSION_FAILURE", "CORRECTION_PREFLIGHT"}
                      and cause["phase"] in (_ADMISSION_PHASES | {"MIGRATION_PRE_HANDOFF"})
                      and cause["reason_code"] in (_ADMISSION_REASONS | {"MIGRATION_PRE_HANDOFF_REJECTED"}))
+            valid |= cause == dict(authority="CORRECTION_PREFLIGHT", phase="EXECUTOR_SELECTION",
+                                   reason_code="EXECUTOR_REQUIRED")
     else:
         valid = False
     if not valid:
@@ -456,7 +458,7 @@ def operational_observation(receipt):
     """Keep the allowlisted BP-2 cause; exclude execution profiles and prose."""
     from .operational_receipt import BOUNDARIES, FAMILIES, WORKFLOW_REASONS, _bounded_selectors
     required = {"format", "version", "kind", "family", "delivery", "boundary", "selectors"}
-    allowed = required | {"run_created", "executor_invoked", "cause", "run_id", "terminal_pointer", "control_sha"}
+    allowed = required | {"run_created", "executor_invoked", "cause", "run_id", "terminal_pointer", "control_sha", "workflow"}
     if (not isinstance(receipt, dict) or not required.issubset(receipt) or not set(receipt).issubset(allowed)
             or receipt.get("format") != "AIOS_OPERATIONAL_RECEIPT" or type(receipt.get("version")) is not int
             or receipt["version"] != 2 or receipt.get("kind") != "OPERATIONAL_RECEIPT"
@@ -465,6 +467,9 @@ def operational_observation(receipt):
     if not isinstance(receipt["selectors"], dict):
         raise AttentionError("INVALID_OPERATIONAL_RECEIPT")
     _bounded_selectors(receipt["selectors"])
+    if "workflow" in receipt:
+        from .operational_receipt import validate_repair_workflow
+        validate_repair_workflow(receipt["workflow"])
     if not isinstance(receipt["delivery"], dict):
         raise AttentionError("INVALID_OPERATIONAL_RECEIPT")
     for flag in ("run_created", "executor_invoked"):
@@ -1083,22 +1088,24 @@ class ArtifactSources:
             raise AttentionError("SOURCE_TIMEOUT")
         return raw if binary else load_json(raw, 1048576)
 
-    def run(self, run_id, attempt):
+    def run(self, run_id, attempt, *, active=False):
         _value(run_id, "positive")
         _value(attempt, "positive")
         run = self.request(f"/actions/runs/{run_id}/attempts/{attempt}")
         if (type(run.get("id")) is not int or type(run.get("run_attempt")) is not int
                 or run.get("id") != run_id or run.get("run_attempt") != attempt
-                or run.get("path") not in PRODUCERS or run.get("status") != "completed"
+                or run.get("path") not in PRODUCERS
+                or run.get("status") not in ({"queued", "in_progress", "waiting", "pending", "requested", "completed"} if active else {"completed"})
                 or run.get("event") not in {"issues", "push", "workflow_dispatch"}
                 or run.get("head_repository", {}).get("full_name") != self.repository
                 or (run.get("event") != "push" and run.get("head_branch") != "main")):
             raise AttentionError("UNTRUSTED_PRODUCER")
         return run
 
-    def artifact(self, pointer, *, receipt=False):
+    def artifact(self, pointer, *, receipt=False, active=False):
         _value(pointer.get("artifact_id"), "positive")
-        run = self.run(pointer["workflow_run_id"], pointer["run_attempt"])
+        run = (self.run(pointer["workflow_run_id"], pointer["run_attempt"], active=True)
+               if active else self.run(pointer["workflow_run_id"], pointer["run_attempt"]))
         artifact = self.request(f"/actions/artifacts/{pointer['artifact_id']}")
         source_names = {
             f"aios-attention-source-v1-{lane}-attempt-{pointer['run_attempt']}" for lane in
@@ -1164,6 +1171,331 @@ class ArtifactSources:
         run_id = receipt.get("run_id") or receipt.get("terminal_pointer", {}).get("run_id")
         _value(run_id, "run")
         return run_id, receipt
+
+
+REPAIR_WORKFLOW_MARKER = "AIOS_REPAIR_WORKFLOW_V1="
+_REPAIR_PRODUCERS = frozenset({
+    ".github/workflows/aios-issue-carrier.yml", ".github/workflows/aios-brain-ingress.yml",
+    ".github/workflows/aios-brain-repair-wakeup.yml", ".github/workflows/aios-self-hosted-repair-wakeup.yml",
+})
+_REPAIR_STEPS = frozenset({
+    "Prepare exact transient control source", "Deliver one immutable REPAIR intent",
+    "Seal bounded workflow outcome", "Expose bounded Operational Receipt v2",
+    "Persist bounded Operational Receipt v2", "Remove transient control source",
+})
+
+
+def repair_workflow_link(value):
+    """Validate selectors only. A comment/link is never sufficient provenance."""
+    keys = {"format", "version", "repository", "workflow_run_id", "run_attempt", "control_sha",
+            "origin_issue_id", "origin_issue_number", "origin_body_digest", "repair_dispatch_id",
+            "failed_run_id", "repair_sha", "route", "route_reason"}
+    if (not isinstance(value, dict) or set(value) != keys
+            or value.get("format") != "AIOS_REPAIR_WORKFLOW" or type(value.get("version")) is not int
+            or value["version"] != 1 or value.get("repository") != REPOSITORY):
+        raise AttentionError("INVALID_REPAIR_WORKFLOW_LINK")
+    if (value.get("route") not in {"HUMAN_WAKEUP_REQUIRED", "EXECUTORLESS_READY", "HUMAN_AUTHENTICATED"}
+            or value.get("route_reason") not in {"READY", "EXECUTOR_REQUIRED", "CURRENTNESS_UNAVAILABLE"}):
+        raise AttentionError("INVALID_REPAIR_WORKFLOW_LINK")
+    for name in ("workflow_run_id", "run_attempt", "origin_issue_id", "origin_issue_number"):
+        _value(value[name], "positive")
+    for name, kind in (("control_sha", "sha"), ("repair_sha", "sha"), ("origin_body_digest", "digest"),
+                       ("failed_run_id", "run"), ("repair_dispatch_id", "delivery")):
+        _value(value[name], kind)
+    return dict(value)
+
+
+class RepairWorkflowSources(ArtifactSources):
+    """On-demand GitHub reads starting with one Issue or exact dispatch identity.
+
+    No poller, state store or lifecycle authority. API-owned run/job metadata and
+    exact attempt artifacts authenticate comment selectors before using them.
+    """
+
+    def __init__(self, repository=REPOSITORY, deadline=None):
+        if repository != REPOSITORY:
+            raise AttentionError("UNTRUSTED_REPOSITORY")
+        super().__init__(repository, deadline)
+
+    def comments(self, number):
+        _value(number, "positive")
+        result = self.request(f"/issues/{number}/comments?per_page=100")
+        if not isinstance(result, list) or len(result) >= 100:
+            raise AttentionError("COMMENT_SEARCH_BOUND")
+        return result
+
+    def write_comment(self, number, body, *, comment_id=None):
+        """Used only by the existing hosted Issue receipt producer, never readers."""
+        _value(number, "positive")
+        if not isinstance(body, str) or len(body) > 3500:
+            raise AttentionError("RECEIPT_SIZE")
+        path = f"/issues/{number}/comments"
+        if comment_id is not None:
+            _value(comment_id, "positive")
+            path = f"/issues/comments/{comment_id}"
+        result = self._write_issue(path, {"body": body}, "PATCH" if comment_id is not None else "POST")
+        _value(result.get("id"), "positive")
+        return result
+
+    def close_issue(self, number):
+        """Retain the existing carrier's close-only-on-success behavior."""
+        _value(number, "positive")
+        self._write_issue(f"/issues/{number}", {"state": "closed"}, "PATCH")
+
+    def _write_issue(self, path, payload, method):
+        headers = {"Accept": "application/vnd.github+json", "Content-Type": "application/json",
+                   "User-Agent": "AIOS-repair-receipt-v1",
+                   "Authorization": "Bearer " + os.environ.get("GITHUB_TOKEN", "")}
+        request = Request("https://api.github.com/repos/" + self.repository + path,
+                          data=canonical(payload).encode("utf-8"), headers=headers, method=method)
+        from urllib.request import HTTPRedirectHandler, build_opener
+        class NoRedirect(HTTPRedirectHandler):
+            def redirect_request(self, *args):
+                return None
+        try:
+            with build_opener(NoRedirect()).open(request, timeout=10) as response:
+                result = load_json(response.read(65537), 65536)
+        except Exception:
+            raise AttentionError("ISSUE_RECEIPT_UNAVAILABLE") from None
+        return result
+
+    def issue_links(self, number, delivery_id=None):
+        _value(number, "positive")
+        issue = self.request(f"/issues/{number}")
+        if (issue.get("number") != number or type(issue.get("id")) is not int
+                or issue.get("url") != f"https://api.github.com/repos/{self.repository}/issues/{number}"
+                or issue.get("user", {}).get("login") != "trung-via"
+                or issue.get("user", {}).get("type") != "User" or "pull_request" in issue
+                or issue.get("title") not in {"[AIOS BRAIN INGRESS]", "[AIOS REPAIR WAKEUP]"}
+                or not isinstance(issue.get("body"), str)):
+            raise AttentionError("UNTRUSTED_ORIGIN_ISSUE")
+        body_digest = hashlib.sha256(issue["body"].encode("utf-8")).hexdigest()
+        found = {}
+        for comment in self.comments(number):
+            if (comment.get("user", {}).get("login") != "github-actions[bot]"
+                    or comment.get("user", {}).get("type") != "Bot"):
+                continue
+            for line in str(comment.get("body", "")).splitlines():
+                if not line.startswith(REPAIR_WORKFLOW_MARKER):
+                    continue
+                link = repair_workflow_link(load_json(line[len(REPAIR_WORKFLOW_MARKER):].encode()))
+                if (link["origin_issue_id"] != issue["id"] or link["origin_issue_number"] != number
+                        or link["origin_body_digest"] != body_digest):
+                    raise AttentionError("REPAIR_ORIGIN_SUBSTITUTION")
+                if delivery_id is not None and link["repair_dispatch_id"] != delivery_id:
+                    continue
+                key = (link["workflow_run_id"], link["run_attempt"], link["repair_dispatch_id"])
+                if key in found:
+                    raise AttentionError("DUPLICATE_REPAIR_WORKFLOW_LINK")
+                found[key] = (link, comment.get("id"))
+        if not found:
+            raise AttentionError("REPAIR_WORKFLOW_LINK_UNAVAILABLE")
+        return list(found.values())
+
+    def receipt_for_run(self, run):
+        listing = self.request(f"/actions/runs/{run['id']}/artifacts?per_page=100")
+        if (type(listing.get("total_count")) is not int or not 0 <= listing["total_count"] <= 100
+                or not isinstance(listing.get("artifacts"), list)
+                or len(listing["artifacts"]) != listing["total_count"]):
+            raise AttentionError("ARTIFACT_LIST_UNBOUNDED")
+        name = f"aios-operational-receipt-v2-repair-attempt-{run['run_attempt']}"
+        matches = [a for a in listing["artifacts"] if a.get("name") == name]
+        if len(matches) > 1:
+            raise AttentionError("CONFLICTING_REPAIR_RECEIPTS")
+        if not matches:
+            return None
+        return self.artifact(dict(workflow_run_id=run["id"], run_attempt=run["run_attempt"],
+                                  artifact_id=matches[0]["id"]), receipt=True, active=True)
+
+    def observe(self, link):
+        link = repair_workflow_link(link)
+        run = self.run(link["workflow_run_id"], link["run_attempt"], active=True)
+        if (run.get("path") not in _REPAIR_PRODUCERS or run.get("event") != "issues"
+                or run.get("head_sha") != link["control_sha"]
+                or run.get("actor", {}).get("login") not in {"trung-via", "github-actions[bot]"}):
+            raise AttentionError("REPAIR_WORKFLOW_SUBSTITUTION")
+        result = self._observation(run, link["repair_dispatch_id"], link=link)
+        if link["route"] == "HUMAN_WAKEUP_REQUIRED" and not result["jobs"]:
+            result.update(state="HUMAN_WAKEUP_REQUIRED", dispatch_attempted=False,
+                          failed_run_id=link["failed_run_id"], repair_sha=link["repair_sha"])
+            result["diagnostic"] = dict(availability="AVAILABLE" if link["route_reason"] == "EXECUTOR_REQUIRED" else "UNAVAILABLE",
+                                        reason_code=link["route_reason"])
+        return result
+
+    def from_issue(self, number, delivery_id=None):
+        observations = []
+        for link, comment_id in self.issue_links(number, delivery_id):
+            self._origin_pointer(link, comment_id)
+            observations.append(self.observe(link))
+        return observations
+
+    def _origin_pointer(self, link, comment_id):
+        """Existing same-attempt wake-source artifact proves Issue/run mapping.
+
+        Even a bot-authored source-looking comment cannot substitute another
+        producer's run. Before this artifact is available, mapping is unavailable.
+        """
+        _value(comment_id, "positive")
+        run = self.run(link["workflow_run_id"], link["run_attempt"], active=True)
+        listing = self.request(f"/actions/runs/{run['id']}/artifacts?per_page=100")
+        if (type(listing.get("total_count")) is not int or not 0 <= listing["total_count"] <= 100
+                or not isinstance(listing.get("artifacts"), list)
+                or len(listing["artifacts"]) != listing["total_count"]):
+            raise AttentionError("ARTIFACT_LIST_UNBOUNDED")
+        name = f"aios-wake-source-v1-attempt-{link['run_attempt']}"
+        matches = [a for a in listing["artifacts"] if a.get("name") == name]
+        if not matches:
+            # The short-lived wake pointer may expire before the bounded v2
+            # outcome artifact. Its GitHub-event origin binding is equivalent.
+            receipt = self.receipt_for_run(run)
+            workflow = receipt.get("workflow", {}) if receipt is not None else {}
+            expected = {k: link[k] for k in ("workflow_run_id", "run_attempt", "control_sha",
+                                            "origin_issue_id", "origin_issue_number")}
+            if (any(workflow.get(k) != v for k, v in expected.items())
+                    or receipt.get("delivery", {}).get("id") != link["repair_dispatch_id"]
+                    or any(receipt.get("selectors", {}).get(k) != link[k] for k in ("failed_run_id", "repair_sha"))):
+                raise AttentionError("REPAIR_ORIGIN_UNPROVEN")
+            return
+        if len(matches) != 1:
+            raise AttentionError("REPAIR_ORIGIN_UNPROVEN")
+        artifact = self.request(f"/actions/artifacts/{matches[0]['id']}")
+        if (artifact.get("id") != matches[0]["id"] or artifact.get("name") != name
+                or artifact.get("expired") is not False
+                or artifact.get("workflow_run", {}).get("id") != run["id"]
+                or type(artifact.get("size_in_bytes")) is not int
+                or not 0 < artifact["size_in_bytes"] <= MAX_SOURCE_BYTES):
+            raise AttentionError("REPAIR_ORIGIN_SUBSTITUTION")
+        archive = self.request(f"/actions/artifacts/{artifact['id']}/zip", binary=True)
+        with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
+            entries = zipped.infolist()
+            if (len(entries) != 1 or entries[0].filename != "source.json"
+                    or entries[0].file_size > MAX_SOURCE_BYTES or entries[0].flag_bits & 1):
+                raise AttentionError("REPAIR_ORIGIN_SUBSTITUTION")
+            pointer = load_json(zipped.read(entries[0]))
+        if pointer != dict(version=1, source_kind="comment", issue_id=link["origin_issue_id"],
+                           issue_number=link["origin_issue_number"], comment_id=comment_id):
+            raise AttentionError("REPAIR_ORIGIN_SUBSTITUTION")
+
+    def from_dispatch(self, delivery_id):
+        _value(delivery_id, "delivery")
+        listing = self.request("/actions/workflows/aios-self-hosted-repair-wakeup.yml/runs?event=workflow_dispatch&per_page=100")
+        runs = listing.get("workflow_runs")
+        if not isinstance(runs, list) or len(runs) > 100:
+            raise AttentionError("WORKFLOW_SEARCH_BOUND")
+        matches = [r for r in runs if r.get("display_title") == f"AIOS REPAIR {delivery_id}"]
+        if not matches:
+            raise AttentionError("REPAIR_WORKFLOW_LINK_UNAVAILABLE")
+        observations = []
+        for match in matches:
+            run = self.run(match.get("id"), match.get("run_attempt"), active=True)
+            if (run.get("path") != ".github/workflows/aios-self-hosted-repair-wakeup.yml"
+                    or run.get("event") != "workflow_dispatch"
+                    or run.get("display_title") != f"AIOS REPAIR {delivery_id}"
+                    or run.get("actor", {}).get("login") not in {"trung-via", "github-actions[bot]"}):
+                raise AttentionError("REPAIR_WORKFLOW_SUBSTITUTION")
+            observations.append(self._observation(run, delivery_id))
+        return observations
+
+    def _observation(self, run, delivery_id, *, link=None):
+        jobs = []
+        diagnostics = {"availability": "UNAVAILABLE", "reason_code": "DIAGNOSTIC_UNAVAILABLE"}
+        receipt = None
+        try:
+            listing = self.request(f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100")
+            if (type(listing.get("total_count")) is not int or not 0 <= listing["total_count"] <= 100
+                    or not isinstance(listing.get("jobs"), list)
+                    or len(listing["jobs"]) != listing["total_count"]):
+                raise AttentionError("JOB_LIST_UNBOUNDED")
+            for job in listing["jobs"]:
+                if str(job.get("name", "")).split(" / ")[-1] != "execute-repair":
+                    continue
+                _value(job.get("id"), "positive")
+                if job.get("run_id") != run["id"] or job.get("run_attempt") != run["run_attempt"]:
+                    raise AttentionError("REPAIR_JOB_SUBSTITUTION")
+                steps = [{key: step.get(key) for key in ("number", "name", "status", "conclusion")}
+                         for step in job.get("steps", []) if step.get("name") in _REPAIR_STEPS]
+                jobs.append(dict(id=job["id"], status=job.get("status"), conclusion=job.get("conclusion"),
+                                 steps=steps, logs_api_path=f"/actions/jobs/{job['id']}/logs"))
+            if len(jobs) > 1:
+                raise AttentionError("AMBIGUOUS_REPAIR_JOB")
+        except AttentionError as exc:
+            if str(exc) not in {"SOURCE_UNAVAILABLE", "SOURCE_TIMEOUT"}:
+                raise
+        try:
+            receipt = self.receipt_for_run(run)
+        except AttentionError as exc:
+            if str(exc) not in {"SOURCE_UNAVAILABLE", "SOURCE_TIMEOUT"}:
+                raise
+        if receipt is not None:
+            # Reconstruct the allowlisted v2 shape, never echo extra artifact
+            # fields, arbitrary error text, source-looking URLs or local paths.
+            from .operational_receipt import OperationalReceipt
+            terminal = receipt.get("terminal_pointer")
+            if terminal is not None:
+                kind, run_id = terminal.get("kind"), terminal.get("run_id")
+                if (kind not in {"RESULT", "FAILURE"} or receipt.get("run_created") is not True
+                        or receipt.get("boundary") != "TERMINAL_POINTER"
+                        or terminal != dict(kind=kind, run_id=run_id,
+                                            artifact=f".git/aios/{str(kind).lower()}s/{run_id}.json")):
+                    raise AttentionError("INVALID_TERMINAL_POINTER")
+            receipt = OperationalReceipt(
+                family=receipt.get("family"), delivery_id=receipt.get("delivery", {}).get("id"),
+                boundary=receipt.get("boundary"), selectors=receipt.get("selectors", {}),
+                run_created=receipt.get("run_created", False), executor_invoked=receipt.get("executor_invoked", False),
+                cause=receipt.get("cause"), run_id=receipt.get("run_id") or receipt.get("terminal_pointer", {}).get("run_id"),
+                terminal_pointer=receipt.get("terminal_pointer"), control_sha=receipt.get("control_sha"),
+                workflow=receipt.get("workflow"),
+            ).as_dict()
+            if (receipt.get("family") != "REPAIR"
+                    or receipt.get("delivery") != {"kind": "repair_dispatch_id", "id": delivery_id}
+                    or receipt.get("control_sha") != run.get("head_sha")):
+                raise AttentionError("REPAIR_DELIVERY_SUBSTITUTION")
+            if link is not None and any(receipt.get("selectors", {}).get(k) != link[k]
+                                        for k in ("failed_run_id", "repair_sha")):
+                raise AttentionError("REPAIR_SUBJECT_SUBSTITUTION")
+            workflow = receipt.get("workflow")
+            if workflow is not None:
+                from .operational_receipt import validate_repair_workflow
+                workflow = validate_repair_workflow(workflow)
+                expected = dict(repository=self.repository, workflow_run_id=run["id"],
+                                run_attempt=run["run_attempt"], event=run["event"], control_sha=run["head_sha"])
+                if link is not None:
+                    expected.update(origin_issue_id=link["origin_issue_id"], origin_issue_number=link["origin_issue_number"])
+                if any(workflow[k] != v for k, v in expected.items()):
+                    raise AttentionError("REPAIR_WORKFLOW_SUBSTITUTION")
+            elif link is not None:
+                raise AttentionError("REPAIR_ORIGIN_UNPROVEN")
+            cause = receipt.get("cause")
+            if cause is not None:
+                # Existing projection checks enum-like causes; no log/error text.
+                if receipt.get("boundary") not in {"ADMISSION_REJECTED", "OPERATIONAL_FAILED"}:
+                    raise AttentionError("UNPROVEN_OPERATIONAL_CAUSE")
+                operational_observation(receipt)
+                diagnostics = dict(availability=("UNAVAILABLE" if cause.get("reason_code") == "DIAGNOSTIC_UNAVAILABLE" else "AVAILABLE"), **cause)
+        failed = (run.get("conclusion") in {"failure", "cancelled", "timed_out"}
+                  or any(j.get("conclusion") in {"failure", "cancelled", "timed_out"} for j in jobs)
+                  or receipt is not None and receipt.get("boundary") in {"ADMISSION_REJECTED", "OPERATIONAL_FAILED"})
+        state = "OPERATIONAL_FAILED" if failed else (
+            "SELF_HOST_COMPLETED" if jobs and jobs[0].get("conclusion") == "success" else "PENDING")
+        observation = dict(format="AIOS_REPAIR_WORKFLOW_OBSERVATION", version=1, repository=self.repository,
+            repair_dispatch_id=delivery_id, state=state,
+            workflow=dict(workflow_run_id=run["id"], run_attempt=run["run_attempt"], status=run["status"],
+                          conclusion=run.get("conclusion"), url=f"https://github.com/{self.repository}/actions/runs/{run['id']}/attempts/{run['run_attempt']}"),
+            jobs=jobs, diagnostic=diagnostics)
+        if receipt is not None:
+            observation["operational_receipt"] = receipt
+        return observation
+
+    def job_logs(self, observation, job_id):
+        """Read privately only after revalidating the exact Issue/dispatch mapping."""
+        if job_id not in {job["id"] for job in observation.get("jobs", [])}:
+            raise AttentionError("REPAIR_JOB_SUBSTITUTION")
+        run = observation["workflow"]
+        fresh = self.run(run["workflow_run_id"], run["run_attempt"], active=True)
+        checked = self._observation(fresh, observation["repair_dispatch_id"])
+        if job_id not in {job["id"] for job in checked["jobs"]}:
+            raise AttentionError("REPAIR_JOB_SUBSTITUTION")
+        return self.request(f"/actions/jobs/{job_id}/logs", binary=True)
 
 
 def _delivery_resolution(s, sources, artifacts, successor):
@@ -1612,6 +1944,10 @@ def main(argv=None):
     collect_parser.add_argument("--run-id", type=int, required=True)
     collect_parser.add_argument("--attempt", type=int, required=True)
     collect_parser.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
+    repair_outcome = sub.add_parser("repair-outcome")
+    repair_identity = repair_outcome.add_mutually_exclusive_group(required=True)
+    repair_identity.add_argument("--issue-number", type=int)
+    repair_identity.add_argument("--delivery-id")
     operational = sub.add_parser("operational")
     operational.add_argument("--receipt", required=True)
     operational.add_argument("--source", required=True)
@@ -1640,7 +1976,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         validate_registry(".ai/brain-attention-families.yaml")
-        if args.command == "collect":
+        if args.command == "repair-outcome":
+            api = RepairWorkflowSources()
+            result = api.from_issue(args.issue_number) if args.issue_number else api.from_dispatch(args.delivery_id)
+            print(canonical(result))
+        elif args.command == "collect":
             events = collect(args.run_id, args.attempt)
             with Path(args.output).open("a", encoding="utf-8") as stream:
                 stream.write("events=" + json.dumps(events, separators=(",", ":")) + "\n")

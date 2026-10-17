@@ -1,4 +1,5 @@
 name: AIOS self-hosted REPAIR wakeup
+run-name: AIOS REPAIR ${{ inputs.repair_dispatch_id }}
 
 on:
   workflow_dispatch:
@@ -220,6 +221,7 @@ jobs:
           }
 
       - name: Deliver one immutable REPAIR intent
+        id: delivery
         env:
           AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-repair-operational-receipt-v2.json
           AIOS_REPAIR_DISPATCH_ID: ${{ inputs.repair_dispatch_id }}
@@ -274,6 +276,29 @@ jobs:
           $aiosExitCode = $LASTEXITCODE
           if ($aiosExitCode -ne 0) {
             exit $aiosExitCode
+          }
+
+      - name: Seal bounded workflow outcome
+        if: always()
+        env:
+          AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-repair-operational-receipt-v2.json
+          AIOS_JOB_RESULT: ${{ job.status }}
+        shell: powershell
+        run: |
+          $source = $null
+          if (-not [string]::IsNullOrEmpty($env:AIOS_CONTROL_ROOT)) { $source = Join-Path $env:AIOS_CONTROL_ROOT 'src' }
+          if ($source -and (Test-Path -LiteralPath (Join-Path $source 'aios_renew/operational_receipt.py') -PathType Leaf)) {
+            python -c "import sys; sys.path.insert(0, sys.argv[1]); from aios_renew.operational_receipt import finalize_repair_workflow_receipt; finalize_repair_workflow_receipt(sys.argv[2], sys.argv[3])" $source $env:AIOS_OPERATIONAL_RECEIPT_PATH $env:AIOS_JOB_RESULT
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } elseif (Test-Path -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -PathType Leaf) {
+            # Even a pre-control failure is attributable to this GitHub attempt.
+            $receipt = Get-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Raw | ConvertFrom-Json
+            $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+            $originId = $null; $originNumber = $null
+            if ($env:GITHUB_EVENT_NAME -ceq 'issues') { $originId = $event.issue.id; $originNumber = $event.issue.number }
+            $workflow = @{repository=$env:GITHUB_REPOSITORY;workflow_run_id=[long]$env:GITHUB_RUN_ID;run_attempt=[int]$env:GITHUB_RUN_ATTEMPT;event=$env:GITHUB_EVENT_NAME;control_sha=$env:AIOS_CONTROL_SHA;origin_issue_id=$originId;origin_issue_number=$originNumber;job_result=$env:AIOS_JOB_RESULT}
+            $receipt | Add-Member -NotePropertyName workflow -NotePropertyValue $workflow -Force
+            Set-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Value ($receipt | ConvertTo-Json -Compress -Depth 8) -Encoding utf8
           }
 
       - name: Expose bounded Operational Receipt v2
