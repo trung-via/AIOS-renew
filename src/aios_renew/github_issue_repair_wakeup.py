@@ -601,7 +601,7 @@ def publish_workflow_receipt(*, phase, route, route_reason, downstream_result=No
     elif downstream_result == "success" and observation["state"] == "PENDING":
         observation["state"] = "SELF_HOST_COMPLETED"
     state = "HUMAN_WAKEUP_REQUIRED" if route == "HUMAN_WAKEUP_REQUIRED" else observation["state"]
-    marker = REPAIR_WORKFLOW_MARKER + canonical(link)
+    marker = REPAIR_WORKFLOW_MARKER + canonical(link).decode("ascii")
     reason = route_reason if route == "HUMAN_WAKEUP_REQUIRED" else observation["diagnostic"]["reason_code"]
     lines = ["AIOS REPAIR WORKFLOW RECEIPT v1", f"phase: {phase}", f"status: {state}",
              f"repair_dispatch_id: {delivery}", f"failed_run_id: {failed}", f"repair_sha: {sha}",
@@ -620,7 +620,7 @@ def publish_workflow_receipt(*, phase, route, route_reason, downstream_result=No
                 lines.append(f"step: {step['number']} {step['name']}; conclusion: {step['conclusion']}")
     receipt = observation.get("operational_receipt")
     if receipt is not None:
-        lines.append("AIOS_OPERATIONAL_RECEIPT_V2=" + canonical(receipt))
+        lines.append("AIOS_OPERATIONAL_RECEIPT_V2=" + canonical(receipt).decode("ascii"))
     lines += ["repair_run_outcome: not_asserted_by_carrier", "verification: not_asserted_by_carrier",
               "semantic_review: not_asserted_by_carrier", "publication: not_asserted_by_carrier", marker]
     body = "\n".join(lines)
