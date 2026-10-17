@@ -398,6 +398,10 @@ def resolve_flow(context: BrainWorkContext, *, cards_path: str | Path | None = N
 
 
 _R21_APPROVAL = "human_r21_four_specialized_activation_20261017"
+_R21_APPROVAL_STATES = frozenset({
+    "HUMAN_APPROVED_CANONICALIZED_LIVE_PRODUCTION_CONFORMANCE_OUTSTANDING", "ACTIVE",
+})
+_R5_CANDIDATE_REF = "refs/heads/aios/review/RUN-368-001"
 _R5_REVIEW_REF = "refs/heads/aios/review-decision/RUN-368-001"
 _R5_ARTIFACT_REF = "refs/heads/aios/artifacts/RUN-368-001"
 
@@ -410,16 +414,20 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
     """
     from .authoring_ingress import (
         _query_matching_refs, _read_commit_blob, _fetch_if_remote, _ls_tree,
-        _json_no_dups, _resolve_underlying_run_view,
+        _json_no_dups, _run_from_data, _validate_metadata_commit,
     )
+    from .artifacts import validate_result, validate_evidence, validate_result_package
     from .brain_audit import parse_profile_registry
     from .brain_return_contract import parse_return_contract_registry
     from .operator import _git_is_ancestor
-    from .review import parse_review
+    from .return_affinity import require_same_affinity
+    from .review import parse_review, validate_review
     from .review_transport import (
         ReviewTransportError, resolve_transport_remote, resolve_detached_observation_remote,
         _git_cmd,
     )
+    from .run import ACTIVE
+    from .task import parse_task
 
     def transport() -> tuple[str, str]:
         try:
@@ -432,7 +440,7 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         return name, url
 
     remote, remote_url = transport()
-    patterns = ("refs/heads/main", _R5_REVIEW_REF, _R5_ARTIFACT_REF)
+    patterns = ("refs/heads/main", _R5_CANDIDATE_REF, _R5_REVIEW_REF, _R5_ARTIFACT_REF)
     refs = _query_matching_refs(repo, remote, *patterns)
     if set(refs) != set(patterns):
         raise BrainContextError("canonical audit main or R5 REVIEW is unavailable")
@@ -477,7 +485,9 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
             or any(_stable_copy(approval.get(k)) != v for k, v in required.items())
             or type(approval.get("implementation_revision")) is not int
             or type(approval.get("target_policy_version")) is not int
-            or approval.get("status") != "HUMAN_APPROVED_CANONICALIZED_LIVE_PRODUCTION_CONFORMANCE_OUTSTANDING"
+            # Human/Brain reconciliation may complete this finite transition;
+            # either state still requires every approval and Git binding below.
+            or approval.get("status") not in _R21_APPROVAL_STATES
             or approval.get("review_decision_sha") != refs[_R5_REVIEW_REF]):
         raise BrainContextError("canonical Human R2.1 approval conflicts with activation")
     # The newer explicit activation supersedes the dated V1 cutover. Another
@@ -485,15 +495,36 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
     for key in nodes:
         if key != _R21_APPROVAL and key.startswith("human_r21_four_specialized_activation_"):
             raise BrainContextError("conflicting canonical Human R2.1 approvals")
-    source = approval.get("reviewed_published_source_sha")
+    artifact_sha = refs[_R5_ARTIFACT_REF]
+    run_data = _json_no_dups(blob(artifact_sha, ".ai/transport/run.json"), "R5 RUN")
+    if "kind" in run_data:
+        raise BrainContextError("canonical R5 artifact must be the original PRIMARY RUN")
+    run = _run_from_data(run_data, "R5 RUN")
+    result_data = _json_no_dups(blob(artifact_sha, ".ai/transport/result.json"), "R5 ResultPackage")
+    if set(result_data) != {"result", "evidence"} or not isinstance(result_data["evidence"], list):
+        raise BrainContextError("canonical R5 artifact must contain a nested ResultPackage")
+    result = validate_result(result_data["result"])
+    evidence = tuple(validate_evidence(item) for item in result_data["evidence"])
+    # The admitted RUN is immutable: ACTIVE/head_sha=null is canonical. The
+    # completed source comes from RESULT, corroborated independently by Git.
+    source = result.head_sha
     if (not isinstance(source, str) or re.fullmatch(r"[0-9a-f]{40}", source) is None
-            or approval.get("approved_against_main_sha") != source):
+            or approval.get("reviewed_published_source_sha") != source
+            or approval.get("approved_against_main_sha") != source
+            or refs[_R5_CANDIDATE_REF] != source):
         raise BrainContextError("canonical R5 publication identity is invalid")
-    published_task = yaml.load(blob(source, ".ai/tasks/TASK-368.yaml").decode("utf-8"), Loader=_UniqueKeyLoader)
-    if (not isinstance(published_task, dict) or published_task.get("task_id") != "TASK-368"
-            or type(published_task.get("revision")) is not int or published_task["revision"] != 1
+    published_task = parse_task(blob(source, ".ai/tasks/TASK-368.yaml").decode("utf-8"))
+    if (published_task.task_id != "TASK-368" or published_task.revision != 1
             or not _git_is_ancestor(repo, source, main)):
         raise BrainContextError("reviewed R5 source is not published on canonical main")
+    if (run.run_id != "RUN-368-001" or run.task.id != "TASK-368" or run.task.revision != 1
+            or run.status != ACTIVE or re.fullmatch(r"[0-9a-f]{40}", run.base_sha) is None
+            or not _git_is_ancestor(repo, run.base_sha, source)):
+        raise BrainContextError("canonical R5 RUN publication lineage conflicts")
+    require_same_affinity(published_task, run)
+    validate_result_package(task=published_task, run=run, result=result, evidence=evidence)
+    if result.unresolved:
+        raise BrainContextError("canonical R5 RESULT contains unresolved items")
     review_sha = refs[_R5_REVIEW_REF]
     # REVIEWs live on their immutable decision ref, outside the source tree.
     if not _ls_tree(repo, review_sha, ".ai/reviews"):
@@ -503,19 +534,14 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         raise BrainContextError("canonical R5 REVIEW is missing or ambiguous")
     review_raw = blob(review_sha, paths[0])
     review = parse_review(review_raw.decode("utf-8"))
+    _validate_metadata_commit(repo, review_sha, expected_parent_sha=source,
+                              metadata_path=paths[0], metadata_bytes=review_raw, operation="R5 REVIEW")
+    validate_review(task=published_task, result=result, review=review)
     if (review.review_id != approval["review_id"] or review.reviewed_sha != source
             or review.mode != "PRIMARY" or review.verdict != "PASS"
-            or set(review.acceptance) != {item["id"] for item in published_task["acceptance"]}
+            or set(review.acceptance) != {item.id for item in published_task.acceptance}
             or any(value != "PASS" for value in review.acceptance.values())):
         raise BrainContextError("canonical R5 REVIEW does not approve the published source")
-    artifact_sha = refs[_R5_ARTIFACT_REF]
-    run = _resolve_underlying_run_view(
-        _json_no_dups(blob(artifact_sha, ".ai/transport/run.json"), "R5 RUN"), expected_run_id="RUN-368-001")
-    result = _json_no_dups(blob(artifact_sha, ".ai/transport/result.json"), "R5 RESULT")
-    if (run.get("task") != {"id": "TASK-368", "revision": 1}
-            or type(run["task"]["revision"]) is not int
-            or run.get("head_sha") != source or result.get("head_sha") != source):
-        raise BrainContextError("canonical R5 RUN/RESULT publication lineage conflicts")
     profiles = parse_profile_registry(blob(main, ".ai/brain-audit-profiles.yaml"))
     returns = parse_return_contract_registry(blob(main, ".ai/brain-return-contracts.yaml"))
     if _query_matching_refs(repo, remote, *patterns) != refs or transport() != (remote, remote_url):

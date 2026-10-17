@@ -19,9 +19,14 @@ from aios_renew.brain_sync import BrainSyncSnapshot
 
 
 class CanonicalAuditRepository:
-    """Real canonical Git refs consumed by the production caller, no policy adapter."""
+    """Canonical Git with the primary RUN/ResultPackage shape of R5 artifact
+    356d320a919f0b0df5df254702e0a0c17780e042, including its admitted null head.
+    """
 
     approval_key = "human_r21_four_specialized_activation_20261017"
+    activation_states = (
+        "HUMAN_APPROVED_CANONICALIZED_LIVE_PRODUCTION_CONFORMANCE_OUTSTANDING", "ACTIVE",
+    )
 
     def __init__(self, temporary: Path):
         root = Path(__file__).resolve().parents[1]
@@ -34,18 +39,34 @@ class CanonicalAuditRepository:
         self.git(self.canonical, "config", "core.autocrlf", "false")
         for name in (".ai/brain-audit-profiles.yaml", ".ai/brain-return-contracts.yaml", ".ai/tasks/TASK-368.yaml"):
             self.write(name, (root / name).read_bytes())
+        self.base_sha = self.commit("admitted R5 base fixture")
+        self.write("src/aios_renew/brain_provider.py", (root / "src/aios_renew/brain_provider.py").read_bytes())
         self.source_sha = self.commit("published R5 source fixture")
+        self.git(self.canonical, "update-ref", "refs/heads/aios/review/RUN-368-001", self.source_sha)
         task = yaml.safe_load((root / ".ai/tasks/TASK-368.yaml").read_bytes())
+        self.run = {"run_id": "RUN-368-001", "task": {"id": "TASK-368", "revision": 1},
+                    "executor": "codex", "base_sha": self.base_sha, "head_sha": None,
+                    "status": "ACTIVE", "workspace": "protected-runtime-workspace",
+                    "return_affinity": {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}}
+        evidence_ids = [f"RUN-368-001-V{index:03}" for index in (1, 2)]
+        self.result_package = {
+            "result": {"head_sha": self.source_sha,
+                       "claims": [{"id": f"C{index}", "satisfies": [entry["id"]],
+                                   "claim": entry["condition"], "evidence": list(evidence_ids)}
+                                  for index, entry in enumerate(task["acceptance"], 1)],
+                       "changed_files": ["src/aios_renew/brain_provider.py"], "unresolved": []},
+            "evidence": [{"evidence_id": evidence_id, "run_id": self.run["run_id"],
+                          "subject_sha": self.source_sha, "type": "VERIFICATION",
+                          "source": {"command": command},
+                          "result": {"exit_code": 0, "summary": "Runtime verification exit code 0"},
+                          "raw": {"path": f"protected-runtime-raw/{evidence_id}"}}
+                         for evidence_id, command in zip(evidence_ids, task["verification"]["required"])],
+        }
+        self.save_artifacts()
         self.review = {"review_id": "REVIEW-368-001", "reviewed_sha": self.source_sha,
                        "mode": "PRIMARY", "verdict": "PASS", "findings": [],
                        "acceptance": {entry["id"]: "PASS" for entry in task["acceptance"]}}
-        self.write(".ai/reviews/REVIEW-368-001.yaml", yaml.safe_dump(self.review).encode())
-        self.write(".ai/transport/run.json", json.dumps({"run_id": "RUN-368-001",
-                   "task": {"id": "TASK-368", "revision": 1}, "head_sha": self.source_sha}).encode())
-        self.write(".ai/transport/result.json", json.dumps({"head_sha": self.source_sha}).encode())
-        self.review_sha = self.commit("canonical R5 review and artifacts fixture")
-        for family in ("review-decision", "artifacts"):
-            self.git(self.canonical, "update-ref", f"refs/heads/aios/{family}/RUN-368-001", self.review_sha)
+        self.save_review()
         approval = deepcopy(yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())[self.approval_key])
         approval.update(review_decision_sha=self.review_sha, reviewed_published_source_sha=self.source_sha,
                         approved_against_main_sha=self.source_sha)
@@ -54,9 +75,9 @@ class CanonicalAuditRepository:
         self.git(temporary, "clone", str(self.canonical), str(self.repo))
 
     @staticmethod
-    def git(repo, *args):
+    def git(repo, *args, input=None):
         return subprocess.run(("git", "-C", str(repo), *args), check=True, capture_output=True,
-                              text=True, encoding="utf-8").stdout.strip()
+                              input=input, text=True, encoding="utf-8").stdout.strip()
 
     def write(self, name, raw):
         path = self.canonical / name
@@ -72,13 +93,34 @@ class CanonicalAuditRepository:
         self.write(".ai/roadmap-state.yaml", raw if raw is not None else yaml.safe_dump(self.roadmap).encode())
         self.main_sha = self.commit("canonical planning fixture")
 
+    def save_review(self):
+        self.git(self.canonical, "switch", "--detach", self.source_sha)
+        self.write(".ai/reviews/REVIEW-368-001.yaml", yaml.safe_dump(self.review).encode())
+        self.review_sha = self.commit("canonical R5 PRIMARY review fixture")
+        self.git(self.canonical, "update-ref", "refs/heads/aios/review-decision/RUN-368-001", self.review_sha)
+        self.git(self.canonical, "switch", "main")
+
+    def save_artifacts(self):
+        # Runtime artifacts are an independent immutable snapshot, not a commit
+        # on the candidate or review branch. Keep that separation in the fixture.
+        entries = []
+        for name, document in (("result.json", self.result_package), ("run.json", self.run)):
+            sha = self.git(self.canonical, "hash-object", "-w", "--stdin", input=json.dumps(document))
+            entries.append(f"100644 blob {sha}\t{name}\n")
+        tree = self.git(self.canonical, "mktree", input="".join(entries))
+        tree = self.git(self.canonical, "mktree", input=f"040000 tree {tree}\ttransport\n")
+        tree = self.git(self.canonical, "mktree", input=f"040000 tree {tree}\t.ai\n")
+        self.artifact_sha = self.git(self.canonical, "commit-tree", tree, "-m", "canonical R5 artifacts fixture")
+        self.git(self.canonical, "update-ref", "refs/heads/aios/artifacts/RUN-368-001", self.artifact_sha)
+
 
 @pytest.fixture
 def canonical_audit_repo(tmp_path):
     return CanonicalAuditRepository(tmp_path)
 
 
-def test_canonical_audit_inputs_authenticate_git_source_and_exact_r5_bindings(canonical_audit_repo):
+@pytest.mark.parametrize("status", CanonicalAuditRepository.activation_states)
+def test_canonical_audit_inputs_authenticate_git_source_and_exact_r5_bindings(canonical_audit_repo, status):
     from aios_renew.brain_context import canonical_audit_inputs
     from aios_renew.brain_provider_protocol import construct_request
     from aios_renew.brain_return_contract import parse_return_contract_registry
@@ -86,10 +128,20 @@ def test_canonical_audit_inputs_authenticate_git_source_and_exact_r5_bindings(ca
 
     root = Path(__file__).resolve().parents[1]
     registry = parse_return_contract_registry((root / ".ai/brain-return-contracts.yaml").read_bytes())
+    approval = canonical_audit_repo.roadmap[canonical_audit_repo.approval_key]
+    approval["status"] = status
+    canonical_audit_repo.save_roadmap()
+    run = json.loads(canonical_audit_repo.git(canonical_audit_repo.canonical, "show",
+                     f"{canonical_audit_repo.artifact_sha}:.ai/transport/run.json"))
+    package_data = json.loads(canonical_audit_repo.git(canonical_audit_repo.canonical, "show",
+                              f"{canonical_audit_repo.artifact_sha}:.ai/transport/result.json"))
+    assert run["status"] == "ACTIVE" and run["head_sha"] is None
+    assert "head_sha" not in package_data
+    assert package_data["result"]["head_sha"] == canonical_audit_repo.source_sha
+    assert all(item["subject_sha"] == canonical_audit_repo.source_sha for item in package_data["evidence"])
     supplied, contract, bindings, sources = production_inputs(registry, "ARCHITECTURE", canonical_audit_repo)
     policy, package, authenticate = canonical_audit_inputs(supplied, contract, bindings,
                                                          repo=canonical_audit_repo.repo, **sources)
-    approval = canonical_audit_repo.roadmap[canonical_audit_repo.approval_key]
     assert policy["human_authority_digest"] == digest(approval)
     assert policy["r5_publication_sha"] == canonical_audit_repo.source_sha
     assert policy["main_sha"] == canonical_audit_repo.main_sha

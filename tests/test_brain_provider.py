@@ -14,6 +14,7 @@ from aios_renew.brain_provider_protocol import (
     BrainProviderProtocolError, construct_request, revalidate_decision, validate_response,
 )
 from aios_renew.decision_packet import DecisionPacket
+from tests.test_brain_context import CanonicalAuditRepository
 from test_brain_provider_protocol import (
     digest, inputs, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
     moa_inputs, moa_package, moa_response,
@@ -43,11 +44,18 @@ def no_implicit_repository_network(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("flow", R5_FLOWS)
 @pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("status", CanonicalAuditRepository.activation_states)
 def test_first_party_ordinary_attempt_reads_canonical_policy_and_runs_exact_default(
-        registry, canonical_audit_repo, monkeypatch, flow, kind):
+        registry, canonical_audit_repo, monkeypatch, flow, kind, status):
     # This is the public production entrypoint with neither a policy nor an
     # authenticator/test adapter/conformance flag supplied by the test.
     monkeypatch.chdir(canonical_audit_repo.repo)
+    approval = canonical_audit_repo.roadmap[canonical_audit_repo.approval_key]
+    approval["status"] = status
+    canonical_audit_repo.save_roadmap()
+    assert canonical_audit_repo.run["status"] == "ACTIVE"
+    assert canonical_audit_repo.run["head_sha"] is None
+    assert "head_sha" not in canonical_audit_repo.result_package
     supplied, contract, bindings, sources = production_inputs(registry, flow, canonical_audit_repo)
     calls = []
     def callback(req):
@@ -61,7 +69,6 @@ def test_first_party_ordinary_attempt_reads_canonical_policy_and_runs_exact_defa
              "REPAIR_AUTHORING": ["ROA_CONFORMANCE"]}
     assert [req["request_mode"] for req in calls] == modes[flow]
     assert len(result.attributions) == len(modes[flow])
-    approval = canonical_audit_repo.roadmap[canonical_audit_repo.approval_key]
     assert all(req["audit_profile_package"]["audit_profile_ref"] == approval["target_profiles"][flow] for req in calls)
     assert all(req["audit_selection"] == calls[0]["audit_selection"] for req in calls)
     assert calls[0]["audit_selection"]["policy"]["r5_publication_sha"] == canonical_audit_repo.source_sha
@@ -75,7 +82,11 @@ def test_first_party_ordinary_attempt_reads_canonical_policy_and_runs_exact_defa
     "missing_authenticator", "unavailable", "stale_main", "foreign_repository",
     "review_binding", "wrong_review_source", "failed_review_acceptance", "missing_review",
     "unpublished", "artifact_binding", "explicit_v1", "explicit_v3",
-    "stale_work", "return_binding",
+    "stale_work", "return_binding", "revoked_approval", "unknown_approval_status", "active_conflict",
+    "missing_candidate", "candidate_binding", "review_lineage", "flat_result", "shadowed_result",
+    "malformed_result", "run_head", "run_status", "run_identity", "run_revision", "run_kind",
+    "foreign_run_base", "missing_evidence", "evidence_run", "evidence_subject", "evidence_command",
+    "failed_evidence", "duplicate_evidence", "claim_evidence", "unresolved_result",
 ))
 def test_first_party_canonical_failures_abort_before_provider_without_fallback(
         registry, canonical_audit_repo, fault):
@@ -95,6 +106,12 @@ def test_first_party_canonical_failures_abort_before_provider_without_fallback(
         canonical.save_roadmap()
     elif fault == "partial":
         del approval["target_profiles"]["REPAIR_AUTHORING"]  # Reject even for ARCHITECTURE.
+        canonical.save_roadmap()
+    elif fault in {"revoked_approval", "unknown_approval_status", "active_conflict"}:
+        approval["status"] = {"revoked_approval": "REVOKED", "unknown_approval_status": "APPROVED",
+                              "active_conflict": "ACTIVE"}[fault]
+        if fault == "active_conflict":
+            approval["human_decision"] = "REVOKE_R21_FOUR_SPECIALIZED_DEFAULT"
         canonical.save_roadmap()
     elif fault == "wrong_pin":
         approval["target_profiles"]["TASK_AUTHORING"]["version"] = True
@@ -116,23 +133,71 @@ def test_first_party_canonical_failures_abort_before_provider_without_fallback(
             canonical.review["reviewed_sha"] = "f" * 40
         else:
             canonical.review["acceptance"]["AC1"] = "FAIL"
-        canonical.write(".ai/reviews/REVIEW-368-001.yaml", yaml.safe_dump(canonical.review).encode())
-        sha = canonical.commit("conflicting canonical R5 review")
-        canonical.git(canonical.canonical, "update-ref", "refs/heads/aios/review-decision/RUN-368-001", sha)
-        approval["review_decision_sha"] = sha
+        canonical.save_review()
+        approval["review_decision_sha"] = canonical.review_sha
         canonical.save_roadmap()
     elif fault == "missing_review":
         canonical.git(canonical.canonical, "update-ref", "-d", "refs/heads/aios/review-decision/RUN-368-001")
+    elif fault == "missing_candidate":
+        canonical.git(canonical.canonical, "update-ref", "-d", "refs/heads/aios/review/RUN-368-001")
+    elif fault == "candidate_binding":
+        canonical.git(canonical.canonical, "update-ref", "refs/heads/aios/review/RUN-368-001", canonical.base_sha)
+    elif fault == "review_lineage":
+        canonical.write(".ai/reviews/REVIEW-368-001.yaml", yaml.safe_dump(canonical.review).encode())
+        sha = canonical.commit("copied review on unrelated metadata parent")
+        canonical.git(canonical.canonical, "update-ref", "refs/heads/aios/review-decision/RUN-368-001", sha)
+        approval["review_decision_sha"] = sha
+        canonical.save_roadmap()
     elif fault == "unpublished":
         tree = canonical.git(canonical.canonical, "rev-parse", "HEAD^{tree}")
-        sha = canonical.git(canonical.canonical, "commit-tree", tree, "-m", "unpublished unrelated source")
-        approval.update(reviewed_published_source_sha=sha, approved_against_main_sha=sha)
-        canonical.save_roadmap()
-    elif fault == "artifact_binding":
-        canonical.write(".ai/transport/result.json", json.dumps({"head_sha": "f" * 40}).encode())
-        sha = canonical.commit("conflicting R5 RESULT subject")
-        canonical.git(canonical.canonical, "update-ref", "refs/heads/aios/artifacts/RUN-368-001", sha)
+        sha = canonical.git(canonical.canonical, "commit-tree", tree, "-m", "main without published R5 ancestry")
+        canonical.git(canonical.canonical, "update-ref", "refs/heads/main", sha)
         canonical.main_sha = sha
+    elif fault in {"artifact_binding", "flat_result", "shadowed_result", "malformed_result",
+                   "run_head", "run_status", "run_identity", "run_revision", "run_kind", "foreign_run_base",
+                   "missing_evidence", "evidence_run", "evidence_subject", "evidence_command",
+                   "failed_evidence", "duplicate_evidence", "claim_evidence", "unresolved_result"}:
+        package = canonical.result_package
+        if fault == "artifact_binding":
+            package["result"]["head_sha"] = "f" * 40
+        elif fault == "flat_result":
+            canonical.result_package = deepcopy(package["result"])
+        elif fault == "shadowed_result":
+            package["head_sha"] = canonical.source_sha
+            package["result"]["head_sha"] = "f" * 40
+        elif fault == "malformed_result":
+            del package["result"]["changed_files"]
+        elif fault == "run_head":
+            canonical.run["head_sha"] = "f" * 40
+        elif fault == "run_status":
+            canonical.run["status"] = "COMPLETED"
+        elif fault == "run_identity":
+            canonical.run["run_id"] = "RUN-368-999"
+        elif fault == "run_revision":
+            canonical.run["task"]["revision"] = True
+        elif fault == "run_kind":
+            canonical.run = {"kind": "REMEDIATION", "execution": {"run": deepcopy(canonical.run)}}
+        elif fault == "foreign_run_base":
+            tree = canonical.git(canonical.canonical, "rev-parse", "HEAD^{tree}")
+            canonical.run["base_sha"] = canonical.git(canonical.canonical, "commit-tree", tree,
+                                                       "-m", "unrelated admitted base")
+        elif fault == "missing_evidence":
+            package["evidence"].pop()
+        elif fault == "evidence_run":
+            package["evidence"][0]["run_id"] = "RUN-368-999"
+        elif fault == "evidence_subject":
+            package["evidence"][0]["subject_sha"] = "f" * 40
+        elif fault == "evidence_command":
+            package["evidence"][0]["source"]["command"] = "unrelated command"
+        elif fault == "failed_evidence":
+            package["evidence"][0]["result"]["exit_code"] = 1
+        elif fault == "duplicate_evidence":
+            package["evidence"].append(deepcopy(package["evidence"][0]))
+        elif fault == "claim_evidence":
+            package["result"]["claims"][0]["evidence"] = ["RUN-368-999-V001"]
+        else:
+            package["result"]["unresolved"] = ["R5 implementation remains incomplete"]
+        canonical.save_artifacts()
     supplied, contract, bindings, sources = production_inputs(registry, "ARCHITECTURE", canonical)
     if fault == "stale_main":
         canonical.commit("advance canonical main while caller still has old packet")
@@ -163,6 +228,46 @@ def test_first_party_canonical_failures_abort_before_provider_without_fallback(
                 bindings, package, lambda: fresh_packet, repo=canonical.repo, **sources)
     assert error.value.reason_code == "PROTOCOL_INPUT_INVALID"
     assert error.value.invocation_count == 0 and calls == []
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("fault", ("result_source", "evidence_source"))
+def test_first_party_all_flows_reject_forged_r5_artifact_before_provider(
+        registry, canonical_audit_repo, flow, fault):
+    canonical = canonical_audit_repo
+    if fault == "result_source":
+        canonical.result_package["result"]["head_sha"] = canonical.base_sha
+    else:
+        canonical.result_package["evidence"][0]["subject_sha"] = canonical.base_sha
+    canonical.save_artifacts()
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical)
+    calls = []
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(MappingBrainProvider("mapping", "one", lambda req: calls.append(req)), supplied, contract,
+                bindings, fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
+    assert error.value.reason_code == "PROTOCOL_INPUT_INVALID"
+    assert error.value.invocation_count == 0 and calls == []
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+def test_first_party_continuation_stops_when_r5_artifacts_move_without_main_movement(
+        registry, canonical_audit_repo, flow):
+    canonical = canonical_audit_repo
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical)
+    main_sha = canonical.main_sha
+    artifact_sha = canonical.artifact_sha
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        canonical.result_package["evidence"][0]["result"]["summary"] = "Replaced canonical artifact"
+        canonical.save_artifacts()
+        return wrapper(req, semantic=r5_response(req))
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
+    assert error.value.reason_code == "FRESH_PACKET_INVALID"
+    assert error.value.invocation_count == 1 and len(calls) == 1
+    assert canonical.artifact_sha != artifact_sha and canonical.main_sha == main_sha
 
 
 @pytest.mark.parametrize("flow", R5_FLOWS)
