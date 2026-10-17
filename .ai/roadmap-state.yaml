@@ -2,10 +2,63 @@ version: 1
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+human_r21_four_specialized_activation_20261017:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL
+  approved_on: "2026-10-17"
+  status: HUMAN_APPROVED_CANONICALIZED_LIVE_PRODUCTION_CONFORMANCE_OUTSTANDING
+  human_decision: ACTIVATE_R21_FOUR_SPECIALIZED_DEFAULT_WITH_ADAPTIVE_V1_AS_HUMAN_OPTION
+  implementation_task: TASK-368
+  implementation_revision: 1
+  implementation_run: RUN-368-001
+  review_id: REVIEW-368-001
+  review_verdict: PASS
+  review_decision_sha: b4ed0c402248224aa2c7e3b0d2a7277cac02221c
+  reviewed_published_source_sha: f4d944474b4450da3d49376b6b034c9f9d413d60
+  approved_against_main_sha: f4d944474b4450da3d49376b6b034c9f9d413d60
+  target_policy_format: AIOS_BRAIN_AUDIT_POLICY
+  target_policy_version: 1
+  target_policy_state: FOUR_SPECIALIZED
+  target_profiles:
+    ARCHITECTURE:
+      id: aoa-1
+      version: 1
+      digest: 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b
+    TASK_AUTHORING:
+      id: tca-1
+      version: 1
+      digest: 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2
+    REMEDIATION_AUTHORING:
+      id: moa-1
+      version: 1
+      digest: 49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903
+    REPAIR_AUTHORING:
+      id: roa-1-r2
+      version: 2
+      digest: aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4
+  architecture_and_task_v1_option: HUMAN_EXPLICIT_EXACT_SUBJECT_V1_ONLY_ONE_NORMATIVE_AUDIT
+  correction_v1_option: HUMAN_EXPLICIT_READ_ONLY_SUPPORT_NO_SECOND_NORMATIVE_AUDIT
+  preservation:
+    - EXACT_IN_FLIGHT_SELECTED_PROFILE_AND_STAGE_BINDINGS
+    - HISTORICAL_V1_V2_V3_AND_R1_R4_REPLAY_UNCHANGED
+    - NO_UNSOLICITED_V1_WHEN_FUTURE_POLICY_AUTHENTICATED
+    - NO_NEW_ROUTER_LIFECYCLE_MUTATION_OR_SECOND_REVIEWER
+  activation_boundary:
+    canonical_human_approval: RECORDED
+    runtime_caller_authentication_and_currentness: REQUIRED_AND_NOT_YET_OBSERVED
+    production_default_on_legacy_policyless_callers: ADAPTIVE_V1_COMPATIBILITY_REMAINS
+    active_policy_claim: NOT_YET_PROVED_FOR_ALL_PRODUCTION_CALLERS
+    authority_digests: MUST_BE_INDEPENDENTLY_AUTHENTICATED_BY_TRUSTED_CALLER_NOT_INVENTED_HERE
+    no_silent_fallback: REQUIRED_ON_NEW_POLICY_AWARE_ATTEMPTS
+  roadmap:
+    current_effective_next: four-specialized-audits-r21-human-optional-adaptive-v1
+    next_completion_gate: AUTHENTICATED_LIVE_POLICY_CONSUMER_CONFORMANCE_AND_HUMAN_BRAIN_RECONCILIATION
+    subsequent_approved_commitment: lean-vp-intelligent-intra-primary-after-r21
+    effect_on_task_run_review_publication: NONE_PLANNING_APPROVAL_ONLY
+
 human_four_specialized_audits_r21_priority_20261016:
   authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING
   approved_on: "2026-10-16"
-  status: HUMAN_APPROVED_ARCHITECTURE_NEXT_NOT_IMPLEMENTATION_OR_PROFILE_CUTOVER
+  status: R21_IMPLEMENTATION_REVIEWED_PUBLISHED_HUMAN_ACTIVATION_APPROVED_LIVE_CALLER_NOT_PROVEN
   architecture_document: docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
   current_effective_next: four-specialized-audits-r21-human-optional-adaptive-v1
   ordered_commitments:
