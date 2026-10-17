@@ -1099,7 +1099,7 @@ def test_issue_carrier_direct_final_remediation_keeps_all_carrier_and_subject_ga
 
 
 def repair_ingress_fixture(tmp_path, *, action, reuse="absent", coding_profile=False):
-    """Isolated transported FAILURE and structural package; never a verification PASS."""
+    """Isolated FAILURE/package, never PASS; malformed input must fail transport."""
     from tests.operator_test_support import make_repo, git
     from aios_renew.review_transport import transport_failure
 
@@ -1169,6 +1169,33 @@ def repair_ingress_fixture(tmp_path, *, action, reuse="absent", coding_profile=F
     event_doc = _event(json.dumps(body))
     event_doc["issue"]["number"] = 168
     return repo, _write_event(tmp_path, event_doc), _write_policy(tmp_path)
+
+
+def test_repair_failure_transport_rejects_malformed_package_before_publication(tmp_path, monkeypatch):
+    from aios_renew import review_transport
+    from aios_renew.operator import _runtime_paths_readonly
+    from tests.operator_test_support import _runtime_bytes, git
+
+    transport = review_transport.transport_failure
+    attempts = []
+
+    def observe_transport(repo, **kwargs):
+        assert kwargs["preverification_path"].read_bytes() == b"not-json"
+        attempts.append((repo, git(repo, "ls-remote", "--refs", "origin"),
+                         git(repo, "rev-parse", "HEAD"), _runtime_bytes(repo)))
+        return transport(repo, **kwargs)
+
+    monkeypatch.setattr(review_transport, "transport_failure", observe_transport)
+    with pytest.raises(review_transport.ReviewTransportError, match="invalid canonical public artifact JSON"):
+        repair_ingress_fixture(tmp_path, action="FINALIZE_CANDIDATE", reuse="malformed")
+
+    assert len(attempts) == 1
+    repo, refs, head, runtime = attempts[0]
+    assert git(repo, "ls-remote", "--refs", "origin") == refs
+    assert "refs/heads/aios/" not in refs
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert _runtime_bytes(repo) == runtime
+    assert not _runtime_paths_readonly(repo).runs.exists()
 
 
 @pytest.mark.parametrize("action,reuse,route", [
