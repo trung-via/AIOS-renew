@@ -1193,7 +1193,7 @@ def _moa_checks(value: Any, bound: dict[str, Any], *, challenge: bool) -> list[d
 def construct_moa(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[str, Any],
                   subject: Mapping[str, Any], semantic_output: Mapping[str, Any],
                   source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """First focused pass: source/cause/authority judgments and a non-final draft."""
+    """First focused pass: a draft only when source/cause/authority checks clear."""
     _, policy, bound = _moa_bound(packet, profile, subject, source_context)
     material = _fields(_normal(semantic_output, depth=0, max_depth=32),
                        {"subject_fingerprint", "checks", "draft_candidate"}, "MOA construct")
@@ -1205,6 +1205,8 @@ def construct_moa(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[s
     if draft is not None:
         if bound["kind"] != "UNIQUE_FINDING" or bound["blockers"]:
             raise BrainAuditError("MOA frontier/missing authority cannot expose a speculative draft")
+        if any(c["outcome"] == "BLOCKER" for c in checks):
+            raise BrainAuditError("MOA first-pass blocker cannot expose a speculative draft")
         draft = _candidate(draft, policy)
         _moa_private(draft)
     result = {"format": "AIOS_BRAIN_REMEDIATION_OUTCOME_AUDIT", "version": 1, "stage": "CONSTRUCT",
@@ -1279,11 +1281,14 @@ def validate_moa(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[st
     closure = _fields(material["closure"], {"outcome", "knowledge", "summary", "candidate_fingerprint"}, "MOA final closure")
     _text(closure["summary"], policy["bounds"]["closure_summary_bytes"], "MOA closure summary")
     _moa_private(closure["summary"])
-    outcome = "NO_DECISION" if any(c["outcome"] == "BLOCKER" for c in challenges) else "CANDIDATE"
-    knowledge = ("UNKNOWN" if any(c["knowledge"] == "UNKNOWN" for c in challenges) else
-                 "INFERRED" if any(c["knowledge"] == "INFERRED" for c in challenges) else "OBSERVED")
+    # The fixed envelope has no explicit disposition for first-pass blockers.
+    # They remain unresolved in this lineage even when later challenges are CLEAR.
+    checks = [*first["checks"], *challenges]
+    outcome = "NO_DECISION" if any(c["outcome"] == "BLOCKER" for c in checks) else "CANDIDATE"
+    knowledge = ("UNKNOWN" if any(c["knowledge"] == "UNKNOWN" for c in checks) else
+                 "INFERRED" if any(c["knowledge"] == "INFERRED" for c in checks) else "OBSERVED")
     if closure["outcome"] != outcome or closure["knowledge"] != knowledge:
-        raise BrainAuditError("MOA final closure contradicts focused challenges")
+        raise BrainAuditError("MOA final closure contradicts focused passes")
     candidate = material["reconciled_candidate"]
     if outcome == "NO_DECISION":
         if candidate is not None or closure["candidate_fingerprint"] is not None:

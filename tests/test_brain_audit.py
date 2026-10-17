@@ -141,6 +141,47 @@ def test_moa_unique_two_focused_passes_preserve_family_and_original_authority(mo
         construct_stage1(body, moa_profile, {"proposal": "Cannot mix with V1"})
 
 
+@pytest.mark.parametrize("check_id", (
+    "EXACT_REVIEW_FINDING", "FINDING_CAUSE_AND_MINIMUM_DELTA", "ORIGINAL_TASK_AUTHORITY",
+))
+@pytest.mark.parametrize("knowledge", ("OBSERVED", "INFERRED", "UNKNOWN"))
+@pytest.mark.parametrize("disposition", ("REJECTED_WITH_BOUNDED_BASIS", "ADDRESSED_BY_RECONCILIATION"))
+def test_moa_first_pass_blockers_survive_clear_second_pass_without_speculative_candidates(
+        moa_profile, check_id, knowledge, disposition):
+    body, sources = moa_packet()
+    subject = moa_subject(body, moa_profile, sources)
+    assert subject["blockers"] == {}
+    material = moa_first(body, moa_profile, subject)
+    draft = deepcopy(material["draft_candidate"])
+    check = next(c for c in material["checks"] if c["id"] == check_id)
+    check.update(outcome="BLOCKER", knowledge=knowledge,
+                 basis="The exact sources exist, but this check's causal or authority judgment remains unresolved.")
+    with pytest.raises(BrainAuditError, match="first-pass blocker cannot expose a speculative draft"):
+        construct_moa(body, moa_profile, subject, material, sources)
+
+    material["draft_candidate"] = None
+    first = construct_moa(body, moa_profile, subject, material, sources)
+    material = moa_final(body, moa_profile, subject, first)
+    assert all(c["outcome"] == "CLEAR" for c in material["challenges"])
+    assert material["reconciled_candidate"] == draft
+    # A generic second-pass disposition does not resolve the precise first-pass blocker.
+    material["challenges"][1]["disposition"] = disposition
+    with pytest.raises(BrainAuditError, match="final closure contradicts focused passes"):
+        validate_moa(body, moa_profile, subject, first, material, sources)
+
+    material["reconciled_candidate"] = None
+    material["closure"].update(outcome="NO_DECISION", candidate_fingerprint=None,
+                                knowledge="UNKNOWN" if knowledge == "UNKNOWN" else "INFERRED")
+    final = validate_moa(body, moa_profile, subject, first, material, sources)
+    assert final["closure"]["outcome"] == "NO_DECISION"
+    assert final["closure"]["knowledge"] == material["closure"]["knowledge"]
+    assert final["handoff_candidate"] is None
+    material["reconciled_candidate"] = draft
+    material["closure"]["candidate_fingerprint"] = digest(draft)
+    with pytest.raises(BrainAuditError, match="blocker cannot expose a final remediation"):
+        validate_moa(body, moa_profile, subject, first, material, sources)
+
+
 def test_moa_frontier_is_bounded_analysis_without_an_implicit_target(moa_profile):
     body, sources = moa_packet(frontier=True)
     subject = moa_subject(body, moa_profile, sources)
