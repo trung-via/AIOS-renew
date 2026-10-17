@@ -1,8 +1,10 @@
 """Offline BP-3 contracts over bounded Brain Sync observations."""
 
 from dataclasses import replace
+from copy import deepcopy
 import json
 from pathlib import Path
+import subprocess
 
 import pytest
 import yaml
@@ -14,6 +16,106 @@ from aios_renew.brain_context import (
     resolve_flow,
 )
 from aios_renew.brain_sync import BrainSyncSnapshot
+
+
+class CanonicalAuditRepository:
+    """Real canonical Git refs consumed by the production caller, no policy adapter."""
+
+    approval_key = "human_r21_four_specialized_activation_20261017"
+
+    def __init__(self, temporary: Path):
+        root = Path(__file__).resolve().parents[1]
+        self.canonical = temporary / "canonical"
+        self.canonical.mkdir()
+        self.repo = temporary / "AIOS-renew"
+        self.git(self.canonical, "init", "--initial-branch=main")
+        self.git(self.canonical, "config", "user.name", "Canonical fixture")
+        self.git(self.canonical, "config", "user.email", "fixture@example.invalid")
+        self.git(self.canonical, "config", "core.autocrlf", "false")
+        for name in (".ai/brain-audit-profiles.yaml", ".ai/brain-return-contracts.yaml", ".ai/tasks/TASK-368.yaml"):
+            self.write(name, (root / name).read_bytes())
+        self.source_sha = self.commit("published R5 source fixture")
+        task = yaml.safe_load((root / ".ai/tasks/TASK-368.yaml").read_bytes())
+        self.review = {"review_id": "REVIEW-368-001", "reviewed_sha": self.source_sha,
+                       "mode": "PRIMARY", "verdict": "PASS", "findings": [],
+                       "acceptance": {entry["id"]: "PASS" for entry in task["acceptance"]}}
+        self.write(".ai/reviews/REVIEW-368-001.yaml", yaml.safe_dump(self.review).encode())
+        self.write(".ai/transport/run.json", json.dumps({"run_id": "RUN-368-001",
+                   "task": {"id": "TASK-368", "revision": 1}, "head_sha": self.source_sha}).encode())
+        self.write(".ai/transport/result.json", json.dumps({"head_sha": self.source_sha}).encode())
+        self.review_sha = self.commit("canonical R5 review and artifacts fixture")
+        for family in ("review-decision", "artifacts"):
+            self.git(self.canonical, "update-ref", f"refs/heads/aios/{family}/RUN-368-001", self.review_sha)
+        approval = deepcopy(yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())[self.approval_key])
+        approval.update(review_decision_sha=self.review_sha, reviewed_published_source_sha=self.source_sha,
+                        approved_against_main_sha=self.source_sha)
+        self.roadmap = {self.approval_key: approval}
+        self.save_roadmap()
+        self.git(temporary, "clone", str(self.canonical), str(self.repo))
+
+    @staticmethod
+    def git(repo, *args):
+        return subprocess.run(("git", "-C", str(repo), *args), check=True, capture_output=True,
+                              text=True, encoding="utf-8").stdout.strip()
+
+    def write(self, name, raw):
+        path = self.canonical / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+
+    def commit(self, message):
+        self.git(self.canonical, "add", "-A")
+        self.git(self.canonical, "commit", "--allow-empty", "-m", message)
+        return self.git(self.canonical, "rev-parse", "HEAD")
+
+    def save_roadmap(self, raw=None):
+        self.write(".ai/roadmap-state.yaml", raw if raw is not None else yaml.safe_dump(self.roadmap).encode())
+        self.main_sha = self.commit("canonical planning fixture")
+
+
+@pytest.fixture
+def canonical_audit_repo(tmp_path):
+    return CanonicalAuditRepository(tmp_path)
+
+
+def test_canonical_audit_inputs_authenticate_git_source_and_exact_r5_bindings(canonical_audit_repo):
+    from aios_renew.brain_context import canonical_audit_inputs
+    from aios_renew.brain_provider_protocol import construct_request
+    from aios_renew.brain_return_contract import parse_return_contract_registry
+    from test_brain_provider_protocol import production_inputs, digest
+
+    root = Path(__file__).resolve().parents[1]
+    registry = parse_return_contract_registry((root / ".ai/brain-return-contracts.yaml").read_bytes())
+    supplied, contract, bindings, sources = production_inputs(registry, "ARCHITECTURE", canonical_audit_repo)
+    policy, package, authenticate = canonical_audit_inputs(supplied, contract, bindings,
+                                                         repo=canonical_audit_repo.repo, **sources)
+    approval = canonical_audit_repo.roadmap[canonical_audit_repo.approval_key]
+    assert policy["human_authority_digest"] == digest(approval)
+    assert policy["r5_publication_sha"] == canonical_audit_repo.source_sha
+    assert policy["main_sha"] == canonical_audit_repo.main_sha
+    req = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE",
+                            audit_policy=policy, selection_authenticator=authenticate, **sources)
+    assert authenticate(req["audit_selection"], "CONTINUE") is True
+    # A normalized/self-rehashed declaration is still not source authentication.
+    for key in ("packet_fingerprint", "subject_fingerprint", "source_context_fingerprint",
+                "work_context_fingerprint", "canonical_facts_fingerprint", "external_bindings",
+                "audit_profile_ref", "return_contract_ref", "selected_flow"):
+        changed = deepcopy(req["audit_selection"])
+        changed[key] = "f" * 64
+        assert authenticate(changed, "CONTINUE") is False
+    changed = deepcopy(req["audit_selection"])
+    changed["policy"]["human_authority_digest"] = "f" * 64
+    assert authenticate(changed, "ADMIT") is False
+    assert authenticate(req["audit_selection"], "UNKNOWN") is False
+    # Editing only the checkout cannot alter canonical policy or profile content.
+    (canonical_audit_repo.repo / ".ai/roadmap-state.yaml").write_text("forged: true\n", encoding="utf-8")
+    (canonical_audit_repo.repo / ".ai/brain-audit-profiles.yaml").write_text("forged: true\n", encoding="utf-8")
+    assert authenticate(req["audit_selection"], "CONTINUE") is True
+    # Even the same Git content at a different transport binding cannot replace
+    # the canonical source of an admitted invocation.
+    canonical_audit_repo.git(canonical_audit_repo.repo, "config", "remote.origin.url",
+                             str(canonical_audit_repo.canonical) + "/.")
+    assert authenticate(req["audit_selection"], "CONTINUE") is False
 
 
 def snapshot(action="EXECUTE_PRIMARY", *, blocker=None, status="SELECTED", roadmap=None):

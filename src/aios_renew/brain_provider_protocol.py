@@ -505,7 +505,9 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
     """Construct an exact historical/isolated or externally authenticated request.
 
     PROSPECTIVE requires a complete policy and an out-of-band trusted caller
-    authenticator. Serialized policy labels/hashes cannot supply that authority.
+    authenticator. Ordinary first-party attempts supply both through
+    brain_context.canonical_audit_inputs; this pure constructor does no Git reads.
+    Serialized policy labels/hashes cannot supply that authority.
     """
     if not isinstance(packet, DecisionPacket):
         raise BrainProviderProtocolError("constructor requires a fresh DecisionPacket object")

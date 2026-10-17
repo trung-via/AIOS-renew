@@ -590,11 +590,11 @@ recorded in section 18.6. Measured quality/cost evidence and unproven live-provi
 behavior remain UNKNOWN. TASK-340 did not select an Executor/provider, dispatch
 execution or perform automatic lifecycle advancement.
 
-### 18.6. Human-approved exclusive prospective cutover (2026-10-12)
+### 18.6. Historical Human-approved V1 cutover (2026-10-12; new defaults in section 23)
 
-**Controlling prospective decision:** After TASK-340 r1 / RUN-340-001 RESULT, REVIEW-340-001 PRIMARY PASS and exact Publisher publication of source `3a06bdcd53065e7a83e455143b5cd3921b2b0ddc`, Human explicitly orders `aios-adaptive-brain-audit-v1` as the **only active Brain semantic audit profile for new ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING, REPAIR_AUTHORING subjects**. The approved bound profile is `version: 1` and normalized digest `982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`. This prospective Human/Brain selection supersedes only the earlier **V3 active** status in §18.5 and the registry's historical introductory comment; it does not rewrite any prior evidence, profile bytes or historical claim.
+**Historical 2026-10-12 decision:** After TASK-340 r1 / RUN-340-001 RESULT, REVIEW-340-001 PRIMARY PASS and exact Publisher publication of source `3a06bdcd53065e7a83e455143b5cd3921b2b0ddc`, Human explicitly ordered `aios-adaptive-brain-audit-v1` as the **only active Brain semantic audit profile for new ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING, REPAIR_AUTHORING subjects**. The approved bound profile is `version: 1` and normalized digest `982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`. That selection superseded the earlier **V3 active** status in §18.5 and the registry's historical introductory comment. The newer Human-approved R2.1 defaults in section 23 supersede this prospective selection while preserving all prior evidence, profile bytes and historical subjects.
 
-For a new eligible Brain semantic flow, pass **one** V1 profile package, run only `CONSTRUCT` and `ADVERSARIAL_AUDIT_AND_RECONCILE` with its eight required ordered lenses and final closure, and carry its exact ID/version/digest between stages. **Never also invoke V3** or produce a second semantic verdict, never silently fall back to V3 when a V1 profile or consumer binding is missing; in that case fail closed on that invocation or present a bounded explicit blocker. Existing V2/V3 subjects, including a V3 Stage 1 already in flight, retain their historical exact profile identity and may only finish under their exact bound old profile or use separately authorized restart; no mixed V3 Stage 1/V1 Stage 2. Keeping legacy validators/profile entries is **read compatibility, not active dual reasoning**.
+Under that historical cutover, a new eligible Brain semantic flow passed **one** V1 profile package and ran only `CONSTRUCT` and `ADVERSARIAL_AUDIT_AND_RECONCILE` with its eight required ordered lenses and final closure, carrying its exact ID/version/digest between stages. **Never also invoke V3** or produce a second semantic verdict, never silently fall back to V3 when a V1 profile or consumer binding is missing; in that case fail closed on that invocation or present a bounded explicit blocker. Existing V2/V3 subjects, including a V3 Stage 1 already in flight, retain their historical exact profile identity and may only finish under their exact bound old profile or use separately authorized restart; no mixed V3 Stage 1/V1 Stage 2. Keeping legacy validators/profile entries is **read compatibility, not active dual reasoning**.
 
 The audit and provider protocols validate and transport explicit exact V1 packages without an additional audit router; the caller's existing explicit profile selection remains the single semantic decision input. TASK-342 separately authorizes migration of the V3-dependent correction ingress consumer. A caller that has not actually selected V1 must **not** claim live V1 invocation. TASK-341 r1 and RUN-341-001's model-capacity FAILURE remain immutable; continuation requires separately authorized REPAIR after migration publication. TASK-342 performs no TASK-341 correction. Human accepts activation while paired live V3/V1 comparative quality, latency, tokens and cost remain **UNKNOWN**; no North-Star superiority claim follows. A later optional evaluation must not run dual audits on ordinary production decisions or auto-advance any lifecycle.
 
@@ -680,13 +680,17 @@ constructs EVIDENCE; independent Reviewer and Publisher authority are unchanged.
 
 ## 19. R2.1 / R1: bounded ROA-1 R2 conformance support
 
+Sections 19–22 record the R1–R4 isolated implementation boundaries at publication.
+Their procedures remain exact; section 23 governs approved new production defaults.
+
 This slice implements **isolated conformance**, not the R2.1 production cutover.
-The exact Adaptive V1 production selection in section 18.6 remains effective for
-all four prospective flows. The current roadmap NEXT, direct `AUTHOR_REPAIR`
+At R1 publication the Adaptive V1 selection in section 18.6 remained effective for
+all four prospective flows. The then-current roadmap NEXT, direct `AUTHOR_REPAIR`
 ingress, Runtime admission/verification/EVIDENCE/CAS, independent Reviewer and
 Publisher, and frozen Kernel retain their existing authorities. No audit support
 envelope, source digest or provider result authorizes mutation or execution.
-MOA/TCA/AOA, Human V1 opt-in, retirement and Lean VP require separate authorization.
+MOA/TCA/AOA and Human V1 opt-in received the later bounded authorizations recorded
+below. Lean VP remains separately gated.
 
 ### 19.1. One exact portable profile
 
@@ -978,8 +982,8 @@ Runtime owns canonical verification and EVIDENCE on the committed candidate.
 ## 21. R2.1 / R3: isolated TCA-1 Task Contract Audit
 
 TCA-1 adds semantic conformance for `TASK_AUTHORING` under the existing Brain
-provider-neutral protocol. Production selection remains the exact Adaptive V1
-identity in section 18.6. This slice activates no specialized default, Human
+provider-neutral protocol. At R3 publication, production selection remained the
+Adaptive V1 identity in section 18.6. That slice activated no specialized default, Human
 opt-in policy or V1 retirement. Direct final `AUTHOR_TASK`, admission, verification,
 EVIDENCE, Reviewer, Publisher, roadmap and frozen Kernel mechanisms are unchanged.
 Support material is transient Brain judgment; it cannot write a TASK/RUN/REVIEW,
@@ -1189,9 +1193,9 @@ EVIDENCE on the final committed source.
 AOA-1 supports only the existing `ARCHITECTURE` Brain flow. It produces bounded
 Human/Brain planning support under `BOUNDED_SEMANTIC_PROPOSAL`, without allocating
 a TASK, approving implementation, accepting risk or claiming engineering success.
-Current production selection remains the exact Adaptive V1 identity from section
-18.6. Specialized default selection and prospective Human-option policy remain
-R5 work; registry membership grants neither. Runtime verification/admission and
+At R4 publication, production selection remained the Adaptive V1 identity from
+section 18.6. The later R5 boundary and section 23 supply approved specialized
+defaults and Human options; registry membership grants neither. Runtime verification/admission and
 EVIDENCE, independent Reviewer judgment, Publisher publication, roadmap, frozen
 Kernel and downstream adoption retain their existing authorities.
 
@@ -1386,33 +1390,68 @@ examples establish no empirical superiority, live provider quality, publication,
 roadmap advancement or downstream adoption. Runtime owns canonical verification
 and EVIDENCE on the committed implementation.
 
-## 23. R2.1/R5 prospective policy binding and migration closure
+## 23. R2.1/R5 policy binding and approved first-party activation
 
-R5 extends the existing provider attempt/request/decision boundary to support a
-future, externally authenticated canonical policy. It does **not** activate the
-four specialized defaults. The current production selection remains exact
-`aios-adaptive-brain-audit-v1` v1, normalized digest
-`982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`.
-Sections 19–22 describe the preserved isolated procedures; the bounded policy
-binding below additionally permits those same procedures prospectively. Their
-profile bytes, versions, digests, focused passes and closure meanings are unchanged.
+R5 published the existing provider attempt/request/decision policy boundary.
+Human subsequently canonicalized
+`human_r21_four_specialized_activation_20261017` in `.ai/roadmap-state.yaml`
+(present at canonical main `0272675dba7a4f8db67d07a139b910fd75746ddc`).
+TASK-369 connects ordinary new production Brain attempts to that approved policy.
+It requires no renewed Human approval and does not edit the Human-owned roadmap.
+Sections 19–22 retain the historical isolated procedures; their same profile bytes,
+versions, digests, focused passes, source checks and closure meanings apply here.
 
-### 23.1. Outstanding separate Human/Brain cutover authority
+### 23.1. First-party caller and canonical authority
 
-**The single future cutover prerequisite is a separately explicit Human/Brain
-canonical planning reconciliation, after R5 has been reviewed and published.**
-That reconciliation must atomically establish the complete four-flow mapping,
-reconcile every conflicting current-selection roadmap mirror and preserve one
-effective NEXT, while preserving historical subjects. A trusted caller must
-authenticate this canonical state and the exact Human decision against the bound
-canonical main/currentness before admitting a prospective specialized attempt.
-This Human/Brain-owned roadmap mutation remains outstanding and unfulfilled by
-R5 implementation, synthetic fixtures, implementation approval, registry
-membership, transport receipt, Issue/workflow status, Executor claims or even
-reviewed R5 publication alone. No R5 change writes the roadmap, a risk-acceptance
-record, Kernel, Runtime, Reviewer, Publisher or downstream policy.
+The first-party provider invocation surface is
+`aios_renew.brain_provider.attempt`. For an ordinary new audited call without
+explicit R5 policy inputs, it calls `brain_context.canonical_audit_inputs` and
+supplies the resulting normalized policy, exact profile package and executable
+authenticator to the existing R5 protocol. No launcher, new Flow Resolver,
+test-only adapter, manual policy or `conformance_only` flag is required:
 
-The only supported future active mapping is:
+```python
+attempt(provider, packet, return_contract_package, external_bindings,
+        fresh_packet_supplier=fresh_packet_supplier,
+        architecture_source_context=authenticated_architecture_sources)
+```
+
+Other selected flows retain their existing source-context arguments. The optional
+`repo` selects the operational repository; omission resolves the current workspace.
+DIAGNOSTIC retains its existing direct invocation. This integration owns no
+authoring admission, execution dispatch or canonical mutation authority.
+
+The caller uses the configured canonical Git transport, with the existing strict
+detached-observation resolution where applicable. It reads canonical main's
+approval, profile registry and selected return contract from immutable Git blobs,
+never working-tree policy files. Transport identity is captured and rechecked.
+It rejects duplicate/competing activation records, missing approval, conflicting
+decision/status/target fields, incomplete mappings and missing pinned content.
+The newer explicit activation governs prospectively over the dated V1 cutover;
+the activation record's input-era observations about missing caller integration
+are not a second profile selector.
+
+The caller independently resolves the canonical `RUN-368-001` REVIEW and artifact
+refs. It checks approval's exact REVIEW SHA, `REVIEW-368-001` PRIMARY PASS and all
+TASK-368 acceptance entries, TASK-368 revision 1 in the published source, matching
+RUN/RESULT source SHA, and publication ancestry in canonical main. The approved
+source is `f4d944474b4450da3d49376b6b034c9f9d413d60`; its canonical approval and
+lineage, rather than that literal alone, establish authority. Ref reads bracket
+source composition and are repeated at ADMIT and CONTINUE. Unavailable transport
+or changed canonical identity rejects without local-ref, V1 or V3 fallback.
+
+Human and Brain authority digests are derived from those independently read
+approval and reviewed-publication records. R5 binds them to the packet's current
+canonical main/work context, selected flow, exact subject, normalized sources,
+profile and return bindings. A matching/self-declared hash or provenance string
+cannot stand in for the Git reads. Source-context semantics and freshness remain
+the published R1–R5 contract; the integration does not fabricate missing sources.
+Before admission the ordinary caller also obtains a fresh DecisionPacket from
+its existing trusted `fresh_packet_supplier` and requires the same complete
+packet/work/subject binding as the submitted packet. Missing, unavailable or
+changed fresh composition stops before the first provider call.
+
+The approved default mapping is:
 
 | Existing selected flow | Profile | Version | Normalized digest | Normative procedure |
 | --- | --- | --- | --- | --- |
@@ -1445,7 +1484,7 @@ the complete table above and a non-null reviewed R5 publication reference.
 Missing, mixed, partial, unknown, renamed, rehashed or wrong-version profile
 identities reject. This structural validation grants no authentication.
 
-The trusted external caller supplies `selection_authenticator(selection, phase)`
+The trusted caller supplies `selection_authenticator(selection, phase)`
 as executable caller-owned control-plane authority, outside provider/model input.
 It must independently authenticate the actual canonical Human/Brain policy,
 reviewed publication prerequisite, complete reconciled planning state, current
@@ -1454,7 +1493,9 @@ request it must also authenticate that individual Human choice. It must compare
 these facts with its independently obtained source, not echo request labels or
 trust model-produced hashes. A model-supplied callable or an unconditional
 acknowledgment is not an authenticator. Production credentials, trust roots and
-authenticated reads remain with that caller; R5 introduces none.
+authenticated reads remain with that caller. The ordinary first-party caller now
+implements these reads using the canonical source described in section 23.1;
+separately explicit R5 callers retain their original authentication contract.
 
 `construct_request(..., request_mode="PROSPECTIVE", audit_policy=...,
 selection_authenticator=...)` binds the policy to one existing `selected_flow`,
@@ -1486,14 +1527,16 @@ the authenticated selection establishes its prospective use. The attempt does
 not invoke or require an unsolicited V1 pass. Missing specialized content stops
 the attempt without V1/V3 fallback.
 
-The ordinary legacy production call without policy retains exact V1 and its
-existing serialized request format. It rejects new ordinary V2/V3 or specialized
-attempts. Existing explicit low-level historical modes, serialized V1/V2/V3
-subjects and isolated `conformance_only=True` procedures remain compatible;
-isolated conformance cannot be combined with a prospective policy or authorize
-production selection. Future canonical-policy callers must use the authenticated
-policy boundary, including an authenticator when policy lookup is unavailable,
-so absence cannot turn into an implicit legacy V1 selection.
+The ordinary new production call without policy uses canonical FOUR_SPECIALIZED.
+Omitting the optional profile package lets the caller resolve the selected pinned
+body; an explicitly supplied conflicting V1/V2/V3 or specialized package rejects.
+Missing canonical policy or authentication cannot turn into implicit legacy V1.
+Existing explicit low-level historical modes, serialized V1/V2/V3 subjects and
+separately authenticated R5 inputs retain their contracts. Isolated
+`conformance_only=True` procedures, including exact V1 transport support, remain
+separate from production admission and cannot be combined with prospective policy.
+Pure historical V1/V2/V3 request constructors and replay validation perform no
+canonical Git reads.
 
 Admission uses authenticator phase `ADMIT`. The attempt captures the normalized
 first request, policy, profile and return binding. Before the second pass and
@@ -1512,6 +1555,9 @@ A new packet, source, main, return contract, profile, Human option or policy
 cannot replace the first-pass binding. A new Human choice requires a fresh,
 separately bound decision. Pure historical replay preserves old request/decision
 bytes; replay validation alone cannot authenticate a new production attempt.
+The ordinary first-party authenticator takes the bounded rejection branch on any
+canonical source/main/ref movement. It does not require an admitted session to
+adopt the newer default or rewrite its original stage/profile/return lineage.
 
 ### 23.4. Individual V1 substitution and correction cognitive support
 
@@ -1523,6 +1569,15 @@ to authenticate this exact individual Human choice before stage one. It selects
 only `V1_OPTION_CONSTRUCT` then `V1_OPTION_RECONCILE`, using the existing pinned V1
 and source checks. It cannot combine with AOA/TCA or substitute a stale, forged,
 literal-only or model-preferred selection. No V3 fallback is available.
+
+On the ordinary first-party path, `human_choice_authenticator(selection, phase)`
+must be supplied from the caller's trusted Human input channel when an individual
+option is present. It authenticates the actual exact-subject Human choice at
+ADMIT and CONTINUE in addition to the caller's canonical Git authentication.
+The callable must return literal `True`; absence, a Human label, truthy text,
+exceptions or withdrawal reject. It is never serialized or sent to the provider.
+The caller must independently authenticate the Human input, not acknowledge the
+request's own labels. `human_input` text alone does not opt into V1.
 
 For REMEDIATION_AUTHORING and REPAIR_AUTHORING a normative V1 option rejects.
 Optional `human_v1_deep_support` is a closed, externally authenticated Human
@@ -1542,8 +1597,19 @@ a later separately approved policy change unsupported by this boundary.
 
 ### 23.5. Focused migration regression surface
 
-The three existing focused test files contain synthetic pre-cutover/future-active
-cases for all four flows and both native transports, zero unsolicited V1 calls,
+The focused provider/context/protocol tests exercise the public production
+`attempt` path using real temporary canonical Git repositories and refs. All four
+flows and both native transports omit manually supplied policy/authentication and
+the conformance flag. They cover the approved defaults and exact pass counts,
+missing/duplicate/conflicting approval, incomplete mappings, absent pinned bodies,
+unavailable authentication/remote reads, stale main, foreign repository, mismatched
+REVIEW/RUN/RESULT/publication, working-tree forgeries and changed continuation.
+Rehashed return-contract substitutions and stale work before admission also reject.
+They also cover independently authenticated individual Human V1 substitution and
+read-only support, unavailable/withdrawn Human authority and zero extra calls.
+
+Existing synthetic pre-cutover/explicit R5 policy cases retain all four flows and
+both native transports, zero unsolicited V1 calls,
 external authority failures, partial policy, wrong profile/flow/digest, Human
 literal forgery, sole V1 substitution, optional correction support, changed main,
 policy movement before the second pass/final return, authenticated original
@@ -1554,5 +1620,7 @@ provider dependencies while exercising the existing final-contract paths.
 AUTHOR_TASK, AUTHOR_REPAIR and AUTHOR_REMEDIATION retain their direct-final
 boundaries. The historical V1 preflight helper remains inert on those paths;
 neither `audit_selection` nor serialized audit support becomes mutation authority.
-Runtime owns canonical focused verification and EVIDENCE; no full-suite or
-empirical provider-quality improvement is required or claimed by R5.
+Runtime owns canonical focused verification and EVIDENCE. The Executor's bounded
+implementation and local sanity do not establish live canonical verification,
+publication, roadmap advancement, Lean VP activation, downstream adoption or
+empirical provider-quality improvement. No full-suite work is required.

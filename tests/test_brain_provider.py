@@ -20,6 +20,7 @@ from test_brain_provider_protocol import (
     tca_inputs, tca_package, tca_response, v1_only_package, human_v1_selection,
     aoa_inputs, aoa_package, aoa_response, aoa_candidate,
     R5_FLOWS, r5_case, r5_response, audit_policy_example,
+    canonical_audit_repo, production_inputs,
 )
 
 
@@ -29,9 +30,233 @@ TASK = {"task_id": "TASK-999", "revision": 1}
 
 @pytest.fixture
 def profile_package(v1_only_package):
-    # New ordinary attempts use current V1. Historical V2/V3 replay remains
-    # exercised at the pure request/decision and semantic boundaries.
+    # Exact V1 transport compatibility uses explicit isolated conformance.
     return deepcopy(v1_only_package)
+
+
+@pytest.fixture(autouse=True)
+def no_implicit_repository_network(tmp_path, monkeypatch):
+    # Production integration tests explicitly select their real Git fixture.
+    # Legacy rejection cases must never contact the developer's canonical remote.
+    monkeypatch.chdir(tmp_path)
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+def test_first_party_ordinary_attempt_reads_canonical_policy_and_runs_exact_default(
+        registry, canonical_audit_repo, monkeypatch, flow, kind):
+    # This is the public production entrypoint with neither a policy nor an
+    # authenticator/test adapter/conformance flag supplied by the test.
+    monkeypatch.chdir(canonical_audit_repo.repo)
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical_audit_repo)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, provider=kind, model=kind, semantic=r5_response(req))
+    result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
+                     fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()), **sources)
+    modes = {"ARCHITECTURE": ["AOA_CONSTRUCT", "AOA_RECONCILE"],
+             "TASK_AUTHORING": ["TCA_CONSTRUCT", "TCA_RECONCILE"],
+             "REMEDIATION_AUTHORING": ["MOA_CONSTRUCT", "MOA_RECONCILE"],
+             "REPAIR_AUTHORING": ["ROA_CONFORMANCE"]}
+    assert [req["request_mode"] for req in calls] == modes[flow]
+    assert len(result.attributions) == len(modes[flow])
+    approval = canonical_audit_repo.roadmap[canonical_audit_repo.approval_key]
+    assert all(req["audit_profile_package"]["audit_profile_ref"] == approval["target_profiles"][flow] for req in calls)
+    assert all(req["audit_selection"] == calls[0]["audit_selection"] for req in calls)
+    assert calls[0]["audit_selection"]["policy"]["r5_publication_sha"] == canonical_audit_repo.source_sha
+    assert result.decision["audit_profile_ref"] == approval["target_profiles"][flow]
+    assert revalidate_decision(result.decision, calls[-1]) == result.decision
+    assert "selection_authenticator" not in json.dumps(calls)
+
+
+@pytest.mark.parametrize("fault", (
+    "missing", "duplicate", "conflicting", "partial", "wrong_pin", "missing_body",
+    "missing_authenticator", "unavailable", "stale_main", "foreign_repository",
+    "review_binding", "wrong_review_source", "failed_review_acceptance", "missing_review",
+    "unpublished", "artifact_binding", "explicit_v1", "explicit_v3",
+    "stale_work", "return_binding",
+))
+def test_first_party_canonical_failures_abort_before_provider_without_fallback(
+        registry, canonical_audit_repo, fault):
+    import yaml
+    from aios_renew.brain_audit import parse_profile_registry, profile_ref
+
+    canonical = canonical_audit_repo
+    approval = canonical.roadmap[canonical.approval_key]
+    if fault == "missing":
+        canonical.roadmap.clear()
+        canonical.save_roadmap()
+    elif fault == "duplicate":
+        raw = yaml.safe_dump(canonical.roadmap).encode()
+        canonical.save_roadmap(raw + raw)
+    elif fault == "conflicting":
+        canonical.roadmap["human_r21_four_specialized_activation_20261018"] = deepcopy(approval)
+        canonical.save_roadmap()
+    elif fault == "partial":
+        del approval["target_profiles"]["REPAIR_AUTHORING"]  # Reject even for ARCHITECTURE.
+        canonical.save_roadmap()
+    elif fault == "wrong_pin":
+        approval["target_profiles"]["TASK_AUTHORING"]["version"] = True
+        canonical.save_roadmap()
+    elif fault == "missing_body":
+        raw = yaml.safe_load((canonical.canonical / ".ai/brain-audit-profiles.yaml").read_bytes())
+        raw["profiles"] = [p for p in raw["profiles"] if p["id"] != "tca-1"]
+        canonical.write(".ai/brain-audit-profiles.yaml", yaml.safe_dump(raw).encode())
+        canonical.main_sha = canonical.commit("missing pinned content")
+    elif fault == "missing_authenticator":
+        canonical.git(canonical.repo, "config", "--unset", "branch.main.remote")
+    elif fault == "unavailable":
+        canonical.git(canonical.repo, "config", "remote.origin.url", str(canonical.repo / "unavailable"))
+    elif fault == "review_binding":
+        approval["review_decision_sha"] = "f" * 40
+        canonical.save_roadmap()
+    elif fault in {"wrong_review_source", "failed_review_acceptance"}:
+        if fault == "wrong_review_source":
+            canonical.review["reviewed_sha"] = "f" * 40
+        else:
+            canonical.review["acceptance"]["AC1"] = "FAIL"
+        canonical.write(".ai/reviews/REVIEW-368-001.yaml", yaml.safe_dump(canonical.review).encode())
+        sha = canonical.commit("conflicting canonical R5 review")
+        canonical.git(canonical.canonical, "update-ref", "refs/heads/aios/review-decision/RUN-368-001", sha)
+        approval["review_decision_sha"] = sha
+        canonical.save_roadmap()
+    elif fault == "missing_review":
+        canonical.git(canonical.canonical, "update-ref", "-d", "refs/heads/aios/review-decision/RUN-368-001")
+    elif fault == "unpublished":
+        tree = canonical.git(canonical.canonical, "rev-parse", "HEAD^{tree}")
+        sha = canonical.git(canonical.canonical, "commit-tree", tree, "-m", "unpublished unrelated source")
+        approval.update(reviewed_published_source_sha=sha, approved_against_main_sha=sha)
+        canonical.save_roadmap()
+    elif fault == "artifact_binding":
+        canonical.write(".ai/transport/result.json", json.dumps({"head_sha": "f" * 40}).encode())
+        sha = canonical.commit("conflicting R5 RESULT subject")
+        canonical.git(canonical.canonical, "update-ref", "refs/heads/aios/artifacts/RUN-368-001", sha)
+        canonical.main_sha = sha
+    supplied, contract, bindings, sources = production_inputs(registry, "ARCHITECTURE", canonical)
+    if fault == "stale_main":
+        canonical.commit("advance canonical main while caller still has old packet")
+    elif fault == "foreign_repository":
+        body = supplied.as_dict()
+        body["canonical_facts"]["repository"] = "unrelated/repository"
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        supplied = DecisionPacket(body)
+    elif fault == "return_binding":
+        from aios_renew.brain_return_contract import return_contract_ref
+        contract["contract"]["candidate_contract"]["requirements"].append("Self-declared replacement guidance")
+        contract["return_contract_ref"] = return_contract_ref(contract["contract"], contract["bounds"])
+    fresh_packet = supplied
+    if fault == "stale_work":
+        body = supplied.as_dict()
+        body["work_context_fingerprint"] = "f" * 64
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        fresh_packet = DecisionPacket(body)
+    package = None
+    if fault in {"explicit_v1", "explicit_v3"}:
+        profiles = parse_profile_registry((canonical.repo / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+        identity = "aios-adaptive-brain-audit-v1" if fault == "explicit_v1" else "brain-high-value-v3"
+        profile = next(p for p in profiles if p["id"] == identity)
+        package = {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+    calls = []
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(MappingBrainProvider("mapping", "one", lambda req: calls.append(req)), supplied, contract,
+                bindings, package, lambda: fresh_packet, repo=canonical.repo, **sources)
+    assert error.value.reason_code == "PROTOCOL_INPUT_INVALID"
+    assert error.value.invocation_count == 0 and calls == []
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("after", (1, 2))
+def test_first_party_continuation_stops_on_canonical_movement_and_keeps_original_lineage(
+        registry, canonical_audit_repo, flow, after):
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical_audit_repo)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        if len(calls) == after:
+            canonical_audit_repo.commit("canonical main moved after admission")
+        return wrapper(req, semantic=r5_response(req))
+    provider = MappingBrainProvider("mapping", "one", callback)
+    if flow == "REPAIR_AUTHORING" and after == 2:
+        assert attempt(provider, supplied, contract, bindings, fresh_packet_supplier=lambda: supplied,
+                       repo=canonical_audit_repo.repo, **sources)
+    else:
+        with pytest.raises(BrainAttemptError) as error:
+            attempt(provider, supplied, contract, bindings, fresh_packet_supplier=lambda: supplied,
+                    repo=canonical_audit_repo.repo, **sources)
+        assert error.value.reason_code == "FRESH_PACKET_INVALID"
+        assert error.value.invocation_count == after
+    assert all(req["audit_selection"] == calls[0]["audit_selection"] for req in calls)
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+def test_first_party_individual_human_choice_is_bound_without_dual_audit(
+        registry, canonical_audit_repo, v1_only_package, flow):
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical_audit_repo)
+    if flow in {"ARCHITECTURE", "TASK_AUTHORING"}:
+        context = sources["architecture_source_context" if flow == "ARCHITECTURE" else "task_source_context"]
+        choice = human_v1_selection(supplied, contract, bindings, context, v1_only_package)
+        choices = {"human_v1_option": choice}
+    else:
+        choice = {"selected_by": "HUMAN", "option": "V1_READ_ONLY", "packet_fingerprint": supplied.packet_fingerprint,
+                  "work_context_fingerprint": supplied.as_dict()["work_context_fingerprint"],
+                  "return_contract_ref": contract["return_contract_ref"], "external_bindings": bindings,
+                  "source_context_fingerprint": digest({k: sources.get(k) for k in (
+                      "moa_source_context", "task_source_context", "architecture_source_context")}),
+                  "audit_profile_ref": v1_only_package["audit_profile_ref"]}
+        choices = {"human_v1_deep_support": choice}
+    # The trusted input channel has its own detached exact-subject Human choice.
+    human_channel = deepcopy(choice)
+    phases, calls = [], []
+    def authenticate_human(selection, phase):
+        phases.append(phase)
+        return selection[next(iter(choices))] == human_channel
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, semantic=r5_response(req))
+    result = attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                     fresh_packet_supplier=lambda: supplied, repo=canonical_audit_repo.repo,
+                     human_choice_authenticator=authenticate_human, **choices, **sources)
+    assert phases[0] == "ADMIT" and all(phase == "CONTINUE" for phase in phases[1:])
+    if "human_v1_option" in choices:
+        assert [req["request_mode"] for req in calls] == ["V1_OPTION_CONSTRUCT", "V1_OPTION_RECONCILE"]
+        assert result.decision["audit_profile_ref"] == v1_only_package["audit_profile_ref"]
+    else:
+        assert len(calls) == (1 if flow == "REPAIR_AUTHORING" else 2)
+        assert not any(req["request_mode"].startswith(("AUDIT_", "V1_OPTION_")) for req in calls)
+        assert "v1_audit" not in result.decision["semantic_value"]
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("fault", ("missing", "literal", "false", "truthy", "unavailable", "revoked"))
+def test_first_party_human_labels_need_available_current_individual_authority(
+        registry, canonical_audit_repo, v1_only_package, flow, fault):
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical_audit_repo)
+    if flow in {"ARCHITECTURE", "TASK_AUTHORING"}:
+        context = sources["architecture_source_context" if flow == "ARCHITECTURE" else "task_source_context"]
+        choices = {"human_v1_option": human_v1_selection(supplied, contract, bindings, context, v1_only_package)}
+    else:
+        choices = {"human_v1_deep_support": {
+            "selected_by": "HUMAN", "option": "V1_READ_ONLY", "packet_fingerprint": supplied.packet_fingerprint,
+            "work_context_fingerprint": supplied.as_dict()["work_context_fingerprint"],
+            "return_contract_ref": contract["return_contract_ref"], "external_bindings": bindings,
+            "source_context_fingerprint": digest({k: sources.get(k) for k in (
+                "moa_source_context", "task_source_context", "architecture_source_context")}),
+            "audit_profile_ref": v1_only_package["audit_profile_ref"]}}
+    calls = []
+    def authenticate(_selection, _phase):
+        if fault == "unavailable":
+            raise OSError("trusted Human source unavailable")
+        return "AUTHENTICATED" if fault == "truthy" else fault == "revoked" and not calls
+    authority = None if fault == "missing" else "HUMAN" if fault == "literal" else authenticate
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, semantic=r5_response(req))
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                fresh_packet_supplier=lambda: supplied, repo=canonical_audit_repo.repo,
+                human_choice_authenticator=authority, **choices, **sources)
+    assert error.value.invocation_count == len(calls) == (1 if fault == "revoked" else 0)
 
 
 @pytest.mark.parametrize("flow", R5_FLOWS)
@@ -783,7 +1008,7 @@ def test_direct_one_call_and_attribution_independence(registry, kind):
 
 
 @pytest.mark.parametrize("kind", ["mapping", "json"])
-def test_audited_two_calls_fresh_supplier_and_fresh_stage2(registry, profile_package, kind):
+def test_isolated_v1_two_calls_fresh_supplier_and_fresh_stage2(registry, profile_package, kind):
     packet, package, bindings = setup(registry)
     calls, fresh_calls = [], []
     def callback(request):
@@ -795,7 +1020,7 @@ def test_audited_two_calls_fresh_supplier_and_fresh_stage2(registry, profile_pac
         fresh_calls.append(None)
         return DecisionPacket(packet.as_dict())
     result = attempt(adapter(kind, native(kind, callback), kind, "model"), packet, package,
-                     bindings, profile_package, fresh)
+                     bindings, profile_package, fresh, conformance_only=True)
     assert [item["request_mode"] for item in calls] == ["AUDIT_CONSTRUCT", "AUDIT_RECONCILE"]
     assert len(fresh_calls) == 1 and len(result.attributions) == 2
     assert calls[1]["stage1_lineage"]["stage1_decision_fingerprint"]
@@ -814,7 +1039,7 @@ def test_independent_adapter_semantic_identity(registry, profile_package):
                            attribution={"provider": kind, "model": "model-" + kind,
                                         "session_id": kind, "invocation_id": str(len(calls))})
         result = attempt(adapter(kind, native(kind, callback), kind, "model-" + kind),
-                         packet, package, bindings, profile_package, lambda: DecisionPacket(packet.as_dict()))
+                         packet, package, bindings, profile_package, lambda: DecisionPacket(packet.as_dict()), conformance_only=True)
         observed.append(([item["request_fingerprint"] for item in calls],
                          result.decision["decision_fingerprint"], result.attributions))
     assert observed[0][:2] == observed[1][:2]
@@ -880,14 +1105,14 @@ def test_provider_attempt_phase_ledger_is_bound_and_fail_closed(registry, profil
         return DecisionPacket(packet.as_dict())
     provider = adapter(kind, native(kind, callback), kind, "model")
     if fault is None:
-        result = attempt(provider, packet, package, bindings, profile_package, fresh)
+        result = attempt(provider, packet, package, bindings, profile_package, fresh, conformance_only=True)
         assert result.decision["semantic_value"]["acceptance_phase_ledger"] == [{"id": "AC1", "phase": "CLAIM_NOW"}]
         for section in ("cross_authority_context", "canonical_shape", "terminal_lifecycle"):
             assert result.decision["semantic_value"][section] == stage2_response(calls[1], candidate)[section]
         assert revalidate_decision(result.decision, calls[1]) == result.decision
     else:
         with pytest.raises(BrainAttemptError) as error:
-            attempt(provider, packet, package, bindings, profile_package, fresh)
+            attempt(provider, packet, package, bindings, profile_package, fresh, conformance_only=True)
         assert error.value.reason_code == "PROVIDER_RESPONSE_INVALID"
     assert len(calls) == 2 and len(freshness) == 1
 
@@ -904,7 +1129,7 @@ def test_stage2_uses_stage1_normalized_packages_after_supplier_mutation(registry
         profile_package.clear()
         return DecisionPacket(packet.as_dict())
     result = attempt(MappingBrainProvider("mapping", "one", callback), packet, package,
-                     bindings, profile_package, supplier)
+                     bindings, profile_package, supplier, conformance_only=True)
     assert len(calls) == 2
     assert calls[1]["return_contract_package"] == calls[0]["return_contract_package"]
     assert calls[1]["external_bindings"] == calls[0]["external_bindings"]
@@ -952,7 +1177,7 @@ def test_exact_failure_boundaries(registry, profile_package, kind, failure, expe
         return DecisionPacket(packet.as_dict())
     with pytest.raises(BrainAttemptError) as caught:
         attempt(adapter(kind, native(kind, callback), kind, "one"), packet,
-                package, bindings, profile_package, supplier)
+                package, bindings, profile_package, supplier, conformance_only=True)
     error = caught.value
     assert (error.reason_code, error.invocation_count, error.phase) == (expected, count, phase)
     assert len(calls) == count
@@ -969,7 +1194,7 @@ def test_provider_model_drift(registry, profile_package, kind, stage):
         return wrapper(request, provider=kind, model="wrong" if len(calls) == stage else "one")
     with pytest.raises(BrainAttemptError) as caught:
         attempt(adapter(kind, native(kind, callback), kind, "one"), packet,
-                package, bindings, profile_package, lambda: DecisionPacket(packet.as_dict()))
+                package, bindings, profile_package, lambda: DecisionPacket(packet.as_dict()), conformance_only=True)
     assert (caught.value.reason_code, caught.value.invocation_count) == ("PROVIDER_ATTRIBUTION_MISMATCH", stage)
     assert len(calls) == stage
 
@@ -1044,7 +1269,7 @@ def test_changed_candidate_no_decision_stays_transient(registry, profile_package
         }
         return wrapper(request, semantic=material)
     result = attempt(MappingBrainProvider("mapping", "one", callback), packet, package,
-                     bindings, profile_package, lambda: DecisionPacket(packet.as_dict()))
+                     bindings, profile_package, lambda: DecisionPacket(packet.as_dict()), conformance_only=True)
     assert len(calls) == 2
     assert result.decision["semantic_value"]["outcome"] == "NO_DECISION"
     assert result.decision["semantic_value"]["handoff_candidate"] is None
