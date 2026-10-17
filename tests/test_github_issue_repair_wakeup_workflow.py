@@ -333,7 +333,7 @@ def test_receipt_accepts_only_successful_admission_and_dispatch() -> None:
     assert "verification: not_asserted_by_carrier" in text
     assert "semantic_review: not_asserted_by_carrier" in text
     assert "publication: not_asserted_by_carrier" in text
-    assert "status: ${accepted ? 'SELF_HOST_COMPLETED' : 'REJECTED'}" in text
+    assert "status: ${accepted ? 'SELF_HOST_COMPLETED' : admitted ? 'OPERATIONAL_FAILED' : 'REJECTED'}" in text
     assert "boundary: dispatched ? 'SELF_HOST_COMPLETED' : 'OPERATIONAL_FAILED'" in text
     assert "DOWNSTREAM_WORKFLOW_FAILED" in text
     assert "AIOS_OPERATIONAL_RECEIPT_V2=" in text
@@ -416,3 +416,24 @@ def test_wake_pointer_export_preserves_source_lifecycle_and_attempt_binding() ->
     assert text.count("source_kind:") == 1
     assert "attention_family" not in text
     assert "[AIOS BRAIN WAKE]" not in text
+
+
+def test_delegated_issue_gate_rechecks_proof_before_one_canonical_command() -> None:
+    _, text = _workflow(TARGET)
+    proof = text.index('from aios_renew.github_issue_repair_wakeup import delivery_main')
+    command = text.index('$controlSource repair-wakeup ')
+    assert proof < command
+    assert "$env:AIOS_DELIVERY_EVENT -ceq 'issues'" in text
+    assert "$env:AIOS_EXECUTOR -ceq 'AUTO'" in text
+    assert "ls-remote --heads" in text and "refs/heads/main" in text
+    assert "-cnotin @('codex', 'antigravity', 'AUTO')" in text
+    assert "'--executor', $env:AIOS_EXECUTOR" in text
+    assert "if (-not [string]::IsNullOrEmpty($option[1]))" in text
+
+
+def test_carrier_auto_receipt_does_not_claim_resolved_coding_executor() -> None:
+    _, text = _workflow(CARRIER)
+    assert "requested_executor:" in text
+    assert "['codex', 'antigravity'].includes(process.env.AIOS_EXECUTOR)" in text
+    assert "name: Expose bounded admission reason" in text
+    assert "admitted ? 'OPERATIONAL_FAILED' : 'REJECTED'" in text

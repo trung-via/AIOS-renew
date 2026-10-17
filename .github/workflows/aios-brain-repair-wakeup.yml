@@ -64,6 +64,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
+      - name: Expose bounded admission reason
+        if: always()
+        env:
+          AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-repair-wakeup-receipt.txt
+        run: |
+          if [ -f "$AIOS_RECEIPT_PATH" ]; then cat "$AIOS_RECEIPT_PATH" >> "$GITHUB_STEP_SUMMARY"; fi
+
   dispatch:
     needs: admit
     uses: ./.github/workflows/aios-self-hosted-repair-wakeup.yml
@@ -104,7 +111,7 @@ jobs:
             const accepted = admitted && dispatched;
             const lines = [
               'AIOS REPAIR WAKEUP CARRIER RECEIPT',
-              `status: ${accepted ? 'SELF_HOST_COMPLETED' : 'REJECTED'}`,
+              `status: ${accepted ? 'SELF_HOST_COMPLETED' : admitted ? 'OPERATIONAL_FAILED' : 'REJECTED'}`,
               `self_host_completed: ${accepted}`,
               'repair_run_outcome: not_asserted_by_carrier',
               'verification: not_asserted_by_carrier',
@@ -117,14 +124,14 @@ jobs:
                 family: 'REPAIR',
                 delivery: {kind: 'repair_dispatch_id', id: process.env.AIOS_REPAIR_DISPATCH_ID},
                 boundary: dispatched ? 'SELF_HOST_COMPLETED' : 'OPERATIONAL_FAILED',
-                selectors: {failed_run_id: process.env.AIOS_FAILED_RUN_ID, repair_sha: process.env.AIOS_REPAIR_SHA, executor: process.env.AIOS_EXECUTOR || undefined, model: process.env.AIOS_MODEL || undefined, reasoning_effort: process.env.AIOS_REASONING_EFFORT || undefined, model_source: process.env.AIOS_MODEL_SOURCE || undefined, effort_source: process.env.AIOS_EFFORT_SOURCE || undefined},
+                selectors: {failed_run_id: process.env.AIOS_FAILED_RUN_ID, repair_sha: process.env.AIOS_REPAIR_SHA, executor: ['codex', 'antigravity'].includes(process.env.AIOS_EXECUTOR) ? process.env.AIOS_EXECUTOR : undefined, model: process.env.AIOS_MODEL || undefined, reasoning_effort: process.env.AIOS_REASONING_EFFORT || undefined, model_source: process.env.AIOS_MODEL_SOURCE || undefined, effort_source: process.env.AIOS_EFFORT_SOURCE || undefined},
               };
               if (!dispatched) operationalReceipt.cause = {authority: 'CARRIER', phase: 'DOWNSTREAM_WORKFLOW', reason_code: 'DOWNSTREAM_WORKFLOW_FAILED'};
               lines.push(
                 `repair_dispatch_id: ${process.env.AIOS_REPAIR_DISPATCH_ID}`,
                 `failed_run_id: ${process.env.AIOS_FAILED_RUN_ID}`,
                 `repair_sha: ${process.env.AIOS_REPAIR_SHA}`,
-                `executor: ${process.env.AIOS_EXECUTOR || 'none'}`,
+                `requested_executor: ${process.env.AIOS_EXECUTOR || 'none'}`,
                 `model: ${process.env.AIOS_MODEL || 'none'}`,
                 `reasoning_effort: ${process.env.AIOS_REASONING_EFFORT || 'none'}`,
                 `model_source: ${process.env.AIOS_MODEL_SOURCE || 'none'}`,

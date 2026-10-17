@@ -8813,6 +8813,100 @@ def run_approved_remediation_intent(
     return approval_summary, dispatch_outcome
 
 
+def _project_auto_repair_rejection(
+    repair_dispatch_id: str, failed_run_id: str, repair_sha: str, *, source_profile: bool,
+) -> None:
+    """Bounded carrier/admission observation; never writes canonical failure state."""
+    try:
+        from .operational_receipt import OperationalReceipt, write_environment_receipt
+        from .repair_dispatch import FAILED_RUN_ID_PATTERN, REPAIR_SHA_PATTERN
+        selectors = {}
+        if isinstance(failed_run_id, str) and FAILED_RUN_ID_PATTERN.fullmatch(failed_run_id):
+            selectors["failed_run_id"] = failed_run_id
+        if isinstance(repair_sha, str) and REPAIR_SHA_PATTERN.fullmatch(repair_sha):
+            selectors["repair_sha"] = repair_sha
+        write_environment_receipt(OperationalReceipt(
+            family="REPAIR", delivery_id=repair_dispatch_id, boundary="ADMISSION_REJECTED",
+            selectors=selectors,
+            cause={"authority": "CARRIER",
+                   "phase": "AUTO_SOURCE_PROFILE" if source_profile else "AUTO_AUTHORIZATION",
+                   "reason_code": "CANONICAL_SOURCE_PROFILE_REQUIRED" if source_profile else "EXACT_HUMAN_REPAIR_PROOF_REQUIRED"},
+        ))
+    except Exception:
+        pass
+
+
+def _authenticated_auto_repair_request(
+    repair_dispatch_id: str, failed_run_id: str, repair_sha: str,
+) -> Any:
+    from .github_issue_repair_wakeup import (
+        GitHubIssueRepairWakeupError, authenticated_delivery,
+    )
+    try:
+        request = authenticated_delivery(
+            policy_path=Path(__file__).resolve().parents[2] / ".ai/brain-repair-wakeup-carriers.yaml",
+        )
+        if (request.executor != "AUTO" or request.repair_dispatch_id != repair_dispatch_id
+                or request.failed_run_id != failed_run_id or request.repair_sha != repair_sha):
+            raise OperatorError("AUTO Human authorization/REPAIR subject mismatch")
+        return request
+    except GitHubIssueRepairWakeupError as exc:
+        raise OperatorError(f"AUTO authorization rejected: {exc}") from exc
+
+
+def _resolve_auto_repair_profile(
+    root: Path, *, failed_run_id: str, task_id: str, task_revision: int,
+    repair_dispatch_id: str, failed_head_sha: str | None = None,
+) -> tuple[ResolvedExecutionProfile, str]:
+    """Reuse only the exact protected source RUN profile, never its old label alone."""
+    from .execution_profile import execution_profile_identity
+    from .repair_dispatch import auto_source_profile_digest
+    from .review_transport import _read_remote_blob, resolve_transport_remote
+
+    try:
+        with _remote_observation_repository(root) as observer:
+            recovery = resolve_remote_repair_recovery(observer, failed_run_id=failed_run_id)
+            sources = [item for item in recovery.failures if item.run_id == failed_run_id]
+            if len(sources) != 1:
+                raise OperatorError("AUTO requires one unique canonical failed RUN")
+            artifact = sources[0]
+            data = _decode_remote_mapping(artifact.run, "RUN")
+            if data.get("kind") == "REMEDIATION":
+                run = _remediation_execution_from_data(data["execution"]).run
+            elif "kind" not in data:
+                run = _run_from_data(data)
+            else:
+                raise OperatorError("AUTO source RUN kind is invalid")
+            failure = _decode_remote_mapping(artifact.failure, "FAILURE")
+            if (run.run_id != failed_run_id or run.task.id != task_id or run.task.revision != task_revision
+                    or failure.get("kind") != "FAILURE"
+                    or failure.get("run_id") != failed_run_id
+                    or failure.get("executor") != run.executor
+                    or failure.get("base_sha") != run.base_sha
+                    or failure.get("task") != {"id": run.task.id, "revision": run.task.revision}
+                    or failure.get("failed_head_sha") != artifact.candidate_sha
+                    or (failed_head_sha is not None and artifact.candidate_sha != failed_head_sha)):
+                raise OperatorError("AUTO canonical source RUN/FAILURE mismatch")
+            if artifact.execution_profile is None:
+                raise OperatorError("AUTO source profile missing; select a Human coding profile explicitly")
+            profile = parse_execution_profile(artifact.execution_profile)
+            if profile.run_id != failed_run_id or profile.executor != run.executor:
+                raise OperatorError("AUTO source profile/RUN mismatch; select a Human profile explicitly")
+            policy_blob = _read_remote_blob(
+                observer, resolve_transport_remote(observer), artifact.candidate_sha,
+                ".ai/executor-profiles.yaml",
+            )
+            if policy_blob is None:
+                raise OperatorError("AUTO source profile policy missing")
+            validate_execution_profile(profile, parse_execution_profile_policy(policy_blob))
+            validate_execution_profile(profile, _SOURCE_REPAIR_POLICY.get() or load_execution_profile_policy(root))
+            digest = auto_source_profile_digest(failed_run_id, execution_profile_identity(profile))
+            return replace(profile, run_id=repair_dispatch_id), digest
+    except (ReviewTransportError, ExecutionProfileError, KeyError, TypeError,
+            ValueError, UnicodeError) as exc:
+        raise OperatorError("AUTO canonical source profile rejected; select an explicit Human profile") from exc
+
+
 def run_repair_wakeup(
     repair_dispatch_id: str,
     failed_run_id: str,
@@ -8834,6 +8928,7 @@ def run_repair_wakeup(
         RepairDispatchError,
         RepairInvocation,
         execute_repair_dispatch,
+        existing_auto_repair_authorization,
         existing_repair_profile,
         reject_existing_selector_collision,
         replay_existing_repair_dispatch,
@@ -8844,23 +8939,40 @@ def run_repair_wakeup(
         root = resolve_repository(repo)
         state_root = runtime_state_root(root)
         source_repair_policy = _SOURCE_REPAIR_POLICY.get()
+        automatic = executor == "AUTO"
+        auto_authorization = None
+        if automatic:
+            try:
+                if any(value is not None for value in (model, reasoning_effort, model_source, effort_source)):
+                    raise OperatorError("AUTO forbids mixed manual profile inputs; choose explicit or AUTO")
+                request = _authenticated_auto_repair_request(repair_dispatch_id, failed_run_id, repair_sha)
+            except OperatorError:
+                _project_auto_repair_rejection(repair_dispatch_id, failed_run_id, repair_sha, source_profile=False)
+                raise
+            auto_authorization = existing_auto_repair_authorization(
+                state_root=state_root, repo_root=root, repair_dispatch_id=repair_dispatch_id,
+                actor=request.actor, source_repair_policy=source_repair_policy,
+            )
         exists, remote_profile = existing_repair_profile(
             state_root=state_root,
             repo_root=root,
             repair_dispatch_id=repair_dispatch_id,
             source_repair_policy=source_repair_policy,
         )
-        remote_profile = _authorization_profile(
-            repo=root,
-            authorization_id=repair_dispatch_id,
-            executor=executor,
-            existing=exists,
-            bound_profile=remote_profile,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            model_source=model_source,
-            effort_source=effort_source,
-        )
+        if automatic:
+            executor = remote_profile.executor if remote_profile is not None else None
+        else:
+            remote_profile = _authorization_profile(
+                repo=root,
+                authorization_id=repair_dispatch_id,
+                executor=executor,
+                existing=exists,
+                bound_profile=remote_profile,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                model_source=model_source,
+                effort_source=effort_source,
+            )
         reject_existing_selector_collision(
             state_root=state_root,
             repo_root=root,
@@ -8870,6 +8982,7 @@ def run_repair_wakeup(
             executor=executor,
             execution_profile=remote_profile,
             source_repair_policy=source_repair_policy,
+            auto_authorization=auto_authorization,
         )
         replay = replay_existing_repair_dispatch(
             state_root=state_root,
@@ -8880,6 +8993,7 @@ def run_repair_wakeup(
             executor=executor,
             execution_profile=remote_profile,
             source_repair_policy=source_repair_policy,
+            auto_authorization=auto_authorization,
         )
         if replay is not None:
             return replay
@@ -8928,6 +9042,23 @@ def run_repair_wakeup(
         executor_required = preflight.executor_required
         if observed_executor_required is not executor_required:
             raise OperatorError("canonical REPAIR Executor requirement is inconsistent")
+        if automatic:
+            digest = None
+            if executor_required:
+                try:
+                    remote_profile, digest = _resolve_auto_repair_profile(
+                        root, failed_run_id=failed_run_id, task_id=preflight.task_id,
+                        task_revision=preflight.task_revision, failed_head_sha=preflight.failed_head_sha,
+                        repair_dispatch_id=repair_dispatch_id,
+                    )
+                except OperatorError:
+                    _project_auto_repair_rejection(repair_dispatch_id, failed_run_id, repair_sha, source_profile=True)
+                    raise
+                executor = remote_profile.executor
+            auto_authorization = {
+                "actor": request.actor, "source_run_id": failed_run_id,
+                "source_profile_sha256": digest,
+            }
         validate_repair_executor_requirement(action, executor_required, executor)
 
         def invoke_repair() -> RepairInvocation:
@@ -8972,6 +9103,7 @@ def run_repair_wakeup(
             invoke_repair=invoke_repair,
             execution_profile=remote_profile,
             source_repair_policy=source_repair_policy,
+            auto_authorization=auto_authorization,
         )
     except (RepairDispatchError, ExecutionProfileError) as exc:
         raise OperatorError(str(exc)) from exc
@@ -9216,7 +9348,7 @@ def _parser() -> argparse.ArgumentParser:
     repair_wakeup_parser.add_argument("failed_run_id")
     repair_wakeup_parser.add_argument("repair_sha")
     repair_wakeup_parser.add_argument(
-        "--executor", choices=("codex", "antigravity")
+        "--executor", choices=("codex", "antigravity", "AUTO")
     )
     repair_wakeup_parser.add_argument("--model")
     repair_wakeup_parser.add_argument("--reasoning-effort")
@@ -9834,54 +9966,63 @@ def main(
         elif args.command == "repair-wakeup":
             repair_root = resolve_repository(args.repo)
             from .repair_dispatch import existing_repair_profile
-            exists, repair_profile = existing_repair_profile(
-                state_root=runtime_state_root(repair_root),
-                repo_root=repair_root,
-                repair_dispatch_id=args.repair_dispatch_id,
-            )
-            repair_profile = _authorization_profile(
-                repo=repair_root,
-                authorization_id=args.repair_dispatch_id,
-                executor=args.executor,
-                existing=exists,
-                bound_profile=repair_profile,
-                model=args.model,
-                reasoning_effort=args.reasoning_effort,
-                model_source=args.model_source,
-                effort_source=args.effort_source,
-            )
+            repair_profile = None
+            if args.executor != "AUTO":
+                exists, repair_profile = existing_repair_profile(
+                    state_root=runtime_state_root(repair_root),
+                    repo_root=repair_root,
+                    repair_dispatch_id=args.repair_dispatch_id,
+                )
+                repair_profile = _authorization_profile(
+                    repo=repair_root,
+                    authorization_id=args.repair_dispatch_id,
+                    executor=args.executor,
+                    existing=exists,
+                    bound_profile=repair_profile,
+                    model=args.model,
+                    reasoning_effort=args.reasoning_effort,
+                    model_source=args.model_source,
+                    effort_source=args.effort_source,
+                )
+            outcome = None
             try:
                 outcome = run_repair_wakeup(
                     args.repair_dispatch_id,
                     args.failed_run_id,
                     args.repair_sha,
                     executor=args.executor,
-                    model=repair_profile.model if repair_profile is not None else None,
-                    reasoning_effort=(repair_profile.reasoning_effort if repair_profile is not None else None),
-                    model_source=(repair_profile.model_source if repair_profile is not None else None),
-                    effort_source=(repair_profile.effort_source if repair_profile is not None else None),
+                    model=repair_profile.model if repair_profile is not None else args.model,
+                    reasoning_effort=(repair_profile.reasoning_effort if repair_profile is not None else args.reasoning_effort),
+                    model_source=(repair_profile.model_source if repair_profile is not None else args.model_source),
+                    effort_source=(repair_profile.effort_source if repair_profile is not None else args.effort_source),
                     repo=repair_root,
                     native_runner=native_runner,
                     verification_runner=verification_runner,
                     monotonic_clock=monotonic_clock,
                 )
             finally:
-                _project_operational_delivery(
-                    repair_root,
-                    family="REPAIR",
-                    delivery_id=args.repair_dispatch_id,
-                    selectors={
-                        "failed_run_id": args.failed_run_id,
-                        "repair_sha": args.repair_sha,
-                        "executor": args.executor,
-                        **({
-                            "model": repair_profile.model,
-                            "reasoning_effort": repair_profile.reasoning_effort,
-                            "model_source": repair_profile.model_source,
-                            "effort_source": repair_profile.effort_source,
-                        } if repair_profile is not None else {}),
-                    },
-                )
+                if args.executor != "AUTO" or outcome is not None:
+                    if args.executor == "AUTO":
+                        _, repair_profile = existing_repair_profile(
+                            state_root=runtime_state_root(repair_root), repo_root=repair_root,
+                            repair_dispatch_id=args.repair_dispatch_id,
+                        )
+                    _project_operational_delivery(
+                        repair_root,
+                        family="REPAIR",
+                        delivery_id=args.repair_dispatch_id,
+                        selectors={
+                            "failed_run_id": args.failed_run_id,
+                            "repair_sha": args.repair_sha,
+                            "executor": (repair_profile.executor if repair_profile is not None else None) if args.executor == "AUTO" else args.executor,
+                            **({
+                                "model": repair_profile.model,
+                                "reasoning_effort": repair_profile.reasoning_effort,
+                                "model_source": repair_profile.model_source,
+                                "effort_source": repair_profile.effort_source,
+                            } if repair_profile is not None else {}),
+                        },
+                    )
             print(outcome.render())
             return outcome.exit_code
         elif args.command == "preflight-repair":

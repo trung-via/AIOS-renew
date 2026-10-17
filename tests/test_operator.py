@@ -12967,7 +12967,7 @@ def test_repair_wakeup_rejects_executor_authority_inconsistent_with_action(
         )
 
 
-@pytest.mark.parametrize("executor, verification_exit", [(None, 0), (None, 9), ("codex", 0)])
+@pytest.mark.parametrize("executor, verification_exit", [(None, 0), (None, 9), ("AUTO", 0), ("AUTO", 9), ("codex", 0)])
 def test_finalize_wakeup_reuses_admitted_package_through_durable_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     executor: str | None, verification_exit: int,
@@ -13023,7 +13023,10 @@ def test_finalize_wakeup_reuses_admitted_package_through_durable_boundary(
     request = dict(executor=executor, repo=repo,
                    native_runner=lambda *args, **kwargs: pytest.fail("reuse invoked native Executor"),
                    verification_runner=verify)
-    if executor is not None:
+    if executor == "AUTO":
+        _human_auto_issue(monkeypatch, repo, dispatch_id="repair-elided-101", failed_run_id=failed_run_id, repair_sha=repair_sha)
+        monkeypatch.setattr(operator_module, "_resolve_auto_repair_profile", lambda *a, **k: pytest.fail("executorless AUTO resolved coding profile"))
+    if executor not in (None, "AUTO"):
         before_runs = {path.name: path.read_bytes() for path in state.runs.glob("*.json")}
         with pytest.raises(OperatorError, match="forbids a coding Executor"):
             run_repair_wakeup("repair-elided-101", failed_run_id, repair_sha, **request)
@@ -15992,3 +15995,161 @@ def test_terminal_reconciliation_task336_historical_lineage_blockers(tmp_path, m
     assert observation.blocker["code"] == expected
     assert {p: p.read_bytes() for p in before} == before
     assert git(repo, "show-ref") == refs
+
+
+def _human_auto_issue(monkeypatch: pytest.MonkeyPatch, root: Path, *, dispatch_id="auto-365", failed_run_id="RUN-111-001", repair_sha="a" * 40) -> None:
+    request = {
+        "format": "AIOS_REPAIR_WAKEUP_REQUEST", "version": 3,
+        "repair_dispatch_id": dispatch_id, "failed_run_id": failed_run_id,
+        "repair_sha": repair_sha, "executor": "AUTO", "model": None, "reasoning_effort": None,
+    }
+    event = {
+        "action": "opened", "sender": {"login": "trung-via", "type": "User"},
+        "repository": {"full_name": "trung-via/AIOS-renew"},
+        "issue": {"number": 365, "title": "[AIOS REPAIR WAKEUP]",
+                  "user": {"login": "trung-via", "type": "User"}, "body": json.dumps(request)},
+    }
+    event_path = root.parent / f"{root.name}-github-event.json"
+    event_path.write_text(json.dumps(event), encoding="utf-8")
+    for key, value in {
+        "GITHUB_EVENT_PATH": str(event_path), "GITHUB_REPOSITORY": "trung-via/AIOS-renew",
+        "AIOS_CONTROL_SHA": "c" * 40, "GITHUB_REF": "refs/heads/main",
+        "AIOS_DELIVERY_ACTOR": "github-actions[bot]", "AIOS_DELIVERY_EVENT": "issues",
+        **{"AIOS_" + key.upper(): value or "" for key, value in request.items()
+           if key in {"repair_dispatch_id", "failed_run_id", "repair_sha", "executor", "model", "reasoning_effort"}},
+        "AIOS_MODEL_SOURCE": "", "AIOS_EFFORT_SOURCE": "",
+    }.items():
+        monkeypatch.setenv(key, str(value))
+    monkeypatch.delenv("AIOS_CONTROL_REF", raising=False)
+
+
+@pytest.mark.parametrize("action,required", [
+    ("CODE_FIX", True), ("CONTINUE_IMPLEMENTATION", True),
+    ("FINALIZE_CANDIDATE", True), ("FINALIZE_CANDIDATE", False), ("NO_CHANGE", False),
+])
+def test_human_auto_obeys_preflight_and_binds_only_one_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action, required) -> None:
+    from aios_renew.execution_profile import execution_profile_identity
+    from aios_renew.repair_dispatch import auto_source_profile_digest
+    _write_external_governed_policy(tmp_path)
+    _human_auto_issue(monkeypatch, tmp_path)
+    state = tmp_path / ".git/aios"
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *args, **kwargs: CorrectionPreflightResult(
+        family="REPAIR", status="READY", phase="READY", reason_code="READY",
+        task_id="TASK-111", task_revision=2, action=action, executor_required=required,
+    ))
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *args, **kwargs: SimpleNamespace(
+        task_id="TASK-111", next_action="EXECUTE_REPAIR", failed_run_id="RUN-111-001",
+        correction_sha="a" * 40, correction_document={"action": action}, correction={"executor_required": required},
+    ))
+    profile = ResolvedExecutionProfile("auto-365", "antigravity", "old/authenticated-model", "low",
+                                       "REPOSITORY_DEFAULT", "EXPLICIT")
+    inherited = []
+    def source(*args, **kwargs):
+        assert required, "executorless AUTO tried to resolve a coding profile"
+        inherited.append(kwargs)
+        return profile, auto_source_profile_digest("RUN-111-001", execution_profile_identity(profile))
+    monkeypatch.setattr(operator_module, "_resolve_auto_repair_profile", source)
+    calls = []
+    def repair(*args, **kwargs):
+        calls.append(kwargs)
+        raise OperatorError("stub stopped before RUN")
+    monkeypatch.setattr(operator_module, "run_repair", repair)
+    first = run_repair_wakeup("auto-365", "RUN-111-001", "a" * 40, executor="AUTO", repo=tmp_path)
+    assert len(calls) == 1 and len(inherited) == int(required)
+    assert calls[0]["executor"] == ("antigravity" if required else None)
+    for field in ("model", "reasoning_effort", "model_source", "effort_source"):
+        assert calls[0][field] == (getattr(profile, field) if required else None)
+    record = next((state / "repair-dispatches").glob("*.json"))
+    before = record.read_bytes()
+    assert json.loads(before)["auto_authorization"]["actor"] == "trung-via"
+    monkeypatch.setattr(operator_module, "_resolve_auto_repair_profile", lambda *a, **k: pytest.fail("replay re-resolved source"))
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *a, **k: pytest.fail("replay repeated preflight"))
+    replay = run_repair_wakeup("auto-365", "RUN-111-001", "a" * 40, executor="AUTO", repo=tmp_path)
+    assert replay.replayed and replay.status == first.status and len(calls) == 1
+    assert record.read_bytes() == before and not (state / "runs").exists()
+
+
+@pytest.mark.parametrize("mixed", [False, True])
+def test_auto_rejects_missing_human_proof_or_mixed_profile_without_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mixed: bool) -> None:
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: tmp_path / ".git/aios")
+    monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
+    monkeypatch.delenv("AIOS_DELIVERY_EVENT", raising=False)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *a, **k: pytest.fail("unauthenticated AUTO reached preflight"))
+    with pytest.raises(OperatorError, match="AUTO"):
+        run_repair_wakeup("auto-365", "RUN-111-001", "a" * 40, executor="AUTO", repo=tmp_path,
+                          **({"model": "manual"} if mixed else {}))
+    assert not (tmp_path / ".git/aios").exists()
+
+
+@pytest.mark.parametrize("fault", [None, "missing", "ambiguous", "swapped", "invalid", "wrong-executor", "wrong-task", "unsupported"])
+def test_auto_reads_only_exact_canonical_source_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault) -> None:
+    import aios_renew.review_transport as transport
+    from aios_renew.execution_profile import execution_profile_identity
+    from aios_renew.repair_dispatch import auto_source_profile_digest
+    _write_external_governed_policy(tmp_path)
+    profile = ResolvedExecutionProfile("RUN-111-001", "codex", "old/authenticated-model", "low",
+                                       "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT")
+    run = {"run_id": "RUN-111-001", "task": {"id": "TASK-111", "revision": 2}, "executor": "codex",
+           "base_sha": "b" * 40, "workspace": str(tmp_path), "status": "ACTIVE"}
+    failure = {"kind": "FAILURE", "run_id": run["run_id"], "task": run["task"], "executor": "codex",
+               "base_sha": run["base_sha"], "failed_head_sha": "c" * 40}
+    source = profile.as_dict()
+    if fault == "swapped": source["run_id"] = "RUN-112-001"
+    if fault == "invalid": source["model_source"] = "UNTRUSTED"
+    if fault == "wrong-executor": source["executor"] = "antigravity"
+    if fault == "wrong-task": run["task"] = {"id": "TASK-112", "revision": 2}
+    if fault == "unsupported": source["reasoning_effort"] = "invented-effort"
+    artifact = RemoteFailureArtifacts(
+        "RUN-111-001", "c" * 40, json.dumps(run).encode(), json.dumps(failure).encode(), None,
+        execution_profile=None if fault == "missing" else json.dumps(source).encode(),
+    )
+    @contextmanager
+    def observer(root): yield root
+    monkeypatch.setattr(operator_module, "_remote_observation_repository", observer)
+    monkeypatch.setattr(operator_module, "resolve_remote_repair_recovery", lambda *a, **k: RemoteRepairRecovery(
+        (artifact, artifact) if fault == "ambiguous" else (artifact,), ("RUN-111-001",),
+    ))
+    monkeypatch.setattr(transport, "resolve_transport_remote", lambda root: "origin")
+    monkeypatch.setattr(transport, "_read_remote_blob", lambda *a: (tmp_path / ".ai/executor-profiles.yaml").read_bytes())
+    if fault is not None:
+        with pytest.raises(OperatorError, match="AUTO"):
+            operator_module._resolve_auto_repair_profile(tmp_path, failed_run_id="RUN-111-001", task_id="TASK-111", task_revision=2, repair_dispatch_id="auto-365")
+    else:
+        resolved, digest = operator_module._resolve_auto_repair_profile(tmp_path, failed_run_id="RUN-111-001", task_id="TASK-111", task_revision=2, repair_dispatch_id="auto-365")
+        assert execution_profile_identity(resolved) == execution_profile_identity(profile)
+        assert resolved.run_id == "auto-365"
+        assert resolved.model != "test/codex-external"
+        assert digest == auto_source_profile_digest("RUN-111-001", execution_profile_identity(profile))
+    assert not (tmp_path / ".git/aios").exists()
+
+
+def test_auto_missing_source_is_actionable_receipt_without_run_or_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _human_auto_issue(monkeypatch, tmp_path)
+    state = tmp_path / ".git/aios"
+    receipt = tmp_path / "operational.json"
+    monkeypatch.setenv("AIOS_OPERATIONAL_RECEIPT_PATH", str(receipt))
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *a, **k: CorrectionPreflightResult(
+        family="REPAIR", status="READY", phase="READY", reason_code="READY", task_id="TASK-111",
+        task_revision=2, action="CODE_FIX", executor_required=True,
+    ))
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *a, **k: SimpleNamespace(
+        task_id="TASK-111", next_action="EXECUTE_REPAIR", failed_run_id="RUN-111-001",
+        correction_sha="a" * 40, correction_document={"action": "CODE_FIX"}, correction={"executor_required": True},
+    ))
+    def missing_source(*args, **kwargs):
+        raise OperatorError("AUTO source profile missing; select a Human coding profile explicitly")
+    monkeypatch.setattr(operator_module, "_resolve_auto_repair_profile", missing_source)
+    monkeypatch.setattr(operator_module, "run_repair", lambda *a, **k: pytest.fail("missing AUTO profile created RUN"))
+    assert operator_module.main(["repair-wakeup", "auto-365", "RUN-111-001", "a" * 40,
+                                 "--executor", "AUTO", "--repo", str(tmp_path)]) == 1
+    observed = json.loads(receipt.read_text(encoding="utf-8"))
+    assert observed["boundary"] == "ADMISSION_REJECTED"
+    assert observed["cause"] == {"authority": "CARRIER", "phase": "AUTO_SOURCE_PROFILE", "reason_code": "CANONICAL_SOURCE_PROFILE_REQUIRED"}
+    assert observed["run_created"] is observed["executor_invoked"] is False
+    assert "run_id" not in observed and "terminal_pointer" not in observed
+    assert not state.exists()

@@ -50,6 +50,32 @@ _V1_RECORD_KEYS = frozenset(
 )
 _V2_RECORD_KEYS = _V1_RECORD_KEYS | frozenset(PROFILE_IDENTITY_FIELDS[1:])
 _V3_RECORD_KEYS = _V2_RECORD_KEYS | {"executor_required"}
+_V4_RECORD_KEYS = _V3_RECORD_KEYS | {"auto_authorization"}
+
+
+def _require_same_authorization(
+    record: Mapping[str, Any], auto_authorization: Mapping[str, Any] | None,
+) -> None:
+    if record.get("auto_authorization") != auto_authorization:
+        raise RepairDispatchError("repair_dispatch_id collision: AUTO/manual authorization differs")
+
+
+def existing_auto_repair_authorization(
+    *, state_root: Path, repo_root: Path, repair_dispatch_id: str, actor: str,
+    source_repair_policy: ExecutionProfilePolicy | None = None,
+) -> dict[str, Any] | None:
+    """Read AUTO provenance once; replay never reselects a source profile."""
+    if not isinstance(repair_dispatch_id, str) or not REPAIR_DISPATCH_ID_PATTERN.fullmatch(repair_dispatch_id):
+        raise RepairDispatchError("invalid repair_dispatch_id format")
+    path = _record_path(state_root, repair_dispatch_id)
+    if not path.is_file():
+        return None
+    record = _read_record(path, repo_root, source_repair_policy)
+    authorization = record.get("auto_authorization")
+    if (record["repair_dispatch_id"] != repair_dispatch_id
+            or authorization is None or authorization["actor"] != actor):
+        raise RepairDispatchError("repair_dispatch_id collision: AUTO/manual authorization differs")
+    return dict(authorization)
 
 
 def _profile_binding(
@@ -65,6 +91,13 @@ def _profile_binding(
     if identity["executor"] != executor:
         raise RepairDispatchError("execution profile executor does not match REPAIR")
     return {field: identity[field] for field in PROFILE_IDENTITY_FIELDS[1:]}
+
+
+def auto_source_profile_digest(failed_run_id: str, identity: Mapping[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(
+        {"run_id": failed_run_id, **{field: identity[field] for field in PROFILE_IDENTITY_FIELDS}},
+        sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
 
 
 class RepairDispatchError(RuntimeError):
@@ -147,6 +180,7 @@ def reject_existing_selector_collision(
     executor: str | None,
     execution_profile: ResolvedExecutionProfile | None = None,
     source_repair_policy: ExecutionProfilePolicy | None = None,
+    auto_authorization: Mapping[str, Any] | None = None,
 ) -> None:
     """Reject changed carrier selectors before canonical REPAIR resolution."""
 
@@ -156,6 +190,7 @@ def reject_existing_selector_collision(
         return
     with _StateLock(state_root / "repair-dispatch.lock"):
         record = _read_record(record_path, repo_root, source_repair_policy)
+        _require_same_authorization(record, auto_authorization)
         _require_same_selectors(
             record,
             repair_dispatch_id=repair_dispatch_id,
@@ -182,6 +217,7 @@ def replay_existing_repair_dispatch(
     executor: str | None,
     execution_profile: ResolvedExecutionProfile | None = None,
     source_repair_policy: ExecutionProfilePolicy | None = None,
+    auto_authorization: Mapping[str, Any] | None = None,
 ) -> RepairDispatchOutcome | None:
     """Return/reconcile an existing exact delivery without reacquiring authority."""
 
@@ -192,6 +228,7 @@ def replay_existing_repair_dispatch(
     active_path = record_path.with_suffix(".active.lock")
     with _StateLock(state_root / "repair-dispatch.lock"):
         record = _read_record(record_path, repo_root, source_repair_policy)
+        _require_same_authorization(record, auto_authorization)
         _require_same_selectors(
             record,
             repair_dispatch_id=repair_dispatch_id,
@@ -237,6 +274,7 @@ def execute_repair_dispatch(
     invoke_repair: Callable[[], RepairInvocation],
     execution_profile: ResolvedExecutionProfile | None = None,
     source_repair_policy: ExecutionProfilePolicy | None = None,
+    auto_authorization: Mapping[str, Any] | None = None,
 ) -> RepairDispatchOutcome:
     """Invoke ``run_repair`` at most once, or reconcile its exact bound RUN."""
 
@@ -244,6 +282,8 @@ def execute_repair_dispatch(
         repair_dispatch_id, failed_run_id, repair_sha, executor, task_id, action,
         executor_required,
     )
+    if auto_authorization is not None:
+        _validate_auto_authorization(auto_authorization, failed_run_id, executor)
     profile = (
         _profile_binding(executor, execution_profile)
         if execution_profile is not None or executor is None
@@ -251,6 +291,10 @@ def execute_repair_dispatch(
     )
     if executor is not None and profile is not None:
         _validate_profile({"executor": executor, **profile}, repo_root, source_repair_policy)
+        if auto_authorization is not None and auto_authorization["source_profile_sha256"] != auto_source_profile_digest(
+            failed_run_id, {"executor": executor, **profile}
+        ):
+            raise RepairDispatchError("AUTO source profile digest differs from bound profile")
     record_path = _record_path(state_root, repair_dispatch_id)
     active_path = record_path.with_suffix(".active.lock")
     invocation_guard: _StateLock | None = None
@@ -258,6 +302,7 @@ def execute_repair_dispatch(
     with _StateLock(state_root / "repair-dispatch.lock"):
         if record_path.exists():
             record = _read_record(record_path, repo_root, source_repair_policy)
+            _require_same_authorization(record, auto_authorization)
             _require_same_binding(
                 record,
                 repair_dispatch_id=repair_dispatch_id,
@@ -288,7 +333,7 @@ def execute_repair_dispatch(
         if profile is None:
             raise RepairDispatchError("coding REPAIR requires a resolved execution profile")
         record = {
-            "version": 3,
+            "version": 4 if auto_authorization is not None else 3,
             "repair_dispatch_id": repair_dispatch_id,
             "failed_run_id": failed_run_id,
             "repair_sha": repair_sha,
@@ -301,6 +346,7 @@ def execute_repair_dispatch(
             "run_id": None,
             "exit_code": None,
             "detail": "canonical REPAIR invocation durably admitted",
+            **({"auto_authorization": dict(auto_authorization)} if auto_authorization is not None else {}),
         }
         _write_record(record_path, record)
         invocation_guard = _StateLock(active_path)
@@ -458,6 +504,22 @@ def _validate_profile(
         raise RepairDispatchError("invalid repair profile binding") from exc
 
 
+def _validate_auto_authorization(
+    authorization: Mapping[str, Any], failed_run_id: str, executor: str | None,
+) -> None:
+    if (not isinstance(authorization, Mapping)
+            or set(authorization) != {"actor", "source_run_id", "source_profile_sha256"}
+            or not isinstance(authorization["actor"], str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", authorization["actor"])
+            or authorization["source_run_id"] != failed_run_id):
+        raise RepairDispatchError("invalid exact Human AUTO authorization")
+    digest = authorization["source_profile_sha256"]
+    if (executor is None and digest is not None) or (executor is not None and (
+        not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
+    )):
+        raise RepairDispatchError("invalid AUTO source profile digest")
+
+
 def _read_record(
     path: Path, repo_root: Path,
     source_repair_policy: ExecutionProfilePolicy | None = None,
@@ -469,10 +531,10 @@ def _read_record(
     version = data.get("version") if isinstance(data, dict) else None
     if type(version) is not int:
         raise RepairDispatchError("invalid repair dispatch record version")
-    expected_keys = {1: _V1_RECORD_KEYS, 2: _V2_RECORD_KEYS, 3: _V3_RECORD_KEYS}.get(version)
+    expected_keys = {1: _V1_RECORD_KEYS, 2: _V2_RECORD_KEYS, 3: _V3_RECORD_KEYS, 4: _V4_RECORD_KEYS}.get(version)
     if not isinstance(data, dict) or set(data) != expected_keys:
         raise RepairDispatchError("invalid repair dispatch record shape")
-    if version not in (1, 2, 3) or data.get("status") not in _TERMINAL | _NONTERMINAL:
+    if version not in (1, 2, 3, 4) or data.get("status") not in _TERMINAL | _NONTERMINAL:
         raise RepairDispatchError("invalid repair dispatch record state")
     try:
         _validate_binding(
@@ -483,10 +545,14 @@ def _read_record(
             data["task_id"],
             data["action"],
             # Old records admitted FINALIZE only with a coding Executor.
-            data["executor_required"] if version == 3 else data["action"] != "NO_CHANGE",
+            data["executor_required"] if version >= 3 else data["action"] != "NO_CHANGE",
         )
     except (KeyError, RepairDispatchError) as exc:
         raise RepairDispatchError("invalid repair dispatch binding") from exc
+    if version == 4:
+        _validate_auto_authorization(data["auto_authorization"], data["failed_run_id"], data["executor"])
+        if data["executor"] is not None and data["auto_authorization"]["source_profile_sha256"] != auto_source_profile_digest(data["failed_run_id"], data):
+            raise RepairDispatchError("AUTO source profile digest differs from bound profile")
     if version >= 2:
         if data["executor"] is None:
             if any(data[field] is not None for field in PROFILE_IDENTITY_FIELDS[1:]):
