@@ -10,7 +10,8 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Mapping
+import re
+from typing import Any, Callable, Mapping
 
 import yaml
 
@@ -396,7 +397,256 @@ def resolve_flow(context: BrainWorkContext, *, cards_path: str | Path | None = N
     )
 
 
+_R21_APPROVAL = "human_r21_four_specialized_activation_20261017"
+_R21_APPROVAL_STATES = frozenset({
+    "HUMAN_APPROVED_CANONICALIZED_LIVE_PRODUCTION_CONFORMANCE_OUTSTANDING", "ACTIVE",
+})
+_R5_CANDIDATE_REF = "refs/heads/aios/review/RUN-368-001"
+_R5_REVIEW_REF = "refs/heads/aios/review-decision/RUN-368-001"
+_R5_ARTIFACT_REF = "refs/heads/aios/artifacts/RUN-368-001"
+
+
+def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
+    """Read approval/publication from canonical Git, never working-tree policy.
+
+    The configured canonical transport is the trust boundary already used by
+    authoring. A failed remote read cannot fall back to local main or literals.
+    """
+    from .authoring_ingress import (
+        _query_matching_refs, _read_commit_blob, _fetch_if_remote, _ls_tree,
+        _json_no_dups, _run_from_data, _validate_metadata_commit,
+    )
+    from .artifacts import validate_result, validate_evidence, validate_result_package
+    from .brain_audit import parse_profile_registry
+    from .brain_return_contract import parse_return_contract_registry
+    from .operator import _git_is_ancestor
+    from .return_affinity import require_same_affinity
+    from .review import parse_review, validate_review
+    from .review_transport import (
+        ReviewTransportError, resolve_transport_remote, resolve_detached_observation_remote,
+        _git_cmd,
+    )
+    from .run import ACTIVE
+    from .task import parse_task
+
+    def transport() -> tuple[str, str]:
+        try:
+            name = resolve_transport_remote(repo)
+        except ReviewTransportError:
+            name = resolve_detached_observation_remote(repo)
+        code, url, _ = _git_cmd(repo, "remote", "get-url", name, allow_fail=True)
+        if name == "." or code or not url:
+            raise BrainContextError("independent canonical audit transport is unavailable")
+        return name, url
+
+    remote, remote_url = transport()
+    patterns = ("refs/heads/main", _R5_CANDIDATE_REF, _R5_REVIEW_REF, _R5_ARTIFACT_REF)
+    refs = _query_matching_refs(repo, remote, *patterns)
+    if set(refs) != set(patterns):
+        raise BrainContextError("canonical audit main or R5 REVIEW is unavailable")
+    main = refs["refs/heads/main"]
+
+    def blob(sha: str, path: str) -> bytes:
+        raw = _read_commit_blob(repo, sha, path)
+        if raw is None:
+            _fetch_if_remote(repo, remote, sha)
+            raw = _read_commit_blob(repo, sha, path)
+        if raw is None:
+            raise BrainContextError("canonical audit source is unavailable")
+        return raw
+
+    # Old unrelated roadmap sections contain numeric keys. Decode just the
+    # selected approval strictly, while rejecting ambiguous top-level mirrors.
+    raw = blob(main, ".ai/roadmap-state.yaml")
+    if len(raw) > 1048576:
+        raise BrainContextError("canonical audit roadmap exceeds bound")
+    roadmap = yaml.compose(raw.decode("utf-8"), Loader=yaml.SafeLoader)
+    if not isinstance(roadmap, yaml.MappingNode):
+        raise BrainContextError("canonical audit roadmap must be a mapping")
+    nodes = {}
+    for key, value in roadmap.value:
+        if not isinstance(key, yaml.ScalarNode) or key.tag != "tag:yaml.org,2002:str" or key.value in nodes:
+            raise BrainContextError("ambiguous canonical audit roadmap")
+        nodes[key.value] = value
+    if _R21_APPROVAL not in nodes:
+        raise BrainContextError("canonical Human R2.1 approval is missing")
+    approval = yaml.load(yaml.serialize(nodes[_R21_APPROVAL]), Loader=_UniqueKeyLoader)
+    required = {
+        "authority": "EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL",
+        "human_decision": "ACTIVATE_R21_FOUR_SPECIALIZED_DEFAULT_WITH_ADAPTIVE_V1_AS_HUMAN_OPTION",
+        "implementation_task": "TASK-368", "implementation_revision": 1,
+        "implementation_run": "RUN-368-001", "review_id": "REVIEW-368-001", "review_verdict": "PASS",
+        "target_policy_format": "AIOS_BRAIN_AUDIT_POLICY", "target_policy_version": 1,
+        "target_policy_state": "FOUR_SPECIALIZED",
+        "architecture_and_task_v1_option": "HUMAN_EXPLICIT_EXACT_SUBJECT_V1_ONLY_ONE_NORMATIVE_AUDIT",
+        "correction_v1_option": "HUMAN_EXPLICIT_READ_ONLY_SUPPORT_NO_SECOND_NORMATIVE_AUDIT",
+    }
+    if (not isinstance(approval, dict)
+            or any(_stable_copy(approval.get(k)) != v for k, v in required.items())
+            or type(approval.get("implementation_revision")) is not int
+            or type(approval.get("target_policy_version")) is not int
+            # Human/Brain reconciliation may complete this finite transition;
+            # either state still requires every approval and Git binding below.
+            or approval.get("status") not in _R21_APPROVAL_STATES
+            or approval.get("review_decision_sha") != refs[_R5_REVIEW_REF]):
+        raise BrainContextError("canonical Human R2.1 approval conflicts with activation")
+    # The newer explicit activation supersedes the dated V1 cutover. Another
+    # current activation declaration cannot compete with this complete mapping.
+    for key in nodes:
+        if key != _R21_APPROVAL and key.startswith("human_r21_four_specialized_activation_"):
+            raise BrainContextError("conflicting canonical Human R2.1 approvals")
+    artifact_sha = refs[_R5_ARTIFACT_REF]
+    run_data = _json_no_dups(blob(artifact_sha, ".ai/transport/run.json"), "R5 RUN")
+    if "kind" in run_data:
+        raise BrainContextError("canonical R5 artifact must be the original PRIMARY RUN")
+    run = _run_from_data(run_data, "R5 RUN")
+    result_data = _json_no_dups(blob(artifact_sha, ".ai/transport/result.json"), "R5 ResultPackage")
+    if set(result_data) != {"result", "evidence"} or not isinstance(result_data["evidence"], list):
+        raise BrainContextError("canonical R5 artifact must contain a nested ResultPackage")
+    result = validate_result(result_data["result"])
+    evidence = tuple(validate_evidence(item) for item in result_data["evidence"])
+    # The admitted RUN is immutable: ACTIVE/head_sha=null is canonical. The
+    # completed source comes from RESULT, corroborated independently by Git.
+    source = result.head_sha
+    if (not isinstance(source, str) or re.fullmatch(r"[0-9a-f]{40}", source) is None
+            or approval.get("reviewed_published_source_sha") != source
+            or approval.get("approved_against_main_sha") != source
+            or refs[_R5_CANDIDATE_REF] != source):
+        raise BrainContextError("canonical R5 publication identity is invalid")
+    published_task = parse_task(blob(source, ".ai/tasks/TASK-368.yaml").decode("utf-8"))
+    if (published_task.task_id != "TASK-368" or published_task.revision != 1
+            or not _git_is_ancestor(repo, source, main)):
+        raise BrainContextError("reviewed R5 source is not published on canonical main")
+    if (run.run_id != "RUN-368-001" or run.task.id != "TASK-368" or run.task.revision != 1
+            or run.status != ACTIVE or re.fullmatch(r"[0-9a-f]{40}", run.base_sha) is None
+            or not _git_is_ancestor(repo, run.base_sha, source)):
+        raise BrainContextError("canonical R5 RUN publication lineage conflicts")
+    require_same_affinity(published_task, run)
+    validate_result_package(task=published_task, run=run, result=result, evidence=evidence)
+    if result.unresolved:
+        raise BrainContextError("canonical R5 RESULT contains unresolved items")
+    review_sha = refs[_R5_REVIEW_REF]
+    # REVIEWs live on their immutable decision ref, outside the source tree.
+    if not _ls_tree(repo, review_sha, ".ai/reviews"):
+        _fetch_if_remote(repo, remote, review_sha)
+    paths = [p for p in _ls_tree(repo, review_sha, ".ai/reviews") if p.endswith((".yaml", ".yml"))]
+    if len(paths) != 1:
+        raise BrainContextError("canonical R5 REVIEW is missing or ambiguous")
+    review_raw = blob(review_sha, paths[0])
+    review = parse_review(review_raw.decode("utf-8"))
+    _validate_metadata_commit(repo, review_sha, expected_parent_sha=source,
+                              metadata_path=paths[0], metadata_bytes=review_raw, operation="R5 REVIEW")
+    validate_review(task=published_task, result=result, review=review)
+    if (review.review_id != approval["review_id"] or review.reviewed_sha != source
+            or review.mode != "PRIMARY" or review.verdict != "PASS"
+            or set(review.acceptance) != {item.id for item in published_task.acceptance}
+            or any(value != "PASS" for value in review.acceptance.values())):
+        raise BrainContextError("canonical R5 REVIEW does not approve the published source")
+    profiles = parse_profile_registry(blob(main, ".ai/brain-audit-profiles.yaml"))
+    returns = parse_return_contract_registry(blob(main, ".ai/brain-return-contracts.yaml"))
+    if _query_matching_refs(repo, remote, *patterns) != refs or transport() != (remote, remote_url):
+        raise BrainContextError("canonical audit sources moved while reading")
+    # Transport identity remains private, including any credentials in its URL.
+    authority = {"remote": remote, "remote_url": remote_url, "refs": refs, "approval": approval,
+                 "review_digest": hashlib.sha256(review_raw).hexdigest(), "registry": profiles,
+                 "return_contracts": returns}
+    return approval, profiles, authority
+
+
+def canonical_audit_inputs(
+    packet: Any, return_contract_package: Mapping[str, Any], external_bindings: Mapping[str, Any],
+    audit_profile_package: Mapping[str, Any] | None = None, *, repo: str | Path | None = None,
+    moa_source_context: Mapping[str, Any] | None = None,
+    task_source_context: Mapping[str, Any] | None = None,
+    architecture_source_context: Mapping[str, Any] | None = None,
+    human_v1_option: Mapping[str, Any] | None = None,
+    human_v1_deep_support: Mapping[str, Any] | None = None,
+    human_choice_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None,
+) -> tuple[dict, dict, Callable[[Mapping[str, Any], str], bool]]:
+    """Supply the existing R5 boundary for one ordinary first-party attempt.
+
+    Canonical policy authority comes from Git; individual Human choices come
+    from a separate trusted, caller-owned input channel. Neither is inferred
+    from packet text, a provenance label, or model-provided authority digests.
+    """
+    from .brain_audit import _packet, normalize_audit_policy, profile_ref, _ADAPTIVE_ID, _ADAPTIVE_DIGEST
+    from .brain_provider_protocol import _AUDITED, _audit_selection, _contract_package, _bindings, _normal
+    from .brain_sync import _resolve_repository_name
+    from .brain_return_contract import select_return_contract
+    from .operator import resolve_repository
+
+    try:
+        root = resolve_repository(repo)
+        body = _packet(packet)
+        facts = body["canonical_facts"]
+        if (body["selected_flow"] not in _AUDITED or not isinstance(facts, dict)
+                or not isinstance(facts.get("main_sha"), str)
+                or re.fullmatch(r"[0-9a-f]{40}", facts["main_sha"]) is None
+                or facts.get("repository") != _resolve_repository_name(root)):
+            raise BrainContextError("Brain packet lacks a canonical audit repository/main binding")
+        approval, registry, authority = _canonical_audit_source(root)
+        if facts["main_sha"] != authority["refs"]["refs/heads/main"]:
+            raise BrainContextError("Brain packet is unrelated to current canonical audit source")
+        policy = normalize_audit_policy({
+            "format": approval["target_policy_format"], "version": approval["target_policy_version"],
+            "state": approval["target_policy_state"], "main_sha": facts["main_sha"],
+            "work_context_fingerprint": body["work_context_fingerprint"],
+            "human_authority_digest": _digest(approval),
+            "brain_authority_digest": _digest({"review_digest": authority["review_digest"],
+                                               "review_decision_sha": approval["review_decision_sha"],
+                                               "published_source_sha": approval["reviewed_published_source_sha"]}),
+            "r5_publication_sha": approval["reviewed_published_source_sha"], "profiles": approval["target_profiles"],
+        })
+        chosen = ({"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
+                  if human_v1_option is not None else policy["profiles"][body["selected_flow"]])
+        # Resolve every pinned body, even when the current subject uses only one.
+        packages = {p["id"]: {"profile": p, "audit_profile_ref": profile_ref(p)} for p in registry["profiles"]}
+        for reference in [*policy["profiles"].values(), chosen]:
+            if packages.get(reference["id"], {}).get("audit_profile_ref") != reference:
+                raise BrainContextError("canonical audit mapping lacks exact published content")
+        package = packages[chosen["id"]]
+        if audit_profile_package is not None and _normal(audit_profile_package) != package:
+            raise BrainContextError("explicit package conflicts with canonical audit selection")
+        human = human_v1_option is not None or human_v1_deep_support is not None
+        if human and not callable(human_choice_authenticator):
+            raise BrainContextError("individual Human audit choice requires independent authentication")
+        if not human and human_choice_authenticator is not None:
+            raise BrainContextError("Human authenticator has no bound individual choice")
+        contract = _contract_package(return_contract_package, body)
+        if contract != select_return_contract(authority["return_contracts"], packet):
+            raise BrainContextError("Brain return contract differs from canonical selected contract")
+        bindings = _bindings(external_bindings, contract)
+        sources = _normal({"moa_source_context": moa_source_context, "task_source_context": task_source_context,
+                           "architecture_source_context": architecture_source_context})
+        expected = _audit_selection(body, contract, bindings, package, policy, sources,
+                                    human_v1_option, human_v1_deep_support)
+        expected_identity = _digest(expected)
+        source_identity = _digest(authority)
+    except Exception as exc:
+        raise BrainContextError("canonical first-party audit inputs are unavailable or inconsistent") from exc
+
+    admitted = None
+
+    def authenticate(selection: Mapping[str, Any], phase: str) -> bool:
+        nonlocal admitted
+        if (phase not in {"ADMIT", "CONTINUE"} or _digest(selection) != expected_identity
+                or phase == "CONTINUE" and admitted != expected_identity):
+            return False
+        # Re-read canonical refs and content at both ADMIT and CONTINUE. This
+        # deliberately stops on movement rather than reselecting an in-flight audit.
+        _, _, current = _canonical_audit_source(root)
+        if _digest(current) != source_identity:
+            return False
+        if human and human_choice_authenticator(_stable_copy(selection), phase) is not True:
+            return False
+        if phase == "ADMIT":
+            admitted = expected_identity
+        return True
+
+    return _stable_copy(policy), _stable_copy(package), authenticate
+
+
 __all__ = [
     "BrainContextError", "BrainWorkContext", "FlowResolution",
-    "compose_brain_work_context", "load_flow_cards", "resolve_flow",
+    "compose_brain_work_context", "load_flow_cards", "resolve_flow", "canonical_audit_inputs",
 ]

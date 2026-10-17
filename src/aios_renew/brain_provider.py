@@ -1,6 +1,7 @@
 """Transient BP5-P3 invocation shell over the reviewed Brain semantic protocol.
 
-All transport callables, packets, packages and freshness material are caller supplied.
+Transport callables, packets and freshness material are caller supplied. Ordinary
+new audits obtain their approved policy and profile from canonical Git.
 No provider result or attempt retains a native response or conversation history.
 """
 
@@ -10,11 +11,12 @@ from copy import deepcopy
 from dataclasses import dataclass
 import json
 import math
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Protocol
 
 from .brain_provider_protocol import BrainProviderProtocolError, construct_request, validate_response
-from .brain_audit import _ADAPTIVE_ID, _ADAPTIVE_DIGEST
+from .brain_audit import _ADAPTIVE_ID, _ADAPTIVE_DIGEST, _packet
 from .decision_packet import DecisionPacket
 
 
@@ -232,12 +234,14 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             human_v1_option: Mapping[str, Any] | None = None,
             audit_policy: Mapping[str, Any] | None = None,
             selection_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None,
-            human_v1_deep_support: Mapping[str, Any] | None = None) -> AttemptResult:
+            human_v1_deep_support: Mapping[str, Any] | None = None,
+            repo: str | Path | None = None,
+            human_choice_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None) -> AttemptResult:
     """Invoke one normative procedure, or explicit isolated compatibility support.
 
-    Ordinary production retains exact V1. A prospective specialized selection
-    requires independently authenticated canonical policy; isolated conformance
-    never activates it. No attempt grants canonical mutation authority.
+    Ordinary new production authenticates canonical FOUR_SPECIALIZED policy.
+    Explicit R5 callers and isolated/historical requests keep their existing
+    bindings. No attempt grants canonical mutation authority.
     """
     count = 0
     phase = "INPUT"
@@ -250,20 +254,42 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
         _identity(*configured)
         if not callable(provider.invoke):
             raise ValueError("provider invocation required")
+        flow = packet.as_dict()["selected_flow"]
+        if not conformance_only and flow != "DIAGNOSTIC" and audit_policy is None and selection_authenticator is None:
+            from .brain_context import canonical_audit_inputs
+            # The caller-owned fresh composition is independent of the submitted
+            # packet. Check the work/subject before the first provider call too.
+            try:
+                current = fresh_packet_supplier()
+                if not isinstance(current, DecisionPacket) or _packet(current) != _packet(packet):
+                    raise ValueError("changed Brain subject before admission")
+            except Exception as exc:
+                raise ValueError("fresh Brain composition required before admission") from exc
+            audit_policy, audit_profile_package, selection_authenticator = canonical_audit_inputs(
+                packet, return_contract_package, external_bindings, audit_profile_package, repo=repo,
+                moa_source_context=moa_source_context, task_source_context=task_source_context,
+                architecture_source_context=architecture_source_context, human_v1_option=human_v1_option,
+                human_v1_deep_support=human_v1_deep_support,
+                human_choice_authenticator=human_choice_authenticator)
+        elif human_choice_authenticator is not None:
+            raise ValueError("individual Human authentication requires the canonical first-party policy path")
+        if not conformance_only and flow != "DIAGNOSTIC" and (
+                audit_policy is None or not callable(selection_authenticator)):
+            raise ValueError("production audit policy and authenticator required; no fallback")
         prospective = (audit_policy is not None or selection_authenticator is not None
                        or human_v1_deep_support is not None)
         if prospective and conformance_only:
             raise ValueError("prospective policy cannot be activated by isolated conformance")
         mode = ("PROSPECTIVE" if prospective else
                 "V1_OPTION_CONSTRUCT" if conformance_only and human_v1_option is not None else
+                "AUDIT_CONSTRUCT" if conformance_only and audit_profile_package is not None
+                    and audit_profile_package.get("audit_profile_ref") == {
+                        "id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST} else
                 "AOA_CONSTRUCT" if conformance_only and packet.as_dict()["selected_flow"] == "ARCHITECTURE" else
                 "TCA_CONSTRUCT" if conformance_only and packet.as_dict()["selected_flow"] == "TASK_AUTHORING" else
                 "MOA_CONSTRUCT" if conformance_only and packet.as_dict()["selected_flow"] == "REMEDIATION_AUTHORING" else
                 "ROA_CONFORMANCE" if conformance_only else
                 "DIRECT" if packet.as_dict()["selected_flow"] == "DIAGNOSTIC" else "AUDIT_CONSTRUCT")
-        if mode == "AUDIT_CONSTRUCT" and (audit_profile_package is None or audit_profile_package.get("audit_profile_ref") != {
-                "id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}):
-            raise ValueError("ordinary prospective attempts require exact current Adaptive V1; no fallback")
         if mode != "DIRECT" and not callable(fresh_packet_supplier):
             raise ValueError("fresh packet supplier required")
         first_request = construct_request(packet, return_contract_package, external_bindings,

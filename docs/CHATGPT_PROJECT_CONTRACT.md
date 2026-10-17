@@ -109,15 +109,38 @@ checkout, unauthenticated checkout ancestry, malformed canonical content, unavai
 refs or insufficient fetch fail closed. An older clean checkout with absent unrelated
 TASK files does not require Human restoration.
 
-Brain still performs the exact V1 `CONSTRUCT` then `ADVERSARIAL_AUDIT_AND_RECONCILE`
-semantic audit. Runtime owns verification and EVIDENCE; Reviewer and Publisher retain
-their independent authority. The GitHub Issue carrier retains actor, repository,
+For new production Brain attempts, the approved R2.1 policy selects AOA-1 for
+ARCHITECTURE, TCA-1 for TASK_AUTHORING, MOA-1 for REMEDIATION_AUTHORING and ROA-1 R2
+for REPAIR_AUTHORING. AOA/TCA/MOA use their published two focused passes and one
+closure; ROA uses its single focused procedure. `aios_renew.brain_provider.attempt`
+obtains the complete canonical policy, exact profile and independent R5 selection
+authenticator through `brain_context.canonical_audit_inputs` without caller-supplied
+policy or `conformance_only`. It authenticates the canonical Human activation record,
+TASK-368 reviewed publication, all four pinned identities and the current bound
+main/work context, subject, sources and return at ADMIT and CONTINUE. Missing,
+conflicting, unavailable or stale authority fails closed before a new provider call,
+without V1/V3 fallback. The existing Human activation is sufficient; no renewed
+approval or roadmap edit is required by this implementation.
+
+Adaptive V1 remains an individually authenticated exact-subject Human option:
+V1_ONLY replaces AOA/TCA alone for Architecture/Task, while V1_READ_ONLY provides
+optional cognitive support inside normative MOA/ROA without another call or verdict.
+The ordinary caller supplies `human_choice_authenticator` from its trusted Human
+input channel for either choice; a label, hash or model preference is insufficient.
+Historical V1/V2/V3 requests and admitted stage/profile/return lineage remain exact.
+The first-party caller rejects canonical movement during continuation rather than
+reselecting an admitted subject. Details and pinned digests are in the
+[Brain semantic audit protocol, section 23](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#23-r21r5-policy-binding-and-approved-first-party-activation).
+
+Runtime owns verification and EVIDENCE; Reviewer and Publisher retain
+their independent authority. Audit support creates no direct-final AUTHOR_TASK,
+AUTHOR_REPAIR or AUTHOR_REMEDIATION mutation prerequisite. The GitHub Issue carrier retains actor, repository,
 provenance and allowlist gates. Authoring creates no RUN or execution approval: Human
 A3 / REMEDIATION INTENT and self-host delegation remain separate, with no Executor,
 model or reasoning-effort selection in AUTHOR_REMEDIATION.
 This rule supersedes the historical H1/H3 AUTHOR_TASK mutation prerequisites in the
 [semantic-handoff hardening baseline](AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md),
-without changing their history or the two-stage Brain audit obligation.
+without changing their history or the applicable Brain semantic audit obligation.
 
 Copying a selector, an old TASK, another chat's proof,
 a rendezvous marker by itself, or an assistant/transcript assertion does not

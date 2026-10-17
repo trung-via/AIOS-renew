@@ -17,6 +17,7 @@ from aios_renew.brain_return_contract import parse_return_contract_registry, sel
 from aios_renew.brain_return_contract import return_contract_ref
 from aios_renew.decision_packet import DecisionPacket
 from aios_renew.task import validate_task
+from tests.test_brain_context import canonical_audit_repo
 from tests.test_brain_audit import (
     roa_output, roa_packet, v3_sections, moa_packet, moa_first, moa_final,
     tca_example, tca_first, tca_final,
@@ -28,6 +29,52 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 R5_FLOWS = ("ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING")
+
+
+def production_inputs(registry, flow, canonical):
+    """Bind existing semantic examples to a real canonical Git main."""
+    from aios_renew.brain_sync import _resolve_repository_name
+    repository = _resolve_repository_name(canonical.repo)
+    if flow == "ARCHITECTURE":
+        supplied, contract, bindings, context = aoa_inputs(registry)
+        sources = {"architecture_source_context": context}
+        context["provenance"]["main_sha"] = canonical.main_sha
+        context["provenance"]["repository"] = repository
+    elif flow == "TASK_AUTHORING":
+        supplied, contract, bindings, context = tca_inputs(registry)
+        sources = {"task_source_context": context}
+    elif flow == "REMEDIATION_AUTHORING":
+        supplied, contract, bindings, context = moa_inputs(registry)
+        sources = {"moa_source_context": context}
+    else:
+        supplied, contract, bindings = roa_inputs(registry)
+        sources = {}
+    body = supplied.as_dict()
+    body["canonical_facts"].update(repository=repository, main_sha=canonical.main_sha)
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    return DecisionPacket(body), contract, bindings, sources
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+def test_first_party_policy_supplier_binds_the_existing_pure_protocol(registry, canonical_audit_repo, flow):
+    from aios_renew.brain_context import canonical_audit_inputs
+
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical_audit_repo)
+    policy, package, authenticate = canonical_audit_inputs(supplied, contract, bindings,
+                                                         repo=canonical_audit_repo.repo, **sources)
+    req = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE",
+                            audit_policy=policy, selection_authenticator=authenticate, **sources)
+    assert req["audit_selection"]["policy"]["profiles"] == canonical_audit_repo.roadmap[
+        canonical_audit_repo.approval_key]["target_profiles"]
+    assert revalidate_request(req) == req
+    first = validate_response(req, r5_response(req))
+    if flow != "REPAIR_AUTHORING":
+        second = r5_second(req, first, authenticate)
+        assert second["audit_selection"] == req["audit_selection"]
+        assert revalidate_decision(validate_response(second, r5_response(second)), second)
+    # Serial revalidation remains pure and never refreshes canonical authority.
+    canonical_audit_repo.commit("move canonical main without changing old subjects")
+    assert revalidate_request(req) == req
 
 
 class R5Authority:
@@ -302,7 +349,7 @@ def test_r5_historical_in_flight_subject_keeps_exact_original_profile_and_serial
 
 @pytest.mark.parametrize("operation", ("AUTHOR_TASK", "AUTHOR_REPAIR", "AUTHOR_REMEDIATION"))
 def test_r5_direct_final_ingress_does_not_consume_prospective_policy_or_audit_support(tmp_path, monkeypatch, operation):
-    from aios_renew import brain_audit, brain_provider, brain_provider_protocol
+    from aios_renew import brain_audit, brain_context, brain_provider, brain_provider_protocol
     from tests.test_authoring_ingress import (
         test_author_task_without_handoff_has_no_audit_dependencies,
         test_direct_author_repair_final_contract_and_identical_supersession_replay,
@@ -311,6 +358,7 @@ def test_r5_direct_final_ingress_does_not_consume_prospective_policy_or_audit_su
     def forbidden(*_args, **_kwargs):
         pytest.fail("direct-final ingress consumed R5 selection or provider authority")
     monkeypatch.setattr(brain_audit, "normalize_audit_policy", forbidden)
+    monkeypatch.setattr(brain_context, "canonical_audit_inputs", forbidden)
     monkeypatch.setattr(brain_provider_protocol, "construct_request", forbidden)
     monkeypatch.setattr(brain_provider, "attempt", forbidden)
     if operation == "AUTHOR_TASK":
@@ -1482,7 +1530,7 @@ def test_v1_provider_package_rejects_digest_unknown_and_partial_adaptation(regis
 
 @pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"))
 @pytest.mark.parametrize("fault", (None, "missing_profile", "changed_digest", "invalid_stage2"))
-def test_prospective_v1_provider_attempt_has_one_package_two_invocations_and_no_fallback(registry, flow, fault):
+def test_isolated_historical_v1_provider_attempt_has_one_package_two_invocations_and_no_fallback(registry, flow, fault):
     import yaml
     from aios_renew.brain_provider import BrainAttemptError, MappingBrainProvider, attempt
 
@@ -1518,12 +1566,12 @@ def test_prospective_v1_provider_attempt_has_one_package_two_invocations_and_no_
     provider = MappingBrainProvider("fixture", "fixed", callback)
     if fault:
         with pytest.raises(BrainAttemptError) as caught:
-            attempt(provider, supplied, contract, bindings, package, fresh)
+            attempt(provider, supplied, contract, bindings, package, fresh, conformance_only=True)
         expected_count = 2 if fault == "invalid_stage2" else 0
         assert caught.value.invocation_count == len(calls) == expected_count
         assert len(fresh_calls) == (1 if expected_count else 0)
     else:
-        result = attempt(provider, supplied, contract, bindings, package, fresh)
+        result = attempt(provider, supplied, contract, bindings, package, fresh, conformance_only=True)
         assert len(calls) == len(result.attributions) == 2 and len(fresh_calls) == 1
         assert result.decision["audit_profile_ref"] == reference
         assert result.decision["semantic_value"]["outcome"] == "CANDIDATE"
