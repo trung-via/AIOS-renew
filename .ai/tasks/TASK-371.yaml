@@ -1,0 +1,172 @@
+task_id: TASK-371
+revision: 1
+goal: 'Close only TASK-370 Gap 1: make the first-party AUTHOR_REPAIR GitHub Issue
+  ingress consumer avoid doomed bot-triggered executorless coding REPAIR dispatch
+  while preserving canonical Runtime correction-preflight executor_required authority,
+  exact Human manual/AUTO delegation and truly eligible executorless REPAIR delivery.
+  Publish a bounded actionable Human-wakeup-needed observation on the existing originating
+  Issue when no safe executorless route can be proved. Gap 2 workflow/job failure
+  observability is separate and not a prerequisite.'
+problem: Published TASK-365 Human exact-subject AUTO/manual selection is correct,
+  but canonical main 8113b50ac88e571c452c7a1838cf40f459203699 still runs .github/workflows/aios-brain-ingress.yml
+  'Dispatch safe REPAIR wakeup once' on every AUTHOR_REPAIR with executor empty. TASK-369
+  incident GitHub Actions run 39026366429 job 117378039859 reported 'coding REPAIR
+  requires an explicit Executor', a pre-RUN operational failure. Historical combined
+  TASK-370 r1 candidate 38286fb3390a825d8fc5d135cf14f4b1f49faf75 demonstrates possible
+  solutions but is unreviewed/unpublished and its RUN-370-004 FAILED at COMPLETION_GATE
+  with claims=[] despite 465 independent targeted pytest passes. The present task
+  must fix the existing consumer from current main with AC that are affirmable implementation
+  properties before Runtime verification, not replay or assume publication of combined
+  TASK-370.
+assumptions:
+- 'Human explicitly prioritizes sequential split: TASK A Gap 1 before independent
+  TASK B Gap 2, and requires TASK B only after TASK A has canonical RESULT, independent
+  REVIEW PASS and Publisher publication. This prospective priority does not itself
+  mark the previous planning bookmark or TASK-370 completed.'
+- Canonical main at authoring is 8113b50ac88e571c452c7a1838cf40f459203699; TASK-371
+  did not exist. Runtime independently checks current expected-main SHA, actor and
+  TASK authoring authority at ingress.
+- TASK-370 revision 1 and RUN-370-001 through RUN-370-004 FAILURE/correction lineage
+  remain immutable, with latest FAILURE RUN-370-004 COMPLETION_GATE at head 38286fb3390a825d8fc5d135cf14f4b1f49faf75.
+  This separate prospective TASK must start on canonical main, not import unreviewed
+  candidate commits as canonical evidence.
+- Published TASK-314/315 implement conditional FINALIZE_CANDIDATE structural-package
+  reuse and correction-preflight executor_required; published TASK-365 implements
+  Human manual/exact-subject AUTO selection. Reuse these without a second decision
+  engine.
+- Actual self-host GitHub transport can lack protected currentness or reused-package
+  state. Such unknown observations require a bounded Human-wakeup-needed route rather
+  than an optimistic executorless dispatch. Carrier admission/dispatch is not RUN
+  creation.
+- TASK_AUTHORING semantics use the Human-approved R2.1 TCA-1 v1 semantic profile pinned
+  on canonical main; any Runtime/Reviewer/Publisher outcomes stay with their own authority.
+  Human has not delegated a coding Executor/model for implementation of TASK-371;
+  TASK authoring alone does not invoke one.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .ai/tasks/TASK-174.yaml
+  - .ai/tasks/TASK-314.yaml
+  - .ai/tasks/TASK-315.yaml
+  - .ai/tasks/TASK-365.yaml
+  - .ai/tasks/TASK-370.yaml
+  - .ai/roadmap-state.yaml
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/repair_dispatch.py
+  - src/aios_renew/operational_receipt.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_operator_correction_preflight.py
+  - tests/test_repair_dispatch.py
+  modify:
+  - .github/workflows/aios-brain-ingress.yml
+  - src/aios_renew/github_issue_ingress.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_operator_correction_preflight.py
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+non_goals:
+- "No implementation of Gap 2 origin Issue \u2192 real workflow run ID/run attempt/job/step/status/log\
+  \ discovery, comprehensive typed workflow-failure receipt correlation, external\
+  \ Brain attention reader, new status store or failure-monitor. Gap 2 remains a separately\
+  \ approved future TASK after TASK-371 publication."
+- No retrofit of TASK-370 candidate 38286fb3 as reviewed source; no cherry-pick or
+  direct publish of unreviewed combined commits; no rewrite/retire of historical TASK-370
+  RUN/FAILURE/REPAIR refs.
+- No new Executor/model chooser, automatic coding profile selection, Human impersonation,
+  silent retry/failover, lifecycle router, monitor, DB, second Runtime or extra writer/credentials.
+- No modification to canonical preflight/Unified State decision truth, published TASK-314/315/365
+  source semantics, frozen Kernel, unrelated roadmap, REVIEW/Publisher, or execution
+  profile policy.
+- No Runtime verification claim inside TASK acceptance, no full suite, no second v2
+  gate or automatic execution of this authored TASK.
+constraints:
+  hard:
+  - Only canonical Runtime preflight plus exact Unified State/current correction authorization
+    may establish executor_required; if either observation is unavailable, stale,
+    invalid, inconsistent, or cannot authenticate same RUN/REPAIR SHA, do not schedule
+    the bot executorless wakeup. Do not derive authority from REPAIR action text,
+    bot identity or chat.
+  - Existing first-party .github/workflows/aios-brain-ingress.yml must not unconditionally
+    issue workflow_dispatch executor:'' for each AUTHOR_REPAIR. A single bounded route
+    may automatically dispatch executorless only when trusted preflight proves executor_required=false
+    for a current eligible NO_CHANGE or reusable FINALIZE_CANDIDATE; otherwise return
+    Human wakeup required without dispatch.
+  - For CODE_FIX and CONTINUE_IMPLEMENTATION and non-reusable FINALIZE_CANDIDATE,
+    Human manual or exact-subject Human opt-in AUTO remains the only existing authorized
+    coding route. No bot-triggered empty-executor attempt may be interpreted as Human
+    authorization. Preserve explicit Human executor/model/effort priority and provenance
+    through existing independent carriers.
+  - Expose on the original AUTHOR_REPAIR Issue one bounded Human action/reason tied
+    to exact failed_run_id, repair_sha and repair_dispatch_id through its existing
+    Issue receipt writer when coding is required or currentness unavailable. It must
+    not imply a GitHub workflow job failed or create a fake RUN/FAILURE. Do not implement
+    Gap 2 workflow/job/step lookup.
+  - Preserve idempotent original Issue admission, same-dispatch and correction-SHA
+    conflict protection, GitHub actor/root/ref provenance, journal/CAS source currentness,
+    private diagnostic redaction, least privilege and separate Runtime/Reviewer/Publisher
+    authorities.
+  - Use current main and allowed modification scope only; candidate 38286fb3 and its
+    465-pass local test observations can be read as untrusted bounded implementation
+    references, not imported as accepted or Runtime-verified source.
+  - Execution claims must affirm concrete observed implementation behavior for every
+    acceptance ID before Runtime verification. Keep canonical verification exclusively
+    in verification.required; claims/evidence are not Reviewer PASS or publication.
+acceptance:
+- id: AC1
+  condition: The canonical incident-#168-shaped regression demonstrates that published
+    TASK-365 Human AUTO behavior is distinct from the omitted unconditional executorless
+    ingress workflow caller, and reproduces the pre-RUN missing-Executor boundary
+    without fabricating a RUN or declaring TASK-365 defective.
+- id: AC2
+  condition: For a newly canonicalized coding-required AUTHOR_REPAIR, the first-party
+    ingress workflow does not schedule a bot executorless self-host wakeup. The exact
+    original Issue receipt exposes a bounded HUMAN_WAKEUP_REQUIRED action/reason bound
+    to failed_run_id, current repair_sha and repair_dispatch_id, with no claim of
+    RUN or Executor invocation.
+- id: AC3
+  condition: Only a current Runtime-backed preflight plus consistent Unified State
+    attestation of executor_required=false can authorize exactly one automatic executorless
+    route for eligible NO_CHANGE or preserved-ResultPackage FINALIZE_CANDIDATE; the
+    workflow is actually gated on this authenticated route, not on a nonempty repair
+    SHA or action-name guess. Missing, contradictory, stale, malformed or conflicting
+    attestation fails closed without dispatch.
+- id: AC4
+  condition: Existing authenticated Human manual Codex and exact-subject Human opt-in
+    AUTO REPAIR wakeups remain unaffected, carrying exact Human-selected or lawfully
+    reused executor/model/effort/provenance and preserving manual priority. A bot
+    cannot mint coding authority, override explicit Human selection or alter the existing
+    immutable dispatch-id/journal conflict and replay behavior.
+- id: AC5
+  condition: "The minimal ingress/repair integration and adversarial regression cases\
+    \ establish positive coding-required \u2192 Human action, truly executorless \u2192\
+    \ one valid route, and Human manual/AUTO continuity, plus negative missing-currentness,\
+    \ conflicting SHA/identity, stale/moved proof, forged bot selection, and repeated\
+    \ delivery. These tests exercise production routing surfaces and do not substitute\
+    \ a fabricated post-verification PASS."
+- id: AC6
+  condition: The implementation is limited to authorized ingress-consumer, bounded
+    existing Issue status and focused tests/docs, preserves GitHub credentials/actor/source/permission
+    isolation and existing Runtime/Reviewer/Publisher authority, introduces no new
+    state/writer/lifecycle router, and does not add Gap 2 workflow run/job/step/diagnostic
+    discovery.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_github_issue_ingress.py tests/test_github_issue_ingress_workflow.py
+    tests/test_operator_correction_preflight.py
+  - python -m pytest -q tests/test_github_issue_repair_wakeup_workflow.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
