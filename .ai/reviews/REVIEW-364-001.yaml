@@ -1,0 +1,31 @@
+review_id: REVIEW-364-001
+reviewed_sha: 4cfe4a817582bfc6f23a88337f4ed20a9daad065
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: FAIL
+  AC6: PASS
+  AC7: PASS
+findings:
+- id: FINDING-364-001-001
+  basis: AC5
+  action: CODE_FIX
+  location: src/aios_renew/brain_audit.py:construct_moa / validate_moa; tests/test_brain_audit.py
+  issue: A CONSTRUCT first-pass check may declare BLOCKER with UNKNOWN causal/authority
+    judgment, yet construct_moa can retain a draft and validate_moa derives the final
+    outcome solely from second-pass challenges. A second pass with all CLEAR and unchanged
+    final draft can therefore yield CANDIDATE without explicitly resolving the first-pass
+    blocker. No targeted negative regression covers this first-pass-to-final closure
+    gap.
+  expected: 'Preserve exact two-pass MOA contract. Any unresolved first-pass BLOCKER/UNKNOWN
+    must prohibit a final CANDIDATE and speculative draft/handoff. If reconciliation
+    is permissible, require explicit bounded, evidence-grounded disposition linked
+    to the precise first-pass blocker and its affected source/causal basis; never
+    infer resolution merely because later checks say CLEAR. Add focused regression:
+    first-pass UNKNOWN/BLOCKER with otherwise valid sources and all-clear second-pass
+    must fail closed or yield NO_DECISION until lawfully reconciled, retaining frontier,
+    source, historical and profile compatibility.'
