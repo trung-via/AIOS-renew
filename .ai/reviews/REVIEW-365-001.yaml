@@ -1,0 +1,70 @@
+review_id: REVIEW-365-001
+reviewed_sha: 9f70b6b1dabad4234794db74c4d7c1f43f9a4a60
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- Reviewer assessed exact canonical TASK-365 r1 (blob ca7d495949c6031edeec28a87e7767bf8adb1365)
+  at main base f642b24422a7aefe73bcd3ccc3b6756fbf90ab99; PRIMARY RUN-365-001 RESULT
+  source 9f70b6b1dabad4234794db74c4d7c1f43f9a4a60, artifact branch aios/artifacts/RUN-365-001,
+  original human-selected Codex gpt-6.1-sol xhigh execution profile. Candidate directly
+  descends from task commit, changes exactly ten task-scope files, and RESULT lists
+  no unresolved.
+- Runtime EVIDENCE V001 and V002 each bind exact candidate 9f70b6b1dabad4234794db74c4d7c1f43f9a4a60,
+  with exit code 0 for the two authored minimum-sufficient-v1 focused test commands
+  respectively; no full-suite, independent production self-host AUTO run or future
+  success is inferred. Executor claims are not substituted for these Runtime evidence
+  facts.
+- 'AC1: The normative flow document distinguishes Human explicit REPAIR, opted-in
+  AUTO, executorless repair, bare Bot workflow_dispatch and independent REMEDIATION
+  Human A3, with precise operational vs canonical state distinctions and #2033 vs
+  #2037 evidence limitations.'
+- 'AC2: The new version-3 AUTO selector is mutually exclusive with manual model/effort
+  and requires exact opened Human Issue or supported Human workflow_dispatch proof,
+  exact failed_run_id/repair_sha and READY Runtime preflight before selecting the
+  one exact protected failed-RUN execution profile. Missing, ambiguous, swapped, wrong-task,
+  wrong-executor or incompatible protected source fails closed. Source profile validation
+  occurs against historical and current capability policy without defaulting a new
+  provider/model.'
+- 'AC3: Version-2 and version-3 Human manual coding routes still bind explicit supported
+  profile through existing binding; AUTO carries no manual model/effort and does not
+  override a Human explicit supported executor, while invalid mixed selectors are
+  rejected.'
+- 'AC4: Runtime retains correction_preflight executor_required; AUTO coding profile
+  is resolved only for required coding actions. NO_CHANGE and same-head package reusable
+  FINALIZE_CANDIDATE use executor=None with no profile lookup or coding invocation,
+  while unchanged validate_repair_executor_requirement rejects missing or contradictory
+  required Executor choices.'
+- 'AC5: The reusable workflow keeps exact canonical main/sha checks, repository/actor
+  bounds and rejects bare Bot workflow_dispatch coding/AUTO selections. Bot-carried
+  opened Issue must be reauthenticated against original exact allowlisted Human event
+  and transported selector bytes both before AIOS and again at Runtime. Unsupported
+  actor/forged proof and malformed selector tests assert fail-closed. GitHub event
+  proof is treated as platform-owned provenance, not independently sourced from model
+  text.'
+- 'AC6: Existing durable dispatch remains its single identity and lock; V4 adds actor,
+  exact source RUN and profile SHA-256, while v1-v3 remain read-compatible and no
+  old manual record is reinterpreted as AUTO. Identical request replay uses the originally
+  bound profile without re-resolving sources/defaults, and divergent profile/actor/subject/manual-vs-auto
+  attempts are collisions. RUN admission, candidate ancestry and mutation proof stay
+  with existing Runtime.'
+- 'AC7: Bounded pre-AIOS rejection and source-profile cause codes, issue-carrier REJECTED/OPERATIONAL_FAILED/SELF_HOST_COMPLETED
+  semantics, and execution receipt limits do not claim RUN, verification or review
+  from carrier success.'
+- 'AC8: Targeted issue/dispatch/operator tests include source authentication, profile
+  error types, bot/manual/executorless table, reuse/NO_CHANGE branches, journal replay/collision,
+  2 focused Runtime commands exit 0. No new general router, Executor chooser, automatic
+  retry, verifier or Reviewer/Publisher was added.'
+- This is an independent Reviewer semantic PASS for the exact reviewed source and
+  task acceptance contract; it does not assert a live user-origin AUTO correction
+  was executed, nor publisher success or roadmap advancement. Only Runtime may canonicalize
+  the review decision and Publisher may publish the eligible exact source.
