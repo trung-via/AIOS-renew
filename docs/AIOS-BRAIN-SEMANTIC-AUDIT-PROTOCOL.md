@@ -974,3 +974,212 @@ frontier cases, concrete adversarial challenges, profile/byte/depth bounds,
 malformed/currentness and dual-audit cases, both native transports and historical
 and ROA regressions. They establish no live provider quality or cost superiority;
 Runtime owns canonical verification and EVIDENCE on the committed candidate.
+
+## 21. R2.1 / R3: isolated TCA-1 Task Contract Audit
+
+TCA-1 adds semantic conformance for `TASK_AUTHORING` under the existing Brain
+provider-neutral protocol. Production selection remains the exact Adaptive V1
+identity in section 18.6. This slice activates no specialized default, Human
+opt-in policy or V1 retirement. Direct final `AUTHOR_TASK`, admission, verification,
+EVIDENCE, Reviewer, Publisher, roadmap and frozen Kernel mechanisms are unchanged.
+Support material is transient Brain judgment; it cannot write a TASK/RUN/REVIEW,
+approve execution, choose an Executor, publish or advance a next task.
+
+### 21.1. Exact sixth profile; two focused passes and one closure
+
+```yaml
+audit_profile_ref:
+  id: tca-1
+  version: 1
+  digest: 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2
+```
+
+The finite registry accepts at most six recognized identities within its existing
+32768 UTF-8 byte ceiling. TCA's normalized digest covers every instruction, stage,
+check and bound. Rehashed modified content, arbitrary profile names, another flow,
+additional checks or stages cannot remint TCA. All exact published V1/V2/V3 and
+ROA/MOA normalized contents, digests, modes and in-flight replay remain intact.
+Registry order grants no policy authority and an unavailable profile has no V3
+fallback.
+
+TCA applies solely to `TASK_AUTHORING`. Its `CONSTRUCT` pass contains exactly
+`HUMAN_INTENT_FIDELITY`, `TASK_OBJECTIVE_OUTCOME`, `ACCEPTANCE_SATISFIABILITY`,
+`SCOPE_AND_AUTHORITY` and `REQUIRED_CONSUMERS`. The second pass contains exactly
+`FALSE_COMPLETION_CHALLENGE`, `MATERIAL_CONSUMER_CHALLENGE`,
+`SCOPE_AND_HIDDEN_INTENT_CHALLENGE`, `AUTHORITY_AND_PROOF_ORDER_CHALLENGE`,
+`FALSIFYING_COUNTEREXAMPLE_CHALLENGE` and
+`SOURCE_CURRENTNESS_AND_PORTABILITY_CHALLENGE`. These are short task-specific
+passes, without V1's universal eight-lens ledger, a third pass or another
+normative audit. The first pass has no final closure or handoff. The second has
+exactly one `CANDIDATE` or `NO_DECISION` closure, never PASS.
+
+Profile/check/basis/counterexample/property/condition/closure text is bounded to
+2048 UTF-8 bytes; ids to 256 bytes. There are at most 256 acceptance entries,
+16 consumers and five unique exact source references per judgment. TASK candidates
+are bounded to 131072 JSON bytes, caller source context to 65536 bytes, each pass's
+semantic input to 262144 bytes and depth to 32. Existing request/decision/native
+response bounds remain. Closed fields, duplicate JSON/YAML rejection and existing
+privacy floors exclude chat/CoT, raw logs/evidence, secrets, machine-local paths,
+provider/model/session metadata and nested audit/protocol/option payloads.
+
+### 21.2. Exact Human intent, proposal, authority and declared consumers
+
+`construct_tca_subject(packet, profile, return_ref, external_bindings,
+source_context=None)` derives `AIOS_TCA_SUBJECT` from one exact normalized packet
+and read-only caller input. It binds packet/work-context fingerprints, flow,
+normalized TCA profile reference, return-contract reference, externally allocated
+TASK id/revision and the supplied Human intent. The existing packet shape and
+return-contract registry are unchanged. The proposal is not a canonical TASK
+mutation or a new ingress prerequisite.
+
+`task_source_context` has exactly these fields:
+
+- `task`: a complete structural TASK proposal using `minimum-sufficient-v1`, or
+  null when unavailable. Its identity must equal the external request bindings.
+- `authorization`: exactly `scope` (`inspect`, `modify`), `constraints` (`hard`)
+  and `non_goals`, or null. This is the caller's projection of the actual supplied
+  Human/canonical authority, separate from the proposal's assertions.
+- `consumers`: up to sixteen unique records with exactly `id`, `authority`
+  (`HUMAN|BRAIN|EXECUTOR|RUNTIME|REVIEWER|PUBLISHER|TRANSPORT`) and `requirement`.
+  The caller declares the material set; Brain must independently challenge its
+  completeness, including affected Runtime/transport paths, caller-owned inputs,
+  canonical shapes and terminal/correction paths.
+
+Derived `{path,digest}` references cover only supplied `human_input`,
+`task_source_context.task`, `.authorization`, `.consumers` and `canonical_facts`.
+The minimal canonical snapshot includes repository identity, exact main SHA and
+roadmap projection without a canonical blocker. No Git discovery or provider
+source replacement occurs. Missing decisive intent, TASK, authority, consumer set
+or canonical snapshot stays unavailable, forcing dependent UNKNOWN/BLOCKER
+judgments and final NO_DECISION. A malformed or mismatched source fails closed.
+
+The supplying caller owns authenticated source reads, exact Human authority and
+freshness. Hashes bind supplied content; model-authored text, source-looking paths
+and hashes cannot authenticate it. Brain judges intent ambiguity, feasibility,
+scope/non-goal contradictions and whether a consumer was omitted. Deterministic
+support checks explicit declarations, exact identities, coverage and consistency;
+it does not infer proof phase or Human authorization from prose.
+
+### 21.3. Independently claimable acceptance and retained blockers
+
+`construct_tca` accepts exactly `subject_fingerprint`, `checks`,
+`acceptance_checks` and `consumer_checks`. Each ordered focused check contains
+`id`, `outcome` (`CLEAR|BLOCKER`), `knowledge` (`OBSERVED|INFERRED|UNKNOWN`),
+bounded `basis` and `evidence_refs`. Non-UNKNOWN judgments cite their relevant
+exact sources; UNKNOWN always blocks. Source absence cannot be overridden by an
+optimistic declaration. The returned `draft_candidate` is the supplied proposal,
+bound to the construct fingerprint; Brain cannot replace the subject during
+the first pass.
+
+Every original acceptance id appears exactly once, in order, with its exact
+`condition`, `phase` (`CLAIM_NOW|PROOF_LATER`), `implementation_property`,
+`falsifying_counterexample` and the same typed judgment fields. CLAIM_NOW means
+an independently observable implementation property claimable by the admitted
+Executor before Runtime verification. Runtime results/EVIDENCE, Reviewer verdict,
+Publisher publication, roadmap advancement and other later lifecycle facts are
+PROOF_LATER and BLOCKER. Missing, duplicated, circular, contradictory, ambiguous
+or unobservable criteria cannot count as sufficient acceptance. A blocking
+acceptance check also blocks `ACCEPTANCE_SATISFIABILITY`.
+
+Every declared consumer appears exactly once with typed judgment fields and
+`acceptance_ids`. CLEAR requires a nonempty unique subset of the reviewed TASK's
+ids. A blocking consumer blocks `REQUIRED_CONSUMERS`; this exact accounting never
+excuses an omitted material consumer discovered by the adversarial pass.
+
+`validate_tca` accepts exactly `subject_fingerprint`, `construct_fingerprint`,
+`challenges`, `acceptance_checks`, `consumer_checks`, `acceptance_accounting`,
+`reconciliation`, `closure` and `reconciled_candidate`. Each ordered challenge
+adds a concrete `counterexample` and `disposition`
+(`REJECTED_WITH_BOUNDED_BASIS|ADDRESSED_BY_RECONCILIATION|BLOCKER`); blocking
+disposition and outcome agree. The second pass independently attacks false
+completion, untested/hidden consumers, unbounded scope/new intent, authority and
+proof-order conflation, missing falsifying cases, stale sources and private or
+executor-specific material. It rechecks every final acceptance id and consumer
+against the actual reconciled TASK.
+
+`acceptance_accounting` covers every original id exactly once with exactly `id`,
+`disposition`, `final_ids`, `candidate_anchors`, `basis`, `evidence_refs`:
+
+- RETAINED preserves the exact id/condition and has no changed anchors.
+- REPLACED names the exact final ids and changed acceptance anchors.
+- MOVED_TO_VERIFICATION, MOVED_TO_CONSTRAINT or MOVED_TO_NON_GOAL removes that id
+  from final acceptance and identifies changed content on the corresponding
+  existing TASK surface. Brain must explain how the original obligation is
+  lawfully preserved; moving text cannot launder new intent or discard a consumer.
+
+The union of accounted final ids equals final acceptance exactly once. An id
+cannot be silently dropped, duplicated, added or relabeled. Final CANDIDATE
+requires all acceptance checks CLEAR/CLAIM_NOW. If proof-phase risk cannot be
+lawfully removed from acceptance, the outcome is NO_DECISION.
+An earlier PROOF_LATER condition cannot survive unchanged under another id or a
+CLAIM_NOW label, even when an unrelated constraint or challenge was reconciled.
+
+`reconciliation` accounts for every first-pass BLOCKER with exactly `kind`
+(`CHECK|ACCEPTANCE|CONSUMER`), `id`, `disposition` (`UNRESOLVED|RESOLVED`),
+`knowledge`, `basis`, `evidence_refs`, `candidate_anchors`. UNRESOLVED retains
+the prior blocker and knowledge. RESOLVED requires relevant bound sources,
+non-UNKNOWN knowledge, a lawful changed candidate and exact changed dot-path
+anchors such as `constraints.hard.1`. Missing decisive sources require a new
+bound attempt; model-supplied evidence cannot repair them inside reconciliation.
+An all-CLEAR second pass or generic addressed challenge cannot erase a first-pass
+blocker. Reconciliation remains within the second pass, with no extra audit.
+
+Final candidates retain exact TASK identity, goal/problem, assumptions and
+affinity; modification scope stays within both the original and Human-authorized
+set. Original/authorized constraints and non-goals, original required verification
+and policy remain. Any delta requires an addressed adversarial challenge and
+explicit acceptance accounting where applicable. These are local semantic
+conformance protections, without redesigning direct AUTHOR_TASK validation.
+
+Closure has exactly `outcome`, `knowledge`, `summary`, `candidate_fingerprint`.
+Any unresolved first-pass or final BLOCKER forces NO_DECISION with null candidate
+and fingerprint. Effective UNKNOWN dominates knowledge; otherwise INFERRED
+dominates OBSERVED. Resolved blockers contribute their grounded replacement
+judgment. CANDIDATE binds the exact lawful final TASK digest. A NO_DECISION retains
+original acceptance/consumer accounting and exposes no hidden reconciled TASK.
+
+### 21.4. Isolated transport and externally selected V1-only interoperability
+
+The existing `construct_request`, response validation and decision revalidation
+accept TCA only in `TCA_CONSTRUCT` then `TCA_RECONCILE` modes, with one exact
+profile, `task_source_context`, derived `tca_subject` and exact first-pass lineage.
+Ordinary DIRECT/historical modes reject TCA. Revalidation reconstructs packet,
+profile, return, source, subject and stage identities; rehashing stale or swapped
+material cannot bypass those bindings. Malformed output, additional decisions,
+mixed stages/profiles and nested support fail closed.
+
+`attempt(..., conformance_only=True, task_source_context=...)` uses the same
+mapping or JSON provider for exactly two focused calls. Fresh packet composition
+is required between calls and before returning the final decision. Each refresh
+rebuilds the same first request with captured normalized content and demands the
+same request fingerprint. These reconstructions invoke no provider or additional
+audit. Missing freshness, moved source/intent/authority or malformed output aborts
+without retry, fallback, mutation or another normative audit.
+
+For isolated interoperability only, the caller can instead explicitly supply
+`human_v1_option` and the exact Adaptive V1 profile. The selection contains exactly
+`selected_by: HUMAN`, `option: V1_ONLY`, `packet_fingerprint`,
+`work_context_fingerprint`, `return_contract_ref`, `external_bindings`,
+`source_context_fingerprint` and `audit_profile_ref`. Every value must match the
+same exact TASK_AUTHORING subject, context and profile content. The caller must
+authenticate that external Human selection; neither a literal HUMAN string nor
+the protocol's hashes grant Human authority. A candidate cannot select it.
+
+This path uses `V1_OPTION_CONSTRUCT` then `V1_OPTION_RECONCILE`, transporting only
+the existing V1 construct/eight-lens reconciliation, its acceptance-phase ledger
+and three TASK conformance sections. It carries no `tca_subject` or TCA judgment.
+One externally selected profile is normative for the attempt: never TCA plus V1,
+mixed stages, registry-order selection or fallback to historical V3. The option
+also requires isolated conformance and both freshness checks. Missing/unauthorized
+selection, wrong option, subject/profile/digest substitution or an earlier TCA
+decision is rejected before invocation. Ordinary production V1 requests retain
+their exact existing serialization and policy; this compatibility surface does
+not activate the prospective Human opt-in/default policy reserved for R5.
+
+Focused examples cover valid proposals, missing/duplicate acceptance, proof-phase
+misplacement and lawful accounting, false completion, hidden consumers, scope
+contradictions, retained first-pass blockers, absent sources, source/profile/stage
+substitution, private payloads, both native transports and V1-only non-mixing.
+They make no live quality, measured-superiority, episode-cost or cutover claim.
+Runtime alone runs the authored focused canonical verification and constructs
+EVIDENCE on the final committed source.

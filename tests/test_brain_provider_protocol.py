@@ -19,10 +19,208 @@ from aios_renew.decision_packet import DecisionPacket
 from aios_renew.task import validate_task
 from tests.test_brain_audit import (
     roa_output, roa_packet, v3_sections, moa_packet, moa_first, moa_final,
+    tca_example, tca_first, tca_final,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def tca_package():
+    profile = next(p for p in parse_profile_registry(
+        (ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"] if p["id"] == "tca-1")
+    return {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+
+
+@pytest.fixture
+def v1_only_package():
+    profile = next(p for p in parse_profile_registry(
+        (ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"] if p["id"] == "aios-adaptive-brain-audit-v1")
+    return {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+
+
+def tca_inputs(registry):
+    body, context = tca_example()
+    supplied = DecisionPacket(body)
+    return supplied, select_return_contract(registry, supplied), {"task_id": "TASK-002", "revision": 1}, context
+
+
+def human_v1_selection(supplied, contract, bindings, context, package):
+    body = supplied.as_dict()
+    return {"selected_by": "HUMAN", "option": "V1_ONLY", "packet_fingerprint": body["packet_fingerprint"],
+            "work_context_fingerprint": body["work_context_fingerprint"], "return_contract_ref": contract["return_contract_ref"],
+            "external_bindings": bindings, "source_context_fingerprint": digest(context), "audit_profile_ref": package["audit_profile_ref"]}
+
+
+def tca_request(registry, package, *, unknown=False):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    if unknown:
+        context["authorization"] = None
+    return construct_request(supplied, contract, bindings, package, request_mode="TCA_CONSTRUCT", task_source_context=context)
+
+
+def tca_response(req):
+    profile, context, subject = req["audit_profile_package"]["profile"], req["task_source_context"], req["tca_subject"]
+    material = (tca_first(context, profile, subject) if req["request_mode"] == "TCA_CONSTRUCT" else
+                tca_final(context, profile, subject, req["stage1_lineage"]["construct"]))
+    return {"request_fingerprint": req["request_fingerprint"], **material}
+
+
+def task_audit_second(req, first):
+    mode = "TCA_RECONCILE" if req["request_mode"] == "TCA_CONSTRUCT" else "V1_OPTION_RECONCILE"
+    return construct_request(DecisionPacket(req["decision_packet"]), req["return_contract_package"], req["external_bindings"],
+        req["audit_profile_package"], request_mode=mode, stage1_decision=first, task_source_context=req["task_source_context"],
+        human_v1_option=req.get("human_v1_option"))
+
+
+@pytest.mark.parametrize("unknown", (False, True))
+def test_tca_two_pass_transport_round_trips_candidate_or_bounded_no_decision(registry, tca_package, unknown):
+    req = tca_request(registry, tca_package, unknown=unknown)
+    assert revalidate_request(req) == req
+    first = validate_response(req, tca_response(req))
+    assert revalidate_decision(first, req) == first
+    second = task_audit_second(req, first)
+    assert second["tca_subject"] == req["tca_subject"] and revalidate_request(second) == second
+    final = validate_response(second, tca_response(second))
+    assert revalidate_decision(final, second) == final
+    assert final["semantic_value"]["closure"]["outcome"] == ("NO_DECISION" if unknown else "CANDIDATE")
+    assert set(final["semantic_value"]) == {"format", "version", "stage", "subject_fingerprint", "construct_fingerprint",
+        "challenges", "acceptance_checks", "consumer_checks", "acceptance_accounting", "reconciliation", "closure",
+        "handoff_candidate", "audit_fingerprint"}
+    for extra in ({"v1_audit": {}}, {"decisions": [final]}, {"third_pass": {}}, {"human_v1_option": {}}, {"model": "private"}):
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(second, {**tca_response(second), **extra})
+
+
+@pytest.mark.parametrize("mode", ("DIRECT", "AUDIT_CONSTRUCT", "AUDIT_RECONCILE", "MOA_CONSTRUCT", "ROA_CONFORMANCE", "V1_OPTION_CONSTRUCT"))
+def test_tca_registry_membership_does_not_authorize_ordinary_or_mixed_modes(registry, tca_package, mode):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, tca_package, request_mode=mode, task_source_context=context)
+
+
+@pytest.mark.parametrize("fault", ("packet", "intent", "return", "source", "subject", "flow", "profile", "stage", "lineage", "binding"))
+def test_tca_rehashed_request_rejects_stale_and_swapped_material(registry, tca_package, fault):
+    req = tca_request(registry, tca_package)
+    req = task_audit_second(req, validate_response(req, tca_response(req)))
+    if fault in ("packet", "intent", "flow"):
+        body = req["decision_packet"]
+        if fault == "packet":
+            body["canonical_facts"]["main_sha"] = "f" * 40
+        elif fault == "intent":
+            body["human_input"] = "An unrelated Human request"
+        else:
+            body["selected_flow"] = "REPAIR_AUTHORING"
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    elif fault == "return":
+        package = req["return_contract_package"]
+        package["contract"]["candidate_contract"]["requirements"][0] = "Different return requirements"
+        package["return_contract_ref"] = return_contract_ref(package["contract"], package["bounds"])
+    elif fault == "source":
+        req["task_source_context"]["task"]["problem"] = "Changed task subject"
+    elif fault == "subject":
+        req["tca_subject"]["sources"]["intent"]["digest"] = "f" * 64
+    elif fault == "profile":
+        req["audit_profile_package"]["audit_profile_ref"]["digest"] = "f" * 64
+    elif fault == "stage":
+        req["request_mode"] = "V1_OPTION_RECONCILE"
+    elif fault == "binding":
+        req["external_bindings"]["revision"] += 1
+    else:
+        req["stage1_lineage"]["construct"]["subject_fingerprint"] = "f" * 64
+    req["request_fingerprint"] = digest({k: v for k, v in req.items() if k != "request_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_request(req)
+
+
+@pytest.mark.parametrize("fault", ("candidate", "closure", "subject", "counterexample", "first_blocker", "private"))
+def test_tca_rehashed_decision_revalidates_semantics_and_does_not_trust_hashes(registry, tca_package, fault):
+    req = tca_request(registry, tca_package, unknown=fault == "first_blocker")
+    req = task_audit_second(req, validate_response(req, tca_response(req)))
+    final = validate_response(req, tca_response(req))
+    semantic = final["semantic_value"]
+    if fault == "candidate":
+        semantic["handoff_candidate"]["scope"]["modify"].append("src/aios_renew/task.py")
+        semantic["closure"]["candidate_fingerprint"] = digest(semantic["handoff_candidate"])
+    elif fault == "closure":
+        semantic["closure"]["outcome"] = "PASS"
+    elif fault == "subject":
+        semantic["subject_fingerprint"] = "f" * 64
+    elif fault == "counterexample":
+        semantic["challenges"][0]["counterexample"] = ""
+    elif fault == "first_blocker":
+        semantic["reconciliation"] = []
+        semantic["closure"]["outcome"] = "CANDIDATE"
+    else:
+        semantic["challenges"][0]["basis"] = {"raw_logs": "private"}
+    semantic["audit_fingerprint"] = digest({k: v for k, v in semantic.items() if k != "audit_fingerprint"})
+    final["decision_fingerprint"] = digest({k: v for k, v in final.items() if k != "decision_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(final, req)
+
+
+def test_explicit_human_v1_only_option_is_one_exact_normative_audit(registry, v1_only_package, tca_package):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    option = human_v1_selection(supplied, contract, bindings, context, v1_only_package)
+    req = construct_request(supplied, contract, bindings, v1_only_package, request_mode="V1_OPTION_CONSTRUCT",
+                            task_source_context=context, human_v1_option=option)
+    assert "tca_subject" not in req and req["audit_profile_package"] == v1_only_package
+    first = validate_response(req, response(req, context["task"]))
+    second = task_audit_second(req, first)
+    final = validate_response(second, stage2_response(second, context["task"]))
+    assert revalidate_decision(final, second) == final
+    assert final["audit_profile_ref"] == v1_only_package["audit_profile_ref"]
+    assert all("tca_subject" not in r for r in (req, second))
+    tca = tca_request(registry, tca_package)
+    tca_first_decision = validate_response(tca, tca_response(tca))
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, v1_only_package, request_mode="V1_OPTION_RECONCILE",
+                          stage1_decision=tca_first_decision, task_source_context=context, human_v1_option=option)
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, tca_package, request_mode="TCA_RECONCILE",
+                          stage1_decision=first, task_source_context=context)
+
+
+@pytest.mark.parametrize("fault", ("missing", "unauthorized", "option", "packet", "work_context", "return", "binding", "source", "digest", "profile", "v3", "dual"))
+def test_human_v1_option_never_infers_authority_or_falls_back(registry, v1_only_package, tca_package, fault):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    package = deepcopy(v1_only_package)
+    option = human_v1_selection(supplied, contract, bindings, context, package)
+    if fault == "missing":
+        option = None
+    elif fault == "unauthorized":
+        option["selected_by"] = "EXECUTOR"
+    elif fault == "option":
+        option["option"] = "V1_PLUS_TCA"
+    elif fault in ("packet", "work_context", "source"):
+        key = {"packet": "packet_fingerprint", "work_context": "work_context_fingerprint", "source": "source_context_fingerprint"}[fault]
+        option[key] = "f" * 64
+    elif fault == "return":
+        option["return_contract_ref"] = {**option["return_contract_ref"], "digest": "f" * 64}
+    elif fault == "binding":
+        option["external_bindings"] = {**bindings, "revision": 2}
+    elif fault == "digest":
+        option["audit_profile_ref"] = {**option["audit_profile_ref"], "digest": "f" * 64}
+    elif fault == "profile":
+        package = tca_package
+    elif fault == "v3":
+        profile = next(p for p in parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+                       if p["id"] == "brain-high-value-v3")
+        package = {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+    else:
+        package = [package, tca_package]
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, package, request_mode="V1_OPTION_CONSTRUCT",
+                          task_source_context=context, human_v1_option=option)
+
+
+def test_tca_and_option_sources_cannot_be_injected_into_ordinary_historical_modes(registry, v1_only_package):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    option = human_v1_selection(supplied, contract, bindings, context, v1_only_package)
+    for extra in ({"task_source_context": context}, {"human_v1_option": option}):
+        with pytest.raises(BrainProviderProtocolError):
+            construct_request(supplied, contract, bindings, v1_only_package, request_mode="AUDIT_CONSTRUCT", **extra)
 
 
 @pytest.fixture

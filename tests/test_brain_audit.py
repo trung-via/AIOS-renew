@@ -11,10 +11,379 @@ from aios_renew.brain_audit import (
     BrainAuditError, construct_roa_subject, construct_stage1, normalize_profile, parse_profile_registry,
     profile_applies, profile_ref, validate_roa, validate_stage2,
     construct_moa_subject, construct_moa, validate_moa,
+    construct_tca_subject, construct_tca, validate_tca,
 )
 
 
 REGISTRY = Path(__file__).resolve().parents[1] / ".ai" / "brain-audit-profiles.yaml"
+
+
+@pytest.fixture
+def tca_profile():
+    return next(p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"] if p["id"] == "tca-1")
+
+
+def tca_example():
+    from tests.test_decision_packet import task
+    proposal = task()
+    proposal.update(goal="Preserve caller-selected context in the task consumer",
+                    problem="Ambient rediscovery loses the explicit caller selection")
+    proposal["verification"]["policy"] = "minimum-sufficient-v1"
+    proposal["acceptance"] = [
+        {"id": "AC1", "condition": "Runtime consumer retains the supplied caller context"},
+        {"id": "AC2", "condition": "Transport consumer preserves the same context through handoff"},
+    ]
+    context = {"task": proposal, "authorization": {k: deepcopy(proposal[k]) for k in ("scope", "constraints", "non_goals")},
+               "consumers": [{"id": "runtime", "authority": "RUNTIME", "requirement": "Consume the explicit caller context"},
+                             {"id": "transport", "authority": "TRANSPORT", "requirement": "Preserve context through handoff"}]}
+    body = packet("TASK_AUTHORING")
+    body.update(decision_family_ref="task.validate_task+authoring_ingress", handoff_target="AUTHORING_INGRESS",
+                expected_return_shape="TASK_AUTHORING_PROPOSAL",
+                human_input="Preserve explicit caller-selected context in Runtime and transport; no lifecycle mutation.")
+    body["canonical_facts"] = {"repository": "AIOS-renew", "main_sha": "b" * 40,
+                               "roadmap": {"next_items": ["task-context"]}, "selected_task": None}
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    return body, context
+
+
+def tca_subject(body, profile, context):
+    return construct_tca_subject(body, profile, {"selected_flow": "TASK_AUTHORING", "version": 1, "digest": "c" * 64},
+                                 {"task_id": "TASK-002", "revision": 1}, context)
+
+
+def tca_judgment(identity, subject, roles):
+    missing = subject["sources"]["canonical"] is None or any(subject["sources"][r] is None for r in roles)
+    return {"id": identity, "outcome": "BLOCKER" if missing else "CLEAR",
+            "knowledge": "UNKNOWN" if missing else "INFERRED",
+            "basis": "Missing decisive source." if missing else
+                     "The bound Human request and TASK preserve explicit caller context across the authorized consumer edge.",
+            "evidence_refs": [deepcopy(subject["sources"][r]) for r in roles if subject["sources"][r] is not None]}
+
+
+def tca_acceptance(task, subject):
+    return [{**tca_judgment(c["id"], subject, ("task",)), "condition": c["condition"], "phase": "CLAIM_NOW",
+             "implementation_property": c["condition"],
+             "falsifying_counterexample": "A consumer rediscovering ambient context loses the caller's explicit value."}
+            for c in ([] if task is None else task["acceptance"])]
+
+
+def tca_consumers(task, context, subject):
+    return [{**tca_judgment(c["id"], subject, ("task", "consumers")),
+             "acceptance_ids": [] if task is None else [task["acceptance"][min(i, len(task["acceptance"]) - 1)]["id"]]}
+            for i, c in enumerate(context["consumers"])]
+
+
+def tca_first(context, profile, subject):
+    roles = (("intent", "task"), ("intent", "task"), ("task",), ("task", "authorization"), ("task", "consumers"))
+    return {"subject_fingerprint": subject["subject_fingerprint"],
+            "checks": [tca_judgment(c["id"], subject, r) for c, r in zip(profile["passes"][0]["checks"], roles)],
+            "acceptance_checks": tca_acceptance(context["task"], subject),
+            "consumer_checks": tca_consumers(context["task"], context, subject)}
+
+
+def tca_final(context, profile, subject, first):
+    roles = (("task",), ("task", "consumers"), ("task", "authorization", "intent"),
+             ("task", "authorization"), ("task", "consumers"), ("canonical", "intent", "authorization"))
+    cases = (
+        "A TASK can pass its file-presence criteria while Runtime still reads ambient context.",
+        "The Runtime path can preserve context while transport drops it at the shared helper.",
+        "An added unrelated file or contradictory non-goal can hide a new product requirement.",
+        "An Executor claiming TEST PASS before Runtime verification merges authority and reverses proof order.",
+        "A happy-path test alone misses a conflicting caller value at the transport boundary.",
+        "A rehashed old packet or substituted profile can hide a moved canonical main or different Human intent.",
+    )
+    challenges = [{**tca_judgment(c["id"], subject, r), "counterexample": example,
+                   "disposition": "BLOCKER" if subject["sources"]["canonical"] is None or any(
+                       subject["sources"][role] is None for role in r) else "REJECTED_WITH_BOUNDED_BASIS"}
+                  for c, r, example in zip(profile["passes"][1]["checks"], roles, cases)]
+    prior = [(kind, c) for kind, field in (("CHECK", "checks"), ("ACCEPTANCE", "acceptance_checks"),
+                                          ("CONSUMER", "consumer_checks")) for c in first[field] if c["outcome"] == "BLOCKER"]
+    blocked = bool(prior) or any(c["outcome"] == "BLOCKER" for c in challenges)
+    candidate = None if blocked else deepcopy(context["task"])
+    known = [c for f in ("checks", "acceptance_checks", "consumer_checks") for c in first[f]] + challenges
+    return {"subject_fingerprint": subject["subject_fingerprint"], "construct_fingerprint": first["construct_fingerprint"],
+            "challenges": challenges, "acceptance_checks": tca_acceptance(context["task"], subject),
+            "consumer_checks": tca_consumers(context["task"], context, subject),
+            "acceptance_accounting": [{"id": c["id"], "disposition": "RETAINED", "final_ids": [c["id"]],
+                                       "candidate_anchors": [], "basis": "Exact original condition retained.",
+                                       "evidence_refs": [subject["sources"]["task"]]} for c in (
+                                           [] if context["task"] is None else context["task"]["acceptance"])],
+            "reconciliation": [{"kind": kind, "id": c["id"], "disposition": "UNRESOLVED", "knowledge": c["knowledge"],
+                                "basis": c["basis"], "evidence_refs": c["evidence_refs"], "candidate_anchors": []} for kind, c in prior],
+            "closure": {"outcome": "NO_DECISION" if blocked else "CANDIDATE",
+                        "knowledge": "UNKNOWN" if any(c["knowledge"] == "UNKNOWN" for c in known) else "INFERRED",
+                        "summary": "One bounded semantic TASK closure; Runtime and Reviewer retain proof and verdict.",
+                        "candidate_fingerprint": None if blocked else digest(candidate)}, "reconciled_candidate": candidate}
+
+
+def tca_block_final(material, index, basis):
+    material["challenges"][index].update(outcome="BLOCKER", disposition="BLOCKER", basis=basis)
+    material["reconciled_candidate"] = None
+    material["closure"].update(outcome="NO_DECISION", candidate_fingerprint=None)
+
+
+def test_tca_exact_task_specific_profile_and_valid_proposal(tca_profile):
+    assert profile_ref(tca_profile) == {"id": "tca-1", "version": 1,
+        "digest": "1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2"}
+    assert tca_profile["applicable_flows"] == ["TASK_AUTHORING"]
+    assert "lenses" not in tca_profile and [len(p["checks"]) for p in tca_profile["passes"]] == [5, 6]
+    body, context = tca_example()
+    subject = tca_subject(body, tca_profile, context)
+    first = construct_tca(body, tca_profile, subject, tca_first(context, tca_profile, subject), context)
+    assert "closure" not in first and "handoff_candidate" not in first
+    final = validate_tca(body, tca_profile, subject, first, tca_final(context, tca_profile, subject, first), context)
+    assert final["closure"]["outcome"] == "CANDIDATE" and final["handoff_candidate"] == context["task"]
+    assert subject["human_intent"] == body["human_input"] and not subject["blockers"]
+    with pytest.raises(BrainAuditError):
+        construct_stage1(body, tca_profile, context["task"])
+
+
+@pytest.mark.parametrize("fault", ("missing", "duplicate", "extra", "condition", "phase", "no_property", "no_falsifier"))
+@pytest.mark.parametrize("stage", ("construct", "reconcile"))
+def test_tca_acceptance_is_exact_independently_claimable_and_falsifiable(tca_profile, fault, stage):
+    body, context = tca_example()
+    subject = tca_subject(body, tca_profile, context)
+    first = construct_tca(body, tca_profile, subject, tca_first(context, tca_profile, subject), context)
+    material = tca_first(context, tca_profile, subject) if stage == "construct" else tca_final(context, tca_profile, subject, first)
+    checks = material["acceptance_checks"]
+    if fault == "missing":
+        checks.pop()
+    elif fault == "duplicate":
+        checks[1] = deepcopy(checks[0])
+    elif fault == "extra":
+        checks.append(deepcopy(checks[0]))
+    elif fault == "condition":
+        checks[0]["condition"] = "Runtime verification passed"
+    elif fault == "phase":
+        checks[0]["phase"] = "PROOF_LATER"
+    else:
+        checks[0]["implementation_property" if fault == "no_property" else "falsifying_counterexample"] = ""
+    with pytest.raises(BrainAuditError):
+        if stage == "construct":
+            construct_tca(body, tca_profile, subject, material, context)
+        else:
+            validate_tca(body, tca_profile, subject, first, material, context)
+
+
+@pytest.mark.parametrize("phase", ("runtime_result", "evidence", "review", "publication"))
+def test_tca_proof_later_remains_no_decision_until_lawfully_accounted_out(tca_profile, phase):
+    body, context = tca_example()
+    condition = {
+        "runtime_result": "Runtime verification reports PASS", "evidence": "Canonical EVIDENCE proves success",
+        "review": "Reviewer issues PASS", "publication": "Publisher publishes and advances the roadmap"}[phase]
+    context["task"]["acceptance"].append({"id": "AC3", "condition": condition})
+    subject = tca_subject(body, tca_profile, context)
+    material = tca_first(context, tca_profile, subject)
+    material["acceptance_checks"][2].update(phase="PROOF_LATER", outcome="BLOCKER", basis="This fact belongs to a later authority.")
+    material["checks"][2].update(outcome="BLOCKER", basis="AC3 is not claimable by an Executor before verification.")
+    first = construct_tca(body, tca_profile, subject, material, context)
+    material = tca_final(context, tca_profile, subject, first)
+    material["acceptance_checks"][2].update(phase="PROOF_LATER", outcome="BLOCKER")
+    assert validate_tca(body, tca_profile, subject, first, material, context)["closure"]["outcome"] == "NO_DECISION"
+    candidate = deepcopy(context["task"])
+    candidate["acceptance"].pop()
+    candidate["constraints"]["hard"].append("Runtime owns verification/EVIDENCE, Reviewer verdict and Publisher publication remain later facts.")
+    anchor = f"constraints.hard.{len(candidate['constraints']['hard']) - 1}"
+    material.update(reconciled_candidate=candidate, acceptance_checks=tca_acceptance(candidate, subject),
+                    consumer_checks=tca_consumers(candidate, context, subject))
+    material["acceptance_accounting"][2].update(disposition="MOVED_TO_CONSTRAINT", final_ids=[], candidate_anchors=[anchor],
+        basis="Preserve the later authority's obligation as a hard boundary, outside Executor acceptance.")
+    for record in material["reconciliation"]:
+        record.update(disposition="RESOLVED", knowledge="INFERRED", candidate_anchors=[anchor],
+                      basis="The AC3 later-phase obligation is now an authority constraint; AC1/AC2 retain both consumers.")
+    material["challenges"][3]["disposition"] = "ADDRESSED_BY_RECONCILIATION"
+    material["closure"].update(outcome="CANDIDATE", candidate_fingerprint=digest(candidate))
+    final = validate_tca(body, tca_profile, subject, first, material, context)
+    assert [c["id"] for c in final["handoff_candidate"]["acceptance"]] == ["AC1", "AC2"]
+    for bad in ("accounting", "unresolved", "unchanged_anchor", "forged_source"):
+        invalid = deepcopy(material)
+        if bad == "accounting":
+            invalid["acceptance_accounting"].pop()
+        elif bad == "unresolved":
+            invalid["reconciliation"][0].update(disposition="UNRESOLVED", candidate_anchors=[])
+        elif bad == "unchanged_anchor":
+            invalid["reconciliation"][0]["candidate_anchors"] = ["goal"]
+        else:
+            invalid["reconciliation"][0]["evidence_refs"][0]["digest"] = "f" * 64
+        with pytest.raises(BrainAuditError):
+            validate_tca(body, tca_profile, subject, first, invalid, context)
+
+
+@pytest.mark.parametrize("index,case", (
+    (0, "File-presence AC allows empty implementation and circular success claims."),
+    (1, "A hidden transport consumer loses the context while declared Runtime coverage is clear."),
+    (2, "Scope requires lifecycle mutation while the non-goal forbids it; extra service is hidden intent."),
+    (3, "Executor-specific commands and a self-reported PASS impersonate Human and Runtime authority."),
+    (4, "No conflicting-value test can falsify the claimed transport preservation."),
+    (5, "Current main moved; old packet observations cannot authorize the current TASK."),
+))
+def test_tca_independent_counterexamples_block_false_completion(tca_profile, index, case):
+    body, context = tca_example()
+    subject = tca_subject(body, tca_profile, context)
+    first = construct_tca(body, tca_profile, subject, tca_first(context, tca_profile, subject), context)
+    material = tca_final(context, tca_profile, subject, first)
+    tca_block_final(material, index, case)
+    final = validate_tca(body, tca_profile, subject, first, material, context)
+    assert final["closure"]["outcome"] == "NO_DECISION" and final["handoff_candidate"] is None
+    material["closure"]["outcome"] = "CANDIDATE"
+    with pytest.raises(BrainAuditError):
+        validate_tca(body, tca_profile, subject, first, material, context)
+
+
+def test_tca_unrelated_constraint_cannot_relabel_unchanged_proof_later_acceptance(tca_profile):
+    body, context = tca_example()
+    context["task"]["acceptance"].append({"id": "AC3", "condition": "Runtime reports verification PASS"})
+    subject = tca_subject(body, tca_profile, context)
+    material = tca_first(context, tca_profile, subject)
+    material["checks"][2]["outcome"] = "BLOCKER"
+    material["acceptance_checks"][2].update(outcome="BLOCKER", phase="PROOF_LATER")
+    first = construct_tca(body, tca_profile, subject, material, context)
+    material = tca_final(context, tca_profile, subject, first)
+    candidate = deepcopy(context["task"])
+    candidate["constraints"]["hard"].append("Runtime retains verification authority")
+    anchor = f"constraints.hard.{len(candidate['constraints']['hard']) - 1}"
+    for record in material["reconciliation"]:
+        record.update(disposition="RESOLVED", knowledge="INFERRED", candidate_anchors=[anchor])
+    material["challenges"][3]["disposition"] = "ADDRESSED_BY_RECONCILIATION"
+    material["reconciled_candidate"] = candidate
+    material["closure"].update(outcome="CANDIDATE", candidate_fingerprint=digest(candidate))
+    assert all(c["phase"] == "CLAIM_NOW" for c in material["acceptance_checks"])
+    with pytest.raises(BrainAuditError, match="never merely relabeled"):
+        validate_tca(body, tca_profile, subject, first, material, context)
+
+
+def test_tca_conflicting_authorized_scope_has_no_falsely_sufficient_candidate(tca_profile):
+    body, context = tca_example()
+    context["task"]["scope"]["modify"].append("src/aios_renew/task.py")
+    context["task"]["non_goals"].append("Do not change the TASK parser")
+    subject = tca_subject(body, tca_profile, context)
+    material = tca_first(context, tca_profile, subject)
+    material["checks"][3].update(outcome="BLOCKER", basis="The proposal includes task.py outside Human scope and contradicts its parser non-goal.")
+    first = construct_tca(body, tca_profile, subject, material, context)
+    final = tca_final(context, tca_profile, subject, first)
+    assert validate_tca(body, tca_profile, subject, first, final, context)["closure"]["outcome"] == "NO_DECISION"
+    # Even an optimistic model cannot expose the unmodified out-of-authority TASK.
+    clean = construct_tca(body, tca_profile, subject, tca_first(context, tca_profile, subject), context)
+    with pytest.raises(BrainAuditError, match="authorized scope"):
+        validate_tca(body, tca_profile, subject, clean, tca_final(context, tca_profile, subject, clean), context)
+
+
+@pytest.mark.parametrize("fault", ("duplicate_ac", "missing_ac", "consumer", "unbounded_scope"))
+def test_tca_malformed_source_cannot_create_a_new_subject(tca_profile, fault):
+    body, context = tca_example()
+    if fault == "duplicate_ac":
+        context["task"]["acceptance"][1]["id"] = "AC1"
+    elif fault == "missing_ac":
+        context["task"]["acceptance"].clear()
+    elif fault == "consumer":
+        context["consumers"].append(deepcopy(context["consumers"][0]))
+    else:
+        context["authorization"]["scope"]["modify"] = ["src/**"]
+    with pytest.raises(BrainAuditError):
+        tca_subject(body, tca_profile, context)
+
+
+@pytest.mark.parametrize("index", range(5))
+@pytest.mark.parametrize("knowledge", ("OBSERVED", "INFERRED", "UNKNOWN"))
+def test_tca_clear_second_pass_cannot_erase_first_pass_blocker(tca_profile, index, knowledge):
+    body, context = tca_example()
+    subject = tca_subject(body, tca_profile, context)
+    material = tca_first(context, tca_profile, subject)
+    material["checks"][index].update(outcome="BLOCKER", knowledge=knowledge, basis="Material intent or scope ambiguity remains unresolved.")
+    first = construct_tca(body, tca_profile, subject, material, context)
+    material = tca_final(context, tca_profile, subject, first)
+    assert all(c["outcome"] == "CLEAR" for c in material["challenges"])
+    assert validate_tca(body, tca_profile, subject, first, material, context)["closure"]["outcome"] == "NO_DECISION"
+    material["reconciliation"] = []
+    material["reconciled_candidate"] = context["task"]
+    material["closure"].update(outcome="CANDIDATE", candidate_fingerprint=digest(context["task"]))
+    with pytest.raises(BrainAuditError):
+        validate_tca(body, tca_profile, subject, first, material, context)
+
+
+@pytest.mark.parametrize("missing", ("intent", "task", "authorization", "consumers", "canonical"))
+def test_tca_missing_decisive_sources_cannot_be_declared_clear(tca_profile, missing):
+    body, context = tca_example()
+    if missing == "intent":
+        body["human_input"] = None
+    elif missing == "canonical":
+        body["canonical_facts"].pop("main_sha")
+    else:
+        context[missing] = [] if missing == "consumers" else None
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    subject = tca_subject(body, tca_profile, context)
+    material = tca_first(context, tca_profile, subject)
+    first = construct_tca(body, tca_profile, subject, material, context)
+    final = validate_tca(body, tca_profile, subject, first, tca_final(context, tca_profile, subject, first), context)
+    assert final["closure"]["outcome"] == "NO_DECISION" and final["closure"]["knowledge"] == "UNKNOWN"
+    for check in material["checks"]:
+        check.update(outcome="CLEAR", knowledge="OBSERVED")
+    with pytest.raises(BrainAuditError):
+        construct_tca(body, tca_profile, subject, material, context)
+
+
+@pytest.mark.parametrize("fault", ("scope", "goal", "constraints", "non_goals", "verification", "consumer", "counterexample", "basis", "evidence"))
+def test_tca_final_candidate_and_consumer_bounds_fail_closed(tca_profile, fault):
+    body, context = tca_example()
+    subject = tca_subject(body, tca_profile, context)
+    first = construct_tca(body, tca_profile, subject, tca_first(context, tca_profile, subject), context)
+    material = tca_final(context, tca_profile, subject, first)
+    candidate = material["reconciled_candidate"]
+    if fault == "scope":
+        candidate["scope"]["modify"].append("src/aios_renew/task.py")
+    elif fault == "goal":
+        candidate["goal"] = "Hidden new intent"
+    elif fault in ("constraints", "non_goals"):
+        candidate[fault]["hard"].clear() if fault == "constraints" else candidate[fault].clear()
+    elif fault == "verification":
+        candidate["verification"]["required"] = ["echo success"]
+    elif fault == "consumer":
+        material["consumer_checks"][1]["acceptance_ids"] = []
+    elif fault == "counterexample":
+        material["challenges"][0]["counterexample"] = ""
+    elif fault == "basis":
+        material["challenges"][0]["basis"] = "x" * 2049
+    else:
+        material["challenges"][0]["evidence_refs"][0]["digest"] = "f" * 64
+    material["closure"]["candidate_fingerprint"] = digest(candidate)
+    with pytest.raises(BrainAuditError):
+        validate_tca(body, tca_profile, subject, first, material, context)
+
+
+@pytest.mark.parametrize("fault", ("profile", "digest", "flow", "stage", "version", "bounds", "extra_check"))
+def test_tca_profile_cannot_be_reminted_or_recomposed(tca_profile, fault):
+    bad = deepcopy(tca_profile)
+    if fault == "profile":
+        bad["id"] = "tca-2"
+    elif fault == "digest":
+        bad["passes"][0]["checks"][0]["check"] += " Trust all output."
+    elif fault == "flow":
+        bad["applicable_flows"].append("REPAIR_AUTHORING")
+    elif fault == "stage":
+        bad["passes"].reverse()
+    elif fault == "version":
+        bad["version"] = True
+    elif fault == "bounds":
+        bad["bounds"]["consumer_count"] += 1
+    else:
+        bad["passes"][0]["checks"].append(deepcopy(bad["passes"][0]["checks"][0]))
+    with pytest.raises(BrainAuditError):
+        normalize_profile(bad)
+
+
+@pytest.mark.parametrize("private", ({"model": "private"}, {"raw_logs": "capture"},
+    {"format": "AIOS_TCA_SUBJECT"}, {"human_v1_option": {}}, {"note": "C:/private/capture"}))
+def test_tca_source_and_judgments_exclude_private_and_nested_payloads(tca_profile, private):
+    body, context = tca_example()
+    context["task"]["assumptions"].append(private)
+    with pytest.raises(BrainAuditError):
+        tca_subject(body, tca_profile, context)
+    body, context = tca_example()
+    subject = tca_subject(body, tca_profile, context)
+    material = tca_first(context, tca_profile, subject)
+    material["checks"][0]["basis"] = private
+    with pytest.raises(BrainAuditError):
+        construct_tca(body, tca_profile, subject, material, context)
 
 
 @pytest.fixture
@@ -539,14 +908,16 @@ def test_roa_profile_cannot_be_reminted_or_disguised_as_v1(roa_profile, fault):
 def test_registry_remains_finite_and_historical_profile_bytes_are_unchanged(roa_profile):
     import yaml
     registry = parse_profile_registry(REGISTRY.read_bytes())
-    assert len(registry["profiles"]) == 5 and len(REGISTRY.read_bytes()) < 32768
+    assert len(registry["profiles"]) == 6 and len(REGISTRY.read_bytes()) < 32768
     registry["profiles"].append(deepcopy(roa_profile))
     with pytest.raises(BrainAuditError):
         parse_profile_registry(yaml.safe_dump(registry))
     # Exact published historical content, beyond merely keeping each identifier.
     expected = {"brain-high-value-v2": "307a38c6ca3dae0146dcc59d225ea820f86fba082028bb105c6cf3e02d255ce0",
                 "brain-high-value-v3": "2a2d46f85b5d9d4e3653f3c3fb7b7354be44da6fdbf13894dc5d374039370425",
-                "aios-adaptive-brain-audit-v1": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718"}
+                "aios-adaptive-brain-audit-v1": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718",
+                "roa-1-r2": "aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4",
+                "moa-1": "49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903"}
     for profile in parse_profile_registry(REGISTRY.read_bytes())["profiles"]:
         if profile["id"] in expected:
             assert profile_ref(profile)["digest"] == expected[profile["id"]]

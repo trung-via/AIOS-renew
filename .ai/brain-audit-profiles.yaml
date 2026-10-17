@@ -4,6 +4,7 @@
 # V2/V3 entries preserve historical decoding and exact in-flight bindings only.
 # ROA-1 R2 is isolated conformance support, not a prospective policy cutover.
 # MOA-1 is also isolated support; registry membership grants no selection authority.
+# TCA-1 is isolated TASK_AUTHORING support; Human V1-option tests do not cut over policy.
 format: AIOS_BRAIN_AUDIT_PROFILES
 version: 1
 profiles:
@@ -395,5 +396,93 @@ profiles:
       finding_refs_per_check: 16
       closure_summary_bytes: 2048
       outcome_bytes: 196608
+      source_context_bytes: 65536
+      max_depth: 32
+  - id: tca-1
+    version: 1
+    applicable_flows: [TASK_AUTHORING]
+    passes:
+      - id: CONSTRUCT
+        checks:
+          - id: HUMAN_INTENT_FIDELITY
+            check: >-
+              Bind exact supplied Human intent and canonical snapshot to this TASK. Detect ambiguous
+              authority or hidden intent; no authorization from model, registry order, memory or size.
+              Brain owns WHAT/WHY; one admitted Executor HOW. Missing intent/source is UNKNOWN/BLOCKER.
+          - id: TASK_OBJECTIVE_OUTCOME
+            check: >-
+              Trace goal/problem to a useful outcome under exact Human intent. Challenge contradictory,
+              circular, impossible or ambiguous objectives and executor-specific instructions. Proposal,
+              transport receipt or Executor self-report cannot guarantee PASS.
+          - id: ACCEPTANCE_SATISFIABILITY
+            check: >-
+              Review each acceptance id exactly once: exact condition, observable implementation property
+              and falsifying case. CLAIM_NOW precedes Runtime verification; Runtime results/EVIDENCE,
+              Reviewer verdict, publication and roadmap are PROOF_LATER/BLOCKER. Missing, duplicate,
+              circular or unobservable criteria cannot suffice. Account for each retained/replaced/moved id;
+              remove proof-phase risk from final acceptance or NO_DECISION. Never silently drop intent.
+          - id: SCOPE_AND_AUTHORITY
+            check: >-
+              Compare exact authorized scope/constraints/non-goals. scope.inspect grants no mutation.
+              Reject unbounded scope, contradictions, new intent and Human/Executor authority conflation.
+              Runtime admits/verifies/creates EVIDENCE, Reviewer judges, Publisher publishes. This audit
+              cannot mutate TASK/RUN/REVIEW/roadmap or delegate execution.
+          - id: REQUIRED_CONSUMERS
+            check: >-
+              Trace declared material consumers, including affected Runtime/transport, to claimable
+              acceptance and observable outcomes. Check caller-owned inputs, return contract, canonical
+              shapes and terminal/correction paths where material. Missing/hidden consumer is BLOCKER.
+      - id: ADVERSARIAL_AUDIT_AND_RECONCILE
+        checks:
+          - id: FALSE_COMPLETION_CHALLENGE
+            check: >-
+              Construct false success: all acceptance holds while Human outcome fails, criteria are
+              circular or Executor reports PASS without implementation. Test every final condition and
+              falsifying case; reject falsely sufficient closure.
+          - id: MATERIAL_CONSUMER_CHALLENGE
+            check: >-
+              Seek hidden/untested Runtime, transport or other consumers, missing caller-owned context,
+              canonical shapes and correction paths. Declared coverage cannot excuse an omitted consumer.
+              Missing decisive context remains UNKNOWN.
+          - id: SCOPE_AND_HIDDEN_INTENT_CHALLENGE
+            check: >-
+              Attack scope/non-goal contradictions, unbounded edits and hidden intent. Reconcile within
+              exact Human authority, retaining bound goal/problem. No automatic re-authoring, architecture,
+              profile selector or extra normative audit.
+          - id: AUTHORITY_AND_PROOF_ORDER_CHALLENGE
+            check: >-
+              Test premature proof, false Executor PASS, inferred Human opt-in and merged authority.
+              Final acceptance is all CLAIM_NOW; moving PROOF_LATER needs explicit lawful accounting on
+              existing verification/constraint/non-goal surfaces, never a promise of proof.
+          - id: FALSIFYING_COUNTEREXAMPLE_CHALLENGE
+            check: >-
+              Falsify each challenge and final acceptance id; recheck previously clear obligations and
+              consumers after reconciliation. First-pass BLOCKER/UNKNOWN survives an all-CLEAR second
+              pass until explicitly resolved by bound sources, lawful changed candidate and changed anchors.
+          - id: SOURCE_CURRENTNESS_AND_PORTABILITY_CHALLENGE
+            check: >-
+              Challenge wrong packet/subject/return, stale sources, profile/digest swaps, mixed stages,
+              hidden executor instructions and private payloads. Bound supplied sources only; no
+              chat/CoT/raw logs/secrets/provider/session/local metadata. One CANDIDATE or NO_DECISION;
+              no V3 fallback or TCA plus V1 dual audit.
+    procedure:
+      name: TASK_CONTRACT_AUDIT
+      stages: [CONSTRUCT, ADVERSARIAL_AUDIT_AND_RECONCILE]
+      check_outcomes: [CLEAR, BLOCKER]
+      knowledge_states: [OBSERVED, INFERRED, UNKNOWN]
+      acceptance_phases: [CLAIM_NOW, PROOF_LATER]
+      challenge_dispositions: [REJECTED_WITH_BOUNDED_BASIS, ADDRESSED_BY_RECONCILIATION, BLOCKER]
+      blocker_dispositions: [UNRESOLVED, RESOLVED]
+      final_outcomes: [CANDIDATE, NO_DECISION]
+      final_closure: true
+    bounds:
+      check_bytes: 2048
+      candidate_bytes: 131072
+      basis_bytes: 2048
+      evidence_refs_per_check: 5
+      acceptance_count: 256
+      consumer_count: 16
+      closure_summary_bytes: 2048
+      outcome_bytes: 262144
       source_context_bytes: 65536
       max_depth: 32

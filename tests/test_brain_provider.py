@@ -17,11 +17,160 @@ from aios_renew.decision_packet import DecisionPacket
 from test_brain_provider_protocol import (
     digest, inputs, profile_package, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
     moa_inputs, moa_package, moa_response,
+    tca_inputs, tca_package, tca_response, v1_only_package, human_v1_selection,
 )
 
 
 DIRECT = {"proposal": "Investigate", "uncertainty": {"status": "NONE", "summary": None}}
 TASK = {"task_id": "TASK-999", "revision": 1}
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("human_option", (False, True))
+@pytest.mark.parametrize("unknown", (False, True))
+def test_task_audit_selects_exactly_one_two_pass_profile_with_fresh_final_closure(
+        registry, tca_package, v1_only_package, kind, human_option, unknown):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    if unknown and human_option:
+        # The existing V1 closure expresses its own blocker; no TCA pass is run.
+        context["task"]["assumptions"].append("A material consumer effect remains unknown")
+    elif unknown:
+        context["authorization"] = None
+    package = v1_only_package if human_option else tca_package
+    option = human_v1_selection(supplied, contract, bindings, context, package) if human_option else None
+    calls, fresh_calls = [], []
+    def callback(req):
+        calls.append(deepcopy(req))
+        semantic = ((response(req, context["task"]) if req["request_mode"] == "V1_OPTION_CONSTRUCT" else
+                     stage2_response(req, context["task"], blocker=unknown)) if human_option else tca_response(req))
+        return wrapper(req, provider=kind, model=kind, semantic=semantic)
+    def fresh():
+        fresh_calls.append(True)
+        return DecisionPacket(supplied.as_dict())
+    result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings, package, fresh,
+                     conformance_only=True, task_source_context=context, human_v1_option=option)
+    prefix = "V1_OPTION" if human_option else "TCA"
+    assert [r["request_mode"] for r in calls] == [prefix + "_CONSTRUCT", prefix + "_RECONCILE"]
+    assert len(fresh_calls) == 2 and len(result.attributions) == 2
+    assert all(r["audit_profile_package"] == package for r in calls)
+    assert all(("tca_subject" not in r) == human_option for r in calls)
+    semantic = result.decision["semantic_value"]
+    outcome = semantic["outcome"] if human_option else semantic["closure"]["outcome"]
+    assert outcome == ("NO_DECISION" if unknown else "CANDIDATE")
+
+
+def test_tca_native_transports_produce_the_same_portable_decision(registry, tca_package):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    decisions = []
+    for kind in ("mapping", "json"):
+        def callback(req):
+            return wrapper(req, provider=kind, model=kind, semantic=tca_response(req))
+        decisions.append(attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
+            tca_package, lambda: DecisionPacket(supplied.as_dict()), conformance_only=True,
+            task_source_context=context).decision)
+    assert decisions[0] == decisions[1]
+
+
+@pytest.mark.parametrize("fault", ("ordinary_tca", "implicit_v1_option", "ordinary_option", "executor_option", "mixed_option", "v3_fallback"))
+def test_task_audit_policy_or_option_mismatch_aborts_before_provider_invocation(registry, tca_package, v1_only_package, fault):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    calls = []
+    def callback(req):
+        calls.append(req)
+        raise AssertionError("Invalid selection must not reach a provider")
+    conformance = fault not in ("ordinary_tca", "ordinary_option")
+    package = tca_package if fault in ("ordinary_tca", "mixed_option") else v1_only_package
+    option = None if fault in ("ordinary_tca", "implicit_v1_option") else human_v1_selection(
+        supplied, contract, bindings, context, v1_only_package)
+    if fault == "executor_option":
+        option["selected_by"] = "EXECUTOR"
+    elif fault == "v3_fallback":
+        from aios_renew.brain_audit import parse_profile_registry, profile_ref
+        from test_brain_provider_protocol import ROOT
+        profile = next(p for p in parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+                       if p["id"] == "brain-high-value-v3")
+        package = {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings, package,
+                lambda: supplied, conformance_only=conformance, task_source_context=context, human_v1_option=option)
+    assert caught.value.reason_code == "PROTOCOL_INPUT_INVALID" and caught.value.invocation_count == 0 and not calls
+
+
+@pytest.mark.parametrize("after", (1, 2))
+@pytest.mark.parametrize("human_option", (False, True))
+@pytest.mark.parametrize("fault", ("main", "intent", "source_currentness", "unavailable", "malformed"))
+def test_task_audit_currentness_movement_aborts_without_retry_or_fallback(
+        registry, tca_package, v1_only_package, after, human_option, fault):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    package = v1_only_package if human_option else tca_package
+    option = human_v1_selection(supplied, contract, bindings, context, package) if human_option else None
+    calls, fresh_calls = [], []
+    def callback(req):
+        calls.append(req)
+        semantic = ((response(req, context["task"]) if req["request_mode"] == "V1_OPTION_CONSTRUCT" else
+                     stage2_response(req, context["task"])) if human_option else tca_response(req))
+        return wrapper(req, semantic=semantic)
+    def fresh():
+        fresh_calls.append(True)
+        if len(fresh_calls) != after:
+            return supplied
+        if fault == "unavailable":
+            raise ValueError("No current canonical packet")
+        if fault == "malformed":
+            return {}
+        body = supplied.as_dict()
+        if fault == "main":
+            body["canonical_facts"]["main_sha"] = "f" * 40
+        elif fault == "intent":
+            body["human_input"] = "New intent"
+        else:
+            body["work_context_fingerprint"] = "f" * 64
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        return DecisionPacket(body)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings, package, fresh,
+                conformance_only=True, task_source_context=context, human_v1_option=option)
+    assert len(calls) == after and caught.value.invocation_count == after
+    assert all(r["audit_profile_package"] == package for r in calls)
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("stage", (1, 2))
+@pytest.mark.parametrize("fault", ("double_audit", "duplicate_output", "forged_source", "missing_ac"))
+def test_tca_invalid_native_output_stops_at_its_pass(registry, tca_package, kind, stage, fault):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    calls = []
+    def callback(req):
+        calls.append(req)
+        semantic = tca_response(req)
+        if len(calls) == stage:
+            if fault == "double_audit":
+                semantic["v1_audit"] = {}
+            elif fault == "duplicate_output":
+                semantic = [semantic, semantic]
+            elif fault == "forged_source":
+                semantic["acceptance_checks"][0]["evidence_refs"][0]["digest"] = "f" * 64
+            else:
+                semantic["acceptance_checks"].pop()
+        return wrapper(req, provider=kind, model=kind, semantic=semantic)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings, tca_package,
+                lambda: supplied, conformance_only=True, task_source_context=context)
+    assert len(calls) == stage and caught.value.invocation_count == stage
+
+
+def test_tca_duplicate_native_json_closure_fails_before_semantic_return(registry, tca_package):
+    supplied, contract, bindings, context = tca_inputs(registry)
+    calls = []
+    def callback(raw):
+        req = json.loads(raw)
+        calls.append(req)
+        encoded = json.dumps(wrapper(req, provider="json", semantic=tca_response(req)))
+        return encoded.replace('"closure":', '"closure": {}, "closure":') if len(calls) == 2 else encoded
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(JsonBrainProvider("json", "one", callback), supplied, contract, bindings, tca_package,
+                lambda: supplied, conformance_only=True, task_source_context=context)
+    assert caught.value.reason_code == "PROVIDER_RESPONSE_INVALID" and len(calls) == 2
 
 
 @pytest.mark.parametrize("kind", ("mapping", "json"))

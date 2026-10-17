@@ -14,9 +14,11 @@ from typing import Any, Mapping
 
 from .brain_audit import (
     BrainAuditError, _CONFORMANCE_LENSES, _ROA_ID, _MOA_ID, _MOA_FINAL_FIELDS,
+    _TCA_ID, _ADAPTIVE_ID, _TCA_FINAL_FIELDS, _tca_source_context, _tca_construct,
     _has_conformance, _ordered_lenses, _packet, _moa_construct, _moa_source_context,
     _stage1, construct_roa_subject, construct_stage1, construct_moa_subject, construct_moa,
     normalize_profile, profile_ref, validate_roa, validate_stage2, validate_moa,
+    construct_tca_subject, construct_tca, validate_tca,
 )
 from .brain_return_contract import (
     BrainReturnContractError, _BOUNDS, _CANDIDATE_FIELDS, _CONTRACT_FIELDS,
@@ -44,6 +46,7 @@ _DECISION_FIELDS = frozenset({
 _STAGE1_LINEAGE_FIELDS = frozenset({
     "stage1_request_fingerprint", "stage1_decision_fingerprint", "construct",
 })
+_TASK_AUDIT_MODES = frozenset({"TCA_CONSTRUCT", "TCA_RECONCILE", "V1_OPTION_CONSTRUCT", "V1_OPTION_RECONCILE"})
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 _AUDITED = frozenset({
     "ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING",
@@ -296,15 +299,76 @@ def _mode(packet: dict[str, Any], profile: dict[str, Any] | None, mode: Any) -> 
     elif profile is not None and profile["profile"]["id"] == _MOA_ID:
         if flow != "REMEDIATION_AUTHORING" or mode not in {"MOA_CONSTRUCT", "MOA_RECONCILE"}:
             raise BrainProviderProtocolError("MOA is isolated conformance only; no live selection or mixed stages")
+    elif profile is not None and profile["profile"]["id"] == _TCA_ID:
+        if flow != "TASK_AUTHORING" or mode not in {"TCA_CONSTRUCT", "TCA_RECONCILE"}:
+            raise BrainProviderProtocolError("TCA is isolated conformance only; production V1 selection is unchanged")
+    elif mode in {"V1_OPTION_CONSTRUCT", "V1_OPTION_RECONCILE"}:
+        if flow != "TASK_AUTHORING" or profile is None or profile["profile"]["id"] != _ADAPTIVE_ID:
+            raise BrainProviderProtocolError("Human V1-only option requires exact TASK_AUTHORING and Adaptive V1")
     elif not ((flow in _AUDITED and mode in {"AUDIT_CONSTRUCT", "AUDIT_RECONCILE"}) or
               (flow == "DIAGNOSTIC" and mode == "DIRECT")):
         raise BrainProviderProtocolError("flow and request mode do not apply")
 
 
+def _human_v1_option(packet: dict, contract: dict, bindings: dict, profile: dict,
+                     sources: dict, value: Any) -> dict[str, Any]:
+    """Validate a caller-authenticated selection; never infer Human opt-in."""
+    expected = {"selected_by": "HUMAN", "option": "V1_ONLY",
+                "packet_fingerprint": packet["packet_fingerprint"],
+                "work_context_fingerprint": packet["work_context_fingerprint"],
+                "return_contract_ref": contract["return_contract_ref"], "external_bindings": bindings,
+                "source_context_fingerprint": _digest(sources), "audit_profile_ref": profile["audit_profile_ref"]}
+    selected = _exact(_normal(value), set(expected), "external Human V1-only selection")
+    if _bytes(selected) != _bytes(expected):
+        raise BrainProviderProtocolError("Human V1 option subject/profile/content binding mismatch")
+    task = sources["task"]
+    if (task is None or sources["authorization"] is None or not sources["consumers"]
+            or any(task.get(k) != v for k, v in bindings.items())
+            or not packet["human_input"] or packet["canonical_blocker"] is not None
+            or packet["subject"] != {"kind": "TASK_AUTHORING"}):
+        raise BrainProviderProtocolError("Human V1 option requires the exact supplied TASK and Human intent")
+    return selected
+
+
+def _task_request(packet: dict, contract: dict, bindings: dict, profile: dict, sources: Any,
+                  option: Any, mode: str, lineage: dict | None = None) -> dict[str, Any]:
+    context = _tca_source_context(sources)
+    result = {"format": "AIOS_BRAIN_REQUEST", "version": 1, "kind": "BRAIN_REQUEST", "request_mode": mode,
+              "decision_packet": packet, "return_contract_package": contract, "external_bindings": bindings,
+              "audit_profile_package": profile, "stage1_lineage": lineage, "task_source_context": context}
+    if mode in {"TCA_CONSTRUCT", "TCA_RECONCILE"}:
+        if option is not None:
+            raise BrainProviderProtocolError("TCA cannot mix a Human V1-only selection or second normative audit")
+        result["tca_subject"] = construct_tca_subject(packet, profile["profile"], contract["return_contract_ref"], bindings, context)
+    else:
+        result["human_v1_option"] = _human_v1_option(packet, contract, bindings, profile, context, option)
+    result["request_fingerprint"] = _digest(result)
+    _bound(result, 393216, "Brain request")
+    return result
+
+
+def _task_lineage(packet: dict, contract: dict, bindings: dict, profile: dict, sources: Any,
+                  option: Any, mode: str, value: Any) -> dict[str, Any]:
+    lineage = _exact(_normal(value), _STAGE1_LINEAGE_FIELDS, "TASK audit construct lineage")
+    first_mode = "TCA_CONSTRUCT" if mode == "TCA_RECONCILE" else "V1_OPTION_CONSTRUCT"
+    request = _task_request(packet, contract, bindings, profile, sources, option, first_mode)
+    if first_mode == "TCA_CONSTRUCT":
+        first = _tca_construct(packet, profile["profile"], request["tca_subject"], lineage["construct"], sources)
+    else:
+        first = _stage1(packet, profile["profile"], lineage["construct"])
+        _enforce_bindings(first["construct_candidate"], bindings)
+    if (lineage["stage1_request_fingerprint"] != request["request_fingerprint"]
+            or lineage["stage1_decision_fingerprint"] != _decision(request, first)["decision_fingerprint"]):
+        raise BrainProviderProtocolError("TASK audit first-pass subject/profile/option lineage mismatch")
+    return lineage
+
+
 def construct_request(packet: DecisionPacket, return_contract_package: Mapping[str, Any],
                       external_bindings: Mapping[str, Any], audit_profile_package: Mapping[str, Any] | None = None,
                       *, request_mode: str, stage1_decision: Mapping[str, Any] | None = None,
-                      moa_source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                      moa_source_context: Mapping[str, Any] | None = None,
+                      task_source_context: Mapping[str, Any] | None = None,
+                      human_v1_option: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Construct one request from an actual freshly compiled packet object."""
     if not isinstance(packet, DecisionPacket):
         raise BrainProviderProtocolError("constructor requires a fresh DecisionPacket object")
@@ -316,6 +380,21 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
         flow = body["selected_flow"]
         profile = _profile_package(audit_profile_package, flow)
         _mode(body, profile, request_mode)
+        if request_mode in _TASK_AUDIT_MODES:
+            if moa_source_context is not None:
+                raise BrainProviderProtocolError("TASK audits cannot mix MOA sources")
+            first_mode = "TCA_CONSTRUCT" if request_mode.startswith("TCA_") else "V1_OPTION_CONSTRUCT"
+            first_request = _task_request(body, contract, bindings, profile, task_source_context, human_v1_option, first_mode)
+            if request_mode == first_mode:
+                if stage1_decision is not None:
+                    raise BrainProviderProtocolError("TASK construct cannot accept a prior or additional normative audit")
+                return first_request
+            first = revalidate_decision(stage1_decision, first_request)
+            lineage = {"stage1_request_fingerprint": first_request["request_fingerprint"],
+                       "stage1_decision_fingerprint": first["decision_fingerprint"], "construct": first["semantic_value"]}
+            return _task_request(body, contract, bindings, profile, task_source_context, human_v1_option, request_mode, lineage)
+        if task_source_context is not None or human_v1_option is not None:
+            raise BrainProviderProtocolError("TASK sources/Human option are isolated conformance only")
         if request_mode in {"MOA_CONSTRUCT", "MOA_RECONCILE"}:
             first_request = _moa_request(body, contract, bindings, profile, moa_source_context, "MOA_CONSTRUCT")
             if request_mode == "MOA_CONSTRUCT":
@@ -372,8 +451,12 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
         request = _normal(value)
         roa = type(request) is dict and request.get("request_mode") == "ROA_CONFORMANCE"
         moa = type(request) is dict and request.get("request_mode") in ("MOA_CONSTRUCT", "MOA_RECONCILE")
+        tca = type(request) is dict and request.get("request_mode") in ("TCA_CONSTRUCT", "TCA_RECONCILE")
+        option = type(request) is dict and request.get("request_mode") in ("V1_OPTION_CONSTRUCT", "V1_OPTION_RECONCILE")
         request = _exact(request, _REQUEST_FIELDS | ({"roa_subject"} if roa else set()) |
-                          ({"moa_subject", "moa_source_context"} if moa else set()), "Brain request")
+                          ({"moa_subject", "moa_source_context"} if moa else set()) |
+                          ({"task_source_context", "tca_subject"} if tca else set()) |
+                          ({"task_source_context", "human_v1_option"} if option else set()), "Brain request")
         if request["format"] != "AIOS_BRAIN_REQUEST" or type(request["version"]) is not int or request["version"] != 1 or request["kind"] != "BRAIN_REQUEST":
             raise BrainProviderProtocolError("invalid request format")
         _bound(request, 393216, "Brain request")
@@ -383,7 +466,10 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
         flow, mode = packet["selected_flow"], request["request_mode"]
         profile = _profile_package(request["audit_profile_package"], flow)
         _mode(packet, profile, mode)
-        if mode == "MOA_RECONCILE":
+        if mode in {"TCA_RECONCILE", "V1_OPTION_RECONCILE"}:
+            _task_lineage(packet, contract, bindings, profile, request["task_source_context"],
+                          request.get("human_v1_option"), mode, request["stage1_lineage"])
+        elif mode == "MOA_RECONCILE":
             _moa_lineage(packet, contract, bindings, profile, request["moa_source_context"], request["stage1_lineage"])
         elif mode == "AUDIT_RECONCILE":
             _lineage(packet, contract, bindings, profile, request["stage1_lineage"])
@@ -399,6 +485,11 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
                                                       bindings, request["moa_source_context"])
             if _bytes(request["moa_subject"]) != _bytes(expected_subject):
                 raise BrainProviderProtocolError("MOA packet/return/source/subject binding mismatch")
+        if tca or option:
+            expected = _task_request(packet, contract, bindings, profile, request["task_source_context"],
+                                     request.get("human_v1_option"), mode, request["stage1_lineage"])
+            if _bytes(expected) != _bytes(request):
+                raise BrainProviderProtocolError("TASK audit packet/return/source/subject/option binding mismatch")
         supplied = _fingerprint(request["request_fingerprint"], "request fingerprint")
         if supplied != _digest({k: v for k, v in request.items() if k != "request_fingerprint"}):
             raise BrainProviderProtocolError("request fingerprint mismatch")
@@ -435,7 +526,13 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
         response = _normal(semantic_response, response=True)
         _bound(response, 655360, "provider semantic response")
         mode, packet = req["request_mode"], req["decision_packet"]
-        expected = ({"request_fingerprint", "subject_fingerprint", "checks", "draft_candidate"}
+        mode = {"V1_OPTION_CONSTRUCT": "AUDIT_CONSTRUCT", "V1_OPTION_RECONCILE": "AUDIT_RECONCILE"}.get(mode, mode)
+        expected = ({"request_fingerprint", "subject_fingerprint", "checks", "acceptance_checks", "consumer_checks"}
+                    if mode == "TCA_CONSTRUCT" else
+                    {"request_fingerprint", "subject_fingerprint", "construct_fingerprint", "challenges", "acceptance_checks",
+                     "consumer_checks", "acceptance_accounting", "reconciliation", "closure", "reconciled_candidate"}
+                    if mode == "TCA_RECONCILE" else
+                    {"request_fingerprint", "subject_fingerprint", "checks", "draft_candidate"}
                     if mode == "MOA_CONSTRUCT" else
                     {"request_fingerprint", "subject_fingerprint", "construct_fingerprint", "challenges", "closure", "reconciled_candidate"}
                     if mode == "MOA_RECONCILE" else
@@ -450,6 +547,13 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
             raise BrainProviderProtocolError("request echo mismatch")
         if mode == "DIRECT":
             semantic = _diagnostic(response["candidate"])
+        elif mode in {"TCA_CONSTRUCT", "TCA_RECONCILE"}:
+            material = {k: v for k, v in response.items() if k != "request_fingerprint"}
+            args = (packet, req["audit_profile_package"]["profile"], req["tca_subject"])
+            if mode == "TCA_CONSTRUCT":
+                semantic = construct_tca(*args, material, req["task_source_context"])
+            else:
+                semantic = validate_tca(*args, req["stage1_lineage"]["construct"], material, req["task_source_context"])
         elif mode in {"MOA_CONSTRUCT", "MOA_RECONCILE"}:
             material = {k: v for k, v in response.items() if k != "request_fingerprint"}
             args = (packet, req["audit_profile_package"]["profile"], req["moa_subject"])
@@ -493,8 +597,22 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
         if type(semantic) is not dict:
             raise BrainProviderProtocolError("invalid decision semantic value")
         mode = req["request_mode"]
+        mode = {"V1_OPTION_CONSTRUCT": "AUDIT_CONSTRUCT", "V1_OPTION_RECONCILE": "AUDIT_RECONCILE"}.get(mode, mode)
         if mode == "DIRECT":
             validated = _diagnostic(semantic)
+        elif mode == "TCA_CONSTRUCT":
+            validated = _tca_construct(req["decision_packet"], req["audit_profile_package"]["profile"],
+                                       req["tca_subject"], semantic, req["task_source_context"])
+        elif mode == "TCA_RECONCILE":
+            _exact(semantic, _TCA_FINAL_FIELDS, "TCA final semantic result")
+            material = {k: semantic[k] for k in ("subject_fingerprint", "construct_fingerprint", "challenges",
+                                                "acceptance_checks", "consumer_checks", "acceptance_accounting",
+                                                "reconciliation", "closure")}
+            material["reconciled_candidate"] = semantic["handoff_candidate"]
+            validated = validate_tca(req["decision_packet"], req["audit_profile_package"]["profile"], req["tca_subject"],
+                                      req["stage1_lineage"]["construct"], material, req["task_source_context"])
+            if _bytes(validated) != _bytes(semantic):
+                raise BrainProviderProtocolError("TCA result does not match its exact two-pass closure")
         elif mode == "MOA_CONSTRUCT":
             validated = _moa_construct(req["decision_packet"], req["audit_profile_package"]["profile"],
                                        req["moa_subject"], semantic, req["moa_source_context"])
