@@ -1,0 +1,36 @@
+review_id: REVIEW-364-002
+reviewed_sha: e773588078c6646d6df9fae416a402103969ea64
+mode: DELTA
+verdict: PASS
+acceptance:
+  AC5: PASS
+findings: []
+prior_finding_id: FINDING-364-001-001
+notes:
+- Reviewer assessed exact TASK-364 r1, RUN-364-002 REMEDIATION source candidate e773588078c6646d6df9fae416a402103969ea64,
+  source RUN-364-001 PRIMARY candidate 4cfe4a817582bfc6f23a88337f4ed20a9daad065, immutable
+  REVIEW-364-001 CHANGES_REQUIRED/FINDING-364-001-001, and authorized REMEDIATION
+  commit 63ebf490a9abbbb9fe61578d0d8cc0560cfda826. Exact correction RUN execution
+  base retains source candidate and original TASK revision.
+- Canonical Runtime RESULT on aios/artifacts/RUN-364-002 includes evidence RUN-364-002-V001
+  subject e773588078c6646d6df9fae416a402103969ea64 for original authored V1 command
+  python -m pytest -q tests/test_brain_audit.py tests/test_brain_provider_protocol.py
+  tests/test_brain_provider.py, exit_code 0, result unresolved [], and changed_files
+  exactly src/aios_renew/brain_audit.py and tests/test_brain_audit.py. No independent
+  raw output inferred and no full-suite repeat required.
+- Reviewed delta prevents a speculative first-pass MOA draft when any construct check
+  is BLOCKER; second-pass closure now aggregates first-pass and second-pass blockers/knowledge,
+  ensuring NO_DECISION and no final handoff if any unresolved first-pass BLOCKER remains,
+  regardless of later all-CLEAR challenges. The closed output schema does not permit
+  evidence-grounded explicit reopening of such first-pass blocker, so conservative
+  fail-closed is lawful and meets source finding expectation.
+- Focused adversarial test parametrizes three construct checks, three knowledge states,
+  and two possible second-pass challenge dispositions (18 cases), asserting speculative
+  draft rejection, all-clear second-pass cannot override first blocker, bounded NO_DECISION
+  and no final candidate. Existing unique/frontier, provider mode, source binding,
+  historical profile and standalone conformance tests are retained by the exact scoped
+  delta. Earlier PRIMARY AC1-AC4, AC6-AC7 findings remain unchanged; this DELTA review
+  assesses only AC5 and does not retrospectively change the PRIMARY review.
+- Semantic PASS is a Reviewer verdict only. Runtime owns decision canonicalization
+  and evidence, Publisher exact eligible publication, and Human/Brain roadmap progression
+  separately.
