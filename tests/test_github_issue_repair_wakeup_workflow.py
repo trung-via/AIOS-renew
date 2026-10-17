@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from pathlib import Path
 
 import pytest
@@ -73,7 +74,23 @@ def test_carrier_calls_exactly_one_fixed_target_with_only_selectors() -> None:
         "model_source",
         "effort_source",
     }
-    assert text.count("aios_renew.github_issue_repair_wakeup") == 1
+    module = "aios_renew.github_issue_repair_wakeup"
+    invocations = [
+        (job_id, step)
+        for job_id, job in workflow["jobs"].items()
+        for step in job.get("steps", [])
+        if module in step.get("run", "")
+    ]
+    admissions = [(job_id, step) for job_id, step in invocations
+                  if "--mode workflow-receipt" not in step["run"]]
+    assert len(admissions) == 1
+    assert admissions[0][0] == "admit" and admissions[0][1]["id"] == "admission"
+    observations = [(job_id, shlex.split(step["run"])) for job_id, step in invocations
+                    if "--mode workflow-receipt" in step["run"]]
+    assert [(job_id, args[args.index("--phase") + 1]) for job_id, args in observations] == [
+        ("admit", "waiting"), ("receipt", "completed"),
+    ]
+    assert text.count(module) == len(invocations) == 3
     forbidden_command = re.compile(
         r"^\s*(?:run:\s*)?(?:&\s*)?(?:python(?:\.exe)?\s+-m\s+)?"
         r"aios\s+(?:repair(?:\s|$)|remediate(?:\s|$)|run(?:\s|$))",
@@ -105,8 +122,9 @@ def test_fixed_target_has_manual_and_reusable_carriers_and_one_command_surface()
     assert "actions/checkout" not in text
     assert "AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}" in text
     assert text.count("$controlSource repair-wakeup ") == 1
+    command_text = "\n".join(step.get("run", "") for step in job["steps"])
     for forbidden in ("aios continue", "aios repair ", "codex ", "antigravity "):
-        assert forbidden not in text.lower()
+        assert forbidden not in command_text.lower()
     assert "$aiosExitCode = $LASTEXITCODE" in text
     assert "exit $aiosExitCode" in text
 
@@ -573,9 +591,12 @@ def authoring_workflow_fixture(tmp_path, monkeypatch, *, action="CODE_FIX", reus
     author.git(remote, "update-ref", f"refs/heads/aios/failure-artifacts/{failed}", staged, failure_sha)
     envelope = replace(envelope, payload={**envelope.payload, "action": action,
         "modification_scope": [] if action in {"NO_CHANGE", "FINALIZE_CANDIDATE"} else ["src/sample.py"]})
+    envelope_body = asdict(envelope)
+    # AUTHOR_REPAIR omits the AUTHOR_TASK-only proof instead of sending null.
+    assert envelope_body.pop("origin_authoring_proof") is None
     event = dict(action="opened", repository={"full_name": "trung-via/AIOS-renew"},
         sender={"login": "trung-via", "type": "User"}, issue=dict(id=2075000, number=2075,
-            title="[AIOS BRAIN INGRESS]", user={"login": "trung-via", "type": "User"}, body=json.dumps(asdict(envelope))))
+            title="[AIOS BRAIN INGRESS]", user={"login": "trung-via", "type": "User"}, body=json.dumps(envelope_body)))
     event_path = tmp_path / "workflow-event.json"
     event_path.write_text(json.dumps(event), encoding="utf-8")
     delivery = github_issue_ingress.deliver_event(event_path, ROOT / ".ai/brain-ingress-carriers.yaml", repo=repo)
