@@ -1,0 +1,76 @@
+review_id: REVIEW-369-003
+reviewed_sha: 2f80521f4bac9259d50002de4f31b8dc57729dfd
+mode: DELTA
+prior_finding_id: FINDING-369-001-001
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- Independent DELTA semantic review of canonical TASK-369 r1 blob 2b3e2af964d2833631f731a2a4453897aaa8e79f,
+  original PRIMARY RUN-369-001 candidate b4559d0fb58db3839548b1667f4389a2593e2599,
+  REVIEW-369-001 CHANGES_REQUIRED and its sole FINDING-369-001-001; exact REMEDIATION
+  RUN-369-002 failed candidate b98c73b5a21ead499d912fc7ec74a2e8f975b135, authorized
+  REPAIR SHA 800e7dabd1e91d07407d9c745201ce322404beb7, and successful REPAIR RUN-369-003
+  exact RESULT candidate 2f80521f4bac9259d50002de4f31b8dc57729dfd. This verdict applies
+  to this exact candidate and original finding, not TASK-370 or a separate workflow.
+- Runtime original authoritative ResultPackage .ai/transport/result.json at aios/artifacts/RUN-369-003
+  has evidence RUN-369-003-V001 and V002 exit_code 0 on exactly the original two minimum-sufficient-v1
+  commands with subject_sha 2f80521f4bac9259d50002de4f31b8dc57729dfd; RESULT unresolved
+  is empty. The fresh REPAIR commit modifies only tests/test_brain_context.py to preserve
+  byte-exact Git tree input on Windows. The cumulative delta from original reviewed
+  candidate modifies only src/aios_renew/brain_context.py, tests/test_brain_context.py
+  and tests/test_brain_provider.py, all authorized.
+- 'AC1 PASS: Ordinary public brain_provider.attempt() invokes canonical_audit_inputs
+  automatically when flow is new normative Architecture/Task/Remediation/Repair, without
+  supplied test policy, selection authenticator or conformance_only switch. Focused
+  Git-backed first-party tests cover AOA/TCA/MOA two-pass and ROA one-pass defaults
+  for mapping and JSON adapters and both legitimate activation statuses; no unsolicited
+  V1 call.'
+- 'AC2 PASS: The canonical supplier checks actual Git refs to main, published R5 candidate,
+  R5 primary artifacts and REVIEW-368-001, including exact RUN-368-001 admitted ACTIVE/head_sha=null,
+  nested ResultPackage.result.head_sha, evidence run/subject/commands/claims, approved
+  SHA ancestry and independent REVIEW PASS, current complete profile registry and
+  return contract. Negative cross-ref/forged/malformed/stale cases reject pre-provider;
+  authenticated selection is rechecked at ADMIT and CONTINUE. Reviewer independently
+  compared RUN-368-001 real canonical ResultPackage and RUN source shapes, not relying
+  solely on Executor prose.'
+- 'AC3 PASS: Missing/ambiguous source, stale main, changed/pinned profile, forged/partial
+  approval or moved R5 refs fail closed without fallback to legacy Adaptive V1/V3.
+  Focused tests exercise public production entrypoint with no provider invocation
+  on invalid canonical source.'
+- 'AC4 PASS: Independent individual Human choice authentication binds exact V1_ONLY
+  normative substitution only for Architecture/Task, and V1_READ_ONLY support only
+  for correction flow, without a second normative provider call. Spoofed/literal/stale
+  option cases are rejected.'
+- 'AC5 PASS: R5 published provider procedures are reused: AOA/TCA/MOA construct-reconcile
+  and single ROA conformance. Existing stage/source/currentness/return binding and
+  one-closure invariants remain; adversarial tests assert no profile reselection on
+  movement.'
+- 'AC6 PASS: R5 historical explicit V1/V2/V3 decoding and existing in-flight profile/stage
+  checks stay unchanged except supported prospective caller routing. Changed canonical
+  main or R5 artifact during an attempt produces bounded freshness rejection without
+  replaying an old subject under new defaults.'
+- 'AC7 PASS: Direct-final AUTHOR_TASK/REPAIR/REMEDIATION Runtime/Reviewer/Publisher
+  paths are not modified; new policy is Brain invocation support and does not create
+  canonical mutation authority or another router.'
+- 'AC8 PASS: The exact eight TASK scope.modify paths and intended explanatory docs
+  are retained in the cumulative candidate. Integration tests exercise normal public
+  attempt() entrypoint with independent local canonical Git remote reproducing the
+  real R5 RUN/ResultPackage layout and deliberately adversarial source/identity variants;
+  failed RUN-369-002 Windows CRLF fixture issue is repaired by byte-exact Git subprocess
+  input. Runtime''s own two original targeted test commands pass, not a full-suite.'
+- 'Boundary of this PASS: semantic eligibility of RUN-369-003 exact reviewed candidate
+  only. TASK-369 publication of that exact reviewed candidate has not yet been observed;
+  canonical planning still contains transitional R2.1 selection mirrors. This review
+  does NOT claim that production main has adopted the candidate, that all independent
+  consumers have completed live conformance, that roadmap has reconciled active-selection
+  mirrors, or that Lean VP NEXT may advance automatically. Human/Brain roadmap reconciliation
+  remains separately owned after lawful publication.'
