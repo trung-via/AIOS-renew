@@ -1183,3 +1183,205 @@ substitution, private payloads, both native transports and V1-only non-mixing.
 They make no live quality, measured-superiority, episode-cost or cutover claim.
 Runtime alone runs the authored focused canonical verification and constructs
 EVIDENCE on the final committed source.
+
+## 22. R2.1 / R4: isolated AOA-1 Architecture Outcome Audit
+
+AOA-1 supports only the existing `ARCHITECTURE` Brain flow. It produces bounded
+Human/Brain planning support under `BOUNDED_SEMANTIC_PROPOSAL`, without allocating
+a TASK, approving implementation, accepting risk or claiming engineering success.
+Current production selection remains the exact Adaptive V1 identity from section
+18.6. Specialized default selection and prospective Human-option policy remain
+R5 work; registry membership grants neither. Runtime verification/admission and
+EVIDENCE, independent Reviewer judgment, Publisher publication, roadmap, frozen
+Kernel and downstream adoption retain their existing authorities.
+
+### 22.1. Pinned seventh profile and two architecture passes
+
+```yaml
+audit_profile_ref:
+  id: aoa-1
+  version: 1
+  digest: 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b
+```
+
+The finite registry now permits seven recognized identities within 40960 raw
+UTF-8 bytes. This bounded capacity extension preserves all historical V1/V2/V3,
+ROA-1 R2, MOA-1 and TCA-1 normalized content, digests and replay modes. AOA itself
+is bounded to 12288 normalized bytes. Modified/rehashed instructions, identity
+renaming, another flow or added stages/checks cannot remint the pinned profile.
+
+`CONSTRUCT` has five ordered checks: `HUMAN_OUTCOME_AND_NECESSITY`,
+`COUNTERFACTUAL_ALTERNATIVES`, `EPISODE_COST_AND_EXTERNALITIES`,
+`DISCRIMINATING_INFORMATION`, `THREATS_AUTHORITY_AND_REVERSIBILITY`.
+`ADVERSARIAL_AUDIT_AND_RECONCILE` has six: `NO_BUILD_FALSIFIER`,
+`MINIMAL_DELTA_CHALLENGER`, `OMITTED_CONSUMERS_AND_ALTERNATIVES`,
+`HIDDEN_COST_AND_INVENTED_METRICS`, `RISK_OWNERSHIP_AND_IRREVERSIBILITY`,
+`SOURCE_AUTHORITY_AND_CLOSURE`. These focused passes have no universal eight-lens
+ledger, generic audit route, third audit, additional vote or deterministic winner.
+The first pass has no closure/handoff; the second closes once with `CANDIDATE` or
+`NO_DECISION`, never PASS. An all-positive checklist does not establish necessity.
+
+Semantic text is bounded to 2048 bytes, ids/anchors to 256 bytes, lists to their
+closed count limits, exact references to sixteen per judgment, source context to
+65536 bytes, candidates to 32768 bytes and each semantic pass to 262144 bytes.
+Depth is at most 32. Existing request, decision and native transport ceilings
+remain. Closed schemas and existing privacy floors exclude raw evidence/logs,
+chat/CoT, secrets, machine-local paths, provider/model/session metadata and nested
+audit, protocol or Human-option payloads. Native JSON duplicate keys fail closed.
+
+### 22.2. Exact subject and externally supplied current sources
+
+`construct_aoa_subject(packet, profile, return_ref, external_bindings,
+source_context=None)` binds `AIOS_AOA_SUBJECT` to the exact normalized packet,
+work-context fingerprint, profile id/version/content digest, existing return
+reference and complete source-context fingerprint. It requires the exact
+`EXPLICIT_SELECTOR`, `BRAIN`, `HUMAN_BRAIN_ARCHITECTURE_PLANNING`,
+`HUMAN_BRAIN_PLANNING`, `BOUNDED_SEMANTIC_PROPOSAL` metadata and
+`subject: {kind: ARCHITECTURE}`. External bindings are exactly `{}`; no external
+TASK id/revision is invented. Decision Packet and return registry shapes stay intact.
+
+`architecture_source_context` has exactly seven caller-owned fields:
+
+- `objective`: the supplied Human outcome, or null if unavailable; the packet's
+  separate `human_input` binds the original intent. Brain must challenge fidelity
+  and ambiguity between the projection and the original input.
+- `constraints`: up to 32 unique bounded Human planning constraints.
+- `authorization`: null or exactly `planning_scope` and `risk_acceptance`, each a
+  bounded list. Planning scope is nonempty; risk acceptance is an explicit Human
+  projection, never inferred from a model recommendation.
+- `alternatives`: unavailable `[]`, or exactly ordered A `NO_BUILD_REUSE`, B
+  `MINIMUM_LAWFUL_DELTA`, C `NEW_MECHANISM`, each with `id`, `kind`, `description`.
+- `consumers`: up to sixteen unique `id`, `authority`, `requirement` records.
+- `evidence`: up to sixteen unique records with `id`, `knowledge`, `basis`,
+  `measurements`. Basis states applicability, assumptions and horizon. Each of at
+  most fifteen measurements has `option_id`, `dimension`, nonnegative `quantity`.
+  `UNKNOWN` evidence has no measurements. These are bounded projections, not raw
+  evidence or canonical Runtime EVIDENCE created by Brain.
+- `provenance`: null or exactly `status` (`AUTHENTICATED|UNKNOWN`), `repository`,
+  `main_sha`, `work_context_fingerprint`, supplied by the external source boundary.
+
+The supplying caller must authenticate actual source reads, Human authority and
+selection before constructing requests. `AUTHENTICATED` is that trusted caller's
+projection of an already established boundary; it is not a credential, and this
+pure conformance API does not authenticate a label or content hash. Model output
+cannot supply, replace or upgrade the context or provenance. Callers without an
+authenticated source must supply UNKNOWN/null. No source discovery, issuer,
+memory service or new authentication authority is introduced.
+
+Derived `{path,digest}` references bind intent, objective, constraints,
+authorization, alternatives, consumers, canonical facts and each supplied evidence
+record. The canonical snapshot requires repository, exact main SHA and roadmap,
+without a blocker or pending canonical obligation. Provenance must match its
+repository/main and the packet work context; mismatch fails closed even after
+outer rehashing. Missing/unauthenticated decisive sources remain unavailable with
+explicit blockers. Dependent judgments must be UNKNOWN/BLOCKER; no optimistic
+declaration or source-looking reference can discharge them. Freshness remains
+the supplying caller's responsibility at each fresh packet composition.
+
+### 22.3. Counterfactual comparison, costs and retained blockers
+
+`construct_aoa` accepts exactly `subject_fingerprint`, `checks`, `alternatives`,
+`information`, `draft_candidate`. Each focused check has `id`, `outcome`
+(`CLEAR|BLOCKER`), `knowledge` (`OBSERVED|INFERRED|UNKNOWN`), bounded `basis` and
+unique exact `evidence_refs`. Non-UNKNOWN judgments require their relevant source
+references. Missing decisive sources and UNKNOWN judgments always block.
+
+Both passes compare all three alternatives in order against the same Human
+objective. Each alternative carries those judgment fields plus `expected_outcome`,
+`feasibility` (`FEASIBLE|INFEASIBLE|UNKNOWN`), `planning_scope`, `risks`,
+`risk_acceptance_required`, `reversibility`, `necessity`, `externalities`
+(`positive`, `negative`), `episode_cost` and `relative_episode_cost`. Scope stays
+within the caller's planning authorization. Required risk acceptance must be
+explicitly present or the alternative blocks. An assessed infeasible option can
+remain in a complete comparison; an unresolved feasibility judgment blocks.
+
+`episode_cost` covers exactly `elapsed_minutes`, `tokens`, `human_minutes`,
+`coordination_minutes`, `verification_minutes`. Each dimension has `knowledge`,
+`quantity`, `basis`, `evidence_refs`. UNKNOWN quantities are null. Any numeric
+estimate or observation must exactly match a supplied evidence measurement for
+that option/dimension with the same attribution. A model cannot invent an estimate
+or relabel an inference OBSERVED. Relative cost has `knowledge`, `basis`,
+`evidence_refs`, exact other ids in `compared_with`, and `relation`
+(`LOWER|SIMILAR|HIGHER|MIXED|UNKNOWN`). Known relations require attributed bound
+evidence; UNKNOWN knowledge requires UNKNOWN relation. These dimensions are
+separate accounting views, not an additive weighted score or value oracle.
+Brain must challenge double counting, hidden fixed costs and evidence applicability.
+
+The profile requires the full verified-work episode: adoption, operation,
+migration, security, maintenance, retries, review, publication and recovery, with
+Human/coordination/verification overhead. Unpaired or unmeasured costs stay UNKNOWN.
+A numeric cost gap does not itself authorize a new mechanism. `information`
+contains the typed judgment plus `question`, `decision_if_known`,
+`value_of_information`: what bounded evidence could reverse the recommendation
+and why acquiring it matters. Material missing information blocks even when every
+other checklist entry clears. Unknown nondecisive cost quantities alone need not
+prevent a reasoned no-build or deferral recommendation.
+
+`validate_aoa` accepts exactly `subject_fingerprint`, `construct_fingerprint`,
+`challenges`, rechecked `alternatives`, `information`, `reconciliation`, `closure`,
+`reconciled_candidate`. Each challenge adds `counterexample`, `option_ids` and
+`disposition` (`REJECTED_WITH_BOUNDED_BASIS|ADDRESSED_BY_RECONCILIATION|BLOCKER`).
+The no-build falsifier targets B/C; the minimal-delta challenger targets C;
+the other challenges cover A/B/C. They actively attack dominated/new-mechanism
+choices, omitted consumers/alternatives, invented metrics, hidden time/token/Human
+cost, future dependencies, threats, irreversibility and premature lifecycle claims.
+
+Every first-pass CHECK, ALTERNATIVE or INFORMATION blocker is accounted for by
+`kind`, `id` (`DISCRIMINATOR` for information), `disposition`
+(`UNRESOLVED|RESOLVED`), `knowledge`, `basis`, `evidence_refs`, `changed_anchors`.
+UNRESOLVED preserves prior knowledge and blocks. RESOLVED requires non-UNKNOWN
+relevant bound sources and actual changed content under `alternatives`,
+`information` or `candidate`; alternative/information resolution must anchor that
+same blocked record. Missing sources require a new bound attempt. An all-CLEAR
+second pass alone cannot erase any first-pass blocker. Claimed reconciliation must
+agree with an addressed challenge and a real bounded delta, without a third audit.
+
+A planning candidate has exactly `selected_alternative` (`A|B|C|DEFER`), `proposal`,
+`rationale`, `uncertainties`, `next_human_decision`. A selected option must be
+assessed feasible. Brain explains comparative necessity, uncertainties and the
+next Human choice; no-build, information gathering and deferral are first-class.
+Closure has `outcome`, `knowledge`, `summary`, `candidate_fingerprint`. Any
+unresolved material first-pass/final blocker or missing source forces NO_DECISION
+with null candidate/fingerprint. UNKNOWN dominates final knowledge, then INFERRED,
+then OBSERVED. CANDIDATE binds one exact planning object, never architecture
+approval, a measured benefit or implementation success.
+
+### 22.4. Portable modes, freshness and architecture Human V1-only option
+
+`construct_request`, response validation and serialized decision revalidation
+transport AOA only as `AOA_CONSTRUCT` then `AOA_RECONCILE`, with one profile,
+`architecture_source_context`, `aoa_subject` and exact first-request/decision/
+construct lineage. Revalidation reconstructs all packet, source, return, profile
+and stage bindings. Wrong flow/mode, stale or rehashed substituted material,
+additional decisions, missing proof references and mixed profiles/stages reject.
+
+`attempt(..., conformance_only=True, architecture_source_context=...)` makes two
+calls through the same mapping or JSON provider. It requires a freshly composed
+packet before the adversarial pass and again before final handoff. Each refresh
+rebuilds the captured first request and demands the identical fingerprint. These
+structural reconstructions invoke no provider/audit. Movement, unavailable source,
+malformed output or duplicate native JSON keys abort without retry or fallback.
+
+For isolated interoperability the external caller may instead authenticate and
+supply the same structured `human_v1_option` boundary described in section 21.4
+with the exact Adaptive V1 package. It binds the ARCHITECTURE packet/work context,
+existing return reference, empty external bindings, complete architecture source
+context fingerprint and exact V1 profile. A free-form HUMAN string, model choice,
+unauthenticated source, missing selection or mismatched binding cannot select V1.
+The caller remains responsible for authenticating the external Human decision;
+neither `selected_by: HUMAN` nor hashes are authentication.
+
+This option uses only `V1_OPTION_CONSTRUCT` then `V1_OPTION_RECONCILE` with V1's
+existing eight-lens procedure, without an AOA subject or AOA semantic pass. Shared
+structural source binding is not a second normative audit. AOA plus V1, swapped
+first passes, nested option content, profile lists and V3 fallback reject.
+The published TASK_AUTHORING V1-option path and ordinary production V1 request
+serialization remain unchanged. No R4 surface grants live AOA default selection.
+
+Focused synthetic regressions cover A/B/C, no-build/deferral, missing/UNKNOWN
+sources and costs, forged numeric evidence, retained/resolved first-pass blockers,
+independent falsifiers, privacy/scope/currentness breaches, both native transports,
+exact architecture Human V1-only selection and historical compatibility. These
+examples establish no empirical superiority, live provider quality, publication,
+roadmap advancement or downstream adoption. Runtime owns canonical verification
+and EVIDENCE on the committed implementation.

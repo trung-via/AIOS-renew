@@ -5,6 +5,7 @@
 # ROA-1 R2 is isolated conformance support, not a prospective policy cutover.
 # MOA-1 is also isolated support; registry membership grants no selection authority.
 # TCA-1 is isolated TASK_AUTHORING support; Human V1-option tests do not cut over policy.
+# AOA-1 is isolated ARCHITECTURE support; production selection remains exact V1.
 format: AIOS_BRAIN_AUDIT_PROFILES
 version: 1
 profiles:
@@ -396,6 +397,97 @@ profiles:
       finding_refs_per_check: 16
       closure_summary_bytes: 2048
       outcome_bytes: 196608
+      source_context_bytes: 65536
+      max_depth: 32
+  - id: aoa-1
+    version: 1
+    applicable_flows: [ARCHITECTURE]
+    passes:
+      - id: CONSTRUCT
+        checks:
+          - id: HUMAN_OUTCOME_AND_NECESSITY
+            check: >-
+              Bind the exact Human objective, constraints and current canonical snapshot. State the
+              useful outcome and the invariant that requires change. An all-positive checklist cannot
+              establish build necessity. Missing, ambiguous or unauthenticated decisive input is
+              UNKNOWN/BLOCKER; content hashes bind supplied sources without authenticating them.
+          - id: COUNTERFACTUAL_ALTERNATIVES
+            check: >-
+              Compare A no-build/reuse, B minimum lawful delta and C new mechanism against the same
+              outcome and hard floors. State feasibility, counterfactual necessity, positive/negative
+              externalities and bounded scope. Do not impose a winner. No-build and deferral are valid;
+              C needs a requirement simpler choices cannot satisfy, never mere novelty or preference.
+          - id: EPISODE_COST_AND_EXTERNALITIES
+            check: >-
+              Compare full verified-work episodes: elapsed time, tokens, Human effort, coordination
+              and verification, including adoption, operation, migration, security, maintenance,
+              retries, review, publication and recovery. Separate OBSERVED, INFERRED and UNKNOWN with
+              exact bound evidence, assumptions and horizon. No invented estimates, ROI or measured
+              superiority; unmeasured quantities stay null/UNKNOWN. Challenge overlapping cost totals.
+          - id: DISCRIMINATING_INFORMATION
+            check: >-
+              Identify evidence capable of changing the recommendation, the counterfactual decision
+              if known and value of acquiring it relative to episode cost. Reuse valid bounded evidence.
+              Material missing information forces UNKNOWN/BLOCKER and NO_DECISION, never an automatic
+              preferred option. Information gathering and reasoned deferral are legitimate outcomes.
+          - id: THREATS_AUTHORITY_AND_REVERSIBILITY
+            check: >-
+              Trace threats, omitted consumers, risk ownership, reversibility and exit conditions for
+              each alternative under supplied planning scope and explicit Human risk acceptance.
+              Unresolved authority or irreversible material risk blocks. Brain plans WHAT/WHY; Human
+              approves intent and risk. No implementation, TASK allocation or lifecycle success follows.
+      - id: ADVERSARIAL_AUDIT_AND_RECONCILE
+        checks:
+          - id: NO_BUILD_FALSIFIER
+            check: >-
+              Actively attempt to falsify B and C necessity using A reuse/no-build and existing valid
+              mechanisms/evidence. Demand a concrete Human-approved invariant that A cannot satisfy.
+              Reject dominated build choices with grounded counterexamples, never preference for work.
+          - id: MINIMAL_DELTA_CHALLENGER
+            check: >-
+              Challenge C using B minimum lawful delta. Find a requirement B cannot meet; attack hidden
+              prerequisites and future dependencies. Demand discriminating evidence that could reverse
+              the recommendation. A new mechanism is not necessary merely because its checklist clears.
+          - id: OMITTED_CONSUMERS_AND_ALTERNATIVES
+            check: >-
+              Seek omitted alternatives, affected consumers and positive/negative externalities beyond
+              the declared set. Test whether the same useful outcome survives caller/transport/Runtime
+              paths, migration and recovery. Missing material context stays UNKNOWN; no scope expansion.
+          - id: HIDDEN_COST_AND_INVENTED_METRICS
+            check: >-
+              Attack undercounted fixed, Human, time, token, coordination and verification costs across
+              the entire episode. Falsify invented metrics, unpaired measurements and assumed reuse.
+              Cite exact supplied measurements or retain UNKNOWN; no cost score or empirical value oracle.
+          - id: RISK_OWNERSHIP_AND_IRREVERSIBILITY
+            check: >-
+              Challenge threat assumptions, irreversible commitments, risk ownership, missing Human
+              acceptance and reversibility claims for all choices. Risk cannot be accepted by a model.
+              Keep first-pass BLOCKER/UNKNOWN until explicit grounded lawful reconciliation; an all-CLEAR
+              second pass cannot erase it. Recheck the complete comparison after each bounded change.
+          - id: SOURCE_AUTHORITY_AND_CLOSURE
+            check: >-
+              Attack stale/swapped packet, source, return and profile lineage, private content, mixed
+              stages, extra normative audits and premature implementation/publication claims. Close once
+              as CANDIDATE or NO_DECISION, naming the alternative or deferral and next Human decision.
+              Runtime verifies, Reviewer judges, Publisher publishes. No live AOA cutover or V3 fallback.
+    procedure:
+      name: ARCHITECTURE_OUTCOME_AUDIT
+      stages: [CONSTRUCT, ADVERSARIAL_AUDIT_AND_RECONCILE]
+      check_outcomes: [CLEAR, BLOCKER]
+      knowledge_states: [OBSERVED, INFERRED, UNKNOWN]
+      challenge_dispositions: [REJECTED_WITH_BOUNDED_BASIS, ADDRESSED_BY_RECONCILIATION, BLOCKER]
+      blocker_dispositions: [UNRESOLVED, RESOLVED]
+      final_outcomes: [CANDIDATE, NO_DECISION]
+      final_closure: true
+    bounds:
+      check_bytes: 2048
+      candidate_bytes: 32768
+      basis_bytes: 2048
+      evidence_refs_per_check: 16
+      evidence_count: 16
+      consumer_count: 16
+      closure_summary_bytes: 2048
+      outcome_bytes: 262144
       source_context_bytes: 65536
       max_depth: 32
   - id: tca-1

@@ -18,11 +18,149 @@ from test_brain_provider_protocol import (
     digest, inputs, profile_package, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
     moa_inputs, moa_package, moa_response,
     tca_inputs, tca_package, tca_response, v1_only_package, human_v1_selection,
+    aoa_inputs, aoa_package, aoa_response, aoa_candidate,
 )
 
 
 DIRECT = {"proposal": "Investigate", "uncertainty": {"status": "NONE", "summary": None}}
 TASK = {"task_id": "TASK-999", "revision": 1}
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("human_option", (False, True))
+@pytest.mark.parametrize("unknown", (False, True))
+def test_architecture_one_selected_profile_two_calls_and_fresh_final_closure(
+        registry, aoa_package, v1_only_package, kind, human_option, unknown):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    if unknown and not human_option:
+        context["objective"] = None
+    package = v1_only_package if human_option else aoa_package
+    option = human_v1_selection(supplied, contract, bindings, context, package) if human_option else None
+    calls, freshness = [], []
+    def callback(req):
+        calls.append(deepcopy(req))
+        semantic = ((response(req, aoa_candidate()) if req["request_mode"] == "V1_OPTION_CONSTRUCT" else
+                     stage2_response(req, aoa_candidate(), blocker=unknown)) if human_option else aoa_response(req))
+        return wrapper(req, provider=kind, model=kind, semantic=semantic)
+    def fresh():
+        freshness.append(True)
+        return DecisionPacket(supplied.as_dict())
+    result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings, package, fresh,
+                     conformance_only=True, architecture_source_context=context, human_v1_option=option)
+    prefix = "V1_OPTION" if human_option else "AOA"
+    assert [r["request_mode"] for r in calls] == [prefix + "_CONSTRUCT", prefix + "_RECONCILE"]
+    assert len(freshness) == 2 and len(result.attributions) == 2
+    assert all(r["audit_profile_package"] == package for r in calls)
+    assert all(("aoa_subject" not in r) == human_option for r in calls)
+    semantic = result.decision["semantic_value"]
+    assert (semantic["outcome"] if human_option else semantic["closure"]["outcome"]) == ("NO_DECISION" if unknown else "CANDIDATE")
+
+
+def test_aoa_mapping_and_json_transports_produce_the_same_portable_decision(registry, aoa_package):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    decisions = []
+    for kind in ("mapping", "json"):
+        def callback(req):
+            return wrapper(req, provider=kind, model=kind, semantic=aoa_response(req))
+        decisions.append(attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
+            aoa_package, lambda: supplied, conformance_only=True, architecture_source_context=context).decision)
+    assert decisions[0] == decisions[1]
+
+
+@pytest.mark.parametrize("human_option", (False, True))
+@pytest.mark.parametrize("after", (1, 2))
+@pytest.mark.parametrize("fault", ("main", "intent", "work_context", "unavailable"))
+def test_architecture_source_movement_before_stage_two_or_handoff_aborts_without_fallback(
+        registry, aoa_package, v1_only_package, human_option, after, fault):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    package = v1_only_package if human_option else aoa_package
+    option = human_v1_selection(supplied, contract, bindings, context, package) if human_option else None
+    calls = []
+    def callback(req):
+        calls.append(req)
+        semantic = ((response(req, aoa_candidate()) if req["request_mode"] == "V1_OPTION_CONSTRUCT" else
+                     stage2_response(req, aoa_candidate())) if human_option else aoa_response(req))
+        return wrapper(req, semantic=semantic)
+    def fresh():
+        if len(calls) < after:
+            return supplied
+        if fault == "unavailable":
+            raise ValueError("source unavailable")
+        body = supplied.as_dict()
+        if fault == "main":
+            body["canonical_facts"]["main_sha"] = "f" * 40
+        elif fault == "intent":
+            body["human_input"] += " Changed objective."
+        else:
+            body["work_context_fingerprint"] = "f" * 64
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        return DecisionPacket(body)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings, package, fresh,
+                conformance_only=True, architecture_source_context=context, human_v1_option=option)
+    assert len(calls) == after and caught.value.invocation_count == after
+    assert caught.value.reason_code in {"FRESH_PACKET_INVALID", "FRESH_PACKET_UNAVAILABLE", "STALE_BEFORE_STAGE2",
+                                       "STALE_BEFORE_AOA_RETURN", "STALE_BEFORE_V1_OPTION_RETURN"}
+
+
+@pytest.mark.parametrize("fault", ("ordinary_aoa", "missing_freshness", "implicit_v1", "literal_human", "mixed_sources", "v3_fallback"))
+def test_architecture_policy_and_selection_errors_abort_before_provider_invocation(registry, aoa_package, v1_only_package, fault):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    package = v1_only_package if fault in ("implicit_v1", "literal_human", "v3_fallback") else aoa_package
+    if fault == "v3_fallback":
+        package = deepcopy(v1_only_package)
+        package["audit_profile_ref"]["digest"] = "f" * 64
+    called = []
+    def callback(req):
+        called.append(req)
+        return wrapper(req)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings, package,
+                None if fault == "missing_freshness" else lambda: supplied,
+                conformance_only=fault != "ordinary_aoa", architecture_source_context=context,
+                task_source_context={} if fault == "mixed_sources" else None,
+                human_v1_option="HUMAN" if fault == "literal_human" else None)
+    assert not called and caught.value.invocation_count == 0
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("stage", (1, 2))
+@pytest.mark.parametrize("fault", ("cost", "private", "wrong_subject", "extra_audit"))
+def test_aoa_invalid_native_semantic_output_stops_at_its_pass(registry, aoa_package, kind, stage, fault):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    calls = []
+    def callback(req):
+        calls.append(req)
+        semantic = aoa_response(req)
+        if len(calls) == stage:
+            if fault == "cost":
+                semantic["alternatives"][1]["episode_cost"]["human_minutes"]["quantity"] = 0
+            elif fault == "private":
+                semantic["alternatives"][0]["basis"] = {"secret": "x"}
+            elif fault == "wrong_subject":
+                semantic["subject_fingerprint"] = "f" * 64
+            else:
+                semantic["v1_audit"] = {}
+        return wrapper(req, provider=kind, model=kind, semantic=semantic)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings, aoa_package,
+                lambda: supplied, conformance_only=True, architecture_source_context=context)
+    assert len(calls) == stage and caught.value.invocation_count == stage
+    assert caught.value.reason_code == "PROVIDER_RESPONSE_INVALID"
+
+
+def test_aoa_duplicate_native_json_closure_is_rejected(registry, aoa_package):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    calls = []
+    def callback(raw):
+        req = json.loads(raw)
+        calls.append(req)
+        encoded = json.dumps(wrapper(req, provider="json", semantic=aoa_response(req)))
+        return encoded.replace('"closure":', '"closure": {}, "closure":') if len(calls) == 2 else encoded
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(JsonBrainProvider("json", "one", callback), supplied, contract, bindings, aoa_package,
+                lambda: supplied, conformance_only=True, architecture_source_context=context)
+    assert caught.value.reason_code == "PROVIDER_RESPONSE_INVALID" and len(calls) == 2
 
 
 @pytest.mark.parametrize("kind", ("mapping", "json"))

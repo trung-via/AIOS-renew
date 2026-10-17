@@ -20,10 +20,197 @@ from aios_renew.task import validate_task
 from tests.test_brain_audit import (
     roa_output, roa_packet, v3_sections, moa_packet, moa_first, moa_final,
     tca_example, tca_first, tca_final,
+    aoa_example, aoa_first, aoa_final, aoa_candidate,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def aoa_package():
+    profile = next(p for p in parse_profile_registry(
+        (ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"] if p["id"] == "aoa-1")
+    return {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+
+
+def aoa_inputs(registry):
+    body, context = aoa_example()
+    supplied = DecisionPacket(body)
+    return supplied, select_return_contract(registry, supplied), {}, context
+
+
+def aoa_request(registry, package, *, unknown=False):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    if unknown:
+        context["objective"] = None
+    return construct_request(supplied, contract, bindings, package, request_mode="AOA_CONSTRUCT", architecture_source_context=context)
+
+
+def aoa_response(req):
+    context, profile, subject = req["architecture_source_context"], req["audit_profile_package"]["profile"], req["aoa_subject"]
+    material = (aoa_first(context, profile, subject) if req["request_mode"] == "AOA_CONSTRUCT" else
+                aoa_final(context, profile, subject, req["stage1_lineage"]["construct"]))
+    return {"request_fingerprint": req["request_fingerprint"], **material}
+
+
+def architecture_second(req, first):
+    mode = "AOA_RECONCILE" if req["request_mode"] == "AOA_CONSTRUCT" else "V1_OPTION_RECONCILE"
+    return construct_request(DecisionPacket(req["decision_packet"]), req["return_contract_package"], {}, req["audit_profile_package"],
+        request_mode=mode, stage1_decision=first, architecture_source_context=req["architecture_source_context"],
+        human_v1_option=req.get("human_v1_option"))
+
+
+@pytest.mark.parametrize("unknown", (False, True))
+def test_aoa_transport_revalidates_two_focused_passes_and_exact_final_closure(registry, aoa_package, unknown):
+    req = aoa_request(registry, aoa_package, unknown=unknown)
+    assert revalidate_request(json.loads(json.dumps(req))) == req
+    first = validate_response(req, aoa_response(req))
+    assert revalidate_decision(first, req) == first
+    second = architecture_second(req, first)
+    assert revalidate_request(second) == second
+    final = validate_response(second, aoa_response(second))
+    assert revalidate_decision(json.loads(json.dumps(final)), second) == final
+    assert final["semantic_value"]["closure"]["outcome"] == ("NO_DECISION" if unknown else "CANDIDATE")
+    assert final["return_contract_ref"] == req["return_contract_package"]["return_contract_ref"]
+    for extra in ({"v1_audit": {}}, {"human_v1_option": "HUMAN"}, {"third_pass": {}}, {"decisions": [final]}):
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(second, {**aoa_response(second), **extra})
+
+
+@pytest.mark.parametrize("mode", ("DIRECT", "AUDIT_CONSTRUCT", "AUDIT_RECONCILE", "TCA_CONSTRUCT", "MOA_CONSTRUCT", "ROA_CONFORMANCE", "V1_OPTION_CONSTRUCT"))
+def test_aoa_registry_presence_does_not_authorize_another_flow_or_mode(registry, aoa_package, mode):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, aoa_package, request_mode=mode, architecture_source_context=context)
+    supplied, contract = inputs(registry, "TASK_AUTHORING")
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, {"task_id": "TASK-999", "revision": 1}, aoa_package,
+                          request_mode="AOA_CONSTRUCT", architecture_source_context=context)
+
+
+@pytest.mark.parametrize("fault", ("intent", "packet", "main", "work_context", "source", "return", "profile", "mode", "privacy", "lineage"))
+def test_aoa_rehashed_requests_cannot_mix_or_substitute_bound_material(registry, aoa_package, v1_only_package, fault):
+    req = aoa_request(registry, aoa_package)
+    first = validate_response(req, aoa_response(req))
+    req = architecture_second(req, first)
+    packet = req["decision_packet"]
+    if fault == "intent":
+        packet["human_input"] += " Different intent."
+    elif fault == "packet":
+        packet["packet_fingerprint"] = "f" * 64
+    elif fault == "main":
+        packet["canonical_facts"]["main_sha"] = "f" * 40
+    elif fault == "work_context":
+        packet["work_context_fingerprint"] = "f" * 64
+    elif fault == "source":
+        req["architecture_source_context"]["constraints"].append("Different scope")
+    elif fault == "return":
+        package = req["return_contract_package"]
+        package["contract"]["candidate_contract"]["requirements"].append("Different return")
+        package["return_contract_ref"] = return_contract_ref(package["contract"], package["bounds"])
+    elif fault == "profile":
+        req["audit_profile_package"] = v1_only_package
+    elif fault == "mode":
+        req["request_mode"] = "V1_OPTION_RECONCILE"
+    elif fault == "privacy":
+        req["architecture_source_context"]["authorization"]["risk_acceptance"] = [{"secret": "x"}]
+    else:
+        req["stage1_lineage"]["stage1_decision_fingerprint"] = "f" * 64
+    if fault in ("intent", "main", "work_context"):
+        packet["packet_fingerprint"] = digest({k: v for k, v in packet.items() if k != "packet_fingerprint"})
+    req["request_fingerprint"] = digest({k: v for k, v in req.items() if k != "request_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_request(req)
+
+
+@pytest.mark.parametrize("fault", ("cost", "subject", "candidate", "profile", "closure", "nested", "format"))
+def test_aoa_rehashed_final_decision_revalidates_the_complete_comparison(registry, aoa_package, fault):
+    req = aoa_request(registry, aoa_package)
+    second = architecture_second(req, validate_response(req, aoa_response(req)))
+    final = validate_response(second, aoa_response(second))
+    semantic = final["semantic_value"]
+    if fault == "cost":
+        semantic["alternatives"][0]["episode_cost"]["tokens"]["quantity"] = 1
+    elif fault == "subject":
+        semantic["subject_fingerprint"] = "f" * 64
+    elif fault == "candidate":
+        semantic["handoff_candidate"]["selected_alternative"] = "C"
+    elif fault == "profile":
+        final["audit_profile_ref"]["digest"] = "f" * 64
+    elif fault == "closure":
+        semantic["closure"]["outcome"] = "NO_DECISION"
+    elif fault == "format":
+        semantic["format"] = "AIOS_BRAIN_TASK_CONTRACT_AUDIT"
+    else:
+        semantic["handoff_candidate"]["uncertainties"] = [{"human_v1_option": "HUMAN"}]
+    semantic["audit_fingerprint"] = digest({k: v for k, v in semantic.items() if k != "audit_fingerprint"})
+    final["decision_fingerprint"] = digest({k: v for k, v in final.items() if k != "decision_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(final, second)
+
+
+def test_architecture_exact_external_human_v1_option_never_invokes_aoa(registry, aoa_package, v1_only_package, monkeypatch):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    selection = human_v1_selection(supplied, contract, bindings, context, v1_only_package)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("V1-only must not invoke AOA")
+    monkeypatch.setattr("aios_renew.brain_provider_protocol.construct_aoa_subject", forbidden)
+    monkeypatch.setattr("aios_renew.brain_provider_protocol.construct_aoa", forbidden)
+    monkeypatch.setattr("aios_renew.brain_provider_protocol.validate_aoa", forbidden)
+    req = construct_request(supplied, contract, bindings, v1_only_package, request_mode="V1_OPTION_CONSTRUCT",
+                            architecture_source_context=context, human_v1_option=selection)
+    first = validate_response(req, response(req, aoa_candidate()))
+    second = architecture_second(req, first)
+    final = validate_response(second, stage2_response(second, aoa_candidate()))
+    assert revalidate_decision(final, second) == final
+    assert all("aoa_subject" not in r for r in (req, second))
+    assert final["audit_profile_ref"] == v1_only_package["audit_profile_ref"]
+    assert len(final["semantic_value"]["closure"]) == 8
+
+
+@pytest.mark.parametrize("fault", ("literal_human", "missing", "unauthorized", "option", "source", "packet", "digest", "v3", "untrusted_source", "dual", "mixed_first", "nested_candidate"))
+def test_architecture_human_v1_option_requires_exact_external_selection_and_no_mixing(registry, aoa_package, v1_only_package, fault):
+    supplied, contract, bindings, context = aoa_inputs(registry)
+    option = human_v1_selection(supplied, contract, bindings, context, v1_only_package)
+    package = v1_only_package
+    if fault == "literal_human":
+        option = "HUMAN"
+    elif fault == "missing":
+        option = None
+    elif fault == "unauthorized":
+        option["selected_by"] = "BRAIN"
+    elif fault == "option":
+        option["option"] = "V1_PLUS_AOA"
+    elif fault in ("source", "packet"):
+        option["source_context_fingerprint" if fault == "source" else "packet_fingerprint"] = "f" * 64
+    elif fault == "digest":
+        option["audit_profile_ref"] = {**option["audit_profile_ref"], "digest": "f" * 64}
+    elif fault == "untrusted_source":
+        context["provenance"]["status"] = "UNKNOWN"
+        option = human_v1_selection(supplied, contract, bindings, context, v1_only_package)
+    elif fault == "v3":
+        profile = next(p for p in parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+                       if p["id"] == "brain-high-value-v3")
+        package = {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+    elif fault == "dual":
+        package = [package, aoa_package]
+    elif fault == "mixed_first":
+        req = aoa_request(registry, aoa_package)
+        first = validate_response(req, aoa_response(req))
+        with pytest.raises(BrainProviderProtocolError):
+            construct_request(supplied, contract, bindings, package, request_mode="V1_OPTION_RECONCILE", stage1_decision=first,
+                              architecture_source_context=context, human_v1_option=option)
+        return
+    else:
+        req = construct_request(supplied, contract, bindings, package, request_mode="V1_OPTION_CONSTRUCT",
+                                architecture_source_context=context, human_v1_option=option)
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(req, response(req, {**aoa_candidate(), "human_v1_option": "HUMAN"}))
+        return
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, package, request_mode="V1_OPTION_CONSTRUCT",
+                          architecture_source_context=context, human_v1_option=option)
 
 
 @pytest.fixture

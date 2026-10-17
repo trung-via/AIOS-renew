@@ -12,10 +12,345 @@ from aios_renew.brain_audit import (
     profile_applies, profile_ref, validate_roa, validate_stage2,
     construct_moa_subject, construct_moa, validate_moa,
     construct_tca_subject, construct_tca, validate_tca,
+    construct_aoa_subject, construct_aoa, validate_aoa,
 )
 
 
 REGISTRY = Path(__file__).resolve().parents[1] / ".ai" / "brain-audit-profiles.yaml"
+
+
+@pytest.fixture
+def aoa_profile():
+    return next(p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"] if p["id"] == "aoa-1")
+
+
+def aoa_example():
+    body = packet()
+    body.update(decision_family_ref="HUMAN_BRAIN_ARCHITECTURE_PLANNING",
+                human_input="Preserve caller-selected context with the least necessary change; plan only.")
+    body["canonical_facts"] = {"repository": "AIOS-renew", "main_sha": "b" * 40,
+                               "roadmap": {"next_items": ["context-planning"]}}
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    return body, {
+        "objective": "Preserve caller-selected context through every affected consumer",
+        "constraints": ["Planning only; Human decides implementation and risk"],
+        "authorization": {"planning_scope": ["caller context propagation"], "risk_acceptance": []},
+        "alternatives": [
+            {"id": "A", "kind": "NO_BUILD_REUSE", "description": "Reuse the existing explicit-context path"},
+            {"id": "B", "kind": "MINIMUM_LAWFUL_DELTA", "description": "Pass the existing context through one helper"},
+            {"id": "C", "kind": "NEW_MECHANISM", "description": "Introduce a context service only if simpler paths fail"},
+        ],
+        "consumers": [{"id": "transport", "authority": "TRANSPORT", "requirement": "Preserve the caller's choice"}],
+        "evidence": [],
+        "provenance": {"status": "AUTHENTICATED", "repository": "AIOS-renew", "main_sha": "b" * 40,
+                       "work_context_fingerprint": body["work_context_fingerprint"]},
+    }
+
+
+def aoa_subject(body, profile, context):
+    return construct_aoa_subject(body, profile, {"selected_flow": "ARCHITECTURE", "version": 1, "digest": "c" * 64}, {}, context)
+
+
+def aoa_judgment(identity, subject, roles):
+    missing = any(subject["sources"][r] is None for r in (*roles, "canonical", "intent", "constraints"))
+    return {"id": identity, "outcome": "BLOCKER" if missing else "CLEAR", "knowledge": "UNKNOWN" if missing else "INFERRED",
+            "basis": "Decisive source unavailable." if missing else "The supplied bounded context supports this comparative planning judgment.",
+            "evidence_refs": [subject["sources"][r] for r in roles if subject["sources"][r] is not None]}
+
+
+def aoa_candidate(selected="A"):
+    return {"selected_alternative": selected, "proposal": "Reuse, change minimally or defer according to the bound comparison.",
+            "rationale": "Prefer the least necessary change under the Human outcome and hard floors; no empirical superiority inferred.",
+            "uncertainties": ["Episode cost is unmeasured in this synthetic conformance example"],
+            "next_human_decision": "Human decides whether to accept the bounded planning recommendation."}
+
+
+def aoa_first(context, profile, subject, selected="A"):
+    from aios_renew.brain_audit import _AOA_CONSTRUCT_ROLES, _AOA_COST_DIMENSIONS
+    roles = ("objective", "alternatives", "authorization", "consumers")
+    alternatives = [{**aoa_judgment(identity, subject, roles),
+        "expected_outcome": context["objective"] or "Human objective unavailable",
+        "feasibility": "FEASIBLE", "planning_scope": [] if context["authorization"] is None else deepcopy(context["authorization"]["planning_scope"]),
+        "risks": ["A hidden consumer might discard caller context"], "risk_acceptance_required": [],
+        "reversibility": "Retain the existing path; Human decides any later bounded delta.",
+        "necessity": "The declared outcome must fail under simpler options before a new mechanism is necessary.",
+        "externalities": {"positive": ["Reuse current context where feasible"], "negative": ["A new dependency adds maintenance"]},
+        "episode_cost": {dimension: {"knowledge": "UNKNOWN", "quantity": None,
+            "basis": "Full episode not measured: adoption, operation, maintenance, retries and recovery remain unpaired.",
+            "evidence_refs": []} for dimension in _AOA_COST_DIMENSIONS},
+        "relative_episode_cost": {"knowledge": "UNKNOWN", "relation": "UNKNOWN", "evidence_refs": [],
+            "compared_with": [other for other in ("A", "B", "C") if other != identity],
+            "basis": "Unmeasured relative episode cost; include Human, coordination and verification overhead."}
+    } for identity in ("A", "B", "C")]
+    if selected in ("B", "C"):
+        for option in alternatives[:1 if selected == "B" else 2]:
+            option.update(feasibility="INFEASIBLE", expected_outcome="Cannot meet the stated caller-context requirement in this modeled case.",
+                          necessity="The bound simpler alternative lacks the required consumer edge; its existing shape cannot satisfy the objective.")
+        alternatives[1 if selected == "B" else 2]["necessity"] = (
+            "B carries the required context through the existing helper without another service." if selected == "B" else
+            "Only C provides the required isolation in this modeled case; both simpler alternatives lack that Human-required boundary.")
+    information = aoa_judgment("DISCRIMINATOR", subject, ("objective", "alternatives"))
+    information.pop("id")
+    information.update(question="Can existing explicit-context propagation meet the same outcome?",
+                       decision_if_known="Choose A if existing propagation suffices; otherwise compare B before C.",
+                       value_of_information="Inspect the bounded consumer edge before authorizing implementation; no numeric ROI assumed.")
+    checks = [aoa_judgment(c["id"], subject, r) for c, r in zip(profile["passes"][0]["checks"], _AOA_CONSTRUCT_ROLES)]
+    if any(c["outcome"] == "BLOCKER" for c in alternatives):
+        checks[1].update(outcome="BLOCKER", knowledge="UNKNOWN")
+    return {"subject_fingerprint": subject["subject_fingerprint"], "checks": checks, "alternatives": alternatives,
+            "information": information, "draft_candidate": None if subject["blockers"] else aoa_candidate(selected)}
+
+
+def aoa_final(context, profile, subject, first):
+    from aios_renew.brain_audit import _AOA_CHALLENGE_ROLES
+    cases = (
+        "A already preserves context; building B or C would add no required useful outcome.",
+        "B passes the existing value; C's new service adds a dependency without an unmet requirement.",
+        "The declared transport consumer is covered while an omitted Runtime caller loses context.",
+        "An apparent token saving omits Human approval, setup, retries and verification cost.",
+        "A migration deletes the old path before Human accepts the irreversible recovery risk.",
+        "A rehashed old main, fabricated selection or successful transport receipt is treated as architecture approval.",
+    )
+    challenges = [{**aoa_judgment(c["id"], subject, roles), "counterexample": case,
+                   "option_ids": ["B", "C"] if i == 0 else ["C"] if i == 1 else ["A", "B", "C"],
+                   "disposition": "REJECTED_WITH_BOUNDED_BASIS"}
+                  for i, (c, roles, case) in enumerate(zip(profile["passes"][1]["checks"], _AOA_CHALLENGE_ROLES, cases))]
+    for c in challenges:
+        if c["outcome"] == "BLOCKER":
+            c["disposition"] = "BLOCKER"
+    prior = [(kind, c) for kind, entries in (("CHECK", first["checks"]), ("ALTERNATIVE", first["alternatives"]),
+              ("INFORMATION", [{"id": "DISCRIMINATOR", **first["information"]}])) for c in entries if c["outcome"] == "BLOCKER"]
+    known = first["checks"] + first["alternatives"] + [first["information"]] + challenges
+    blocked = bool(subject["blockers"] or prior) or any(c["outcome"] == "BLOCKER" for c in challenges)
+    candidate = None if blocked else deepcopy(first["draft_candidate"])
+    return {"subject_fingerprint": subject["subject_fingerprint"], "construct_fingerprint": first["construct_fingerprint"],
+            "challenges": challenges, "alternatives": deepcopy(first["alternatives"]), "information": deepcopy(first["information"]),
+            "reconciliation": [{"kind": kind, "id": c["id"], "disposition": "UNRESOLVED", "knowledge": c["knowledge"],
+                "basis": c["basis"], "evidence_refs": c["evidence_refs"], "changed_anchors": []} for kind, c in prior],
+            "closure": {"outcome": "NO_DECISION" if blocked else "CANDIDATE",
+                "knowledge": "UNKNOWN" if any(c["knowledge"] == "UNKNOWN" for c in known) else "INFERRED",
+                "summary": "One bounded planning recommendation for Human; no implemented or empirically verified architecture claim.",
+                "candidate_fingerprint": None if blocked else digest(candidate)}, "reconciled_candidate": candidate}
+
+
+@pytest.mark.parametrize("selected", ("A", "B", "C", "DEFER"))
+def test_aoa_exact_two_pass_comparison_can_recommend_each_choice_or_defer(aoa_profile, selected):
+    body, context = aoa_example()
+    if selected in ("B", "C"):
+        context["alternatives"][0]["description"] = "The existing path cannot preserve context at the required consumer edge."
+    if selected == "C":
+        context["constraints"].append("The caller context requires an isolated boundary unavailable in A or B.")
+        context["alternatives"][1]["description"] = "The existing helper cannot provide the required isolated boundary."
+    subject = aoa_subject(body, aoa_profile, context)
+    assert profile_ref(aoa_profile) == {"id": "aoa-1", "version": 1,
+        "digest": "7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b"}
+    assert aoa_profile["applicable_flows"] == ["ARCHITECTURE"] and "lenses" not in aoa_profile
+    assert [len(p["checks"]) for p in aoa_profile["passes"]] == [5, 6]
+    first = construct_aoa(body, aoa_profile, subject, aoa_first(context, aoa_profile, subject, selected), context)
+    assert "closure" not in first and "handoff_candidate" not in first
+    final = validate_aoa(body, aoa_profile, subject, first, aoa_final(context, aoa_profile, subject, first), context)
+    assert final["closure"]["outcome"] == "CANDIDATE"
+    assert final["handoff_candidate"]["selected_alternative"] == selected
+    assert all(cost["quantity"] is None and cost["knowledge"] == "UNKNOWN"
+               for option in final["alternatives"] for cost in option["episode_cost"].values())
+    with pytest.raises(BrainAuditError):
+        construct_stage1(body, aoa_profile, aoa_candidate())
+
+
+@pytest.mark.parametrize("missing", ("intent", "objective", "canonical", "authorization", "alternatives", "consumers", "provenance", "unauthenticated"))
+def test_aoa_missing_or_unauthenticated_decisive_source_stays_unknown(aoa_profile, missing):
+    body, context = aoa_example()
+    if missing == "intent":
+        body["human_input"] = None
+    elif missing == "canonical":
+        body["canonical_blocker"] = {"code": "SOURCE_CONFLICT"}
+    elif missing == "unauthenticated":
+        context["provenance"]["status"] = "UNKNOWN"
+    else:
+        context[missing] = [] if missing in ("alternatives", "consumers") else None
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    subject = aoa_subject(body, aoa_profile, context)
+    material = aoa_first(context, aoa_profile, subject)
+    first = construct_aoa(body, aoa_profile, subject, material, context)
+    final = validate_aoa(body, aoa_profile, subject, first, aoa_final(context, aoa_profile, subject, first), context)
+    assert final["closure"]["knowledge"] == "UNKNOWN" and final["handoff_candidate"] is None
+    next(c for c in material["checks"] if c["outcome"] == "BLOCKER").update(outcome="CLEAR", knowledge="OBSERVED")
+    with pytest.raises(BrainAuditError):
+        construct_aoa(body, aoa_profile, subject, material, context)
+
+
+@pytest.mark.parametrize("fault", ("quantity", "observed_without_evidence", "wrong_option", "relabel_estimate", "forged_ref", "unknown_evidence"))
+def test_aoa_costs_cannot_invent_estimates_or_upgrade_supplied_attribution(aoa_profile, fault):
+    body, context = aoa_example()
+    context["evidence"] = [{"id": "bounded-estimate", "knowledge": "INFERRED", "basis": "Synthetic bounded estimate for one episode.",
+                            "measurements": [{"option_id": "A", "dimension": "tokens", "quantity": 100}]}]
+    if fault == "unknown_evidence":
+        context["evidence"][0]["knowledge"] = "UNKNOWN"
+        with pytest.raises(BrainAuditError):
+            aoa_subject(body, aoa_profile, context)
+        return
+    subject = aoa_subject(body, aoa_profile, context)
+    material = aoa_first(context, aoa_profile, subject)
+    cost = material["alternatives"][0]["episode_cost"]["tokens"]
+    cost.update(knowledge="INFERRED", quantity=100, evidence_refs=[subject["evidence"][0]["ref"]])
+    assert construct_aoa(body, aoa_profile, subject, material, context)["alternatives"][0]["episode_cost"]["tokens"] == cost
+    if fault == "quantity":
+        cost["quantity"] = 99
+    elif fault == "observed_without_evidence":
+        cost.update(knowledge="OBSERVED", evidence_refs=[])
+    elif fault == "wrong_option":
+        material["alternatives"][1]["episode_cost"]["tokens"] = deepcopy(cost)
+    elif fault == "relabel_estimate":
+        cost["knowledge"] = "OBSERVED"
+    else:
+        cost["evidence_refs"] = [{"path": "forged", "digest": "f" * 64}]
+    with pytest.raises(BrainAuditError):
+        construct_aoa(body, aoa_profile, subject, material, context)
+
+
+@pytest.mark.parametrize("index", range(5))
+@pytest.mark.parametrize("knowledge", ("INFERRED", "UNKNOWN"))
+def test_aoa_all_clear_second_pass_cannot_erase_first_pass_blockers(aoa_profile, index, knowledge):
+    body, context = aoa_example()
+    subject = aoa_subject(body, aoa_profile, context)
+    material = aoa_first(context, aoa_profile, subject)
+    material["checks"][index].update(outcome="BLOCKER", knowledge=knowledge, basis="An unresolved material threat or hidden fixed cost remains.")
+    first = construct_aoa(body, aoa_profile, subject, material, context)
+    second = aoa_final(context, aoa_profile, subject, first)
+    assert all(c["outcome"] == "CLEAR" for c in second["challenges"])
+    assert validate_aoa(body, aoa_profile, subject, first, second, context)["closure"]["outcome"] == "NO_DECISION"
+    second["reconciliation"] = []
+    second["reconciled_candidate"] = aoa_candidate()
+    second["closure"].update(outcome="CANDIDATE", knowledge="INFERRED", candidate_fingerprint=digest(aoa_candidate()))
+    with pytest.raises(BrainAuditError):
+        validate_aoa(body, aoa_profile, subject, first, second, context)
+
+
+def test_aoa_material_missing_information_and_unaccepted_irreversible_risk_block(aoa_profile):
+    body, context = aoa_example()
+    subject = aoa_subject(body, aoa_profile, context)
+    for risk in (False, True):
+        material = aoa_first(context, aoa_profile, subject)
+        if risk:
+            material["alternatives"][2].update(outcome="BLOCKER", risk_acceptance_required=["Irreversible old-path deletion"])
+            material["checks"][1].update(outcome="BLOCKER")
+        else:
+            material["information"].update(outcome="BLOCKER", knowledge="UNKNOWN", basis="The decisive consumer requirement is unknown.")
+            material["checks"][3].update(outcome="BLOCKER", knowledge="UNKNOWN")
+        first = construct_aoa(body, aoa_profile, subject, material, context)
+        final = validate_aoa(body, aoa_profile, subject, first, aoa_final(context, aoa_profile, subject, first), context)
+        assert final["closure"]["outcome"] == "NO_DECISION" and final["handoff_candidate"] is None
+
+
+def test_aoa_lawful_grounded_reconciliation_resolves_a_concrete_risk(aoa_profile):
+    body, context = aoa_example()
+    subject = aoa_subject(body, aoa_profile, context)
+    material = aoa_first(context, aoa_profile, subject)
+    material["checks"][4].update(outcome="BLOCKER", basis="C has no bounded rollback proposal.")
+    first = construct_aoa(body, aoa_profile, subject, material, context)
+    second = aoa_final(context, aoa_profile, subject, first)
+    second["alternatives"][2]["reversibility"] = "Retain the old path; stop before migration until Human decides risk."
+    second["reconciliation"][0].update(disposition="RESOLVED", changed_anchors=["alternatives.2.reversibility"],
+                                       basis="The authorized planning scope allows retaining the old path and deferring migration.")
+    second["challenges"][4]["disposition"] = "ADDRESSED_BY_RECONCILIATION"
+    second["reconciled_candidate"] = aoa_candidate()
+    second["closure"].update(outcome="CANDIDATE", candidate_fingerprint=digest(aoa_candidate()))
+    assert validate_aoa(body, aoa_profile, subject, first, second, context)["closure"]["outcome"] == "CANDIDATE"
+    second["reconciliation"][0]["changed_anchors"] = ["alternatives.2.necessity"]
+    with pytest.raises(BrainAuditError):
+        validate_aoa(body, aoa_profile, subject, first, second, context)
+
+
+@pytest.mark.parametrize("index", range(6))
+def test_aoa_adversarial_challenges_can_reject_dominated_builds_and_hidden_costs(aoa_profile, index):
+    body, context = aoa_example()
+    subject = aoa_subject(body, aoa_profile, context)
+    first = construct_aoa(body, aoa_profile, subject, aoa_first(context, aoa_profile, subject, "C"), context)
+    second = aoa_final(context, aoa_profile, subject, first)
+    second["challenges"][index].update(outcome="BLOCKER", disposition="BLOCKER")
+    second["reconciled_candidate"] = None
+    second["closure"].update(outcome="NO_DECISION", candidate_fingerprint=None)
+    assert validate_aoa(body, aoa_profile, subject, first, second, context)["handoff_candidate"] is None
+
+
+@pytest.mark.parametrize("fault", ("scope", "stale_main", "wrong_repository", "stale_context", "wrong_flow", "binding", "profile", "duplicate", "extra_stage", "empty_falsifier"))
+def test_aoa_scope_identity_profile_and_focused_pass_substitutions_fail_closed(aoa_profile, fault):
+    body, context = aoa_example()
+    profile = deepcopy(aoa_profile)
+    if fault in ("stale_main", "wrong_repository", "stale_context"):
+        context["provenance"][{"stale_main": "main_sha", "wrong_repository": "repository", "stale_context": "work_context_fingerprint"}[fault]] = (
+            "f" * 40 if fault == "stale_main" else "other" if fault == "wrong_repository" else "f" * 64)
+    elif fault == "wrong_flow":
+        body["selected_flow"] = "TASK_AUTHORING"
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    elif fault == "profile":
+        profile["passes"][0]["checks"][0]["check"] += " Reminted."
+    elif fault == "extra_stage":
+        profile["procedure"]["stages"].append("EXTRA")
+    if fault in ("stale_main", "wrong_repository", "stale_context", "wrong_flow", "profile", "extra_stage", "binding"):
+        with pytest.raises(BrainAuditError):
+            construct_aoa_subject(body, profile, {"selected_flow": "ARCHITECTURE", "version": 1, "digest": "c" * 64},
+                                  {"task_id": "TASK-999"} if fault == "binding" else {}, context)
+        return
+    subject = aoa_subject(body, profile, context)
+    material = aoa_first(context, profile, subject)
+    if fault == "scope":
+        material["alternatives"][0]["planning_scope"].append("new authority")
+    elif fault == "duplicate":
+        material["alternatives"][1]["id"] = "A"
+    else:
+        first = construct_aoa(body, profile, subject, material, context)
+        final = aoa_final(context, profile, subject, first)
+        final["challenges"][0]["counterexample"] = ""
+        with pytest.raises(BrainAuditError):
+            validate_aoa(body, profile, subject, first, final, context)
+        return
+    with pytest.raises(BrainAuditError):
+        construct_aoa(body, profile, subject, material, context)
+
+
+@pytest.mark.parametrize("private", ({"secret": "x"}, {"human_v1_option": "HUMAN"}, {"aoa_subject": {}},
+    {"task_source_context": {}}, {"format": "AIOS_AOA_SUBJECT"}, {"provider": "x"}, {"note": "C:/private/log"}))
+def test_aoa_context_and_candidate_exclude_private_and_nested_option_payloads(aoa_profile, private):
+    body, context = aoa_example()
+    bad = deepcopy(context)
+    bad["evidence"] = [{"id": "bad", "knowledge": "INFERRED", "basis": private, "measurements": []}]
+    with pytest.raises(BrainAuditError):
+        aoa_subject(body, aoa_profile, bad)
+    subject = aoa_subject(body, aoa_profile, context)
+    material = aoa_first(context, aoa_profile, subject)
+    material["draft_candidate"]["uncertainties"] = [private]
+    with pytest.raises(BrainAuditError):
+        construct_aoa(body, aoa_profile, subject, material, context)
+
+
+@pytest.mark.parametrize("fault", ("relative_claim", "missing_dimension", "unknown_quantity", "oversized_basis", "extra_check", "too_many_sources", "depth"))
+def test_aoa_cost_completeness_and_closed_size_bounds(aoa_profile, fault):
+    body, context = aoa_example()
+    if fault == "too_many_sources":
+        context["evidence"] = [{"id": str(i), "knowledge": "UNKNOWN", "basis": "Unavailable", "measurements": []} for i in range(17)]
+        with pytest.raises(BrainAuditError):
+            aoa_subject(body, aoa_profile, context)
+        return
+    subject = aoa_subject(body, aoa_profile, context)
+    material = aoa_first(context, aoa_profile, subject)
+    if fault == "relative_claim":
+        material["alternatives"][0]["relative_episode_cost"].update(knowledge="OBSERVED", relation="LOWER")
+    elif fault == "missing_dimension":
+        material["alternatives"][0]["episode_cost"].pop("verification_minutes")
+    elif fault == "unknown_quantity":
+        material["alternatives"][0]["episode_cost"]["tokens"]["quantity"] = 0
+    elif fault == "oversized_basis":
+        material["checks"][0]["basis"] = "x" * 2049
+    elif fault == "extra_check":
+        material["checks"].append(deepcopy(material["checks"][0]))
+    else:
+        nested = "x"
+        for _ in range(33):
+            nested = [nested]
+        material["draft_candidate"]["uncertainties"] = nested
+    with pytest.raises(BrainAuditError):
+        construct_aoa(body, aoa_profile, subject, material, context)
 
 
 @pytest.fixture
@@ -908,7 +1243,7 @@ def test_roa_profile_cannot_be_reminted_or_disguised_as_v1(roa_profile, fault):
 def test_registry_remains_finite_and_historical_profile_bytes_are_unchanged(roa_profile):
     import yaml
     registry = parse_profile_registry(REGISTRY.read_bytes())
-    assert len(registry["profiles"]) == 6 and len(REGISTRY.read_bytes()) < 32768
+    assert len(registry["profiles"]) == 7 and len(REGISTRY.read_bytes()) < 40960
     registry["profiles"].append(deepcopy(roa_profile))
     with pytest.raises(BrainAuditError):
         parse_profile_registry(yaml.safe_dump(registry))
@@ -917,7 +1252,8 @@ def test_registry_remains_finite_and_historical_profile_bytes_are_unchanged(roa_
                 "brain-high-value-v3": "2a2d46f85b5d9d4e3653f3c3fb7b7354be44da6fdbf13894dc5d374039370425",
                 "aios-adaptive-brain-audit-v1": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718",
                 "roa-1-r2": "aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4",
-                "moa-1": "49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903"}
+                "moa-1": "49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903",
+                "tca-1": "1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2"}
     for profile in parse_profile_registry(REGISTRY.read_bytes())["profiles"]:
         if profile["id"] in expected:
             assert profile_ref(profile)["digest"] == expected[profile["id"]]

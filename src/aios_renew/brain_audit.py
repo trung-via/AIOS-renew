@@ -1,4 +1,4 @@
-"""Pure historical BP-4A and bounded ROA/MOA/TCA conformance over portable profiles.
+"""Pure historical BP-4A and bounded ROA/MOA/TCA/AOA conformance over portable profiles.
 
 All packet, profile and candidate material is supplied by the caller. Audit
 outcomes are transient Brain claims, never canonical findings or evidence.
@@ -112,8 +112,46 @@ _MOA_ID = "moa-1"
 _MOA_DIGEST = "49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903"
 _TCA_ID = "tca-1"
 _TCA_DIGEST = "1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2"
+_AOA_ID = "aoa-1"
+_AOA_DIGEST = "7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b"
 _PROFILE_VERSIONS = {"brain-high-value-v2": 2, "brain-high-value-v3": 3,
-                     _ADAPTIVE_ID: 1, _ROA_ID: 2, _MOA_ID: 1, _TCA_ID: 1}
+                     _ADAPTIVE_ID: 1, _ROA_ID: 2, _MOA_ID: 1, _TCA_ID: 1, _AOA_ID: 1}
+_AOA_CONSTRUCT_IDS = (
+    "HUMAN_OUTCOME_AND_NECESSITY", "COUNTERFACTUAL_ALTERNATIVES", "EPISODE_COST_AND_EXTERNALITIES",
+    "DISCRIMINATING_INFORMATION", "THREATS_AUTHORITY_AND_REVERSIBILITY",
+)
+_AOA_CHALLENGE_IDS = (
+    "NO_BUILD_FALSIFIER", "MINIMAL_DELTA_CHALLENGER", "OMITTED_CONSUMERS_AND_ALTERNATIVES",
+    "HIDDEN_COST_AND_INVENTED_METRICS", "RISK_OWNERSHIP_AND_IRREVERSIBILITY", "SOURCE_AUTHORITY_AND_CLOSURE",
+)
+_AOA_CONSTRUCT_ROLES = (("intent", "objective", "authorization"), ("alternatives", "objective"),
+                        ("alternatives", "consumers"), ("objective", "alternatives"), ("authorization", "consumers"))
+_AOA_CHALLENGE_ROLES = (("alternatives", "objective"), ("alternatives", "objective"),
+                        ("consumers", "alternatives"), ("alternatives", "consumers"),
+                        ("authorization", "alternatives"), ("canonical", "intent", "authorization"))
+_AOA_KINDS = {"A": "NO_BUILD_REUSE", "B": "MINIMUM_LAWFUL_DELTA", "C": "NEW_MECHANISM"}
+_AOA_COST_DIMENSIONS = ("elapsed_minutes", "tokens", "human_minutes", "coordination_minutes", "verification_minutes")
+_AOA_BOUNDS = {
+    "check_bytes": 2048, "candidate_bytes": 32768, "basis_bytes": 2048,
+    "evidence_refs_per_check": 16, "evidence_count": 16, "consumer_count": 16,
+    "closure_summary_bytes": 2048, "outcome_bytes": 262144,
+    "source_context_bytes": 65536, "max_depth": 32,
+}
+_AOA_PROCEDURE = {
+    "name": "ARCHITECTURE_OUTCOME_AUDIT", "stages": ["CONSTRUCT", "ADVERSARIAL_AUDIT_AND_RECONCILE"],
+    "check_outcomes": ["CLEAR", "BLOCKER"], "knowledge_states": ["OBSERVED", "INFERRED", "UNKNOWN"],
+    "challenge_dispositions": ["REJECTED_WITH_BOUNDED_BASIS", "ADDRESSED_BY_RECONCILIATION", "BLOCKER"],
+    "blocker_dispositions": ["UNRESOLVED", "RESOLVED"],
+    "final_outcomes": ["CANDIDATE", "NO_DECISION"], "final_closure": True,
+}
+_AOA_CONSTRUCT_FIELDS = {
+    "format", "version", "stage", "subject_fingerprint", "checks", "alternatives", "information",
+    "draft_candidate", "construct_fingerprint",
+}
+_AOA_FINAL_FIELDS = {
+    "format", "version", "stage", "subject_fingerprint", "construct_fingerprint", "challenges",
+    "alternatives", "information", "reconciliation", "closure", "handoff_candidate", "audit_fingerprint",
+}
 _TCA_CONSTRUCT_IDS = (
     "HUMAN_INTENT_FIDELITY", "TASK_OBJECTIVE_OUTCOME", "ACCEPTANCE_SATISFIABILITY",
     "SCOPE_AND_AUTHORITY", "REQUIRED_CONSUMERS",
@@ -328,6 +366,8 @@ def _profile(value: Any) -> dict[str, Any]:
         return _moa_profile(normalized)
     if type(normalized) is dict and normalized.get("id") == _TCA_ID:
         return _tca_profile(normalized)
+    if type(normalized) is dict and normalized.get("id") == _AOA_ID:
+        return _aoa_profile(normalized)
     conformant = type(normalized) is dict and normalized.get("id") in ("brain-high-value-v3", _ADAPTIVE_ID)
     profile = _fields(normalized, _PROFILE_FIELDS | ({"conformance"} if conformant else set()), "profile")
     if (type(profile["id"]) is not str or _ID.fullmatch(profile["id"]) is None
@@ -454,6 +494,31 @@ def _tca_profile(value: dict[str, Any]) -> dict[str, Any]:
     return profile
 
 
+def _aoa_profile(value: dict[str, Any]) -> dict[str, Any]:
+    profile = _fields(value, (_PROFILE_FIELDS - {"lenses"}) | {"passes"}, "AOA profile")
+    if (type(profile["version"]) is not int or profile["version"] != 1
+            or profile["applicable_flows"] != ["ARCHITECTURE"]
+            or _json(profile["procedure"]) != _json(_AOA_PROCEDURE)
+            or _json(profile["bounds"]) != _json(_AOA_BOUNDS)):
+        raise BrainAuditError("invalid bounded AOA identity or procedure")
+    passes = profile["passes"]
+    if type(passes) is not list or len(passes) != 2:
+        raise BrainAuditError("AOA requires exactly two architecture passes")
+    for stage, identities, item in zip(_AOA_PROCEDURE["stages"], (_AOA_CONSTRUCT_IDS, _AOA_CHALLENGE_IDS), passes):
+        _fields(item, {"id", "checks"}, "AOA pass")
+        if item["id"] != stage or type(item["checks"]) is not list or len(item["checks"]) != len(identities):
+            raise BrainAuditError("invalid AOA focused pass")
+        for identity, check in zip(identities, item["checks"]):
+            _fields(check, _LENS_FIELDS, "AOA instruction")
+            if check["id"] != identity:
+                raise BrainAuditError("unknown, duplicate or out-of-order AOA instruction")
+            _text(check["check"], 2048, "AOA instruction")
+    _bounded(profile, 12288, "AOA profile")
+    if _digest(profile) != _AOA_DIGEST:
+        raise BrainAuditError("unsupported AOA profile content")
+    return profile
+
+
 def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     """Parse caller-supplied YAML; never opens a repository path."""
     if type(raw) is str:
@@ -465,8 +530,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
         encoded = raw
     else:
         raise BrainAuditError("registry must be UTF-8 YAML")
-    if len(encoded) > 32768:
-        raise BrainAuditError("registry exceeds 32768 UTF-8 bytes")
+    if len(encoded) > 40960:
+        raise BrainAuditError("registry exceeds 40960 UTF-8 bytes")
     try:
         loaded = yaml.load(encoded.decode("utf-8", errors="strict"), Loader=_UniqueLoader)
     except (UnicodeError, yaml.YAMLError, ValueError, TypeError) as exc:
@@ -475,8 +540,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     if registry["format"] != "AIOS_BRAIN_AUDIT_PROFILES" or type(registry["version"]) is not int or registry["version"] != 1:
         raise BrainAuditError("unknown audit-profile registry")
     profiles = registry["profiles"]
-    if type(profiles) is not list or not 1 <= len(profiles) <= 6:
-        raise BrainAuditError("registry requires one to six recognized profiles")
+    if type(profiles) is not list or not 1 <= len(profiles) <= 7:
+        raise BrainAuditError("registry requires one to seven recognized profiles")
     normalized = [_profile(profile) for profile in profiles]
     if len({profile["id"] for profile in normalized}) != len(normalized):
         raise BrainAuditError("duplicate profile identity")
@@ -539,6 +604,8 @@ def construct_stage1(packet: DecisionPacket | Mapping[str, Any], profile: Mappin
         raise BrainAuditError("MOA cannot construct a historical stage")
     if policy["id"] == _TCA_ID:
         raise BrainAuditError("TCA cannot construct a historical stage")
+    if policy["id"] == _AOA_ID:
+        raise BrainAuditError("AOA cannot construct a historical stage")
     if body["authority_owner"] != "BRAIN" or body["selected_flow"] not in policy["applicable_flows"]:
         raise BrainAuditError("profile does not apply to selected flow")
     candidate = _candidate(construct_candidate, policy)
@@ -1831,9 +1898,439 @@ def validate_tca(packet: Any, profile: Any, subject: Any, stage1: Any, semantic_
     return result
 
 
+def _aoa_private(value: Any) -> None:
+    """Architecture support uses the existing privacy floor and closed envelopes."""
+    _tca_private(value)
+    if type(value) is dict:
+        if value.get("format") in {"AIOS_AOA_SUBJECT", "AIOS_BRAIN_ARCHITECTURE_OUTCOME_AUDIT"}:
+            raise BrainAuditError("nested AOA envelope")
+        for key, item in value.items():
+            if key.lower().replace("_", "").replace("-", "") in {"aoasubject", "architecturesourcecontext"}:
+                raise BrainAuditError("nested AOA source or subject")
+            _aoa_private(item)
+    elif type(value) is list:
+        for item in value:
+            _aoa_private(item)
+
+
+def _aoa_source_context(value: Any) -> dict[str, Any]:
+    # This is a trusted caller projection of externally authenticated reads,
+    # not a model-authored provenance certificate or an authentication scheme.
+    context = {"objective": None, "constraints": [], "authorization": None, "alternatives": [],
+               "consumers": [], "evidence": [], "provenance": None} if value is None else _normal(
+                   value, depth=0, max_depth=32)
+    _fields(context, {"objective", "constraints", "authorization", "alternatives", "consumers", "evidence", "provenance"},
+            "AOA source context")
+    _bounded(context, _AOA_BOUNDS["source_context_bytes"], "AOA source context")
+    _aoa_private(context)
+    if context["objective"] is not None:
+        _text(context["objective"], 2048, "AOA Human objective")
+    _tca_texts(context["constraints"], 32, "AOA Human constraints")
+    auth = context["authorization"]
+    if auth is not None:
+        _fields(auth, {"planning_scope", "risk_acceptance"}, "AOA planning authorization")
+        for key in auth:
+            _tca_texts(auth[key], 32, "AOA planning authority")
+        if not auth["planning_scope"]:
+            raise BrainAuditError("AOA planning authority needs bounded scope")
+    alternatives = context["alternatives"]
+    if type(alternatives) is not list or len(alternatives) not in (0, 3):
+        raise BrainAuditError("AOA source requires A/B/C or unavailable alternatives")
+    for (identity, kind), option in zip(_AOA_KINDS.items(), alternatives):
+        _fields(option, {"id", "kind", "description"}, "AOA source alternative")
+        if option["id"] != identity or option["kind"] != kind:
+            raise BrainAuditError("AOA alternatives must preserve ordered A/B/C identities")
+        _text(option["description"], 2048, "AOA alternative description")
+    consumers = context["consumers"]
+    if type(consumers) is not list or len(consumers) > 16:
+        raise BrainAuditError("unbounded AOA consumers")
+    seen = set()
+    for consumer in consumers:
+        _fields(consumer, {"id", "authority", "requirement"}, "AOA consumer")
+        identity = _text(consumer["id"], 256, "AOA consumer id")
+        _text(consumer["requirement"], 2048, "AOA consumer requirement")
+        if identity in seen or consumer["authority"] not in (
+                "HUMAN", "BRAIN", "EXECUTOR", "RUNTIME", "REVIEWER", "PUBLISHER", "TRANSPORT"):
+            raise BrainAuditError("invalid AOA consumer identity or authority")
+        seen.add(identity)
+    provenance = context["provenance"]
+    if provenance is not None:
+        _fields(provenance, {"status", "repository", "main_sha", "work_context_fingerprint"}, "AOA caller provenance")
+        if provenance["status"] not in ("AUTHENTICATED", "UNKNOWN"):
+            raise BrainAuditError("invalid AOA source authentication status")
+        _text(provenance["repository"], 256, "AOA source repository")
+        _git_sha(provenance["main_sha"], "AOA source main")
+        _sha(provenance["work_context_fingerprint"], "AOA source currentness")
+    evidence = context["evidence"]
+    if type(evidence) is not list or len(evidence) > 16:
+        raise BrainAuditError("unbounded AOA evidence")
+    seen = set()
+    for item in evidence:
+        _fields(item, {"id", "knowledge", "basis", "measurements"}, "AOA evidence")
+        identity = _text(item["id"], 256, "AOA evidence id")
+        _text(item["basis"], 2048, "AOA evidence basis and horizon")
+        if identity in seen or item["knowledge"] not in ("OBSERVED", "INFERRED", "UNKNOWN"):
+            raise BrainAuditError("invalid AOA evidence identity or status")
+        seen.add(identity)
+        measurements = item["measurements"]
+        if (type(measurements) is not list or len(measurements) > 15
+                or item["knowledge"] == "UNKNOWN" and measurements):
+            raise BrainAuditError("UNKNOWN evidence cannot supply quantitative measurements")
+        dimensions = set()
+        for measurement in measurements:
+            _fields(measurement, {"option_id", "dimension", "quantity"}, "AOA supplied measurement")
+            key = (measurement["option_id"], measurement["dimension"])
+            quantity = measurement["quantity"]
+            if (type(key[0]) is not str or type(key[1]) is not str
+                    or key[0] not in _AOA_KINDS or key[1] not in _AOA_COST_DIMENSIONS or key in dimensions
+                    or type(quantity) not in (int, float) or quantity < 0):
+                raise BrainAuditError("invalid AOA supplied measurement")
+            dimensions.add(key)
+    return context
+
+
+def _architecture_subject(packet: Any, return_ref: Any, external_bindings: Any, source_context: Any,
+                 audit_ref: dict[str, Any]) -> dict[str, Any]:
+    body = _packet(packet)
+    if (body["selected_flow"] != "ARCHITECTURE" or body["subject"] != {"kind": "ARCHITECTURE"}
+            or body["authority_owner"] != "BRAIN" or body["selection_basis"] != "EXPLICIT_SELECTOR"
+            or body["decision_family_ref"] != "HUMAN_BRAIN_ARCHITECTURE_PLANNING"
+            or body["handoff_target"] != "HUMAN_BRAIN_PLANNING"
+            or body["expected_return_shape"] != "BOUNDED_SEMANTIC_PROPOSAL"
+            or body["requires_fresh_context_for_continuation"] is not True):
+        raise BrainAuditError("AOA requires the exact existing ARCHITECTURE planning flow")
+    _sha(body["work_context_fingerprint"], "AOA work context")
+    ref = _fields(_normal(return_ref, depth=0, max_depth=32), {"selected_flow", "version", "digest"}, "AOA return reference")
+    if ref["selected_flow"] != "ARCHITECTURE" or type(ref["version"]) is not int or ref["version"] != 1:
+        raise BrainAuditError("AOA return identity mismatch")
+    _sha(ref["digest"], "AOA return digest")
+    if external_bindings != {}:
+        raise BrainAuditError("architecture has no external TASK identity bindings")
+    context = _aoa_source_context(source_context)
+    for value in (body["human_input"], body["canonical_facts"], body["bounded_observations"],
+                  body["executor_claims"], body["prior_semantic_decisions"]):
+        _aoa_private(value)
+    intent, facts = body["human_input"], body["canonical_facts"]
+    if intent is not None:
+        _text(intent, 16384, "AOA Human intent")
+    if type(facts) is not dict:
+        raise BrainAuditError("invalid AOA canonical snapshot")
+    canonical = (type(facts.get("repository")) is str and bool(facts["repository"].strip())
+                 and type(facts.get("main_sha")) is str and re.fullmatch(r"[0-9a-f]{40}", facts["main_sha"]) is not None
+                 and type(facts.get("roadmap")) is dict and body["canonical_blocker"] is None
+                 and body["pending_canonical_obligation"] is None and body["pending_canonical_authority_owner"] is None)
+    provenance = context["provenance"]
+    if provenance is not None and (provenance["repository"] != facts.get("repository")
+            or provenance["main_sha"] != facts.get("main_sha")
+            or provenance["work_context_fingerprint"] != body["work_context_fingerprint"]):
+        raise BrainAuditError("stale or swapped AOA caller source snapshot")
+    authenticated = provenance is not None and provenance["status"] == "AUTHENTICATED"
+    values = {"intent": ("human_input", intent), "canonical": ("canonical_facts", facts if canonical else None),
+              "objective": ("architecture_source_context.objective", context["objective"]),
+              "authorization": ("architecture_source_context.authorization", context["authorization"]),
+              "alternatives": ("architecture_source_context.alternatives", context["alternatives"] or None),
+              "consumers": ("architecture_source_context.consumers", context["consumers"] or None)}
+    sources = {role: _roa_source(path, value) if authenticated and value is not None else None
+               for role, (path, value) in values.items()}
+    sources["constraints"] = _roa_source("architecture_source_context.constraints", context["constraints"]) if authenticated else None
+    evidence = [{"id": item["id"], "knowledge": item["knowledge"],
+                 "ref": _roa_source(f"architecture_source_context.evidence.{i}", item)}
+                for i, item in enumerate(context["evidence"])] if authenticated else []
+    result = {"format": "AIOS_AOA_SUBJECT", "version": 1, "selected_flow": "ARCHITECTURE",
+              "packet_fingerprint": body["packet_fingerprint"], "work_context_fingerprint": body["work_context_fingerprint"],
+              "audit_profile_ref": audit_ref, "return_contract_ref": ref, "external_bindings": {},
+              "human_intent": intent, "human_objective": context["objective"], "constraints": context["constraints"],
+              "source_context_fingerprint": _digest(context), "sources": sources, "evidence": evidence,
+              "blockers": {role: "MISSING_OR_UNAUTHENTICATED_DECISIVE_SOURCE" for role, source in sources.items() if source is None}}
+    result["subject_fingerprint"] = _digest(result)
+    return result
+
+
+def construct_aoa_subject(packet: Any, profile: Any, return_ref: Any, external_bindings: Any,
+                          source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Bind architecture intent, current caller sources and one exact AOA profile."""
+    policy = _profile(profile)
+    if policy["id"] != _AOA_ID:
+        raise BrainAuditError("AOA subject requires exact AOA-1")
+    return _architecture_subject(packet, return_ref, external_bindings, source_context, profile_ref(policy))
+
+
+def _aoa_bound(packet: Any, profile: Any, subject: Any, source_context: Any) -> tuple[dict, dict, dict, dict]:
+    body, policy = _packet(packet), _profile(profile)
+    supplied = _normal(subject, depth=0, max_depth=32)
+    if type(supplied) is not dict:
+        raise BrainAuditError("AOA subject required")
+    context = _aoa_source_context(source_context)
+    bound = construct_aoa_subject(body, policy, supplied.get("return_contract_ref"), supplied.get("external_bindings"), context)
+    if _json(bound) != _json(supplied):
+        raise BrainAuditError("AOA packet/return/source/subject binding mismatch")
+    return body, policy, bound, context
+
+
+def _aoa_refs(refs: Any, bound: dict) -> None:
+    known = [s for s in bound["sources"].values() if s is not None] + [e["ref"] for e in bound["evidence"]]
+    if (type(refs) is not list or len(refs) > 16 or len({_json(r) for r in refs}) != len(refs)
+            or any(r not in known for r in refs)):
+        raise BrainAuditError("forged, duplicate or unbounded AOA source reference")
+
+
+def _aoa_judgment(check: dict, bound: dict, roles: tuple[str, ...]) -> None:
+    # Check only semantic fields: outer support schemas are validated separately.
+    for key in ("basis", "evidence_refs"):
+        _aoa_private(check[key])
+    if check["outcome"] not in ("CLEAR", "BLOCKER") or check["knowledge"] not in ("OBSERVED", "INFERRED", "UNKNOWN"):
+        raise BrainAuditError("invalid AOA judgment")
+    _text(check["basis"], 2048, "AOA judgment basis")
+    _aoa_refs(check["evidence_refs"], bound)
+    sources = bound["sources"]
+    if any(sources[r] is None for r in (*roles, "canonical", "intent", "constraints")):
+        if check["outcome"] != "BLOCKER" or check["knowledge"] != "UNKNOWN":
+            raise BrainAuditError("missing decisive AOA source requires UNKNOWN/BLOCKER")
+    if check["knowledge"] == "UNKNOWN":
+        if check["outcome"] != "BLOCKER":
+            raise BrainAuditError("UNKNOWN cannot discharge an AOA obligation")
+    elif any(sources[r] not in check["evidence_refs"] for r in roles):
+        raise BrainAuditError("AOA judgment lacks exact relevant source references")
+
+
+def _aoa_checks(value: Any, bound: dict, *, challenge: bool) -> list[dict]:
+    ids = _AOA_CHALLENGE_IDS if challenge else _AOA_CONSTRUCT_IDS
+    roles = _AOA_CHALLENGE_ROLES if challenge else _AOA_CONSTRUCT_ROLES
+    if type(value) is not list or len(value) != len(ids):
+        raise BrainAuditError("AOA requires exact architecture check coverage")
+    for identity, required, check in zip(ids, roles, value):
+        _fields(check, _TCA_JUDGMENT_FIELDS | ({"counterexample", "disposition", "option_ids"} if challenge else set()), "AOA check")
+        if check["id"] != identity:
+            raise BrainAuditError("unknown, duplicate or out-of-order AOA check")
+        _aoa_judgment(check, bound, required)
+        if challenge:
+            _text(check["counterexample"], 2048, "AOA counterexample")
+            _aoa_private(check["counterexample"])
+            targets = ["B", "C"] if identity == _AOA_CHALLENGE_IDS[0] else ["C"] if identity == _AOA_CHALLENGE_IDS[1] else ["A", "B", "C"]
+            if (check["option_ids"] != targets or check["disposition"] not in _AOA_PROCEDURE["challenge_dispositions"]
+                    or (check["outcome"] == "BLOCKER") != (check["disposition"] == "BLOCKER")):
+                raise BrainAuditError("AOA challenge omits alternatives or contradicts judgment")
+    return value
+
+
+def _aoa_cost(value: Any, identity: str, dimension: str, bound: dict, context: dict) -> None:
+    _fields(value, {"knowledge", "quantity", "basis", "evidence_refs"}, "AOA episode cost")
+    _aoa_private(value)
+    _text(value["basis"], 2048, "AOA cost assumptions and horizon")
+    _aoa_refs(value["evidence_refs"], bound)
+    if value["knowledge"] == "UNKNOWN":
+        if value["quantity"] is not None:
+            raise BrainAuditError("UNKNOWN cost cannot contain a fabricated point estimate")
+        return
+    if value["knowledge"] not in ("OBSERVED", "INFERRED") or type(value["quantity"]) not in (int, float):
+        raise BrainAuditError("invalid AOA cost attribution")
+    measurement = {"option_id": identity, "dimension": dimension, "quantity": value["quantity"]}
+    if not any(e["ref"] in value["evidence_refs"] and e["knowledge"] == value["knowledge"]
+               and measurement in context["evidence"][i]["measurements"] for i, e in enumerate(bound["evidence"])):
+        raise BrainAuditError("AOA quantitative cost lacks exact supplied evidence and attribution")
+
+
+def _aoa_alternatives(value: Any, bound: dict, context: dict) -> list[dict]:
+    if type(value) is not list or len(value) != 3:
+        raise BrainAuditError("AOA compares exactly A/B/C")
+    for identity, option in zip(_AOA_KINDS, value):
+        _fields(option, _TCA_JUDGMENT_FIELDS | {"expected_outcome", "feasibility", "planning_scope", "risks",
+                "risk_acceptance_required", "reversibility", "necessity", "externalities", "episode_cost", "relative_episode_cost"},
+                "AOA comparative alternative")
+        if option["id"] != identity or option["feasibility"] not in ("FEASIBLE", "INFEASIBLE", "UNKNOWN"):
+            raise BrainAuditError("AOA alternative identity or feasibility mismatch")
+        _aoa_judgment(option, bound, ("objective", "alternatives", "authorization", "consumers"))
+        for key in ("expected_outcome", "reversibility", "necessity"):
+            _text(option[key], 2048, f"AOA {key}")
+            _aoa_private(option[key])
+        for key in ("planning_scope", "risks", "risk_acceptance_required"):
+            _tca_texts(option[key], 16, f"AOA {key}")
+            _aoa_private(option[key])
+        auth = context["authorization"]
+        if auth is not None and (not set(option["planning_scope"]) <= set(auth["planning_scope"])
+                or option["feasibility"] == "FEASIBLE" and not option["planning_scope"]):
+            raise BrainAuditError("AOA alternative exceeds supplied planning scope")
+        accepted = auth is not None and set(option["risk_acceptance_required"]) <= set(auth["risk_acceptance"])
+        if (option["feasibility"] == "UNKNOWN" or not accepted) and option["outcome"] != "BLOCKER":
+            raise BrainAuditError("unresolved AOA feasibility or Human risk acceptance blocks")
+        _fields(option["externalities"], {"positive", "negative"}, "AOA externalities")
+        for side in option["externalities"].values():
+            _tca_texts(side, 16, "AOA externalities")
+            _aoa_private(side)
+        _fields(option["episode_cost"], set(_AOA_COST_DIMENSIONS), "AOA full episode cost")
+        for dimension in _AOA_COST_DIMENSIONS:
+            _aoa_cost(option["episode_cost"][dimension], identity, dimension, bound, context)
+        relative = _fields(option["relative_episode_cost"], {
+            "knowledge", "basis", "evidence_refs", "compared_with", "relation"}, "AOA relative episode cost")
+        _aoa_private(relative)
+        _text(relative["basis"], 2048, "AOA relative cost basis")
+        _aoa_refs(relative["evidence_refs"], bound)
+        if (relative["compared_with"] != [i for i in _AOA_KINDS if i != identity]
+                or relative["knowledge"] not in ("OBSERVED", "INFERRED", "UNKNOWN")
+                or relative["relation"] not in ("LOWER", "SIMILAR", "HIGHER", "MIXED", "UNKNOWN")
+                or (relative["knowledge"] == "UNKNOWN") != (relative["relation"] == "UNKNOWN")):
+            raise BrainAuditError("invalid or incomplete AOA relative cost comparison")
+        if relative["knowledge"] != "UNKNOWN" and not any(
+                e["ref"] in relative["evidence_refs"] and e["knowledge"] == relative["knowledge"] for e in bound["evidence"]):
+            raise BrainAuditError("AOA relative cost assertion lacks attributed bound evidence")
+    return value
+
+
+def _aoa_information(value: Any, bound: dict) -> dict:
+    _fields(value, {"outcome", "knowledge", "basis", "evidence_refs", "question", "decision_if_known", "value_of_information"},
+            "AOA discriminating information")
+    _aoa_judgment(value, bound, ("objective", "alternatives"))
+    for key in ("question", "decision_if_known", "value_of_information"):
+        _text(value[key], 2048, f"AOA {key}")
+        _aoa_private(value[key])
+    return value
+
+
+def _aoa_candidate(value: Any, bound: dict, alternatives: list[dict]) -> dict:
+    candidate = _normal(value, depth=0, max_depth=32)
+    _fields(candidate, {"selected_alternative", "proposal", "rationale", "uncertainties", "next_human_decision"}, "AOA planning candidate")
+    _aoa_private(candidate)
+    _bounded(candidate, _AOA_BOUNDS["candidate_bytes"], "AOA candidate")
+    selected = candidate["selected_alternative"]
+    if selected not in (*_AOA_KINDS, "DEFER") or bound["blockers"]:
+        raise BrainAuditError("AOA candidate lacks exact intent/source/authority")
+    if selected != "DEFER" and next(o for o in alternatives if o["id"] == selected)["feasibility"] != "FEASIBLE":
+        raise BrainAuditError("AOA cannot recommend an infeasible or unknown alternative")
+    for key in ("proposal", "rationale", "next_human_decision"):
+        _text(candidate[key], 2048, f"AOA candidate {key}")
+    _tca_texts(candidate["uncertainties"], 16, "AOA candidate uncertainties")
+    return candidate
+
+
+def construct_aoa(packet: Any, profile: Any, subject: Any, semantic_output: Any,
+                  source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Construct the counterfactual comparison, without a final engineering verdict."""
+    _, _, bound, context = _aoa_bound(packet, profile, subject, source_context)
+    material = _fields(_normal(semantic_output, depth=0, max_depth=32), {
+        "subject_fingerprint", "checks", "alternatives", "information", "draft_candidate"}, "AOA construct")
+    _bounded(material, _AOA_BOUNDS["outcome_bytes"], "AOA construct")
+    if material["subject_fingerprint"] != bound["subject_fingerprint"]:
+        raise BrainAuditError("stale AOA construct subject")
+    checks = _aoa_checks(material["checks"], bound, challenge=False)
+    options = _aoa_alternatives(material["alternatives"], bound, context)
+    information = _aoa_information(material["information"], bound)
+    for index, judgments in ((1, options), (3, [information])):
+        if any(c["outcome"] == "BLOCKER" for c in judgments) and checks[index]["outcome"] != "BLOCKER":
+            raise BrainAuditError("AOA construct gives false sufficient comparison or information")
+    candidate = material["draft_candidate"]
+    if candidate is not None:
+        candidate = _aoa_candidate(candidate, bound, options)
+    result = {"format": "AIOS_BRAIN_ARCHITECTURE_OUTCOME_AUDIT", "version": 1, "stage": "CONSTRUCT",
+              "subject_fingerprint": bound["subject_fingerprint"], "checks": checks, "alternatives": options,
+              "information": information, "draft_candidate": candidate}
+    result["construct_fingerprint"] = _digest(result)
+    return result
+
+
+def _aoa_construct(packet: Any, profile: Any, subject: Any, value: Any, source_context: Any) -> dict:
+    first = _fields(_normal(value, depth=0, max_depth=32), _AOA_CONSTRUCT_FIELDS, "AOA first pass")
+    expected = construct_aoa(packet, profile, subject, {k: first[k] for k in (
+        "subject_fingerprint", "checks", "alternatives", "information", "draft_candidate")}, source_context)
+    if _json(first) != _json(expected):
+        raise BrainAuditError("AOA construct lineage mismatch")
+    return expected
+
+
+def _aoa_reconcile(value: Any, first: dict, final: dict, bound: dict) -> list[dict]:
+    prior = [("CHECK", c, roles) for c, roles in zip(first["checks"], _AOA_CONSTRUCT_ROLES)]
+    prior += [("ALTERNATIVE", c, ("objective", "alternatives", "authorization", "consumers")) for c in first["alternatives"]]
+    prior += [("INFORMATION", {"id": "DISCRIMINATOR", **first["information"]}, ("objective", "alternatives"))]
+    blockers = {(kind, c["id"]): (c, roles) for kind, c, roles in prior if c["outcome"] == "BLOCKER"}
+    if type(value) is not list or len(value) != len(blockers):
+        raise BrainAuditError("AOA must retain or explicitly resolve every first-pass blocker")
+    original = {"candidate": first["draft_candidate"], "alternatives": first["alternatives"], "information": first["information"]}
+    changed = {"candidate": final["reconciled_candidate"], "alternatives": final["alternatives"], "information": final["information"]}
+    seen, effective = set(), []
+    for record in value:
+        _fields(record, {"kind", "id", "disposition", "knowledge", "basis", "evidence_refs", "changed_anchors"}, "AOA reconciliation")
+        _text(record["kind"], 256, "AOA blocker kind")
+        _text(record["id"], 256, "AOA blocker id")
+        key = (record["kind"], record["id"])
+        if key in seen or key not in blockers or record["disposition"] not in ("RESOLVED", "UNRESOLVED"):
+            raise BrainAuditError("unknown or duplicate AOA first-pass blocker")
+        seen.add(key)
+        old, roles = blockers[key]
+        resolved = record["disposition"] == "RESOLVED"
+        judgment = {**record, "outcome": "CLEAR" if resolved else "BLOCKER"}
+        _aoa_judgment(judgment, bound, roles)
+        if resolved:
+            if record["knowledge"] == "UNKNOWN" or bound["blockers"]:
+                raise BrainAuditError("AOA blocker cannot be resolved without decisive bound sources")
+            if type(record["changed_anchors"]) is not list or any(
+                    type(a) is not str or not a.startswith(("alternatives.", "information.", "candidate."))
+                    for a in record["changed_anchors"]):
+                raise BrainAuditError("AOA resolution requires specific planning content anchors")
+            _tca_changed_anchors(record["changed_anchors"], original, changed)
+            if key[0] == "ALTERNATIVE" and not any(a.startswith(f"alternatives.{list(_AOA_KINDS).index(key[1])}.")
+                                                      for a in record["changed_anchors"]):
+                raise BrainAuditError("AOA resolution must change the blocked alternative")
+            if key[0] == "INFORMATION" and not any(a.startswith("information.") for a in record["changed_anchors"]):
+                raise BrainAuditError("AOA information resolution must change the discriminator")
+        elif record["changed_anchors"] or record["knowledge"] != old["knowledge"]:
+            raise BrainAuditError("unresolved AOA blocker cannot erase prior knowledge")
+        effective.append(judgment)
+    effective.extend(c for _, c, _ in prior if c["outcome"] == "CLEAR")
+    return effective
+
+
+def validate_aoa(packet: Any, profile: Any, subject: Any, stage1: Any, semantic_output: Any,
+                 source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Challenge A/B/C, retain unresolved blockers, and close once for Human planning."""
+    body, policy, bound, context = _aoa_bound(packet, profile, subject, source_context)
+    first = _aoa_construct(body, policy, bound, stage1, context)
+    material = _fields(_normal(semantic_output, depth=0, max_depth=32), {
+        "subject_fingerprint", "construct_fingerprint", "challenges", "alternatives", "information",
+        "reconciliation", "closure", "reconciled_candidate"}, "AOA reconcile")
+    _bounded(material, _AOA_BOUNDS["outcome_bytes"], "AOA second pass")
+    if (material["subject_fingerprint"] != bound["subject_fingerprint"]
+            or material["construct_fingerprint"] != first["construct_fingerprint"]):
+        raise BrainAuditError("AOA second-pass subject/construct mismatch")
+    challenges = _aoa_checks(material["challenges"], bound, challenge=True)
+    options = _aoa_alternatives(material["alternatives"], bound, context)
+    information = _aoa_information(material["information"], bound)
+    candidate = material["reconciled_candidate"]
+    if candidate is not None:
+        candidate = _aoa_candidate(candidate, bound, options)
+    effective = _aoa_reconcile(material["reconciliation"], first, material, bound)
+    judgments = [*effective, *challenges, *options, information]
+    blocked = bool(bound["blockers"]) or any(c["outcome"] == "BLOCKER" for c in judgments)
+    outcome = "NO_DECISION" if blocked else "CANDIDATE"
+    knowledge = ("UNKNOWN" if any(c["knowledge"] == "UNKNOWN" for c in judgments) else
+                 "INFERRED" if any(c["knowledge"] == "INFERRED" for c in judgments) else "OBSERVED")
+    closure = _fields(material["closure"], {"outcome", "knowledge", "summary", "candidate_fingerprint"}, "AOA closure")
+    _text(closure["summary"], 2048, "AOA closure summary")
+    _aoa_private(closure["summary"])
+    if closure["outcome"] != outcome or closure["knowledge"] != knowledge:
+        raise BrainAuditError("AOA closure contradicts comparison or retained blockers")
+    if blocked:
+        if candidate is not None or closure["candidate_fingerprint"] is not None:
+            raise BrainAuditError("AOA NO_DECISION cannot expose a planning candidate")
+    elif candidate is None or closure["candidate_fingerprint"] != _digest(candidate):
+        raise BrainAuditError("AOA closure must bind one final planning candidate")
+    changed = any(_json(material[k]) != _json(first[old]) for k, old in (
+        ("alternatives", "alternatives"), ("information", "information"), ("reconciled_candidate", "draft_candidate")))
+    addressed = any(c["disposition"] == "ADDRESSED_BY_RECONCILIATION" for c in challenges)
+    # Suppressing a draft on NO_DECISION is not a claimed resolution.
+    substantive = changed if not blocked else any(_json(material[k]) != _json(first[k]) for k in ("alternatives", "information"))
+    if substantive != addressed:
+        raise BrainAuditError("AOA addressed challenge contradicts the bound reconciliation delta")
+    result = {"format": "AIOS_BRAIN_ARCHITECTURE_OUTCOME_AUDIT", "version": 1, "stage": "ADVERSARIAL_AUDIT_AND_RECONCILE",
+              "subject_fingerprint": bound["subject_fingerprint"], "construct_fingerprint": first["construct_fingerprint"],
+              **{k: material[k] for k in ("challenges", "alternatives", "information", "reconciliation", "closure")},
+              "handoff_candidate": candidate}
+    result["audit_fingerprint"] = _digest(result)
+    return result
+
+
 __all__ = [
     "BrainAuditError", "parse_profile_registry", "normalize_profile", "profile_ref",
     "profile_applies", "construct_stage1", "validate_stage2", "construct_roa_subject", "validate_roa",
     "construct_moa_subject", "construct_moa", "validate_moa",
     "construct_tca_subject", "construct_tca", "validate_tca",
+    "construct_aoa_subject", "construct_aoa", "validate_aoa",
 ]
