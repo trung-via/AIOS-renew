@@ -1,0 +1,70 @@
+review_id: REVIEW-366-001
+reviewed_sha: 0f9c40f494c518d12ce298b5e71139da1180cbf0
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- Reviewer bound semantic review to canonical TASK-366 r1 blob a05a78755757e610d53798d8b07d14e9495f4879
+  at base main 8dfdfce5ec687b16c93d3eee5c9f1771a62ae5a7 and exact PRIMARY RUN-366-001
+  RESULT source candidate 0f9c40f494c518d12ce298b5e71139da1180cbf0; candidate parent
+  is exactly the TASK main commit. RUN execution profile is explicitly Human delegated
+  codex gpt-6.1-sol max. Both authored Runtime verification entries V001 and V002
+  bind this candidate and report exit code 0, with no unresolved claims. The eight
+  changed files are exactly within TASK scope.modify.
+- 'AC1: The new isolated tca-1 v1 is content-digest pinned 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2,
+  applies only to TASK_AUTHORING and declares five ordered construct obligations followed
+  by six focused adversarial challenges and one closure. It is not a second eight-lens
+  V1 procedure or live replacement policy.'
+- 'AC2: TCA source binds exact packet/flow/work context, externally allocated TASK
+  identity and revision, supplied Human intent, structural task proposal, explicit
+  authorized scope and declared material consumers plus canonical snapshot. Each original
+  acceptance id and consumer is checked once with typed knowledge, bound source references,
+  implementation property/falsifying counterexample or consumer coverage; PROOF_LATER
+  cannot be marked sufficient. The semantic judgments of contradiction or intent feasibility
+  remain Brain-owned, not claimed as deterministic truth.'
+- 'AC3: Second-pass false-completion and scope/consumer/authority/source counterexamples
+  are explicit and bounded. The reconciliation requires every first-pass BLOCKER to
+  be retained or resolved against a lawful changed candidate with cited sources and
+  changed anchors; all-CLEAR second pass alone cannot erase a blocker. Final CANDIDATE
+  is blocked while any unresolved blocker remains. The focused test suite includes
+  this regression.'
+- 'AC4: Existing provider-neutral protocol adds closed TCA_CONSTRUCT/TCA_RECONCILE
+  requests and decisions, reconstructs source/profile/return/packet lineage, revalidates
+  first-pass and final closure and checks freshness before Stage 2 and final semantic
+  return. Native mapping/JSON paths have coverage, reject malformed and switched/stale
+  binding material and do not turn typed judgment into Runtime EVIDENCE.'
+- 'AC5: Human V1_ONLY conformance requires an externally supplied exact-scoped Human
+  option bound to current TASK subject, profile and context, with separate option-only
+  two passes. A literal HUMAN claim is not accepted as independent proof of Human
+  authorization: the caller owns authentication. Ordinary production TCA invocation
+  remains rejected, dual V1/TCA normative validation and V3 fallback are rejected.
+  No Human option is automatically activated by this R3 publication.'
+- 'AC6: Existing recognized ROA-1 R2, MOA-1 and Adaptive V1/V2/V3 normalized package
+  meanings remain supported under finite exact-profile registry and legacy routing.
+  No changed historical profile material or wide-open registry accepting arbitrary
+  modes was identified in the candidate diff; compatibility tests are included in
+  the focused Runtime verification.'
+- 'AC7: Tests specifically cover task/acceptance/consumer binding and falsifying cases,
+  PROOF_LATER misplacement, first-pass blocker non-erasure, changed anchor accounting,
+  unsafe scope and private data, profile digest substitution, stale stages, exact
+  opt-in, mixed modes and historical compatibility. Runtime completed the two exact
+  required focused commands V001/V002 at exit code 0; no full-suite result is claimed.'
+- 'AC8: Only .ai/brain-audit-profiles.yaml, the existing brain_audit/provider/provider_protocol
+  modules, three targeted tests and semantic protocol documentation change. Direct
+  AUTHOR_TASK, Runtime admission, Reviewer, Publisher, current roadmap, frozen Kernel,
+  Constitution and downstream were not modified. The conformance-only code adds no
+  new lifecycle router, profile default selection or authority; measurement superiority
+  and prospective default-profile cutover remain UNKNOWN and unauthorized.'
+- Review scope is exactly this candidate and TASK r1. PASS here does not establish
+  a live user opted-in TCA execution, a production cutover, future LLM audit quality,
+  Publisher publication, or roadmap advancement. Reviewer is distinct from Executor's
+  self-reported claims; Runtime and Publisher own their own later authoritative steps.
