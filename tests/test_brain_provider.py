@@ -15,12 +15,117 @@ from aios_renew.brain_provider_protocol import (
 )
 from aios_renew.decision_packet import DecisionPacket
 from test_brain_provider_protocol import (
-    inputs, profile_package, registry, response, stage2_response,
+    digest, inputs, profile_package, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
 )
 
 
 DIRECT = {"proposal": "Investigate", "uncertainty": {"status": "NONE", "summary": None}}
 TASK = {"task_id": "TASK-999", "revision": 1}
+
+
+@pytest.mark.parametrize("unknown", (None, 1))
+def test_roa_one_call_fresh_closure_is_portable_across_native_transports(registry, roa_package, unknown):
+    supplied, contract, bindings = roa_inputs(registry)
+    decisions = []
+    for kind in ("mapping", "json"):
+        calls, freshness = [], []
+        def callback(req):
+            calls.append(deepcopy(req))
+            return wrapper(req, provider=kind, model=kind, semantic=roa_response(req, unknown=unknown))
+        def fresh():
+            freshness.append(None)
+            return DecisionPacket(supplied.as_dict())
+        result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract,
+                         bindings, roa_package, fresh, conformance_only=True)
+        assert len(calls) == len(freshness) == len(result.attributions) == 1
+        assert calls[0]["request_mode"] == "ROA_CONFORMANCE" and calls[0]["stage1_lineage"] is None
+        assert revalidate_decision(result.decision, calls[0]) == result.decision
+        assert (result.decision["semantic_value"]["handoff_candidate"] is None) == (unknown is not None)
+        decisions.append(result.decision)
+    assert decisions[0] == decisions[1]
+
+
+@pytest.mark.parametrize("flag,supplier", ((False, True), ("true", True), (True, False)))
+def test_roa_never_activates_in_an_ordinary_production_attempt(registry, roa_package, flag, supplier):
+    supplied, contract, bindings = roa_inputs(registry)
+    calls = []
+    provider = MappingBrainProvider("fixture", "fixed", lambda req: calls.append(req))
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(provider, supplied, contract, bindings, roa_package,
+                (lambda: supplied) if supplier else None, conformance_only=flag)
+    assert caught.value.reason_code == "PROTOCOL_INPUT_INVALID"
+    assert caught.value.invocation_count == 0 and not calls
+
+
+@pytest.mark.parametrize("fault", ("main", "failure", "evidence", "authority", "invalid_packet", "unavailable"))
+def test_roa_invalidates_after_one_call_when_currentness_moves(registry, roa_package, fault):
+    supplied, contract, bindings = roa_inputs(registry)
+    calls = []
+    before = supplied.as_dict()
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, semantic=roa_response(req))
+    def fresh():
+        if fault == "unavailable":
+            raise RuntimeError("Source unavailable")
+        body = supplied.as_dict()
+        if fault == "main":
+            body["canonical_facts"]["main_sha"] = "f" * 40
+        elif fault == "failure":
+            body["canonical_facts"]["correction_subject"]["artifacts_sha"] = "f" * 40
+        elif fault == "evidence":
+            body["bounded_observations"]["strategy_facts"]["structural_result_package"] = "PRESENT"
+        elif fault == "authority":
+            body["canonical_blocker"] = {"reason": "Authority unresolved"}
+        else:
+            return DecisionPacket({})
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        return DecisionPacket(body)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract,
+                bindings, roa_package, fresh, conformance_only=True)
+    expected = ("FRESH_PACKET_UNAVAILABLE" if fault == "unavailable" else
+                "FRESH_PACKET_INVALID" if fault == "invalid_packet" else "STALE_BEFORE_ROA_RETURN")
+    assert caught.value.reason_code == expected and caught.value.invocation_count == len(calls) == 1
+    assert supplied.as_dict() == before
+
+
+@pytest.mark.parametrize("fault", ("forged_evidence", "missing_check", "dual_audit", "duplicate_output"))
+def test_roa_invalid_output_has_no_retry_or_v1_fallback(registry, roa_package, fault):
+    supplied, contract, bindings = roa_inputs(registry)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        semantic = roa_response(req)
+        if fault == "forged_evidence":
+            semantic["checks"][1]["evidence_refs"][0]["digest"] = "f" * 64
+        elif fault == "missing_check":
+            semantic["checks"].pop()
+        elif fault == "dual_audit":
+            semantic["v1_audit"] = {}
+        else:
+            semantic = [semantic, deepcopy(semantic)]
+        return wrapper(req, semantic=semantic)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract,
+                bindings, roa_package, lambda: supplied, conformance_only=True)
+    assert caught.value.reason_code == "PROVIDER_RESPONSE_INVALID"
+    assert caught.value.invocation_count == len(calls) == 1
+    assert calls[0]["audit_profile_package"] == roa_package
+
+
+def test_roa_duplicate_native_json_closure_is_rejected_before_semantic_validation(registry, roa_package):
+    supplied, contract, bindings = roa_inputs(registry)
+    calls = []
+    def callback(raw):
+        req = json.loads(raw)
+        calls.append(req)
+        encoded = json.dumps(wrapper(req, provider="json", semantic=roa_response(req)))
+        return encoded.replace('"closure": {', '"closure": null, "closure": {', 1)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(JsonBrainProvider("json", "one", callback), supplied, contract, bindings,
+                roa_package, lambda: supplied, conformance_only=True)
+    assert caught.value.reason_code == "PROVIDER_RESPONSE_INVALID" and len(calls) == 1
 
 
 def wrapper(request, *, provider="mapping", model="one", semantic=None, attribution=None):

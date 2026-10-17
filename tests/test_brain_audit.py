@@ -8,12 +8,305 @@ from pathlib import Path
 import pytest
 
 from aios_renew.brain_audit import (
-    BrainAuditError, construct_stage1, normalize_profile, parse_profile_registry,
-    profile_applies, profile_ref, validate_stage2,
+    BrainAuditError, construct_roa_subject, construct_stage1, normalize_profile, parse_profile_registry,
+    profile_applies, profile_ref, validate_roa, validate_stage2,
 )
 
 
 REGISTRY = Path(__file__).resolve().parents[1] / ".ai" / "brain-audit-profiles.yaml"
+
+
+@pytest.fixture
+def roa_profile():
+    return next(p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"] if p["id"] == "roa-1-r2")
+
+
+def roa_packet():
+    """Current canonical repair facts, with no raw output or inferred strategy."""
+    body = packet("REPAIR_AUTHORING")
+    body.update(selection_basis="UNIFIED_STATE_AUTHOR_REPAIR",
+                decision_family_ref="publication._validate_repair_authorization",
+                handoff_target="AUTHORING_INGRESS", expected_return_shape="REPAIR_AUTHORIZATION_PROPOSAL")
+    task = {"id": "TASK-999", "revision": 1}
+    body["subject"] = {"failed_run_id": "RUN-999-001", "failed_head_sha": "b" * 40,
+                       "failed_changed_files": ["src/example.py"]}
+    body["canonical_facts"] = {
+        "main_sha": "a" * 40, "selected_task": task, "canonical_next_action": "AUTHOR_REPAIR",
+        "task_contract": {"task_id": task["id"], "revision": task["revision"],
+            "scope": {"inspect": ["src/example.py"], "modify": ["src/example.py"]},
+            "constraints": {"hard": ["Preserve the original TASK intent."]}},
+        "correction_subject": {"policy": "EXACT_CORRECTION_SUBJECT_LINEAGE_V1", "operation": "AUTHOR_REPAIR",
+            "task": task, "artifacts_sha": "c" * 40, **{k: body["subject"][k] for k in ("failed_run_id", "failed_head_sha")}},
+    }
+    body["bounded_observations"] = {"phase": "COMPLETION_GATE", "error": {"type": "ArtifactValidationError"},
+        "strategy_facts": {"structural_result_package": "MISSING", "acceptance_coverage": "INCOMPLETE",
+                           "candidate_clean_committed": True}}
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    return body
+
+
+def roa_subject(body, profile):
+    return construct_roa_subject(body, profile, {"selected_flow": "REPAIR_AUTHORING", "version": 1,
+                                                "digest": "d" * 64}, {"repair_id": "REPAIR-999-001"})
+
+
+def roa_output(subject, profile, *, inferred=True, unknown=None):
+    roles = ("failure", "evidence", "evidence", "evidence", "authorization")
+    bases = (
+        "Exact failed RUN and candidate have a canonical completion-gate FAILURE.",
+        "Missing result package distinguishes incomplete finalization from a verification failure.",
+        "Complete the authorized candidate package without changing the TASK intent.",
+        "A present valid result package would falsify this diagnosis; the bound observation reports MISSING.",
+        "Original TASK scope and constraints apply; execution and proof still belong to Runtime.",
+    )
+    checks = []
+    for index, (spec, role, basis) in enumerate(zip(profile["checks"], roles, bases)):
+        missing = subject["sources"][role] is None or index == unknown
+        checks.append({"id": spec["id"], "outcome": "BLOCKER" if missing else "CLEAR",
+                       "knowledge": "UNKNOWN" if missing else "INFERRED" if inferred and index in (1, 2, 3) else "OBSERVED",
+                       "basis": "Decisive material is unavailable; no speculative repair." if missing else basis,
+                       "evidence_refs": [] if missing else [deepcopy(subject["sources"][role])]})
+    blocked = any(c["outcome"] == "BLOCKER" for c in checks)
+    candidate = None if blocked else {
+        **subject["external_bindings"], "failed_run_id": subject["failed_run_id"],
+        "failed_head_sha": subject["failed_head_sha"], "task": deepcopy(subject["task"]),
+        "action": "CONTINUE_IMPLEMENTATION", "modification_scope": ["src/example.py"],
+        "instructions": ["Complete the missing final candidate package within the original TASK."],
+        "constraints": ["Preserve the original TASK intent."],
+    }
+    return {"subject_fingerprint": subject["subject_fingerprint"], "checks": checks,
+        "closure": {"outcome": "NO_DECISION" if blocked else "CANDIDATE",
+                    "knowledge": "UNKNOWN" if blocked else "INFERRED" if inferred else "OBSERVED",
+                    "summary": "Missing decisive support blocks authoring." if blocked else "One bounded repair candidate.",
+                    "candidate_fingerprint": None if blocked else digest(candidate)}, "candidate": candidate}
+
+
+def test_roa_is_exactly_five_checks_one_procedure_and_one_closure(roa_profile):
+    assert profile_ref(roa_profile) == {"id": "roa-1-r2", "version": 2,
+        "digest": "aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4"}
+    assert roa_profile["applicable_flows"] == ["REPAIR_AUTHORING"]
+    assert len(roa_profile["checks"]) == 5 and "lenses" not in roa_profile
+    assert "stages" not in roa_profile["procedure"]
+    body = roa_packet()
+    before = deepcopy(body)
+    subject = roa_subject(body, roa_profile)
+    for inferred in (False, True):
+        material = roa_output(subject, roa_profile, inferred=inferred)
+        final = validate_roa(body, roa_profile, subject, material)
+        assert final["closure"]["outcome"] == "CANDIDATE"
+        assert final["closure"]["knowledge"] == ("INFERRED" if inferred else "OBSERVED")
+        assert final["handoff_candidate"] == material["candidate"]
+        assert final["audit_fingerprint"] == digest({k: v for k, v in final.items() if k != "audit_fingerprint"})
+    assert body == before
+    with pytest.raises(BrainAuditError):
+        construct_stage1(body, roa_profile, {})
+    with pytest.raises(BrainAuditError):
+        validate_stage2(body, roa_profile, {}, {})
+
+
+@pytest.mark.parametrize("fault", ("digest_content", "version", "extra_check", "missing_check", "order",
+                                   "bounds", "eight_lenses", "two_stages", "unknown_identity"))
+def test_roa_profile_cannot_be_reminted_or_disguised_as_v1(roa_profile, fault):
+    bad = deepcopy(roa_profile)
+    if fault == "digest_content":
+        bad["checks"][1]["check"] += " Invent evidence if absent."
+    elif fault == "version":
+        bad["version"] = True
+    elif fault == "extra_check":
+        bad["checks"].append(deepcopy(bad["checks"][0]))
+    elif fault == "missing_check":
+        bad["checks"].pop()
+    elif fault == "order":
+        bad["checks"].reverse()
+    elif fault == "bounds":
+        bad["bounds"]["outcome_bytes"] += 1
+    elif fault == "eight_lenses":
+        bad["lenses"] = [{"id": "AUTHORITY_BOUNDARY", "check": "Universal"}] * 8
+    elif fault == "two_stages":
+        bad["procedure"]["stages"] = ["CONSTRUCT", "ADVERSARIAL_AUDIT_AND_RECONCILE"]
+    else:
+        bad["id"] = "roa-1-r3"
+    with pytest.raises(BrainAuditError):
+        normalize_profile(bad)
+
+
+def test_registry_remains_finite_and_historical_profile_bytes_are_unchanged(roa_profile):
+    import yaml
+    registry = parse_profile_registry(REGISTRY.read_bytes())
+    assert len(registry["profiles"]) == 4 and len(REGISTRY.read_bytes()) < 32768
+    registry["profiles"].append(deepcopy(roa_profile))
+    with pytest.raises(BrainAuditError):
+        parse_profile_registry(yaml.safe_dump(registry))
+    # Exact published historical content, beyond merely keeping each identifier.
+    expected = {"brain-high-value-v2": "307a38c6ca3dae0146dcc59d225ea820f86fba082028bb105c6cf3e02d255ce0",
+                "brain-high-value-v3": "2a2d46f85b5d9d4e3653f3c3fb7b7354be44da6fdbf13894dc5d374039370425",
+                "aios-adaptive-brain-audit-v1": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718"}
+    for profile in parse_profile_registry(REGISTRY.read_bytes())["profiles"]:
+        if profile["id"] in expected:
+            assert profile_ref(profile)["digest"] == expected[profile["id"]]
+
+
+@pytest.mark.parametrize("unknown", range(5))
+def test_roa_unknown_blocks_without_exposing_a_speculative_repair(roa_profile, unknown):
+    body = roa_packet()
+    subject = roa_subject(body, roa_profile)
+    material = roa_output(subject, roa_profile, unknown=unknown)
+    final = validate_roa(body, roa_profile, subject, material)
+    assert final["closure"]["outcome"] == "NO_DECISION" and final["closure"]["knowledge"] == "UNKNOWN"
+    assert final["handoff_candidate"] is None
+    material["candidate"] = roa_output(subject, roa_profile)["candidate"]
+    with pytest.raises(BrainAuditError):
+        validate_roa(body, roa_profile, subject, material)
+
+
+@pytest.mark.parametrize("missing", ("failure", "failure_identity", "evidence", "authorization"))
+def test_roa_missing_decisive_packet_material_is_a_bounded_unknown(roa_profile, missing):
+    body = roa_packet()
+    if missing == "failure":
+        body["canonical_facts"].pop("correction_subject")
+    elif missing == "failure_identity":
+        body["canonical_facts"]["correction_subject"].pop("artifacts_sha")
+    elif missing == "evidence":
+        body["bounded_observations"] = None
+    else:
+        body["canonical_facts"].pop("task_contract")
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    subject = roa_subject(body, roa_profile)
+    assert subject["sources"]["failure" if missing == "failure_identity" else missing] is None
+    material = roa_output(subject, roa_profile)
+    assert validate_roa(body, roa_profile, subject, material)["handoff_candidate"] is None
+    for check in material["checks"]:
+        check.update(outcome="CLEAR", knowledge="OBSERVED")
+    with pytest.raises(BrainAuditError):
+        validate_roa(body, roa_profile, subject, material)
+
+
+@pytest.mark.parametrize("fault", ("missing", "duplicate", "order", "forged_digest", "forged_path", "no_evidence",
+    "unknown_clear", "false_closure", "false_knowledge", "duplicate_closure", "stale_candidate", "stale_subject",
+    "basis_bound", "references_bound", "private_path", "private_key", "dual_audit", "invalid_mode"))
+def test_roa_malformed_and_adversarial_closures_fail_closed(roa_profile, fault):
+    body = roa_packet()
+    subject = roa_subject(body, roa_profile)
+    material = roa_output(subject, roa_profile)
+    check = material["checks"][1]
+    if fault == "missing":
+        material["checks"].pop()
+    elif fault == "duplicate":
+        material["checks"][1] = deepcopy(material["checks"][0])
+    elif fault == "order":
+        material["checks"].reverse()
+    elif fault == "forged_digest":
+        check["evidence_refs"][0]["digest"] = "f" * 64
+    elif fault == "forged_path":
+        check["evidence_refs"][0]["path"] = "executor_claims"
+    elif fault == "no_evidence":
+        check["evidence_refs"] = []
+    elif fault == "unknown_clear":
+        check["knowledge"] = "UNKNOWN"
+    elif fault == "false_closure":
+        material["closure"]["outcome"] = "PASS"
+    elif fault == "false_knowledge":
+        material["closure"]["knowledge"] = "OBSERVED"
+    elif fault == "duplicate_closure":
+        material["closure"] = [deepcopy(material["closure"])] * 2
+    elif fault == "stale_candidate":
+        material["candidate"]["failed_head_sha"] = "f" * 40
+        material["closure"]["candidate_fingerprint"] = digest(material["candidate"])
+    elif fault == "stale_subject":
+        material["subject_fingerprint"] = "f" * 64
+    elif fault == "basis_bound":
+        check["basis"] = "x" * 4097
+    elif fault == "references_bound":
+        check["evidence_refs"] *= 5
+    elif fault == "private_path":
+        check["basis"] = "Read C:/private/log"
+    elif fault == "private_key":
+        check["evidence_refs"][0]["provider_identity"] = "hidden"
+    elif fault == "dual_audit":
+        material["stage1"] = {}
+    else:
+        material["closure"]["knowledge"] = "MEASURED"
+    before = deepcopy(body)
+    with pytest.raises(BrainAuditError):
+        validate_roa(body, roa_profile, subject, material)
+    assert body == before
+
+
+@pytest.mark.parametrize("fault", ("main", "failure", "observations", "authority", "intent"))
+def test_roa_changed_currentness_invalidates_the_whole_subject(roa_profile, fault):
+    body = roa_packet()
+    subject = roa_subject(body, roa_profile)
+    material = roa_output(subject, roa_profile)
+    changed = deepcopy(body)
+    if fault == "main":
+        changed["canonical_facts"]["main_sha"] = "f" * 40
+    elif fault == "failure":
+        changed["canonical_facts"]["correction_subject"]["artifacts_sha"] = "f" * 40
+    elif fault == "observations":
+        changed["bounded_observations"]["strategy_facts"]["structural_result_package"] = "PRESENT"
+    elif fault == "authority":
+        changed["canonical_blocker"] = {"reason": "Current authority unresolved"}
+    else:
+        changed["human_input"] = "Different Human intent"
+    changed["packet_fingerprint"] = digest({k: v for k, v in changed.items() if k != "packet_fingerprint"})
+    with pytest.raises(BrainAuditError):
+        validate_roa(changed, roa_profile, subject, material)
+
+
+@pytest.mark.parametrize("fault", (None, "subject_failure", "unresolved", "wrong_action", "missing_prior", "forged_prior"))
+def test_roa_unexecuted_supersession_preserves_exact_prior_authority(roa_profile, fault):
+    body = roa_packet()
+    body["selection_basis"] = "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION"
+    body["canonical_facts"]["canonical_next_action"] = "EXECUTE_REPAIR"
+    body["subject"].update(kind="REPAIR_SUPERSESSION", failure_artifacts_sha="c" * 40,
+                           current_repair_authorization_sha="e" * 40)
+    authorization = {**{k: body["subject"][k] for k in ("failed_run_id", "failed_head_sha")},
+                     "task": body["canonical_facts"]["selected_task"]}
+    body["prior_semantic_decisions"] = {"kind": "REPAIR", "authorization_sha": "e" * 40,
+                                         "authorization": authorization}
+    if fault == "subject_failure":
+        body["canonical_facts"].pop("correction_subject")
+    elif fault == "unresolved":
+        body["canonical_blocker"] = {"reason": "Current authority is unresolved"}
+    elif fault == "wrong_action":
+        body["canonical_facts"]["canonical_next_action"] = "AUTHOR_REPAIR"
+    elif fault == "missing_prior":
+        body["prior_semantic_decisions"] = None
+    elif fault == "forged_prior":
+        body["prior_semantic_decisions"]["authorization"]["failed_head_sha"] = "f" * 40
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    if fault == "forged_prior":
+        with pytest.raises(BrainAuditError):
+            roa_subject(body, roa_profile)
+    else:
+        subject = roa_subject(body, roa_profile)
+        final = validate_roa(body, roa_profile, subject, roa_output(subject, roa_profile))
+        assert final["closure"]["outcome"] == ("CANDIDATE" if fault in (None, "subject_failure") else "NO_DECISION")
+        if fault not in (None, "subject_failure"):
+            assert final["closure"]["knowledge"] == "UNKNOWN" and final["handoff_candidate"] is None
+
+
+@pytest.mark.parametrize("fault", ("repair_id", "failed_run_id", "task", "action", "scope", "constraints"))
+def test_roa_final_candidate_cannot_change_identity_scope_or_original_constraints(roa_profile, fault):
+    body = roa_packet()
+    subject = roa_subject(body, roa_profile)
+    material = roa_output(subject, roa_profile)
+    candidate = material["candidate"]
+    if fault == "repair_id":
+        candidate["repair_id"] = "REPAIR-999-002"
+    elif fault == "failed_run_id":
+        candidate["failed_run_id"] = "RUN-999-002"
+    elif fault == "task":
+        candidate["task"]["revision"] = 2
+    elif fault == "action":
+        candidate["action"] = "AUTOMATIC_RETRY"
+    elif fault == "scope":
+        candidate["modification_scope"] = ["src/unrelated.py"]
+    else:
+        candidate["constraints"] = []
+    material["closure"]["candidate_fingerprint"] = digest(candidate)
+    with pytest.raises(BrainAuditError):
+        validate_roa(body, roa_profile, subject, material)
 
 
 def v3_sections(first, candidate):

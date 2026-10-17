@@ -2,6 +2,7 @@
 # digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718.
 # Canonical Human/Brain policy selects by exact identity, never registry order.
 # V2/V3 entries preserve historical decoding and exact in-flight bindings only.
+# ROA-1 R2 is isolated conformance support, not a prospective policy cutover.
 format: AIOS_BRAIN_AUDIT_PROFILES
 version: 1
 profiles:
@@ -259,3 +260,60 @@ profiles:
         sections_bytes: 65536
         entries_per_section: 16
         text_bytes: 2048
+  - id: roa-1-r2
+    version: 2
+    applicable_flows: [REPAIR_AUTHORING]
+    checks:
+      - id: EXACT_FAILURE_BOUNDARY
+        check: >-
+          Bind the exact failed RUN, failed head, TASK revision and immutable FAILURE
+          source in the current Decision Packet. Distinguish the observed failure
+          boundary from symptoms, withheld detail and Executor claims. Missing or stale
+          decisive failure material is a bounded blocker, never a guessed correction.
+      - id: EVIDENCE_DISCRIMINATING_CAUSE
+        check: >-
+          Use only current packet-bound canonical observations to discriminate the
+          material cause from plausible alternatives. Mark each judgment OBSERVED,
+          INFERRED or UNKNOWN with bounded basis and exact source references. Inference
+          needs discriminating evidence and a falsifying challenge; missing decisive
+          evidence or causal support requires UNKNOWN and a blocker. Never invent
+          Runtime evidence or treat a diagnostic, claim or audit as PASS.
+      - id: MATERIAL_REPAIR_LEVER
+        check: >-
+          Explain how the smallest authorized repair or completion lever changes the
+          identified failure boundary. Brain alone chooses CODE_FIX, NO_CHANGE,
+          CONTINUE_IMPLEMENTATION or FINALIZE_CANDIDATE from lawful current facts;
+          structural eligibility is not a strategy selector. Preserve TASK scope,
+          constraints, correction lineage and the admitted Executor. New Human intent,
+          unrelated work or unsupported causal leverage blocks the candidate.
+      - id: FALSIFYING_CHALLENGE
+        check: >-
+          State a concrete counterexample or discriminating observation that would
+          falsify the causal diagnosis or proposed lever, and explain its disposition
+          on this final candidate. Challenge forged or absent evidence, stale sources,
+          non-interference and false completion. Do this inside the single focused
+          procedure, without a mandatory universal eight-lens or second-stage audit.
+      - id: LAWFUL_READINESS
+        check: >-
+          Check current source and authorization, exact return contract and external
+          identity, bounded scope and original constraints before exposing one final
+          candidate. Missing authority or material uncertainty yields NO_DECISION and
+          UNKNOWN. Runtime retains admission, execution, verification, evidence and
+          CAS; Reviewer and Publisher retain their independent authority. One final
+          closure is a local semantic outcome, not execution approval or lifecycle
+          truth. No dual normative V1 audit, implicit fallback, automatic retry,
+          production profile activation, publication or roadmap advancement.
+    procedure:
+      name: REPAIR_OUTCOME_AUDIT
+      check_outcomes: [CLEAR, BLOCKER]
+      knowledge_states: [OBSERVED, INFERRED, UNKNOWN]
+      final_outcomes: [CANDIDATE, NO_DECISION]
+      final_closure: true
+    bounds:
+      check_bytes: 2048
+      candidate_bytes: 131072
+      basis_bytes: 4096
+      evidence_refs_per_check: 4
+      closure_summary_bytes: 4096
+      outcome_bytes: 196608
+      max_depth: 32

@@ -1,4 +1,4 @@
-"""Pure BP-4A two-stage conformance with BP5-P1 profile material.
+"""Pure historical BP-4A and bounded ROA conformance over portable profiles.
 
 All packet, profile and candidate material is supplied by the caller. Audit
 outcomes are transient Brain claims, never canonical findings or evidence.
@@ -106,7 +106,23 @@ _ADAPTIVE_ID = "aios-adaptive-brain-audit-v1"
 # V1 is one exact supported revision; renaming old material or supplying only
 # part of the adaptive procedure must not remint it as V1 proof.
 _ADAPTIVE_DIGEST = "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718"
-_PROFILE_VERSIONS = {"brain-high-value-v2": 2, "brain-high-value-v3": 3, _ADAPTIVE_ID: 1}
+_ROA_ID = "roa-1-r2"
+_ROA_DIGEST = "aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4"
+_PROFILE_VERSIONS = {"brain-high-value-v2": 2, "brain-high-value-v3": 3, _ADAPTIVE_ID: 1, _ROA_ID: 2}
+_ROA_CHECK_IDS = (
+    "EXACT_FAILURE_BOUNDARY", "EVIDENCE_DISCRIMINATING_CAUSE", "MATERIAL_REPAIR_LEVER",
+    "FALSIFYING_CHALLENGE", "LAWFUL_READINESS",
+)
+_ROA_BOUNDS = {
+    "check_bytes": 2048, "candidate_bytes": 131072, "basis_bytes": 4096,
+    "evidence_refs_per_check": 4, "closure_summary_bytes": 4096,
+    "outcome_bytes": 196608, "max_depth": 32,
+}
+_ROA_PROCEDURE = {
+    "name": "REPAIR_OUTCOME_AUDIT", "check_outcomes": ["CLEAR", "BLOCKER"],
+    "knowledge_states": ["OBSERVED", "INFERRED", "UNKNOWN"],
+    "final_outcomes": ["CANDIDATE", "NO_DECISION"], "final_closure": True,
+}
 _ADAPTIVE_RESERVED_KEYS = frozenset({
     "selected_focus", "focus_selector", "focus_notes", "audit_profile_package",
     "return_contract_package", "stage1_lineage",
@@ -239,6 +255,8 @@ _UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _u
 
 def _profile(value: Any) -> dict[str, Any]:
     normalized = _normal(value, depth=0, max_depth=32)
+    if type(normalized) is dict and normalized.get("id") == _ROA_ID:
+        return _roa_profile(normalized)
     conformant = type(normalized) is dict and normalized.get("id") in ("brain-high-value-v3", _ADAPTIVE_ID)
     profile = _fields(normalized, _PROFILE_FIELDS | ({"conformance"} if conformant else set()), "profile")
     if (type(profile["id"]) is not str or _ID.fullmatch(profile["id"]) is None
@@ -292,6 +310,27 @@ def _profile(value: Any) -> dict[str, Any]:
     return profile
 
 
+def _roa_profile(value: dict[str, Any]) -> dict[str, Any]:
+    profile = _fields(value, (_PROFILE_FIELDS - {"lenses"}) | {"checks"}, "ROA profile")
+    if (type(profile["version"]) is not int or profile["version"] != 2
+            or profile["applicable_flows"] != ["REPAIR_AUTHORING"]
+            or _json(profile["procedure"]) != _json(_ROA_PROCEDURE)
+            or _json(profile["bounds"]) != _json(_ROA_BOUNDS)):
+        raise BrainAuditError("invalid bounded ROA identity or procedure")
+    checks = profile["checks"]
+    if type(checks) is not list or len(checks) != len(_ROA_CHECK_IDS):
+        raise BrainAuditError("ROA requires exactly five checks")
+    for identity, check in zip(_ROA_CHECK_IDS, checks):
+        _fields(check, _LENS_FIELDS, "ROA check")
+        if check["id"] != identity:
+            raise BrainAuditError("unknown, duplicate or out-of-order ROA check")
+        _text(check["check"], _ROA_BOUNDS["check_bytes"], "ROA check instruction")
+    _bounded(profile, 8192, "ROA profile")
+    if _digest(profile) != _ROA_DIGEST:
+        raise BrainAuditError("unsupported ROA profile content")
+    return profile
+
+
 def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     """Parse caller-supplied YAML; never opens a repository path."""
     if type(raw) is str:
@@ -313,8 +352,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     if registry["format"] != "AIOS_BRAIN_AUDIT_PROFILES" or type(registry["version"]) is not int or registry["version"] != 1:
         raise BrainAuditError("unknown audit-profile registry")
     profiles = registry["profiles"]
-    if type(profiles) is not list or not 1 <= len(profiles) <= 3:
-        raise BrainAuditError("registry requires one to three profiles")
+    if type(profiles) is not list or not 1 <= len(profiles) <= 4:
+        raise BrainAuditError("registry requires one to four recognized profiles")
     normalized = [_profile(profile) for profile in profiles]
     if len({profile["id"] for profile in normalized}) != len(normalized):
         raise BrainAuditError("duplicate profile identity")
@@ -359,7 +398,8 @@ def profile_applies(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
 
 def _candidate(value: Any, policy: dict[str, Any]) -> dict[str, Any]:
     candidate = _normal(value, depth=0, max_depth=policy["bounds"]["max_depth"], private=True,
-                        v3=_has_conformance(policy), adaptive=policy["id"] == _ADAPTIVE_ID)
+                        v3=_has_conformance(policy) or policy["id"] == _ROA_ID,
+                        adaptive=policy["id"] in {_ADAPTIVE_ID, _ROA_ID})
     if type(candidate) is not dict:
         raise BrainAuditError("candidate must be a strict-JSON mapping")
     _bounded(candidate, policy["bounds"]["candidate_bytes"], "candidate")
@@ -370,6 +410,8 @@ def construct_stage1(packet: DecisionPacket | Mapping[str, Any], profile: Mappin
                      construct_candidate: Mapping[str, Any]) -> dict[str, Any]:
     """Bind one normalized construct to one exact packet and profile."""
     body, policy = _packet(packet), _profile(profile)
+    if policy["id"] == _ROA_ID:
+        raise BrainAuditError("ROA has one procedure and cannot construct a historical stage")
     if body["authority_owner"] != "BRAIN" or body["selected_flow"] not in policy["applicable_flows"]:
         raise BrainAuditError("profile does not apply to selected flow")
     candidate = _candidate(construct_candidate, policy)
@@ -506,6 +548,8 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
                     stage1: Mapping[str, Any], semantic_output: Mapping[str, Any]) -> dict[str, Any]:
     """Validate one audit, reconciliation and final closure within Stage 2."""
     body, policy = _packet(packet), _profile(profile)
+    if policy["id"] == _ROA_ID:
+        raise BrainAuditError("ROA cannot reconcile a historical stage")
     if body["authority_owner"] != "BRAIN" or body["selected_flow"] not in policy["applicable_flows"]:
         raise BrainAuditError("profile does not apply to selected flow")
     first = _stage1(body, policy, stage1)
@@ -569,7 +613,225 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
     return result
 
 
+def _git_sha(value: Any, name: str) -> str:
+    if type(value) is not str or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+        raise BrainAuditError(f"invalid {name}")
+    return value
+
+
+def _roa_source(path: str, value: Any) -> dict[str, str]:
+    # Source values stay in the exact packet, never in a second evidence store.
+    _normal(value, depth=0, max_depth=32, private=True, v3=True, adaptive=True)
+    return {"path": path, "digest": _digest(value)}
+
+
+def construct_roa_subject(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[str, Any],
+                          return_contract_ref: Mapping[str, Any],
+                          external_bindings: Mapping[str, Any]) -> dict[str, Any]:
+    """Derive a portable subject from packet-owned sources, without discovering Git.
+
+    Missing decisive sources remain null. They can only yield UNKNOWN/blocker;
+    caller references or model-written evidence cannot fill those slots.
+    """
+    body, policy = _packet(packet), _profile(profile)
+    if (policy["id"] != _ROA_ID or body["selected_flow"] != "REPAIR_AUTHORING"
+            or body["authority_owner"] != "BRAIN"
+            or body["decision_family_ref"] != "publication._validate_repair_authorization"
+            or body["handoff_target"] != "AUTHORING_INGRESS"
+            or body["expected_return_shape"] != "REPAIR_AUTHORIZATION_PROPOSAL"
+            or body["requires_fresh_context_for_continuation"] is not True):
+        raise BrainAuditError("ROA requires the exact Brain REPAIR_AUTHORING boundary")
+    reference = _fields(_normal(return_contract_ref, depth=0, max_depth=32),
+                        {"selected_flow", "version", "digest"}, "ROA return contract reference")
+    if (reference["selected_flow"] != "REPAIR_AUTHORING"
+            or type(reference["version"]) is not int or reference["version"] != 1):
+        raise BrainAuditError("ROA return contract mismatch")
+    _sha(reference["digest"], "return contract digest")
+    bindings = _fields(_normal(external_bindings, depth=0, max_depth=32), {"repair_id"}, "ROA external binding")
+    _text(bindings["repair_id"], 256, "ROA repair identity")
+    if type(bindings["repair_id"]) is not str or re.fullmatch(r"REPAIR-[A-Za-z0-9_-]+-\d{3,}", bindings["repair_id"]) is None:
+        raise BrainAuditError("invalid bound REPAIR identity")
+    facts, target = body["canonical_facts"], body["subject"]
+    if type(facts) is not dict or type(target) is not dict:
+        raise BrainAuditError("ROA canonical subject is missing")
+    task = _fields(facts.get("selected_task"), {"id", "revision"}, "ROA TASK identity")
+    _text(task["id"], 128, "ROA TASK identity")
+    _text(target.get("failed_run_id"), 128, "ROA failed RUN identity")
+    if (type(task["id"]) is not str or re.fullmatch(r"TASK-[A-Za-z0-9_-]+", task["id"]) is None
+            or type(task["revision"]) is not int or task["revision"] < 1
+            or type(target.get("failed_run_id")) is not str
+            or re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", target["failed_run_id"]) is None):
+        raise BrainAuditError("invalid ROA failed RUN or TASK")
+    _git_sha(target.get("failed_head_sha"), "ROA failed head")
+    _git_sha(facts.get("main_sha"), "ROA source main")
+    _sha(body["work_context_fingerprint"], "ROA work context")
+    sources: dict[str, Any] = {"failure": None, "evidence": None, "authorization": None,
+                               "prior_authorization": None}
+    supersession = body["selection_basis"] == "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION"
+    correction = facts.get("correction_subject")
+    if correction is not None:
+        if (type(correction) is not dict or correction.get("policy") != "EXACT_CORRECTION_SUBJECT_LINEAGE_V1"
+                or correction.get("operation") != "AUTHOR_REPAIR" or _json(correction.get("task")) != _json(task)
+                or any(correction.get(k, target[k]) != target[k] for k in ("failed_run_id", "failed_head_sha"))):
+            raise BrainAuditError("ROA FAILURE source identity mismatch")
+        if correction.get("artifacts_sha") is not None:
+            _git_sha(correction["artifacts_sha"], "ROA FAILURE artifact")
+            sources["failure"] = _roa_source("canonical_facts.correction_subject", correction)
+    if (sources["failure"] is None and supersession and target.get("kind") == "REPAIR_SUPERSESSION"
+            and target.get("failure_artifacts_sha") is not None):
+        _git_sha(target["failure_artifacts_sha"], "ROA supersession FAILURE artifact")
+        sources["failure"] = _roa_source("subject", target)
+    observation = body["bounded_observations"]
+    if (type(observation) is dict and observation.get("phase") in ("EXECUTION", "VERIFICATION", "COMPLETION_GATE")
+            and type(observation.get("error")) is dict and observation["error"].get("type")
+            and type(observation.get("strategy_facts")) is dict and observation["strategy_facts"]):
+        sources["evidence"] = _roa_source("bounded_observations", observation)
+    contract = facts.get("task_contract")
+    if contract is not None:
+        if (type(contract) is not dict or contract.get("task_id") != task["id"]
+                or type(contract.get("revision")) is not int or contract["revision"] != task["revision"]):
+            raise BrainAuditError("ROA TASK authorization identity mismatch")
+        scope, constraints = contract.get("scope"), contract.get("constraints")
+        if (type(scope) is dict and type(scope.get("modify")) is list
+                and all(type(p) is str and p for p in scope["modify"])
+                and type(constraints) is dict and type(constraints.get("hard")) is list
+                and all(type(c) is str and c.strip() for c in constraints["hard"])
+                and facts.get("canonical_next_action") in ("AUTHOR_REPAIR", "EXECUTE_REPAIR")
+                and body["canonical_blocker"] is None):
+            sources["authorization"] = _roa_source("canonical_facts.task_contract", contract)
+    prior = body["prior_semantic_decisions"]
+    if supersession:
+        if (type(prior) is dict and prior.get("kind") == "REPAIR"
+                and prior.get("authorization_sha") is not None and prior.get("authorization") is not None):
+            _git_sha(prior.get("authorization_sha"), "ROA prior authorization")
+            if (prior["authorization_sha"] != target.get("current_repair_authorization_sha")
+                    or type(prior.get("authorization")) is not dict
+                    or any(prior["authorization"].get(k) != target[k] for k in ("failed_run_id", "failed_head_sha"))
+                    or _json(prior["authorization"].get("task")) != _json(task)
+                    or correction is not None and correction.get("artifacts_sha") is not None
+                    and target.get("failure_artifacts_sha") != correction["artifacts_sha"]):
+                raise BrainAuditError("ROA supersession source mismatch")
+            sources["prior_authorization"] = _roa_source("prior_semantic_decisions", prior)
+        if (sources["prior_authorization"] is None or target.get("kind") != "REPAIR_SUPERSESSION"
+                or facts.get("canonical_next_action") != "EXECUTE_REPAIR"):
+            sources["authorization"] = None
+    elif (prior is not None or facts.get("canonical_next_action") != "AUTHOR_REPAIR"
+          or body["selection_basis"] != "UNIFIED_STATE_AUTHOR_REPAIR"):
+        sources["authorization"] = None
+    result = {
+        "format": "AIOS_ROA_SUBJECT", "version": 1,
+        "packet_fingerprint": body["packet_fingerprint"],
+        "work_context_fingerprint": body["work_context_fingerprint"],
+        "selected_flow": body["selected_flow"], "audit_profile_ref": profile_ref(policy),
+        "return_contract_ref": reference, "external_bindings": bindings,
+        "task": task, "failed_run_id": target["failed_run_id"], "failed_head_sha": target["failed_head_sha"],
+        "sources": sources,
+    }
+    result["subject_fingerprint"] = _digest(result)
+    return result
+
+
+def _roa_candidate(value: Any, policy: dict[str, Any], body: dict[str, Any],
+                   subject: dict[str, Any]) -> dict[str, Any]:
+    candidate = _fields(_candidate(value, policy), {
+        "repair_id", "failed_run_id", "failed_head_sha", "task", "action",
+        "modification_scope", "instructions", "constraints",
+    }, "ROA final REPAIR candidate")
+    for key, expected in {**subject["external_bindings"], **{k: subject[k] for k in
+                          ("failed_run_id", "failed_head_sha", "task")}}.items():
+        if _json(candidate[key]) != _json(expected):
+            raise BrainAuditError(f"ROA final candidate {key} binding mismatch")
+    if candidate["action"] not in ("CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"):
+        raise BrainAuditError("unknown ROA repair action")
+    contract = body["canonical_facts"]["task_contract"]
+    scope = candidate["modification_scope"]
+    if (type(scope) is not list or any(type(p) is not str for p in scope)
+            or len(scope) != len(set(scope)) or not set(scope) <= set(contract["scope"]["modify"])):
+        raise BrainAuditError("ROA candidate exceeds TASK scope")
+    for name in ("instructions", "constraints"):
+        entries = candidate[name]
+        if type(entries) is not list or len(entries) > 256 or (name == "instructions" and not entries):
+            raise BrainAuditError(f"invalid ROA {name}")
+        for entry in entries:
+            _text(entry, policy["bounds"]["basis_bytes"], name)
+    if not set(contract["constraints"]["hard"]) <= set(candidate["constraints"]):
+        raise BrainAuditError("ROA candidate drops original constraints")
+    return candidate
+
+
+def validate_roa(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[str, Any],
+                 subject: Mapping[str, Any], semantic_output: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate exactly five focused judgments and one closure in one procedure.
+
+    OBSERVED/INFERRED are Brain judgments about packet-bound sources, not proof.
+    This validator has no lifecycle, provider, policy or execution authority.
+    """
+    body, policy = _packet(packet), _profile(profile)
+    supplied = _normal(subject, depth=0, max_depth=32)
+    if type(supplied) is not dict:
+        raise BrainAuditError("ROA subject required")
+    bound = construct_roa_subject(body, policy, supplied.get("return_contract_ref"),
+                                  supplied.get("external_bindings"))
+    if _json(supplied) != _json(bound):
+        raise BrainAuditError("ROA subject binding mismatch")
+    material = _fields(_normal(semantic_output, depth=0, max_depth=policy["bounds"]["max_depth"]),
+                       {"subject_fingerprint", "checks", "closure", "candidate"}, "ROA semantic output")
+    _bounded(material, policy["bounds"]["outcome_bytes"], "ROA semantic output")
+    if material["subject_fingerprint"] != bound["subject_fingerprint"]:
+        raise BrainAuditError("stale ROA subject")
+    checks = material["checks"]
+    if type(checks) is not list or len(checks) != 5:
+        raise BrainAuditError("ROA requires exactly five check results")
+    sources = bound["sources"]
+    required_roles = ("failure", "evidence", "evidence", "evidence", "authorization")
+    for identity, role, check in zip(_ROA_CHECK_IDS, required_roles, checks):
+        _fields(check, {"id", "outcome", "knowledge", "basis", "evidence_refs"}, "ROA check result")
+        _normal(check, depth=0, max_depth=32, private=True, v3=True, adaptive=True)
+        if (check["id"] != identity or check["outcome"] not in ("CLEAR", "BLOCKER")
+                or check["knowledge"] not in ("OBSERVED", "INFERRED", "UNKNOWN")):
+            raise BrainAuditError("invalid or out-of-order ROA judgment")
+        _text(check["basis"], policy["bounds"]["basis_bytes"], "ROA basis")
+        refs = check["evidence_refs"]
+        if type(refs) is not list or len(refs) > policy["bounds"]["evidence_refs_per_check"]:
+            raise BrainAuditError("ROA evidence references exceed bound")
+        if (len({_json(ref) for ref in refs}) != len(refs)
+                or any(ref not in [s for s in sources.values() if s is not None] for ref in refs)):
+            raise BrainAuditError("forged or duplicate ROA evidence reference")
+        if sources[role] is None and (check["knowledge"] != "UNKNOWN" or check["outcome"] != "BLOCKER"):
+            raise BrainAuditError("missing decisive ROA source requires UNKNOWN blocker")
+        if check["knowledge"] == "UNKNOWN":
+            if check["outcome"] != "BLOCKER":
+                raise BrainAuditError("UNKNOWN cannot discharge a ROA check")
+        elif sources[role] not in refs:
+            raise BrainAuditError("ROA judgment lacks its discriminating source")
+    closure = _fields(material["closure"], {"outcome", "knowledge", "summary", "candidate_fingerprint"}, "ROA final closure")
+    _text(closure["summary"], policy["bounds"]["closure_summary_bytes"], "ROA closure summary")
+    _normal(closure["summary"], depth=0, max_depth=32, private=True)
+    outcome = "NO_DECISION" if any(c["outcome"] == "BLOCKER" for c in checks) else "CANDIDATE"
+    knowledge = ("UNKNOWN" if any(c["knowledge"] == "UNKNOWN" for c in checks) else
+                 "INFERRED" if any(c["knowledge"] == "INFERRED" for c in checks) else "OBSERVED")
+    if closure["outcome"] != outcome or closure["knowledge"] != knowledge:
+        raise BrainAuditError("ROA closure contradicts the five judgments")
+    if outcome == "NO_DECISION":
+        if material["candidate"] is not None or closure["candidate_fingerprint"] is not None:
+            raise BrainAuditError("ROA blocker cannot expose a speculative repair")
+        candidate = None
+    else:
+        candidate = _roa_candidate(material["candidate"], policy, body, bound)
+        if closure["candidate_fingerprint"] != _digest(candidate):
+            raise BrainAuditError("ROA final candidate fingerprint mismatch")
+    result = {
+        "format": "AIOS_BRAIN_REPAIR_OUTCOME_AUDIT", "version": 2,
+        "procedure": "REPAIR_OUTCOME_AUDIT", "packet_fingerprint": body["packet_fingerprint"],
+        "audit_profile_ref": profile_ref(policy), "selected_flow": "REPAIR_AUTHORING",
+        "subject_fingerprint": bound["subject_fingerprint"], "checks": checks,
+        "closure": closure, "handoff_candidate": candidate,
+    }
+    result["audit_fingerprint"] = _digest(result)
+    return result
+
+
 __all__ = [
     "BrainAuditError", "parse_profile_registry", "normalize_profile", "profile_ref",
-    "profile_applies", "construct_stage1", "validate_stage2",
+    "profile_applies", "construct_stage1", "validate_stage2", "construct_roa_subject", "validate_roa",
 ]

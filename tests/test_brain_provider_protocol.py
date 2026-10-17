@@ -17,10 +17,149 @@ from aios_renew.brain_return_contract import parse_return_contract_registry, sel
 from aios_renew.brain_return_contract import return_contract_ref
 from aios_renew.decision_packet import DecisionPacket
 from aios_renew.task import validate_task
-from tests.test_brain_audit import v3_sections
+from tests.test_brain_audit import roa_output, roa_packet, v3_sections
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def roa_package():
+    profile = next(p for p in parse_profile_registry(
+        (ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"] if p["id"] == "roa-1-r2")
+    return {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+
+
+def roa_inputs(registry):
+    supplied = DecisionPacket(roa_packet())
+    return supplied, select_return_contract(registry, supplied), {"repair_id": "REPAIR-999-001"}
+
+
+def roa_request(registry, package):
+    supplied, contract, bindings = roa_inputs(registry)
+    return construct_request(supplied, contract, bindings, package, request_mode="ROA_CONFORMANCE")
+
+
+def roa_response(req, *, unknown=None):
+    return {"request_fingerprint": req["request_fingerprint"],
+            **roa_output(req["roa_subject"], req["audit_profile_package"]["profile"], unknown=unknown)}
+
+
+@pytest.mark.parametrize("unknown", (None, 1, 4))
+def test_roa_portable_subject_and_typed_decision_round_trip(registry, roa_package, unknown):
+    req = roa_request(registry, roa_package)
+    before = deepcopy(req)
+    assert req["request_mode"] == "ROA_CONFORMANCE" and req["stage1_lineage"] is None
+    assert revalidate_request(json.loads(json.dumps(req))) == req
+    decision = validate_response(req, roa_response(req, unknown=unknown))
+    assert revalidate_decision(json.loads(json.dumps(decision)), req) == decision
+    assert decision["decision_mode"] == "ROA_CONFORMANCE"
+    assert decision["semantic_value"]["closure"]["outcome"] == ("CANDIDATE" if unknown is None else "NO_DECISION")
+    assert decision["semantic_value"]["closure"]["knowledge"] == ("INFERRED" if unknown is None else "UNKNOWN")
+    assert req == before
+    # Duplicate output is neither a second verdict nor another serialized response.
+    for extra in ({"decisions": [decision, decision]}, {"stage2": {}}, {"outcome": "PASS"}):
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(req, {**roa_response(req), **extra})
+
+
+@pytest.mark.parametrize("mode", ("DIRECT", "AUDIT_CONSTRUCT", "AUDIT_RECONCILE", "ROA_LIVE", "", [], True))
+def test_roa_cannot_be_live_selected_or_enter_old_stages(registry, roa_package, mode):
+    supplied, contract, bindings = roa_inputs(registry)
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, roa_package, request_mode=mode)
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "DIAGNOSTIC"))
+def test_roa_conformance_rejects_every_other_flow(registry, roa_package, flow):
+    supplied, contract = inputs(registry, flow)
+    bindings = {"task_id": "TASK-999", "revision": 1} if flow == "TASK_AUTHORING" else {}
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, roa_package, request_mode="ROA_CONFORMANCE")
+
+
+@pytest.mark.parametrize("fault", ("wrong_digest", "reminted_content", "dual_profile", "lineage", "extra_profile"))
+def test_roa_rejects_package_substitution_and_dual_normative_audits(registry, roa_package, fault):
+    supplied, contract, bindings = roa_inputs(registry)
+    package = deepcopy(roa_package)
+    lineage = None
+    if fault == "wrong_digest":
+        package["audit_profile_ref"]["digest"] = "f" * 64
+    elif fault == "reminted_content":
+        package["profile"]["checks"][0]["check"] = "Accept all failed subjects."
+        package["audit_profile_ref"]["digest"] = digest(package["profile"])
+    elif fault == "dual_profile":
+        package = [package, deepcopy(package)]
+    elif fault == "extra_profile":
+        package["v1_profile"] = {}
+    else:
+        lineage = {"semantic_value": "V1 Stage 1"}
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, package, request_mode="ROA_CONFORMANCE", stage1_decision=lineage)
+
+
+@pytest.mark.parametrize("fault", ("packet", "return", "external", "subject", "evidence", "mode", "lineage"))
+def test_roa_serialized_request_rejects_stale_bindings_even_after_rehash(registry, roa_package, fault):
+    req = roa_request(registry, roa_package)
+    if fault == "packet":
+        req["decision_packet"]["human_input"] = "Changed subject"
+        packet = req["decision_packet"]
+        packet["packet_fingerprint"] = digest({k: v for k, v in packet.items() if k != "packet_fingerprint"})
+    elif fault == "return":
+        package = req["return_contract_package"]
+        package["contract"]["candidate_contract"]["shape"] += " Changed guidance."
+        package["return_contract_ref"] = return_contract_ref(package["contract"], package["bounds"])
+    elif fault == "external":
+        req["external_bindings"]["repair_id"] = "REPAIR-999-002"
+    elif fault == "subject":
+        req["roa_subject"]["failed_head_sha"] = "f" * 40
+    elif fault == "evidence":
+        req["roa_subject"]["sources"]["evidence"]["digest"] = "f" * 64
+    elif fault == "lineage":
+        req["stage1_lineage"] = {}
+    else:
+        req["request_mode"] = "AUDIT_RECONCILE"
+    req["request_fingerprint"] = digest({k: v for k, v in req.items() if k != "request_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_request(req)
+
+
+@pytest.mark.parametrize("fault", ("subject", "evidence", "closure", "profile", "candidate"))
+def test_roa_serialized_decision_revalidates_semantics_beyond_outer_digest(registry, roa_package, fault):
+    req = roa_request(registry, roa_package)
+    decision = validate_response(req, roa_response(req))
+    semantic = decision["semantic_value"]
+    if fault == "subject":
+        semantic["subject_fingerprint"] = "f" * 64
+    elif fault == "evidence":
+        semantic["checks"][1]["evidence_refs"][0]["digest"] = "f" * 64
+    elif fault == "closure":
+        semantic["closure"]["knowledge"] = "OBSERVED"
+    elif fault == "profile":
+        semantic["audit_profile_ref"]["id"] = "aios-adaptive-brain-audit-v1"
+    else:
+        semantic["handoff_candidate"]["task"]["revision"] = 2
+        semantic["closure"]["candidate_fingerprint"] = digest(semantic["handoff_candidate"])
+    semantic["audit_fingerprint"] = digest({k: v for k, v in semantic.items() if k != "audit_fingerprint"})
+    decision["decision_fingerprint"] = digest({k: v for k, v in decision.items() if k != "decision_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(decision, req)
+
+
+def test_roa_and_historical_decisions_cannot_supply_each_others_lineage(registry, roa_package, profile_package):
+    supplied, contract, bindings = roa_inputs(registry)
+    req = roa_request(registry, roa_package)
+    roa = validate_response(req, roa_response(req))
+    old_request = construct_request(supplied, contract, bindings, profile_package, request_mode="AUDIT_CONSTRUCT")
+    old = validate_response(old_request, response(old_request, {**bindings, "proposal": "Historical"}))
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, profile_package, request_mode="AUDIT_RECONCILE", stage1_decision=roa)
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, roa_package, request_mode="ROA_CONFORMANCE", stage1_decision=old)
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(old, req)
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(roa, old_request)
 
 
 def test_provider_protocol_transports_only_closed_failure_context_and_rejects_raw_fields(registry):

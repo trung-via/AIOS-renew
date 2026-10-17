@@ -1,6 +1,6 @@
 # AIOS Brain Semantic Audit Protocol — Planning Evidence
 
-Status: HISTORICAL BP-4A HUMAN/BRAIN PLANNING BASELINE; prospective successor contract in section 18
+Status: HISTORICAL BP-4A HUMAN/BRAIN PLANNING BASELINE; prospective V1 in section 18, isolated ROA support in section 19
 Canonical evidence cut: main 63dce92adb271ea78d04bcd151df91a8ed260ff7
 Scope: read-only retrospective plus BP-4A architecture intent; no implementation authority
 
@@ -442,7 +442,7 @@ ordered `lenses[].check` fields. Their base meanings, four applicable flows,
 two stages and closed bounds remain intact: 2048 UTF-8 bytes per check, 131072
 candidate bytes, four risks per lens, 524288 Stage-2 bytes and depth 32, with the
 existing text limits and TASK conformance policy. The registry remains bounded
-to 32768 bytes and at most three distinct recognized profiles. Registry order is
+to 32768 bytes (section 19 extends only the original three-profile count cap). Registry order is
 irrelevant to selection: the exact canonical Human/Brain V1 ID/version/digest
 selects the single prospective package. V3 appearing first confers no authority.
 
@@ -677,3 +677,118 @@ Authoring creates no RUN and grants no Human A3 / REMEDIATION INTENT or self-hos
 execution delegation. No Executor/model selector, correction router, automatic
 correction or publication is introduced. Runtime alone executes verification and
 constructs EVIDENCE; independent Reviewer and Publisher authority are unchanged.
+
+## 19. R2.1 / R1: bounded ROA-1 R2 conformance support
+
+This slice implements **isolated conformance**, not the R2.1 production cutover.
+The exact Adaptive V1 production selection in section 18.6 remains effective for
+all four prospective flows. The current roadmap NEXT, direct `AUTHOR_REPAIR`
+ingress, Runtime admission/verification/EVIDENCE/CAS, independent Reviewer and
+Publisher, and frozen Kernel retain their existing authorities. No audit support
+envelope, source digest or provider result authorizes mutation or execution.
+MOA/TCA/AOA, Human V1 opt-in, retirement and Lean VP require separate authorization.
+
+### 19.1. One exact portable profile
+
+`.ai/brain-audit-profiles.yaml` includes this fourth, explicitly recognized identity:
+
+```yaml
+audit_profile_ref:
+  id: roa-1-r2
+  version: 2
+  digest: aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4
+```
+
+ROA applies only to `REPAIR_AUTHORING`. Its normalized `checks[].check` material
+defines exactly five ordered checks: `EXACT_FAILURE_BOUNDARY`,
+`EVIDENCE_DISCRIMINATING_CAUSE`, `MATERIAL_REPAIR_LEVER`, `FALSIFYING_CHALLENGE`,
+and `LAWFUL_READINESS`. The single `REPAIR_OUTCOME_AUDIT` procedure makes one
+decision with one final closure. It has no CONSTRUCT/reconcile stages, universal
+eight-lens ledger, second normative V1 audit or implicit V1/V3 fallback.
+
+The registry count ceiling is exactly four recognized identities, still at most
+32768 UTF-8 bytes. ROA requires its exact normalized digest, including procedure,
+instructions and bounds. Rehashing modified instructions, adding a check/stage,
+renaming another profile, changing bounds or supplying another version cannot
+remint ROA. Equivalent line endings and mapping order preserve identity. V1/V2/V3
+bytes, digests, two-stage schemas and exact historical/in-flight replay remain
+unchanged; registry order grants no selection authority.
+
+ROA bounds are closed: 2048 UTF-8 bytes per profile instruction, 131072 candidate
+JSON bytes, 4096 bytes per check basis and final summary, four source references
+per check, 196608 semantic-output JSON bytes and depth 32. Existing request,
+decision and native response bounds remain. Native JSON rejects duplicate keys;
+mapping/JSON wrappers accept one response, never a list of decisions. Privacy
+excludes local paths, raw logs/evidence, secrets, provider/model/session identity,
+reasoning traces and nested protocol/support material from candidate/judgments.
+
+### 19.2. Bound subject and five-check closure
+
+`construct_roa_subject` derives `AIOS_ROA_SUBJECT` from the supplied exact Decision
+Packet. It binds packet/work-context fingerprints, selected flow, profile reference,
+return-contract reference, external `repair_id`, failed RUN/head and TASK revision.
+It does not discover Git or accept model-authored source replacements. Its `sources`
+contain only deterministic `{path, digest}` references into the packet:
+
+- `failure`: `canonical_facts.correction_subject`, including the immutable FAILURE
+  artifact identity and exact correction/TASK provenance, or the existing bound
+  `subject` carrying that artifact SHA for explicit REPAIR supersession.
+- `evidence`: the bounded phase, error class and structural facts in
+  `bounded_observations`. These are source observations, not new Runtime EVIDENCE.
+- `authorization`: the original `canonical_facts.task_contract`, with current
+  repair-authoring state and no canonical blocker.
+- `prior_authorization`: `prior_semantic_decisions` for explicitly bound,
+  unexecuted REPAIR supersession, preserving its authorization and FAILURE SHA.
+
+Unavailable decisive sources stay null. Mismatched source identity fails closed.
+The caller retains canonical source authenticity/currentness; a content digest
+only binds supplied material and cannot authenticate a forged packet or prove a
+causal diagnosis. Brain must distinguish discriminating cause from structural
+eligibility or a generic error class. Missing causal support must remain UNKNOWN.
+
+One semantic response contains exactly `request_fingerprint`, `subject_fingerprint`,
+`checks`, `closure` and `candidate`. `checks` has the five ordered records, each
+with exactly `id`, `outcome` (`CLEAR|BLOCKER`), `knowledge`
+(`OBSERVED|INFERRED|UNKNOWN`), bounded `basis` and `evidence_refs`. References must
+match the bound packet sources exactly, with no duplicates. A non-UNKNOWN judgment
+must cite its relevant source: failure for boundary, evidence for cause/lever/
+challenge, authorization for readiness. OBSERVED and INFERRED are typed Brain
+judgments, not Runtime proof; an inference still needs discriminating support and
+a concrete falsifying challenge in the focused basis.
+
+`closure` contains exactly `outcome` (`CANDIDATE|NO_DECISION`), `knowledge`, bounded
+`summary` and `candidate_fingerprint`. Any BLOCKER requires NO_DECISION. Any UNKNOWN
+requires a check BLOCKER and final UNKNOWN; missing decisive failure, evidence or
+authority requires the affected check to be UNKNOWN/BLOCKER. NO_DECISION requires
+both candidate and candidate fingerprint null. CANDIDATE requires all five checks
+CLEAR, the exact final REPAIR identity, original scope/constraints and candidate
+digest. Final knowledge is UNKNOWN if any check is UNKNOWN, otherwise INFERRED if
+any is INFERRED, otherwise OBSERVED. No PASS or lifecycle status is emitted.
+
+### 19.3. Provider-neutral isolated transport
+
+The existing request/decision functions accept ROA only as explicit
+`request_mode: ROA_CONFORMANCE`, with one `roa_subject` and null `stage1_lineage`.
+Ordinary DIRECT/CONSTRUCT/reconcile modes reject ROA; ROA conformance rejects every
+other flow/profile and any old Stage-1 decision. Historical modes keep their exact
+serialization. Package lists, additional normative audits, mixed stages and mode
+substitution fail closed. Request and decision revalidation reconstruct the bound
+subject and closure, including references and fingerprints; rehashing outer
+envelopes does not bypass stale return/packet/subject or forged-reference checks.
+
+`attempt(..., conformance_only=True)` explicitly requests isolated ROA support.
+It invokes one existing mapping or JSON provider once, validates the five-check
+closure, then requires a fresh packet and the same rebuilt request fingerprint
+before returning it. Source/authority/intent movement or malformed fresh context
+fails without returning a decision, retrying, switching profiles or mutating
+lifecycle state. Ordinary `attempt` retains DIRECT or historical two-stage behavior
+and rejects an ROA package before invocation. The isolated flag is no production
+policy override; direct correction ingress continues to validate its own final
+family contract and canonical authority independently.
+
+Focused regressions cover valid/UNKNOWN outcomes, absent or forged source support,
+malformed closure/profile, digest reminting, wrong flow/mode, stale packet/return/
+subject, native duplicate output, mixed/dual audits, unauthorized live selection,
+no fallback, both native transports and unchanged historical replay. Runtime owns
+the focused canonical verification and EVIDENCE. Conformance support and one-call
+structure establish no measured quality, token, latency or episode-cost gain.

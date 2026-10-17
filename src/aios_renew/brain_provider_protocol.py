@@ -13,8 +13,9 @@ import re
 from typing import Any, Mapping
 
 from .brain_audit import (
-    BrainAuditError, _CONFORMANCE_LENSES, _has_conformance, _ordered_lenses, _packet, _stage1, construct_stage1, normalize_profile,
-    profile_ref, validate_stage2,
+    BrainAuditError, _CONFORMANCE_LENSES, _ROA_ID, _has_conformance, _ordered_lenses, _packet,
+    _stage1, construct_roa_subject, construct_stage1, normalize_profile, profile_ref,
+    validate_roa, validate_stage2,
 )
 from .brain_return_contract import (
     BrainReturnContractError, _BOUNDS, _CANDIDATE_FIELDS, _CONTRACT_FIELDS,
@@ -57,7 +58,7 @@ _OPERATIONAL = frozenset({
 _OPERATIONAL_COMPACT = frozenset(key.replace("_", "") for key in _OPERATIONAL)
 _NESTED_FORMATS = frozenset({
     "AIOS_BRAIN_REQUEST", "AIOS_BRAIN_DECISION", "AIOS_DECISION_PACKET",
-    "AIOS_BRAIN_SEMANTIC_AUDIT",
+    "AIOS_BRAIN_SEMANTIC_AUDIT", "AIOS_ROA_SUBJECT", "AIOS_BRAIN_REPAIR_OUTCOME_AUDIT",
 })
 
 
@@ -256,6 +257,19 @@ def _lineage(packet: dict[str, Any], contract: dict[str, Any], bindings: dict[st
     return lineage
 
 
+def _mode(packet: dict[str, Any], profile: dict[str, Any] | None, mode: Any) -> None:
+    """ROA has an explicit isolated mode; registry presence never selects it live."""
+    if type(mode) is not str or packet["authority_owner"] != "BRAIN":
+        raise BrainProviderProtocolError("flow and request mode do not apply")
+    flow = packet["selected_flow"]
+    if profile is not None and profile["profile"]["id"] == _ROA_ID:
+        if flow != "REPAIR_AUTHORING" or mode != "ROA_CONFORMANCE":
+            raise BrainProviderProtocolError("ROA is isolated conformance only; no live selection or mixed stages")
+    elif not ((flow in _AUDITED and mode in {"AUDIT_CONSTRUCT", "AUDIT_RECONCILE"}) or
+              (flow == "DIAGNOSTIC" and mode == "DIRECT")):
+        raise BrainProviderProtocolError("flow and request mode do not apply")
+
+
 def construct_request(packet: DecisionPacket, return_contract_package: Mapping[str, Any],
                       external_bindings: Mapping[str, Any], audit_profile_package: Mapping[str, Any] | None = None,
                       *, request_mode: str, stage1_decision: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -268,12 +282,8 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
         contract = _contract_package(return_contract_package, body)
         bindings = _bindings(external_bindings, contract)
         flow = body["selected_flow"]
-        if body["authority_owner"] != "BRAIN" or not (
-            (flow in _AUDITED and request_mode in {"AUDIT_CONSTRUCT", "AUDIT_RECONCILE"}) or
-            (flow == "DIAGNOSTIC" and request_mode == "DIRECT")
-        ):
-            raise BrainProviderProtocolError("flow and request mode do not apply")
         profile = _profile_package(audit_profile_package, flow)
+        _mode(body, profile, request_mode)
         if request_mode == "DIRECT":
             if bindings or stage1_decision is not None:
                 raise BrainProviderProtocolError("DIRECT has no bindings or lineage")
@@ -282,6 +292,10 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
             if stage1_decision is not None:
                 raise BrainProviderProtocolError("Stage 1 has no prior decision")
             return _stage1_request(body, contract, bindings, profile)
+        elif request_mode == "ROA_CONFORMANCE":
+            if stage1_decision is not None:
+                raise BrainProviderProtocolError("ROA has no Stage-1 lineage or dual normative audit")
+            lineage = None
         else:
             first_request = _stage1_request(body, contract, bindings, profile)
             first = revalidate_decision(stage1_decision, first_request)
@@ -298,6 +312,9 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
             "return_contract_package": contract, "external_bindings": bindings,
             "audit_profile_package": profile, "stage1_lineage": lineage,
         }
+        if request_mode == "ROA_CONFORMANCE":
+            result["roa_subject"] = construct_roa_subject(body, profile["profile"],
+                                                        contract["return_contract_ref"], bindings)
         result["request_fingerprint"] = _digest(result)
         _bound(result, 393216, "Brain request")
         return result
@@ -308,7 +325,9 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
 def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
     """Revalidate a serialized request, including its complete packet mapping."""
     try:
-        request = _exact(_normal(value), _REQUEST_FIELDS, "Brain request")
+        request = _normal(value)
+        roa = type(request) is dict and request.get("request_mode") == "ROA_CONFORMANCE"
+        request = _exact(request, _REQUEST_FIELDS | ({"roa_subject"} if roa else set()), "Brain request")
         if request["format"] != "AIOS_BRAIN_REQUEST" or type(request["version"]) is not int or request["version"] != 1 or request["kind"] != "BRAIN_REQUEST":
             raise BrainProviderProtocolError("invalid request format")
         _bound(request, 393216, "Brain request")
@@ -316,16 +335,17 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
         contract = _contract_package(request["return_contract_package"], packet)
         bindings = _bindings(request["external_bindings"], contract)
         flow, mode = packet["selected_flow"], request["request_mode"]
-        if packet["authority_owner"] != "BRAIN" or not (
-            (flow in _AUDITED and mode in {"AUDIT_CONSTRUCT", "AUDIT_RECONCILE"}) or
-            (flow == "DIAGNOSTIC" and mode == "DIRECT")
-        ):
-            raise BrainProviderProtocolError("flow and request mode do not apply")
         profile = _profile_package(request["audit_profile_package"], flow)
+        _mode(packet, profile, mode)
         if mode == "AUDIT_RECONCILE":
             _lineage(packet, contract, bindings, profile, request["stage1_lineage"])
         elif request["stage1_lineage"] is not None or mode == "DIRECT" and bindings:
             raise BrainProviderProtocolError("forbidden lineage or DIRECT bindings")
+        if roa:
+            expected_subject = construct_roa_subject(packet, profile["profile"],
+                                                      contract["return_contract_ref"], bindings)
+            if _bytes(request["roa_subject"]) != _bytes(expected_subject):
+                raise BrainProviderProtocolError("ROA packet/return/subject binding mismatch")
         supplied = _fingerprint(request["request_fingerprint"], "request fingerprint")
         if supplied != _digest({k: v for k, v in request.items() if k != "request_fingerprint"}):
             raise BrainProviderProtocolError("request fingerprint mismatch")
@@ -362,7 +382,9 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
         response = _normal(semantic_response, response=True)
         _bound(response, 655360, "provider semantic response")
         mode, packet = req["request_mode"], req["decision_packet"]
-        expected = ({"request_fingerprint", "construct_audit", "reconciled_candidate", "closure", "outcome"}
+        expected = ({"request_fingerprint", "subject_fingerprint", "checks", "closure", "candidate"}
+                    if mode == "ROA_CONFORMANCE" else
+                    {"request_fingerprint", "construct_audit", "reconciled_candidate", "closure", "outcome"}
                     if mode == "AUDIT_RECONCILE" else {"request_fingerprint", "candidate"})
         if mode == "AUDIT_RECONCILE" and packet["selected_flow"] == "TASK_AUTHORING":
             expected = expected | {"acceptance_phase_ledger"} | _stage2_conformance_fields(req)
@@ -371,6 +393,9 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
             raise BrainProviderProtocolError("request echo mismatch")
         if mode == "DIRECT":
             semantic = _diagnostic(response["candidate"])
+        elif mode == "ROA_CONFORMANCE":
+            semantic = validate_roa(packet, req["audit_profile_package"]["profile"], req["roa_subject"],
+                                    {k: v for k, v in response.items() if k != "request_fingerprint"})
         elif mode == "AUDIT_CONSTRUCT":
             _enforce_bindings(response["candidate"], req["external_bindings"])
             semantic = construct_stage1(packet, req["audit_profile_package"]["profile"], response["candidate"])
@@ -406,6 +431,16 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
         mode = req["request_mode"]
         if mode == "DIRECT":
             validated = _diagnostic(semantic)
+        elif mode == "ROA_CONFORMANCE":
+            _exact(semantic, {"format", "version", "procedure", "packet_fingerprint", "audit_profile_ref",
+                              "selected_flow", "subject_fingerprint", "checks", "closure", "handoff_candidate",
+                              "audit_fingerprint"}, "ROA semantic result")
+            material = {k: semantic[k] for k in ("subject_fingerprint", "checks", "closure")}
+            material["candidate"] = semantic["handoff_candidate"]
+            validated = validate_roa(req["decision_packet"], req["audit_profile_package"]["profile"],
+                                     req["roa_subject"], material)
+            if _bytes(validated) != _bytes(semantic):
+                raise BrainProviderProtocolError("ROA result does not match its bound procedure")
         elif mode == "AUDIT_CONSTRUCT":
             validated = _stage1(req["decision_packet"], req["audit_profile_package"]["profile"], semantic)
             _enforce_bindings(validated["construct_candidate"], req["external_bindings"])
