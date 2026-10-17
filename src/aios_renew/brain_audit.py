@@ -47,6 +47,7 @@ _ENVELOPE_KEYS = frozenset({
     "reconciled_candidate_fingerprint", "stage2_fingerprint", "construct_audit",
     "closure", "handoff_candidate", "stage1", "stage2", "audit_envelope",
     "acceptance_phase_ledger",
+    "audit_selection", "audit_policy", "human_v1_deep_support", "selection_authenticator",
 })
 _RESERVED_SEMANTIC_KEYS = _ENVELOPE_KEYS | _PRIVATE_KEYS
 _RESERVED_COMPACT_KEYS = frozenset(key.replace("_", "") for key in _RESERVED_SEMANTIC_KEYS)
@@ -287,7 +288,8 @@ def _normal(value: Any, *, depth: int, max_depth: int, private: bool = False,
                 type(value["format"]) is not str or value["format"] in _ADAPTIVE_ENVELOPES):
             raise BrainAuditError("malformed or nested protocol envelope")
         if private and value.get("format") in (
-            "AIOS_DECISION_PACKET", "AIOS_BRAIN_AUDIT_PROFILES", "AIOS_BRAIN_SEMANTIC_AUDIT"
+            "AIOS_DECISION_PACKET", "AIOS_BRAIN_AUDIT_PROFILES", "AIOS_BRAIN_SEMANTIC_AUDIT",
+            "AIOS_BRAIN_AUDIT_POLICY", "AIOS_BRAIN_AUDIT_SELECTION",
         ):
             raise BrainAuditError("nested protocol envelope")
         result = {}
@@ -556,6 +558,45 @@ def normalize_profile(value: Mapping[str, Any]) -> dict[str, Any]:
 def profile_ref(profile: Mapping[str, Any]) -> dict[str, Any]:
     body = _profile(profile)
     return {"id": body["id"], "version": body["version"], "digest": _digest(body)}
+
+
+def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Check a complete prospective policy's shape/identities, never its authority.
+
+    These are the existing registry identities, not new profiles or activation
+    authority. The caller must independently authenticate canonical Human/Brain
+    policy and its currentness at admission and continuation.
+    """
+    policy = _fields(_normal(value, depth=0, max_depth=8), {
+        "format", "version", "state", "main_sha", "work_context_fingerprint",
+        "human_authority_digest", "brain_authority_digest", "r5_publication_sha", "profiles",
+    }, "prospective audit policy")
+    _bounded(policy, 4096, "prospective audit policy")
+    if (policy["format"] != "AIOS_BRAIN_AUDIT_POLICY" or type(policy["version"]) is not int
+            or policy["version"] != 1 or policy["state"] not in ("ADAPTIVE_V1", "FOUR_SPECIALIZED")):
+        raise BrainAuditError("unsupported prospective audit policy")
+    _git_sha(policy["main_sha"], "policy canonical main")
+    for key in ("work_context_fingerprint", "human_authority_digest", "brain_authority_digest"):
+        _sha(policy[key], key)
+    if policy["r5_publication_sha"] is not None:
+        _git_sha(policy["r5_publication_sha"], "reviewed R5 publication")
+    if policy["state"] == "FOUR_SPECIALIZED" and policy["r5_publication_sha"] is None:
+        raise BrainAuditError("future cutover requires separately authenticated reviewed R5 publication")
+    identities = {
+        "ARCHITECTURE": (_AOA_ID, 1, _AOA_DIGEST),
+        "TASK_AUTHORING": (_TCA_ID, 1, _TCA_DIGEST),
+        "REMEDIATION_AUTHORING": (_MOA_ID, 1, _MOA_DIGEST),
+        "REPAIR_AUTHORING": (_ROA_ID, 2, _ROA_DIGEST),
+    }
+    expected = {flow: {"id": identity, "version": version, "digest": digest}
+                for flow, (identity, version, digest) in identities.items()}
+    if policy["state"] == "ADAPTIVE_V1":
+        expected = {flow: {"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
+                    for flow in identities}
+    # Strict JSON comparison rejects bool-as-version and partial/mixed activation.
+    if _json(policy["profiles"]) != _json(expected):
+        raise BrainAuditError("prospective policy must pin all four exact profile identities")
+    return policy
 
 
 def _packet(value: DecisionPacket | Mapping[str, Any]) -> dict[str, Any]:
@@ -2328,7 +2369,7 @@ def validate_aoa(packet: Any, profile: Any, subject: Any, stage1: Any, semantic_
 
 
 __all__ = [
-    "BrainAuditError", "parse_profile_registry", "normalize_profile", "profile_ref",
+    "BrainAuditError", "parse_profile_registry", "normalize_profile", "normalize_audit_policy", "profile_ref",
     "profile_applies", "construct_stage1", "validate_stage2", "construct_roa_subject", "validate_roa",
     "construct_moa_subject", "construct_moa", "validate_moa",
     "construct_tca_subject", "construct_tca", "validate_tca",

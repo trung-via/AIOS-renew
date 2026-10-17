@@ -1385,3 +1385,174 @@ exact architecture Human V1-only selection and historical compatibility. These
 examples establish no empirical superiority, live provider quality, publication,
 roadmap advancement or downstream adoption. Runtime owns canonical verification
 and EVIDENCE on the committed implementation.
+
+## 23. R2.1/R5 prospective policy binding and migration closure
+
+R5 extends the existing provider attempt/request/decision boundary to support a
+future, externally authenticated canonical policy. It does **not** activate the
+four specialized defaults. The current production selection remains exact
+`aios-adaptive-brain-audit-v1` v1, normalized digest
+`982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`.
+Sections 19–22 describe the preserved isolated procedures; the bounded policy
+binding below additionally permits those same procedures prospectively. Their
+profile bytes, versions, digests, focused passes and closure meanings are unchanged.
+
+### 23.1. Outstanding separate Human/Brain cutover authority
+
+**The single future cutover prerequisite is a separately explicit Human/Brain
+canonical planning reconciliation, after R5 has been reviewed and published.**
+That reconciliation must atomically establish the complete four-flow mapping,
+reconcile every conflicting current-selection roadmap mirror and preserve one
+effective NEXT, while preserving historical subjects. A trusted caller must
+authenticate this canonical state and the exact Human decision against the bound
+canonical main/currentness before admitting a prospective specialized attempt.
+This Human/Brain-owned roadmap mutation remains outstanding and unfulfilled by
+R5 implementation, synthetic fixtures, implementation approval, registry
+membership, transport receipt, Issue/workflow status, Executor claims or even
+reviewed R5 publication alone. No R5 change writes the roadmap, a risk-acceptance
+record, Kernel, Runtime, Reviewer, Publisher or downstream policy.
+
+The only supported future active mapping is:
+
+| Existing selected flow | Profile | Version | Normalized digest | Normative procedure |
+| --- | --- | --- | --- | --- |
+| ARCHITECTURE | aoa-1 | 1 | 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b | Two focused passes, one closure |
+| TASK_AUTHORING | tca-1 | 1 | 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2 | Two focused passes, one closure |
+| REMEDIATION_AUTHORING | moa-1 | 1 | 49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903 | Two focused passes, one closure |
+| REPAIR_AUTHORING | roa-1-r2 | 2 | aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4 | One focused procedure, one closure |
+
+These are identity checks over the existing registry, not a second registry or
+Flow Resolver. There is no ordering, scoring, complexity heuristic or model
+choice between profiles.
+
+### 23.2. Complete policy and external authentication boundary
+
+`normalize_audit_policy` accepts exactly these fields:
+
+- `format: AIOS_BRAIN_AUDIT_POLICY`, integer `version: 1`;
+- `state: ADAPTIVE_V1|FOUR_SPECIALIZED`;
+- `main_sha`, `work_context_fingerprint`;
+- `human_authority_digest`, `brain_authority_digest`, `r5_publication_sha`;
+- `profiles`, a mapping covering exactly all four selected flows, each containing
+  exactly `id`, integer `version` and `digest`.
+
+The policy is strict normalized JSON, at most 4096 UTF-8 bytes and eight levels
+deep. Authority digests and work-context identity are lowercase SHA-256; canonical
+main/publication use the existing Git SHA grammar. `ADAPTIVE_V1` requires exact
+V1 for **all** four flows. Its publication reference may be null or identify R5
+publication, which cannot itself switch the policy. `FOUR_SPECIALIZED` requires
+the complete table above and a non-null reviewed R5 publication reference.
+Missing, mixed, partial, unknown, renamed, rehashed or wrong-version profile
+identities reject. This structural validation grants no authentication.
+
+The trusted external caller supplies `selection_authenticator(selection, phase)`
+as executable caller-owned control-plane authority, outside provider/model input.
+It must independently authenticate the actual canonical Human/Brain policy,
+reviewed publication prerequisite, complete reconciled planning state, current
+main/source and exact bound subject. For a Human V1 option or read-only support
+request it must also authenticate that individual Human choice. It must compare
+these facts with its independently obtained source, not echo request labels or
+trust model-produced hashes. A model-supplied callable or an unconditional
+acknowledgment is not an authenticator. Production credentials, trust roots and
+authenticated reads remain with that caller; R5 introduces none.
+
+`construct_request(..., request_mode="PROSPECTIVE", audit_policy=...,
+selection_authenticator=...)` binds the policy to one existing `selected_flow`,
+packet, work context, canonical-facts identity, semantic subject, complete pinned
+profile package, return-contract reference, external bindings, source-context
+identity and optional individual Human selection. The packet's canonical main
+and work context must equal the policy. The closed `audit_selection` is at most
+16384 UTF-8 bytes and participates in the existing request fingerprint; the
+decision's request fingerprint and first-pass lineage bind it in turn. No
+additional artifact, proof ledger, lifecycle state or mutation gate is created.
+
+The authenticator receives an isolated copy and must return literal boolean
+`True`. Missing authority, false/truthy non-boolean returns, unavailable source,
+exceptions, stale policy/currentness or a wrong binding fail closed. Policy and
+authenticator must be supplied together. A `PROSPECTIVE` request without them
+fails even with a valid V1 package. The authenticator is never serialized,
+fingerprinted, sent to a provider or retained in a result. Serialized request and
+decision revalidation checks structure and lineage only; successful rehashing or
+revalidation cannot establish admission authority.
+
+### 23.3. One existing procedure per attempt and immutable continuation
+
+Supplying `audit_policy` and `selection_authenticator` to `attempt` uses the
+existing protocol to choose the one permitted mode for the packet's already
+selected flow: `AOA_CONSTRUCT`/`AOA_RECONCILE`,
+`TCA_CONSTRUCT`/`TCA_RECONCILE`, `MOA_CONSTRUCT`/`MOA_RECONCILE`, or the existing
+single `ROA_CONFORMANCE` procedure mode. The latter name remains compatible;
+the authenticated selection establishes its prospective use. The attempt does
+not invoke or require an unsolicited V1 pass. Missing specialized content stops
+the attempt without V1/V3 fallback.
+
+The ordinary legacy production call without policy retains exact V1 and its
+existing serialized request format. It rejects new ordinary V2/V3 or specialized
+attempts. Existing explicit low-level historical modes, serialized V1/V2/V3
+subjects and isolated `conformance_only=True` procedures remain compatible;
+isolated conformance cannot be combined with a prospective policy or authorize
+production selection. Future canonical-policy callers must use the authenticated
+policy boundary, including an authenticator when policy lookup is unavailable,
+so absence cannot turn into an implicit legacy V1 selection.
+
+Admission uses authenticator phase `ADMIT`. The attempt captures the normalized
+first request, policy, profile and return binding. Before the second pass and
+before final return it rebuilds that same request from a fresh caller-supplied
+packet and reauthenticates the captured selection with phase `CONTINUE`. ROA
+performs its final check after its single provider call. Specialized procedures
+retain all published bounded source validation and final closure checks. The
+policy-bound V1 pair also checks final currentness. These rebuilds are structural
+checks and never additional semantic/provider calls.
+
+If canonical policy changes while an attempt is in flight, its default is never
+reselected. The trusted caller may authenticate the exact already-admitted
+original policy/currentness and permit that subject to finish under its captured
+source; otherwise continuation stops with a bounded freshness/input blocker.
+A new packet, source, main, return contract, profile, Human option or policy
+cannot replace the first-pass binding. A new Human choice requires a fresh,
+separately bound decision. Pure historical replay preserves old request/decision
+bytes; replay validation alone cannot authenticate a new production attempt.
+
+### 23.4. Individual V1 substitution and correction cognitive support
+
+For ARCHITECTURE and TASK_AUTHORING the existing closed `human_v1_option`
+(`selected_by: HUMAN`, `option: V1_ONLY`, exact packet/work context, return,
+bindings, source-context fingerprint and V1 reference) remains compatible with
+isolated use. Prospective use additionally requires the external authenticator
+to authenticate this exact individual Human choice before stage one. It selects
+only `V1_OPTION_CONSTRUCT` then `V1_OPTION_RECONCILE`, using the existing pinned V1
+and source checks. It cannot combine with AOA/TCA or substitute a stale, forged,
+literal-only or model-preferred selection. No V3 fallback is available.
+
+For REMEDIATION_AUTHORING and REPAIR_AUTHORING a normative V1 option rejects.
+Optional `human_v1_deep_support` is a closed, externally authenticated Human
+request containing exactly `selected_by: HUMAN`, `option: V1_READ_ONLY`, packet
+and work-context fingerprints, return-contract reference, external bindings,
+source-context fingerprint and the exact V1 reference. Here the source fingerprint
+covers the mapping with exactly `moa_source_context`, `task_source_context` and
+`architecture_source_context`, using null for absent contexts. This request is
+bound inside `audit_selection`; the normative package remains MOA/ROA.
+
+The marker permits optional read-only cognitive depth within the existing
+procedure. It triggers no additional provider call, V1 normative verdict,
+corrected payload authority, mandatory support output or new mutation
+prerequisite. MOA/ROA response schemas and closure remain unchanged and reject
+extra audits/verdicts. Omission is valid. Replacing MOA/ROA normatively would need
+a later separately approved policy change unsupported by this boundary.
+
+### 23.5. Focused migration regression surface
+
+The three existing focused test files contain synthetic pre-cutover/future-active
+cases for all four flows and both native transports, zero unsolicited V1 calls,
+external authority failures, partial policy, wrong profile/flow/digest, Human
+literal forgery, sole V1 substitution, optional correction support, changed main,
+policy movement before the second pass/final return, authenticated original
+subject continuation, rehashed cross-binding attacks, privacy, historical V1/V2/V3
+replay and inert direct-final ingress. Direct-final tests forbid the R5 policy and
+provider dependencies while exercising the existing final-contract paths.
+
+AUTHOR_TASK, AUTHOR_REPAIR and AUTHOR_REMEDIATION retain their direct-final
+boundaries. The historical V1 preflight helper remains inert on those paths;
+neither `audit_selection` nor serialized audit support becomes mutation authority.
+Runtime owns canonical focused verification and EVIDENCE; no full-suite or
+empirical provider-quality improvement is required or claimed by R5.

@@ -9,7 +9,7 @@ import pytest
 
 from aios_renew.brain_audit import (
     BrainAuditError, construct_roa_subject, construct_stage1, normalize_profile, parse_profile_registry,
-    profile_applies, profile_ref, validate_roa, validate_stage2,
+    profile_applies, profile_ref, validate_roa, validate_stage2, normalize_audit_policy,
     construct_moa_subject, construct_moa, validate_moa,
     construct_tca_subject, construct_tca, validate_tca,
     construct_aoa_subject, construct_aoa, validate_aoa,
@@ -17,6 +17,77 @@ from aios_renew.brain_audit import (
 
 
 REGISTRY = Path(__file__).resolve().parents[1] / ".ai" / "brain-audit-profiles.yaml"
+
+
+def audit_policy_example(body, *, active=True):
+    """Synthetic future authority input; never a repository planning mutation."""
+    refs = {
+        "ARCHITECTURE": {"id": "aoa-1", "version": 1, "digest": "7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b"},
+        "TASK_AUTHORING": {"id": "tca-1", "version": 1, "digest": "1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2"},
+        "REMEDIATION_AUTHORING": {"id": "moa-1", "version": 1, "digest": "49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903"},
+        "REPAIR_AUTHORING": {"id": "roa-1-r2", "version": 2, "digest": "aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4"},
+    }
+    if not active:
+        refs = {flow: {"id": "aios-adaptive-brain-audit-v1", "version": 1,
+                       "digest": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718"} for flow in refs}
+    return {"format": "AIOS_BRAIN_AUDIT_POLICY", "version": 1,
+            "state": "FOUR_SPECIALIZED" if active else "ADAPTIVE_V1",
+            "main_sha": body["canonical_facts"]["main_sha"], "work_context_fingerprint": body["work_context_fingerprint"],
+            "human_authority_digest": "1" * 64, "brain_authority_digest": "2" * 64,
+            "r5_publication_sha": "d" * 40 if active else None, "profiles": refs}
+
+
+@pytest.mark.parametrize("active", (False, True))
+def test_r5_complete_policy_pins_existing_profiles_without_reminting_or_order_selection(active):
+    body, _ = aoa_example()
+    policy = audit_policy_example(body, active=active)
+    if not active:
+        # Reviewed publication alone does not activate the target mapping.
+        policy["r5_publication_sha"] = "d" * 40
+    assert normalize_audit_policy(policy) == policy
+    profiles = parse_profile_registry(REGISTRY.read_bytes())["profiles"]
+    for reference in policy["profiles"].values():
+        assert sum(profile_ref(p) == reference for p in reversed(profiles)) == 1
+
+
+@pytest.mark.parametrize("fault", (
+    "partial", "mixed", "wrong_digest", "wrong_version", "bool_version", "wrong_flow", "unknown_profile",
+    "missing_human", "missing_brain", "missing_publication", "bad_main", "bad_currentness", "state", "private", "oversized",
+))
+def test_r5_partial_ambiguous_or_forged_policy_has_no_usable_selection(fault):
+    body, _ = aoa_example()
+    policy = audit_policy_example(body)
+    refs = policy["profiles"]
+    if fault == "partial":
+        del refs["REPAIR_AUTHORING"]
+    elif fault == "mixed":
+        refs["TASK_AUTHORING"] = audit_policy_example(body, active=False)["profiles"]["TASK_AUTHORING"]
+    elif fault == "wrong_digest":
+        refs["ARCHITECTURE"]["digest"] = "0" * 64
+    elif fault == "wrong_version":
+        refs["REPAIR_AUTHORING"]["version"] = 1
+    elif fault == "bool_version":
+        refs["TASK_AUTHORING"]["version"] = True
+    elif fault == "wrong_flow":
+        refs["ARCHITECTURE"] = deepcopy(refs["TASK_AUTHORING"])
+    elif fault == "unknown_profile":
+        refs["TASK_AUTHORING"]["id"] = "tca-new"
+    elif fault in {"missing_human", "missing_brain"}:
+        del policy["human_authority_digest" if fault == "missing_human" else "brain_authority_digest"]
+    elif fault == "missing_publication":
+        policy["r5_publication_sha"] = None
+    elif fault == "bad_main":
+        policy["main_sha"] = "main"
+    elif fault == "bad_currentness":
+        policy["work_context_fingerprint"] = None
+    elif fault == "state":
+        policy["state"] = "IMPLEMENTATION_APPROVED"
+    elif fault == "private":
+        policy["credentials"] = "private"
+    else:
+        policy["human_authority_digest"] = "x" * 8192
+    with pytest.raises(BrainAuditError):
+        normalize_audit_policy(policy)
 
 
 @pytest.fixture

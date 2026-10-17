@@ -15,15 +15,182 @@ from aios_renew.brain_provider_protocol import (
 )
 from aios_renew.decision_packet import DecisionPacket
 from test_brain_provider_protocol import (
-    digest, inputs, profile_package, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
+    digest, inputs, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
     moa_inputs, moa_package, moa_response,
     tca_inputs, tca_package, tca_response, v1_only_package, human_v1_selection,
     aoa_inputs, aoa_package, aoa_response, aoa_candidate,
+    R5_FLOWS, r5_case, r5_response, audit_policy_example,
 )
 
 
 DIRECT = {"proposal": "Investigate", "uncertainty": {"status": "NONE", "summary": None}}
 TASK = {"task_id": "TASK-999", "revision": 1}
+
+
+@pytest.fixture
+def profile_package(v1_only_package):
+    # New ordinary attempts use current V1. Historical V2/V3 replay remains
+    # exercised at the pure request/decision and semantic boundaries.
+    return deepcopy(v1_only_package)
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("active", (False, True))
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+def test_r5_simulated_canonical_cutover_invokes_only_the_selected_normative_procedure(registry, flow, active, kind):
+    supplied, contract, bindings, package, kwargs, authority = r5_case(registry, flow, active=active)
+    calls, fresh_calls = [], []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, provider=kind, model=kind, semantic=r5_response(req))
+    def fresh():
+        fresh_calls.append(True)
+        return DecisionPacket(supplied.as_dict())
+    result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings, package, fresh, **kwargs)
+    count = 1 if active and flow == "REPAIR_AUTHORING" else 2
+    assert len(calls) == len(result.attributions) == count
+    assert len(fresh_calls) == (1 if count == 1 else 2)
+    assert all(r["audit_profile_package"] == package and r["audit_selection"] == calls[0]["audit_selection"] for r in calls)
+    if active:
+        assert not any(r["request_mode"].startswith(("AUDIT_", "V1_OPTION_")) for r in calls)
+    else:
+        assert [r["request_mode"] for r in calls] == ["AUDIT_CONSTRUCT", "AUDIT_RECONCILE"]
+    assert authority.calls[0][0] == "ADMIT" and all(phase == "CONTINUE" for phase, _ in authority.calls[1:])
+    assert revalidate_decision(result.decision, calls[-1]) == result.decision
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING"))
+@pytest.mark.parametrize("fault", (None, "literal", "untrusted", "stale", "specialized_package"))
+def test_r5_authenticated_human_v1_only_runs_one_substitute_and_never_specialized(registry, flow, fault):
+    supplied, contract, bindings, package, kwargs, _ = r5_case(registry, flow, human=True)
+    if fault == "literal":
+        kwargs["human_v1_option"] = "HUMAN"
+    elif fault == "untrusted":
+        kwargs["selection_authenticator"] = lambda *_: False
+    elif fault == "stale":
+        kwargs["human_v1_option"]["source_context_fingerprint"] = "f" * 64
+    elif fault == "specialized_package":
+        _, _, _, package, _, _ = r5_case(registry, flow)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, semantic=r5_response(req))
+    provider = MappingBrainProvider("mapping", "one", callback)
+    if fault:
+        with pytest.raises(BrainAttemptError) as error:
+            attempt(provider, supplied, contract, bindings, package, lambda: supplied, **kwargs)
+        assert error.value.invocation_count == 0 and not calls
+        return
+    result = attempt(provider, supplied, contract, bindings, package, lambda: supplied, **kwargs)
+    assert [r["request_mode"] for r in calls] == ["V1_OPTION_CONSTRUCT", "V1_OPTION_RECONCILE"]
+    assert len(result.attributions) == 2
+
+
+@pytest.mark.parametrize("flow", ("REMEDIATION_AUTHORING", "REPAIR_AUTHORING"))
+@pytest.mark.parametrize("deep", (False, True))
+def test_r5_optional_correction_v1_support_is_read_only_without_an_extra_call_or_verdict(registry, flow, deep):
+    supplied, contract, bindings, package, kwargs, _ = r5_case(registry, flow, deep=deep)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, semantic=r5_response(req))
+    result = attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings, package, lambda: supplied, **kwargs)
+    assert len(calls) == (1 if flow == "REPAIR_AUTHORING" else 2)
+    assert all(r["audit_profile_package"] == package for r in calls)
+    assert all((r["audit_selection"]["human_v1_deep_support"] is not None) == deep for r in calls)
+    assert result.decision["audit_profile_ref"] == package["audit_profile_ref"]
+    assert "v1_audit" not in result.decision["semantic_value"]
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("initially_active", (False, True))
+@pytest.mark.parametrize("allow_original", (False, True))
+@pytest.mark.parametrize("after", (1, 2))
+def test_r5_policy_movement_finishes_only_an_authenticated_original_subject_or_stops(
+        registry, flow, initially_active, allow_original, after):
+    supplied, contract, bindings, package, kwargs, authority = r5_case(registry, flow, active=initially_active)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        if len(calls) == after:
+            authority.current_policy = audit_policy_example(supplied.as_dict(), active=not initially_active)
+            authority.allow_original = allow_original
+        return wrapper(req, semantic=r5_response(req))
+    provider = MappingBrainProvider("mapping", "one", callback)
+    count = 1 if initially_active and flow == "REPAIR_AUTHORING" else 2
+    if allow_original or after > count:
+        result = attempt(provider, supplied, contract, bindings, package, lambda: supplied, **kwargs)
+        assert len(calls) == count and result.decision["audit_profile_ref"] == package["audit_profile_ref"]
+    else:
+        with pytest.raises(BrainAttemptError) as error:
+            attempt(provider, supplied, contract, bindings, package, lambda: supplied, **kwargs)
+        assert error.value.invocation_count == len(calls) == after
+        assert error.value.reason_code == "FRESH_PACKET_INVALID"
+    assert all(r["audit_selection"] == calls[0]["audit_selection"] for r in calls)
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("fault", ("missing_policy", "missing_authority", "missing_profile", "conformance", "private", "default_v1", "wrong_flow"))
+def test_r5_invalid_future_selection_stops_before_any_provider_call(registry, flow, fault):
+    supplied, contract, bindings, package, kwargs, _ = r5_case(registry, flow)
+    if fault == "missing_policy":
+        kwargs["audit_policy"] = None
+    elif fault == "missing_authority":
+        kwargs["selection_authenticator"] = None
+    elif fault == "missing_profile":
+        package = None
+    elif fault == "conformance":
+        kwargs["conformance_only"] = True
+    elif fault == "private":
+        kwargs["audit_policy"]["raw_logs"] = "private"
+    elif fault == "default_v1":
+        _, _, _, package, _, _ = r5_case(registry, flow, active=False)
+    else:
+        other = R5_FLOWS[(R5_FLOWS.index(flow) + 1) % 4]
+        _, _, _, package, _, _ = r5_case(registry, other)
+    calls = []
+    provider = MappingBrainProvider("mapping", "one", lambda req: calls.append(req))
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(provider, supplied, contract, bindings, package, lambda: supplied, **kwargs)
+    assert error.value.reason_code == "PROTOCOL_INPUT_INVALID" and error.value.invocation_count == 0 and not calls
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("after", (1, 2))
+def test_r5_fresh_canonical_main_movement_cannot_recompose_under_a_new_default(registry, flow, after):
+    supplied, contract, bindings, package, kwargs, _ = r5_case(registry, flow)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, semantic=r5_response(req))
+    def fresh():
+        if len(calls) < after:
+            return supplied
+        body = supplied.as_dict()
+        body["canonical_facts"]["main_sha"] = "f" * 40
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        return DecisionPacket(body)
+    provider = MappingBrainProvider("mapping", "one", callback)
+    if flow == "REPAIR_AUTHORING" and after == 2:
+        assert attempt(provider, supplied, contract, bindings, package, fresh, **kwargs)
+    else:
+        with pytest.raises(BrainAttemptError) as error:
+            attempt(provider, supplied, contract, bindings, package, fresh, **kwargs)
+        assert error.value.invocation_count == len(calls) == after
+
+
+@pytest.mark.parametrize("identity", ("brain-high-value-v2", "brain-high-value-v3"))
+def test_r5_historical_profile_presence_cannot_select_a_new_ordinary_attempt(registry, identity):
+    from pathlib import Path
+    from aios_renew.brain_audit import parse_profile_registry, profile_ref
+    profiles = parse_profile_registry((Path(__file__).resolve().parents[1] / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+    profile = next(p for p in profiles if p["id"] == identity)
+    supplied, contract = inputs(registry, "ARCHITECTURE")
+    calls = []
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(MappingBrainProvider("mapping", "one", lambda req: calls.append(req)), supplied, contract, {},
+                {"profile": profile, "audit_profile_ref": profile_ref(profile)}, lambda: supplied)
+    assert error.value.invocation_count == 0 and not calls
 
 
 @pytest.mark.parametrize("kind", ("mapping", "json"))
