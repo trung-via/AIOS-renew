@@ -1,0 +1,183 @@
+task_id: TASK-364
+revision: 1
+goal: Implement the R2.1/R2 MOA-1 Remediation Outcome Audit as bounded, provider-neutral,
+  two-focused-pass semantic conformance for the existing REMEDIATION_AUTHORING Brain
+  flow. Enable exact reviewed-finding causal, scope and non-interference reasoning
+  without duplicating TASK-360 direct AUTHOR_REMEDIATION or activating a new production
+  audit default.
+problem: Published R2.1/R1 provides isolated ROA-1 R2 repair semantics while canonical
+  current profile policy still requires universal Adaptive V1 two-stage eight-lens
+  audit. R2 needs an independently content-bound remediation-specific construct and
+  adversarial closure over exact REVIEW/CHANGES_REQUIRED findings. Without a dedicated
+  profile/protocol, a generic audit may misidentify correction targets, treat multiple
+  outstanding findings as an implicit chooser, expand a review finding, or misrepresent
+  transport/Executor claims as Reviewer closure.
+assumptions:
+- Fresh Brain Sync for this prospective authoring observed main dc61cf739528047667438001953b7deaa9f6e6af,
+  exact TASK-363 r1 RUN-363-001 RESULT, REVIEW-363-001 PASS source dc61cf739528047667438001953b7deaa9f6e6af
+  included on current canonical main. Runtime must CAS exact expected main, TASK identity,
+  current correction provenance and reject later drift.
+- Human approved the R2.1 staged architecture and requested roadmap continuation after
+  TASK-363 publication. The R2 slice follows ROA R1 and precedes TCA/AOA; Lean VP
+  remains gated on full R2.1 completion and explicit Human/Brain reconciliation.
+- The only active prospective Brain semantic audit remains aios-adaptive-brain-audit-v1
+  v1 digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718; ROA-1
+  R2 is published isolated support only. R2 does not enact a production-default policy
+  change.
+- TASK-360 r1 already published direct-final AUTHOR_REMEDIATION, so MOA-1 does not
+  change existing correction ingress, H3 legacy audit support or separate Human A3
+  / REMEDIATION INTENT and self-host execution policy.
+- Decision Packet REMEDIATION_AUTHORING represents UNIQUE_FINDING or CORRECTION_FRONTIER;
+  a frontier is the exact unselected set of outstanding findings and conveys no implicit
+  priority or corrective target. Exact REVIEW finding source and authorization must
+  be independently current at any later ingress.
+- This TASK is Executor-neutral; Human selection of the Executor/model/effort for
+  a later PRIMARY is a separate delegation. The user has not selected an Executor
+  for TASK-364.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/brain-return-contracts.yaml
+  - .ai/flow-cards.yaml
+  - .ai/tasks/TASK-360.yaml
+  - .ai/tasks/TASK-363.yaml
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_return_contract.py
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/review.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - tests/test_decision_packet.py
+  - tests/test_authoring_ingress.py
+  modify:
+  - .ai/brain-audit-profiles.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+non_goals:
+- No reconstruction or behavioral redesign of AUTHOR_REMEDIATION (TASK-360), REVIEW
+  validation, Human A3, approval/wakeup/workflow, Runtime RUN/RESULT/EVIDENCE, Reviewer
+  verdict or Publisher; no default production MOA/V1 cutover.
+- No R3 TCA-1, R4 AOA-1, R5 option/cutover, Adaptive V1 retirement, Lean VP, BO or
+  downstream adoption in this TASK.
+- No automatic finding ranking, frontier target selection, causal grouping that widens
+  authorized findings, cross-review correction, execution or A3 approval. Human/Brain
+  must explicitly identify the exact chosen finding before final remediation.
+- No generic audit router/planner, second correction validator/ingress, persistent
+  memory, database, shadow lifecycle reducer, generic retry/failover or semantic auto-executor.
+- No alteration or reminting of historical V1/V2/V3 or ROA-1 R2 identities/digests,
+  in-flight stage semantics, frozen Kernel or Constitution; no silent fallback, dual
+  audit or source laundering.
+- No full-suite test ritual, unscoped infrastructure refactoring, private raw evidence
+  publication or unverifiable performance-superiority claims.
+constraints:
+  hard:
+  - 'Add one exact bounded MOA-1 semantic profile applicable only to existing REMEDIATION_AUTHORING,
+    with two short flow-specific passes: bounded source/finding/cause construct, then
+    independently adversarial non-interference/finding-closure challenge and one final
+    CANDIDATE or NO_DECISION. MOA is not a disguised universal eight-lens V1 and must
+    not invoke a second normative V1 audit.'
+  - Bind packet/profile/return-contract/currentness and exact canonical source RUN,
+    reviewed SHA, REVIEW id/verdict, finding id/basis/action/location/issue/expected,
+    original TASK scope/constraints, applicable prior correction provenance and outstanding
+    status when available. No source authenticity from model-written strings, derived
+    hashes or absent input. OBSERVED/INFERRED/UNKNOWN must be explicit; material missing
+    source or unresolved authority yields NO_DECISION and an explicit blocker.
+  - For UNIQUE_FINDING, final semantic remediation candidate must match precisely
+    the selected canonical finding's required action, reviewed SHA, allowed scope/constraints,
+    and permitted affected verification. A semantic closure is not a Reviewer PASS,
+    finding resolution, Runtime proof, mutation permission or Human A3 approval.
+  - For CORRECTION_FRONTIER, permit bounded cognitive analysis/causal grouping strictly
+    within exact supplied outstanding finding set without selecting by list order,
+    priority, score, guessed similarity or proposed fix. Without an independently
+    exact Human-authorized target binding through existing current Brain context,
+    the procedure must not emit an executable final remediation contract; use NO_DECISION
+    or await a separate exact selected canonical subject. Do not expand Decision Packet
+    or add a selector/router as a hidden workaround.
+  - Second focused pass must challenge missing, duplicate, stale, swapped or cross-review
+    finding, wrong action, unrelated file edits, shared-cause claims unsupported by
+    evidence, corrected-one-but-broke-another, EVIDENCE_ONLY vs CODE_FIX, mixed/false
+    PASS, changed predecessor or original verification, wrong profile/stage/digest,
+    duplicate/dual audits and revoked/moved authority. Findings that are not authorized
+    cannot be grouped into correction scope.
+  - Extend only the existing bounded exact-profile registry/protocol surfaces as necessary
+    from R1 four-profile support to the next finite recognized identity; retain exact
+    V1/V2/V3/ROA bytes, content-bound digest, prior mode/ROA isolated conformance,
+    protected candidate normalization, privacy, transport count/bounds, stage lineage,
+    currentness and strict unknown-field/duplicate-key rejections. No arbitrary registry
+    expansion or silently activated profile.
+  - MOA conformance is isolated testable support pending separate complete reviewed/published
+    R2.1 transition. Existing ordinary prospective Brain attempts continue selecting
+    exactly current Adaptive V1 for REMEDIATION_AUTHORING; implicit selection of MOA,
+    mixing MOA/V1 stages or a ROA/MOA dual audit must fail closed. Do not write or
+    alter roadmap state automatically.
+  - Executor changes only exact scope.modify. If the outcome would require modification
+    of decision_packet.py, authoring_ingress.py, return contract schema, new authority,
+    or other production paths outside scope, stop with a bounded blocker for Human
+    rescope rather than silently widening. Any future final REMEDIATION ingress independently
+    checks exact canonical lineage.
+  - Runtime owns required minimum-sufficient-v1 verification on the committed candidate;
+    run only authored focused commands and do not infer proof from claims, synthetic
+    cases, workflow success or previous TASK-363's verification. Do not run a full
+    suite unless separately justified and authorized.
+acceptance:
+- id: AC1
+  condition: One exact content-bound, bounded MOA-1 profile exists for REMEDIATION_AUTHORING
+    and expresses two short remediation-specific construct/adversarial-reconcile semantic
+    passes ending in one closed candidate or bounded blocker; no universal V1 duplicate
+    or hidden third audit.
+- id: AC2
+  condition: MOA's portable subject/decision validates exact source RUN, canonical
+    REVIEW and unique finding identity, reviewed SHA, action, TASK authority and available
+    correction lineage; missing or conflicting source facts remain UNKNOWN/NO_DECISION
+    rather than an assumed remediation.
+- id: AC3
+  condition: An exact UNIQUE_FINDING case can yield a typed bounded proposal within
+    original modification_scope, constraints and verification policy only after construct
+    and independent finding-closure/non-interference challenge; source REVIEW PASS,
+    finding closure, execution authorization and Runtime verification are never inferred
+    from it.
+- id: AC4
+  condition: A CORRECTION_FRONTIER containing two or more outstanding findings supports
+    only bounded cross-finding analysis and cannot emit a final targeted REMEDIATION
+    by implicit order, ranking, inferred priority or causal grouping without a lawfully
+    exact target; unrelated/unauthorized findings cannot enter one correction's scope.
+- id: AC5
+  condition: The second pass rejects or closes concrete counterexamples for wrong/stale/duplicate/cross-review
+    findings, action and reviewed SHA mismatch, unsupported shared cause, scope and
+    non-interference violations, missing evidence, misapplied EVIDENCE_ONLY, stale
+    currentness, forged profile and mixed stages, with one exact final closure.
+- id: AC6
+  condition: Production prospective Adaptive V1 selection, direct AUTHOR_REMEDIATION
+    ingress, Human A3, independent Reviewer/Publisher, historical V1/V2/V3/ROA profile
+    identities/replay and the existing provider-neutral interfaces remain intact;
+    isolated MOA cannot activate a default, retry, authority or downstream change.
+- id: AC7
+  condition: Focused positive/adversarial tests cover MOA unique/frontier, profile/digest
+    bounds, stale/malformed and double-audit cases, both provider transports and historical/ROA
+    regressions within the exact listed scope.modify, without introducing a full-suite/V2
+    gate or a new lifecycle mechanism.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_provider_protocol.py
+    tests/test_brain_provider.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
