@@ -51,6 +51,14 @@ def _workflow(path: Path) -> tuple[dict, str]:
     return yaml.load(text, Loader=yaml.BaseLoader), text
 
 
+def _assert_observer_job_env_contexts(observer: dict) -> None:
+    # YAML parsing accepts runner expressions even where Actions cannot evaluate them.
+    for name, value in observer.get("env", {}).items():
+        assert re.search(r"\$\{\{[^}]*\brunner\s*(?:\.|\[)", value) is None, (
+            f"runner context is unavailable in observe-repair-source job-level env: {name}"
+        )
+
+
 def test_task372_observation_job_is_independent_read_only_and_attempt_bound():
     workflow, text = _workflow(TARGET)
     observer = workflow["jobs"]["observe-repair-source"]
@@ -59,14 +67,84 @@ def test_task372_observation_job_is_independent_read_only_and_attempt_bound():
     assert "needs" not in execution and "needs" not in observer
     assert workflow["permissions"] == {"contents": "read"}
     assert observer["steps"][0]["with"]["ref"] == "${{ github.sha }}"
-    assert set(observer["env"]) == {"AIOS_REPAIR_SOURCE_PATH", "AIOS_REPAIR_DISPATCH_ID", "AIOS_FAILED_RUN_ID", "AIOS_REPAIR_SHA"}
+    assert observer["env"] == {
+        "AIOS_REPAIR_DISPATCH_ID": "${{ inputs.repair_dispatch_id }}",
+        "AIOS_FAILED_RUN_ID": "${{ inputs.failed_run_id }}",
+        "AIOS_REPAIR_SHA": "${{ inputs.repair_sha }}",
+    }
     uploads = [s["with"] for s in observer["steps"] if s.get("uses") == "actions/upload-artifact@v4"]
-    assert uploads[0]["name"] == "aios-repair-correlation-v1-delivery-attempt-${{ github.run_attempt }}"
-    assert uploads[1]["name"] == "aios-repair-delivery-v1-${{ inputs.repair_dispatch_id }}"
-    assert uploads[1]["overwrite"] == "true"
+    assert uploads == [
+        {
+            "name": "aios-repair-correlation-v1-delivery-attempt-${{ github.run_attempt }}",
+            "path": "${{ env.AIOS_REPAIR_SOURCE_PATH }}",
+            "if-no-files-found": "error",
+            "retention-days": "90",
+        },
+        {
+            "name": "aios-repair-delivery-v1-${{ inputs.repair_dispatch_id }}",
+            "path": "${{ env.AIOS_REPAIR_SOURCE_PATH }}",
+            "overwrite": "true",
+            "if-no-files-found": "error",
+            "retention-days": "90",
+        },
+    ]
     assert text.count("$controlSource repair-wakeup ") == 1
     for event in ("workflow_dispatch", "workflow_call"):
         assert all(workflow["on"][event]["inputs"][field]["required"] == "false" for field in ORIGIN_FIELDS)
+
+
+def test_task375_observation_and_uploads_resolve_the_same_step_level_source_path() -> None:
+    workflow, _ = _workflow(TARGET)
+    observer = workflow["jobs"]["observe-repair-source"]
+    _assert_observer_job_env_contexts(observer)
+    assert "AIOS_REPAIR_SOURCE_PATH" not in observer["env"]
+    steps = observer["steps"]
+    observation = next(step for step in steps if step.get("name") == "Observe exact REPAIR workflow event")
+    assert observation["run"] == (
+        'python -c "from aios_renew.github_issue_repair_wakeup import source_delivery_main; '
+        'raise SystemExit(source_delivery_main())"'
+    )
+    uploads = [step for step in steps if step.get("uses") == "actions/upload-artifact@v4"]
+    assert len(uploads) == 2
+    for step in [observation, *uploads]:
+        assert step["env"] == {
+            "AIOS_REPAIR_SOURCE_PATH": "${{ runner.temp }}/aios-repair-source/source.json",
+        }
+        assert "if" not in step and "continue-on-error" not in step
+    for upload in uploads:
+        assert steps.index(observation) < steps.index(upload)
+        assert upload["with"]["path"] == "${{ env.AIOS_REPAIR_SOURCE_PATH }}"
+
+
+def test_task375_regression_rejects_runner_temp_in_observer_job_env() -> None:
+    workflow, _ = _workflow(TARGET)
+    observer = workflow["jobs"]["observe-repair-source"]
+    observer["env"]["AIOS_REPAIR_SOURCE_PATH"] = (
+        "${{ runner.temp }}/aios-repair-source/source.json"
+    )
+    with pytest.raises(AssertionError, match="runner context is unavailable.*job-level env"):
+        _assert_observer_job_env_contexts(observer)
+
+
+def test_task375_repair_workflow_reuse_remains_in_the_canonical_issue_carrier_graph() -> None:
+    issue, _ = _workflow(ROOT / ".github/workflows/aios-issue-carrier.yml")
+    assert issue["on"] == {"issues": {"types": ["opened"]}}
+    for job_id, filename in (
+        ("ingress", "aios-brain-ingress.yml"),
+        ("repair-wakeup", "aios-brain-repair-wakeup.yml"),
+    ):
+        reuse = issue["jobs"][job_id]
+        assert reuse["needs"] == "route"
+        assert reuse["if"] == f"needs.route.outputs.carrier == '{filename}'"
+        assert reuse["uses"] == f"./.github/workflows/{filename}"
+        carrier, _ = _workflow(ROOT / reuse["uses"])
+        assert set(carrier["on"]) == {"workflow_call"}
+    repair, _ = _workflow(CARRIER)
+    dispatch = repair["jobs"]["dispatch"]
+    assert dispatch["needs"] == "admit"
+    assert dispatch["uses"] == "./.github/workflows/aios-self-hosted-repair-wakeup.yml"
+    assert ROOT / dispatch["uses"] == TARGET
+    assert sum("uses" in job for job in repair["jobs"].values()) == 1
 
 
 def test_task372_manual_receipt_retains_exact_source_pointer_without_new_dispatch():

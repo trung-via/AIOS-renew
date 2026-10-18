@@ -99,7 +99,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json
       AIOS_REPAIR_DISPATCH_ID: ${{ inputs.repair_dispatch_id }}
       AIOS_FAILED_RUN_ID: ${{ inputs.failed_run_id }}
       AIOS_REPAIR_SHA: ${{ inputs.repair_sha }}
@@ -113,9 +112,13 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install --disable-pip-version-check .
       - name: Observe exact REPAIR workflow event
+        env:
+          AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json
         run: python -c "from aios_renew.github_issue_repair_wakeup import source_delivery_main; raise SystemExit(source_delivery_main())"
       - name: Preserve exact REPAIR attempt source
         uses: actions/upload-artifact@v4
+        env:
+          AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json
         with:
           name: aios-repair-correlation-v1-delivery-attempt-${{ github.run_attempt }}
           path: ${{ env.AIOS_REPAIR_SOURCE_PATH }}
@@ -123,6 +126,8 @@ jobs:
           retention-days: 90
       - name: Index exact delivery for bounded read-only discovery
         uses: actions/upload-artifact@v4
+        env:
+          AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json
         with:
           # This replaceable discovery hint is never the attempt's source of truth.
           name: aios-repair-delivery-v1-${{ inputs.repair_dispatch_id }}
