@@ -217,6 +217,18 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
     if not isinstance(data, Mapping):
         raise AuthoringIngressError("ingress envelope must be a mapping")
 
+    if data.get("operation") == "SELECT_MAPPING_REVIEW":
+        from .review_transport import _l1_json, _l1_selection_request, L1_SELECTION_MAX_BYTES
+        try:
+            # Selection is a strict bounded JSON extension. Legacy YAML/V1/V2
+            # lifecycle payload decoding remains with its existing owners.
+            selection = (_l1_json(raw.encode("utf-8") if isinstance(raw, str) else raw,
+                                  L1_SELECTION_MAX_BYTES) if isinstance(raw, (str, bytes)) else dict(data))
+            selection = _l1_selection_request(selection)
+            return IngressEnvelope(**selection)
+        except (ReviewTransportError, ValueError, TypeError, RecursionError) as exc:
+            raise AuthoringIngressError("invalid bounded Human mapping-review selection") from exc
+
     # Check every active envelope and payload field for forbidden authority.
     # Retired REMEDIATION audit support is never consumed, persisted or echoed.
     # Its shape, private contents and serialization cannot grant or deny final
@@ -400,6 +412,8 @@ def execute_ingress(envelope: IngressEnvelope, *, repo: Path,
         raise AuthoringIngressError(f"not a Git repository: {repo}")
 
     operation = envelope.operation
+    if operation == "SELECT_MAPPING_REVIEW":
+        raise AuthoringIngressError("Human selection requires independently authenticated GitHub Issue ingress")
     if operation == "AUTHOR_TASK" or operation in _AUTHORING_FLOWS:
         # Caller-owned mappings cannot change the validated payload mid-ingress.
         envelope = copy.deepcopy(envelope)
@@ -415,6 +429,94 @@ def execute_ingress(envelope: IngressEnvelope, *, repo: Path,
         return _execute_author_repair(envelope, repo_root)
     else:
         raise AuthoringIngressError(f"unsupported operation: {operation}")
+
+
+def _execute_human_review_selection(envelope: IngressEnvelope, repo: Path, *, event_path: Path) -> IngressResult:
+    """Existing Runtime writer, restricted to one authenticated immutable choice.
+
+    No caller-supplied admission/actor object is a credential. Every write and
+    identical replay independently authenticates GitHub and canonical sources.
+    No RUN, RESULT, EVIDENCE, REVIEW, main or publication outcome is authored.
+    """
+    from . import review_transport as transport
+    from .github_issue_ingress import _authenticate_selection_event
+    from .proof_coverage_contract import ProofCoverageError
+
+    try:
+        request = transport._l1_selection_request({key: getattr(envelope, key) for key in
+            ("format", "version", "operation", "identity", "expected_state", "payload")})
+        if envelope.audited_handoff is not None or envelope.origin_authoring_proof is not None:
+            raise AuthoringIngressError("selection cannot consume lifecycle authority")
+        repo = repo.resolve()
+        remote, url = _resolve_author_task_transport(repo)
+        main = _resolve_author_task_main(repo, remote)
+        if request["expected_state"] != dict(expected_main_sha=main, expected_remote_url=url):
+            raise AuthoringIngressError("stale or conflicting selection canonical transport/main")
+        transport._l1_remote(repo, url)
+        transport._l1_fetch(repo, url, main)
+        policy, policy_pin = transport._l1_selection_policy(repo, main)
+        provenance, body = _authenticate_selection_event(event_path, policy)
+        if transport._l1_selection_request(transport._l1_json(body, transport.L1_SELECTION_MAX_BYTES)) != request:
+            raise AuthoringIngressError("selection body does not match authenticated Human intent")
+        sources = {role: transport.GitSemanticSource(**value)
+                   for role, value in request["payload"]["sources"].items()}
+        trees = transport._l1_anchor_sources(repo, main, {item.source_sha for item in sources.values()})
+        contents = {}
+        for role, source in sources.items():
+            if (trees[source.source_sha] != source.tree_sha
+                    or transport._l1_path_blob(repo, source.tree_sha, source.path, {}) != source.blob_sha):
+                raise AuthoringIngressError("selection source locator mismatch")
+            contents[role] = transport._l1_text_object(repo, source.blob_sha, "blob",
+                transport.L1_TASK_MAX_BYTES if role == "task" else transport.L1_SOURCE_MAX_BYTES)
+        declaration = dict(schema="task-semantic-proof-intake-v1",
+            task=transport._l1_task_binding(contents["task"]),
+            candidate_sha=request["payload"]["scope"]["candidate_sha"],
+            sources={role: dict(source_sha=source.source_sha, blob_sha=source.blob_sha)
+                     for role, source in sources.items()},
+            contract=transport._l1_json(contents["contract"], transport.L1_SOURCE_MAX_BYTES),
+            mapping=transport._l1_json(contents["mapping"], transport.L1_SOURCE_MAX_BYTES))
+        binding = transport.bind_canonical_semantic_proof_sources(repo,
+            json.dumps(declaration, sort_keys=True).encode("utf-8"), expected_remote_url=url,
+            expected_main_sha=main, expected_candidate_sha=declaration["candidate_sha"], sources=sources)
+        transport._l1_validate_selection_request(repo, binding, request)
+        record = dict(format="AIOS_L1_HUMAN_REVIEW_SELECTION", version=1,
+                      request=request, provenance=provenance, policy=policy_pin)
+        record_bytes = json.dumps(record, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        if len(record_bytes) > transport.L1_SELECTION_MAX_BYTES:
+            raise AuthoringIngressError("immutable selection record exceeds bound")
+        ref = transport._l1_selection_ref(request["identity"]["target_task_id"], declaration["candidate_sha"])
+        observed = transport._exact_remote_refs(repo, url, ref, ref + "/*")
+        if observed and set(observed) != {ref}:
+            raise AuthoringIngressError("competing selection refs")
+
+        def current():
+            if (_resolve_author_task_transport(repo) != (remote, url)
+                    or _resolve_author_task_main(repo, remote) != main
+                    or transport._exact_remote_refs(repo, url, ref, ref + "/*") != observed
+                    or transport._l1_selection_policy(repo, main) != (policy, policy_pin)
+                    or _authenticate_selection_event(event_path, policy) != (provenance, body)):
+                raise AuthoringIngressError("selection authority or canonical subjects moved")
+            transport._l1_validate_selection_request(repo, binding, request)
+
+        if observed:
+            sha = transport._l1_sha(observed[ref])
+            transport._l1_fetch(repo, url, sha)
+            if transport._l1_selection_record(repo, sha) != record:
+                raise AuthoringIngressError("divergent duplicate Human selection")
+            current()
+            return IngressResult(operation=envelope.operation, status="IDEMPOTENT", canonical_destination=ref,
+                canonical_sha=sha, replayed=True, detail="Identical authenticated Human choice only; review authority not evaluated.")
+        current()
+        tree = _tree_with_metadata(repo, main, transport.L1_SELECTION_PATH, record_bytes)
+        sha = _commit_tree(repo, tree, [main], "AIOS immutable Human mapping-review selection")
+        if transport._l1_selection_record(repo, sha) != record:
+            raise AuthoringIngressError("selection writer changed immutable record")
+        _publish_ingress_ref(repo, remote, ref, sha, expect_missing=True,
+                             before_publish=current, push_destination=url)
+        return IngressResult(operation=envelope.operation, canonical_destination=ref, canonical_sha=sha,
+            detail="Authenticated Human choice only; no review, publication or activation result.")
+    except (ReviewTransportError, ProofCoverageError, ValueError, TypeError, KeyError, UnicodeError) as exc:
+        raise AuthoringIngressError(str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -2748,7 +2850,7 @@ def _publish_ingress_ref(
     if push_destination is not None and (
         remote is None or not expect_missing or before_publish is None
         or not ref.startswith(("refs/heads/aios/repair/", REPAIR_SUPERSESSION_PREFIX,
-                               "refs/heads/aios/remediation/"))
+                               "refs/heads/aios/remediation/", "refs/heads/aios/l1-human-selection/"))
     ):
         raise AuthoringIngressError("captured push destination requires a bound immutable correction writer")
 

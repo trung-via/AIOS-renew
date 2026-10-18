@@ -107,6 +107,8 @@ jobs:
         id: ingress
         continue-on-error: true
         env:
+          # Independent API reads authenticate Human selection; never body actor labels.
+          GH_TOKEN: ${{ github.token }}
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-ingress-receipt.txt
           AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-ingress/source.json
           AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json

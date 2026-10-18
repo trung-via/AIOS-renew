@@ -1,7 +1,7 @@
 """Synthetic mapping-review lineage only; these fixtures confer no live authority.
 
-The public API has no trust-source argument. Only this isolated fixture replaces
-the closed private Human-selection reader, with separately pinned expected facts.
+The public API has no trust-source argument. This isolated fixture replaces
+the private Human-selection reader, with separately pinned expected facts.
 No live provider, Executor, Publisher or verification command is invoked.
 """
 
@@ -102,7 +102,7 @@ def install_decision(package, *, repin=True, review_bytes=None, extra=None, pare
     return sha
 
 
-def make_reviewed_package(tmp_path, *, changed_contract=False, inspect_contract_only=False):
+def make_reviewed_package(tmp_path, *, changed_contract=False, inspect_contract_only=False, human_policy=None):
     review_task = REVIEW_TASK
     if inspect_contract_only:
         review_task = review_task.replace(
@@ -120,13 +120,14 @@ def make_reviewed_package(tmp_path, *, changed_contract=False, inspect_contract_
     base_contract = copy.deepcopy(data)
     if changed_contract:
         base_contract["id"] = "prior-contract-v1"
+    policy_files = {} if human_policy is None else {".ai/brain-ingress-carriers.yaml": encoded(human_policy)}
     repo, remote, base = materialize_git_baseline(
         tmp_path / "synthetic", files={PATHS["task"]: TASK, REVIEW_TASK_PATH: review_task,
-            "subject.txt": b"synthetic only\n", PATHS["contract"]: encoded(base_contract)},
+            "subject.txt": b"synthetic only\n", PATHS["contract"]: encoded(base_contract), **policy_files},
         user_name="Synthetic", user_email="synthetic@example.invalid", commit_message="synthetic TASKs/contract")
     candidate_files = {PATHS["task"]: TASK, REVIEW_TASK_PATH: review_task,
                        "subject.txt": b"synthetic only\n",
-                       PATHS["contract"]: encoded(data), PATHS["mapping"]: encoded(mapping)}
+                       PATHS["contract"]: encoded(data), PATHS["mapping"]: encoded(mapping), **policy_files}
     for path in (PATHS["contract"], PATHS["mapping"]):
         target = repo / path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -191,7 +192,8 @@ def bind(package, **overrides):
 
 
 def trust_fixture(package, monkeypatch):
-    # Isolated test trust source only: no public selector or persisted authority.
+    # Isolated lineage-unit trust source; authenticated ingress is exercised by
+    # test_lean_vp_l1_human_selection rather than this private replacement.
     monkeypatch.setattr(transport, "_l1_authenticated_mapping_review_selection",
                         lambda repo, binding: package["selection"])
 
@@ -202,7 +204,7 @@ def assert_not_established(value):
     assert not value.production_eligible and not value.execution_authorized
 
 
-def test_public_boundary_is_closed_even_with_ordinary_canonical_run_pass(reviewed_package):
+def test_public_boundary_requires_human_selection_even_with_ordinary_canonical_run_pass(reviewed_package):
     value = bind(reviewed_package)
     assert_not_established(value)
     assert value.reason == "HUMAN_MAPPING_SELECTION_UNAVAILABLE"

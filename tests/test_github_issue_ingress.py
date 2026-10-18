@@ -27,6 +27,67 @@ POLICY = {
 }
 
 
+def test_selection_http_requires_independent_credentials_without_network(monkeypatch):
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(carrier.urllib.request, "build_opener", lambda *a: pytest.fail("unauthenticated request"))
+    with pytest.raises(carrier.GitHubIssueIngressError, match="authenticated GitHub"):
+        carrier._github_selection_json(POLICY["github_issue"]["repository"], "/issues/107")
+
+
+def test_selection_has_no_lifecycle_wakeup_or_result_claim():
+    result = IngressResult(operation="SELECT_MAPPING_REVIEW", canonical_sha="a" * 40,
+        canonical_destination="refs/heads/aios/l1-human-selection/TASK-1/" + "b" * 40,
+        detail="Authenticated Human choice only; no review, publication or activation result.")
+    delivery = carrier.IssueDelivery("github-issue:synthetic/repo#1@human", result)
+    assert delivery.github_outputs() == ""
+    assert delivery.publication_run_id is None and delivery.repair_dispatch_id is None
+    workflow = yaml.load(BRAIN_INGRESS_WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    step = next(item for item in workflow["jobs"]["deliver"]["steps"] if item.get("id") == "ingress")
+    assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
+
+
+def test_selection_http_is_fixed_authenticated_bounded_and_read_only(monkeypatch):
+    monkeypatch.setenv("GH_TOKEN", "synthetic-token")
+    observations = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self, maximum):
+            assert maximum == carrier._MAX_EVENT_FILE_BYTES + 1
+            return b'{"synthetic":true}'
+
+    class Opener:
+        def open(self, request, *, timeout):
+            assert timeout == 15 and request.get_header("Authorization") == "Bearer synthetic-token"
+            observations.append(request)
+            return Response()
+
+    def opener(handler):
+        assert handler.redirect_request(None, None, None, None, None, None) is None
+        return Opener()
+
+    monkeypatch.setattr(carrier.urllib.request, "build_opener", opener)
+    repository = POLICY["github_issue"]["repository"]
+    carrier._github_selection_json(repository, "/issues/107")
+    carrier._github_selection_json(repository, "/selection-edit-history/107")
+    assert observations[0].get_method() == "GET"
+    assert observations[0].full_url == "https://api.github.com/repos/trung-via/AIOS-renew/issues/107"
+    assert observations[1].full_url == "https://api.github.com/graphql"
+    query = json.loads(observations[1].data)
+    assert query["query"].startswith("query(") and "mutation" not in query["query"]
+    assert query["variables"] == dict(owner="trung-via", name="AIOS-renew", number=107)
+    with pytest.raises(carrier.GitHubIssueIngressError, match="bounded contract"):
+        carrier._github_selection_json(repository, "/arbitrary")
+
+
 def _write_policy(tmp_path: Path, policy: object = POLICY) -> Path:
     path = tmp_path / "policy.yaml"
     path.write_text(yaml.safe_dump(policy, sort_keys=False), encoding="utf-8")
