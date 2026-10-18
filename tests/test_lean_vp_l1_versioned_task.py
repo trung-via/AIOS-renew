@@ -21,7 +21,7 @@ from tests.test_lean_vp_l1_human_selection import (
     materialize_synthetic_selection, selection_fixture, selection_ref,
 )
 from tests.test_lean_vp_l1_review_authority import RUN_ID, fixture_ref, install_decision
-from tests.test_lean_vp_l1_source_binding import PATHS, TASK, commit, encoded, locator, state_without_objects
+from tests.test_lean_vp_l1_source_binding import PATHS, TASK, commit, encoded, git, locator, state_without_objects
 from tests.test_proof_coverage_contract import CANDIDATE, contract, mapping_for, obligation
 
 
@@ -249,7 +249,13 @@ def test_future_selection_and_review_are_independently_required(tmp_path, monkey
         package["review"]["review_id"] = "REVIEW-377-001"
         install_decision(package)
     elif fault == "conflicting-selection":
-        fixture_ref(package, selection_ref(package) + "/competing", {"unrelated.txt": b"synthetic"})
+        ref = selection_ref(package)
+        # Keep the exact ref packed so the loose descendant has no file/directory collision.
+        git(package["remote"], "pack-refs", "--all", "--prune")
+        competing_sha = fixture_ref(package, ref + "/competing", {"unrelated.txt": b"synthetic"})
+        advertised = git(package["repo"], "ls-remote", "--refs", package["remote"].as_posix(), ref, ref + "/*")
+        assert {name: sha for sha, name in (line.split() for line in advertised.splitlines())} == {
+            ref: package["selection_sha"], ref + "/competing": competing_sha}
     elif fault == "wrong-selection":
         package["request"]["payload"]["scope"]["target_task"]["revision"] += 1
         package["issue"]["body"] = encoded(package["request"]).decode()
@@ -268,6 +274,10 @@ def test_future_selection_and_review_are_independently_required(tmp_path, monkey
     assert_nonoperative(value)
     assert value.reviewer_authority == value.publisher_authority == "NOT_ESTABLISHED"
     assert value.authority.lineage is None
+    if fault == "conflicting-selection":
+        assert value.human_selection == "NOT_ESTABLISHED"
+        with pytest.raises(transport.ReviewTransportError, match="ambiguous L1 Human selection"):
+            transport._l1_authenticated_mapping_review_selection(package["repo"], value.authority.source_binding)
 
 
 def test_wrong_immutable_future_version_is_rejected_at_the_source_boundary(tmp_path, monkeypatch):
