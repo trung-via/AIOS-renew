@@ -1,0 +1,172 @@
+task_id: TASK-373
+revision: 1
+goal: Deliver the first bounded Lean VP L1 baseline and proof-contract readiness slice.
+  Reuse existing canonical RUN_OBSERVATION / PERFORMANCE_OBSERVATION and already-reviewed
+  TASK-326 proof-coverage and TASK-328 offline intra-RUN foundations to expose a trustworthy,
+  read-only, source-bound baseline readiness view for future matched Lean VP episode
+  measurements. Distinguish OBSERVED, PARTIAL and UNKNOWN measurement dimensions and
+  preserve every unmet VP-01 dependency; supply an actionable L2/L3 input gap inventory
+  without activating KA-01, changing production verification, or adding a new telemetry
+  store.
+problem: 'Human closed R2.1 in canonical planning on 2026-10-18 with real-provider
+  live conformance explicitly deferred to later lawful TASK episodes and selected
+  Lean VP as sole NEXT. Existing first-party performance_observation.py already binds
+  terminal RUN_OBSERVATION and aggregates elapsed RUN/Executor/verification time,
+  executor operation counts, token and cached-token coverage. That is not yet an auditable
+  full-episode comparative Lean VP baseline: phase-missingness, review/publication/handoff
+  and Git/pytest startup intervals, actual executed/unique/equivalent test item counts
+  and evidence applicability are not all observable from this data. TASK-326 and TASK-328
+  separately cover offline semantic proof/feedback contracts; reimplementing those
+  or claiming speculative speedups would be wasteful. Begin with the minimum truthful
+  baseline/readiness projection and bounded gap documentation rather than introducing
+  a new Runtime proof scheduler.'
+assumptions:
+- Fresh authoritative main at TASK authoring is d5fbb3153bf553e67d7da91f3ba034a6c7502939,
+  containing the exact Human/Brain R2.1 closure and Lean VP NEXT, while TASK-373 does
+  not yet exist. Runtime must independently enforce expected-main/CAS and TASK shape/affinity.
+- R2.1 published TASK-363/364/366/367/368/369 remains historical engineering truth.
+  Its deferred independent live conformance is UNKNOWN, not PASS, and no R2.1 reimplementation
+  or retrospective status rewrite is within TASK-373.
+- Existing src/aios_renew/run_observation.py provides exact RUN operational duration/token
+  observation with partial/missingness; src/aios_renew/performance_observation.py
+  authenticates terminal sources and produces read-only bounded aggregate summaries.
+  Reuse their production consumers without a parallel collector, metric database or
+  raw private access.
+- Published TASK-326 proof_coverage_contract.py and TASK-328 intra_run_proof_contract.py
+  are bounded offline foundations. KA-01 prospective design remains NOT_ACTIVATED
+  and G1-G6, VP-01 measurements and separate Human versioned opt-in are not discharged
+  by this TASK.
+- Prospective TASK_AUTHORING semantic profile is the canonical tca-1 v1 exact digest
+  1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2. This TASK's audit
+  outcome is Brain semantic support, not an authoring, execution, review, or publication
+  authority.
+- The standing Human return-affinity choice on this repository is LEGACY_REPOSITORY_DEFAULT_ROUTE
+  until a distinct authorized cutover; no Executor/model/effort or KA-01 opt-in is
+  selected by this TASK.
+- 'Previous Issue #2114 is a historical pre-job carrier failure bound to an older
+  expected main; TASK-375 / REVIEW-375-001 has subsequently published its scoped workflow
+  correction at d5fbb3153bf553e67d7da91f3ba034a6c7502939. This fresh Issue is a new
+  carrier attempt, not a retry/replay or reclassification of that failure; GitHub
+  scheduling and Runtime canonicalization are independently observed after submission.'
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+  - docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-326.yaml
+  - .ai/tasks/TASK-328.yaml
+  - src/aios_renew/performance_observation.py
+  - src/aios_renew/run_observation.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/verification.py
+  - tests/test_performance_observation.py
+  - tests/test_run_observation.py
+  - tests/test_proof_coverage_contract.py
+  - tests/test_intra_run_proof_contract.py
+  modify:
+  - src/aios_renew/performance_observation.py
+  - tests/test_performance_observation.py
+  - docs/AIOS-LEAN-VP-L1-BASELINE.md
+non_goals:
+- No KA-01 activation, future TASK schema/version change, V1/V2 policy cutover, Runtime
+  proof scheduler, preterminal checkpoint, same-RUN feedback, automatic repair, retry,
+  fallback, broader verification or full-suite requirement.
+- No new telemetry database, canonical lifecycle/proof/evidence store, always-on service,
+  agent, workflow router, provider selector, parallel metric pipeline or separate
+  Reviewer/Publisher.
+- No modification of existing TASK-326/TASK-328 proof validators, V1/V2 historical
+  artifacts, canonical RUN/FAILURE/RESULT/REVIEW/EVIDENCE authority, Runtime verification
+  internals, planning roadmap, downstream pin or origin routing.
+- No claim of measured Lean VP speedup, causal benefit, cost in dollars, full episode
+  time or executable proof coverage where canonical source data is absent; future
+  live conformance for R2.1 remains an independent observed fact when available.
+- No independent transport/checkout/review/publication timing inference from Git commit
+  timestamps, operational receipts, or EXECUTOR claims; no private traces, paths,
+  logs, model responses or unauthorized records in a portable baseline.
+constraints:
+  hard:
+  - Use the existing authenticated read-only RemotePerformanceSnapshot / bound canonical
+    terminal RUN_OBSERVATION path as the sole truth source for new baseline readiness.
+    New projection must not independently retrieve, persist, mutate or create RUN/RESULT/FAILURE/EVIDENCE
+    or choose a current task.
+  - Expose existing observed durations (admitted RUN, Executor, Runtime verification),
+    outcome/task/executor counts, and provider-neutral input/cached/output tokens
+    only together with exact sample coverage and missingness. Distinguish absence
+    from observed zero; reject conflicting, stale, forged or cross-RUN terminal bindings
+    before computing baseline metrics.
+  - Represent other required whole-episode dimensions (collection/unique/duplicate
+    test items, Git/fixture/worker startup, checkpoint/applicability, transport/Human/review/publication
+    time and costs) as typed UNKNOWN/UNAVAILABLE/PARTIAL when not authenticated from
+    these sources. No filename/command/nodeid heuristics for equivalence, fabricated
+    dollar costs, arithmetic estimates presented as measurements, or UNKNOWN-to-PASS
+    conversion.
+  - Reuse the published PerformanceObservation v1 API/projection unmodified for historical
+    consumers; additive bounded read-only L1 view may compose the existing validated
+    summary/terminal snapshot, but may not create a second canonical metric source,
+    duplicate raw terminal transport access or weaken existing integrity validation.
+  - "Create a bounded and reviewable Lean VP L1 baseline gap/readiness document with\
+    \ exact source/task sampling method, disclosed coverage denominators, OBSERVED\
+    \ versus UNKNOWN metric inventory, inherited TASK-326/TASK-328 proof contract\
+    \ compatibility, and separate L2/L3/KA-01 prerequisites. Do not state that L1,\
+    \ VP-01, KA-01 G1\u2013G6 or the whole Lean program has passed merely from documentation\
+    \ or focused tests."
+  - Target only the three listed modify paths. Keep the output privacy-safe, strict,
+    deterministic and provider-neutral with adversarial tests for missing observation,
+    partial timing/tokens, forged source, inconsistent sample coverage, historical
+    v1 compatibility, zero/nonzero values and duplicate/moved identifiers.
+  - Human owns future risk/opt-in/Executor selection, Brain owns semantic proof intent,
+    one admitted Executor owns implementation HOW, Runtime owns verification and evidence,
+    Reviewer semantic PASS/changes and Publisher exact reviewed-source publication.
+    New baseline cannot become a scheduling, semantic mapping, or lifecycle decision
+    authority.
+acceptance:
+- id: AC1
+  condition: A deterministic bounded read-only L1 baseline readiness projection accepts
+    only the already authenticated canonical terminal-performance snapshot and exact
+    TASK selector set, and exposes a stable source/provenance binding without a second
+    observation or persistent authority.
+- id: AC2
+  condition: The projection surfaces the already observed RUN/Executor/verification
+    durations, per-family result counts and input/cached/output-token samples with
+    explicit per-metric coverage denominators; missing and partial data cannot appear
+    as measured zero.
+- id: AC3
+  condition: The projection enumerates critical whole-episode and proof-work dimensions
+    that existing authenticated inputs cannot establish, assigning explicit UNKNOWN/UNAVAILABLE/PARTIAL
+    rather than manufactured exact times, costs, node counts, equivalence or comparative
+    speedup.
+- id: AC4
+  condition: Historical PERFORMANCE_OBSERVATION v1 decoding, shape, canonical terminal/source
+    integrity checks, unsupported/older observation semantics and Runtime-owned RUN_OBSERVATION
+    transport remain byte/behavior compatible under the additive view.
+- id: AC5
+  condition: A concise L1 baseline/readiness document identifies actual available
+    observation samples and coverage limitations, preserves VP-01 as an outstanding
+    measurement dependency, reuses TASK-326/TASK-328 proof foundations, and specifies
+    independently verifiable entry gaps before L2/L3 or any KA-01 opt-in.
+- id: AC6
+  condition: Focused regression fixtures cover legitimate complete/partial/missing
+    inputs, zero versus missing values, stale/cross-RUN/fake terminal identities,
+    conflicting counters, boundedness/privacy and no mutation/verification/provider
+    invocation from the L1 projection.
+- id: AC7
+  condition: The implementation and source delta stay within the three authorized
+    files, introduce no production verification/admission/feedback/correction behavior,
+    preserve one Runtime proof authority and leave all historical tasks, R2.1 live-proof
+    state, KA-01 activation and roadmap planning unchanged.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_performance_observation.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
