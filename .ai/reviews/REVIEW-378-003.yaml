@@ -1,0 +1,27 @@
+review_id: REVIEW-378-003
+reviewed_sha: a72d73e2679daf8502e82fb43f3bc616aca8d68f
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC6: FAIL
+findings:
+- id: F3
+  basis: AC6
+  action: CODE_FIX
+  location: src/aios_renew/review_transport.py::_l1_mapping_review_lineage; tests/test_lean_vp_l1_review_authority.py;
+    docs/AIOS-LEAN-VP-L1-REVIEW-AUTHORITY.md
+  issue: The F2 correction now compares actual contract/mapping Git deltas with RESULT.changed_files,
+    but still accepts a modified contract when the independently selected mapping-review
+    TASK grants only scope.inspect for that contract path. A changed contract must
+    require explicit scope.modify authorization; a mapping-only positive fixture does
+    not test this changed-contract, inspect-only counterexample. This is a material
+    defect exposed by the F2 delta, not a new TASK objective.
+  expected: If the reviewed contract blob differs from its RUN base, require the contract
+    path in that mapping-review TASK scope.modify; retain exact unchanged-contract
+    inspect-only eligibility. Add a focused negative test with contract modified under
+    inspect-only scope and accurately reported RESULT.changed_files, plus a positive
+    changed-contract test when scope.modify expressly authorizes it. Preserve authentic
+    source/RESULT/EVIDENCE/Reviewer/Publisher checks, read-only behavior, and focused
+    minimum-sufficient-v1 verification. No new TASK, production integration, or full-suite
+    verification.
+prior_finding_id: F2
