@@ -11,6 +11,7 @@ from .return_affinity import document_affinity, require_same_affinity
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -128,6 +129,7 @@ class UnifiedStateObservation:
     outstanding_findings: tuple[Mapping[str, str], ...] = ()
     admission_failures: tuple[Mapping[str, Any], ...] = ()
     failure_context: Mapping[str, Any] | None = None
+    operational_context: Mapping[str, Any] | None = None
     # Private handoff from the one canonical reduction to the read-only scope.
     _scope_context: _SemanticScopeContext | None = field(
         default=None, repr=False, compare=False
@@ -136,7 +138,20 @@ class UnifiedStateObservation:
     def as_dict(self) -> dict[str, Any]:
         if self.next_action not in _UNIFIED_NEXT_ACTIONS:
             raise ValueError("invalid Unified State next action")
-        return {
+        if self.failure_context is not None:
+            from .review_transport import validate_failure_context
+            validate_failure_context(self.failure_context)
+            if (self.failure_context["run_id"] != self.failed_run_id
+                    or self.failure_context["subject_sha"] != self.failed_head_sha
+                    or self.failure_context["task"] != {"id": self.task_id, "revision": self.task_revision}):
+                raise ValueError("FAILURE_CONTEXT_SUBSTITUTION")
+        if self.operational_context is not None:
+            from .operational_receipt import validate_repair_delivery_context
+            validate_repair_delivery_context(self.operational_context)
+            attempt = self.operational_context.get("attempt")
+            if attempt and (attempt["failed_run_id"] != self.failed_run_id or self.correction_sha is not None and attempt["repair_sha"] != self.correction_sha):
+                raise ValueError("REPAIR_CONTEXT_SUBSTITUTION")
+        value = {
             "format": "AIOS_UNIFIED_STATE",
             "version": 1,
             "kind": "UNIFIED_STATE",
@@ -178,6 +193,9 @@ class UnifiedStateObservation:
             "verification_invoked": False,
             "state_mutated": False,
         }
+        if self.operational_context is not None:
+            value["operational_context"] = dict(self.operational_context)
+        return value
 
     def render(self) -> str:
         return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
@@ -1813,7 +1831,22 @@ def _is_exact_local_correction_tip(
     return len(tips) == 1 and _operational_parent(pending) == tips[0].run_id
 
 
-def observe_unified_state(
+def observe_unified_state(task_id: str, *, repo: str | Path | None = None,
+                          delivery_id: str | None = None, issue_number: int | None = None,
+                          operational_sources=None) -> UnifiedStateObservation:
+    observation = _observe_unified_state(task_id, repo=repo)
+    if observation.failure_context is not None and os.environ.get("RUNNER_ENVIRONMENT") == "self-hosted":
+        observation = replace(observation, failure_context=_operator().observe_runtime_failure_detail(
+            _operator().resolve_repository(repo), observation.failure_context))
+    if delivery_id is not None or issue_number is not None:
+        from .operational_receipt import observe_repair_delivery
+        observation = replace(observation, operational_context=observe_repair_delivery(
+            delivery_id=delivery_id, issue_number=issue_number, sources=operational_sources))
+        observation.as_dict()  # Bind the operational subject to this canonical reduction.
+    return observation
+
+
+def _observe_unified_state(
     task_id: str, *, repo: str | Path | None = None
 ) -> UnifiedStateObservation:
     """Reduce the exact current TASK lifecycle without acquiring mutation authority."""

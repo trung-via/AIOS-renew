@@ -66,6 +66,251 @@ _PUBLIC_ERROR_TYPES = frozenset({
     "KeyboardInterrupt", "OperatorError", "RuntimeError", "ArtifactValidationError", "RuntimeFailure",
 })
 
+# These observations explain an existing FAILURE. They are never verification
+# reports, EVIDENCE, a completion decision, or a capability to read private bytes.
+_DETAIL_ERRORS = frozenset({"AssertionError", "TypeError", "AttributeError", "ValueError",
+    "NameError", "KeyError", "IndexError", "ImportError", "ModuleNotFoundError",
+    "SyntaxError", "RuntimeError", "FixtureLookupError", "Failed", "UNKNOWN"})
+_DETAIL_CAUSES = frozenset({"UNKNOWN", "MISSING_ACCEPTANCE_CLAIMS", "RESULT_PACKAGE_INVALID",
+    "UNRESOLVED_ITEMS", "EXECUTOR_EVIDENCE_INVALID", "NATIVE_OUTPUT_INVALID",
+    "NATIVE_TIMEOUT", "NATIVE_INTERRUPTED", "NATIVE_INVOCATION_FAILED", "NATIVE_EXIT"})
+_RESPONSE_SHAPES = frozenset({"UNKNOWN", "UNAVAILABLE", "INCOMPLETE_CAPTURE", "EMPTY",
+    "INVALID_JSON", "NON_OBJECT", "MISSING_RESULT", "MISSING_EVIDENCE", "INVALID_RESULT",
+    "INVALID_EVIDENCE", "INVALID_ENVELOPE_FIELDS", "INVALID_RESULT_FIELDS", "INVALID_CLAIMS", "RESULT_PACKAGE_SHAPE"})
+
+
+def _safe_test_identity(node: str) -> tuple[str | None, bool]:
+    # Parameter values can contain secrets, paths, newlines, and even summary
+    # delimiters. Never retain any part of that suffix.
+    if not isinstance(node, str):
+        return None, False
+    identity, separator, _ = node.partition("[")
+    valid = (len(identity) <= 512 and re.fullmatch(
+        r"tests/(?:[A-Za-z_][A-Za-z0-9_]*/)*test_[A-Za-z0-9_]+\.py(?:::[A-Za-z_][A-Za-z0-9_]*)*", identity)
+        is not None)
+    return identity if valid else None, bool(separator)
+
+
+def _detail_error_types(text: str) -> list[str]:
+    if not isinstance(text, str):
+        return ["UNKNOWN"]
+    found = {name for name in _DETAIL_ERRORS - {"UNKNOWN"} if re.search(
+        r"(?:^|\n| - )(?:E\s+)?" + name + r"(?:\s*:|\b$)", text[:65536])}
+    if re.search(r"(?m)^(?:E\s+)?\s*fixture '[^\r\n]*' not found\s*$", text[:65536]):
+        found.add("FixtureLookupError")
+    return sorted(found) or ["UNKNOWN"]
+
+
+def _response_shape(native: Any) -> str:
+    if not isinstance(native, dict):
+        return "UNAVAILABLE"
+    capture = native.get("stdout")
+    if isinstance(capture, dict):
+        if capture.get("truncated") is True:
+            return "INCOMPLETE_CAPTURE"
+        capture = capture.get("text") if capture.get("availability") == "captured" else None
+    if not isinstance(capture, str):
+        return "UNAVAILABLE"
+    if not capture.strip():
+        return "EMPTY"
+    if len(capture) > 65536:
+        return "INCOMPLETE_CAPTURE"
+    # Follow the native adapter's final agent-message boundary. A task_complete
+    # event, usage event, clean candidate, or independent test result is no proxy.
+    last, direct_payload, saw_event = None, None, False
+    decoded = True
+    try:
+        value = json.loads(capture)
+    except (ValueError, TypeError):
+        value = None
+        decoded = False
+    if not isinstance(value, dict) or not {"result", "evidence"} <= value.keys():
+        for line in capture.splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            saw_event = saw_event or isinstance(event.get("type"), str)
+            if {"result", "evidence"} <= event.keys():
+                direct_payload = event
+            item = event.get("item")
+            if (event.get("type") == "item.completed" and isinstance(item, dict)
+                    and item.get("type") == "agent_message" and isinstance(item.get("text"), str)):
+                last = item["text"]
+        if last is not None:
+            try:
+                value = json.loads(last)
+            except ValueError:
+                return "INVALID_JSON"
+        elif direct_payload is not None:
+            value = direct_payload
+        elif saw_event:
+            return "UNKNOWN"
+        elif not decoded:
+            return "INVALID_JSON"
+    if not isinstance(value, dict):
+        return "NON_OBJECT"
+    if "result" not in value:
+        return "MISSING_RESULT"
+    if "evidence" not in value:
+        return "MISSING_EVIDENCE"
+    if set(value) != {"result", "evidence"}:
+        return "INVALID_ENVELOPE_FIELDS"
+    if not isinstance(value["result"], dict):
+        return "INVALID_RESULT"
+    if not isinstance(value["evidence"], list):
+        return "INVALID_EVIDENCE"
+    result = value["result"]
+    if set(result) != {"head_sha", "claims", "changed_files", "unresolved"}:
+        return "INVALID_RESULT_FIELDS"
+    claims = result["claims"]
+    if (not isinstance(claims, list) or any(not isinstance(claim, dict)
+            or set(claim) != {"id", "satisfies", "claim", "evidence"}
+            or not isinstance(claim["id"], str) or not isinstance(claim["claim"], str)
+            or any(not isinstance(claim[k], list) or any(not isinstance(x, str) for x in claim[k])
+                   for k in ("satisfies", "evidence")) for claim in claims)):
+        return "INVALID_CLAIMS"
+    from .artifacts import ArtifactValidationError, validate_structural_result
+    try:
+        validate_structural_result(result)
+    except (ArtifactValidationError, ValueError, TypeError, KeyError):
+        return "INVALID_RESULT"
+    return "RESULT_PACKAGE_SHAPE"
+
+
+def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Project only already-lawful, source-bound private observations.
+
+    No path, URL, raw capture or caller-supplied diagnostic block is opened. The
+    transport writer calls this after validating the private FAILURE's role.
+    Historical public input cannot regain withheld observations.
+    """
+    error = data["error"]
+    private = "public_projection" not in data
+    source_digest = (_failure_digest(data) if private else
+                     data["public_projection"]["private_failure_digest"])
+    detail = dict(format="AIOS_SAFE_FAILURE_DETAIL", version=1, run_id=data["run_id"],
+        subject_sha=data["failed_head_sha"], private_failure_digest=source_digest, phase=data["phase"],
+        availability="UNAVAILABLE", verification=[], verification_truncated=False,
+        cause="UNKNOWN", missing_acceptance_ids=[], final_response_shape="UNKNOWN",
+        raw_output_withheld=True)
+    if not private:
+        return detail
+    outcomes = error.get("verification", []) if data["phase"] == "VERIFICATION" else []
+    for index, outcome in enumerate(outcomes[:32]):
+        if outcome["exit_code"] == 0:
+            continue
+        nodes = []
+        ref = outcome.get("verification")
+        observed = ref.get("candidate") if isinstance(ref, dict) else None
+        summary = outcome.get("summary", "")
+        observation_complete = observed.get("complete") if isinstance(observed, dict) else None
+        unstable = observed.get("unstable") if isinstance(observed, dict) else None
+        if isinstance(observed, dict):
+            reports = [r for r in observed["reports"] if r["outcome"] == "FAIL"]
+            source_kind, digest = "PROTECTED_OBSERVATION", _failure_digest(observed)
+            failure_count = observed["failure_count"]
+        else:
+            # A summary is an observed output excerpt, never a complete pytest
+            # report. Exit code 1 alone identifies no individual failing test.
+            source_kind, digest = "PROTECTED_SUMMARY", _failure_digest(summary)
+            reports = []
+            excerpt = summary[:65536]
+            pytest_command = re.match(r"^python(?:3)? -m pytest(?: |$)", outcome["command"]) or outcome["command"] == "python scripts/aios_parallel_full_suite.py"
+            header = re.search(r"(?m)^=+ short test summary info =+\s*$", excerpt) if pytest_command else None
+            for line in (excerpt[header.end():].splitlines() if header else []):
+                match = re.match(r"^(FAILED|ERROR) (tests/[^\r\n]+)", line)
+                if match:
+                    reports.append(dict(nodeid=match[2].split(" - ", 1)[0],
+                        phase="unknown", detail=line.split(" - ", 1)[-1]))
+            failure_count = None
+        for report in reports[:32]:
+            identity, parameters = _safe_test_identity(report["nodeid"])
+            nodes.append(dict(identity=identity, identity_digest=_failure_digest(report["nodeid"]),
+                parameters_withheld=parameters, phase=report["phase"],
+                error_types=_detail_error_types(report.get("detail", ""))))
+        detail["verification"].append(dict(index=index, command=_public_command(outcome["command"]),
+            exit_code=outcome["exit_code"], source_kind=source_kind, source_digest=digest,
+            availability="AVAILABLE" if observed and observation_complete and not unstable else
+                "PARTIAL" if reports else "UNAVAILABLE",
+            complete=observation_complete, unstable=unstable, failure_count=failure_count,
+            failed_nodes=nodes, nodes_truncated=len(reports) > len(nodes)))
+    detail["verification_truncated"] = len(outcomes) > 32
+    message = error.get("message", "")
+    if data["phase"] == "COMPLETION_GATE":
+        missing = re.fullmatch(r"RESULT does not satisfy acceptance criteria: (AC[A-Za-z0-9_-]{1,64}(?:, AC[A-Za-z0-9_-]{1,64}){0,31})", message)
+        if missing:
+            detail.update(cause="MISSING_ACCEPTANCE_CLAIMS", missing_acceptance_ids=missing[1].split(", "))
+        elif message.startswith("invalid canonical ResultPackage: "):
+            detail["cause"] = "RESULT_PACKAGE_INVALID"
+        elif message == "RESULT has unresolved items":
+            detail["cause"] = "UNRESOLVED_ITEMS"
+        elif message in {"executor structural output evidence must be empty",
+                         "executor structural claim evidence references must be empty"}:
+            detail["cause"] = "EXECUTOR_EVIDENCE_INVALID"
+    elif data["phase"] == "EXECUTION":
+        diagnostic = _safe_failure_diagnostic(data)
+        category = diagnostic["category"]
+        if category in _DETAIL_CAUSES:
+            detail["cause"] = category
+        if error.get("type") in {"CodexOutputError", "AntigravityOutputError"}:
+            detail["final_response_shape"] = _response_shape(error.get("native_diagnostics"))
+    if detail["cause"] != "UNKNOWN" or any(v["availability"] != "UNAVAILABLE" for v in detail["verification"]):
+        detail["availability"] = "PARTIAL"  # Only allowlisted structural observations, never full diagnostics.
+    return detail
+
+
+def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
+    fields = {"format", "version", "run_id", "subject_sha", "private_failure_digest", "phase",
+        "availability", "verification", "verification_truncated", "cause", "missing_acceptance_ids",
+        "final_response_shape", "raw_output_withheld"}
+    if (not isinstance(detail, dict) or set(detail) != fields or detail["format"] != "AIOS_SAFE_FAILURE_DETAIL"
+            or type(detail["version"]) is not int or detail["version"] != 1
+            or any(detail[k] != owner[k] for k in ("run_id", "subject_sha", "private_failure_digest", "phase"))
+            or detail["availability"] not in {"UNAVAILABLE", "PARTIAL"}
+            or type(detail["verification_truncated"]) is not bool or detail["raw_output_withheld"] is not True
+            or detail["cause"] not in _DETAIL_CAUSES or detail["final_response_shape"] not in _RESPONSE_SHAPES
+            or not isinstance(detail["verification"], list) or len(detail["verification"]) > 32
+            or not isinstance(detail["missing_acceptance_ids"], list) or len(detail["missing_acceptance_ids"]) > 32
+            or any(not isinstance(x, str) or re.fullmatch(r"AC[A-Za-z0-9_-]{1,64}", x) is None
+                   for x in detail["missing_acceptance_ids"])):
+        raise ValueError("invalid safe FAILURE detail")
+    if (bool(detail["missing_acceptance_ids"]) != (detail["cause"] == "MISSING_ACCEPTANCE_CLAIMS")
+            or detail["cause"] in {"MISSING_ACCEPTANCE_CLAIMS", "RESULT_PACKAGE_INVALID", "UNRESOLVED_ITEMS", "EXECUTOR_EVIDENCE_INVALID"}
+                and detail["phase"] != "COMPLETION_GATE"
+            or detail["cause"].startswith("NATIVE_") and detail["phase"] != "EXECUTION"
+            or detail["final_response_shape"] != "UNKNOWN" and detail["phase"] != "EXECUTION"
+            or detail["verification"] and detail["phase"] != "VERIFICATION"):
+        raise ValueError("safe FAILURE detail phase mismatch")
+    previous = -1
+    for item in detail["verification"]:
+        fields = {"index", "command", "exit_code", "source_kind", "source_digest", "availability",
+            "complete", "unstable", "failure_count", "failed_nodes", "nodes_truncated"}
+        if (not isinstance(item, dict) or set(item) != fields or type(item["index"]) is not int
+                or not previous < item["index"] < 32 or item["index"] >= len(owner["verification"])
+                or any(item[k] != owner["verification"][item["index"]][k] for k in ("command", "exit_code"))
+                or type(item["exit_code"]) is not int or item["exit_code"] == 0
+                or item["source_kind"] not in {"PROTECTED_OBSERVATION", "PROTECTED_SUMMARY"}
+                or not _is_digest(item["source_digest"]) or item["availability"] not in {"AVAILABLE", "PARTIAL", "UNAVAILABLE"}
+                or any(item[k] is not None and type(item[k]) is not bool for k in ("complete", "unstable"))
+                or (item["complete"] is True and item["unstable"] is True)
+                or item["failure_count"] is not None and (type(item["failure_count"]) is not int or not 0 <= item["failure_count"] <= 4096)
+                or not isinstance(item["failed_nodes"], list) or len(item["failed_nodes"]) > 32
+                or type(item["nodes_truncated"]) is not bool):
+            raise ValueError("invalid safe FAILURE verification detail")
+        previous = item["index"]
+        _public_command(item["command"])
+        for node in item["failed_nodes"]:
+            if (not isinstance(node, dict) or set(node) != {"identity", "identity_digest", "parameters_withheld", "phase", "error_types"}
+                    or node["identity"] is not None and _safe_test_identity(node["identity"]) != (node["identity"], False)
+                    or not _is_digest(node["identity_digest"]) or type(node["parameters_withheld"]) is not bool
+                    or node["phase"] not in {"collect", "setup", "call", "teardown", "unknown"}
+                    or not isinstance(node["error_types"], list) or not 1 <= len(node["error_types"]) <= len(_DETAIL_ERRORS)
+                    or any(not isinstance(t, str) or t not in _DETAIL_ERRORS for t in node["error_types"])):
+                raise ValueError("invalid safe failed node")
+
 
 def _capture_fact(value: Any, *, partial: bool) -> dict[str, Any]:
     """Describe capture without copying any native string into public material."""
@@ -267,7 +512,7 @@ def failure_context(data: Mapping[str, Any], *, artifact_sha: str | None = None,
         else:
             outcome.update(observation_availability="UNAVAILABLE", detail_status="UNAVAILABLE")
         outcomes.append(outcome)
-    return dict(format="AIOS_FAILURE_CONTEXT", version=1, kind="FAILURE_CONTEXT",
+    context = dict(format="AIOS_FAILURE_CONTEXT", version=1, kind="FAILURE_CONTEXT",
                 run_id=public["run_id"], task=public["task"], executor=public["executor"],
                 base_sha=public["base_sha"], subject_sha=public["failed_head_sha"], phase=public["phase"],
                 candidate=public["candidate"], candidate_availability=("AVAILABLE" if candidate_available is True else
@@ -279,6 +524,8 @@ def failure_context(data: Mapping[str, Any], *, artifact_sha: str | None = None,
                 source=dict(artifact_sha=artifact_sha, failure_digest=_failure_digest(data),
                             private_failure_digest=public["public_projection"]["private_failure_digest"]),
                 proof="NON_PASS_DIAGNOSTIC")
+    context["safe_detail"] = error.get("safe_detail") or safe_failure_detail(public)
+    return context
 
 
 def validate_failure_context(value: Any) -> None:
@@ -287,7 +534,7 @@ def validate_failure_context(value: Any) -> None:
     fields = {"format", "version", "kind", "run_id", "task", "executor", "base_sha", "subject_sha", "phase",
               "candidate", "candidate_availability", "diagnostic", "verification", "verification_truncated", "evidence_identities",
               "evidence_identities_truncated", "source", "proof"}
-    if (not isinstance(value, dict) or set(value) != fields or value["format"] != "AIOS_FAILURE_CONTEXT"
+    if (not isinstance(value, dict) or set(value) - {"safe_detail", "detail_blocker"} != fields or value["format"] != "AIOS_FAILURE_CONTEXT"
             or type(value["version"]) is not int or value["version"] != 1 or value["kind"] != "FAILURE_CONTEXT"
             or value["proof"] != "NON_PASS_DIAGNOSTIC"
             or value["candidate_availability"] not in {"AVAILABLE", "UNAVAILABLE", "UNKNOWN"}
@@ -331,6 +578,16 @@ def validate_failure_context(value: Any) -> None:
     projected["public_projection"] = dict(format=PUBLIC_FAILURE_FORMAT, proof="PRIVATE_NON_PASS_FAILURE",
         private_failure_digest=source["private_failure_digest"], projection_digest=_failure_digest(projected))
     validate_public_failure(projected)
+    if "safe_detail" in value:
+        validate_safe_failure_detail(value["safe_detail"], dict(run_id=value["run_id"],
+            subject_sha=value["subject_sha"], phase=value["phase"],
+            private_failure_digest=source["private_failure_digest"], verification=value["verification"]))
+    if "detail_blocker" in value:
+        blocker = value["detail_blocker"]
+        if (not isinstance(blocker, dict) or set(blocker) != {"code", "action"}
+                or blocker["code"] not in {"PRIVATE_DETAIL_UNAVAILABLE", "PRIVATE_DETAIL_ACCESS_DENIED", "PRIVATE_DETAIL_INTEGRITY_INVALID"}
+                or blocker["action"] != "READ_EXACT_RUNTIME_PROJECTION"):
+            raise ValueError("invalid FAILURE detail blocker")
     _public_bytes(value, max_bytes=256 * 1024)
 
 
@@ -412,7 +669,8 @@ def _public_metadata_value(value: Any, template: Any = None) -> Any:
         return value
     if value.get("kind") == "FAILURE" and _needs_failure_projection(value):
         marker = template.get("public_projection", {}) if isinstance(template, Mapping) else {}
-        return _project_failure(value, projection_format=marker.get("format", PUBLIC_FAILURE_FORMAT))
+        return _project_failure(value, projection_format=marker.get("format", PUBLIC_FAILURE_FORMAT),
+            include_detail=("safe_detail" in template.get("error", {}) if marker else True))
     data = {key: _public_metadata_value(item, template.get(key) if isinstance(template, Mapping) else None)
             for key, item in value.items()}
     if "run_id" in data and "workspace" in data and "task" in data:
@@ -569,7 +827,8 @@ def _project_reference(value: Mapping[str, Any]) -> dict[str, Any]:
     return projected
 
 
-def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC_FAILURE_FORMAT) -> dict[str, Any]:
+def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC_FAILURE_FORMAT,
+                     include_detail: bool = True) -> dict[str, Any]:
     """Produce FAILURE metadata; omitted proof remains bound, never recreated."""
     if "public_projection" in data:
         validate_public_failure(data)
@@ -596,6 +855,8 @@ def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC
         if "exit_code" in error:
             projected["error"]["exit_code"] = error["exit_code"]
         projected["error"]["diagnostic"] = diagnostic
+        if include_detail:
+            projected["error"]["safe_detail"] = safe_failure_detail(data)
     # Full EVIDENCE in any validated package role retains identity/digest only.
     identities: dict[str, dict[str, str]] = {}
 
@@ -828,7 +1089,7 @@ def validate_public_failure(data: Mapping[str, Any]) -> None:
             raise ValueError("invalid public FAILURE failed node count")
 
     error = data["error"]
-    extra = {"exit_code", "diagnostic"} if marker["format"] == PUBLIC_FAILURE_FORMAT else set()
+    extra = {"exit_code", "diagnostic", "safe_detail"} if marker["format"] == PUBLIC_FAILURE_FORMAT else set()
     if (not isinstance(error, dict) or not {"type", "message", "verification"} <= error.keys()
             or set(error) - {"type", "message", "verification", "evidence_identities"} - extra
             or not match(error["type"], r"[A-Za-z_][A-Za-z0-9_.]{0,127}")
@@ -837,6 +1098,10 @@ def validate_public_failure(data: Mapping[str, Any]) -> None:
         raise ValueError("invalid public FAILURE diagnostics")
     if marker["format"] == PUBLIC_FAILURE_FORMAT:
         _validate_failure_diagnostic(data)
+    if "safe_detail" in error:
+        validate_safe_failure_detail(error["safe_detail"], dict(run_id=data["run_id"],
+            subject_sha=data["failed_head_sha"], phase=data["phase"],
+            private_failure_digest=marker["private_failure_digest"], verification=error["verification"]))
     identities = error.get("evidence_identities", [])
     if not isinstance(identities, list):
         raise ValueError("invalid public FAILURE evidence identities")

@@ -1374,6 +1374,36 @@ def test_ingress_repair_human_action_and_exact_selectors_survive_receipt_bound()
     assert "failed_run_id: RUN-101-001" in receipt
 
 
+def test_task372_author_repair_main_records_original_source_after_existing_preflight(tmp_path, monkeypatch):
+    from aios_renew.operational_receipt import validate_repair_source
+    proof, state, document = _repair_attestations(action="NO_CHANGE")
+    calls = _install_repair_attestations(monkeypatch, proof, state, document)
+    event = _event()
+    event["issue"]["id"] = 10777
+    event["sender"] = {"login": "trung-via", "type": "User"}
+    path = _write_event(tmp_path, event)
+    source = tmp_path / "source.json"
+    for name, value in {"GITHUB_REPOSITORY": "trung-via/AIOS-renew", "GITHUB_ACTOR": "trung-via",
+            "GITHUB_EVENT_NAME": "issues", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": "c" * 40,
+            "GITHUB_RUN_ID": "1001", "GITHUB_RUN_ATTEMPT": "1", "AIOS_REPAIR_SOURCE_PATH": str(source)}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("GITHUB_TRIGGERING_ACTOR", raising=False)
+    arguments = ["--event", str(path), "--policy", str(_write_policy(tmp_path)), "--repo", str(tmp_path),
+                 "--output", str(tmp_path / "outputs")]
+    assert carrier.main(arguments) == 0
+    observed = validate_repair_source(json.loads(source.read_bytes()))
+    assert observed["lane"] == "ingress" and observed["issue"]["id"] == 10777
+    assert observed["original_actor"] == "trung-via" and observed["repair_sha"] == "a" * 40
+    assert observed["delivery_id"] == "repair-RUN-101-001-" + "a" * 40
+    assert calls == [("RUN-101-001", tmp_path, "a" * 40)] * 2
+    before = source.read_bytes()
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **k: IngressResult(
+        operation="AUTHOR_REPAIR", status="IDEMPOTENT", replayed=True,
+        canonical_destination="refs/heads/aios/repair/RUN-101-001", canonical_sha="a" * 40))
+    assert carrier.main(arguments) == 0 and source.read_bytes() == before
+    assert len(calls) == 2  # No preflight replay, delivery, retry or RUN admission.
+
+
 @pytest.mark.parametrize("action", ["NO_CHANGE", "FINALIZE_CANDIDATE"])
 def test_ingress_repair_executorless_route_rechecks_exact_subject_and_replay_is_read_only(tmp_path, monkeypatch, action):
     from aios_renew import correction_preflight, unified_state

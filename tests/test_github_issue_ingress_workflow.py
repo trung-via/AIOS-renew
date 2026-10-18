@@ -7,6 +7,19 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_task372_ingress_carries_authenticated_parent_to_same_executorless_dispatch():
+    workflow, text = _workflow()
+    steps = workflow["jobs"]["deliver"]["steps"]
+    source = next(step for step in steps if step.get("id") == "repair_source")
+    dispatch = next(step for step in steps if step.get("id") == "repair_dispatch")
+    assert steps.index(source) < steps.index(dispatch)
+    assert source["with"]["name"] == "aios-repair-correlation-v1-ingress-attempt-${{ github.run_attempt }}"
+    assert "origin_artifact_id: process.env.AIOS_ORIGIN_ARTIFACT_ID" in dispatch["with"]["script"]
+    assert "String(context.runId)" in dispatch["with"]["script"]
+    assert "repair_wakeup_route == 'EXECUTORLESS'" in dispatch["if"]
+    assert "AIOS_REPAIR_WORKFLOW_POINTER=" in text
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "aios-brain-ingress.yml"
 POLICY_PATH = ROOT / ".ai" / "brain-ingress-carriers.yaml"
 
@@ -201,6 +214,7 @@ def test_workflow_posts_one_bounded_receipt_and_only_closes_success() -> None:
         "AIOS_FAILED_RUN_ID": "${{ steps.ingress.outputs.failed_run_id }}",
         "AIOS_REPAIR_SHA": "${{ steps.ingress.outputs.repair_sha }}",
         "AIOS_REPAIR_WAKEUP_ROUTE": "${{ steps.ingress.outputs.repair_wakeup_route }}",
+        "AIOS_ORIGIN_ARTIFACT_ID": "${{ steps.repair_source.outputs.artifact-id }}",
     }
     assert "if (fullySuccessful)" in text
     assert "(!publicationRequested || dispatchAccepted)" in text
@@ -296,6 +310,7 @@ def test_workflow_dispatches_safe_repair_wakeup_once_with_bounded_canonical_sele
         "AIOS_REPAIR_DISPATCH_ID": "${{ steps.ingress.outputs.repair_dispatch_id }}",
         "AIOS_FAILED_RUN_ID": "${{ steps.ingress.outputs.failed_run_id }}",
         "AIOS_REPAIR_SHA": "${{ steps.ingress.outputs.repair_sha }}",
+        "AIOS_ORIGIN_ARTIFACT_ID": "${{ steps.repair_source.outputs.artifact-id }}",
     }
 
     script = dispatch["with"]["script"]

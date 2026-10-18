@@ -16126,6 +16126,58 @@ def test_auto_reads_only_exact_canonical_source_profile(tmp_path: Path, monkeypa
     assert not (tmp_path / ".git/aios").exists()
 
 
+@pytest.mark.parametrize("state", ["available", "expired", "substituted", "permission"])
+def test_task372_selfhost_safe_projection_reads_only_exact_private_failure(tmp_path, monkeypatch, state):
+    from aios_renew.review_transport import _project_failure, failure_context, validate_failure_context
+    from tests.test_review_transport import _native_failure_fixture
+    _, private = _native_failure_fixture()
+    public = _project_failure(private, include_detail=False)
+    context = failure_context(public, artifact_sha="c" * 40)
+    failures = tmp_path / "failures"
+    failures.mkdir()
+    path = failures / (private["run_id"] + ".json")
+    if state == "substituted": private["failed_head_sha"] = "f" * 40
+    if state != "expired": path.write_text(json.dumps(private), encoding="utf-8")
+    monkeypatch.setenv("RUNNER_ENVIRONMENT", "self-hosted" if state != "permission" else "github-hosted")
+    monkeypatch.setattr(operator_module, "_runtime_paths_readonly", lambda repo: SimpleNamespace(failures=failures))
+    before = path.read_bytes() if path.exists() else None
+    observed = operator_module.observe_runtime_failure_detail(tmp_path, context)
+    validate_failure_context(observed)
+    if state == "available":
+        assert observed["safe_detail"]["cause"] == "NATIVE_TIMEOUT"
+        assert "detail_blocker" not in observed
+    else:
+        assert observed["detail_blocker"]["code"] == {"expired": "PRIVATE_DETAIL_UNAVAILABLE",
+            "substituted": "PRIVATE_DETAIL_INTEGRITY_INVALID", "permission": "PRIVATE_DETAIL_ACCESS_DENIED"}[state]
+    assert "synthetic-secret" not in json.dumps(observed) and "C:/private" not in json.dumps(observed)
+    assert (path.read_bytes() if path.exists() else None) == before
+
+
+def test_task372_missing_executor_rejection_keeps_precise_no_run_receipt(tmp_path, monkeypatch):
+    import aios_renew.repair_dispatch as dispatch_module
+    _write_external_governed_policy(tmp_path)
+    state = tmp_path / ".git/aios"
+    receipt_path = tmp_path / "receipt.json"
+    monkeypatch.setenv("AIOS_OPERATIONAL_RECEIPT_PATH", str(receipt_path))
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *a, **k: CorrectionPreflightResult(
+        family="REPAIR", status="READY", phase="READY", reason_code="READY", task_id="TASK-111",
+        task_revision=2, action="CODE_FIX", executor_required=True))
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *a, **k: SimpleNamespace(
+        task_id="TASK-111", next_action="EXECUTE_REPAIR", failed_run_id="RUN-111-001", correction_sha="a" * 40,
+        correction_document={"action": "CODE_FIX"}, correction={"executor_required": True}))
+    monkeypatch.setattr(dispatch_module, "execute_repair_dispatch", lambda *a, **k: pytest.fail("rejection created delivery execution"))
+    with pytest.raises(OperatorError, match="explicit Executor"):
+        run_repair_wakeup("repair-372", "RUN-111-001", "a" * 40, executor=None, repo=tmp_path)
+    first = json.loads(receipt_path.read_bytes())
+    operator_module._project_operational_delivery(tmp_path, family="REPAIR", delivery_id="repair-372",
+        selectors={"failed_run_id": "RUN-111-001", "repair_sha": "a" * 40, "executor": None})
+    assert json.loads(receipt_path.read_bytes()) == first
+    assert first["cause"]["reason_code"] == "CODING_REPAIR_EXECUTOR_REQUIRED" and first["run_created"] is False
+    assert not (state / "runs").exists() and not (state / "failures").exists()
+
+
 def test_auto_missing_source_is_actionable_receipt_without_run_or_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _human_auto_issue(monkeypatch, tmp_path)
     state = tmp_path / ".git/aios"

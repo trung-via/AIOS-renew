@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CARRIER = ROOT / ".github/workflows/aios-brain-repair-wakeup.yml"
 TARGET = ROOT / ".github/workflows/aios-self-hosted-repair-wakeup.yml"
 POLICY = ROOT / ".ai/brain-repair-wakeup-carriers.yaml"
+ORIGIN_FIELDS = {"origin_workflow_run_id", "origin_run_attempt", "origin_artifact_id"}
 
 
 def _self_host_provenance_admits(
@@ -48,6 +49,32 @@ def _self_host_provenance_admits(
 def _workflow(path: Path) -> tuple[dict, str]:
     text = path.read_text(encoding="utf-8")
     return yaml.load(text, Loader=yaml.BaseLoader), text
+
+
+def test_task372_observation_job_is_independent_read_only_and_attempt_bound():
+    workflow, text = _workflow(TARGET)
+    observer = workflow["jobs"]["observe-repair-source"]
+    execution = workflow["jobs"]["execute-repair"]
+    assert observer["runs-on"] == "ubuntu-latest"
+    assert "needs" not in execution and "needs" not in observer
+    assert workflow["permissions"] == {"contents": "read"}
+    assert observer["steps"][0]["with"]["ref"] == "${{ github.sha }}"
+    assert set(observer["env"]) == {"AIOS_REPAIR_SOURCE_PATH", "AIOS_REPAIR_DISPATCH_ID", "AIOS_FAILED_RUN_ID", "AIOS_REPAIR_SHA"}
+    uploads = [s["with"] for s in observer["steps"] if s.get("uses") == "actions/upload-artifact@v4"]
+    assert uploads[0]["name"] == "aios-repair-correlation-v1-delivery-attempt-${{ github.run_attempt }}"
+    assert uploads[1]["name"] == "aios-repair-delivery-v1-${{ inputs.repair_dispatch_id }}"
+    assert uploads[1]["overwrite"] == "true"
+    assert text.count("$controlSource repair-wakeup ") == 1
+    for event in ("workflow_dispatch", "workflow_call"):
+        assert all(workflow["on"][event]["inputs"][field]["required"] == "false" for field in ORIGIN_FIELDS)
+
+
+def test_task372_manual_receipt_retains_exact_source_pointer_without_new_dispatch():
+    workflow, text = _workflow(CARRIER)
+    assert "AIOS_REPAIR_WORKFLOW_POINTER=" in text
+    assert "aios-repair-correlation-v1-wakeup-attempt-${{ github.run_attempt }}" in text
+    assert workflow["jobs"]["dispatch"]["uses"] == "./.github/workflows/aios-self-hosted-repair-wakeup.yml"
+    assert "createWorkflowDispatch" not in text
 
 
 def test_reusable_issue_admission_is_exact_and_github_hosted() -> None:
@@ -98,12 +125,12 @@ def test_fixed_target_has_manual_and_reusable_carriers_and_one_command_surface()
         "model_source",
         "effort_source",
     }
-    assert set(workflow["on"]["workflow_dispatch"]["inputs"]) == expected
-    assert set(workflow["on"]["workflow_call"]["inputs"]) == expected
+    assert set(workflow["on"]["workflow_dispatch"]["inputs"]) == expected | ORIGIN_FIELDS
+    assert set(workflow["on"]["workflow_call"]["inputs"]) == expected | ORIGIN_FIELDS
     job = workflow["jobs"]["execute-repair"]
     assert job["runs-on"] == ["self-hosted", "windows", "x64", "aios-renew"]
     assert workflow["permissions"] == {"contents": "read"}
-    assert "actions/checkout" not in text
+    assert all("actions/checkout" not in step.get("uses", "") for step in job["steps"])
     assert "AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}" in text
     assert text.count("$controlSource repair-wakeup ") == 1
     for forbidden in ("aios continue", "aios repair ", "codex ", "antigravity "):
@@ -124,8 +151,8 @@ def test_fixed_target_uses_exact_github_owned_provenance_gate() -> None:
         "model_source",
         "effort_source",
     }
-    assert set(workflow["on"]["workflow_dispatch"]["inputs"]) == expected_inputs
-    assert set(workflow["on"]["workflow_call"]["inputs"]) == expected_inputs
+    assert set(workflow["on"]["workflow_dispatch"]["inputs"]) == expected_inputs | ORIGIN_FIELDS
+    assert set(workflow["on"]["workflow_call"]["inputs"]) == expected_inputs | ORIGIN_FIELDS
 
     job = workflow["jobs"]["execute-repair"]
     assert job["env"]["AIOS_DELIVERY_ACTOR"] == "${{ github.actor }}"

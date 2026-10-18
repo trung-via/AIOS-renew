@@ -60,6 +60,27 @@ def _write(tmp_path: Path, name: str, value: object) -> Path:
     return path
 
 
+@pytest.mark.parametrize("executor,version", [("codex", 2), ("AUTO", 3), (None, 3)])
+def test_task372_admitted_human_routes_record_exact_issue_attempt_without_profile_bytes(tmp_path, monkeypatch, executor, version):
+    from aios_renew.operational_receipt import validate_repair_source
+    event = _event(_body(executor=executor, version=version))
+    event["issue"]["id"] = 32111
+    event_path = _write(tmp_path, "event.json", event)
+    source = tmp_path / "source.json"
+    for name, value in {"GITHUB_REPOSITORY": "trung-via/AIOS-renew", "GITHUB_ACTOR": "trung-via",
+            "GITHUB_TRIGGERING_ACTOR": "trung-via", "GITHUB_EVENT_NAME": "issues", "GITHUB_REF": "refs/heads/main",
+            "GITHUB_SHA": "c" * 40, "GITHUB_RUN_ID": "39026366429", "GITHUB_RUN_ATTEMPT": "2",
+            "AIOS_REPAIR_SOURCE_PATH": str(source)}.items():
+        monkeypatch.setenv(name, value)
+    assert carrier.main(["--event", str(event_path), "--policy", str(_write(tmp_path, "policy.yaml", POLICY)),
+        "--output", str(tmp_path / "outputs"), "--receipt", str(tmp_path / "receipt")]) == 0
+    observed = validate_repair_source(json.loads(source.read_bytes()))
+    assert observed["workflow_run_id"] == 39026366429 and observed["run_attempt"] == 2
+    assert observed["issue"]["id"] == 32111 and observed["issue"]["number"] == 111
+    assert observed["original_actor"] == "trung-via" and observed["delivery_id"] == "repair-111"
+    assert "model" not in observed and event["issue"]["body"] not in source.read_text(encoding="utf-8")
+
+
 def test_valid_issue_forwards_only_four_bounded_selectors(tmp_path: Path) -> None:
     policy = carrier.load_policy(_write(tmp_path, "policy.yaml", POLICY))
     request = carrier.admit_event(_write(tmp_path, "event.json", _event()), policy)

@@ -162,6 +162,8 @@ def _invalidation_basis(observed: Mapping[str, Any], request: Mapping[str, str] 
     if "correction_subject" in observed:
         # Immutable ref movement invalidates an audit even when facts are equal.
         basis["correction_subject_sha256"] = _digest(observed["correction_subject"])
+    if "diagnostics" in observed:
+        basis["diagnostics_sha256"] = _digest(observed["diagnostics"])
     return basis
 
 
@@ -187,6 +189,18 @@ class BrainWorkContext:
     repair_supersession_material: Mapping[str, Any] | None = field(default=None, repr=False)
 
     def as_dict(self) -> dict[str, Any]:
+        from .brain_sync import validate_diagnostic_context
+        from .review_transport import validate_failure_context
+        diagnostics = self.canonical_observation.get("diagnostics")
+        if diagnostics is not None:
+            validate_diagnostic_context(diagnostics, self.canonical_observation.get("selected_task"))
+        unified = self.canonical_observation.get("unified_state")
+        if unified and unified.get("failure_context") is not None:
+            validate_failure_context(unified["failure_context"])
+            if (unified["failure_context"]["run_id"] != unified.get("failed_run_id")
+                    or unified["failure_context"]["subject_sha"] != unified.get("failed_head_sha")
+                    or unified["failure_context"]["task"] != unified.get("task")):
+                raise BrainContextError("FAILURE_CONTEXT_SUBSTITUTION")
         return {
             "format": "AIOS_BRAIN_WORK_CONTEXT", "version": 1,
             "kind": "BRAIN_WORK_CONTEXT",
@@ -207,11 +221,15 @@ def compose_brain_work_context(
     current_request: Mapping[str, Any] | None = None,
     *,
     repo: str | Path | None = None,
+    diagnostic_selector: Mapping[str, Any] | None = None,
 ) -> BrainWorkContext:
     """Compose one request-scoped view from current Brain Sync observation."""
+    if diagnostic_selector is not None and (not isinstance(diagnostic_selector, Mapping) or not diagnostic_selector
+            or set(diagnostic_selector) - {"task_id", "run_id", "delivery_id", "issue_number", "workflow_run_id", "run_attempt"}):
+        raise BrainContextError("invalid diagnostic selector")
     if snapshot is None:
-        snapshot = observe_brain_sync(repo=repo)
-    elif repo is not None or not isinstance(snapshot, BrainSyncSnapshot):
+        snapshot = observe_brain_sync(repo=repo, **dict(diagnostic_selector or {}))
+    elif repo is not None or diagnostic_selector is not None or not isinstance(snapshot, BrainSyncSnapshot):
         raise BrainContextError("supply either a Brain Sync snapshot or repository")
     request = _request(current_request)
     observed = snapshot.as_dict()

@@ -22,6 +22,63 @@ IDENTITY = dict(run_id="RUN-fixture-001", artifact_sha="a" * 40,
 BODY = "a rejected immutable carrier"
 
 
+class Task372CanonicalSources:
+    """Immutable canonical RUN/FAILURE documents through the real attention reader."""
+    def __init__(self, *, run_id="RUN-369-001", task_id="TASK-369"):
+        from tests.test_review_transport import _native_failure_fixture
+        from aios_renew.review_transport import public_failure
+        run, private = _native_failure_fixture()
+        self.artifact_sha = "e" * 40
+        self.run_id = run_id
+        run.update(run_id=run_id, task=dict(id=task_id, revision=1), workspace="protected-runtime-workspace")
+        private.update(run_id=run_id, task=run["task"], phase="VERIFICATION")
+        private["error"] = dict(type="RuntimeVerificationError", message="Runtime verification failed",
+            verification=[dict(command="python -m pytest -q tests/test_fixture.py", exit_code=1,
+                summary="========== short test summary info ==========\nFAILED tests/test_fixture.py::test_parse[credential=synthetic-secret] - TypeError: malformed fixture\n1 failed")])
+        self.run, self.failure = run, json.loads(public_failure(json.dumps(private).encode()))
+        self.values = {"refs/heads/aios/failure-artifacts/" + run_id: self.artifact_sha,
+                       "refs/heads/aios/failure/" + run_id: private["failed_head_sha"]}
+        self.moved, self.reads = False, 0
+
+    def refs(self, *patterns):
+        self.reads += 1
+        result = {k: v for k, v in self.values.items() if any(fnmatchcase(k, pattern) for pattern in patterns)}
+        if self.moved and self.reads >= 3:
+            result["refs/heads/aios/failure-artifacts/" + self.run_id] = "f" * 40
+        return result
+
+    def document(self, sha, name):
+        if sha != self.artifact_sha:
+            raise brain.AttentionError("FAILURE_SOURCE_IDENTITY_MISMATCH")
+        if name == ".ai/transport/run.json": return copy.deepcopy(self.run)
+        if name == ".ai/transport/failure.json": return copy.deepcopy(self.failure)
+        raise OSError("protected source absent")
+
+
+def test_task372_attention_reads_canonical_failure_and_exact_operational_job():
+    from tests.test_operational_receipt import Task372Actions
+    canonical = Task372CanonicalSources()
+    item = brain.attention(brain.FAILURE, dict(run_id=canonical.run_id, artifact_sha=canonical.artifact_sha))
+    context = brain.terminal_failure_context(item, canonical)
+    assert context["safe_detail"]["verification"][0]["failed_nodes"][0]["error_types"] == ["TypeError"]
+    assert "synthetic-secret" not in json.dumps(context)
+    backend = Task372Actions()
+    source = brain.source_document([brain.operational_observation(backend.receipt)])
+    pointer = dict(workflow_run_id=backend.run_id, run_attempt=1, artifact_id=22, source_digest=brain.digest(source))
+    event = brain.project_source(source, pointer)[0]
+    observed = brain.operational_context(source, event, pointer, backend)
+    assert observed["workflow_context"]["attempt"]["jobs"][0]["job_id"] == backend.job_id
+    assert observed["workflow_context"]["run_created"] is False
+
+
+def test_task372_attention_rejects_moved_canonical_failure():
+    sources = Task372CanonicalSources()
+    sources.moved, sources.reads = True, 1
+    item = brain.attention(brain.FAILURE, dict(run_id=sources.run_id, artifact_sha=sources.artifact_sha))
+    with pytest.raises(brain.AttentionError, match="FAILURE_SOURCE_MOVED"):
+        brain.terminal_failure_context(item, sources)
+
+
 def source_event(observation):
     source = brain.source_document([observation])
     pointer = dict(workflow_run_id=100, run_attempt=1, artifact_id=200, source_digest=brain.digest(source))

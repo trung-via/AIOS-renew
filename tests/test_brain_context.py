@@ -18,6 +18,31 @@ from aios_renew.brain_context import (
 from aios_renew.brain_sync import BrainSyncSnapshot
 
 
+def test_task372_provider_neutral_work_context_carries_only_bound_safe_detail(monkeypatch, tmp_path):
+    from aios_renew import brain_sync, brain_context
+    from tests.test_brain_attention import Task372CanonicalSources
+    from tests.test_operational_receipt import Task372Actions
+    actions, canonical = Task372Actions(), Task372CanonicalSources()
+    monkeypatch.setattr(brain_sync, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(brain_sync, "_resolve_main_sha", lambda repo: "d" * 40)
+    monkeypatch.setattr(brain_sync, "_resolve_repository_name", lambda repo: "trung-via/AIOS-renew")
+    real = brain_sync.observe_brain_sync
+    monkeypatch.setattr(brain_context, "observe_brain_sync", lambda **kw: real(**kw, operational_sources=actions, canonical_sources=canonical))
+    context = compose_brain_work_context(repo=tmp_path, diagnostic_selector={"issue_number": actions.issue_number},
+        current_request={"flow_selector": "DIAGNOSTIC"})
+    exported = context.render()
+    assert context.canonical_observation["diagnostics"]["operational_context"]["attempt"]["workflow_run_id"] == actions.run_id
+    assert "synthetic-secret" not in exported and "raw_path" not in exported and "Traceback" not in exported
+    assert "diagnostics_sha256" in context.invalidation_basis
+    with pytest.raises(BrainContextError, match="invalid diagnostic selector"):
+        compose_brain_work_context(repo=tmp_path, diagnostic_selector={"url": "https://attacker.invalid/private"})
+    forged = deepcopy(context.canonical_observation["diagnostics"])
+    forged["failure_context"]["safe_detail"]["run_id"] = "RUN-foreign-001"
+    source = real(repo=tmp_path, run_id=canonical.run_id, canonical_sources=canonical)
+    with pytest.raises(ValueError):
+        compose_brain_work_context(replace(source, diagnostics=forged))
+
+
 class CanonicalAuditRepository:
     """Canonical Git with the primary RUN/ResultPackage shape of R5 artifact
     356d320a919f0b0df5df254702e0a0c17780e042, including its admitted null head.

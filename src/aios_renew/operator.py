@@ -627,6 +627,47 @@ def _runtime_paths_readonly(repo: str | Path) -> RuntimePaths:
     )
 
 
+def observe_runtime_failure_detail(repo: str | Path, context: Mapping[str, Any]) -> dict[str, Any]:
+    """Existing self-host control-plane projection; returns no private bytes/path.
+
+    The canonical context must already be authenticated by its caller. Access is
+    restricted to the exact local FAILURE and its immutable private-source digest.
+    The separate admitted-Executor private-read API below is unchanged.
+    """
+    from .review_transport import (PUBLIC_FAILURE_MAX_BYTES, _failure_digest,
+        failure_document, safe_failure_detail, validate_failure_context)
+    validate_failure_context(context)
+    observed = dict(context)
+    if observed.get("safe_detail", {}).get("availability") == "PARTIAL":
+        return observed
+    def blocked(code):
+        observed["detail_blocker"] = {"code": code, "action": "READ_EXACT_RUNTIME_PROJECTION"}
+        return observed
+    if os.environ.get("RUNNER_ENVIRONMENT") != "self-hosted":
+        return blocked("PRIVATE_DETAIL_ACCESS_DENIED")
+    path = _runtime_paths_readonly(repo).failures / (context["run_id"] + ".json")
+    try:
+        if path.is_symlink() or path.resolve() != path.absolute():
+            return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
+        with path.open("rb") as stream:
+            raw = stream.read(PUBLIC_FAILURE_MAX_BYTES + 1)
+        if len(raw) > PUBLIC_FAILURE_MAX_BYTES:
+            return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
+        private = failure_document(raw, private_original=True)
+        if ("public_projection" in private or _failure_digest(private) != context["source"]["private_failure_digest"]
+                or any(private[k] != context[k] for k in ("run_id", "task", "executor", "base_sha", "phase"))
+                or private["failed_head_sha"] != context["subject_sha"]):
+            return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
+        observed["safe_detail"] = safe_failure_detail(private)
+        observed.pop("detail_blocker", None)
+        validate_failure_context(observed)
+        return observed
+    except OSError:
+        return blocked("PRIVATE_DETAIL_UNAVAILABLE")
+    except (ReviewTransportError, ValueError, TypeError, KeyError):
+        return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
+
+
 def read_executor_private_failure(
     repo: str | Path, *, admitted_run: Run, subject_sha: str,
     locator: str, expected_sha256: str,
@@ -9059,7 +9100,17 @@ def run_repair_wakeup(
                 "actor": request.actor, "source_run_id": failed_run_id,
                 "source_profile_sha256": digest,
             }
-        validate_repair_executor_requirement(action, executor_required, executor)
+        try:
+            validate_repair_executor_requirement(action, executor_required, executor)
+        except RepairDispatchError:
+            if executor_required is True and executor is None:
+                # Exact owner-observed pre-RUN rejection, independent of logs.
+                _project_blocked_correction_delivery(
+                    family="REPAIR", delivery_id=repair_dispatch_id,
+                    preflight={"status": "BLOCKED", "phase": "REPAIR_EXECUTOR_REQUIREMENT",
+                               "reason_code": "CODING_REPAIR_EXECUTOR_REQUIRED"},
+                    selectors={"failed_run_id": failed_run_id, "repair_sha": repair_sha})
+            raise
 
         def invoke_repair() -> RepairInvocation:
             try:

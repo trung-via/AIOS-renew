@@ -423,7 +423,9 @@ def authenticated_delivery(
                 or _mapping(event.get("repository"), "dispatch repository").get("full_name") != policy.repository
                 or event.get("ref") not in ("main", "refs/heads/main")):
             raise GitHubIssueRepairWakeupError("dispatch Human proof mismatch")
-        if set(inputs) - (_BASE_REQUEST_KEYS - {"format", "version"} | {"model_source", "effort_source"}):
+        origin_fields = {"origin_workflow_run_id", "origin_run_attempt", "origin_artifact_id"}
+        if (set(inputs) - (_BASE_REQUEST_KEYS - {"format", "version"} | {"model_source", "effort_source"} | origin_fields)
+                or any(inputs.get(k) for k in origin_fields)):
             raise GitHubIssueRepairWakeupError("dispatch contains unsupported selection inputs")
         if any(value is not None and not isinstance(value, str) for value in inputs.values()):
             raise GitHubIssueRepairWakeupError("dispatch selection inputs must be strings")
@@ -481,6 +483,20 @@ def delivery_main() -> int:
                 stream.write(render_rejection(exc) + "\n")
         return 1
     return 0
+
+
+def source_delivery_main() -> int:
+    """Hosted observation of the actual reusable/manual workflow attempt.
+
+    This consumes only GitHub-owned event context and carries no admission,
+    Executor selection, dispatch or retry authority. The execute job retains
+    its independent existing provenance and Runtime gates.
+    """
+    from .operational_receipt import record_repair_workflow_source
+    return 0 if record_repair_workflow_source(os.environ.get("GITHUB_EVENT_PATH", ""), lane="delivery",
+        delivery_id=os.environ.get("AIOS_REPAIR_DISPATCH_ID", ""),
+        failed_run_id=os.environ.get("AIOS_FAILED_RUN_ID", ""),
+        repair_sha=os.environ.get("AIOS_REPAIR_SHA", "")) else 1
 
 
 def _bounded_text(value: str) -> str:
@@ -565,6 +581,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         _write_text(args.output, request.github_outputs())
         _write_text(args.receipt, render_admitted(request))
+        from .operational_receipt import record_repair_workflow_source
+        record_repair_workflow_source(args.event, lane="wakeup", delivery_id=request.repair_dispatch_id,
+            failed_run_id=request.failed_run_id, repair_sha=request.repair_sha)
     except GitHubIssueRepairWakeupError as exc:
         from .brain_attention import observe_carrier_rejection
         observe_carrier_rejection(args.event, "REPAIR")

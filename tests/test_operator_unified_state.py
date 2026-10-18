@@ -16,6 +16,27 @@ from aios_renew.unified_state import (
     observe_semantic_review_scope,
     observe_unified_state as direct_observe_unified_state,
 )
+
+
+def test_task372_unified_state_attaches_operational_observation_without_changing_authority(tmp_path, monkeypatch):
+    from tests.test_operational_receipt import Task372Actions
+    from tests.test_brain_attention import Task372CanonicalSources
+    from aios_renew.brain_attention import attention, FAILURE, terminal_failure_context
+    backend, sources = Task372Actions(), Task372CanonicalSources()
+    context = terminal_failure_context(attention(FAILURE, dict(run_id=sources.run_id, artifact_sha=sources.artifact_sha)), sources)
+    original = DirectUnifiedStateObservation("TASK-369", 1, "FAILURE", "AUTHOR_REPAIR", failed_run_id=sources.run_id,
+        failed_head_sha=context["subject_sha"], correction_sha="a" * 40, failure_context=context)
+    monkeypatch.setattr(unified_state_module, "_observe_unified_state", lambda *a, **k: original)
+    monkeypatch.delenv("RUNNER_ENVIRONMENT", raising=False)
+    observed = direct_observe_unified_state("TASK-369", repo=tmp_path, issue_number=backend.issue_number, operational_sources=backend)
+    value = observed.as_dict()
+    assert observed.next_action == original.next_action and value["authority"] == original.as_dict()["authority"]
+    assert value["operational_context"]["run_created"] is False
+    assert value["failure_context"]["safe_detail"]["verification"][0]["failed_nodes"][0]["error_types"] == ["TypeError"]
+    backend.source["failed_run_id"] = backend.origin["failed_run_id"] = "RUN-foreign-001"
+    backend.receipt["selectors"]["failed_run_id"] = "RUN-foreign-001"
+    with pytest.raises(ValueError, match="REPAIR_CONTEXT_SUBSTITUTION"):
+        direct_observe_unified_state("TASK-369", repo=tmp_path, issue_number=backend.issue_number, operational_sources=backend)
 from aios_renew.operator import (
     CorrectionPreflightResult,
     OperatorError,

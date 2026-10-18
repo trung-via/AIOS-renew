@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import copy
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -13,6 +16,243 @@ from aios_renew.operational_receipt import (
     project_delivery_receipt,
     workflow_failure_receipt,
 )
+from aios_renew.brain_attention import ArtifactSources, AttentionError
+
+
+class Task372Actions(ArtifactSources):
+    """Synthetic GitHub-owned API/artifact shapes, including the observed no-RUN job.
+
+    Only HTTP is substituted: correlation, ZIP/schema, attempt, receipt, jobs,
+    source digest and portable-output gates are all production consumers.
+    """
+    run_id = 39026366429
+    job_id = 117378039859
+    delivery_id = "repair-RUN-369-001-" + "a" * 40
+    issue_number = 2075
+
+    def __init__(self):
+        super().__init__("trung-via/AIOS-renew")
+        self.calls = []
+        self.issue = dict(id=20075, number=self.issue_number, body="immutable synthetic AUTHOR_REPAIR",
+            user={"login": "trung-via"}, repository_url="https://api.github.com/repos/" + self.repository)
+        self.origin = dict(format="AIOS_REPAIR_WORKFLOW_SOURCE", version=1, lane="ingress", repository=self.repository,
+            workflow_run_id=1001, run_attempt=1, control_sha="c" * 40, event="issues", actor="trung-via",
+            triggering_actor="trung-via", original_actor="trung-via", delivery_id=self.delivery_id,
+            failed_run_id="RUN-369-001", repair_sha="a" * 40,
+            issue=dict(id=20075, number=self.issue_number, body_digest=hashlib.sha256(self.issue["body"].encode()).hexdigest()), parent=None)
+        self.source = dict(self.origin, lane="delivery", workflow_run_id=self.run_id, event="workflow_dispatch",
+            actor="github-actions[bot]", triggering_actor="github-actions[bot]", original_actor="github-actions[bot]", issue=None,
+            parent=dict(workflow_run_id=1001, run_attempt=1, artifact_id=10))
+        self.receipt = OperationalReceipt("REPAIR", self.delivery_id, "ADMISSION_REJECTED",
+            {"failed_run_id": self.origin["failed_run_id"], "repair_sha": self.origin["repair_sha"]},
+            cause=dict(authority="CORRECTION_PREFLIGHT", phase="REPAIR_EXECUTOR_REQUIREMENT",
+                       reason_code="CODING_REPAIR_EXECUTOR_REQUIRED"), control_sha="c" * 40).as_dict()
+        self.runs = {1001: self.run_document(self.origin), self.run_id: self.run_document(self.source)}
+        self.runs[1001]["conclusion"] = "success"
+        self.jobs = [dict(id=self.job_id, run_id=self.run_id, run_attempt=1, name="execute-repair", status="completed", conclusion="failure",
+            steps=[dict(number=2, name="Deliver one immutable REPAIR intent", status="completed", conclusion="failure")])]
+        self.extra_sources = {}
+        self.defect = None
+
+    @staticmethod
+    def run(source):
+        return dict(id=source["workflow_run_id"], run_attempt=source["run_attempt"], head_sha=source["control_sha"],
+            path=".github/workflows/aios-brain-ingress.yml" if source["lane"] == "ingress" else ".github/workflows/aios-self-hosted-repair-wakeup.yml",
+            head_repository={"full_name": source["repository"]}, head_branch="main", event=source["event"],
+            actor={"login": source["actor"]}, triggering_actor={"login": source["triggering_actor"]}, status="completed", conclusion="failure")
+
+    def request(self, path, binary=False):
+        # The production run authenticator calls self.run: retain it below;
+        # fixtures construct run JSON through run_document instead.
+        self.calls.append(path)
+        if self.defect == "permission":
+            raise AttentionError("SOURCE_UNAVAILABLE")
+        payloads = {10: self.origin, 21: self.source, **self.extra_sources}
+        if self.receipt is not None:
+            payloads[22] = self.receipt
+        artifacts = {}
+        archives = {}
+        for identifier, payload in payloads.items():
+            attempt = payload.get("run_attempt", 1)
+            name = (f"aios-repair-correlation-v1-{payload['lane']}-attempt-{attempt}" if "lane" in payload
+                    else f"aios-operational-receipt-v2-repair-attempt-{self.source['run_attempt']}")
+            filename = "source.json" if "lane" in payload else "aios-repair-operational-receipt-v2.json"
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w") as zipped:
+                raw = b"{" if self.defect == "invalid-json" and identifier == 21 else json.dumps(payload).encode()
+                zipped.writestr("../private" if self.defect == "zip-path" and identifier == 21 else filename, raw)
+            archives[identifier] = buffer.getvalue()
+            artifacts[identifier] = dict(id=identifier, name=name, expired=self.defect == "expired" and identifier == 21,
+                size_in_bytes=len(archives[identifier]), workflow_run={"id": payload.get("workflow_run_id", self.run_id)},
+                digest="sha256:" + hashlib.sha256(archives[identifier]).hexdigest())
+        if self.defect == "digest":
+            artifacts[21]["digest"] = "sha256:" + "0" * 64
+        if self.defect == "receipt-expired" and 22 in artifacts:
+            artifacts[22]["expired"] = True
+        if self.defect == "artifact-run":
+            artifacts[21]["workflow_run"]["id"] = 999
+        if self.defect == "lane":
+            artifacts[21]["name"] = "aios-repair-correlation-v1-wakeup-attempt-1"
+        artifacts[23] = dict(id=23, name="aios-repair-delivery-v1-" + self.delivery_id,
+            expired=False, workflow_run={"id": self.run_id})
+        pointer = dict(workflow_run_id=1001, run_attempt=1, artifact_id=10)
+        if path == f"/issues/{self.issue_number}":
+            return copy.deepcopy(self.issue)
+        if path == f"/issues/{self.issue_number}/comments?per_page=100":
+            comment = dict(user={"login": "github-actions[bot]"}, body="AIOS_REPAIR_WORKFLOW_POINTER=" + json.dumps(pointer))
+            return [comment, copy.deepcopy(comment)]  # Duplicate hints do not create an attempt.
+        if path == f"/actions/artifacts?name=aios-repair-delivery-v1-{self.delivery_id}&per_page=100":
+            return dict(total_count=1, artifacts=[artifacts[23]])
+        for identifier in self.runs:
+            if path == f"/actions/runs/{identifier}/artifacts?per_page=100":
+                items = [a for a in artifacts.values() if a["workflow_run"]["id"] == identifier]
+                # An inconsistent API list must not conceal a substituted artifact.
+                if self.defect == "artifact-run" and identifier == self.run_id:
+                    items.append(artifacts[21])
+                return dict(total_count=len(items), artifacts=items)
+            for attempt in (1, 2):
+                if path == f"/actions/runs/{identifier}/attempts/{attempt}":
+                    return copy.deepcopy(self.runs[identifier])
+        if path == f"/actions/runs/{self.run_id}/attempts/{self.source['run_attempt']}/jobs?per_page=100":
+            if self.defect == "jobs-permission":
+                raise AttentionError("SOURCE_UNAVAILABLE")
+            return dict(total_count=len(self.jobs), jobs=copy.deepcopy(self.jobs))
+        for identifier in payloads:
+            if path == f"/actions/artifacts/{identifier}":
+                return copy.deepcopy(artifacts[identifier])
+            if path == f"/actions/artifacts/{identifier}/zip":
+                return archives[identifier]
+        raise AttentionError("SOURCE_UNAVAILABLE")
+
+    run_document = run
+    run = ArtifactSources.run
+
+
+def test_task372_original_issue_finds_exact_missing_executor_job_without_run_or_logs():
+    from aios_renew.operational_receipt import observe_repair_delivery, validate_repair_delivery_context
+    backend = Task372Actions()
+    result = observe_repair_delivery(issue_number=backend.issue_number, sources=backend)
+    validate_repair_delivery_context(result)
+    assert result["availability"] == "AVAILABLE", result
+    attempt = result["attempt"]
+    assert (attempt["workflow_run_id"], attempt["run_attempt"]) == (39026366429, 1)
+    assert attempt["jobs"][0]["job_id"] == 117378039859
+    assert attempt["jobs"][0]["steps"][0] == dict(number=2, name="Deliver one immutable REPAIR intent", status="completed", conclusion="failure")
+    assert attempt["cause"]["reason_code"] == "CODING_REPAIR_EXECUTOR_REQUIRED"
+    assert attempt["boundary"] == "ADMISSION_REJECTED" and result["run_created"] is False
+    assert attempt["original_actor"] == "trung-via" and attempt["actor"] == "github-actions[bot]"
+    assert attempt["run_id"] is None and attempt["failed_run_id"] == "RUN-369-001"
+    assert attempt["repair_sha"] == "a" * 40 and attempt["delivery_id"] == backend.delivery_id
+    assert not any("logs" in path or "/actions/runs?" in path for path in backend.calls)
+    assert "immutable synthetic" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("defect", ["permission", "expired", "invalid-json", "zip-path", "digest", "artifact-run", "lane",
+    "wrong-job-run", "wrong-job-attempt", "wrong-attempt", "wrong-issue", "moved-issue", "wrong-sha", "parent", "receipt", "secret-cause"])
+def test_task372_substitutions_fail_closed_with_typed_blocker(defect):
+    from aios_renew.operational_receipt import observe_repair_delivery, validate_repair_delivery_context
+    backend = Task372Actions()
+    backend.defect = defect
+    if defect == "wrong-job-run": backend.jobs[0]["run_id"] = 999
+    if defect == "wrong-job-attempt": backend.jobs[0]["run_attempt"] = 2
+    if defect == "wrong-attempt": backend.runs[backend.run_id]["run_attempt"] = 2
+    if defect == "wrong-issue": backend.issue["id"] += 1
+    if defect == "moved-issue": backend.issue["body"] += " edited"
+    if defect == "wrong-sha": backend.source["control_sha"] = "d" * 40
+    if defect == "parent": backend.source["repair_sha"] = "d" * 40
+    if defect == "receipt": backend.receipt["selectors"]["failed_run_id"] = "RUN-foreign-001"
+    if defect == "secret-cause": backend.receipt["cause"]["reason_code"] = "credential=synthetic-secret"
+    result = observe_repair_delivery(issue_number=backend.issue_number, sources=backend)
+    validate_repair_delivery_context(result)
+    assert result["availability"] == "UNAVAILABLE" and result["attempt"] is None, result
+    assert result["blocker"]["code"] and result["run_created"] is None
+    assert "synthetic-secret" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("status,conclusion,receipt", [("queued", None, False), ("in_progress", None, False),
+    ("completed", "failure", False), ("completed", "failure", True), ("completed", "success", True)])
+def test_task372_delivery_lookup_preserves_real_workflow_state_over_transient_marker(status, conclusion, receipt):
+    from aios_renew.operational_receipt import observe_repair_delivery
+    backend = Task372Actions()
+    backend.runs[backend.run_id].update(status=status, conclusion=conclusion)
+    backend.jobs[0].update(status=status, conclusion=conclusion)
+    backend.jobs[0]["steps"] = [] if status == "queued" else [dict(number=2, name="Deliver one immutable REPAIR intent", status=status, conclusion=conclusion)]
+    if receipt:
+        backend.receipt = OperationalReceipt("REPAIR", backend.delivery_id, "AIOS_INVOKED", backend.receipt["selectors"], control_sha="c" * 40).as_dict()
+    else:
+        backend.receipt = None
+    result = observe_repair_delivery(delivery_id=backend.delivery_id, sources=backend)
+    assert result["availability"] == "AVAILABLE", result
+    assert result["attempt"]["status"] == {"in_progress": "running"}.get(status, status)
+    assert result["run_created"] is None  # A marker never establishes absence or existence of a RUN.
+    assert result["attempt"]["cause"]["reason_code"] == "UNKNOWN"
+    if conclusion == "failure": assert result["attempt"]["boundary"] == "OPERATIONAL_FAILED"
+
+
+def test_task372_missing_source_and_cross_attempt_ambiguity_are_not_matches():
+    from aios_renew.operational_receipt import observe_repair_delivery
+    backend = Task372Actions()
+    backend.extra_sources[24] = dict(backend.source, run_attempt=2)
+    # Both attempt endpoints authenticate their own immutable attempt, as GitHub does.
+    real = backend.request
+    def request(path, binary=False):
+        value = real(path, binary)
+        if path == f"/actions/runs/{backend.run_id}/attempts/2": value["run_attempt"] = 2
+        return value
+    backend.request = request
+    result = observe_repair_delivery(delivery_id=backend.delivery_id, sources=backend)
+    assert result["blocker"]["code"] == "REPAIR_ATTEMPT_AMBIGUOUS" and result["attempt"] is None
+    backend.defect = "permission"
+    result = observe_repair_delivery(delivery_id=backend.delivery_id, sources=backend)
+    assert result["availability"] == "UNAVAILABLE" and result["attempt"] is None
+
+
+@pytest.mark.parametrize("defect", ["jobs-permission", "receipt-expired", "withheld-names"])
+def test_task372_missing_detail_preserves_authenticated_attempt_and_strongest_failure(defect):
+    from aios_renew.operational_receipt import observe_repair_delivery
+    backend = Task372Actions()
+    backend.defect = defect
+    backend.runs[backend.run_id].update(status="in_progress", conclusion=None)
+    if defect == "withheld-names":
+        backend.jobs[0]["name"] = "private-token=synthetic-secret"
+        backend.jobs[0]["steps"][0]["name"] = "C:/private/synthetic-secret"
+    result = observe_repair_delivery(issue_number=backend.issue_number, sources=backend)
+    assert result["availability"] == "AVAILABLE", result
+    attempt = result["attempt"]
+    assert attempt["workflow_run_id"] == backend.run_id and "synthetic-secret" not in json.dumps(result)
+    if defect == "jobs-permission":
+        assert attempt["jobs_availability"] == "UNAVAILABLE" and attempt["jobs_blocker"]["code"] == "SOURCE_UNAVAILABLE"
+        assert attempt["boundary"] == "ADMISSION_REJECTED"  # Existing owner-observed cause survives missing jobs.
+    else:
+        assert attempt["workflow_failure_observed"] is True
+        if defect == "receipt-expired":
+            assert attempt["boundary"] == "OPERATIONAL_FAILED" and attempt["receipt_availability"] == "UNAVAILABLE"
+            assert attempt["receipt_blocker"]["code"] == "REPAIR_ARTIFACT_EXPIRED" and result["run_created"] is None
+        else:
+            assert attempt["jobs"][0]["name"] == attempt["jobs"][0]["steps"][0]["name"] == "WITHHELD"
+
+
+def test_task372_stronger_preflight_receipt_survives_finally_projection(tmp_path, monkeypatch):
+    from aios_renew.operational_receipt import write_environment_receipt
+    backend = Task372Actions()
+    path = tmp_path / "receipt.json"
+    path.write_text(json.dumps(backend.receipt), encoding="utf-8")
+    monkeypatch.setenv("AIOS_OPERATIONAL_RECEIPT_PATH", str(path))
+    write_environment_receipt(OperationalReceipt("REPAIR", backend.delivery_id, "AIOS_INVOKED", backend.receipt["selectors"], control_sha="c" * 40))
+    assert json.loads(path.read_bytes()) == backend.receipt
+
+
+def test_task372_old_invocation_receipt_without_attribution_flags_stays_unknown():
+    from aios_renew.operational_receipt import observe_repair_delivery
+    backend = Task372Actions()
+    backend.receipt = OperationalReceipt("REPAIR", backend.delivery_id, "AIOS_INVOKED", backend.receipt["selectors"], control_sha="c" * 40).as_dict()
+    backend.receipt.pop("run_created")
+    backend.receipt.pop("executor_invoked")
+    original = copy.deepcopy(backend.receipt)
+    context = observe_repair_delivery(delivery_id=backend.delivery_id, sources=backend)
+    assert context["availability"] == "AVAILABLE" and context["run_created"] is None
+    assert context["attempt"]["boundary"] == "OPERATIONAL_FAILED"
+    assert backend.receipt == original
 
 
 def test_operational_flags_cannot_substitute_for_canonical_run_creation():

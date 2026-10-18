@@ -575,6 +575,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     from .brain_attention import observe_ingress_success
     observe_ingress_success(delivery, args.repo)
+    if delivery.repair_dispatch_id is not None:
+        from .operational_receipt import record_repair_workflow_source
+        record_repair_workflow_source(args.event, lane="ingress", delivery_id=delivery.repair_dispatch_id,
+            failed_run_id=delivery.repair_failed_run_id, repair_sha=delivery.repair_sha)
     print(delivery.render_receipt())
     return 0
 

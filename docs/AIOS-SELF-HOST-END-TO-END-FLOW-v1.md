@@ -293,13 +293,93 @@ before wakeup. Hosted transport may lack protected reusable state; uncertainty
 cannot schedule the bot route. These Issues stay open for Human action, without
 reporting a rejected dispatch or failed workflow job when no dispatch was attempted.
 The same bounded Issue receipt writer and permissions are retained; private Runtime
-diagnostics are withheld. No workflow run/job/step/log discovery is added (Gap 2).
+diagnostics are withheld. TASK-371 addressed Gap 1; the following read boundary
+addresses the independently deferred attempt correlation and safe detail gap.
 
 Identical authoring replay emits no repair route or repeated wakeup. Existing Human
 manual/AUTO carriers keep exact selection/provenance and manual priority; immutable
 dispatch-id/profile conflicts, replay, journal locking and source CAS remain with
 their existing owners. Focused ingress/repair tests cover both consumers and the
 pre-RUN boundary using structural packages without fabricated verification PASS.
+
+### Exact REPAIR attempt and safe failure diagnosis (TASK-372)
+
+Use `operational_receipt.observe_repair_delivery(issue_number=...)` for the exact
+original Issue, or `delivery_id=...` for its immutable dispatch identity. Existing
+Issue receipts carry a bounded `AIOS_REPAIR_WORKFLOW_POINTER`; it is a discovery
+hint, never authentication by itself. The reader authenticates the immutable
+correlation artifact against GitHub's repository, producer path, main branch,
+head SHA, actor, triggering actor, actual workflow run ID and attempt. The source
+binds the original Issue ID/body digest/actor, failed RUN and correction SHA.
+An executorless ingress dispatch carries the exact originating artifact pointer;
+the child must authenticate that parent and equal its delivery/subject selectors.
+Human manual/AUTO reusable calls retain their own admitted Issue provenance.
+
+A hosted observation job records the delivery source independently of the queued
+self-host job. Attempt-named source artifacts remain immutable. An exact-name
+delivery artifact provides bounded GitHub-native discovery without scanning run
+titles, timestamps or logs. Replacing this index on a rerun changes only a hint;
+the reader still enumerates and authenticates the immutable attempt sources.
+Multiple distinct attempts require an exact `workflow_run_id` and `run_attempt`
+selector. Missing/expired sources, moved Issues, permission failures, incomplete
+bounded discovery, invalid archives/digests and substitutions produce typed
+blockers, with no claimed match. Historical attempts without such a lawful link
+remain unavailable; there is no synthetic historical backfill.
+
+For an authenticated attempt, the reader obtains bounded job IDs, step numbers,
+allowlisted names and queued/running/completed/conclusion facts from the
+attempt-specific GitHub jobs API. Unknown names are withheld. A failed job/step
+remains observable while the workflow is still running. Precise Runtime
+correction-preflight rejection receipts survive generic `AIOS_INVOKED` finally
+projections; missing-Executor rejection has
+`CORRECTION_PREFLIGHT/REPAIR_EXECUTOR_REQUIREMENT/CODING_REPAIR_EXECUTOR_REQUIRED`.
+Other unobserved step causes are explicitly `UNKNOWN`. Missing job or receipt
+detail has its own availability/blocker and does not erase an authenticated
+attempt or an independently observed failure. No GitHub logs are downloaded.
+An invocation marker leaves RUN existence unknown; only an owner-attributed
+receipt supplies a RUN pointer. Canonical RUN/FAILURE facts are read separately.
+
+`brain_sync.observe_brain_sync` accepts exact `task_id`, `run_id`, `issue_number`
+or `delivery_id` diagnostic selectors; `brain_context.compose_brain_work_context`
+accepts the same bounded fields through `diagnostic_selector`. For example:
+
+```python
+snapshot = observe_brain_sync(repo=repo, issue_number=originating_issue_number)
+context = compose_brain_work_context(
+    snapshot, current_request={"flow_selector": "DIAGNOSTIC"})
+```
+
+No Human-supplied URL, diagnostic block or private path is an accepted selector.
+Exact diagnostic selection does not alter a roadmap bookmark or select lifecycle
+work. The snapshot keeps source FAILURE context separate from an associated
+operational attempt and any separately authenticated attributed-RUN FAILURE.
+Unified State can attach an exact Issue/delivery observation without changing its
+canonical next action. Attention and portable Work Context validate the same safe
+schemas; changed diagnostic source material invalidates the context fingerprint.
+
+New public FAILURE projections add bounded `safe_detail`, linked to the immutable
+RUN, subject and private-source digest. Verification detail preserves the ordered
+failed authored command, observation/summary digest, count when observed,
+complete/unstable flags and at most 32 failed-node views. Pytest parameters are
+entirely withheld; only admissible repository test identities and fixed error
+class names survive. A protected text summary is explicitly partial, and exit
+code 1 alone supplies no failed test identity. Completion detail can identify
+owner-observed missing acceptance IDs, invalid ResultPackage/evidence structure
+or unresolved items. Native detail exposes fixed exit/interruption/output and
+final-response-shape categories. Unobserved sub-causes remain `UNKNOWN`.
+Neither `task_complete`, clean Git state nor an independent pytest invocation
+establishes canonical completion.
+
+Historical V1/V2 projections remain readable and exact. Only the existing
+authorized self-host control-plane boundary may supplement absent public detail
+from the exact local FAILURE whose digest equals the canonical context's private
+source digest. Access denial, expired/missing bytes and integrity errors are typed
+detail blockers. This read returns only the allowlisted projection; it exports no
+host path, locator capability, native/model response, traceback or stdout/stderr.
+The admitted same-RUN Executor private-read API and Runtime verification ownership
+remain unchanged. All these observations are non-PASS diagnostics, with no
+dispatch, retry, Executor/correction selection, RUN/FAILURE creation, review,
+publication or planning authority and no new credential/permission requirement.
 
 ## 7. PUBLISH
 
