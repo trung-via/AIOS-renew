@@ -1,0 +1,47 @@
+review_id: REVIEW-378-001
+reviewed_sha: 2accbac93821a0c03823c0e26023d59f1ef1b8c6
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+findings:
+- id: F1
+  basis: AC2
+  action: CODE_FIX
+  location: src/aios_renew/review_transport.py::_l1_mapping_review_lineage
+  issue: The eligibility reader requires run.head_sha == selected.reviewed_sha even
+    though Runtime's canonical immutable ACTIVE run.json uses head_sha=null. Independently
+    read canonical RUN-376-001, RUN-377-002 and RUN-378-001 all carry head_sha=null
+    while their RESULT.head_sha carries the verified candidate. Genuine existing PRIMARY
+    mapping-review RUN lineage is therefore rejected despite valid source, result
+    and review identities; the fixture supplies a noncanonical populated RUN head_sha.
+  expected: Accept the existing canonical ACTIVE RUN record with head_sha=null, authenticate
+    base/task/run from its immutable bytes, and cross-bind the reviewed candidate
+    SHA to the canonical RESULT/EVIDENCE, exact review ref, Reviewer PASS and Publisher
+    ancestry. Reject forged/moved candidates. Add a focused positive fixture matching
+    actual Runtime artifact RUN/RESULT representation and a negative candidate-swap
+    case.
+- id: F2
+  basis: AC6
+  action: CODE_FIX
+  location: src/aios_renew/review_transport.py::_l1_mapping_review_lineage; tests/test_lean_vp_l1_review_authority.py::reviewed_package;
+    docs/AIOS-LEAN-VP-L1-REVIEW-AUTHORITY.md
+  issue: The test positive fixture starts with contract content already committed
+    at RUN base but nonetheless lists contract in RESULT.changed_files. The reader
+    demands both contract and mapping paths in changed_files even though the published
+    eligibility documentation expressly permits an unchanged contract from an immutable
+    ancestor; this rejects a legitimate mapping-only delta and does not test the stated
+    allowance.
+  expected: Preserve exact authenticated contract blob/source identity and authorized
+    review TASK inspection/scope, but require an actual Git delta and accurately reported
+    changed_files for the mapping; do not require the contract to change when retained
+    byte-exact from base. Correct the synthetic positive fixture's changed_files to
+    match the actual diff, add an unchanged-contract mapping-only positive case, and
+    reject forged mapping delta claims.
