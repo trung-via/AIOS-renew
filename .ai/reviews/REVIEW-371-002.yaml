@@ -1,0 +1,12 @@
+review_id: REVIEW-371-002
+reviewed_sha: 8a931b19640cfcd838ad6d3b626480dc0e55ee68
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
