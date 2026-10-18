@@ -1,0 +1,44 @@
+review_id: REVIEW-374-001
+reviewed_sha: ac06a509b4b984b17b0275a345c1d72de11bcf96
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- PRIMARY semantic review TASK-374 r1, exact canonical RUN-374-001 terminal RESULT
+  65b3f3cdf1261cf03a4498e49f33eb217c283fc5 and reviewed source ac06a509b4b984b17b0275a345c1d72de11bcf96
+  against admitted base 74fa8290be4bc53da7ec657f79f8683cd1a0b020.
+- 'AC1: Prospective KA-01 v1.1 is explicitly versioned with Human sequencing authority
+  dated 2026-10-18; v1.0 TASK-329/REVIEW-329-001, frozen Kernel 0.1, and historical
+  admission semantics preserved.'
+- 'AC2: D.1 G1/G2 plus v1.1 normative eligibility, actual eligible L1-L3 Runtime-reviewed/published
+  core and focused negative safety proof precede separately authenticated G6 Human
+  version/policy/profile and finite per-RUN opt-in; no G5-to-G6 circular precondition.'
+- 'AC3: L4 G4/G5 VP-01/VP-06 measured matched episodes and all 36 VP-07 criteria remain
+  unproved mandatory postactivation commitments, with exact Runtime evidence and independent
+  review/publication plus STOP/rollback/authorized correction for safety defects;
+  all 36 original AC-01..AC-36 table descriptions are byte-equivalent in the comparison.'
+- 'AC4: C.3(1) differentiates lawful offline/Runtime implementation verification of
+  L3 from permission for actual production same-RUN continuation; no unimplemented
+  or preactivation execution granted.'
+- 'AC5: C.1-C.7, B.2, and D.4 retain one Runtime proof authority, independent Reviewer/Publisher,
+  original Human opt-in, sticky Executor/lease, scope, finite resources, full semantic
+  proof, UNKNOWN fail-closed, exactly one terminal, historical compatibility and prospective
+  rollback.'
+- 'AC6: Lean VP architecture explicitly recognizes TASK-373 published read-only L1
+  baseline/readiness without VP-01/entire L1 completion, names L2/L3 exact preactivation
+  core and L4 live matched measurement/conformance, and does not advance roadmap NEXT
+  or activate KA-01.'
+- 'AC7: One source commit ahead of exact admitted base modifies only docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  and docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md, without production code/roadmap/historical
+  source mutation or false active status.'
+- Runtime evidence RUN-374-001-V001 authenticates command python -m pytest -q tests/test_intra_run_proof_contract.py
+  exit 0 on the exact candidate. Reviewer does not repeat Runtime verification; semantic
+  PASS is not publication or KA-01 production activation.
