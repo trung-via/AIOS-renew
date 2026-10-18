@@ -12,11 +12,12 @@ import shlex
 import subprocess
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from .proof_coverage_contract import SemanticProofIntake
 from .terminal_attention import (
     TerminalAttentionError,
     publish_terminal_attention,
@@ -2967,6 +2968,379 @@ def read_remote_task(repo: Path, *, commit_sha: str, task_id: str) -> bytes:
             f"historical TASK not found at {commit_sha}: {task_id}"
         )
     return content
+
+
+# Explicit prospective L1 reader only. No active lifecycle caller uses this API.
+L1_SOURCE_MAX_BYTES = 1024 * 1024
+L1_TASK_MAX_BYTES = 256 * 1024
+L1_INTAKE_MAX_BYTES = 4 * 1024 * 1024
+_L1_MAX_COMMITS = 4096
+_L1_SHA = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
+
+
+@dataclass(frozen=True)
+class GitSemanticSource:
+    """Exact caller locators; authority is established only by the reader."""
+
+    source_sha: str
+    tree_sha: str
+    path: str
+    blob_sha: str
+
+
+@dataclass(frozen=True)
+class AuthenticatedSemanticSource:
+    role: str
+    locator: GitSemanticSource
+    content_sha256: str
+    byte_count: int
+
+
+@dataclass(frozen=True)
+class CanonicalSemanticSourceBinding:
+    """Bounded Git consistency observation, never approval or proof validity."""
+
+    remote: str
+    remote_url: str
+    main_before: str
+    main_after: str
+    sources: tuple[AuthenticatedSemanticSource, ...]
+    intake: SemanticProofIntake
+    readiness: str = field(default="SOURCE_CONSISTENT_ONLY", init=False)
+    source_authentication: str = field(default="ESTABLISHED_FOR_OBSERVATION", init=False)
+    source_currentness: str = field(default="ESTABLISHED_FOR_OBSERVATION", init=False)
+    unestablished: tuple[str, ...] = field(default=(
+        "independent_human_approval", "independent_semantic_mapping_review",
+        "semantic_adequacy", "canonical_runtime_verification", "evidence_applicability",
+        "future_version_policy_admission", "production_opt_in",
+    ), init=False)
+    canonical_verification: str = field(default="UNESTABLISHED", init=False)
+    production_eligible: bool = field(default=False, init=False)
+    execution_authorized: bool = field(default=False, init=False)
+    ka01: str = field(default="NOT_ACTIVATED", init=False)
+
+
+def _l1_sha(value: object) -> str:
+    if type(value) is not str or _L1_SHA.fullmatch(value) is None:
+        raise ReviewTransportError("L1 requires exact lowercase SHA-1 object identities")
+    return value
+
+
+def _l1_git(repo: Path, *args: str, strip: bool = True) -> str:
+    # Raw objects, never replace refs; disable incidental fetch maintenance.
+    return _git_cmd(repo, "--no-replace-objects", "-c", "gc.auto=0",
+                    "-c", "fetch.writeCommitGraph=false", "-c", "protocol.ext.allow=never",
+                    *args, strip=strip)[1]
+
+
+def _l1_remote(repo: Path, expected_url: str) -> str:
+    code, _, _ = _git_cmd(repo, "symbolic-ref", "--quiet", "HEAD", allow_fail=True)
+    remote = (resolve_transport_remote(repo) if code == 0 else
+              resolve_detached_observation_remote(repo))
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", remote) is None:
+        raise ReviewTransportError("missing or ambiguous L1 configured remote")
+    if code == 0:
+        branch = _git_cmd(repo, "symbolic-ref", "--quiet", "--short", "HEAD")[1]
+        if _git_cmd(repo, "config", "--get-all", f"branch.{branch}.remote")[1] != remote:
+            raise ReviewTransportError("ambiguous L1 branch upstream binding")
+    # Both raw and effective URLs must be unique and exact. URL rewriting,
+    # multiple URLs and local-branch '.' upstreams cannot change the trust root.
+    raw = _git_cmd(repo, "config", "--get-all", f"remote.{remote}.url", strip=False)[1]
+    effective = _git_cmd(repo, "remote", "get-url", "--all", remote, strip=False)[1]
+    if raw != expected_url + "\n" or effective != expected_url + "\n":
+        raise ReviewTransportError("wrong or ambiguous L1 canonical remote URL")
+    return remote
+
+
+def _l1_main(repo: Path, url: str, expected: str) -> None:
+    if _exact_remote_refs(repo, url, "refs/heads/main") != {"refs/heads/main": expected}:
+        raise ReviewTransportError("missing, conflicting or moved L1 canonical main")
+
+
+def _l1_json(content: bytes, limit: int) -> dict[str, Any]:
+    if type(content) is not bytes or not 0 < len(content) <= limit:
+        raise ReviewTransportError("L1 JSON input exceeds byte bounds")
+
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
+    def constant(_):
+        raise ValueError("non-finite JSON number")
+
+    try:
+        text = content.decode("utf-8", errors="strict")
+        # Bound parser recursion before decoding, ignoring quoted delimiters.
+        depth, quoted, escaped, tokens = 0, False, False, 0
+        for char in text:
+            if quoted:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    quoted = False
+            elif char == '"':
+                quoted = True
+            elif char in "[{":
+                depth += 1
+                tokens += 1
+                if depth > 32 or tokens > 65536:
+                    raise ValueError("JSON structure exceeds bounds")
+            elif char in "]}":
+                depth -= 1
+        data = json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+        pending, nodes = [data], 0
+        while pending:
+            item = pending.pop()
+            nodes += 1
+            if nodes > 65536:
+                raise ValueError("JSON node bound exceeded")
+            if isinstance(item, dict):
+                pending.extend(item.keys())
+                pending.extend(item.values())
+            elif isinstance(item, list):
+                pending.extend(item)
+            elif isinstance(item, str):
+                item.encode("utf-8", errors="strict")  # Reject lone surrogates.
+            elif isinstance(item, float) and not math.isfinite(item):
+                raise ValueError("non-finite JSON number")
+        if type(data) is not dict:
+            raise ValueError("JSON object required")
+        return data
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        raise ReviewTransportError("invalid bounded strict L1 JSON document") from exc
+
+
+def _l1_text_object(repo: Path, sha: str, kind: str, limit: int) -> bytes:
+    if _l1_git(repo, "cat-file", "-t", sha) != kind:
+        raise ReviewTransportError("wrong L1 Git object type")
+    size = _l1_git(repo, "cat-file", "-s", sha)
+    if not size.isdecimal() or not 0 < int(size) <= limit:
+        raise ReviewTransportError("L1 Git object exceeds byte bounds")
+    content = _l1_git(repo, "cat-file", kind, sha, strip=False).encode("utf-8")
+    header = f"{kind} {len(content)}\0".encode("ascii")
+    if len(content) != int(size) or hashlib.sha1(header + content).hexdigest() != sha:
+        raise ReviewTransportError("L1 Git content/object identity mismatch")
+    return content
+
+
+def _l1_commit(repo: Path, sha: str) -> tuple[str, tuple[str, ...]]:
+    content = _l1_text_object(repo, sha, "commit", 64 * 1024)
+    header, separator, _ = content.partition(b"\n\n")
+    # Git recognizes LF and contiguous parent headers immediately after tree.
+    # Unicode/splitlines separators or later author/signature text cannot add
+    # an ancestor that Git's native commit parser would not recognize.
+    headers = header.split(b"\n")
+    if not separator or not headers[0].startswith(b"tree "):
+        raise ReviewTransportError("invalid bounded L1 commit headers")
+    index, parents = 1, []
+    while index < len(headers) and headers[index].startswith(b"parent "):
+        parents.append(_l1_sha(headers[index][7:].decode("utf-8")))
+        index += 1
+    if len(parents) > 256 or any(line.startswith((b"tree ", b"parent ")) for line in headers[index:]):
+        raise ReviewTransportError("invalid bounded L1 commit parent headers")
+    return _l1_sha(headers[0][5:].decode("utf-8")), tuple(parents)
+
+
+def _l1_anchor_sources(repo: Path, main: str, wanted: set[str]) -> dict[str, str]:
+    # Walk authenticated raw parent identities. merge-base/rev-list can honor
+    # local grafts or shallow metadata, which cannot establish source authority.
+    pending, seen, trees = [main], set(), {}
+    while pending and not wanted <= trees.keys():
+        sha = pending.pop()
+        if sha in seen:
+            continue
+        if len(seen) >= _L1_MAX_COMMITS:
+            raise ReviewTransportError("L1 source ancestry exceeds commit bound")
+        seen.add(sha)
+        tree, parents = _l1_commit(repo, sha)
+        trees[sha] = tree
+        pending.extend(reversed(parents))
+    if not wanted <= trees.keys():
+        raise ReviewTransportError("L1 source commit is not anchored in canonical main")
+    return trees
+
+
+def _l1_tree(repo: Path, sha: str) -> dict[str, tuple[str, str, str]]:
+    if _l1_git(repo, "cat-file", "-t", sha) != "tree":
+        raise ReviewTransportError("wrong L1 tree object type")
+    size = _l1_git(repo, "cat-file", "-s", sha)
+    if not size.isdecimal() or not 0 < int(size) <= L1_SOURCE_MAX_BYTES:
+        raise ReviewTransportError("L1 Git tree exceeds byte bounds")
+    listing = _l1_git(repo, "ls-tree", "-z", sha, strip=False)
+    if not listing.endswith("\0"):
+        raise ReviewTransportError("invalid L1 Git tree listing")
+    entries, raw = {}, bytearray()
+    for entry in listing[:-1].split("\0"):
+        metadata, separator, name = entry.partition("\t")
+        fields = metadata.split(" ")
+        if (not separator or not name or name in entries or "/" in name
+                or name in {".", ".."} or len(fields) != 3):
+            raise ReviewTransportError("ambiguous L1 Git tree entry")
+        mode, kind, oid = fields
+        if (mode, kind) not in {("040000", "tree"), ("100644", "blob"),
+                                ("100755", "blob"), ("120000", "blob"), ("160000", "commit")}:
+            raise ReviewTransportError("invalid L1 Git tree entry type")
+        _l1_sha(oid)
+        raw.extend(mode.lstrip("0").encode("ascii") + b" " + name.encode("utf-8")
+                   + b"\0" + bytes.fromhex(oid))
+        entries[name] = (mode, kind, oid)
+    header = f"tree {len(raw)}\0".encode("ascii")
+    if len(raw) != int(size) or hashlib.sha1(header + raw).hexdigest() != sha:
+        raise ReviewTransportError("L1 Git tree content/object identity mismatch")
+    return entries
+
+
+def _l1_path_blob(repo: Path, tree: str, path: str,
+                  cache: dict[str, dict[str, tuple[str, str, str]]]) -> str:
+    components = path.split("/")
+    for index, component in enumerate(components):
+        if tree not in cache:
+            cache[tree] = _l1_tree(repo, tree)
+        if component not in cache[tree]:
+            raise ReviewTransportError("missing L1 source path")
+        mode, kind, sha = cache[tree][component]
+        if index < len(components) - 1:
+            if (mode, kind) != ("040000", "tree"):
+                raise ReviewTransportError("L1 source path traverses a non-tree")
+            tree = sha
+        elif mode not in {"100644", "100755"} or kind != "blob":
+            raise ReviewTransportError("L1 source must be a regular Git blob")
+    return sha
+
+
+def _l1_task_binding(content: bytes) -> dict[str, Any]:
+    import yaml
+    from .task import parse_task
+
+    # Keep the existing TASK parser/validator as the sole TASK schema owner.
+    # Reject YAML graph expansion, explicit tags and excessive nesting first.
+    try:
+        text = content.decode("utf-8", errors="strict")
+        if text.startswith("\ufeff"):
+            raise ValueError("TASK BOM is not accepted")
+        depth = 0
+        for count, token in enumerate(yaml.scan(text)):
+            if count >= 65536 or isinstance(token, (
+                    yaml.tokens.AliasToken, yaml.tokens.AnchorToken,
+                    yaml.tokens.TagToken, yaml.tokens.DirectiveToken)):
+                raise ValueError("unbounded or ambiguous TASK YAML")
+            if isinstance(token, (yaml.tokens.BlockMappingStartToken,
+                                  yaml.tokens.BlockSequenceStartToken,
+                                  yaml.tokens.FlowMappingStartToken, yaml.tokens.FlowSequenceStartToken)):
+                depth += 1
+            elif isinstance(token, (yaml.tokens.BlockEndToken, yaml.tokens.FlowMappingEndToken,
+                                    yaml.tokens.FlowSequenceEndToken)):
+                depth -= 1
+            if depth > 32:
+                raise ValueError("TASK nesting exceeds bound")
+        task = parse_task(text)
+    except (ValueError, UnicodeError, yaml.YAMLError, RecursionError) as exc:
+        raise ReviewTransportError("invalid bounded canonical L1 TASK document") from exc
+    return dict(task_id=task.task_id, revision=task.revision,
+                envelope_digest=hashlib.sha256(content).hexdigest(),
+                acceptance_ids=sorted(item.id for item in task.acceptance))
+
+
+def bind_canonical_semantic_proof_sources(
+    repo: Path, declaration: bytes, *, expected_remote_url: str,
+    expected_main_sha: str, expected_candidate_sha: str,
+    sources: Mapping[str, GitSemanticSource],
+) -> CanonicalSemanticSourceBinding:
+    """Explicit read-only L1 source binding for TASK-376; no production admission.
+
+    The expected URL/main/candidate and all three exact locators are mandatory.
+    Only configured canonical main history supplies source authority. Source
+    paths must still have their selected blob at current main. Raw TASK bytes
+    define envelope_digest; contract/mapping pins use VP-02 normalization.
+    Fetch adds immutable objects only, with no ref, FETCH_HEAD or index writes.
+    Raises ReviewTransportError on any unavailable, stale or conflicting input.
+    """
+    from .proof_coverage_contract import (
+        ProofCoverageError, proof_mapping_digest, validate_proof_contract,
+    )
+    from .task import validate_semantic_proof_intake
+
+    _l1_sha(expected_main_sha)
+    _l1_sha(expected_candidate_sha)
+    if (type(expected_remote_url) is not str or not 0 < len(expected_remote_url) <= 2048
+            or expected_remote_url != expected_remote_url.strip()
+            or expected_remote_url.startswith("-")
+            or "::" in expected_remote_url
+            or any(ord(char) < 32 or ord(char) == 127 for char in expected_remote_url)):
+        raise ReviewTransportError("exact bounded L1 remote URL required")
+    incoming = _l1_json(declaration, L1_INTAKE_MAX_BYTES)
+    if incoming.get("schema") != "task-semantic-proof-intake-v1":
+        raise ReviewTransportError("explicit task-semantic-proof-intake-v1 declaration required")
+    if type(sources) is not dict or set(sources) != {"task", "contract", "mapping"}:
+        raise ReviewTransportError("exact task/contract/mapping L1 locators required")
+    locators = dict(sources)
+    for locator in locators.values():
+        if type(locator) is not GitSemanticSource:
+            raise ReviewTransportError("typed exact L1 source locator required")
+        for sha in (locator.source_sha, locator.tree_sha, locator.blob_sha):
+            _l1_sha(sha)
+        if (type(locator.path) is not str or len(locator.path) > 512
+                or re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", locator.path) is None
+                or len(locator.path.split("/")) > 32
+                or any(part in {".", "..", ".git"} for part in locator.path.split("/"))):
+            raise ReviewTransportError("exact normalized L1 repository-relative path required")
+    if len({item.path for item in locators.values()}) != 3:
+        raise ReviewTransportError("separate L1 semantic source paths required")
+    remote = _l1_remote(repo, expected_remote_url)
+    _l1_main(repo, expected_remote_url, expected_main_sha)
+    if _l1_git(repo, "rev-parse", "--is-shallow-repository") != "false":
+        raise ReviewTransportError("L1 requires a complete Git object history")
+    _l1_git(repo, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=",
+            "--no-auto-maintenance", "--no-recurse-submodules", expected_remote_url, expected_main_sha)
+    trees = _l1_anchor_sources(repo, expected_main_sha,
+                               {item.source_sha for item in locators.values()})
+    contents, observations, pins, tree_cache = {}, [], {}, {}
+    for role in ("task", "contract", "mapping"):
+        locator = locators[role]
+        if trees[locator.source_sha] != locator.tree_sha:
+            raise ReviewTransportError("L1 source commit/tree identity mismatch")
+        if (_l1_path_blob(repo, locator.tree_sha, locator.path, tree_cache) != locator.blob_sha
+                or _l1_path_blob(repo, trees[expected_main_sha], locator.path, tree_cache) != locator.blob_sha):
+            raise ReviewTransportError("wrong or stale L1 source path/blob identity")
+        content = _l1_text_object(repo, locator.blob_sha, "blob",
+                                  L1_TASK_MAX_BYTES if role == "task" else L1_SOURCE_MAX_BYTES)
+        contents[role] = content
+        pins[role] = dict(source_sha=locator.source_sha, blob_sha=locator.blob_sha)
+        observations.append(AuthenticatedSemanticSource(
+            role, locator, hashlib.sha256(content).hexdigest(), len(content)))
+    task_binding = _l1_task_binding(contents["task"])
+    if locators["task"].path != f".ai/tasks/{task_binding['task_id']}.yaml":
+        raise ReviewTransportError("L1 TASK identity/path mismatch")
+    contract = _l1_json(contents["contract"], L1_SOURCE_MAX_BYTES)
+    mapping = _l1_json(contents["mapping"], L1_SOURCE_MAX_BYTES)
+    try:
+        parsed = validate_proof_contract(contract, expected_task=task_binding)
+        contract_pin = dict(id=parsed.id, revision=parsed.revision, digest=parsed.digest)
+        mapping_pin = dict(id=mapping.get("id"), revision=mapping.get("revision"),
+                           digest=proof_mapping_digest(mapping))
+        expected = dict(expected_task=task_binding, expected_candidate_sha=expected_candidate_sha,
+                        expected_sources=pins, expected_contract=contract_pin,
+                        expected_mapping=mapping_pin)
+        # Validate the actual authenticated documents, then the caller's exact
+        # prospective declaration against the same independently derived pins.
+        validate_semantic_proof_intake(dict(
+            schema="task-semantic-proof-intake-v1", task=task_binding,
+            candidate_sha=expected_candidate_sha, sources=pins, contract=contract,
+            mapping=mapping), **expected)
+        intake = validate_semantic_proof_intake(incoming, **expected)
+    except ProofCoverageError as exc:
+        raise ReviewTransportError("L1 authenticated semantic intake is inconsistent") from exc
+    if _l1_remote(repo, expected_remote_url) != remote:
+        raise ReviewTransportError("L1 configured canonical remote moved during observation")
+    _l1_main(repo, expected_remote_url, expected_main_sha)
+    return CanonicalSemanticSourceBinding(remote, expected_remote_url, expected_main_sha,
+                                          expected_main_sha, tuple(observations), intake)
 
 
 def _run_task_prefix(run_id: str) -> str:
