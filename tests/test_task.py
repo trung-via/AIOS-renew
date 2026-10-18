@@ -257,6 +257,8 @@ def test_future_intake_is_never_an_implicit_task_or_policy_route(monkeypatch):
 
     monkeypatch.setattr(task_module, "validate_semantic_proof_declaration", prohibited)
     monkeypatch.setattr(task_module, "validate_semantic_proof_intake", prohibited)
+    monkeypatch.setattr(task_module, "parse_semantic_task", prohibited)
+    monkeypatch.setattr(task_module, "validate_semantic_task_requirements", prohibited)
     assert CURRENT_VERIFICATION_POLICY == "minimum-sufficient-v1"
     assert VERIFICATION_POLICIES == {"minimum-sufficient-v1", "minimum-sufficient-v2"}
     for policy in (None, *sorted(VERIFICATION_POLICIES)):
@@ -267,7 +269,7 @@ def test_future_intake_is_never_an_implicit_task_or_policy_route(monkeypatch):
         assert task == parse_task(yaml.safe_dump(body))
         assert task.verification.required == ("pytest tests/test_task.py",)
         assert task.verification.policy == policy
-        for field in ("schema", "proof_contract", "semantic_proof_intake"):
+        for field in ("schema", "proof_contract", "semantic_proof_intake", "proof_obligations"):
             with pytest.raises(TaskValidationError, match="unknown field"):
                 task_module.validate_task({**body, field: "task-semantic-proof-intake-v1"})
         body["verification"]["policy"] = "task-semantic-proof-intake-v1"

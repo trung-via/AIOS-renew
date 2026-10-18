@@ -91,6 +91,36 @@ def pin(data):
     return {"id": data["id"], "revision": data["revision"], "digest": proof_mapping_digest(data)}
 
 
+def test_prospective_requirements_reuse_contract_rules_and_preserve_every_condition():
+    from aios_renew.proof_coverage_contract import semantic_requirement, validate_semantic_task_requirements
+    data = contract(obligation("parallel-condition", conditions=conditions(
+        fixture_refs=["integration-fixture"], shared_state_ref="shared-integration",
+        profile_ref="parallel-profile", worker_mode="parallel", workers=2,
+        concurrency_ref="concurrent", ordering_ref="ordered", integration_ref="integration",
+        repetition_ref="repeated", toolchain_ref="alternate-toolchain", environment_ref="alternate-env",
+        population_ref="integration-population", collection_ref="integration-collection",
+        evidence_kind="integration-kind", evidence_schema="integration-schema")))
+    requirements = [{key: copy.deepcopy(value) for key, value in item.items() if key != "provenance"}
+                    for item in data["obligations"]]
+    parsed = validate_semantic_task_requirements(requirements, expected_task=data["task"])
+    canonical = validate_proof_contract(data, expected_task=data["task"])
+    assert parsed == tuple(semantic_requirement(item) for item in canonical.obligations)
+    assert {item.conditions.workers for item in parsed} == {1, 2}
+    assert validate_semantic_task_requirements(list(reversed(requirements)), expected_task=data["task"]) == parsed
+    requirements[0]["conditions"]["fixture_refs"].append("later-mutation")
+    assert all("later-mutation" not in item.conditions.fixture_refs for item in parsed)
+    with pytest.raises(FrozenInstanceError):
+        parsed[0].conditions.environment_ref = "mutated"
+    # Future-only lexical restrictions never change the historical validator.
+    legacy = contract()
+    legacy["obligations"][0]["claim"]["text"] = "echo legacy-opaque"
+    assert validate_proof_contract(legacy, expected_task=legacy["task"])
+    with pytest.raises(ProofCoverageError, match="executable"):
+        validate_semantic_task_requirements(
+            [{key: value for key, value in legacy["obligations"][0].items() if key != "provenance"}],
+            expected_task=legacy["task"])
+
+
 def covered(data, mapping):
     return validate_proof_mapping(data, mapping, expected_task=data["task"], expected_mapping=pin(mapping))
 

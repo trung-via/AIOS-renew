@@ -76,6 +76,23 @@ def selection_ref(package):
     return transport._l1_selection_ref(request["identity"]["target_task_id"], request["payload"]["scope"]["candidate_sha"])
 
 
+def materialize_synthetic_selection(package):
+    """Fixture bytes only, for a future reader without enabling future ingress.
+
+    The normal authenticated Issue adapter supplies provenance independently
+    of the incoming semantic declaration. No private trust reader is replaced.
+    This is deliberately not an operational selection producer.
+    """
+    policy, pin = transport._l1_selection_policy(package["repo"], package["main"])
+    provenance, body = carrier._authenticate_selection_issue(policy, package["issue"]["number"])
+    assert json.loads(body) == package["request"]
+    record = dict(format="AIOS_L1_HUMAN_REVIEW_SELECTION", version=1,
+                  request=package["request"], provenance=provenance, policy=pin)
+    raw = json.dumps(record, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    return fixture_ref(package, selection_ref(package),
+        {**package["candidate_files"], transport.L1_SELECTION_PATH: raw}, parents=(package["main"],))
+
+
 def test_authenticated_selection_then_independent_complete_published_review(tmp_path, monkeypatch):
     package = selection_fixture(tmp_path, monkeypatch, inspect_contract_only=True)
     assert_not_established(bind(package))

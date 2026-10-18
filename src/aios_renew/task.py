@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
@@ -9,7 +10,10 @@ from typing import Any
 
 import yaml
 
-from .proof_coverage_contract import SemanticProofIntake, validate_semantic_proof_declaration
+from .proof_coverage_contract import (
+    ProofCoverageError, SemanticProofIntake, SemanticRequirement,
+    validate_semantic_proof_declaration, validate_semantic_task_requirements,
+)
 from .return_affinity import AffinityError, LEGACY, ReturnAffinity, document_affinity, parse_affinity
 
 from .verification_contract import (
@@ -264,6 +268,94 @@ def validate_semantic_proof_intake(data: object, *, expected_task: object,
         expected_sources=expected_sources, expected_contract=expected_contract,
         expected_mapping=expected_mapping,
     )
+
+
+SEMANTIC_TASK_SCHEMA = "task-semantic-v1"
+SEMANTIC_TASK_MAX_BYTES = 262144
+
+
+@dataclass(frozen=True)
+class SemanticTask:
+    """Immutable prospective WHAT/WHY and requirements, never an admitted Task."""
+
+    schema: str
+    task_id: str
+    revision: int
+    goal: str
+    problem: str
+    assumptions: tuple[str, ...]
+    scope: TaskScope
+    non_goals: tuple[str, ...]
+    constraints: TaskConstraints
+    acceptance: tuple[AcceptanceCriterion, ...]
+    proof_obligations: tuple[SemanticRequirement, ...]
+
+
+def parse_semantic_task(source: bytes) -> SemanticTask:
+    """Explicit strict future decoder; no legacy fallback, I/O or admission.
+
+    Raw bytes contain no TASK digest or contract/mapping/source pin. The local
+    raw-byte hash below is only an adapter to the existing coverage validator;
+    actual independent source authentication belongs to the readiness reader.
+    """
+    if type(source) is not bytes or not 0 < len(source) <= SEMANTIC_TASK_MAX_BYTES:
+        raise TaskValidationError("semantic TASK requires bounded UTF-8 bytes")
+    try:
+        text = source.decode("utf-8", errors="strict")
+        if text.startswith("\ufeff") or any(0xD800 <= ord(char) <= 0xDFFF for char in text):
+            raise TaskValidationError("invalid semantic TASK Unicode")
+        depth = 0
+        for count, token in enumerate(yaml.scan(text)):
+            if count >= 65536 or isinstance(token, (
+                    yaml.tokens.AliasToken, yaml.tokens.AnchorToken,
+                    yaml.tokens.TagToken, yaml.tokens.DirectiveToken)):
+                raise TaskValidationError("ambiguous semantic TASK YAML")
+            if isinstance(token, (yaml.tokens.BlockMappingStartToken, yaml.tokens.BlockSequenceStartToken,
+                                  yaml.tokens.FlowMappingStartToken, yaml.tokens.FlowSequenceStartToken)):
+                depth += 1
+            elif isinstance(token, (yaml.tokens.BlockEndToken, yaml.tokens.FlowMappingEndToken,
+                                    yaml.tokens.FlowSequenceEndToken)):
+                depth -= 1
+            if depth > 32:
+                raise TaskValidationError("semantic TASK nesting exceeds bound")
+        root = _mapping(yaml.load(text, Loader=_TaskLoader), "semantic TASK")
+        fields = {"schema", "task_id", "revision", "goal", "problem", "assumptions", "scope",
+                  "non_goals", "constraints", "acceptance", "proof_obligations"}
+        _reject_unknown(root, fields, "semantic TASK")
+        for key in sorted(fields):
+            _required(root, key, "semantic TASK")
+        if type(root["schema"]) is not str or root["schema"] != SEMANTIC_TASK_SCHEMA:
+            raise TaskValidationError("explicit task-semantic-v1 schema required")
+        scope = _mapping(root["scope"], "scope")
+        _reject_unknown(scope, {"inspect", "modify"}, "scope")
+        constraints = _mapping(root["constraints"], "constraints")
+        _reject_unknown(constraints, {"hard"}, "constraints")
+        modify = _string_list(_required(scope, "modify", "scope"), "scope.modify")
+        for index, path in enumerate(modify):
+            _exact_repo_path(path, f"scope.modify[{index}]")
+        acceptance = []
+        for index, value in enumerate(_list(root["acceptance"], "acceptance")):
+            path = f"acceptance[{index}]"
+            item = _mapping(value, path)
+            _reject_unknown(item, {"id", "condition"}, path)
+            acceptance.append(AcceptanceCriterion(
+                _string(_required(item, "id", path), f"{path}.id"),
+                _string(_required(item, "condition", path), f"{path}.condition")))
+        task_id = _string(root["task_id"], "task_id")
+        # Existing VP-02 owns bounded identities/revisions, full acceptance,
+        # duplicates, conflicting claims and every distinguishing condition.
+        requirements = validate_semantic_task_requirements(root["proof_obligations"], expected_task=dict(
+            task_id=task_id, revision=root["revision"], envelope_digest=hashlib.sha256(source).hexdigest(),
+            acceptance_ids=[item.id for item in acceptance]))
+        return SemanticTask(
+            SEMANTIC_TASK_SCHEMA, task_id, root["revision"], _string(root["goal"], "goal"),
+            _string(root["problem"], "problem"), _string_list(root["assumptions"], "assumptions"),
+            TaskScope(_string_list(_required(scope, "inspect", "scope"), "scope.inspect"), modify),
+            _string_list(root["non_goals"], "non_goals"),
+            TaskConstraints(_string_list(_required(constraints, "hard", "constraints"), "constraints.hard")),
+            tuple(sorted(acceptance, key=lambda item: item.id)), requirements)
+    except (yaml.YAMLError, UnicodeError, RecursionError, ProofCoverageError) as exc:
+        raise TaskValidationError("invalid prospective semantic TASK: " + str(exc)) from exc
 
 
 def _required(mapping: Mapping[str, Any], key: str, path: str) -> Any:

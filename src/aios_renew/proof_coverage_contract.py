@@ -108,6 +108,68 @@ class ProofObligation:
 
 
 @dataclass(frozen=True)
+class SemanticRequirement:
+    """Prospective TASK meaning only; provenance belongs to external sources.
+
+    Profile/worker fields inside conditions describe required evidence identity,
+    never a runtime profile, Executor selection, budget or command policy.
+    """
+
+    id: str
+    revision: int
+    claim: SemanticClaim
+    acceptance_ids: tuple[str, ...]
+    kind: str
+    blocking: bool
+    conditions: ProofConditions
+
+
+def semantic_requirement(obligation: ProofObligation) -> SemanticRequirement:
+    return SemanticRequirement(**{key: getattr(obligation, key)
+                                  for key in SemanticRequirement.__dataclass_fields__})
+
+
+def validate_semantic_task_requirements(data: object, *, expected_task: object) -> tuple[SemanticRequirement, ...]:
+    """Normalize future requirements through the existing contract validator.
+
+    The temporary contract is an internal structural adapter, never an authority
+    pin. No digest, source, mapping or provenance is accepted in TASK requirements.
+    Complete acceptance, condition and duplicate/conflict checks have one owner.
+    """
+    labels = dict(authority_ref="declaration-only", review_ref="declaration-only",
+                  source_ref="declaration-only")
+    obligations = []
+    for value in _list(data, MAX_OBLIGATIONS, "proof_obligations"):
+        item = _object(value, set(SemanticRequirement.__dataclass_fields__), "proof_obligation")
+        pending = [item]
+        nodes = 0
+        while pending:
+            nodes += 1
+            if nodes > 65536:
+                raise ProofCoverageError("proof_obligation: structure exceeds bound")
+            value = pending.pop()
+            if type(value) is dict:
+                pending.extend(value.values())
+            elif type(value) is list:
+                pending.extend(value)
+            elif type(value) is str and (
+                    _INTAKE_COMMAND_TEXT.match(value)
+                    or re.match(r"(?:make|cmake|cargo|go|ruby|perl|deno|docker|whoami|ls|dir|rm|iex|"
+                                r"Remove-Item|Start-Process|Invoke-Command)(?:\s|$)", value, re.IGNORECASE)
+                    or re.search(r"^\S+\.(?:exe|cmd|bat|sh|ps1|py|js|mjs|cjs)(?:\s|$)"
+                                 r"|(?:^|\s)--?[A-Za-z]|^[A-Za-z_][A-Za-z0-9_.]*\(",
+                                 value, re.IGNORECASE)
+                    or any(char in value for char in ";|&`$<>\r\n")):
+                raise ProofCoverageError("proof_obligation: executable invocation is not semantic")
+        obligations.append({**item, "provenance": labels})
+    parsed = validate_proof_contract(dict(
+        schema=CONTRACT_SCHEMA, id="prospective-requirements", revision=1,
+        execution_default=EXECUTION_DEFAULT, task=expected_task, provenance=labels,
+        obligations=obligations), expected_task=expected_task)
+    return tuple(semantic_requirement(item) for item in parsed.obligations)
+
+
+@dataclass(frozen=True)
 class ProofContract:
     schema: str
     id: str

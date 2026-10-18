@@ -16,7 +16,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Any, Literal, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .task import SemanticTask
 
 from .proof_coverage_contract import MappingReviewScope, SemanticProofIntake
 from .terminal_attention import (
@@ -3399,10 +3402,23 @@ def bind_canonical_semantic_proof_sources(
     Fetch adds immutable objects only, with no ref, FETCH_HEAD or index writes.
     Raises ReviewTransportError on any unavailable, stale or conflicting input.
     """
+    return _l1_bind_semantic_sources(
+        repo, declaration, expected_remote_url=expected_remote_url,
+        expected_main_sha=expected_main_sha, expected_candidate_sha=expected_candidate_sha,
+        sources=sources, prospective=False)[0]
+
+
+def _l1_bind_semantic_sources(
+    repo: Path, declaration: bytes, *, expected_remote_url: str,
+    expected_main_sha: str, expected_candidate_sha: str,
+    sources: Mapping[str, GitSemanticSource], prospective: bool,
+):
+    # Only the explicit prospective readiness entry point selects this mode.
+    # Legacy readers always retain their original TASK decoder.
     from .proof_coverage_contract import (
-        ProofCoverageError, proof_mapping_digest, validate_proof_contract,
+        ProofCoverageError, proof_mapping_digest, semantic_requirement, validate_proof_contract,
     )
-    from .task import validate_semantic_proof_intake
+    from .task import parse_semantic_task, validate_semantic_proof_intake
 
     _l1_sha(expected_main_sha)
     _l1_sha(expected_candidate_sha)
@@ -3444,13 +3460,26 @@ def bind_canonical_semantic_proof_sources(
         pins[role] = dict(source_sha=locator.source_sha, blob_sha=locator.blob_sha)
         observations.append(AuthenticatedSemanticSource(
             role, locator, hashlib.sha256(content).hexdigest(), len(content)))
-    task_binding = _l1_task_binding(contents["task"])
+    semantic_task = None
+    if prospective:
+        try:
+            semantic_task = parse_semantic_task(contents["task"])
+        except ValueError as exc:
+            raise ReviewTransportError("invalid authenticated prospective semantic TASK") from exc
+        task_binding = dict(task_id=semantic_task.task_id, revision=semantic_task.revision,
+                            envelope_digest=hashlib.sha256(contents["task"]).hexdigest(),
+                            acceptance_ids=[item.id for item in semantic_task.acceptance])
+    else:
+        task_binding = _l1_task_binding(contents["task"])
     if locators["task"].path != f".ai/tasks/{task_binding['task_id']}.yaml":
         raise ReviewTransportError("L1 TASK identity/path mismatch")
     contract = _l1_json(contents["contract"], L1_SOURCE_MAX_BYTES)
     mapping = _l1_json(contents["mapping"], L1_SOURCE_MAX_BYTES)
     try:
         parsed = validate_proof_contract(contract, expected_task=task_binding)
+        if semantic_task is not None and semantic_task.proof_obligations != tuple(
+                semantic_requirement(item) for item in parsed.obligations):
+            raise ProofCoverageError("prospective TASK requirements differ from authenticated contract")
         contract_pin = dict(id=parsed.id, revision=parsed.revision, digest=parsed.digest)
         mapping_pin = dict(id=mapping.get("id"), revision=mapping.get("revision"),
                            digest=proof_mapping_digest(mapping))
@@ -3469,8 +3498,8 @@ def bind_canonical_semantic_proof_sources(
     if _l1_remote(repo, expected_remote_url) != remote:
         raise ReviewTransportError("L1 configured canonical remote moved during observation")
     _l1_main(repo, expected_remote_url, expected_main_sha)
-    return CanonicalSemanticSourceBinding(remote, expected_remote_url, expected_main_sha,
-                                          expected_main_sha, tuple(observations), intake)
+    return (CanonicalSemanticSourceBinding(remote, expected_remote_url, expected_main_sha,
+                                           expected_main_sha, tuple(observations), intake), semantic_task)
 
 
 @dataclass(frozen=True)
@@ -3982,12 +4011,18 @@ def bind_canonical_semantic_review_authority(
     or existing REVIEW/Publisher lineage yields NOT_ESTABLISHED, never a search
     for a substitute TASK or PASS. No active admission path invokes this API.
     """
-    from .proof_coverage_contract import ProofCoverageError
-    import yaml
-
     binding = bind_canonical_semantic_proof_sources(
         repo, declaration, expected_remote_url=expected_remote_url, expected_main_sha=expected_main_sha,
         expected_candidate_sha=expected_candidate_sha, sources=sources)
+    return _l1_bind_review_authority(repo, binding)
+
+
+def _l1_bind_review_authority(
+    repo: Path, binding: CanonicalSemanticSourceBinding,
+) -> SemanticReviewAuthorityEligibility:
+    from .proof_coverage_contract import ProofCoverageError
+    import yaml
+
     lineage, human, selected, reason = None, None, None, "MAPPING_REVIEW_NOT_ESTABLISHED"
     try:
         selected = _l1_authenticated_mapping_review_selection(repo, binding)
@@ -4012,10 +4047,76 @@ def bind_canonical_semantic_review_authority(
             lineage, human, reason = None, None, "MAPPING_REVIEW_NOT_ESTABLISHED"
     # Even a failed review observation must not retain successful currentness
     # if canonical main or the independently configured remote changed meanwhile.
-    if _l1_remote(repo, expected_remote_url) != binding.remote:
+    if _l1_remote(repo, binding.remote_url) != binding.remote:
         raise ReviewTransportError("L1 canonical remote moved during review observation")
-    _l1_main(repo, expected_remote_url, expected_main_sha)
+    _l1_main(repo, binding.remote_url, binding.main_after)
     return SemanticReviewAuthorityEligibility(binding, lineage, reason, human)
+
+
+@dataclass(frozen=True)
+class SemanticTaskReadiness:
+    """Prospective source/review diagnostics; never a runnable eligibility token."""
+
+    task: "SemanticTask"
+    authority: SemanticReviewAuthorityEligibility
+    structure: Literal["STRUCTURALLY_COMPLETE"] = field(default="STRUCTURALLY_COMPLETE", init=False)
+    canonical_verification: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    evidence_applicability: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    future_version_admission: Literal["NOT_ADMITTED"] = field(default="NOT_ADMITTED", init=False)
+    ka01_g3: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    ka01_g6: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    production_opt_in: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    ka01: Literal["NOT_ACTIVATED"] = field(default="NOT_ACTIVATED", init=False)
+    production_eligible: Literal[False] = field(default=False, init=False)
+    execution_authorized: Literal[False] = field(default=False, init=False)
+
+    @property
+    def source_consistency(self) -> str:
+        return self.authority.source_status
+
+    @property
+    def source_authentication(self) -> str:
+        return self.authority.source_binding.source_authentication
+
+    @property
+    def source_currentness(self) -> str:
+        return self.authority.source_binding.source_currentness
+
+    @property
+    def human_selection(self) -> str:
+        return self.authority.human_intent
+
+    @property
+    def reviewer_authority(self) -> str:
+        return self.authority.reviewer_authority
+
+    @property
+    def publisher_authority(self) -> str:
+        return "EXACT_SOURCE_PUBLICATION_ESTABLISHED" if self.authority.lineage else "NOT_ESTABLISHED"
+
+    @property
+    def semantic_adequacy(self) -> str:
+        return self.authority.semantic_adequacy
+
+
+def read_semantic_task_readiness(
+    repo: Path, declaration: bytes, *, expected_remote_url: str,
+    expected_main_sha: str, expected_candidate_sha: str, sources: Mapping[str, GitSemanticSource],
+) -> SemanticTaskReadiness:
+    """Explicit read-only future-version source/selection/review observation.
+
+    TASK bytes are read from immutable canonical Git objects, never supplied as
+    a decoded authority assertion. TASK-376/377 own coverage and sources;
+    TASK-378/380 own authenticated Human choice and Reviewer/Publisher lineage.
+    No expected contract pin, review selector, resolver or authority callback is
+    accepted. Invalid structure/sources raise; absent authority stays unestablished.
+    Ordinary admission and historical readers never call this entry point.
+    """
+    binding, task = _l1_bind_semantic_sources(
+        repo, declaration, expected_remote_url=expected_remote_url,
+        expected_main_sha=expected_main_sha, expected_candidate_sha=expected_candidate_sha,
+        sources=sources, prospective=True)
+    return SemanticTaskReadiness(task, _l1_bind_review_authority(repo, binding))
 
 
 def _run_task_prefix(run_id: str) -> str:
