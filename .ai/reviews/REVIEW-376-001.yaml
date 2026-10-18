@@ -1,0 +1,52 @@
+review_id: REVIEW-376-001
+reviewed_sha: c4afa7c10dd6ff232ac502e7f378fcc161f3c0b1
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- PRIMARY semantic review of TASK-376 r1 and exact canonical RUN-376-001 RESULT 2a19b8fcf6e0f37f0524f3b40b649be23bf17f84
+  against admitted base abf9d5c359a1a0b96ef565832f29027f6316763d and candidate c4afa7c10dd6ff232ac502e7f378fcc161f3c0b1.
+  Runtime-authenticated evidence RUN-376-001-V001 records exit 0 for the exact authored
+  command; Reviewer did not rerun verification.
+- 'AC1: Strict task-semantic-proof-intake-v1 is exposed as separate non-operative
+  validate_semantic_proof_intake in existing task.py delegating to existing proof_coverage_contract.py.
+  Normal parse_task/validate_task unchanged; no new VERIFICATION_POLICIES entry or
+  Runtime path.'
+- 'AC2: Intake requires independent expected_task, expected_candidate_sha, expected_sources,
+  expected_contract and expected_mapping, checks exact full acceptance and caller-supplied
+  source/pin bindings and reuses existing validate_proof_mapping for every obligation,
+  proof descriptor, full condition and provenance.'
+- 'AC3: SemanticProofIntake is a frozen structural declaration; readiness STRUCTURALLY_COMPLETE_ONLY,
+  canonical_verification NOT_PERFORMED, production_eligible=False, execution_authorized=False,
+  and unestablished authenticated authority/applicability/semantic adequacy are explicit.
+  Structural matches cannot elevate themselves to canonical source truth.'
+- 'AC4: Exact-field/version parsing, digest/source/candidate pins, mapping and obligation
+  validation, command-text rejection, fail-closed substitutes and full condition checks
+  reject malformed, stale, cross-task, ambiguous, changed fixture/worker/integration/order
+  and mixed-policy cases without semantic equivalence guesses.'
+- 'AC5: Existing Task dataclass, V1/V2 policy and return-affinity behavior, historical
+  TASK parsing/corpus and public VP-02 validator signatures/logic remain unchanged;
+  the intake is never invoked or routed by production TASK decoding.'
+- 'AC6: Focused synthetic negative and positive regressions exercise stable normalized
+  order, version mismatch, source and trusted pin replacement, contract/mapping conflict,
+  incorrect task/coverage, command substitution, unbounded input and no filesystem/Git/network/subprocess/clock/verification
+  calls; their synthetic nature does not impersonate Runtime evidence.'
+- 'AC7: New docs/AIOS-LEAN-VP-L1-SEMANTIC-PROOF-INTAKE.md specifies bounded input/return/trust
+  limits and explicitly defers canonical authenticated sources, future policy admission,
+  L1/VP-01 completion, L2 applicability, L3 scheduler and G3/G6 activation. No savings
+  or live proof claimed.'
+- 'AC8: A single candidate commit changes exactly the five authorized paths. No main
+  roadmap, Runtime scheduler, review/publish or historical state mutation. KA-01 remains
+  NOT_ACTIVATED.'
+- No material introduced semantic defect found within authorized change. PASS is exact-source
+  Reviewer semantic judgment only, not Runtime REVIEW canonicalization, Publisher
+  publication, completion of Lean VP L1/L2/L3 or KA-01 production activation.
