@@ -1,0 +1,179 @@
+task_id: TASK-374
+revision: 1
+goal: "Revise the prospective KA-01 normative activation sequence to remove the circular\
+  \ G3/G4/G5/G6 pre-production dependencies, allowing bounded Human-authorized production\
+  \ opt-in after the real, reviewed/published L1\u2013L3 Runtime implementation exists,\
+  \ while moving VP-06/VP-07 full-episode measurement and AC-01..AC-36 progressive\
+  \ conformance to L4 after activation. Preserve Kernel/Runtime safety, proof completeness\
+  \ and historical authority."
+problem: "The currently published KA-01 v1.0 section C.3 requires activation before\
+  \ preterminal same-RUN continuation, while D.1 G3 requires VP-03..VP-07 implemented\
+  \ and G5 requires real same-RUN VP-07 conformance before G6 permits activation.\
+  \ Human explicitly changes the program on 2026-10-18: remove only circular readiness\
+  \ conditions, execute L1\u2192L2\u2192L3, enable production after L3, and use subsequent\
+  \ real production tasks for L4 conformance/measurement. A separate qualification\
+  \ layer or fake ACTIVE flag before implementation would be unnecessary and unsound;\
+  \ revise the actual normative dependency boundary, not the authority/identity guards."
+assumptions:
+- 'Fresh canonical main at this new authoring is 6e8cba6d96f3f5044672b687bef4c63e4c641151,
+  exactly the TASK-373 r1 RUN-373-001 reviewed and published candidate; TASK-374 does
+  not yet exist. Prior Issue #2115 was an unsuccessful pre-job GitHub carrier at old
+  expected main 46c6a787be1b3079de01289fd5fb8a3eb7d829c6, with no canonical TASK/RUN.
+  This is a distinct new ingress attempt, not a replay. Runtime must independently
+  validate exact TASK identity, current expected-main CAS, authoring source and legacy
+  affinity.'
+- TASK-373 r1 / RUN-373-001 / REVIEW-373-001 PRIMARY PASS was published as 6e8cba6d96f3f5044672b687bef4c63e4c641151.
+  It delivered only a bounded read-only L1 baseline/readiness projection, not completion
+  of measured VP-01, the entire L1 program, L2/L3 implementation, L4 conformance,
+  or KA-01 activation. The normative amendment must preserve this exact distinction
+  and historical L1 documentation.
+- Human 2026-10-18 explicitly approves removing the activation prerequisite that requires
+  L4/VP-06/VP-07 real conformance before activation. Human does NOT authorize fabricated
+  evidence, deleting Runtime deterministic safety, admitting a nonimplemented same-RUN
+  loop or publishing an unreviewed kernel change.
+- KA-01 v1.0, separately ratified and published through TASK-329 / REVIEW-329-001,
+  remains an immutable historical normative version. This TASK prospectively revises
+  the exact document's effective version and must distinguish future v1.1 activation
+  semantics from earlier 1.0 and already-admitted history.
+- TASK-326 proof coverage and TASK-328 intra-RUN feedback are offline foundations,
+  not an implemented production scheduler. L1 measurement and L2 applicability remain
+  distinct bounded work, L3 must implement and prove basic safety before production;
+  L4 is an unproven subsequent measurement/conformance program.
+- The canonical Lean VP NEXT remains unchanged by this TASK. The exact standing return-affinity
+  for new AIOS-renew TASKs is LEGACY_REPOSITORY_DEFAULT_ROUTE; the revised TASK does
+  not choose Executor, model, profile, operating budgets or approval for a particular
+  future RUN.
+- The TASK_AUTHORING audit profile is canonical tca-1 version 1 with content digest
+  1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2. That audit is
+  Brain-owned support only; Runtime remains authoring/verification authority, independent
+  Reviewer judges, Publisher publishes.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-326.yaml
+  - .ai/tasks/TASK-328.yaml
+  - .ai/tasks/TASK-329.yaml
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/verification.py
+  - tests/test_intra_run_proof_contract.py
+  modify:
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+non_goals:
+- No production code, policy switch, activation marker, MAIN roadmap advancement,
+  task dispatch, new Runtime test-runner, extra qualification stage, shadow scheduler,
+  automatic correction router, or Executor delegation.
+- No deletion or mislabeling of historical KA-01 v1.0 ratification, TASK-329 publication,
+  existing V1/V2 proofs, immutable TASK/RUN/REVIEW/RESULT/FAILURE/EVIDENCE, or already
+  admitted tasks.
+- No broad removal of deterministically enforceable per-RUN consent, exact same Executor/lease,
+  bounded resources, semantic proof completeness, valid applicability, one canonical
+  terminal, or Runtime/Reviewer/Publisher authority.
+- No fictitious completion of future L1/L2/L3, no claim that new KA-01 machinery is
+  implemented, no falsely observed VP-06 benefit or AC-01..AC-36 conformance, no inference
+  that legacy or downstream tasks opt in.
+- No redefinition of pre-AIOS transport errors as RUNs, no model choosing correction
+  HOW, and no unreviewed proof weakening to manufacture green tests.
+constraints:
+  hard:
+  - Publish a prospective, explicitly versioned KA-01 activation amendment with exact
+    2026-10-18 Human intent. The previously published v1.0 version and earlier normative
+    gates remain historically explainable; neither silently change already-admitted
+    work nor claim this new normative version activated merely from a documentation
+    edit.
+  - 'Reconcile KA-01 D.1 G3 to require minimum actually implemented, independently
+    Runtime-verified, semantically reviewed and published eligible L1 proof-contract/readiness
+    plus L2/L3 production core: authenticated source/provenance/applicability, exactly
+    one Runtime scheduler, verified same-Executor/lease/resources/scope/progress/terminal
+    guard, reviewed rollback/opt-in and focused real negative safety tests feasible
+    before activation. Explicitly distinguish these preactivation core safety checks
+    from real production-episode VP-06/VP-07 conformance. Do not treat TASK-373 L1
+    readiness as completed VP-01 or full L1 exit, and eliminate full VP-06/VP-07 as
+    activation prerequisites.'
+  - Reconcile D.1 G4 and G5 so real whole-episode measurement VP-06 and complete VP-07
+    AC-01..AC-36 conformance are mandatory observable L4 post-activation obligations,
+    not falsely labeled PASS or an implicit blocker preventing the very real episodes
+    needed for measurement. Unknown measurement and new unsafe failures must remain
+    reported and follow authenticated STOP/rollback/repair as appropriate.
+  - "Reconcile D.1 G6 with the existing explicit 2026-10-18 Human policy/risk decision:\
+    \ production usage only once the exact L1\u2013L3 eligible implementation is canonically\
+    \ verified, independently reviewed, published, and an actual versioned per-RUN\
+    \ finite Human opt-in/delegation is authenticated at admission. Human priority\
+    \ approval alone is never executable feature readiness; no automatic blanket migration\
+    \ to new policy."
+  - "Clarify KA-01 C.3(1): a prospective opted-in production RUN may use same-RUN\
+    \ continuation only after eligible activation; implementing and verifying L3 through\
+    \ the existing admitted Runtime does not require that production continuation\
+    \ mechanism to be previously ACTIVE. Avoid any G5\u2192G6\u2192G5 cycle without\
+    \ inventing a second Runtime."
+  - "Maintain every deterministic invariant of C.1\u2013C.6 and D.4: exact TASK/RUN/candidate/contract\
+    \ mapping, original consent, same live lease/Executor, full semantic coverage,\
+    \ typed factual feedback, bounded progress/costs, no duplicate checkpoints/proof/terminal,\
+    \ UNKNOWN fail-closed, historical replay and explicit prospective rollback. Preserve\
+    \ the distinction between a core safety regression and long-horizon post-activation\
+    \ conformance."
+  - "Update Lean VP L1\u2013L4 and gate/success wording consistently: L1 now has published\
+    \ TASK-373 baseline-readiness slice but outstanding VP-01/matched-episode measurements;\
+    \ L2 authenticated applicability; L3 real implementation and focused independent\
+    \ core safety verification before activation; L4 empirical real production episode\
+    \ conformance/measurement from subsequent lawful TASKs. State that canonical roadmap\
+    \ remains Lean VP NEXT and cannot be advanced automatically by publication."
+  - Scope modification to the two listed documents, keep current production behavior
+    unchanged, leave historic v1.0 and original task/review/publication lineage identifiable,
+    and do not insert an artificial qualification pipeline as a substitute for removing
+    the cyclic prerequisites.
+acceptance:
+- id: AC1
+  condition: The KA-01 document explicitly identifies a distinct prospective amended
+    activation version, the exact Human 2026-10-18 change and superseded v1.0 activation
+    sequencing, without changing frozen Kernel v0.1 or reclassifying historic artifacts.
+- id: AC2
+  condition: 'KA-01 D.1 defines an acyclic activation dependency: previously lawful
+    G1/G2 and new versioned normative eligibility, actual reviewed/published L1 core
+    readiness plus L2/L3 implementation with focused independent core-safety negative
+    proof, and authenticated exact Human/versioned per-RUN opt-in. Real VP-06/VP-07
+    production episodes, full AC-01..AC-36 and postactivation measurements are not
+    prerequisites; a readiness slice alone is insufficient.'
+- id: AC3
+  condition: KA-01 D.1/D.2/D.3 preserve VP-01/VP-06 measurements, VP-07 real positive/negative
+    AC-01..AC-36 conformance and correction of revealed safety defects as explicit
+    unproved L4 postactivation commitments rather than reporting them completed or
+    deleting them.
+- id: AC4
+  condition: KA-01 C.3(1) unambiguously separates lawful offline/Runtime verification
+    of L3's implementation from the later per-RUN production continuation permission,
+    eliminating the circular activation requirement without granting preimplementation
+    RUN mutation.
+- id: AC5
+  condition: The amended KA-01 retains all exact Human/Brain/Executor/Runtime/Reviewer/Publisher
+    separations, same-Executor/lease and scope/budget guards, authorized full semantic
+    proof, fail-closed unknown, one terminal, versioned opt-in, historical compatibility
+    and prospective rollback.
+- id: AC6
+  condition: The Lean VP architecture document consistently recognizes TASK-373 as
+    published L1 readiness only (VP-01 still outstanding), locates future production
+    activation after eligible reviewed/published L2/L3 core safety engineering, and
+    assigns L4 real production-episode conformance and measurement without parallel
+    Runtime, automatic PASS, or TASK/roadmap advancement.
+- id: AC7
+  condition: The final source candidate changes only the two named architecture/specification
+    documents, neither asserts KA-01 production already ACTIVE nor mutates any Runtime
+    code or past canonical TASK/RUN/RESULT/REVIEW/FAILURE source.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_intra_run_proof_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
