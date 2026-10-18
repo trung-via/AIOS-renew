@@ -16,7 +16,7 @@ on:
         required: true
         type: string
       executor:
-        description: "Human-selected coding Executor; leave empty for NO_CHANGE"
+        description: "Human-selected coding Executor, explicit AUTO reuse, or empty for executorless REPAIR"
         required: false
         type: string
       model:
@@ -29,6 +29,15 @@ on:
         required: false
         type: string
       effort_source:
+        required: false
+        type: string
+      origin_workflow_run_id:
+        required: false
+        type: string
+      origin_run_attempt:
+        required: false
+        type: string
+      origin_artifact_id:
         required: false
         type: string
   workflow_call:
@@ -62,6 +71,18 @@ on:
         required: false
         type: string
         default: ""
+      origin_workflow_run_id:
+        required: false
+        type: string
+        default: ""
+      origin_run_attempt:
+        required: false
+        type: string
+        default: ""
+      origin_artifact_id:
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -71,6 +92,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  observe-repair-source:
+    # Read-only provenance capture also runs while the self-host runner is queued.
+    # It neither gates nor authorizes the independent execution job.
+    if: github.repository == 'trung-via/AIOS-renew' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      AIOS_REPAIR_DISPATCH_ID: ${{ inputs.repair_dispatch_id }}
+      AIOS_FAILED_RUN_ID: ${{ inputs.failed_run_id }}
+      AIOS_REPAIR_SHA: ${{ inputs.repair_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check .
+      - name: Observe exact REPAIR workflow event
+        env:
+          AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json
+        run: python -c "from aios_renew.github_issue_repair_wakeup import source_delivery_main; raise SystemExit(source_delivery_main())"
+      - name: Preserve exact REPAIR attempt source
+        uses: actions/upload-artifact@v4
+        env:
+          AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json
+        with:
+          name: aios-repair-correlation-v1-delivery-attempt-${{ github.run_attempt }}
+          path: ${{ env.AIOS_REPAIR_SOURCE_PATH }}
+          if-no-files-found: error
+          retention-days: 90
+      - name: Index exact delivery for bounded read-only discovery
+        uses: actions/upload-artifact@v4
+        env:
+          AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json
+        with:
+          # This replaceable discovery hint is never the attempt's source of truth.
+          name: aios-repair-delivery-v1-${{ inputs.repair_dispatch_id }}
+          path: ${{ env.AIOS_REPAIR_SOURCE_PATH }}
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 90
+
   execute-repair:
     runs-on: [self-hosted, windows, x64, aios-renew]
     env:
@@ -130,7 +195,7 @@ jobs:
             Write-Error "Invalid REPAIR authorization SHA."
             exit 1
           }
-          if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR) -and $env:AIOS_EXECUTOR -notin @('codex', 'antigravity')) {
+          if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR) -and $env:AIOS_EXECUTOR -cnotin @('codex', 'antigravity', 'AUTO')) {
             Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
             Write-Error "Unsupported coding Executor."
             exit 1
@@ -138,21 +203,28 @@ jobs:
           if ($env:AIOS_DELIVERY_ACTOR -ceq 'trung-via') {
             # Preserve the dedicated Human delivery path and its existing Runtime semantics.
           } elseif ($env:AIOS_DELIVERY_ACTOR -ceq 'github-actions[bot]') {
-            if ($env:AIOS_DELIVERY_EVENT -cne 'workflow_dispatch') {
+            if ($env:AIOS_DELIVERY_EVENT -ceq 'issues') {
+              # Transport only: exact opened Human event is re-admitted below and at AUTO admission.
+            } elseif ($env:AIOS_DELIVERY_EVENT -cne 'workflow_dispatch') {
               Write-OperationalFailure 'UNAUTHORIZED_DELIVERY_ACTOR'
               Write-Error "Automation REPAIR delivery requires workflow_dispatch provenance."
               exit 1
-            }
-            if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR)) {
-              Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
-              Write-Error "Automation REPAIR delivery cannot select a coding Executor."
-              exit 1
-            }
-            $expectedRepairDispatchId = "repair-$($env:AIOS_FAILED_RUN_ID)-$($env:AIOS_REPAIR_SHA)"
-            if ($env:AIOS_REPAIR_DISPATCH_ID -cne $expectedRepairDispatchId) {
-              Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
-              Write-Error "Automation REPAIR delivery identity does not match its selectors."
-              exit 1
+            } else {
+              if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR) -or
+                  -not [string]::IsNullOrEmpty($env:AIOS_MODEL) -or
+                  -not [string]::IsNullOrEmpty($env:AIOS_REASONING_EFFORT) -or
+                  -not [string]::IsNullOrEmpty($env:AIOS_MODEL_SOURCE) -or
+                  -not [string]::IsNullOrEmpty($env:AIOS_EFFORT_SOURCE)) {
+                Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
+                Write-Error "Automation REPAIR delivery cannot select a coding Executor."
+                exit 1
+              }
+              $expectedRepairDispatchId = "repair-$($env:AIOS_FAILED_RUN_ID)-$($env:AIOS_REPAIR_SHA)"
+              if ($env:AIOS_REPAIR_DISPATCH_ID -cne $expectedRepairDispatchId) {
+                Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
+                Write-Error "Automation REPAIR delivery identity does not match its selectors."
+                exit 1
+              }
             }
           } else {
             Write-OperationalFailure 'UNAUTHORIZED_DELIVERY_ACTOR'
@@ -193,7 +265,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-OperationalFailure 'CONTROL_SOURCE_MATERIALIZATION_FAILED'; exit 1 }
           $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:AIOS_CONTROL_TOKEN"))
           $env:GIT_CONFIG_COUNT = '1'; $env:GIT_CONFIG_KEY_0 = 'http.extraHeader'; $env:GIT_CONFIG_VALUE_0 = "AUTHORIZATION: basic $basic"
-          try { git -C $controlRoot fetch --quiet --no-tags --depth=1 "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY.git" $env:AIOS_CONTROL_SHA }
+          try {
+            $mainRef = @(git -C $controlRoot ls-remote --heads "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY.git" refs/heads/main)
+            if ($LASTEXITCODE -ne 0 -or $mainRef.Count -ne 1 -or ($mainRef[0] -split '\s+')[0] -cne $env:AIOS_CONTROL_SHA) { Write-OperationalFailure 'NONCANONICAL_WORKFLOW_REF'; exit 1 }
+            git -C $controlRoot fetch --quiet --no-tags --depth=1 "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY.git" $env:AIOS_CONTROL_SHA
+          }
           finally { Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue; $basic = $null }
           if ($LASTEXITCODE -ne 0) { Write-OperationalFailure 'CONTROL_SOURCE_MATERIALIZATION_FAILED'; exit 1 }
           git -C $controlRoot checkout --quiet --detach FETCH_HEAD
@@ -203,6 +279,10 @@ jobs:
           $controlStatus = @(git -C $controlRoot status --porcelain)
           if ($LASTEXITCODE -ne 0 -or $controlStatus.Count -ne 0) { Write-OperationalFailure 'CONTROL_SOURCE_DIRTY'; exit 1 }
           if (-not (Test-Path -LiteralPath (Join-Path $controlRoot 'scripts/aios_control_entry.py') -PathType Leaf)) { Write-OperationalFailure 'CONTROL_ENTRY_UNAVAILABLE'; exit 1 }
+          if ($env:AIOS_DELIVERY_EVENT -ceq 'issues' -or $env:AIOS_EXECUTOR -ceq 'AUTO') {
+            python -c "import sys; sys.path.insert(0, sys.argv[1]); from aios_renew.github_issue_repair_wakeup import delivery_main; sys.exit(delivery_main())" (Join-Path $controlRoot 'src')
+            if ($LASTEXITCODE -ne 0) { Write-OperationalFailure 'INVALID_BOUNDED_INPUT'; exit 1 }
+          }
 
       - name: Deliver one immutable REPAIR intent
         env:
@@ -239,20 +319,17 @@ jobs:
             Write-Error "Invalid REPAIR authorization SHA."
             exit 1
           }
-          if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR) -and $env:AIOS_EXECUTOR -notin @('codex', 'antigravity')) {
+          if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR) -and $env:AIOS_EXECUTOR -cnotin @('codex', 'antigravity', 'AUTO')) {
             Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Unsupported coding Executor."
             exit 1
           }
           $executorArgs = @()
           if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR)) {
-            $executorArgs = @(
-              '--executor', $env:AIOS_EXECUTOR,
-              '--model', $env:AIOS_MODEL,
-              '--reasoning-effort', $env:AIOS_REASONING_EFFORT,
-              '--model-source', $env:AIOS_MODEL_SOURCE,
-              '--effort-source', $env:AIOS_EFFORT_SOURCE
-            )
+            $executorArgs = @('--executor', $env:AIOS_EXECUTOR)
+          }
+          foreach ($option in @(@('--model', $env:AIOS_MODEL), @('--reasoning-effort', $env:AIOS_REASONING_EFFORT), @('--model-source', $env:AIOS_MODEL_SOURCE), @('--effort-source', $env:AIOS_EFFORT_SOURCE))) {
+            if (-not [string]::IsNullOrEmpty($option[1])) { $executorArgs += $option }
           }
           Write-OperationalState 'AIOS_INVOKED' ''
           $controlSource = $env:AIOS_CONTROL_ROOT

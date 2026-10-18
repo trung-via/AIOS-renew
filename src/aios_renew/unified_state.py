@@ -11,8 +11,9 @@ from .return_affinity import document_affinity, require_same_affinity
 
 import hashlib
 import json
+import os
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -31,6 +32,7 @@ from .correction_preflight import (
 )
 from .correction_frontier import CorrectionFrontier, CorrectionFrontierError
 from .review import (
+    BatchRemediation, BatchRemediationExecution, BatchReview, BatchSelection, is_batch_selector,
     Review,
     ReviewValidationError,
     parse_review,
@@ -128,6 +130,8 @@ class UnifiedStateObservation:
     outstanding_findings: tuple[Mapping[str, str], ...] = ()
     admission_failures: tuple[Mapping[str, Any], ...] = ()
     failure_context: Mapping[str, Any] | None = None
+    operational_context: Mapping[str, Any] | None = None
+    batch_selection: Mapping[str, Any] | None = None
     # Private handoff from the one canonical reduction to the read-only scope.
     _scope_context: _SemanticScopeContext | None = field(
         default=None, repr=False, compare=False
@@ -136,7 +140,20 @@ class UnifiedStateObservation:
     def as_dict(self) -> dict[str, Any]:
         if self.next_action not in _UNIFIED_NEXT_ACTIONS:
             raise ValueError("invalid Unified State next action")
-        return {
+        if self.failure_context is not None:
+            from .review_transport import validate_failure_context
+            validate_failure_context(self.failure_context)
+            if (self.failure_context["run_id"] != self.failed_run_id
+                    or self.failure_context["subject_sha"] != self.failed_head_sha
+                    or self.failure_context["task"] != {"id": self.task_id, "revision": self.task_revision}):
+                raise ValueError("FAILURE_CONTEXT_SUBSTITUTION")
+        if self.operational_context is not None:
+            from .operational_receipt import validate_repair_delivery_context
+            validate_repair_delivery_context(self.operational_context)
+            attempt = self.operational_context.get("attempt")
+            if attempt and (attempt["failed_run_id"] != self.failed_run_id or self.correction_sha is not None and attempt["repair_sha"] != self.correction_sha):
+                raise ValueError("REPAIR_CONTEXT_SUBSTITUTION")
+        value = {
             "format": "AIOS_UNIFIED_STATE",
             "version": 1,
             "kind": "UNIFIED_STATE",
@@ -178,6 +195,18 @@ class UnifiedStateObservation:
             "verification_invoked": False,
             "state_mutated": False,
         }
+        if self.batch_selection is not None:
+            from .review import parse_batch_selection
+            selected = parse_batch_selection(self.batch_selection)
+            if ((self.task_id, self.task_revision) != (selected.task_id, selected.task_revision)
+                    or self.finding_id not in (None, selected.batch_id)):
+                raise ValueError("batch Unified State identity mismatch")
+            value.update(version=2, batch_id=selected.batch_id, batch_selection=asdict(selected))
+        elif is_batch_selector(self.finding_id):
+            raise ValueError("batch Unified State requires explicit versioned selection")
+        if self.operational_context is not None:
+            value["operational_context"] = dict(self.operational_context)
+        return value
 
     def render(self) -> str:
         return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
@@ -734,13 +763,17 @@ def _decode_lifecycle_run(
         raise ValueError("RUN identity fields are malformed")
     if value.get("kind") == "REMEDIATION":
         execution = op._remediation_execution_from_data(value.get("execution"))
+        batch = isinstance(execution, BatchRemediationExecution)
+        if batch:
+            from .review_transport import _bind_remediation_wrapper
+            _bind_remediation_wrapper(value, value["execution"], run_id=run_id)
         predecessor = None
         execution_base = None
         if "predecessor" in value:
             predecessor = op._parse_remediation_predecessor(value["predecessor"])
             if (
                 predecessor.review_id != execution.review_id
-                or predecessor.finding_id != execution.finding.id
+                or predecessor.finding_id != (execution.remediation.batch_id if batch else execution.finding.id)
                 or predecessor.reviewed_sha != execution.remediation.reviewed_sha
             ):
                 raise ValueError("REMEDIATION predecessor identity mismatch")
@@ -756,7 +789,7 @@ def _decode_lifecycle_run(
             execution.run,
             "REMEDIATION",
             execution.review_id,
-            execution.finding.id,
+            execution.remediation.batch_id if batch else execution.finding.id,
         )
     if "kind" in value:
         raise ValueError("unknown RUN kind")
@@ -921,7 +954,7 @@ def _repair_predecessor_bases(
 
 
 def _decode_remote_lifecycle(
-    repo: Path, task: Task, lifecycle: RemoteTaskLifecycle
+    repo: Path, task: Task, lifecycle: RemoteTaskLifecycle, *, remote: str | None = None
 ) -> tuple[list[_LifecycleRun], dict[str, Review]]:
     op = _operator()
     reviews: dict[str, Review] = {}
@@ -1119,7 +1152,8 @@ def _decode_remote_lifecycle(
                 and parent.terminal_kind == "RESULT"
                 and parent.run_id in reviews
                 and reviews[parent.run_id].review_id == pred.review_id
-                and pred.finding_id in {f.id for f in reviews[parent.run_id].findings}
+                and (set(pred.finding_ids).issubset(f.id for f in reviews[parent.run_id].findings)
+                     if isinstance(pred, BatchSelection) else pred.finding_id in {f.id for f in reviews[parent.run_id].findings})
             ]
         else:
             parents = [
@@ -1132,6 +1166,18 @@ def _decode_remote_lifecycle(
             ]
         if len(parents) != 1:
             raise ValueError("REMEDIATION predecessor is missing or ambiguous")
+        if isinstance(pred, BatchSelection):
+            execution = op._remediation_execution_from_data(item.run_document["execution"])
+            authenticated_prior = publication_module._validate_predecessor_lineage(repo,
+                remote=remote or resolve_transport_remote(repo), publication_run_id=item.run_id,
+                run_data=item.run_document, run=item.run, remediation=execution.remediation, task=task)
+            if authenticated_prior != reviews[parents[0].run_id]:
+                raise ValueError("batch predecessor REVIEW differs from canonical source")
+            if item.terminal_kind == "RESULT":
+                publication_module._validate_remediation_package(repo, source_sha=item.candidate_sha,
+                    task=task, run=item.run, remediation=execution.remediation, prior_review=authenticated_prior,
+                    result=validate_result(item.terminal["result"]),
+                    evidence=tuple(validate_evidence(e) for e in item.terminal["evidence"]), execution_base_sha=item.run.base_sha)
         if item.execution_base is not None and getattr(item.execution_base, "is_integrated", False):
             base_parents = [
                 parent for parent in decoded
@@ -1231,6 +1277,16 @@ def _decode_remote_lifecycle(
                 finding_id=None if origin is None else origin.finding_id,
             )
         )
+    for item in correction_complete:
+        review = reviews.get(item.run_id)
+        pred = item.semantic_predecessor
+        if isinstance(pred, BatchSelection) and review is not None:
+            if not isinstance(review, BatchReview) or review.selection != pred or item.terminal_kind != "RESULT":
+                raise ValueError("batch REVIEW does not bind its exact successful correction RUN")
+            validate_review(task=task, result=validate_result(item.terminal["result"]), review=review,
+                prior_review=reviews.get(pred.source_run_id))
+        elif isinstance(review, BatchReview):
+            raise ValueError("multi-finding REVIEW cannot reinterpret a legacy RUN")
     return correction_complete, reviews
 
 
@@ -1360,9 +1416,20 @@ def _derive_tip_frontier(
     for item in ordered[root_idx + 1:]:
         review = reviews.get(item.run_id)
         if review is None:
+            if (item.run_document or {}).get("format") == "AIOS_BATCH_REMEDIATION_RUN" and item.terminal_kind == "RESULT":
+                raise ValueError("batch correction is missing independent per-finding REVIEW outcomes")
             continue
         origin = _semantic_origin(item, lifecycle)
         predecessor = origin.semantic_predecessor
+        if isinstance(predecessor, BatchSelection) or isinstance(review, BatchReview):
+            if not isinstance(predecessor, BatchSelection) or not isinstance(review, BatchReview) or review.selection != predecessor:
+                raise ValueError("batch correction requires exact versioned per-finding REVIEW")
+            prior = reviews.get(predecessor.source_run_id)
+            task_data = review.selection
+            # The decoder validates the exact TASK and package; bind semantic
+            # identities here before the pure frontier applies per-finding verdicts.
+            if prior is None or prior.review_id != task_data.review_id or prior.reviewed_sha != task_data.reviewed_sha:
+                raise ValueError("batch correction source REVIEW is missing")
         if predecessor is None:
             if origin.parent_run_id is None:
                 raise ValueError("legacy correction predecessor is missing")
@@ -1407,6 +1474,7 @@ def _resolve_cumulative_execution_base(
     finding_id: str,
     reviewed_sha: str,
     semantic_review: Review | None = None,
+    finding_ids: tuple[str, ...] | None = None,
 ) -> tuple[str, str]:
     """Resolve the exact operational tip while retaining semantic finding identity."""
 
@@ -1445,9 +1513,21 @@ def _resolve_cumulative_execution_base(
         raise ValueError("cumulative correction tip is missing or ambiguous")
     tip = tips[0]
     frontier = _derive_tip_frontier(tip, decoded, reviews)
-    expected = (source_run_id, review_id, finding_id, reviewed_sha)
-    if not any(item.key == expected for item in frontier.findings):
+    selected_ids = finding_ids if finding_ids is not None else (finding_id,)
+    expected = {(source_run_id, review_id, i, reviewed_sha) for i in selected_ids}
+    if not expected.issubset(item.key for item in frontier.findings):
         raise ValueError("selected semantic finding is not outstanding at execution base")
+    if finding_ids is not None:
+        if tip.run_id not in reviews:
+            raise ValueError("batch cumulative tip must have an independent REVIEW")
+        authorities = [sha for src, selector, sha in lifecycle.remediation_selectors if src == source_run_id and selector == finding_id]
+        if len(authorities) != 1 or any((item.run_document or {}).get("remediation_authorization_sha") == authorities[0] for item in decoded):
+            raise ValueError("batch authority is missing, duplicated or already consumed")
+    if lifecycle.observed_refs:
+        from .review_transport import reject_overlapping_remediations
+        reject_overlapping_remediations(repo, remote=resolve_transport_remote(repo), refs=dict(lifecycle.observed_refs),
+            source_run_id=source_run_id, finding_ids=selected_ids,
+            own_ref=f"refs/heads/aios/remediation/{source_run_id}-{finding_id}")
     if not _operator()._git_is_ancestor(repo, reviewed_sha, tip.candidate_sha):
         raise ValueError("cumulative execution base does not descend from reviewed SHA")
     if not _operator()._git_is_ancestor(repo, lifecycle.main_sha, tip.candidate_sha):
@@ -1638,9 +1718,8 @@ def _local_pending_runs(
                 and reviews[parent.run_id].review_id == review_id
                 and reviews[parent.run_id].reviewed_sha
                 == execution.remediation.reviewed_sha
-                and finding_id in {
-                    finding.id for finding in reviews[parent.run_id].findings
-                }
+                and (set(execution.remediation.selection.finding_ids).issubset(f.id for f in reviews[parent.run_id].findings)
+                     if isinstance(execution.remediation, BatchRemediation) else finding_id in {finding.id for finding in reviews[parent.run_id].findings})
             ]
             if len(parents) == 1:
                 parent_run_id = parents[0].run_id
@@ -1813,7 +1892,22 @@ def _is_exact_local_correction_tip(
     return len(tips) == 1 and _operational_parent(pending) == tips[0].run_id
 
 
-def observe_unified_state(
+def observe_unified_state(task_id: str, *, repo: str | Path | None = None,
+                          delivery_id: str | None = None, issue_number: int | None = None,
+                          operational_sources=None) -> UnifiedStateObservation:
+    observation = _observe_unified_state(task_id, repo=repo)
+    if observation.failure_context is not None and os.environ.get("RUNNER_ENVIRONMENT") == "self-hosted":
+        observation = replace(observation, failure_context=_operator().observe_runtime_failure_detail(
+            _operator().resolve_repository(repo), observation.failure_context))
+    if delivery_id is not None or issue_number is not None:
+        from .operational_receipt import observe_repair_delivery
+        observation = replace(observation, operational_context=observe_repair_delivery(
+            delivery_id=delivery_id, issue_number=issue_number, sources=operational_sources))
+        observation.as_dict()  # Bind the operational subject to this canonical reduction.
+    return observation
+
+
+def _observe_unified_state(
     task_id: str, *, repo: str | Path | None = None
 ) -> UnifiedStateObservation:
     """Reduce the exact current TASK lifecycle without acquiring mutation authority."""
@@ -2015,20 +2109,21 @@ def observe_unified_state(
                         tip.parent_run_id if tip.family == "REPAIR" else None
                     ),
                     review_id=tip.review_id, finding_id=tip.finding_id,
+                    batch_selection=(asdict(tip.semantic_predecessor) if isinstance(tip.semantic_predecessor, BatchSelection) else None),
                     admission_failures=admission_context,
                     _scope_context=_SemanticScopeContext(tip, tuple(remote), reviews),
                 )
             prior_review = None
-            if review.prior_finding_id is not None:
+            if review.prior_finding_id is not None or isinstance(review, BatchReview):
                 prior_review = _correction_prior_review(tip, remote, reviews)
                 if (
-                    review.prior_finding_id != tip.finding_id
+                    not isinstance(review, BatchReview) and review.prior_finding_id != tip.finding_id
                 ):
                     raise ValueError("DELTA review predecessor is missing or ambiguous")
             validate_review(task=task, result=result, review=review, prior_review=prior_review)
             if review.reviewed_sha != tip.candidate_sha:
                 raise ValueError("review decision does not bind candidate ref")
-            if review.verdict == "BLOCKED":
+            if review.verdict == "BLOCKED" and not isinstance(review, BatchReview):
                 return _unified_blocked(
                     task, "SEMANTIC_REVIEW_BLOCKED", admission_failures=admission_context,
                     run_id=tip.run_id, review_id=review.review_id,
@@ -2047,6 +2142,11 @@ def observe_unified_state(
                         "limit": _OUTSTANDING_FINDING_LIMIT,
                     },
                 )
+            if isinstance(review, BatchReview) and review.verdict == "BLOCKED":
+                return _unified_blocked(task, "SEMANTIC_REVIEW_BLOCKED", admission_failures=admission_context,
+                    run_id=tip.run_id, review_id=review.review_id, candidate_sha=tip.candidate_sha,
+                    reviewed_sha=review.reviewed_sha, outstanding_findings=outstanding,
+                    batch_selection=asdict(review.selection))
             if review.verdict == "CHANGES_REQUIRED" or not frontier.is_empty:
                 if any(
                     not op._git_is_ancestor(
@@ -2103,6 +2203,22 @@ def observe_unified_state(
                     if selector[0] == identity["source_run_id"]
                     and selector[1] == identity["finding_id"]
                 ]
+                consumed = {(item.run_document or {}).get("remediation_authorization_sha") for item in remote}
+                for source_id, batch_id, authority_sha in lifecycle.remediation_selectors:
+                    if not is_batch_selector(batch_id) or authority_sha in consumed:
+                        continue
+                    from .review_transport import resolve_authenticated_batch
+                    _, authorized, _ = resolve_authenticated_batch(observer, source_run_id=source_id,
+                        batch_id=batch_id, required_sha=authority_sha)
+                    sel = authorized.selection
+                    identities = [{"source_run_id": source_id, "review_id": sel.review_id,
+                        "finding_id": i, "reviewed_sha": sel.reviewed_sha} for i in sel.finding_ids]
+                    if any(i in outstanding for i in identities):
+                        if not all(i in outstanding for i in identities):
+                            raise ValueError("batch authority has stale or partly closed subjects")
+                        selector_matches.append(({"source_run_id": source_id, "review_id": sel.review_id,
+                            "finding_id": batch_id, "reviewed_sha": sel.reviewed_sha, "batch_selection": asdict(sel)},
+                            (source_id, batch_id, authority_sha)))
                 if not selector_matches:
                     if len(outstanding) != 1:
                         return UnifiedStateObservation(
@@ -2152,6 +2268,7 @@ def observe_unified_state(
                         source_run_id=identity["source_run_id"],
                         review_id=identity["review_id"],
                         finding_id=identity["finding_id"], reviewed_sha=identity["reviewed_sha"],
+                        batch_selection=identity.get("batch_selection"),
                         correction_sha=selector[2], correction=correction,
                         outstanding_findings=outstanding,
                     )
@@ -2159,6 +2276,7 @@ def observe_unified_state(
                     task.task_id, task.revision, "CORRECTION", "EXECUTE_REMEDIATION",
                     run_id=tip.run_id, source_run_id=identity["source_run_id"],
                     review_id=identity["review_id"], finding_id=identity["finding_id"],
+                    batch_selection=identity.get("batch_selection"),
                     candidate_sha=tip.candidate_sha, reviewed_sha=identity["reviewed_sha"],
                     execution_base_run_id=preflight.execution_base_run_id,
                     execution_base_sha=preflight.execution_base_sha,
@@ -2278,6 +2396,7 @@ def observe_semantic_review_scope(
         raise ValueError("semantic review origin already has a review")
 
     prior_run_id = prior_review_id = prior_finding_id = None
+    batch_selection = None
     if origin.family == "PRIMARY":
         if ((origin_index != 0 and origin.publication_recovery is None)
                 or tip.review_id is not None or tip.finding_id is not None):
@@ -2290,11 +2409,13 @@ def observe_semantic_review_scope(
         prior_review = _correction_prior_review(tip, lifecycle, reviews)
         predecessor = origin.semantic_predecessor
         prior_run_id = origin.parent_run_id
+        batch_selection = predecessor if isinstance(predecessor, BatchSelection) else None
         if (
             prior_run_id is None
             or tip.review_id is None
             or tip.finding_id is None
-            or tip.finding_id not in {finding.id for finding in prior_review.findings}
+            or (not set(batch_selection.finding_ids).issubset(finding.id for finding in prior_review.findings)
+                if batch_selection is not None else tip.finding_id not in {finding.id for finding in prior_review.findings})
             or (
                 predecessor is not None
                 and (
@@ -2309,7 +2430,7 @@ def observe_semantic_review_scope(
         mode = "DELTA"
         semantic_base = prior_review.reviewed_sha
         prior_review_id = prior_review.review_id
-        prior_finding_id = tip.finding_id
+        prior_finding_id = None if batch_selection is not None else tip.finding_id
 
     body: dict[str, Any] = {
         "format": "AIOS_SEMANTIC_REVIEW_SCOPE",
@@ -2326,6 +2447,8 @@ def observe_semantic_review_scope(
         "prior_review_id": prior_review_id,
         "prior_finding_id": prior_finding_id,
     }
+    if batch_selection is not None:
+        body.update(version=2, batch_id=batch_selection.batch_id, batch_selection=asdict(batch_selection))
     if origin.publication_recovery is not None:
         plan = publication_module.publication_plan_from_data(origin.publication_recovery["plan"])
         body["publication_provenance"] = dict(source_run_id=plan.source_run_id,

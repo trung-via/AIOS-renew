@@ -1,0 +1,204 @@
+task_id: TASK-378
+revision: 1
+goal: >-
+  Deliver the next bounded Lean VP L1 review-authority eligibility slice after
+  TASK-377. Define and validate one explicitly invoked, non-operative binding
+  between the source-consistent TASK/semantic proof contract/mapping intake and
+  one independently Human-selected exact mapping-review TASK and its
+  own authenticated Reviewer/Publisher PASS lineage under existing authority. Never equate Git provenance, a mapping's
+  self-declared review_ref, an ordinary RUN REVIEW PASS, or a caller assertion
+  with independent semantic mapping approval. Retain explicit NOT_ESTABLISHED
+  whenever the requisite approved mapping subject or lineage is unavailable.
+problem: >-
+  TASK-376 validates exact structural coverage and TASK-377 authenticates
+  canonical Git content and currentness, but neither proves that an independent
+  Reviewer assessed the actual mapping/obligation semantics or that the specific
+  reviewed semantic source was lawfully published. A future production caller
+  must not be able to promote a committed but unreviewed mapping to eligibility
+  using coherent hashes, ordinary RUN review status, actor labels, or a Git ref
+  created outside the existing Reviewer/Publisher authority. Supply a bounded
+  reusable eligibility boundary now, without creating a new review authority,
+  review publisher, live proof scheduler, TASK version cutover or production opt-in.
+assumptions:
+  - >-
+    Canonical main at authoring is ada97b55868e7df79b47532f11ccca9a0b9e4633.
+    TASK-377 r1 exists on main, and the independently recorded
+    REVIEW-377-001 declares PASS for RUN-377-002 with reviewed_sha equal to this
+    main. This ordinary engineering review does NOT authorize any future
+    semantic mapping by itself.
+  - >-
+    Lean VP remains the unique Human-selected canonical roadmap NEXT and L1 is
+    incomplete. TASK-373 is read-only baseline, TASK-374 is KA-01 v1.1
+    prospective normative sequence, TASK-376 is non-operative intake, and
+    TASK-377 is source-consistency binding. KA-01 remains NOT_ACTIVATED;
+    matched VP-01 measurement remains outstanding.
+  - >-
+    The existing Reviewer/Publisher paths can prove an exact RUN-reviewed
+    TASK source. A mapping-specific future positive case additionally requires
+    an independently authenticated Human-selected mapping-review TASK identity,
+    its immutable acceptance and mapping source association, complete Reviewer
+    PASS for that specific TASK/source and Publisher publication. No such live
+    mapping-review TASK is assumed to exist now. In its absence the truthful
+    outcome is NOT_ESTABLISHED. The binder does not determine semantic adequacy
+    from acceptance prose; that remains with Human and independent Reviewer.
+  - >-
+    This is prospective TASK authoring under tca-1 version 1 with normalized
+    digest 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2.
+    Human roadmap continuation does not delegate an Executor, model, effort,
+    correction budget or KA-01 production opt-in. New TASK route is the
+    currently Human-selected LEGACY_REPOSITORY_DEFAULT_ROUTE.
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+    - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+    - docs/AIOS-LEAN-VP-L1-BASELINE.md
+    - docs/AIOS-LEAN-VP-L1-SEMANTIC-PROOF-INTAKE.md
+    - docs/AIOS-LEAN-VP-L1-CANONICAL-SOURCE-BINDING.md
+    - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+    - .ai/roadmap-state.yaml
+    - .ai/brain-audit-profiles.yaml
+    - .ai/tasks/TASK-373.yaml
+    - .ai/tasks/TASK-374.yaml
+    - .ai/tasks/TASK-376.yaml
+    - .ai/tasks/TASK-377.yaml
+    - src/aios_renew/review.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/proof_coverage_contract.py
+    - src/aios_renew/task.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_review_transport.py
+    - tests/test_lean_vp_l1_source_binding.py
+    - tests/test_proof_coverage_contract.py
+  modify:
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/proof_coverage_contract.py
+    - tests/test_lean_vp_l1_review_authority.py
+    - docs/AIOS-LEAN-VP-L1-REVIEW-AUTHORITY.md
+non_goals:
+  - >-
+    No new Reviewer or Publisher authority, new semantic-review carrier or
+    writable review-decision ref, issuer, signature registry, approval database,
+    alternate Git transport, trust-root selector or model-generated approval.
+  - >-
+    No operative TASK schema/version/policy registration, ordinary TASK parser
+    change, authoring/Runtime/admission/review/publication mutation hook,
+    verification scheduler, checkpoint, same-Executor feedback, correction,
+    automatic retry, roadmap advancement or KA-01 G3/G6 activation.
+  - >-
+    No claim that a synthetic test fixture is a real independently approved
+    mapping; no reinterpretation of existing REVIEW-377 or historical V1/V2
+    RUN/RESULT/FAILURE/REVIEW/REPAIR/REMEDIATION lineage. No downstream pin.
+  - >-
+    No VP-01 matched measurement, L2 source-to-target applicability or L3
+    scheduler/lease/resource implementation; future governance of a lawful
+    semantic mapping review subject remains separately gated if not already
+    supported by current independently authenticated authority.
+constraints:
+  hard:
+    - >-
+      Keep the interface read-only and explicitly invoked in the existing
+      source/coverage modules. Compose with TASK-376 and TASK-377 without
+      re-implementing their Git/currentness, mapping coverage or TASK decoder.
+      Do not create an automatic caller from live production paths.
+    - >-
+      Bind exactly one authenticated target TASK identity/revision/full acceptance,
+      candidate SHA, semantic contract/mapping digests and immutable source bytes;
+      separately require the trusted Human-selected mapping-review TASK identity,
+      its claimed exact contract/mapping source and acceptance binding, actual
+      reviewed candidate delta containing that mapping source, independent REVIEW
+      PASS for that TASK and exact Publisher publication/currentness. A hash or
+      generic PASS alone proves no semantic authority.
+    - >-
+      Use only independently authenticated existing canonical Reviewer/Publisher
+      facts for the separately authenticated Human-selected mapping-review TASK;
+      if its scope/acceptance, source association, reviewed PASS or publication
+      cannot be established, return NOT_ESTABLISHED. Do not classify semantic
+      adequacy by parsing natural-language AC text. Unrelated ordinary engineering
+      RUN REVIEW, including REVIEW-377-001, can never satisfy this requirement.
+      Do not add a new producer, approve a mapping, or accept model/caller labels
+      to circumvent missing authority.
+    - >-
+      Reject stale/swapped/forged and mixed approval subjects, mismatched
+      TASK/revision/acceptance/contract/mapping/candidate, unrelated mapping-review
+      TASK or absent source delta, moved canonical main, unknown review authority,
+      missing publication binding,
+      contradictory verdict/finding/outstanding decision and replay under
+      changed sources; never quietly resolve ambiguity to PASS.
+    - >-
+      Return bounded typed readiness separating SOURCE_CONSISTENT from
+      REVIEW_AUTHORITY_ESTABLISHED or NOT_ESTABLISHED, plus explicit unresolved
+      semantic adequacy, Runtime proof, L2 applicability, future version
+      admission, KA-01 G3/G6 and production opt-in. Only independent Reviewer
+      judges semantics; Runtime owns canonical verification and EVIDENCE.
+    - >-
+      Preserve minimum-sufficient-v1 and all current V1/V2 admission,
+      verification, correction and publication behavior. Tests use synthetic
+      local Git/typed fixtures and do not call live GitHub, activate a new
+      policy, write canonical refs or execute an Executor. Modify only the
+      four named files.
+    - >-
+      Verification uses minimum-sufficient-v1 with focused regression only;
+      avoid full suite, historical test replay and duplicate proof execution.
+acceptance:
+  - id: AC1
+    condition: >-
+      A bounded, explicitly invoked non-operative L1 review-authority eligibility
+      interface composes with TASK-377 canonical source binding and the existing
+      TASK-376/VP-02 semantics without changing any active admission path.
+  - id: AC2
+    condition: >-
+      Its eligibility contract requires a separately authenticated Human-selected
+      exact mapping-review TASK, binds that TASK to its own immutable RUN and
+      full independent Reviewer PASS/Publisher lineage, and requires exact target
+      TASK, candidate, contract, mapping source/bytes and acceptance correspondence
+      before REVIEW_AUTHORITY_ESTABLISHED; unrelated RUN review cannot substitute.
+  - id: AC3
+    condition: >-
+      When the separately Human-authenticated mapping-review TASK or its bound
+      existing Reviewer/Publisher PASS lineage is absent, incomplete, unrelated
+      or unavailable, the interface reports NOT_ESTABLISHED rather than
+      choosing a TASK itself or synthesizing success.
+  - id: AC4
+    condition: >-
+      The interface rejects forged reviewer labels, unrelated ordinary RUN
+      REVIEW PASS, untrusted hashes/refs, mismatched or moved source/approval
+      lineage, wrong version, partial acceptance and unrecognized review
+      sources without a permissive fallback.
+  - id: AC5
+    condition: >-
+      A bounded immutable result preserves separate source-currentness,
+      reviewer-authority, semantic-adequacy, Runtime-proof, applicability,
+      future-version and production-activation statuses; no result is a
+      substitute for independent Reviewer judgment or canonical EVIDENCE.
+  - id: AC6
+    condition: >-
+      Focused synthetic fixture tests demonstrate one lawfully cross-bound
+      mapping-review TASK/Reviewer/PUBLISHER positive path under an independently
+      selected test trust source and reject ordinary unrelated RUN review,
+      missing/mismatched/stale decisions, changed main, forged/oversized inputs
+      and Git writes; synthetic fixtures confer no live mapping authority.
+  - id: AC7
+    condition: >-
+      Documentation explains that independent Human selection, a mapping-specific
+      TASK and the existing independent Reviewer/Publisher verdict are distinct
+      from source hashing; live reviewed semantic mapping and operative policy
+      admission remain outstanding, as do VP-01, L2/L3, KA-01 G3/G6 and L4.
+  - id: AC8
+    condition: >-
+      Only src/aios_renew/review_transport.py,
+      src/aios_renew/proof_coverage_contract.py,
+      tests/test_lean_vp_l1_review_authority.py and
+      docs/AIOS-LEAN-VP-L1-REVIEW-AUTHORITY.md change; normal V1/V2
+      Runtime, Reviewer and Publisher behavior is unchanged.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_lean_vp_l1_review_authority.py tests/test_lean_vp_l1_source_binding.py tests/test_proof_coverage_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

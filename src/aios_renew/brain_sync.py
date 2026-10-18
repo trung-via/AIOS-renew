@@ -63,8 +63,11 @@ class BrainSyncSnapshot:
     kind: str = "BRAIN_SYNC_SNAPSHOT"
     # Exact correction observations supply this; ordinary planning never does.
     correction_subject: Mapping[str, Any] | None = None
+    diagnostics: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        if self.diagnostics is not None:
+            validate_diagnostic_context(self.diagnostics, self.selected_task)
         if self.unified_state and self.unified_state.get("failure_context") is not None:
             from .review_transport import validate_failure_context, ReviewTransportError
             context = self.unified_state["failure_context"]
@@ -78,6 +81,14 @@ class BrainSyncSnapshot:
                     or context["subject_sha"] != self.unified_state.get("failed_head_sha")
                     or context["task"] != self.unified_state.get("task")):
                 raise BrainSyncError("FAILURE context does not bind Unified State")
+        if self.unified_state and self.unified_state.get("operational_context") is not None:
+            from .operational_receipt import validate_repair_delivery_context
+            operational = self.unified_state["operational_context"]
+            validate_repair_delivery_context(operational)
+            attempt = operational.get("attempt")
+            if attempt and (attempt["failed_run_id"] != self.unified_state.get("failed_run_id")
+                    or self.unified_state.get("correction_sha") is not None and attempt["repair_sha"] != self.unified_state["correction_sha"]):
+                raise BrainSyncError("DIAGNOSTIC_RUN_SUBSTITUTION")
         body = {
             "format": self.format,
             "version": self.version,
@@ -99,6 +110,8 @@ class BrainSyncSnapshot:
         }
         if self.correction_subject is not None:
             body["correction_subject"] = dict(self.correction_subject)
+        if self.diagnostics is not None:
+            body["diagnostics"] = dict(self.diagnostics)
         return body
 
     def render(self) -> str:
@@ -224,7 +237,130 @@ def _extract_next_candidates(
     return [dict(item) for item in seq_next]
 
 
-def observe_brain_sync(
+def validate_diagnostic_context(value, task=None):
+    from .review_transport import validate_failure_context
+    from .operational_receipt import validate_repair_delivery_context
+    if not isinstance(value, dict) or set(value) != {"failure_context", "operational_context", "attributed_failure_context", "blocker"}:
+        raise BrainSyncError("DIAGNOSTIC_CONTEXT_INVALID")
+    failure, operational, attributed = (value[k] for k in ("failure_context", "operational_context", "attributed_failure_context"))
+    for context in (failure, attributed):
+        if context is not None:
+            validate_failure_context(context)
+            if task is not None and context["task"] != task:
+                raise BrainSyncError("DIAGNOSTIC_TASK_SUBSTITUTION")
+    if operational is not None:
+        validate_repair_delivery_context(operational)
+        attempt = operational.get("attempt")
+        if attempt and failure and attempt["failed_run_id"] != failure["run_id"]:
+            raise BrainSyncError("DIAGNOSTIC_RUN_SUBSTITUTION")
+        if attributed and (attempt is None or attributed["run_id"] != attempt["run_id"] or operational["run_created"] is not True):
+            raise BrainSyncError("DIAGNOSTIC_ATTRIBUTION_SUBSTITUTION")
+    elif attributed is not None:
+        raise BrainSyncError("DIAGNOSTIC_ATTRIBUTION_SUBSTITUTION")
+    blocker = value["blocker"]
+    if blocker is not None and (not isinstance(blocker, dict) or set(blocker) != {"code", "action"}
+            or blocker["code"] not in {"FAILURE_SOURCE_UNAVAILABLE", "FAILURE_SOURCE_INTEGRITY_INVALID",
+                "FAILURE_SOURCE_MOVED", "FAILURE_SUBJECT_MISMATCH", "FAILURE_DETAIL_UNAVAILABLE", "RUNTIME_TERMINAL_UNAVAILABLE"}
+            or blocker["action"] != "READ_EXACT_CANONICAL_FAILURE"):
+        raise BrainSyncError("DIAGNOSTIC_BLOCKER_INVALID")
+
+
+def _exact_failure_context(root, run_id, sources=None):
+    from .brain_attention import GitSources, attention, FAILURE, terminal_failure_context, AttentionError
+    if not isinstance(run_id, str) or re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", run_id) is None:
+        raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
+    def read(backend):
+        ref = "refs/heads/aios/failure-artifacts/" + run_id
+        sha = backend.refs(ref).get(ref)
+        if sha is None:
+            raise BrainSyncError("FAILURE_SOURCE_UNAVAILABLE")
+        item = attention(FAILURE, dict(run_id=run_id, artifact_sha=sha))
+        context = terminal_failure_context(item, backend)
+        if context is None:
+            raise BrainSyncError("FAILURE_DETAIL_UNAVAILABLE")
+        # This owner-gated helper can only add a safe projection; a provider can
+        # neither select a private path nor receive raw capture through Sync.
+        if context.get("safe_detail", {}).get("availability") == "UNAVAILABLE":
+            context = op.observe_runtime_failure_detail(root, context)
+        return context
+    try:
+        if sources is not None:
+            return read(sources)
+        with op._remote_observation_repository(root) as observer:
+            return read(GitSources(observer, op._git, resolve_transport_remote(observer)))
+    except AttentionError as exc:
+        code = "FAILURE_SOURCE_MOVED" if str(exc) == "FAILURE_SOURCE_MOVED" else (
+            "FAILURE_SOURCE_UNAVAILABLE" if str(exc) == "FAILURE_SOURCE_UNAVAILABLE" else "FAILURE_SOURCE_INTEGRITY_INVALID")
+        raise BrainSyncError(code) from None
+
+
+def observe_brain_sync(repo: str | Path | None = None, *, task_id: str | None = None,
+                       run_id: str | None = None, delivery_id: str | None = None,
+                       issue_number: int | None = None, workflow_run_id: int | None = None,
+                       run_attempt: int | None = None, operational_sources=None, canonical_sources=None) -> BrainSyncSnapshot:
+    """Existing planning Sync, or an explicitly selected read-only diagnostic.
+
+    Exact diagnostic selectors do not select work or change a planning bookmark.
+    Neither user URLs/blocks nor filesystem locators are accepted.
+    """
+    if all(x is None for x in (task_id, run_id, delivery_id, issue_number, workflow_run_id, run_attempt)):
+        return _observe_brain_sync(repo=repo)
+    root = resolve_repository(repo)
+    main = _resolve_main_sha(root)
+    repository = dict(root=str(root), name=_resolve_repository_name(root), main_sha=main, remote=None)
+    contexts = dict(failure_context=None, operational_context=None, attributed_failure_context=None, blocker=None)
+    unified, selected = None, None
+    if task_id is not None:
+        if not isinstance(task_id, str) or re.fullmatch(r"TASK-[A-Za-z0-9_-]+", task_id) is None:
+            raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
+        task = load_task(root, task_id)
+        selected = dict(id=task.task_id, revision=task.revision)
+        if run_id is None:
+            unified = observe_unified_state(task_id, repo=root).as_dict()
+            contexts["failure_context"] = unified.get("failure_context")
+            if delivery_id is None and issue_number is None and unified.get("failed_run_id") and unified.get("correction_sha"):
+                delivery_id = f"repair-{unified['failed_run_id']}-{unified['correction_sha']}"
+    if delivery_id is not None or issue_number is not None:
+        from .operational_receipt import observe_repair_delivery, REPAIR_REPOSITORY
+        if repository["name"] != REPAIR_REPOSITORY:
+            raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
+        contexts["operational_context"] = observe_repair_delivery(delivery_id=delivery_id, issue_number=issue_number,
+            workflow_run_id=workflow_run_id, run_attempt=run_attempt, sources=operational_sources)
+        attempt = contexts["operational_context"].get("attempt")
+        if attempt and unified and attempt["failed_run_id"] != unified.get("failed_run_id"):
+            raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
+        if attempt and run_id is None and contexts["failure_context"] is None:
+            run_id = attempt["failed_run_id"]
+    elif workflow_run_id is not None or run_attempt is not None:
+        raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
+    if run_id is not None:
+        try:
+            failure = _exact_failure_context(root, run_id, canonical_sources)
+            if selected is not None and failure["task"] != selected:
+                raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
+            selected, contexts["failure_context"] = failure["task"], failure
+        except (BrainSyncError, ReviewTransportError, OperatorError, OSError, ValueError, TypeError, KeyError) as exc:
+            code = str(exc) if str(exc) in {"FAILURE_SOURCE_UNAVAILABLE", "FAILURE_SOURCE_MOVED", "FAILURE_SUBJECT_MISMATCH", "FAILURE_DETAIL_UNAVAILABLE"} else "FAILURE_SOURCE_INTEGRITY_INVALID"
+            contexts["blocker"] = dict(code=code, action="READ_EXACT_CANONICAL_FAILURE")
+            if selected is not None:
+                contexts["operational_context"] = None
+    operational = contexts["operational_context"]
+    attempt = operational.get("attempt") if operational else None
+    if attempt and operational["run_created"] is True and attempt["run_id"] is not None:
+        try:
+            contexts["attributed_failure_context"] = _exact_failure_context(root, attempt["run_id"], canonical_sources)
+        except (BrainSyncError, ReviewTransportError, OperatorError, OSError, ValueError, TypeError, KeyError):
+            if contexts["blocker"] is None:
+                contexts["blocker"] = dict(code="RUNTIME_TERMINAL_UNAVAILABLE", action="READ_EXACT_CANONICAL_FAILURE")
+    snapshot = BrainSyncSnapshot(repository=repository, main_sha=main, roadmap={"selection": "EXACT_DIAGNOSTIC_SUBJECT"},
+        selection_status="EXACT_DIAGNOSTIC_SUBJECT", lifecycle_state=unified["lifecycle_state"] if unified else "OBSERVATION",
+        next_action=unified["next_action"] if unified else "NONE", authority=unified["authority"] if unified else "NONE",
+        selected_task=selected, unified_state=unified, blocker=None, diagnostics=contexts)
+    snapshot.as_dict()
+    return snapshot
+
+
+def _observe_brain_sync(
     repo: str | Path | None = None,
 ) -> BrainSyncSnapshot:
     """Reconstruct Brain Sync continuity facts deterministically without mutation."""

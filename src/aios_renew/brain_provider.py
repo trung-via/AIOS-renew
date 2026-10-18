@@ -1,6 +1,7 @@
 """Transient BP5-P3 invocation shell over the reviewed Brain semantic protocol.
 
-All transport callables, packets, packages and freshness material are caller supplied.
+Transport callables, packets and freshness material are caller supplied. Ordinary
+new audits obtain their approved policy and profile from canonical Git.
 No provider result or attempt retains a native response or conversation history.
 """
 
@@ -10,10 +11,12 @@ from copy import deepcopy
 from dataclasses import dataclass
 import json
 import math
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Protocol
 
 from .brain_provider_protocol import BrainProviderProtocolError, construct_request, validate_response
+from .brain_audit import _ADAPTIVE_ID, _ADAPTIVE_DIGEST, _packet
 from .decision_packet import DecisionPacket
 
 
@@ -223,22 +226,85 @@ class BrainAttemptError(Exception):
 def attempt(provider: BrainProvider, packet: DecisionPacket,
             return_contract_package: Mapping[str, Any], external_bindings: Mapping[str, Any],
             audit_profile_package: Mapping[str, Any] | None = None,
-            fresh_packet_supplier: Callable[[], DecisionPacket] | None = None) -> AttemptResult:
-    """Invoke DIRECT once or an audited attempt twice, with one freshness gate."""
+            fresh_packet_supplier: Callable[[], DecisionPacket] | None = None,
+            *, conformance_only: bool = False,
+            moa_source_context: Mapping[str, Any] | None = None,
+            task_source_context: Mapping[str, Any] | None = None,
+            architecture_source_context: Mapping[str, Any] | None = None,
+            human_v1_option: Mapping[str, Any] | None = None,
+            audit_policy: Mapping[str, Any] | None = None,
+            selection_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None,
+            human_v1_deep_support: Mapping[str, Any] | None = None,
+            repo: str | Path | None = None,
+            human_choice_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None) -> AttemptResult:
+    """Invoke one normative procedure, or explicit isolated compatibility support.
+
+    Ordinary new production authenticates canonical FOUR_SPECIALIZED policy.
+    Explicit R5 callers and isolated/historical requests keep their existing
+    bindings. No attempt grants canonical mutation authority.
+    """
     count = 0
     phase = "INPUT"
     try:
         if not isinstance(packet, DecisionPacket):
             raise ValueError("DecisionPacket required")
+        if type(conformance_only) is not bool:
+            raise ValueError("conformance_only must be explicit boolean")
         configured = (provider.provider, provider.model)
         _identity(*configured)
         if not callable(provider.invoke):
             raise ValueError("provider invocation required")
-        mode = "DIRECT" if packet.as_dict()["selected_flow"] == "DIAGNOSTIC" else "AUDIT_CONSTRUCT"
+        flow = packet.as_dict()["selected_flow"]
+        if not conformance_only and flow != "DIAGNOSTIC" and audit_policy is None and selection_authenticator is None:
+            from .brain_context import canonical_audit_inputs
+            # The caller-owned fresh composition is independent of the submitted
+            # packet. Check the work/subject before the first provider call too.
+            try:
+                current = fresh_packet_supplier()
+                if not isinstance(current, DecisionPacket) or _packet(current) != _packet(packet):
+                    raise ValueError("changed Brain subject before admission")
+            except Exception as exc:
+                raise ValueError("fresh Brain composition required before admission") from exc
+            audit_policy, audit_profile_package, selection_authenticator = canonical_audit_inputs(
+                packet, return_contract_package, external_bindings, audit_profile_package, repo=repo,
+                moa_source_context=moa_source_context, task_source_context=task_source_context,
+                architecture_source_context=architecture_source_context, human_v1_option=human_v1_option,
+                human_v1_deep_support=human_v1_deep_support,
+                human_choice_authenticator=human_choice_authenticator)
+        elif human_choice_authenticator is not None:
+            raise ValueError("individual Human authentication requires the canonical first-party policy path")
+        if not conformance_only and flow != "DIAGNOSTIC" and (
+                audit_policy is None or not callable(selection_authenticator)):
+            raise ValueError("production audit policy and authenticator required; no fallback")
+        prospective = (audit_policy is not None or selection_authenticator is not None
+                       or human_v1_deep_support is not None)
+        if prospective and conformance_only:
+            raise ValueError("prospective policy cannot be activated by isolated conformance")
+        mode = ("PROSPECTIVE" if prospective else
+                "V1_OPTION_CONSTRUCT" if conformance_only and human_v1_option is not None else
+                "AUDIT_CONSTRUCT" if conformance_only and audit_profile_package is not None
+                    and audit_profile_package.get("audit_profile_ref") == {
+                        "id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST} else
+                "AOA_CONSTRUCT" if conformance_only and packet.as_dict()["selected_flow"] == "ARCHITECTURE" else
+                "TCA_CONSTRUCT" if conformance_only and packet.as_dict()["selected_flow"] == "TASK_AUTHORING" else
+                "MOA_CONSTRUCT" if conformance_only and packet.as_dict()["selected_flow"] == "REMEDIATION_AUTHORING" else
+                "ROA_CONFORMANCE" if conformance_only else
+                "DIRECT" if packet.as_dict()["selected_flow"] == "DIAGNOSTIC" else "AUDIT_CONSTRUCT")
         if mode != "DIRECT" and not callable(fresh_packet_supplier):
             raise ValueError("fresh packet supplier required")
         first_request = construct_request(packet, return_contract_package, external_bindings,
-                                          audit_profile_package, request_mode=mode)
+                                          audit_profile_package, request_mode=mode,
+                                          moa_source_context=moa_source_context, task_source_context=task_source_context,
+                                          architecture_source_context=architecture_source_context,
+                                          human_v1_option=human_v1_option, audit_policy=audit_policy,
+                                          selection_authenticator=selection_authenticator,
+                                          human_v1_deep_support=human_v1_deep_support)
+        mode = first_request["request_mode"]
+        selected = first_request.get("audit_selection")
+        continuation = {} if selected is None else {
+            "audit_policy": selected["policy"], "selection_authenticator": selection_authenticator,
+            "selection_phase": "CONTINUE", "human_v1_deep_support": selected["human_v1_deep_support"],
+        }
     except (BrainProviderProtocolError, ProviderResponseError, AttributeError, KeyError, TypeError, ValueError):
         invalid_input = True
     else:
@@ -303,13 +369,42 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
         raise BrainAttemptError("FRESH_PACKET_UNAVAILABLE", phase, count)
     if not isinstance(fresh, DecisionPacket):
         raise BrainAttemptError("FRESH_PACKET_INVALID", phase, count)
+    if mode == "ROA_CONFORMANCE":
+        try:
+            fresh_request = construct_request(fresh, first_request["return_contract_package"],
+                                               first_request["external_bindings"],
+                                               first_request["audit_profile_package"], request_mode=mode, **continuation)
+        except (BrainProviderProtocolError, AttributeError, KeyError, TypeError, ValueError):
+            raise BrainAttemptError("FRESH_PACKET_INVALID", phase, count) from None
+        if fresh_request["request_fingerprint"] != first_request["request_fingerprint"]:
+            raise BrainAttemptError("STALE_BEFORE_ROA_RETURN", phase, count)
+        return AttemptResult(first, (attribution1,))
+    if mode in {"MOA_CONSTRUCT", "TCA_CONSTRUCT", "AOA_CONSTRUCT", "V1_OPTION_CONSTRUCT"} or continuation:
+        try:
+            fresh_request = construct_request(fresh, first_request["return_contract_package"],
+                                               first_request["external_bindings"], first_request["audit_profile_package"],
+                                               request_mode=mode, moa_source_context=first_request.get("moa_source_context"),
+                                               task_source_context=first_request.get("task_source_context"),
+                                               architecture_source_context=first_request.get("architecture_source_context"),
+                                               human_v1_option=first_request.get("human_v1_option"), **continuation)
+        except (BrainProviderProtocolError, AttributeError, KeyError, TypeError, ValueError):
+            raise BrainAttemptError("FRESH_PACKET_INVALID", phase, count) from None
+        if fresh_request["request_fingerprint"] != first_request["request_fingerprint"]:
+            raise BrainAttemptError("STALE_BEFORE_STAGE2", phase, count)
     try:
         if fresh.packet_fingerprint != first_request["decision_packet"]["packet_fingerprint"]:
             raise BrainAttemptError("STALE_BEFORE_STAGE2", phase, count)
+        second_mode = {"MOA_CONSTRUCT": "MOA_RECONCILE", "TCA_CONSTRUCT": "TCA_RECONCILE",
+                       "AOA_CONSTRUCT": "AOA_RECONCILE",
+                       "V1_OPTION_CONSTRUCT": "V1_OPTION_RECONCILE"}.get(mode, "AUDIT_RECONCILE")
         second_request = construct_request(fresh, first_request["return_contract_package"],
                                            first_request["external_bindings"],
-                                           first_request["audit_profile_package"], request_mode="AUDIT_RECONCILE",
-                                           stage1_decision=first)
+                                           first_request["audit_profile_package"], request_mode=second_mode,
+                                           stage1_decision=first,
+                                           moa_source_context=first_request.get("moa_source_context"),
+                                           task_source_context=first_request.get("task_source_context"),
+                                           architecture_source_context=first_request.get("architecture_source_context"),
+                                           human_v1_option=first_request.get("human_v1_option"), **continuation)
     except BrainAttemptError:
         raise
     except (BrainProviderProtocolError, AttributeError, KeyError, TypeError, ValueError):
@@ -318,7 +413,27 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
         invalid_input = False
     if invalid_input:
         raise BrainAttemptError("PROTOCOL_INPUT_INVALID", phase, count)
-    second, attribution2 = invoke(second_request, "AUDIT_RECONCILE")
+    second, attribution2 = invoke(second_request, second_mode)
+    if mode in {"MOA_CONSTRUCT", "TCA_CONSTRUCT", "AOA_CONSTRUCT", "V1_OPTION_CONSTRUCT"} or continuation:
+        # Rebuild a request, never rerun an audit, after the adversarial pass.
+        try:
+            final_packet = fresh_packet_supplier()
+        except Exception:
+            raise BrainAttemptError("FRESH_PACKET_UNAVAILABLE", "FRESH_PACKET", count) from None
+        try:
+            final_request = construct_request(final_packet, first_request["return_contract_package"],
+                                               first_request["external_bindings"], first_request["audit_profile_package"],
+                                               request_mode=mode, moa_source_context=first_request.get("moa_source_context"),
+                                               task_source_context=first_request.get("task_source_context"),
+                                               architecture_source_context=first_request.get("architecture_source_context"),
+                                               human_v1_option=first_request.get("human_v1_option"), **continuation)
+        except (BrainProviderProtocolError, AttributeError, KeyError, TypeError, ValueError):
+            raise BrainAttemptError("FRESH_PACKET_INVALID", "FRESH_PACKET", count) from None
+        if final_request["request_fingerprint"] != first_request["request_fingerprint"]:
+            code = {"MOA_CONSTRUCT": "STALE_BEFORE_MOA_RETURN", "TCA_CONSTRUCT": "STALE_BEFORE_TCA_RETURN",
+                    "AOA_CONSTRUCT": "STALE_BEFORE_AOA_RETURN",
+                    "V1_OPTION_CONSTRUCT": "STALE_BEFORE_V1_OPTION_RETURN"}.get(mode, "STALE_BEFORE_AUDIT_RETURN")
+            raise BrainAttemptError(code, "FRESH_PACKET", count)
     return AttemptResult(second, (attribution1, attribution2))
 
 

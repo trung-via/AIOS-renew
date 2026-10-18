@@ -2,16 +2,48 @@
 
 from copy import deepcopy
 from pathlib import Path
+import tomllib
+import shlex
 
 import pytest
 import yaml
 
-from aios_renew.parallel_verification import ProbeError
+from aios_renew.parallel_verification import ProbeError, effective_pytest_profile
 from aios_renew.verification_profile import (
     COMPARABLE_TOOLCHAIN_KEYS, load_policy, performance_guard, selected_profile_identity,
 )
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+
+
+def test_task346_repository_default_is_actual_fixed_xdist_arguments():
+    settings = tomllib.loads((REPOSITORY / "pyproject.toml").read_text(encoding="utf-8"))
+    assert shlex.split(settings["tool"]["pytest"]["ini_options"]["addopts"]) == [
+        "-n", "12", "--dist", "load", "--max-worker-restart", "0"]
+    assert effective_pytest_profile([], environment={}) == dict(
+        workers=12, distribution="load", max_worker_restart=0, collect_only=False)
+
+
+@pytest.mark.parametrize("arguments,workers,collect", [
+    (["-n0"], 0, False), (["-n", "1"], 1, False), (["--numprocesses=4"], 4, False),
+    (["-n12"], 12, False), (["--collect-only"], 0, True), (["--co", "-n4"], 0, True),
+    (["-k", "-n4"], 12, False), (["-k", "--co"], 12, False),
+])
+def test_task346_diagnostic_pins_and_nonexecuting_collection_are_explicit(arguments, workers, collect):
+    result = effective_pytest_profile(arguments, environment={})
+    assert result["workers"] == workers and result["collect_only"] == collect
+    assert result["distribution"] == ("load" if workers else "no")
+
+
+@pytest.mark.parametrize("arguments,environment", [
+    (["-n4", "--numprocesses=12"], {}), (["-n", "logical"], {}), (["--tx", "popen"], {}),
+    (["--dist=each"], {}), (["--max-worker-restart=1"], {}),
+    ([], {"PYTEST_ADDOPTS": "-n4"}), (["-n4"], {"PYTEST_ADDOPTS": "-n12"}),
+    ([], {"PYTEST_ADDOPTS": "--dist loadfile"}), ([], {"PYTEST_XDIST_AUTO_NUM_WORKERS": "12"}),
+])
+def test_task346_conflicting_worker_sources_fail_closed(arguments, environment):
+    with pytest.raises(ProbeError):
+        effective_pytest_profile(arguments, environment=environment)
 
 
 def policy_data():

@@ -661,3 +661,69 @@ def test_repair_wakeup_replays_historical_v1_without_resolving_defaults(
 
     assert outcome.replayed is True
     assert outcome.status == "FAILED"
+
+
+def test_auto_journal_binds_source_profile_and_rejects_manual_or_selector_conflicts(tmp_path: Path) -> None:
+    from aios_renew.execution_profile import execution_profile_identity
+    from aios_renew.repair_dispatch import auto_source_profile_digest, existing_auto_repair_authorization
+
+    state = tmp_path / ".git/aios"
+    profile = profile_for("repair-auto-111")
+    authorization = {
+        "actor": "trung-via", "source_run_id": "RUN-111-001",
+        "source_profile_sha256": auto_source_profile_digest("RUN-111-001", execution_profile_identity(profile)),
+    }
+    request = dict(
+        state_root=state, repo_root=tmp_path, repair_dispatch_id="repair-auto-111",
+        failed_run_id="RUN-111-001", repair_sha="a" * 40, executor="codex",
+        task_id="TASK-111", action="CODE_FIX", executor_required=True,
+        execution_profile=profile, auto_authorization=authorization,
+    )
+    calls = []
+    def invoke():
+        calls.append("once")
+        _write_run(state, "RUN-111-002", terminal="results")
+        bind_repair_run(state_root=state, repo_root=tmp_path, repair_dispatch_id="repair-auto-111",
+                        run_id="RUN-111-002", execution_profile=profile_for("RUN-111-002"))
+        return RepairInvocation(0, "RUN-111-002")
+    first = execute_repair_dispatch(**request, invoke_repair=invoke)
+    record_path = next((state / "repair-dispatches").glob("*.json"))
+    before = record_path.read_bytes()
+    assert json.loads(before)["version"] == 4
+    assert existing_auto_repair_authorization(state_root=state, repo_root=tmp_path,
+        repair_dispatch_id="repair-auto-111", actor="trung-via") == authorization
+    replay = execute_repair_dispatch(**request, invoke_repair=lambda: pytest.fail("duplicate AUTO RUN"))
+    assert first.run_id == replay.run_id == "RUN-111-002" and replay.replayed
+    for mutation in (
+        {"auto_authorization": None}, {"repair_sha": "b" * 40},
+        {"auto_authorization": {**authorization, "actor": "other-human"}},
+        {"failed_run_id": "RUN-112-001", "auto_authorization": {**authorization, "source_run_id": "RUN-112-001"}},
+        {"execution_profile": replace(profile, model="other-model")},
+    ):
+        with pytest.raises(RepairDispatchError):
+            execute_repair_dispatch(**{**request, **mutation}, invoke_repair=lambda: pytest.fail("conflict invoked"))
+    assert calls == ["once"] and record_path.read_bytes() == before
+
+
+def test_auto_cannot_reinterpret_a_manual_journal(tmp_path: Path) -> None:
+    from aios_renew.repair_dispatch import existing_auto_repair_authorization
+    state = tmp_path / ".git/aios"
+    _execute(state, lambda: RepairInvocation(1))
+    with pytest.raises(RepairDispatchError, match="AUTO/manual"):
+        existing_auto_repair_authorization(state_root=state, repo_root=tmp_path,
+                                          repair_dispatch_id="repair-111", actor="trung-via")
+
+
+@pytest.mark.parametrize("action", ["NO_CHANGE", "FINALIZE_CANDIDATE"])
+def test_auto_executorless_journal_keeps_no_coding_profile(tmp_path: Path, action: str) -> None:
+    state = tmp_path / ".git/aios"
+    request = dict(
+        state_root=state, repo_root=tmp_path, repair_dispatch_id="auto-elided-111",
+        failed_run_id="RUN-111-001", repair_sha="a" * 40, executor=None,
+        task_id="TASK-111", action=action, executor_required=False,
+        auto_authorization={"actor": "trung-via", "source_run_id": "RUN-111-001", "source_profile_sha256": None},
+    )
+    outcome = execute_repair_dispatch(**request, invoke_repair=lambda: RepairInvocation(1))
+    replay = execute_repair_dispatch(**request, invoke_repair=lambda: pytest.fail("executorless replay invoked"))
+    assert outcome.executor is None and replay.replayed
+    assert not (state / "execution-profiles").exists() and not (state / "runs").exists()

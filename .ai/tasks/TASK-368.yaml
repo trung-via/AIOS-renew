@@ -1,0 +1,217 @@
+task_id: TASK-368
+revision: 1
+goal: 'Implement R2.1/R5 bounded prospective audit-profile policy selection and migration
+  closure in the existing Brain provider/semantic protocol: after a separately authenticated,
+  explicit Human/Brain canonical cutover, select exactly one existing pinned specialized
+  procedure for each of ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING and REPAIR_AUTHORING.
+  Preserve Adaptive V1 as externally Human-opted, one-audit-only architecture/task
+  substitute and correction read-only deep cognitive support; preserve existing V1
+  production selection until that later lawful planning cutover and all historical/in-flight
+  exact profile bindings. Do not invent a new audit router or change Runtime mutation/verification
+  authority.'
+problem: R2.1/R1 through R4 have reviewed/published ROA-1 R2, MOA-1, TCA-1 and AOA-1
+  as strictly isolated conformance. The live Brain provider still routes ordinary
+  audited invocations to universal V1 by default, while specialized procedures require
+  conformance_only=True and correction-ingress historical helper retains hardcoded
+  V1-only checks. Merely renaming a profile in roadmap, or relying on registry order,
+  risks either no actual prospective specialized selection or an unauthorized mid-flight
+  policy switch and mixed audit lineage. R5 needs the smallest safe adapter-level
+  prospective selection boundary and focused conformance; no Executor-run mutation
+  may itself approve a Human/Brain planning cutover.
+assumptions:
+- Brain Sync on canonical main 3c9fb1dfa4f27dc54ff9d73285289e89aa29a04e establishes
+  R2.1/R4 TASK-367 r1 / RUN-367-001 / REVIEW-367-001 PRIMARY PASS and the exact reviewed
+  source 3c9fb1dfa4f27dc54ff9d73285289e89aa29a04e published at HEAD. R1 TASK-363,
+  R2 TASK-364 and R3 TASK-366 published isolated profile support remain exact historical
+  antecedents.
+- Human-approved docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md R5 target is four outcome-specific
+  default procedures with optional Adaptive V1. Existing .ai/roadmap-state.yaml active
+  profile selection still names sole V1. This TASK must not infer prospective activation
+  from Human approval of implementation, mere profile registry membership, GitHub
+  transport, or TASK/RESULT/REVIEW state.
+- Active prospective profile before a separately canonicalized future Human/Brain
+  cutover remains aios-adaptive-brain-audit-v1 v1 normalized digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718.
+  Frozen profile identity mappings for R5 are {"ARCHITECTURE":{"id":"aoa-1","version":1,"digest":"7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b"},"TASK_AUTHORING":{"id":"tca-1","version":1,"digest":"1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2"},"REMEDIATION_AUTHORING":{"id":"moa-1","version":1,"digest":"49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903"},"REPAIR_AUTHORING":{"id":"roa-1-r2","version":2,"digest":"aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4"}}.
+  An in-flight subject retains its exact originally selected package and stage lineage.
+- Human prospectively approved all R2.1 implementation tasks using individually admitted
+  Codex gpt-6.1-sol with reasoning effort max; this final semantic TASK remains Executor-neutral.
+  Runtime alone admits an Executor, verifies and creates EVIDENCE, Reviewer issues
+  semantic implementation verdict and Publisher publishes exact eligible candidate.
+- The exact current direct-final AUTHOR_TASK, AUTHOR_REPAIR and AUTHOR_REMEDIATION
+  ingress boundaries have no active serialized two-stage-audit prerequisite. In authoring_ingress.py
+  a historical V1 preflight helper exists; do not treat dead or compatibility-only
+  code as a live requirement, and do not revive audited_handoff gates.
+- R5 is necessary because current isolated specialized modes do not establish a lawful
+  prospectively selected production behavior. The separate explicit Human/Brain roadmap
+  policy reconciliation must happen after this R5 implementation is reviewed and published;
+  Lean VP remains queued until R2.1 is lawfully closed.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/brain-return-contracts.yaml
+  - .ai/flow-cards.yaml
+  - .ai/tasks/TASK-363.yaml
+  - .ai/tasks/TASK-364.yaml
+  - .ai/tasks/TASK-366.yaml
+  - .ai/tasks/TASK-367.yaml
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/brain_return_contract.py
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_return_contract.py
+  - tests/test_decision_packet.py
+  - tests/test_brain_context.py
+  modify:
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_audit.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_audit.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+non_goals:
+- No Executor-authored mutation to .ai/roadmap-state.yaml, active planning bookmark,
+  Human risk-acceptance record, Constitution or frozen Kernel; no claim of prospective
+  selection activation before R5 reviewed publication and separate explicit Human/Brain
+  canonical policy reconciliation.
+- No new general planner, profile router, score/threshold winner, agent, model auto-selector,
+  lifecycle state, database, duplicated profile registry, automatic retry/correction
+  selector, new RUN/REVIEW/PUBLISH authority, or modified Flow Resolver semantics.
+- No new or regenerated AOA/TCA/MOA/ROA/Adaptive V1/V2/V3 audit profile content, digest,
+  historical contract or in-flight result; no obligatory Adaptive V1 plus specialized
+  audit for the same prospective subject.
+- No reintroduction of serialized audited_handoff, Decision Packet hashes, Brain audit
+  fingerprints or proof ledgers into direct-final AUTHOR_TASK / AUTHOR_REPAIR / AUTHOR_REMEDIATION
+  mutation prerequisites; no unrelated ingress refactor.
+- No new V3 fallback, downgrade or silent V1 compatibility fallback when a future
+  activated exact specialized profile is missing; no partial activation by a mere
+  conformance_only flag or literal Human string.
+- No downstream adoption, VP/BO implementation, measured efficiency or quality superiority
+  claim, full suite, verification v2 policy, new production AOA/TCA implementations
+  or corrections unrelated to R5.
+constraints:
+  hard:
+  - Implement R5 solely as a bounded extension to the published existing provider-neutral
+    Brain attempt/request/decision protocol and exact profile registry semantics.
+    Flow selection remains the existing selected_flow; no second Flow Resolver or
+    generic runtime semantic selector. One invocation binds exactly one externally
+    authenticated prospective policy state, one flow, one complete pinned profile
+    package, one work-context/canonical-currentness identity and one return contract;
+    provenance strings and hashes supplied by a model cannot authenticate Human policy.
+  - A future activated Human/Brain canonical policy must map exactly ARCHITECTURE
+    -> aoa-1 v1, TASK_AUTHORING -> tca-1 v1, REMEDIATION_AUTHORING -> moa-1 v1, REPAIR_AUTHORING
+    -> roa-1-r2 v2 with the four exact normalized digests listed in assumptions. Reject
+    incomplete, conflicting, stale, rehashed or partially activated policy, unknown
+    profile, wrong flow, unsupported package or wrong binding; fail closed without
+    fallback.
+  - Until an explicitly approved and authenticated canonical policy cutover occurs
+    after reviewed and published R5, ordinary prospective calls must continue to select
+    exact Adaptive V1 v1 as the sole active production profile. Implementation, test
+    fixtures, registry order, an Issue dispatch, reviewed/published R5 candidate alone
+    or generic Human approval of implementation is not activation authority. When
+    a future policy is explicitly active, do not issue unsolicited V1 or double-audit
+    one subject.
+  - Once the future switch is authorized, the existing ARCHITECTURE AOA, TASK_AUTHORING
+    TCA and REMEDIATION MOA each run exactly their pinned two focused passes/one closure,
+    while REPAIR ROA runs exactly its pinned one focused procedure. Reuse the published
+    semantic source/lineage validation, bounded privacy and frozen currentness checks
+    without making isolated testing a hidden live-selection prerequisite.
+  - For ARCHITECTURE or TASK_AUTHORING, an explicit individually authenticated Human
+    V1_ONLY selection bound before stage one to exact subject, source, canonical currentness,
+    return contract and V1 profile substitutes V1 alone for specialized mode. A bare
+    selected_by=HUMAN, inferred complexity, repeated model preference or same-subject
+    mixing of V1 and specialized must fail closed. Existing isolated Human option
+    support is retained. The Human may choose a fresh separately bound decision rather
+    than override an in-flight audit.
+  - For REMEDIATION_AUTHORING and REPAIR_AUTHORING, the specialized procedure is normative.
+    Human-requested deeper V1 analysis is optional, read-only cognitive support with
+    no second normative verdict, no corrected payload authority, no mutation gate
+    or automatic extra provider call. It cannot replace ROA/MOA without a later separately
+    approved normative policy change.
+  - "Protect exact historical V1/V2/V3 and R1\u2013R4 content/digests plus in-flight\
+    \ first-stage profile and return binding. When the policy changes between stages\
+    \ or before final return, an already admitted exact old subject may finish under\
+    \ its original bound source if the caller can authenticate the same original policy/currentness\
+    \ authority; otherwise stop with a bounded stale/ambiguous blocker, never mix\
+    \ modes or silently recompose under the new default."
+  - 'Do not change Runtime TASK/RUN/RESULT/FAILURE/REVIEW/REPAIR/REMEDIATION, direct-final
+    ingress, Publisher or roadmap-reducer code. Any formerly hardcoded V1 compatibility
+    helper that is not on the live direct-final path must remain inert and must not
+    become an authority gate. If a truly live mandatory consumer outside scope is
+    discovered, do not edit it silently: surface a bounded closure blocker requesting
+    separate Human scope authority.'
+  - Create focused positive and adversarial regression cases for all four target profiles,
+    zero unsolicited V1 after simulated future activation, exact Human opt-in on ARCH/TASK,
+    read-only V1 for corrections, pre-cutover old V1 behavior, mixed/stale stages,
+    missing/ambiguous/forged source policy, untrusted Human literal, wrong digest/flow,
+    privacy, old subjects/replay and direct-final ingress non-interference. Do not
+    claim empirical provider quality improvement without comparable episodes.
+  - Only seven scope.modify files are authorized; verify using the two exact focused
+    minimum-sufficient-v1 commands without broad full-suite runs. Document one unambiguous
+    future cutover prerequisite and outstanding separately Human/Brain-owned roadmap
+    mutation, not a self-authorized activation.
+acceptance:
+- id: AC1
+  condition: Existing Brain provider/semantic protocol supports one prospective per-flow
+    selected audit profile for ARCHITECTURE=AOA-1, TASK_AUTHORING=TCA-1, REMEDIATION_AUTHORING=MOA-1
+    and REPAIR_AUTHORING=ROA-1 R2, each with its existing pinned digest and exact
+    focused pass count, without an independent selector/router or re-minted profile.
+- id: AC2
+  condition: Selection for future prospective specialized attempts is bound to externally
+    authenticated, complete Human/Brain canonical policy, exact selected flow, main/currentness,
+    profile id/version/digest, return contract and subject. Absent, stale, malformed,
+    conflicting or partial activation fails closed rather than silently choosing V1/V3
+    or relying on registry order.
+- id: AC3
+  condition: Without authorized prospective cutover, production selection retains
+    exact current Adaptive V1 and historical in-flight subjects preserve their original
+    pinned profile/stage lineage. No simulated or real candidate switches by Task/Issue/workflow
+    status, conformance_only, profile presence or Executor claims alone.
+- id: AC4
+  condition: Upon an explicitly supplied and authenticated future active policy, the
+    four flow-specific supported procedures can each execute as exactly one normative
+    audit, with their established bounded source validation, final closure and pre-second-pass/final
+    currentness behavior; no unsolicited prospective V1 is invoked or required.
+- id: AC5
+  condition: Architecture and Task Authoring accept a one-subject explicit externally
+    authenticated Human V1_ONLY selection as the sole normative V1 substitute, rejecting
+    literal or forged opt-in, mixed stages, dual audits, stale packages and silent
+    V3 fallback. Existing TCA/AOA isolated Human option compatibility is preserved.
+- id: AC6
+  condition: Remediation and Repair maintain MOA/ROA alone as normative even when
+    optional V1 cognitive deep support is requested; that support remains read-only,
+    source-bound and cannot become a second normative review or new mutation prerequisite.
+- id: AC7
+  condition: Focused regression coverage demonstrates canonical policy pre-cutover/post-cutover
+    test cases for all four flows, missing authority/profile, cutover during in-flight
+    execution, privacy and cross-profile substitutions, historical V1/V2/V3 compatibility
+    and inert direct-final ingress, with no full-suite requirement.
+- id: AC8
+  condition: "R5 implementation changes only scope.modify, documents exact future\
+    \ Human/Brain planning cutover as an unfulfilled separate authority until actually\
+    \ canonicalized, and leaves Runtime/Reviewer/Publisher, direct authoring paths,\
+    \ roadmap, Kernel, downstream and preserved R1\u2013R4 profile bytes unchanged."
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_provider.py tests/test_brain_provider_protocol.py
+    tests/test_brain_audit.py
+  - python -m pytest -q tests/test_brain_return_contract.py tests/test_decision_packet.py
+    tests/test_brain_context.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

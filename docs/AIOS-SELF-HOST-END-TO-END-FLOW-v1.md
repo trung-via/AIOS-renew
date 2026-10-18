@@ -178,6 +178,209 @@ scope, profile and currentness. Neither approval delivery nor dispatch creates a
 DELTA review checks the authorized finding/repair and material defects introduced by
 that correction; it does not restart the original TASK or absorb new Human intent.
 
+### Exact-subject Human AUTO delivery (TASK-365)
+
+The Issue carrier accepts an explicit per-request AUTO opt-in using the existing
+eight selectors, with `version: 3`, `executor: AUTO`, and null `model` and
+`reasoning_effort`. For example, the following is a request shape only; replace
+the RUN, authorization SHA and immutable delivery id with the exact approved subject:
+
+```yaml
+format: AIOS_REPAIR_WAKEUP_REQUEST
+version: 3
+repair_dispatch_id: repair-human-exact-subject
+failed_run_id: RUN-365-001
+repair_sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+executor: AUTO
+model: null
+reasoning_effort: null
+```
+
+AUTO delegates deterministic reuse of the exact protected failed RUN's coding
+profile. It does not delegate provider/model selection. Runtime first requires
+READY canonical preflight and matching Unified State for the current REPAIR SHA.
+When `executor_required=true`, it reads exactly one source RUN/FAILURE/profile
+through canonical remote recovery, checks TASK/RUN/executor identity, source
+candidate policy and current capability compatibility, and preserves the source's
+exact model, effort and original source attributions. Missing, ambiguous, malformed
+or incompatible source state rejects before journal admission/RUN; the actionable
+alternative is an explicit Human coding selection. No local RUN label, repository
+default, prior preference or free-form provenance string supplies an AUTO profile.
+
+Explicit `codex`/`antigravity` and supported model/effort continue through the manual
+route without consulting AUTO. Version 2 manual/executorless Issues remain valid.
+Mixed AUTO/model/effort inputs are rejected. Both source fields of a pre-resolved
+manual profile must be supplied together with its exact values. An absent optional
+workflow value is omitted from the command, preserving existing default resolution.
+
+The self-host workflow verifies repository, canonical main ref/current SHA, bounded
+selectors and original GitHub event proof. An allowlisted Human `workflow_dispatch`
+may request AUTO for its exact input subject. A reusable opened Issue may be delivered
+by `github-actions[bot]` only when re-admission of the GitHub-owned event proves its
+allowlisted Human sender/author and exactly matches all transported selectors and
+profile values. A copied Human name or Bot-authored dispatch cannot establish that
+proof. AUTO rechecks it at the Runtime outer boundary as well. The existing bare
+Bot `workflow_dispatch` route stays executorless and requires its deterministic
+`repair-<failed_run_id>-<repair_sha>` identity, with no model/effort/source inputs.
+
+| Delivery / canonical requirement | Boundary and result |
+| --- | --- |
+| Human manual REPAIR, coding required, valid exact profile | Existing manual profile reaches Runtime unchanged; canonical admission still owns source/currentness/scope/checkout/ancestry checks. |
+| Human version-3 AUTO, coding required, unique protected compatible source profile | Resolve once, bind concrete executor/profile and Human/source provenance in the same dispatch journal, then enter existing REPAIR admission. |
+| Human AUTO without valid Human proof/current authorization or with absent/ambiguous/invalid source profile | No new RUN or coding invocation; bounded authorization/source-profile reason identifies the required correction. |
+| Bot reusable Issue transport with proven original Human AUTO/manual request | Re-admit the original exact event before AIOS; Bot does not choose or broaden authority. |
+| Bare Bot coding/AUTO `workflow_dispatch`, wrong actor/repository, stale main, malformed or swapped selectors | Reject before RUN; these are intended safety gates. |
+| `CODE_FIX`, `CONTINUE_IMPLEMENTATION`, nonreusable `FINALIZE_CANDIDATE` | `executor_required=true`; require manual or authenticated AUTO coding profile. Empty selection rejects. |
+| Eligible reusable `FINALIZE_CANDIDATE`, `NO_CHANGE` | `executor_required=false`; empty selection or authenticated AUTO remains executorless/profileless. No source-profile lookup or coding invocation; explicit coding selection rejects. |
+| Same id and identical bound AUTO/manual identity | Replay the existing journal result/RUN without resolving defaults/lineage again or invoking another Executor. |
+| Same id with changed RUN/SHA/profile/actor or AUTO versus manual | Immutable collision rejection; a source-profile digest binds exact failed-RUN identity. Existing per-source locked admission prevents a second accepted repair. |
+| Human A3 REMEDIATION with its exact source/finding and profile | Existing approved-intent route independently binds the explicit Human profile; no AUTO change or synthetic A3. |
+| Carrier admitted but runner/control setup or downstream workflow failed | Operational failure only. Inspect the exact self-host step/receipt; carrier admission is not a RUN. |
+
+AUTO journal version 4 adds the authenticated Human actor, exact source RUN and
+canonical source-profile digest to the existing immutable dispatch identity.
+Historical journal versions 1–3 retain their existing replay semantics and cannot
+be reinterpreted as AUTO. Repaired candidate ancestry and source-level CAS remain
+owned by existing REPAIR admission; the delivery layer adds no retry or terminal.
+
+The bounded self-host receipt distinguishes `AUTO_AUTHORIZATION` /
+`EXACT_HUMAN_REPAIR_PROOF_REQUIRED` from `AUTO_SOURCE_PROFILE` /
+`CANONICAL_SOURCE_PROFILE_REQUIRED`, with no private payload or trace. The Issue
+receipt distinguishes admission rejection, `OPERATIONAL_FAILED` downstream delivery,
+and `SELF_HOST_COMPLETED`. Requested AUTO is not reported as a resolved coding
+executor. Only separately observed Runtime journal/RUN/terminal pointers establish
+those facts; verification, review and publication remain independent.
+
+Reproduce the branches with the focused carrier/provenance, operator and dispatch
+tests in `tests/test_github_issue_repair_wakeup.py`,
+`tests/test_github_issue_repair_wakeup_workflow.py`, `tests/test_operator.py`,
+`tests/test_operator_correction_preflight.py` and `tests/test_repair_dispatch.py`.
+Runtime runs the authored focused commands; this matrix does not claim their result
+or introduce a full-suite/V2 gate. Reports that Issue #2033 failed downstream and
+#2037 reached `SELF_HOST_COMPLETED` with explicit Codex do not establish either
+RUN truth or the cause of #2033. A Bot coding safety rejection, an authorization or
+profile mismatch, runner/control failure and later Runtime failure are distinct
+diagnoses requiring the exact corresponding observation.
+
+### AUTHOR_REPAIR ingress continuation (TASK-371, Gap 1)
+
+The original `[AIOS BRAIN INGRESS]` Issue is an authoring receipt source, separate
+from TASK-365's authenticated Human `[AIOS REPAIR WAKEUP]` manual/AUTO request.
+The incident-#168-shaped regression reproduces the reported TASK-369 pre-RUN
+`coding REPAIR requires an explicit Executor` boundary: the old ingress workflow
+sent an empty Executor after every AUTHOR_REPAIR. That omitted consumer did not
+carry Human AUTO opt-in and does not establish a defect in published TASK-365.
+An operational rejection before RUN creation supplies no new RUN or FAILURE.
+
+After new canonicalization, the ingress consumer calls Runtime correction preflight
+with the exact failed RUN and required current REPAIR SHA, cross-checks Unified
+State's exact TASK/revision, failed RUN/head, correction SHA/document and complete
+preflight attestation, then repeats preflight to reject moved proof. Only consistent
+`executor_required=false` for eligible `NO_CHANGE` or preserved-ResultPackage
+`FINALIZE_CANDIDATE` emits `repair_wakeup_route=EXECUTORLESS`. The workflow gates
+its one bot executorless dispatch on that route. A repair SHA, action text, bot
+identity or carrier-supplied selection/attestation cannot authorize this dispatch.
+Runtime still re-admits the exact subject at delivery; a carrier route is no RUN,
+Executor invocation, verification result, Reviewer verdict or publication.
+
+For coding-required repairs, the existing original-Issue receipt instead reports
+`repair_wakeup: HUMAN_WAKEUP_REQUIRED`, reason `EXECUTOR_REQUIRED`, and exact
+`failed_run_id`, `repair_sha`, `repair_dispatch_id`. The action is a separate Human
+manual wakeup with explicit Executor/model/effort or exact-subject Human opt-in AUTO.
+Missing, malformed, contradictory or unavailable currentness reports a bounded
+preflight/Unified State/currentness reason and requires restoring that observation
+before wakeup. Hosted transport may lack protected reusable state; uncertainty
+cannot schedule the bot route. These Issues stay open for Human action, without
+reporting a rejected dispatch or failed workflow job when no dispatch was attempted.
+The same bounded Issue receipt writer and permissions are retained; private Runtime
+diagnostics are withheld. TASK-371 addressed Gap 1; the following read boundary
+addresses the independently deferred attempt correlation and safe detail gap.
+
+Identical authoring replay emits no repair route or repeated wakeup. Existing Human
+manual/AUTO carriers keep exact selection/provenance and manual priority; immutable
+dispatch-id/profile conflicts, replay, journal locking and source CAS remain with
+their existing owners. Focused ingress/repair tests cover both consumers and the
+pre-RUN boundary using structural packages without fabricated verification PASS.
+
+### Exact REPAIR attempt and safe failure diagnosis (TASK-372)
+
+Use `operational_receipt.observe_repair_delivery(issue_number=...)` for the exact
+original Issue, or `delivery_id=...` for its immutable dispatch identity. Existing
+Issue receipts carry a bounded `AIOS_REPAIR_WORKFLOW_POINTER`; it is a discovery
+hint, never authentication by itself. The reader authenticates the immutable
+correlation artifact against GitHub's repository, producer path, main branch,
+head SHA, actor, triggering actor, actual workflow run ID and attempt. The source
+binds the original Issue ID/body digest/actor, failed RUN and correction SHA.
+An executorless ingress dispatch carries the exact originating artifact pointer;
+the child must authenticate that parent and equal its delivery/subject selectors.
+Human manual/AUTO reusable calls retain their own admitted Issue provenance.
+
+A hosted observation job records the delivery source independently of the queued
+self-host job. Attempt-named source artifacts remain immutable. An exact-name
+delivery artifact provides bounded GitHub-native discovery without scanning run
+titles, timestamps or logs. Replacing this index on a rerun changes only a hint;
+the reader still enumerates and authenticates the immutable attempt sources.
+Multiple distinct attempts require an exact `workflow_run_id` and `run_attempt`
+selector. Missing/expired sources, moved Issues, permission failures, incomplete
+bounded discovery, invalid archives/digests and substitutions produce typed
+blockers, with no claimed match. Historical attempts without such a lawful link
+remain unavailable; there is no synthetic historical backfill.
+
+For an authenticated attempt, the reader obtains bounded job IDs, step numbers,
+allowlisted names and queued/running/completed/conclusion facts from the
+attempt-specific GitHub jobs API. Unknown names are withheld. A failed job/step
+remains observable while the workflow is still running. Precise Runtime
+correction-preflight rejection receipts survive generic `AIOS_INVOKED` finally
+projections; missing-Executor rejection has
+`CORRECTION_PREFLIGHT/REPAIR_EXECUTOR_REQUIREMENT/CODING_REPAIR_EXECUTOR_REQUIRED`.
+Other unobserved step causes are explicitly `UNKNOWN`. Missing job or receipt
+detail has its own availability/blocker and does not erase an authenticated
+attempt or an independently observed failure. No GitHub logs are downloaded.
+An invocation marker leaves RUN existence unknown; only an owner-attributed
+receipt supplies a RUN pointer. Canonical RUN/FAILURE facts are read separately.
+
+`brain_sync.observe_brain_sync` accepts exact `task_id`, `run_id`, `issue_number`
+or `delivery_id` diagnostic selectors; `brain_context.compose_brain_work_context`
+accepts the same bounded fields through `diagnostic_selector`. For example:
+
+```python
+snapshot = observe_brain_sync(repo=repo, issue_number=originating_issue_number)
+context = compose_brain_work_context(
+    snapshot, current_request={"flow_selector": "DIAGNOSTIC"})
+```
+
+No Human-supplied URL, diagnostic block or private path is an accepted selector.
+Exact diagnostic selection does not alter a roadmap bookmark or select lifecycle
+work. The snapshot keeps source FAILURE context separate from an associated
+operational attempt and any separately authenticated attributed-RUN FAILURE.
+Unified State can attach an exact Issue/delivery observation without changing its
+canonical next action. Attention and portable Work Context validate the same safe
+schemas; changed diagnostic source material invalidates the context fingerprint.
+
+New public FAILURE projections add bounded `safe_detail`, linked to the immutable
+RUN, subject and private-source digest. Verification detail preserves the ordered
+failed authored command, observation/summary digest, count when observed,
+complete/unstable flags and at most 32 failed-node views. Pytest parameters are
+entirely withheld; only admissible repository test identities and fixed error
+class names survive. A protected text summary is explicitly partial, and exit
+code 1 alone supplies no failed test identity. Completion detail can identify
+owner-observed missing acceptance IDs, invalid ResultPackage/evidence structure
+or unresolved items. Native detail exposes fixed exit/interruption/output and
+final-response-shape categories. Unobserved sub-causes remain `UNKNOWN`.
+Neither `task_complete`, clean Git state nor an independent pytest invocation
+establishes canonical completion.
+
+Historical V1/V2 projections remain readable and exact. Only the existing
+authorized self-host control-plane boundary may supplement absent public detail
+from the exact local FAILURE whose digest equals the canonical context's private
+source digest. Access denial, expired/missing bytes and integrity errors are typed
+detail blockers. This read returns only the allowlisted projection; it exports no
+host path, locator capability, native/model response, traceback or stdout/stderr.
+The admitted same-RUN Executor private-read API and Runtime verification ownership
+remain unchanged. All these observations are non-PASS diagnostics, with no
+dispatch, retry, Executor/correction selection, RUN/FAILURE creation, review,
+publication or planning authority and no new credential/permission requirement.
+
 ## 7. PUBLISH
 
 Use [PUBLICATION_END_TO_END_FLOW_V1](AIOS-PUBLICATION-END-TO-END-FLOW-v1.md)

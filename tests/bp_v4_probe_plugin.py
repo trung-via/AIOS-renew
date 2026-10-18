@@ -10,10 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import platform
-import importlib.metadata
 from pathlib import Path
-import sys
 from typing import Any
 
 import pytest
@@ -21,10 +18,14 @@ import pytest
 from aios_renew.verification_contract import (
     MAX_CANONICAL_BYTES, MAX_CANONICAL_FAILURES, MAX_CANONICAL_NODEID_CHARS,
     MAX_CANONICAL_REPORTS, MAX_FAILURE_DETAIL_CHARS, verification_digest,
-    toolchain_inventory_digest,
     pytest_collection_identity as _pytest_collection_identity, VerificationContractError,
     validate_exact_collection,
 )
+from aios_renew.parallel_verification import (
+    EXECUTION_CONTRACT, ProbeError, git_executable, load_toolchain,
+    validate_pytest_execution,
+)
+import subprocess
 
 
 _OUTPUT_ENV = "AIOS_BP_V4_PLUGIN_OUTPUT"
@@ -46,23 +47,18 @@ _canonical_bytes = 0
 _canonical_failure_count = 0
 _subject_root = ""
 _condition_snapshot = None
+_session_config = None
+_subject_sha = None
 
 
 def _resolve_conditions() -> tuple[dict, dict]:
     profile = json.loads(os.environ.get("AIOS_V2_PROFILE", '{"profile":"pytest-observed-v2"}'))
-    toolchain = {
-        "python_implementation": platform.python_implementation(),
-        "python_version": platform.python_version(),
-        "python_executable": str(Path(sys.executable).resolve()),
-        "platform_system": platform.system(), "platform_machine": platform.machine(),
-        "pytest_version": pytest.__version__,
-        "installed_distributions_digest": toolchain_inventory_digest(),
-    }
-    try:
-        toolchain["pytest_xdist_version"] = importlib.metadata.version("pytest-xdist")
-    except importlib.metadata.PackageNotFoundError:
-        toolchain["pytest_xdist_version"] = "absent"
-    return profile, toolchain
+    actual = getattr(_session_config, "_aios_execution_profile", None)
+    if actual is not None:
+        if any(key in profile and profile[key] != value for key, value in actual.items()):
+            raise ProbeError("bound pytest profile disagrees with actual worker options")
+        profile = {"profile": profile.get("profile", "pytest-observed-v2"), **actual}
+    return profile, load_toolchain()
 
 
 def _conditions() -> tuple[dict, dict]:
@@ -168,10 +164,21 @@ def _summary(
 
 
 def pytest_sessionstart(session: Any) -> None:
+    global _session_config, _subject_sha
+    _session_config = getattr(session, "config", None)
     global _subject_root
     _subject_root = str(session.config.rootpath) if session is not None else ""
     global _condition_snapshot
     _condition_snapshot = _resolve_conditions()
+    _subject_sha = None
+    if getattr(_session_config, "_aios_execution_profile", None) is not None:
+        result = subprocess.run((git_executable(), "-C", _subject_root, "rev-parse", "--verify", "HEAD"),
+                                capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            _subject_sha = result.stdout.strip()
+        expected = os.environ.get("AIOS_VERIFY_SUBJECT_SHA")
+        if expected is not None and expected != _subject_sha:
+            raise pytest.UsageError("actual pytest subject disagrees with bound commit")
     global _local_failure_count, _local_failure_facts, _local_failure_truncated
     global _parallel_failure_count, _parallel_failure_facts
     global _parallel_failure_truncated
@@ -257,19 +264,17 @@ def _worker_facts(config: Any) -> dict[str, Any]:
     if factory is not None:
         temporary_root = _resolved(factory.getbasetemp())
 
-    git_cache_root = None
-    for module_name in ("git_fixture_support", "tests.git_fixture_support"):
-        module = sys.modules.get(module_name)
-        root = getattr(module, "_cache_root", None) if module is not None else None
-        if root is not None:
-            git_cache_root = _resolved(root)
-            break
+    # Import even for a narrow scope that does not materialize a Git fixture.
+    # Each process owns its cache, including otherwise idle xdist workers.
+    from tests.git_fixture_support import _cache_root
+    git_cache_root = _resolved(_cache_root)
 
     return {
         "worker_id": worker_id,
         "process_id": os.getpid(),
         "temporary_root": temporary_root,
         "git_fixture_cache_root": git_cache_root,
+        "profile": _conditions()[0], "toolchain": _conditions()[1],
     }
 
 
@@ -307,8 +312,11 @@ def _collection_identity(value: object) -> dict[str, Any] | None:
 
 def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
     config = session.config
-    if _resolve_conditions() != _conditions():
-        _canonical_errors.append("profile or toolchain changed during verification")
+    try:
+        if _resolve_conditions() != _conditions():
+            _canonical_errors.append("profile or toolchain changed during verification")
+    except (ProbeError, OSError, ValueError):
+        _canonical_errors.append("profile or toolchain became unavailable during verification")
     if ("collect_only" in _conditions()[0]
             and _conditions()[0]["collect_only"] != bool(getattr(getattr(config, "option", None), "collectonly", False))):
         _canonical_errors.append("actual collection mode disagrees with bound profile")
@@ -321,9 +329,6 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
         )
         return
 
-    output = os.environ.get(_OUTPUT_ENV)
-    if not output:
-        return
     serial_collection = getattr(config, "_aios_bp_v4_collection", None)
     controller_collection = serial_collection
     if _node_collections:
@@ -338,6 +343,12 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
             observed = {nodeid for nodeid, phase in _reports if phase != "collect"}
             if expected.difference(observed):
                 _canonical_errors.append("pytest did not execute the complete selected population")
+            if getattr(config, "_aios_execution_profile", None) is not None:
+                for nodeid in expected.intersection(observed):
+                    setup = _reports.get((nodeid, "setup"))
+                    if (setup is None or (nodeid, "teardown") not in _reports
+                            or setup["outcome"] == "PASS" and (nodeid, "call") not in _reports):
+                        _canonical_errors.append("incomplete pytest phase reports")
     failures = (
         _summary(
             _parallel_failure_count,
@@ -361,20 +372,46 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
         "failure_diagnostics": failures,
         "profile": _conditions()[0], "toolchain": _conditions()[1],
     }
+    actual = getattr(config, "_aios_execution_profile", None)
+    if actual is not None:
+        payload.update(execution_contract=EXECUTION_CONTRACT, subject_sha=_subject_sha)
+        try:
+            if not hasattr(config, "workerinput") and not actual["collect_only"]:
+                if (config.option.numprocesses != actual["workers"]
+                        or config.option.dist != actual["distribution"]
+                        or str(config.option.maxworkerrestart) != "0"):
+                    raise ProbeError("actual pytest worker options changed during execution")
+            validate_pytest_execution(payload, _conditions()[0], _conditions()[1])
+            result = subprocess.run((git_executable(), "-C", _subject_root, "rev-parse", "--verify", "HEAD"),
+                                    capture_output=True, text=True, check=False)
+            if _subject_sha is not None and (result.returncode != 0 or result.stdout.strip() != _subject_sha):
+                raise ProbeError("pytest changed its bound subject commit")
+        except (ProbeError, OSError, ValueError) as exc:
+            _canonical_errors.append(str(exc))
+        payload["failure_diagnostics"]["canonical"] = _canonical_summary()
+        if _canonical_errors and int(exitstatus) == 0:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+            payload["exit_status"] = int(session.exitstatus)
+            reporter = config.pluginmanager.getplugin("terminalreporter")
+            if reporter is not None:
+                reporter.write_line("AIOS pytest execution failed: " + "; ".join(sorted(set(_canonical_errors))), red=True)
     exact = getattr(config, "_aios_v2_exact_collection", None)
-    if exact is not None and not _node_collections:
+    if os.environ.get("AIOS_V2_EXACT_COLLECTION") == "1" and _expected_nodeids is not None:
+        exact = {"identity": controller_collection, "nodeids": sorted(_expected_nodeids)}
+    if exact is not None:
         try:
             verification_digest({**payload, "exact_collection": exact})
             payload["exact_collection"] = exact
         except VerificationContractError:
             # No truncated identity list is ever presented as exact truth.
             pass
+    output = os.environ.get(_OUTPUT_ENV)
+    if not output:
+        return
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
+    with path.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
 
 
 def pytest_xdist_node_collection_finished(node: Any, ids: list[str]) -> None:
@@ -397,9 +434,13 @@ def pytest_testnodedown(node: Any, error: object) -> None:
     facts = node.workeroutput.get("aios_bp_v4_facts")
     collection = _collection_identity(node.workeroutput.get("aios_bp_v4_collection"))
     if isinstance(facts, dict):
+        if node.gateway.id in _worker_payloads:
+            _canonical_errors.append("duplicate or restarted xdist worker")
         payload = dict(facts)
         payload["collection"] = collection
         _worker_payloads[node.gateway.id] = payload
+    elif getattr(_session_config, "_aios_execution_profile", None) is not None:
+        _canonical_errors.append("missing worker execution facts")
     failures = node.workeroutput.get("aios_bp_v4_failures")
     if not isinstance(failures, dict):
         _canonical_errors.append("missing worker canonical failure data")

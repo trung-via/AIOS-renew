@@ -1,0 +1,134 @@
+task_id: TASK-363
+revision: 1
+goal: 'Implement R2.1/R1 bounded ROA-1 R2 Repair Outcome Audit support for the existing
+  REPAIR_AUTHORING Brain flow: a one-procedure five-check, evidence-bound, portable,
+  content-identified semantic audit with provider-neutral validation. Preserve exclusive
+  Adaptive V1 production semantics pending separately authorized R2.1 cutover.'
+problem: Canonical R2.1 architecture requires ROA-1 R2 as the first implementation
+  slice. Current brain_audit.py accepts only three historical profiles and mandates
+  eight universal lenses/two stages; brain_provider_protocol.py and brain_provider.py
+  assume that same procedure. A naive new registry entry either fails validation or
+  silently relaxes established production audit/compatibility boundaries.
+assumptions:
+- Canonical main at Brain Sync is 7a0299af88c3a1e5410611839abe0869322be305. Runtime
+  rechecks exact expected-main CAS, TASK identity and currentness before mutation;
+  stale main must fail closed.
+- Current sole roadmap NEXT is four-specialized-audits-r21-human-optional-adaptive-v1.
+  R1 is initial implementation, R2/R3/R4/R5 and Lean VP follow under separate authorization;
+  docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md is approved planning source.
+- Active prospective Brain audit is aios-adaptive-brain-audit-v1 version 1 digest
+  982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718. Historical V2/V3
+  profile packages and in-flight lineages retain exact meanings.
+- Human explicitly authorized this authoring and selected Codex 6.1 Sol Max for later
+  Executor delegation; this TASK is executor-neutral. TASK-346 r2 is already on reviewed/published
+  main.
+- ROA's approved five focused checks are exact failure boundary, evidence-discriminating
+  cause, material repair lever, falsifying challenge and lawful readiness. An outcome
+  must distinguish OBSERVED, INFERRED and UNKNOWN.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/brain-return-contracts.yaml
+  - .ai/flow-cards.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_return_contract.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_return_contract.py
+  - tests/test_brain_context.py
+  modify:
+  - .ai/brain-audit-profiles.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+non_goals:
+- No default profile cutover, new Human V1 opt-in implementation, R2/MOA, R3/TCA,
+  R4/AOA, R5 retirement or Lean VP in this TASK.
+- No rebuilt AUTHOR_REPAIR/TASK/REMEDIATION ingress, correction strategy selector,
+  Runtime verification, Reviewer, Publisher, lifecycle transition, new audit meta-router,
+  planner, database or retry daemon.
+- No automatic production ROA selection, dual V1/ROA normative audit, silent fallback,
+  arbitrary new profile, arbitrary model choice or auto-approval.
+- No historical V1/V2/V3 profile/digest/replay/in-flight rewrite; no Constitution,
+  frozen Kernel, roadmap NEXT, downstream adoption or provider identity policy change.
+- No full suite or unrelated fixes to test infrastructure, Git origin or workflow.
+constraints:
+  hard:
+  - ROA applies only to REPAIR_AUTHORING and contains exactly the five approved focused
+    checks, one bounded conclusion/closure and one semantic outcome, not mandatory
+    V1 eight-lens two-stage procedure in disguise.
+  - Exact Decision Packet, selected-flow, content-bound profile id/version/digest,
+    return contract and source/evidence/authorization currentness are preserved through
+    existing provider-neutral boundaries. A material causal or authority gap yields
+    blocker/UNKNOWN, never guessed correction or success.
+  - The active production prospective selection remains exact Adaptive V1 until lawful
+    later review/publication and explicit Human/Brain cutover. Isolated ROA conformance
+    support must not silently activate a live ROA default, allow unauthorized policy
+    override, or mix modes/stages.
+  - Old V1/V2/V3 exact-profile decoding/digests, historical and in-flight stage linkage,
+    privacy, canonical replay and bounded protocol semantics stay valid. Increase
+    the three-profile registry cap only with minimum explicit finite identity/bounds;
+    no arbitrary-profile loophole.
+  - Retain the existing Flow Resolver and single REVIEW/REPAIR family boundaries.
+    Any additional production source change or new authority beyond listed scope.modify
+    requires an explicit blocker and Human rescope rather than uncontrolled widening.
+  - Negative and positive tests include valid ROA five-check subject/closure, absent
+    or forged evidence, UNKNOWN, malformed/digest-substituted profile, wrong flow/mode,
+    stale subject, dual profile, prohibited V1 fallback, unauthorized production cutover
+    and old V1/V2/V3 replay.
+  - Canonical Runtime executes only minimum-sufficient-v1 focused required verification
+    on exact final candidate and owns evidence. No full suite by default, V2 gate,
+    baseline rerun, hidden xdist fallback, Executor publish or automatic roadmap advancement.
+acceptance:
+- id: AC1
+  condition: An exact content-bound bounded ROA-1 R2 profile for REPAIR_AUTHORING
+    represents precisely the approved five checks, a one-procedure decision and one
+    final closure without reintroducing mandatory universal eight-lens two-stage V1.
+- id: AC2
+  condition: Existing provider-neutral Brain audit surfaces can validate and transport
+    a fully bound ROA subject and typed OBSERVED/INFERRED/UNKNOWN outcome; missing
+    decisive failure/evidence/cause is a bounded blocker, not a speculative repair
+    or PASS.
+- id: AC3
+  condition: The existing production V1-only prospective policy remains the default;
+    wrong flow, unauthorized ROA live selection, mixed V1/ROA stages, dual normative
+    audits and implicit fallback are rejected while isolated ROA conformance can run.
+- id: AC4
+  condition: Historical V1/V2/V3 exact identity, package digests, two-stage replay/currentness,
+    privacy, bounds and in-flight semantics remain intact, and a fourth explicitly
+    bounded profile does not enable arbitrary profile substitution.
+- id: AC5
+  condition: Wrong profile digest, malformed five-check closure, stale packet/return/subject
+    binding, forged evidence, duplicate output, invalid mode and unresolved authority
+    are rejected or fail-closed without lifecycle mutation.
+- id: AC6
+  condition: Focused regressions demonstrate ROA valid and adversarial cases, no unauthorized
+    profile activation and unchanged historical provider/profile compatibility.
+- id: AC7
+  condition: Only exact scope.modify paths change; AUTHOR_REPAIR ingress, Runtime/Reviewer/Publisher
+    authority, current roadmap NEXT and frozen Kernel remain unchanged without pretending
+    R2.1 production cutover or measured performance gains.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_provider_protocol.py
+    tests/test_brain_provider.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

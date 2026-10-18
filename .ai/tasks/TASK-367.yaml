@@ -1,0 +1,208 @@
+task_id: TASK-367
+revision: 1
+goal: Implement R2.1/R4 AOA-1 Architecture Outcome Audit as a bounded, portable, provider-neutral
+  two-focused-pass semantic conformance procedure for the existing ARCHITECTURE Brain
+  flow. Compare A no-build/reuse, B minimum lawful delta and C justified new mechanism
+  against the exact Human objective, with counterfactual necessity, discriminating
+  evidence/value-of-information, verified-work episode costs, reversibility and material
+  threats. Provide isolated exact-subject Human Adaptive V1 option interoperability
+  while preserving current production V1-only selection and all canonical authority
+  boundaries.
+problem: R2.1/R1 ROA, R2 MOA and R3 TCA are separately reviewed and published as isolated
+  flow-specific support; the approved fourth architecture flow still lacks AOA-1.
+  Universal eight-lens V1 can produce broad evaluations without a strong no-build
+  counterfactual, explicit alternative costs, confidence/UNKNOWN separation, or a
+  real discriminator before choosing architecture. Simply minting another profile
+  without exact ARCHITECTURE packet/return/intent binding and independent falsifying
+  closure risks needless new mechanisms, undocumented risk acceptance, dual normative
+  audits, spurious Human V1 opt-in or a premature production cutover. R4 must implement
+  only the approved AOA semantic support and interoperability, not decide a concrete
+  roadmap architecture or change deterministic Runtime.
+assumptions:
+- 'Fresh Brain Sync on 0f9c40f494c518d12ce298b5e71139da1180cbf0 observes exact published
+  R2.1/R3 source: TASK-366 r1 RUN-366-001 RESULT candidate 0f9c40f494c518d12ce298b5e71139da1180cbf0,
+  REVIEW-366-001 PRIMARY PASS decision fb23ac7b12384d236d7c4ae2f0adb5e43e7e109e. R1
+  TASK-363 and R2 TASK-364 reviewed/published support are in ancestry; these facts
+  do not automatically advance planning.'
+- Human approved R2.1 architecture in docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md and
+  authorized implementation tasks, preferring Codex gpt-6.1-sol max for individually
+  admitted R2.1 PRIMARY runs. Executor identity is not part of this executor-neutral
+  TASK contract.
+- Current exact active prospective Brain semantic audit remains aios-adaptive-brain-audit-v1
+  version 1 digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718
+  for ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING and REPAIR_AUTHORING. Existing
+  specialized ROA, MOA and TCA are isolated conformance, not active production default.
+- ARCHITECTURE is an existing exact Flow Card with EXPLICIT_SELECTOR, authority BRAIN,
+  expected BOUNDED_SEMANTIC_PROPOSAL, a Human/Brain planning handoff and no external
+  TASK id/revision bindings. AOA source must bind Human intent, authoritative current
+  repository/main/roadmap and bounded planning constraints; missing decisive data
+  remains UNKNOWN.
+- R4 implements AOA-1 isolated conformance and externally authenticated Human V1-only
+  interoperability for ARCHITECTURE. Prospective default/optional V1 production policy
+  cutover and historical policy reconciliation belong to subsequent R5 after R4's
+  exact Runtime/Review/Publisher lineage.
+- Roadmap record describing R2.1 implementation as NOT_AUTHORED is an older planning
+  projection; exact R1/R2/R3 engineering lineages already exist. This TASK creates
+  no roadmap mutation and makes no prospective policy-cutover claim.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/brain-return-contracts.yaml
+  - .ai/flow-cards.yaml
+  - .ai/tasks/TASK-363.yaml
+  - .ai/tasks/TASK-364.yaml
+  - .ai/tasks/TASK-366.yaml
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_return_contract.py
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_return_contract.py
+  - tests/test_decision_packet.py
+  modify:
+  - .ai/brain-audit-profiles.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+non_goals:
+- No production default AOA activation, Human-option policy cutover or retirement
+  of mandatory V1. R5 must separately reconcile active selection, governance and exact
+  historical compatibility after reviewed R4 publication.
+- No automatic architecture decision or forced build from available alternatives.
+  AOA assists Brain semantic judgment and may recommend no-build, information gathering
+  or NO_DECISION; it cannot manufacture Human architecture approval, risk acceptance
+  or a new TASK.
+- No new generic semantic decision router/planner, orchestration layer, memory DB,
+  autonomous provider/executor selection, feedback loop, second Reviewer/Publisher,
+  deterministic risk-value oracle or status reducer.
+- No Kernel, Constitution, Runtime verification/admission/RESULT/EVIDENCE/REVIEW/PUBLISH
+  or roadmap mutation; no direct AUTHOR_TASK/REPAIR/REMEDIATION ingress redesign,
+  no downstream adoption or pin.
+- No revised TCA/MOA/ROA identities, retroactive stage/digest reminting, V2/V3 fallback,
+  unbounded raw evidence, invented cost/quality measurements, full suite, V2 gate,
+  Lean VP, BO or H4/H5 implementation.
+- No false claim that an alternate architecture has actually been implemented or its
+  counterfactual benefits empirically proven by isolated semantic conformance tests.
+constraints:
+  hard:
+  - Define one pinned AOA-1 content-bound finite profile applicable only to ARCHITECTURE
+    with two focused passes (construct, adversarial/reconcile) and one final CANDIDATE
+    or NO_DECISION. It must not rebrand the universal V1 eight mandatory lenses or
+    introduce a new Flow Card, generic planner, provider router or lifecycle authority.
+  - Bind AOA to exact normalized ARCHITECTURE Decision Packet, work-context/current
+    canonical snapshot, existing BOUNDED_SEMANTIC_PROPOSAL return-contract reference,
+    supplied Human objective/constraints, and an explicitly bounded evidence/option
+    context. Inputs containing missing, conflicting, stale or unauthenticated decisive
+    source, absent Human objective or wrong flow must yield bounded UNKNOWN/BLOCKER
+    or fail closed without pretending source hashes authenticate content.
+  - Represent the three counterfactual choices A (no-build/reuse), B (minimum lawful
+    change), C (new mechanism) as explicit traceable alternatives, not an imposed
+    winner. Require comparable outcome, feasible authority/scope, risks and reversibility,
+    expected total episode cost (time, tokens, Human effort and coordination/verification)
+    with OBSERVED/INFERRED/UNKNOWN attribution and exact bound evidence. Unknown quantitative
+    costs must remain UNKNOWN instead of fabricated point estimates.
+  - First pass must examine necessity, A/B/C feasibility and positive/negative externalities,
+    discriminating missing evidence and value of information, threats and reversibility,
+    authority and bounded scope, and no-build credibility. An all-positive checklist
+    cannot itself establish that a build is necessary.
+  - Adversarial pass must attempt a no-build falsifier for B/C, a minimal-delta challenger
+    for C, demand evidence capable of changing the recommendation, challenge omitted
+    alternatives/consumers, hidden fixed costs, invented metrics, risk ownership,
+    irreversibility, future dependencies and premature implementation/lifecycle claims.
+    Retain first-pass material BLOCKER/UNKNOWN until explicit source-grounded lawful
+    reconciliation; an all-CLEAR second pass alone cannot erase it.
+  - Allow one reasoned bounded planning candidate naming the selected alternative
+    or deferral, the comparative basis/uncertainties and next Human decision; no-build
+    and request-more-information are first-class legitimate decisions. Missing materially
+    discriminating information or unresolved authority/risk acceptance must force
+    NO_DECISION rather than a deterministic preferred option. The result is Brain
+    semantic planning support, not an engineering success verdict.
+  - Extend existing provider-neutral request/decision validation and native mapping/JSON
+    attempts only for isolated AOA two-pass conformance. Enforce explicit request
+    mode, content digest, packet/return/subject/bound-sources lineage, privacy/size
+    limits and freshness before second pass and final handoff. Swapped profile, rehashed
+    stale packet, mixed stage/mode, missing proof or nested unauthorized V1-option
+    content must reject before downstream mutation or bogus success.
+  - Provide isolated Human V1-only interoperability for the same ARCHITECTURE subject
+    using the existing externally supplied Human option boundary, without accepting
+    a free-form 'HUMAN' string as authentication. One exact approved V1 profile per
+    attempt, never AOA plus V1 or silent V3 fallback; preserve the already published
+    TASK_AUTHORING V1-option path unchanged. Current production V1-only default remains
+    active and no new live default AOA selection becomes permitted.
+  - Keep historical/in-flight V1/V2/V3, ROA-1 R2, MOA-1 and TCA-1 profile contents
+    and validated transport semantics immutable; finite exact profile registry only,
+    with no arbitrary identity escape. Runtime alone owns deterministic verification,
+    Reviewer owns semantic implementation verdict, Publisher owns publication, and
+    Human owns prospective selection/risk acceptance.
+  - Only exact scope.modify files may change. Focused minimum-sufficient-v1 verification
+    and adversarial regressions must cover no-build vs minimum-delta vs new mechanism,
+    unknown/no decision, missing decisive information, forged quantitative evidence,
+    first-pass blocker retention, Human V1-option selection for ARCHITECTURE, task-specific
+    V1-option compatibility, wrong flow, digest/currentness swaps and historical profile
+    support. An essential out-of-scope change must be surfaced as blocker for Human
+    rescope; no full-suite ritual.
+acceptance:
+- id: AC1
+  condition: A pinned, bounded AOA-1 profile exists exclusively for ARCHITECTURE with
+    two focused architecture-specific passes, one final CANDIDATE/NO_DECISION closure
+    and finite known digest/identity, without a universal eight-lens duplicate or
+    generic audit route.
+- id: AC2
+  condition: An exact AOA subject binds the canonical ARCHITECTURE packet, BOUNDED_SEMANTIC_PROPOSAL
+    return contract, Human outcome, source/currentness and bounded evidence context;
+    missing, stale, swapped, private or authority-ambiguous decisive inputs are blocked
+    or kept UNKNOWN without forged provenance.
+- id: AC3
+  condition: The construct and adversarial contract distinguishes A no-build/reuse,
+    B minimal lawful delta and C new mechanism with comparable outcomes, evidence
+    status, relative episode costs, risks, reversibility, counterfactual necessity
+    and value of discriminating information; unknown or unmeasured costs are not fabricated.
+- id: AC4
+  condition: Adversarial reconciliation actively challenges dominated/new-mechanism
+    options, omitted consumers, undercounted human/time/token/verification cost and
+    irreversible risk. Unresolved first-pass blockers survive all-clear second-pass
+    declarations; no-build, defer and bounded NO_DECISION remain legitimate.
+- id: AC5
+  condition: Provider-neutral mapping/JSON and protocol surfaces transport one content-bound
+    AOA construct and reconcile with exact source/return/profile/packet lineage, anti-mixing
+    and source freshness; malformed, stale, rehashed, wrong-flow or privacy-violating
+    input/decision fails closed.
+- id: AC6
+  condition: An externally authenticated, exactly bound Human V1-only option for ARCHITECTURE
+    is supported in isolated conformance without invoking AOA as a second normative
+    audit. The existing TASK_AUTHORING V1 option, production default V1-only selection
+    and no-V3-fallback policies stay compatible.
+- id: AC7
+  condition: Historical and published V1/V2/V3, ROA/MOA/TCA profile digests and replay/transport
+    semantics remain valid. Focused positive/negative regressions cover A/B/C, no-build,
+    UNKNOWN, unresolved first-pass blocker, Human option, wrong flow, digest/mode/currentness
+    substitution and privacy/scope breaches.
+- id: AC8
+  condition: Changes are confined to exact scope.modify and document isolated R4 semantics
+    without changing canonical Runtime/Reviewer/Publisher, TASK admission, roadmap/active
+    production profile policy, frozen Kernel or downstream; no false empirical superiority
+    or publication claims are introduced.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_provider_protocol.py
+    tests/test_brain_provider.py
+  - python -m pytest -q tests/test_brain_return_contract.py tests/test_decision_packet.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

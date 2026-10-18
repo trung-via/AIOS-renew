@@ -56,3 +56,8 @@ An eligible source commit, workflow dispatch, RUN or a chat conclusion by itself
 8. **SIMPLIFICATION_DUPLICATE_AUTHORITY:** A=leave old BO ordering (duplicate work risk), B=minimum bounded overlay/reuse (chosen), C=wholesale BO rewrite/new subsystem (unnecessary). Audit/planning lifecycle overhead itself is bounded. Risk ADDRESSED_BY_RECONCILIATION.
 
 **Final closure:** CLEAR for the ARCHITECTURE planning candidate, **CANDIDATE** only; not engineering REVIEW PASS, Publisher publication proof, implementation admission or measured ROI. All later implementation decisions require fresh canonical Brain Sync and their then-active semantic audit profile.
+
+
+## 2026-10-18 finite-task reconciliation (prospective)
+
+The earlier planning-only document's statement that R2.1 is current NEXT is superseded by canonical Human/Brain planning closure on 2026-10-18. Current NEXT is **Lean VP**; R2.1 independent live conformance remains outstanding, not silently PASS. This lean BO successor remains QUEUED_AFTER_LEAN_VP and its only future implementation horizon is the **eight-slot maximum finite BO catalog** in [BO Finite TASK Catalog v1](AIOS-BRAIN-OPTIMIZATION-BOUNDED-TASK-CATALOG-v1.md). BO-T01..T08 are planning slots, not TASK-nnn allocations. Each closes by proven implementation or evidence-backed NO_CHANGE; no ninth TASK or automatic H4 return is authorized. This refinement does not rewrite historical planning claims.

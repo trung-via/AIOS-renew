@@ -16,6 +16,27 @@ from aios_renew.unified_state import (
     observe_semantic_review_scope,
     observe_unified_state as direct_observe_unified_state,
 )
+
+
+def test_task372_unified_state_attaches_operational_observation_without_changing_authority(tmp_path, monkeypatch):
+    from tests.test_operational_receipt import Task372Actions
+    from tests.test_brain_attention import Task372CanonicalSources
+    from aios_renew.brain_attention import attention, FAILURE, terminal_failure_context
+    backend, sources = Task372Actions(), Task372CanonicalSources()
+    context = terminal_failure_context(attention(FAILURE, dict(run_id=sources.run_id, artifact_sha=sources.artifact_sha)), sources)
+    original = DirectUnifiedStateObservation("TASK-369", 1, "FAILURE", "AUTHOR_REPAIR", failed_run_id=sources.run_id,
+        failed_head_sha=context["subject_sha"], correction_sha="a" * 40, failure_context=context)
+    monkeypatch.setattr(unified_state_module, "_observe_unified_state", lambda *a, **k: original)
+    monkeypatch.delenv("RUNNER_ENVIRONMENT", raising=False)
+    observed = direct_observe_unified_state("TASK-369", repo=tmp_path, issue_number=backend.issue_number, operational_sources=backend)
+    value = observed.as_dict()
+    assert observed.next_action == original.next_action and value["authority"] == original.as_dict()["authority"]
+    assert value["operational_context"]["run_created"] is False
+    assert value["failure_context"]["safe_detail"]["verification"][0]["failed_nodes"][0]["error_types"] == ["TypeError"]
+    backend.source["failed_run_id"] = backend.origin["failed_run_id"] = "RUN-foreign-001"
+    backend.receipt["selectors"]["failed_run_id"] = "RUN-foreign-001"
+    with pytest.raises(ValueError, match="REPAIR_CONTEXT_SUBSTITUTION"):
+        direct_observe_unified_state("TASK-369", repo=tmp_path, issue_number=backend.issue_number, operational_sources=backend)
 from aios_renew.operator import (
     CorrectionPreflightResult,
     OperatorError,
@@ -4390,3 +4411,16 @@ def test_unified_state_integrated_remediation_fail_closed_on_forged_stale_mismat
     upstream = tmp_path / "upstream.git"
     git(upstream, "update-ref", "-d", f"refs/heads/aios/integration/{int_result.integration_id}")
     check_malformed(run_with_override())
+
+
+def test_batch_semantic_scope_and_material_preserve_full_selection(tmp_path):
+    from tests.test_batch_remediation import batch_fixture, execute_batch
+    from aios_renew.review_material import construct_review_material_package, validate_review_material_package
+    fixture = batch_fixture(tmp_path)
+    outcome, _, _ = execute_batch(fixture)
+    scope = observe_semantic_review_scope('TASK-379', repo=fixture['repo'])
+    assert scope['version'] == 2 and scope['prior_finding_id'] is None
+    assert scope['batch_selection']['finding_ids'] == ('F1', 'F2')
+    package = construct_review_material_package(scope, repo=fixture['repo'])
+    assert package['version'] == 2 and package['batch_id'] == fixture['selection'].batch_id
+    assert validate_review_material_package(json.dumps(package))['batch_selection']['finding_ids'] == ['F1', 'F2']

@@ -23,6 +23,11 @@ import aios_renew.runtime as runtime_module
 import aios_renew.review_transport as transport_module
 
 from aios_renew.codex_adapter import CodexAdapter
+from aios_renew.native_execution_policy import (
+    NATIVE_PROCESS_WATCHDOG_SECONDS,
+    NATIVE_RESPONSE_BUDGET_MINUTES,
+)
+from aios_renew.parallel_verification import git_executable, installed_git_identity
 from aios_renew.review_transport import (
     RemoteFailureArtifacts,
     RemoteLifecycleReview,
@@ -77,6 +82,7 @@ from tests.operator_test_support import (
     READONLY_MULTI_ACCEPTANCE_TASK_SOURCE,
     READONLY_TASK_SOURCE,
     TASK_SOURCE,
+    assert_public_artifact,
     canonical_result_payload,
     commit_setup_state,
     git as fixture_git,
@@ -92,9 +98,26 @@ def git(repo: Path, *args: str) -> str:
     # Separate migration Git storage must be read through real Git instead.
     if args == ("rev-parse", "HEAD") and (repo / ".git").is_file():
         return subprocess.check_output(
-            ["git", "-C", str(repo), *args], text=True, encoding="utf-8",
+            [git_executable(), "-C", str(repo), *args], text=True, encoding="utf-8",
         ).strip()
     return fixture_git(repo, *args)
+
+
+def test_task346_operator_real_git_process_resolves_the_verified_installed_binary(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path)
+    identity = installed_git_identity()
+    calls = []
+    real_process = subprocess.run
+
+    def observe(command, **kwargs):
+        calls.append((command, kwargs.get("shell", False)))
+        return real_process(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", observe)
+    assert operator_module._git(repo, "config", "--local", "user.email") == "operator@example.invalid"
+    assert calls and all(shell is False for _, shell in calls)
+    if os.name == "nt":
+        assert Path(shutil.which(calls[-1][0][0])).resolve() == Path(identity["git_executable"])
 
 
 def _private_executor_failure_fixture(tmp_path):
@@ -271,7 +294,9 @@ def test_failure_transport_recovery_operator_private_public_correction_admission
     assert git(repo, "show-ref") == refs
 
 
-@pytest.mark.parametrize("defect", ["private_origin", "public_origin", "authorization_subject"])
+@pytest.mark.parametrize("defect", [
+    "private_origin", "public_origin", "public_detail_binding", "authorization_subject",
+])
 def test_failure_transport_recovery_operator_conflict_fails_before_run(tmp_path, monkeypatch, defect):
     from copy import deepcopy
     repo, state, private, _, repair = _failure_transport_recovery_operator_fixture(
@@ -279,10 +304,17 @@ def test_failure_transport_recovery_operator_conflict_fails_before_run(tmp_path,
     if defect == "private_origin":
         private["error"]["message"] = "changed private diagnostics"
         (state.failures / (private["run_id"] + ".json")).write_bytes(json.dumps(private).encode())
-    elif defect == "public_origin":
+    elif defect in {"public_origin", "public_detail_binding"}:
         recovery = transport_module.resolve_remote_repair_recovery(repo, failed_run_id=private["run_id"])
         public = json.loads(recovery.failures[0].failure)
         public["public_projection"]["private_failure_digest"] = "0" * 64
+        if defect == "public_origin":
+            # A consistently rebound forgery must still conflict with the local
+            # original. Marker-only tampering fails the earlier detail gate.
+            public["error"]["safe_detail"]["private_failure_digest"] = "0" * 64
+            public["public_projection"]["projection_digest"] = transport_module._failure_digest(
+                {key: value for key, value in public.items() if key != "public_projection"})
+            transport_module.validate_public_failure(public)
         altered = replace(recovery.failures[0], failure=json.dumps(public).encode())
         monkeypatch.setattr(operator_module, "resolve_remote_repair_recovery",
                             lambda *args, **kwargs: replace(recovery, failures=(altered,)))
@@ -290,10 +322,19 @@ def test_failure_transport_recovery_operator_conflict_fails_before_run(tmp_path,
         repair = deepcopy(repair)
         repair["failed_head_sha"] = "0" * 40
     before = {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs) for p in d.glob("*.json")}
-    with pytest.raises(OperatorError, match="conflict|does not match failed committed state"):
+    refs = git(repo, "show-ref")
+    expected = ("^invalid canonical FAILURE$" if defect == "public_detail_binding" else
+                "conflict|does not match failed committed state")
+    with pytest.raises(OperatorError, match=expected) as caught:
         operator_module._resolve_repair_admission(private["run_id"], repo=repo,
             state=state, repair=repair, admission={})
+    if defect == "public_detail_binding":
+        assert isinstance(caught.value.__cause__, transport_module.FailureDiagnosticError)
+        assert caught.value.__cause__.code == "FAILURE_PUBLIC_INTEGRITY_INVALID"
+        assert isinstance(caught.value.__cause__.__cause__, ValueError)
+        assert str(caught.value.__cause__.__cause__) == "invalid safe FAILURE detail"
     assert before == {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs) for p in d.glob("*.json")}
+    assert git(repo, "show-ref") == refs
 
 
 def test_failure_transport_recovery_operator_original_equality_and_nested_correction():
@@ -1373,7 +1414,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     )
 
     assert len(runner.calls) == 1
-    assert runner.calls[0][1]["timeout"] == 65 * 60
+    assert runner.calls[0][1]["timeout"] == NATIVE_PROCESS_WATCHDOG_SECONDS
     assert staged["result"]["claims"] == []
     assert staged["result"]["unresolved"] == []
     assert staged["evidence"] == []
@@ -1387,7 +1428,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     assert "errors" not in runner.calls[0][1]
     if executor == "antigravity":
         command = runner.calls[0][0]
-        assert command[command.index("--print-timeout") + 1] == "60m"
+        assert command[command.index("--print-timeout") + 1] == f"{NATIVE_RESPONSE_BUDGET_MINUTES}m"
         instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
         assert "CODE_FIX" in instruction
         assert "EVIDENCE_ONLY" in instruction
@@ -3137,7 +3178,7 @@ def test_mutating_codex_capability_is_resolved_before_invocation(tmp_path: Path)
 
     command = runner.calls[0][0]
     assert command[command.index("--sandbox") + 1] == "danger-full-access"
-    assert runner.calls[0][1]["timeout"] == 65 * 60
+    assert runner.calls[0][1]["timeout"] == NATIVE_PROCESS_WATCHDOG_SECONDS
     assert len(runner.calls) == 1
 
 
@@ -3272,15 +3313,10 @@ def test_primary_keyboard_interrupt_terminalizes_without_altering_candidate(
         "text": "provider interrupted",
         "truncated": False,
     }
-    remote_failure = json.loads(
-        git(
-            tmp_path / "upstream.git",
-            "show",
-            "refs/heads/aios/failure-artifacts/RUN-101-001:"
-            ".ai/transport/failure.json",
-        )
+    assert_public_artifact(
+        tmp_path / "upstream.git", "refs/heads/aios/failure-artifacts/RUN-101-001",
+        "failure.json", runtime_paths(repo).failures / "RUN-101-001.json",
     )
-    assert remote_failure == failure
     assert not git(
         tmp_path / "upstream.git",
         "for-each-ref",
@@ -3371,14 +3407,10 @@ def test_remediation_keyboard_interrupt_preserves_exact_lineage(tmp_path: Path) 
         "stdout": {"availability": "unavailable"},
         "stderr": {"availability": "unavailable"},
     }
-    assert json.loads(
-        git(
-            tmp_path / "upstream.git",
-            "show",
-            "refs/heads/aios/failure-artifacts/RUN-101-001:"
-            ".ai/transport/failure.json",
-        )
-    ) == failure
+    assert_public_artifact(
+        tmp_path / "upstream.git", "refs/heads/aios/failure-artifacts/RUN-101-001",
+        "failure.json", state.failures / "RUN-101-001.json",
+    )
 
 
 def test_repair_keyboard_interrupt_preserves_continuation_lineage(tmp_path: Path) -> None:
@@ -3412,14 +3444,10 @@ def test_repair_keyboard_interrupt_preserves_continuation_lineage(tmp_path: Path
     assert failure["candidate"]["repairable"] is True
     assert repair_execution["failed_run_id"] == failed_run_id
     assert repair_execution["repair"] == repair
-    assert json.loads(
-        git(
-            tmp_path / "upstream.git",
-            "show",
-            "refs/heads/aios/failure-artifacts/RUN-101-001:"
-            ".ai/transport/failure.json",
-        )
-    ) == failure
+    assert_public_artifact(
+        tmp_path / "upstream.git", "refs/heads/aios/failure-artifacts/RUN-101-001",
+        "failure.json", state.failures / "RUN-101-001.json",
+    )
 
     continuation = dict(repair)
     continuation.update(
@@ -3508,8 +3536,8 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
     assert "--json-schema" in command
-    assert command[command.index("--print-timeout") + 1] == "60m"
-    assert kwargs["timeout"] == 65 * 60
+    assert command[command.index("--print-timeout") + 1] == f"{NATIVE_RESPONSE_BUDGET_MINUTES}m"
+    assert kwargs["timeout"] == NATIVE_PROCESS_WATCHDOG_SECONDS
     assert kwargs["cwd"] == workspace
     assert kwargs["text"] is False
     assert "encoding" not in kwargs
@@ -4742,21 +4770,18 @@ def test_primary_run_transports_review_and_artifacts_refs(tmp_path: Path) -> Non
     # Verify review ref points exactly to head_sha on upstream
     assert git(upstream, "rev-parse", review_ref) == summary.head_sha
 
-    # Verify artifacts ref contains byte-exact run.json and result.json
-    remote_run_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/run.json")
-    remote_result_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/result.json")
+    # Public documents must exactly project the private originals.
+    state = runtime_paths(repo)
+    assert_public_artifact(upstream, artifacts_ref, "run.json", state.runs / f"{summary.run_id}.json")
+    assert_public_artifact(upstream, artifacts_ref, "result.json", summary.result_path)
     remote_observation_json = git(
         upstream, "show", f"{artifacts_ref}:.ai/transport/observation.json"
     )
 
-    local_run_json = (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(encoding="utf-8")
-    local_result_json = summary.result_path.read_text(encoding="utf-8")
     local_observation_json = (
         runtime_paths(repo).observations / f"{summary.run_id}.json"
     ).read_text(encoding="utf-8")
 
-    assert remote_run_json == local_run_json
-    assert remote_result_json == local_result_json
     assert remote_observation_json == local_observation_json
 
 
@@ -4778,11 +4803,9 @@ def test_remediation_run_transports_review_and_artifacts_refs(tmp_path: Path) ->
 
     assert git(upstream, "rev-parse", review_ref) == summary.head_sha
 
-    remote_run_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/run.json")
-    remote_result_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/result.json")
-
-    local_run_json = (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(encoding="utf-8")
-    local_result_json = summary.result_path.read_text(encoding="utf-8")
+    state = runtime_paths(repo)
+    assert_public_artifact(upstream, artifacts_ref, "run.json", state.runs / f"{summary.run_id}.json")
+    assert_public_artifact(upstream, artifacts_ref, "result.json", summary.result_path)
     local_observation_json = (
         runtime_paths(repo).observations / f"{summary.run_id}.json"
     ).read_text(encoding="utf-8")
@@ -4790,8 +4813,6 @@ def test_remediation_run_transports_review_and_artifacts_refs(tmp_path: Path) ->
         upstream, "show", f"{artifacts_ref}:.ai/transport/observation.json"
     )
 
-    assert remote_run_json == local_run_json
-    assert remote_result_json == local_result_json
     assert remote_observation_json == local_observation_json
     assert json.loads(local_observation_json)["operation"] == "REMEDIATION"
 
@@ -4992,13 +5013,13 @@ def test_no_change_repair_retains_zero_mutation_contract(
 
     assert summary.head_sha == failed_head
     assert len(runner.calls) == 1
-    assert runner.calls[0][1]["timeout"] == 65 * 60
+    assert runner.calls[0][1]["timeout"] == NATIVE_PROCESS_WATCHDOG_SECONDS
     assert json.loads(summary.result_path.read_text(encoding="utf-8"))["result"][
         "changed_files"
     ] == []
     if executor == "antigravity":
         command = runner.calls[0][0]
-        assert command[command.index("--print-timeout") + 1] == "60m"
+        assert command[command.index("--print-timeout") + 1] == f"{NATIVE_RESPONSE_BUDGET_MINUTES}m"
         handoff = json.loads(
             next(runtime_paths(repo).handoffs.glob("*.json")).read_text(
                 encoding="utf-8"
@@ -5500,16 +5521,10 @@ def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
     )
     continuation_head = continuation_failure["failed_head_sha"]
     assert continuation_failure["continuation_of"] == first_run_id
-    transported_lineage = git(
-        tmp_path / "upstream.git",
-        "show",
-        "refs/heads/aios/failure-artifacts/RUN-101-002:"
-        ".ai/transport/repair.json",
+    assert_public_artifact(
+        tmp_path / "upstream.git", "refs/heads/aios/failure-artifacts/RUN-101-002",
+        "repair.json", state.repairs / "RUN-101-002.json",
     )
-    persisted_lineage = (state.repairs / "RUN-101-002.json").read_text(
-        encoding="utf-8"
-    ).strip()
-    assert transported_lineage == persisted_lineage
 
     summary = run_repair(
         continuation_run_id,
@@ -5641,9 +5656,7 @@ def test_historical_repair_isolates_subject_and_preserves_control_checkout(
     review_ref = f"refs/heads/aios/review/{summary.run_id}"
     artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
     assert git(upstream, "rev-parse", review_ref) == summary.head_sha
-    assert git(
-        upstream, "show", f"{artifacts_ref}:.ai/transport/result.json"
-    ) == summary.result_path.read_text(encoding="utf-8")
+    assert_public_artifact(upstream, artifacts_ref, "result.json", summary.result_path)
 
 
 def test_remote_remediation_executes_historical_reviewed_subject_in_isolation(
@@ -5711,14 +5724,10 @@ def test_remote_remediation_executes_historical_reviewed_subject_in_isolation(
     review_ref = f"refs/heads/aios/review/{summary.run_id}"
     artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
     assert git(upstream, "rev-parse", review_ref) == summary.head_sha
-    assert git(
-        upstream, "show", f"{artifacts_ref}:.ai/transport/run.json"
-    ) == (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(
-        encoding="utf-8"
+    assert_public_artifact(
+        upstream, artifacts_ref, "run.json", runtime_paths(repo).runs / f"{summary.run_id}.json",
     )
-    assert git(
-        upstream, "show", f"{artifacts_ref}:.ai/transport/result.json"
-    ) == summary.result_path.read_text(encoding="utf-8")
+    assert_public_artifact(upstream, artifacts_ref, "result.json", summary.result_path)
 
 
 def test_historical_remediation_failure_persists_exact_subject_candidate(
@@ -7021,8 +7030,8 @@ def publish_conflicting_primary_failure(
                 "failed_head_sha": base_sha,
                 "phase": "EXECUTION",
                 "candidate": {
-                    "repairable": False,
-                    "transportable": False,
+                    "repairable": True,
+                    "transportable": True,
                     "dirty": False,
                     "descends_from_base": True,
                     "changed_files": [],
@@ -8257,8 +8266,12 @@ findings: []
     assert operator_module._git_is_ancestor(repo, primary_sha, summary.head_sha)
 
 
+@pytest.mark.parametrize(
+    "remote_failure", ["valid", "missing", "orphaned", "substituted", "conflicting"]
+)
 def test_integrated_remediation_repair_completion_preserves_result_base_ac5_ac6(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    remote_failure: str,
 ) -> None:
     repo = make_repo(tmp_path)
     head = git(repo, "rev-parse", "HEAD")
@@ -8393,6 +8406,63 @@ findings:
     failed_remediation = json.loads(
         (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
     )
+    # The current terminal writer rejects the INTEGRATED wrapper before
+    # publishing refs. Seed this historical recovery fixture from the exact
+    # emitted documents using real Git; do not replace remote admission.
+    transport_blocker = json.loads(
+        (state.failures / "RUN-101-001.transport.json").read_text(encoding="utf-8")
+    )
+    assert transport_blocker["code"] == "FAILURE_TRANSPORT_IDENTITY_INVALID"
+    artifacts_sha = transport_module._create_named_artifacts_commit(
+        repo,
+        run_id="RUN-101-001",
+        run_path=state.runs / "RUN-101-001.json",
+        artifact_path=state.failures / "RUN-101-001.json",
+        artifact_name="failure.json",
+        observation_path=state.observations / "RUN-101-001.json",
+        preverification_path=state.preverification / "RUN-101-001.json",
+        execution_profile_path=state.execution_profiles / "RUN-101-001.json",
+    )
+    candidate_ref = "refs/heads/aios/failure/RUN-101-001"
+    artifacts_ref = "refs/heads/aios/failure-artifacts/RUN-101-001"
+    git(
+        repo, "push", "--quiet", "--atomic",
+        f"--force-with-lease={candidate_ref}:",
+        f"--force-with-lease={artifacts_ref}:",
+        "origin",
+        f"{failed_remediation['failed_head_sha']}:{candidate_ref}",
+        f"{artifacts_sha}:{artifacts_ref}",
+    )
+    upstream = tmp_path / "upstream.git"
+    assert git(upstream, "rev-parse", candidate_ref) == failed_remediation["failed_head_sha"]
+    assert_public_artifact(upstream, artifacts_ref, "run.json", state.runs / "RUN-101-001.json")
+    assert_public_artifact(upstream, artifacts_ref, "failure.json", state.failures / "RUN-101-001.json")
+    recovery = transport_module.resolve_remote_repair_recovery(
+        repo, failed_run_id="RUN-101-001"
+    )
+    assert len(recovery.failures) == 1
+    assert recovery.failures[0].candidate_sha == failed_remediation["failed_head_sha"]
+    assert json.loads(recovery.failures[0].run)["execution_base"] == run_doc["execution_base"]
+
+    if remote_failure != "valid":
+        if remote_failure == "missing":
+            git(upstream, "update-ref", "-d", artifacts_ref)
+            git(upstream, "update-ref", "-d", candidate_ref)
+            message = "canonical failed RUN not found"
+        elif remote_failure == "orphaned":
+            git(upstream, "update-ref", "-d", candidate_ref)
+            message = "canonical failed RUN refs missing"
+        elif remote_failure == "substituted":
+            git(upstream, "update-ref", candidate_ref, head)
+            message = "canonical failed-head ref mismatch"
+        else:
+            git(upstream, "update-ref", "refs/heads/aios/artifacts/RUN-101-001", artifacts_sha)
+            message = "canonical RUN has conflicting terminal artifacts"
+        assert_historical_repair_rejected_before_mutation(
+            repo, monkeypatch, failed_run_id="RUN-101-001", message=message,
+        )
+        return
+
     repair = {
         "repair_id": "REPAIR-101-001",
         "failed_run_id": "RUN-101-001",
@@ -12585,9 +12655,7 @@ def test_continue_json_selection_survives_existing_restart_argv_path(
 
 
 def test_operator_cli_ingress_and_ingest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from dataclasses import asdict
-    from aios_renew.authoring_ingress import parse_envelope
-    from tests.test_authoring_ingress import audited_envelope, setup_test_repo
+    from tests.test_authoring_ingress import setup_test_repo
 
     repo, _, _ = setup_test_repo(tmp_path, task_id="TASK-200")
     main_sha = git(repo, "rev-parse", "HEAD")
@@ -12623,9 +12691,9 @@ verification:
         "expected_state": {"expected_main_sha": main_sha},
         "payload": task_payload,
     }
-    envelope = asdict(audited_envelope(parse_envelope(envelope), repo))
-    # Optional proof carriers must be absent, rather than serialized as null.
-    assert envelope.pop("origin_authoring_proof") is None
+    # Direct AUTHOR_TASK ingress carries no correction audit or optional proof.
+    assert "audited_handoff" not in envelope
+    assert "origin_authoring_proof" not in envelope
 
     envelope_file = tmp_path / "envelope.json"
     envelope_file.write_text(json.dumps(envelope), encoding="utf-8")
@@ -12917,7 +12985,7 @@ def test_repair_wakeup_rejects_executor_authority_inconsistent_with_action(
         )
 
 
-@pytest.mark.parametrize("executor, verification_exit", [(None, 0), (None, 9), ("codex", 0)])
+@pytest.mark.parametrize("executor, verification_exit", [(None, 0), (None, 9), ("AUTO", 0), ("AUTO", 9), ("codex", 0)])
 def test_finalize_wakeup_reuses_admitted_package_through_durable_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     executor: str | None, verification_exit: int,
@@ -12973,7 +13041,10 @@ def test_finalize_wakeup_reuses_admitted_package_through_durable_boundary(
     request = dict(executor=executor, repo=repo,
                    native_runner=lambda *args, **kwargs: pytest.fail("reuse invoked native Executor"),
                    verification_runner=verify)
-    if executor is not None:
+    if executor == "AUTO":
+        _human_auto_issue(monkeypatch, repo, dispatch_id="repair-elided-101", failed_run_id=failed_run_id, repair_sha=repair_sha)
+        monkeypatch.setattr(operator_module, "_resolve_auto_repair_profile", lambda *a, **k: pytest.fail("executorless AUTO resolved coding profile"))
+    if executor not in (None, "AUTO"):
         before_runs = {path.name: path.read_bytes() for path in state.runs.glob("*.json")}
         with pytest.raises(OperatorError, match="forbids a coding Executor"):
             run_repair_wakeup("repair-elided-101", failed_run_id, repair_sha, **request)
@@ -13456,8 +13527,15 @@ def test_human_reconciliation_proof_gates_preserve_repository(
     elif gate in {"ahead-only", "equal"}:
         expected_target = failure["base_sha"] if gate == "ahead-only" else failed
         git(remote, "update-ref", "refs/heads/main", expected_target)
+    elif gate in {"malformed-json", "malformed-run-json"}:
+        # Corrupt a valid public artifact after projection, at the reader boundary.
+        ref = "refs/heads/aios/failure-artifacts/RUN-231-004"
+        artifact = git(remote, "rev-parse", ref)
+        name = "run.json" if gate == "malformed-run-json" else "failure.json"
+        corrupt = _corrupt_preservation_artifact(repo, artifact, f".ai/transport/{name}", b"{")
+        git(repo, "push", "--quiet", "--force", "origin", f"{corrupt}:{ref}")
     else:
-        if gate in {"wrong-task", "wrong-run-status", "malformed-run-json", "artifact-head-drift"}:
+        if gate in {"wrong-task", "wrong-run-status", "artifact-head-drift"}:
             run_path = state.runs / "RUN-231-004.json"
             run = json.loads(run_path.read_text())
             if gate == "wrong-task":
@@ -13466,7 +13544,7 @@ def test_human_reconciliation_proof_gates_preserve_repository(
                 run["status"] = "FAILURE"
             elif gate == "artifact-head-drift":
                 run["head_sha"] = target
-            run_path.write_text("{" if gate == "malformed-run-json" else json.dumps(run), encoding="utf-8")
+            run_path.write_text(json.dumps(run), encoding="utf-8")
         if gate == "wrong-run":
             failure["run_id"] = "RUN-231-005"
         elif gate == "wrong-head":
@@ -13484,7 +13562,7 @@ def test_human_reconciliation_proof_gates_preserve_repository(
             run["base_sha"] = failure["base_sha"]
             run_path.write_text(json.dumps(run), encoding="utf-8")
         (state.failures / "RUN-231-004.json").write_text(
-            "{" if gate == "malformed-json" else json.dumps(failure), encoding="utf-8",
+            json.dumps(failure), encoding="utf-8",
         )
         _publish_reconciliation_artifact(repo)
 
@@ -15711,7 +15789,22 @@ def test_terminal_reconciliation_task336_historical_lineage(tmp_path, monkeypatc
               for path in directory.glob("*.json")}
     refs = git(repo, "show-ref")
     _terminal_reconciliation_assert_fixture_contract(repo, state, task, lifecycle)
-    assert len(lifecycle.terminals[0].terminal) > 1048576
+    first = lifecycle.terminals[0]
+    private = before[state.failures / (first.run_id + ".json")]
+    assert len(private) > transport_module.PUBLIC_ARTIFACT_MAX_BYTES
+    assert "historical_annotations" in json.loads(private)["error"]["verification"][0]["verification"]
+    if protected:
+        public = json.loads(first.terminal)
+        assert public == json.loads(transport_module.public_failure(private, private_original=True))
+        transport_module.validate_public_failure(public)
+        assert len(first.terminal) <= transport_module.PUBLIC_FAILURE_MAX_BYTES
+        assert len(first.terminal) < len(private)
+        assert b"historical_annotations" not in first.terminal
+        assert b"private fixture diagnostics" not in first.terminal
+        assert b"fixture-unavailable-base-raw" not in first.terminal
+        assert json.loads(first.run)["workspace"] == "protected-runtime-workspace"
+    else:
+        assert first.terminal == private
     @contextmanager
     def observer(_root):
         yield repo
@@ -15920,3 +16013,213 @@ def test_terminal_reconciliation_task336_historical_lineage_blockers(tmp_path, m
     assert observation.blocker["code"] == expected
     assert {p: p.read_bytes() for p in before} == before
     assert git(repo, "show-ref") == refs
+
+
+def _human_auto_issue(monkeypatch: pytest.MonkeyPatch, root: Path, *, dispatch_id="auto-365", failed_run_id="RUN-111-001", repair_sha="a" * 40) -> None:
+    request = {
+        "format": "AIOS_REPAIR_WAKEUP_REQUEST", "version": 3,
+        "repair_dispatch_id": dispatch_id, "failed_run_id": failed_run_id,
+        "repair_sha": repair_sha, "executor": "AUTO", "model": None, "reasoning_effort": None,
+    }
+    event = {
+        "action": "opened", "sender": {"login": "trung-via", "type": "User"},
+        "repository": {"full_name": "trung-via/AIOS-renew"},
+        "issue": {"number": 365, "title": "[AIOS REPAIR WAKEUP]",
+                  "user": {"login": "trung-via", "type": "User"}, "body": json.dumps(request)},
+    }
+    event_path = root.parent / f"{root.name}-github-event.json"
+    event_path.write_text(json.dumps(event), encoding="utf-8")
+    for key, value in {
+        "GITHUB_EVENT_PATH": str(event_path), "GITHUB_REPOSITORY": "trung-via/AIOS-renew",
+        "AIOS_CONTROL_SHA": "c" * 40, "GITHUB_REF": "refs/heads/main",
+        "AIOS_DELIVERY_ACTOR": "github-actions[bot]", "AIOS_DELIVERY_EVENT": "issues",
+        **{"AIOS_" + key.upper(): value or "" for key, value in request.items()
+           if key in {"repair_dispatch_id", "failed_run_id", "repair_sha", "executor", "model", "reasoning_effort"}},
+        "AIOS_MODEL_SOURCE": "", "AIOS_EFFORT_SOURCE": "",
+    }.items():
+        monkeypatch.setenv(key, str(value))
+    monkeypatch.delenv("AIOS_CONTROL_REF", raising=False)
+
+
+@pytest.mark.parametrize("action,required", [
+    ("CODE_FIX", True), ("CONTINUE_IMPLEMENTATION", True),
+    ("FINALIZE_CANDIDATE", True), ("FINALIZE_CANDIDATE", False), ("NO_CHANGE", False),
+])
+def test_human_auto_obeys_preflight_and_binds_only_one_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action, required) -> None:
+    from aios_renew.execution_profile import execution_profile_identity
+    from aios_renew.repair_dispatch import auto_source_profile_digest
+    _write_external_governed_policy(tmp_path)
+    _human_auto_issue(monkeypatch, tmp_path)
+    state = tmp_path / ".git/aios"
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *args, **kwargs: CorrectionPreflightResult(
+        family="REPAIR", status="READY", phase="READY", reason_code="READY",
+        task_id="TASK-111", task_revision=2, action=action, executor_required=required,
+    ))
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *args, **kwargs: SimpleNamespace(
+        task_id="TASK-111", next_action="EXECUTE_REPAIR", failed_run_id="RUN-111-001",
+        correction_sha="a" * 40, correction_document={"action": action}, correction={"executor_required": required},
+    ))
+    profile = ResolvedExecutionProfile("auto-365", "antigravity", "old/authenticated-model", "low",
+                                       "REPOSITORY_DEFAULT", "EXPLICIT")
+    inherited = []
+    def source(*args, **kwargs):
+        assert required, "executorless AUTO tried to resolve a coding profile"
+        inherited.append(kwargs)
+        return profile, auto_source_profile_digest("RUN-111-001", execution_profile_identity(profile))
+    monkeypatch.setattr(operator_module, "_resolve_auto_repair_profile", source)
+    calls = []
+    def repair(*args, **kwargs):
+        calls.append(kwargs)
+        raise OperatorError("stub stopped before RUN")
+    monkeypatch.setattr(operator_module, "run_repair", repair)
+    first = run_repair_wakeup("auto-365", "RUN-111-001", "a" * 40, executor="AUTO", repo=tmp_path)
+    assert len(calls) == 1 and len(inherited) == int(required)
+    assert calls[0]["executor"] == ("antigravity" if required else None)
+    for field in ("model", "reasoning_effort", "model_source", "effort_source"):
+        assert calls[0][field] == (getattr(profile, field) if required else None)
+    record = next((state / "repair-dispatches").glob("*.json"))
+    before = record.read_bytes()
+    assert json.loads(before)["auto_authorization"]["actor"] == "trung-via"
+    monkeypatch.setattr(operator_module, "_resolve_auto_repair_profile", lambda *a, **k: pytest.fail("replay re-resolved source"))
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *a, **k: pytest.fail("replay repeated preflight"))
+    replay = run_repair_wakeup("auto-365", "RUN-111-001", "a" * 40, executor="AUTO", repo=tmp_path)
+    assert replay.replayed and replay.status == first.status and len(calls) == 1
+    assert record.read_bytes() == before and not (state / "runs").exists()
+
+
+@pytest.mark.parametrize("mixed", [False, True])
+def test_auto_rejects_missing_human_proof_or_mixed_profile_without_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mixed: bool) -> None:
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: tmp_path / ".git/aios")
+    monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
+    monkeypatch.delenv("AIOS_DELIVERY_EVENT", raising=False)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *a, **k: pytest.fail("unauthenticated AUTO reached preflight"))
+    with pytest.raises(OperatorError, match="AUTO"):
+        run_repair_wakeup("auto-365", "RUN-111-001", "a" * 40, executor="AUTO", repo=tmp_path,
+                          **({"model": "manual"} if mixed else {}))
+    assert not (tmp_path / ".git/aios").exists()
+
+
+@pytest.mark.parametrize("fault", [None, "missing", "ambiguous", "swapped", "invalid", "wrong-executor", "wrong-task", "unsupported"])
+def test_auto_reads_only_exact_canonical_source_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault) -> None:
+    import aios_renew.review_transport as transport
+    from aios_renew.execution_profile import execution_profile_identity
+    from aios_renew.repair_dispatch import auto_source_profile_digest
+    _write_external_governed_policy(tmp_path)
+    profile = ResolvedExecutionProfile("RUN-111-001", "codex", "old/authenticated-model", "low",
+                                       "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT")
+    run = {"run_id": "RUN-111-001", "task": {"id": "TASK-111", "revision": 2}, "executor": "codex",
+           "base_sha": "b" * 40, "workspace": str(tmp_path), "status": "ACTIVE"}
+    failure = {"kind": "FAILURE", "run_id": run["run_id"], "task": run["task"], "executor": "codex",
+               "base_sha": run["base_sha"], "failed_head_sha": "c" * 40}
+    source = profile.as_dict()
+    if fault == "swapped": source["run_id"] = "RUN-112-001"
+    if fault == "invalid": source["model_source"] = "UNTRUSTED"
+    if fault == "wrong-executor": source["executor"] = "antigravity"
+    if fault == "wrong-task": run["task"] = {"id": "TASK-112", "revision": 2}
+    if fault == "unsupported": source["reasoning_effort"] = "invented-effort"
+    artifact = RemoteFailureArtifacts(
+        "RUN-111-001", "c" * 40, json.dumps(run).encode(), json.dumps(failure).encode(), None,
+        execution_profile=None if fault == "missing" else json.dumps(source).encode(),
+    )
+    @contextmanager
+    def observer(root): yield root
+    monkeypatch.setattr(operator_module, "_remote_observation_repository", observer)
+    monkeypatch.setattr(operator_module, "resolve_remote_repair_recovery", lambda *a, **k: RemoteRepairRecovery(
+        (artifact, artifact) if fault == "ambiguous" else (artifact,), ("RUN-111-001",),
+    ))
+    monkeypatch.setattr(transport, "resolve_transport_remote", lambda root: "origin")
+    monkeypatch.setattr(transport, "_read_remote_blob", lambda *a: (tmp_path / ".ai/executor-profiles.yaml").read_bytes())
+    if fault is not None:
+        with pytest.raises(OperatorError, match="AUTO"):
+            operator_module._resolve_auto_repair_profile(tmp_path, failed_run_id="RUN-111-001", task_id="TASK-111", task_revision=2, repair_dispatch_id="auto-365")
+    else:
+        resolved, digest = operator_module._resolve_auto_repair_profile(tmp_path, failed_run_id="RUN-111-001", task_id="TASK-111", task_revision=2, repair_dispatch_id="auto-365")
+        assert execution_profile_identity(resolved) == execution_profile_identity(profile)
+        assert resolved.run_id == "auto-365"
+        assert resolved.model != "test/codex-external"
+        assert digest == auto_source_profile_digest("RUN-111-001", execution_profile_identity(profile))
+    assert not (tmp_path / ".git/aios").exists()
+
+
+@pytest.mark.parametrize("state", ["available", "expired", "substituted", "permission"])
+def test_task372_selfhost_safe_projection_reads_only_exact_private_failure(tmp_path, monkeypatch, state):
+    from aios_renew.review_transport import _project_failure, failure_context, validate_failure_context
+    from tests.test_review_transport import _native_failure_fixture
+    _, private = _native_failure_fixture()
+    public = _project_failure(private, include_detail=False)
+    context = failure_context(public, artifact_sha="c" * 40)
+    failures = tmp_path / "failures"
+    failures.mkdir()
+    path = failures / (private["run_id"] + ".json")
+    if state == "substituted": private["failed_head_sha"] = "f" * 40
+    if state != "expired": path.write_text(json.dumps(private), encoding="utf-8")
+    monkeypatch.setenv("RUNNER_ENVIRONMENT", "self-hosted" if state != "permission" else "github-hosted")
+    monkeypatch.setattr(operator_module, "_runtime_paths_readonly", lambda repo: SimpleNamespace(failures=failures))
+    before = path.read_bytes() if path.exists() else None
+    observed = operator_module.observe_runtime_failure_detail(tmp_path, context)
+    validate_failure_context(observed)
+    if state == "available":
+        assert observed["safe_detail"]["cause"] == "NATIVE_TIMEOUT"
+        assert "detail_blocker" not in observed
+    else:
+        assert observed["detail_blocker"]["code"] == {"expired": "PRIVATE_DETAIL_UNAVAILABLE",
+            "substituted": "PRIVATE_DETAIL_INTEGRITY_INVALID", "permission": "PRIVATE_DETAIL_ACCESS_DENIED"}[state]
+    assert "synthetic-secret" not in json.dumps(observed) and "C:/private" not in json.dumps(observed)
+    assert (path.read_bytes() if path.exists() else None) == before
+
+
+def test_task372_missing_executor_rejection_keeps_precise_no_run_receipt(tmp_path, monkeypatch):
+    import aios_renew.repair_dispatch as dispatch_module
+    _write_external_governed_policy(tmp_path)
+    state = tmp_path / ".git/aios"
+    receipt_path = tmp_path / "receipt.json"
+    monkeypatch.setenv("AIOS_OPERATIONAL_RECEIPT_PATH", str(receipt_path))
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *a, **k: CorrectionPreflightResult(
+        family="REPAIR", status="READY", phase="READY", reason_code="READY", task_id="TASK-111",
+        task_revision=2, action="CODE_FIX", executor_required=True))
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *a, **k: SimpleNamespace(
+        task_id="TASK-111", next_action="EXECUTE_REPAIR", failed_run_id="RUN-111-001", correction_sha="a" * 40,
+        correction_document={"action": "CODE_FIX"}, correction={"executor_required": True}))
+    monkeypatch.setattr(dispatch_module, "execute_repair_dispatch", lambda *a, **k: pytest.fail("rejection created delivery execution"))
+    with pytest.raises(OperatorError, match="explicit Executor"):
+        run_repair_wakeup("repair-372", "RUN-111-001", "a" * 40, executor=None, repo=tmp_path)
+    first = json.loads(receipt_path.read_bytes())
+    operator_module._project_operational_delivery(tmp_path, family="REPAIR", delivery_id="repair-372",
+        selectors={"failed_run_id": "RUN-111-001", "repair_sha": "a" * 40, "executor": None})
+    assert json.loads(receipt_path.read_bytes()) == first
+    assert first["cause"]["reason_code"] == "CODING_REPAIR_EXECUTOR_REQUIRED" and first["run_created"] is False
+    assert not (state / "runs").exists() and not (state / "failures").exists()
+
+
+def test_auto_missing_source_is_actionable_receipt_without_run_or_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _human_auto_issue(monkeypatch, tmp_path)
+    state = tmp_path / ".git/aios"
+    receipt = tmp_path / "operational.json"
+    monkeypatch.setenv("AIOS_OPERATIONAL_RECEIPT_PATH", str(receipt))
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *a, **k: CorrectionPreflightResult(
+        family="REPAIR", status="READY", phase="READY", reason_code="READY", task_id="TASK-111",
+        task_revision=2, action="CODE_FIX", executor_required=True,
+    ))
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *a, **k: SimpleNamespace(
+        task_id="TASK-111", next_action="EXECUTE_REPAIR", failed_run_id="RUN-111-001",
+        correction_sha="a" * 40, correction_document={"action": "CODE_FIX"}, correction={"executor_required": True},
+    ))
+    def missing_source(*args, **kwargs):
+        raise OperatorError("AUTO source profile missing; select a Human coding profile explicitly")
+    monkeypatch.setattr(operator_module, "_resolve_auto_repair_profile", missing_source)
+    monkeypatch.setattr(operator_module, "run_repair", lambda *a, **k: pytest.fail("missing AUTO profile created RUN"))
+    assert operator_module.main(["repair-wakeup", "auto-365", "RUN-111-001", "a" * 40,
+                                 "--executor", "AUTO", "--repo", str(tmp_path)]) == 1
+    observed = json.loads(receipt.read_text(encoding="utf-8"))
+    assert observed["boundary"] == "ADMISSION_REJECTED"
+    assert observed["cause"] == {"authority": "CARRIER", "phase": "AUTO_SOURCE_PROFILE", "reason_code": "CANONICAL_SOURCE_PROFILE_REQUIRED"}
+    assert observed["run_created"] is observed["executor_invoked"] is False
+    assert "run_id" not in observed and "terminal_pointer" not in observed
+    assert not state.exists()

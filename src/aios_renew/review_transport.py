@@ -1,6 +1,7 @@
 """Reusable operator-layer GitHub transport for terminal RUN state."""
 
 from __future__ import annotations
+from contextvars import ContextVar
 
 from .return_affinity import document_affinity
 
@@ -12,11 +13,12 @@ import shlex
 import subprocess
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
+from .proof_coverage_contract import MappingReviewScope, SemanticProofIntake
 from .terminal_attention import (
     TerminalAttentionError,
     publish_terminal_attention,
@@ -65,6 +67,251 @@ _PUBLIC_ERROR_TYPES = frozenset({
     "CodexExecutionError", "CodexOutputError", "AntigravityExecutionError", "AntigravityOutputError", "RuntimeVerificationError",
     "KeyboardInterrupt", "OperatorError", "RuntimeError", "ArtifactValidationError", "RuntimeFailure",
 })
+
+# These observations explain an existing FAILURE. They are never verification
+# reports, EVIDENCE, a completion decision, or a capability to read private bytes.
+_DETAIL_ERRORS = frozenset({"AssertionError", "TypeError", "AttributeError", "ValueError",
+    "NameError", "KeyError", "IndexError", "ImportError", "ModuleNotFoundError",
+    "SyntaxError", "RuntimeError", "FixtureLookupError", "Failed", "UNKNOWN"})
+_DETAIL_CAUSES = frozenset({"UNKNOWN", "MISSING_ACCEPTANCE_CLAIMS", "RESULT_PACKAGE_INVALID",
+    "UNRESOLVED_ITEMS", "EXECUTOR_EVIDENCE_INVALID", "NATIVE_OUTPUT_INVALID",
+    "NATIVE_TIMEOUT", "NATIVE_INTERRUPTED", "NATIVE_INVOCATION_FAILED", "NATIVE_EXIT"})
+_RESPONSE_SHAPES = frozenset({"UNKNOWN", "UNAVAILABLE", "INCOMPLETE_CAPTURE", "EMPTY",
+    "INVALID_JSON", "NON_OBJECT", "MISSING_RESULT", "MISSING_EVIDENCE", "INVALID_RESULT",
+    "INVALID_EVIDENCE", "INVALID_ENVELOPE_FIELDS", "INVALID_RESULT_FIELDS", "INVALID_CLAIMS", "RESULT_PACKAGE_SHAPE"})
+
+
+def _safe_test_identity(node: str) -> tuple[str | None, bool]:
+    # Parameter values can contain secrets, paths, newlines, and even summary
+    # delimiters. Never retain any part of that suffix.
+    if not isinstance(node, str):
+        return None, False
+    identity, separator, _ = node.partition("[")
+    valid = (len(identity) <= 512 and re.fullmatch(
+        r"tests/(?:[A-Za-z_][A-Za-z0-9_]*/)*test_[A-Za-z0-9_]+\.py(?:::[A-Za-z_][A-Za-z0-9_]*)*", identity)
+        is not None)
+    return identity if valid else None, bool(separator)
+
+
+def _detail_error_types(text: str) -> list[str]:
+    if not isinstance(text, str):
+        return ["UNKNOWN"]
+    found = {name for name in _DETAIL_ERRORS - {"UNKNOWN"} if re.search(
+        r"(?:^|\n| - )(?:E\s+)?" + name + r"(?:\s*:|\b$)", text[:65536])}
+    if re.search(r"(?m)^(?:E\s+)?\s*fixture '[^\r\n]*' not found\s*$", text[:65536]):
+        found.add("FixtureLookupError")
+    return sorted(found) or ["UNKNOWN"]
+
+
+def _response_shape(native: Any) -> str:
+    if not isinstance(native, dict):
+        return "UNAVAILABLE"
+    capture = native.get("stdout")
+    if isinstance(capture, dict):
+        if capture.get("truncated") is True:
+            return "INCOMPLETE_CAPTURE"
+        capture = capture.get("text") if capture.get("availability") == "captured" else None
+    if not isinstance(capture, str):
+        return "UNAVAILABLE"
+    if not capture.strip():
+        return "EMPTY"
+    if len(capture) > 65536:
+        return "INCOMPLETE_CAPTURE"
+    # Follow the native adapter's final agent-message boundary. A task_complete
+    # event, usage event, clean candidate, or independent test result is no proxy.
+    last, direct_payload, saw_event = None, None, False
+    decoded = True
+    try:
+        value = json.loads(capture)
+    except (ValueError, TypeError):
+        value = None
+        decoded = False
+    if not isinstance(value, dict) or not {"result", "evidence"} <= value.keys():
+        for line in capture.splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            saw_event = saw_event or isinstance(event.get("type"), str)
+            if {"result", "evidence"} <= event.keys():
+                direct_payload = event
+            item = event.get("item")
+            if (event.get("type") == "item.completed" and isinstance(item, dict)
+                    and item.get("type") == "agent_message" and isinstance(item.get("text"), str)):
+                last = item["text"]
+        if last is not None:
+            try:
+                value = json.loads(last)
+            except ValueError:
+                return "INVALID_JSON"
+        elif direct_payload is not None:
+            value = direct_payload
+        elif saw_event:
+            return "UNKNOWN"
+        elif not decoded:
+            return "INVALID_JSON"
+    if not isinstance(value, dict):
+        return "NON_OBJECT"
+    if "result" not in value:
+        return "MISSING_RESULT"
+    if "evidence" not in value:
+        return "MISSING_EVIDENCE"
+    if set(value) != {"result", "evidence"}:
+        return "INVALID_ENVELOPE_FIELDS"
+    if not isinstance(value["result"], dict):
+        return "INVALID_RESULT"
+    if not isinstance(value["evidence"], list):
+        return "INVALID_EVIDENCE"
+    result = value["result"]
+    if set(result) != {"head_sha", "claims", "changed_files", "unresolved"}:
+        return "INVALID_RESULT_FIELDS"
+    claims = result["claims"]
+    if (not isinstance(claims, list) or any(not isinstance(claim, dict)
+            or set(claim) != {"id", "satisfies", "claim", "evidence"}
+            or not isinstance(claim["id"], str) or not isinstance(claim["claim"], str)
+            or any(not isinstance(claim[k], list) or any(not isinstance(x, str) for x in claim[k])
+                   for k in ("satisfies", "evidence")) for claim in claims)):
+        return "INVALID_CLAIMS"
+    from .artifacts import ArtifactValidationError, validate_structural_result
+    try:
+        validate_structural_result(result)
+    except (ArtifactValidationError, ValueError, TypeError, KeyError):
+        return "INVALID_RESULT"
+    return "RESULT_PACKAGE_SHAPE"
+
+
+def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Project only already-lawful, source-bound private observations.
+
+    No path, URL, raw capture or caller-supplied diagnostic block is opened. The
+    transport writer calls this after validating the private FAILURE's role.
+    Historical public input cannot regain withheld observations.
+    """
+    error = data["error"]
+    private = "public_projection" not in data
+    source_digest = (_failure_digest(data) if private else
+                     data["public_projection"]["private_failure_digest"])
+    detail = dict(format="AIOS_SAFE_FAILURE_DETAIL", version=1, run_id=data["run_id"],
+        subject_sha=data["failed_head_sha"], private_failure_digest=source_digest, phase=data["phase"],
+        availability="UNAVAILABLE", verification=[], verification_truncated=False,
+        cause="UNKNOWN", missing_acceptance_ids=[], final_response_shape="UNKNOWN",
+        raw_output_withheld=True)
+    if not private:
+        return detail
+    outcomes = error.get("verification", []) if data["phase"] == "VERIFICATION" else []
+    for index, outcome in enumerate(outcomes[:32]):
+        if outcome["exit_code"] == 0:
+            continue
+        nodes = []
+        ref = outcome.get("verification")
+        observed = ref.get("candidate") if isinstance(ref, dict) else None
+        summary = outcome.get("summary", "")
+        observation_complete = observed.get("complete") if isinstance(observed, dict) else None
+        unstable = observed.get("unstable") if isinstance(observed, dict) else None
+        if isinstance(observed, dict):
+            reports = [r for r in observed["reports"] if r["outcome"] == "FAIL"]
+            source_kind, digest = "PROTECTED_OBSERVATION", _failure_digest(observed)
+            failure_count = observed["failure_count"]
+        else:
+            # A summary is an observed output excerpt, never a complete pytest
+            # report. Exit code 1 alone identifies no individual failing test.
+            source_kind, digest = "PROTECTED_SUMMARY", _failure_digest(summary)
+            reports = []
+            excerpt = summary[:65536]
+            pytest_command = re.match(r"^python(?:3)? -m pytest(?: |$)", outcome["command"]) or outcome["command"] == "python scripts/aios_parallel_full_suite.py"
+            header = re.search(r"(?m)^=+ short test summary info =+\s*$", excerpt) if pytest_command else None
+            for line in (excerpt[header.end():].splitlines() if header else []):
+                match = re.match(r"^(FAILED|ERROR) (tests/[^\r\n]+)", line)
+                if match:
+                    reports.append(dict(nodeid=match[2].split(" - ", 1)[0],
+                        phase="unknown", detail=line.split(" - ", 1)[-1]))
+            failure_count = None
+        for report in reports[:32]:
+            identity, parameters = _safe_test_identity(report["nodeid"])
+            nodes.append(dict(identity=identity, identity_digest=_failure_digest(report["nodeid"]),
+                parameters_withheld=parameters, phase=report["phase"],
+                error_types=_detail_error_types(report.get("detail", ""))))
+        detail["verification"].append(dict(index=index, command=_public_command(outcome["command"]),
+            exit_code=outcome["exit_code"], source_kind=source_kind, source_digest=digest,
+            availability="AVAILABLE" if observed and observation_complete and not unstable else
+                "PARTIAL" if reports else "UNAVAILABLE",
+            complete=observation_complete, unstable=unstable, failure_count=failure_count,
+            failed_nodes=nodes, nodes_truncated=len(reports) > len(nodes)))
+    detail["verification_truncated"] = len(outcomes) > 32
+    message = error.get("message", "")
+    if data["phase"] == "COMPLETION_GATE":
+        missing = re.fullmatch(r"RESULT does not satisfy acceptance criteria: (AC[A-Za-z0-9_-]{1,64}(?:, AC[A-Za-z0-9_-]{1,64}){0,31})", message)
+        if missing:
+            detail.update(cause="MISSING_ACCEPTANCE_CLAIMS", missing_acceptance_ids=missing[1].split(", "))
+        elif message.startswith("invalid canonical ResultPackage: "):
+            detail["cause"] = "RESULT_PACKAGE_INVALID"
+        elif message == "RESULT has unresolved items":
+            detail["cause"] = "UNRESOLVED_ITEMS"
+        elif message in {"executor structural output evidence must be empty",
+                         "executor structural claim evidence references must be empty"}:
+            detail["cause"] = "EXECUTOR_EVIDENCE_INVALID"
+    elif data["phase"] == "EXECUTION":
+        diagnostic = _safe_failure_diagnostic(data)
+        category = diagnostic["category"]
+        if category in _DETAIL_CAUSES:
+            detail["cause"] = category
+        if error.get("type") in {"CodexOutputError", "AntigravityOutputError"}:
+            detail["final_response_shape"] = _response_shape(error.get("native_diagnostics"))
+    if detail["cause"] != "UNKNOWN" or any(v["availability"] != "UNAVAILABLE" for v in detail["verification"]):
+        detail["availability"] = "PARTIAL"  # Only allowlisted structural observations, never full diagnostics.
+    return detail
+
+
+def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
+    fields = {"format", "version", "run_id", "subject_sha", "private_failure_digest", "phase",
+        "availability", "verification", "verification_truncated", "cause", "missing_acceptance_ids",
+        "final_response_shape", "raw_output_withheld"}
+    if (not isinstance(detail, dict) or set(detail) != fields or detail["format"] != "AIOS_SAFE_FAILURE_DETAIL"
+            or type(detail["version"]) is not int or detail["version"] != 1
+            or any(detail[k] != owner[k] for k in ("run_id", "subject_sha", "private_failure_digest", "phase"))
+            or detail["availability"] not in {"UNAVAILABLE", "PARTIAL"}
+            or type(detail["verification_truncated"]) is not bool or detail["raw_output_withheld"] is not True
+            or detail["cause"] not in _DETAIL_CAUSES or detail["final_response_shape"] not in _RESPONSE_SHAPES
+            or not isinstance(detail["verification"], list) or len(detail["verification"]) > 32
+            or not isinstance(detail["missing_acceptance_ids"], list) or len(detail["missing_acceptance_ids"]) > 32
+            or any(not isinstance(x, str) or re.fullmatch(r"AC[A-Za-z0-9_-]{1,64}", x) is None
+                   for x in detail["missing_acceptance_ids"])):
+        raise ValueError("invalid safe FAILURE detail")
+    if (bool(detail["missing_acceptance_ids"]) != (detail["cause"] == "MISSING_ACCEPTANCE_CLAIMS")
+            or detail["cause"] in {"MISSING_ACCEPTANCE_CLAIMS", "RESULT_PACKAGE_INVALID", "UNRESOLVED_ITEMS", "EXECUTOR_EVIDENCE_INVALID"}
+                and detail["phase"] != "COMPLETION_GATE"
+            or detail["cause"].startswith("NATIVE_") and detail["phase"] != "EXECUTION"
+            or detail["final_response_shape"] != "UNKNOWN" and detail["phase"] != "EXECUTION"
+            or detail["verification"] and detail["phase"] != "VERIFICATION"):
+        raise ValueError("safe FAILURE detail phase mismatch")
+    previous = -1
+    for item in detail["verification"]:
+        fields = {"index", "command", "exit_code", "source_kind", "source_digest", "availability",
+            "complete", "unstable", "failure_count", "failed_nodes", "nodes_truncated"}
+        if (not isinstance(item, dict) or set(item) != fields or type(item["index"]) is not int
+                or not previous < item["index"] < 32 or item["index"] >= len(owner["verification"])
+                or any(item[k] != owner["verification"][item["index"]][k] for k in ("command", "exit_code"))
+                or type(item["exit_code"]) is not int or item["exit_code"] == 0
+                or item["source_kind"] not in {"PROTECTED_OBSERVATION", "PROTECTED_SUMMARY"}
+                or not _is_digest(item["source_digest"]) or item["availability"] not in {"AVAILABLE", "PARTIAL", "UNAVAILABLE"}
+                or any(item[k] is not None and type(item[k]) is not bool for k in ("complete", "unstable"))
+                or (item["complete"] is True and item["unstable"] is True)
+                or item["failure_count"] is not None and (type(item["failure_count"]) is not int or not 0 <= item["failure_count"] <= 4096)
+                or not isinstance(item["failed_nodes"], list) or len(item["failed_nodes"]) > 32
+                or type(item["nodes_truncated"]) is not bool):
+            raise ValueError("invalid safe FAILURE verification detail")
+        previous = item["index"]
+        _public_command(item["command"])
+        for node in item["failed_nodes"]:
+            if (not isinstance(node, dict) or set(node) != {"identity", "identity_digest", "parameters_withheld", "phase", "error_types"}
+                    or node["identity"] is not None and _safe_test_identity(node["identity"]) != (node["identity"], False)
+                    or not _is_digest(node["identity_digest"]) or type(node["parameters_withheld"]) is not bool
+                    or node["phase"] not in {"collect", "setup", "call", "teardown", "unknown"}
+                    or not isinstance(node["error_types"], list) or not 1 <= len(node["error_types"]) <= len(_DETAIL_ERRORS)
+                    or any(not isinstance(t, str) or t not in _DETAIL_ERRORS for t in node["error_types"])):
+                raise ValueError("invalid safe failed node")
 
 
 def _capture_fact(value: Any, *, partial: bool) -> dict[str, Any]:
@@ -267,7 +514,7 @@ def failure_context(data: Mapping[str, Any], *, artifact_sha: str | None = None,
         else:
             outcome.update(observation_availability="UNAVAILABLE", detail_status="UNAVAILABLE")
         outcomes.append(outcome)
-    return dict(format="AIOS_FAILURE_CONTEXT", version=1, kind="FAILURE_CONTEXT",
+    context = dict(format="AIOS_FAILURE_CONTEXT", version=1, kind="FAILURE_CONTEXT",
                 run_id=public["run_id"], task=public["task"], executor=public["executor"],
                 base_sha=public["base_sha"], subject_sha=public["failed_head_sha"], phase=public["phase"],
                 candidate=public["candidate"], candidate_availability=("AVAILABLE" if candidate_available is True else
@@ -279,6 +526,8 @@ def failure_context(data: Mapping[str, Any], *, artifact_sha: str | None = None,
                 source=dict(artifact_sha=artifact_sha, failure_digest=_failure_digest(data),
                             private_failure_digest=public["public_projection"]["private_failure_digest"]),
                 proof="NON_PASS_DIAGNOSTIC")
+    context["safe_detail"] = error.get("safe_detail") or safe_failure_detail(public)
+    return context
 
 
 def validate_failure_context(value: Any) -> None:
@@ -287,7 +536,7 @@ def validate_failure_context(value: Any) -> None:
     fields = {"format", "version", "kind", "run_id", "task", "executor", "base_sha", "subject_sha", "phase",
               "candidate", "candidate_availability", "diagnostic", "verification", "verification_truncated", "evidence_identities",
               "evidence_identities_truncated", "source", "proof"}
-    if (not isinstance(value, dict) or set(value) != fields or value["format"] != "AIOS_FAILURE_CONTEXT"
+    if (not isinstance(value, dict) or set(value) - {"safe_detail", "detail_blocker"} != fields or value["format"] != "AIOS_FAILURE_CONTEXT"
             or type(value["version"]) is not int or value["version"] != 1 or value["kind"] != "FAILURE_CONTEXT"
             or value["proof"] != "NON_PASS_DIAGNOSTIC"
             or value["candidate_availability"] not in {"AVAILABLE", "UNAVAILABLE", "UNKNOWN"}
@@ -331,6 +580,16 @@ def validate_failure_context(value: Any) -> None:
     projected["public_projection"] = dict(format=PUBLIC_FAILURE_FORMAT, proof="PRIVATE_NON_PASS_FAILURE",
         private_failure_digest=source["private_failure_digest"], projection_digest=_failure_digest(projected))
     validate_public_failure(projected)
+    if "safe_detail" in value:
+        validate_safe_failure_detail(value["safe_detail"], dict(run_id=value["run_id"],
+            subject_sha=value["subject_sha"], phase=value["phase"],
+            private_failure_digest=source["private_failure_digest"], verification=value["verification"]))
+    if "detail_blocker" in value:
+        blocker = value["detail_blocker"]
+        if (not isinstance(blocker, dict) or set(blocker) != {"code", "action"}
+                or blocker["code"] not in {"PRIVATE_DETAIL_UNAVAILABLE", "PRIVATE_DETAIL_ACCESS_DENIED", "PRIVATE_DETAIL_INTEGRITY_INVALID"}
+                or blocker["action"] != "READ_EXACT_RUNTIME_PROJECTION"):
+            raise ValueError("invalid FAILURE detail blocker")
     _public_bytes(value, max_bytes=256 * 1024)
 
 
@@ -412,7 +671,8 @@ def _public_metadata_value(value: Any, template: Any = None) -> Any:
         return value
     if value.get("kind") == "FAILURE" and _needs_failure_projection(value):
         marker = template.get("public_projection", {}) if isinstance(template, Mapping) else {}
-        return _project_failure(value, projection_format=marker.get("format", PUBLIC_FAILURE_FORMAT))
+        return _project_failure(value, projection_format=marker.get("format", PUBLIC_FAILURE_FORMAT),
+            include_detail=("safe_detail" in template.get("error", {}) if marker else True))
     data = {key: _public_metadata_value(item, template.get(key) if isinstance(template, Mapping) else None)
             for key, item in value.items()}
     if "run_id" in data and "workspace" in data and "task" in data:
@@ -569,7 +829,8 @@ def _project_reference(value: Mapping[str, Any]) -> dict[str, Any]:
     return projected
 
 
-def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC_FAILURE_FORMAT) -> dict[str, Any]:
+def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC_FAILURE_FORMAT,
+                     include_detail: bool = True) -> dict[str, Any]:
     """Produce FAILURE metadata; omitted proof remains bound, never recreated."""
     if "public_projection" in data:
         validate_public_failure(data)
@@ -596,6 +857,8 @@ def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC
         if "exit_code" in error:
             projected["error"]["exit_code"] = error["exit_code"]
         projected["error"]["diagnostic"] = diagnostic
+        if include_detail:
+            projected["error"]["safe_detail"] = safe_failure_detail(data)
     # Full EVIDENCE in any validated package role retains identity/digest only.
     identities: dict[str, dict[str, str]] = {}
 
@@ -828,7 +1091,7 @@ def validate_public_failure(data: Mapping[str, Any]) -> None:
             raise ValueError("invalid public FAILURE failed node count")
 
     error = data["error"]
-    extra = {"exit_code", "diagnostic"} if marker["format"] == PUBLIC_FAILURE_FORMAT else set()
+    extra = {"exit_code", "diagnostic", "safe_detail"} if marker["format"] == PUBLIC_FAILURE_FORMAT else set()
     if (not isinstance(error, dict) or not {"type", "message", "verification"} <= error.keys()
             or set(error) - {"type", "message", "verification", "evidence_identities"} - extra
             or not match(error["type"], r"[A-Za-z_][A-Za-z0-9_.]{0,127}")
@@ -837,6 +1100,10 @@ def validate_public_failure(data: Mapping[str, Any]) -> None:
         raise ValueError("invalid public FAILURE diagnostics")
     if marker["format"] == PUBLIC_FAILURE_FORMAT:
         _validate_failure_diagnostic(data)
+    if "safe_detail" in error:
+        validate_safe_failure_detail(error["safe_detail"], dict(run_id=data["run_id"],
+            subject_sha=data["failed_head_sha"], phase=data["phase"],
+            private_failure_digest=marker["private_failure_digest"], verification=error["verification"]))
     identities = error.get("evidence_identities", [])
     if not isinstance(identities, list):
         raise ValueError("invalid public FAILURE evidence identities")
@@ -1097,6 +1364,96 @@ class RemoteRemediationLineage:
     task_revision: int = 0
 
 
+_BATCH_SOURCE_PROOFS: ContextVar[tuple[tuple[str, str], ...]] = ContextVar("batch_source_proofs", default=())
+
+
+def resolve_authenticated_batch(repo: Path, *, source_run_id: str, batch_id: str,
+                                required_sha: str | None = None, remote: str | None = None):
+    seen = _BATCH_SOURCE_PROOFS.get()
+    key = (source_run_id, batch_id)
+    if key in seen or len(seen) >= 32:
+        raise ReviewTransportError("cyclic or oversized batch source proof lineage")
+    token = _BATCH_SOURCE_PROOFS.set((*seen, key))
+    try:
+        return _resolve_authenticated_batch(repo, source_run_id=source_run_id, batch_id=batch_id,
+            required_sha=required_sha, remote=remote)
+    finally:
+        _BATCH_SOURCE_PROOFS.reset(token)
+
+
+def _resolve_authenticated_batch(repo: Path, *, source_run_id: str, batch_id: str,
+                                 required_sha: str | None, remote: str | None):
+    """Use AUTHOR_REMEDIATION's immutable source proof for a batch selector."""
+    from .review import BatchRemediation, is_batch_selector, parse_remediation, validate_remediation
+    from .authoring_ingress import (IngressEnvelope, _read_direct_remediation_binding,
+        _direct_remediation_blob, _validate_metadata_commit, _recheck_direct_remediation_binding)
+    if not is_batch_selector(batch_id):
+        raise ReviewTransportError("explicit versioned batch selector required")
+    remote = remote or resolve_transport_remote(repo)
+    lineages = resolve_remote_remediation_lineages(repo, finding_id=batch_id, source_run_id=source_run_id, remote=remote)
+    if len(lineages) != 1:
+        raise ReviewTransportError("batch authority is missing or ambiguous")
+    lineage = lineages[0]
+    rem = parse_remediation(lineage.remediation.decode("utf-8"))
+    if not isinstance(rem, BatchRemediation) or rem.batch_id != batch_id or rem.selection.source_run_id != source_run_id:
+        raise ReviewTransportError("batch selector cannot be decoded as a legacy finding")
+    if required_sha is not None and lineage.commit_sha != required_sha:
+        raise ReviewTransportError("approved batch authorization SHA is stale")
+    envelope = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REMEDIATION",
+        {"source_run_id": source_run_id, "batch_id": batch_id, "finding_ids": list(rem.selection.finding_ids)},
+        {"expected_reviewed_sha": rem.reviewed_sha, "expected_review_decision_sha": rem.selection.review_decision_sha},
+        lineage.remediation.decode("utf-8"))
+    binding = _read_direct_remediation_binding(envelope, repo, require_current=False, observation_remote=remote)
+    if binding.existing_sha != lineage.commit_sha or binding.refs.get(f"refs/heads/aios/artifacts/{source_run_id}") != rem.selection.source_artifacts_sha:
+        raise ReviewTransportError("canonical batch authority ref moved")
+    path = f".ai/remediations/REMEDIATION-{source_run_id}-{batch_id}.yaml"
+    raw = _direct_remediation_blob(repo, lineage.commit_sha, path)
+    _validate_metadata_commit(repo, lineage.commit_sha, expected_parent_sha=rem.selection.review_decision_sha,
+        metadata_path=path, metadata_bytes=raw, operation="batch authority")
+    if raw != lineage.remediation:
+        raise ReviewTransportError("batch authority bytes were substituted")
+    validate_remediation(review=binding.review, remediation=rem, task=binding.task)
+    _recheck_direct_remediation_binding(envelope, repo, binding, observation_remote=remote)
+    return binding, rem, lineage.commit_sha
+
+
+def reject_overlapping_remediations(repo: Path, *, remote: str, refs: Mapping[str, str],
+                                    source_run_id: str, finding_ids: Sequence[str], own_ref: str) -> None:
+    """Reject simultaneous single/batch authority over the same source findings."""
+    from .review import BatchRemediation, is_batch_selector, parse_remediation
+    prefix = f"refs/heads/aios/remediation/{source_run_id}-"
+    if len(finding_ids) == 1 and not any(ref.startswith(prefix) and is_batch_selector(ref[len(prefix):]) for ref in refs):
+        return
+    consumed: set[str] = set()
+    for ref, sha in refs.items():
+        if ref.startswith(("refs/heads/aios/artifacts/", "refs/heads/aios/failure-artifacts/")):
+            raw = _read_remote_blob(repo, remote, sha, ".ai/transport/run.json")
+            if raw is None:
+                raise ReviewTransportError("canonical correction RUN content missing")
+            run = _performance_json_mapping(raw, "correction RUN")
+            if run.get("remediation_authorization_sha") is not None:
+                consumed.add(run["remediation_authorization_sha"])
+    for ref, sha in refs.items():
+        if not ref.startswith(prefix) or ref == own_ref or sha in consumed:
+            continue
+        selector = ref[len(prefix):]
+        if not is_batch_selector(selector) and selector not in finding_ids:
+            continue
+        raw = _read_remote_blob(repo, remote, sha, f".ai/remediations/REMEDIATION-{source_run_id}-{selector}.yaml")
+        if raw is None:
+            _, paths, _ = _git_cmd(repo, "ls-tree", "-r", "--name-only", sha, "--", ".ai/remediations")
+            candidates = [p for p in paths.splitlines() if p.endswith((".yaml", ".yml"))]
+            if len(candidates) != 1:
+                raise ReviewTransportError("canonical competing remediation is malformed")
+            raw = _read_remote_blob(repo, remote, sha, candidates[0])
+            if raw is None:
+                raise ReviewTransportError("canonical competing remediation bytes missing")
+        rem = parse_remediation(raw.decode("utf-8"))
+        ids = rem.selection.finding_ids if isinstance(rem, BatchRemediation) else (rem.finding_id,)
+        if set(ids).intersection(finding_ids):
+            raise ReviewTransportError("overlapping active batch/single remediation authority")
+
+
 @dataclass(frozen=True)
 class RemoteFailureArtifacts:
     """Immutable Runtime-owned facts for one canonical failed RUN."""
@@ -1287,7 +1644,9 @@ def resolve_detached_observation_remote(repo: Path) -> str:
 def _read_remote_blob(repo: Path, remote: str, commit_sha: str, rel_path: str) -> bytes | None:
     """Read a blob's content at commit_sha:rel_path from remote or local object DB."""
     _git_cmd(repo, "fetch", "--no-tags", remote, commit_sha, allow_fail=True)
-    code, content, _ = _git_cmd(repo, "show", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True)
+    # `show` also stats commit:path as a worktree filename. Long batch metadata
+    # names exceed Windows' path limit in isolated observers despite a valid blob.
+    code, content, _ = _git_cmd(repo, "cat-file", "blob", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True)
     if code == 0:
         raw = content.encode("utf-8")
         if rel_path == ".ai/transport/failure.json":
@@ -1632,6 +1991,25 @@ def _bind_remediation_wrapper(
 ) -> None:
     from .review import REMEDIATION_ACTIONS, parse_remediation
 
+    if "format" in document or "findings" in execution:
+        from .operator import _remediation_execution_from_data, _parse_remediation_execution_base
+        from .review import BatchRemediation, parse_batch_selection
+        try:
+            if (set(document) != {"format", "version", "kind", "execution", "predecessor", "execution_base", "remediation_authorization_sha"}
+                    or document["format"] != "AIOS_BATCH_REMEDIATION_RUN" or type(document["version"]) is not int or document["version"] != 1
+                    or document["kind"] != "REMEDIATION"
+                    or re.fullmatch(r"[0-9a-f]{40}", str(document["remediation_authorization_sha"])) is None):
+                raise ValueError("invalid versioned batch RUN wrapper")
+            parsed = _remediation_execution_from_data(execution)
+            predecessor = parse_batch_selection(document["predecessor"])
+            if (not isinstance(parsed.remediation, BatchRemediation) or parsed.remediation.selection != predecessor
+                    or parsed.run.run_id != run_id
+                    or _parse_remediation_execution_base(document["execution_base"]).candidate_sha != parsed.run.base_sha):
+                raise ValueError("batch RUN source/execution base mismatch")
+            return
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ReviewTransportError(f"invalid batch RUN: {exc}") from exc
+
     required = {"kind", "execution"}
     allowed = required | {"predecessor", "execution_base", "acceptance", "remediation_authorization_sha"}
     if not required.issubset(document) or set(document).difference(allowed):
@@ -1857,7 +2235,7 @@ def _performance_json_mapping(content: bytes, name: str) -> Mapping[str, Any]:
 
 
 def resolve_remote_task_lifecycle(
-    repo: Path, *, task_id: str, task_revision: int
+    repo: Path, *, task_id: str, task_revision: int, remote: str | None = None
 ) -> RemoteTaskLifecycle:
     """Acquire one bounded canonical snapshot for Unified State.
 
@@ -1872,7 +2250,7 @@ def resolve_remote_task_lifecycle(
     ):
         raise ReviewTransportError("invalid TASK revision")
     task_prefix = task_run_prefix(task_id)
-    remote = resolve_transport_remote(repo)
+    remote = remote or resolve_transport_remote(repo)
     refs = _exact_remote_refs(
         repo,
         remote,
@@ -2343,6 +2721,7 @@ def resolve_remote_remediation_lineages(
     task_id: str | None = None,
     task_revision: int | None = None,
     source_run_id: str | None = None,
+    remote: str | None = None,
 ) -> tuple[RemoteRemediationLineage, ...]:
     """Resolve all structurally complete remote lineages for one finding id.
 
@@ -2366,7 +2745,7 @@ def resolve_remote_remediation_lineages(
             raise ReviewTransportError("invalid source RUN id") from exc
         if not re.fullmatch(rf"{re.escape(source_prefix)}\d{{3,}}", source_run_id):
             raise ReviewTransportError("invalid source RUN id")
-    remote = resolve_transport_remote(repo)
+    remote = remote or resolve_transport_remote(repo)
     if source_run_id is not None:
         task_prefix = None
         pattern = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
@@ -2702,6 +3081,941 @@ def read_remote_task(repo: Path, *, commit_sha: str, task_id: str) -> bytes:
             f"historical TASK not found at {commit_sha}: {task_id}"
         )
     return content
+
+
+# Explicit prospective L1 reader only. No active lifecycle caller uses this API.
+L1_SOURCE_MAX_BYTES = 1024 * 1024
+L1_TASK_MAX_BYTES = 256 * 1024
+L1_INTAKE_MAX_BYTES = 4 * 1024 * 1024
+_L1_MAX_COMMITS = 4096
+_L1_SHA = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
+
+
+@dataclass(frozen=True)
+class GitSemanticSource:
+    """Exact caller locators; authority is established only by the reader."""
+
+    source_sha: str
+    tree_sha: str
+    path: str
+    blob_sha: str
+
+
+@dataclass(frozen=True)
+class AuthenticatedSemanticSource:
+    role: str
+    locator: GitSemanticSource
+    content_sha256: str
+    byte_count: int
+
+
+@dataclass(frozen=True)
+class CanonicalSemanticSourceBinding:
+    """Bounded Git consistency observation, never approval or proof validity."""
+
+    remote: str
+    remote_url: str
+    main_before: str
+    main_after: str
+    sources: tuple[AuthenticatedSemanticSource, ...]
+    intake: SemanticProofIntake
+    readiness: str = field(default="SOURCE_CONSISTENT_ONLY", init=False)
+    source_authentication: str = field(default="ESTABLISHED_FOR_OBSERVATION", init=False)
+    source_currentness: str = field(default="ESTABLISHED_FOR_OBSERVATION", init=False)
+    unestablished: tuple[str, ...] = field(default=(
+        "independent_human_approval", "independent_semantic_mapping_review",
+        "semantic_adequacy", "canonical_runtime_verification", "evidence_applicability",
+        "future_version_policy_admission", "production_opt_in",
+    ), init=False)
+    canonical_verification: str = field(default="UNESTABLISHED", init=False)
+    production_eligible: bool = field(default=False, init=False)
+    execution_authorized: bool = field(default=False, init=False)
+    ka01: str = field(default="NOT_ACTIVATED", init=False)
+
+
+def _l1_sha(value: object) -> str:
+    if type(value) is not str or _L1_SHA.fullmatch(value) is None:
+        raise ReviewTransportError("L1 requires exact lowercase SHA-1 object identities")
+    return value
+
+
+def _l1_git(repo: Path, *args: str, strip: bool = True) -> str:
+    # Raw objects, never replace refs; disable incidental fetch maintenance.
+    return _git_cmd(repo, "--no-replace-objects", "-c", "gc.auto=0",
+                    "-c", "fetch.writeCommitGraph=false", "-c", "protocol.ext.allow=never",
+                    *args, strip=strip)[1]
+
+
+def _l1_remote(repo: Path, expected_url: str) -> str:
+    code, _, _ = _git_cmd(repo, "symbolic-ref", "--quiet", "HEAD", allow_fail=True)
+    remote = (resolve_transport_remote(repo) if code == 0 else
+              resolve_detached_observation_remote(repo))
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", remote) is None:
+        raise ReviewTransportError("missing or ambiguous L1 configured remote")
+    if code == 0:
+        branch = _git_cmd(repo, "symbolic-ref", "--quiet", "--short", "HEAD")[1]
+        if _git_cmd(repo, "config", "--get-all", f"branch.{branch}.remote")[1] != remote:
+            raise ReviewTransportError("ambiguous L1 branch upstream binding")
+    # Both raw and effective URLs must be unique and exact. URL rewriting,
+    # multiple URLs and local-branch '.' upstreams cannot change the trust root.
+    raw = _git_cmd(repo, "config", "--get-all", f"remote.{remote}.url", strip=False)[1]
+    effective = _git_cmd(repo, "remote", "get-url", "--all", remote, strip=False)[1]
+    if raw != expected_url + "\n" or effective != expected_url + "\n":
+        raise ReviewTransportError("wrong or ambiguous L1 canonical remote URL")
+    return remote
+
+
+def _l1_main(repo: Path, url: str, expected: str) -> None:
+    if _exact_remote_refs(repo, url, "refs/heads/main") != {"refs/heads/main": expected}:
+        raise ReviewTransportError("missing, conflicting or moved L1 canonical main")
+
+
+def _l1_json(content: bytes, limit: int) -> dict[str, Any]:
+    if type(content) is not bytes or not 0 < len(content) <= limit:
+        raise ReviewTransportError("L1 JSON input exceeds byte bounds")
+
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
+    def constant(_):
+        raise ValueError("non-finite JSON number")
+
+    try:
+        text = content.decode("utf-8", errors="strict")
+        # Bound parser recursion before decoding, ignoring quoted delimiters.
+        depth, quoted, escaped, tokens = 0, False, False, 0
+        for char in text:
+            if quoted:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    quoted = False
+            elif char == '"':
+                quoted = True
+            elif char in "[{":
+                depth += 1
+                tokens += 1
+                if depth > 32 or tokens > 65536:
+                    raise ValueError("JSON structure exceeds bounds")
+            elif char in "]}":
+                depth -= 1
+        data = json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+        pending, nodes = [data], 0
+        while pending:
+            item = pending.pop()
+            nodes += 1
+            if nodes > 65536:
+                raise ValueError("JSON node bound exceeded")
+            if isinstance(item, dict):
+                pending.extend(item.keys())
+                pending.extend(item.values())
+            elif isinstance(item, list):
+                pending.extend(item)
+            elif isinstance(item, str):
+                item.encode("utf-8", errors="strict")  # Reject lone surrogates.
+            elif isinstance(item, float) and not math.isfinite(item):
+                raise ValueError("non-finite JSON number")
+        if type(data) is not dict:
+            raise ValueError("JSON object required")
+        return data
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        raise ReviewTransportError("invalid bounded strict L1 JSON document") from exc
+
+
+def _l1_text_object(repo: Path, sha: str, kind: str, limit: int) -> bytes:
+    if _l1_git(repo, "cat-file", "-t", sha) != kind:
+        raise ReviewTransportError("wrong L1 Git object type")
+    size = _l1_git(repo, "cat-file", "-s", sha)
+    if not size.isdecimal() or not 0 < int(size) <= limit:
+        raise ReviewTransportError("L1 Git object exceeds byte bounds")
+    content = _l1_git(repo, "cat-file", kind, sha, strip=False).encode("utf-8")
+    header = f"{kind} {len(content)}\0".encode("ascii")
+    if len(content) != int(size) or hashlib.sha1(header + content).hexdigest() != sha:
+        raise ReviewTransportError("L1 Git content/object identity mismatch")
+    return content
+
+
+def _l1_commit(repo: Path, sha: str) -> tuple[str, tuple[str, ...]]:
+    content = _l1_text_object(repo, sha, "commit", 64 * 1024)
+    header, separator, _ = content.partition(b"\n\n")
+    # Git recognizes LF and contiguous parent headers immediately after tree.
+    # Unicode/splitlines separators or later author/signature text cannot add
+    # an ancestor that Git's native commit parser would not recognize.
+    headers = header.split(b"\n")
+    if not separator or not headers[0].startswith(b"tree "):
+        raise ReviewTransportError("invalid bounded L1 commit headers")
+    index, parents = 1, []
+    while index < len(headers) and headers[index].startswith(b"parent "):
+        parents.append(_l1_sha(headers[index][7:].decode("utf-8")))
+        index += 1
+    if len(parents) > 256 or any(line.startswith((b"tree ", b"parent ")) for line in headers[index:]):
+        raise ReviewTransportError("invalid bounded L1 commit parent headers")
+    return _l1_sha(headers[0][5:].decode("utf-8")), tuple(parents)
+
+
+def _l1_anchor_sources(repo: Path, main: str, wanted: set[str]) -> dict[str, str]:
+    # Walk authenticated raw parent identities. merge-base/rev-list can honor
+    # local grafts or shallow metadata, which cannot establish source authority.
+    pending, seen, trees = [main], set(), {}
+    while pending and not wanted <= trees.keys():
+        sha = pending.pop()
+        if sha in seen:
+            continue
+        if len(seen) >= _L1_MAX_COMMITS:
+            raise ReviewTransportError("L1 source ancestry exceeds commit bound")
+        seen.add(sha)
+        tree, parents = _l1_commit(repo, sha)
+        trees[sha] = tree
+        pending.extend(reversed(parents))
+    if not wanted <= trees.keys():
+        raise ReviewTransportError("L1 source commit is not anchored in canonical main")
+    return trees
+
+
+def _l1_tree(repo: Path, sha: str) -> dict[str, tuple[str, str, str]]:
+    if _l1_git(repo, "cat-file", "-t", sha) != "tree":
+        raise ReviewTransportError("wrong L1 tree object type")
+    size = _l1_git(repo, "cat-file", "-s", sha)
+    if not size.isdecimal() or not 0 < int(size) <= L1_SOURCE_MAX_BYTES:
+        raise ReviewTransportError("L1 Git tree exceeds byte bounds")
+    listing = _l1_git(repo, "ls-tree", "-z", sha, strip=False)
+    if not listing.endswith("\0"):
+        raise ReviewTransportError("invalid L1 Git tree listing")
+    entries, raw = {}, bytearray()
+    for entry in listing[:-1].split("\0"):
+        metadata, separator, name = entry.partition("\t")
+        fields = metadata.split(" ")
+        if (not separator or not name or name in entries or "/" in name
+                or name in {".", ".."} or len(fields) != 3):
+            raise ReviewTransportError("ambiguous L1 Git tree entry")
+        mode, kind, oid = fields
+        if (mode, kind) not in {("040000", "tree"), ("100644", "blob"),
+                                ("100755", "blob"), ("120000", "blob"), ("160000", "commit")}:
+            raise ReviewTransportError("invalid L1 Git tree entry type")
+        _l1_sha(oid)
+        raw.extend(mode.lstrip("0").encode("ascii") + b" " + name.encode("utf-8")
+                   + b"\0" + bytes.fromhex(oid))
+        entries[name] = (mode, kind, oid)
+    header = f"tree {len(raw)}\0".encode("ascii")
+    if len(raw) != int(size) or hashlib.sha1(header + raw).hexdigest() != sha:
+        raise ReviewTransportError("L1 Git tree content/object identity mismatch")
+    return entries
+
+
+def _l1_path_blob(repo: Path, tree: str, path: str,
+                  cache: dict[str, dict[str, tuple[str, str, str]]], *,
+                  missing_ok: bool = False) -> str | None:
+    components = path.split("/")
+    for index, component in enumerate(components):
+        if tree not in cache:
+            cache[tree] = _l1_tree(repo, tree)
+        if component not in cache[tree]:
+            if missing_ok:
+                return None
+            raise ReviewTransportError("missing L1 source path")
+        mode, kind, sha = cache[tree][component]
+        if index < len(components) - 1:
+            if (mode, kind) != ("040000", "tree"):
+                raise ReviewTransportError("L1 source path traverses a non-tree")
+            tree = sha
+        elif mode not in {"100644", "100755"} or kind != "blob":
+            raise ReviewTransportError("L1 source must be a regular Git blob")
+    return sha
+
+
+def _l1_yaml_text(content: bytes) -> str:
+    import yaml
+
+    # Shared bounded lexical guard; the existing TASK/REVIEW parsers still own
+    # their schemas. Reject graphs, tags and excessive nesting before parsing.
+    if type(content) is not bytes or not 0 < len(content) <= L1_TASK_MAX_BYTES:
+        raise ReviewTransportError("L1 YAML input exceeds byte bounds")
+    try:
+        text = content.decode("utf-8", errors="strict")
+        if text.startswith("\ufeff"):
+            raise ValueError("YAML BOM is not accepted")
+        depth = 0
+        for count, token in enumerate(yaml.scan(text)):
+            if count >= 65536 or isinstance(token, (
+                    yaml.tokens.AliasToken, yaml.tokens.AnchorToken,
+                    yaml.tokens.TagToken, yaml.tokens.DirectiveToken)):
+                raise ValueError("unbounded or ambiguous L1 YAML")
+            if isinstance(token, (yaml.tokens.BlockMappingStartToken,
+                                  yaml.tokens.BlockSequenceStartToken,
+                                  yaml.tokens.FlowMappingStartToken, yaml.tokens.FlowSequenceStartToken)):
+                depth += 1
+            elif isinstance(token, (yaml.tokens.BlockEndToken, yaml.tokens.FlowMappingEndToken,
+                                    yaml.tokens.FlowSequenceEndToken)):
+                depth -= 1
+            if depth > 32:
+                raise ValueError("YAML nesting exceeds bound")
+        return text
+    except (ValueError, UnicodeError, yaml.YAMLError, RecursionError) as exc:
+        raise ReviewTransportError("invalid bounded canonical L1 YAML document") from exc
+
+
+def _l1_task_binding(content: bytes) -> dict[str, Any]:
+    from .task import parse_task
+
+    try:
+        task = parse_task(_l1_yaml_text(content))
+    except ValueError as exc:
+        raise ReviewTransportError("invalid bounded canonical L1 TASK document") from exc
+    return dict(task_id=task.task_id, revision=task.revision,
+                envelope_digest=hashlib.sha256(content).hexdigest(),
+                acceptance_ids=sorted(item.id for item in task.acceptance))
+
+
+def _l1_locator(locator: GitSemanticSource) -> None:
+    if type(locator) is not GitSemanticSource:
+        raise ReviewTransportError("typed exact L1 source locator required")
+    for sha in (locator.source_sha, locator.tree_sha, locator.blob_sha):
+        _l1_sha(sha)
+    if (type(locator.path) is not str or len(locator.path) > 512
+            or re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", locator.path) is None
+            or len(locator.path.split("/")) > 32
+            or any(part in {".", "..", ".git"} for part in locator.path.split("/"))):
+        raise ReviewTransportError("exact normalized L1 repository-relative path required")
+
+
+def bind_canonical_semantic_proof_sources(
+    repo: Path, declaration: bytes, *, expected_remote_url: str,
+    expected_main_sha: str, expected_candidate_sha: str,
+    sources: Mapping[str, GitSemanticSource],
+) -> CanonicalSemanticSourceBinding:
+    """Explicit read-only L1 source binding for TASK-376; no production admission.
+
+    The expected URL/main/candidate and all three exact locators are mandatory.
+    Only configured canonical main history supplies source authority. Source
+    paths must still have their selected blob at current main. Raw TASK bytes
+    define envelope_digest; contract/mapping pins use VP-02 normalization.
+    Fetch adds immutable objects only, with no ref, FETCH_HEAD or index writes.
+    Raises ReviewTransportError on any unavailable, stale or conflicting input.
+    """
+    from .proof_coverage_contract import (
+        ProofCoverageError, proof_mapping_digest, validate_proof_contract,
+    )
+    from .task import validate_semantic_proof_intake
+
+    _l1_sha(expected_main_sha)
+    _l1_sha(expected_candidate_sha)
+    if (type(expected_remote_url) is not str or not 0 < len(expected_remote_url) <= 2048
+            or expected_remote_url != expected_remote_url.strip()
+            or expected_remote_url.startswith("-")
+            or "::" in expected_remote_url
+            or any(ord(char) < 32 or ord(char) == 127 for char in expected_remote_url)):
+        raise ReviewTransportError("exact bounded L1 remote URL required")
+    incoming = _l1_json(declaration, L1_INTAKE_MAX_BYTES)
+    if incoming.get("schema") != "task-semantic-proof-intake-v1":
+        raise ReviewTransportError("explicit task-semantic-proof-intake-v1 declaration required")
+    if type(sources) is not dict or set(sources) != {"task", "contract", "mapping"}:
+        raise ReviewTransportError("exact task/contract/mapping L1 locators required")
+    locators = dict(sources)
+    for locator in locators.values():
+        _l1_locator(locator)
+    if len({item.path for item in locators.values()}) != 3:
+        raise ReviewTransportError("separate L1 semantic source paths required")
+    remote = _l1_remote(repo, expected_remote_url)
+    _l1_main(repo, expected_remote_url, expected_main_sha)
+    if _l1_git(repo, "rev-parse", "--is-shallow-repository") != "false":
+        raise ReviewTransportError("L1 requires a complete Git object history")
+    _l1_git(repo, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=",
+            "--no-auto-maintenance", "--no-recurse-submodules", expected_remote_url, expected_main_sha)
+    trees = _l1_anchor_sources(repo, expected_main_sha,
+                               {item.source_sha for item in locators.values()})
+    contents, observations, pins, tree_cache = {}, [], {}, {}
+    for role in ("task", "contract", "mapping"):
+        locator = locators[role]
+        if trees[locator.source_sha] != locator.tree_sha:
+            raise ReviewTransportError("L1 source commit/tree identity mismatch")
+        if (_l1_path_blob(repo, locator.tree_sha, locator.path, tree_cache) != locator.blob_sha
+                or _l1_path_blob(repo, trees[expected_main_sha], locator.path, tree_cache) != locator.blob_sha):
+            raise ReviewTransportError("wrong or stale L1 source path/blob identity")
+        content = _l1_text_object(repo, locator.blob_sha, "blob",
+                                  L1_TASK_MAX_BYTES if role == "task" else L1_SOURCE_MAX_BYTES)
+        contents[role] = content
+        pins[role] = dict(source_sha=locator.source_sha, blob_sha=locator.blob_sha)
+        observations.append(AuthenticatedSemanticSource(
+            role, locator, hashlib.sha256(content).hexdigest(), len(content)))
+    task_binding = _l1_task_binding(contents["task"])
+    if locators["task"].path != f".ai/tasks/{task_binding['task_id']}.yaml":
+        raise ReviewTransportError("L1 TASK identity/path mismatch")
+    contract = _l1_json(contents["contract"], L1_SOURCE_MAX_BYTES)
+    mapping = _l1_json(contents["mapping"], L1_SOURCE_MAX_BYTES)
+    try:
+        parsed = validate_proof_contract(contract, expected_task=task_binding)
+        contract_pin = dict(id=parsed.id, revision=parsed.revision, digest=parsed.digest)
+        mapping_pin = dict(id=mapping.get("id"), revision=mapping.get("revision"),
+                           digest=proof_mapping_digest(mapping))
+        expected = dict(expected_task=task_binding, expected_candidate_sha=expected_candidate_sha,
+                        expected_sources=pins, expected_contract=contract_pin,
+                        expected_mapping=mapping_pin)
+        # Validate the actual authenticated documents, then the caller's exact
+        # prospective declaration against the same independently derived pins.
+        validate_semantic_proof_intake(dict(
+            schema="task-semantic-proof-intake-v1", task=task_binding,
+            candidate_sha=expected_candidate_sha, sources=pins, contract=contract,
+            mapping=mapping), **expected)
+        intake = validate_semantic_proof_intake(incoming, **expected)
+    except ProofCoverageError as exc:
+        raise ReviewTransportError("L1 authenticated semantic intake is inconsistent") from exc
+    if _l1_remote(repo, expected_remote_url) != remote:
+        raise ReviewTransportError("L1 configured canonical remote moved during observation")
+    _l1_main(repo, expected_remote_url, expected_main_sha)
+    return CanonicalSemanticSourceBinding(remote, expected_remote_url, expected_main_sha,
+                                          expected_main_sha, tuple(observations), intake)
+
+
+@dataclass(frozen=True)
+class _L1MappingReviewSelection:
+    """Private expected facts from independently authenticated Human context.
+
+    Neither construction of this type nor Human intent establishes review PASS.
+    Only the authenticated immutable selection reader supplies production facts.
+    """
+
+    scope: MappingReviewScope
+    sources: tuple[AuthenticatedSemanticSource, ...]
+    review_task_source: GitSemanticSource
+    run_id: str
+    run_sha256: str
+    base_sha: str
+    reviewed_sha: str
+    review_id: str
+    decision_sha: str
+    artifacts_sha: str
+    published_sha: str
+    human_selection_sha: str | None = None
+    human_event_identity: str | None = None
+
+
+@dataclass(frozen=True)
+class MappingReviewLineage:
+    scope: MappingReviewScope
+    review_task_source: AuthenticatedSemanticSource
+    run_id: str
+    run_sha256: str
+    base_sha: str
+    reviewed_sha: str
+    review_id: str
+    review_sha256: str
+    result_sha256: str
+    decision_sha: str
+    artifacts_sha: str
+    published_sha: str
+    observed_refs: tuple[tuple[str, str], ...]
+    human_selection_sha: str | None = None
+    human_event_identity: str | None = None
+
+
+@dataclass(frozen=True)
+class AuthenticatedHumanReviewSelection:
+    """Authenticated intent only, independent of Reviewer/Publisher outcome."""
+
+    selection_sha: str
+    event_identity: str
+
+
+@dataclass(frozen=True)
+class SemanticReviewAuthorityEligibility:
+    """One immutable observation; no independent judgment or proof is issued."""
+
+    source_binding: CanonicalSemanticSourceBinding
+    lineage: MappingReviewLineage | None
+    reason: Literal["EXACT_MAPPING_REVIEW_LINEAGE", "HUMAN_MAPPING_SELECTION_UNAVAILABLE",
+                    "MAPPING_REVIEW_NOT_ESTABLISHED"]
+    human_selection: AuthenticatedHumanReviewSelection | None = None
+    source_status: Literal["SOURCE_CONSISTENT"] = field(default="SOURCE_CONSISTENT", init=False)
+    semantic_adequacy: Literal["REQUIRES_INDEPENDENT_REVIEWER_JUDGMENT"] = field(
+        default="REQUIRES_INDEPENDENT_REVIEWER_JUDGMENT", init=False)
+    canonical_verification: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    evidence_applicability: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    future_version_admission: Literal["NOT_ADMITTED"] = field(default="NOT_ADMITTED", init=False)
+    ka01_g3: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    ka01_g6: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    production_opt_in: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    production_activation: Literal["NOT_ACTIVATED"] = field(default="NOT_ACTIVATED", init=False)
+    production_eligible: Literal[False] = field(default=False, init=False)
+    execution_authorized: Literal[False] = field(default=False, init=False)
+
+    @property
+    def human_intent(self) -> Literal["AUTHENTICATED_SELECTION", "NOT_ESTABLISHED"]:
+        return "AUTHENTICATED_SELECTION" if self.human_selection is not None else "NOT_ESTABLISHED"
+
+    @property
+    def reviewer_authority(self) -> Literal["REVIEW_AUTHORITY_ESTABLISHED", "NOT_ESTABLISHED"]:
+        return "REVIEW_AUTHORITY_ESTABLISHED" if self.lineage is not None else "NOT_ESTABLISHED"
+
+
+def _l1_authenticated_mapping_review_selection(
+    repo: Path, binding: CanonicalSemanticSourceBinding,
+) -> _L1MappingReviewSelection | AuthenticatedHumanReviewSelection | None:
+    """Read exactly one Runtime selection and independently reauthenticate intent.
+
+    The ref is derived only from the authenticated target/candidate. No public
+    selector, callback, mapping label, actor record or alternative provider exists.
+    """
+    from .github_issue_ingress import _authenticate_selection_issue, GitHubIssueIngressError
+
+    ref = _l1_selection_ref(binding.intake.coverage.contract.task.task_id, binding.intake.candidate_sha)
+    refs = _exact_remote_refs(repo, binding.remote_url, ref, ref + "/*")
+    if not refs:
+        return None
+    if set(refs) != {ref}:
+        raise ReviewTransportError("ambiguous L1 Human selection")
+    sha = _l1_sha(refs[ref])
+    _l1_fetch(repo, binding.remote_url, sha)
+    record = _l1_selection_record(repo, sha)
+    request = _l1_selection_request(record["request"])
+    selected_sources = _l1_validate_selection_request(repo, binding, request)
+    policy, policy_pin = _l1_selection_policy(repo, binding.main_after)
+    source_policy, original_pin = _l1_selection_policy(repo, request["expected_state"]["expected_main_sha"])
+    if (record["policy"] != original_pin or policy_pin["blob_sha"] != original_pin["blob_sha"]
+            or policy != source_policy or request["expected_state"]["expected_remote_url"] != binding.remote_url):
+        raise ReviewTransportError("stale L1 Human selection policy or transport")
+    provenance = record["provenance"]
+    try:
+        actual, body = _authenticate_selection_issue(policy, provenance.get("issue_number"))
+    except GitHubIssueIngressError as exc:
+        raise ReviewTransportError(str(exc)) from None
+    if (json.dumps(actual, sort_keys=True) != json.dumps(provenance, sort_keys=True)
+            or _l1_selection_request(_l1_json(body, L1_SELECTION_MAX_BYTES)) != request):
+        raise ReviewTransportError("copied or conflicting L1 Human selection")
+    human = AuthenticatedHumanReviewSelection(sha,
+        f"github-issue:{actual['repository']}#{actual['issue_number']}@{actual['actor']}")
+    if _exact_remote_refs(repo, binding.remote_url, ref, ref + "/*") != refs:
+        raise ReviewTransportError("L1 Human selection moved")
+    run = request["payload"]["run"]
+    run_id = run["id"]
+    review_refs = _exact_remote_refs(repo, binding.remote_url,
+        f"refs/heads/aios/review/{run_id}", f"refs/heads/aios/artifacts/{run_id}",
+        f"refs/heads/aios/review-decision/{run_id}")
+    if len(review_refs) != 3 or review_refs.get(f"refs/heads/aios/review/{run_id}") != run["candidate_sha"]:
+        return human
+    decision = _l1_sha(review_refs[f"refs/heads/aios/review-decision/{run_id}"])
+    _l1_fetch(repo, binding.remote_url, decision)
+    decision_tree, _ = _l1_commit(repo, decision)
+    reviews = _l1_subtree(repo, decision_tree, (".ai", "reviews"), {})
+    if len(reviews) != 1:
+        raise ReviewTransportError("ambiguous selected mapping REVIEW")
+    name = next(iter(reviews))
+    if not re.fullmatch(r"REVIEW-[A-Za-z0-9_-]{1,121}\.yaml", name):
+        raise ReviewTransportError("invalid selected mapping REVIEW identity")
+    if _exact_remote_refs(repo, binding.remote_url, ref, ref + "/*") != refs:
+        raise ReviewTransportError("L1 Human selection moved")
+    scope, sources, task_source = selected_sources
+    return _L1MappingReviewSelection(scope, sources, task_source, run_id, run["sha256"],
+        run["base_sha"], run["candidate_sha"], name[:-5], decision,
+        review_refs[f"refs/heads/aios/artifacts/{run_id}"], run["candidate_sha"], sha,
+        human.event_identity)
+
+
+L1_SELECTION_MAX_BYTES = 131072
+L1_SELECTION_PATH = ".ai/transport/l1-human-selection.json"
+L1_SELECTION_PREFIX = "refs/heads/aios/l1-human-selection/"
+L1_SELECTION_OPERATION = "SELECT_MAPPING_REVIEW"
+
+
+def _l1_selection_ref(task_id: str, candidate: str) -> str:
+    if type(task_id) is not str or not re.fullmatch(r"TASK-[A-Za-z0-9_-]{1,122}", task_id):
+        raise ReviewTransportError("invalid L1 selection target TASK")
+    return f"{L1_SELECTION_PREFIX}{task_id}/{_l1_sha(candidate)}"
+
+
+def _l1_exact(value, keys):
+    if type(value) is not dict or set(value) != set(keys):
+        raise ReviewTransportError("missing or unknown L1 selection fields")
+    return value
+
+
+def _l1_selection_request(value: dict) -> dict:
+    """One closed version-1 JSON contract; no lifecycle decisions or actor fields."""
+    from .proof_coverage_contract import DeclarationPin, MappingReviewAcceptance, TaskBinding
+
+    value = _l1_json(json.dumps(value, allow_nan=False).encode("utf-8"), L1_SELECTION_MAX_BYTES)
+    _l1_exact(value, ("format", "version", "operation", "identity", "expected_state", "payload"))
+    if (value["format"] != "AIOS_INGRESS_ENVELOPE" or type(value["version"]) is not int
+            or value["version"] != 1 or value["operation"] != L1_SELECTION_OPERATION):
+        raise ReviewTransportError("unsupported L1 Human selection contract")
+    identity = _l1_exact(value["identity"], ("target_task_id",))
+    state = _l1_exact(value["expected_state"], ("expected_main_sha", "expected_remote_url"))
+    _l1_sha(state["expected_main_sha"])
+    if type(state["expected_remote_url"]) is not str:
+        raise ReviewTransportError("exact L1 selection canonical URL required")
+    payload = _l1_exact(value["payload"], ("scope", "sources", "review_task_source", "run"))
+    raw = _l1_exact(payload["scope"], ("version", "review_task", "target_task", "candidate_sha",
+                                      "contract_pin", "mapping_pin", "acceptance"))
+
+    def task(pin):
+        _l1_exact(pin, ("task_id", "revision", "envelope_digest", "acceptance_ids"))
+        if type(pin["acceptance_ids"]) is not list:
+            raise ReviewTransportError("complete L1 selection acceptance required")
+        return TaskBinding(**{**pin, "acceptance_ids": tuple(pin["acceptance_ids"])})
+
+    for name in ("contract_pin", "mapping_pin"):
+        _l1_exact(raw[name], ("id", "revision", "digest"))
+    if type(raw["acceptance"]) is not list or not 0 < len(raw["acceptance"]) <= 256:
+        raise ReviewTransportError("bounded L1 selection correspondence required")
+    correspondence = []
+    for item in raw["acceptance"]:
+        _l1_exact(item, ("review_acceptance_id", "target_acceptance_ids", "obligation_ids"))
+        if any(type(item[name]) is not list for name in ("target_acceptance_ids", "obligation_ids")):
+            raise ReviewTransportError("exact L1 selection correspondence lists required")
+        correspondence.append(MappingReviewAcceptance(item["review_acceptance_id"],
+            tuple(item["target_acceptance_ids"]), tuple(item["obligation_ids"])))
+    scope = MappingReviewScope(raw["version"], task(raw["review_task"]), task(raw["target_task"]),
+        raw["candidate_sha"], DeclarationPin(**raw["contract_pin"]), DeclarationPin(**raw["mapping_pin"]),
+        tuple(correspondence))
+    _l1_selection_ref(identity["target_task_id"], scope.candidate_sha)
+    if (identity["target_task_id"] != scope.target_task.task_id
+            or scope.review_task.task_id == scope.target_task.task_id):
+        raise ReviewTransportError("distinct exact L1 selection TASKs required")
+    sources = _l1_exact(payload["sources"], ("task", "contract", "mapping"))
+    for source in (*sources.values(), payload["review_task_source"]):
+        _l1_exact(source, ("source_sha", "tree_sha", "path", "blob_sha"))
+        _l1_locator(GitSemanticSource(**source))
+    run = _l1_exact(payload["run"], ("id", "sha256", "base_sha", "candidate_sha"))
+    if (type(run["id"]) is not str or len(run["id"]) > 128 or not re.fullmatch(
+            re.escape(task_run_prefix(scope.review_task.task_id)) + r"\d{3,}", run["id"])
+            or not _is_digest(run["sha256"])):
+        raise ReviewTransportError("exact selected L1 mapping RUN required")
+    _l1_sha(run["base_sha"])
+    _l1_sha(run["candidate_sha"])
+    return value
+
+
+def _l1_request_scope(request: dict) -> MappingReviewScope:
+    from .proof_coverage_contract import DeclarationPin, MappingReviewAcceptance, TaskBinding
+    raw = request["payload"]["scope"]
+    tasks = [TaskBinding(**{**raw[key], "acceptance_ids": tuple(raw[key]["acceptance_ids"])})
+             for key in ("review_task", "target_task")]
+    return MappingReviewScope(raw["version"], *tasks, raw["candidate_sha"],
+        DeclarationPin(**raw["contract_pin"]), DeclarationPin(**raw["mapping_pin"]),
+        tuple(MappingReviewAcceptance(item["review_acceptance_id"], tuple(item["target_acceptance_ids"]),
+              tuple(item["obligation_ids"])) for item in raw["acceptance"]))
+
+
+def _l1_fetch(repo: Path, url: str, sha: str) -> None:
+    _l1_git(repo, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=",
+            "--no-auto-maintenance", "--no-recurse-submodules", url, _l1_sha(sha))
+
+
+def _l1_selection_policy(repo: Path, main: str):
+    from .github_issue_ingress import _decode_policy, GitHubIssueIngressError
+    tree, _ = _l1_commit(repo, main)
+    blob = _l1_path_blob(repo, tree, ".ai/brain-ingress-carriers.yaml", {}, missing_ok=True)
+    if blob is None:
+        raise ReviewTransportError("canonical L1 Human selection policy unavailable")
+    raw = _l1_text_object(repo, blob, "blob", 65536)
+    try:
+        policy = _decode_policy(raw)
+    except GitHubIssueIngressError as exc:
+        raise ReviewTransportError(str(exc)) from None
+    return policy, dict(main_sha=main, blob_sha=blob, sha256=hashlib.sha256(raw).hexdigest())
+
+
+def _l1_validate_selection_request(repo: Path, binding: CanonicalSemanticSourceBinding, request: dict):
+    from .proof_coverage_contract import TaskBinding, validate_mapping_review_scope
+    from .task import parse_task
+    scope = _l1_request_scope(request)
+    payload = request["payload"]
+    if (tuple(source.locator for source in binding.sources) != tuple(
+            GitSemanticSource(**payload["sources"][role]) for role in ("task", "contract", "mapping"))
+            or request["expected_state"]["expected_remote_url"] != binding.remote_url):
+        raise ReviewTransportError("L1 selection source/transport substitution")
+    locator = GitSemanticSource(**payload["review_task_source"])
+    run = payload["run"]
+    trees = _l1_anchor_sources(repo, binding.main_after,
+        {request["expected_state"]["expected_main_sha"], locator.source_sha, run["candidate_sha"]})
+    reviewed = _l1_anchor_sources(repo, run["candidate_sha"], {run["base_sha"], locator.source_sha})
+    cache = {}
+    if (locator.tree_sha != trees[locator.source_sha]
+            or locator.path != f".ai/tasks/{scope.review_task.task_id}.yaml"
+            or any(_l1_path_blob(repo, tree, locator.path, cache) != locator.blob_sha
+                   for tree in (locator.tree_sha, trees[binding.main_after], reviewed[run["base_sha"]],
+                                trees[run["candidate_sha"]]))):
+        raise ReviewTransportError("L1 selected mapping-review TASK is stale or substituted")
+    raw = _l1_text_object(repo, locator.blob_sha, "blob", L1_TASK_MAX_BYTES)
+    task_pin = _l1_task_binding(raw)
+    task_pin["acceptance_ids"] = tuple(task_pin["acceptance_ids"])
+    scope = validate_mapping_review_scope(scope, intake=binding.intake,
+                                          expected_review_task=TaskBinding(**task_pin))
+    task = parse_task(raw.decode("utf-8"))
+    for source in binding.sources:
+        if source.role == "task":
+            continue
+        path = source.locator.path
+        if (path not in (*task.scope.inspect, *task.scope.modify)
+                or _l1_path_blob(repo, trees[run["candidate_sha"]], path, cache) != source.locator.blob_sha):
+            raise ReviewTransportError("L1 semantic source outside selected TASK scope/candidate")
+        changed = _l1_path_blob(repo, reviewed[run["base_sha"]], path, cache,
+                               missing_ok=True) != source.locator.blob_sha
+        if changed and path not in task.scope.modify:
+            raise ReviewTransportError("changed L1 semantic source requires selected TASK modify scope")
+        if source.role == "mapping" and (not changed or path not in task.scope.modify
+                or source.locator.source_sha != run["candidate_sha"]):
+            raise ReviewTransportError("selected L1 mapping requires an actual authorized Git delta")
+    return scope, binding.sources, locator
+
+
+def _l1_selection_record(repo: Path, sha: str) -> dict:
+    tree, parents = _l1_commit(repo, sha)
+    if len(parents) != 1:
+        raise ReviewTransportError("invalid L1 selection commit parent")
+    parent_tree, _ = _l1_commit(repo, parents[0])
+    cache = {}
+    blob = _l1_path_blob(repo, tree, L1_SELECTION_PATH, cache)
+    raw = _l1_text_object(repo, blob, "blob", L1_SELECTION_MAX_BYTES)
+    record = _l1_json(raw, L1_SELECTION_MAX_BYTES)
+    _l1_exact(record, ("format", "version", "request", "provenance", "policy"))
+    if raw != json.dumps(record, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8"):
+        raise ReviewTransportError("noncanonical immutable L1 selection record bytes")
+    if (record["format"] != "AIOS_L1_HUMAN_REVIEW_SELECTION" or type(record["version"]) is not int
+            or record["version"] != 1 or type(record["provenance"]) is not dict
+            or parents != (record["request"]["expected_state"]["expected_main_sha"],)):
+        raise ReviewTransportError("invalid immutable L1 selection record")
+
+    def only_added(old_tree, new_tree, parts):
+        old = dict(_l1_tree(repo, old_tree)) if old_tree else {}
+        new = dict(_l1_tree(repo, new_tree))
+        before, after = old.pop(parts[0], None), new.pop(parts[0], None)
+        if old != new or after is None:
+            raise ReviewTransportError("L1 selection commit changes unrelated source bytes")
+        if len(parts) == 1:
+            if before is not None or after != ("100644", "blob", blob):
+                raise ReviewTransportError("L1 selection must add exactly one immutable record")
+        else:
+            if after[:2] != ("040000", "tree") or (before and before[:2] != ("040000", "tree")):
+                raise ReviewTransportError("invalid L1 selection metadata tree")
+            only_added(before[2] if before else None, after[2], parts[1:])
+
+    only_added(parent_tree, tree, L1_SELECTION_PATH.split("/"))
+    return record
+
+
+def _l1_subtree(repo: Path, tree: str, parts: tuple[str, ...], cache: dict) -> dict:
+    for part in parts:
+        if tree not in cache:
+            cache[tree] = _l1_tree(repo, tree)
+        mode, kind, tree = cache[tree].get(part, (None, None, None))
+        if (mode, kind) != ("040000", "tree"):
+            raise ReviewTransportError("missing regular L1 lineage directory")
+    if tree not in cache:
+        cache[tree] = _l1_tree(repo, tree)
+    return cache[tree]
+
+
+def _l1_mapping_review_lineage(
+    repo: Path, binding: CanonicalSemanticSourceBinding, selected: _L1MappingReviewSelection,
+) -> MappingReviewLineage:
+    from .artifacts import validate_evidence, validate_result, validate_result_package
+    from .proof_coverage_contract import TaskBinding, validate_mapping_review_scope
+    from .publication import _run_from_data
+    from .review import parse_review, validate_review
+    from .task import _TaskLoader, parse_task
+    import yaml
+
+    if type(selected) is not _L1MappingReviewSelection or type(selected.scope) is not MappingReviewScope:
+        raise ReviewTransportError("unrecognized L1 mapping review authority source")
+    validate_mapping_review_scope(selected.scope, intake=binding.intake,
+                                  expected_review_task=selected.scope.review_task)
+    if type(selected.sources) is not tuple or selected.sources != binding.sources:
+        raise ReviewTransportError("L1 selected mapping source bytes/locators mismatch")
+    _l1_locator(selected.review_task_source)
+    for sha in (selected.base_sha, selected.reviewed_sha, selected.decision_sha,
+                selected.artifacts_sha, selected.published_sha):
+        _l1_sha(sha)
+    review_task = selected.scope.review_task
+    if (type(review_task) is not TaskBinding or type(selected.run_id) is not str
+            or len(selected.run_id) > 128 or not re.fullmatch(
+                re.escape(task_run_prefix(review_task.task_id)) + r"\d{3,}", selected.run_id)
+            or type(selected.review_id) is not str
+            or re.fullmatch(r"REVIEW-[A-Za-z0-9_-]{1,121}", selected.review_id) is None
+            or type(selected.run_sha256) is not str or not _is_digest(selected.run_sha256)
+            or selected.published_sha != selected.reviewed_sha):
+        raise ReviewTransportError("invalid exact L1 mapping review selection pins")
+    run_id = selected.run_id
+    expected_refs = {
+        "refs/heads/main": binding.main_after,
+        f"refs/heads/aios/review/{run_id}": selected.reviewed_sha,
+        f"refs/heads/aios/artifacts/{run_id}": selected.artifacts_sha,
+        f"refs/heads/aios/review-decision/{run_id}": selected.decision_sha,
+    }
+    patterns = (*expected_refs, f"refs/heads/aios/failure/{run_id}",
+                f"refs/heads/aios/failure-artifacts/{run_id}",
+                f"refs/heads/aios/repair/{run_id}",
+                f"{REPAIR_SUPERSESSION_PREFIX}{run_id}/*",
+                f"refs/heads/aios/remediation/{run_id}-*",
+                f"refs/heads/aios/publication-recovery/{run_id}")
+    if _exact_remote_refs(repo, binding.remote_url, *patterns) != expected_refs:
+        raise ReviewTransportError("missing, conflicting or moved L1 review/publication lineage")
+    for sha in (selected.artifacts_sha, selected.decision_sha):
+        _l1_git(repo, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=",
+                "--no-auto-maintenance", "--no-recurse-submodules", binding.remote_url, sha)
+    locator = selected.review_task_source
+    trees = _l1_anchor_sources(repo, binding.main_after,
+                               {selected.published_sha, locator.source_sha})
+    candidate_tree = trees[selected.reviewed_sha]
+    # Authenticate raw ancestry, including the RUN base, without graft-sensitive
+    # graph convenience commands. The exact published candidate must contain it.
+    reviewed_trees = _l1_anchor_sources(repo, selected.reviewed_sha,
+        {selected.base_sha, locator.source_sha, *(source.locator.source_sha for source in binding.sources)})
+    base_tree = reviewed_trees[selected.base_sha]
+    cache = {}
+    if (trees[locator.source_sha] != locator.tree_sha
+            or locator.path != f".ai/tasks/{review_task.task_id}.yaml"
+            or any(_l1_path_blob(repo, tree, locator.path, cache) != locator.blob_sha
+                   for tree in (locator.tree_sha, base_tree, candidate_tree, trees[binding.main_after]))):
+        raise ReviewTransportError("stale or swapped L1 mapping review TASK source")
+    task_bytes = _l1_text_object(repo, locator.blob_sha, "blob", L1_TASK_MAX_BYTES)
+    actual_task = _l1_task_binding(task_bytes)
+    actual_task["acceptance_ids"] = tuple(actual_task["acceptance_ids"])
+    scope = validate_mapping_review_scope(selected.scope, intake=binding.intake,
+                                          expected_review_task=TaskBinding(**actual_task))
+    task = parse_task(task_bytes.decode("utf-8"))
+    semantic_paths, changed_semantic_paths = set(), set()
+    for source in binding.sources:
+        if source.role not in {"contract", "mapping"}:
+            continue
+        source_locator = source.locator
+        semantic_paths.add(source_locator.path)
+        if (source_locator.path not in (*task.scope.inspect, *task.scope.modify)
+                or _l1_path_blob(repo, candidate_tree, source_locator.path, cache) != source_locator.blob_sha):
+            raise ReviewTransportError("semantic source is outside the selected reviewed TASK scope")
+        # A missing base path is a lawful addition; malformed trees still fail.
+        changed = _l1_path_blob(repo, base_tree, source_locator.path, cache,
+                                missing_ok=True) != source_locator.blob_sha
+        if changed:
+            if source_locator.path not in task.scope.modify:
+                raise ReviewTransportError("changed semantic source is outside the selected reviewed TASK modification scope")
+            changed_semantic_paths.add(source_locator.path)
+        if source.role != "mapping":
+            continue
+        if (source_locator.source_sha != selected.reviewed_sha or source_locator.tree_sha != candidate_tree
+                or source_locator.path not in task.scope.modify):
+            raise ReviewTransportError("mapping source is outside the selected reviewed TASK delta")
+        if not changed:
+            raise ReviewTransportError("selected review RUN did not change the mapping source")
+
+    artifact_tree, artifact_parents = _l1_commit(repo, selected.artifacts_sha)
+    decision_tree, decision_parents = _l1_commit(repo, selected.decision_sha)
+    artifact_names = _l1_subtree(repo, artifact_tree, (".ai", "transport"), cache)
+    review_names = _l1_subtree(repo, decision_tree, (".ai", "reviews"), cache)
+    if (artifact_parents or decision_parents != (selected.reviewed_sha,)
+            or not {"run.json", "result.json"} <= artifact_names.keys()
+            or not artifact_names.keys() <= {"run.json", "result.json", "observation.json", "execution-profile.json"}
+            or set(review_names) != {selected.review_id + ".yaml"}):
+        raise ReviewTransportError("unrecognized or incomplete existing L1 PRIMARY review lineage")
+    for source_locator in (locator, *(source.locator for source in binding.sources)):
+        if _l1_path_blob(repo, decision_tree, source_locator.path, cache) != source_locator.blob_sha:
+            raise ReviewTransportError("L1 decision tree changes the selected reviewed semantic sources")
+
+    def read(tree, path, limit):
+        return _l1_text_object(repo, _l1_path_blob(repo, tree, path, cache), "blob", limit)
+
+    run_bytes = read(artifact_tree, ".ai/transport/run.json", L1_TASK_MAX_BYTES)
+    result_bytes = read(artifact_tree, ".ai/transport/result.json", L1_SOURCE_MAX_BYTES)
+    review_bytes = read(decision_tree, f".ai/reviews/{selected.review_id}.yaml", L1_TASK_MAX_BYTES)
+    run_data = _l1_json(run_bytes, L1_TASK_MAX_BYTES)
+    if (set(run_data) - {"run_id", "task", "executor", "base_sha", "workspace", "head_sha",
+                         "status", "return_affinity"}
+            or run_data.get("task") != dict(id=scope.review_task.task_id, revision=scope.review_task.revision)
+            or hashlib.sha256(run_bytes).hexdigest() != selected.run_sha256):
+        raise ReviewTransportError("immutable L1 mapping review RUN source mismatch")
+    run = _run_from_data(run_data, "L1 mapping review RUN")
+    # Runtime preserves the admitted ACTIVE RUN bytes with a null head; the
+    # canonical RESULT/EVIDENCE below bind the candidate to the exact selection.
+    if (run.run_id != run_id or run.status != "ACTIVE" or run.base_sha != selected.base_sha
+            or run.head_sha not in (None, selected.reviewed_sha) or run.return_affinity != task.return_affinity):
+        raise ReviewTransportError("L1 mapping review RUN identity mismatch")
+    package_data = _l1_json(result_bytes, L1_SOURCE_MAX_BYTES)
+    if set(package_data) != {"result", "evidence"} or type(package_data["evidence"]) is not list:
+        raise ReviewTransportError("invalid L1 canonical mapping review ResultPackage")
+    result = validate_result(package_data["result"])
+    evidence = tuple(validate_evidence(item) for item in package_data["evidence"])
+    validate_result_package(task=task, run=run, result=result, evidence=evidence)
+    if (result.head_sha != selected.reviewed_sha or result.unresolved
+            or {ac for claim in result.claims for ac in claim.satisfies} != set(scope.review_task.acceptance_ids)
+            or semantic_paths.intersection(result.changed_files) != changed_semantic_paths):
+        raise ReviewTransportError("incomplete or contradictory L1 mapping review RESULT")
+    text = _l1_yaml_text(review_bytes)
+    # The historical REVIEW parser remains unchanged. This new boundary rejects
+    # duplicate/unknown fields before passing bytes to that existing parser.
+    review_data = yaml.load(text, Loader=_TaskLoader)
+    if (type(review_data) is not dict
+            or set(review_data) - {"review_id", "reviewed_sha", "mode", "verdict", "acceptance",
+                                   "findings", "prior_finding_id"}):
+        raise ReviewTransportError("unrecognized L1 mapping REVIEW source")
+    review = parse_review(text)
+    validate_review(task=task, result=result, review=review)
+    if (review.review_id != selected.review_id or review.reviewed_sha != selected.reviewed_sha
+            or review.verdict != "PASS" or review.mode != "PRIMARY" or review.prior_finding_id is not None
+            or set(review.acceptance) != set(scope.review_task.acceptance_ids)
+            or any(value != "PASS" for value in review.acceptance.values()) or review.findings):
+        raise ReviewTransportError("full independent L1 mapping REVIEW PASS is absent")
+    if _exact_remote_refs(repo, binding.remote_url, *patterns) != expected_refs:
+        raise ReviewTransportError("L1 mapping review/publication subjects moved")
+    return MappingReviewLineage(scope, AuthenticatedSemanticSource(
+        "mapping_review_task", locator, hashlib.sha256(task_bytes).hexdigest(), len(task_bytes)),
+        run_id, selected.run_sha256, selected.base_sha, selected.reviewed_sha, selected.review_id,
+        hashlib.sha256(review_bytes).hexdigest(), hashlib.sha256(result_bytes).hexdigest(),
+        selected.decision_sha, selected.artifacts_sha, selected.published_sha, tuple(sorted(expected_refs.items())),
+        selected.human_selection_sha, selected.human_event_identity)
+
+
+def bind_canonical_semantic_review_authority(
+    repo: Path, declaration: bytes, *, expected_remote_url: str,
+    expected_main_sha: str, expected_candidate_sha: str, sources: Mapping[str, GitSemanticSource],
+) -> SemanticReviewAuthorityEligibility:
+    """Explicit, read-only, non-operative L1 eligibility observation.
+
+    Public inputs are TASK-377 source locators only. They cannot choose a review
+    TASK, resolver, review ref, reviewer label or trust source. Source failures
+    raise as before. Unavailable/unrecognized mapping-specific Human selection
+    or existing REVIEW/Publisher lineage yields NOT_ESTABLISHED, never a search
+    for a substitute TASK or PASS. No active admission path invokes this API.
+    """
+    from .proof_coverage_contract import ProofCoverageError
+    import yaml
+
+    binding = bind_canonical_semantic_proof_sources(
+        repo, declaration, expected_remote_url=expected_remote_url, expected_main_sha=expected_main_sha,
+        expected_candidate_sha=expected_candidate_sha, sources=sources)
+    lineage, human, selected, reason = None, None, None, "MAPPING_REVIEW_NOT_ESTABLISHED"
+    try:
+        selected = _l1_authenticated_mapping_review_selection(repo, binding)
+        if selected is None:
+            reason = "HUMAN_MAPPING_SELECTION_UNAVAILABLE"
+        elif type(selected) is AuthenticatedHumanReviewSelection:
+            human = selected
+        else:
+            if type(selected) is _L1MappingReviewSelection and selected.human_selection_sha is not None:
+                human = AuthenticatedHumanReviewSelection(selected.human_selection_sha, selected.human_event_identity)
+            lineage = _l1_mapping_review_lineage(repo, binding, selected)
+            reason = "EXACT_MAPPING_REVIEW_LINEAGE"
+    except (ReviewTransportError, ProofCoverageError, ValueError, TypeError, KeyError,
+            UnicodeError, RecursionError, yaml.YAMLError):
+        lineage, reason = None, "MAPPING_REVIEW_NOT_ESTABLISHED"
+    if selected is not None:
+        try:
+            if _l1_authenticated_mapping_review_selection(repo, binding) != selected:
+                raise ReviewTransportError("L1 Human mapping selection moved")
+        except (ReviewTransportError, ProofCoverageError, ValueError, TypeError, KeyError,
+                UnicodeError, RecursionError, yaml.YAMLError):
+            lineage, human, reason = None, None, "MAPPING_REVIEW_NOT_ESTABLISHED"
+    # Even a failed review observation must not retain successful currentness
+    # if canonical main or the independently configured remote changed meanwhile.
+    if _l1_remote(repo, expected_remote_url) != binding.remote:
+        raise ReviewTransportError("L1 canonical remote moved during review observation")
+    _l1_main(repo, expected_remote_url, expected_main_sha)
+    return SemanticReviewAuthorityEligibility(binding, lineage, reason, human)
 
 
 def _run_task_prefix(run_id: str) -> str:

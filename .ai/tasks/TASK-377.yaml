@@ -1,0 +1,189 @@
+task_id: TASK-377
+revision: 1
+goal: Deliver one bounded Lean VP L1 canonical-source binding slice for the published
+  non-operative TASK-376 semantic proof-intake. Use the existing configured canonical
+  Git transport to authenticate current-main and immutable committed TASK/contract/mapping
+  source identities, content bytes and commit/path/blob provenance for an explicitly
+  named prospective intake, then compose the existing structural validator without
+  admitting or executing a future semantic policy. Never mistake Git source existence
+  for Human approval, reviewed mapping adequacy, Runtime verification, applicability
+  or KA-01 activation.
+problem: TASK-376 provides an explicit future-version semantic proof declaration validator
+  whose expected_task, expected_sources, expected_contract and expected_mapping pins
+  are caller-supplied. A coherent forged declaration with equally forged pins can
+  be structurally complete. L1 still needs a read-only Runtime-owned Git source binding
+  bridge so trusted callers can derive and check exact source object identities instead
+  of copying untrusted payload fields. Source bytes/currentness alone do not authenticate
+  independent Human/Reviewer approval, which remains a separately gated future slice.
+  Implement the minimum bridge inside the existing repository-backed transport boundary,
+  with no new scheduler, proof engine or live admission.
+assumptions:
+- Current authoritative main at authoring is c4afa7c10dd6ff232ac502e7f378fcc161f3c0b1,
+  the exact reviewed/published TASK-376 r1 candidate. The current effective NEXT is
+  Lean VP, within L1 baseline/retirement/proof-contract. TASK-373 provides partial
+  read-only baseline only; TASK-374 provides prospective KA-01 v1.1 norm, not activation;
+  TASK-376 validates structural intake only.
+- KA-01 v1.1 B.2 and D.1 G3 require actual authenticated eligible semantic proof contract/mapping
+  and independent review/publication before activation. TASK-377 only authenticates
+  bounded Git content provenance/currentness, not a particular mapping's independent
+  semantic review or lawful future-version admission; live representative reviewed
+  semantic packages are not supplied at this boundary.
+- Existing review_transport.py already owns configured canonical Git read-only remote
+  resolution, remote ref observation, exact commit/path reads and task source inspection.
+  The existing proof_coverage_contract.py and task.py provide pure versioned non-operative
+  intake and complete explicit mapping validators. Reuse these owners; do not build
+  a standalone source issuer/store or duplicate proof mapping.
+- An exact Git SHA, source path or caller-supplied digest is a locator/consistency
+  claim until checked against the authenticated configured upstream main and actual
+  Git object type/tree/blob content. An ancestor check is provenance, not a review
+  approval; stale currentness and wrong remote must fail closed rather than silently
+  reading local alternate refs.
+- Human's continuation delegates TASK semantic authoring only; no explicit Executor/model/effort,
+  production opt-in, resource budget or KA-01 G6 activation. Active TASK_AUTHORING
+  profile is tca-1 version 1 normalized digest 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2.
+  Use LEGACY_REPOSITORY_DEFAULT_ROUTE.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-L1-SEMANTIC-PROOF-INTAKE.md
+  - docs/AIOS-LEAN-VP-L1-BASELINE.md
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-326.yaml
+  - .ai/tasks/TASK-328.yaml
+  - .ai/tasks/TASK-373.yaml
+  - .ai/tasks/TASK-374.yaml
+  - .ai/tasks/TASK-376.yaml
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/task.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/publication.py
+  - tests/test_review_transport.py
+  - tests/test_task.py
+  - tests/test_proof_coverage_contract.py
+  - tests/git_fixture_support.py
+  modify:
+  - src/aios_renew/review_transport.py
+  - tests/test_lean_vp_l1_source_binding.py
+  - docs/AIOS-LEAN-VP-L1-CANONICAL-SOURCE-BINDING.md
+non_goals:
+- No activation or registration of new semantic TASK policy; no edit to ordinary task.py
+  parser, V1/V2 schemas, normal Runtime/operator/authoring admission, review-decision/Publisher,
+  verification runner, roadmap or KA-01 normative sources.
+- No second Git transport, source issuer, trust-root registry, ledger/cache/database,
+  sidecar, global proof graph, lifecycle router, capability scanner, model/Executor
+  selection, automatic correction or source discovery across unrelated repositories.
+- No calling an arbitrary main or local fetch cache canonical on its own; no fabrication
+  of Git provenance, source bytes, independent Human authorization, reviewed mapping
+  semantic adequacy, Runtime result/evidence, L2 applicability witness or G3/G6 activation.
+- No rewrites of historical TASK/RUN/RESULT/FAILURE/REVIEW, no downstream pin, no
+  full matched VP-01 measurement, no VP-06 savings or VP-07 conformance, and no automatic
+  follow-up TASK/roadmap advancement.
+constraints:
+  hard:
+  - Add only a read-only explicitly invoked L1 source-binding API in the existing
+    review_transport module, reusing the configured canonical remote and existing
+    Git/source helpers and TASK-376 intake validator. It must not be reachable from
+    active admission/execution/review/publication automatically or mutate Git refs,
+    commits, checkout or Runtime state. No new proof scheduling or duplicate semantic
+    validator.
+  - Caller must supply a bounded exact prospective declaration and explicit normalized
+    source paths and expected canonical main SHA; verify the actual configured remote
+    main before and after, reject missing/ambiguous remote/currentness, acquire immutable
+    committed source objects as needed without mutating refs, and prove source commit
+    is anchored in authenticated canonical main history. Neither arbitrary local branch,
+    a known SHA without remote provenance, nor transport receipt can establish source
+    authority.
+  - For each separately declared task, proof contract and mapping source, validate
+    exact repo-relative path with no traversal/wildcards/alternate separators, Git
+    commit/tree/blob types, exact object IDs, file content bytes and declared content
+    correspondence. Independently derive source identities and expected TASK id/revision/full
+    acceptance from the checked TASK bytes, not from incoming declaration self-certification.
+    Reject missing, moved, contradictory, oversized, non-UTF8 or ambiguously decoded
+    source material.
+  - Use strict duplicate-key-rejecting bounded decoding of separately committed semantic
+    contract and mapping JSON, with no remote-supplied code execution or untrusted
+    file interpretation. Compose TASK-376 existing validate_semantic_proof_intake
+    and existing VP-02 complete mapping validation; reject swapped blobs, cross-TASK/revision,
+    wrong candidate/policy, missing mapping, altered source content, unequal acceptance
+    or incomplete/out-of-condition semantic declarations.
+  - Return a bounded immutable typed source-consistency observation distinguishing
+    Git provenance/currentness established for this exact observation from still UNESTABLISHED
+    Human/review approval, semantic adequacy, canonical proof validity, actual applicability
+    and production eligibility. Fail closed on remote/main movement including a conflicting
+    identity at final recheck. A source-authenticated flag alone is never verification
+    PASS.
+  - Keep existing review_transport remote observation and published TASK-326/328/376
+    APIs and historical V1/V2 behavior compatible. Git commands must remain constrained
+    to fixed read-only verification/fetch of exact objects, never checkout/reset/update-ref/commit/push
+    or an alternate remote fallback. Use synthetic local Git remotes for focused positive/negative
+    source-currentness tests and do not query real GitHub or invoke an Executor in
+    tests.
+  - Document exact source-to-declaration binding, trust/currentness guarantees, explicitly
+    unresolved independent review/consent and future production version admission,
+    remaining L1/VP-01, L2/L3 and G3/G6 dependencies. KA-01 remains NOT_ACTIVATED
+    and roadmap remains Lean VP NEXT. Change only the three named files.
+  - Verification is minimum-sufficient-v1 with only the focused synthetic Git fixture
+    and existing task/proof-contract regression files, without a full suite or historical
+    rerun.
+acceptance:
+- id: AC1
+  condition: An explicitly invoked, read-only L1 canonical Git source-binding interface
+    exists in existing review_transport, consumes an exact prospective TASK-376 semantic
+    intake and source locators, and reuses the current TASK-376/VP-02 validators without
+    becoming an active Runtime admission, verification scheduler or future-policy
+    switch.
+- id: AC2
+  condition: Given a configured legitimate canonical remote and expected main, the
+    interface confirms current authoritative main on both sides of observation, verifies
+    exact anchored Git commit/path/blob identities and committed content for task,
+    proof contract and mapping, and derives the trusted TASK/revision/full acceptance
+    source binding from the authenticated TASK bytes.
+- id: AC3
+  condition: The interface rejects missing/ambiguous/wrong-remote canonical binding,
+    detached-upstream ambiguity, unanchored or changed source commits, moved main,
+    wrong blob/type/path, tampered or swapped source content, wrong TASK/revision/acceptance/candidate
+    and malformed/duplicate/oversized semantic documents, without local branch fallback
+    or silent migration.
+- id: AC4
+  condition: Authenticated source bytes are composed through the existing strict versioned
+    intake and VP-02 mapping validators, preserving complete semantic acceptance and
+    distinguishing integration, fixture, worker, concurrency and ordering conditions;
+    bogus independently claimed digest/reviewer/provenance labels cannot substitute
+    for actual source Git bindings.
+- id: AC5
+  condition: The bounded result identifies exact observed Git source provenance and
+    explicitly retains UNESTABLISHED independent Human approval, semantic mapping
+    review adequacy, canonical Runtime verification, evidence applicability and production
+    opt-in. It never reports REVIEW PASS, verified proof, source-to-target L2 validity
+    or KA-01 ACTIVE.
+- id: AC6
+  condition: Focused real local Git fixture tests cover successful exact immutable
+    sources, reorder stability, missing/stale/swapped/forged blobs or paths, replay
+    from unexpected remote, moved current main, duplicate-key/invalid UTF8/unbounded
+    input and no Git writes/verification execution, while retaining historical read-only
+    transport behavior.
+- id: AC7
+  condition: A bounded L1 source-binding document accurately states what TASK-377
+    source authentication adds beyond TASK-376, what independent review/policy/version
+    authority is still unimplemented, and why full L1, VP-01, L2/L3 and KA-01 G3/G6
+    remain outstanding.
+- id: AC8
+  condition: Only src/aios_renew/review_transport.py, tests/test_lean_vp_l1_source_binding.py
+    and docs/AIOS-LEAN-VP-L1-CANONICAL-SOURCE-BINDING.md change; there is no new lifecycle/transport
+    authority, historical mutation, roadmapping side effect or activation.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_lean_vp_l1_source_binding.py tests/test_task.py
+    tests/test_proof_coverage_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

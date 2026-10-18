@@ -7,7 +7,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .review import Finding, Review
+from .review import BatchReview, BatchSelection, Finding, Review, parse_batch_selection
+from dataclasses import asdict
 
 
 _RUN_ID = re.compile(r"RUN-[A-Za-z0-9][A-Za-z0-9._-]*")
@@ -191,6 +192,10 @@ class CorrectionFrontier:
                 f"DELTA review mode required for advancement, got {delta_review.mode}"
             )
 
+        if isinstance(delta_review, BatchReview) or isinstance(predecessor, BatchSelection) or (
+                isinstance(predecessor, Mapping) and "finding_ids" in predecessor):
+            return self._advance_batch(delta_run_id, delta_review, predecessor)
+
         pred_source_run_id, pred_review_id, pred_finding_id, pred_reviewed_sha = (
             _extract_predecessor_fields(predecessor)
         )
@@ -259,6 +264,35 @@ class CorrectionFrontier:
         raise CorrectionFrontierError(
             f"unrecognized DELTA review verdict: {delta_review.verdict}"
         )
+
+    def _advance_batch(self, run_id: str, review: Review, predecessor: Any) -> CorrectionFrontier:
+        if not isinstance(review, BatchReview):
+            raise CorrectionFrontierError("batch predecessor requires versioned multi-finding DELTA REVIEW")
+        try:
+            selected = parse_batch_selection(asdict(predecessor) if isinstance(predecessor, BatchSelection) else predecessor)
+        except ValueError as exc:
+            raise CorrectionFrontierError(str(exc)) from exc
+        if (review.selection != selected or review.batch_id != selected.batch_id
+                or set(review.finding_outcomes or {}) != set(selected.finding_ids)
+                or any(v not in ("PASS", "CHANGES_REQUIRED", "BLOCKED") for v in review.finding_outcomes.values())
+                or review.prior_finding_id is not None):
+            raise CorrectionFrontierError("batch review has missing, foreign or conflicting source/outcomes")
+        expected_verdict = ("BLOCKED" if "BLOCKED" in review.finding_outcomes.values() else "CHANGES_REQUIRED"
+                            if "CHANGES_REQUIRED" in review.finding_outcomes.values() or review.findings else "PASS")
+        if review.verdict != expected_verdict:
+            raise CorrectionFrontierError("batch overall verdict conflicts with per-finding outcomes")
+        keys = {(selected.source_run_id, selected.review_id, i, selected.reviewed_sha) for i in selected.finding_ids}
+        targets = {f.key: f for f in self.findings if f.key in keys}
+        if set(targets) != keys or any(f.finding.action != "CODE_FIX" for f in targets.values()):
+            raise CorrectionFrontierError("batch subject is foreign, mixed, missing or already closed")
+        closed = {key for key, f in targets.items() if review.finding_outcomes[f.finding_id] == "PASS"}
+        # CHANGES_REQUIRED and BLOCKED preserve the original identity and bytes.
+        remaining = tuple(f for f in self.findings if f.key not in closed)
+        if len({f.id for f in review.findings}) != len(review.findings) or set(selected.finding_ids).intersection(f.id for f in review.findings):
+            raise CorrectionFrontierError("batch new material defects reuse a selected identity")
+        new = tuple(OutstandingFinding.from_finding(source_run_id=run_id, review_id=review.review_id,
+                    reviewed_sha=review.reviewed_sha, finding=f) for f in review.findings)
+        return CorrectionFrontier(remaining + new)
 
 
 def advance_frontier(

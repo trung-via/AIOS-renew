@@ -1,0 +1,197 @@
+task_id: TASK-366
+revision: 1
+goal: Implement R2.1/R3 TCA-1 Task Contract Audit as one bounded, provider-neutral,
+  two-focused-pass semantic conformance procedure for the existing TASK_AUTHORING
+  flow, protecting Human intent, independently claimable acceptance, satisfiability,
+  false-completion resistance and cross-authority consumers. Support explicit Human
+  V1-option interoperability in isolated conformance without activating TCA or retiring
+  production Adaptive V1; preserve direct AUTHOR_TASK and historical profile identities.
+problem: R2.1/R1 ROA-1 R2 and R2 MOA-1 have separately reviewed/published isolated
+  semantic support, but TASK_AUTHORING still lacks its target task-specific outcome
+  audit. Mandatory universal V1 eight-lens reasoning is broader than necessary for
+  ordinary task authoring, while an implementation that merely appends a profile could
+  let unclaimable PROOF_LATER acceptance, missing intended consumers, scope contradictions,
+  false Executor PASS or unauthorized V1-option substitution escape closure. The existing
+  BO-1 direct AUTHOR_TASK contract must remain unchanged; this R3 must add only exact
+  bounded TCA semantic conformance, not a new policy selector or mutation gate.
+assumptions:
+- Brain Sync on canonical main 9f70b6b1dabad4234794db74c4d7c1f43f9a4a60 confirms TASK-365
+  r1 reviewed source published on main, distinct from R2.1 roadmap. R2.1/R1 TASK-363
+  source dc61cf739528047667438001953bdeaa9f6e6af and R2 TASK-364 corrected source
+  e773588078c6646d6df9fae416a402103969ea64 are published ancestors; latest ROA and
+  MOA are isolated support, not default.
+- Approved planning authority is docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md on current
+  main; current unique program NEXT is R3 TCA-1, then R4 AOA-1 and bounded R5 closure
+  if actually necessary. Lean VP remains after finished R2.1 and explicit Human/Brain
+  reconciliation.
+- Current production prospective semantic audit remains exactly aios-adaptive-brain-audit-v1
+  v1 digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718, stages
+  CONSTRUCT plus ADVERSARIAL_AUDIT_AND_RECONCILE and all eight required lenses. TCA
+  cannot silently select itself, turn V1 into a dual mandatory pass, or alter historical
+  profile bindings before separately authorized reviewed/published cutover.
+- The Human has approved all remaining R2.1 implementation TASKs prospectively and
+  selected Codex gpt-6.1-sol with reasoning effort max for their individual PRIMARY
+  delegations, subject to exact TASK/Runtime admission, sequential review and publication.
+  This TASK semantic contract is Executor-neutral.
+- AUTHOR_TASK already has one direct final contract with no serialized audited_handoff
+  requirement. The Brain TASK Authoring Contract requires each final acceptance criterion
+  to be claimable by an Executor before Runtime verification; the transitory CLAIM_NOW/PROOF_LATER
+  ledger is only Brain cognitive support.
+- R3 implements isolated conformance and Human-option compatibility tests for TASK_AUTHORING;
+  prospective default profile policy, Human opt-in activation, and retirement of mandatory
+  V1 are reserved for R5 after R4 and lawful eligibility.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/brain-return-contracts.yaml
+  - .ai/flow-cards.yaml
+  - .ai/tasks/TASK-363.yaml
+  - .ai/tasks/TASK-364.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_return_contract.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/task.py
+  - src/aios_renew/execution_profile.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_return_contract.py
+  - tests/test_authoring_ingress.py
+  - tests/test_decision_packet.py
+  modify:
+  - .ai/brain-audit-profiles.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_provider.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+non_goals:
+- No direct AUTHOR_TASK ingress/validation/runtime mutation redesign, new serialized
+  audit authority, Decision Packet fingerprint gate, task authoring router, Planner,
+  profile chooser, automatic Executor delegation or shadow Reviewer.
+- No R4 architecture AOA, R5 prospective V1 retirement/default cutover, MOA/ROA redesign,
+  Lean VP, BO, downstream pin/adoption, Kernel or Constitutional change.
+- No implicit Human opt-in from task complexity, chat history, registry order or Executor
+  choice; no normative TCA plus V1 double audit, mixed-stage recomposition or V3 fallback.
+- No post-verify TEST PASS, REVIEW PASS, Publisher publication, roadmap NEXT or production
+  Executor behavior treated as an Executor-claimable Task acceptance criterion.
+- No historical V1/V2/V3/ROA/MOA reminting, replay reinterpretation, broad verification
+  suite, V2 gate, unsupported arbitrary profile types or unscoped infrastructure refactoring.
+- No automatic re-authoring of an existing TASK or semantic rewrite of user intent.
+  TCA is cognitive validation over explicit subject, not independent task mutation
+  or approval authority.
+constraints:
+  hard:
+  - TCA-1 must bind exactly to selected TASK_AUTHORING and existing normalized Decision
+    Packet, return-contract/subject identity, supplied Human intent and a minimal
+    canonical source snapshot. Represent one bounded two-pass TASK-specific profile
+    with independently reviewable CONSTRUCT checks for Human-intent fidelity, task
+    objective and concrete outcome, acceptance satisfiability/claimability, scope
+    and authority, and required consumers/constraints, followed by adversarial counterexamples,
+    reconciliation and final closure. Do not copy V1's universal eight lenses under
+    a new name.
+  - 'Give explicit observable treatment to each acceptance id: distinguish claimable
+    implementation property from Runtime verification, EVIDENCE, Reviewer verdict
+    and Publisher facts. An unclaimable PROOF_LATER acceptance cannot be silently
+    accepted as a final CANDIDATE; risk must be removed from the final TASK acceptance
+    or TCA must return NO_DECISION. No acceptance ID may be dropped, duplicated or
+    replaced without explicit reconciled accounting.'
+  - Adversarial closure must challenge falsely sufficient acceptance, unobservable
+    or circular criteria, missing false-success cases, scope/non-goal contradiction,
+    non-covered runtime or transport consumers, Human-vs-Executor authority conflation,
+    hidden new intent, wrong source-currentness and executor-specific instructions.
+    First-pass BLOCKER/UNKNOWN must survive the second pass until explicitly evidence-groundedly
+    resolved by a lawful reconciled candidate; an all-CLEAR later pass must never
+    erase an earlier unresolved blocker.
+  - Final TCA outcome is exactly one CANDIDATE or NO_DECISION under the existing semantic
+    audit support boundary, with bounded profiles/content digest, check IDs, statuses
+    and evidence/knowledge fields; missing critical source, ambiguous Human intent,
+    malformed profile, unresolvable constraints or missing decisive evidence yields
+    fail-closed NO_DECISION. Use existing Brain provider-neutral protocol; no new
+    persistent ledger or lifecycle state.
+  - 'Provide isolated explicit V1 Human-option interoperability conformance for the
+    same TASK_AUTHORING subject: only a correctly externally selected, content-bound
+    normative profile can be validated; never infer opt-in from candidate, model,
+    profile registry order, scoring, old memory or task size. In the current production
+    V1-only policy, unauthorized TCA live default selection remains rejected until
+    a later lawful cutover. Human opt-in support must never run TCA and V1 as two
+    normative audits.'
+  - Preserve exact historical/in-flight V1/V2/V3 plus published ROA/MOA content identities
+    and behaviors, profile registry bounds and source/privacy constraints. Reject
+    wrong flow, stage/profile mix, digest substitution, replay mismatches, unauthorized
+    mode, untrusted metadata, stale packet/return contract or implicit fallback without
+    weakening old validators.
+  - Preserve Brain WHAT/WHY versus Executor HOW, one admitted implementation Executor
+    per TASK, Runtime-only deterministic admission/verification/EVIDENCE, Reviewer
+    semantic verdict and Publisher exact publication. An executor self-reported result
+    cannot make TCA guarantee PASS; TCA cannot write TASK, RUN, REVIEW or roadmap,
+    select a next task or change canonical authority.
+  - Changes remain only within scope.modify. If an essential production mutation outside
+    that set is proven necessary to meet TCA isolated conformance, Executor must surface
+    a bounded explicit blocker rather than quietly broadening scope. Runtime runs
+    only the authored focused minimum-sufficient-v1 verification commands; no full
+    suite or v2 baseline gates.
+acceptance:
+- id: AC1
+  condition: One exact content-bound bounded TCA-1 profile exists solely for TASK_AUTHORING,
+    with two short flow-specific passes, a closed task-specific set of construct checks,
+    adversarial challenge and one CANDIDATE/NO_DECISION closure; no disguised universal
+    V1 or extra audit route.
+- id: AC2
+  condition: TCA construct binds exact Human intent, TASK goal/problem, authorized
+    scope/constraints/non-goals and declared consumers, checks independently claimable
+    acceptance for every id, and rejects missing, contradictory, circular, ambiguous
+    or PROOF_LATER-as-acceptance material rather than giving false sufficient coverage.
+- id: AC3
+  condition: Adversarial pass independently tests false completion, material untested
+    consumer, unbounded scope, hidden new intent, authority/proof-order conflicts
+    and missing falsifying counterexamples; reconciled closure retains unresolved
+    first-pass blockers and yields NO_DECISION unless grounded reconciliation resolves
+    them.
+- id: AC4
+  condition: Existing Brain provider-neutral protocol can validate and transport a
+    fully bound TCA candidate or bounded NO_DECISION with exact packet/profile/return/currentness,
+    knowledge/evidence bounds and no private/prohibited payload; malformed or swapped
+    stage/profile/subject material fails closed.
+- id: AC5
+  condition: One explicitly Human-selected V1-only normative option is tested for
+    subject/profile exact binding and non-mixing with TCA; ordinary or unauthorized
+    live TCA selection remains blocked under the current production V1 policy, without
+    fallback to V3 or creating a second normative audit.
+- id: AC6
+  condition: Existing published ROA/MOA conformance, current Adaptive V1 and historical
+    V2/V3 exact normalized profile digests, in-flight replay, privacy, source/protocol
+    bounds and valid selected-flow identities remain compatible and do not permit
+    arbitrary new profiles.
+- id: AC7
+  condition: Focused positive/negative tests cover valid task proposal, acceptance
+    proof-phase misplacement, missing/duplicate AC, hidden consumer, contradictory
+    scope, false completion, unresolved first-pass blocker with all-clear second pass,
+    wrong subject/flow/profile/digest/option and historical compatibility.
+- id: AC8
+  condition: Only exact scope.modify files are changed. The direct AUTHOR_TASK and
+    Runtime/Reviewer/Publisher mechanisms, production V1-only selection, roadmap,
+    frozen Kernel and downstream remain unchanged; no false measured-superiority or
+    profile-cutover claim is added.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_provider_protocol.py
+    tests/test_brain_provider.py
+  - python -m pytest -q tests/test_brain_return_contract.py tests/test_decision_packet.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

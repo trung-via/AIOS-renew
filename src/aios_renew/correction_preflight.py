@@ -7,7 +7,7 @@ creating RUNs, invoking Executors, running verification, mutating runtime state,
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -80,11 +80,12 @@ class CorrectionPreflightResult:
     action: str | None = None
     executor_required: bool | None = None
     authorization_sha: str | None = None
+    batch_selection: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "format": "AIOS_CORRECTION_PREFLIGHT",
-            "version": 1,
+            "version": 2 if self.batch_selection is not None else 1,
             "kind": "CORRECTION_PREFLIGHT",
             "family": self.family,
             "status": self.status,
@@ -99,6 +100,7 @@ class CorrectionPreflightResult:
             "failed_run_id": self.failed_run_id,
             "review_id": self.review_id,
             "finding_id": self.finding_id,
+            **({"batch_selection": dict(self.batch_selection)} if self.batch_selection is not None else {}),
             "reviewed_sha": self.reviewed_sha,
             "execution_base": (
                 dict(self.integrated_base)
@@ -395,6 +397,8 @@ def preflight_remediation(
             source_run_id=admission.get("source_run_id"),
             review_id=resolved.review.review_id,
             finding_id=resolved.remediation.finding_id,
+            batch_selection=(asdict(resolved.remediation.selection)
+                             if hasattr(resolved.remediation, "selection") else None),
             reviewed_sha=resolved.remediation.reviewed_sha,
             execution_base_run_id=resolved.execution_base_run_id,
             execution_base_sha=resolved.execution_base_sha,

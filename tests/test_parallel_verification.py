@@ -1,8 +1,12 @@
-"""Selected twelve-worker wrapper checks using injected observations only."""
+"""Selected wrapper policy and real bounded pytest process regressions."""
 
 from pathlib import Path
 from types import SimpleNamespace
 import json
+import os
+import shutil
+import subprocess
+import sys
 
 import pytest
 from aios_renew.parallel_verification import (
@@ -374,3 +378,135 @@ def test_cli_surfaces_conformance_error(monkeypatch):
 def test_cli_rejects_arguments_before_execution(monkeypatch) -> None:
     monkeypatch.setattr(selected, "execute", lambda _: (_ for _ in ()).throw(AssertionError()))
     assert selected.main(["--workers", "12"]) == 2
+
+
+@pytest.fixture
+def pytest_process_sandbox(tmp_path):
+    """A small real suite, never a second execution of the repository suite."""
+    root = tmp_path / "pytest-process"
+    tests = root / "tests"
+    tests.mkdir(parents=True)
+    (tests / "__init__.py").write_text("", encoding="utf-8")
+    for name in ("conftest.py", "bp_v4_probe_plugin.py", "git_fixture_support.py"):
+        shutil.copy2(REPOSITORY / "tests" / name, tests / name)
+    shutil.copy2(REPOSITORY / "pyproject.toml", root / "pyproject.toml")
+    (tests / "test_scope.py").write_text('''
+import json
+import os
+from pathlib import Path
+import subprocess
+import pytest
+from aios_renew.parallel_verification import git_executable
+from tests.git_fixture_support import materialize_git_baseline
+
+@pytest.mark.parametrize("case", range(24))
+def test_chosen(case, tmp_path):
+    repo, remote, _ = materialize_git_baseline(
+        tmp_path / "owned", files={"README.md": "baseline\\n"},
+        user_name="Worker", user_email="worker@example.invalid", commit_message="baseline")
+    other, _, _ = materialize_git_baseline(
+        tmp_path / "other", files={"README.md": "baseline\\n"},
+        user_name="Worker", user_email="worker@example.invalid", commit_message="baseline")
+    binary = git_executable()
+    marker = os.environ.get("PYTEST_XDIST_WORKER", "serial")
+    subprocess.run((binary, "-C", str(repo), "config", "--local", "aios.worker", marker), check=True)
+    (repo / ".git" / "index.lock").write_text(marker, encoding="utf-8")
+    result = subprocess.run((binary, "-C", str(repo), "add", "README.md"), capture_output=True)
+    assert result.returncode != 0 and b"index.lock" in result.stderr
+    assert not (other / ".git" / "index.lock").exists()
+    result = subprocess.run((binary, "-C", str(other), "config", "--local", "--get", "aios.worker"), capture_output=True)
+    assert result.returncode == 1 and not result.stdout
+    proof = dict(worker=marker, pid=os.getpid(), temp=str(tmp_path), repo=str(repo), remote=str(remote), git=binary)
+    with (Path(os.environ["AIOS_TASK346_DIAGNOSTIC_ROOT"]) / f"case-{case}.json").open("x", encoding="utf-8") as stream:
+        json.dump(proof, stream)
+
+def test_excluded():
+    raise AssertionError("authored -k scope was broadened")
+''', encoding="utf-8")
+    calls = []
+
+    def run(*arguments, overrides=None, selected_file="tests/test_scope.py"):
+        label = str(len(calls))
+        output = root / f"observation-{label}.json"
+        diagnostics = root / f"diagnostics-{label}"
+        diagnostics.mkdir()
+        environment = {key: value for key, value in os.environ.items()
+                       if not key.startswith(("AIOS_V2_", "PYTEST_XDIST_")) and key not in {
+                           "AIOS_BP_V4_PLUGIN_OUTPUT", "AIOS_VERIFY_SUBJECT_SHA", "PYTEST_ADDOPTS",
+                           "PYTEST_PLUGINS", "PYTEST_DISABLE_PLUGIN_AUTOLOAD"}}
+        environment.update(PYTHONPATH=str(REPOSITORY / "src"), PYTHONDONTWRITEBYTECODE="1",
+                           AIOS_BP_V4_PLUGIN_OUTPUT=str(output), AIOS_TASK346_DIAGNOSTIC_ROOT=str(diagnostics))
+        environment.update(overrides or {})
+        command = (sys.executable, "-m", "pytest", "-q", selected_file, "-k", "chosen",
+                   "--basetemp", str(root / f"tmp-{label}"), *arguments)
+        completed = subprocess.run(command, cwd=root, env=environment, capture_output=True, timeout=90)
+        observation = json.loads(output.read_text(encoding="utf-8")) if output.exists() else None
+        calls.append(completed)
+        records = [json.loads(path.read_text(encoding="utf-8")) for path in diagnostics.glob("*.json")]
+        return completed, observation, records
+
+    return root, run
+
+
+def test_task346_real_default_population_preserves_exact_scope_and_worker_isolation(pytest_process_sandbox):
+    from aios_renew.parallel_verification import validate_pytest_execution
+    _, run = pytest_process_sandbox
+    completed, observation, records = run()
+    assert completed.returncode == 0, (completed.stdout + completed.stderr).decode("utf-8", errors="replace")
+    assert observation["profile"] == dict(profile="pytest-observed-v2", workers=12,
+                                        distribution="load", max_worker_restart=0, collect_only=False)
+    validate_pytest_execution(observation, observation["profile"], observation["toolchain"])
+    assert len(observation["workers"]) == 12
+    assert observation["controller_collection"]["count"] == len(records) == 24
+    assert len({r["pid"] for r in records}) == 12
+    for name in ("temp", "repo", "remote"):
+        assert len({r[name] for r in records}) == 24
+    if os.name == "nt":
+        assert {r["git"] for r in records} == {observation["toolchain"]["git_executable"]}
+        assert Path(observation["toolchain"]["git_executable"]).parts[-3:] == ("mingw64", "bin", "git.exe") or Path(observation["toolchain"]["git_executable"]).parent.parent.name in {"mingw32", "mingwarm64"}
+
+
+def test_task346_real_collection_only_has_no_execution_or_worker_population(pytest_process_sandbox):
+    _, run = pytest_process_sandbox
+    completed, observation, records = run("--collect-only")
+    assert completed.returncode == 0, completed.stderr
+    assert observation["profile"]["workers"] == 0 and observation["profile"]["collect_only"] is True
+    assert observation["workers"] == observation["worker_collections"] == {}
+    assert observation["failure_diagnostics"]["canonical"]["reports"] == [] and records == []
+
+
+@pytest.mark.parametrize("workers", [0, 2])
+def test_task346_real_explicit_diagnostic_pin_retains_its_population(pytest_process_sandbox, workers):
+    _, run = pytest_process_sandbox
+    completed, observation, records = run("-n", str(workers))
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert observation["profile"]["workers"] == len(observation["workers"]) == workers
+    assert len({r["pid"] for r in records}) == (workers or 1)
+    assert len(records) == 24
+
+
+@pytest.mark.parametrize("arguments,overrides", [
+    (("--dist", "loadscope"), {}), (("--max-worker-restart", "1"), {}),
+    (("-n", "auto"), {}), (("-n4", "-n12"), {}),
+    (("--maxprocesses", "4"), {}), (("-o", "addopts="), {}),
+    ((), {"PYTEST_ADDOPTS": "-n4"}), ((), {"PYTEST_XDIST_AUTO_NUM_WORKERS": "4"}),
+    (("-p", "no:xdist"), {}), ((), {"PATH": ""}),
+    ((), {"GIT_INDEX_FILE": "shared-index"}),
+])
+def test_task346_real_conflicts_and_missing_capabilities_fail_before_tests(pytest_process_sandbox, arguments, overrides):
+    _, run = pytest_process_sandbox
+    completed, _, records = run(*arguments, overrides=overrides)
+    assert completed.returncode != 0
+    assert completed.stdout or completed.stderr
+    assert records == []
+
+
+def test_task346_real_worker_crash_has_no_restart_or_comparable_pass(pytest_process_sandbox):
+    root, run = pytest_process_sandbox
+    (root / "tests" / "test_crash.py").write_text(
+        "import os\ndef test_chosen_crash():\n    os._exit(23)\n", encoding="utf-8")
+    completed, observation, records = run("-n2", selected_file="tests/test_crash.py")
+    assert completed.returncode != 0 and records == []
+    assert observation["failure_diagnostics"]["canonical"]["complete"] is False
+    assert set(observation["workers"]) <= {"gw0", "gw1"}
+    assert b"restarting crashed worker" not in completed.stdout.lower()

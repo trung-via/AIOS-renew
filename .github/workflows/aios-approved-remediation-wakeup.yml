@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       finding_id:
-        description: "Exact previously approved finding identity"
+        description: "Exact previously approved finding identity or immutable BATCH-<sha256> selector"
         required: true
         type: string
       executor:
@@ -43,6 +43,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A BATCH selector resolves only through the existing exact A3/A6 owners.
+  # Pre-AIOS delivery failures continue to report run_created=false.
   wakeup:
     runs-on: [self-hosted, windows, x64, aios-renew]
     env:

@@ -1,0 +1,237 @@
+task_id: TASK-370
+revision: 1
+goal: 'Close two observed AIOS REPAIR operational gaps end-to-end using the existing
+  GitHub Issue ingress, Human REPAIR wakeup, Runtime correction preflight, Operational
+  Receipt v2 and Brain Attention surfaces: (1) stop unconditionally launching an executorless
+  self-host wakeup for a newly authored coding REPAIR, while preserving exact Human
+  manual/AUTO selection and valid executorless actions; (2) make every attempted REPAIR
+  delivery''s bounded GitHub workflow/job outcome and known pre-RUN rejection cause
+  discoverable from its originating canonical Issue/dispatch identity by Brain without
+  the Human manually supplying a workflow URL. No new Executor selector, lifecycle
+  router or engineering-state authority.'
+problem: 'TASK-365 R1 RUN-365-001 PRIMARY RESULT/REVIEW PASS candidate 9f70b6b1dabad4234794db74c4d7c1f43f9a4a60
+  published in main added explicit exact-subject Human AUTO profile reuse and safe
+  Human manual/legacy/executorless carriers, but it did NOT update the independent
+  caller .github/workflows/aios-brain-ingress.yml. That current workflow unconditionally
+  calls aios-self-hosted-repair-wakeup.yml for every newly canonicalized AUTHOR_REPAIR
+  with executor: ''''. For TASK-369 canonical CODE_FIX REPAIR-369-002 SHA 800e7dabd1e91d07407d9c745201ce322404beb7,
+  GitHub Actions run 39026366429 job 117378039859 step Deliver one immutable REPAIR
+  intent failed with exact log ''AIOS ERROR: coding REPAIR requires an explicit Executor'';
+  it created no RUN and invoked no Codex. Its issue #2075 only exposed DISPATCH_ACCEPTED
+  while operational artifact 12098368936 exposed AIOS_INVOKED with no cause or run
+  linkage. Brain could not find the exact failed workflow from canonical Issue without
+  the Human sharing run URL, even though existing connected GitHub job/log readers
+  work when a run/job id is known. Prevent both the bad dispatch and the observability
+  dead end through a complete first-party consumer integration, not by weakening Runtime''s
+  correct missing-Executor rejection.'
+assumptions:
+- Fresh canonical main 491903e00630abb9e39e91310358fe4464bf487a. Published TASK-365
+  source 9f70b6b1dabad4234794db74c4d7c1f43f9a4a60 is an ancestor of main; REVIEW-365-001
+  PRIMARY PASS exact source. TASK-365 deliberately authorizes only Human exact-subject
+  opt-in AUTO or explicit manual Executor; it did not permit bot workflow_dispatch
+  to mint a coding Executor. Preserve that semantics.
+- The exact observed failure is GitHub Actions 39026366429, run_number 168, event
+  workflow_dispatch, actor github-actions[bot], control_sha 491903e00630abb9e39e91310358fe4464bf487a,
+  job 117378039859, failed step Deliver one immutable REPAIR intent, reason `coding
+  REPAIR requires an explicit Executor`, receipt AIOS_INVOKED/run_created=false/executor_invoked=false.
+  This is pre-RUN operational failure; do not create canonical FAILURE.
+- 'The live TASK-369 CODE_FIX is independently continuing under previously Human-authorized
+  manual wake Issue #2076 and canonical repair SHA 800e7dabd1e91d07407d9c745201ce322404beb7;
+  this TASK-370 is prospective operational infrastructure change, must not replay,
+  restart, amend or govern that active/terminal RUN.'
+- Brain's default current TASK_AUTHORING semantic audit is canonical aios-adaptive-brain-audit-v1
+  v1 digest 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718; Human-approved
+  R2.1 remains separate until verified activation. This Task has been audited with
+  CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE covering all eight mandatory V1 lenses
+  and closing the one final semantic candidate.
+- Human approved preparation of one distinct TASK fixing these two gaps. No separate
+  Executor/model/effort delegation has been made for TASK-370 implementation. TASK
+  authoring is not RUN admission, execution, review, publication or roadmap completion.
+- Canonical Runtime correction preflight and Unified State alone own whether executor_required;
+  existing github_issue_repair_wakeup version 2 Human explicit profile and version
+  3 exact Human AUTO remain the only valid coding selection sources. The existing
+  repair-dispatch idempotency journal and correction SHA must be reused.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-365.yaml
+  - .ai/tasks/TASK-369.yaml
+  - .ai/brain-repair-wakeup-carriers.yaml
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/repair_dispatch.py
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/operational_receipt.py
+  - src/aios_renew/brain_attention.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_operational_receipt.py
+  - tests/test_brain_attention.py
+  - tests/test_operator_correction_preflight.py
+  - tests/test_operator.py
+  modify:
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/operational_receipt.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/operator.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_operational_receipt.py
+  - tests/test_brain_attention.py
+  - tests/test_operator_correction_preflight.py
+  - tests/test_operator.py
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+non_goals:
+- No relaxation of Runtime `executor_required` gate, inference of Human intent from
+  bot actor, Issue title, TASK number, chat preference or failed RUN's mere Executor
+  label. No globally automatic coding Executor or model selection, default fallback,
+  silent retry, failover, or service monitoring unbounded.
+- No second lifecycle router, correction state store, event database, scheduler, independent
+  Planner/Reviewer/Publisher, parallel verification authority, new GitHub workflow
+  writer or private log upload. Do not assume `DISPATCH_ACCEPTED` or `AIOS_INVOKED`
+  proves RUN.
+- No alteration of published TASK-365, RUN-369-002, current REPAIR authorization,
+  existing RUN-369-003 (if created), immutable journal, direct-authoring correction
+  semantics, frozen Kernel or Human-owned roadmap; no automatic TASK-370 execution
+  or R2.1 NEXT advancement.
+- No broad new credential/permission grant solely for status reporting. Prefer already
+  established hosted Issue receipt/Brain Attention permissions and existing workflow_call/Operational
+  Receipt artifacts; an objectively unavoidable new write boundary must be surfaced
+  to Human rather than silently introduced.
+- No new normatively binding semantics derived from carrier `reason_code`, Github
+  job result, error text, elapsed time, token observations or provider logs. They
+  are operational evidence only.
+- No full pytest suite, second v2 minimum gate, all-historical RUN replay or bulk
+  cross-family refactor.
+constraints:
+  hard:
+  - 'Gap 1: At existing first-party .github/workflows/aios-brain-ingress.yml AUTHOR_REPAIR
+    consumer, replace the unconditional empty-executor wakeup with a decision using
+    the established Runtime-backed `executor_required`/current exact correction authority;
+    if trustworthy currentness is unavailable or branch is coding-required without
+    authenticated Human manual/AUTO selection, do NOT dispatch the doomed wakeup.
+    Return a bounded actionable Human wakeup-needed status linked to exact failed_run_id
+    and repair SHA, without inventing/choosing an Executor. Where existing Runtime
+    attests executorless eligibility, preserve the single safe automatic path.'
+  - If a trusted hosted preflight is not feasible without transferring Runtime coordination
+    authority, fail closed for unsafe automatic wakeup and expose Human action instead.
+    Do not decide executor_required from `action` text alone for conditional FINALIZE_CANDIDATE;
+    only an existing owner's canonical observation suffices.
+  - Human manual `AIOS_REPAIR_WAKEUP_REQUEST v2` and Human exact-subject AUTO v3 proven
+    events must continue to carry their own supported Executor/model/effort and original
+    provenance unchanged. Bare github-actions[bot] workflow_dispatch may not select
+    Codex or AUTO. No auto-dispatch should consume or replace a separately active
+    Human wakeup for the same correction.
+  - 'Gap 2: Bind the original GitHub Issue/repair_dispatch_id/current repair SHA to
+    the actual workflow_run_id, run_attempt and affected job/step identity when GitHub
+    supplies them. Provide a stable queryable GitHub-native link/receipt at an existing
+    authorized Issue/Brain Attention surface so a new Brain context can discover execution
+    status directly from the known Issue or dispatch identity, without screenshots
+    or a Human-supplied workflow run URL.'
+  - When workflow is still queued/running, report that as an operational state, not
+    fabricated completion; when completed, publish its truthful bounded success/failure
+    and exact typed causal reason if independently observed from the existing command/preflight.
+    The observed class `coding REPAIR requires an explicit Executor` must produce
+    a bounded classification distinguishing `EXECUTOR_REQUIRED` from generic `AIOS_INVOKED`,
+    while privacy-safe unknown diagnostic stays UNKNOWN rather than fabricated cause.
+  - 'Terminal workflow failure must never be represented solely by the last transient
+    AIOS_INVOKED marker if a stronger attributable operational failure exists. Preserve
+    workflow/AIOS/admission authority distinction: GitHub step failure with run_created=false
+    is not a canonical RUN/FAILURE; only canonical Runtime artifact ref can prove
+    RUN/RESULT/FAILURE.'
+  - Use the current hosted workflow Issue-comment receipt path, existing Operational
+    Receipt v2 and Brain Attention primitives; no new background poller, lifecycle
+    router, secondary Git state, DB or broad hosted/selfhost credentials. Keep source
+    binding and actor verification bounded to exactly one trusted origin and one existing
+    dispatch; treat arbitrary user-supplied URL, run ID, error text or Issue comment
+    as untrusted until validated against GitHub-owned context.
+  - Preserve current main/ref/source SHA validation, Human actor provenance, source
+    RUN/repair SHA exactness, immutable delivery/journal replay and cross-attempt
+    uniqueness. New labels must be bounded, enum-like and version-aware, non-secret,
+    no raw stdout/stderr, model trace, PAT, local paths, user private text or whole
+    protected FAILURE in public transport.
+  - 'Consumer proof must include a real workflow-shaped GitHub integration fixture
+    reflecting 2026-10-17 #168: original ingress Issue #2075, empty bot executor,
+    `CODE_FIX`, workflow failure, pre-RUN no-run receipt. Positive tests must show
+    no doomed dispatch and discoverable issue/status, plus legitimate manual/AUTO
+    and executorless behavior; negative tests reject spoofed/mismatched workflow/issue
+    mapping, stale correction, duplicate delivery and misleading carrier success.'
+  - Use minimum-sufficient-v1 with focused tests tied to changed paths; Runtime owns
+    canonical verification and EVIDENCE, Executor does not infer REVIEW PASS or publication.
+    If genuine bounded completion requires out-of-scope authority/permission, stop
+    and present exact blocker rather than claim PASS through a fixture-only shortcut.
+acceptance:
+- id: AC1
+  condition: 'Exact cause regression distinguishes TASK-365''s published Human AUTO
+    feature from omitted .github/workflows/aios-brain-ingress.yml consumer, backed
+    by TASK-365 REVIEW-365-001 and GitHub Actions 39026366429 job 117378039859 log:
+    empty executor -> `coding REPAIR requires an explicit Executor`; no fabricated
+    RUN or claim that TASK-365 did not work.'
+- id: AC2
+  condition: After a new coding-required AUTHOR_REPAIR canonicalization, no first-party
+    automatic bot workflow dispatch with empty executor occurs. A single bounded originating
+    Issue/Brain-visible receipt identifies Human-authenticated manual or exact-subject
+    AUTO wakeup as required and binds exact failed RUN + repair SHA. In the absence
+    of sufficient trusted preflight facts, no unsafe dispatch is attempted.
+- id: AC3
+  condition: Existing authenticated Human manual Codex and Human opt-in AUTO continue
+    end-to-end through the existing REPAIR wakeup and Runtime without losing selected
+    model/effort/provenance. Explicit Human selection takes precedence and cannot
+    be impersonated by the bot, changed by ingress, or defaulted from memory.
+- id: AC4
+  condition: Eligible executorless NO_CHANGE or verified reusable FINALIZE_CANDIDATE
+    still supports one automatic executorless route only when Runtime-backed preflight
+    proves executor_required=false; nonreusable FINALIZE_CANDIDATE and all CODE_FIX/CONTINUE_IMPLEMENTATION
+    with executor_required=true do not enter it. Same-id replay/correction SHA conflicts
+    do not schedule duplicate execution.
+- id: AC5
+  condition: From the originating GitHub Issue or exact dispatch ID, Brain or a fresh
+    read-only consumer can locate the actual workflow run ID, run attempt, workflow
+    URL, and job/step status via existing GitHub surfaces, then retrieve its real
+    job logs when allowed. No manual screenshot or supplied workflow URL is a mandatory
+    step, and no untrusted model text/source-looking URL becomes a provenance claim.
+- id: AC6
+  condition: 'GitHub workflow completion publishes one bounded attributable operational
+    outcome with a typed available causal reason (including EXECUTOR_REQUIRED for
+    the #168-shaped negative fixture) or explicit unavailable reason; `AIOS_INVOKED`
+    is treated as transient, not final when the job failed. No code/receipt fabricates
+    canonical RUN, FAILURE, REVIEW or publication from a pre-RUN error; private output
+    remains protected.'
+- id: AC7
+  condition: Existing GitHub Actor/Issue/repair/ref permissions, bounded provenance,
+    exact source SHA, idempotency, journal lock/CAS and separation from Runtime, Reviewer
+    and Publisher remain intact. Neither a second monitor/writer nor expanded credential
+    privileges or persistent operational truth is introduced.
+- id: AC8
+  condition: Targeted adversarial integration tests run the real authoring->dispatch->selfhost-outcome->origin-Issue
+    observation consumer path for coding-required, executorless, human manual, human
+    AUTO, missing currentness, forged/moved run/issue, repeated delivery, unavailable
+    diagnostics and RUN-bound terminal; authored focused Runtime verification passes
+    on the exact candidate rather than only synthetic unit helpers. No full suite
+    or unrelated validation.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_github_issue_ingress.py tests/test_github_issue_ingress_workflow.py
+    tests/test_github_issue_repair_wakeup_workflow.py
+  - python -m pytest -q tests/test_operational_receipt.py tests/test_brain_attention.py
+    tests/test_operator_correction_preflight.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

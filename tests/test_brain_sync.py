@@ -25,6 +25,48 @@ from tests.operator_test_support import (
 )
 
 
+@pytest.mark.parametrize("selector", ["issue", "delivery", "run"])
+def test_task372_exact_sync_composes_real_readers_without_human_url(tmp_path, monkeypatch, selector):
+    from aios_renew import brain_sync
+    from tests.test_brain_attention import Task372CanonicalSources
+    from tests.test_operational_receipt import Task372Actions
+    actions, canonical = Task372Actions(), Task372CanonicalSources()
+    monkeypatch.setattr(brain_sync, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(brain_sync, "_resolve_main_sha", lambda repo: "d" * 40)
+    monkeypatch.setattr(brain_sync, "_resolve_repository_name", lambda repo: "trung-via/AIOS-renew")
+    selection = {"issue_number": actions.issue_number} if selector == "issue" else (
+        {"delivery_id": actions.delivery_id} if selector == "delivery" else {"run_id": canonical.run_id})
+    snapshot = observe_brain_sync(repo=tmp_path, operational_sources=actions, canonical_sources=canonical, **selection)
+    observed = snapshot.as_dict()
+    diagnostic = observed["diagnostics"]
+    assert diagnostic["blocker"] is None and diagnostic["failure_context"]["run_id"] == canonical.run_id
+    assert diagnostic["failure_context"]["safe_detail"]["verification"][0]["command"] == "python -m pytest -q tests/test_fixture.py"
+    if selector != "run":
+        assert diagnostic["operational_context"]["attempt"]["workflow_run_id"] == actions.run_id
+        assert diagnostic["operational_context"]["run_created"] is False
+        assert diagnostic["attributed_failure_context"] is None
+    assert observed["next_action"] == "NONE" and observed["authority"] == "NONE"
+    assert all(observed[k] is False for k in ("run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert "synthetic-secret" not in snapshot.render() and not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("fault", ["moved", "run", "unavailable", "wrong-task"])
+def test_task372_exact_sync_rejects_untrusted_or_absent_canonical_source(tmp_path, monkeypatch, fault):
+    from aios_renew import brain_sync
+    from tests.test_brain_attention import Task372CanonicalSources
+    sources = Task372CanonicalSources()
+    monkeypatch.setattr(brain_sync, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(brain_sync, "_resolve_main_sha", lambda repo: "d" * 40)
+    monkeypatch.setattr(brain_sync, "_resolve_repository_name", lambda repo: "trung-via/AIOS-renew")
+    if fault == "moved": sources.moved = True
+    if fault == "run": sources.run["run_id"] = "RUN-foreign-001"
+    if fault == "unavailable": sources.values.clear()
+    if fault == "wrong-task": sources.run["task"] = {"id": "TASK-foreign", "revision": 1}
+    snapshot = observe_brain_sync(repo=tmp_path, run_id=sources.run_id, canonical_sources=sources)
+    assert snapshot.diagnostics["failure_context"] is None
+    assert snapshot.diagnostics["blocker"]["action"] == "READ_EXACT_CANONICAL_FAILURE"
+
+
 def test_brain_sync_ready_single_next_rehydration(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     roadmap = {

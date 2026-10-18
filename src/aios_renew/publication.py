@@ -25,6 +25,7 @@ from .correction_integration import (
     integration_ref_name,
 )
 from .review import (
+    BatchRemediation, BatchReview, BatchSelection, parse_batch_selection, validate_batch_evidence,
     Remediation,
     Review,
     parse_remediation,
@@ -625,6 +626,8 @@ def _parse_remediation_predecessor(
     data: Any, document: str = "REMEDIATION predecessor"
 ) -> RemediationPredecessor:
     root = _mapping(data, document)
+    if "finding_ids" in root:
+        return parse_batch_selection(root)
     if set(root).difference(_CANONICAL_PREDECESSOR_FIELDS):
         raise ValueError(f"{document} contains unexpected fields")
     source_run_id = root.get("source_run_id")
@@ -650,6 +653,16 @@ def _parse_remediation_predecessor(
 def _parse_remediation_run(
     run_data: Mapping[str, Any], *, run_id: str
 ) -> tuple[Run, Remediation]:
+    if "format" in run_data or "findings" in run_data.get("execution", {}):
+        from .review_transport import _bind_remediation_wrapper
+        from .operator import _remediation_execution_from_data
+        execution = _mapping(run_data.get("execution"), "batch execution")
+        try:
+            _bind_remediation_wrapper(run_data, execution, run_id=run_id)
+        except ReviewTransportError as exc:
+            raise ValueError(str(exc)) from exc
+        parsed = _remediation_execution_from_data(execution)
+        return parsed.run, parsed.remediation
     if "execution_base" in run_data and "predecessor" not in run_data:
         base = _parse_remediation_execution_base(run_data["execution_base"])
         if base.is_integrated:
@@ -836,6 +849,20 @@ def _validate_predecessor_lineage(
     remediation: Remediation,
     task: Any,
 ) -> Review:
+    if isinstance(remediation, BatchRemediation):
+        from .review_transport import resolve_authenticated_batch
+        from .operator import _remediation_execution_from_data
+        pred = _parse_remediation_predecessor(run_data.get("predecessor"))
+        if not isinstance(pred, BatchSelection) or pred != remediation.selection:
+            raise ValueError("batch predecessor selection mismatch")
+        binding, authorized, sha = resolve_authenticated_batch(repo, source_run_id=pred.source_run_id,
+            batch_id=remediation.batch_id, required_sha=run_data.get("remediation_authorization_sha"), remote=remote)
+        if (authorized != remediation or binding.task != task or sha != run_data.get("remediation_authorization_sha")
+                or _remediation_execution_from_data(run_data["execution"]).remediation != authorized):
+            raise ValueError("batch RUN differs from immutable canonical authority")
+        _validate_execution_base(repo, remote=remote, publication_run_id=publication_run_id,
+            run_data=run_data, run=run, semantic_reviewed_sha=pred.reviewed_sha)
+        return binding.review
     pred = _parse_remediation_predecessor(run_data.get("predecessor"))
     execution = _mapping(run_data.get("execution"), "REMEDIATION.execution")
 
@@ -943,7 +970,27 @@ def _derive_publication_frontier(
     publication_run_id: str,
     run_data: Mapping[str, Any],
     delta_review: Review,
+    _batch_lineage: bool = False,
 ) -> CorrectionFrontier:
+    if isinstance(delta_review, BatchReview) or _batch_lineage:
+        from .review_transport import resolve_remote_task_lifecycle
+        from .unified_state import _decode_remote_lifecycle, _derive_tip_frontier, _operational_parent
+        run, _ = _parse_remediation_run(run_data, run_id=publication_run_id)
+        task = parse_task(_read_blob(repo, delta_review.reviewed_sha, f".ai/tasks/{run.task.id}.yaml",
+                                   run_id=publication_run_id).decode("utf-8"))
+        lifecycle = resolve_remote_task_lifecycle(repo, task_id=task.task_id, task_revision=task.revision, remote=remote)
+        decoded, reviews = _decode_remote_lifecycle(repo, task, lifecycle, remote=remote)
+        tips = [i for i in decoded if i.run_id == publication_run_id and i.candidate_sha == delta_review.reviewed_sha]
+        if len(tips) != 1 or reviews.get(publication_run_id) != delta_review:
+            raise ValueError("batch publication requires exact canonical reviewed tip")
+        children: dict[str, int] = {}
+        for item in decoded:
+            parent = _operational_parent(item)
+            if parent is not None:
+                children[parent] = children.get(parent, 0) + 1
+        if any(n != 1 for n in children.values()) or publication_run_id in children:
+            raise ValueError("batch publication has competing cumulative continuations")
+        return _derive_tip_frontier(tips[0], decoded, reviews)
     current_pred = _parse_remediation_predecessor(run_data["predecessor"])
     steps: list[tuple[str, RemediationPredecessor, Review]] = [
         (publication_run_id, current_pred, delta_review)
@@ -1025,6 +1072,11 @@ def _derive_publication_frontier(
             if "predecessor" in semantic_run_data
             else None
         )
+        if isinstance(source_pred, BatchSelection):
+            # A later single correction still carries the earlier batch's full
+            # independent outcomes and immutable authority through the frontier.
+            return _derive_publication_frontier(repo, remote=remote, publication_run_id=publication_run_id,
+                run_data=run_data, delta_review=delta_review, _batch_lineage=True)
         remediation_ref = (
             f"refs/heads/aios/remediation/{source_id}-{source_pred.finding_id}"
             if source_pred is not None
@@ -1136,6 +1188,10 @@ def _validate_remediation_package(
     evidence: tuple[Any, ...],
     execution_base_sha: str | None = None,
 ) -> ResultPackage:
+    if isinstance(remediation, BatchRemediation):
+        validate_batch_evidence(run=run, remediation=remediation, result=result, evidence=evidence, actual_head=source_sha)
+        if _git(repo, "merge-base", "--is-ancestor", run.base_sha, source_sha, allow_fail=True)[0]:
+            raise ValueError("batch RESULT does not descend from execution base")
     if run.task.id != task.task_id or run.task.revision != task.revision:
         raise ValueError("REMEDIATION RUN does not reference the supplied TASK")
     expected_base = (
@@ -1476,6 +1532,8 @@ def _repair_review_lineage(
         _json_no_duplicates(predecessor_run_bytes, document="predecessor RUN"),
         "predecessor RUN",
     )
+    if predecessor_run_data.get("format") == "AIOS_BATCH_REMEDIATION_RUN":
+        raise ValueError("BATCH_REPAIR_UNSUPPORTED_V1: fresh explicit recovery authority required")
     failure = _mapping(
         _json_no_duplicates(failure_bytes, document="predecessor FAILURE"),
         "predecessor FAILURE",
@@ -1957,7 +2015,9 @@ def _load_success_lineage(
         else:
             if review.mode != "DELTA":
                 raise ValueError("REMEDIATION candidate requires a DELTA REVIEW")
-            if review.prior_finding_id != remediation.finding_id:
+            if (isinstance(remediation, BatchRemediation) and (not isinstance(review, BatchReview)
+                    or review.selection != remediation.selection or review.batch_id != remediation.batch_id)) or (
+                    not isinstance(remediation, BatchRemediation) and (isinstance(review, BatchReview) or review.prior_finding_id != remediation.finding_id)):
                 raise ValueError(
                     "DELTA REVIEW prior finding does not match REMEDIATION"
                 )
@@ -2069,6 +2129,14 @@ def _recheck_binding(repo: Path, remote: str, binding: Mapping[str, str], *,
                      decisions: Mapping[str, str] | None = None) -> None:
     """Re-read immutable lineage, then main immediately before a terminal gate."""
     try:
+        if any("/aios/remediation/" in ref and re.search(r"-BATCH-[0-9a-f]{64}$", ref) for ref in binding):
+            from .review_transport import _exact_remote_refs
+            prefix = run_id.rsplit("-", 1)[0] + "-"
+            snapshot = _exact_remote_refs(repo, remote, "refs/heads/main", f"refs/heads/aios/*/{prefix}*")
+            expected = {ref: sha for ref, sha in binding.items()
+                        if ref == "refs/heads/main" or ref.startswith("refs/heads/aios/") and ref.rsplit("/", 1)[-1].startswith(prefix)}
+            if snapshot != expected:
+                raise _failed(run_id, "batch correction frontier/ref set moved before publication", cause="STALE_REVIEW_BINDING")
         for ref, sha in binding.items():
             if _single_remote_sha(repo, remote, ref, run_id=run_id) != sha:
                 raise _failed(run_id, "canonical review binding changed during publication",
@@ -2079,6 +2147,8 @@ def _recheck_binding(repo: Path, remote: str, binding: Mapping[str, str], *,
         if _single_remote_sha(repo, remote, "refs/heads/main", run_id=run_id) != main_sha:
             raise _failed(run_id, "canonical main moved during publication",
                           cause="CONCURRENT_MAIN_MOVEMENT")
+    except ReviewTransportError as exc:
+        raise _failed(run_id, "batch correction frontier snapshot unavailable", cause="STALE_REVIEW_BINDING") from exc
     except PublicationError as exc:
         raise _failed(run_id, str(exc), reviewed_sha=reviewed_sha, prior_main_sha=main_sha,
                       cause=exc.report.cause) from exc
@@ -2608,6 +2678,11 @@ def publish_review_decision(
             artifacts_ref: _single_remote_sha(root, remote, artifacts_ref, run_id=run_id),
         }
         _fetch_object(root, remote, decision_sha, run_id=run_id)
+        from .review_transport import _exact_remote_refs
+        prefix = run_id.rsplit("-", 1)[0] + "-"
+        correction_refs = _exact_remote_refs(root, remote, "refs/heads/main", f"refs/heads/aios/*/{prefix}*")
+        if any("/aios/remediation/" in ref and re.search(r"-BATCH-[0-9a-f]{64}$", ref) for ref in correction_refs):
+            binding.update(correction_refs)
         reviewed_sha, _, modification_scope = _load_success_lineage(
             root,
             remote=remote,

@@ -419,7 +419,10 @@ def _operational_cause(cause, boundary):
         valid = (cause["authority"] == "WORKFLOW" and cause["phase"] == "PRE_AIOS"
                  and cause["reason_code"] in WORKFLOW_REASONS)
     elif boundary == "DISPATCH_REJECTED":
-        if cause["authority"] == "CARRIER":
+        if cause == dict(authority="CORRECTION_PREFLIGHT", phase="REPAIR_EXECUTOR_REQUIREMENT",
+                         reason_code="CODING_REPAIR_EXECUTOR_REQUIRED"):
+            valid = True
+        elif cause["authority"] == "CARRIER":
             valid = cause == dict(authority="CARRIER", phase="DISPATCH", reason_code="DISPATCH_REJECTED")
         else:
             from .operator import _ADMISSION_PHASES, _ADMISSION_REASONS
@@ -433,7 +436,7 @@ def _operational_cause(cause, boundary):
     return dict(cause)
 
 
-def operational_context(source, item, pointer):
+def operational_context(source, item, pointer, artifacts=None):
     """Expose a source-bound BP-2 cause without creating terminal identity."""
     if item.family not in {DISPATCH, PRE_AIOS} or item.event_id not in {
         candidate.event_id for candidate in project_source(source, pointer)
@@ -444,12 +447,20 @@ def operational_context(source, item, pointer):
     if len(matches) != 1:
         raise AttentionError("AMBIGUOUS_OPERATIONAL_CONTEXT")
     cause = matches[0].get("operational_cause")
-    return dict(format="AIOS_OPERATIONAL_FAILURE_CONTEXT", version=1,
+    context = dict(format="AIOS_OPERATIONAL_FAILURE_CONTEXT", version=1,
                 boundary=matches[0]["boundary"], operation=item.selectors["operation"],
                 delivery_id=item.selectors["delivery_id"], run_created=False, executor_invoked=False,
                 cause_availability="AVAILABLE" if cause is not None else "UNAVAILABLE",
                 cause=_operational_cause(cause, matches[0]["boundary"]) if cause is not None else None,
                 source=dict(pointer))
+    if item.selectors["operation"] == "REPAIR":
+        from .operational_receipt import observe_repair_delivery
+        context["workflow_context"] = observe_repair_delivery(delivery_id=item.selectors["delivery_id"],
+            workflow_run_id=pointer["workflow_run_id"], run_attempt=pointer["run_attempt"], sources=artifacts)
+        attempt = context["workflow_context"].get("attempt")
+        if attempt and (attempt["failed_run_id"] != item.selectors["subject_id"] or attempt["repair_sha"] != item.selectors["subject_sha"]):
+            raise AttentionError("REPAIR_CONTEXT_SUBSTITUTION")
+    return context
 
 
 def operational_observation(receipt):
@@ -1060,7 +1071,7 @@ class ArtifactSources:
         class NoRedirect(HTTPRedirectHandler):
             def redirect_request(self, *args):
                 return None
-        from urllib.error import HTTPError
+        from urllib.error import HTTPError, URLError
         try:
             response = build_opener(NoRedirect()).open(request, timeout=min(10, remaining))
         except HTTPError as exc:
@@ -1069,32 +1080,238 @@ class ArtifactSources:
             from urllib.parse import urlsplit
             location = exc.headers.get("Location", "")
             parts = urlsplit(location)
-            if parts.scheme != "https" or parts.username or parts.password:
+            if (parts.scheme != "https" or parts.username or parts.password or not parts.hostname
+                    or not any(parts.hostname.endswith(suffix) for suffix in
+                        (".github.com", ".githubusercontent.com", ".blob.core.windows.net"))):
                 raise AttentionError("INVALID_ARTIFACT_LOCATION")
             remaining = self.deadline - time.monotonic()
             if remaining <= 0:
                 raise AttentionError("SOURCE_TIMEOUT")
-            response = urlopen(Request(location, headers={"User-Agent": "AIOS-attention-v1"}), timeout=min(10, remaining))
+            try:
+                response = urlopen(Request(location, headers={"User-Agent": "AIOS-attention-v1"}), timeout=min(10, remaining))
+            except (URLError, OSError):
+                raise AttentionError("SOURCE_UNAVAILABLE") from None
+        except (URLError, OSError):
+            raise AttentionError("SOURCE_UNAVAILABLE") from None
         with response:
             raw = response.read(1048577)
         if len(raw) > 1048576:
             raise AttentionError("SOURCE_SIZE")
         if time.monotonic() > self.deadline:
             raise AttentionError("SOURCE_TIMEOUT")
-        return raw if binary else load_json(raw, 1048576)
+        if binary:
+            return raw
+        if re.fullmatch(r"/issues/[1-9][0-9]*/comments\?per_page=100", path):
+            return load_json(b'{"items":' + raw + b'}', 1048600)["items"]
+        return load_json(raw, 1048576)
 
-    def run(self, run_id, attempt):
+    def run(self, run_id, attempt, *, completed=True):
         _value(run_id, "positive")
         _value(attempt, "positive")
         run = self.request(f"/actions/runs/{run_id}/attempts/{attempt}")
         if (type(run.get("id")) is not int or type(run.get("run_attempt")) is not int
                 or run.get("id") != run_id or run.get("run_attempt") != attempt
-                or run.get("path") not in PRODUCERS or run.get("status") != "completed"
+                or run.get("path") not in PRODUCERS or completed and run.get("status") != "completed"
                 or run.get("event") not in {"issues", "push", "workflow_dispatch"}
                 or run.get("head_repository", {}).get("full_name") != self.repository
                 or (run.get("event") != "push" and run.get("head_branch") != "main")):
             raise AttentionError("UNTRUSTED_PRODUCER")
         return run
+
+    def repair_issue(self, number):
+        _value(number, "positive")
+        issue = self.request(f"/issues/{number}")
+        if (issue.get("number") != number or not isinstance(issue.get("body"), str)
+                or issue.get("user", {}).get("login") != "trung-via" or "pull_request" in issue
+                or issue.get("repository_url") != "https://api.github.com/repos/" + self.repository):
+            raise AttentionError("REPAIR_ISSUE_IDENTITY_INVALID")
+        _value(issue.get("id"), "positive")
+        # Never return arbitrary Issue text beyond this authenticated backend.
+        return dict(id=issue["id"], number=issue["number"], body=issue["body"], user={"login": issue["user"]["login"]})
+
+    def repair_pointers(self, issue, run_id=None, attempt=None, delivery_id=None):
+        """Exact Issue receipt pointers, or explicitly bounded Actions discovery."""
+        pointers = []
+        if run_id is not None:
+            runs = [self.run(run_id, attempt, completed=False)]
+        elif issue is not None:
+            # Comments are hints only. repair_source independently authenticates
+            # the pointed artifact and its original GitHub-owned Issue event.
+            comments = self.request(f"/issues/{issue['number']}/comments?per_page=100")
+            # GitHub lists return arrays; request's ordinary JSON-object decoder
+            # is deliberately not used for this endpoint (see request below).
+            if not isinstance(comments, list) or len(comments) >= 100:
+                raise AttentionError("REPAIR_COMMENT_DISCOVERY_INCOMPLETE")
+            for comment in comments:
+                if comment.get("user", {}).get("login") != "github-actions[bot]":
+                    continue
+                body = comment.get("body", "")
+                if not isinstance(body, str) or len(body) > 8192:
+                    continue
+                for line in body.splitlines():
+                    if line.startswith("AIOS_REPAIR_WORKFLOW_POINTER="):
+                        pointer = load_json(line.split("=", 1)[1], 1024)
+                        if set(pointer) != {"workflow_run_id", "run_attempt", "artifact_id"}:
+                            raise AttentionError("REPAIR_POINTER_INVALID")
+                        for value in pointer.values():
+                            _value(value, "positive")
+                        pointers.append(pointer)
+            # Exact-name artifacts are only discovery hints. Their immutable
+            # attempt source is independently authenticated below. This avoids
+            # scanning unrelated runs, timestamps, titles or log contents.
+            deliveries = {self.repair_source(p)["delivery_id"] for p in pointers}
+            if delivery_id is not None:
+                deliveries &= {delivery_id}
+            runs = self._repair_index_runs(deliveries)
+        else:
+            runs = self._repair_index_runs({delivery_id})
+        for run in runs:
+            listing = self.request(f"/actions/runs/{run['id']}/artifacts?per_page=100")
+            if (type(listing.get("total_count")) is not int or not 0 <= listing["total_count"] <= 100
+                    or not isinstance(listing.get("artifacts"), list)
+                    or len(listing["artifacts"]) != listing["total_count"]):
+                raise AttentionError("REPAIR_ARTIFACT_DISCOVERY_INCOMPLETE")
+            for artifact in listing["artifacts"]:
+                match = re.fullmatch(r"aios-repair-correlation-v1-(ingress|wakeup|delivery)-attempt-([1-9][0-9]*)", artifact.get("name", ""))
+                if match and (attempt is None or int(match[2]) == attempt):
+                    pointers.append(dict(workflow_run_id=run["id"], run_attempt=int(match[2]), artifact_id=artifact["id"]))
+        if len(pointers) > 32:
+            raise AttentionError("REPAIR_SOURCE_BOUND_EXCEEDED")
+        return list({canonical(p): p for p in pointers}.values())
+
+    def _repair_index_runs(self, deliveries):
+        runs = {}
+        for delivery in deliveries:
+            from .operational_receipt import _DELIVERY_PATTERN
+            if not isinstance(delivery, str) or not _DELIVERY_PATTERN.fullmatch(delivery):
+                raise AttentionError("REPAIR_DELIVERY_INVALID")
+            name = "aios-repair-delivery-v1-" + delivery
+            listing = self.request(f"/actions/artifacts?name={name}&per_page=100")
+            if (type(listing.get("total_count")) is not int or not 0 <= listing["total_count"] <= 32
+                    or not isinstance(listing.get("artifacts"), list)
+                    or len(listing["artifacts"]) != listing["total_count"]):
+                raise AttentionError("REPAIR_INDEX_DISCOVERY_INCOMPLETE")
+            for artifact in listing["artifacts"]:
+                if artifact.get("name") != name or artifact.get("expired") is not False:
+                    raise AttentionError("REPAIR_INDEX_UNAVAILABLE_OR_EXPIRED")
+                run_id = artifact.get("workflow_run", {}).get("id")
+                _value(run_id, "positive")
+                runs[run_id] = {"id": run_id}
+        if len(runs) > 32:
+            raise AttentionError("REPAIR_INDEX_DISCOVERY_INCOMPLETE")
+        return list(runs.values())
+
+    def _repair_archive(self, pointer, expected_name, filename):
+        for key in ("workflow_run_id", "run_attempt", "artifact_id"):
+            _value(pointer.get(key), "positive")
+        run = self.run(pointer["workflow_run_id"], pointer["run_attempt"], completed=False)
+        artifact = self.request(f"/actions/artifacts/{pointer['artifact_id']}")
+        if artifact.get("expired") is True:
+            raise AttentionError("REPAIR_ARTIFACT_EXPIRED")
+        if (artifact.get("id") != pointer["artifact_id"] or artifact.get("expired") is not False
+                or artifact.get("workflow_run", {}).get("id") != run["id"]
+                or artifact.get("name") not in expected_name
+                or type(artifact.get("size_in_bytes")) is not int or not 0 < artifact["size_in_bytes"] <= MAX_SOURCE_BYTES):
+            raise AttentionError("REPAIR_ARTIFACT_IDENTITY_INVALID_OR_EXPIRED")
+        archive = self.request(f"/actions/artifacts/{pointer['artifact_id']}/zip", binary=True)
+        if artifact.get("digest") is not None and artifact["digest"] != "sha256:" + hashlib.sha256(archive).hexdigest():
+            raise AttentionError("REPAIR_ARTIFACT_DIGEST_MISMATCH")
+        try:
+            with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
+                entries = zipped.infolist()
+                if (len(entries) != 1 or entries[0].filename != filename
+                        or entries[0].file_size > MAX_SOURCE_BYTES or entries[0].flag_bits & 1
+                        or (entries[0].external_attr >> 16) & 0o170000 == 0o120000):
+                    raise AttentionError("REPAIR_ARCHIVE_INVALID")
+                value = load_json(zipped.read(entries[0]), MAX_SOURCE_BYTES)
+        except (zipfile.BadZipFile, RuntimeError, OSError, ValueError):
+            raise AttentionError("REPAIR_ARCHIVE_INVALID") from None
+        if (value.get("format") == "AIOS_REPAIR_WORKFLOW_SOURCE" and artifact["name"] !=
+                f"aios-repair-correlation-v1-{value.get('lane')}-attempt-{pointer['run_attempt']}"):
+            raise AttentionError("REPAIR_SOURCE_LANE_SUBSTITUTION")
+        return value, run
+
+    def repair_source(self, pointer):
+        from .operational_receipt import REPAIR_SOURCE_LANES, validate_repair_source
+        names = {f"aios-repair-correlation-v1-{lane}-attempt-{pointer['run_attempt']}" for lane in REPAIR_SOURCE_LANES}
+        value, run = self._repair_archive(pointer, names, "source.json")
+        value = validate_repair_source(value)
+        producers = {
+            "ingress": {".github/workflows/aios-brain-ingress.yml", ".github/workflows/aios-issue-carrier.yml"},
+            "wakeup": {".github/workflows/aios-brain-repair-wakeup.yml", ".github/workflows/aios-issue-carrier.yml"},
+            "delivery": {".github/workflows/aios-self-hosted-repair-wakeup.yml", ".github/workflows/aios-brain-repair-wakeup.yml", ".github/workflows/aios-issue-carrier.yml"},
+        }
+        if (value["repository"] != self.repository or value["workflow_run_id"] != run["id"]
+                or value["run_attempt"] != run["run_attempt"] or value["control_sha"] != run.get("head_sha")
+                or value["event"] != run.get("event") or value["actor"] != run.get("actor", {}).get("login")
+                or value["triggering_actor"] != run.get("triggering_actor", run.get("actor", {})).get("login")
+                or run["path"] not in producers[value["lane"]]):
+            raise AttentionError("REPAIR_ATTEMPT_SOURCE_SUBSTITUTION")
+        if pointer.get("source_digest") is not None and pointer["source_digest"] != digest(value):
+            raise AttentionError("REPAIR_SOURCE_DIGEST_MISMATCH")
+        return value
+
+    def repair_receipt(self, source):
+        listing = self.request(f"/actions/runs/{source['workflow_run_id']}/artifacts?per_page=100")
+        if (type(listing.get("total_count")) is not int or not 0 <= listing["total_count"] <= 100
+                or not isinstance(listing.get("artifacts"), list) or len(listing["artifacts"]) != listing["total_count"]):
+            raise AttentionError("REPAIR_ARTIFACT_DISCOVERY_INCOMPLETE")
+        name = f"aios-operational-receipt-v2-repair-attempt-{source['run_attempt']}"
+        matches = [a for a in listing["artifacts"] if a.get("name") == name]
+        if len(matches) > 1:
+            raise AttentionError("REPAIR_RECEIPT_AMBIGUOUS")
+        if not matches:
+            return None
+        pointer = dict(workflow_run_id=source["workflow_run_id"], run_attempt=source["run_attempt"], artifact_id=matches[0]["id"])
+        return self._repair_archive(pointer, {name}, "aios-repair-operational-receipt-v2.json")[0]
+
+    def repair_jobs(self, source, expected=None):
+        run = self.run(source["workflow_run_id"], source["run_attempt"], completed=False)
+        if run.get("head_sha") != source["control_sha"] or run.get("actor", {}).get("login") != source["actor"]:
+            raise AttentionError("REPAIR_WORKFLOW_SOURCE_MOVED")
+        statuses = {"queued": "queued", "waiting": "queued", "pending": "queued", "requested": "queued",
+                    "in_progress": "running", "completed": "completed"}
+        conclusions = {None, "success", "failure", "cancelled", "skipped", "neutral", "timed_out", "action_required", "startup_failure", "stale"}
+        if run.get("status") not in statuses or run.get("conclusion") not in conclusions:
+            raise AttentionError("REPAIR_WORKFLOW_STATUS_UNKNOWN")
+        jobs_blocker = None
+        try:
+            listing = self.request(f"/actions/runs/{source['workflow_run_id']}/attempts/{source['run_attempt']}/jobs?per_page=100")
+        except AttentionError as exc:
+            if str(exc) not in {"SOURCE_UNAVAILABLE", "SOURCE_TIMEOUT"}:
+                raise
+            listing = {"total_count": 0, "jobs": []}
+            jobs_blocker = {"code": str(exc), "action": "READ_AUTHENTICATED_ACTIONS_JOBS"}
+        if (type(listing.get("total_count")) is not int or not 0 <= listing["total_count"] <= 32
+                or not isinstance(listing.get("jobs"), list) or len(listing["jobs"]) != listing["total_count"]):
+            raise AttentionError("REPAIR_JOBS_UNAVAILABLE_OR_OVER_BOUND")
+        from .operational_receipt import REPAIR_PUBLIC_NAMES
+        safe_names = REPAIR_PUBLIC_NAMES
+        jobs = []
+        seen = set()
+        for job in listing["jobs"]:
+            _value(job.get("id"), "positive")
+            if (job.get("run_id") != run["id"] or job.get("run_attempt") != source["run_attempt"]
+                    or job["id"] in seen or job.get("status") not in statuses or job.get("conclusion") not in conclusions
+                    or not isinstance(job.get("steps", []), list) or len(job.get("steps", [])) > 64):
+                raise AttentionError("REPAIR_JOB_ATTEMPT_SUBSTITUTION")
+            seen.add(job["id"])
+            steps, numbers = [], set()
+            for step in job.get("steps", []):
+                _value(step.get("number"), "positive")
+                if step["number"] in numbers or step.get("status") not in statuses or step.get("conclusion") not in conclusions:
+                    raise AttentionError("REPAIR_STEP_IDENTITY_INVALID")
+                numbers.add(step["number"])
+                steps.append(dict(number=step["number"], name=step["name"] if step.get("name") in safe_names else "WITHHELD",
+                    status=statuses[step["status"]], conclusion=step.get("conclusion")))
+            jobs.append(dict(job_id=job["id"], name=job["name"] if job.get("name") in safe_names else "WITHHELD",
+                status=statuses[job["status"]], conclusion=job.get("conclusion"), steps=steps))
+        result = dict(workflow_run_id=source["workflow_run_id"], run_attempt=source["run_attempt"],
+            status=statuses[run["status"]], conclusion=run.get("conclusion"), jobs=jobs,
+            jobs_availability="AVAILABLE" if jobs else "UNAVAILABLE", jobs_blocker=jobs_blocker)
+        if expected is not None and any(expected.get(k) != v for k, v in result.items()):
+            raise AttentionError("REPAIR_WORKFLOW_SOURCE_MOVED")
+        return result
 
     def artifact(self, pointer, *, receipt=False):
         _value(pointer.get("artifact_id"), "positive")

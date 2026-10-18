@@ -1,0 +1,118 @@
+task_id: TASK-369
+revision: 1
+goal: Finish approved R2.1 activation for new production Brain audits. Bind the actual
+  first-party Brain invocation to canonical FOUR_SPECIALIZED policy so ARCHITECTURE
+  uses AOA-1, TASK_AUTHORING TCA-1, REMEDIATION_AUTHORING MOA-1 and REPAIR_AUTHORING
+  ROA-1 R2 by default. Keep Adaptive V1 only as individually authorized Human option;
+  do not require renewed Human approval.
+problem: Published TASK-368 supports explicitly supplied policy but ordinary first-party
+  attempts still select Adaptive V1 when policy is omitted. Human activated R2.1 in
+  canonical roadmap after reviewed and published TASK-368; actual caller integration
+  and evidence of default selection remain missing. Resolve this single integration
+  gap without duplicating R1-R5.
+assumptions:
+- Canonical main at 0272675dba7a4f8db67d07a139b910fd75746ddc contains human_r21_four_specialized_activation_20261017
+  Human approval, TASK-368 R5 candidate f4d944474b4450da3d49376b6b034c9f9d413d60 and
+  REVIEW-368-001 PASS. Human selection is already authorized.
+- 'Pin published exact profiles: ARCHITECTURE aoa-1 v1 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b;
+  TASK_AUTHORING tca-1 v1 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2;
+  REMEDIATION_AUTHORING moa-1 v1 49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903;
+  REPAIR_AUTHORING roa-1-r2 v2 aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4.
+  Adaptive V1 remains preserved exact.'
+- Published R5 supports caller-owned audit_policy and selection_authenticator with
+  ADMIT/CONTINUE freshness. Reuse it. Executor implements HOW; Brain retains planning,
+  Runtime verification, Reviewer verdict and Publisher publication.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-368.yaml
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_context.py
+  - tests/test_authoring_ingress.py
+  modify:
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_context.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_context.py
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+non_goals:
+- No new audit router, profile registry, runtime/reviewer/publisher authority, policy
+  service or new Human approval.
+- No Executor edit of .ai/roadmap-state.yaml, frozen Kernel, canonical Runtime lifecycle
+  or downstream repositories.
+- No full-suite tests or changes to direct-final authoring admission, historical audits
+  or in-flight subjects.
+- No test-only activation claim or future task as substitute for this production integration.
+constraints:
+  hard:
+  - Close the actual first-party production caller path. Existing R5 normalized policy
+    and independent selection_authenticator are required; no test-only adapter or
+    implied selection from registry order.
+  - Authenticate current canonical Human approval, R5 publication lineage, four pinned
+    identities, exact main/work context, selected flow, subject and return binding
+    at ADMIT and CONTINUE. Do not treat self-declared hashes or literals as authority.
+  - New Brain attempts under approved policy use a specialized audit by default; unavailable
+    or inconsistent canonical policy fails closed rather than silently choosing V1/V3.
+  - Explicit Human V1_ONLY replaces AOA/TCA for an exact Architecture/Task subject;
+    V1_READ_ONLY supports but cannot replace MOA/ROA, and must not add a provider
+    call or verdict.
+  - Preserve already admitted profile/stage identity, exact historical V1/V2/V3 replay,
+    separation of Runtime verification, Reviewer and Publisher, and the Human-owned
+    roadmap.
+  - Limit changes to scope.modify. If first-party production caller cannot be reached
+    within authorized scope, return a concrete blocker instead of claiming activation.
+  - Use minimum-sufficient-v1 targeted verification and evidence reuse. No full-suite.
+acceptance:
+- id: AC1
+  condition: The ordinary first-party new-production Brain invocation for each of
+    four existing semantic flows selects exactly the corresponding AOA/TCA/MOA/ROA
+    profile without manually supplied test policy or conformance_only.
+- id: AC2
+  condition: The production caller supplies a canonical-source-authenticated full
+    FOUR_SPECIALIZED policy and R5 authenticator with subject/main/return/profile
+    bindings at ADMIT and CONTINUE; invalid or stale sources reject before the first
+    provider call.
+- id: AC3
+  condition: Negative tests through the first-party entrypoint reject missing or conflicting
+    approval, incomplete mappings and unavailable authenticators without silently
+    selecting Adaptive V1/V3.
+- id: AC4
+  condition: Human-specific exact-subject V1_ONLY for Architecture/Task and V1_READ_ONLY
+    for corrections are supported without dual normative audit, unsolicited calls
+    or unverifiable Human choice.
+- id: AC5
+  condition: AOA/TCA/MOA use their published two-pass closure and ROA uses one focused
+    procedure, with unchanged source/currentness checks and no cross-profile mixing.
+- id: AC6
+  condition: Historical V1/V2/V3 and admitted in-flight sessions retain original profile
+    and lineage, with bounded rejection of stale or changed continuation.
+- id: AC7
+  condition: Direct-final AUTHOR_TASK/REPAIR/REMEDIATION and Runtime/Reviewer/Publisher
+    authority remain unchanged; audit support creates no new mutation prerequisite.
+- id: AC8
+  condition: Focused integration tests identify and execute the real first-party caller
+    path; all changes remain within eight scope.modify files and documentation reflects
+    approved default without claiming unrelated roadmap advancement.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_provider.py tests/test_brain_provider_protocol.py
+    tests/test_brain_context.py
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_return_contract.py
+    tests/test_decision_packet.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

@@ -46,6 +46,33 @@ ACTIVE_PROFILE_REF = {
 }
 
 
+@pytest.mark.parametrize("operation", ["AUTHOR_TASK", "AUTHOR_REPAIR", "AUTHOR_REMEDIATION", "SUBMIT_REVIEW"])
+def test_human_selection_cannot_be_reframed_as_lifecycle_ingress(tmp_path, monkeypatch, operation):
+    from tests.test_lean_vp_l1_human_selection import selection_fixture
+    package = selection_fixture(tmp_path, monkeypatch)
+    request = copy.deepcopy(package["request"])
+    request["operation"] = operation
+    with pytest.raises(AuthoringIngressError):
+        parse_envelope(json.dumps(request))
+
+
+@pytest.mark.parametrize("fault", ["duplicate", "yaml", "actor", "handoff", "origin-proof"])
+def test_selection_contract_is_closed_and_does_not_reuse_lifecycle_credentials(tmp_path, monkeypatch, fault):
+    from tests.test_lean_vp_l1_human_selection import selection_fixture
+    package = selection_fixture(tmp_path, monkeypatch)
+    request = copy.deepcopy(package["request"])
+    if fault == "duplicate":
+        raw = json.dumps(request)[:-1] + ',"version":1}'
+    elif fault == "yaml":
+        import yaml
+        raw = yaml.safe_dump(request)
+    else:
+        request[{"actor": "actor", "handoff": "audited_handoff", "origin-proof": "origin_authoring_proof"}[fault]] = "copied"
+        raw = json.dumps(request)
+    with pytest.raises(AuthoringIngressError):
+        parse_envelope(raw)
+
+
 @pytest.mark.parametrize("review_fault", ["old-sha", "delta", "main-moved"])
 def test_publication_recovery_review_ingress_requires_fresh_exact_primary_and_current_main(tmp_path, monkeypatch, review_fault):
     from aios_renew import operator
@@ -6124,3 +6151,18 @@ def test_direct_author_remediation_successful_repair_of_primary_uses_original_re
     assert git(repo, "rev-parse", f"{result.canonical_sha}^") == decision.canonical_sha
     assert git(remote, "rev-parse", "refs/heads/main") == main
     assert git(remote, "rev-parse", "refs/heads/aios/repair/RUN-254-001") == authorization.canonical_sha
+
+
+def test_batch_and_single_overlapping_authorizations_fail_before_mutation(tmp_path):
+    from tests.test_batch_remediation import batch_fixture, git
+    fixture = batch_fixture(tmp_path)
+    initial = fixture['envelope']
+    single = IngressEnvelope(initial.format, initial.version, initial.operation,
+        {'source_run_id': fixture['selection'].source_run_id, 'finding_id': 'F1'}, initial.expected_state,
+        dict(finding_id='F1', action='CODE_FIX', reviewed_sha=fixture['selection'].reviewed_sha,
+             modification_scope=['src/product.py'], constraints=['Preserve the original contract.'],
+             verification=dict(policy='minimum-sufficient-v1', affected=['git diff --check'])))
+    before = git(fixture['remote'], 'for-each-ref', '--format=%(refname) %(objectname)')
+    with pytest.raises(AuthoringIngressError):
+        execute_ingress(single, repo=fixture['repo'])
+    assert git(fixture['remote'], 'for-each-ref', '--format=%(refname) %(objectname)') == before

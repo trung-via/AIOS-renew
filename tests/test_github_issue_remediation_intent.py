@@ -69,10 +69,15 @@ def test_other_issue_carriers_keep_existing_non_target_isolation() -> None:
     )
 
     ingress = _jobs("aios-brain-ingress.yml")
-    assert set(ingress) == {"deliver"}
-    assert ingress["deliver"]["if"] == (
-        "github.event.issue.title == '[AIOS BRAIN INGRESS]'"
+    ingress_title_guard = "github.event.issue.title == '[AIOS BRAIN INGRESS]'"
+    assert set(ingress) == {"origin_request", "origin_provenance", "deliver"}
+    assert ingress["origin_request"]["if"] == ingress_title_guard
+    assert ingress["origin_provenance"]["needs"] == "origin_request"
+    assert ingress["origin_provenance"]["if"] == (
+        "needs.origin_request.outputs.required == 'true'"
     )
+    assert ingress["deliver"]["needs"] == ["origin_request", "origin_provenance"]
+    assert ingress["deliver"]["if"] == f"always() && {ingress_title_guard}"
 
     repair = _jobs("aios-brain-repair-wakeup.yml")
     assert set(repair) == {"admit", "dispatch", "receipt"}
@@ -432,3 +437,20 @@ def test_remediation_explicit_vs_default_source_attribution(
         assert request.model == model
     if effort is not None:
         assert request.reasoning_effort == effort
+
+
+def test_version3_human_intent_preserves_exact_selected_batch():
+    from aios_renew.review import parse_batch_selection
+    from tests.test_batch_remediation import selection_data
+    selected = selection_data()
+    request = yaml.safe_load(_body(version=3, source_run_id=selected['source_run_id']))
+    request.pop('finding_id')
+    request['batch_selection'] = selected
+    parsed = carrier.parse_request(yaml.safe_dump(request))
+    assert parsed.batch_selection == parse_batch_selection(selected)
+    assert parsed.finding_id == parsed.batch_selection.batch_id
+    assert 'finding_id=' + parsed.finding_id in parsed.github_outputs()
+    changed = {**request, 'version': 2, 'finding_id': parsed.finding_id}
+    changed.pop('batch_selection')
+    with pytest.raises(carrier.GitHubIssueRemediationIntentError, match='version-3'):
+        carrier.parse_request(yaml.safe_dump(changed))

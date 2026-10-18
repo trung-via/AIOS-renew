@@ -102,13 +102,20 @@ def test_one_collection_and_four_profiles_bind_subject_toolchain_and_collection(
 
 def test_each_parallel_invocation_uses_load_and_zero_restart(monkeypatch, tmp_path) -> None:
     commands = []
+    from tests.test_verification_contract import V2_TOOLCHAIN, bound_execution
+    monkeypatch.setattr("aios_renew.parallel_verification.load_toolchain", lambda: dict(V2_TOOLCHAIN))
 
     def run(command, **kwargs):
         commands.append(command)
-        Path(kwargs["env"][PLUGIN_OUTPUT_ENV]).write_text(
-            json.dumps(observation(workers=int(command[command.index("-n") + 1]))),
-            encoding="utf-8",
-        )
+        profile = json.loads(kwargs["env"]["AIOS_V2_PROFILE"])
+        data = observation(workers=int(command[command.index("-n") + 1]))
+        from test_bp_v4_parallel_probe import NODEIDS
+        data.update(bound_execution(profile, V2_TOOLCHAIN, "a" * 40, collection_nodes=NODEIDS),
+                    profile=profile, toolchain=V2_TOOLCHAIN)
+        reports = [dict(nodeid=node.replace("\\", "/"), phase=phase, outcome="PASS")
+                   for node in sorted(NODEIDS) for phase in ("setup", "call", "teardown")]
+        data["failure_diagnostics"]["canonical"] = dict(complete=True, unstable=False, reports=reports, failure_count=0)
+        Path(kwargs["env"][PLUGIN_OUTPUT_ENV]).write_text(json.dumps(data), encoding="utf-8")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr("aios_renew.parallel_verification.subprocess.run", run)

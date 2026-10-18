@@ -10,13 +10,15 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from typing import Literal
 
 
 CONTRACT_SCHEMA = "proof-coverage-v1"
 MAPPING_SCHEMA = "proof-mapping-v1"
 REPLAY_SCHEMA = "base-replay-eligibility-v1"
 OBSERVATION_SCHEMA = "candidate-disposition-v1"
+SEMANTIC_INTAKE_SCHEMA = "task-semantic-proof-intake-v1"
 EXECUTION_DEFAULT = "candidate-first-no-reproduction"
 MAX_OBLIGATIONS = 256
 MAX_REFERENCES = 64
@@ -30,6 +32,14 @@ _DIGEST = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
 _COMMAND_TEXT = re.compile(
     r"(?:pytest(?:\s|$)|(?:python(?:\d+(?:\.\d+)?)?|py)\s+(?:-m\b|-c\b|\S+\.py(?:\s|$))"
     r"|(?:powershell|pwsh|cmd|bash|sh)\s+[-/]|git\s+|aios\s+)", re.IGNORECASE | re.ASCII,
+)
+# Intake-only lexical rejection, never a command parser or adequacy oracle.
+# Existing VP-02 public validators retain their historical language unchanged.
+_INTAKE_COMMAND_TEXT = re.compile(
+    r"(?:[&`$./\\]|[A-Za-z]:[\\/]|(?:sudo|env|pytest|python(?:\d+(?:\.\d+)?)?"
+    r"|py|git|aios|powershell|pwsh|cmd|bash|sh|curl|wget|node|npm|npx|uv|pip|pip3"
+    r"|echo|printf|Get-Content|Invoke-Expression)(?:\.exe)?(?:\s|$))",
+    re.IGNORECASE | re.ASCII,
 )
 
 
@@ -152,6 +162,138 @@ class CoverageDeclaration:
 
     contract: ProofContract
     mapping: ProofMapping
+
+
+@dataclass(frozen=True)
+class DeclarationPin:
+    id: str
+    revision: int
+    digest: str
+
+
+@dataclass(frozen=True)
+class IntakeSourceIdentity:
+    """Declared Git identities, never an authenticated Git lookup."""
+
+    source_sha: str
+    blob_sha: str
+
+
+@dataclass(frozen=True)
+class IntakeSources:
+    task: IntakeSourceIdentity
+    contract: IntakeSourceIdentity
+    mapping: IntakeSourceIdentity
+
+
+@dataclass(frozen=True)
+class SemanticProofIntake:
+    """Immutable structural declaration only; no production or proof authority."""
+
+    schema: str
+    candidate_sha: str
+    sources: IntakeSources
+    contract_pin: DeclarationPin
+    mapping_pin: DeclarationPin
+    coverage: CoverageDeclaration
+    readiness: Literal["STRUCTURALLY_COMPLETE_ONLY"] = field(default="STRUCTURALLY_COMPLETE_ONLY", init=False)
+    unestablished: tuple[str, ...] = field(default=(
+        "source_authentication", "source_currentness", "author_review_authority",
+        "semantic_adequacy", "evidence_validity", "actual_applicability",
+    ), init=False)
+    canonical_verification: Literal["NOT_PERFORMED"] = field(default="NOT_PERFORMED", init=False)
+    production_eligible: Literal[False] = field(default=False, init=False)
+    execution_authorized: Literal[False] = field(default=False, init=False)
+
+
+@dataclass(frozen=True)
+class MappingReviewAcceptance:
+    """Explicit correspondence selected outside the declaration's trust boundary."""
+
+    review_acceptance_id: str
+    target_acceptance_ids: tuple[str, ...]
+    obligation_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MappingReviewScope:
+    """In-memory eligibility pins, not a review decision or an authority carrier.
+
+    Constructing this value authenticates nothing. Only the transport's separate
+    trusted Human-selection boundary may supply it to the eligibility reader.
+    No production TASK schema or policy consumes this type.
+    """
+
+    version: int
+    review_task: TaskBinding
+    target_task: TaskBinding
+    candidate_sha: str
+    contract_pin: DeclarationPin
+    mapping_pin: DeclarationPin
+    acceptance: tuple[MappingReviewAcceptance, ...]
+
+
+def validate_mapping_review_scope(
+    scope: MappingReviewScope, *, intake: SemanticProofIntake,
+    expected_review_task: TaskBinding,
+) -> MappingReviewScope:
+    """Check exact scope correspondence; never infer meaning from AC prose.
+
+    This pure check establishes consistency only. Human selection and existing
+    independent REVIEW/Publisher authentication remain transport obligations.
+    """
+    if type(scope) is not MappingReviewScope or type(intake) is not SemanticProofIntake:
+        raise ProofCoverageError("typed mapping review scope and intake required")
+    if type(scope.version) is not int or scope.version != 1:
+        raise ProofCoverageError("unsupported mapping review eligibility version")
+
+    def task_pin(value):
+        if type(value) is not TaskBinding or type(value.acceptance_ids) is not tuple:
+            raise ProofCoverageError("immutable complete mapping review TASK pin required")
+        return _task(dict(task_id=value.task_id, revision=value.revision,
+                          envelope_digest=value.envelope_digest,
+                          acceptance_ids=list(value.acceptance_ids)))
+
+    review_task = task_pin(scope.review_task)
+    target_task = task_pin(scope.target_task)
+    if (review_task != task_pin(expected_review_task)
+            or target_task != intake.coverage.contract.task
+            or review_task.task_id == target_task.task_id
+            or _match(scope.candidate_sha, _SHA, "review.candidate_sha") != intake.candidate_sha):
+        raise ProofCoverageError("mapping review TASK/target/candidate mismatch")
+    for supplied, expected in ((scope.contract_pin, intake.contract_pin),
+                                (scope.mapping_pin, intake.mapping_pin)):
+        if (type(supplied) is not DeclarationPin
+                or _declaration_pin(asdict(supplied), "review.pin") != expected):
+            raise ProofCoverageError("mapping review contract/mapping pin mismatch")
+    if type(scope.acceptance) is not tuple or not 0 < len(scope.acceptance) <= MAX_OBLIGATIONS:
+        raise ProofCoverageError("bounded immutable mapping review correspondence required")
+    obligations = {item.id: item for item in intake.coverage.contract.obligations}
+    seen_reviews, seen_obligations, seen_targets = set(), set(), set()
+    normalized = []
+    for item in scope.acceptance:
+        if (type(item) is not MappingReviewAcceptance
+                or type(item.target_acceptance_ids) is not tuple
+                or type(item.obligation_ids) is not tuple):
+            raise ProofCoverageError("immutable mapping review acceptance required")
+        review_id = _id(item.review_acceptance_id, "review.acceptance")
+        targets = _ids(list(item.target_acceptance_ids), MAX_OBLIGATIONS, "review.targets")
+        ids = _ids(list(item.obligation_ids), MAX_OBLIGATIONS, "review.obligations")
+        if (review_id not in review_task.acceptance_ids or review_id in seen_reviews
+                or any(identity not in obligations or identity in seen_obligations for identity in ids)):
+            raise ProofCoverageError("unknown or duplicate mapping review correspondence")
+        if set(targets) != {ac for identity in ids for ac in obligations[identity].acceptance_ids}:
+            raise ProofCoverageError("mapping review acceptance/obligation correspondence mismatch")
+        seen_reviews.add(review_id)
+        seen_obligations.update(ids)
+        seen_targets.update(targets)
+        normalized.append(MappingReviewAcceptance(review_id, targets, ids))
+    if (seen_reviews != set(review_task.acceptance_ids) or seen_targets != set(target_task.acceptance_ids)
+            or seen_obligations != obligations.keys()):
+        raise ProofCoverageError("incomplete mapping review acceptance correspondence")
+    return MappingReviewScope(1, review_task, target_task, intake.candidate_sha,
+                              intake.contract_pin, intake.mapping_pin,
+                              tuple(sorted(normalized, key=lambda item: item.review_acceptance_id)))
 
 
 @dataclass(frozen=True)
@@ -424,6 +566,71 @@ def validate_proof_mapping(contract_data: object, mapping_data: object, *,
         if set(proof.claims) != mapped_claims[proof.id]:
             raise ProofCoverageError("mapping: unsupported extra semantic claims")
     return CoverageDeclaration(contract, mapping)
+
+
+def _declaration_pin(value: object, path: str) -> DeclarationPin:
+    data = _object(value, {"id", "revision", "digest"}, path)
+    return DeclarationPin(_id(data["id"], f"{path}.id"),
+                          _int(data["revision"], MAX_REVISION, f"{path}.revision"),
+                          _match(data["digest"], _DIGEST, f"{path}.digest"))
+
+
+def _intake_sources(value: object) -> IntakeSources:
+    data = _object(value, {"task", "contract", "mapping"}, "sources")
+    sources = {}
+    for name in ("task", "contract", "mapping"):
+        source = _object(data[name], {"source_sha", "blob_sha"}, f"sources.{name}")
+        sources[name] = IntakeSourceIdentity(**{
+            key: _match(source[key], _SHA, f"sources.{name}.{key}")
+            for key in ("source_sha", "blob_sha")
+        })
+    return IntakeSources(**sources)
+
+
+def validate_semantic_proof_declaration(data: object, *, expected_task: object,
+                                      expected_candidate_sha: object, expected_sources: object,
+                                      expected_contract: object, expected_mapping: object) -> SemanticProofIntake:
+    """Validate only the explicit future intake schema, without admission or I/O.
+
+    All five expected inputs are mandatory independent caller pins. They must
+    originate from a future trusted, current, authenticated source/review owner;
+    copying them from this declaration does not establish that trust. This API
+    checks consistency only and is never called by ordinary TASK validation.
+    Only decoded plain dictionaries/lists are accepted, not YAML, commands,
+    paths, loaders, callbacks, a Task instance or a self-certified trust flag.
+    """
+    root = _object(data, {"schema", "task", "candidate_sha", "sources", "contract", "mapping"},
+                   "semantic_intake")
+    _choice(root["schema"], (SEMANTIC_INTAKE_SCHEMA,), "semantic_intake.schema")
+    task = _task(root["task"])
+    if task != _task(expected_task):
+        raise ProofCoverageError("semantic_intake: stale or conflicting TASK binding")
+    candidate = _match(root["candidate_sha"], _SHA, "semantic_intake.candidate_sha")
+    if candidate != _match(expected_candidate_sha, _SHA, "expected_candidate_sha"):
+        raise ProofCoverageError("semantic_intake: stale or conflicting candidate pin")
+    sources = _intake_sources(root["sources"])
+    if sources != _intake_sources(expected_sources):
+        raise ProofCoverageError("semantic_intake: stale or conflicting source pins")
+    contract_pin = _declaration_pin(expected_contract, "expected_contract")
+    mapping_pin = _declaration_pin(expected_mapping, "expected_mapping")
+
+    # The existing validator is the sole coverage/mapping/equivalence algorithm.
+    coverage = validate_proof_mapping(root["contract"], root["mapping"],
+                                      expected_task=expected_task, expected_mapping=expected_mapping)
+    contract = coverage.contract
+    if DeclarationPin(contract.id, contract.revision, contract.digest) != contract_pin:
+        raise ProofCoverageError("semantic_intake: stale or conflicting contract pin")
+    if any(item.conditions.candidate_sha != candidate for item in contract.obligations):
+        raise ProofCoverageError("semantic_intake: conflicting obligation candidate")
+    # This additional v1 intake guard changes no historical VP-02 validator.
+    claims = tuple(item.claim for item in contract.obligations) + tuple(
+        claim for proof in coverage.mapping.proofs for claim in proof.claims)
+    semantic_texts = tuple(text for claim in claims for text in (claim.id, claim.text)) + tuple(
+        item.id for item in (*contract.obligations, *coverage.mapping.proofs))
+    if any(_INTAKE_COMMAND_TEXT.match(text) or any(token in text for token in ("&&", "||", "$(", "`"))
+           for text in semantic_texts):
+        raise ProofCoverageError("semantic_intake: executable invocation is not a semantic declaration")
+    return SemanticProofIntake(SEMANTIC_INTAKE_SCHEMA, candidate, sources, contract_pin, mapping_pin, coverage)
 
 
 def _bound_obligation(data: dict, coverage: CoverageDeclaration) -> ProofObligation:

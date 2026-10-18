@@ -3,13 +3,74 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import os
+from pathlib import Path
+import sys
 
 import pytest
+
+from aios_renew.parallel_verification import (
+    ProbeError, effective_pytest_profile, installed_git_identity, load_toolchain,
+)
 
 
 _MAX_UNCHANGED_PARAMETER_LENGTH = 512
 _MAX_NODEID_LENGTH = 8192
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config: pytest.Config) -> None:
+    """Enforce the effective population even when addopts is overridden."""
+    try:
+        load_toolchain()
+        if not (config.pluginmanager.hasplugin("xdist") or config.pluginmanager.hasplugin("xdist.plugin")):
+            raise ProbeError("pytest requires the active compatible xdist plugin")
+        if any(os.environ.get(name) for name in (
+            "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES")):
+            raise ProbeError("pytest inherited shared writable Git repository state")
+        expected = effective_pytest_profile(config.invocation_params.args)
+        if bool(config.option.collectonly) != expected["collect_only"]:
+            raise ProbeError("hidden collection-only override")
+        worker = getattr(config, "workerinput", None)
+        if worker is None and not expected["collect_only"]:
+            if (config.getoption("numprocesses", default=None) != expected["workers"]
+                    or config.getoption("dist", default=None) != expected["distribution"]
+                    or str(config.getoption("maxworkerrestart", default=None)) != "0"
+                    or config.getoption("maxprocesses", default=None) is not None):
+                raise ProbeError("actual pytest options disagree with fixed worker profile")
+        elif worker is not None and worker.get("workercount") != expected["workers"]:
+            raise ProbeError("actual xdist worker population disagrees with profile")
+        config._aios_execution_profile = expected
+        identity = installed_git_identity()
+        config._aios_git_identity = identity
+        if os.name == "nt":
+            previous = os.environ.get("PATH")
+            os.environ["PATH"] = str(Path(identity["git_executable"]).parent) + os.pathsep + (previous or "")
+            def restore_path():
+                if previous is None:
+                    os.environ.pop("PATH", None)
+                else:
+                    os.environ["PATH"] = previous
+            config.add_cleanup(restore_path)
+        # Always observe controller completion/crashes, including ordinary CLI.
+        # Keep the top-level module separate from tests' unit-hook instances.
+        name = "bp_v4_probe_plugin"
+        path = Path(__file__).with_name(name + ".py").resolve()
+        plugin = config.pluginmanager.getplugin(name) or sys.modules.get(name)
+        if plugin is not None and Path(plugin.__file__).resolve() != path:
+            raise ProbeError("conflicting pytest observer source")
+        if not config.pluginmanager.hasplugin(name):
+            if plugin is None:
+                spec = importlib.util.spec_from_file_location(name, path)
+                if spec is None or spec.loader is None:
+                    raise ProbeError("missing pytest execution observer")
+                plugin = importlib.util.module_from_spec(spec)
+                sys.modules[name] = plugin
+                spec.loader.exec_module(plugin)
+            config.pluginmanager.register(plugin, name)
+    except (ProbeError, OSError, ValueError) as exc:
+        raise pytest.UsageError(str(exc)) from exc
 
 
 def pytest_make_parametrize_id(
@@ -50,30 +111,12 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def isolate_runtime_restart_marker() -> None:
-    """Isolate parent Runtime state and trim per-process Git startup work."""
+    """Isolate the parent Runtime marker without changing Git semantics."""
 
     marker = "AIOS_RESTART_ATTEMPTED"
     previous_marker = os.environ.pop(marker, None)
-    git_environment = {
-        "GIT_OPTIONAL_LOCKS": "0",
-        # System attributes are not part of the test fixtures.  Keep ordinary
-        # system/global config resolution intact: historical and temporary
-        # repositories may rely on it for Git identity and other semantics.
-        "GIT_ATTR_NOSYSTEM": "1",
-    }
-    previous_git_environment = {
-        name: os.environ.get(name) for name in git_environment
-    }
-    # Read-only Git commands otherwise refresh and rewrite thousands of tiny
-    # fixture indexes. Required ref/index locks remain enabled by Git.
-    os.environ.update(git_environment)
     try:
         yield
     finally:
         if previous_marker is not None:
             os.environ[marker] = previous_marker
-        for name, previous in previous_git_environment.items():
-            if previous is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = previous

@@ -1,0 +1,156 @@
+task_id: TASK-380
+revision: 1
+goal: 'Complete the next bounded Lean VP L1 authority slice: authenticate an exact
+  Human-selected, distinct mapping-review TASK and semantic source association through
+  the existing GitHub Human/Runtime ingress boundary, then allow TASK-378''s read-only
+  eligibility reader to consume this independently authenticated selection while retaining
+  the existing exact canonical Reviewer PASS and Publisher publication requirements.
+  KA-01 remains NOT_ACTIVATED.'
+problem: TASK-376 structurally validates semantic proof intake, TASK-377 authenticates
+  Git sources and TASK-378 validates an independently selected mapping-review lineage,
+  but its real private Human-selection source intentionally returns None. Neither
+  an ordinary engineering REVIEW PASS, a caller-supplied review TASK selector nor
+  a mapping-declared ref can prove a Human's separately authorized mapping-review
+  choice. Provide this missing minimal authority association without creating a second
+  Reviewer, Publisher, scheduler, approval registry or lifecycle source.
+assumptions:
+- Fresh canonical main SHA 3287c568a5c5702e657cc7167a8e2581545627d9 contains exact
+  TASK-378 RUN-378-004 REVIEW-378-004 DELTA PASS and separately published TASK-379
+  RUN-379-002 REVIEW-379-001 PRIMARY PASS; their lineages are not reopened.
+- Human explicitly approved authoring this Lean VP L1 TASK-380 after roadmap continuation.
+  No Executor, model, effort, per-RUN KA-01 opt-in or production cutover is delegated
+  by that approval.
+- Exact selected TASK_AUTHORING audit is tca-1 v1 normalized digest 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2;
+  Brain used CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE with final closure, keeping
+  authoring cognitive support outside mutation truth.
+- Reuse current allowlisted Human GitHub Issue ingress, existing Runtime-owned canonical
+  CAS, immutable TASK/RUN/RESULT/EVIDENCE/REVIEW, existing independent Reviewer/Publisher
+  and TASK-378 non-operative read-only API; a transport receipt alone cannot establish
+  authority.
+- An authenticated Human selection is necessary but never sufficient for semantic
+  adequacy or independent Reviewer/PUBLISHER PASS. A real selected mapping-review
+  TASK may not yet exist, so NOT_ESTABLISHED is the truthful outcome in its absence.
+- Use standing Human-selected LEGACY_REPOSITORY_DEFAULT_ROUTE and minimum-sufficient-v1
+  verification, preserving historical V1/V2 decoding.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-L1-SEMANTIC-PROOF-INTAKE.md
+  - docs/AIOS-LEAN-VP-L1-CANONICAL-SOURCE-BINDING.md
+  - docs/AIOS-LEAN-VP-L1-REVIEW-AUTHORITY.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-378.yaml
+  - .ai/tasks/TASK-379.yaml
+  - src/aios_renew/task.py
+  - src/aios_renew/review.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/correction_frontier.py
+  - tests/test_lean_vp_l1_source_binding.py
+  - tests/test_proof_coverage_contract.py
+  modify:
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/review_transport.py
+  - .github/workflows/aios-brain-ingress.yml
+  - tests/test_github_issue_ingress.py
+  - tests/test_authoring_ingress.py
+  - tests/test_lean_vp_l1_review_authority.py
+  - tests/test_lean_vp_l1_human_selection.py
+  - docs/AIOS-LEAN-VP-L1-HUMAN-REVIEW-SELECTION.md
+non_goals:
+- No new Reviewer, Publisher, approval database, independent semantic issuer, trust-root
+  registry, generic lifecycle router, Executor selector, scheduler, autonomous TASK
+  authoring, background agent or second Git transport.
+- No TASK schema/policy production activation, checkpoint, evidence-reuse scheduler,
+  intra-PRIMARY loop, G6 Human opt-in, publication shortcut, automatic roadmap advancement
+  or downstream adoption.
+- No retroactive mutation of TASK/RUN/RESULT/EVIDENCE/REVIEW/REPAIR/REMEDIATION; no
+  replacement of existing V1/V2 parsers or proof policy.
+- No claim that Human selection alone establishes adequate reviewed mapping or that
+  synthetic tests constitute actual Human approval.
+constraints:
+  hard:
+  - Reuse the current repository-owned allowlisted Human GitHub ingress with authenticated
+    actor/event provenance and one Runtime-owned exact canonical writer/CAS. A strictly
+    versioned bounded selection record identifies Human choice only; no new lifecycle
+    authority, hidden persisted model memory or general purpose approval registry.
+  - Bind exact Human selection event identity, distinct mapping-review TASK ID/revision/full
+    acceptance/source, target TASK/revision/candidate, contract and mapping source
+    SHA/blob/digests, and immutable source identity. Revalidate currentness and require
+    exact conflict-free idempotence.
+  - Reject missing/forged actor, copied body, wrong TASK or candidate, conflicting
+    selection, stale main/ref, review-subject substitution, partial Reviewer lineage
+    and unauthorized changed contract; do not accept caller-supplied public mapping-review
+    selector.
+  - Retain TASK-378 existing independently authenticated complete mapping-review RUN/RESULT/EVIDENCE/PRIMARY
+    REVIEW PASS/Publisher inclusion and truthful Git-delta/modify-scope checks as
+    mandatory distinct predicates; missing selection or proof remains NOT_ESTABLISHED.
+  - Exercise separate Human selection vs real complete authority positive/negative
+    cases and existing ingress regression checks. Verification is Runtime-owned minimum-sufficient-v1
+    focused commands only, with no full suite, invented PASS or Executor-specified
+    HOW.
+acceptance:
+- id: AC1
+  condition: One bounded versioned ingress contract accepts an exact independently
+    authenticated allowlisted Human selection of a separately scoped mapping-review
+    TASK, rejecting caller assertions and copied/spoofed actor records as selection
+    authority.
+- id: AC2
+  condition: Authenticated selection unambiguously binds exact Human event provenance,
+    target and mapping-review TASK identities/revisions/full acceptance, candidate
+    and contract/mapping Git source pins, with deterministic conflicting-input rejection.
+- id: AC3
+  condition: Existing Runtime-owned writer records only the immutable selection through
+    exact Git CAS/currentness and identical replay, while stale, duplicate divergent
+    or competing selection fails closed without any review/publication result.
+- id: AC4
+  condition: The already published TASK-378 read-only authority reader consumes only
+    independently authenticated selection without exposing a caller-controlled review
+    TASK selector or a new authority provider.
+- id: AC5
+  condition: Reader elevation still requires a distinct exact mapping-review TASK,
+    authentic immutable RUN/RESULT/EVIDENCE, full independently judged PRIMARY REVIEW
+    PASS, Publisher ancestry and current sources; ordinary engineering PASS and Human
+    selection alone never suffice.
+- id: AC6
+  condition: Changed mapping requires actual truthful Git delta and selected review
+    TASK scope.modify; changed contract requires explicit scope.modify, whereas unchanged
+    contract with scope.inspect remains permitted under all other authentic checks.
+- id: AC7
+  condition: Missing, ambiguous, forged, incomplete, stale or conflicting selection/review
+    subjects yield a bounded truthful NOT_ESTABLISHED or an existing strict invalid-source
+    error, with no fallback, automatic task selection or Git mutation during read-only
+    observation.
+- id: AC8
+  condition: Focused fixtures cover authenticated Human selection plus separately
+    authenticated published Reviewer positive lineage, and counterexamples for spoofed
+    actor, selector swaps, stale/moved ref, conflicting replay, incomplete decision,
+    inspect-only changed contract and read-only side effects.
+- id: AC9
+  condition: Existing AUTHOR_TASK/AUTHOR_REPAIR/AUTHOR_REMEDIATION/SUBMIT_REVIEW,
+    their Issue transport authentication and legacy V1/V2 decoding remain backward
+    compatible; selection cannot impersonate lifecycle operations.
+- id: AC10
+  condition: Documentation and typed outputs distinguish Human intent, Git source
+    consistency, actual Reviewer/Publisher semantics, canonical proof, future version
+    admission, KA-01 opt-in and production activation without asserting any unobserved
+    status.
+- id: AC11
+  condition: Changes stay within the nine enumerated file paths, with no second Runtime,
+    Reviewer, Publisher, generic router, evidence store or automatic ROADMAP advancement.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_lean_vp_l1_human_selection.py tests/test_lean_vp_l1_review_authority.py
+    tests/test_github_issue_ingress.py tests/test_authoring_ingress.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

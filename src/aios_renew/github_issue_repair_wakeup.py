@@ -8,7 +8,7 @@ import os
 import re
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -287,6 +287,10 @@ def admit_event(
             "event Issue body exceeds the configured bound"
         )
     request = parse_request(body_bytes, profile_policy=profile_policy)
+    if request.executor == "AUTO" and (
+        event["sender"].get("type") != "User" or issue["user"].get("type") != "User"
+    ):
+        raise GitHubIssueRepairWakeupError("AUTO requires an authenticated Human Issue sender/author")
     return RepairWakeupRequest(
         request.repair_dispatch_id,
         request.failed_run_id,
@@ -319,7 +323,7 @@ def parse_request(
         request.get("format") != _REQUEST_FORMAT
         or isinstance(version, bool)
         or not isinstance(version, int)
-        or version != 2
+        or version not in (2, 3)
     ):
         raise GitHubIssueRepairWakeupError(
             "unsupported REPAIR wakeup request format or version"
@@ -342,19 +346,21 @@ def parse_request(
     if not isinstance(repair_sha, str) or not REPAIR_SHA_PATTERN.fullmatch(repair_sha):
         raise GitHubIssueRepairWakeupError("invalid repair_sha")
     if executor is not None and (
-        not isinstance(executor, str) or executor not in SUPPORTED_EXECUTORS
+        not isinstance(executor, str)
+        or executor not in SUPPORTED_EXECUTORS | ({"AUTO"} if version == 3 else set())
     ):
         raise GitHubIssueRepairWakeupError("unsupported executor")
     if requested_model is not None and not isinstance(requested_model, str):
         raise GitHubIssueRepairWakeupError("invalid model selection")
     if requested_effort is not None and not isinstance(requested_effort, str):
         raise GitHubIssueRepairWakeupError("invalid reasoning_effort selection")
-    if executor is None and (requested_model is not None or requested_effort is not None):
+    if executor in (None, "AUTO") and (requested_model is not None or requested_effort is not None):
         raise GitHubIssueRepairWakeupError(
-            "model/effort selection requires a coding Executor"
+            "AUTO forbids manual model/effort; choose an explicit coding Executor"
+            if executor == "AUTO" else "model/effort selection requires a coding Executor"
         )
     profile = None
-    if executor is not None:
+    if executor not in (None, "AUTO"):
         try:
             resolved_policy = _resolve_profile_policy(profile_policy)
             profile = bind_execution_profile(
@@ -376,6 +382,121 @@ def parse_request(
         model_source=profile.model_source if profile is not None else None,
         effort_source=profile.effort_source if profile is not None else None,
     )
+
+
+def authenticated_delivery(
+    *, policy_path: Path, profile_policy: ExecutionProfilePolicy | Path | str | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> RepairWakeupRequest:
+    """Recheck GitHub-owned event proof; input strings never confer Human authority.
+
+    A reusable Issue delivery may have a Bot runner actor, but its original opened
+    event must still be owned by the allowlisted Human. A Bot workflow_dispatch
+    cannot manufacture that event or opt in to coding AUTO.
+    """
+    env = os.environ if environ is None else environ
+    policy = load_policy(policy_path)
+    if (env.get("GITHUB_REPOSITORY") != policy.repository
+            or env.get("AIOS_CONTROL_REF", env.get("GITHUB_REF")) != "refs/heads/main"
+            or not REPAIR_SHA_PATTERN.fullmatch(env.get("AIOS_CONTROL_SHA", ""))):
+        raise GitHubIssueRepairWakeupError("delivery repository/main provenance mismatch")
+    actor = env.get("AIOS_DELIVERY_ACTOR", "")
+    event_name = env.get("AIOS_DELIVERY_EVENT", "")
+    event_path = Path(env.get("GITHUB_EVENT_PATH", ""))
+    if event_name == "issues":
+        if actor not in (*policy.authorized_actors, "github-actions[bot]"):
+            raise GitHubIssueRepairWakeupError("delivery actor is not authorized")
+        request = admit_event(event_path, policy, profile_policy=profile_policy)
+        event = _json_no_duplicates(_read_bounded_file(
+            event_path, maximum=_MAX_EVENT_FILE_BYTES, kind="event"
+        ))
+        if (event["sender"].get("type") != "User"
+                or event["issue"]["user"].get("type") != "User"):
+            raise GitHubIssueRepairWakeupError("AUTO requires authenticated Human Issue proof")
+    elif event_name == "workflow_dispatch" and actor in policy.authorized_actors:
+        event = _json_no_duplicates(_read_bounded_file(
+            event_path, maximum=_MAX_EVENT_FILE_BYTES, kind="event"
+        ))
+        sender = _mapping(event.get("sender"), "dispatch sender")
+        inputs = _mapping(event.get("inputs"), "dispatch inputs")
+        if (sender.get("login") != actor or sender.get("type") != "User"
+                or _mapping(event.get("repository"), "dispatch repository").get("full_name") != policy.repository
+                or event.get("ref") not in ("main", "refs/heads/main")):
+            raise GitHubIssueRepairWakeupError("dispatch Human proof mismatch")
+        origin_fields = {"origin_workflow_run_id", "origin_run_attempt", "origin_artifact_id"}
+        if (set(inputs) - (_BASE_REQUEST_KEYS - {"format", "version"} | {"model_source", "effort_source"} | origin_fields)
+                or any(inputs.get(k) for k in origin_fields)):
+            raise GitHubIssueRepairWakeupError("dispatch contains unsupported selection inputs")
+        if any(value is not None and not isinstance(value, str) for value in inputs.values()):
+            raise GitHubIssueRepairWakeupError("dispatch selection inputs must be strings")
+        # workflow_dispatch includes empty optional strings rather than YAML null.
+        body = {"format": _REQUEST_FORMAT, "version": 3}
+        for key in _BASE_REQUEST_KEYS - {"format", "version"}:
+            body[key] = inputs.get(key) or None
+        request = parse_request(yaml.safe_dump(body), profile_policy=profile_policy)
+        request = replace(request, actor=actor)
+        # Exact source fields, when carried, are validated below as well.
+        for key in ("model", "reasoning_effort", "model_source", "effort_source"):
+            if (inputs.get(key) or "") != env.get("AIOS_" + key.upper(), ""):
+                raise GitHubIssueRepairWakeupError("dispatch profile provenance mismatch")
+        if request.executor in (None, "AUTO"):
+            if inputs.get("model_source") or inputs.get("effort_source"):
+                raise GitHubIssueRepairWakeupError("AUTO/executorless delivery forbids profile provenance inputs")
+        else:
+            try:
+                bind_execution_profile(
+                    run_id=request.repair_dispatch_id, executor=request.executor,
+                    model=inputs.get("model") or None,
+                    reasoning_effort=inputs.get("reasoning_effort") or None,
+                    model_source=inputs.get("model_source") or None,
+                    effort_source=inputs.get("effort_source") or None,
+                    policy=_resolve_profile_policy(profile_policy),
+                )
+            except ExecutionProfileError as exc:
+                raise GitHubIssueRepairWakeupError("dispatch profile provenance is invalid") from exc
+    else:
+        raise GitHubIssueRepairWakeupError("coding selection requires current Human event proof")
+    for key in ("repair_dispatch_id", "failed_run_id", "repair_sha", "executor"):
+        if (getattr(request, key) or "") != env.get("AIOS_" + key.upper(), ""):
+            raise GitHubIssueRepairWakeupError("Human request/REPAIR selector mismatch")
+    for key in ("model", "reasoning_effort", "model_source", "effort_source"):
+        supplied = env.get("AIOS_" + key.upper(), "")
+        expected = getattr(request, key) or ""
+        if event_name == "issues":
+            if supplied != expected:
+                raise GitHubIssueRepairWakeupError("Human request/profile mismatch")
+    return request
+
+
+def delivery_main() -> int:
+    """Self-host pre-AIOS proof check, using the exact materialized control source."""
+    try:
+        authenticated_delivery(
+            policy_path=Path(__file__).resolve().parents[2] / ".ai/brain-repair-wakeup-carriers.yaml",
+        )
+    except GitHubIssueRepairWakeupError as exc:
+        # Bounded parser reasons carry no private payload, provider trace, or RUN claim.
+        print(render_rejection(exc), file=sys.stderr)
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with Path(summary).open("a", encoding="utf-8") as stream:
+                stream.write(render_rejection(exc) + "\n")
+        return 1
+    return 0
+
+
+def source_delivery_main() -> int:
+    """Hosted observation of the actual reusable/manual workflow attempt.
+
+    This consumes only GitHub-owned event context and carries no admission,
+    Executor selection, dispatch or retry authority. The execute job retains
+    its independent existing provenance and Runtime gates.
+    """
+    from .operational_receipt import record_repair_workflow_source
+    return 0 if record_repair_workflow_source(os.environ.get("GITHUB_EVENT_PATH", ""), lane="delivery",
+        delivery_id=os.environ.get("AIOS_REPAIR_DISPATCH_ID", ""),
+        failed_run_id=os.environ.get("AIOS_FAILED_RUN_ID", ""),
+        repair_sha=os.environ.get("AIOS_REPAIR_SHA", "")) else 1
 
 
 def _bounded_text(value: str) -> str:
@@ -460,9 +581,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         _write_text(args.output, request.github_outputs())
         _write_text(args.receipt, render_admitted(request))
+        from .operational_receipt import record_repair_workflow_source
+        record_repair_workflow_source(args.event, lane="wakeup", delivery_id=request.repair_dispatch_id,
+            failed_run_id=request.failed_run_id, repair_sha=request.repair_sha)
     except GitHubIssueRepairWakeupError as exc:
         from .brain_attention import observe_carrier_rejection
         observe_carrier_rejection(args.event, "REPAIR")
+        print(render_rejection(exc), file=sys.stderr)
         try:
             _write_text(args.receipt, render_rejection(exc))
         except GitHubIssueRepairWakeupError:

@@ -3,19 +3,21 @@
 | Identity / status | Value |
 | --- | --- |
 | Amendment identity | **KA-01** |
-| Document version | **1.0** |
+| Document version | **1.1 — prospective activation-sequence amendment** |
 | Normative status | **HUMAN_RATIFIED_PROSPECTIVE_SPEC** |
 | Runtime activation status | **NOT_ACTIVATED** |
-| Human ratification date | **2026-10-09** |
-| Ratified scope | Prospective normative design, audited sections A–D; no constitutional change or production activation. |
+| Original Human ratification date | **2026-10-09** — KA-01 v1.0, sections A–D. |
+| Human activation-sequence decision | **2026-10-18** — v1.1 delta described in A.1 and D.1; no production activation. |
+| Ratified scope | Prospective normative design and the expressly authorized activation-sequence delta; no constitutional change. |
 | Canonical repository | `trung-via/AIOS-renew` |
-| Specification publication contract | `TASK-329`, revision `1` |
+| Historical v1.0 publication | `TASK-329 r1` / `REVIEW-329-001`; immutable reviewed/published version. |
+| v1.1 amendment publication contract | `TASK-374`, revision `1`; independent Runtime/Reviewer/Publisher gates still required. |
 
 ## A. Identity, authority and legal effect
 
 ### A.1 Separate prospective amendment
 
-KA-01 records the separately Human-ratified prospective Kernel design for:
+KA-01 v1.1 records the separately Human-ratified prospective Kernel design for:
 
 1. A future version of TASK authoring that expresses reviewed semantic proof
    obligations with a reviewed deterministic coverage mapping, in place of
@@ -26,12 +28,33 @@ KA-01 records the separately Human-ratified prospective Kernel design for:
 Human ratification establishes authority for this narrowly defined future
 normative design. It is not an execution admission, a Runtime verification
 result, a Reviewer verdict, Publisher publication, a live applicability
-witness, or consent to activate an implementation. The normative addendum must
-itself pass the independent publication gate in D.1. Its operative extension
-applies **only to future versioned Human-opted-in work after every separate
-engineering, measurement, conformance and activation gate in D.1 is met**.
-Until then the runtime activation status remains **NOT_ACTIVATED** and the
-existing policy continues without substitution.
+witness, or per-RUN consent to activate an implementation. This exact amended
+version must itself pass the independent normative publication gate in D.1.
+Its operative extension applies **only to future versioned Human-opted-in work
+after eligible L1–L3 core engineering is actually implemented, independently
+Runtime-verified, semantically reviewed and published, and exact finite Human
+opt-in is authenticated at admission**. D.1 G4/G5 are mandatory L4 obligations
+after activation, not prerequisites for the production episodes they measure.
+The runtime activation status here remains **NOT_ACTIVATED**; this amendment
+does not change current production behavior.
+
+**Exact prospective change authorized by Human on 2026-10-18:** remove the
+requirement to complete L4 / VP-06 / VP-07 real production-episode conformance
+before activation. Proceed L1 → L2 → L3, permit bounded production opt-in only
+after the eligible reviewed/published core exists, then use subsequent lawful
+production TASK episodes for L4 measurement and full conformance. This is a
+policy/risk decision about sequencing, not evidence of feature readiness,
+permission to run an unimplemented loop, or approval of an unreviewed change.
+
+KA-01 **v1.0** remains the immutable version ratified on 2026-10-09 and separately
+reviewed/published through `TASK-329 r1` / `REVIEW-329-001`. Its original C.3(1)
+required activation for production continuation; D.1 G3 included VP-03..VP-07,
+G4 required VP-01/VP-06 measurement reconciliation, G5 required real VP-07
+AC-01..AC-36 conformance, and G6 followed G1..G5. **Version 1.1 prospectively
+supersedes that activation sequencing only**, through its own publication and
+future versioned admissions. The published v1.0 source and its original
+TASK/review/publication lineage remain identifiable in immutable Git history;
+this document does not revise their meaning or their gates retroactively.
 
 This document version is not a TASK schema version or an admitted verification
 policy name. `HUMAN_RATIFIED_PROSPECTIVE_SPEC` and `NOT_ACTIVATED` describe this
@@ -52,15 +75,16 @@ all unaffected clauses and boundaries remain in force.
 No existing or already admitted TASK, RUN, RESULT, FAILURE, EVIDENCE, REVIEW,
 REPAIR or REMEDIATION acquires KA-01 semantics. Historical identities, subjects,
 schemas, verdicts and successful or failed lineage must not be relabeled,
-migrated in place, reopened or overwritten. Existing V1/V2 decoding and current
-`minimum-sufficient-v2` behavior remain intact, including for `TASK-329`.
+migrated in place, reopened or overwritten. Existing V1/V2 decoding and each
+admitted policy remain intact, including historical `minimum-sufficient-v2`
+behavior for `TASK-329`. No existing work automatically opts into v1.1.
 
 ### A.2 Supporting design and authority separation
 
 The [VP architecture v1.1/v1.2](AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md),
 [TASK-326 proof coverage foundation](AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md) and
 [TASK-328 intra-RUN foundation](AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md)
-are supporting design. The immediate predecessor is `TASK-328 r1`,
+are supporting design. The immediate foundation predecessor to v1.0 is `TASK-328 r1`,
 `RUN-328-002`, exact reviewed/published source
 `19037a71536f65327c541668527c099099af6efe`, with `REVIEW-328-002 PASS`.
 That predecessor remains an offline **NOT_ACTIVATED** foundation. Its synthetic
@@ -107,7 +131,7 @@ the frozen rule for legacy work. No row grants current production authority.
 | §9 Core Kernel Laws | All fifteen laws remain constraints; no authority, evidence, lineage or scope exception. | C makes those laws explicit for preterminal continuity. The law-by-law map below bounds their application; none is waived. |
 | §10 Minimal Runtime Responsibilities | Thin deterministic coordination, one mutation authority, SHA/evidence binding, package validation and integration safety. Runtime is no Planner Agent, Verifier Agent, second Reviewer or multi-agent supervisor. | The existing Runtime may enforce authenticated checkpoint/currentness/applicability, finite resources and idempotent factual feedback under one scheduler. It must not infer semantic dependencies, prescribe correction strategy or choose HOW/model/Executor. No second coordination authority is created. |
 | §11 Explicit Non-Goals for Kernel v0.1 | Every exclusion remains for frozen/legacy work. Automatic reroute, model routing, generalized retry/failover, autonomous repair, extra agents, dependency orchestration and token-budget machinery inside TASK remain excluded. | **Only the automatic-retry exclusion receives a bounded exception:** future versioned Human-opted-in, admitted ACTIVE PRIMARY, preterminal factual failed-proof feedback to the same sticky Executor, within the original scope, live lease and finite consent. C's guards are conjunctive. This is no permission for automatic reroute, Executor/model failover, transport retry authority, terminal repair or general retry loops. |
-| §12 Known Risks / Future Considerations | Listed possibilities are not v0.1 requirements; added complexity requires measured need and separate promotion by proper authority. | Ratification defines a prospective contract, not measured need, implementation success or production readiness. VP-01 reconciliation, VP-06 measurement and VP-07 real conformance remain gates; no feature is promoted merely because this text exists. |
+| §12 Known Risks / Future Considerations | Listed possibilities are not v0.1 requirements; added complexity requires measured need and separate promotion by proper authority. | Ratification defines a prospective contract, not measured need, implementation success or production readiness. Under the explicit 2026-10-18 v1.1 risk decision, D.1 retains eligible L1–L3 core safety before production and VP-01/VP-06 measurement plus full VP-07 real conformance as unproved L4 postactivation commitments; no feature or measured benefit is promoted merely because this text exists. |
 
 The §9 laws apply as follows:
 
@@ -137,8 +161,10 @@ decoder MUST distinguish that version from legacy V1/V2 without auto-detection,
 heuristic upgrading or fallback interpretation. Unsupported versions or
 ambiguous semantics fail closed. A semantic reference MUST NOT be sent to the
 V2 command runner, even if it happens to fit V2's nonempty scalar-list shape.
-Current TASK decoding and command-driven `minimum-sufficient-v2` remain active
-for existing/non-opted-in work; historical read-only decoding stays exact.
+Existing/non-opted-in work retains its actual admitted command-driven policy
+and exact V1/V2 decoding, including historical `minimum-sufficient-v2` behavior.
+The published `minimum-sufficient-v1` comparison baseline is not replaced by
+this amendment; historical read-only decoding stays exact.
 
 Brain authors semantic claims, acceptance coverage, required distinguishing
 conditions, scope and proof adequacy. Every required obligation has a stable
@@ -278,8 +304,17 @@ guards and the integrity and single consumption of the originating `K_i`/`F_i`.
 The new candidate's progress is checked at acceptance. A successful new
 checkpoint need not contain a FAIL: it may finalize through C.2.
 
-1. The exact future version is activated under D.1, this future work explicitly
-   opted in, and R remains the same admitted ACTIVE PRIMARY with no terminal.
+1. For **production same-RUN continuation**, the exact eligible published
+   implementation/version is activated under D.1 G1/G2/G3/G6, this future work
+   explicitly opted in at admission, and R remains the same admitted ACTIVE
+   PRIMARY with no terminal. **Implementing and independently Runtime-verifying
+   L3 under an existing admitted engineering TASK does not require production
+   continuation to be previously ACTIVE.** Ordinary offline tests and Runtime
+   verification may exercise the implemented L3 core and its guards through the
+   existing Runtime under that TASK's original policy/authority. Such proof
+   neither grants its engineering RUN a new production continuation permission
+   nor authorizes preimplementation RUN mutation. Full VP-06/VP-07 production
+   episodes follow eligible activation; they cannot be required to grant it.
 2. Authenticated current TASK/RUN/base/contract/mapping/candidate/feedback
    bindings and trustworthy committed clean state are available. At least one
    complete, stable, non-conflicting FAIL of an approved **candidate** proof is
@@ -477,46 +512,107 @@ authority hidden in crash handling.
 
 ## D. Publication, engineering, measurement, activation and rollback
 
-### D.1 Separate conjunctive gates
+### D.1 Version 1.1 activation dependency and postactivation obligations
 
-Each gate has a distinct owner and artifact. Completing an earlier gate never
-asserts completion of a later one. Missing any gate means **NOT_ACTIVATED**;
-no policy substitution or live preterminal continuation is permitted.
+Each gate retains a distinct owner and artifact. In **v1.1**, G1/G2 establish
+the lawful historical authority/publication and this new version's normative
+eligibility; G3 establishes actual eligible L1–L3 implementation and focused
+core safety proof; G6 authenticates exact prospective Human activation/opt-in.
+These activation requirements are conjunctive. Missing or unknown eligibility
+means **NOT_ACTIVATED** for that work. G4/G5 remain mandatory, observable L4
+postactivation commitments, with no claim that they have passed:
+
+```text
+lawful v1.0 G1/G2 + independently reviewed/published v1.1 normative eligibility
+  -> G3: eligible implemented, Runtime-verified, reviewed/published L1–L3 core
+  -> G6: exact Human version/policy/profile decision + finite per-RUN admission opt-in
+  -> subsequent lawful production TASK episodes
+  -> L4 G4/G5: VP-01/VP-06 measurements + full VP-07 AC-01..AC-36 conformance
+```
+
+There is no G5 → G6 → G5 dependency. Real VP-06/VP-07 production episodes,
+complete AC-01..AC-36 production conformance and postactivation measurements
+are not activation prerequisites. This ordering does not waive any per-RUN
+semantic proof obligation or any C.1–C.7/D.4 safety invariant.
 
 | Gate | Required authority and proof | Effect and boundary |
 | --- | --- | --- |
-| G1 — Human ratification | Human ratified KA-01's audited prospective normative design, sections A–D, on 2026-10-09. | Establishes the supplied narrow future Kernel amendment authority, separately from constitutional change, engineering truth and runtime activation. It grants no implementation beyond an independently admitted TASK. |
-| G2 — Normative publication | This exact versioned addendum must be independently admitted as TASK-329, canonically verified by Runtime, receive independent exact-source Reviewer PASS and be published by Publisher through ordinary exact-source/CAS safeguards. | Publishes the prospective specification. Executor commit/claims, Human ratification, README discoverability or a planning bookmark cannot assert this gate. Publication alone activates no feature and does not close VP-02. |
-| G3 — Separately admitted engineering | Fresh independently authorized VP-03..VP-07 TASKs define and implement versioned schemas/decoders, authenticated provenance/applicability, one scheduler, same-Executor factual delivery/stops, performance instrumentation and prospective rollout/rollback. Each requires Human delegation, Runtime admission/verification, independent exact-source Reviewer PASS and Publisher publication. | Provides eligible reviewed engineering, not automatic admission of the next package. No VP-03 admission or production implementation is established here; no future correction authority is borrowed from TASK-329. |
-| G4 — Actual measurement dependency reconciliation | VP-01 remains DEFERRED_BY_HUMAN, not DONE or waived. Fresh Human/Brain reconciliation must establish actual baseline/measurement evidence and satisfy every measurement-dependent publication/cutover exit. VP-06 must establish measured whole-episode performance with unchanged correctness/conformance using real observations. | Design/synthetic proof cannot substitute for historical baseline, measured cost or benefit. This addendum's independently bounded normative publication claims no VP-01-dependent engineering/performance exit. Reconciliation cannot relabel absent measurements as proof. |
-| G5 — Real conformance | VP-07 must establish all AC-01..AC-36 below with real positive and negative execution cases, exact Runtime evidence, independent review and Publisher-gated engineering. Authenticated leases, consent, provenance, applicability, crash/duplicate safety and required integration/concurrency/ordering are included. | TASK-326/328 synthetic cases and document review are insufficient for production eligibility. Raw pytest PASS is insufficient if canonical conformance blocks. |
-| G6 — Explicit prospective activation | After G1..G5, Human explicitly authorizes the exact published version/policy/profile and finite operational opt-in/delegation. Runtime binds selection at admission for future work only under the reviewed activation/rollback contract. | Only that future opted-in work may use KA-01. Publication or package availability never defaults legacy work into the new policy. Missing, stale or conflicting activation authority fails closed. |
+| G1 — Human authority | Preserve the 2026-10-09 ratification of v1.0's audited sections A–D. Human's explicit 2026-10-18 policy/risk decision authorizes only the prospective v1.1 sequencing change in A.1. | Prior lawful authority remains historical; new sequencing is versioned. Neither decision is executable readiness, per-RUN consent, constitutional change or permission beyond independently admitted engineering. |
+| G2 — Versioned normative publication | Preserve v1.0's separate TASK-329 r1 / REVIEW-329-001 publication. This exact v1.1 amendment requires its own TASK-374 r1 admission, canonical Runtime verification, independent exact-source Reviewer PASS and Publisher publication through ordinary exact-source/CAS safeguards. | Establishes normative eligibility for v1.1 only once those gates actually hold. This candidate asserts no own PASS/publication, feature activation or full VP-02 closure; no old publication is reused as approval of the new delta. |
+| G3 — Actual eligible L1–L3 core engineering | Separately admitted engineering must implement the L1 versioned semantic proof-contract/decoder/readiness core, L2 authenticated provenance/applicability and L3 single scheduler plus same-Executor continuation/stops. Exact implementation and focused core-safety proof below require independent Runtime verification, semantic exact-source Reviewer PASS and Publisher publication, including reviewed opt-in/rollback. | A TASK-373 readiness slice, TASK-326/328 offline declarations or document review alone is insufficient. The real eligible core is required before production; full L1 measurement exit and L4 VP-06/VP-07 production conformance are not prerequisites. No implementation or future admission is asserted here. |
+| G4 — L4 real measurement after activation | VP-01 remains DEFERRED_BY_HUMAN/outstanding, not DONE or waived. Subsequent lawful production TASK episodes must supply matched baseline/whole-episode VP-01/VP-06 measurements and explicit Human/Brain reconciliation under D.2, with Runtime evidence and ordinary review/publication. | Mandatory unproved postactivation commitment. Absent cost/benefit measurements remain UNKNOWN; they block measured-success claims, not G6's first eligible production opt-in. No synthetic or historical relabeling substitutes for observation. |
+| G5 — L4 full real conformance after activation | Subsequent lawful production TASK episodes must progressively establish VP-07 AC-01..AC-36 with real positive/negative cases, exact Runtime evidence, independent review and Publisher-gated corrections of revealed safety defects under D.3. | Mandatory unproved postactivation commitment, not a prerequisite for the very episodes needed to establish it. Focused G3 safety proof is compulsory before production and cannot be labeled full VP-07 PASS. Unsafe findings require STOP/rollback/authorized repair as below. |
+| G6 — Exact prospective activation and per-RUN opt-in | After lawful G1/G2 and actual G3, authenticate Human's explicit choice of the exact eligible published implementation/version/policy/profile and original finite operational delegation/consent for each future RUN at admission, under reviewed rollout/rollback. G4/G5 completion is not required for this permission. | Only that future opted-in RUN may use KA-01; all C guards still apply on every transition. The 2026-10-18 priority/risk decision alone is never readiness or blanket migration. Missing, stale, conflicting or unknown activation/consent fails closed. |
+
+G3's minimum implemented core and preactivation proof MUST include:
+
+- Actual versioned schemas/decoders, complete reviewed semantic obligations and
+  deterministic coverage mapping under B.2; authenticated exact TASK/RUN/source,
+  approval/review/publication provenance and source-to-target applicability.
+  The eligible L1 proof-contract/readiness core must exist beyond the published
+  TASK-373 read-only projection; neither VP-01 nor the full L1 exit is declared done.
+- Exactly one existing Runtime-owned scheduler for checkpoint and terminal proof,
+  full authorized semantic coverage including distinct integration/concurrency/
+  ordering conditions, conservative INVALIDATED/UNKNOWN handling and BR-1..BR-6.
+- Mechanically enforced same live sticky Executor/lease/profile/model/effort,
+  exact original consent, scope/risk guards, finite resource accounting, causal
+  progress, typed factual feedback, duplicate/crash-safe consumption and exactly
+  one terminal boundary. Reviewed versioned opt-in and prospective rollback must
+  be implemented and enforceable, not merely described.
+- Focused **independent Runtime verification of the actual core**, including
+  real negative safety tests feasible before production activation: reject
+  unauthenticated/stale/tampered sources and consent, wrong/lost leases or changed
+  Executor/profile, missing/UNKNOWN applicability or mapping, incomplete semantic
+  coverage, budget/no-progress/scope conflicts, duplicate/tampered checkpoints,
+  crash/terminal re-entry and competing schedulers. Tests must exercise the
+  implementation's enforcement and fail-closed behavior, not just caller labels
+  or the synthetic declarations of TASK-326/328. Relevant core defects must be
+  corrected, Runtime-verified, independently reviewed and published before G6.
+
+These are ordinary proof obligations of separately admitted L1–L3 engineering,
+using lawful offline tests and the existing Runtime as clarified in C.3(1).
+They create no additional qualification pipeline, production rehearsal permission
+or parallel Runtime. Their bounded preactivation coverage is distinct from the
+later real production-episode ledger; neither can substitute for the other.
 
 Authoring/admission/publication continue to bind exact canonical sources,
 expected-main currentness and compare-and-swap under their existing owners.
-The supplied TASK-329 authoring expected-main
+The historical TASK-329 authoring expected-main
 `5ba60b2444c36841fe16bcce0d2a26e4f136e098` and admitted execution base are distinct
 bindings; neither is a reusable waiver of fresh future authoring/publication
 currentness. Main movement never silently rebases an admitted RUN or changes
 the exact source eligible for review/publication. Publisher retains publication;
 this specification does not claim its own PASS or publication outcome.
 
-### D.2 VP allocation and measurement truth
+### D.2 VP/L1–L4 allocation and measurement truth
 
 VP-02's reviewed foundations and KA-01 publication resolve only their bounded
-design/governance work. VP-02 is not declared fully closed; remaining package
-and measurement-dependent exits stay gated. VP-03 remains queued pending its
-own fresh authorization/admission. VP-01 remains **DEFERRED_BY_HUMAN**. No
-roadmap file, unique NEXT, BO-2/3 pause, historical failure disposition or Human
-priority is advanced or reclassified by this addendum.
+design/governance work; VP-02 is not declared fully closed. Published
+`TASK-373 r1` / `RUN-373-001` / `REVIEW-373-001 PRIMARY PASS`, exact source
+`6e8cba6d96f3f5044672b687bef4c63e4c641151`, delivered a bounded read-only **L1
+baseline/readiness projection only**. It did not complete measured VP-01, the
+full L1 program, L2/L3 implementation, L4 conformance or KA-01 activation.
+TASK-326/328 remain offline foundations. Fresh authorization/admission is still
+required for each remaining bounded engineering TASK.
+
+L1 establishes the actual eligible proof-contract/readiness core, L2 authenticated
+applicability and L3 the real single-scheduler/continuation core with D.1 G3's
+focused independent safety proof before G6. Full VP-01 measurement remains
+**DEFERRED_BY_HUMAN/outstanding**. Matched VP-01/VP-06 measurement and full real
+VP-07 conformance are explicit **unproved L4 postactivation commitments**. Their
+absence is not a hidden G6 prerequisite, full L1 exit claim or benefit waiver.
+The canonical Lean VP NEXT remains unchanged; this addendum advances no roadmap,
+TASK, BO-2/3 pause, historical failure disposition or downstream adoption.
 
 The existing packages retain separate responsibilities: VP-03 authenticates
 checkpoint history and source-to-target validity; VP-04 owns the single proof
 scheduler; VP-05 owns separately authorized correction-local attribution and
-same-Executor factual continuation/stops; VP-06 measures infrastructure and
-whole-episode performance; VP-07 proves conformance and controlled cutover.
-Each package's admission and acceptance are independent, not consequences of
-this allocation.
+same-Executor factual continuation/stops. These are L2/L3 production-core
+responsibilities, eligible only after G3's actual review/publication. VP-06
+measures infrastructure and whole-episode performance; VP-07 establishes the
+full real production conformance ledger and informs subsequent controlled
+rollout/rollback in L4. Each package's admission and acceptance are independent,
+not consequences of this allocation or an automatic next TASK.
 
 Use existing BO-9B episode telemetry under ordinary authority, not a second
 metrics store. Real measurements must distinguish total wall time, Executor
@@ -525,15 +621,36 @@ cost, applicability/checkpoint/evidence IO, feedback/re-entry and cleanup;
 unique/total/equivalent duplicate items, reused/invalidated/UNKNOWN proofs,
 corrections, applicable token cost, interventions and avoided handoffs. Compare
 the whole legacy terminal-REPAIR episode with the whole proposed intra-RUN
-episode when claiming benefit. Unknown measurements remain UNKNOWN and do not
-select lifecycle actions. **No production-ready, latency reduction, savings or
-successful VP-01/VP-06/VP-07 claim is made by KA-01.**
+episode when claiming benefit. The Lean VP production observations must come
+from subsequent lawful TASK episodes after eligible activation, compared with
+authenticated matched baseline evidence; synthetic checks cannot supply their
+real positive/negative outcomes. Unknown measurements remain UNKNOWN and
+do not select lifecycle actions or become automatic PASS. They remain reported
+until independently supported. **No production-ready, latency reduction, savings
+or successful VP-01/VP-06/VP-07 claim is made by KA-01.**
+
+An unknown cost/benefit metric is distinct from unknown safety/authority, which
+still fails closed under C. Revealed unsafe behavior requires authenticated
+STOP of affected continuation, explicit prospective withdrawal/rollback under
+D.4 as appropriate, and separately authorized correction through existing
+AUTHOR_REPAIR/new RUN or REVIEW-driven REMEDIATION boundaries. Required safety
+defects must be corrected with Runtime proof, independent review and publication
+before affected unsafe production use resumes. L4 does not defer known core
+safety regressions, grant automatic repair or turn an observation into consent.
 
 ### D.3 Mandatory VP-07 conformance ledger
 
-All AC-01..AC-36 from the VP v1.1/v1.2 architecture remain mandatory; the
-following ledger states the required coverage for activation. These are future
-engineering gates, not assertions that TASK-329 has executed or passed them.
+All AC-01..AC-36 from the VP v1.1/v1.2 architecture remain mandatory. Under
+KA-01 v1.1 this is the **unproved L4 postactivation real production-episode
+conformance ledger**, progressively established by subsequent lawful TASKs
+with real positive/negative cases, Runtime evidence and independent review/
+publication. It is not a complete preactivation test suite or a prerequisite
+for G6. Focused preactivation G3 proof of the actual core remains mandatory;
+it does not establish full production conformance. Each RUN still requires its
+entire authorized semantic proof and safety guards. In particular AC-35's
+authority and ordinary gates precede each production cutover; moving the full
+empirical ledger to L4 does not postpone those guards. Neither TASK-329,
+TASK-373 nor this amendment is reported as having completed this ledger.
 
 | Criterion | Required real conformance |
 | --- | --- |
@@ -574,8 +691,8 @@ engineering gates, not assertions that TASK-329 has executed or passed them.
 | AC-35 | Kernel authority and ordinary TASK/Runtime/Reviewer/Publisher gates are met before production cutover. |
 | AC-36 | Legacy/downstream remain isolated without independent opt-in/adoption; no automatic roadmap transition. |
 
-Negative cases must include changed or incomplete footprint dimensions,
-self-certified witnesses, malicious log instructions, weakened tests,
+L4's real production-episode negative cases must include changed or incomplete
+footprint dimensions, self-certified witnesses, malicious log instructions, weakened tests,
 targeted-green/integration-red, serial/parallel mismatch, missing/conflicting
 mapping, incomplete/flaky collection, every false/missing/unknown BR gate,
 lost lease, changed profile/model, out-of-scope/risk-changing/no-progress
@@ -583,7 +700,14 @@ correction, exhaustion, duplicate/tampered/out-of-order checkpoints, crash
 before/after consumption and terminal write, terminal re-entry, main movement,
 pre-AIOS failure and an unchanged downstream pin. Historical-shaped
 RUN-313/316/318/319/320/322 cases supplement these real negatives; synthetic
-fixtures alone do not establish their measured historical outcomes.
+fixtures alone do not establish their measured historical outcomes. G3 must
+already prove the relevant core rejection/STOP behavior before activation;
+these later cases establish broader empirical conformance, not permission to
+leave a known unsafe implementation active. Missing observations remain
+unproved; revealed safety defects require the STOP/rollback/correction response
+in D.2 and cannot be erased or relabeled PASS to close L4. Boundary rejection
+observations such as pre-AIOS transport failures remain operational facts;
+they never acquire a fabricated canonical RUN/FAILURE identity.
 
 ### D.4 Legacy default, rollback and downstream isolation
 

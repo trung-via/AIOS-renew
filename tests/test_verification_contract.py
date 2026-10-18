@@ -47,7 +47,92 @@ V2_TOOLCHAIN = {
     "python_implementation": "CPython", "python_version": "3.14.7",
     "python_executable": "C:/Python/python.exe", "platform_system": "Windows",
     "platform_machine": "AMD64", "pytest_version": "8.4.2", "pytest_xdist_version": "3.8.0",
+    "git_executable": "C:/Program Files/Git/mingw64/bin/git.exe", "git_executable_sha256": "a" * 64,
+    "git_version": "git version test", "git_exec_path": "C:/Program Files/Git/mingw64/libexec/git-core",
+    "installed_distributions_digest": "b" * 64,
+    "git_selection": "installed-git-for-windows-direct-v1",
 }
+
+
+def bound_execution(profile, toolchain, sha, *, collection_nodes):
+    """Injected transport data for policy unit tests; real processes are tested separately."""
+    from aios_renew.parallel_verification import EXECUTION_CONTRACT
+    profile = {key: profile[key] for key in ("profile", "workers", "distribution", "max_worker_restart", "collect_only")}
+    identity = pytest_collection_identity(collection_nodes)
+    workers = profile["workers"] if not profile["collect_only"] else 0
+    return dict(execution_contract=EXECUTION_CONTRACT, subject_sha=sha, controller_collection=identity,
+                worker_collections={f"gw{i}": dict(identity) for i in range(workers)},
+                workers={f"gw{i}": dict(worker_id=f"gw{i}", process_id=100 + i, collection=dict(identity),
+                    temporary_root=f"C:/temp/worker-{i}", git_fixture_cache_root=f"C:/temp/git-{i}",
+                    profile=dict(profile), toolchain=dict(toolchain)) for i in range(workers)})
+
+
+def task346_observation():
+    profile = dict(profile="pytest-observed-v2", workers=12, distribution="load", max_worker_restart=0,
+                   collect_only=False, execution_contract="fixed-xdist-direct-git-v1", observer_blob="f" * 40,
+                   repository_tool_blobs={"pyproject.toml": "e" * 40})
+    return task320_observation(V2_CANDIDATE, V2_COMMAND, ["tests/test_sample.py::test_one"], profile=profile)
+
+
+@pytest.mark.parametrize("defect", [
+    "proof", "missing-worker", "worker-count", "worker-profile", "worker-git", "worker-collection",
+    "shared-process", "shared-temp", "nested-root", "missing-phase", "subject", "git-provenance", "git-selection",
+])
+def test_task346_prospective_observation_rejects_missing_or_divergent_execution_proof(defect):
+    observed = task346_observation()
+    validate_observation(observed)
+    proof = observed["execution"]
+    if defect == "proof":
+        observed.pop("execution")
+    elif defect == "missing-worker":
+        del proof["workers"]["gw11"]
+    elif defect == "worker-count":
+        observed["profile"]["workers"] = 4
+    elif defect == "worker-profile":
+        proof["workers"]["gw0"]["profile"]["workers"] = 4
+    elif defect == "worker-git":
+        proof["workers"]["gw0"]["toolchain"]["git_executable_sha256"] = "c" * 64
+    elif defect == "worker-collection":
+        proof["worker_collections"]["gw0"]["digest"] = "0" * 64
+    elif defect == "shared-process":
+        proof["workers"]["gw1"]["process_id"] = proof["workers"]["gw0"]["process_id"]
+    elif defect == "shared-temp":
+        proof["workers"]["gw1"]["temporary_root"] = proof["workers"]["gw0"]["temporary_root"]
+    elif defect == "nested-root":
+        proof["workers"]["gw1"]["git_fixture_cache_root"] = proof["workers"]["gw0"]["temporary_root"] + "/nested"
+    elif defect == "missing-phase":
+        observed["reports"].pop()
+    elif defect == "subject":
+        proof["subject_sha"] = V2_BASE
+    elif defect == "git-provenance":
+        observed["toolchain"].pop("git_executable_sha256")
+    elif defect == "git-selection":
+        observed["toolchain"]["git_selection"] = "shell-shim"
+    with pytest.raises(VerificationContractError):
+        validate_observation(observed)
+
+
+@pytest.mark.parametrize("condition", ["workers", "observer_blob", "git_executable", "git_executable_sha256", "git_exec_path", "pytest_xdist_version"])
+def test_task346_changed_execution_binding_cannot_reuse_a_pass(condition):
+    observed = task346_observation()
+    binding = {**v2_binding(), "profile": copy.deepcopy(observed["profile"]), "toolchain": copy.deepcopy(observed["toolchain"])}
+    record = dict(policy=MINIMUM_SUFFICIENT_V2, binding=binding, candidate=observed,
+                  candidate_digest=verification_digest(observed), evidence_id="RUN-prospective-V001")
+    assert len(v2_plan(records=(record,), bindings={V2_COMMAND: copy.deepcopy(binding)}).reused) == 1
+    target = copy.deepcopy(binding)
+    if condition in {"workers", "observer_blob"}:
+        target["profile"][condition] = 4 if condition == "workers" else "9" * 40
+    else:
+        target["toolchain"][condition] = "changed"
+    plan = v2_plan(records=(record,), bindings={V2_COMMAND: target})
+    assert plan.reused == () and plan.commands == (V2_COMMAND,)
+
+
+def test_task346_legacy_v2_observations_remain_decodable_without_prospective_fields():
+    observed = v2_observation(outcome="PASS")
+    observed["toolchain"] = {key: value for key, value in observed["toolchain"].items()
+                             if not key.startswith("git_") and key != "installed_distributions_digest"}
+    assert validate_observation(observed) is observed
 
 
 def v2_observation(sha=V2_CANDIDATE, *, outcome="FAIL", detail="AssertionError: expected 1", count=1,
@@ -101,10 +186,13 @@ def task320_observation(sha, command, nodes, *, failures=(), collect=False, prof
                 report.update(detail=detail, fingerprint=verification_digest(detail),
                               profile=profile, toolchain=dict(V2_TOOLCHAIN))
             reports.append(report)
-    return dict(subject_sha=sha, command=command, profile=profile, toolchain=dict(V2_TOOLCHAIN),
+    result = dict(subject_sha=sha, command=command, profile=profile, toolchain=dict(V2_TOOLCHAIN),
                 reports=reports, failure_count=len(failures) if not collect else 0,
                 exit_code=1 if failures and not collect else 0, complete=True, unstable=False,
                 collection={"identity": pytest_collection_identity(list(nodes)), "nodeids": sorted(nodes)})
+    if profile.get("execution_contract"):
+        result["execution"] = bound_execution(profile, V2_TOOLCHAIN, sha, collection_nodes=nodes)
+    return result
 
 
 def task320_projected_record(*, base_pass=False):

@@ -1,0 +1,168 @@
+task_id: TASK-376
+revision: 1
+goal: 'Implement the next bounded Lean VP L1 engineering slice: a strictly versioned
+  non-operative semantic TASK proof-intake validation seam inside the existing canonical
+  TASK and VP-02 proof-contract modules. Explicitly bind full TASK acceptance to independently
+  pinned proof-contract/mapping declarations without reinterpreting them as commands,
+  and preserve all active V1/V2 behavior. This is preparation for independently authorized
+  future L2/L3 Runtime core, not KA-01 production activation.'
+problem: 'TASK-373 published read-only L1 baseline/readiness, TASK-374 published KA-01
+  v1.1 acyclic activation, and TASK-326/TASK-328 already provide offline proof contract
+  and intra-RUN foundations. Canonical TASK parsing still admits only V1/V2 command-driven
+  verification: placing semantic proof IDs in verification.required could send noncommands
+  to a command runner. The missing L1 seam is an explicit version-aware, bounded TASK-to-reviewed-proof
+  declaration intake that reuses the existing VP-02 validator without changing production
+  admission, scheduling, evidence or human authority.'
+assumptions:
+- Canonical main at authoring is ac06a509b4b984b17b0275a345c1d72de11bcf96, the reviewed/published
+  TASK-374 candidate, with TASK-373 already published as L1 readiness only. The unique
+  canonical roadmap NEXT remains Lean VP; TASK-375 is a separate published GitHub
+  Actions infrastructure slice, not a Lean VP completion or replay.
+- KA-01 v1.1 B.2/D.1 requires future explicitly versioned TASK semantic proof obligations,
+  reviewed deterministic mapping and complete acceptance with independent Human per-RUN
+  activation after actual L1-L3 engineering. TASK-376 is preactivation and by itself
+  cannot establish G3, G6, measured VP-01, full L1, L2 or L3.
+- Existing src/aios_renew/task.py parse_task/validate_task admits exact V1/V2 verification
+  commands and rejects extra TASK fields. src/aios_renew/proof_coverage_contract.py
+  already validates proof-coverage-v1, proof-mapping-v1 and complete explicit mapping
+  using caller-supplied immutable pins; its labels/digests alone never authenticate
+  original Git/review sources.
+- Future authentic reviewed contract/mapping sources and an admitted future-version
+  policy do not yet exist for a real TASK; tests must use explicitly synthetic fixtures.
+  This work must expose the trusted caller/currentness boundary rather than self-certify
+  authority or register a new active policy.
+- Prospective TASK_AUTHORING semantic audit uses canonical tca-1 v1 digest 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2.
+  The current Human instruction selects roadmap continuation only, not Executor/model/effort,
+  deployment opt-in or finite runtime budgets. Authored return affinity is LEGACY_REPOSITORY_DEFAULT_ROUTE.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-LEAN-VP-L1-BASELINE.md
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+  - docs/AIOS-VP02-INTRA-RUN-PROOF-AND-KERNEL-GATE-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-326.yaml
+  - .ai/tasks/TASK-328.yaml
+  - .ai/tasks/TASK-373.yaml
+  - .ai/tasks/TASK-374.yaml
+  - src/aios_renew/task.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/runtime.py
+  - tests/test_task.py
+  - tests/test_proof_coverage_contract.py
+  - tests/test_verification_contract.py
+  modify:
+  - src/aios_renew/task.py
+  - src/aios_renew/proof_coverage_contract.py
+  - tests/test_task.py
+  - tests/test_proof_coverage_contract.py
+  - docs/AIOS-LEAN-VP-L1-SEMANTIC-PROOF-INTAKE.md
+non_goals:
+- No current production TASK policy change, new admission route, scheduler, preterminal
+  checkpoint, feedback loop, Runtime verification modification or KA-01 activation.
+  Existing parse_task/validate_task and V1/V2 command behavior remain exactly unchanged.
+- No second TASK parser file, duplicate semantic proof validator, issuer/service/credential,
+  remote read, evidence DB, generic router, independent proof scheduler, additional
+  Reviewer/Publisher or automatic correction.
+- No treating raw client-supplied provenance, reviewer labels, self-declared digest
+  or validated declaration as authenticated source, reviewed semantic adequacy, actual
+  evidence validity, Runtime verification PASS or production eligibility.
+- No mutation of frozen Kernel v0.1, historic TASK/RESULT/FAILURE/REVIEW/REPAIR, existing
+  TASK-326/328 semantic contract, roadmap, Human authority decisions or downstream
+  dependency pins.
+- No measured speedup, VP-01 closure, VP-06/VP-07 conformance, live future-version
+  tasks or full suite.
+constraints:
+  hard:
+  - Reuse the existing canonical TASK parser module and VP-02 proof-contract/mapping
+    validator. Introduce only an explicit non-operative versioned semantic intake
+    API; ordinary parse_task/validate_task must retain V1/V2 acceptance, rejection,
+    command semantics and historical replay exactly. Neither new policy nor future
+    semantic reference may be implicitly selected, routed into verification.required,
+    or registered as a live policy.
+  - The future intake takes exact independently supplied TASK id/revision/complete
+    acceptance IDs, an explicit closed schema/version identity, proof contract and
+    independently pinned mapping identity. Compose existing proof-coverage-v1/proof-mapping-v1
+    validation for all obligation and evidence-condition distinctions without a duplicate
+    semantic-mapping algorithm or heuristically guessed proof descriptions.
+  - Pure bounded deterministic read-only output must distinguish a complete structural
+    declaration from independently authenticated Git/author/reviewer provenance, semantic
+    proof adequacy, actual applicability, Runtime PASS and production eligibility.
+    Caller-owned trusted source/currentness/authentication checks are necessary later
+    and cannot be replaced by a self-certified boolean, string, hash or review label.
+  - Reject unsupported/mixed versions, extra/duplicate/missing fields, wrong TASK/revision/acceptance,
+    stale/different candidate SHA or pins, incomplete/conflicting mapping, command-shaped
+    semantic substitution, unbounded/ambiguous data and improper consolidation of
+    different fixtures, workers, profile, integration, ordering or toolchain conditions.
+  - No new production policy registration, Runtime/verification caller, proof-run
+    invocation, file/network/subprocess/Git lookup, clock access, persistent cache
+    or metadata state. Preserve historical Task shape, current authoring minimum-sufficient-v1
+    behavior, return-affinity semantics and the separate Runtime/Reviewer/Publisher
+    boundaries.
+  - Provide a short bounded L1 proof-intake document naming exactly the declared source
+    inputs/outputs, required authenticated caller/pin/authority context, remaining
+    production version admission/authentication and L2/L3 gaps, L1/VP-01 measured
+    unknown, and explicit KA-01 NOT_ACTIVATED/G3/G6 boundaries. Do not claim this
+    task completes all L1 or authorizes any future RUN.
+  - Use only one minimum-sufficient-v1 direct focused verification command covering
+    current TASK and VP-02 contract tests; do not rerun full suite or change unrelated
+    tests. Restrict modifications to the five listed paths.
+acceptance:
+- id: AC1
+  condition: The existing TASK and VP-02 modules expose an explicit strictly versioned
+    future semantic proof-intake validation API that remains non-operative and cannot
+    alter normal parse_task/validate_task acceptance, rejection, active V1/V2 policy
+    selection or command execution semantics.
+- id: AC2
+  condition: For caller-supplied exact TASK id/revision and complete acceptance IDs,
+    the intake requires a separately pinned proof contract and reviewed-mapping identity
+    and validates complete one-to-one declared obligations through existing proof-coverage-v1/proof-mapping-v1
+    semantics, preserving distinct full proof conditions and provenance.
+- id: AC3
+  condition: The intake returns a bounded deterministic typed declaration/readiness
+    result with immutable source/pin identities that never equates structural coverage
+    to authenticated source/review authority, evidence validity, semantic adequacy,
+    canonical verification PASS or permission to activate or execute a new policy.
+- id: AC4
+  condition: Malformed, duplicate, missing, extra, stale, wrong-TASK/cross-source,
+    swapped-pin, incompatible-version, ambiguous-mapping and command-shaped semantic
+    substitution inputs fail closed, including superficially matching population but
+    different worker, fixture, integration or ordering conditions.
+- id: AC5
+  condition: Historical TASK V1/V2 corpus, ordinary command-verification parsing,
+    current verification policy/error behavior, return affinity and existing VP-02
+    public validation API remain behaviorally compatible, and current Runtime admission/execution
+    cannot be changed through the new non-operative path.
+- id: AC6
+  condition: Focused deterministic regression tests cover a valid synthetic future
+    declaration, stable equivalent declaration order, supported and unsupported versions,
+    hostile/stale/partial source and mapping substitutions, missing independently
+    supplied pins and boundary traps against filesystem, Git, network, process and
+    proof execution side effects.
+- id: AC7
+  condition: A L1 proof-intake document clearly separates this actual bounded validation
+    capability from still-unavailable authenticated canonical source integration,
+    approved future production version admission, remaining L1/VP-01, L2, L3 and KA-01
+    G3/G6 obligations, with no claimed production activation, test savings or automatic
+    roadmap advancement.
+- id: AC8
+  condition: Only the five authorized paths are changed, and no new Runtime proof
+    scheduler, lifecycle authority, persistent ledger, historical mutation or roadmap/downstream
+    change is introduced.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_task.py tests/test_proof_coverage_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE

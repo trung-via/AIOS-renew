@@ -120,6 +120,8 @@ from .runtime import (
     validate_preverification_candidate,
 )
 from .review import (
+    BatchRemediation, BatchRemediationExecution, BatchReview, BatchSelection,
+    is_batch_selector, parse_batch_selection,
     Finding,
     Remediation,
     RemediationExecution,
@@ -136,6 +138,16 @@ from .verification import VerificationRunner
 
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
+
+
+class _BatchRuntimeCompletion(RuntimeCompletion):
+    """The existing completion owner with the stricter prospective batch gate."""
+
+    def _require_remediation_package_contract(self, execution, package, *, actual_head):
+        super()._require_remediation_package_contract(execution, package, actual_head=actual_head)
+        _require_remediation_package_contract(execution, package, actual_head=actual_head)
+
+
 _ACTIVE_RESTART_SOURCE: ContextVar[Path | None] = ContextVar("active_restart_source", default=None)
 _SOURCE_REPAIR_POLICY: ContextVar[ExecutionProfilePolicy | None] = ContextVar(
     "source_repair_policy", default=None
@@ -627,6 +639,47 @@ def _runtime_paths_readonly(repo: str | Path) -> RuntimePaths:
     )
 
 
+def observe_runtime_failure_detail(repo: str | Path, context: Mapping[str, Any]) -> dict[str, Any]:
+    """Existing self-host control-plane projection; returns no private bytes/path.
+
+    The canonical context must already be authenticated by its caller. Access is
+    restricted to the exact local FAILURE and its immutable private-source digest.
+    The separate admitted-Executor private-read API below is unchanged.
+    """
+    from .review_transport import (PUBLIC_FAILURE_MAX_BYTES, _failure_digest,
+        failure_document, safe_failure_detail, validate_failure_context)
+    validate_failure_context(context)
+    observed = dict(context)
+    if observed.get("safe_detail", {}).get("availability") == "PARTIAL":
+        return observed
+    def blocked(code):
+        observed["detail_blocker"] = {"code": code, "action": "READ_EXACT_RUNTIME_PROJECTION"}
+        return observed
+    if os.environ.get("RUNNER_ENVIRONMENT") != "self-hosted":
+        return blocked("PRIVATE_DETAIL_ACCESS_DENIED")
+    path = _runtime_paths_readonly(repo).failures / (context["run_id"] + ".json")
+    try:
+        if path.is_symlink() or path.resolve() != path.absolute():
+            return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
+        with path.open("rb") as stream:
+            raw = stream.read(PUBLIC_FAILURE_MAX_BYTES + 1)
+        if len(raw) > PUBLIC_FAILURE_MAX_BYTES:
+            return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
+        private = failure_document(raw, private_original=True)
+        if ("public_projection" in private or _failure_digest(private) != context["source"]["private_failure_digest"]
+                or any(private[k] != context[k] for k in ("run_id", "task", "executor", "base_sha", "phase"))
+                or private["failed_head_sha"] != context["subject_sha"]):
+            return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
+        observed["safe_detail"] = safe_failure_detail(private)
+        observed.pop("detail_blocker", None)
+        validate_failure_context(observed)
+        return observed
+    except OSError:
+        return blocked("PRIVATE_DETAIL_UNAVAILABLE")
+    except (ReviewTransportError, ValueError, TypeError, KeyError):
+        return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
+
+
 def read_executor_private_failure(
     repo: str | Path, *, admitted_run: Run, subject_sha: str,
     locator: str, expected_sha256: str,
@@ -955,6 +1008,8 @@ def _parse_remediation_execution_base(data: Any) -> RemediationExecutionBase:
 
 
 def _parse_remediation_predecessor(data: Any) -> RemediationPredecessor:
+    if isinstance(data, Mapping) and "finding_ids" in data:
+        return parse_batch_selection(data)
     root = data if isinstance(data, Mapping) else None
     if root is None:
         raise TypeError("REMEDIATION predecessor must be a mapping")
@@ -1032,6 +1087,8 @@ def _load_authoritative_prior_result(
                 execution = _remediation_execution_from_data(run_data["execution"])
                 if execution.run.run_id != run_id:
                     raise ValueError("RESULT filename does not match RUN id")
+                if isinstance(execution, BatchRemediationExecution):
+                    raise OperatorError("batch RESULT requires canonical remote batch lineage admission")
                 if "predecessor" in run_data:
                     pred = _parse_remediation_predecessor(run_data["predecessor"])
                     if pred.review_id != execution.review_id:
@@ -1094,6 +1151,20 @@ def _remediation_execution_from_data(data: Any) -> RemediationExecution:
     root = data if isinstance(data, Mapping) else None
     if root is None:
         raise TypeError("REMEDIATION execution must be a mapping")
+    if "format" in root or "findings" in root:
+        if (set(root) != {"format", "version", "review_id", "findings", "remediation", "run", "original_constraints"}
+                or root["format"] != "AIOS_BATCH_REMEDIATION_EXECUTION" or type(root["version"]) is not int or root["version"] != 1):
+            raise ValueError("unsupported batch execution contract")
+        remediation = parse_remediation(json.dumps(root["remediation"]))
+        if (not isinstance(remediation, BatchRemediation) or root["review_id"] != remediation.selection.review_id
+                or root["findings"] != json.loads(json.dumps([asdict(f) for f in remediation.findings]))
+                or tuple(root["original_constraints"]) != remediation.constraints):
+            raise ValueError("batch execution subjects or constraints mismatch")
+        run = _run_from_data(root["run"])
+        if (run.task.id, run.task.revision) != (remediation.selection.task_id, remediation.selection.task_revision):
+            raise ValueError("batch execution TASK mismatch")
+        return BatchRemediationExecution("AIOS_BATCH_REMEDIATION_EXECUTION", 1, root["review_id"],
+            remediation.findings, remediation, run, remediation.constraints)
     finding_data = root["finding"]
     if not isinstance(finding_data, Mapping):
         raise TypeError("REMEDIATION finding must be a mapping")
@@ -2600,6 +2671,8 @@ def _resolve_local_repair_remediation_origin(
         try:
             if run_data.get("kind") == "REMEDIATION":
                 execution = _remediation_execution_from_data(run_data["execution"])
+                if isinstance(execution, BatchRemediationExecution):
+                    raise OperatorError("BATCH_REPAIR_UNSUPPORTED_V1: fresh explicit recovery authority required")
                 if (
                     execution.run.run_id != current_run_id
                     or execution.run.return_affinity != task.return_affinity
@@ -3254,6 +3327,8 @@ def _resolve_historical_repair_admission(
         if failure.get("failed_head_sha") != artifact.candidate_sha:
             raise OperatorError("historical failed-head lineage mismatch")
         run_data = _decode_remote_mapping(artifact.run, "RUN")
+        if run_data.get("format") == "AIOS_BATCH_REMEDIATION_RUN":
+            raise OperatorError("BATCH_REPAIR_UNSUPPORTED_V1: fresh explicit Human/Brain recovery authority required")
         try:
             if run_data.get("kind") == "REMEDIATION":
                 execution = _remediation_execution_from_data(run_data["execution"])
@@ -3968,6 +4043,8 @@ def _derive_remediation_source_root(
     seen: frozenset[tuple[str, str]] = frozenset(),
     repair_sources: frozenset[str] = frozenset(),
 ) -> str:
+    if isinstance(execution, BatchRemediationExecution):
+        raise OperatorError("BATCH_REPAIR_UNSUPPORTED_V1: a batch failure requires fresh Human/Brain recovery authority")
     if execution.original_constraints != execution.remediation.constraints:
         raise OperatorError("REMEDIATION origin constraints mismatch")
     identity = (execution.review_id, execution.remediation.reviewed_sha)
@@ -7393,6 +7470,8 @@ def _resolve_remediation_admission(
     explicit_mode = (
         review is not None or remediation is not None or prior_review is not None
     )
+    if isinstance(remediation, BatchRemediation) or isinstance(review, BatchReview):
+        raise OperatorError("batch execution requires an authenticated remote batch selector and immutable approval")
     remote_mode = finding_id is not None
     if source_run_id is not None and not remote_mode:
         raise OperatorError("source RUN binding requires remote finding mode")
@@ -7514,7 +7593,7 @@ def _resolve_remediation_admission(
             not any(_terminal_is_correction(t) for t in lifecycle.terminals)
             and _git_is_ancestor(repo, lifecycle.main_sha, canonical_remediation.reviewed_sha)
         )
-        if has_explicit_cumulative_signal or first_correction_aligned_with_main:
+        if isinstance(canonical_remediation, BatchRemediation) or has_explicit_cumulative_signal or first_correction_aligned_with_main:
             try:
                 from .unified_state import _resolve_cumulative_execution_base
 
@@ -7527,6 +7606,8 @@ def _resolve_remediation_admission(
                     finding_id=canonical_remediation.finding_id,
                     reviewed_sha=canonical_remediation.reviewed_sha,
                     semantic_review=canonical_review,
+                    **({"finding_ids": canonical_remediation.selection.finding_ids}
+                       if isinstance(canonical_remediation, BatchRemediation) else {}),
                 )
                 execution_base_run_id = resolved_base[0]
                 execution_base_sha = resolved_base[1]
@@ -7631,6 +7712,17 @@ def _run_remediation_impl(
         admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
     )
     with RepositoryLock(state.lock):
+        if isinstance(canonical_remediation, BatchRemediation):
+            if not remote_mode or approved_remediation_sha is None:
+                raise OperatorError("batch execution requires exact approved canonical remote authority")
+            fresh = _resolve_remediation_admission(task_id, finding_id=finding_id,
+                source_run_id=source_run_id, approved_remediation_sha=approved_remediation_sha,
+                repo=root, state=state, resolved_task=task, admission=admission)
+            if fresh != resolved:
+                raise OperatorError("batch authority or cumulative execution base moved before RUN admission")
+            for pending in state.runs.glob("*.json"):
+                if not (state.results / pending.name).exists() and not (state.failures / pending.name).exists():
+                    raise OperatorError("batch refuses competing incomplete local RUN")
         actual_baseline = _git(root, "rev-parse", "HEAD")
         control_branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
         admission["current_head_sha"] = actual_baseline
@@ -7682,24 +7774,27 @@ def _run_remediation_impl(
             base_sha=resolved.execution_base_sha,
             workspace=str(subject_repo),
         )
-        finding = next(
-            item
-            for item in canonical_review.findings
-            if item.id == canonical_remediation.finding_id
-        )
-        execution = RemediationExecution(
-            review_id=canonical_review.review_id,
-            finding=finding,
-            remediation=canonical_remediation,
-            run=run,
-            original_constraints=canonical_remediation.constraints,
-        )
-        predecessor_record = {
-            "source_run_id": resolved.source_run_id,
-            "review_id": canonical_review.review_id,
-            "finding_id": canonical_remediation.finding_id,
-            "reviewed_sha": canonical_remediation.reviewed_sha,
-        }
+        if isinstance(canonical_remediation, BatchRemediation):
+            latest = _resolve_remediation_admission(task_id, finding_id=finding_id,
+                source_run_id=source_run_id, approved_remediation_sha=approved_remediation_sha,
+                repo=root, state=state, resolved_task=task, admission=admission)
+            if latest != resolved or _git(subject_repo, "rev-parse", "HEAD") != resolved.execution_base_sha:
+                raise OperatorError("batch authority or execution subject moved at the RUN reservation boundary")
+        if isinstance(canonical_remediation, BatchRemediation):
+            execution = BatchRemediationExecution("AIOS_BATCH_REMEDIATION_EXECUTION", 1,
+                canonical_review.review_id, canonical_remediation.findings, canonical_remediation,
+                run, canonical_remediation.constraints)
+            predecessor_record = asdict(canonical_remediation.selection)
+        else:
+            finding = next(item for item in canonical_review.findings if item.id == canonical_remediation.finding_id)
+            execution = RemediationExecution(canonical_review.review_id, finding, canonical_remediation,
+                run, canonical_remediation.constraints)
+            predecessor_record = {
+                "source_run_id": resolved.source_run_id,
+                "review_id": canonical_review.review_id,
+                "finding_id": canonical_remediation.finding_id,
+                "reviewed_sha": canonical_remediation.reviewed_sha,
+            }
         execution_base_record = (
             dict(resolved.integrated_base)
             if resolved.integrated_base is not None
@@ -7715,6 +7810,8 @@ def _run_remediation_impl(
             "predecessor": predecessor_record,
             "execution": asdict(execution),
         }
+        if isinstance(canonical_remediation, BatchRemediation):
+            run_document.update(format="AIOS_BATCH_REMEDIATION_RUN", version=1)
         if resolved.cumulative:
             run_document["execution_base"] = execution_base_record
         _write_json(run_path, run_document)
@@ -7788,7 +7885,7 @@ def _run_remediation_impl(
                 raise OperatorError("historical remediation attempt is unavailable")
             _prepare_historical_terminalization(root, attempt)
 
-        runtime_completion = RuntimeCompletion(
+        runtime_completion = (_BatchRuntimeCompletion if isinstance(canonical_remediation, BatchRemediation) else RuntimeCompletion)(
             repo=subject_repo,
             state=state,
             task=task,
@@ -7834,6 +7931,9 @@ def accept_candidate(
     monotonic_clock: MonotonicClock = time.monotonic,
 ) -> RemediationSummary:
     """Admit an already committed CODE_FIX candidate without invoking an Executor."""
+
+    if is_batch_selector(finding_id):
+        raise OperatorError("BATCH_DIRECT_CANDIDATE_UNSUPPORTED_V1: batch requires one admitted Executor")
 
     root = resolve_repository(repo)
     state = runtime_paths(root)
@@ -8202,6 +8302,17 @@ def _resolve_remote_remediation_lineage_impl(
     admission: dict[str, Any] | None,
     bind_reviewed_task: bool,
 ) -> tuple[Review, Remediation, Result, Review | None, Task]:
+    if is_batch_selector(finding_id):
+        from .review_transport import resolve_authenticated_batch
+        if source_run_id is None:
+            raise OperatorError("batch requires exact source RUN selector")
+        binding, remediation, canonical_sha = resolve_authenticated_batch(repo,
+            source_run_id=source_run_id, batch_id=finding_id, required_sha=required_remediation_sha)
+        if binding.task != task:
+            raise OperatorError("batch source TASK is stale or substituted")
+        if admission is not None:
+            admission.update(source_run_id=source_run_id, remediation_authorization_sha=canonical_sha)
+        return binding.review, remediation, binding.package.result, binding.prior_review, binding.task
     try:
         remote_lineages = resolve_remote_remediation_lineages(
             repo,
@@ -8389,9 +8500,19 @@ def _parse_remote_direct_lineage_impl(
             )
         if result.head_sha != review.reviewed_sha:
             raise ValueError("REVIEW does not bind to authoritative source RESULT")
-        if remediation.finding_id not in {item.id for item in review.findings}:
+        if isinstance(remediation, BatchRemediation):
+            if any(f not in review.findings for f in remediation.findings):
+                raise ValueError("batch REMEDIATION subjects are absent from REVIEW")
+        elif remediation.finding_id not in {item.id for item in review.findings}:
             raise ValueError("REMEDIATION finding is absent from REVIEW")
         prior_review = None if repaired_source is None else repaired_source[1]
+        if isinstance(prior_execution, BatchRemediationExecution):
+            from .publication import _validate_predecessor_lineage
+            prior_review = _validate_predecessor_lineage(repo, remote=resolve_transport_remote(repo),
+                publication_run_id=source_run.run_id, run_data=run_data, run=source_run,
+                remediation=prior_execution.remediation, task=lineage_task)
+            if not isinstance(review, BatchReview) or review.selection != prior_execution.remediation.selection:
+                raise ValueError("batch source requires exact multi-finding DELTA REVIEW")
         if review.prior_finding_id is not None and repaired_source is None:
             if prior_execution is None:
                 raise ValueError("DELTA REVIEW source has no validated correction lineage")
@@ -8596,6 +8717,11 @@ def _require_remediation_package_contract(
 ) -> None:
     """Bind a remediation package without applying the primary TASK contract."""
 
+    if isinstance(execution.remediation, BatchRemediation):
+        from .review import validate_batch_evidence
+        validate_batch_evidence(run=execution.run, remediation=execution.remediation,
+            result=package.result, evidence=package.evidence, actual_head=actual_head)
+
     if package.result.claims:
         raise OperatorError("remediation RESULT claims must be empty")
     if package.result.unresolved:
@@ -8706,6 +8832,10 @@ def run_approved_remediation_intent(
         record_remote_approval,
         require_current_approval,
     )
+    if is_batch_selector(finding_id):
+        from .correction_dispatch import record_batch_approval, require_current_batch_approval
+        record_remote_approval = record_batch_approval
+        require_current_approval = require_current_batch_approval
 
     try:
         repo_root = resolve_repository(repo)
@@ -8813,6 +8943,100 @@ def run_approved_remediation_intent(
     return approval_summary, dispatch_outcome
 
 
+def _project_auto_repair_rejection(
+    repair_dispatch_id: str, failed_run_id: str, repair_sha: str, *, source_profile: bool,
+) -> None:
+    """Bounded carrier/admission observation; never writes canonical failure state."""
+    try:
+        from .operational_receipt import OperationalReceipt, write_environment_receipt
+        from .repair_dispatch import FAILED_RUN_ID_PATTERN, REPAIR_SHA_PATTERN
+        selectors = {}
+        if isinstance(failed_run_id, str) and FAILED_RUN_ID_PATTERN.fullmatch(failed_run_id):
+            selectors["failed_run_id"] = failed_run_id
+        if isinstance(repair_sha, str) and REPAIR_SHA_PATTERN.fullmatch(repair_sha):
+            selectors["repair_sha"] = repair_sha
+        write_environment_receipt(OperationalReceipt(
+            family="REPAIR", delivery_id=repair_dispatch_id, boundary="ADMISSION_REJECTED",
+            selectors=selectors,
+            cause={"authority": "CARRIER",
+                   "phase": "AUTO_SOURCE_PROFILE" if source_profile else "AUTO_AUTHORIZATION",
+                   "reason_code": "CANONICAL_SOURCE_PROFILE_REQUIRED" if source_profile else "EXACT_HUMAN_REPAIR_PROOF_REQUIRED"},
+        ))
+    except Exception:
+        pass
+
+
+def _authenticated_auto_repair_request(
+    repair_dispatch_id: str, failed_run_id: str, repair_sha: str,
+) -> Any:
+    from .github_issue_repair_wakeup import (
+        GitHubIssueRepairWakeupError, authenticated_delivery,
+    )
+    try:
+        request = authenticated_delivery(
+            policy_path=Path(__file__).resolve().parents[2] / ".ai/brain-repair-wakeup-carriers.yaml",
+        )
+        if (request.executor != "AUTO" or request.repair_dispatch_id != repair_dispatch_id
+                or request.failed_run_id != failed_run_id or request.repair_sha != repair_sha):
+            raise OperatorError("AUTO Human authorization/REPAIR subject mismatch")
+        return request
+    except GitHubIssueRepairWakeupError as exc:
+        raise OperatorError(f"AUTO authorization rejected: {exc}") from exc
+
+
+def _resolve_auto_repair_profile(
+    root: Path, *, failed_run_id: str, task_id: str, task_revision: int,
+    repair_dispatch_id: str, failed_head_sha: str | None = None,
+) -> tuple[ResolvedExecutionProfile, str]:
+    """Reuse only the exact protected source RUN profile, never its old label alone."""
+    from .execution_profile import execution_profile_identity
+    from .repair_dispatch import auto_source_profile_digest
+    from .review_transport import _read_remote_blob, resolve_transport_remote
+
+    try:
+        with _remote_observation_repository(root) as observer:
+            recovery = resolve_remote_repair_recovery(observer, failed_run_id=failed_run_id)
+            sources = [item for item in recovery.failures if item.run_id == failed_run_id]
+            if len(sources) != 1:
+                raise OperatorError("AUTO requires one unique canonical failed RUN")
+            artifact = sources[0]
+            data = _decode_remote_mapping(artifact.run, "RUN")
+            if data.get("kind") == "REMEDIATION":
+                run = _remediation_execution_from_data(data["execution"]).run
+            elif "kind" not in data:
+                run = _run_from_data(data)
+            else:
+                raise OperatorError("AUTO source RUN kind is invalid")
+            failure = _decode_remote_mapping(artifact.failure, "FAILURE")
+            if (run.run_id != failed_run_id or run.task.id != task_id or run.task.revision != task_revision
+                    or failure.get("kind") != "FAILURE"
+                    or failure.get("run_id") != failed_run_id
+                    or failure.get("executor") != run.executor
+                    or failure.get("base_sha") != run.base_sha
+                    or failure.get("task") != {"id": run.task.id, "revision": run.task.revision}
+                    or failure.get("failed_head_sha") != artifact.candidate_sha
+                    or (failed_head_sha is not None and artifact.candidate_sha != failed_head_sha)):
+                raise OperatorError("AUTO canonical source RUN/FAILURE mismatch")
+            if artifact.execution_profile is None:
+                raise OperatorError("AUTO source profile missing; select a Human coding profile explicitly")
+            profile = parse_execution_profile(artifact.execution_profile)
+            if profile.run_id != failed_run_id or profile.executor != run.executor:
+                raise OperatorError("AUTO source profile/RUN mismatch; select a Human profile explicitly")
+            policy_blob = _read_remote_blob(
+                observer, resolve_transport_remote(observer), artifact.candidate_sha,
+                ".ai/executor-profiles.yaml",
+            )
+            if policy_blob is None:
+                raise OperatorError("AUTO source profile policy missing")
+            validate_execution_profile(profile, parse_execution_profile_policy(policy_blob))
+            validate_execution_profile(profile, _SOURCE_REPAIR_POLICY.get() or load_execution_profile_policy(root))
+            digest = auto_source_profile_digest(failed_run_id, execution_profile_identity(profile))
+            return replace(profile, run_id=repair_dispatch_id), digest
+    except (ReviewTransportError, ExecutionProfileError, KeyError, TypeError,
+            ValueError, UnicodeError) as exc:
+        raise OperatorError("AUTO canonical source profile rejected; select an explicit Human profile") from exc
+
+
 def run_repair_wakeup(
     repair_dispatch_id: str,
     failed_run_id: str,
@@ -8834,6 +9058,7 @@ def run_repair_wakeup(
         RepairDispatchError,
         RepairInvocation,
         execute_repair_dispatch,
+        existing_auto_repair_authorization,
         existing_repair_profile,
         reject_existing_selector_collision,
         replay_existing_repair_dispatch,
@@ -8844,23 +9069,40 @@ def run_repair_wakeup(
         root = resolve_repository(repo)
         state_root = runtime_state_root(root)
         source_repair_policy = _SOURCE_REPAIR_POLICY.get()
+        automatic = executor == "AUTO"
+        auto_authorization = None
+        if automatic:
+            try:
+                if any(value is not None for value in (model, reasoning_effort, model_source, effort_source)):
+                    raise OperatorError("AUTO forbids mixed manual profile inputs; choose explicit or AUTO")
+                request = _authenticated_auto_repair_request(repair_dispatch_id, failed_run_id, repair_sha)
+            except OperatorError:
+                _project_auto_repair_rejection(repair_dispatch_id, failed_run_id, repair_sha, source_profile=False)
+                raise
+            auto_authorization = existing_auto_repair_authorization(
+                state_root=state_root, repo_root=root, repair_dispatch_id=repair_dispatch_id,
+                actor=request.actor, source_repair_policy=source_repair_policy,
+            )
         exists, remote_profile = existing_repair_profile(
             state_root=state_root,
             repo_root=root,
             repair_dispatch_id=repair_dispatch_id,
             source_repair_policy=source_repair_policy,
         )
-        remote_profile = _authorization_profile(
-            repo=root,
-            authorization_id=repair_dispatch_id,
-            executor=executor,
-            existing=exists,
-            bound_profile=remote_profile,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            model_source=model_source,
-            effort_source=effort_source,
-        )
+        if automatic:
+            executor = remote_profile.executor if remote_profile is not None else None
+        else:
+            remote_profile = _authorization_profile(
+                repo=root,
+                authorization_id=repair_dispatch_id,
+                executor=executor,
+                existing=exists,
+                bound_profile=remote_profile,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                model_source=model_source,
+                effort_source=effort_source,
+            )
         reject_existing_selector_collision(
             state_root=state_root,
             repo_root=root,
@@ -8870,6 +9112,7 @@ def run_repair_wakeup(
             executor=executor,
             execution_profile=remote_profile,
             source_repair_policy=source_repair_policy,
+            auto_authorization=auto_authorization,
         )
         replay = replay_existing_repair_dispatch(
             state_root=state_root,
@@ -8880,6 +9123,7 @@ def run_repair_wakeup(
             executor=executor,
             execution_profile=remote_profile,
             source_repair_policy=source_repair_policy,
+            auto_authorization=auto_authorization,
         )
         if replay is not None:
             return replay
@@ -8928,7 +9172,34 @@ def run_repair_wakeup(
         executor_required = preflight.executor_required
         if observed_executor_required is not executor_required:
             raise OperatorError("canonical REPAIR Executor requirement is inconsistent")
-        validate_repair_executor_requirement(action, executor_required, executor)
+        if automatic:
+            digest = None
+            if executor_required:
+                try:
+                    remote_profile, digest = _resolve_auto_repair_profile(
+                        root, failed_run_id=failed_run_id, task_id=preflight.task_id,
+                        task_revision=preflight.task_revision, failed_head_sha=preflight.failed_head_sha,
+                        repair_dispatch_id=repair_dispatch_id,
+                    )
+                except OperatorError:
+                    _project_auto_repair_rejection(repair_dispatch_id, failed_run_id, repair_sha, source_profile=True)
+                    raise
+                executor = remote_profile.executor
+            auto_authorization = {
+                "actor": request.actor, "source_run_id": failed_run_id,
+                "source_profile_sha256": digest,
+            }
+        try:
+            validate_repair_executor_requirement(action, executor_required, executor)
+        except RepairDispatchError:
+            if executor_required is True and executor is None:
+                # Exact owner-observed pre-RUN rejection, independent of logs.
+                _project_blocked_correction_delivery(
+                    family="REPAIR", delivery_id=repair_dispatch_id,
+                    preflight={"status": "BLOCKED", "phase": "REPAIR_EXECUTOR_REQUIREMENT",
+                               "reason_code": "CODING_REPAIR_EXECUTOR_REQUIRED"},
+                    selectors={"failed_run_id": failed_run_id, "repair_sha": repair_sha})
+            raise
 
         def invoke_repair() -> RepairInvocation:
             try:
@@ -8972,6 +9243,7 @@ def run_repair_wakeup(
             invoke_repair=invoke_repair,
             execution_profile=remote_profile,
             source_repair_policy=source_repair_policy,
+            auto_authorization=auto_authorization,
         )
     except (RepairDispatchError, ExecutionProfileError) as exc:
         raise OperatorError(str(exc)) from exc
@@ -9216,7 +9488,7 @@ def _parser() -> argparse.ArgumentParser:
     repair_wakeup_parser.add_argument("failed_run_id")
     repair_wakeup_parser.add_argument("repair_sha")
     repair_wakeup_parser.add_argument(
-        "--executor", choices=("codex", "antigravity")
+        "--executor", choices=("codex", "antigravity", "AUTO")
     )
     repair_wakeup_parser.add_argument("--model")
     repair_wakeup_parser.add_argument("--reasoning-effort")
@@ -9593,6 +9865,8 @@ def main(
             print(summary.render())
         elif args.command == "remote-approve":
             from .remote_surface import RemoteSurfaceError, record_remote_approval
+            if is_batch_selector(args.finding_id):
+                from .correction_dispatch import record_batch_approval as record_remote_approval
 
             try:
                 repo_root = resolve_repository(args.repo)
@@ -9675,6 +9949,8 @@ def main(
                 reject_existing_selector_collision,
             )
             from .remote_surface import RemoteSurfaceError, require_current_approval
+            if is_batch_selector(args.finding_id):
+                from .correction_dispatch import require_current_batch_approval as require_current_approval
 
             repo_root = resolve_repository(args.repo)
             state_root = runtime_state_root(repo_root)
@@ -9834,54 +10110,63 @@ def main(
         elif args.command == "repair-wakeup":
             repair_root = resolve_repository(args.repo)
             from .repair_dispatch import existing_repair_profile
-            exists, repair_profile = existing_repair_profile(
-                state_root=runtime_state_root(repair_root),
-                repo_root=repair_root,
-                repair_dispatch_id=args.repair_dispatch_id,
-            )
-            repair_profile = _authorization_profile(
-                repo=repair_root,
-                authorization_id=args.repair_dispatch_id,
-                executor=args.executor,
-                existing=exists,
-                bound_profile=repair_profile,
-                model=args.model,
-                reasoning_effort=args.reasoning_effort,
-                model_source=args.model_source,
-                effort_source=args.effort_source,
-            )
+            repair_profile = None
+            if args.executor != "AUTO":
+                exists, repair_profile = existing_repair_profile(
+                    state_root=runtime_state_root(repair_root),
+                    repo_root=repair_root,
+                    repair_dispatch_id=args.repair_dispatch_id,
+                )
+                repair_profile = _authorization_profile(
+                    repo=repair_root,
+                    authorization_id=args.repair_dispatch_id,
+                    executor=args.executor,
+                    existing=exists,
+                    bound_profile=repair_profile,
+                    model=args.model,
+                    reasoning_effort=args.reasoning_effort,
+                    model_source=args.model_source,
+                    effort_source=args.effort_source,
+                )
+            outcome = None
             try:
                 outcome = run_repair_wakeup(
                     args.repair_dispatch_id,
                     args.failed_run_id,
                     args.repair_sha,
                     executor=args.executor,
-                    model=repair_profile.model if repair_profile is not None else None,
-                    reasoning_effort=(repair_profile.reasoning_effort if repair_profile is not None else None),
-                    model_source=(repair_profile.model_source if repair_profile is not None else None),
-                    effort_source=(repair_profile.effort_source if repair_profile is not None else None),
+                    model=repair_profile.model if repair_profile is not None else args.model,
+                    reasoning_effort=(repair_profile.reasoning_effort if repair_profile is not None else args.reasoning_effort),
+                    model_source=(repair_profile.model_source if repair_profile is not None else args.model_source),
+                    effort_source=(repair_profile.effort_source if repair_profile is not None else args.effort_source),
                     repo=repair_root,
                     native_runner=native_runner,
                     verification_runner=verification_runner,
                     monotonic_clock=monotonic_clock,
                 )
             finally:
-                _project_operational_delivery(
-                    repair_root,
-                    family="REPAIR",
-                    delivery_id=args.repair_dispatch_id,
-                    selectors={
-                        "failed_run_id": args.failed_run_id,
-                        "repair_sha": args.repair_sha,
-                        "executor": args.executor,
-                        **({
-                            "model": repair_profile.model,
-                            "reasoning_effort": repair_profile.reasoning_effort,
-                            "model_source": repair_profile.model_source,
-                            "effort_source": repair_profile.effort_source,
-                        } if repair_profile is not None else {}),
-                    },
-                )
+                if args.executor != "AUTO" or outcome is not None:
+                    if args.executor == "AUTO":
+                        _, repair_profile = existing_repair_profile(
+                            state_root=runtime_state_root(repair_root), repo_root=repair_root,
+                            repair_dispatch_id=args.repair_dispatch_id,
+                        )
+                    _project_operational_delivery(
+                        repair_root,
+                        family="REPAIR",
+                        delivery_id=args.repair_dispatch_id,
+                        selectors={
+                            "failed_run_id": args.failed_run_id,
+                            "repair_sha": args.repair_sha,
+                            "executor": (repair_profile.executor if repair_profile is not None else None) if args.executor == "AUTO" else args.executor,
+                            **({
+                                "model": repair_profile.model,
+                                "reasoning_effort": repair_profile.reasoning_effort,
+                                "model_source": repair_profile.model_source,
+                                "effort_source": repair_profile.effort_source,
+                            } if repair_profile is not None else {}),
+                        },
+                    )
             print(outcome.render())
             return outcome.exit_code
         elif args.command == "preflight-repair":

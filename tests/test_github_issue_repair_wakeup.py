@@ -40,12 +40,12 @@ def _body(*, executor: object = "codex", **updates: object) -> str:
 def _event(body: object | None = None) -> dict[str, object]:
     return {
         "action": "opened",
-        "sender": {"login": "trung-via"},
+        "sender": {"login": "trung-via", "type": "User"},
         "repository": {"full_name": "trung-via/AIOS-renew"},
         "issue": {
             "number": 111,
             "title": "[AIOS REPAIR WAKEUP]",
-            "user": {"login": "trung-via"},
+            "user": {"login": "trung-via", "type": "User"},
             "body": _body() if body is None else body,
         },
     }
@@ -58,6 +58,27 @@ def _write(tmp_path: Path, name: str, value: object) -> Path:
     else:
         path.write_text(yaml.safe_dump(value, sort_keys=False), encoding="utf-8")
     return path
+
+
+@pytest.mark.parametrize("executor,version", [("codex", 2), ("AUTO", 3), (None, 3)])
+def test_task372_admitted_human_routes_record_exact_issue_attempt_without_profile_bytes(tmp_path, monkeypatch, executor, version):
+    from aios_renew.operational_receipt import validate_repair_source
+    event = _event(_body(executor=executor, version=version))
+    event["issue"]["id"] = 32111
+    event_path = _write(tmp_path, "event.json", event)
+    source = tmp_path / "source.json"
+    for name, value in {"GITHUB_REPOSITORY": "trung-via/AIOS-renew", "GITHUB_ACTOR": "trung-via",
+            "GITHUB_TRIGGERING_ACTOR": "trung-via", "GITHUB_EVENT_NAME": "issues", "GITHUB_REF": "refs/heads/main",
+            "GITHUB_SHA": "c" * 40, "GITHUB_RUN_ID": "39026366429", "GITHUB_RUN_ATTEMPT": "2",
+            "AIOS_REPAIR_SOURCE_PATH": str(source)}.items():
+        monkeypatch.setenv(name, value)
+    assert carrier.main(["--event", str(event_path), "--policy", str(_write(tmp_path, "policy.yaml", POLICY)),
+        "--output", str(tmp_path / "outputs"), "--receipt", str(tmp_path / "receipt")]) == 0
+    observed = validate_repair_source(json.loads(source.read_bytes()))
+    assert observed["workflow_run_id"] == 39026366429 and observed["run_attempt"] == 2
+    assert observed["issue"]["id"] == 32111 and observed["issue"]["number"] == 111
+    assert observed["original_actor"] == "trung-via" and observed["delivery_id"] == "repair-111"
+    assert "model" not in observed and event["issue"]["body"] not in source.read_text(encoding="utf-8")
 
 
 def test_valid_issue_forwards_only_four_bounded_selectors(tmp_path: Path) -> None:
@@ -451,3 +472,90 @@ def test_coding_repair_explicit_vs_default_source_attribution(
         assert request.model == model
     if effort is not None:
         assert request.reasoning_effort == effort
+
+
+def _delivery_environment(tmp_path: Path, event: dict, *, actor="github-actions[bot]", event_name="issues") -> dict[str, str]:
+    body = carrier.parse_request(event["issue"]["body"])
+    return {
+        "GITHUB_REPOSITORY": "trung-via/AIOS-renew",
+        "GITHUB_EVENT_PATH": str(_write(tmp_path, "delivery.json", event)),
+        "AIOS_CONTROL_REF": "refs/heads/main", "AIOS_CONTROL_SHA": "c" * 40,
+        "AIOS_DELIVERY_ACTOR": actor, "AIOS_DELIVERY_EVENT": event_name,
+        **{"AIOS_" + key.upper(): str(value or "") for key, value in body.__dict__.items() if key != "actor"},
+    }
+
+
+def test_auto_requires_explicit_versioned_opt_in_and_has_no_default_profile() -> None:
+    with pytest.raises(carrier.GitHubIssueRepairWakeupError, match="executor"):
+        carrier.parse_request(_body(executor="AUTO"))
+    request = carrier.parse_request(_body(executor="AUTO", version=3))
+    assert request.executor == "AUTO"
+    assert request.model is request.reasoning_effort is request.model_source is request.effort_source is None
+    for updates in ({"model": "manual-model"}, {"reasoning_effort": "high"}, {"executor": "auto"}):
+        with pytest.raises(carrier.GitHubIssueRepairWakeupError):
+            carrier.parse_request(_body(**{"executor": "AUTO", "version": 3, **updates}))
+
+
+@pytest.mark.parametrize("executor", ["AUTO", "codex", "antigravity", None])
+@pytest.mark.parametrize("actor", ["trung-via", "github-actions[bot]"])
+def test_reusable_issue_proves_original_human_selection(tmp_path: Path, executor, actor) -> None:
+    event = _event(_body(executor=executor, version=3))
+    env = _delivery_environment(tmp_path, event, actor=actor)
+    request = carrier.authenticated_delivery(
+        policy_path=_write(tmp_path, "policy.yaml", POLICY), environ=env,
+    )
+    assert request.actor == "trung-via" and request.executor == executor
+    assert request.failed_run_id == "RUN-111-001" and request.repair_sha == "a" * 40
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda event, env: env.update(AIOS_DELIVERY_ACTOR="intruder"),
+    lambda event, env: env.update(GITHUB_REPOSITORY="other/repo"),
+    lambda event, env: env.update(AIOS_CONTROL_REF="refs/heads/old"),
+    lambda event, env: env.update(AIOS_REPAIR_SHA="b" * 40),
+    lambda event, env: env.update(AIOS_FAILED_RUN_ID="RUN-112-001"),
+    lambda event, env: env.update(AIOS_REPAIR_DISPATCH_ID="other-delivery"),
+    lambda event, env: env.update(AIOS_MODEL="forged-model"),
+    lambda event, env: env.update(AIOS_MODEL_SOURCE="EXPLICIT"),
+    lambda event, env: event["repository"].update(full_name="other/repo"),
+    lambda event, env: event["sender"].update(login="github-actions[bot]", type="Bot"),
+    lambda event, env: event["sender"].update(type="Bot"),
+    lambda event, env: event["issue"]["user"].update(login="intruder"),
+    lambda event, env: event.update(action="edited"),
+])
+def test_forged_or_swapped_human_proof_fails_before_delivery(tmp_path: Path, mutation) -> None:
+    event = _event(_body(executor="AUTO", version=3))
+    env = _delivery_environment(tmp_path, event)
+    mutation(event, env)
+    _write(tmp_path, "delivery.json", event)
+    with pytest.raises(carrier.GitHubIssueRepairWakeupError):
+        carrier.authenticated_delivery(policy_path=_write(tmp_path, "policy.yaml", POLICY), environ=env)
+
+
+@pytest.mark.parametrize("actor, expected", [("trung-via", True), ("github-actions[bot]", False)])
+def test_auto_workflow_dispatch_must_be_the_current_human_event(tmp_path: Path, actor, expected) -> None:
+    issue_event = _event(_body(executor="AUTO", version=3))
+    env = _delivery_environment(tmp_path, issue_event, actor=actor, event_name="workflow_dispatch")
+    event = {
+        "sender": {"login": actor, "type": "User" if expected else "Bot"},
+        "repository": {"full_name": "trung-via/AIOS-renew"}, "ref": "refs/heads/main",
+        "inputs": {key: env.get("AIOS_" + key.upper(), "") for key in (
+            "repair_dispatch_id", "failed_run_id", "repair_sha", "executor", "model",
+            "reasoning_effort", "model_source", "effort_source",
+        )},
+    }
+    _write(tmp_path, "delivery.json", event)
+    if expected:
+        request = carrier.authenticated_delivery(policy_path=_write(tmp_path, "policy.yaml", POLICY), environ=env)
+        assert request.executor == "AUTO" and request.actor == actor
+    else:
+        with pytest.raises(carrier.GitHubIssueRepairWakeupError, match="Human event proof"):
+            carrier.authenticated_delivery(policy_path=_write(tmp_path, "policy.yaml", POLICY), environ=env)
+
+
+def test_explicit_manual_selection_is_not_replaced_by_auto(tmp_path: Path) -> None:
+    event = _event(_body(executor="antigravity", version=3, model="human/model", reasoning_effort="low"))
+    env = _delivery_environment(tmp_path, event)
+    request = carrier.authenticated_delivery(policy_path=_write(tmp_path, "policy.yaml", POLICY), environ=env)
+    assert (request.executor, request.model, request.reasoning_effort) == ("antigravity", "human/model", "low")
+    assert request.model_source == request.effort_source == "EXPLICIT"

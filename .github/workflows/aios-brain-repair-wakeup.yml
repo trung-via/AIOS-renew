@@ -25,6 +25,7 @@ jobs:
       reasoning_effort: ${{ steps.admission.outputs.reasoning_effort }}
       model_source: ${{ steps.admission.outputs.model_source }}
       effort_source: ${{ steps.admission.outputs.effort_source }}
+      repair_source_artifact_id: ${{ steps.repair_source.outputs.artifact-id }}
     steps:
       - name: Check out exact carrier invocation commit
         uses: actions/checkout@v4
@@ -47,6 +48,7 @@ jobs:
           AIOS_PROFILE_POLICY: ${{ github.workspace }}/.ai/executor-profiles.yaml
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-repair-wakeup-receipt.txt
           AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-repair/source.json
+          AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json
         run: >-
           python -m aios_renew.github_issue_repair_wakeup
           --event "$GITHUB_EVENT_PATH"
@@ -54,6 +56,16 @@ jobs:
           --profile-policy "$AIOS_PROFILE_POLICY"
           --output "$GITHUB_OUTPUT"
           --receipt "$AIOS_RECEIPT_PATH"
+
+      - name: Preserve exact Human REPAIR source
+        id: repair_source
+        if: steps.admission.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-correlation-v1-wakeup-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aios-repair-source/source.json
+          if-no-files-found: ignore
+          retention-days: 90
 
       - name: Export bounded REPAIR carrier attention observations
         if: always()
@@ -63,6 +75,13 @@ jobs:
           path: ${{ runner.temp }}/aios-attention-repair/source.json
           if-no-files-found: ignore
           retention-days: 90
+
+      - name: Expose bounded admission reason
+        if: always()
+        env:
+          AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-repair-wakeup-receipt.txt
+        run: |
+          if [ -f "$AIOS_RECEIPT_PATH" ]; then cat "$AIOS_RECEIPT_PATH" >> "$GITHUB_STEP_SUMMARY"; fi
 
   dispatch:
     needs: admit
@@ -97,6 +116,7 @@ jobs:
           AIOS_REASONING_EFFORT: ${{ needs.admit.outputs.reasoning_effort }}
           AIOS_MODEL_SOURCE: ${{ needs.admit.outputs.model_source }}
           AIOS_EFFORT_SOURCE: ${{ needs.admit.outputs.effort_source }}
+          AIOS_ORIGIN_ARTIFACT_ID: ${{ needs.admit.outputs.repair_source_artifact_id }}
         with:
           script: |
             const admitted = process.env.AIOS_ADMISSION_RESULT === 'success';
@@ -104,7 +124,7 @@ jobs:
             const accepted = admitted && dispatched;
             const lines = [
               'AIOS REPAIR WAKEUP CARRIER RECEIPT',
-              `status: ${accepted ? 'SELF_HOST_COMPLETED' : 'REJECTED'}`,
+              `status: ${accepted ? 'SELF_HOST_COMPLETED' : admitted ? 'OPERATIONAL_FAILED' : 'REJECTED'}`,
               `self_host_completed: ${accepted}`,
               'repair_run_outcome: not_asserted_by_carrier',
               'verification: not_asserted_by_carrier',
@@ -117,14 +137,14 @@ jobs:
                 family: 'REPAIR',
                 delivery: {kind: 'repair_dispatch_id', id: process.env.AIOS_REPAIR_DISPATCH_ID},
                 boundary: dispatched ? 'SELF_HOST_COMPLETED' : 'OPERATIONAL_FAILED',
-                selectors: {failed_run_id: process.env.AIOS_FAILED_RUN_ID, repair_sha: process.env.AIOS_REPAIR_SHA, executor: process.env.AIOS_EXECUTOR || undefined, model: process.env.AIOS_MODEL || undefined, reasoning_effort: process.env.AIOS_REASONING_EFFORT || undefined, model_source: process.env.AIOS_MODEL_SOURCE || undefined, effort_source: process.env.AIOS_EFFORT_SOURCE || undefined},
+                selectors: {failed_run_id: process.env.AIOS_FAILED_RUN_ID, repair_sha: process.env.AIOS_REPAIR_SHA, executor: ['codex', 'antigravity'].includes(process.env.AIOS_EXECUTOR) ? process.env.AIOS_EXECUTOR : undefined, model: process.env.AIOS_MODEL || undefined, reasoning_effort: process.env.AIOS_REASONING_EFFORT || undefined, model_source: process.env.AIOS_MODEL_SOURCE || undefined, effort_source: process.env.AIOS_EFFORT_SOURCE || undefined},
               };
               if (!dispatched) operationalReceipt.cause = {authority: 'CARRIER', phase: 'DOWNSTREAM_WORKFLOW', reason_code: 'DOWNSTREAM_WORKFLOW_FAILED'};
               lines.push(
                 `repair_dispatch_id: ${process.env.AIOS_REPAIR_DISPATCH_ID}`,
                 `failed_run_id: ${process.env.AIOS_FAILED_RUN_ID}`,
                 `repair_sha: ${process.env.AIOS_REPAIR_SHA}`,
-                `executor: ${process.env.AIOS_EXECUTOR || 'none'}`,
+                `requested_executor: ${process.env.AIOS_EXECUTOR || 'none'}`,
                 `model: ${process.env.AIOS_MODEL || 'none'}`,
                 `reasoning_effort: ${process.env.AIOS_REASONING_EFFORT || 'none'}`,
                 `model_source: ${process.env.AIOS_MODEL_SOURCE || 'none'}`,
@@ -135,7 +155,12 @@ jobs:
             } else {
               lines.push('reason: GitHub rejected the repository-owned carrier admission.');
             }
-            const receipt = lines.join('\n').replaceAll('\0', '?').slice(0, 3500);
+            let receipt = lines.join('\n').replaceAll('\0', '?').slice(0, 3500);
+            if (/^[1-9][0-9]*$/.test(process.env.AIOS_ORIGIN_ARTIFACT_ID || '')) {
+              const pointer = {workflow_run_id: context.runId, run_attempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+                artifact_id: Number(process.env.AIOS_ORIGIN_ARTIFACT_ID)};
+              receipt = receipt.slice(0, 3100) + '\nAIOS_REPAIR_WORKFLOW_POINTER=' + JSON.stringify(pointer);
+            }
             const source = await github.rest.issues.createComment({
               owner: 'trung-via',
               repo: 'AIOS-renew',

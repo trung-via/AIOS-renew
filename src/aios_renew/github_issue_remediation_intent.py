@@ -24,6 +24,7 @@ from .execution_profile import (
     bind_execution_profile,
     load_execution_profile_policy,
 )
+from .review import BatchSelection, is_batch_selector, parse_batch_selection
 
 
 class GitHubIssueRemediationIntentError(ValueError):
@@ -95,6 +96,7 @@ class RemediationIntentRequest:
     reasoning_effort: str = ""
     model_source: str = ""
     effort_source: str = ""
+    batch_selection: BatchSelection | None = None
 
     def github_outputs(self) -> str:
         """Render only the grammar-constrained profile-bound intent selectors."""
@@ -347,6 +349,7 @@ def admit_event(
         reasoning_effort=parsed.reasoning_effort,
         model_source=parsed.model_source,
         effort_source=parsed.effort_source,
+        batch_selection=parsed.batch_selection,
     )
 
 
@@ -355,14 +358,16 @@ def parse_request(
     *,
     profile_policy: ExecutionProfilePolicy | Path | str | None = None,
 ) -> RemediationIntentRequest:
-    """Parse and resolve only the version-2 remediation intent."""
+    """Parse v2 single intent or v3 explicit content-addressed batch selection."""
 
     source = raw.encode("utf-8", errors="strict") if isinstance(raw, str) else raw
     request = _mapping(
         _load_yaml(source, "remediation intent request"),
         "remediation intent request",
     )
-    if set(request) != _REQUEST_KEYS:
+    version = request.get("version")
+    keys = (_REQUEST_KEYS - {"finding_id"}) | {"batch_selection"} if type(version) is int and version == 3 else _REQUEST_KEYS
+    if set(request) != keys:
         raise GitHubIssueRemediationIntentError(
             "remediation intent request has missing or unknown fields"
         )
@@ -371,14 +376,24 @@ def parse_request(
         request.get("format") != _REQUEST_FORMAT
         or isinstance(version, bool)
         or not isinstance(version, int)
-        or version != 2
+        or version not in (2, 3)
     ):
         raise GitHubIssueRemediationIntentError(
             "unsupported remediation intent request format or version"
         )
     correction_dispatch_id = request.get("correction_dispatch_id")
     source_run_id = request.get("source_run_id")
-    finding_id = request.get("finding_id")
+    selection = None
+    if version == 3:
+        try:
+            selection = parse_batch_selection(request["batch_selection"])
+        except ValueError as exc:
+            raise GitHubIssueRemediationIntentError(f"invalid explicit batch selection: {exc}") from exc
+        if selection.source_run_id != source_run_id:
+            raise GitHubIssueRemediationIntentError("batch source RUN selector mismatch")
+    finding_id = selection.batch_id if selection is not None else request.get("finding_id")
+    if version == 2 and is_batch_selector(finding_id):
+        raise GitHubIssueRemediationIntentError("batch selector requires version-3 Human-explicit selection")
     executor = request.get("executor")
     requested_model = request.get("model")
     requested_effort = request.get("reasoning_effort")
@@ -426,6 +441,7 @@ def parse_request(
         reasoning_effort=profile.reasoning_effort,
         model_source=profile.model_source,
         effort_source=profile.effort_source,
+        batch_selection=selection,
     )
 
 

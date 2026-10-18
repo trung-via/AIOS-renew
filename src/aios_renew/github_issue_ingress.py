@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
+import urllib.error
+import urllib.request
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +99,9 @@ class AdmittedIssue:
 class IssueDelivery:
     carrier_identity: str
     ingress_result: IngressResult
+    # These are observations made here through Runtime, never carrier inputs.
+    repair_wakeup_route: str = "HUMAN_WAKEUP_REQUIRED"
+    repair_wakeup_reason: str = "CURRENT_PREFLIGHT_REQUIRED"
 
     @property
     def publication_run_id(self) -> str | None:
@@ -162,16 +168,137 @@ class IssueDelivery:
                 f"failed_run_id={failed_run_id}\n"
                 f"repair_failed_run_id={failed_run_id}\n"
                 f"repair_sha={repair_sha}\n"
+                f"repair_wakeup_route={self.repair_wakeup_route}\n"
+                f"repair_wakeup_reason={self.repair_wakeup_reason}\n"
             )
         return ""
 
     def render_receipt(self) -> str:
+        repair = ""
+        if self.repair_dispatch_id is not None:
+            repair = (
+                f"repair_wakeup: {self.repair_wakeup_route}\n"
+                f"reason: {self.repair_wakeup_reason}\n"
+                f"failed_run_id: {self.repair_failed_run_id}\n"
+                f"repair_sha: {self.repair_sha}\n"
+                f"repair_dispatch_id: {self.repair_dispatch_id}\n"
+                "run_created: false\nexecutor_invoked: false\n"
+            )
+            if self.repair_wakeup_route == "HUMAN_WAKEUP_REQUIRED":
+                if self.repair_wakeup_reason == "EXECUTOR_REQUIRED":
+                    repair += (
+                        "human_action: Open [AIOS REPAIR WAKEUP] for these exact selectors with "
+                        "your explicit coding Executor/model/effort or exact-subject Human opt-in AUTO.\n"
+                    )
+                else:
+                    repair += (
+                        "human_action: Restore current canonical correction preflight and Unified State "
+                        "for these exact selectors before requesting [AIOS REPAIR WAKEUP]; select a "
+                        "coding Executor/model/effort or Human opt-in AUTO only when Runtime requires coding.\n"
+                    )
         receipt = (
             "AIOS BRAIN INGRESS RECEIPT\n"
             f"carrier: {self.carrier_identity}\n"
+            f"{repair}"
             f"{self.ingress_result.render()}"
         )
         return _bounded_text(receipt)
+
+
+def _repair_wakeup_observation(delivery: IssueDelivery, repo: Path) -> IssueDelivery:
+    """Consume fresh Runtime truth for this one ingress continuation, without dispatch.
+
+    No supplied action, attestation file, bot identity or Human profile can grant
+    this route. Runtime still repeats admission/currentness at actual delivery.
+    An unavailable hosted observation is an ordinary Human action, not a FAILURE.
+    """
+    failed_run_id, repair_sha = delivery.repair_failed_run_id, delivery.repair_sha
+    if delivery.repair_dispatch_id is None:
+        return delivery
+
+    def human(reason: str) -> IssueDelivery:
+        return replace(delivery, repair_wakeup_route="HUMAN_WAKEUP_REQUIRED", repair_wakeup_reason=reason)
+
+    def same(left: Any, right: Any) -> bool:
+        # JSON scalar types matter: false/0 and true/1 are not attestations of
+        # the same authority, despite Python mapping equality accepting them.
+        return json.dumps(left, sort_keys=True, allow_nan=False) == json.dumps(
+            right, sort_keys=True, allow_nan=False,
+        )
+
+    try:
+        from .correction_preflight import preflight_repair
+        from .unified_state import observe_unified_state
+
+        preflight = preflight_repair(
+            failed_run_id, repo=repo, required_repair_sha=repair_sha,
+        ).as_dict()
+        task = preflight.get("task")
+        if (
+            preflight.get("format") != "AIOS_CORRECTION_PREFLIGHT"
+            or type(preflight.get("version")) is not int or preflight["version"] != 1
+            or preflight.get("kind") != "CORRECTION_PREFLIGHT"
+            or preflight.get("family") != "REPAIR"
+            or any(preflight.get(key) != "READY" for key in ("status", "phase", "reason_code"))
+            or preflight.get("failed_run_id") != failed_run_id
+            or preflight.get("authorization_sha") != repair_sha
+            or not isinstance(task, Mapping)
+            or set(task) != {"id", "revision"}
+            or not isinstance(task.get("id"), str) or not task["id"] or len(task["id"]) > 128
+            or type(task.get("revision")) is not int or task["revision"] < 1
+            or not isinstance(preflight.get("failed_head_sha"), str)
+            or not REPAIR_SHA_PATTERN.fullmatch(preflight["failed_head_sha"])
+            or preflight.get("subject_mode") not in ("CURRENT", "HISTORICAL")
+            or preflight.get("action") not in (
+                "CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE", "NO_CHANGE",
+            )
+            or type(preflight.get("executor_required")) is not bool
+            or preflight.get("run_created") is not False
+            or preflight.get("executor_invoked") is not False
+        ):
+            return human("CURRENT_PREFLIGHT_REQUIRED")
+        observation = observe_unified_state(task["id"], repo=repo)
+        state, document = observation.as_dict(), observation.correction_document
+        if (
+            state.get("format") != "AIOS_UNIFIED_STATE"
+            or type(state.get("version")) is not int or state["version"] != 1
+            or state.get("kind") != "UNIFIED_STATE"
+            or not same(state.get("task"), task)
+            or state.get("lifecycle_state") != "CORRECTION"
+            or state.get("next_action") != "EXECUTE_REPAIR"
+            or state.get("authority") != "HUMAN_RUNTIME"
+            or state.get("run_id") != failed_run_id
+            or state.get("failed_run_id") != failed_run_id
+            or state.get("failed_head_sha") != preflight["failed_head_sha"]
+            or state.get("correction_sha") != repair_sha
+            or state.get("blocker") is not None
+            or not same(state.get("correction_preflight"), preflight)
+            or any(state.get(key) is not False for key in (
+                "run_created", "executor_invoked", "verification_invoked", "state_mutated",
+            ))
+            or not isinstance(document, Mapping)
+            or not same(document.get("task"), task)
+            or document.get("failed_run_id") != failed_run_id
+            or document.get("failed_head_sha") != preflight["failed_head_sha"]
+            or document.get("action") != preflight["action"]
+        ):
+            return human("CONSISTENT_UNIFIED_STATE_REQUIRED")
+        # A later preflight must still authenticate the exact current correction
+        # and reusable state after Unified State's independent remote reduction.
+        current = preflight_repair(
+            failed_run_id, repo=repo, required_repair_sha=repair_sha,
+        ).as_dict()
+        if not same(current, preflight):
+            return human("CURRENT_PREFLIGHT_CHANGED")
+        if preflight["executor_required"] is True:
+            return human("EXECUTOR_REQUIRED")
+        if preflight["action"] not in ("NO_CHANGE", "FINALIZE_CANDIDATE"):
+            return human("INCONSISTENT_EXECUTOR_REQUIREMENT")
+        return replace(delivery, repair_wakeup_route="EXECUTORLESS",
+                       repair_wakeup_reason="CURRENT_EXECUTORLESS_REPAIR")
+    except Exception:
+        # Never publish private Runtime/transport diagnostics or guess permission.
+        return human("CURRENTNESS_UNAVAILABLE")
 
 
 def _read_bounded_file(path: Path, *, maximum: int, kind: str) -> bytes:
@@ -198,6 +325,11 @@ def load_policy(path: str | Path) -> GitHubIssuePolicy:
 
     policy_path = Path(path)
     raw = _read_bounded_file(policy_path, maximum=65_536, kind="policy")
+    return _decode_policy(raw)
+
+
+def _decode_policy(raw: bytes) -> GitHubIssuePolicy:
+    """Decode the same policy from an authenticated canonical Git blob."""
     try:
         text = raw.decode("utf-8", errors="strict")
         document = yaml.safe_load(text)
@@ -320,6 +452,16 @@ def deliver_event(
 
     policy = load_policy(policy_path)
     issue = admit_event(event_path, policy)
+    try:
+        selection = json.loads(issue.body_bytes)
+    except (ValueError, RecursionError):
+        selection = None
+    if isinstance(selection, dict) and selection.get("operation") == "SELECT_MAPPING_REVIEW":
+        envelope = parse_envelope(issue.body_bytes)
+        # No carrier-supplied actor/admission object crosses this boundary.
+        from .authoring_ingress import _execute_human_review_selection
+        result = _execute_human_review_selection(envelope, Path(repo), event_path=Path(event_path))
+        return IssueDelivery(carrier_identity=issue.identity, ingress_result=result)
     admission = None
     if origin_admission_path is not None:
         envelope, required = _origin_request(issue)
@@ -332,7 +474,113 @@ def deliver_event(
                 raise GitHubIssueIngressError(str(exc)) from None
     kwargs = {"origin_admission": admission} if admission is not None else {}
     result = ingest_carrier("-", repo=Path(repo), stdin_bytes=issue.body_bytes, **kwargs)
-    return IssueDelivery(carrier_identity=issue.identity, ingress_result=result)
+    delivery = IssueDelivery(carrier_identity=issue.identity, ingress_result=result)
+    if delivery.repair_dispatch_id is not None:
+        return _repair_wakeup_observation(delivery, Path(repo))
+    return delivery
+
+
+def _github_selection_json(repository: str, suffix: str) -> dict:
+    """Independent authenticated GitHub read; no caller-selected host or URL."""
+    from .review_transport import _l1_json, ReviewTransportError
+
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not token or not _REPOSITORY_PATTERN.fullmatch(repository):
+        raise GitHubIssueIngressError("selection requires authenticated GitHub observation")
+    data = None
+    if re.fullmatch(r"/selection-edit-history/[1-9][0-9]{0,11}", suffix):
+        owner, name = repository.split("/")
+        query = ("query($owner:String!,$name:String!,$number:Int!){"
+                 "repository(owner:$owner,name:$name){nameWithOwner databaseId "
+                 "issue(number:$number){id number body title createdAt lastEditedAt}}}")
+        data = json.dumps(dict(query=query, variables=dict(owner=owner, name=name,
+            number=int(suffix.rsplit("/", 1)[1])))).encode("utf-8")
+        url = "https://api.github.com/graphql"
+    elif suffix == "" or re.fullmatch(r"/issues/[1-9][0-9]{0,11}", suffix):
+        url = f"https://api.github.com/repos/{repository}{suffix}"
+    else:
+        raise GitHubIssueIngressError("selection GitHub read is outside the bounded contract")
+    request = urllib.request.Request(url, data=data,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                 "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "AIOS-Human-selection-v1",
+                 "Cache-Control": "no-cache", "Content-Type": "application/json"})
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            return None
+
+    try:
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=15) as response:
+            if response.status != 200:
+                raise ValueError("unexpected GitHub response")
+            return _l1_json(response.read(_MAX_EVENT_FILE_BYTES + 1), _MAX_EVENT_FILE_BYTES)
+    except (OSError, ValueError, urllib.error.URLError, ReviewTransportError):
+        raise GitHubIssueIngressError("selection GitHub authentication unavailable") from None
+
+
+def _authenticate_selection_issue(policy: GitHubIssuePolicy, number: int) -> tuple[dict, bytes]:
+    """Authenticate original, unedited Human intent independently of event JSON."""
+    if type(number) is not int or not 0 < number < 10**12:
+        raise GitHubIssueIngressError("invalid selection Issue number")
+    repository = _github_selection_json(policy.repository, "")
+    issue = _github_selection_json(policy.repository, f"/issues/{number}")
+    user = issue.get("user", {})
+    body, created = issue.get("body"), issue.get("created_at")
+    if (repository.get("full_name") != policy.repository or type(repository.get("id")) is not int
+            or repository["id"] <= 0 or type(issue.get("number")) is not int or issue["number"] != number
+            or issue.get("repository_url") != f"https://api.github.com/repos/{policy.repository}"
+            or "pull_request" in issue or type(user) is not dict or user.get("type") != "User"
+            or user.get("login") not in policy.authorized_actors or type(user.get("id")) is not int
+            or user["id"] <= 0 or type(issue.get("id")) is not int or issue["id"] <= 0
+            or type(issue.get("node_id")) is not str or not 0 < len(issue["node_id"]) <= 256
+            or issue.get("title") != policy.title_marker or type(body) is not str
+            or type(created) is not str or not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", created)):
+        raise GitHubIssueIngressError("selection requires exact unedited allowlisted Human Issue")
+    # Receipt comments and closing an Issue can change REST updated_at. Only
+    # GitHub's independent content-edit field establishes original body intent.
+    edits = _github_selection_json(policy.repository, f"/selection-edit-history/{number}")
+    graph_repository = _mapping(_mapping(edits.get("data"), "selection edit data").get("repository"),
+                                "selection edit repository")
+    original = _mapping(graph_repository.get("issue"), "selection original Issue")
+    if (edits.get("errors") or graph_repository.get("nameWithOwner") != policy.repository
+            or type(graph_repository.get("databaseId")) is not int or graph_repository["databaseId"] != repository["id"]
+            or original.get("id") != issue["node_id"] or type(original.get("number")) is not int
+            or original["number"] != number or original.get("body") != body
+            or original.get("title") != policy.title_marker or original.get("createdAt") != created
+            or "lastEditedAt" not in original or original["lastEditedAt"] is not None):
+        raise GitHubIssueIngressError("selection requires independently unedited original Issue content")
+    body_bytes = body.encode("utf-8", errors="strict")
+    if not 0 < len(body_bytes) <= policy.max_body_bytes:
+        raise GitHubIssueIngressError("selection Issue body exceeds bounds")
+    return dict(repository=policy.repository, repository_id=repository["id"], issue_number=number,
+                issue_id=issue["id"], issue_node_id=issue["node_id"], actor=user["login"],
+                actor_id=user["id"], action="opened", created_at=created,
+                body_sha256=hashlib.sha256(body_bytes).hexdigest()), body_bytes
+
+
+def _authenticate_selection_event(event_path: Path, policy: GitHubIssuePolicy) -> tuple[dict, bytes]:
+    from .review_transport import _l1_json
+
+    event = _l1_json(_read_bounded_file(event_path, maximum=_MAX_EVENT_FILE_BYTES, kind="event"),
+                     _MAX_EVENT_FILE_BYTES)
+    issue = _mapping(event.get("issue"), "selection Issue")
+    repository = _mapping(event.get("repository"), "selection repository")
+    provenance, body = _authenticate_selection_issue(policy, issue.get("number"))
+    author, sender = issue.get("user"), event.get("sender")
+    if (event.get("action") != "opened" or type(author) is not dict or type(sender) is not dict
+            or repository.get("full_name") != provenance["repository"]
+            or type(repository.get("id")) is not int or repository["id"] != provenance["repository_id"]
+            or any(user.get("login") != provenance["actor"] or type(user.get("id")) is not int
+                   or user["id"] != provenance["actor_id"]
+                   or user.get("type") != "User" for user in (author, sender))
+            or type(issue.get("id")) is not int or issue["id"] != provenance["issue_id"]
+            or issue.get("node_id") != provenance["issue_node_id"]
+            or issue.get("created_at") != provenance["created_at"]
+            or issue.get("updated_at") != provenance["created_at"]
+            or issue.get("title") != policy.title_marker or type(issue.get("body")) is not str
+            or issue["body"].encode("utf-8") != body):
+        raise GitHubIssueIngressError("selection event differs from independent GitHub provenance")
+    return provenance, body
 
 
 def _origin_request(issue):
@@ -448,6 +696,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     from .brain_attention import observe_ingress_success
     observe_ingress_success(delivery, args.repo)
+    if delivery.repair_dispatch_id is not None:
+        from .operational_receipt import record_repair_workflow_source
+        record_repair_workflow_source(args.event, lane="ingress", delivery_id=delivery.repair_dispatch_id,
+            failed_run_id=delivery.repair_failed_run_id, repair_sha=delivery.repair_sha)
     print(delivery.render_receipt())
     return 0
 

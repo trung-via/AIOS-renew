@@ -20,6 +20,8 @@ jobs:
       correction_dispatch_id: ${{ steps.admission.outputs.correction_dispatch_id }}
       source_run_id: ${{ steps.admission.outputs.source_run_id }}
       finding_id: ${{ steps.admission.outputs.finding_id }}
+      # The existing bounded carrier slot holds either a v2 single finding or
+      # the content-addressed selector derived from a v3 explicit batch set.
       executor: ${{ steps.admission.outputs.executor }}
       model: ${{ steps.admission.outputs.model }}
       reasoning_effort: ${{ steps.admission.outputs.reasoning_effort }}
@@ -41,7 +43,7 @@ jobs:
       - name: Install the reviewed repository package
         run: python -m pip install --disable-pip-version-check .
 
-      - name: Admit and sanitize one remediation intent
+      - name: Admit and sanitize one single or versioned batch remediation intent
         id: admission
         env:
           AIOS_PROFILE_POLICY: ${{ github.workspace }}/.ai/executor-profiles.yaml

@@ -106,6 +106,110 @@ def _native_failure_fixture(*, exit_code=None, reason="TIMEOUT", dirty=False):
     return run, failure
 
 
+@pytest.mark.parametrize("task", ["358", "360", "371"])
+def test_task372_v1_multicommand_pytest_detail_withholds_parameters_and_raw_text(task):
+    _, private = _native_failure_fixture()
+    private.update(run_id=f"RUN-{task}-001", task=dict(id=f"TASK-{task}", revision=1), phase="VERIFICATION")
+    commands = ["python -m pytest -q tests/test_first.py", "python -m pytest -q tests/test_fixture.py"]
+    private["error"] = dict(type="RuntimeVerificationError", message="verification failed",
+        verification=[dict(command=commands[0], exit_code=0, summary="1 passed"),
+            dict(command=commands[1], exit_code=1, summary=(
+                "Traceback C:/private/runtime/capture\nE TypeError: private-token=synthetic-secret\n"
+                "================ short test summary info ================\n"
+                "FAILED tests/test_fixture.py::test_parse[api_key=synthetic-secret] - TypeError: bad fixture\n"
+                "ERROR tests/test_fixture.py::test_setup - fixture 'secret_fixture' not found\n1 failed, 1 error"))])
+    raw = json.dumps(private).encode()
+    public = review_transport.failure_document(review_transport.public_failure(raw))
+    context = review_transport.failure_context(public, artifact_sha="c" * 40)
+    review_transport.validate_failure_context(context)
+    detail = context["safe_detail"]["verification"]
+    assert len(detail) == 1 and detail[0]["index"] == 1 and detail[0]["command"] == commands[1]
+    assert detail[0]["availability"] == "PARTIAL" and detail[0]["complete"] is None
+    assert detail[0]["failure_count"] is None  # Text excerpts do not prove a complete population.
+    assert detail[0]["failed_nodes"][0]["identity"] == "tests/test_fixture.py::test_parse"
+    assert detail[0]["failed_nodes"][0]["parameters_withheld"] is True
+    assert detail[0]["failed_nodes"][0]["error_types"] == ["TypeError"]
+    assert detail[0]["failed_nodes"][1]["error_types"] == ["FixtureLookupError"]
+    portable = json.dumps(context)
+    assert all(text not in portable for text in ("synthetic-secret", "secret_fixture", "Traceback", "C:/private", "api_key"))
+    assert json.dumps(private).encode() == raw
+
+
+def test_task372_observed_nodes_remain_bounded_and_historical_details_do_not_reappear():
+    _, private, _ = _failure_transport_recovery_fixture(nodes=40, failures=40)
+    public = review_transport.failure_document(review_transport.public_failure(json.dumps(private).encode()))
+    context = review_transport.failure_context(public)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["complete"] is False and detail["unstable"] is True and detail["failure_count"] == 40
+    assert len(detail["failed_nodes"]) == 32 and detail["nodes_truncated"] is True
+    assert "secret_fixture" not in json.dumps(context)
+    for version in (review_transport.LEGACY_PUBLIC_FAILURE_FORMAT, review_transport.PUBLIC_FAILURE_FORMAT):
+        historical = review_transport._project_failure(private, projection_format=version, include_detail=False)
+        assert operator_failure_matches(private, historical)
+        context = review_transport.failure_context(historical)
+        assert context["safe_detail"]["availability"] == "UNAVAILABLE"
+        assert review_transport.failure_document(json.dumps(historical).encode()) == historical
+
+
+@pytest.mark.parametrize("message,cause,missing", [
+    ("RESULT does not satisfy acceptance criteria: AC1, AC9", "MISSING_ACCEPTANCE_CLAIMS", ["AC1", "AC9"]),
+    ("invalid canonical ResultPackage: invalid claims", "RESULT_PACKAGE_INVALID", []),
+    ("RESULT has unresolved items", "UNRESOLVED_ITEMS", []),
+    ("executor structural output evidence must be empty", "EXECUTOR_EVIDENCE_INVALID", []),
+    ("task_complete true; independent pytest passed; candidate clean", "UNKNOWN", []),
+    ("RESULT does not satisfy acceptance criteria: C:/private/credential=synthetic-secret", "UNKNOWN", []),
+])
+def test_task372_completion_gate_exposes_only_observed_structural_causes(message, cause, missing):
+    _, private = _native_failure_fixture()
+    private.update(run_id="RUN-370-001", task=dict(id="TASK-370", revision=1), phase="COMPLETION_GATE")
+    private["error"] = dict(type="OperatorError", message=message)
+    public = review_transport.failure_document(review_transport.public_failure(json.dumps(private).encode()))
+    context = review_transport.failure_context(public)
+    review_transport.validate_failure_context(context)
+    assert context["safe_detail"]["cause"] == cause
+    assert context["safe_detail"]["missing_acceptance_ids"] == missing
+    assert context["proof"] == "NON_PASS_DIAGNOSTIC"
+    assert "synthetic-secret" not in json.dumps(context)
+
+
+@pytest.mark.parametrize("text,truncated,shape", [
+    ('{"type":"task_complete"}', False, "UNKNOWN"),
+    ('null', False, "NON_OBJECT"),
+    ('{"type":"item.completed","item":{"type":"agent_message","text":"done; synthetic-secret"}}', False, "INVALID_JSON"),
+    ('{"result":{}}', False, "MISSING_EVIDENCE"),
+    ('{"result":[],"evidence":[]}', False, "INVALID_RESULT"),
+    ('{"result":{},"evidence":[]}', False, "INVALID_RESULT_FIELDS"),
+    ('{"result":{"head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","claims":["synthetic-secret"],"changed_files":[],"unresolved":[]},"evidence":[]}', False, "INVALID_CLAIMS"),
+    ('{"result":{},"evidence":[]}', True, "INCOMPLETE_CAPTURE"),
+    ('', False, "EMPTY"),
+])
+def test_task372_native_final_response_shape_and_interruption_are_not_completion(text, truncated, shape):
+    _, private = _native_failure_fixture(reason="OUTPUT_INVALID", exit_code=0)
+    private["error"]["type"] = "CodexOutputError"
+    private["error"]["native_diagnostics"]["stdout"] = dict(availability="captured", text=text, truncated=truncated)
+    context = review_transport.failure_context(private)
+    review_transport.validate_failure_context(context)
+    assert context["safe_detail"]["cause"] == "NATIVE_OUTPUT_INVALID"
+    assert context["safe_detail"]["final_response_shape"] == shape
+    assert context["diagnostic"]["native_exit"]["value"] == 0 and context["proof"] == "NON_PASS_DIAGNOSTIC"
+    assert "synthetic-secret" not in json.dumps(context)
+
+
+@pytest.mark.parametrize("field", ["run_id", "subject_sha", "private_failure_digest", "phase", "raw", "node"])
+def test_task372_safe_details_reject_cross_subject_and_private_bytes(field):
+    from copy import deepcopy
+    _, private = _native_failure_fixture()
+    context = review_transport.failure_context(private)
+    forged = deepcopy(context)
+    if field == "raw": forged["safe_detail"]["stdout"] = "synthetic-secret"
+    elif field == "node":
+        forged["safe_detail"]["verification"] = [{"nodeid": "secret_fixture"}]
+    else:
+        forged["safe_detail"][field] = "foreign"
+    with pytest.raises((ValueError, KeyError, TypeError)):
+        review_transport.validate_failure_context(forged)
+
+
 @pytest.mark.parametrize("exit_code", [pytest.param(..., id="absent"), None, -1, 0, 17])
 def test_native_failure_diagnostics_preserve_identity_unknown_exit_and_original_bytes(exit_code):
     from aios_renew.verification_contract import verification_digest
@@ -810,14 +914,20 @@ def test_failure_transport_recovery_remote_failure_budget_and_historical_gate(tm
 
 
 @pytest.mark.parametrize("defect", [
-    "origin", "digest", "subject", "run", "count", "node_count", "exit", "raw", "capture", "conditions", "failed_identity",
+    "origin", "origin_binding", "raw_detail", "digest", "subject", "run", "count", "node_count", "exit", "raw", "capture", "conditions", "failed_identity",
 ])
 def test_failure_transport_recovery_rejects_forged_public_projection(defect):
     from aios_renew.unified_state import _matches_public_document
     _, private, raw = _failure_transport_recovery_fixture(nodes=1, failures=1)
     public = json.loads(review_transport.public_failure(raw))
     record = public["error"]["verification"][0]["verification"]
-    if defect == "origin": public["public_projection"]["private_failure_digest"] = "0" * 64
+    if defect in {"origin", "origin_binding"}:
+        public["public_projection"]["private_failure_digest"] = "0" * 64
+        if defect == "origin":
+            # Keep the diagnostic internally bound so exact local-origin
+            # reconciliation, rather than schema validation, rejects this forgery.
+            public["error"]["safe_detail"]["private_failure_digest"] = "0" * 64
+    elif defect == "raw_detail": public["error"]["safe_detail"]["detail"] = "private traceback secret_fixture"
     elif defect == "digest": record["candidate_digest"] = "0" * 64
     elif defect == "subject": record["binding"]["subject_sha"] = "0" * 40
     elif defect == "run": record["run_id"] = "RUN-058-999"
@@ -963,8 +1073,9 @@ def test_failure_transport_recovery_inherited_public_diagnostics_are_rejected():
     assert review_transport.failure_document(raw) == private
     public_bytes = review_transport.public_failure(raw)
     assert all(text not in public_bytes for text in (
-        b"C:/private/", b"secret_fixture", b"captured_output", b"detail", b"raw_path"))
+        b"C:/private/", b"secret_fixture", b"captured_output", b'"detail"', b"raw_path"))
     public = review_transport.failure_document(public_bytes)
+    assert public["error"]["safe_detail"]["raw_output_withheld"] is True
     original = private["error"]["verification"][0]["verification"]
     projected = public["error"]["verification"][0]["verification"]
     assert projected["raw_digest"] == original["raw_digest"]

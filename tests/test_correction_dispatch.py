@@ -453,3 +453,29 @@ def test_restart_reconciles_durably_bound_terminal_run_without_reexecution(
     assert replay.status == "FAILED"
     assert replay.run_id == "RUN-082-002"
     assert replay.replayed is True
+
+
+def test_batch_dispatch_journal_is_versioned_and_replay_never_reinvokes(tmp_path):
+    from aios_renew.correction_dispatch import BatchApprovedRemediation
+    from aios_renew.review import parse_batch_selection
+    from tests.test_batch_remediation import selection_data
+    selected = parse_batch_selection(selection_data())
+    approved = BatchApprovedRemediation(source_run_id=selected.source_run_id, task_id=selected.task_id,
+        task_revision=selected.task_revision, review_id=selected.review_id, finding_id=selected.batch_id,
+        action='CODE_FIX', reviewed_sha=selected.reviewed_sha,
+        remediation_ref=f'refs/heads/aios/remediation/{selected.source_run_id}-{selected.batch_id}',
+        remediation_sha='d' * 40, approver='human', batch_selection=selected)
+    calls = []
+    args = dict(state_root=tmp_path / '.git/aios', repo_root=tmp_path,
+        correction_dispatch_id='batch-delivery', source_run_id=selected.source_run_id, finding_id=selected.batch_id,
+        executor='codex', approval=approved, execution_profile=profile_for('batch-delivery'))
+    def invoke():
+        calls.append('once')
+        return CorrectionInvocation(1)
+    first = execute_correction_dispatch(**args, invoke_remediation=invoke)
+    second = execute_correction_dispatch(**args, invoke_remediation=lambda: pytest.fail('batch replay invoked Executor'))
+    record = json.loads(next((args['state_root'] / 'correction-dispatches').glob('*.json')).read_text())
+    assert first.status == 'FAILED' and second.replayed and calls == ['once']
+    assert record['version'] == 3 and record['batch_selection']['finding_ids'] == ['F1', 'F2']
+    with pytest.raises(CorrectionDispatchError):
+        execute_correction_dispatch(**{**args, 'approval': replace(approved, remediation_sha='e' * 40)}, invoke_remediation=invoke)

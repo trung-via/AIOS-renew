@@ -16,7 +16,7 @@ import hashlib
 import json
 import importlib.metadata
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Sequence
 
 
@@ -529,7 +529,16 @@ def pytest_collection_command(command: str) -> str:
 
 
 def _execution_conditions(value: dict) -> tuple[dict, dict]:
-    return ({k: v for k, v in value["profile"].items() if k != "collect_only"}, value["toolchain"])
+    return (pytest_execution_profile(value["profile"]), value["toolchain"])
+
+
+def pytest_execution_profile(profile: dict) -> dict:
+    """Compare a non-executing collection with its explicitly bound execution."""
+    result = {k: v for k, v in profile.items() if k != "collect_only"}
+    if result.get("execution_contract") == "fixed-xdist-direct-git-v1" and profile.get("collect_only"):
+        result["workers"] = result.pop("collected_for_workers")
+        result["distribution"] = result.pop("collected_for_distribution")
+    return result
 
 
 def exact_collection_observation(value: object, *, command: str, subject_sha: str) -> tuple[str, ...]:
@@ -673,6 +682,59 @@ def toolchain_inventory_digest() -> str:
     return verification_digest(inventory)
 
 
+def validate_pytest_execution_binding(proof: object, *, profile: dict, toolchain: dict,
+                                     reports: list, subject_sha: str | None = None) -> None:
+    """Validate prospective process proof without changing historical decoding."""
+    if not isinstance(proof, dict) or proof.get("execution_contract") != "fixed-xdist-direct-git-v1":
+        raise VerificationContractError("missing actual pytest execution proof")
+    if subject_sha is not None and proof.get("subject_sha") != subject_sha:
+        raise VerificationContractError("pytest execution subject mismatch")
+    identity = pytest_collection_identity(proof.get("controller_collection"))
+    workers, collections = proof.get("workers"), proof.get("worker_collections")
+    expected = 0 if profile["collect_only"] else profile["workers"]
+    if (not isinstance(workers, dict) or not isinstance(collections, dict)
+            or len(workers) != expected or set(workers) != set(collections)):
+        raise VerificationContractError("missing or unexpected actual xdist workers")
+    paths, processes = [], set()
+    path_type = PureWindowsPath if toolchain.get("platform_system") == "Windows" else PurePosixPath
+    description = {key: profile[key] for key in ("profile", "workers", "distribution", "max_worker_restart", "collect_only")}
+    for worker_id, worker in workers.items():
+        if (not isinstance(worker_id, str) or not worker_id
+                or not isinstance(worker, dict) or worker.get("worker_id") != worker_id
+                or worker.get("profile") != description or worker.get("toolchain") != toolchain
+                or pytest_collection_identity(worker.get("collection")) != identity
+                or pytest_collection_identity(collections[worker_id]) != identity):
+            raise VerificationContractError("conflicting xdist worker collection/profile/toolchain")
+        pid = worker.get("process_id")
+        if type(pid) is not int or pid <= 0 or pid in processes:
+            raise VerificationContractError("shared or invalid xdist process identity")
+        processes.add(pid)
+        roots = []
+        for name in ("temporary_root", "git_fixture_cache_root"):
+            value = worker.get(name)
+            if (not isinstance(value, str) or not value or not path_type(value).is_absolute()
+                    or ".." in path_type(value).parts):
+                raise VerificationContractError("missing absolute xdist isolation root")
+            roots.append(path_type(value))
+        for previous in paths:
+            if any(a.is_relative_to(b) or b.is_relative_to(a) for a in previous for b in roots):
+                raise VerificationContractError("xdist workers share writable roots")
+        paths.append(roots)
+    if profile["collect_only"]:
+        if reports:
+            raise VerificationContractError("collection-only observation executed tests")
+        return
+    phases = {}
+    for report in reports:
+        phases.setdefault(report["nodeid"], {})[report["phase"]] = report["outcome"]
+    if pytest_collection_identity(list(phases)) != identity:
+        raise VerificationContractError("incomplete actual pytest report population")
+    for observed in phases.values():
+        if ("setup" not in observed or "teardown" not in observed or "collect" in observed
+                or observed["setup"] == "PASS" and "call" not in observed):
+            raise VerificationContractError("incomplete actual pytest phase population")
+
+
 def validate_observation(value: object) -> dict:
     """Require complete exact phase outcomes before permitting attribution."""
     if not isinstance(value, dict):
@@ -688,6 +750,32 @@ def validate_observation(value: object) -> dict:
     for key in ("profile", "toolchain"):
         if not isinstance(value.get(key), dict) or not value[key]:
             raise VerificationContractError("missing observation conditions")
+    if value["profile"].get("execution_contract") == "fixed-xdist-direct-git-v1":
+        profile = value["profile"]
+        if (type(profile.get("workers")) is not int or profile["workers"] < 0
+                or profile.get("distribution") != ("load" if profile["workers"] else "no")
+                or type(profile.get("max_worker_restart")) is not int or profile["max_worker_restart"] != 0
+                or type(profile.get("collect_only")) is not bool
+                or not profile.get("observer_blob")
+                or not isinstance(profile.get("repository_tool_blobs"), dict)
+                or any(not v for v in profile["repository_tool_blobs"].values())):
+            raise VerificationContractError("incomplete actual pytest profile binding")
+        if profile["collect_only"] and (profile["workers"] != 0
+                or type(profile.get("collected_for_workers")) is not int
+                or profile["collected_for_workers"] < 0
+                or profile.get("collected_for_distribution") != ("load" if profile["collected_for_workers"] else "no")):
+            raise VerificationContractError("invalid non-executing collection binding")
+        for key in ("git_executable", "git_version", "git_exec_path", "installed_distributions_digest", "git_executable_sha256"):
+            if not isinstance(value["toolchain"].get(key), str) or not value["toolchain"][key]:
+                raise VerificationContractError("missing direct Git/toolchain provenance")
+        for key in ("git_executable_sha256", "installed_distributions_digest"):
+            if re.fullmatch(r"[0-9a-f]{64}", value["toolchain"][key]) is None:
+                raise VerificationContractError("invalid Git/toolchain digest")
+        if value["toolchain"].get("platform_system") == "Windows" and (
+                value["toolchain"].get("git_selection") != "installed-git-for-windows-direct-v1"
+                or not PureWindowsPath(value["toolchain"]["git_executable"]).is_absolute()
+                or PureWindowsPath(value["toolchain"]["git_executable"]).name.lower() != "git.exe"):
+            raise VerificationContractError("missing direct installed Windows Git selection")
     if any(not isinstance(value["toolchain"].get(k), str) or not value["toolchain"][k] for k in (
         "python_implementation", "python_version", "python_executable", "platform_system",
         "platform_machine", "pytest_version", "pytest_xdist_version")):
@@ -731,6 +819,9 @@ def validate_observation(value: object) -> dict:
         raise VerificationContractError("failure exit has no canonical failed identity population")
     if "collection" in value:
         validate_exact_collection(value["collection"])
+    if value["profile"].get("execution_contract") == "fixed-xdist-direct-git-v1":
+        validate_pytest_execution_binding(value.get("execution"), profile=value["profile"],
+                                         toolchain=value["toolchain"], reports=reports, subject_sha=value["subject_sha"])
     return value
 
 

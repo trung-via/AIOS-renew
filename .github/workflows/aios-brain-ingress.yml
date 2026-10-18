@@ -107,8 +107,11 @@ jobs:
         id: ingress
         continue-on-error: true
         env:
+          # Independent API reads authenticate Human selection; never body actor labels.
+          GH_TOKEN: ${{ github.token }}
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-ingress-receipt.txt
           AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-ingress/source.json
+          AIOS_REPAIR_SOURCE_PATH: ${{ runner.temp }}/aios-repair-source/source.json
           AIOS_ORIGIN_ADMISSION_KEY: ${{ secrets.AIOS_ORIGIN_ADMISSION_KEY }}
           AIOS_ORIGIN_ADMISSION_PATH: ${{ runner.temp }}/aios-origin-admission-${{ github.run_attempt }}/admission.json
         run: |
@@ -133,15 +136,26 @@ jobs:
               },
             });
 
+      - name: Preserve exact originating REPAIR source
+        id: repair_source
+        if: steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_dispatch_id != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-correlation-v1-ingress-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aios-repair-source/source.json
+          if-no-files-found: ignore
+          retention-days: 90
+
       - name: Dispatch safe REPAIR wakeup once
         id: repair_dispatch
-        if: steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_sha != ''
+        if: steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_wakeup_route == 'EXECUTORLESS'
         continue-on-error: true
         uses: actions/github-script@v7
         env:
           AIOS_REPAIR_DISPATCH_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}
           AIOS_FAILED_RUN_ID: ${{ steps.ingress.outputs.failed_run_id }}
           AIOS_REPAIR_SHA: ${{ steps.ingress.outputs.repair_sha }}
+          AIOS_ORIGIN_ARTIFACT_ID: ${{ steps.repair_source.outputs.artifact-id }}
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
@@ -154,6 +168,9 @@ jobs:
                 failed_run_id: process.env.AIOS_FAILED_RUN_ID,
                 repair_sha: process.env.AIOS_REPAIR_SHA,
                 executor: '',
+                origin_workflow_run_id: process.env.AIOS_ORIGIN_ARTIFACT_ID ? String(context.runId) : '',
+                origin_run_attempt: process.env.AIOS_ORIGIN_ARTIFACT_ID ? String(context.payload.run_attempt || process.env.GITHUB_RUN_ATTEMPT) : '',
+                origin_artifact_id: process.env.AIOS_ORIGIN_ARTIFACT_ID || '',
               },
             });
 
@@ -170,7 +187,7 @@ jobs:
           --run-id "$AIOS_PUBLICATION_RUN_ID" --source "$AIOS_ATTENTION_SOURCE_PATH"
 
       - name: Observe rejected REPAIR dispatch
-        if: always() && steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_sha != '' && steps.repair_dispatch.outcome == 'failure'
+        if: always() && steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_wakeup_route == 'EXECUTORLESS' && steps.repair_dispatch.outcome == 'failure'
         env:
           AIOS_DELIVERY_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}
           AIOS_FAILED_RUN_ID: ${{ steps.ingress.outputs.failed_run_id }}
@@ -212,6 +229,8 @@ jobs:
           AIOS_REPAIR_DISPATCH_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}
           AIOS_FAILED_RUN_ID: ${{ steps.ingress.outputs.failed_run_id }}
           AIOS_REPAIR_SHA: ${{ steps.ingress.outputs.repair_sha }}
+          AIOS_REPAIR_WAKEUP_ROUTE: ${{ steps.ingress.outputs.repair_wakeup_route }}
+          AIOS_ORIGIN_ARTIFACT_ID: ${{ steps.repair_source.outputs.artifact-id }}
         with:
           script: |
             const fs = require('fs');
@@ -225,9 +244,12 @@ jobs:
             const repairDispatchId = process.env.AIOS_REPAIR_DISPATCH_ID || '';
             const failedRunId = process.env.AIOS_FAILED_RUN_ID || '';
             const repairSha = process.env.AIOS_REPAIR_SHA || '';
-            const repairRequested = Boolean(repairSha);
+            const repairRoute = process.env.AIOS_REPAIR_WAKEUP_ROUTE || '';
+            const repairRequested = Boolean(repairSha) && repairRoute === 'EXECUTORLESS';
+            const humanWakeupRequired = Boolean(repairSha) && !repairRequested;
             const repairAccepted = repairDispatchOutcome === 'success';
             const fullySuccessful = ingressOutcome === 'success'
+              && !humanWakeupRequired
               && (!publicationRequested || dispatchAccepted)
               && (!repairRequested || repairAccepted);
 
@@ -285,6 +307,11 @@ jobs:
             }
 
             receipt = receipt.replaceAll('\0', '?').slice(0, 3500);
+            if (/^[1-9][0-9]*$/.test(process.env.AIOS_ORIGIN_ARTIFACT_ID || '')) {
+              const pointer = {workflow_run_id: context.runId, run_attempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+                artifact_id: Number(process.env.AIOS_ORIGIN_ARTIFACT_ID)};
+              receipt = receipt.slice(0, 3100) + '\nAIOS_REPAIR_WORKFLOW_POINTER=' + JSON.stringify(pointer);
+            }
             const source = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -304,7 +331,7 @@ jobs:
             }
 
       - name: Preserve failed delivery outcome
-        if: always() && (steps.ingress.outcome != 'success' || (steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome != 'success') || (steps.ingress.outputs.repair_sha != '' && steps.repair_dispatch.outcome != 'success'))
+        if: always() && (steps.ingress.outcome != 'success' || (steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome != 'success') || (steps.ingress.outputs.repair_wakeup_route == 'EXECUTORLESS' && steps.repair_dispatch.outcome != 'success'))
         run: exit 1
 
       - name: Write exact wake source selectors
