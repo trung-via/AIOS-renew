@@ -2,6 +2,26 @@ version: 1
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+human_bo_bounded_after_lean_vp_20261018:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING
+  approved_on: "2026-10-18"
+  status: HUMAN_APPROVED_FINITE_CATALOG_QUEUED_AFTER_LEAN_VP_NOT_IMPLEMENTED
+  architecture_document: docs/AIOS-BRAIN-OPTIMIZATION-BOUNDED-TASK-CATALOG-v1.md
+  historical_bo_document: docs/AIOS-BRAIN-OPTIMIZATION-ROADMAP-v1.md
+  prospective_lean_bo_document: docs/AIOS-BRAIN-OPTIMIZATION-LEAN-POST-VP-v1.md
+  current_effective_next: lean-vp-intelligent-intra-primary-after-r21
+  predecessor: lean-vp-intelligent-intra-primary-after-r21
+  predecessor_gate: LEAN_VP_LAWFUL_CLOSURE_AND_EXPLICIT_HUMAN_BRAIN_ROADMAP_RECONCILIATION
+  catalog_id: BO_FINITE_TASK_CATALOG_V1
+  maximum_prospective_task_slots: 8
+  task_slot_ids: [BO-T01, BO-T02, BO-T03, BO-T04, BO-T05, BO-T06, BO-T07, BO-T08]
+  slot_outcomes: [IMPLEMENTED_AND_PROVED, NO_CHANGE_PROVED, BLOCKED]
+  completion_rule: ALL_EIGHT_NONBLOCKED_PROVEN_DISPOSITIONS_PLUS_T08_CLOSED_WORLD_AND_HUMAN_BRAIN_RECONCILIATION
+  no_automatic_ninth_task: true
+  no_current_next_change: true
+  no_implicit_executor_task_run_review_publication_or_ka01_activation: true
+  return_to_h4_only_after_separate_human_brain_reconciliation: true
+
 human_r21_closure_lean_vp_cutover_20261018:
   authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_TRANSITION
   approved_on: "2026-10-18"
@@ -3251,6 +3271,22 @@ sequence:
     current_next_effect: ACTIVE_NEXT_BY_EXPLICIT_HUMAN_20261018
     legacy_vp03_resume: RECONCILE_AFTER_R21_NO_AUTOMATIC_RESUME
     measured_performance: UNKNOWN_REQUIRES_PAIRED_WHOLE_EPISODE_EVIDENCE
+  - id: brain-optimization-v1-lean-post-vp-after-lean-vp
+    status: QUEUED_AFTER_LEAN_VP
+    phase: BO_FINITE_TASK_CATALOG_V1
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-18"
+    planning_document: docs/AIOS-BRAIN-OPTIMIZATION-BOUNDED-TASK-CATALOG-v1.md
+    task_authoring_status: NOT_AUTHORIZED_NOT_AUTHORED
+    predecessor: lean-vp-intelligent-intra-primary-after-r21
+    predecessor_gate: LEAN_VP_LAWFUL_CLOSURE_AND_HUMAN_BRAIN_NEXT_RECONCILIATION
+    maximum_prospective_task_slots: 8
+    slot_ids: [BO-T01, BO-T02, BO-T03, BO-T04, BO-T05, BO-T06, BO-T07, BO-T08]
+    slot_exit: IMPLEMENTED_AND_PROVED_OR_NO_CHANGE_PROVED_WITH_EXACT_CANONICAL_EVIDENCE
+    blocked_is_not_done: true
+    no_automatic_task_creation_or_roadmap_advance: true
+    return_to: h4-device-independent-origin-capture-correction-v1
+    return_gate: ALL_EIGHT_BO_SLOTS_CLOSED_AND_EXPLICIT_HUMAN_BRAIN_RECONCILIATION
   - id: adaptive-brain-audit-v1-retire-v3-prospective-consumers
     status: SUPERSEDED_PROSPECTIVE_PRIORITY
     historical_next_before_20261016: true
