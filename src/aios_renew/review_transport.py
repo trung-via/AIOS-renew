@@ -3518,21 +3518,26 @@ def _l1_mapping_review_lineage(
     scope = validate_mapping_review_scope(selected.scope, intake=binding.intake,
                                           expected_review_task=TaskBinding(**actual_task))
     task = parse_task(task_bytes.decode("utf-8"))
+    semantic_paths, changed_semantic_paths = set(), set()
     for source in binding.sources:
         if source.role not in {"contract", "mapping"}:
             continue
         source_locator = source.locator
+        semantic_paths.add(source_locator.path)
         if (source_locator.path not in (*task.scope.inspect, *task.scope.modify)
                 or _l1_path_blob(repo, candidate_tree, source_locator.path, cache) != source_locator.blob_sha):
             raise ReviewTransportError("semantic source is outside the selected reviewed TASK scope")
+        # A missing base path is a lawful addition; malformed trees still fail.
+        changed = _l1_path_blob(repo, base_tree, source_locator.path, cache,
+                                missing_ok=True) != source_locator.blob_sha
+        if changed:
+            changed_semantic_paths.add(source_locator.path)
         if source.role != "mapping":
             continue
         if (source_locator.source_sha != selected.reviewed_sha or source_locator.tree_sha != candidate_tree
                 or source_locator.path not in task.scope.modify):
             raise ReviewTransportError("mapping source is outside the selected reviewed TASK delta")
-        # A missing base path is a lawful addition; malformed trees still fail.
-        if _l1_path_blob(repo, base_tree, source_locator.path, cache,
-                          missing_ok=True) == source_locator.blob_sha:
+        if not changed:
             raise ReviewTransportError("selected review RUN did not change the mapping source")
 
     artifact_tree, artifact_parents = _l1_commit(repo, selected.artifacts_sha)
@@ -3574,8 +3579,7 @@ def _l1_mapping_review_lineage(
     validate_result_package(task=task, run=run, result=result, evidence=evidence)
     if (result.head_sha != selected.reviewed_sha or result.unresolved
             or {ac for claim in result.claims for ac in claim.satisfies} != set(scope.review_task.acceptance_ids)
-            or not {source.locator.path for source in binding.sources if source.role in {"contract", "mapping"}}
-                <= set(result.changed_files)):
+            or semantic_paths.intersection(result.changed_files) != changed_semantic_paths):
         raise ReviewTransportError("incomplete or contradictory L1 mapping review RESULT")
     text = _l1_yaml_text(review_bytes)
     # The historical REVIEW parser remains unchanged. This new boundary rejects

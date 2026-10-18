@@ -72,9 +72,14 @@ An established observation requires every one of these associations:
 4. That TASK's **own immutable RUN**, pinned by ID and SHA-256 of actual RUN
    bytes, exact base and reviewed candidate. The canonical candidate must descend
    from the base. The mapping locator must name this reviewed candidate and its
-   blob must actually be added or changed in the delta. The exact contract may
-   come from an immutable ancestor; both semantic blobs must match the reviewed
-   candidate and remain in current main.
+   blob must actually be added or changed in the delta and appear in
+   `RESULT.changed_files`. The exact contract may come from an immutable ancestor
+   and remain byte-exact from the RUN base; contract inspection within the review
+   TASK scope is sufficient in that case. `RESULT.changed_files` must report
+   exactly the contract/mapping paths whose blobs differ from the RUN base:
+   an unchanged contract is omitted, and a changed contract must be authorized
+   by the TASK modification scope. Both authenticated semantic blobs must match
+   the reviewed candidate and remain in current main.
    Reviewing an unrelated later source with unchanged mapping files is insufficient.
 5. Existing canonical `aios/review/<RUN>`, `aios/artifacts/<RUN>` and
    `aios/review-decision/<RUN>` refs with independently pinned exact SHAs.
@@ -144,10 +149,13 @@ The nested TASK-376/377 objects retain their original conservative statuses.
 and explicitly synthetic TASK/RUN/REVIEW/ResultPackage bytes. Its private test
 trust source is selected independently of incoming declarations and replaces
 only the closed reader within each test. The positive fixture cross-binds a
-mapping-specific TASK, full independent-review-shaped PASS and published source.
+mapping-specific TASK, full independent-review-shaped PASS and published source,
+with an unchanged contract from the RUN base and only the mapping in the Git
+delta and `RESULT.changed_files`.
 Negative fixtures cover unrelated ordinary review, missing/mismatched/stale
 decisions, incomplete acceptance, forged labels/hashes, wrong versions, changed
-sources/main, oversized input and Git-write/process traps. Synthetic records
+sources/main, omitted mapping changes, forged unchanged-source delta claims,
+oversized input and Git-write/process traps. Synthetic records
 are **not live Human authorization, semantic approval, measured proof or
 canonical EVIDENCE**. Tests contact no live GitHub or Executor and activate no policy.
 

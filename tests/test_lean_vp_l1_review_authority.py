@@ -141,7 +141,7 @@ def reviewed_package(tmp_path):
                return_affinity=dict(kind="LEGACY_REPOSITORY_DEFAULT_ROUTE"))
     result = dict(result=dict(head_sha=candidate, claims=[dict(id="synthetic-mapping-claim",
         satisfies=["MR1", "MR2"], claim="The exact synthetic mapping was assessed.", evidence=["SYNTHETIC-E1"])],
-        changed_files=[PATHS["contract"], PATHS["mapping"]], unresolved=[]), evidence=[dict(
+        changed_files=[PATHS["mapping"]], unresolved=[]), evidence=[dict(
         evidence_id="SYNTHETIC-E1", run_id=RUN_ID, subject_sha=candidate, type="VERIFICATION",
         source=dict(command=COMMAND), result=dict(exit_code=0, summary="Synthetic fixture, never executed"),
         raw=dict(path="synthetic-only.raw"))])
@@ -206,6 +206,31 @@ def test_runtime_active_run_with_null_head_binds_canonical_result_candidate(revi
     assert value.lineage.reviewed_sha == value.lineage.published_sha == package["candidate"]
     assert value.lineage.result_sha256 == digest(encoded(package["result"]))
     assert encoded(package["run"]) == run_bytes
+
+
+def test_unchanged_contract_from_base_allows_a_mapping_only_delta(reviewed_package, monkeypatch):
+    package = reviewed_package
+    changed_files = subprocess.run(
+        ["git", "-C", str(package["repo"]), "diff", "--name-only", package["base"], package["candidate"]],
+        check=True, capture_output=True, text=True).stdout.splitlines()
+    assert changed_files == package["result"]["result"]["changed_files"] == [PATHS["mapping"]]
+    contract_source = package["sources"]["contract"]
+    assert contract_source == locator(package["repo"], package["base"], PATHS["contract"])
+    assert contract_source.blob_sha == locator(package["repo"], package["candidate"], PATHS["contract"]).blob_sha
+    trust_fixture(package, monkeypatch)
+    value = bind(package)
+    assert value.reviewer_authority == "REVIEW_AUTHORITY_ESTABLISHED"
+    assert value.source_binding.sources == package["selection"].sources
+
+
+@pytest.mark.parametrize("changed_files", [[], [PATHS["contract"], PATHS["mapping"]]],
+                         ids=["mapping-omitted", "unchanged-contract-claimed"])
+def test_result_semantic_changes_must_match_the_git_delta(reviewed_package, monkeypatch, changed_files):
+    package = reviewed_package
+    package["result"]["result"]["changed_files"] = changed_files
+    install_artifacts(package)
+    trust_fixture(package, monkeypatch)
+    assert_not_established(bind(package))
 
 
 def test_null_run_head_rejects_swapped_result_and_evidence_candidate(reviewed_package, monkeypatch):
@@ -362,6 +387,8 @@ def test_unavailable_human_authority_never_synthesizes_success(reviewed_package,
 
 def test_no_actual_mapping_delta_cannot_be_approved_by_an_ordinary_later_run(reviewed_package, monkeypatch):
     package = reviewed_package
+    # RESULT claims a mapping change even though the RUN base already has it.
+    assert package["result"]["result"]["changed_files"] == [PATHS["mapping"]]
     package["run"]["base_sha"] = package["candidate"]
     package["selection"] = replace(package["selection"], base_sha=package["candidate"])
     install_artifacts(package)
