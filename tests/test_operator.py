@@ -294,7 +294,9 @@ def test_failure_transport_recovery_operator_private_public_correction_admission
     assert git(repo, "show-ref") == refs
 
 
-@pytest.mark.parametrize("defect", ["private_origin", "public_origin", "authorization_subject"])
+@pytest.mark.parametrize("defect", [
+    "private_origin", "public_origin", "public_detail_binding", "authorization_subject",
+])
 def test_failure_transport_recovery_operator_conflict_fails_before_run(tmp_path, monkeypatch, defect):
     from copy import deepcopy
     repo, state, private, _, repair = _failure_transport_recovery_operator_fixture(
@@ -302,10 +304,17 @@ def test_failure_transport_recovery_operator_conflict_fails_before_run(tmp_path,
     if defect == "private_origin":
         private["error"]["message"] = "changed private diagnostics"
         (state.failures / (private["run_id"] + ".json")).write_bytes(json.dumps(private).encode())
-    elif defect == "public_origin":
+    elif defect in {"public_origin", "public_detail_binding"}:
         recovery = transport_module.resolve_remote_repair_recovery(repo, failed_run_id=private["run_id"])
         public = json.loads(recovery.failures[0].failure)
         public["public_projection"]["private_failure_digest"] = "0" * 64
+        if defect == "public_origin":
+            # A consistently rebound forgery must still conflict with the local
+            # original. Marker-only tampering fails the earlier detail gate.
+            public["error"]["safe_detail"]["private_failure_digest"] = "0" * 64
+            public["public_projection"]["projection_digest"] = transport_module._failure_digest(
+                {key: value for key, value in public.items() if key != "public_projection"})
+            transport_module.validate_public_failure(public)
         altered = replace(recovery.failures[0], failure=json.dumps(public).encode())
         monkeypatch.setattr(operator_module, "resolve_remote_repair_recovery",
                             lambda *args, **kwargs: replace(recovery, failures=(altered,)))
@@ -313,10 +322,19 @@ def test_failure_transport_recovery_operator_conflict_fails_before_run(tmp_path,
         repair = deepcopy(repair)
         repair["failed_head_sha"] = "0" * 40
     before = {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs) for p in d.glob("*.json")}
-    with pytest.raises(OperatorError, match="conflict|does not match failed committed state"):
+    refs = git(repo, "show-ref")
+    expected = ("^invalid canonical FAILURE$" if defect == "public_detail_binding" else
+                "conflict|does not match failed committed state")
+    with pytest.raises(OperatorError, match=expected) as caught:
         operator_module._resolve_repair_admission(private["run_id"], repo=repo,
             state=state, repair=repair, admission={})
+    if defect == "public_detail_binding":
+        assert isinstance(caught.value.__cause__, transport_module.FailureDiagnosticError)
+        assert caught.value.__cause__.code == "FAILURE_PUBLIC_INTEGRITY_INVALID"
+        assert isinstance(caught.value.__cause__.__cause__, ValueError)
+        assert str(caught.value.__cause__.__cause__) == "invalid safe FAILURE detail"
     assert before == {p: p.read_bytes() for d in (state.runs, state.failures, state.repairs) for p in d.glob("*.json")}
+    assert git(repo, "show-ref") == refs
 
 
 def test_failure_transport_recovery_operator_original_equality_and_nested_correction():
