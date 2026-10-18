@@ -1,0 +1,40 @@
+review_id: REVIEW-373-001
+reviewed_sha: 6e8cba6d96f3f5044672b687bef4c63e4c641151
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- PRIMARY semantic review of TASK-373 r1, canonical RUN-373-001 RESULT 91344309f27b162890aca936d44eaed40eb50042
+  and exact candidate 6e8cba6d96f3f5044672b687bef4c63e4c641151; expected base/main
+  30965649396cefef7b14bb383958252e775f4eb3.
+- 'AC1: Bound read-only L1 readiness view takes RemotePerformanceSnapshot and exact
+  TASK selectors, validates canonical terminal bindings, preserves source SHA/digests
+  and calls no independent resolver.'
+- 'AC2: Observed RUN/Executor/verification durations, operation/outcome/task/executor
+  coverage, and token metric denominators distinguish missing from observed zero.'
+- 'AC3: Whole-episode time, test item/equivalence, checkpoint, timing, cost and comparative
+  improvements remain typed PARTIAL/UNKNOWN/UNAVAILABLE, never fabricated.'
+- 'AC4: Additive API does not change v1 functions/decoder, terminal transport, RUN_OBSERVATION
+  or verification behavior; historical v1 regression checks are present.'
+- 'AC5: Readiness document discloses synthetic fixture samples versus unavailable
+  authenticated historical episode data, preserves VP-01 and TASK-326/TASK-328 dependencies
+  and L2/L3/KA-01 gates. This does not establish actual Lean speedup, VP-01 completion
+  or KA-01 activation.'
+- 'AC6: Focused regression covers complete/partial/missing/zero, duplicate/cross-RUN/stale
+  bindings, conflicting counters, bounds, privacy and side-effect traps.'
+- 'AC7: Source compare shows exactly three authorized files and no Runtime scheduler,
+  verification policy, planning or historical mutation; one additive commit ahead
+  of exact base.'
+- Runtime-bound evidence RUN-373-001-V001 attests exit 0 for authored python -m pytest
+  -q tests/test_performance_observation.py, bound to candidate; this review does not
+  duplicate verification.
+- Reviewer semantic PASS only; Publisher independently owns exact publication. Real
+  sample coverage and later VP-01 comparative proof remain open dependencies.
