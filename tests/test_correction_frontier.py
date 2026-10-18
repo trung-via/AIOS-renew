@@ -446,3 +446,19 @@ def test_correction_frontier_supports_mapping_predecessor() -> None:
         predecessor=mapping_pred,
     )
     assert advanced.is_empty
+
+
+def test_batch_partial_outcomes_preserve_original_and_foreign_ancestry():
+    import json
+    from aios_renew.review import parse_batch_selection, parse_review
+    from tests.test_batch_remediation import delta_payload, selection_data
+    selected = parse_batch_selection(selection_data())
+    f1, f2, foreign = make_finding('F1', 'AC1'), make_finding('F2', 'AC2'), make_finding('FOREIGN', 'AC3')
+    primary = make_primary_review(review_id=selected.review_id, reviewed_sha=selected.reviewed_sha, findings=(f1, f2, foreign))
+    initial = CorrectionFrontier.from_primary(selected.source_run_id, primary)
+    review = parse_review(json.dumps(delta_payload({'selection': selected}, 'c' * 40, partial=True, new_defect=True)))
+    after = initial.advance(delta_run_id='RUN-379-002', delta_review=review, predecessor=selected)
+    assert tuple(item for item in after if item.finding_id == 'F2') == tuple(item for item in initial if item.finding_id == 'F2')
+    assert tuple(item for item in after if item.finding_id == 'FOREIGN') == tuple(item for item in initial if item.finding_id == 'FOREIGN')
+    assert next(item for item in after if item.finding_id == 'NEW1').source_run_id == 'RUN-379-002'
+    assert 'F1' not in after

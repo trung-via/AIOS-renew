@@ -1,6 +1,7 @@
 """Reusable operator-layer GitHub transport for terminal RUN state."""
 
 from __future__ import annotations
+from contextvars import ContextVar
 
 from .return_affinity import document_affinity
 
@@ -1363,6 +1364,96 @@ class RemoteRemediationLineage:
     task_revision: int = 0
 
 
+_BATCH_SOURCE_PROOFS: ContextVar[tuple[tuple[str, str], ...]] = ContextVar("batch_source_proofs", default=())
+
+
+def resolve_authenticated_batch(repo: Path, *, source_run_id: str, batch_id: str,
+                                required_sha: str | None = None, remote: str | None = None):
+    seen = _BATCH_SOURCE_PROOFS.get()
+    key = (source_run_id, batch_id)
+    if key in seen or len(seen) >= 32:
+        raise ReviewTransportError("cyclic or oversized batch source proof lineage")
+    token = _BATCH_SOURCE_PROOFS.set((*seen, key))
+    try:
+        return _resolve_authenticated_batch(repo, source_run_id=source_run_id, batch_id=batch_id,
+            required_sha=required_sha, remote=remote)
+    finally:
+        _BATCH_SOURCE_PROOFS.reset(token)
+
+
+def _resolve_authenticated_batch(repo: Path, *, source_run_id: str, batch_id: str,
+                                 required_sha: str | None, remote: str | None):
+    """Use AUTHOR_REMEDIATION's immutable source proof for a batch selector."""
+    from .review import BatchRemediation, is_batch_selector, parse_remediation, validate_remediation
+    from .authoring_ingress import (IngressEnvelope, _read_direct_remediation_binding,
+        _direct_remediation_blob, _validate_metadata_commit, _recheck_direct_remediation_binding)
+    if not is_batch_selector(batch_id):
+        raise ReviewTransportError("explicit versioned batch selector required")
+    remote = remote or resolve_transport_remote(repo)
+    lineages = resolve_remote_remediation_lineages(repo, finding_id=batch_id, source_run_id=source_run_id, remote=remote)
+    if len(lineages) != 1:
+        raise ReviewTransportError("batch authority is missing or ambiguous")
+    lineage = lineages[0]
+    rem = parse_remediation(lineage.remediation.decode("utf-8"))
+    if not isinstance(rem, BatchRemediation) or rem.batch_id != batch_id or rem.selection.source_run_id != source_run_id:
+        raise ReviewTransportError("batch selector cannot be decoded as a legacy finding")
+    if required_sha is not None and lineage.commit_sha != required_sha:
+        raise ReviewTransportError("approved batch authorization SHA is stale")
+    envelope = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REMEDIATION",
+        {"source_run_id": source_run_id, "batch_id": batch_id, "finding_ids": list(rem.selection.finding_ids)},
+        {"expected_reviewed_sha": rem.reviewed_sha, "expected_review_decision_sha": rem.selection.review_decision_sha},
+        lineage.remediation.decode("utf-8"))
+    binding = _read_direct_remediation_binding(envelope, repo, require_current=False, observation_remote=remote)
+    if binding.existing_sha != lineage.commit_sha or binding.refs.get(f"refs/heads/aios/artifacts/{source_run_id}") != rem.selection.source_artifacts_sha:
+        raise ReviewTransportError("canonical batch authority ref moved")
+    path = f".ai/remediations/REMEDIATION-{source_run_id}-{batch_id}.yaml"
+    raw = _direct_remediation_blob(repo, lineage.commit_sha, path)
+    _validate_metadata_commit(repo, lineage.commit_sha, expected_parent_sha=rem.selection.review_decision_sha,
+        metadata_path=path, metadata_bytes=raw, operation="batch authority")
+    if raw != lineage.remediation:
+        raise ReviewTransportError("batch authority bytes were substituted")
+    validate_remediation(review=binding.review, remediation=rem, task=binding.task)
+    _recheck_direct_remediation_binding(envelope, repo, binding, observation_remote=remote)
+    return binding, rem, lineage.commit_sha
+
+
+def reject_overlapping_remediations(repo: Path, *, remote: str, refs: Mapping[str, str],
+                                    source_run_id: str, finding_ids: Sequence[str], own_ref: str) -> None:
+    """Reject simultaneous single/batch authority over the same source findings."""
+    from .review import BatchRemediation, is_batch_selector, parse_remediation
+    prefix = f"refs/heads/aios/remediation/{source_run_id}-"
+    if len(finding_ids) == 1 and not any(ref.startswith(prefix) and is_batch_selector(ref[len(prefix):]) for ref in refs):
+        return
+    consumed: set[str] = set()
+    for ref, sha in refs.items():
+        if ref.startswith(("refs/heads/aios/artifacts/", "refs/heads/aios/failure-artifacts/")):
+            raw = _read_remote_blob(repo, remote, sha, ".ai/transport/run.json")
+            if raw is None:
+                raise ReviewTransportError("canonical correction RUN content missing")
+            run = _performance_json_mapping(raw, "correction RUN")
+            if run.get("remediation_authorization_sha") is not None:
+                consumed.add(run["remediation_authorization_sha"])
+    for ref, sha in refs.items():
+        if not ref.startswith(prefix) or ref == own_ref or sha in consumed:
+            continue
+        selector = ref[len(prefix):]
+        if not is_batch_selector(selector) and selector not in finding_ids:
+            continue
+        raw = _read_remote_blob(repo, remote, sha, f".ai/remediations/REMEDIATION-{source_run_id}-{selector}.yaml")
+        if raw is None:
+            _, paths, _ = _git_cmd(repo, "ls-tree", "-r", "--name-only", sha, "--", ".ai/remediations")
+            candidates = [p for p in paths.splitlines() if p.endswith((".yaml", ".yml"))]
+            if len(candidates) != 1:
+                raise ReviewTransportError("canonical competing remediation is malformed")
+            raw = _read_remote_blob(repo, remote, sha, candidates[0])
+            if raw is None:
+                raise ReviewTransportError("canonical competing remediation bytes missing")
+        rem = parse_remediation(raw.decode("utf-8"))
+        ids = rem.selection.finding_ids if isinstance(rem, BatchRemediation) else (rem.finding_id,)
+        if set(ids).intersection(finding_ids):
+            raise ReviewTransportError("overlapping active batch/single remediation authority")
+
+
 @dataclass(frozen=True)
 class RemoteFailureArtifacts:
     """Immutable Runtime-owned facts for one canonical failed RUN."""
@@ -1898,6 +1989,25 @@ def _bind_remediation_wrapper(
 ) -> None:
     from .review import REMEDIATION_ACTIONS, parse_remediation
 
+    if "format" in document or "findings" in execution:
+        from .operator import _remediation_execution_from_data, _parse_remediation_execution_base
+        from .review import BatchRemediation, parse_batch_selection
+        try:
+            if (set(document) != {"format", "version", "kind", "execution", "predecessor", "execution_base", "remediation_authorization_sha"}
+                    or document["format"] != "AIOS_BATCH_REMEDIATION_RUN" or type(document["version"]) is not int or document["version"] != 1
+                    or document["kind"] != "REMEDIATION"
+                    or re.fullmatch(r"[0-9a-f]{40}", str(document["remediation_authorization_sha"])) is None):
+                raise ValueError("invalid versioned batch RUN wrapper")
+            parsed = _remediation_execution_from_data(execution)
+            predecessor = parse_batch_selection(document["predecessor"])
+            if (not isinstance(parsed.remediation, BatchRemediation) or parsed.remediation.selection != predecessor
+                    or parsed.run.run_id != run_id
+                    or _parse_remediation_execution_base(document["execution_base"]).candidate_sha != parsed.run.base_sha):
+                raise ValueError("batch RUN source/execution base mismatch")
+            return
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ReviewTransportError(f"invalid batch RUN: {exc}") from exc
+
     required = {"kind", "execution"}
     allowed = required | {"predecessor", "execution_base", "acceptance", "remediation_authorization_sha"}
     if not required.issubset(document) or set(document).difference(allowed):
@@ -2123,7 +2233,7 @@ def _performance_json_mapping(content: bytes, name: str) -> Mapping[str, Any]:
 
 
 def resolve_remote_task_lifecycle(
-    repo: Path, *, task_id: str, task_revision: int
+    repo: Path, *, task_id: str, task_revision: int, remote: str | None = None
 ) -> RemoteTaskLifecycle:
     """Acquire one bounded canonical snapshot for Unified State.
 
@@ -2138,7 +2248,7 @@ def resolve_remote_task_lifecycle(
     ):
         raise ReviewTransportError("invalid TASK revision")
     task_prefix = task_run_prefix(task_id)
-    remote = resolve_transport_remote(repo)
+    remote = remote or resolve_transport_remote(repo)
     refs = _exact_remote_refs(
         repo,
         remote,
@@ -2609,6 +2719,7 @@ def resolve_remote_remediation_lineages(
     task_id: str | None = None,
     task_revision: int | None = None,
     source_run_id: str | None = None,
+    remote: str | None = None,
 ) -> tuple[RemoteRemediationLineage, ...]:
     """Resolve all structurally complete remote lineages for one finding id.
 
@@ -2632,7 +2743,7 @@ def resolve_remote_remediation_lineages(
             raise ReviewTransportError("invalid source RUN id") from exc
         if not re.fullmatch(rf"{re.escape(source_prefix)}\d{{3,}}", source_run_id):
             raise ReviewTransportError("invalid source RUN id")
-    remote = resolve_transport_remote(repo)
+    remote = remote or resolve_transport_remote(repo)
     if source_run_id is not None:
         task_prefix = None
         pattern = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"

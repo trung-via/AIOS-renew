@@ -78,11 +78,23 @@ def _hex(value: Any, pattern: re.Pattern[str]) -> bool:
 
 
 def _scope(scope: Any) -> None:
-    _closed(scope, _SCOPE_FIELDS, "REVIEW_SCOPE_INVALID")
+    batch = isinstance(scope, Mapping) and scope.get("version") == 2
+    _closed(scope, _SCOPE_FIELDS | {"batch_id", "batch_selection"} if batch else _SCOPE_FIELDS, "REVIEW_SCOPE_INVALID")
+    if batch:
+        from .review import parse_batch_selection
+        try:
+            selected = parse_batch_selection(scope["batch_selection"])
+            if (scope["batch_id"] != selected.batch_id or scope["review_mode"] != "DELTA"
+                    or scope["prior_finding_id"] is not None or scope["prior_review_run_id"] != selected.source_run_id
+                    or scope["prior_review_id"] != selected.review_id or scope["semantic_base_sha"] != selected.reviewed_sha
+                    or scope["task"] != {"id": selected.task_id, "revision": selected.task_revision}):
+                raise ValueError("batch scope source mismatch")
+        except ValueError as exc:
+            raise ReviewMaterialError("BATCH_REVIEW_SCOPE_INVALID", str(exc)) from exc
     task = scope["task"]
     if (
         scope["format"] != "AIOS_SEMANTIC_REVIEW_SCOPE"
-        or type(scope["version"]) is not int or scope["version"] != 1
+        or type(scope["version"]) is not int or scope["version"] != (2 if batch else 1)
         or scope["kind"] != "SEMANTIC_REVIEW_SCOPE"
         or not isinstance(task, Mapping) or set(task) != {"id", "revision"}
         or not isinstance(task["id"], str) or not task["id"]
@@ -269,7 +281,7 @@ def construct_review_material_package(scope: Mapping[str, Any], *,
         latest = _view(root, scope["latest_delta_base_sha"], scope["reviewed_head_sha"],
                        sources, cache)
     package = {
-        "format": "AIOS_REVIEW_MATERIAL_PACKAGE", "version": 1,
+        "format": "AIOS_REVIEW_MATERIAL_PACKAGE", "version": 2 if scope["version"] == 2 else 1,
         "kind": "REVIEW_MATERIAL_PACKAGE",
         "review_scope_fingerprint": scope["scope_fingerprint"],
         "review_mode": scope["review_mode"],
@@ -279,6 +291,8 @@ def construct_review_material_package(scope: Mapping[str, Any], *,
         "semantic_view": semantic, "latest_delta_view": latest,
         "sources": [sources[key] for key in sorted(sources)],
     }
+    if scope["version"] == 2:
+        package.update(batch_id=scope["batch_id"], batch_selection=scope["batch_selection"])
     if len(_json_bytes(package)) > MAX_PACKAGE_BYTES:
         _fail("MATERIAL_BOUND_EXCEEDED", "package")
     package["package_fingerprint"] = _sha(_json_bytes(package))
@@ -306,9 +320,18 @@ def validate_review_material_package(package: Mapping[str, Any] | str | bytes) -
             if isinstance(exc, ReviewMaterialError):
                 raise
             raise ReviewMaterialError("MATERIAL_INCONSISTENT", "invalid JSON") from exc
-    _closed(package, _PACKAGE_FIELDS, "MATERIAL_INCONSISTENT")
+    batch = isinstance(package, Mapping) and package.get("version") == 2
+    _closed(package, _PACKAGE_FIELDS | {"batch_id", "batch_selection"} if batch else _PACKAGE_FIELDS, "MATERIAL_INCONSISTENT")
+    if batch:
+        from .review import parse_batch_selection
+        try:
+            selected = parse_batch_selection(package["batch_selection"])
+            if package["batch_id"] != selected.batch_id or package["review_mode"] != "DELTA" or package["semantic_base_sha"] != selected.reviewed_sha:
+                raise ValueError("batch material selection mismatch")
+        except ValueError as exc:
+            raise ReviewMaterialError("BATCH_MATERIAL_INVALID", str(exc)) from exc
     if (package["format"] != "AIOS_REVIEW_MATERIAL_PACKAGE"
-        or type(package["version"]) is not int or package["version"] != 1
+        or type(package["version"]) is not int or package["version"] != (2 if batch else 1)
         or package["kind"] != "REVIEW_MATERIAL_PACKAGE"
         or not isinstance(package["review_mode"], str)
         or package["review_mode"] not in ("PRIMARY", "DELTA")

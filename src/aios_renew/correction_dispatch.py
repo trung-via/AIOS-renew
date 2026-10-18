@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from .remote_surface import ApprovedRemediation
+from .review import BatchSelection, is_batch_selector, parse_batch_selection
 from .execution_profile import (
     PROFILE_IDENTITY_FIELDS,
     ResolvedExecutionProfile,
@@ -56,6 +57,62 @@ _V1_RECORD_KEYS = frozenset(
     }
 )
 _V2_RECORD_KEYS = _V1_RECORD_KEYS | frozenset(PROFILE_IDENTITY_FIELDS[1:])
+_V3_RECORD_KEYS = _V2_RECORD_KEYS | {"batch_selection"}
+
+
+@dataclass(frozen=True)
+class BatchApprovedRemediation(ApprovedRemediation):
+    batch_selection: BatchSelection
+
+
+def _batch_approval_record(repo: Path, source_run_id: str, finding_id: str, approver: str | None):
+    from .review_transport import resolve_authenticated_batch
+    binding, rem, sha = resolve_authenticated_batch(repo, source_run_id=source_run_id, batch_id=finding_id)
+    return {"version": 2, "source_run_id": source_run_id, "finding_id": finding_id,
+        "task_id": binding.task.task_id, "task_revision": binding.task.revision,
+        "review_id": binding.review.review_id, "action": "CODE_FIX", "reviewed_sha": rem.reviewed_sha,
+        "remediation_ref": f"refs/heads/aios/remediation/{source_run_id}-{finding_id}",
+        "remediation_sha": sha, "approver": approver,
+        "batch_selection": json.loads(json.dumps(asdict(rem.selection)))}
+
+
+def record_batch_approval(source_run_id: str, finding_id: str, *, repo: Path,
+                          state_root: Path, approver: str):
+    from .remote_surface import ApprovalSummary, RemoteSurfaceError, _approval_key, _write_approval
+    if not isinstance(approver, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_\-\[\]]{0,99}", approver) is None:
+        raise RemoteSurfaceError("invalid trusted batch approver")
+    try:
+        record = _batch_approval_record(repo, source_run_id, finding_id, approver)
+        path = state_root / "approvals" / (_approval_key(source_run_id, finding_id, record["remediation_sha"]) + ".json")
+        with _StateLock(state_root / "approval.lock"):
+            replayed = path.exists()
+            if replayed:
+                if json.loads(path.read_text(encoding="utf-8")) != record:
+                    raise ValueError("conflicting immutable batch approval")
+            else:
+                # Reconstruct immediately before the existing A3 write owner.
+                if _batch_approval_record(repo, source_run_id, finding_id, approver) != record:
+                    raise ValueError("batch authority moved before approval")
+                _write_approval(path, record)
+        return ApprovalSummary(**{k: v for k, v in record.items() if k not in ("version", "batch_selection")}, replayed=replayed)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise RemoteSurfaceError(f"batch approval rejected: {exc}") from exc
+
+
+def require_current_batch_approval(source_run_id: str, finding_id: str, *, repo: Path, state_root: Path):
+    from .remote_surface import RemoteSurfaceError, _approval_key
+    try:
+        expected = _batch_approval_record(repo, source_run_id, finding_id, None)
+        path = state_root / "approvals" / (_approval_key(source_run_id, finding_id, expected["remediation_sha"]) + ".json")
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if set(record) != set(expected) or any(record[k] != v for k, v in expected.items() if k != "approver"):
+            raise ValueError("batch approval does not bind exact current authority")
+        if not isinstance(record["approver"], str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_\-\[\]]{0,99}", record["approver"]) is None:
+            raise ValueError("batch approval lacks trusted Human attribution")
+        return BatchApprovedRemediation(**{k: v for k, v in record.items() if k not in ("version", "batch_selection")},
+            batch_selection=parse_batch_selection(record["batch_selection"]))
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise RemoteSurfaceError(f"exact batch approval missing or stale: {exc}") from exc
 
 
 class CorrectionDispatchError(RuntimeError):
@@ -159,7 +216,7 @@ def reject_existing_selector_collision(
             raise CorrectionDispatchError(
                 "correction_dispatch_id collision: immutable request binding differs"
             )
-        if record["version"] == 2:
+        if record["version"] in (2, 3):
             profile = (
                 execution_profile_identity(execution_profile)
                 if execution_profile is not None
@@ -237,7 +294,7 @@ def execute_correction_dispatch(
         if profile is None:
             raise CorrectionDispatchError("complete resolved execution profile is required")
         record = {
-            "version": 2,
+            "version": 3 if isinstance(approval, BatchApprovedRemediation) else 2,
             "correction_dispatch_id": correction_dispatch_id,
             "source_run_id": source_run_id,
             "finding_id": finding_id,
@@ -302,7 +359,7 @@ def bind_correction_run(
             raise CorrectionDispatchError(
                 "admitted REMEDIATION RUN does not match correction dispatch"
             )
-        if record["version"] == 2:
+        if record["version"] in (2, 3):
             if execution_profile is None:
                 raise CorrectionDispatchError("REMEDIATION execution profile is missing")
             identity = execution_profile_identity(execution_profile)
@@ -332,6 +389,11 @@ def _validate_request(
     )
     if approval.source_run_id != source_run_id or approval.finding_id != finding_id:
         raise CorrectionDispatchError("approval does not match correction request")
+    if is_batch_selector(finding_id) != isinstance(approval, BatchApprovedRemediation):
+        raise CorrectionDispatchError("batch selector requires explicitly versioned batch approval")
+    if isinstance(approval, BatchApprovedRemediation) and (approval.batch_selection.batch_id != finding_id
+            or approval.batch_selection.source_run_id != source_run_id):
+        raise CorrectionDispatchError("batch approval selection mismatch")
     expected_ref = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
     if (
         not isinstance(approval.task_id, str)
@@ -395,11 +457,12 @@ def _require_same_binding(
         "executor": executor,
         **asdict(approval),
     }
+    expected = json.loads(json.dumps(expected))
     if any(record.get(key) != value for key, value in expected.items()):
         raise CorrectionDispatchError(
             "correction_dispatch_id collision: immutable request binding differs"
         )
-    if record["version"] == 2:
+    if record["version"] in (2, 3):
         identity = (
             execution_profile_identity(execution_profile)
             if execution_profile is not None
@@ -432,11 +495,11 @@ def _read_record(path: Path, repo_root: Path) -> dict[str, Any]:
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CorrectionDispatchError("invalid correction dispatch record") from exc
     version = data.get("version") if isinstance(data, dict) else None
-    expected_keys = _V1_RECORD_KEYS if version == 1 else _V2_RECORD_KEYS
+    expected_keys = _V1_RECORD_KEYS if version == 1 else _V3_RECORD_KEYS if version == 3 else _V2_RECORD_KEYS
     if not isinstance(data, dict) or set(data) != expected_keys:
         raise CorrectionDispatchError("invalid correction dispatch record shape")
     if (
-        version not in (1, 2)
+        type(version) is not int or version not in (1, 2, 3)
         or data.get("status") not in _TERMINAL | _NONTERMINAL
     ):
         raise CorrectionDispatchError("invalid correction dispatch record state")
@@ -471,7 +534,16 @@ def _read_record(path: Path, repo_root: Path) -> dict[str, Any]:
         or not data["approver"]
     ):
         raise CorrectionDispatchError("invalid approved remediation binding")
-    if version == 2:
+    if version == 3:
+        selection = parse_batch_selection(data["batch_selection"])
+        if (selection.batch_id != data["finding_id"] or selection.source_run_id != data["source_run_id"]
+                or selection.review_id != data["review_id"] or selection.reviewed_sha != data["reviewed_sha"]
+                or (selection.task_id, selection.task_revision) != (data["task_id"], data["task_revision"])
+                or data["action"] != "CODE_FIX"):
+            raise CorrectionDispatchError("batch dispatch selection binding is invalid")
+    elif is_batch_selector(data["finding_id"]):
+        raise CorrectionDispatchError("batch cannot be read as legacy correction dispatch")
+    if version in (2, 3):
         _validate_profile(data, repo_root)
     pre_run_ids = data.get("pre_run_ids")
     if (
@@ -545,6 +617,22 @@ def _matching_new_runs(state_root: Path, record: Mapping[str, Any]) -> tuple[str
 
 
 def _run_matches_record(path: Path, record: Mapping[str, Any]) -> bool:
+    if record["version"] == 3:
+        try:
+            from .operator import _remediation_execution_from_data
+            data = json.loads(path.read_text(encoding="utf-8"))
+            execution = _remediation_execution_from_data(data["execution"])
+            selection = parse_batch_selection(record["batch_selection"])
+            matches = (data.get("format") == "AIOS_BATCH_REMEDIATION_RUN" and data.get("version") == 1
+                and execution.run.run_id == path.stem and execution.run.executor == record["executor"]
+                and execution.remediation.selection == selection
+                and data.get("remediation_authorization_sha") == record["remediation_sha"]
+                and parse_batch_selection(data["predecessor"]) == selection)
+            profile = parse_execution_profile((path.parent.parent / "execution-profiles" / path.name).read_text(encoding="utf-8"))
+            identity = execution_profile_identity(profile)
+            return matches and profile.run_id == path.stem and all(identity[f] == record[f] for f in PROFILE_IDENTITY_FIELDS)
+        except (OSError, KeyError, TypeError, ValueError):
+            return False
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         execution = data["execution"]

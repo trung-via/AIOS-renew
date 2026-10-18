@@ -4411,3 +4411,16 @@ def test_unified_state_integrated_remediation_fail_closed_on_forged_stale_mismat
     upstream = tmp_path / "upstream.git"
     git(upstream, "update-ref", "-d", f"refs/heads/aios/integration/{int_result.integration_id}")
     check_malformed(run_with_override())
+
+
+def test_batch_semantic_scope_and_material_preserve_full_selection(tmp_path):
+    from tests.test_batch_remediation import batch_fixture, execute_batch
+    from aios_renew.review_material import construct_review_material_package, validate_review_material_package
+    fixture = batch_fixture(tmp_path)
+    outcome, _, _ = execute_batch(fixture)
+    scope = observe_semantic_review_scope('TASK-379', repo=fixture['repo'])
+    assert scope['version'] == 2 and scope['prior_finding_id'] is None
+    assert scope['batch_selection']['finding_ids'] == ('F1', 'F2')
+    package = construct_review_material_package(scope, repo=fixture['repo'])
+    assert package['version'] == 2 and package['batch_id'] == fixture['selection'].batch_id
+    assert validate_review_material_package(json.dumps(package))['batch_selection']['finding_ids'] == ['F1', 'F2']

@@ -120,6 +120,8 @@ from .runtime import (
     validate_preverification_candidate,
 )
 from .review import (
+    BatchRemediation, BatchRemediationExecution, BatchReview, BatchSelection,
+    is_batch_selector, parse_batch_selection,
     Finding,
     Remediation,
     RemediationExecution,
@@ -136,6 +138,16 @@ from .verification import VerificationRunner
 
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
+
+
+class _BatchRuntimeCompletion(RuntimeCompletion):
+    """The existing completion owner with the stricter prospective batch gate."""
+
+    def _require_remediation_package_contract(self, execution, package, *, actual_head):
+        super()._require_remediation_package_contract(execution, package, actual_head=actual_head)
+        _require_remediation_package_contract(execution, package, actual_head=actual_head)
+
+
 _ACTIVE_RESTART_SOURCE: ContextVar[Path | None] = ContextVar("active_restart_source", default=None)
 _SOURCE_REPAIR_POLICY: ContextVar[ExecutionProfilePolicy | None] = ContextVar(
     "source_repair_policy", default=None
@@ -996,6 +1008,8 @@ def _parse_remediation_execution_base(data: Any) -> RemediationExecutionBase:
 
 
 def _parse_remediation_predecessor(data: Any) -> RemediationPredecessor:
+    if isinstance(data, Mapping) and "finding_ids" in data:
+        return parse_batch_selection(data)
     root = data if isinstance(data, Mapping) else None
     if root is None:
         raise TypeError("REMEDIATION predecessor must be a mapping")
@@ -1073,6 +1087,8 @@ def _load_authoritative_prior_result(
                 execution = _remediation_execution_from_data(run_data["execution"])
                 if execution.run.run_id != run_id:
                     raise ValueError("RESULT filename does not match RUN id")
+                if isinstance(execution, BatchRemediationExecution):
+                    raise OperatorError("batch RESULT requires canonical remote batch lineage admission")
                 if "predecessor" in run_data:
                     pred = _parse_remediation_predecessor(run_data["predecessor"])
                     if pred.review_id != execution.review_id:
@@ -1135,6 +1151,20 @@ def _remediation_execution_from_data(data: Any) -> RemediationExecution:
     root = data if isinstance(data, Mapping) else None
     if root is None:
         raise TypeError("REMEDIATION execution must be a mapping")
+    if "format" in root or "findings" in root:
+        if (set(root) != {"format", "version", "review_id", "findings", "remediation", "run", "original_constraints"}
+                or root["format"] != "AIOS_BATCH_REMEDIATION_EXECUTION" or type(root["version"]) is not int or root["version"] != 1):
+            raise ValueError("unsupported batch execution contract")
+        remediation = parse_remediation(json.dumps(root["remediation"]))
+        if (not isinstance(remediation, BatchRemediation) or root["review_id"] != remediation.selection.review_id
+                or root["findings"] != json.loads(json.dumps([asdict(f) for f in remediation.findings]))
+                or tuple(root["original_constraints"]) != remediation.constraints):
+            raise ValueError("batch execution subjects or constraints mismatch")
+        run = _run_from_data(root["run"])
+        if (run.task.id, run.task.revision) != (remediation.selection.task_id, remediation.selection.task_revision):
+            raise ValueError("batch execution TASK mismatch")
+        return BatchRemediationExecution("AIOS_BATCH_REMEDIATION_EXECUTION", 1, root["review_id"],
+            remediation.findings, remediation, run, remediation.constraints)
     finding_data = root["finding"]
     if not isinstance(finding_data, Mapping):
         raise TypeError("REMEDIATION finding must be a mapping")
@@ -2641,6 +2671,8 @@ def _resolve_local_repair_remediation_origin(
         try:
             if run_data.get("kind") == "REMEDIATION":
                 execution = _remediation_execution_from_data(run_data["execution"])
+                if isinstance(execution, BatchRemediationExecution):
+                    raise OperatorError("BATCH_REPAIR_UNSUPPORTED_V1: fresh explicit recovery authority required")
                 if (
                     execution.run.run_id != current_run_id
                     or execution.run.return_affinity != task.return_affinity
@@ -3295,6 +3327,8 @@ def _resolve_historical_repair_admission(
         if failure.get("failed_head_sha") != artifact.candidate_sha:
             raise OperatorError("historical failed-head lineage mismatch")
         run_data = _decode_remote_mapping(artifact.run, "RUN")
+        if run_data.get("format") == "AIOS_BATCH_REMEDIATION_RUN":
+            raise OperatorError("BATCH_REPAIR_UNSUPPORTED_V1: fresh explicit Human/Brain recovery authority required")
         try:
             if run_data.get("kind") == "REMEDIATION":
                 execution = _remediation_execution_from_data(run_data["execution"])
@@ -4009,6 +4043,8 @@ def _derive_remediation_source_root(
     seen: frozenset[tuple[str, str]] = frozenset(),
     repair_sources: frozenset[str] = frozenset(),
 ) -> str:
+    if isinstance(execution, BatchRemediationExecution):
+        raise OperatorError("BATCH_REPAIR_UNSUPPORTED_V1: a batch failure requires fresh Human/Brain recovery authority")
     if execution.original_constraints != execution.remediation.constraints:
         raise OperatorError("REMEDIATION origin constraints mismatch")
     identity = (execution.review_id, execution.remediation.reviewed_sha)
@@ -7434,6 +7470,8 @@ def _resolve_remediation_admission(
     explicit_mode = (
         review is not None or remediation is not None or prior_review is not None
     )
+    if isinstance(remediation, BatchRemediation) or isinstance(review, BatchReview):
+        raise OperatorError("batch execution requires an authenticated remote batch selector and immutable approval")
     remote_mode = finding_id is not None
     if source_run_id is not None and not remote_mode:
         raise OperatorError("source RUN binding requires remote finding mode")
@@ -7555,7 +7593,7 @@ def _resolve_remediation_admission(
             not any(_terminal_is_correction(t) for t in lifecycle.terminals)
             and _git_is_ancestor(repo, lifecycle.main_sha, canonical_remediation.reviewed_sha)
         )
-        if has_explicit_cumulative_signal or first_correction_aligned_with_main:
+        if isinstance(canonical_remediation, BatchRemediation) or has_explicit_cumulative_signal or first_correction_aligned_with_main:
             try:
                 from .unified_state import _resolve_cumulative_execution_base
 
@@ -7568,6 +7606,8 @@ def _resolve_remediation_admission(
                     finding_id=canonical_remediation.finding_id,
                     reviewed_sha=canonical_remediation.reviewed_sha,
                     semantic_review=canonical_review,
+                    **({"finding_ids": canonical_remediation.selection.finding_ids}
+                       if isinstance(canonical_remediation, BatchRemediation) else {}),
                 )
                 execution_base_run_id = resolved_base[0]
                 execution_base_sha = resolved_base[1]
@@ -7672,6 +7712,17 @@ def _run_remediation_impl(
         admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
     )
     with RepositoryLock(state.lock):
+        if isinstance(canonical_remediation, BatchRemediation):
+            if not remote_mode or approved_remediation_sha is None:
+                raise OperatorError("batch execution requires exact approved canonical remote authority")
+            fresh = _resolve_remediation_admission(task_id, finding_id=finding_id,
+                source_run_id=source_run_id, approved_remediation_sha=approved_remediation_sha,
+                repo=root, state=state, resolved_task=task, admission=admission)
+            if fresh != resolved:
+                raise OperatorError("batch authority or cumulative execution base moved before RUN admission")
+            for pending in state.runs.glob("*.json"):
+                if not (state.results / pending.name).exists() and not (state.failures / pending.name).exists():
+                    raise OperatorError("batch refuses competing incomplete local RUN")
         actual_baseline = _git(root, "rev-parse", "HEAD")
         control_branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
         admission["current_head_sha"] = actual_baseline
@@ -7723,24 +7774,27 @@ def _run_remediation_impl(
             base_sha=resolved.execution_base_sha,
             workspace=str(subject_repo),
         )
-        finding = next(
-            item
-            for item in canonical_review.findings
-            if item.id == canonical_remediation.finding_id
-        )
-        execution = RemediationExecution(
-            review_id=canonical_review.review_id,
-            finding=finding,
-            remediation=canonical_remediation,
-            run=run,
-            original_constraints=canonical_remediation.constraints,
-        )
-        predecessor_record = {
-            "source_run_id": resolved.source_run_id,
-            "review_id": canonical_review.review_id,
-            "finding_id": canonical_remediation.finding_id,
-            "reviewed_sha": canonical_remediation.reviewed_sha,
-        }
+        if isinstance(canonical_remediation, BatchRemediation):
+            latest = _resolve_remediation_admission(task_id, finding_id=finding_id,
+                source_run_id=source_run_id, approved_remediation_sha=approved_remediation_sha,
+                repo=root, state=state, resolved_task=task, admission=admission)
+            if latest != resolved or _git(subject_repo, "rev-parse", "HEAD") != resolved.execution_base_sha:
+                raise OperatorError("batch authority or execution subject moved at the RUN reservation boundary")
+        if isinstance(canonical_remediation, BatchRemediation):
+            execution = BatchRemediationExecution("AIOS_BATCH_REMEDIATION_EXECUTION", 1,
+                canonical_review.review_id, canonical_remediation.findings, canonical_remediation,
+                run, canonical_remediation.constraints)
+            predecessor_record = asdict(canonical_remediation.selection)
+        else:
+            finding = next(item for item in canonical_review.findings if item.id == canonical_remediation.finding_id)
+            execution = RemediationExecution(canonical_review.review_id, finding, canonical_remediation,
+                run, canonical_remediation.constraints)
+            predecessor_record = {
+                "source_run_id": resolved.source_run_id,
+                "review_id": canonical_review.review_id,
+                "finding_id": canonical_remediation.finding_id,
+                "reviewed_sha": canonical_remediation.reviewed_sha,
+            }
         execution_base_record = (
             dict(resolved.integrated_base)
             if resolved.integrated_base is not None
@@ -7756,6 +7810,8 @@ def _run_remediation_impl(
             "predecessor": predecessor_record,
             "execution": asdict(execution),
         }
+        if isinstance(canonical_remediation, BatchRemediation):
+            run_document.update(format="AIOS_BATCH_REMEDIATION_RUN", version=1)
         if resolved.cumulative:
             run_document["execution_base"] = execution_base_record
         _write_json(run_path, run_document)
@@ -7829,7 +7885,7 @@ def _run_remediation_impl(
                 raise OperatorError("historical remediation attempt is unavailable")
             _prepare_historical_terminalization(root, attempt)
 
-        runtime_completion = RuntimeCompletion(
+        runtime_completion = (_BatchRuntimeCompletion if isinstance(canonical_remediation, BatchRemediation) else RuntimeCompletion)(
             repo=subject_repo,
             state=state,
             task=task,
@@ -7875,6 +7931,9 @@ def accept_candidate(
     monotonic_clock: MonotonicClock = time.monotonic,
 ) -> RemediationSummary:
     """Admit an already committed CODE_FIX candidate without invoking an Executor."""
+
+    if is_batch_selector(finding_id):
+        raise OperatorError("BATCH_DIRECT_CANDIDATE_UNSUPPORTED_V1: batch requires one admitted Executor")
 
     root = resolve_repository(repo)
     state = runtime_paths(root)
@@ -8243,6 +8302,17 @@ def _resolve_remote_remediation_lineage_impl(
     admission: dict[str, Any] | None,
     bind_reviewed_task: bool,
 ) -> tuple[Review, Remediation, Result, Review | None, Task]:
+    if is_batch_selector(finding_id):
+        from .review_transport import resolve_authenticated_batch
+        if source_run_id is None:
+            raise OperatorError("batch requires exact source RUN selector")
+        binding, remediation, canonical_sha = resolve_authenticated_batch(repo,
+            source_run_id=source_run_id, batch_id=finding_id, required_sha=required_remediation_sha)
+        if binding.task != task:
+            raise OperatorError("batch source TASK is stale or substituted")
+        if admission is not None:
+            admission.update(source_run_id=source_run_id, remediation_authorization_sha=canonical_sha)
+        return binding.review, remediation, binding.package.result, binding.prior_review, binding.task
     try:
         remote_lineages = resolve_remote_remediation_lineages(
             repo,
@@ -8430,9 +8500,19 @@ def _parse_remote_direct_lineage_impl(
             )
         if result.head_sha != review.reviewed_sha:
             raise ValueError("REVIEW does not bind to authoritative source RESULT")
-        if remediation.finding_id not in {item.id for item in review.findings}:
+        if isinstance(remediation, BatchRemediation):
+            if any(f not in review.findings for f in remediation.findings):
+                raise ValueError("batch REMEDIATION subjects are absent from REVIEW")
+        elif remediation.finding_id not in {item.id for item in review.findings}:
             raise ValueError("REMEDIATION finding is absent from REVIEW")
         prior_review = None if repaired_source is None else repaired_source[1]
+        if isinstance(prior_execution, BatchRemediationExecution):
+            from .publication import _validate_predecessor_lineage
+            prior_review = _validate_predecessor_lineage(repo, remote=resolve_transport_remote(repo),
+                publication_run_id=source_run.run_id, run_data=run_data, run=source_run,
+                remediation=prior_execution.remediation, task=lineage_task)
+            if not isinstance(review, BatchReview) or review.selection != prior_execution.remediation.selection:
+                raise ValueError("batch source requires exact multi-finding DELTA REVIEW")
         if review.prior_finding_id is not None and repaired_source is None:
             if prior_execution is None:
                 raise ValueError("DELTA REVIEW source has no validated correction lineage")
@@ -8637,6 +8717,11 @@ def _require_remediation_package_contract(
 ) -> None:
     """Bind a remediation package without applying the primary TASK contract."""
 
+    if isinstance(execution.remediation, BatchRemediation):
+        from .review import validate_batch_evidence
+        validate_batch_evidence(run=execution.run, remediation=execution.remediation,
+            result=package.result, evidence=package.evidence, actual_head=actual_head)
+
     if package.result.claims:
         raise OperatorError("remediation RESULT claims must be empty")
     if package.result.unresolved:
@@ -8747,6 +8832,10 @@ def run_approved_remediation_intent(
         record_remote_approval,
         require_current_approval,
     )
+    if is_batch_selector(finding_id):
+        from .correction_dispatch import record_batch_approval, require_current_batch_approval
+        record_remote_approval = record_batch_approval
+        require_current_approval = require_current_batch_approval
 
     try:
         repo_root = resolve_repository(repo)
@@ -9776,6 +9865,8 @@ def main(
             print(summary.render())
         elif args.command == "remote-approve":
             from .remote_surface import RemoteSurfaceError, record_remote_approval
+            if is_batch_selector(args.finding_id):
+                from .correction_dispatch import record_batch_approval as record_remote_approval
 
             try:
                 repo_root = resolve_repository(args.repo)
@@ -9858,6 +9949,8 @@ def main(
                 reject_existing_selector_collision,
             )
             from .remote_surface import RemoteSurfaceError, require_current_approval
+            if is_batch_selector(args.finding_id):
+                from .correction_dispatch import require_current_batch_approval as require_current_approval
 
             repo_root = resolve_repository(args.repo)
             state_root = runtime_state_root(repo_root)

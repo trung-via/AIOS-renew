@@ -432,3 +432,20 @@ def test_remediation_explicit_vs_default_source_attribution(
         assert request.model == model
     if effort is not None:
         assert request.reasoning_effort == effort
+
+
+def test_version3_human_intent_preserves_exact_selected_batch():
+    from aios_renew.review import parse_batch_selection
+    from tests.test_batch_remediation import selection_data
+    selected = selection_data()
+    request = yaml.safe_load(_body(version=3, source_run_id=selected['source_run_id']))
+    request.pop('finding_id')
+    request['batch_selection'] = selected
+    parsed = carrier.parse_request(yaml.safe_dump(request))
+    assert parsed.batch_selection == parse_batch_selection(selected)
+    assert parsed.finding_id == parsed.batch_selection.batch_id
+    assert 'finding_id=' + parsed.finding_id in parsed.github_outputs()
+    changed = {**request, 'version': 2, 'finding_id': parsed.finding_id}
+    changed.pop('batch_selection')
+    with pytest.raises(carrier.GitHubIssueRemediationIntentError, match='version-3'):
+        carrier.parse_request(yaml.safe_dump(changed))

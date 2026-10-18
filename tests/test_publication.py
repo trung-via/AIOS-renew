@@ -4531,3 +4531,17 @@ def test_publication_invalid_or_unknown_proof_requires_bounded_execution_not_fal
     with pytest.raises(verification.RuntimeVerificationError, match="affected proof failed"):
         verification.execute_publication_verification(**arguments)
     assert calls == [(arguments["task"].verification.required, arguments["run"].base_sha, arguments["subject_sha"])]
+
+
+def test_batch_pass_does_not_close_unselected_frontier_findings(tmp_path):
+    from tests.test_batch_remediation import batch_fixture, execute_batch, submit_delta, git
+    from aios_renew.unified_state import observe_unified_state
+    fixture = batch_fixture(tmp_path, foreign=True)
+    outcome, _, _ = execute_batch(fixture)
+    decision, _, _ = submit_delta(fixture, outcome)
+    observed = observe_unified_state('TASK-379', repo=fixture['repo'])
+    assert [f['finding_id'] for f in observed.outstanding_findings] == ['F3']
+    before = git(fixture['remote'], 'rev-parse', 'refs/heads/main')
+    with pytest.raises(PublicationError):
+        publish_review_decision(fixture['repo'], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    assert git(fixture['remote'], 'rev-parse', 'refs/heads/main') == before

@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       finding_id:
-        description: "Exact CHANGES_REQUIRED finding identity"
+        description: "Exact finding identity or BATCH-<sha256> of the Human-selected v1 set"
         required: true
         type: string
       executor:
@@ -150,7 +150,9 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $controlStatus.Count -ne 0) { Write-OperationalFailure 'CONTROL_SOURCE_DIRTY'; exit 1 }
           if (-not (Test-Path -LiteralPath (Join-Path $controlRoot 'scripts/aios_control_entry.py') -PathType Leaf)) { Write-OperationalFailure 'CONTROL_ENTRY_UNAVAILABLE'; exit 1 }
 
-      - name: Record A3 approval and enter A6 once
+      # Runtime authenticates the entire immutable batch behind a BATCH selector;
+      # the workflow never expands, chooses, groups, or retries finding subjects.
+      - name: Record exact single or batch A3 approval and enter A6 once
         env:
           AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-remediation-intent-operational-receipt-v2.json
           AIOS_CORRECTION_DISPATCH_ID: ${{ inputs.correction_dispatch_id }}

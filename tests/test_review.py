@@ -394,3 +394,20 @@ reviewed_sha: other
 
     with pytest.raises(ReviewValidationError, match="does not match REVIEW"):
         validate_remediation(review=review, remediation=remediation)
+
+
+def test_batch_decoder_requires_explicit_version_and_exact_subject_set():
+    from aios_renew.review import BatchRemediation, parse_batch_selection
+    from tests.test_batch_remediation import batch_payload, selection_data
+    selected = parse_batch_selection(selection_data())
+    findings = [dict(id=i, basis='AC1', action='CODE_FIX', location='src/product.py', issue=i, expected='fix') for i in selected.finding_ids]
+    payload = batch_payload(selected, findings)
+    parsed = parse_remediation(json.dumps(payload))
+    assert isinstance(parsed, BatchRemediation) and parsed.selection == selected
+    for fault in ('unknown-version', 'single-alias', 'duplicate-scope'):
+        changed = json.loads(json.dumps(payload))
+        if fault == 'unknown-version': changed['version'] = 99
+        elif fault == 'single-alias': changed['finding_id'] = 'F1'
+        else: changed['per_finding_scope'][1]['finding_id'] = 'F1'
+        with pytest.raises(ReviewValidationError):
+            parse_remediation(json.dumps(changed))

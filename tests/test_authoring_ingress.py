@@ -6124,3 +6124,18 @@ def test_direct_author_remediation_successful_repair_of_primary_uses_original_re
     assert git(repo, "rev-parse", f"{result.canonical_sha}^") == decision.canonical_sha
     assert git(remote, "rev-parse", "refs/heads/main") == main
     assert git(remote, "rev-parse", "refs/heads/aios/repair/RUN-254-001") == authorization.canonical_sha
+
+
+def test_batch_and_single_overlapping_authorizations_fail_before_mutation(tmp_path):
+    from tests.test_batch_remediation import batch_fixture, git
+    fixture = batch_fixture(tmp_path)
+    initial = fixture['envelope']
+    single = IngressEnvelope(initial.format, initial.version, initial.operation,
+        {'source_run_id': fixture['selection'].source_run_id, 'finding_id': 'F1'}, initial.expected_state,
+        dict(finding_id='F1', action='CODE_FIX', reviewed_sha=fixture['selection'].reviewed_sha,
+             modification_scope=['src/product.py'], constraints=['Preserve the original contract.'],
+             verification=dict(policy='minimum-sufficient-v1', affected=['git diff --check'])))
+    before = git(fixture['remote'], 'for-each-ref', '--format=%(refname) %(objectname)')
+    with pytest.raises(AuthoringIngressError):
+        execute_ingress(single, repo=fixture['repo'])
+    assert git(fixture['remote'], 'for-each-ref', '--format=%(refname) %(objectname)') == before

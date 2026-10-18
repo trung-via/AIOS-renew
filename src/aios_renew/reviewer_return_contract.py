@@ -256,6 +256,8 @@ def parse_reviewer_semantic_body(
             raise ReviewerReturnContractError("invalid strict UTF-8 JSON body") from exc
     else:
         value = source
+    if isinstance(value, Mapping) and {"batch_id", "finding_outcomes", "batch_selection"}.intersection(value):
+        raise ReviewerReturnContractError("versioned batch return requires parse_batch_reviewer_semantic_body; single-finding coercion forbidden")
     body = _fields(_normalize(value, registry=False), _BODY_FIELDS, "semantic body")
     if len(_json_bytes(body)) > _BOUNDS["semantic_body_bytes"]:
         raise ReviewerReturnContractError("normalized semantic body exceeds byte bound")
@@ -304,8 +306,60 @@ def parse_reviewer_semantic_body(
             "findings": findings}
 
 
+def parse_batch_reviewer_semantic_body(source: bytes | str | Mapping[str, Any], *, task: Task,
+                                      remediation: Any) -> dict[str, Any]:
+    """Independent per-finding provider semantics; identities remain Runtime-owned."""
+    from .review import BatchRemediation
+    if not isinstance(remediation, BatchRemediation):
+        raise ReviewerReturnContractError("authenticated batch remediation material required")
+    if (task.task_id, task.revision) != (remediation.selection.task_id, remediation.selection.task_revision):
+        raise ReviewerReturnContractError("batch return TASK identity mismatch")
+    if type(source) in (bytes, str):
+        try:
+            encoded = source if type(source) is bytes else source.encode("utf-8", "strict")
+            if len(encoded) > _BOUNDS["semantic_body_bytes"]:
+                raise ValueError("batch semantic body byte bound exceeded")
+            source = json.loads(encoded.decode("utf-8", "strict"), object_pairs_hook=_unique_json_object,
+                                parse_constant=_invalid_json_constant)
+        except (UnicodeError, ValueError, RecursionError) as exc:
+            raise ReviewerReturnContractError("invalid strict batch semantic JSON") from exc
+    body = _fields(_normalize(source, registry=False), {"format", "version", "batch_id", "verdict", "acceptance", "finding_outcomes", "findings"}, "batch semantic body")
+    if (body["format"] != "AIOS_BATCH_REVIEWER_RETURN" or type(body["version"]) is not int or body["version"] != 1
+            or body["batch_id"] != remediation.batch_id or len(_json_bytes(body)) > _BOUNDS["semantic_body_bytes"]):
+        raise ReviewerReturnContractError("batch semantic format/identity/bound mismatch")
+    outcomes = body["finding_outcomes"]
+    if not isinstance(outcomes, list) or len(outcomes) != len(remediation.findings):
+        raise ReviewerReturnContractError("every batch finding requires one independent outcome")
+    verdicts = {}
+    for item in outcomes:
+        item = _fields(item, {"finding_id", "verdict"}, "batch outcome")
+        if (type(item["finding_id"]) is not str or item["finding_id"] not in remediation.selection.finding_ids
+                or item["finding_id"] in verdicts or type(item["verdict"]) is not str
+                or item["verdict"] not in _GRAMMAR["verdicts"]):
+            raise ReviewerReturnContractError("duplicate, foreign or invalid per-finding outcome")
+        verdicts[item["finding_id"]] = item["verdict"]
+    # Reuse the v1 grammar for identity-free acceptance/new-defect fields. BLOCKED
+    # avoids v1's requirement to mint a replacement defect for an unresolved source.
+    shared = parse_reviewer_semantic_body({"verdict": "BLOCKED", "acceptance": body["acceptance"], "findings": body["findings"]},
+        task=task, review_mode="PRIMARY" if len(body["acceptance"]) == len(task.acceptance) else "DELTA",
+        prior_finding_basis=None if len(body["acceptance"]) == len(task.acceptance) else remediation.findings[0].basis)
+    acceptance = {a["id"]: a["outcome"] for a in shared["acceptance"]}
+    if any(f.basis not in acceptance for f in remediation.findings):
+        raise ReviewerReturnContractError("batch return must assess every selected finding basis")
+    failed = {f.basis for f in remediation.findings if verdicts[f.id] == "CHANGES_REQUIRED"} | {f["basis"] for f in shared["findings"]}
+    if any(acceptance.get(b) != "FAIL" for b in failed):
+        raise ReviewerReturnContractError("unresolved/new findings require acceptance FAIL")
+    expected = ("BLOCKED" if "BLOCKED" in verdicts.values() else "CHANGES_REQUIRED"
+                if "CHANGES_REQUIRED" in verdicts.values() or shared["findings"] else "PASS")
+    if body["verdict"] != expected or expected == "PASS" and any(v != "PASS" for v in acceptance.values()):
+        raise ReviewerReturnContractError("batch verdict conflicts with per-finding semantics")
+    return {**body, "acceptance": shared["acceptance"], "findings": shared["findings"],
+            "finding_outcomes": [{"finding_id": i, "verdict": verdicts[i]} for i in remediation.selection.finding_ids]}
+
+
 __all__ = [
     "ReviewerReturnContractError", "normalize_reviewer_return_registry",
     "parse_reviewer_return_registry", "select_reviewer_return_contract",
     "reviewer_return_contract_ref", "parse_reviewer_semantic_body",
+    "parse_batch_reviewer_semantic_body",
 ]
