@@ -3561,8 +3561,10 @@ def _l1_mapping_review_lineage(
             or hashlib.sha256(run_bytes).hexdigest() != selected.run_sha256):
         raise ReviewTransportError("immutable L1 mapping review RUN source mismatch")
     run = _run_from_data(run_data, "L1 mapping review RUN")
+    # Runtime preserves the admitted ACTIVE RUN bytes with a null head; the
+    # canonical RESULT/EVIDENCE below bind the candidate to the exact selection.
     if (run.run_id != run_id or run.status != "ACTIVE" or run.base_sha != selected.base_sha
-            or run.head_sha != selected.reviewed_sha or run.return_affinity != task.return_affinity):
+            or run.head_sha not in (None, selected.reviewed_sha) or run.return_affinity != task.return_affinity):
         raise ReviewTransportError("L1 mapping review RUN identity mismatch")
     package_data = _l1_json(result_bytes, L1_SOURCE_MAX_BYTES)
     if set(package_data) != {"result", "evidence"} or type(package_data["evidence"]) is not list:

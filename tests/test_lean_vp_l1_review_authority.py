@@ -137,7 +137,8 @@ def reviewed_package(tmp_path):
         (MappingReviewAcceptance("MR1", ("AC1",), ("proof-unit",)),
          MappingReviewAcceptance("MR2", ("AC2",), ("integration-proof",))))
     run = dict(run_id=RUN_ID, task=dict(id=REVIEW_TASK_ID, revision=1), executor="codex",
-               base_sha=base, head_sha=candidate, workspace="synthetic", status="ACTIVE")
+               base_sha=base, head_sha=None, workspace="synthetic", status="ACTIVE",
+               return_affinity=dict(kind="LEGACY_REPOSITORY_DEFAULT_ROUTE"))
     result = dict(result=dict(head_sha=candidate, claims=[dict(id="synthetic-mapping-claim",
         satisfies=["MR1", "MR2"], claim="The exact synthetic mapping was assessed.", evidence=["SYNTHETIC-E1"])],
         changed_files=[PATHS["contract"], PATHS["mapping"]], unresolved=[]), evidence=[dict(
@@ -190,6 +191,34 @@ def test_public_boundary_is_closed_even_with_ordinary_canonical_run_pass(reviewe
     value = bind(reviewed_package)
     assert_not_established(value)
     assert value.reason == "HUMAN_MAPPING_SELECTION_UNAVAILABLE"
+
+
+def test_runtime_active_run_with_null_head_binds_canonical_result_candidate(reviewed_package, monkeypatch):
+    package = reviewed_package
+    run_bytes = encoded(package["run"])
+    assert package["run"]["status"] == "ACTIVE" and package["run"]["head_sha"] is None
+    assert package["result"]["result"]["head_sha"] == package["candidate"]
+    trust_fixture(package, monkeypatch)
+    value = bind(package)
+    assert value.reviewer_authority == "REVIEW_AUTHORITY_ESTABLISHED"
+    assert value.lineage.run_sha256 == digest(run_bytes)
+    assert value.lineage.base_sha == package["base"]
+    assert value.lineage.reviewed_sha == value.lineage.published_sha == package["candidate"]
+    assert value.lineage.result_sha256 == digest(encoded(package["result"]))
+    assert encoded(package["run"]) == run_bytes
+
+
+def test_null_run_head_rejects_swapped_result_and_evidence_candidate(reviewed_package, monkeypatch):
+    package = reviewed_package
+    (package["repo"] / "subject.txt").write_bytes(b"swapped candidate\n")
+    swapped = commit(package["repo"], package["remote"], ["subject.txt"])
+    package["main"] = swapped
+    package["result"]["result"]["head_sha"] = swapped
+    for item in package["result"]["evidence"]:
+        item["subject_sha"] = swapped
+    install_artifacts(package)
+    trust_fixture(package, monkeypatch)
+    assert_not_established(bind(package))
 
 
 def test_exact_independently_selected_fixture_lineage_preserves_all_separate_statuses(reviewed_package, monkeypatch):
@@ -290,7 +319,7 @@ def test_forged_incomplete_contradictory_or_unrecognized_decisions_fail_closed(r
     assert_not_established(bind(package))
 
 
-@pytest.mark.parametrize("fault", ["other-task", "other-run", "result-head", "result-unresolved",
+@pytest.mark.parametrize("fault", ["other-task", "other-run", "run-head", "result-head", "result-unresolved",
                                    "result-partial", "evidence-subject", "duplicate-run", "correction"])
 def test_immutable_run_result_and_existing_proof_lineage_are_cross_bound(reviewed_package, monkeypatch, fault):
     package = reviewed_package
@@ -299,6 +328,8 @@ def test_immutable_run_result_and_existing_proof_lineage_are_cross_bound(reviewe
         package["run"]["task"]["id"] = "TASK-377"
     elif fault == "other-run":
         package["run"]["run_id"] = "RUN-377-002"
+    elif fault == "run-head":
+        package["run"]["head_sha"] = package["base"]
     elif fault == "result-head":
         package["result"]["result"]["head_sha"] = package["base"]
     elif fault == "result-unresolved":
@@ -358,7 +389,7 @@ def test_replay_after_semantic_bytes_change_rejects_old_human_source_association
     assert_not_established(bind(package))
 
 
-@pytest.mark.parametrize("moved", ["decision", "artifacts", "human", "main"])
+@pytest.mark.parametrize("moved", ["review", "decision", "artifacts", "human", "main"])
 def test_changed_approval_or_main_during_observation_fails_closed(reviewed_package, monkeypatch, moved):
     package = reviewed_package
     trust_fixture(package, monkeypatch)
@@ -375,7 +406,7 @@ def test_changed_approval_or_main_during_observation_fails_closed(reviewed_packa
                 elif moved == "main":
                     (package["remote"] / "refs/heads/main").write_text(package["base"] + "\n", encoding="ascii")
                 else:
-                    ref = "review-decision" if moved == "decision" else "artifacts"
+                    ref = "review-decision" if moved == "decision" else moved
                     (package["remote"] / f"refs/heads/aios/{ref}/{RUN_ID}").write_text(package["base"] + "\n", encoding="ascii")
         return real(repo, url, *patterns)
 
