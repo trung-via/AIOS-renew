@@ -214,7 +214,8 @@ def test_missing_forged_swapped_paths_and_object_types_fail_closed(package, role
 
 
 @pytest.mark.parametrize("path", ["../contract.json", "proof/../contract.json", "/proof/contract.json",
-                                  "proof\\contract.json", "proof/*.json", "proof//contract.json",
+                                  pytest.param("proof\\contract.json", id="backslash-separator"), "proof/*.json",
+                                  pytest.param("proof//contract.json", id="double-slash-separator"),
                                   "proof/./contract.json", ":(glob)*", ".git/config"])
 def test_nonnormalized_paths_are_rejected_before_git(package, path, monkeypatch):
     package["sources"]["contract"] = replace(package["sources"]["contract"], path=path)
