@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .review_transport import (
+    PERFORMANCE_MAX_TERMINAL_RUNS,
     RemotePerformanceSnapshot,
     RemoteTerminalArtifact,
     ReviewTransportError,
@@ -505,12 +507,328 @@ def observe_performance(
         raise PerformanceObservationError(str(exc)) from exc
 
 
+# These limits apply only to the additive L1 view, never to historical v1 decoding.
+L1_MAX_ID_CHARS = 128
+L1_MAX_RECORD_BYTES = 1024 * 1024
+L1_MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class L1BaselineReadiness:
+    """Detached, deterministic view; its digest is a binding, not a trust root."""
+
+    _json: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return json.loads(self._json)
+
+    def render(self) -> str:
+        return self._json
+
+
+def _l1_json(value: Any) -> str:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+        allow_nan=False,
+    )
+
+
+def _l1_strict_record(raw: bytes) -> None:
+    """Reject ambiguous JSON without changing the historical decoders."""
+
+    def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in items:
+            if key in result:
+                raise PerformanceObservationError("duplicate L1 source JSON field")
+            result[key] = value
+        return result
+
+    def constant(value: str) -> None:
+        raise PerformanceObservationError("non-finite L1 source JSON value")
+
+    try:
+        json.loads(raw.decode("utf-8", errors="strict"),
+                   object_pairs_hook=pairs, parse_constant=constant)
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        raise PerformanceObservationError("invalid or ambiguous L1 source JSON") from exc
+
+
+def _l1_sources(
+    snapshot: RemotePerformanceSnapshot, task_ids: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[RemoteTerminalArtifact, ...]]:
+    """Check the supplied snapshot only; never resolve or refresh a ref."""
+
+    if not isinstance(snapshot, RemotePerformanceSnapshot):
+        raise PerformanceObservationError("L1 requires a canonical terminal snapshot")
+    if isinstance(task_ids, (list, tuple)) and any(
+        isinstance(item, str) and len(item) > L1_MAX_ID_CHARS for item in task_ids
+    ):
+        raise PerformanceObservationError("L1 TASK selector exceeds identity bound")
+    selectors = validate_task_selectors(task_ids)
+    if snapshot.task_selectors != selectors:
+        raise PerformanceObservationError("L1 snapshot must match exact sorted TASK selectors")
+    if not isinstance(snapshot.terminals, tuple) or (
+        len(snapshot.terminals) > PERFORMANCE_MAX_TERMINAL_RUNS
+    ):
+        raise PerformanceObservationError("L1 terminal snapshot exceeds tuple/bound contract")
+    if not isinstance(snapshot.observed_refs, tuple) or (
+        len(snapshot.observed_refs) != len(snapshot.terminals)
+    ):
+        raise PerformanceObservationError("L1 requires exact canonical observed refs")
+
+    expected_refs: dict[str, str] = {}
+    seen_runs: set[str] = set()
+    seen_artifacts: set[str] = set()
+    total_bytes = 0
+    for item in snapshot.terminals:
+        if not isinstance(item, RemoteTerminalArtifact):
+            raise PerformanceObservationError("invalid L1 terminal source")
+        if (
+            not isinstance(item.run_id, str)
+            or len(item.run_id) > L1_MAX_ID_CHARS
+            or not isinstance(item.task_id, str)
+            or item.task_id not in selectors
+            or re.fullmatch(
+                rf"RUN-{re.escape(item.task_id.removeprefix('TASK-'))}-\d{{3,}}",
+                item.run_id,
+            ) is None
+            or not isinstance(item.terminal_kind, str)
+            or item.terminal_kind not in TERMINAL_KINDS
+            or not isinstance(item.artifact_sha, str)
+            or re.fullmatch(r"[0-9a-f]{40}", item.artifact_sha) is None
+        ):
+            raise PerformanceObservationError("invalid L1 canonical terminal identity")
+        if item.run_id in seen_runs:
+            raise PerformanceObservationError("duplicate/competing L1 terminal RUN identity")
+        if item.artifact_sha in seen_artifacts:
+            raise PerformanceObservationError("conflicting L1 artifact reused across RUN identities")
+        seen_runs.add(item.run_id)
+        seen_artifacts.add(item.artifact_sha)
+        prefix = "artifacts" if item.terminal_kind == "RESULT" else "failure-artifacts"
+        expected_refs[f"refs/heads/aios/{prefix}/{item.run_id}"] = item.artifact_sha
+        records = (item.run, item.terminal)
+        if item.observation is not None:
+            records += (item.observation,)
+        for raw in records:
+            if not isinstance(raw, bytes) or not 0 < len(raw) <= L1_MAX_RECORD_BYTES:
+                raise PerformanceObservationError("L1 source record exceeds bytes/bound contract")
+            total_bytes += len(raw)
+            if total_bytes > L1_MAX_SNAPSHOT_BYTES:
+                raise PerformanceObservationError("L1 source snapshot exceeds byte bound")
+
+    refs: dict[str, str] = {}
+    for entry in snapshot.observed_refs:
+        if (
+            not isinstance(entry, tuple) or len(entry) != 2
+            or not all(isinstance(value, str) for value in entry)
+        ):
+            raise PerformanceObservationError("invalid L1 observed ref binding")
+        ref, sha = entry
+        if (
+            len(ref) > L1_MAX_ID_CHARS + len("refs/heads/aios/failure-artifacts/")
+            or len(sha) != 40
+            or ref in refs or expected_refs.get(ref) != sha
+        ):
+            raise PerformanceObservationError("stale/conflicting L1 observed ref binding")
+        refs[ref] = sha
+    if refs != expected_refs:
+        raise PerformanceObservationError("missing L1 canonical observed ref binding")
+    # Bound sizes and all refs before decoding any optional observation.
+    for item in snapshot.terminals:
+        for raw in (item.run, item.terminal, item.observation):
+            if raw is not None:
+                _l1_strict_record(raw)
+    return selectors, tuple(sorted(snapshot.terminals, key=lambda item: item.run_id))
+
+
+def _l1_coverage(samples: int, population: int) -> dict[str, Any]:
+    if not 0 <= samples <= population:
+        raise PerformanceObservationError("inconsistent L1 sample coverage")
+    return {
+        "status": ("UNAVAILABLE" if samples == 0 else
+                   "OBSERVED" if samples == population else "PARTIAL"),
+        "sample_count": samples,
+        "population_count": population,
+        "missing_count": population - samples,
+    }
+
+
+def _l1_metrics(
+    rows: Sequence[tuple[_BoundTerminal, RunObservation | None]],
+) -> dict[str, Any]:
+    population = len(rows)
+    observations = [observation for _, observation in rows if observation is not None]
+    metrics: dict[str, Any] = {}
+    for name, attr in (
+        ("admitted_run_seconds", "admitted_run_elapsed_seconds"),
+        ("executor_seconds", "executor_elapsed_seconds"),
+        ("verification_seconds", "verification_elapsed_seconds"),
+    ):
+        values = [getattr(item, attr) for item in observations
+                  if getattr(item, attr) is not None]
+        summary = _duration(values)
+        metrics[name] = {
+            **_l1_coverage(summary.sample_count, population), "unit": "seconds",
+            "observed_sum": sum(values) if values else None,
+            "p50": summary.p50, "p95": summary.p95,
+        }
+    for name in ("input_tokens", "cached_input_tokens", "output_tokens"):
+        values = [getattr(item.token_usage, name) for item in observations
+                  if item.token_usage is not None]
+        metrics[name] = {
+            **_l1_coverage(len(values), population), "unit": "tokens",
+            "observed_sum": sum(values) if values else None,
+        }
+    return metrics
+
+
+def _l1_counts(values: Sequence[str], population: int,
+               keys: Sequence[str]) -> dict[str, Any]:
+    return {
+        **_l1_coverage(len(values), population),
+        "values": ({key: values.count(key) for key in sorted(set(keys) | set(values))}
+                   if values else None),
+    }
+
+
+def _l1_family_key(
+    row: tuple[_BoundTerminal, RunObservation | None], family: str,
+) -> str | None:
+    terminal, observation = row
+    return {
+        "task": terminal.source.task_id,
+        "executor": terminal.executor,
+        "terminal_kind": terminal.source.terminal_kind,
+        "operation": observation.operation if observation is not None else None,
+    }[family]
+
+
+def _l1_gaps(has_run_sample: bool) -> dict[str, Any]:
+    unavailable = (
+        "source_preparation_seconds", "git_startup_seconds", "fixture_startup_seconds",
+        "worker_startup_seconds", "collection_seconds", "collected_test_items",
+        "executed_test_items", "unique_test_items", "equivalent_duplicate_test_items",
+        "checkpoint_seconds", "applicability_seconds", "reused_proof_items",
+        "invalidated_proof_items", "unknown_proof_items", "feedback_seconds",
+        "transport_seconds", "human_seconds", "review_seconds", "publication_seconds",
+        "failure_handoff_seconds", "resource_costs", "dollar_cost",
+    )
+    gaps = {
+        name: {"status": "UNAVAILABLE", "value": None,
+               "reason": "NOT_REPRESENTED_IN_RUN_OBSERVATION"}
+        for name in unavailable
+    }
+    for name in ("matched_episode_equivalence", "proof_coverage", "proof_applicability",
+                 "comparative_speedup", "safety_conformance"):
+        gaps[name] = {"status": "UNKNOWN", "value": None,
+                      "reason": "NOT_ESTABLISHED_BY_TERMINAL_PERFORMANCE"}
+    gaps["whole_episode_seconds"] = {
+        "status": "PARTIAL" if has_run_sample else "UNKNOWN", "value": None,
+        "available_component": "admitted_run_seconds" if has_run_sample else None,
+        "reason": "ADMITTED_RUN_IS_NOT_THE_WHOLE_EPISODE",
+    }
+    return gaps
+
+
+def build_l1_baseline_readiness(
+    snapshot: RemotePerformanceSnapshot, *, task_ids: Sequence[str],
+) -> L1BaselineReadiness:
+    """Project an already authenticated snapshot, with no observation or effects.
+
+    The caller supplies the exact TASK set and the existing transport's snapshot.
+    Ref equality and hashes detect internal drift, not upstream authenticity or
+    present-day freshness. No summary/claim envelope is accepted as a source.
+    """
+
+    selectors, terminals = _l1_sources(snapshot, task_ids)
+    # Reuse the v1 canonical binders and decoder without changing their behavior.
+    # Every terminal binds before missingness or any baseline metric is computed.
+    bound = tuple(_bind_terminal(item, selectors) for item in terminals)
+    try:
+        rows = tuple((item, None if item.source.observation is None else
+                      _bind_observation(item.source.observation, item)) for item in bound)
+        metrics = _l1_metrics(rows)
+    except (OverflowError, RecursionError) as exc:
+        raise PerformanceObservationError("L1 numeric/record bound exceeded") from exc
+
+    sources = []
+    for item in bound:
+        source = item.source
+        sources.append({
+            "run_id": source.run_id, "task_id": source.task_id,
+            "task_revision": item.task_revision, "executor": item.executor,
+            "terminal_kind": source.terminal_kind, "artifact_sha": source.artifact_sha,
+            "base_sha": item.base_sha, "candidate_sha": item.candidate_sha,
+            "run_sha256": hashlib.sha256(source.run).hexdigest(),
+            "terminal_sha256": hashlib.sha256(source.terminal).hexdigest(),
+            "observation_sha256": (hashlib.sha256(source.observation).hexdigest()
+                                   if source.observation is not None else None),
+        })
+    source_binding = {
+        "task_selectors": list(selectors), "terminals": sources,
+        "observed_refs": [list(item) for item in sorted(snapshot.observed_refs)],
+    }
+    population = len(rows)
+    observations = [observation for _, observation in rows if observation is not None]
+    counts = {
+        "by_terminal_kind": _l1_counts(
+            [item.source.terminal_kind for item in bound], population, sorted(TERMINAL_KINDS)),
+        "by_task": _l1_counts([item.source.task_id for item in bound], population, selectors),
+        "by_executor": _l1_counts(
+            [item.executor for item in bound], population, sorted(SUPPORTED_EXECUTORS)),
+        "by_task_revision": _l1_counts(
+            [f"{item.source.task_id}@{item.task_revision}" for item in bound], population, ()),
+        "by_operation": _l1_counts(
+            [item.operation for item in observations], population, sorted(OPERATIONS)),
+    }
+    families: dict[str, Any] = {}
+    for family, keys in (
+        ("task", selectors), ("executor", sorted(SUPPORTED_EXECUTORS)),
+        ("terminal_kind", sorted(TERMINAL_KINDS)), ("operation", sorted(OPERATIONS)),
+    ):
+        groups: dict[str, Any] = {}
+        for key in keys:
+            selected = tuple(
+                row for row in rows if _l1_family_key(row, family) == key
+            )
+            groups[key] = {
+                "terminal_runs": len(selected),
+                "outcomes": _l1_counts(
+                    [item.source.terminal_kind for item, _ in selected],
+                    len(selected), sorted(TERMINAL_KINDS)),
+                "metrics": _l1_metrics(selected),
+            }
+        families[family] = {
+            "classification_coverage": _l1_coverage(
+                len(observations) if family == "operation" else population, population),
+            "unclassified_terminal_runs": population - len(observations)
+                if family == "operation" else 0,
+            "groups": groups,
+        }
+    try:
+        return L1BaselineReadiness(_l1_json({
+            "format": "AIOS_LEAN_VP_L1_BASELINE_READINESS", "version": 1,
+            "kind": "L1_BASELINE_READINESS", "authority": "READ_ONLY_NO_DECISIONS",
+            "task_selectors": list(selectors),
+            "source": {**source_binding, "binding_sha256": hashlib.sha256(
+                _l1_json(source_binding).encode("ascii")).hexdigest()},
+            "coverage": _l1_coverage(len(observations), population),
+            "metrics": metrics, "counts": counts, "families": families,
+            "gaps": _l1_gaps(bool(observations)),
+        }))
+    except (ValueError, OverflowError) as exc:
+        raise PerformanceObservationError("L1 aggregate exceeds finite numeric bounds") from exc
+
+
 __all__ = [
     "CoverageSummary",
     "DurationSummary",
+    "L1BaselineReadiness",
     "PerformanceObservation",
     "PerformanceObservationError",
     "TokenUsageSummary",
+    "build_l1_baseline_readiness",
     "build_performance_observation",
     "nearest_rank_percentile",
     "observe_performance",
