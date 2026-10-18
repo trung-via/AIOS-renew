@@ -245,3 +245,58 @@ def test_canonical_task_corpus_remains_compatible() -> None:
         task = parse_task(source)
 
         assert task.task_id == f"TASK-{number:03}"
+
+
+def test_future_intake_is_never_an_implicit_task_or_policy_route(monkeypatch):
+    import aios_renew.task as task_module
+    import yaml
+    from aios_renew.verification_contract import CURRENT_VERIFICATION_POLICY, VERIFICATION_POLICIES
+
+    def prohibited(*args, **kwargs):
+        raise AssertionError("ordinary TASK parsing must not invoke semantic proof intake")
+
+    monkeypatch.setattr(task_module, "validate_semantic_proof_declaration", prohibited)
+    monkeypatch.setattr(task_module, "validate_semantic_proof_intake", prohibited)
+    assert CURRENT_VERIFICATION_POLICY == "minimum-sufficient-v1"
+    assert VERIFICATION_POLICIES == {"minimum-sufficient-v1", "minimum-sufficient-v2"}
+    for policy in (None, *sorted(VERIFICATION_POLICIES)):
+        body = yaml.safe_load(VALID_TASK)
+        if policy is not None:
+            body["verification"]["policy"] = policy
+        task = task_module.validate_task(body)
+        assert task == parse_task(yaml.safe_dump(body))
+        assert task.verification.required == ("pytest tests/test_task.py",)
+        assert task.verification.policy == policy
+        for field in ("schema", "proof_contract", "semantic_proof_intake"):
+            with pytest.raises(TaskValidationError, match="unknown field"):
+                task_module.validate_task({**body, field: "task-semantic-proof-intake-v1"})
+        body["verification"]["policy"] = "task-semantic-proof-intake-v1"
+        with pytest.raises(TaskValidationError, match="verification.policy"):
+            task_module.validate_task(body)
+
+
+@pytest.mark.parametrize("policy", (None, "minimum-sufficient-v1", "minimum-sufficient-v2"))
+def test_semantic_intake_does_not_reinterpret_historical_opaque_commands(policy):
+    import yaml
+    body = yaml.safe_load(VALID_TASK)
+    if policy is not None:
+        body["verification"]["policy"] = policy
+    # Historical parsing intentionally retains opaque authored strings. The new
+    # explicit API must neither reinterpret these nor silently change rejection.
+    body["verification"]["required"] = ["proof-unit", "opaque --literal='two  spaces'"]
+    task = parse_task(yaml.safe_dump(body))
+    assert task.verification.required == tuple(body["verification"]["required"])
+    assert task.verification.policy == policy
+    body["verification"]["required"].append("proof-unit")
+    with pytest.raises(TaskValidationError, match="duplicate command"):
+        parse_task(yaml.safe_dump(body))
+
+
+def test_future_declaration_cannot_parse_as_current_task():
+    with pytest.raises(TaskValidationError, match="unknown field"):
+        parse_task("schema: task-semantic-proof-intake-v1\ncontract: {}\nmapping: {}\n")
+
+
+def test_duplicate_future_fields_are_not_silently_accepted_by_current_task_loader():
+    with pytest.raises(TaskValidationError, match="duplicate TASK mapping field"):
+        parse_task("schema: task-semantic-proof-intake-v1\nschema: task-semantic-proof-intake-v1\n")

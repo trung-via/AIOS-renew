@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from .proof_coverage_contract import SemanticProofIntake, validate_semantic_proof_declaration
 from .return_affinity import AffinityError, LEGACY, ReturnAffinity, document_affinity, parse_affinity
 
 from .verification_contract import (
@@ -244,6 +245,24 @@ def validate_task(data: Any) -> Task:
             policy=verification_policy,
             full_suite_reason=full_suite_reason,
         ),
+    )
+
+
+def validate_semantic_proof_intake(data: object, *, expected_task: object,
+                                 expected_candidate_sha: object, expected_sources: object,
+                                 expected_contract: object, expected_mapping: object) -> SemanticProofIntake:
+    """Explicit non-operative future declaration API, separate from TASK admission.
+
+    Accepts only task-semantic-proof-intake-v1 decoded plain data. Every expected
+    argument is independently supplied by the caller; equality never authenticates
+    its source/currentness/review authority. Raises ProofCoverageError on invalid
+    declarations. This never returns a Task or selects a verification policy.
+    parse_task/validate_task deliberately do not call or route to this API.
+    """
+    return validate_semantic_proof_declaration(
+        data, expected_task=expected_task, expected_candidate_sha=expected_candidate_sha,
+        expected_sources=expected_sources, expected_contract=expected_contract,
+        expected_mapping=expected_mapping,
     )
 
 

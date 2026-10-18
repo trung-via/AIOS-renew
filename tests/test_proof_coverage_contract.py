@@ -5,7 +5,8 @@ import copy
 import os
 import socket
 import subprocess
-from dataclasses import FrozenInstanceError
+import time
+from dataclasses import FrozenInstanceError, asdict
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,9 @@ from aios_renew.proof_coverage_contract import (
     candidate_disposition, evaluate_base_replay, obligations_equivalent,
     proof_conditions_equivalent, proof_mapping_digest,
     validate_proof_contract, validate_proof_mapping,
+    SEMANTIC_INTAKE_SCHEMA, SemanticProofIntake, validate_semantic_proof_declaration,
 )
+from aios_renew.task import validate_semantic_proof_intake
 
 
 CANDIDATE = "a" * 40
@@ -576,3 +579,397 @@ def test_every_public_validation_and_decision_surface_performs_zero_execution_or
     assert calls == [] and first == second
     assert fail.status == "BLOCK" and allowed.eligible and not allowed.execution_authorized
     assert equal and equivalent
+
+
+# Future intake fixtures are wholly synthetic, including all Git/review pins.
+# Recomputing pins here prepares test data; production callers need independently
+# authenticated/current reviewed pins, which these fixtures cannot establish.
+INTAKE_VALIDATORS = (validate_semantic_proof_declaration, validate_semantic_proof_intake)
+
+
+def synthetic_intake():
+    data = contract(obligation("integration-proof", acceptance_ids=["AC2"], conditions=conditions(
+        integration_ref="whole-suite-v1", shared_state_ref="shared-fixture-v1",
+        worker_mode="parallel", workers=12, ordering_ref="parallel-order-v1")), comparison())
+    data["task"]["acceptance_ids"] = ["AC1", "AC2"]
+    for index, item in enumerate(data["obligations"]):
+        item["provenance"]["source_ref"] = f"synthetic-obligation-{index}"
+    mapping = mapping_for(data)
+    for index, proof in enumerate(mapping["proofs"]):
+        proof["provenance"]["review_ref"] = f"synthetic-proof-review-{index}"
+    declaration = {
+        "schema": SEMANTIC_INTAKE_SCHEMA, "task": copy.deepcopy(data["task"]),
+        "candidate_sha": CANDIDATE,
+        "sources": {name: {"source_sha": sha * 40, "blob_sha": blob * 40}
+                    for name, sha, blob in (("task", "1", "2"), ("contract", "3", "4"), ("mapping", "5", "6"))},
+        "contract": data, "mapping": mapping,
+    }
+    return declaration, synthetic_intake_pins(declaration)
+
+
+def synthetic_intake_pins(declaration):
+    parsed = validate_proof_contract(declaration["contract"], expected_task=declaration["task"])
+    return {
+        "expected_task": copy.deepcopy(declaration["task"]),
+        "expected_candidate_sha": declaration["candidate_sha"],
+        "expected_sources": copy.deepcopy(declaration["sources"]),
+        "expected_contract": {"id": parsed.id, "revision": parsed.revision, "digest": parsed.digest},
+        "expected_mapping": pin(declaration["mapping"]),
+    }
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+def test_synthetic_future_intake_is_only_immutable_structural_readiness(validate):
+    data, pins = synthetic_intake()
+    original = copy.deepcopy((data, pins))
+    result = validate(data, **pins)
+    assert isinstance(result, SemanticProofIntake)
+    assert result.schema == SEMANTIC_INTAKE_SCHEMA
+    assert result.readiness == "STRUCTURALLY_COMPLETE_ONLY"
+    assert result.canonical_verification == "NOT_PERFORMED"
+    assert not result.production_eligible and not result.execution_authorized
+    assert asdict(result)["readiness"] == "STRUCTURALLY_COMPLETE_ONLY"
+    assert asdict(result)["production_eligible"] is False
+    assert result.unestablished == ("source_authentication", "source_currentness", "author_review_authority",
+                                    "semantic_adequacy", "evidence_validity", "actual_applicability")
+    assert result.coverage.contract.task.acceptance_ids == ("AC1", "AC2")
+    assert len(result.coverage.contract.obligations) == len(result.coverage.mapping.entries) == 3
+    assert result.contract_pin.digest == result.coverage.contract.digest
+    assert result.mapping_pin.digest == result.coverage.mapping.digest
+    assert result.sources.contract.blob_sha == "4" * 40
+    assert (data, pins) == original
+    with pytest.raises(FrozenInstanceError):
+        result.production_eligible = True
+    with pytest.raises(FrozenInstanceError):
+        result.contract_pin.digest = "f" * 64
+    with pytest.raises(FrozenInstanceError):
+        result.sources.task.source_sha = "f" * 40
+    for item in result.coverage.contract.obligations:
+        raw = next(raw for raw in data["contract"]["obligations"] if raw["id"] == item.id)
+        assert item.provenance.source_ref == raw["provenance"]["source_ref"]
+    for proof in result.coverage.mapping.proofs:
+        raw = next(raw for raw in data["mapping"]["proofs"] if raw["id"] == proof.id)
+        assert proof.provenance.review_ref == raw["provenance"]["review_ref"]
+    data["sources"]["task"]["blob_sha"] = "f" * 40
+    data["contract"]["obligations"][0]["conditions"]["fixture_refs"].clear()
+    pins["expected_contract"]["digest"] = "f" * 64
+    assert result.sources.task.blob_sha == "2" * 40
+    assert result.contract_pin.digest != "f" * 64
+    assert all(item.conditions.fixture_refs for item in result.coverage.contract.obligations)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+def test_future_intake_equivalent_declaration_order_is_stable(validate):
+    data, pins = synthetic_intake()
+    before = validate(data, **pins)
+    data["task"]["acceptance_ids"].reverse()
+    data["contract"]["task"]["acceptance_ids"].reverse()
+    data["contract"]["obligations"].reverse()
+    for item in data["contract"]["obligations"]:
+        item["conditions"]["fixture_refs"].reverse()
+        item["acceptance_ids"].reverse()
+    for proof in data["mapping"]["proofs"]:
+        proof["conditions"]["fixture_refs"].reverse()
+        proof["claims"].reverse()
+    data["mapping"]["proofs"].reverse()
+    data["mapping"]["entries"].reverse()
+    data["sources"] = dict(reversed(list(data["sources"].items())))
+    assert validate(data, **pins) == before
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+def test_future_intake_preserves_explicit_equal_condition_sharing_and_all_claims(validate):
+    data, _ = synthetic_intake()
+    data["contract"]["obligations"].append(obligation("proof-second", acceptance_ids=["AC2"], claim={
+        "id": "semantic-additional-v1", "text": "The admitted operation preserves the additional property."}))
+    groups = {item["id"]: f"mapped-{item['id']}" for item in data["contract"]["obligations"]}
+    groups.update({"proof-unit": "shared-proof", "proof-second": "shared-proof"})
+    data["mapping"] = mapping_for(data["contract"], groups=groups)
+    pins = synthetic_intake_pins(data)
+    before = validate(data, **pins)
+    assert len(before.coverage.contract.obligations) == len(before.coverage.mapping.entries) == 4
+    assert len(before.coverage.mapping.proofs) == 3
+    shared = next(proof for proof in data["mapping"]["proofs"] if proof["id"] == "shared-proof")
+    assert len(shared["claims"]) == 2
+    shared["claims"].reverse()
+    assert validate(data, **pins) == before
+    # Separate equivalent descriptors cannot replace that explicit sharing.
+    data["mapping"] = mapping_for(data["contract"])
+    pins["expected_mapping"] = pin(data["mapping"])
+    with pytest.raises(ProofCoverageError, match="equivalent proof descriptors"):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("location", [(), ("contract",), ("mapping",)])
+@pytest.mark.parametrize("version", [None, True, "", "minimum-sufficient-v1", "task-semantic-proof-intake-v2",
+                                     "proof-coverage-v2", "proof-mapping-v2"])
+def test_future_intake_versions_are_explicit_and_closed(validate, location, version):
+    data, pins = synthetic_intake()
+    target = data if not location else data[location[0]]
+    target["schema"] = version
+    with pytest.raises(ProofCoverageError):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("argument", ["expected_task", "expected_candidate_sha", "expected_sources",
+                                      "expected_contract", "expected_mapping"])
+def test_future_intake_requires_every_independent_caller_input(validate, argument):
+    data, pins = synthetic_intake()
+    del pins[argument]
+    with pytest.raises(TypeError):
+        validate(data, **pins)
+    pins[argument] = None
+    with pytest.raises(ProofCoverageError):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("field", ["schema", "task", "candidate_sha", "sources", "contract", "mapping"])
+def test_future_intake_missing_root_fields_fail_closed(validate, field):
+    data, pins = synthetic_intake()
+    del data[field]
+    with pytest.raises(ProofCoverageError, match="exact fields"):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("field,value", [("authenticated", True), ("reviewed", True), ("policy", "future"),
+                                       ("verification", {"required": ["proof-unit"]}), ("run_id", "RUN-SYNTHETIC")])
+def test_future_intake_cannot_self_certify_trust_or_request_execution(validate, field, value):
+    data, pins = synthetic_intake()
+    data[field] = value
+    with pytest.raises(ProofCoverageError, match="exact fields"):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("field,value", [("task_id", "TASK-OTHER"), ("revision", 2),
+                                       ("envelope_digest", "e" * 64), ("acceptance_ids", ["AC1"]),
+                                       ("acceptance_ids", ["AC1", "AC2", "AC3"]),
+                                       ("acceptance_ids", ["AC1", "AC1"]), ("revision", True)])
+def test_future_intake_requires_exact_complete_task_identity(validate, field, value):
+    data, pins = synthetic_intake()
+    data["task"][field] = value
+    with pytest.raises(ProofCoverageError):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("source", ["task", "contract", "mapping"])
+@pytest.mark.parametrize("defect", ["missing", "extra", "sha", "blob", "malformed", "swapped"])
+def test_future_intake_source_pins_reject_partial_stale_and_cross_source_inputs(validate, source, defect):
+    data, pins = synthetic_intake()
+    if defect == "missing":
+        del data["sources"][source]
+    elif defect == "extra":
+        data["sources"][source]["authenticated"] = True
+    elif defect == "sha":
+        data["sources"][source]["source_sha"] = "f" * 40
+    elif defect == "blob":
+        data["sources"][source]["blob_sha"] = "f" * 40
+    elif defect == "malformed":
+        data["sources"][source]["source_sha"] = "main"
+    else:
+        other = "mapping" if source != "mapping" else "contract"
+        data["sources"][source], data["sources"][other] = data["sources"][other], data["sources"][source]
+    with pytest.raises(ProofCoverageError):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("which", ["expected_contract", "expected_mapping"])
+@pytest.mark.parametrize("defect", ["id", "revision", "digest", "missing", "extra", "swapped"])
+def test_future_intake_independent_contract_and_mapping_pins_cannot_be_substituted(validate, which, defect):
+    data, pins = synthetic_intake()
+    if defect == "missing":
+        del pins[which]["digest"]
+    elif defect == "extra":
+        pins[which]["reviewed"] = True
+    elif defect == "swapped":
+        pins[which] = pins["expected_mapping" if which == "expected_contract" else "expected_contract"]
+    else:
+        pins[which][defect] = {"id": "other-v1", "revision": 2, "digest": "e" * 64}[defect]
+    with pytest.raises(ProofCoverageError):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("defect", ["outer-candidate", "obligation-candidate", "other-task", "contract-provenance",
+                                    "missing-acceptance", "duplicate-obligation", "missing-entry", "duplicate-entry",
+                                    "extra-entry", "stale-entry", "unused-proof", "mapping-provenance", "merged-conditions"])
+def test_future_intake_hostile_stale_or_ambiguous_declarations_fail_closed(validate, defect):
+    data, pins = synthetic_intake()
+    contract_data, mapping = data["contract"], data["mapping"]
+    if defect == "outer-candidate":
+        data["candidate_sha"] = "d" * 40
+    elif defect == "obligation-candidate":
+        for item in contract_data["obligations"]:
+            item["conditions"]["candidate_sha"] = "d" * 40
+        data["mapping"] = mapping_for(contract_data)
+        pins = synthetic_intake_pins(data)
+    elif defect == "other-task":
+        contract_data["task"]["task_id"] = "TASK-OTHER"
+    elif defect == "contract-provenance":
+        contract_data["provenance"]["review_ref"] = "other-review-v1"
+        data["mapping"] = mapping_for(contract_data)
+        pins["expected_mapping"] = pin(data["mapping"])
+    elif defect == "missing-acceptance":
+        contract_data["obligations"][1]["acceptance_ids"] = ["AC1"]
+    elif defect == "duplicate-obligation":
+        contract_data["obligations"].append(copy.deepcopy(contract_data["obligations"][0]))
+    elif defect == "missing-entry":
+        mapping["entries"].pop()
+    elif defect == "duplicate-entry":
+        mapping["entries"].append(copy.deepcopy(mapping["entries"][0]))
+    elif defect == "extra-entry":
+        mapping["entries"].append({**mapping["entries"][0], "obligation_id": "unknown-v1"})
+    elif defect == "stale-entry":
+        mapping["entries"][0]["obligation_digest"] = "e" * 64
+    elif defect == "unused-proof":
+        mapping["proofs"].append({**mapping["proofs"][0], "id": "unused-v1"})
+    elif defect == "mapping-provenance":
+        mapping["provenance"]["review_ref"] = "other-review-v1"
+    else:
+        mapping["entries"][1]["proof_id"] = mapping["entries"][0]["proof_id"]
+        mapping["proofs"].pop(1)
+    if defect in {"missing-entry", "extra-entry", "stale-entry", "unused-proof", "merged-conditions"}:
+        pins["expected_mapping"] = pin(mapping)
+    with pytest.raises(ProofCoverageError):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("field,value", [
+    ("candidate_sha", "d" * 40), ("base_sha", "d" * 40),
+    ("population_ref", "other-population-v1"), ("population_size", 9),
+    ("test_ref", "other-test-v1"), ("fixture_refs", ["other-fixture-v1"]),
+    ("shared_state_ref", "other-shared-state-v1"), ("profile_ref", "other-profile-v1"),
+    ("worker_mode", "parallel"), ("workers", 2), ("concurrency_ref", "other-concurrency-v1"),
+    ("ordering_ref", "other-order-v1"), ("integration_ref", "other-integration-v1"),
+    ("repetition_ref", "other-repetition-v1"), ("toolchain_ref", "other-toolchain-v1"),
+    ("environment_ref", "other-environment-v1"), ("evidence_kind", "other-kind-v1"),
+    ("evidence_schema", "other-schema-v1"), ("collection_ref", "other-collection-v1"),
+])
+def test_future_intake_never_merges_different_full_proof_conditions(validate, field, value):
+    data, pins = synthetic_intake()
+    proof = next(proof for proof in data["mapping"]["proofs"] if proof["id"] == "mapped-proof-unit")
+    proof["conditions"][field] = value
+    if field == "workers":
+        proof["conditions"]["worker_mode"] = "parallel"
+    elif field == "base_sha":
+        proof["kind"] = "comparison"
+    # Supply an independently changed synthetic mapping pin so the condition
+    # comparison, rather than merely a stale mapping digest, must reject it.
+    pins["expected_mapping"] = pin(data["mapping"])
+    with pytest.raises(ProofCoverageError, match="conflicting proof conditions"):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("field,value", [("fixture_refs", ["replacement-fixture-v1"]), ("workers", 2),
+                                       ("integration_ref", "replacement-integration-v1"),
+                                       ("ordering_ref", "replacement-order-v1")])
+def test_coherent_semantic_replacement_still_requires_independent_contract_pin(validate, field, value):
+    data, pins = synthetic_intake()
+    item = data["contract"]["obligations"][0]
+    item["conditions"][field] = value
+    if field == "workers":
+        item["conditions"]["worker_mode"] = "parallel"
+    data["mapping"] = mapping_for(data["contract"])
+    pins["expected_mapping"] = pin(data["mapping"])
+    with pytest.raises(ProofCoverageError, match="contract pin"):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("text", ["curl https://invalid.example", "node runner.js", "echo claimed-pass",
+                                 "uv run pytest", "./runner", "C:\\runner.exe", "& runner",
+                                 "The claim $(runner) holds.", "The claim `runner` holds."])
+def test_intake_command_guard_adds_no_new_language_to_historical_vp02(validate, text):
+    data, _ = synthetic_intake()
+    for item in data["contract"]["obligations"]:
+        item["claim"]["text"] = text
+    data["mapping"] = mapping_for(data["contract"])
+    pins = synthetic_intake_pins(data)
+    # The unchanged VP-02 v1 validator may accept opaque text; the explicit
+    # future intake imposes its narrower command-shaped-substitution guard.
+    validate_proof_mapping(data["contract"], data["mapping"], expected_task=pins["expected_task"],
+                           expected_mapping=pins["expected_mapping"])
+    with pytest.raises(ProofCoverageError, match="executable invocation"):
+        validate(data, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("bad", [None, [], "schema: task-semantic-proof-intake-v1", b"{}", lambda: {}])
+def test_future_intake_rejects_loaders_and_non_plain_roots(validate, bad):
+    _, pins = synthetic_intake()
+    with pytest.raises(ProofCoverageError):
+        validate(bad, **pins)
+
+
+@pytest.mark.parametrize("validate", INTAKE_VALIDATORS)
+@pytest.mark.parametrize("defect", ["acceptance-bound", "obligation-bound", "proof-bound", "entry-bound",
+                                    "text-bound", "fixture-bound", "duplicate-fixture", "cycle", "dict-subclass"])
+def test_future_intake_rejects_unbounded_duplicate_or_non_plain_data(validate, defect):
+    data, pins = synthetic_intake()
+    if defect == "acceptance-bound":
+        data["task"]["acceptance_ids"] = [f"AC{index}" for index in range(MAX_OBLIGATIONS + 1)]
+    elif defect == "obligation-bound":
+        data["contract"]["obligations"] *= MAX_OBLIGATIONS + 1
+    elif defect == "proof-bound":
+        data["mapping"]["proofs"] *= MAX_OBLIGATIONS + 1
+    elif defect == "entry-bound":
+        data["mapping"]["entries"] *= MAX_OBLIGATIONS + 1
+    elif defect == "text-bound":
+        data["contract"]["obligations"][0]["claim"]["text"] = "x" * (MAX_TEXT + 1)
+    elif defect == "fixture-bound":
+        data["contract"]["obligations"][0]["conditions"]["fixture_refs"] *= MAX_REFERENCES + 1
+    elif defect == "duplicate-fixture":
+        data["contract"]["obligations"][0]["conditions"]["fixture_refs"] *= 2
+    elif defect == "cycle":
+        data["contract"]["obligations"] = [data["contract"]]
+    else:
+        class HostileDictionary(dict):
+            def __iter__(self):
+                raise AssertionError("input callbacks must not be invoked")
+        data = HostileDictionary(data)
+    with pytest.raises(ProofCoverageError):
+        validate(data, **pins)
+
+
+def test_future_intake_boundaries_perform_no_filesystem_git_network_clock_or_proof_execution(monkeypatch):
+    import aios_renew.proof_coverage_contract as proof_module
+    import aios_renew.verification as verification
+
+    data, pins = synthetic_intake()
+    calls = []
+
+    def prohibited(*args, **kwargs):
+        calls.append("prohibited effect")
+        raise AssertionError("semantic intake is in-memory declaration validation only")
+
+    with monkeypatch.context() as traps:
+        for owner, names in (
+            (subprocess, ("Popen", "run", "call", "check_call", "check_output")),
+            (os, ("system", "popen", "listdir", "scandir", "getenv", "stat", "mkdir", "remove", "rename")),
+            (Path, ("open", "read_text", "write_text", "read_bytes", "write_bytes", "iterdir", "glob", "rglob", "stat")),
+            (builtins, ("open",)), (socket, ("socket", "create_connection")),
+            (time, ("time", "monotonic", "perf_counter", "sleep")), (pytest, ("main",)),
+            (verification, ("execute_verification", "execute_minimum_verification", "materialize_verification_subject", "_git")),
+            (proof_module, ("evaluate_base_replay", "candidate_disposition")),
+        ):
+            for name in names:
+                traps.setattr(owner, name, prohibited)
+        first = validate_semantic_proof_intake(data, **pins)
+        second = validate_semantic_proof_declaration(data, **pins)
+        invalid = dict(data, authenticated=True)
+        try:
+            validate_semantic_proof_intake(invalid, **pins)
+        except ProofCoverageError:
+            rejected = True
+        else:
+            rejected = False
+    assert calls == [] and first == second and rejected
+    assert not first.execution_authorized and not first.production_eligible
