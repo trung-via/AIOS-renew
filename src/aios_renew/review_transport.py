@@ -15,9 +15,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
-from .proof_coverage_contract import SemanticProofIntake
+from .proof_coverage_contract import MappingReviewScope, SemanticProofIntake
 from .terminal_attention import (
     TerminalAttentionError,
     publish_terminal_attention,
@@ -3197,12 +3197,15 @@ def _l1_tree(repo: Path, sha: str) -> dict[str, tuple[str, str, str]]:
 
 
 def _l1_path_blob(repo: Path, tree: str, path: str,
-                  cache: dict[str, dict[str, tuple[str, str, str]]]) -> str:
+                  cache: dict[str, dict[str, tuple[str, str, str]]], *,
+                  missing_ok: bool = False) -> str | None:
     components = path.split("/")
     for index, component in enumerate(components):
         if tree not in cache:
             cache[tree] = _l1_tree(repo, tree)
         if component not in cache[tree]:
+            if missing_ok:
+                return None
             raise ReviewTransportError("missing L1 source path")
         mode, kind, sha = cache[tree][component]
         if index < len(components) - 1:
@@ -3214,22 +3217,23 @@ def _l1_path_blob(repo: Path, tree: str, path: str,
     return sha
 
 
-def _l1_task_binding(content: bytes) -> dict[str, Any]:
+def _l1_yaml_text(content: bytes) -> str:
     import yaml
-    from .task import parse_task
 
-    # Keep the existing TASK parser/validator as the sole TASK schema owner.
-    # Reject YAML graph expansion, explicit tags and excessive nesting first.
+    # Shared bounded lexical guard; the existing TASK/REVIEW parsers still own
+    # their schemas. Reject graphs, tags and excessive nesting before parsing.
+    if type(content) is not bytes or not 0 < len(content) <= L1_TASK_MAX_BYTES:
+        raise ReviewTransportError("L1 YAML input exceeds byte bounds")
     try:
         text = content.decode("utf-8", errors="strict")
         if text.startswith("\ufeff"):
-            raise ValueError("TASK BOM is not accepted")
+            raise ValueError("YAML BOM is not accepted")
         depth = 0
         for count, token in enumerate(yaml.scan(text)):
             if count >= 65536 or isinstance(token, (
                     yaml.tokens.AliasToken, yaml.tokens.AnchorToken,
                     yaml.tokens.TagToken, yaml.tokens.DirectiveToken)):
-                raise ValueError("unbounded or ambiguous TASK YAML")
+                raise ValueError("unbounded or ambiguous L1 YAML")
             if isinstance(token, (yaml.tokens.BlockMappingStartToken,
                                   yaml.tokens.BlockSequenceStartToken,
                                   yaml.tokens.FlowMappingStartToken, yaml.tokens.FlowSequenceStartToken)):
@@ -3238,13 +3242,34 @@ def _l1_task_binding(content: bytes) -> dict[str, Any]:
                                     yaml.tokens.FlowSequenceEndToken)):
                 depth -= 1
             if depth > 32:
-                raise ValueError("TASK nesting exceeds bound")
-        task = parse_task(text)
+                raise ValueError("YAML nesting exceeds bound")
+        return text
     except (ValueError, UnicodeError, yaml.YAMLError, RecursionError) as exc:
+        raise ReviewTransportError("invalid bounded canonical L1 YAML document") from exc
+
+
+def _l1_task_binding(content: bytes) -> dict[str, Any]:
+    from .task import parse_task
+
+    try:
+        task = parse_task(_l1_yaml_text(content))
+    except ValueError as exc:
         raise ReviewTransportError("invalid bounded canonical L1 TASK document") from exc
     return dict(task_id=task.task_id, revision=task.revision,
                 envelope_digest=hashlib.sha256(content).hexdigest(),
                 acceptance_ids=sorted(item.id for item in task.acceptance))
+
+
+def _l1_locator(locator: GitSemanticSource) -> None:
+    if type(locator) is not GitSemanticSource:
+        raise ReviewTransportError("typed exact L1 source locator required")
+    for sha in (locator.source_sha, locator.tree_sha, locator.blob_sha):
+        _l1_sha(sha)
+    if (type(locator.path) is not str or len(locator.path) > 512
+            or re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", locator.path) is None
+            or len(locator.path.split("/")) > 32
+            or any(part in {".", "..", ".git"} for part in locator.path.split("/"))):
+        raise ReviewTransportError("exact normalized L1 repository-relative path required")
 
 
 def bind_canonical_semantic_proof_sources(
@@ -3281,15 +3306,7 @@ def bind_canonical_semantic_proof_sources(
         raise ReviewTransportError("exact task/contract/mapping L1 locators required")
     locators = dict(sources)
     for locator in locators.values():
-        if type(locator) is not GitSemanticSource:
-            raise ReviewTransportError("typed exact L1 source locator required")
-        for sha in (locator.source_sha, locator.tree_sha, locator.blob_sha):
-            _l1_sha(sha)
-        if (type(locator.path) is not str or len(locator.path) > 512
-                or re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", locator.path) is None
-                or len(locator.path.split("/")) > 32
-                or any(part in {".", "..", ".git"} for part in locator.path.split("/"))):
-            raise ReviewTransportError("exact normalized L1 repository-relative path required")
+        _l1_locator(locator)
     if len({item.path for item in locators.values()}) != 3:
         raise ReviewTransportError("separate L1 semantic source paths required")
     remote = _l1_remote(repo, expected_remote_url)
@@ -3341,6 +3358,284 @@ def bind_canonical_semantic_proof_sources(
     _l1_main(repo, expected_remote_url, expected_main_sha)
     return CanonicalSemanticSourceBinding(remote, expected_remote_url, expected_main_sha,
                                           expected_main_sha, tuple(observations), intake)
+
+
+@dataclass(frozen=True)
+class _L1MappingReviewSelection:
+    """Private expected facts from independently authenticated Human context.
+
+    This is neither a new approval format nor a public caller credential. The
+    repository currently has no lawful producer of this mapping-specific context.
+    Synthetic tests replace the closed reader, never register a live trust root.
+    """
+
+    scope: MappingReviewScope
+    sources: tuple[AuthenticatedSemanticSource, ...]
+    review_task_source: GitSemanticSource
+    run_id: str
+    run_sha256: str
+    base_sha: str
+    reviewed_sha: str
+    review_id: str
+    decision_sha: str
+    artifacts_sha: str
+    published_sha: str
+
+
+@dataclass(frozen=True)
+class MappingReviewLineage:
+    scope: MappingReviewScope
+    review_task_source: AuthenticatedSemanticSource
+    run_id: str
+    run_sha256: str
+    base_sha: str
+    reviewed_sha: str
+    review_id: str
+    review_sha256: str
+    result_sha256: str
+    decision_sha: str
+    artifacts_sha: str
+    published_sha: str
+    observed_refs: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class SemanticReviewAuthorityEligibility:
+    """One immutable observation; no independent judgment or proof is issued."""
+
+    source_binding: CanonicalSemanticSourceBinding
+    lineage: MappingReviewLineage | None
+    reason: Literal["EXACT_MAPPING_REVIEW_LINEAGE", "HUMAN_MAPPING_SELECTION_UNAVAILABLE",
+                    "MAPPING_REVIEW_NOT_ESTABLISHED"]
+    source_status: Literal["SOURCE_CONSISTENT"] = field(default="SOURCE_CONSISTENT", init=False)
+    semantic_adequacy: Literal["REQUIRES_INDEPENDENT_REVIEWER_JUDGMENT"] = field(
+        default="REQUIRES_INDEPENDENT_REVIEWER_JUDGMENT", init=False)
+    canonical_verification: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    evidence_applicability: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    future_version_admission: Literal["NOT_ADMITTED"] = field(default="NOT_ADMITTED", init=False)
+    ka01_g3: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    ka01_g6: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    production_opt_in: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    production_activation: Literal["NOT_ACTIVATED"] = field(default="NOT_ACTIVATED", init=False)
+    production_eligible: Literal[False] = field(default=False, init=False)
+    execution_authorized: Literal[False] = field(default=False, init=False)
+
+    @property
+    def reviewer_authority(self) -> Literal["REVIEW_AUTHORITY_ESTABLISHED", "NOT_ESTABLISHED"]:
+        return "REVIEW_AUTHORITY_ESTABLISHED" if self.lineage is not None else "NOT_ESTABLISHED"
+
+
+def _l1_authenticated_mapping_review_selection(
+    repo: Path, binding: CanonicalSemanticSourceBinding,
+) -> _L1MappingReviewSelection | None:
+    """Closed authority boundary, deliberately without a caller-selected source.
+
+    Existing TASK/RUN/REVIEW bytes do not authenticate Human selection of their
+    *mapping-specific* scope. No such live selection is assumed or inferred.
+    A future lawful integration needs separate governance; neither an opaque
+    review_ref nor an ordinary engineering PASS can implement this reader.
+    """
+    return None
+
+
+def _l1_subtree(repo: Path, tree: str, parts: tuple[str, ...], cache: dict) -> dict:
+    for part in parts:
+        if tree not in cache:
+            cache[tree] = _l1_tree(repo, tree)
+        mode, kind, tree = cache[tree].get(part, (None, None, None))
+        if (mode, kind) != ("040000", "tree"):
+            raise ReviewTransportError("missing regular L1 lineage directory")
+    if tree not in cache:
+        cache[tree] = _l1_tree(repo, tree)
+    return cache[tree]
+
+
+def _l1_mapping_review_lineage(
+    repo: Path, binding: CanonicalSemanticSourceBinding, selected: _L1MappingReviewSelection,
+) -> MappingReviewLineage:
+    from .artifacts import validate_evidence, validate_result, validate_result_package
+    from .proof_coverage_contract import TaskBinding, validate_mapping_review_scope
+    from .publication import _run_from_data
+    from .review import parse_review, validate_review
+    from .task import _TaskLoader, parse_task
+    import yaml
+
+    if type(selected) is not _L1MappingReviewSelection or type(selected.scope) is not MappingReviewScope:
+        raise ReviewTransportError("unrecognized L1 mapping review authority source")
+    validate_mapping_review_scope(selected.scope, intake=binding.intake,
+                                  expected_review_task=selected.scope.review_task)
+    if type(selected.sources) is not tuple or selected.sources != binding.sources:
+        raise ReviewTransportError("L1 selected mapping source bytes/locators mismatch")
+    _l1_locator(selected.review_task_source)
+    for sha in (selected.base_sha, selected.reviewed_sha, selected.decision_sha,
+                selected.artifacts_sha, selected.published_sha):
+        _l1_sha(sha)
+    review_task = selected.scope.review_task
+    if (type(review_task) is not TaskBinding or type(selected.run_id) is not str
+            or len(selected.run_id) > 128 or not re.fullmatch(
+                re.escape(task_run_prefix(review_task.task_id)) + r"\d{3,}", selected.run_id)
+            or type(selected.review_id) is not str
+            or re.fullmatch(r"REVIEW-[A-Za-z0-9_-]{1,121}", selected.review_id) is None
+            or type(selected.run_sha256) is not str or not _is_digest(selected.run_sha256)
+            or selected.published_sha != selected.reviewed_sha):
+        raise ReviewTransportError("invalid exact L1 mapping review selection pins")
+    run_id = selected.run_id
+    expected_refs = {
+        "refs/heads/main": binding.main_after,
+        f"refs/heads/aios/review/{run_id}": selected.reviewed_sha,
+        f"refs/heads/aios/artifacts/{run_id}": selected.artifacts_sha,
+        f"refs/heads/aios/review-decision/{run_id}": selected.decision_sha,
+    }
+    patterns = (*expected_refs, f"refs/heads/aios/failure/{run_id}",
+                f"refs/heads/aios/failure-artifacts/{run_id}",
+                f"refs/heads/aios/repair/{run_id}",
+                f"{REPAIR_SUPERSESSION_PREFIX}{run_id}/*",
+                f"refs/heads/aios/remediation/{run_id}-*",
+                f"refs/heads/aios/publication-recovery/{run_id}")
+    if _exact_remote_refs(repo, binding.remote_url, *patterns) != expected_refs:
+        raise ReviewTransportError("missing, conflicting or moved L1 review/publication lineage")
+    for sha in (selected.artifacts_sha, selected.decision_sha):
+        _l1_git(repo, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=",
+                "--no-auto-maintenance", "--no-recurse-submodules", binding.remote_url, sha)
+    locator = selected.review_task_source
+    trees = _l1_anchor_sources(repo, binding.main_after,
+                               {selected.published_sha, locator.source_sha})
+    candidate_tree = trees[selected.reviewed_sha]
+    # Authenticate raw ancestry, including the RUN base, without graft-sensitive
+    # graph convenience commands. The exact published candidate must contain it.
+    reviewed_trees = _l1_anchor_sources(repo, selected.reviewed_sha,
+        {selected.base_sha, locator.source_sha, *(source.locator.source_sha for source in binding.sources)})
+    base_tree = reviewed_trees[selected.base_sha]
+    cache = {}
+    if (trees[locator.source_sha] != locator.tree_sha
+            or locator.path != f".ai/tasks/{review_task.task_id}.yaml"
+            or any(_l1_path_blob(repo, tree, locator.path, cache) != locator.blob_sha
+                   for tree in (locator.tree_sha, base_tree, candidate_tree, trees[binding.main_after]))):
+        raise ReviewTransportError("stale or swapped L1 mapping review TASK source")
+    task_bytes = _l1_text_object(repo, locator.blob_sha, "blob", L1_TASK_MAX_BYTES)
+    actual_task = _l1_task_binding(task_bytes)
+    actual_task["acceptance_ids"] = tuple(actual_task["acceptance_ids"])
+    scope = validate_mapping_review_scope(selected.scope, intake=binding.intake,
+                                          expected_review_task=TaskBinding(**actual_task))
+    task = parse_task(task_bytes.decode("utf-8"))
+    for source in binding.sources:
+        if source.role not in {"contract", "mapping"}:
+            continue
+        source_locator = source.locator
+        if (source_locator.path not in (*task.scope.inspect, *task.scope.modify)
+                or _l1_path_blob(repo, candidate_tree, source_locator.path, cache) != source_locator.blob_sha):
+            raise ReviewTransportError("semantic source is outside the selected reviewed TASK scope")
+        if source.role != "mapping":
+            continue
+        if (source_locator.source_sha != selected.reviewed_sha or source_locator.tree_sha != candidate_tree
+                or source_locator.path not in task.scope.modify):
+            raise ReviewTransportError("mapping source is outside the selected reviewed TASK delta")
+        # A missing base path is a lawful addition; malformed trees still fail.
+        if _l1_path_blob(repo, base_tree, source_locator.path, cache,
+                          missing_ok=True) == source_locator.blob_sha:
+            raise ReviewTransportError("selected review RUN did not change the mapping source")
+
+    artifact_tree, artifact_parents = _l1_commit(repo, selected.artifacts_sha)
+    decision_tree, decision_parents = _l1_commit(repo, selected.decision_sha)
+    artifact_names = _l1_subtree(repo, artifact_tree, (".ai", "transport"), cache)
+    review_names = _l1_subtree(repo, decision_tree, (".ai", "reviews"), cache)
+    if (artifact_parents or decision_parents != (selected.reviewed_sha,)
+            or not {"run.json", "result.json"} <= artifact_names.keys()
+            or not artifact_names.keys() <= {"run.json", "result.json", "observation.json", "execution-profile.json"}
+            or set(review_names) != {selected.review_id + ".yaml"}):
+        raise ReviewTransportError("unrecognized or incomplete existing L1 PRIMARY review lineage")
+    for source_locator in (locator, *(source.locator for source in binding.sources)):
+        if _l1_path_blob(repo, decision_tree, source_locator.path, cache) != source_locator.blob_sha:
+            raise ReviewTransportError("L1 decision tree changes the selected reviewed semantic sources")
+
+    def read(tree, path, limit):
+        return _l1_text_object(repo, _l1_path_blob(repo, tree, path, cache), "blob", limit)
+
+    run_bytes = read(artifact_tree, ".ai/transport/run.json", L1_TASK_MAX_BYTES)
+    result_bytes = read(artifact_tree, ".ai/transport/result.json", L1_SOURCE_MAX_BYTES)
+    review_bytes = read(decision_tree, f".ai/reviews/{selected.review_id}.yaml", L1_TASK_MAX_BYTES)
+    run_data = _l1_json(run_bytes, L1_TASK_MAX_BYTES)
+    if (set(run_data) - {"run_id", "task", "executor", "base_sha", "workspace", "head_sha",
+                         "status", "return_affinity"}
+            or run_data.get("task") != dict(id=scope.review_task.task_id, revision=scope.review_task.revision)
+            or hashlib.sha256(run_bytes).hexdigest() != selected.run_sha256):
+        raise ReviewTransportError("immutable L1 mapping review RUN source mismatch")
+    run = _run_from_data(run_data, "L1 mapping review RUN")
+    if (run.run_id != run_id or run.status != "ACTIVE" or run.base_sha != selected.base_sha
+            or run.head_sha != selected.reviewed_sha or run.return_affinity != task.return_affinity):
+        raise ReviewTransportError("L1 mapping review RUN identity mismatch")
+    package_data = _l1_json(result_bytes, L1_SOURCE_MAX_BYTES)
+    if set(package_data) != {"result", "evidence"} or type(package_data["evidence"]) is not list:
+        raise ReviewTransportError("invalid L1 canonical mapping review ResultPackage")
+    result = validate_result(package_data["result"])
+    evidence = tuple(validate_evidence(item) for item in package_data["evidence"])
+    validate_result_package(task=task, run=run, result=result, evidence=evidence)
+    if (result.head_sha != selected.reviewed_sha or result.unresolved
+            or {ac for claim in result.claims for ac in claim.satisfies} != set(scope.review_task.acceptance_ids)
+            or not {source.locator.path for source in binding.sources if source.role in {"contract", "mapping"}}
+                <= set(result.changed_files)):
+        raise ReviewTransportError("incomplete or contradictory L1 mapping review RESULT")
+    text = _l1_yaml_text(review_bytes)
+    # The historical REVIEW parser remains unchanged. This new boundary rejects
+    # duplicate/unknown fields before passing bytes to that existing parser.
+    review_data = yaml.load(text, Loader=_TaskLoader)
+    if (type(review_data) is not dict
+            or set(review_data) - {"review_id", "reviewed_sha", "mode", "verdict", "acceptance",
+                                   "findings", "prior_finding_id"}):
+        raise ReviewTransportError("unrecognized L1 mapping REVIEW source")
+    review = parse_review(text)
+    validate_review(task=task, result=result, review=review)
+    if (review.review_id != selected.review_id or review.reviewed_sha != selected.reviewed_sha
+            or review.verdict != "PASS" or review.mode != "PRIMARY" or review.prior_finding_id is not None
+            or set(review.acceptance) != set(scope.review_task.acceptance_ids)
+            or any(value != "PASS" for value in review.acceptance.values()) or review.findings):
+        raise ReviewTransportError("full independent L1 mapping REVIEW PASS is absent")
+    if _exact_remote_refs(repo, binding.remote_url, *patterns) != expected_refs:
+        raise ReviewTransportError("L1 mapping review/publication subjects moved")
+    return MappingReviewLineage(scope, AuthenticatedSemanticSource(
+        "mapping_review_task", locator, hashlib.sha256(task_bytes).hexdigest(), len(task_bytes)),
+        run_id, selected.run_sha256, selected.base_sha, selected.reviewed_sha, selected.review_id,
+        hashlib.sha256(review_bytes).hexdigest(), hashlib.sha256(result_bytes).hexdigest(),
+        selected.decision_sha, selected.artifacts_sha, selected.published_sha, tuple(sorted(expected_refs.items())))
+
+
+def bind_canonical_semantic_review_authority(
+    repo: Path, declaration: bytes, *, expected_remote_url: str,
+    expected_main_sha: str, expected_candidate_sha: str, sources: Mapping[str, GitSemanticSource],
+) -> SemanticReviewAuthorityEligibility:
+    """Explicit, read-only, non-operative L1 eligibility observation.
+
+    Public inputs are TASK-377 source locators only. They cannot choose a review
+    TASK, resolver, review ref, reviewer label or trust source. Source failures
+    raise as before. Unavailable/unrecognized mapping-specific Human selection
+    or existing REVIEW/Publisher lineage yields NOT_ESTABLISHED, never a search
+    for a substitute TASK or PASS. No active admission path invokes this API.
+    """
+    from .proof_coverage_contract import ProofCoverageError
+    import yaml
+
+    binding = bind_canonical_semantic_proof_sources(
+        repo, declaration, expected_remote_url=expected_remote_url, expected_main_sha=expected_main_sha,
+        expected_candidate_sha=expected_candidate_sha, sources=sources)
+    lineage, reason = None, "MAPPING_REVIEW_NOT_ESTABLISHED"
+    try:
+        selected = _l1_authenticated_mapping_review_selection(repo, binding)
+        if selected is None:
+            reason = "HUMAN_MAPPING_SELECTION_UNAVAILABLE"
+        else:
+            lineage = _l1_mapping_review_lineage(repo, binding, selected)
+            if _l1_authenticated_mapping_review_selection(repo, binding) != selected:
+                raise ReviewTransportError("L1 Human mapping selection moved")
+            reason = "EXACT_MAPPING_REVIEW_LINEAGE"
+    except (ReviewTransportError, ProofCoverageError, ValueError, TypeError, KeyError,
+            UnicodeError, RecursionError, yaml.YAMLError):
+        lineage, reason = None, "MAPPING_REVIEW_NOT_ESTABLISHED"
+    # Even a failed review observation must not retain successful currentness
+    # if canonical main or the independently configured remote changed meanwhile.
+    if _l1_remote(repo, expected_remote_url) != binding.remote:
+        raise ReviewTransportError("L1 canonical remote moved during review observation")
+    _l1_main(repo, expected_remote_url, expected_main_sha)
+    return SemanticReviewAuthorityEligibility(binding, lineage, reason)
 
 
 def _run_task_prefix(run_id: str) -> str:

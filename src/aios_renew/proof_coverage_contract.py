@@ -207,6 +207,96 @@ class SemanticProofIntake:
 
 
 @dataclass(frozen=True)
+class MappingReviewAcceptance:
+    """Explicit correspondence selected outside the declaration's trust boundary."""
+
+    review_acceptance_id: str
+    target_acceptance_ids: tuple[str, ...]
+    obligation_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MappingReviewScope:
+    """In-memory eligibility pins, not a review decision or an authority carrier.
+
+    Constructing this value authenticates nothing. Only the transport's separate
+    trusted Human-selection boundary may supply it to the eligibility reader.
+    No production TASK schema or policy consumes this type.
+    """
+
+    version: int
+    review_task: TaskBinding
+    target_task: TaskBinding
+    candidate_sha: str
+    contract_pin: DeclarationPin
+    mapping_pin: DeclarationPin
+    acceptance: tuple[MappingReviewAcceptance, ...]
+
+
+def validate_mapping_review_scope(
+    scope: MappingReviewScope, *, intake: SemanticProofIntake,
+    expected_review_task: TaskBinding,
+) -> MappingReviewScope:
+    """Check exact scope correspondence; never infer meaning from AC prose.
+
+    This pure check establishes consistency only. Human selection and existing
+    independent REVIEW/Publisher authentication remain transport obligations.
+    """
+    if type(scope) is not MappingReviewScope or type(intake) is not SemanticProofIntake:
+        raise ProofCoverageError("typed mapping review scope and intake required")
+    if type(scope.version) is not int or scope.version != 1:
+        raise ProofCoverageError("unsupported mapping review eligibility version")
+
+    def task_pin(value):
+        if type(value) is not TaskBinding or type(value.acceptance_ids) is not tuple:
+            raise ProofCoverageError("immutable complete mapping review TASK pin required")
+        return _task(dict(task_id=value.task_id, revision=value.revision,
+                          envelope_digest=value.envelope_digest,
+                          acceptance_ids=list(value.acceptance_ids)))
+
+    review_task = task_pin(scope.review_task)
+    target_task = task_pin(scope.target_task)
+    if (review_task != task_pin(expected_review_task)
+            or target_task != intake.coverage.contract.task
+            or review_task.task_id == target_task.task_id
+            or _match(scope.candidate_sha, _SHA, "review.candidate_sha") != intake.candidate_sha):
+        raise ProofCoverageError("mapping review TASK/target/candidate mismatch")
+    for supplied, expected in ((scope.contract_pin, intake.contract_pin),
+                                (scope.mapping_pin, intake.mapping_pin)):
+        if (type(supplied) is not DeclarationPin
+                or _declaration_pin(asdict(supplied), "review.pin") != expected):
+            raise ProofCoverageError("mapping review contract/mapping pin mismatch")
+    if type(scope.acceptance) is not tuple or not 0 < len(scope.acceptance) <= MAX_OBLIGATIONS:
+        raise ProofCoverageError("bounded immutable mapping review correspondence required")
+    obligations = {item.id: item for item in intake.coverage.contract.obligations}
+    seen_reviews, seen_obligations, seen_targets = set(), set(), set()
+    normalized = []
+    for item in scope.acceptance:
+        if (type(item) is not MappingReviewAcceptance
+                or type(item.target_acceptance_ids) is not tuple
+                or type(item.obligation_ids) is not tuple):
+            raise ProofCoverageError("immutable mapping review acceptance required")
+        review_id = _id(item.review_acceptance_id, "review.acceptance")
+        targets = _ids(list(item.target_acceptance_ids), MAX_OBLIGATIONS, "review.targets")
+        ids = _ids(list(item.obligation_ids), MAX_OBLIGATIONS, "review.obligations")
+        if (review_id not in review_task.acceptance_ids or review_id in seen_reviews
+                or any(identity not in obligations or identity in seen_obligations for identity in ids)):
+            raise ProofCoverageError("unknown or duplicate mapping review correspondence")
+        if set(targets) != {ac for identity in ids for ac in obligations[identity].acceptance_ids}:
+            raise ProofCoverageError("mapping review acceptance/obligation correspondence mismatch")
+        seen_reviews.add(review_id)
+        seen_obligations.update(ids)
+        seen_targets.update(targets)
+        normalized.append(MappingReviewAcceptance(review_id, targets, ids))
+    if (seen_reviews != set(review_task.acceptance_ids) or seen_targets != set(target_task.acceptance_ids)
+            or seen_obligations != obligations.keys()):
+        raise ProofCoverageError("incomplete mapping review acceptance correspondence")
+    return MappingReviewScope(1, review_task, target_task, intake.candidate_sha,
+                              intake.contract_pin, intake.mapping_pin,
+                              tuple(sorted(normalized, key=lambda item: item.review_acceptance_id)))
+
+
+@dataclass(frozen=True)
 class BaseReplayEligibility:
     eligible: bool
     failed_gates: tuple[str, ...]
