@@ -8,6 +8,7 @@ from dataclasses import asdict, replace
 import json
 from pathlib import Path
 import subprocess
+from tempfile import TemporaryDirectory
 
 import pytest
 import yaml
@@ -316,6 +317,27 @@ def test_historical_single_finding_authoring_execution_and_delta_remain_valid(tm
         {"expected_candidate_sha": head}, delta), repo=fixture["repo"])
     observed = observe_unified_state("TASK-379", repo=fixture["repo"])
     assert [f["finding_id"] for f in observed.outstanding_findings] == ["F2"]
+
+
+def test_batch_authority_authenticates_from_deep_observer(tmp_path):
+    from aios_renew.review_transport import resolve_authenticated_batch
+
+    fixture = batch_fixture(tmp_path)
+    selected = fixture["selection"]
+    # Runtime's isolated TEMP adds enough depth for `show commit:path` to fail
+    # Windows filename probing even though the committed metadata blob exists.
+    with TemporaryDirectory(prefix="batch-read-") as folder:
+        observer = Path(folder) / ("observer-" + "x" * max(0, 140 - len(folder)))
+        observer.mkdir()
+        git(observer, "init", "--quiet")
+        git(observer, "remote", "add", "origin", str(fixture["remote"]))
+        binding, authorized, sha = resolve_authenticated_batch(
+            observer, source_run_id=selected.source_run_id, batch_id=selected.batch_id,
+            required_sha=fixture["authorized"].canonical_sha, remote="origin")
+
+    assert binding.review == fixture["source_review"]
+    assert plain(asdict(authorized)) == fixture["payload"]
+    assert sha == fixture["authorized"].canonical_sha
 
 
 def test_batch_source_artifacts_cannot_be_substituted_after_authoring(tmp_path):

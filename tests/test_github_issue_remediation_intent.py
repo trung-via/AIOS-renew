@@ -69,10 +69,15 @@ def test_other_issue_carriers_keep_existing_non_target_isolation() -> None:
     )
 
     ingress = _jobs("aios-brain-ingress.yml")
-    assert set(ingress) == {"deliver"}
-    assert ingress["deliver"]["if"] == (
-        "github.event.issue.title == '[AIOS BRAIN INGRESS]'"
+    ingress_title_guard = "github.event.issue.title == '[AIOS BRAIN INGRESS]'"
+    assert set(ingress) == {"origin_request", "origin_provenance", "deliver"}
+    assert ingress["origin_request"]["if"] == ingress_title_guard
+    assert ingress["origin_provenance"]["needs"] == "origin_request"
+    assert ingress["origin_provenance"]["if"] == (
+        "needs.origin_request.outputs.required == 'true'"
     )
+    assert ingress["deliver"]["needs"] == ["origin_request", "origin_provenance"]
+    assert ingress["deliver"]["if"] == f"always() && {ingress_title_guard}"
 
     repair = _jobs("aios-brain-repair-wakeup.yml")
     assert set(repair) == {"admit", "dispatch", "receipt"}

@@ -1644,7 +1644,9 @@ def resolve_detached_observation_remote(repo: Path) -> str:
 def _read_remote_blob(repo: Path, remote: str, commit_sha: str, rel_path: str) -> bytes | None:
     """Read a blob's content at commit_sha:rel_path from remote or local object DB."""
     _git_cmd(repo, "fetch", "--no-tags", remote, commit_sha, allow_fail=True)
-    code, content, _ = _git_cmd(repo, "show", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True)
+    # `show` also stats commit:path as a worktree filename. Long batch metadata
+    # names exceed Windows' path limit in isolated observers despite a valid blob.
+    code, content, _ = _git_cmd(repo, "cat-file", "blob", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True)
     if code == 0:
         raw = content.encode("utf-8")
         if rel_path == ".ai/transport/failure.json":
