@@ -20,6 +20,7 @@ from aios_renew.proof_coverage_contract import (
 from aios_renew.review_transport import (
     AuthenticatedSemanticSource, ReviewTransportError, bind_canonical_semantic_review_authority,
 )
+from aios_renew.task import parse_task
 from tests.git_fixture_support import _write_object, _write_tree, materialize_git_baseline
 from tests.test_lean_vp_l1_source_binding import (
     PATHS, TASK, commit, encoded, locator, state_without_objects,
@@ -101,8 +102,13 @@ def install_decision(package, *, repin=True, review_bytes=None, extra=None, pare
     return sha
 
 
-@pytest.fixture
-def reviewed_package(tmp_path):
+def make_reviewed_package(tmp_path, *, changed_contract=False, inspect_contract_only=False):
+    review_task = REVIEW_TASK
+    if inspect_contract_only:
+        review_task = review_task.replace(
+            b"inspect: [.ai/tasks/TASK-SYNTHETIC.yaml]",
+            b"inspect: [.ai/tasks/TASK-SYNTHETIC.yaml, proof/contract.json]").replace(
+            b"modify: [proof/contract.json, proof/mapping.json]", b"modify: [proof/mapping.json]")
     data = contract(obligation("integration-proof", acceptance_ids=["AC2"]))
     data["task"] = dict(task_id="TASK-SYNTHETIC", revision=1,
                         envelope_digest=digest(TASK), acceptance_ids=["AC1", "AC2"])
@@ -111,11 +117,14 @@ def reviewed_package(tmp_path):
         profile_ref="parallel-profile-v1", worker_mode="parallel", workers=2,
         concurrency_ref="concurrent-v1", ordering_ref="integration-order-v1")
     mapping = mapping_for(data)
+    base_contract = copy.deepcopy(data)
+    if changed_contract:
+        base_contract["id"] = "prior-contract-v1"
     repo, remote, base = materialize_git_baseline(
-        tmp_path / "synthetic", files={PATHS["task"]: TASK, REVIEW_TASK_PATH: REVIEW_TASK,
-            "subject.txt": b"synthetic only\n", PATHS["contract"]: encoded(data)},
+        tmp_path / "synthetic", files={PATHS["task"]: TASK, REVIEW_TASK_PATH: review_task,
+            "subject.txt": b"synthetic only\n", PATHS["contract"]: encoded(base_contract)},
         user_name="Synthetic", user_email="synthetic@example.invalid", commit_message="synthetic TASKs/contract")
-    candidate_files = {PATHS["task"]: TASK, REVIEW_TASK_PATH: REVIEW_TASK,
+    candidate_files = {PATHS["task"]: TASK, REVIEW_TASK_PATH: review_task,
                        "subject.txt": b"synthetic only\n",
                        PATHS["contract"]: encoded(data), PATHS["mapping"]: encoded(mapping)}
     for path in (PATHS["contract"], PATHS["mapping"]):
@@ -123,7 +132,8 @@ def reviewed_package(tmp_path):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(candidate_files[path])
     candidate = commit(repo, remote)
-    sources = {role: locator(repo, candidate if role == "mapping" else base, path)
+    candidate_roles = {"contract", "mapping"} if changed_contract else {"mapping"}
+    sources = {role: locator(repo, candidate if role in candidate_roles else base, path)
                for role, path in PATHS.items()}
     declaration = dict(schema="task-semantic-proof-intake-v1", task=copy.deepcopy(data["task"]),
                        candidate_sha=CANDIDATE, sources={role: dict(
@@ -131,7 +141,7 @@ def reviewed_package(tmp_path):
                            for role, source in sources.items()}, contract=data, mapping=mapping)
     parsed = validate_proof_contract(data, expected_task=data["task"])
     scope = MappingReviewScope(1,
-        TaskBinding(REVIEW_TASK_ID, 1, digest(REVIEW_TASK), ("MR1", "MR2")),
+        TaskBinding(REVIEW_TASK_ID, 1, digest(review_task), ("MR1", "MR2")),
         parsed.task, CANDIDATE, DeclarationPin(parsed.id, parsed.revision, parsed.digest),
         DeclarationPin(mapping["id"], mapping["revision"], proof_mapping_digest(mapping)),
         (MappingReviewAcceptance("MR1", ("AC1",), ("proof-unit",)),
@@ -141,7 +151,7 @@ def reviewed_package(tmp_path):
                return_affinity=dict(kind="LEGACY_REPOSITORY_DEFAULT_ROUTE"))
     result = dict(result=dict(head_sha=candidate, claims=[dict(id="synthetic-mapping-claim",
         satisfies=["MR1", "MR2"], claim="The exact synthetic mapping was assessed.", evidence=["SYNTHETIC-E1"])],
-        changed_files=[PATHS["mapping"]], unresolved=[]), evidence=[dict(
+        changed_files=([PATHS["contract"]] if changed_contract else []) + [PATHS["mapping"]], unresolved=[]), evidence=[dict(
         evidence_id="SYNTHETIC-E1", run_id=RUN_ID, subject_sha=candidate, type="VERIFICATION",
         source=dict(command=COMMAND), result=dict(exit_code=0, summary="Synthetic fixture, never executed"),
         raw=dict(path="synthetic-only.raw"))])
@@ -164,6 +174,11 @@ def reviewed_package(tmp_path):
     install_artifacts(package)
     install_decision(package)
     return package
+
+
+@pytest.fixture
+def reviewed_package(tmp_path):
+    return make_reviewed_package(tmp_path)
 
 
 def bind(package, **overrides):
@@ -208,8 +223,9 @@ def test_runtime_active_run_with_null_head_binds_canonical_result_candidate(revi
     assert encoded(package["run"]) == run_bytes
 
 
-def test_unchanged_contract_from_base_allows_a_mapping_only_delta(reviewed_package, monkeypatch):
-    package = reviewed_package
+@pytest.mark.parametrize("inspect_contract_only", [False, True], ids=["contract-modify", "contract-inspect-only"])
+def test_unchanged_contract_from_base_allows_a_mapping_only_delta(tmp_path, monkeypatch, inspect_contract_only):
+    package = make_reviewed_package(tmp_path, inspect_contract_only=inspect_contract_only)
     changed_files = subprocess.run(
         ["git", "-C", str(package["repo"]), "diff", "--name-only", package["base"], package["candidate"]],
         check=True, capture_output=True, text=True).stdout.splitlines()
@@ -221,6 +237,28 @@ def test_unchanged_contract_from_base_allows_a_mapping_only_delta(reviewed_packa
     value = bind(package)
     assert value.reviewer_authority == "REVIEW_AUTHORITY_ESTABLISHED"
     assert value.source_binding.sources == package["selection"].sources
+
+
+@pytest.mark.parametrize("inspect_contract_only", [True, False], ids=["contract-inspect-only", "contract-modify"])
+def test_changed_contract_requires_explicit_task_modification_scope(tmp_path, monkeypatch, inspect_contract_only):
+    package = make_reviewed_package(tmp_path, changed_contract=True, inspect_contract_only=inspect_contract_only)
+    changed_files = subprocess.run(
+        ["git", "-C", str(package["repo"]), "diff", "--name-only", package["base"], package["candidate"]],
+        check=True, capture_output=True, text=True).stdout.splitlines()
+    assert changed_files == package["result"]["result"]["changed_files"] == [PATHS["contract"], PATHS["mapping"]]
+    contract_source = package["sources"]["contract"]
+    assert contract_source == locator(package["repo"], package["candidate"], PATHS["contract"])
+    assert contract_source.blob_sha != locator(package["repo"], package["base"], PATHS["contract"]).blob_sha
+    task = parse_task(package["candidate_files"][REVIEW_TASK_PATH].decode("utf-8"))
+    assert (PATHS["contract"] in task.scope.modify) == (not inspect_contract_only)
+    trust_fixture(package, monkeypatch)
+    value = bind(package)
+    if inspect_contract_only:
+        assert PATHS["contract"] in task.scope.inspect
+        assert_not_established(value)
+    else:
+        assert value.reviewer_authority == "REVIEW_AUTHORITY_ESTABLISHED"
+        assert value.source_binding.sources == package["selection"].sources
 
 
 @pytest.mark.parametrize("changed_files", [[], [PATHS["contract"], PATHS["mapping"]]],

@@ -78,8 +78,10 @@ An established observation requires every one of these associations:
    TASK scope is sufficient in that case. `RESULT.changed_files` must report
    exactly the contract/mapping paths whose blobs differ from the RUN base:
    an unchanged contract is omitted, and a changed contract must be authorized
-   by the TASK modification scope. Both authenticated semantic blobs must match
-   the reviewed candidate and remain in current main.
+   by an explicit contract path in that review TASK's `scope.modify`.
+   `scope.inspect` alone cannot authorize a changed contract, even when
+   `RESULT.changed_files` accurately reports it. Both authenticated semantic
+   blobs must match the reviewed candidate and remain in current main.
    Reviewing an unrelated later source with unchanged mapping files is insufficient.
 5. Existing canonical `aios/review/<RUN>`, `aios/artifacts/<RUN>` and
    `aios/review-decision/<RUN>` refs with independently pinned exact SHAs.
@@ -151,7 +153,11 @@ trust source is selected independently of incoming declarations and replaces
 only the closed reader within each test. The positive fixture cross-binds a
 mapping-specific TASK, full independent-review-shaped PASS and published source,
 with an unchanged contract from the RUN base and only the mapping in the Git
-delta and `RESULT.changed_files`.
+delta and `RESULT.changed_files`, including when the contract has only
+`scope.inspect` authorization. A changed-contract pair reports both actual Git
+changes accurately: contract inspect-only scope is rejected, while an explicit
+contract path in `scope.modify` preserves eligibility under the same complete
+source/RESULT/EVIDENCE/Reviewer/Publisher bindings.
 Negative fixtures cover unrelated ordinary review, missing/mismatched/stale
 decisions, incomplete acceptance, forged labels/hashes, wrong versions, changed
 sources/main, omitted mapping changes, forged unchanged-source delta claims,

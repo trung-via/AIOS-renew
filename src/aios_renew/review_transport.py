@@ -3531,6 +3531,8 @@ def _l1_mapping_review_lineage(
         changed = _l1_path_blob(repo, base_tree, source_locator.path, cache,
                                 missing_ok=True) != source_locator.blob_sha
         if changed:
+            if source_locator.path not in task.scope.modify:
+                raise ReviewTransportError("changed semantic source is outside the selected reviewed TASK modification scope")
             changed_semantic_paths.add(source_locator.path)
         if source.role != "mapping":
             continue
