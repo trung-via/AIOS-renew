@@ -99,3 +99,7 @@ Reuse the published V1's existing eight lenses, F-A..F-H impact foci, strategic/
 ## 7. Transition from former V1-only roadmap item
 
 The 2026-10-12 decision to retire V3 prospective consumers and select V1 exclusively remains historical; the Human's 2026-10-16 decision supersedes its **future priority/default-selection target**, not its immutable history or currently published production behavior. No historical TASK/RUN or profile bytes are rewritten. A roadmap writer must reconcile legacy current-selection mirrors atomically and preserve only one effective NEXT. Downstream repositories require their own Brain Sync and adoption/pin decision.
+
+## Human/Brain R2.1 roadmap closure — 2026-10-18
+
+Human explicitly closes the R2.1 planning milestone following reviewed/published R1–R5 and first-party TASK-369 integration, selecting Lean VP as sole successor. Independent real-provider live conformance remains OUTSTANDING and is deferred to subsequent lawful TASK episodes, not declared PASS or a current planning blocker. FOUR_SPECIALIZED production policy authentication, ADMIT/CONTINUE safety, Human-specific V1 option, historical replay and all role authority boundaries remain mandatory. Earlier dated NEXT statements are historical. No new TASK, RUN, Executor delegation or KA-01 activation follows from this closure.

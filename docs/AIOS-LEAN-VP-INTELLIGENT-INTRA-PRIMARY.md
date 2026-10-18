@@ -3,7 +3,7 @@
 **Human decision:** 2026-10-17 (Asia/Ho_Chi_Minh)  
 **Authority:** HUMAN_APPROVED_PROSPECTIVE_ROADMAP_PLANNING  
 **Sequence:** TASK-360 → TASK-359 → Four Specialized Outcome Audits R2.1 → **Lean VP**  
-**Status:** QUEUED_AFTER_R21; NOT AN IMPLEMENTATION TASK, NOT RUN/REVIEW/PUBLICATION, KA-01 NOT ACTIVATED.  
+**Status:** HUMAN-SELECTED ACTIVE ROADMAP NEXT (2026-10-18); NOT AN IMPLEMENTATION TASK, NOT RUN/REVIEW/PUBLICATION, KA-01 NOT ACTIVATED.  
 **Parent:** `docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md` (v1.1/v1.2); ratified prospective `docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md`.  
 **Audit basis:** Human-accepted `AIOS_Lean_VP_Final_Semantic_Audit_2026-10-16.md` and its roadmap entry candidate, reconciled against current canonical source at admission. These prior cognitive-support artifacts are not standalone canonical engineering or audit authority.  
 **Brain audit policy at authoring:** `aios-adaptive-brain-audit-v1` v1, digest `982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`; use only the then-current selected policy for any future new material architecture/TASK decision.
@@ -105,3 +105,11 @@ Compare the actual published minimum-sufficient V1 baseline to matched Lean VP e
 This planning document becomes canonical **only after lawful review and publication** of the stacked planning change. Its dependent R2.1 parent must first be reconciled, published and completed as required; the Human/Brain explicitly selects any future Lean VP NEXT after real evidence, not by R2.1 source merge alone. Future implementation requires fresh current main Brain Sync, approved versioned TASK, explicit Human Executor delegation, Runtime verified evidence, independent Reviewer verdict, Publisher exact-source publication and the separate KA-01 activation decision.
 
 **Current planning effect:** Lean VP stays QUEUED_AFTER_R21. R2.1 is the only intended NEXT after exact TASK-360 and TASK-359 reviewed/publication reconciliation. There is **no** Runtime activation, TASK/RUN creation, worker change, default correction budget or downstream pin mutation.
+
+## Human/Brain NEXT reconciliation — 2026-10-18 (current)
+
+Human closes R2.1 as a planning milestone after reviewed/published TASK-363/364/366/367/368/369, including TASK-369 RUN-369-003 REVIEW-369-003 PASS and reviewed/published source `2f80521f4bac9259d50002de4f31b8dc57729dfd`. This Human acceptance is not independent live conformance PASS. Real-provider live conformance remains OUTSTANDING and is deferred to subsequent lawful TASK episodes. Existing audit ADMIT/CONTINUE fails closed on invalid sources; no fabricated proof, false acceptance or waived engineering safety.
+
+The unique planning NEXT is **Lean VP** beginning with **L1 — baseline/retirement/proof contract**. VP-01 measurement remains an unfulfilled dependency; published minimum-sufficient-v1 remains the comparison baseline. KA-01 is **NOT_ACTIVATED** until G1–G6 and a separate Human versioned opt-in. A fresh TCA-1-audited bounded TASK, canonical authoring and separate Human Executor delegation are required; no runtime scheduler, retry/correction or proof-policy cutover follows from this planning record.
+
+Dated 2026-10-17 passages showing R2.1 as NEXT and Lean VP as queued are historical, superseded only for roadmap selection. All previous engineering history remains immutable.
