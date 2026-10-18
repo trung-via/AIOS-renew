@@ -914,14 +914,20 @@ def test_failure_transport_recovery_remote_failure_budget_and_historical_gate(tm
 
 
 @pytest.mark.parametrize("defect", [
-    "origin", "digest", "subject", "run", "count", "node_count", "exit", "raw", "capture", "conditions", "failed_identity",
+    "origin", "origin_binding", "raw_detail", "digest", "subject", "run", "count", "node_count", "exit", "raw", "capture", "conditions", "failed_identity",
 ])
 def test_failure_transport_recovery_rejects_forged_public_projection(defect):
     from aios_renew.unified_state import _matches_public_document
     _, private, raw = _failure_transport_recovery_fixture(nodes=1, failures=1)
     public = json.loads(review_transport.public_failure(raw))
     record = public["error"]["verification"][0]["verification"]
-    if defect == "origin": public["public_projection"]["private_failure_digest"] = "0" * 64
+    if defect in {"origin", "origin_binding"}:
+        public["public_projection"]["private_failure_digest"] = "0" * 64
+        if defect == "origin":
+            # Keep the diagnostic internally bound so exact local-origin
+            # reconciliation, rather than schema validation, rejects this forgery.
+            public["error"]["safe_detail"]["private_failure_digest"] = "0" * 64
+    elif defect == "raw_detail": public["error"]["safe_detail"]["detail"] = "private traceback secret_fixture"
     elif defect == "digest": record["candidate_digest"] = "0" * 64
     elif defect == "subject": record["binding"]["subject_sha"] = "0" * 40
     elif defect == "run": record["run_id"] = "RUN-058-999"
@@ -1067,8 +1073,9 @@ def test_failure_transport_recovery_inherited_public_diagnostics_are_rejected():
     assert review_transport.failure_document(raw) == private
     public_bytes = review_transport.public_failure(raw)
     assert all(text not in public_bytes for text in (
-        b"C:/private/", b"secret_fixture", b"captured_output", b"detail", b"raw_path"))
+        b"C:/private/", b"secret_fixture", b"captured_output", b'"detail"', b"raw_path"))
     public = review_transport.failure_document(public_bytes)
+    assert public["error"]["safe_detail"]["raw_output_withheld"] is True
     original = private["error"]["verification"][0]["verification"]
     projected = public["error"]["verification"][0]["verification"]
     assert projected["raw_digest"] == original["raw_digest"]
