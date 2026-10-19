@@ -2,6 +2,40 @@ version: 1
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+human_lean_vp_l2_03_reconciliation_20261019:
+  authority: HUMAN_BRAIN_EXPLICIT_CONTINUE_AFTER_VERIFIED_NORMATIVE_PUBLICATION
+  approved_on: "2026-10-19"
+  planning_only: true
+  snapshot_main_sha: fc5ff4c2bd79c8e1a0bddeb72dda1a9f42d35e69
+  verified_normative_predecessor:
+    task: TASK-386
+    revision: 1
+    run: RUN-386-001
+    evidence: RUN-386-001-V001
+    review: REVIEW-386-001
+    verdict: PASS
+    acceptance: 12_OF_12_PASS
+    review_decision_sha: 1ec03c493b3f18c766d1ba8bbbebc7cb6e207775
+    reviewed_published_sha: fc5ff4c2bd79c8e1a0bddeb72dda1a9f42d35e69
+    observed_main_relation: REVIEWED_CANDIDATE_EQUALS_MAIN
+    norma: KA01_V1_2_PROSPECTIVE_NOT_ACTIVATED
+  roadmap:
+    sole_high_level_next: lean-vp-intelligent-intra-primary-after-r21
+    current_slice: L2_03_REUSE_AND_CORRECTION_APPLICABILITY_CONFORMANCE
+    status: HUMAN_BRAIN_PLANNING_SELECTED_NOT_YET_TASK_AUTHORING
+    predecessor: TASK_385_L2_02_AND_TASK_386_KA01_V1_2_PUBLISHED
+    task: REQUIRES_FRESH_TCA1_AND_AUTHOR_TASK
+    executor: NOT_SELECTED_REQUIRES_EXPLICIT_HUMAN_DELEGATION
+    later_slices: L3_01_TO_L3_06_THEN_L4
+    original_lean_vp_delivery_slots: 16_PRESERVED
+    separate_normative_task: TASK_386_OUTSIDE_16_COMPLETE
+  boundaries:
+    - NO_NEW_POLICY_ACTIVATION_OR_G6_OPT_IN
+    - NO_AUTOMATIC_SCHEDULER_OR_SAME_RUN_CORRECTION_IN_L2
+    - NO_RETROACTIVE_REWRITE_OF_TASK386_OR_EVIDENCE
+    - NO_AUTOMATIC_ROADMAP_ADVANCEMENT_AFTER_EXECUTION
+    - KEEP_ONLY_ONE_HIGH_LEVEL_NEXT
+
 human_lean_vp_intra_run_expansion_20261019:
   authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING
   approved_on: "2026-10-19"
@@ -3301,8 +3335,8 @@ sequence:
       UNKNOWN or lost authority, and finish with one terminal RESULT or FAILURE.
       The new correction operation permissions require separately reviewed and
       published KA-01 normative authority before L2-03/L3 implementation.
-    next_approved_slice: SEPARATE_VERSIONED_KA01_NORMATIVE_TASK_AFTER_TASK385_BEFORE_L2_03
-    normative_task_authoring_status: REQUIRES_FRESH_TCA1_AND_AUTHOR_TASK
+    next_approved_slice: L2_03_REUSE_AND_CORRECTION_APPLICABILITY_CONFORMANCE
+    normative_task_authoring_status: TASK386_REVIEWED_PUBLISHED_SEPARATE_NORMATIVE_G2_DONE
     original_lean_vp_slot_count: 16
     separate_ka01_normative_task_count: 1
     architecture_crosswalk: L1_VP01_VP02_L2_VP03_L3_VP04_VP05_L4_VP06_VP07
