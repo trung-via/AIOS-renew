@@ -75,6 +75,19 @@ class ReuseFixture(ApplicabilityFixture):
         candidate["reports"] = reports
         self.refresh_record(source)
 
+    def change_condition(self, name):
+        if name not in {"population", "collection"}:
+            return super().change_condition(name)
+        # L2-03 adds setup/teardown to the inherited call-only fixture. Rename
+        # the whole executed node, retaining a complete, ordered phase record.
+        candidate = self.target.item["verification"]["candidate"]
+        for report in candidate["reports"]:
+            report["nodeid"] = "tests/test_sample.py::test_other"
+        from aios_renew.verification_contract import pytest_collection_identity
+        nodes = sorted({r["nodeid"] for r in candidate["reports"]})
+        candidate["collection"] = dict(nodeids=nodes, identity=pytest_collection_identity(nodes))
+        self.refresh_record(self.target)
+
     def reuse(self, request=None):
         return runtime.observe_proof_reuse(self.repo, expected=request or self.reuse_request)
 
@@ -144,7 +157,14 @@ def test_valid_exit_zero_without_required_actual_semantics_is_blocked(tmp_path, 
     dict(provider_override={name: "INAPPLICABLE" for name in ("phase_outcomes", "collection", "population")})])
 def test_historical_missing_incomplete_empty_or_waived_phase_proof_is_not_satisfaction(tmp_path, monkeypatch, options):
     fixture = ReuseFixture(tmp_path / "missing-proof", monkeypatch, **options)
-    assert_blocked(fixture.reuse())
+    witness = fixture.reuse()
+    if options.get("source_incomplete"):
+        assert witness.authentication == "AUTHENTICATED", witness.reason
+        assert witness.source_snapshot.outcome == "UNKNOWN"
+        assert witness.applicability.validity == "INVALIDATED"
+        assert witness.source_satisfaction[0] == "NOT_ESTABLISHED"
+        assert parse_reuse(format_reuse(witness)) == witness
+    assert_blocked(witness)
 
 
 @pytest.mark.parametrize("dimension", tuple(DEPENDENCIES))
@@ -167,8 +187,29 @@ def test_changed_reviewed_dependency_returns_only_affected_outstanding_proof(tmp
 def test_changed_actual_runtime_condition_cannot_reuse(tmp_path, monkeypatch, dimension):
     fixture = ReuseFixture(tmp_path / "changed-runtime", monkeypatch, change_condition=dimension)
     witness = fixture.reuse()
+    assert witness.authentication == "AUTHENTICATED", witness.reason
     assert witness.outcome == "INVALIDATED", witness.reason
-    assert dimension in reuse_data(witness)["affected_dimensions"]
+    data = reuse_data(witness)
+    assert dimension in data["affected_dimensions"]
+    assert data["affected_proofs"] == ["fixture-proof"]
+    assert data["outstanding_obligations"] == ["fixture-obligation"]
+    assert data["execution_permission"] == "NOT_AUTHORIZED"
+    assert witness.source_snapshot == fixture.reuse_request.original
+
+
+@pytest.mark.parametrize("dimension", ["population", "collection"])
+def test_split_target_phase_population_remains_unauthenticated(tmp_path, monkeypatch, dimension):
+    class SplitPhaseFixture(ReuseFixture):
+        def change_condition(self, name):
+            # Reproduce the call-only fixture's mutation on the full-phase
+            # source: the target now splits setup from call/teardown.
+            return ApplicabilityFixture.change_condition(self, name)
+
+    fixture = SplitPhaseFixture(tmp_path / "split-phase", monkeypatch, change_condition=dimension)
+    witness = fixture.reuse()
+    assert witness.authentication == "NOT_ESTABLISHED"
+    assert witness.applicability.reason == "TARGET_CONDITION_SOURCE_NOT_ESTABLISHED"
+    assert_blocked(witness)
 
 
 @pytest.mark.parametrize("dimension", APPLICABILITY_DIMENSIONS)

@@ -89,7 +89,7 @@ its output limit; such a result is blocked.
 | Outcome | Required observation | Meaning |
 | --- | --- | --- |
 | REUSE_ELIGIBLE | Fresh authenticated PRIMARY authority; VALID applicability; exact reviewed mapping; satisfactory original proof | Only this exact approved obligation is eligible for future L3 consideration. |
-| INVALIDATED | Fresh authenticated PRIMARY/mapping authority and a proved relevant CHANGED condition | Reports only the requested reviewed mandatory proof/obligation and changed dimensions as affected/outstanding. New execution still requires separate authorization. |
+| INVALIDATED | Fresh authenticated PRIMARY/mapping authority, a known original outcome and a proved relevant CHANGED condition | Reports only the requested reviewed mandatory proof/obligation and changed dimensions as affected/outstanding. New execution still requires separate authorization. |
 | BLOCKED | UNKNOWN, disputed/missing/stale authority, unsupported correction lineage, or unsatisfactory/unestablished source proof | No acceptance PASS, execution permission, fallback, retry or continuation. |
 
 An authenticated source FAIL or ERROR is UNSATISFACTORY even if applicability is
@@ -103,6 +103,10 @@ populations, missing phases, partial collections and diagnostics cannot qualify.
 These actual semantic facts cannot be waived by reviewed INAPPLICABLE labels:
 population, collection, phases, completeness, stability and schema must have
 affirmative EQUIVALENT witnesses. Historical V1 missing facts stay unestablished.
+An original UNKNOWN outcome takes precedence over changed target conditions:
+incomplete or unstable original proof remains BLOCKED even when L2-02 reports
+INVALIDATED applicability. Malformed target phase records likewise block at
+authentication; only an authenticated condition change can yield INVALIDATED.
 
 All L2-02 condition dimensions survive unchanged: implementation/tests,
 fixtures/setup/teardown/helpers, generated/shared state, interpreter/toolchain,

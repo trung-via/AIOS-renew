@@ -2131,7 +2131,9 @@ class ProofReuseWitness:
 
     @property
     def outcome(self) -> str:
-        if self.authentication != "AUTHENTICATED" or self.applicability.validity == "UNKNOWN":
+        # A changed target cannot establish a missing/unstable original proof.
+        if (self.authentication != "AUTHENTICATED" or self.applicability.validity == "UNKNOWN"
+                or self.source_snapshot.outcome == "UNKNOWN"):
             return "BLOCKED"
         if self.applicability.validity == "INVALIDATED":
             return "INVALIDATED"
