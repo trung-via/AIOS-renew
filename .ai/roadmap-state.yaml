@@ -2,6 +2,38 @@ version: 1
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+human_lean_vp_l3_02_reconciliation_20261019:
+  authority: HUMAN_BRAIN_EXPLICIT_CONTINUE_AFTER_VERIFIED_L3_01_PUBLICATION
+  approved_on: "2026-10-19"
+  planning_only: true
+  source_main_sha: 99c6f0f006f39095dd761e3bcc1fe77090c95e0b
+  published_predecessor:
+    task: TASK-388
+    revision: 1
+    run: RUN-388-001
+    evidence: RUN-388-001-V001
+    review: REVIEW-388-001
+    verdict: PASS
+    acceptance: 12_OF_12_PASS
+    review_decision_sha: beb3c9809a375e15acd8a5e96c1e46de7f63a8c0
+    reviewed_published_sha: 99c6f0f006f39095dd761e3bcc1fe77090c95e0b
+    observed_relation: EXACT_REVIEWED_CANDIDATE_EQUALS_MAIN
+  roadmap:
+    unique_high_level_next: lean-vp-intelligent-intra-primary-after-r21
+    current_slice: L3_02_IMMUTABLE_CHECKPOINTS_AND_TERMINAL_REUSE
+    task: FRESH_TCA1_AUTHOR_TASK_REQUIRED
+    status: HUMAN_BRAIN_PLANNING_SELECTED_NOT_IMPLEMENTED
+    human_executor_delegation: NOT_SELECTED_FOR_NEW_TASK
+    following_slices: L3_03_TO_L3_06_THEN_L4
+    finite_original_slots: 16_PRESERVED
+    source_plan_issue: 2168
+  hard_boundaries:
+    - NO_AUTOMATIC_ROADMAP_ADVANCE_FROM_RUN_REVIEW_PUBLICATION
+    - NO_KA01_G3_OR_G6_ACTIVATION
+    - NO_PRODUCTION_CHECKPOINT_OR_TERMINAL_POLICY_CUTOVER
+    - NO_NEW_LIFECYCLE_OR_STORAGE_AUTHORITY
+    - NO_IMPLICIT_HUMAN_EXECUTOR_OR_INTRA_RUN_CONSENT
+
 human_lean_vp_l3_01_reconciliation_20261019:
   authority: HUMAN_BRAIN_EXPLICIT_CONTINUE_AFTER_VERIFIED_L2_03_PUBLICATION
   approved_on: "2026-10-19"
@@ -3368,7 +3400,7 @@ sequence:
       UNKNOWN or lost authority, and finish with one terminal RESULT or FAILURE.
       The new correction operation permissions require separately reviewed and
       published KA-01 normative authority before L2-03/L3 implementation.
-    next_approved_slice: L3_01_SINGLE_RUNTIME_PROOF_SCHEDULER_CORE
+    next_approved_slice: L3_02_IMMUTABLE_CHECKPOINTS_AND_TERMINAL_REUSE
     normative_task_authoring_status: TASK386_REVIEWED_PUBLISHED_SEPARATE_NORMATIVE_G2_DONE
     original_lean_vp_slot_count: 16
     separate_ka01_normative_task_count: 1
