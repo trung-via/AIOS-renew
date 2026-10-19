@@ -2,6 +2,41 @@ version: 1
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+human_lean_vp_legacy_plan_retirement_and_task389_authoring_reconciliation_20261019:
+  authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_RECONCILIATION
+  approved_on: "2026-10-19"
+  planning_only: true
+  anchor_main_sha: 60352966fd5336ed459e48f235c791b27d8762a7
+  active_high_level_next: lean-vp-intelligent-intra-primary-after-r21
+  active_slice: L3_02_IMMUTABLE_CHECKPOINTS_AND_TERMINAL_REUSE
+  canonical_authored_task:
+    task_id: TASK-389
+    revision: 1
+    author_commit_sha: 60352966fd5336ed459e48f235c791b27d8762a7
+    task_blob_sha: dbf23159c6f26508d6608db54aae0476e993fc00
+    engineering_status_at_reconciliation: AUTHORED_NO_RUN_OBSERVED
+  retirement_scope: HISTORICAL_PLANNING_RESUME_PATHS_ONLY_NO_TASK_OR_ENGINEERING_LINEAGE_MUTATION
+  historical_predecessor:
+    cutover_task: TASK-385
+    normative_successor: TASK-386
+    l2_03: TASK-387
+    l3_01: TASK-388
+  superseded_sequence_ids:
+    - verification-architecture-replacement-v1-vp03-runtime-lean-validity
+    - verification-architecture-replacement-v1-vp04-single-proof-execution
+    - verification-architecture-replacement-v1-vp05-correction-and-attribution
+    - verification-architecture-replacement-v1-vp06-runtime-performance
+    - verification-architecture-replacement-v1-vp07-cutover-and-conformance
+  historical_snapshot_rule: OLDER_HUMAN_LEAN_VP_L2_03_L3_01_AND_INTRA_EXPANSION_BOOKMARKS_ARE_NOT_LIVE_NEXT
+  legacy_task341: PRESERVE_CANONICAL_IDENTITY_NO_REDISPATCH
+  independent_roadmap_track_metadata: NOT_AN_ADDITIONAL_NEXT_AUTHORITY
+  unresolved_ingress_producer_concurrency: SEPARATE_DIAGNOSTIC_NOT_CURED_BY_PLANNING_RETIREMENT
+  preservation:
+    - ONE_SEQUENCE_NEXT_NO_SECOND_SEMANTIC_PLANNER
+    - KEEP_ORIGINAL_LEAN_VP_16_SLOTS_AND_KA01_NORMATIVE_OUTSIDE_16
+    - NO_AUTOMATIC_ROADMAP_ADVANCEMENT_OR_EXECUTOR_DISPATCH
+    - NO_KA01_G3_G6_ACTIVATION_OR_HISTORICAL_RUN_REVIEW_PUBLICATION_REWRITE
+
 human_lean_vp_l3_02_reconciliation_20261019:
   authority: HUMAN_BRAIN_EXPLICIT_CONTINUE_AFTER_VERIFIED_L3_01_PUBLICATION
   approved_on: "2026-10-19"
@@ -21,8 +56,10 @@ human_lean_vp_l3_02_reconciliation_20261019:
   roadmap:
     unique_high_level_next: lean-vp-intelligent-intra-primary-after-r21
     current_slice: L3_02_IMMUTABLE_CHECKPOINTS_AND_TERMINAL_REUSE
-    task: FRESH_TCA1_AUTHOR_TASK_REQUIRED
-    status: HUMAN_BRAIN_PLANNING_SELECTED_NOT_IMPLEMENTED
+    task: TASK_389_R1_CANONICALIZED
+    task_blob_sha: dbf23159c6f26508d6608db54aae0476e993fc00
+    task_author_commit_sha: 60352966fd5336ed459e48f235c791b27d8762a7
+    status: TASK_AUTHORED_NOT_RUNTIME_VERIFIED_OR_REVIEWED
     human_executor_delegation: NOT_SELECTED_FOR_NEW_TASK
     following_slices: L3_03_TO_L3_06_THEN_L4
     finite_original_slots: 16_PRESERVED
@@ -55,8 +92,8 @@ human_lean_vp_l3_01_reconciliation_20261019:
   roadmap:
     unique_high_level_next: lean-vp-intelligent-intra-primary-after-r21
     current_slice: L3_01_SINGLE_RUNTIME_PROOF_SCHEDULER_CORE
-    task: REQUIRES_FRESH_TCA1_AND_AUTHOR_TASK
-    status: HUMAN_BRAIN_PLANNING_SELECTED_NOT_ENGINEERING_TRUTH
+    task: HISTORICAL_L3_01_COMPLETED_BY_TASK388
+    status: HISTORICAL_SNAPSHOT_SUPERSEDED_BY_L3_02
     executor: NOT_DELEGATED_FOR_NEXT_TASK
     next_l3_slices: L3_02_TO_L3_06
     original_lean_vp_delivery_slots: 16_PRESERVED
@@ -87,9 +124,9 @@ human_lean_vp_l2_03_reconciliation_20261019:
   roadmap:
     sole_high_level_next: lean-vp-intelligent-intra-primary-after-r21
     current_slice: L2_03_REUSE_AND_CORRECTION_APPLICABILITY_CONFORMANCE
-    status: HUMAN_BRAIN_PLANNING_SELECTED_NOT_YET_TASK_AUTHORING
+    status: HISTORICAL_SNAPSHOT_SUPERSEDED_BY_L3_01_AND_L3_02
     predecessor: TASK_385_L2_02_AND_TASK_386_KA01_V1_2_PUBLISHED
-    task: REQUIRES_FRESH_TCA1_AND_AUTHOR_TASK
+    task: HISTORICAL_L2_03_COMPLETED_BY_TASK387
     executor: NOT_SELECTED_REQUIRES_EXPLICIT_HUMAN_DELEGATION
     later_slices: L3_01_TO_L3_06_THEN_L4
     original_lean_vp_delivery_slots: 16_PRESERVED
@@ -137,8 +174,8 @@ human_lean_vp_intra_run_expansion_20261019:
     forbidden: NO_SECOND_ROUTER_AGENT_SCHEDULER_DB_OR_AUTO_CORRECTION_AUTHORITY
   roadmap:
     sole_high_level_next: lean-vp-intelligent-intra-primary-after-r21
-    immediate_commitment: SEPARATE_VERSIONED_KA01_NORMATIVE_TASK_BEFORE_L2_03
-    task: NOT_YET_CANONICALLY_AUTHORED_REQUIRES_FRESH_TCA1_AND_AUTHOR_TASK
+    immediate_commitment: HISTORICAL_COMPLETED_BY_PUBLISHED_TASK386_KA01_V1_2
+    task: HISTORICAL_PLANNING_ONLY_NOT_CURRENT_AUTHORING
     executor: NOT_ASSIGNED_REQUIRES_EXPLICIT_HUMAN_DELEGATION
     original_l1_l4_delivery_slots: 16_PRESERVED
     additional_normative_task: ONE_OUTSIDE_16_BY_EXPLICIT_HUMAN_DECISION
@@ -3387,7 +3424,12 @@ sequence:
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-17"
     planning_document: docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
-    task_authoring_status: NOT_AUTHORED_REQUIRES_FRESH_TCA1_AND_AUTHOR_TASK
+    task_authoring_status: TASK389_R1_CANONICALIZED_NO_RUN_OR_VERDICT
+    current_task_id: TASK-389
+    current_task_revision: 1
+    current_task_blob_sha: dbf23159c6f26508d6608db54aae0476e993fc00
+    current_task_author_commit_sha: 60352966fd5336ed459e48f235c791b27d8762a7
+    snapshot_selection_rule: LATEST_HUMAN_BRAIN_L3_02_ONLY_PRIOR_LEAN_BOOKMARKS_HISTORICAL
     predecessor: four-specialized-audits-r21-human-optional-adaptive-v1
     predecessor_gate: HUMAN_ACCEPTED_R21_PLANNING_CLOSURE_20261018_LIVE_PROOF_DEFERRED
     implementation_authorization: REQUIRES_NEW_TASK_AND_EXPLICIT_HUMAN_EXECUTOR_DELEGATION
@@ -3435,7 +3477,12 @@ sequence:
     historical_v3_replay: PRESERVE_IMMUTABLE_DECODING_ONLY
 
   - id: verification-architecture-replacement-v1-vp03-runtime-lean-validity
-    status: PAUSED_FOR_HUMAN_V1_ONLY_MIGRATION
+    status: SUPERSEDED_BY_LEAN_VP_INTRA_RUN_PLANNING_20261019
+    historical_status: PAUSED_FOR_HUMAN_V1_ONLY_MIGRATION
+    superseded_by: lean-vp-intelligent-intra-primary-after-r21
+    lean_vp_crosswalk: L2_01_TO_L2_03_UNDER_CURRENT_LEAN_VP
+    planning_resume: RETIRED_NO_INDEPENDENT_AUTHORING_DISPATCH_OR_NEXT
+    preservation: HISTORICAL_TASK_RUN_REVIEW_PUBLICATION_UNCHANGED
     phase: VP03_RUNTIME_INTEGRATED_MINIMAL_EVIDENCE_VALIDITY
     resume_gate: HUMAN_PRIORITY_V1_ONLY_CONSUMER_RETIREMENT_PUBLISHED_AND_TASK341_REPAIR_RECONCILED
     next_action: FRESH_ADAPTIVE_DESIGN_AUDIT_THEN_MINIMUM_TASK_AUTHORING
@@ -3462,7 +3509,12 @@ sequence:
     implementation_authorization: REQUIRES_CANONICAL_TASK_AND_FRESH_HUMAN_DELEGATION
 
   - id: verification-architecture-replacement-v1-vp04-single-proof-execution
-    status: QUEUED_AFTER_RUNTIME_LEAN_VALIDITY
+    status: SUPERSEDED_BY_LEAN_VP_INTRA_RUN_PLANNING_20261019
+    historical_status: QUEUED_AFTER_RUNTIME_LEAN_VALIDITY
+    superseded_by: lean-vp-intelligent-intra-primary-after-r21
+    lean_vp_crosswalk: L3_01_L3_02_UNDER_CURRENT_LEAN_VP
+    planning_resume: RETIRED_NO_INDEPENDENT_AUTHORING_DISPATCH_OR_NEXT
+    preservation: HISTORICAL_TASK_RUN_REVIEW_PUBLICATION_UNCHANGED
     phase: VP04_SINGLE_PROOF_EXECUTION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
@@ -3480,7 +3532,12 @@ sequence:
       publishes eligible reviewed candidate or lawful integration descendant.
 
   - id: verification-architecture-replacement-v1-vp05-correction-and-attribution
-    status: QUEUED_AFTER_VP04
+    status: SUPERSEDED_BY_LEAN_VP_INTRA_RUN_PLANNING_20261019
+    historical_status: QUEUED_AFTER_VP04
+    superseded_by: lean-vp-intelligent-intra-primary-after-r21
+    lean_vp_crosswalk: L3_03_L3_04_UNDER_CURRENT_LEAN_VP
+    planning_resume: RETIRED_NO_INDEPENDENT_AUTHORING_DISPATCH_OR_NEXT
+    preservation: HISTORICAL_TASK_RUN_REVIEW_PUBLICATION_UNCHANGED
     phase: VP05_CORRECTION_ATTRIBUTION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
@@ -3498,7 +3555,12 @@ sequence:
       publishes eligible reviewed candidate or lawful integration descendant.
 
   - id: verification-architecture-replacement-v1-vp06-runtime-performance
-    status: QUEUED_AFTER_VP05
+    status: SUPERSEDED_BY_LEAN_VP_INTRA_RUN_PLANNING_20261019
+    historical_status: QUEUED_AFTER_VP05
+    superseded_by: lean-vp-intelligent-intra-primary-after-r21
+    lean_vp_crosswalk: L4_01_UNDER_CURRENT_LEAN_VP
+    planning_resume: RETIRED_NO_INDEPENDENT_AUTHORING_DISPATCH_OR_NEXT
+    preservation: HISTORICAL_TASK_RUN_REVIEW_PUBLICATION_UNCHANGED
     phase: VP06_RUNTIME_PERFORMANCE
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
@@ -3516,7 +3578,12 @@ sequence:
       publishes eligible reviewed candidate or lawful integration descendant.
 
   - id: verification-architecture-replacement-v1-vp07-cutover-and-conformance
-    status: QUEUED_AFTER_VP06
+    status: SUPERSEDED_BY_LEAN_VP_INTRA_RUN_PLANNING_20261019
+    historical_status: QUEUED_AFTER_VP06
+    superseded_by: lean-vp-intelligent-intra-primary-after-r21
+    lean_vp_crosswalk: L3_05_L3_06_AND_L4_02_TO_L4_04
+    planning_resume: RETIRED_NO_INDEPENDENT_AUTHORING_DISPATCH_OR_NEXT
+    preservation: HISTORICAL_TASK_RUN_REVIEW_PUBLICATION_UNCHANGED
     phase: VP07_CUTOVER_CONFORMANCE
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-08"
