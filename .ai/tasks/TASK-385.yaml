@@ -1,0 +1,233 @@
+task_id: TASK-385
+revision: 1
+goal: 'Deliver exactly Lean VP L2-02: a bounded, explicitly invoked, Runtime-owned
+  read-only source-to-exact-target proof applicability contract and observation, consuming
+  independently authenticated L2-01 original EVIDENCE provenance and eligible reviewed
+  semantic obligation/mapping authority. Produce immutable dimension-by-dimension
+  authenticated applicability judgments VALID, INVALIDATED or UNKNOWN without creating
+  a new proof, discharging target acceptance, deciding reuse, scheduling verification,
+  authorizing continuation, or activating KA-01.'
+problem: TASK-384 L2-01 authenticates historical original source subject/raw/provenance
+  and preserves missing evidence dimensions, but cannot establish whether that proof
+  remains applicable to another exact RUN/candidate/obligation. The prospective KA-01
+  C.5 requires independent source-to-target binding and complete condition/dependency
+  witnesses; matching hashes, filenames, nodeids, commands, disjoint diffs, inherited
+  labels or copied declarations do not establish applicability. Without bounded Runtime
+  observation, L2-03/L3 could incorrectly reuse stale, incomplete or semantically
+  mismatched proof. This TASK creates only the fail-closed L2-02 decision seam, not
+  proof reuse.
+assumptions:
+- Fresh canonical authoring main is ccaff05958bd138f7059aa48a80849c1e7efc0ca, which
+  equals reviewed/published TASK-384 r1 RUN-384-004 candidate; REVIEW-384-001 PRIMARY
+  PASS all AC1-AC10 at review-decision SHA d744ed1edf9cf1878f90e281fab81f3fa9caa9fd;
+  artifacts RUN-384-004 SHA cae6bf623b2f79a1cdd90d314060fde58bf23155. Review/RESULT/Publisher
+  exact sources remain independently checked by Runtime; their copied identities are
+  not generic future source attestation.
+- "Human's current explicit '\u0110\xE3 publish, ti\u1EBFp t\u1EE5c' follows this\
+  \ exact published L2-01 and the Human-approved prospective 16-slot Lean VP plan\
+  \ in GitHub Issue #2168: L2-02 is next, then L2-03. Issue #2168 is a planning carrier,\
+  \ not a canonical TASK or Runtime instruction. Canonical roadmap .ai/roadmap-state.yaml\
+  \ still selects Lean VP as high-level unique NEXT and its historical L1 first-slice\
+  \ bookmark has not been updated. No automatic roadmap mutation, generic continuation\
+  \ bookmark, Executor delegation or policy activation is asserted."
+- L1 reviewed semantic selection/readiness is in published TASK-381/382/383 code and
+  source, including existing proof_coverage_contract.py declarations and review_transport.py
+  authenticated readers. Their particular published TASK-381 mapping/selection may
+  only authenticate its exact actual subject; it cannot authorize arbitrary other
+  target mappings. Caller-only contract/mapping pins or structural mapping validity
+  never equal a Reviewer-authenticated semantic authority.
+- TASK-384 supplies OriginalEvidenceRequest, OriginalProofProvenance and observe_original_evidence
+  in existing verification_contract.py/verification.py. A parsed/serialized record
+  alone is not authenticated Runtime observation. V1 missing original proof conditions
+  remain UNKNOWN; future/current target must separately provide authenticated actual
+  conditions or explicit independently authorized inapplicability.
+- KA-01 prospective amendment v1.1 C.5 demands source EVIDENCE/RUN/subject/raw identity,
+  target RUN/candidate/obligation/acceptance/contract/mapping lineage and comprehensive
+  condition-specific witnesses. VALID applicability is not source proof outcome PASS
+  or permission to reuse; source FAIL/ERROR/UNKNOWN remain original outcomes.
+- Canonical TASK_AUTHORING selected audit is tca-1 v1 digest 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2,
+  resolved from current .ai/roadmap-state.yaml and .ai/brain-audit-profiles.yaml.
+  Brain applied CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE with exact acceptance/consumer
+  accounting and final candidate closure. All authored ACs are CLAIM_NOW implementation
+  properties; Runtime evidence, independent Reviewer verdict, publication and production
+  activation remain PROOF_LATER.
+- Legacy minimum-sufficient-v1 is the active ordinary verification path. Historical
+  V1/V2 evidence, frozen Kernel and downstream adoption remain unchanged. No Executor/model/effort
+  or risk opt-in is selected by this semantic TASK.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-L1-INTEGRATED-READINESS.md
+  - docs/AIOS-LEAN-VP-L2-ORIGINAL-EVIDENCE.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-381.yaml
+  - .ai/tasks/TASK-382.yaml
+  - .ai/tasks/TASK-383.yaml
+  - .ai/tasks/TASK-384.yaml
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/artifacts.py
+  - src/aios_renew/run.py
+  - tests/test_lean_vp_l2_original_evidence.py
+  - tests/test_lean_vp_l1_integrated_readiness.py
+  - tests/test_verification_contract.py
+  - tests/git_fixture_support.py
+  modify:
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - tests/test_lean_vp_l2_applicability.py
+  - docs/AIOS-LEAN-VP-L2-APPLICABILITY.md
+non_goals:
+- No L2-03 evidence reuse/target obligation discharge or correction conformance; no
+  L3 checkpoint/scheduler/feedback/stop implementation, L4 measurement, G3/G6 safety
+  claim or KA-01 production activation.
+- No general dependency oracle, generic semantic mapping validator or mapping selector,
+  new Reviewer/Publisher, Planner, Executor picker, retry/failover authority, approval
+  broker/issuer/registry/DB, second Runtime/verification scheduler or evidence storage
+  authority.
+- No automatic invocation in V1/V2 execution, task admission, correction workflow,
+  Reviewer or Publisher; no new RUN, checkpoint, EVIDENCE, RESULT, REVIEW, REPAIR,
+  REMEDIATION, permission or consent token from read-only observation.
+- No rehash/rewrite/republish historical EVIDENCE, synthetic PASS, target subject
+  relabeling, default VALID on UNKNOWN, file-diff/nodeid-only preservation inference
+  or input-provided trust roots/authentication claims.
+- No change to frozen Kernel or current V1/V2 schema/parser/verification selection,
+  no new verification commands or full-suite ceremony, no roadmap mutation or downstream
+  pin change.
+constraints:
+  hard:
+  - Implement one bounded, deterministic, closed-schema, immutable typed L2-02 applicability
+    request/observation/witness projection using existing verification_contract.py
+    and explicit Runtime-owned read-only verification.py APIs; preserve source L2-01
+    contract and all historical evidence formats. Structural parsing/serialization
+    and caller-provided digests grant no source authority.
+  - Authenticate source by the existing exact L2-01 Runtime observation and immutable
+    original TASK/RUN/source candidate/tree/artifacts/EVIDENCE/subject/outcome/raw
+    identity/digest. Bind an independently authenticated exact target admitted RUN
+    or bounded canonical target locator, committed candidate/tree/lineage and referenced
+    obligation/acceptance and semantic contract/mapping source/review authority. A
+    caller's copied expected pins, reported source_provenance, reviewed flag or target
+    condition values are not trusted proof.
+  - Reuse existing L1 proof-contract/mapping/selection and original review/publication
+    readers for exact source bindings where applicable; only use their independently
+    authenticated exact subject, never treat TASK-381's historical approved mapping
+    as generic authority for another TASK. If required reviewed mapping, current source
+    or target authority cannot be established, outcome UNKNOWN/BLOCK, no fallback.
+  - For each KA-01 C.5 relevant dimension, require immutable independently observed
+    source and target footprint/condition evidence, or a separately authenticated
+    reviewed semantic declaration of inapplicability bound to exact obligation and
+    dimension. Cover code/subject dependencies, test code/population, fixtures/setup/teardown/helpers/shared/generated
+    state, interpreter/toolchain/observer, environment/configuration, policy/execution
+    profile, worker mode/count/state, concurrency/interference, ordering/repetition,
+    collection/completeness/stability/phase outcomes, unit/integration/external boundaries
+    and EVIDENCE kind/schema. A hash/diff/path/label similarity or a caller-asserted
+    witness never substitutes for full relevant conditions.
+  - Produce one stable immutable source-to-target witness binding unchanged original
+    subject/RUN/raw/evidence digests and exact target identities/mapping/acceptance
+    conditions; per-dimension status/reason/source must be inspection-readable. Return
+    VALID only with complete authenticated affirmative/equivalent/inapplicable coverage;
+    INVALIDATED only for established relevant divergence after basic identities remain
+    authenticated; otherwise UNKNOWN/NOT_ESTABLISHED, never optimistic default. A
+    known invalidating change may remain INVALIDATED when unrelated dimensions are
+    missing, but disputed source/target authority always blocks with UNKNOWN.
+  - Preserve source actual outcome PASS/FAIL/ERROR/UNKNOWN independently from applicability.
+    VALID of original FAIL/ERROR is still failed/error proof, never satisfactory acceptance.
+    No applicability object may itself discharge an obligation, claim target tests
+    ran or assert permission for Runtime/Executor continuation; L2-03 must independently
+    decide reuse under approved semantics.
+  - Keep all observation operations bounded and read-only, no fetching or writing
+    Git objects/refs/state, no running tests, no secondary proof collection, source
+    mutation, policy/executor selection or canonical publication. Use current source/ref/currentness
+    checks and immutable bindings before result. Missing private raw, stale refs,
+    unsupported witness provider or unavailable target footprint must fail closed
+    and report precise non-secret reason.
+  - Use isolated authentic Git object and original Runtime EVIDENCE fixtures for focused
+    positive fully witnessed applicability and adversarial tests; do not mock authority.
+    Challenge swapped RUN/EVIDENCE/target SHA, unauthorized/unreviewed mapping, changed
+    test/helper/fixture/shared/generated state, changed environment/toolchain/policy/workers/collection/integration,
+    omitted dimension, fraudulent inapplicability, stale observation, source FAIL
+    preserving FAIL, incomplete V1/unstable V2 and concurrent race. Do not manufacture
+    production PASS from fixture results.
+  - Preserve existing V1/V2 execution and L1/L2-01 read contracts, same public EVIDENCE/RESULT/REVIEW/transport
+    shapes, historical Decoder and Runtime/Reviewer/Publisher boundaries. No new persistent
+    authority, external trust service or creation of an independent execution/verification
+    policy. Scope is limited to four explicit paths.
+  - Document exact source/target identities, reviewed mapping input, dimension-by-dimension
+    witness/currentness method, authentic evidence versus structural assertions, VALID/INVALIDATED/UNKNOWN
+    precedence, historical missingness, fallback/STOP boundary and L2-03 consumer
+    obligations; explicitly label real production proof and G3/G6/L4 as outstanding.
+acceptance:
+- id: AC1
+  condition: An immutable bounded versioned typed L2-02 request, source-to-target
+    applicability witness and deterministic strict closed-schema projection/parse
+    are implemented in the existing verification contract; no new lifecycle/evidence
+    issuance or mutable caller authority is introduced.
+- id: AC2
+  condition: Explicit Runtime read-only entrypoint independently authenticates one
+    exact original L2-01 source and preserves immutable RUN/EVIDENCE/source subject/outcome/raw
+    identity/digests, rejecting caller-provided parsed proof, copied raw-path or unsupported
+    source as authentication.
+- id: AC3
+  condition: The observer independently binds the target's exact admitted RUN, committed
+    candidate/tree/lineage and trusted currentness, plus contract/mapping/obligation/acceptance
+    pins against existing independently reviewed semantic selection; wrong/unreviewed/replayed/cross-TASK
+    selectors cannot yield VALID.
+- id: AC4
+  condition: 'Every KA-01 C.5 distinguishing proof dependency has an explicit ordered
+    observed/equivalent/changed/UNKNOWN or authenticated-inapplicable judgment with
+    source, target, reason and evidence identity: implementation/test/population/fixtures/helpers/shared/generated
+    state; toolchain/interpreter/observer/environment/config; policy/profile/workers/state;
+    concurrency/order/repetition/collection/completeness/outcomes; integration/external;
+    evidence kind/schema.'
+- id: AC5
+  condition: 'Validity reduction is deterministic and fail-closed: VALID requires
+    exact authenticated current source/target/mapping plus complete relevant affirmative
+    or independently authorized inapplicability witnesses, INVALIDATED requires proved
+    material divergence, and missing/conflicting authority or partial provenance produces
+    UNKNOWN/NOT_ESTABLISHED. SHA/command/nodeid/name/disjoint diff alone never grants
+    VALID.'
+- id: AC6
+  condition: The immutable output preserves original source outcome including FAIL/ERROR/UNKNOWN
+    and original subject/raw digest; a VALID-but-failed or incomplete proof never
+    becomes satisfactory PASS, and a source proof cannot be relabeled as executed
+    on the target.
+- id: AC7
+  condition: No applicability read or formatter runs verification, selects coverage/mapping,
+    discharges an obligation, changes Runtime/policy/Git/lifecycle state, selects
+    an Executor or dispatches L2-03/L3; missing or unknown conditions do not authorize
+    automatic fresh proof, retry or continuation.
+- id: AC8
+  condition: Focused positive and negative tests use real immutable Git and Runtime-origin
+    fixtures, demonstrating a genuinely fully authenticated VALID case and fail-closed
+    changed/INVALIDATED and absent/UNKNOWN cases for each relevant condition family,
+    altered/unreviewed contract or target lineage, spoofed inapplicability, source
+    FAIL and stale/racy source changes.
+- id: AC9
+  condition: Current L1 reviewed-selection/source and L2-01 original observer APIs,
+    historical minimal V1 and available V2 interpretation, existing verification execution,
+    public EVIDENCE/ResultPackage and independent Reviewer/Publisher contracts remain
+    behaviorally and structurally unchanged; no new target proof authority is implied.
+- id: AC10
+  condition: One L2-02 document defines identities/authority, every C.5 dimension
+    and its explicit UNKNOWN/inapplicable semantics, precedence of VALID/INVALIDATED/UNKNOWN,
+    exact L2-03 consumer preconditions and false-positive threats; G3/G6/L3/L4 and
+    measured benefit are clearly outstanding.
+- id: AC11
+  condition: Cumulative committed implementation changes stay within the four listed
+    modify paths, with no generic router/DB/broker/second scheduler, expanded Human
+    approval, retrospective state rewrite, roadmap advancement or downstream adoption.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_lean_vp_l2_applicability.py tests/test_lean_vp_l2_original_evidence.py
+    tests/test_verification_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
