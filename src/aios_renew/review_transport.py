@@ -19,7 +19,7 @@ from types import MappingProxyType
 from typing import Any, Literal, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .task import SemanticTask
+    from .task import AcceptanceCriterion, SemanticTask
 
 from .proof_coverage_contract import MappingReviewScope, SemanticProofIntake
 from .terminal_attention import (
@@ -4117,6 +4117,243 @@ def read_semantic_task_readiness(
         expected_main_sha=expected_main_sha, expected_candidate_sha=expected_candidate_sha,
         sources=sources, prospective=True)
     return SemanticTaskReadiness(task, _l1_bind_review_authority(repo, binding))
+
+
+# Fixed subjects of the L1-03 observation, not a registry or caller authority.
+# These are locators only: the unchanged source/selection/lineage readers must
+# authenticate them against configured exact-current main on every invocation.
+_L1_INTEGRATED_TARGET = "bf1b3fa121fc7daebaa8257aa81d6546611e06e7"
+_L1_INTEGRATED_MAPPING = "0ff5a56674c5f56012e0df551a069d6c461fd8fa"
+_L1_INTEGRATED_SELECTION = "c735c45134da36cd581ebce6547d4acf991a72d9"
+_L1_INTEGRATED_EVENT = "github-issue:trung-via/AIOS-renew#2178@trung-via"
+_L1_INTEGRATED_SOURCES = (
+    ("task", GitSemanticSource(_L1_INTEGRATED_TARGET,
+        "5caf8e0ad6f39bc94d74677e5e38c7a437afb0a5", ".ai/tasks/TASK-381.yaml",
+        "3db2f20f9a42560d0d1b55db522bafb0cca87683")),
+    ("contract", GitSemanticSource(_L1_INTEGRATED_MAPPING,
+        "09e0b4bc63657216bfc2d73f6efd4b507fc849d6",
+        "docs/aios-proof-contracts/TASK-381-contract.json",
+        "f6d72b058e4276f0c3f0e0f6215e0369014fc70e")),
+    ("mapping", GitSemanticSource(_L1_INTEGRATED_MAPPING,
+        "09e0b4bc63657216bfc2d73f6efd4b507fc849d6",
+        "docs/aios-proof-contracts/TASK-381-mapping.json",
+        "00d8410d8f9d1086e286c6b07e0290442f68d0c2")),
+)
+
+
+@dataclass(frozen=True)
+class L1LegacyOverlayObservation:
+    """Projection of existing readers for the exact published legacy subjects.
+
+    Coverage retains all original obligations, proofs, digests and conditions;
+    lineage retains the complete Human-selected review correspondence. Counts
+    below are projections, never a second coverage or adequacy algorithm.
+    """
+
+    source_binding: CanonicalSemanticSourceBinding | None
+    human_selection: AuthenticatedHumanReviewSelection | None
+    lineage: MappingReviewLineage | None
+    target_acceptance: tuple["AcceptanceCriterion", ...]
+    review_acceptance: tuple["AcceptanceCriterion", ...]
+    reason: Literal["SOURCE_OBSERVATION_NOT_ESTABLISHED", "HUMAN_MAPPING_SELECTION_UNAVAILABLE",
+                    "MAPPING_REVIEW_NOT_ESTABLISHED", "PINNED_SELECTION_MISMATCH",
+                    "PINNED_REVIEW_LINEAGE_MISMATCH", "EXACT_SELECTED_LEGACY_LINEAGE"]
+    canonical_verification: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    evidence_applicability: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    production_eligible: Literal[False] = field(default=False, init=False)
+    execution_authorized: Literal[False] = field(default=False, init=False)
+
+    @property
+    def structure(self) -> str:
+        return "STRUCTURALLY_COMPLETE" if self.source_binding else "UNKNOWN"
+
+    @property
+    def source_consistency(self) -> str:
+        return "SOURCE_CONSISTENT" if self.source_binding else "UNKNOWN"
+
+    @property
+    def source_authentication(self) -> str:
+        return self.source_binding.source_authentication if self.source_binding else "UNKNOWN"
+
+    @property
+    def source_currentness(self) -> str:
+        return self.source_binding.source_currentness if self.source_binding else "UNKNOWN"
+
+    @property
+    def human_intent(self) -> str:
+        return "AUTHENTICATED_SELECTION" if self.human_selection else "NOT_ESTABLISHED"
+
+    @property
+    def reviewer_authority(self) -> str:
+        return "REVIEW_AUTHORITY_ESTABLISHED" if self.lineage else "NOT_ESTABLISHED"
+
+    @property
+    def publisher_authority(self) -> str:
+        return "EXACT_SOURCE_PUBLICATION_ESTABLISHED" if self.lineage else "NOT_ESTABLISHED"
+
+    @property
+    def mapping_review_verification(self) -> str:
+        return "CANONICAL_RESULT_EVIDENCE_BOUND_TO_REVIEW_RUN" if self.lineage else "UNESTABLISHED"
+
+    @property
+    def semantic_adequacy(self) -> str:
+        # Record what the independent Reviewer actually adjudicated. This does
+        # not perform a judgment, upgrade the old reader, or discharge TARGET proof.
+        return "EXISTING_MAPPING_REVIEW_JUDGMENT_OBSERVED" if self.lineage else "NOT_ESTABLISHED"
+
+    @property
+    def reviewer_verdict(self) -> str:
+        return "PRIMARY_PASS_FOR_TASK_382_AC1_AC9" if self.lineage else "UNKNOWN"
+
+    @property
+    def target_acceptance_count(self) -> int | None:
+        return len(self.target_acceptance) if self.source_binding else None
+
+    @property
+    def review_acceptance_count(self) -> int | None:
+        return len(self.review_acceptance) if self.lineage else None
+
+    @property
+    def obligation_count(self) -> int | None:
+        return len(self.source_binding.intake.coverage.contract.obligations) if self.source_binding else None
+
+    @property
+    def proof_count(self) -> int | None:
+        return len(self.source_binding.intake.coverage.mapping.proofs) if self.source_binding else None
+
+    @property
+    def mapping_entry_count(self) -> int | None:
+        return len(self.source_binding.intake.coverage.mapping.entries) if self.source_binding else None
+
+
+@dataclass(frozen=True)
+class L1ProspectiveSemanticBoundary:
+    """An explicitly unbound future subject, never a relabelled legacy TASK.
+
+    This fixed integration has no distinct future canonical TASK/selection
+    input. A future subject needs its own explicit read_semantic_task_readiness
+    observation; synthetic tests of that seam cannot fill this lane.
+    """
+
+    legacy_source_compatibility: Literal["REJECTED_BY_TASK_SEMANTIC_V1", "UNKNOWN"]
+    schema: Literal["task-semantic-v1"] = field(default="task-semantic-v1", init=False)
+    task_source: None = field(default=None, init=False)
+    human_selection: None = field(default=None, init=False)
+    bridge: Literal["UNSUPPORTED_LEGACY_TO_SEMANTIC_V1"] = field(
+        default="UNSUPPORTED_LEGACY_TO_SEMANTIC_V1", init=False)
+    subject_status: Literal["NO_DISTINCT_FUTURE_SUBJECT_OBSERVED"] = field(
+        default="NO_DISTINCT_FUTURE_SUBJECT_OBSERVED", init=False)
+    structure: Literal["UNKNOWN"] = field(default="UNKNOWN", init=False)
+    source_consistency: Literal["UNKNOWN"] = field(default="UNKNOWN", init=False)
+    source_authentication: Literal["UNKNOWN"] = field(default="UNKNOWN", init=False)
+    source_currentness: Literal["UNKNOWN"] = field(default="UNKNOWN", init=False)
+    human_intent: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    reviewer_authority: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    publisher_authority: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    semantic_adequacy: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    canonical_verification: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    evidence_applicability: Literal["UNESTABLISHED"] = field(default="UNESTABLISHED", init=False)
+    future_version_admission: Literal["NOT_ADMITTED"] = field(default="NOT_ADMITTED", init=False)
+    production_eligible: Literal[False] = field(default=False, init=False)
+    execution_authorized: Literal[False] = field(default=False, init=False)
+
+
+@dataclass(frozen=True)
+class L1IntegratedReadiness:
+    """Read-only cognitive support, not a gate, receipt or lifecycle truth store."""
+
+    legacy_selected_overlay: L1LegacyOverlayObservation
+    prospective_semantic_task: L1ProspectiveSemanticBoundary
+    future_version_admission: Literal["NOT_ADMITTED"] = field(default="NOT_ADMITTED", init=False)
+    ka01_g3: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    ka01_g6: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    production_opt_in: Literal["NOT_ESTABLISHED"] = field(default="NOT_ESTABLISHED", init=False)
+    ka01: Literal["NOT_ACTIVATED"] = field(default="NOT_ACTIVATED", init=False)
+    production_eligible: Literal[False] = field(default=False, init=False)
+    execution_authorized: Literal[False] = field(default=False, init=False)
+    vp01_matched_measurement: Literal["UNKNOWN_DEFERRED_TO_L4"] = field(
+        default="UNKNOWN_DEFERRED_TO_L4", init=False)
+
+    @property
+    def observation_status(self) -> str:
+        return ("SELECTED_LEGACY_LINEAGE_ESTABLISHED" if self.legacy_selected_overlay.lineage
+                else "NOT_ESTABLISHED")
+
+
+def read_l1_integrated_readiness(
+    repo: Path, declaration: bytes, *, expected_remote_url: str, expected_main_sha: str,
+) -> L1IntegratedReadiness:
+    """Explicit bounded L1-03 observation of TASK-381/382, never admission.
+
+    The declaration is untrusted TASK-376 input. Fixed immutable locators and
+    the existing TASK-377/378/380 readers authenticate all source, currentness,
+    Human, Runtime artifact, Reviewer and Publisher facts. No review selector,
+    PASS flag, callback, future fixture or alternative authority is accepted.
+    Source unavailability/drift yields UNKNOWN with no retained successful
+    binding. Missing review authority remains NOT_ESTABLISHED. No tests or
+    semantic proof commands are executed; only existing read-only transports
+    and the unchanged future decoder are used.
+    """
+    from .proof_coverage_contract import ProofCoverageError
+    from .task import TaskValidationError, parse_semantic_task, parse_task
+    import yaml
+
+    def unknown():
+        return L1IntegratedReadiness(L1LegacyOverlayObservation(
+            None, None, None, (), (), "SOURCE_OBSERVATION_NOT_ESTABLISHED"),
+            L1ProspectiveSemanticBoundary("UNKNOWN"))
+
+    try:
+        binding = bind_canonical_semantic_proof_sources(
+            repo, declaration, expected_remote_url=expected_remote_url,
+            expected_main_sha=expected_main_sha, expected_candidate_sha=_L1_INTEGRATED_TARGET,
+            sources=dict(_L1_INTEGRATED_SOURCES))
+        target_bytes = _l1_text_object(repo, _L1_INTEGRATED_SOURCES[0][1].blob_sha,
+                                       "blob", L1_TASK_MAX_BYTES)
+        target = parse_task(target_bytes.decode("utf-8"))
+        try:
+            parse_semantic_task(target_bytes)
+        except TaskValidationError:
+            compatibility = "REJECTED_BY_TASK_SEMANTIC_V1"
+        else:
+            # An unexpected decoder change cannot make this legacy subject a
+            # future one, even if all historical source and review pins match.
+            return unknown()
+        authority = _l1_bind_review_authority(repo, binding)
+        human, lineage, reason = authority.human_selection, authority.lineage, authority.reason
+        if human is not None and (human.selection_sha, human.event_identity) != (
+                _L1_INTEGRATED_SELECTION, _L1_INTEGRATED_EVENT):
+            human, lineage, reason = None, None, "PINNED_SELECTION_MISMATCH"
+        if lineage is not None:
+            # These checks constrain the observation's identity, not review
+            # authority: only the unchanged reader can supply a lineage.
+            if (human is None or (lineage.run_id, lineage.run_sha256, lineage.base_sha,
+                    lineage.reviewed_sha, lineage.review_id, lineage.decision_sha,
+                    lineage.artifacts_sha, lineage.published_sha,
+                    lineage.human_selection_sha, lineage.human_event_identity) != (
+                    "RUN-382-001", "77afa26b9ef3dbf4f2e93d238a3a315dc84bb84f92d58d5b35956587f280f548",
+                    "e381e921bbf82dd131c7178f35c4aad9ccac22dd", _L1_INTEGRATED_MAPPING,
+                    "REVIEW-382-001", "504a88d2ee5076ce8508c61907d00a5b46682600",
+                    "a760736536391ed10a232b5b1790c5d21b90718c", _L1_INTEGRATED_MAPPING,
+                    _L1_INTEGRATED_SELECTION, _L1_INTEGRATED_EVENT)):
+                lineage, reason = None, "PINNED_REVIEW_LINEAGE_MISMATCH"
+        review_acceptance = ()
+        if lineage is not None:
+            raw = _l1_text_object(repo, lineage.review_task_source.locator.blob_sha,
+                                  "blob", L1_TASK_MAX_BYTES)
+            review_acceptance = parse_task(raw.decode("utf-8")).acceptance
+            reason = "EXACT_SELECTED_LEGACY_LINEAGE"
+        # Cover the complete integrated observation, including the decoder and
+        # condition projections, with the original final main/remote checks.
+        if _l1_remote(repo, expected_remote_url) != binding.remote:
+            return unknown()
+        _l1_main(repo, expected_remote_url, expected_main_sha)
+    except (ReviewTransportError, ProofCoverageError, ValueError, TypeError, KeyError,
+            UnicodeError, RecursionError, yaml.YAMLError):
+        return unknown()
+    return L1IntegratedReadiness(L1LegacyOverlayObservation(
+        binding, human, lineage, target.acceptance, review_acceptance, reason),
+        L1ProspectiveSemanticBoundary(compatibility))
 
 
 def _run_task_prefix(run_id: str) -> str:
