@@ -2,6 +2,59 @@ version: 1
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+human_lean_vp_intra_run_expansion_20261019:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING
+  approved_on: "2026-10-19"
+  approved_against_main_sha: aaab7a87c63fd40b592dee817fdbfada759a2085
+  decision: APPROVE_BOUNDED_INTRA_RUN_PRIMARY_REPAIR_REMEDIATION_WITH_SEPARATE_KA01_NORMATIVE_TASK
+  audit_profile: AOA-1
+  audit_closure: HUMAN_ACCEPTED_BOUNDED_MINIMUM_LAWFUL_DELTA
+  planning_only: true
+  verified_predecessor:
+    task: TASK-385
+    revision: 1
+    run: RUN-385-001
+    evidence: RUN-385-001-V001
+    review: REVIEW-385-001
+    review_verdict: PASS
+    acceptance: 11_OF_11_PASS
+    review_decision_sha: 5266b9ea20d8205ae3ef47988e6c5d70a1c625d9
+    reviewed_published_sha: aaab7a87c63fd40b592dee817fdbfada759a2085
+    publication_basis: EXACT_REVIEW_CANDIDATE_IDENTICAL_TO_CANONICAL_MAIN_AT_RECONCILIATION
+  scope_change:
+    former: FUTURE_OPTED_IN_ACTIVE_PRIMARY_ONLY
+    approved_prospective_target: [PRIMARY, REPAIR, REMEDIATION]
+    normative_status: REQUIRES_SEPARATE_VERSIONED_KA01_TASK_RUNTIME_REVIEWER_PUBLISHER
+    legacy_ka01_v1_v1_1: PRESERVED_UNCHANGED
+    historical_task_run_review_lineage: PRESERVED_UNCHANGED
+    current_production_activation: NOT_AUTHORIZED
+  architecture:
+    scheduler: ONE_EXISTING_RUNTIME_OWNED_PROOF_SCHEDULER
+    correction: BOUNDED_FACTUAL_FEEDBACK_TO_SAME_LEASED_EXECUTOR_OF_CURRENT_ACTIVE_RUN
+    repair_authority: EXACT_FAILED_RUN_AND_AUTHORIZED_REPAIR_SCOPE
+    remediation_authority: EXACT_REVIEW_FINDING_OR_AUTHORIZED_CAUSAL_FINDING_GROUP
+    proof: FULL_REVIEWED_OBLIGATIONS_VALIDITY_AND_ONE_TERMINAL
+    stop: UNKNOWN_STALE_CONFLICT_SCOPE_RISK_LEASE_PROGRESS_OR_BUDGET_FAIL_CLOSED
+    forbidden: NO_SECOND_ROUTER_AGENT_SCHEDULER_DB_OR_AUTO_CORRECTION_AUTHORITY
+  roadmap:
+    sole_high_level_next: lean-vp-intelligent-intra-primary-after-r21
+    immediate_commitment: SEPARATE_VERSIONED_KA01_NORMATIVE_TASK_BEFORE_L2_03
+    task: NOT_YET_CANONICALLY_AUTHORED_REQUIRES_FRESH_TCA1_AND_AUTHOR_TASK
+    executor: NOT_ASSIGNED_REQUIRES_EXPLICIT_HUMAN_DELEGATION
+    original_l1_l4_delivery_slots: 16_PRESERVED
+    additional_normative_task: ONE_OUTSIDE_16_BY_EXPLICIT_HUMAN_DECISION
+    g6: DISTINCT_LATER_EXACT_FINITE_HUMAN_PER_RUN_OPT_IN
+    issue_context: [2168, 2208]
+    subsequent_execution: L2_03_THEN_L3_THEN_L4_UNDER_LAWFUL_NEW_VERSION
+  preservation:
+    - DO_NOT_MODIFY_OR_REPLAY_TASK385
+    - NO_NORMATIVE_KA01_EDIT_FROM_ROADMAP_ONLY
+    - NO_KA01_RUNTIME_ACTIVATION_OR_INFERRED_HUMAN_CONSENT
+    - NO_NEW_TASK_ID_RUN_OR_EXECUTOR_SELECTED
+    - NO_V1_V2_HISTORICAL_REINTERPRETATION
+    - NO_REVIEWER_PUBLISHER_RUNTIME_AUTHORITY_MERGE
+    - NO_AUTOMATIC_ROADMAP_ADVANCEMENT_FROM_LIFECYCLE_EVENTS
+
 human_r21_closure_lean_vp_cutover_20261018:
   authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_TRANSITION
   approved_on: "2026-10-18"
@@ -3231,7 +3284,7 @@ sequence:
     successor: lean-vp-intelligent-intra-primary-after-r21
   - id: lean-vp-intelligent-intra-primary-after-r21
     status: NEXT
-    phase: INTELLIGENT_LEAN_VERIFICATION_AND_BOUNDED_INTRA_PRIMARY_CORRECTION
+    phase: INTELLIGENT_LEAN_VERIFICATION_AND_BOUNDED_INTRA_RUN_CORRECTION
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-17"
     planning_document: docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
@@ -3240,11 +3293,18 @@ sequence:
     predecessor_gate: HUMAN_ACCEPTED_R21_PLANNING_CLOSURE_20261018_LIVE_PROOF_DEFERRED
     implementation_authorization: REQUIRES_NEW_TASK_AND_EXPLICIT_HUMAN_EXECUTOR_DELEGATION
     goal: >-
-      Replace prospective V2 command-driven proof scheduling with one Runtime-owned
-      sound evidence-validity/proof engine and bounded factual checkpoint feedback
-      to the same Executor for correction inside one admitted opted-in PRIMARY RUN.
-      Reuse still-VALID proof, preserve mandatory semantic coverage, stop on UNKNOWN
-      or lost authority, and finish with exactly one terminal RESULT or FAILURE.
+      Preserve one Runtime-owned sound evidence-validity/proof engine and pursue
+      a separately versioned, Human-opted-in bounded factual checkpoint-feedback
+      extension for the same leased Executor of each admitted ACTIVE PRIMARY,
+      REPAIR, or REMEDIATION RUN, respecting each operation's exact authorization.
+      Reuse only still-VALID proof, preserve mandatory semantic coverage, stop on
+      UNKNOWN or lost authority, and finish with one terminal RESULT or FAILURE.
+      The new correction operation permissions require separately reviewed and
+      published KA-01 normative authority before L2-03/L3 implementation.
+    next_approved_slice: SEPARATE_VERSIONED_KA01_NORMATIVE_TASK_AFTER_TASK385_BEFORE_L2_03
+    normative_task_authoring_status: REQUIRES_FRESH_TCA1_AND_AUTHOR_TASK
+    original_lean_vp_slot_count: 16
+    separate_ka01_normative_task_count: 1
     architecture_crosswalk: L1_VP01_VP02_L2_VP03_L3_VP04_VP05_L4_VP06_VP07
     ka01_activation: NOT_ACTIVATED_REQUIRES_EXPLICIT_G1_TO_G6_AND_HUMAN_OPT_IN
     historical_policy: V1_V2_EXACT_DECODING_PRESERVED
