@@ -32,6 +32,16 @@ commit and are compared to the exact local Runtime records using existing
 `public_run`/`public_result` redaction semantics or their unredacted historical
 form. This adds no new interpretation to public EVIDENCE or ResultPackage.
 
+Public transport replaces the private EVIDENCE summary with its standard exit
+code summary. A private-summary-only change therefore leaves the public RESULT
+blob and artifacts commit unchanged. Local RESULT/EVIDENCE digests describe the
+exact private snapshot read now; they do not independently authenticate redacted
+summary text as unchanged historical content. That historical property remains
+UNKNOWN without a separate recorded commitment. Stale-artifact and unpublished
+local-conflict regressions use the publicly committed command while retaining
+the exact expected artifact pins, rather than treating private summary text as
+an independent public identity.
+
 The private source is `<git-dir>/aios/{runs,results}/<RUN>.json`. Raw capture is
 only `<git-dir>/aios/verification/<RUN>/<EVIDENCE>.raw` for V1, or the existing
 `candidate/` subdirectory for a TASK explicitly recording V2. A copied path,

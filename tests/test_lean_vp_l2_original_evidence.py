@@ -268,12 +268,28 @@ def test_competing_source_refs_are_not_ignored(source, kind):
 
 def test_stale_source_artifacts_and_unpublished_local_conflicts_block(source):
     original = source.expected
+    original_public = public_result(encoded(source.package))
+    # Private summaries are redacted, so they cannot establish stale public
+    # artifacts or an independently committed local/canonical conflict.
     source.item["result"]["summary"] = "different original record"
     source.publish()
-    blocked(source.observe(original))
-    source.item["result"]["summary"] = "unpublished local substitution"
+    assert public_result(encoded(source.package)) == original_public
+    assert source.artifacts_sha == original.artifacts_sha
+    # Change a public source fact and retain every original expected pin.
+    source.item["source"]["command"] = original.command + " -q"
+    source.publish()
+    assert source.artifacts_sha != original.artifacts_sha
+    stale = source.observe(original)
+    blocked(stale)
+    assert stale.reason == "SOURCE_REFS_MISSING_STALE_OR_COMPETING"
+    # Reverting only the local command conflicts with the newly committed
+    # public command; do not republish or replace its expected artifact pin.
+    published = source.expected
+    source.item["source"]["command"] = original.command
     (source.state / "results" / (source.run_id + ".json")).write_bytes(encoded(source.package))
-    blocked(source.observe())
+    conflict = source.observe(published)
+    blocked(conflict)
+    assert conflict.reason == "LOCAL_CANONICAL_ARTIFACT_CONFLICT"
 
 
 @pytest.mark.parametrize("mutation", ["run", "task", "subject", "command", "outcome", "evidence_id", "extra"])
