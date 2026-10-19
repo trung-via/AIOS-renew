@@ -34,6 +34,7 @@ from tests.git_fixture_support import commit_fixture_state, materialize_git_base
 
 REPO = Path(__file__).resolve().parents[1]
 TARGET = "bf1b3fa121fc7daebaa8257aa81d6546611e06e7"
+PUBLISHED = "0ff5a56674c5f56012e0df551a069d6c461fd8fa"
 RUN_BASE = "e381e921bbf82dd131c7178f35c4aad9ccac22dd"
 TARGET_PATH = ".ai/tasks/TASK-381.yaml"
 REVIEW_TASK_PATH = ".ai/tasks/TASK-382.yaml"
@@ -431,11 +432,13 @@ def test_mapping_review_delta_is_separate_from_historical_target_delta(source_pa
     task = parse_task(committed(REVIEW_TASK_PATH, RUN_BASE).decode())
     assert set(task.scope.modify) == MODIFIED
     assert TARGET_PATH in task.scope.inspect and TARGET_PATH not in task.scope.modify
-    assert git(REPO, "diff", "--name-only", RUN_BASE, "HEAD").splitlines() == sorted(MODIFIED)
-    assert git(REPO, "diff", "--name-only", RUN_BASE, "HEAD", "--", TARGET_PATH) == ""
+    # TASK-382's reviewed delta is immutable; later TASKs may change production
+    # readers and this regression without changing that historical subject.
+    assert git(REPO, "diff", "--name-only", RUN_BASE, PUBLISHED).splitlines() == sorted(MODIFIED)
+    assert git(REPO, "diff", "--name-only", RUN_BASE, PUBLISHED, "--", TARGET_PATH) == ""
     for path in ("src/aios_renew/task.py", "src/aios_renew/proof_coverage_contract.py",
                  "src/aios_renew/review_transport.py"):
-        assert committed(path) == committed(path, TARGET)
+        assert committed(path, PUBLISHED) == committed(path, TARGET)
     package = source_package
     assert package["main"] != TARGET and package["base"] != RUN_BASE
     assert set(git(package["repo"], "diff", "--name-only", package["base"], package["main"]).splitlines()) == {
