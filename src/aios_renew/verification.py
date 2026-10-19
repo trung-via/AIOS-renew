@@ -43,6 +43,8 @@ from .verification_contract import (
     _app_exact, _app_fields, _app_path, _original_text, _original_hash,
     applicability_target_data, format_applicability,
     applicability_source_snapshot,
+    ProofReuseRequest, ProofReuseWitness, format_reuse, _reuse_primary_bound,
+    _reuse_reviewed,
 )
 from .parallel_verification import (
     EXECUTION_CONTRACT, ProbeError, effective_pytest_profile, git_executable,
@@ -2414,3 +2416,112 @@ def observe_proof_applicability(repository: Path, *, expected: ProofApplicabilit
             witness = ProofApplicabilityWitness(1, expected, "NOT_ESTABLISHED", "APPLICABILITY_PROJECTION_BOUND",
                 None, None, None, tuple(_app_unknown(name, "PROJECTION_UNAVAILABLE") for name in APPLICABILITY_DIMENSIONS), source_snapshot)
         return witness
+
+
+def _reuse_scope(reader: _ApplicabilityReader, base_tree: str, candidate_tree: str, allowed: tuple[str, ...]):
+    """Bounded immutable tree comparison; no graph, worktree or diff driver."""
+    pending, entries = [(base_tree, candidate_tree, "", 0)], 0
+    while pending:
+        left, right, prefix, depth = pending.pop()
+        if left == right:
+            continue
+        if depth > 32:
+            raise VerificationContractError("REUSE_SCOPE_DEPTH_BOUND")
+        before, after = ({} if tree is None else reader.tree(tree) for tree in (left, right))
+        for name in sorted(before.keys() | after.keys()):
+            entries += 1
+            if entries > 8192:
+                raise VerificationContractError("REUSE_SCOPE_ENTRY_BOUND")
+            old, new = before.get(name), after.get(name)
+            if old == new:
+                continue
+            path = _app_path(prefix + name)
+            old_mode, old_sha = old or (None, None)
+            new_mode, new_sha = new or (None, None)
+            if old_mode == b"40000" or new_mode == b"40000":
+                if old_mode not in (None, b"40000") or new_mode not in (None, b"40000"):
+                    raise VerificationContractError("REUSE_SCOPE_FILE_DIRECTORY_SUBSTITUTION")
+                pending.append((old_sha, new_sha, path + "/", depth + 1))
+            elif (old_mode not in (None, b"100644", b"100755")
+                    or new_mode not in (None, b"100644", b"100755") or path not in allowed):
+                raise VerificationContractError("REUSE_CANDIDATE_OUTSIDE_IMMUTABLE_TASK_SCOPE")
+
+
+def _reuse_binding(repository: Path, expected: ProofReuseRequest, app: ProofApplicabilityWitness) -> str:
+    """Read the exact already-authenticated semantic blobs, never caller proof."""
+    from dataclasses import asdict
+    from .proof_coverage_contract import validate_proof_mapping
+    from .review_transport import _l1_yaml_text
+    from .task import parse_task
+
+    if not _reuse_primary_bound(app):
+        raise VerificationContractError("REUSE_PRIMARY_TASK_REVISION_BASE_OR_IMMUTABLE_SCOPE_MISMATCH")
+    reader = _ApplicabilityReader(repository)
+    sources = _original_decode(app.authority.binding_json.encode("ascii"))["sources"]
+    contents = {}
+    for name in ("task", "contract", "mapping"):
+        content = reader.object(sources[name]["blob_sha"], "blob")
+        if hashlib.sha256(content).hexdigest() != sources[name]["sha256"]:
+            raise VerificationContractError("REUSE_REVIEWED_SEMANTIC_BYTES_CONFLICT")
+        contents[name] = content
+    task = parse_task(_l1_yaml_text(contents["task"]))
+    coverage = validate_proof_mapping(_original_decode(contents["contract"]), _original_decode(contents["mapping"]),
+        expected_task=dict(task_id=task.task_id, revision=task.revision, envelope_digest=app.target.task_sha256,
+                           acceptance_ids=sorted(ac.id for ac in task.acceptance)),
+        expected_mapping=_app_fields(expected.applicability.mapping))
+    obligation = next(o for o in coverage.contract.obligations if o.id == expected.applicability.obligation_id)
+    entry = next(e for e in coverage.mapping.entries if e.obligation_id == obligation.id)
+    proof = next(p for p in coverage.mapping.proofs if p.id == entry.proof_id)
+    binding = _original_json(_app_plain(dict(obligation=asdict(obligation), proof=asdict(proof), entry=asdict(entry))))
+    _reuse_reviewed(binding, expected)
+    base_tree, _ = reader.commit(app.source.base_sha)
+    for candidate_tree in (app.source.identity.tree_sha, app.target.identity.tree_sha):
+        _reuse_scope(reader, base_tree, candidate_tree, task.scope.modify)
+    return binding
+
+
+def observe_proof_reuse(repository: Path, *, expected: ProofReuseRequest) -> ProofReuseWitness:
+    """Explicit L2-03 Runtime read; no execution, discharge or lifecycle writes.
+
+    This API takes locators, never a parsed/cached VALID or eligibility witness.
+    Correction authority cannot be inferred from a primary-shaped admission.
+    Existing correction readers fetch objects and do not establish the complete
+    native positive L2 target binding; do not call them or authorize by analogy.
+    """
+    if type(expected) is not ProofReuseRequest:
+        raise VerificationContractError("EXACT_TYPED_REUSE_REQUEST_REQUIRED")
+    expected.__post_init__()
+    app, snapshot, binding = None, None, None
+    authentication, reason = "NOT_ESTABLISHED", "REUSE_AUTHORITY_NOT_ESTABLISHED"
+    try:
+        repository = Path(repository).absolute()
+        app = observe_proof_applicability(repository, expected=expected.applicability)
+        snapshot = app.source_snapshot
+        if expected.operation != "PRIMARY":
+            raise VerificationContractError(expected.operation + "_NATIVE_CORRECTION_LINEAGE_NOT_ESTABLISHED")
+        if app.authentication != "AUTHENTICATED":
+            raise VerificationContractError("REUSE_APPLICABILITY_AUTHORITY_NOT_ESTABLISHED")
+        if snapshot != expected.original:
+            raise VerificationContractError("REUSE_ORIGINAL_PROOF_OR_RAW_PIN_CONFLICT")
+        transport = _app_transport(repository)
+        source_refs = _app_target_refs(repository, transport[2], expected.applicability.source.run_id)
+        if source_refs != app.source.source_refs:
+            raise VerificationContractError("REUSE_SOURCE_COMPETING_CORRECTION_OR_RECOVERY_REFS")
+        binding = _reuse_binding(repository, expected, app)
+        # L2-03 owns this fresh boundary check. Replaying even a previously
+        # authentic VALID is insufficient after extra semantic/scope reads.
+        refreshed = observe_proof_applicability(repository, expected=expected.applicability)
+        if (refreshed != app or _app_transport(repository) != transport
+                or _app_target_refs(repository, transport[2], expected.applicability.source.run_id) != source_refs):
+            app, snapshot, binding = refreshed, refreshed.source_snapshot, None
+            raise VerificationContractError("REUSE_SOURCE_TARGET_OR_REVIEW_CHANGED_AT_BOUNDARY")
+        authentication, reason = "AUTHENTICATED", "EXACT_CURRENT_PRIMARY_SOURCE_OBLIGATION_AND_REVIEWED_PROOF"
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, StopIteration, UnicodeError,
+            RuntimeError, RecursionError, yaml.YAMLError) as exc:
+        reason = str(exc)[:256] if type(exc) is VerificationContractError else "REUSE_AUTHORITY_OR_INPUT_UNAVAILABLE"
+    witness = ProofReuseWitness(1, expected, authentication, reason, app, binding, snapshot)
+    try:
+        format_reuse(witness)
+    except VerificationContractError:
+        witness = ProofReuseWitness(1, expected, "NOT_ESTABLISHED", "REUSE_PROJECTION_BOUND", None, None, snapshot)
+    return witness

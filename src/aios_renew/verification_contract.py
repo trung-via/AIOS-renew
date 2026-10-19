@@ -1875,3 +1875,316 @@ def parse_applicability(content: bytes) -> ProofApplicabilityWitness:
     if _original_json(stored) != _original_json(expected):
         raise VerificationContractError("applicability outcome or authority promotion")
     return witness
+
+
+# L2-03 is a nondefault observation, not a proof discharge or execution policy.
+REUSE_VERSION = 1
+REUSE_REQUEST_FORMAT = "AIOS_L2_REUSE_REQUEST"
+REUSE_FORMAT = "AIOS_L2_REUSE"
+
+
+@dataclass(frozen=True, slots=True)
+class ReuseCorrectionLocator:
+    """Expected correction pins only; no field grants correction authority.
+
+    Native correction admissions are not supported by the L2-02 read adapter.
+    Keeping exact locators lets this boundary reject rather than reinterpret
+    correction requests. Missing locators also produce NOT_ESTABLISHED.
+    """
+
+    predecessor_run_id: str
+    predecessor_subject_sha: str
+    predecessor_artifacts_sha: str
+    terminal_sha: str
+    authorization_sha: str
+    action: str
+    scope_sha256: str
+    original_verification_sha256: str
+    affected_verification_sha256: str
+    finding_ids: tuple[str, ...]
+    delta_review_sha: str | None
+
+    def __post_init__(self):
+        if (type(self.predecessor_run_id) is not str or len(self.predecessor_run_id) > 88
+                or re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", self.predecessor_run_id) is None):
+            raise VerificationContractError("invalid reuse predecessor RUN")
+        for sha in (self.predecessor_subject_sha, self.predecessor_artifacts_sha,
+                    self.terminal_sha, self.authorization_sha):
+            _original_hash(sha, 40)
+        for sha in (self.scope_sha256, self.original_verification_sha256, self.affected_verification_sha256):
+            _original_hash(sha)
+        _app_id(self.action)
+        if self.finding_ids:
+            _app_ids(self.finding_ids)
+        elif type(self.finding_ids) is not tuple:
+            raise VerificationContractError("immutable reuse finding identities required")
+        if self.delta_review_sha is not None:
+            _original_hash(self.delta_review_sha, 40)
+
+
+@dataclass(frozen=True, slots=True)
+class ProofReuseRequest:
+    version: int
+    applicability: ProofApplicabilityRequest
+    original: ApplicabilitySourceSnapshot
+    proof_id: str
+    proof_sha256: str
+    operation: str
+    correction: ReuseCorrectionLocator | None = None
+
+    def __post_init__(self):
+        if type(self.version) is not int or self.version != REUSE_VERSION:
+            raise VerificationContractError("unsupported reuse version")
+        for item, cls in ((self.applicability, ProofApplicabilityRequest), (self.original, ApplicabilitySourceSnapshot)):
+            if type(item) is not cls:
+                raise VerificationContractError("exact typed reuse locators required")
+            item.__post_init__()
+        if self.original.identity != self.applicability.source:
+            raise VerificationContractError("reuse original source substitution")
+        _app_id(self.proof_id)
+        _original_hash(self.proof_sha256)
+        if type(self.operation) is not str or self.operation not in {"PRIMARY", "REPAIR", "REMEDIATION"}:
+            raise VerificationContractError("invalid reuse operation")
+        if self.correction is not None:
+            if type(self.correction) is not ReuseCorrectionLocator or self.operation == "PRIMARY":
+                raise VerificationContractError("reuse correction action switching")
+            self.correction.__post_init__()
+
+
+def _reuse_snapshot_data(value):
+    return None if value is None else {**_app_fields(value), "identity": _app_fields(value.identity)}
+
+
+def _reuse_snapshot(value):
+    item = dict(_app_exact(value, ApplicabilitySourceSnapshot.__dataclass_fields__))
+    item["identity"] = OriginalEvidenceRequest(**_app_exact(item["identity"], OriginalEvidenceRequest.__dataclass_fields__))
+    return ApplicabilitySourceSnapshot(**item)
+
+
+def reuse_request_data(value: ProofReuseRequest) -> dict:
+    if type(value) is not ProofReuseRequest:
+        raise VerificationContractError("typed reuse request required")
+    value.__post_init__()
+    correction = None if value.correction is None else {
+        **_app_fields(value.correction), "finding_ids": list(value.correction.finding_ids)}
+    return dict(format=REUSE_REQUEST_FORMAT, version=value.version,
+        applicability=applicability_request_data(value.applicability), original=_reuse_snapshot_data(value.original),
+        proof_id=value.proof_id, proof_sha256=value.proof_sha256, operation=value.operation, correction=correction)
+
+
+def format_reuse_request(value: ProofReuseRequest) -> bytes:
+    return _original_json(reuse_request_data(value)).encode("ascii")
+
+
+def _reuse_decode(content: bytes):
+    value = _original_decode(content)
+    # L2-03 has one wire encoding: rejects whitespace, alternate escapes,
+    # non-ASCII encodings, floats, duplicate keys, BOMs and trailing material.
+    if _original_json(value).encode("ascii") != content:
+        raise VerificationContractError("noncanonical reuse encoding")
+    return value
+
+
+def parse_reuse_request(content: bytes) -> ProofReuseRequest:
+    """Strict structural decoding; neither pins nor parsed witnesses authorize."""
+    data = dict(_app_exact(_reuse_decode(content), (*ProofReuseRequest.__dataclass_fields__, "format")))
+    if data.pop("format") != REUSE_REQUEST_FORMAT:
+        raise VerificationContractError("invalid reuse request format")
+    data["applicability"] = parse_applicability_request(_original_json(data["applicability"]).encode("ascii"))
+    data["original"] = _reuse_snapshot(data["original"])
+    if data["correction"] is not None:
+        item = dict(_app_exact(data["correction"], ReuseCorrectionLocator.__dataclass_fields__))
+        if type(item["finding_ids"]) is not list:
+            raise VerificationContractError("invalid reuse finding population")
+        item["finding_ids"] = tuple(item["finding_ids"])
+        data["correction"] = ReuseCorrectionLocator(**item)
+    return ProofReuseRequest(**data)
+
+
+def _reuse_primary_bound(app: ProofApplicabilityWitness) -> bool:
+    source, target = app.source, app.target
+    return (source is not None and target is not None
+        and (source.identity.task_id, source.identity.task_revision, source.base_sha,
+             source.task_blob_sha, source.task_sha256) == (
+             target.identity.task_id, target.identity.task_revision, target.identity.base_sha,
+             target.task_blob_sha, target.task_sha256))
+
+
+def _reuse_reviewed(value: str, request: ProofReuseRequest) -> dict:
+    """Check the retained normalized binding; this does not authenticate review."""
+    if type(value) is not str:
+        raise VerificationContractError("invalid reviewed reuse binding")
+    data = _app_exact(_reuse_decode(value.encode("ascii")), ("obligation", "proof", "entry"))
+    from .proof_coverage_contract import ProofObligation, ProofDescriptor, ProofMappingEntry, ProofConditions, SemanticClaim, Provenance
+    obligation = _app_exact(data["obligation"], ProofObligation.__dataclass_fields__)
+    proof = _app_exact(data["proof"], ProofDescriptor.__dataclass_fields__)
+    entry = _app_exact(data["entry"], ProofMappingEntry.__dataclass_fields__)
+    for item in (obligation, proof):
+        _app_exact(item["conditions"], ProofConditions.__dataclass_fields__)
+        _app_exact(item["provenance"], Provenance.__dataclass_fields__)
+    _app_exact(obligation["claim"], SemanticClaim.__dataclass_fields__)
+    if type(proof["claims"]) is not list or not proof["claims"]:
+        raise VerificationContractError("invalid reviewed reuse claims")
+    for claim in proof["claims"]:
+        _app_exact(claim, SemanticClaim.__dataclass_fields__)
+    app = request.applicability
+    if (proof["id"] != request.proof_id or hashlib.sha256(_original_json(proof).encode("ascii")).hexdigest() != request.proof_sha256
+            or hashlib.sha256(_original_json(obligation).encode("ascii")).hexdigest() != app.obligation_digest
+            or obligation["id"] != app.obligation_id or type(obligation["revision"]) is not int
+            or obligation["revision"] != app.obligation_revision or obligation["acceptance_ids"] != list(app.acceptance_ids)
+            or obligation["blocking"] is not True or obligation["kind"] != "candidate" or proof["kind"] != "candidate"
+            or _original_json(proof["conditions"]) != _original_json(obligation["conditions"])
+            or type(proof["claims"]) is not list or obligation["claim"] not in proof["claims"]
+            or _original_json(entry) != _original_json(dict(obligation_id=app.obligation_id,
+                obligation_revision=app.obligation_revision, obligation_digest=app.obligation_digest, proof_id=request.proof_id))):
+        raise VerificationContractError("reviewed reuse proof substitution")
+    return data
+
+
+def _reuse_source_satisfaction(app: ProofApplicabilityWitness, reviewed: dict) -> tuple[str, str]:
+    """Stricter than exit zero or VALID; required original phases cannot be waived."""
+    source = app.source
+    if source.outcome in {"FAIL", "ERROR"}:
+        return "UNSATISFACTORY", "ORIGINAL_" + source.outcome
+    facts = {d.name: d for d in source.dimensions}
+    def actual(name):
+        fact = facts[name]
+        return None if fact.status != "OBSERVED" else _original_decode(fact.value_json.encode("ascii"))
+    if (source.outcome != "PASS" or actual("completeness") is not True or actual("stability") is not False
+            or actual("prior_raw_digest") != source.raw_sha256):
+        return "NOT_ESTABLISHED", "COMPLETE_STABLE_ORIGINAL_PASS_NOT_ESTABLISHED"
+    conditions = reviewed["proof"]["conditions"]
+    required = {"population", "collection", "phase_outcomes", "completeness", "stability", "evidence_kind_schema"}
+    if (any(d.status != "EQUIVALENT" for d in app.dimensions if d.name in required)
+            or conditions.get("evidence_kind") != "VERIFICATION" or conditions.get("evidence_schema") != "V2"):
+        return "NOT_ESTABLISHED", "REQUIRED_ACTUAL_SEMANTIC_COVERAGE_NOT_ESTABLISHED"
+    reports, population, collection = actual("phase_outcomes"), actual("population"), actual("collection")
+    diagnostics, profile = actual("condition_diagnostics"), actual("execution_profile")
+    if (type(diagnostics) is not dict or diagnostics.get("errors") != []
+            or type(profile) is not dict or profile.get("collect_only") is not False):
+        return "NOT_ESTABLISHED", "ORIGINAL_DIAGNOSTICS_OR_EXECUTION_NOT_ESTABLISHED"
+    try:
+        nodes = validate_exact_collection(collection)
+    except (VerificationContractError, TypeError, KeyError):
+        return "NOT_ESTABLISHED", "ORIGINAL_COLLECTION_NOT_ESTABLISHED"
+    if (type(reports) is not list or not reports or type(population) is not list or list(nodes) != population
+            or type(conditions.get("population_size")) is not int or len(nodes) != conditions["population_size"]):
+        return "NOT_ESTABLISHED", "ORIGINAL_POPULATION_NOT_ESTABLISHED"
+    phases = {node: {} for node in nodes}
+    for report in reports:
+        if (type(report) is not dict or type(report.get("nodeid")) is not str or report["nodeid"] not in phases
+                or type(report.get("phase")) is not str or report["phase"] not in {"setup", "call", "teardown"}
+                or report["phase"] in phases[report["nodeid"]] or report.get("outcome") != "PASS"):
+            return "UNSATISFACTORY", "ORIGINAL_PHASE_NOT_SATISFACTORY"
+        phases[report["nodeid"]][report["phase"]] = report["outcome"]
+    if any(set(value) != {"setup", "call", "teardown"} for value in phases.values()):
+        return "NOT_ESTABLISHED", "ORIGINAL_REQUIRED_PHASES_MISSING"
+    return "SATISFACTORY", "COMPLETE_STABLE_ORIGINAL_PASS_WITH_EXACT_PHASE_POPULATION"
+
+
+@dataclass(frozen=True, slots=True)
+class ProofReuseWitness:
+    version: int
+    request: ProofReuseRequest
+    authentication: str
+    reason: str
+    applicability: ProofApplicabilityWitness | None
+    reviewed_proof_json: str | None
+    source_snapshot: ApplicabilitySourceSnapshot | None
+
+    def __post_init__(self):
+        if type(self.version) is not int or self.version != REUSE_VERSION or type(self.request) is not ProofReuseRequest:
+            raise VerificationContractError("invalid typed reuse witness")
+        self.request.__post_init__()
+        _original_text(self.reason, 256)
+        if type(self.authentication) is not str or self.authentication not in {"AUTHENTICATED", "NOT_ESTABLISHED"}:
+            raise VerificationContractError("invalid reuse authentication")
+        if self.applicability is not None:
+            if type(self.applicability) is not ProofApplicabilityWitness:
+                raise VerificationContractError("typed applicability observation required")
+            self.applicability.__post_init__()
+            if self.applicability.request != self.request.applicability or self.source_snapshot != self.applicability.source_snapshot:
+                raise VerificationContractError("reuse applicability substitution")
+        if self.source_snapshot is not None:
+            if type(self.source_snapshot) is not ApplicabilitySourceSnapshot:
+                raise VerificationContractError("typed reuse source snapshot required")
+            self.source_snapshot.__post_init__()
+            if self.source_snapshot.identity != self.request.applicability.source:
+                raise VerificationContractError("reuse source relabeling")
+        if self.reviewed_proof_json is not None:
+            _reuse_reviewed(self.reviewed_proof_json, self.request)
+        if self.authentication == "AUTHENTICATED" and (
+                self.applicability is None or self.applicability.authentication != "AUTHENTICATED"
+                or self.source_snapshot != self.request.original or self.reviewed_proof_json is None
+                or self.request.operation != "PRIMARY" or not _reuse_primary_bound(self.applicability)):
+            raise VerificationContractError("reuse authority or operation promotion")
+
+    @property
+    def operation_authorization(self) -> str:
+        return "AUTHORIZED_PRIMARY" if self.authentication == "AUTHENTICATED" else "NOT_ESTABLISHED"
+
+    @property
+    def source_satisfaction(self) -> tuple[str, str]:
+        if self.authentication != "AUTHENTICATED":
+            return "NOT_ESTABLISHED", "REUSE_AUTHORITY_NOT_ESTABLISHED"
+        return _reuse_source_satisfaction(self.applicability, _reuse_reviewed(self.reviewed_proof_json, self.request))
+
+    @property
+    def outcome(self) -> str:
+        if self.authentication != "AUTHENTICATED" or self.applicability.validity == "UNKNOWN":
+            return "BLOCKED"
+        if self.applicability.validity == "INVALIDATED":
+            return "INVALIDATED"
+        return "REUSE_ELIGIBLE" if self.source_satisfaction[0] == "SATISFACTORY" else "BLOCKED"
+
+
+def reuse_data(value: ProofReuseWitness) -> dict:
+    if type(value) is not ProofReuseWitness:
+        raise VerificationContractError("typed reuse witness required")
+    value.__post_init__()
+    app, snapshot = value.applicability, value.source_snapshot
+    invalidated = value.outcome == "INVALIDATED"
+    source = None if app is None else app.source
+    facts = {} if source is None else {d.name: d for d in source.dimensions}
+    def observed(name):
+        fact = facts.get(name)
+        return None if fact is None or fact.status != "OBSERVED" else _original_decode(fact.value_json.encode("ascii"))
+    return dict(format=REUSE_FORMAT, version=value.version, request=reuse_request_data(value.request),
+        authentication=value.authentication, reason=value.reason,
+        applicability=None if app is None else applicability_data(app),
+        reviewed_proof_json=value.reviewed_proof_json, source_snapshot=_reuse_snapshot_data(snapshot),
+        applicability_state="UNKNOWN" if app is None else app.validity,
+        source_outcome="UNKNOWN" if snapshot is None else snapshot.outcome,
+        source_complete=observed("completeness"), source_unstable=observed("stability"),
+        source_satisfaction=value.source_satisfaction[0], satisfaction_reason=value.source_satisfaction[1],
+        satisfactory=value.source_satisfaction[0] == "SATISFACTORY", operation_authorization=value.operation_authorization,
+        outcome=value.outcome, target_execution="NOT_ASSERTED", target_acceptance="NOT_ASSERTED",
+        execution_permission="NOT_AUTHORIZED", consumer_gate="L3_REAUTHENTICATION_REQUIRED",
+        affected_dimensions=[d.name for d in app.dimensions if d.status == "CHANGED"] if invalidated else [],
+        affected_proofs=[value.request.proof_id] if invalidated else [],
+        outstanding_obligations=[value.request.applicability.obligation_id]
+            if value.authentication == "AUTHENTICATED" and value.outcome != "REUSE_ELIGIBLE" else [])
+
+
+def format_reuse(value: ProofReuseWitness) -> bytes:
+    """Pure bounded serialization; a parsed positive is never Runtime authority."""
+    return _original_json(reuse_data(value)).encode("ascii")
+
+
+def parse_reuse(content: bytes) -> ProofReuseWitness:
+    data = _reuse_decode(content)
+    if type(data) is not dict:
+        raise VerificationContractError("invalid reuse witness shape")
+    fields = ProofReuseWitness.__dataclass_fields__
+    if not set(fields) <= set(data):
+        raise VerificationContractError("missing reuse witness fields")
+    raw = {key: data[key] for key in fields}
+    raw["request"] = parse_reuse_request(_original_json(raw["request"]).encode("ascii"))
+    if raw["applicability"] is not None:
+        raw["applicability"] = parse_applicability(_original_json(raw["applicability"]).encode("ascii"))
+    if raw["source_snapshot"] is not None:
+        raw["source_snapshot"] = _reuse_snapshot(raw["source_snapshot"])
+    witness = ProofReuseWitness(**raw)
+    if format_reuse(witness) != content:
+        raise VerificationContractError("reuse fields, outcome or authority promotion")
+    return witness
