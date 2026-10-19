@@ -2702,3 +2702,207 @@ def plan_candidate_proofs(repository: Path, *, expected: ProofSchedulerRequest) 
         except (VerificationContractError, ValueError, TypeError):
             plan = ProofSchedulerPlan(1, expected, "NOT_ESTABLISHED", "SCHEDULER_PROJECTION_BOUND", None, None, ())
         return plan
+
+# L3-02: native proof capture/observation helpers, subordinate to RuntimeCompletion.
+# No policy registration, baseline derivation, retry or caller-provided evidence.
+def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=None):
+    from .verification_contract import (
+        CHECKPOINT_EXECUTION_FORMAT, format_checkpoint_request, format_scheduler_plan,
+        scheduler_plan_data,
+    )
+    format_checkpoint_request(request)
+    plan = plan_candidate_proofs(repository, expected=request.scheduler)
+    if plan.authentication != "AUTHENTICATED":
+        raise VerificationContractError("CHECKPOINT_" + plan.reason)
+    if expected_plan is not None and format_scheduler_plan(plan) != expected_plan:
+        raise VerificationContractError("CHECKPOINT_PLAN_OR_NATIVE_ROOTS_MOVED")
+    if _original_git(repository, "status", "--porcelain"):
+        raise VerificationContractError("CHECKPOINT_REQUIRES_CLEAN_COMMITTED_CANDIDATE")
+    reader = _ApplicabilityReader(repository)
+    target, task, _ = _app_target(repository, request.scheduler.target, reader)
+    if request.scheduler.sources:
+        # L2 locators remain inspection facts. They cannot select a fresh
+        # execution or impersonate a current-RUN native execution receipt.
+        raise VerificationContractError("CHECKPOINT_REQUIRES_REVIEWED_CURRENT_NATIVE_EXECUTION_BINDING")
+    authority = _original_decode(plan.authority_json.encode("ascii"))
+    reviewed_tree, _ = reader.commit(authority["review_candidate_sha"])
+    main_tree, _ = reader.commit(authority["main_sha"])
+    decision_tree, _ = reader.commit(authority["decision_sha"])
+    artifacts_tree, _ = reader.commit(authority["artifacts_sha"])
+    package = _original_decode(reader.blob(artifacts_tree, ".ai/transport/result.json"))
+    review_source = authority["binding"]["sources"]["review_task"]
+    from .task import parse_task
+    review_task = parse_task(reader.object(review_source["blob_sha"], "blob").decode("utf-8"))
+    from .publication import _run_from_data
+    review_run = _run_from_data(_original_decode(reader.blob(artifacts_tree, ".ai/transport/run.json")), "L3-02 review")
+    base_tree, _ = reader.commit(review_run.base_sha)
+    commands = task.verification.required
+    if not commands or len(commands) > 256 or len(set(commands)) != len(commands):
+        raise VerificationContractError("CHECKPOINT_EXACT_AUTHORED_COMMAND_POPULATION_REQUIRED")
+    manifests, indices = {}, []
+    for unit in scheduler_plan_data(plan)["units"]:
+        proof = unit["proof"]
+        if proof["kind"] != "candidate":
+            raise VerificationContractError("BR_1_THROUGH_BR_6_NATIVE_ATTESTATION_NOT_ESTABLISHED")
+        match = re.fullmatch(r"l3e:([0-9a-f]{64})", proof["conditions"]["test_ref"])
+        if match is None:
+            raise VerificationContractError("CHECKPOINT_REVIEWED_EXECUTION_CONDITIONS_NOT_ESTABLISHED")
+        path = "docs/aios-proof-contracts/l3-executed/" + match[1] + ".json"
+        blob = reader.path(reviewed_tree, path)
+        raw = reader.object(blob, "blob")
+        if (hashlib.sha256(raw).hexdigest() != match[1] or path not in review_task.scope.modify
+                or path not in package["result"]["changed_files"]
+                or reader.path(base_tree, path, missing_ok=True) == blob
+                or any(reader.path(tree, path) != blob for tree in (main_tree, decision_tree))):
+            raise VerificationContractError("CHECKPOINT_CONDITIONS_OUTSIDE_FULL_REVIEWED_DELTA")
+        manifest = _app_exact(_original_decode(raw), ("format", "version", "proof_id", "claims", "conditions",
+            "command_index", "profile", "toolchain", "collection"))
+        conditions = {k: v for k, v in proof["conditions"].items() if k != "test_ref"}
+        index = manifest["command_index"]
+        if (raw != _original_json(manifest).encode("ascii") or manifest["format"] != CHECKPOINT_EXECUTION_FORMAT
+                or type(manifest["version"]) is not int or manifest["version"] != 1
+                or manifest["proof_id"] != proof["id"] or manifest["claims"] != proof["claims"]
+                or manifest["conditions"] != conditions or type(index) is not int or not 0 <= index < len(commands)
+                or conditions["evidence_kind"] != "VERIFICATION" or conditions["evidence_schema"] != "V2"):
+            raise VerificationContractError("CHECKPOINT_REVIEWED_FULL_PROOF_BINDING_CONFLICT")
+        coverage = parse_pytest_coverage(commands[index])
+        if commands[index] == SELECTED_FULL_SUITE_COMMAND or coverage is None or coverage.measurement:
+            raise VerificationContractError("CHECKPOINT_NATIVE_COMPLETE_OBSERVER_REQUIRED")
+        nodes = validate_exact_collection(manifest["collection"])
+        profile, toolchain = _v2_profile(repository, request.scheduler.subject_sha, commands[index], os.environ), _v2_toolchain()
+        if (manifest["profile"] != profile or manifest["toolchain"] != toolchain
+                or profile["collect_only"] is not False or len(nodes) != conditions["population_size"]
+                or not nodes or conditions["worker_mode"] != ("parallel" if profile["workers"] else "serial")
+                or conditions["workers"] != (profile["workers"] or 1)):
+            raise VerificationContractError("CHECKPOINT_NATIVE_CONDITIONS_STALE_OR_UNKNOWN")
+        manifests[proof["id"]] = (unit, manifest, match[1])
+        indices.append(index)
+    if sorted(indices) != list(range(len(commands))):
+        raise VerificationContractError("CHECKPOINT_DISTINCT_FULL_PROOF_AND_COMMAND_COVERAGE_REQUIRED")
+    return plan, task, manifests
+
+
+def _execute_checkpoint_verification(repository: Path, *, request, task, manifests,
+                                     raw_directory: Path, start_order: int, runner, timeout_seconds: float,
+                                     capture_bytes_remaining: int):
+    """The existing verifier executes only the exact already-authored commands.
+
+    This is observation instrumentation, not V2 derivation: no early probes,
+    base work, fallback, semantic selection or second equivalent execution.
+    Only RuntimeCompletion calls this after its durable effect reservation.
+    """
+    env = dict(os.environ)
+    evidence = []
+    with materialize_verification_subject(repository, run_id=request.scheduler.target.run_id,
+            subject_sha=request.scheduler.subject_sha) as subject:
+        for index, command in enumerate(task.verification.required):
+            _, manifest, _ = next(v for v in manifests.values() if v[1]["command_index"] == index)
+            profile, toolchain = manifest["profile"], manifest["toolchain"]
+            order = start_order + index + 1
+            output = raw_directory / f"observation-{order:03d}.json"
+            command_env = dict(env)
+            command_env.update(PYTHONDONTWRITEBYTECODE="1", AIOS_BP_V4_PLUGIN_OUTPUT=str(output),
+                AIOS_VERIFY_SUBJECT_SHA=request.scheduler.subject_sha,
+                AIOS_V2_PROFILE=json.dumps({k: profile[k] for k in (
+                    "profile", "workers", "distribution", "max_worker_restart", "collect_only")}))
+            command_env["PYTHONPATH"] = os.pathsep.join((str(subject / "src"), str(subject / "tests"), env.get("PYTHONPATH", "")))
+            if command != SELECTED_FULL_SUITE_COMMAND:
+                coverage = parse_pytest_coverage(command)
+                if coverage is None or coverage.measurement:
+                    raise VerificationContractError("CHECKPOINT_NATIVE_COMPLETE_OBSERVER_REQUIRED")
+                command_env.pop("PYTEST_ADDOPTS", None)
+                command_env["PYTEST_PLUGINS"] = ",".join(filter(None, (env.get("PYTEST_PLUGINS", ""), "bp_v4_probe_plugin")))
+                command_env["AIOS_V2_EXACT_COLLECTION"] = "1"
+            started = time.monotonic()
+            def bounded_runner(argv, **kwargs):
+                return runner(argv, timeout=max(0.001, timeout_seconds), **kwargs)
+            item = execute_verification((command,), run_id=request.scheduler.target.run_id,
+                subject_sha=request.scheduler.subject_sha, repository=subject, raw_directory=raw_directory,
+                runner=bounded_runner, environment=command_env, stop_on_failure=False, start_order=order)[0]
+            timeout_seconds -= time.monotonic() - started
+            if timeout_seconds <= 0:
+                raise RuntimeVerificationError("checkpoint time accounting exhausted", evidence=(*evidence, item))
+            binding = dict(subject_sha=item.subject_sha, base_sha=request.scheduler.target.base_sha,
+                tree_sha=request.scheduler.target.tree_sha, command=command, profile=profile, toolchain=toolchain,
+                envelope_digest=verification_digest(dict(authored=list(task.verification.required), operation="PRIMARY",
+                                                        modification_scope=sorted(task.scope.modify))),
+                changed_files_digest=verification_digest(sorted(filter(None, _git(repository, "diff", "--name-only",
+                    "--no-renames", "-z", request.scheduler.target.base_sha, item.subject_sha).split("\0")))),
+                failure_set_digest=verification_digest([]))
+            observation = _v2_observation(item, output, binding=binding, selected=command == SELECTED_FULL_SUITE_COMMAND)
+            raw = _original_local(Path(item.raw_path), MAX_ORIGINAL_RAW_BYTES)
+            record = dict(policy=MINIMUM_SUFFICIENT_V2, disposition="EXECUTED", binding=binding, candidate=observation,
+                candidate_digest=verification_digest(observation), evidence_id=item.evidence_id, run_id=item.run_id,
+                raw_path=item.raw_path, raw_digest=hashlib.sha256(raw).hexdigest())
+            evidence.append(replace(item, verification=record))
+            native_size = len(raw) if command == SELECTED_FULL_SUITE_COMMAND else len(_original_local(output, MAX_CANONICAL_BYTES))
+            capture_bytes_remaining -= len(raw) + native_size
+            if capture_bytes_remaining < 0:
+                raise RuntimeVerificationError("checkpoint capture accounting exhausted", evidence=evidence)
+        if (_git(subject, "rev-parse", "HEAD") != request.scheduler.subject_sha or _git(subject, "status", "--porcelain")):
+            raise RuntimeVerificationError("checkpoint verification changed committed subject", evidence=evidence)
+    return tuple(evidence)
+
+
+def _checkpoint_native_facts(repository: Path, *, request, manifests, evidence, raw_directory: Path):
+    """Reobserve immutable raw and actual full native proof; never accept flags."""
+    from .runtime import evidence_data
+    from .artifacts import validate_evidence
+    by_command = {item.source.command: item for item in evidence}
+    if len(by_command) != len(evidence) or len(evidence) != len(manifests):
+        raise VerificationContractError("CHECKPOINT_MISSING_OR_DUPLICATE_NATIVE_PROOF")
+    facts = []
+    for proof_id, (unit, manifest, manifest_digest) in sorted(manifests.items()):
+        # The reviewed command index was independently bound against TASK above.
+        matches = [item for item in evidence if item.verification is not None
+            and item.verification.get("binding", {}).get("profile") == manifest["profile"]
+            and item.source.command == _checkpoint_task_command(repository, request, manifest["command_index"])]
+        if len(matches) != 1:
+            raise VerificationContractError("CHECKPOINT_REVIEWED_EXECUTION_MISSING")
+        item = matches[0]
+        validate_evidence(evidence_data(item))
+        record = item.verification
+        observation = validate_observation(record.get("candidate"))
+        expected_path = raw_directory / (item.evidence_id + ".raw")
+        raw = _original_local(expected_path, MAX_ORIGINAL_RAW_BYTES)
+        digest = hashlib.sha256(raw).hexdigest()
+        order = int(item.evidence_id.rsplit("-V", 1)[1])
+        output = raw_directory / f"observation-{order:03d}.json"
+        native_raw = raw if item.source.command == SELECTED_FULL_SUITE_COMMAND else _original_local(output, MAX_CANONICAL_BYTES)
+        if _v2_observation(item, output, binding=record["binding"],
+                selected=item.source.command == SELECTED_FULL_SUITE_COMMAND) != observation:
+            raise VerificationContractError("CHECKPOINT_ORIGINAL_NATIVE_OBSERVATION_CHANGED")
+        if ((item.run_id, item.subject_sha, item.type) != (request.scheduler.target.run_id,
+                request.scheduler.subject_sha, "VERIFICATION") or item.raw_path != str(expected_path)
+                or not raw.startswith(b"STDOUT\n") or b"\nSTDERR\n" not in raw
+                or record.get("disposition") != "EXECUTED" or "reuse" in record or "early_probe" in record
+                or (record.get("evidence_id"), record.get("run_id"), record.get("raw_path"), record.get("raw_digest")) != (
+                    item.evidence_id, item.run_id, item.raw_path, digest)
+                or record["binding"]["base_sha"] != request.scheduler.target.base_sha
+                or record["binding"]["tree_sha"] != request.scheduler.target.tree_sha
+                or observation["profile"] != manifest["profile"] or observation["toolchain"] != manifest["toolchain"]
+                or observation.get("collection") != manifest["collection"] or observation.get("errors") != []):
+            raise VerificationContractError("CHECKPOINT_NATIVE_EXECUTION_OR_RAW_CHANGED")
+        nodes = validate_exact_collection(manifest["collection"])
+        phases = {node: {} for node in nodes}
+        for report in observation["reports"]:
+            if report["nodeid"] not in phases or report["phase"] not in {"setup", "call", "teardown"}:
+                raise VerificationContractError("CHECKPOINT_PHASE_POPULATION_CONFLICT")
+            phases[report["nodeid"]][report["phase"]] = report["outcome"]
+        if any(set(row) != {"setup", "call", "teardown"} for row in phases.values()):
+            raise VerificationContractError("CHECKPOINT_INCOMPLETE_ACTUAL_PHASES")
+        all_pass = all(value == "PASS" for row in phases.values() for value in row.values())
+        outcome = "FAIL" if item.result.exit_code == 1 else "ERROR" if item.result.exit_code != 0 or not all_pass else "PASS"
+        facts.append(dict(proof_id=proof_id, unit_id=unit["unit_id"], evidence_id=item.evidence_id,
+            evidence_sha256=hashlib.sha256(_original_json(evidence_data(item)).encode("ascii")).hexdigest(),
+            raw_sha256=digest, raw_size=len(raw), manifest_sha256=manifest_digest,
+            native_sha256=hashlib.sha256(native_raw).hexdigest(), native_size=len(native_raw),
+            complete=True, stable=True, outcome=outcome, satisfactory=outcome == "PASS",
+            source_run_id=item.run_id, subject_sha=item.subject_sha))
+    return facts
+
+
+def _checkpoint_task_command(repository, request, index):
+    from .task import parse_task
+    _, content = _original_blob(repository, request.scheduler.target.tree_sha, f".ai/tasks/{request.scheduler.target.task_id}.yaml")
+    return parse_task(content.decode("utf-8")).verification.required[index]

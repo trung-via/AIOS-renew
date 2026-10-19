@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
+import re
+import stat
 import subprocess
+import time
+from contextlib import contextmanager
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -37,6 +43,19 @@ from .verification import (
 from .verification_contract import (
     MINIMUM_SUFFICIENT_V2, VERIFICATION_POLICIES,
     normalize_verification, parse_pytest_coverage,
+    ProofCheckpointRequest, VerificationContractError, _original_json,
+    format_checkpoint_request, checkpoint_request_data, format_scheduler_plan,
+    scheduler_plan_data, parse_checkpoint_request,
+    verification_digest,
+)
+from .intra_run_proof_contract import (
+    RuntimeCheckpoint, TerminalProofDecision, RUNTIME_CHECKPOINT_FORMAT,
+    CHECKPOINT_RESOURCE_LIMITS, checkpoint_resource_facts, checkpoint_population_identity,
+    parse_runtime_checkpoint,
+)
+from .verification import (
+    _checkpoint_reviewed_execution, _execute_checkpoint_verification, _checkpoint_native_facts,
+    _original_git, _original_local, MAX_ORIGINAL_PROOF_BYTES,
 )
 
 
@@ -184,8 +203,290 @@ class RuntimeCompletion:
         self.interruption_phase = "COMPLETION_GATE"
         self.verification_subject_sha: str | None = None
 
-    def complete(
-        self, package: ResultPackage, policy: CompletionPolicy
+    def _checkpoint_directory(self) -> Path:
+        """Derive storage from the existing admitted Git/Runtime owner only."""
+        root = Path(_original_git(self.repo, "rev-parse", "--absolute-git-dir").decode("utf-8").strip()) / "aios"
+        if (self.repo.absolute().resolve(strict=True) != self.repo.absolute()
+                or self.state.verification.absolute() != root / "verification"
+                or self.state.results.absolute() != root / "results"
+                or self.state.failures.absolute() != root / "failures"
+                or self.state.preverification.absolute() != root / "preverification"
+                or self.run_path.absolute() != root / "runs" / (self.run.run_id + ".json")):
+            raise VerificationContractError("CHECKPOINT_EXISTING_RUNTIME_OWNERSHIP_REQUIRED")
+        _checkpoint_safe_directory(root)
+        directory = root / "verification" / self.run.run_id / "l3-02"
+        if directory.parent.exists():
+            _checkpoint_safe_directory(directory.parent)
+            with os.scandir(directory.parent) as entries:
+                for index, entry in enumerate(entries):
+                    if index >= 2 or entry.name not in {"l3-02", ".runtime-mutation"}:
+                        raise VerificationContractError("CHECKPOINT_PREEXISTING_OR_UNKNOWN_EXECUTION_EFFECT")
+        return directory
+
+    def _checkpoint_binding(self, request: ProofCheckpointRequest, *, terminal=False):
+        format_checkpoint_request(request)
+        target = request.scheduler.target
+        from .publication import _run_from_data
+        admitted = _run_from_data(json.loads(_original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES)), "L3-02 admitted RUN")
+        if (admitted != self.run or self.run.status != "ACTIVE" or request.scheduler.operation != "PRIMARY"
+                or (target.task_id, target.task_revision, target.run_id, target.base_sha) != (
+                    self.task.task_id, self.task.revision, self.run.run_id, self.run.base_sha)
+                or self.run.task.id != self.task.task_id or self.run.task.revision != self.task.revision):
+            raise VerificationContractError("CHECKPOINT_CURRENT_OPERATION_ADMISSION_NOT_ESTABLISHED")
+        directory = self._checkpoint_directory()
+        if os.path.lexists(self.state.failures / (self.run.run_id + ".json")):
+            raise VerificationContractError("CHECKPOINT_RUN_ALREADY_FAILURE")
+        if not terminal and (os.path.lexists(self.state.results / (self.run.run_id + ".json"))
+                or os.path.lexists(directory / "terminal-intent.json")):
+            raise VerificationContractError("CHECKPOINT_LATE_OR_AMBIGUOUS_TERMINAL")
+        return directory
+
+    def _checkpoint_history(self, directory: Path, *, check_captures=True):
+        history = []
+        if not directory.exists():
+            return history
+        _checkpoint_safe_directory(directory)
+        with os.scandir(directory) as entries:
+            names = []
+            for entry in entries:
+                if len(names) >= 37:
+                    raise VerificationContractError("CHECKPOINT_HISTORY_BOUND")
+                names.append(entry.name)
+        allowed = {"terminal-intent.json"}
+        if any(name not in allowed and re.fullmatch(r"k(?:00[1-9]|01[0-7])(?:\.json)?", name) is None for name in names):
+            raise VerificationContractError("CHECKPOINT_CONFLICTING_HISTORY")
+        run_digest = _checkpoint_digest(_original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES))
+        for name in sorted(n for n in names if n.endswith(".json") and n.startswith("k")):
+            record = parse_runtime_checkpoint(_original_local(directory / name, MAX_ORIGINAL_PROOF_BYTES))
+            data, previous = record.data, history[-1] if history else None
+            request = parse_checkpoint_request(_original_json(data["request"]).encode("ascii"))
+            target = request.scheduler.target
+            if ((target.task_id, target.task_revision, target.run_id, target.base_sha, target.run_sha256) != (
+                    self.task.task_id, self.task.revision, self.run.run_id, self.run.base_sha, run_digest)
+                    or request.scheduler.operation != "PRIMARY"):
+                raise VerificationContractError("CHECKPOINT_HISTORY_ADMISSION_OR_OPERATION_CONFLICT")
+            if (name != f"k{len(history) + 1:03d}.json" or request.ordinal != len(history) + 1
+                    or request.predecessor_digest != (None if previous is None else previous.digest)
+                    or data["resources_before"] != ({k: 0 for k in CHECKPOINT_RESOURCE_LIMITS} if previous is None else previous.data["resources_after"])
+                    or any(r.data["request"]["scheduler"]["subject_sha"] == request.scheduler.subject_sha for r in history)):
+                raise VerificationContractError("CHECKPOINT_NONCONSECUTIVE_OR_CONFLICTING_HISTORY")
+            if previous is not None:
+                prior_request = parse_checkpoint_request(_original_json(previous.data["request"]).encode("ascii"))
+                old, new = prior_request.scheduler.target, request.scheduler.target
+                if ((old.task_id, old.task_revision, old.run_id, old.base_sha, old.run_sha256) != (
+                        new.task_id, new.task_revision, new.run_id, new.base_sha, new.run_sha256)
+                        or previous.data["population_identity"] != data["population_identity"]
+                        or previous.data["execution_identity"] != data["execution_identity"]
+                        or old.tree_sha == new.tree_sha):
+                    raise VerificationContractError("CHECKPOINT_CHANGED_AUTHORITY_OR_MANDATORY_POPULATION")
+                # Raw immutable Git traversal is unaffected by replace/graft refs.
+                from .verification import _ApplicabilityReader
+                reader = _ApplicabilityReader(self.repo)
+                reader.anchors(new.candidate_sha, {old.candidate_sha})
+            if request.scheduler.subject_sha == request.scheduler.target.base_sha:
+                raise VerificationContractError("CHECKPOINT_CANDIDATE_IS_BASE")
+            if check_captures:
+                evidence = tuple(validate_evidence(item) for item in data["evidence"])
+                raw_directory = directory / f"k{request.ordinal:03d}"
+                _checkpoint_capture_inventory(raw_directory, evidence)
+                for fact in data["proofs"]:
+                    order = int(fact["evidence_id"].rsplit("-V", 1)[1])
+                    raw = _original_local(raw_directory / (fact["evidence_id"] + ".raw"), 32 * 1024 * 1024)
+                    native = _original_local(raw_directory / f"observation-{order:03d}.json", 16 * 1024 * 1024)
+                    if ((_checkpoint_digest(raw), len(raw), _checkpoint_digest(native), len(native)) != (
+                            fact["raw_sha256"], fact["raw_size"], fact["native_sha256"], fact["native_size"])):
+                        raise VerificationContractError("CHECKPOINT_ORIGINAL_HISTORY_CAPTURE_CHANGED")
+            history.append(record)
+        if any(name.startswith("k") and not name.endswith(".json") and name + ".json" not in names for name in names):
+            raise VerificationContractError("CHECKPOINT_UNKNOWN_EXECUTION_EFFECT")
+        return history
+
+    def _authenticate_checkpoint(self, request, digest, *, terminal=False):
+        directory = self._checkpoint_binding(request, terminal=terminal)
+        history = self._checkpoint_history(directory)
+        if not history or history[-1].digest != digest or history[-1].data["request"] != checkpoint_request_data(request):
+            raise VerificationContractError("CHECKPOINT_NOT_EXACT_CURRENT_FINAL_SEAL")
+        record = history[-1]
+        data = record.data
+        plan, task, manifests = _checkpoint_reviewed_execution(self.repo, request,
+            expected_plan=_original_json(data["plan"]).encode("ascii"))
+        if task != self.task:
+            raise VerificationContractError("CHECKPOINT_TASK_OBJECT_SUBSTITUTION")
+        evidence = tuple(validate_evidence(item) for item in data["evidence"])
+        _checkpoint_capture_inventory(directory / f"k{request.ordinal:03d}", evidence)
+        facts = _checkpoint_native_facts(self.repo, request=request, manifests=manifests,
+            evidence=evidence, raw_directory=directory / f"k{request.ordinal:03d}")
+        if facts != data["proofs"]:
+            raise VerificationContractError("CHECKPOINT_NATIVE_PROOF_CHANGED")
+        # Recheck all roots and all raw observations after the last proof read.
+        _, _, current = _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan))
+        if _checkpoint_native_facts(self.repo, request=request, manifests=current, evidence=evidence,
+                raw_directory=directory / f"k{request.ordinal:03d}") != facts:
+            raise VerificationContractError("CHECKPOINT_PROOF_CHANGED_AT_FINAL_BOUNDARY")
+        self._checkpoint_binding(request, terminal=terminal)
+        if self._checkpoint_history(directory) != history:
+            raise VerificationContractError("CHECKPOINT_HISTORY_CHANGED_AT_FINAL_BOUNDARY")
+        return record
+
+    def seal_checkpoint(self, request: ProofCheckpointRequest) -> RuntimeCheckpoint:
+        """Explicit offline/prospective effect under this admitted Runtime owner.
+
+        Authenticates the complete reviewed native execution mapping, reserves
+        one immutable effect, invokes the existing verifier once, then seals.
+        No caller evidence, plan validity flag, command or runner is an input.
+        """
+        started = time.monotonic_ns()
+        directory = self._checkpoint_binding(request)
+        history = self._checkpoint_history(directory)
+        if os.path.lexists(_checkpoint_fence(directory)):
+            raise VerificationContractError("CHECKPOINT_COMPETING_OR_INTERRUPTED_EFFECT")
+        if request.ordinal <= len(history):
+            record = history[request.ordinal - 1]
+            if record.data["request"] != checkpoint_request_data(request):
+                raise VerificationContractError("CHECKPOINT_IDENTITY_COLLISION")
+            # Only the current candidate can reconcile; old seals never reopen.
+            return self._authenticate_checkpoint(request, record.digest)
+        if request.ordinal != len(history) + 1 or request.predecessor_digest != (history[-1].digest if history else None):
+            raise VerificationContractError("CHECKPOINT_GAP_OR_PREDECESSOR_CONFLICT")
+        plan, task, manifests = _checkpoint_reviewed_execution(self.repo, request)
+        if task != self.task or request.scheduler.subject_sha == self.run.base_sha:
+            raise VerificationContractError("CHECKPOINT_CURRENT_TASK_OR_CANDIDATE_CONFLICT")
+        execution_identity = verification_digest([dict(proof_id=proof_id,
+            command=task.verification.required[manifest["command_index"]], profile=manifest["profile"],
+            toolchain=manifest["toolchain"], collection=manifest["collection"])
+            for proof_id, (_, manifest, _) in sorted(manifests.items())])
+        before = history[-1].data["resources_after"] if history else {k: 0 for k in CHECKPOINT_RESOURCE_LIMITS}
+        if (any(before[k] >= limit for k, limit in CHECKPOINT_RESOURCE_LIMITS.items())
+                or before["executions"] + len(task.verification.required) > CHECKPOINT_RESOURCE_LIMITS["executions"]):
+            raise VerificationContractError("CHECKPOINT_EXHAUSTED_RESOURCE_ACCOUNTING")
+        if history:
+            prior = history[-1].data
+            old = prior["request"]["scheduler"]["target"]
+            if (prior["population_identity"] != checkpoint_population_identity(plan)
+                    or prior["execution_identity"] != execution_identity
+                    or old["tree_sha"] == request.scheduler.target.tree_sha
+                    or old["candidate_sha"] == request.scheduler.subject_sha):
+                raise VerificationContractError("CHECKPOINT_UNCHANGED_CANDIDATE_OR_ALTERED_MANDATORY_PROOF")
+            from .verification import _ApplicabilityReader
+            _ApplicabilityReader(self.repo).anchors(request.scheduler.subject_sha, {old["candidate_sha"]})
+        intent = dict(version=1, kind="CHECKPOINT", request=checkpoint_request_data(request),
+            plan_sha256=_checkpoint_digest(format_scheduler_plan(plan)), resources_before=before)
+        with _checkpoint_mutation(directory, intent):
+            self._checkpoint_binding(request)
+            if self._checkpoint_history(directory) != history:
+                raise VerificationContractError("CHECKPOINT_COMPETING_MUTATION")
+            _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan))
+            raw_directory = directory / f"k{request.ordinal:03d}"
+            raw_directory.mkdir()  # Exclusive. Never erase an interrupted proof.
+            evidence = _execute_checkpoint_verification(self.repo, request=request, task=task, manifests=manifests,
+                raw_directory=raw_directory, start_order=before["executions"], runner=self.verification_runner,
+                timeout_seconds=(CHECKPOINT_RESOURCE_LIMITS["elapsed_ms"] - before["elapsed_ms"]) / 1000,
+                capture_bytes_remaining=CHECKPOINT_RESOURCE_LIMITS["raw_bytes"] - before["raw_bytes"])
+            for path in _checkpoint_capture_inventory(raw_directory, evidence):
+                _original_local(path, 32 * 1024 * 1024)
+                with path.open("r+b") as stream:
+                    os.fsync(stream.fileno())
+            _checkpoint_sync_directory(raw_directory)
+            facts = _checkpoint_native_facts(self.repo, request=request, manifests=manifests,
+                evidence=evidence, raw_directory=raw_directory)
+            _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan))
+            self._checkpoint_binding(request)
+            after = dict(checkpoints=request.ordinal, executions=before["executions"] + len(evidence),
+                raw_bytes=before["raw_bytes"] + sum(p["raw_size"] + p["native_size"] for p in facts),
+                elapsed_ms=before["elapsed_ms"] + (time.monotonic_ns() - started + 999_999) // 1_000_000)
+            checkpoint_resource_facts(after)
+            outstanding = sorted({oid for fact in facts if not fact["satisfactory"]
+                for oid in manifests[fact["proof_id"]][0]["obligation_ids"]})
+            content = _checkpoint_json(dict(format=RUNTIME_CHECKPOINT_FORMAT, version=1,
+                request=checkpoint_request_data(request), plan=scheduler_plan_data(plan),
+                population_identity=checkpoint_population_identity(plan), execution_identity=execution_identity,
+                evidence=[evidence_data(e) for e in evidence],
+                proofs=facts, outstanding=outstanding, affected=[], resources_before=before, resources_after=after))
+            record = parse_runtime_checkpoint(content)
+            _checkpoint_write_once(directory / f"k{request.ordinal:03d}.json", content)
+            self._authenticate_checkpoint(request, record.digest)
+            return record
+
+    def terminal_reuse(self, request: ProofCheckpointRequest, *, checkpoint_digest: str) -> TerminalProofDecision:
+        """Prospective decision only; it cannot write RESULT or grant execution."""
+        from .verification_contract import _original_hash
+        format_checkpoint_request(request)
+        _original_hash(checkpoint_digest)
+        try:
+            directory = self._checkpoint_binding(request)
+            if os.path.lexists(_checkpoint_fence(directory)):
+                raise VerificationContractError("CHECKPOINT_COMPETING_OR_INTERRUPTED_EFFECT")
+            record = self._authenticate_checkpoint(request, checkpoint_digest)
+            if record.data["outstanding"] or not all(p["satisfactory"] for p in record.data["proofs"]):
+                raise VerificationContractError("CHECKPOINT_MANDATORY_PROOF_UNSATISFACTORY")
+            return TerminalProofDecision(True, "EXACT_CURRENT_COMPLETE_STABLE_SATISFACTORY_NATIVE_PROOF", record.digest,
+                                         request.scheduler.subject_sha)
+        except (ValueError, OSError, RuntimeError) as exc:
+            return TerminalProofDecision(False, str(exc)[:256], checkpoint_digest, request.scheduler.subject_sha)
+
+    def complete(self, package: ResultPackage, policy: CompletionPolicy, *,
+                 checkpoint: ProofCheckpointRequest | None = None, checkpoint_digest: str | None = None) -> CompletionOutcome:
+        """Keep the default V1/V2 path; explicit checkpoint proof uses this same writer."""
+        if checkpoint is None:
+            if checkpoint_digest is not None:
+                raise VerificationContractError("CHECKPOINT_EXACT_REQUEST_REQUIRED")
+            # No silent legacy rerun once this RUN has a prospective proof effect.
+            path = self.state.verification / self.run.run_id / "l3-02"
+            with _runtime_effect(path.parent, dict(version=1, kind="LEGACY_COMPLETION", run_id=self.run.run_id),
+                                 retain_ambiguity=False):
+                if os.path.lexists(path):
+                    raise VerificationContractError("CHECKPOINT_EXPLICIT_TERMINAL_CONSUMPTION_REQUIRED")
+                return self._complete(package, policy)
+        if policy != primary_completion_policy(self.task, base_sha=self.run.base_sha):
+            raise VerificationContractError("CHECKPOINT_CORRECTION_OR_ALTERED_COMPLETION_POLICY_BLOCKED")
+        from .verification_contract import _original_hash
+        _original_hash(checkpoint_digest)
+        directory = self._checkpoint_binding(checkpoint, terminal=True)
+        if os.path.lexists(directory / "terminal-intent.json"):
+            # Reconciliation is read-only, including after transport interruption.
+            return self._reconcile_checkpoint_terminal(package, policy, checkpoint, checkpoint_digest, directory)
+        if os.path.lexists(self.state.results / (self.run.run_id + ".json")):
+            raise VerificationContractError("CHECKPOINT_ALREADY_TERMINAL_RUN")
+        decision = self.terminal_reuse(checkpoint, checkpoint_digest=checkpoint_digest)
+        if not decision.eligible:
+            raise VerificationContractError(decision.reason)
+        intent = dict(version=1, kind="TERMINAL", request=checkpoint_request_data(checkpoint), checkpoint_digest=checkpoint_digest)
+        with _checkpoint_mutation(directory, intent):
+            record = self._authenticate_checkpoint(checkpoint, checkpoint_digest)
+            reviewed = {}
+            for row in record.data["plan"]["obligations"]:
+                obligation = row["obligation"]
+                claim = obligation["claim"]
+                value = reviewed.setdefault(claim["id"], (claim["text"], set()))
+                if value[0] != claim["text"]:
+                    raise VerificationContractError("CHECKPOINT_REVIEWED_CLAIM_CONFLICT")
+                value[1].update(obligation["acceptance_ids"])
+            actual = {c.id: (c.claim, set(c.satisfies)) for c in package.result.claims}
+            if len(actual) != len(package.result.claims) or actual != reviewed:
+                raise VerificationContractError("CHECKPOINT_EXACT_REVIEWED_RESULT_CLAIMS_REQUIRED")
+            return self._complete(package, policy, checkpoint_record=record)
+
+    def _reconcile_checkpoint_terminal(self, package, policy, request, digest, directory):
+        from .verification_contract import _app_exact, _reuse_decode
+        receipt = _app_exact(_reuse_decode(_original_local(directory / "terminal-intent.json", MAX_ORIGINAL_PROOF_BYTES)),
+            ("version", "checkpoint_digest", "request", "package_sha256", "policy_sha256", "result_sha256"))
+        result_path = self.state.results / (self.run.run_id + ".json")
+        if (type(receipt["version"]) is not int or receipt["version"] != 1 or receipt["checkpoint_digest"] != digest
+                or receipt["request"] != checkpoint_request_data(request)
+                or receipt["package_sha256"] != _checkpoint_digest(_checkpoint_json(result_package_data(package)))
+                or receipt["policy_sha256"] != _checkpoint_digest(_checkpoint_json(asdict(policy)))
+                or _checkpoint_digest(_original_local(result_path, MAX_ORIGINAL_PROOF_BYTES)) != receipt["result_sha256"]):
+            raise VerificationContractError("CHECKPOINT_CONFLICTING_OR_AMBIGUOUS_TERMINAL")
+        history = self._checkpoint_history(directory, check_captures=False)
+        if not history or history[-1].digest != digest or history[-1].data["request"] != receipt["request"]:
+            raise VerificationContractError("CHECKPOINT_TERMINAL_HISTORY_CONFLICT")
+        # A terminal replay reads the exact original fact; moved refs cannot
+        # grant new work, and no native execution/transport/observation repeats.
+        return CompletionOutcome(request.scheduler.subject_sha, result_path, None)
+
+    def _complete(
+        self, package: ResultPackage, policy: CompletionPolicy,
+        *, checkpoint_record: RuntimeCheckpoint | None = None
     ) -> CompletionOutcome:
         """Produce one canonical RESULT or raise before/after terminal persistence."""
 
@@ -239,7 +540,9 @@ class RuntimeCompletion:
             else self.observation_tracker.begin_verification()
         )
         try:
-            if self.task.verification.policy == MINIMUM_SUFFICIENT_V2:
+            if checkpoint_record is not None:
+                runtime_evidence = tuple(validate_evidence(item) for item in checkpoint_record.data["evidence"])
+            elif self.task.verification.policy == MINIMUM_SUFFICIENT_V2:
                 commands = policy.verification_commands
                 if policy.remediation_execution is not None:
                     commands = tuple(dict.fromkeys((*commands, *(
@@ -304,10 +607,28 @@ class RuntimeCompletion:
                 actual_head=actual_head,
             )
 
-        _write_json(result_path, result_package_data(canonical_package))
+        if checkpoint_record is None:
+            _write_json(result_path, result_package_data(canonical_package))
+        else:
+            # Last native read before the single existing terminal effect.
+            request = parse_checkpoint_request(_original_json(checkpoint_record.data["request"]).encode("ascii"))
+            self._authenticate_checkpoint(request, checkpoint_record.digest)
+            content = _checkpoint_json(result_package_data(canonical_package))
+            intent = dict(version=1, checkpoint_digest=checkpoint_record.digest,
+                request=checkpoint_record.data["request"], package_sha256=_checkpoint_digest(_checkpoint_json(result_package_data(package))),
+                policy_sha256=_checkpoint_digest(_checkpoint_json(asdict(policy))), result_sha256=_checkpoint_digest(content))
+            directory = self._checkpoint_directory()
+            _checkpoint_write_once(directory / "terminal-intent.json", _checkpoint_json(intent))
+            _checkpoint_write_once(result_path, content)
         observation_path = persist_terminal_observation(
             self.state, self.observation_tracker, "RESULT"
         )
+        if checkpoint_record is not None:
+            # This explicit prospective boundary ends at the existing local
+            # terminal owner. Admission-ref/terminal transport cutover is a
+            # separate, unactivated integration; legacy completion below is
+            # unchanged and still owns its ordinary transport path.
+            return CompletionOutcome(actual_head, result_path, observation_path)
         try:
             transport_post_pass(
                 self.transport_repo,
@@ -613,7 +934,7 @@ def persist_terminal_observation(
         return None
 
 
-def persist_failure(
+def _persist_failure(
     root: Path,
     *,
     state: RuntimeState,
@@ -1054,3 +1375,161 @@ def _write_json(path: Path, data: Mapping[str, Any]) -> None:
         json.dumps(data, sort_keys=True, separators=(",", ":")),
         encoding="utf-8",
     )
+
+# Existing Runtime ownership, with one bounded exclusive fence for opted-in
+# proof/terminal effects. It is not a RUN reducer or an independent journal.
+def _checkpoint_digest(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _checkpoint_json(value) -> bytes:
+    # dataclasses/legacy projections contain tuples; the wire has only lists.
+    return _original_json(json.loads(json.dumps(value, ensure_ascii=True, allow_nan=False))).encode("ascii")
+
+
+def _checkpoint_safe_directory(path: Path):
+    if not path.is_absolute() or ".." in path.parts:
+        raise VerificationContractError("CHECKPOINT_UNSAFE_RUNTIME_DIRECTORY")
+    for parent in (*reversed(path.parents), path):
+        info = parent.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+                or getattr(info, "st_file_attributes", 0) & 0x400):
+            raise VerificationContractError("CHECKPOINT_UNSAFE_RUNTIME_DIRECTORY")
+
+
+def _checkpoint_sync_directory(directory: Path):
+    if os.name == "nt":
+        # File fsync uses FlushFileBuffers on Windows; opening a directory for
+        # POSIX fsync is unavailable. A retained exclusive fence makes an
+        # uncertain/partial filesystem effect BLOCKED on reentry.
+        return
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _checkpoint_make_directory(path: Path):
+    if not path.is_absolute() or ".." in path.parts:
+        raise VerificationContractError("CHECKPOINT_UNSAFE_RUNTIME_DIRECTORY")
+    for parent in (*reversed(path.parents), path):
+        if not os.path.lexists(parent):
+            try:
+                parent.mkdir()
+            except FileExistsError:
+                pass
+        info = parent.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+                or getattr(info, "st_file_attributes", 0) & 0x400):
+            raise VerificationContractError("CHECKPOINT_UNSAFE_RUNTIME_DIRECTORY")
+
+
+def _checkpoint_capture_inventory(directory: Path, evidence):
+    _checkpoint_safe_directory(directory)
+    expected = set()
+    for item in evidence:
+        expected.add(item.evidence_id + ".raw")
+        order = int(item.evidence_id.rsplit("-V", 1)[1])
+        expected.add(f"observation-{order:03d}.json")
+    seen = set()
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if entry.name not in expected or not entry.is_file(follow_symlinks=False) or len(seen) >= 512:
+                raise VerificationContractError("CHECKPOINT_UNKNOWN_NATIVE_CAPTURE_OR_RESOURCE_EFFECT")
+            seen.add(entry.name)
+    if seen != expected:
+        raise VerificationContractError("CHECKPOINT_NATIVE_CAPTURE_MISSING")
+    return tuple(directory / name for name in sorted(expected))
+
+
+def _checkpoint_write_once(path: Path, content: bytes):
+    _checkpoint_safe_directory(path.parent)
+    # Never reconcile an uncertain partial write here or overwrite a fact.
+    with path.open("xb") as stream:
+        stream.write(content)
+        stream.flush()
+        os.fsync(stream.fileno())
+    _checkpoint_sync_directory(path.parent)
+
+
+def _checkpoint_fence(directory: Path) -> Path:
+    return directory.parent / ".runtime-mutation"
+
+
+@contextmanager
+def _runtime_effect(directory: Path, intent: dict, *, retain_ambiguity=True):
+    _checkpoint_make_directory(directory)
+    _checkpoint_safe_directory(directory)
+    fence = directory / ".runtime-mutation"
+    try:
+        fence.mkdir()
+    except FileExistsError as exc:
+        raise VerificationContractError("CHECKPOINT_COMPETING_OR_INTERRUPTED_EFFECT") from exc
+    _checkpoint_sync_directory(directory)
+    _checkpoint_write_once(fence / "intent.json", _checkpoint_json(intent))
+    try:
+        yield
+    except BaseException:
+        # No unlock/retry after unknown execution, resource or terminal effects.
+        # The first immutable intent and all native captures remain the cause.
+        if not retain_ambiguity:
+            (fence / "intent.json").unlink()
+            fence.rmdir()
+            _checkpoint_sync_directory(directory)
+        raise
+    else:
+        (fence / "intent.json").unlink()
+        fence.rmdir()
+        _checkpoint_sync_directory(directory)
+
+
+@contextmanager
+def _checkpoint_mutation(directory: Path, intent: dict):
+    # No separate lock/reducer: legacy terminal writes and prospective effects
+    # exclude one another at this same Runtime-owned per-RUN boundary.
+    _checkpoint_make_directory(directory)
+    _checkpoint_safe_directory(directory)
+    with _runtime_effect(directory.parent, intent):
+        yield
+
+
+def evidence_data(item: Evidence) -> dict:
+    return dict(evidence_id=item.evidence_id, run_id=item.run_id, subject_sha=item.subject_sha,
+        type=item.type, source=asdict(item.source), result=asdict(item.result), raw=dict(path=item.raw_path),
+        **({"verification": item.verification} if item.verification is not None else {}))
+
+
+def persist_failure(root: Path, *, state: RuntimeState, task: Task, run: Run,
+                    run_path: Path, failure: BaseException,
+                    observation_tracker: RunObservationTracker | None = None,
+                    observation_path: Path | None = None, interruption_phase: str | None = None,
+                    transport: bool = True, transport_repo: Path | None = None,
+                    verification_subject_sha: str | None = None) -> None:
+    """Keep original FAILURE ownership; share exclusion with prospective proof."""
+    directory = state.verification / run.run_id / "l3-02"
+    prospective = os.path.lexists(directory)
+    try:
+        # An exact existing terminal is immutable, including its failure cause.
+        if prospective and (os.path.lexists(state.results / (run.run_id + ".json"))
+                or os.path.lexists(state.failures / (run.run_id + ".json"))
+                or os.path.lexists(directory / "terminal-intent.json")):
+            return
+        with _runtime_effect(directory.parent, dict(version=1, kind="FAILURE", run_id=run.run_id),
+                             retain_ambiguity=prospective):
+            if os.path.lexists(directory) and (os.path.lexists(state.results / (run.run_id + ".json"))
+                    or os.path.lexists(directory / "terminal-intent.json")):
+                return
+            _persist_failure(root, state=state, task=task, run=run, run_path=run_path, failure=failure,
+                observation_tracker=observation_tracker, observation_path=observation_path,
+                interruption_phase=interruption_phase, transport=transport, transport_repo=transport_repo,
+                verification_subject_sha=verification_subject_sha)
+            if prospective:
+                failure_path = state.failures / (run.run_id + ".json")
+                _original_local(failure_path, MAX_ORIGINAL_PROOF_BYTES)
+                with failure_path.open("r+b") as stream:
+                    os.fsync(stream.fileno())
+                _checkpoint_sync_directory(failure_path.parent)
+    except Exception:
+        # Never replace the original exception with bookkeeping/recovery policy.
+        return

@@ -1,7 +1,7 @@
 """VP-02B: bounded offline declarations, never Runtime authority or evidence.
 
-Only decoded plain Python values are accepted. No loader, callback, clock,
-environment lookup, scheduler, persistence or production integration exists.
+The historical VP-02B declarations accept only decoded plain Python values.
+No loader, callback, clock, scheduler or production integration exists here.
 Independent pins detect contradictions; neither pins nor digests authenticate
 the caller's canonical provenance. Every returned authorization flag is false.
 """
@@ -699,3 +699,150 @@ def describe_lifecycle(data: object, *, expected_lineage: object) -> LifecycleDe
     if request == "PRETERMINAL_OBSERVATION":
         return LifecycleDescription("BLOCK", "KERNEL_AMENDMENT_REQUIRED", "RUNTIME_ORCHESTRATION_NOT_ACTIVATED")
     return LifecycleDescription("TERMINAL_ONCE", "EXISTING_TERMINAL_ROUTE", "RUNTIME_MUST_ESTABLISH_EXACT_RESULT_OR_FAILURE")
+
+# L3-02 subordinate immutable records. These codecs are deliberately pure;
+# only RuntimeCompletion can authenticate, persist or consume a record.
+RUNTIME_CHECKPOINT_FORMAT = "AIOS_L3_RUNTIME_CHECKPOINT"
+CHECKPOINT_RESOURCE_LIMITS = dict(checkpoints=17, executions=256,
+                                 raw_bytes=32 * 1024 * 1024, elapsed_ms=3_600_000)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeCheckpoint:
+    content_json: str
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.content_json.encode("ascii")).hexdigest()
+
+    @property
+    def data(self) -> dict:
+        # A detached projection cannot mutate the sealed record.
+        return json.loads(self.content_json)
+
+
+@dataclass(frozen=True, slots=True)
+class TerminalProofDecision:
+    eligible: bool
+    reason: str
+    checkpoint_digest: str
+    candidate_sha: str
+    # Inspection only: completion always independently observes the final K_i.
+    execution_permission: str = "NOT_AUTHORIZED"
+    production_activation: str = "NOT_ACTIVATED"
+
+
+def checkpoint_resource_facts(value: object) -> dict:
+    from .verification_contract import VerificationContractError, _app_exact
+    data = dict(_app_exact(value, CHECKPOINT_RESOURCE_LIMITS))
+    for name, limit in CHECKPOINT_RESOURCE_LIMITS.items():
+        if type(data[name]) is not int or not 0 <= data[name] <= limit:
+            raise VerificationContractError("unknown or exhausted checkpoint accounting: " + name)
+    return data
+
+
+def checkpoint_population_identity(plan) -> str:
+    """Retain original mandatory semantics across current-candidate review pins.
+
+    Only the two candidate-specific locators are erased. Every claim, purpose,
+    condition, mapping assignment and original TASK identity remains exact.
+    """
+    from .verification_contract import scheduler_plan_data, verification_digest
+    data = scheduler_plan_data(plan)["coverage"]
+    data = json.loads(json.dumps(data))
+    for row in data["contract"]["obligations"] + data["mapping"]["proofs"]:
+        row["conditions"]["candidate_sha"] = None
+        row["conditions"]["test_ref"] = "L3_CURRENT_REVIEWED_EXECUTION_LOCATOR"
+    # Digests depend on the candidate-specific locators erased above.
+    data["mapping"]["contract_digest"] = None
+    for entry in data["mapping"]["entries"]:
+        entry["obligation_digest"] = None
+    return verification_digest(data)
+
+
+def format_runtime_checkpoint(value: RuntimeCheckpoint) -> bytes:
+    if type(value) is not RuntimeCheckpoint:
+        from .verification_contract import VerificationContractError
+        raise VerificationContractError("exact typed checkpoint required")
+    content = value.content_json.encode("ascii")
+    parse_runtime_checkpoint(content)
+    return content
+
+
+def parse_runtime_checkpoint(content: bytes) -> RuntimeCheckpoint:
+    """Closed inspection codec; a caller-built record has no sealing authority."""
+    from .verification_contract import (
+        VerificationContractError, _reuse_decode, _app_exact, _original_hash,
+        _original_json, parse_checkpoint_request, parse_scheduler_plan,
+    )
+    data = _app_exact(_reuse_decode(content), ("format", "version", "request", "plan", "population_identity", "execution_identity",
+        "evidence", "proofs", "outstanding", "affected", "resources_before", "resources_after"))
+    if data["format"] != RUNTIME_CHECKPOINT_FORMAT or type(data["version"]) is not int or data["version"] != 1:
+        raise VerificationContractError("invalid runtime checkpoint format")
+    request = parse_checkpoint_request(_original_json(data["request"]).encode("ascii"))
+    plan = parse_scheduler_plan(_original_json(data["plan"]).encode("ascii"))
+    if plan.request != request.scheduler or plan.authentication != "AUTHENTICATED":
+        raise VerificationContractError("checkpoint plan substitution")
+    _original_hash(data["population_identity"])
+    _original_hash(data["execution_identity"])
+    if checkpoint_population_identity(plan) != data["population_identity"]:
+        raise VerificationContractError("checkpoint mandatory population substitution")
+    before, after = (checkpoint_resource_facts(data[key]) for key in ("resources_before", "resources_after"))
+    if (before["checkpoints"] != request.ordinal - 1 or after["checkpoints"] != request.ordinal
+            or any(after[k] < before[k] for k in before)):
+        raise VerificationContractError("checkpoint resource history contradiction")
+    if (type(data["evidence"]) is not list or not 0 < len(data["evidence"]) <= MAX_PROOFS
+            or type(data["proofs"]) is not list or not 0 < len(data["proofs"]) <= MAX_PROOFS):
+        raise VerificationContractError("checkpoint proof population bound")
+    from .artifacts import validate_evidence
+    for item in data["evidence"]:
+        _app_exact(item, ("evidence_id", "run_id", "subject_sha", "type", "source", "result", "raw", "verification"))
+        _app_exact(item["source"], ("command",))
+        _app_exact(item["result"], ("exit_code", "summary"))
+        _app_exact(item["raw"], ("path",))
+        _app_exact(item["verification"], ("policy", "disposition", "binding", "candidate", "candidate_digest",
+            "evidence_id", "run_id", "raw_path", "raw_digest"))
+    evidence = [validate_evidence(item) for item in data["evidence"]]
+    ids = [item.evidence_id for item in evidence]
+    if (len(set(ids)) != len(ids) or any((e.run_id, e.subject_sha) != (
+            request.scheduler.target.run_id, request.scheduler.subject_sha) for e in evidence)
+            or ids != [f"{request.scheduler.target.run_id}-V{before['executions'] + i + 1:03d}" for i in range(len(evidence))]
+            or after["executions"] - before["executions"] != len(evidence)
+            or after["elapsed_ms"] <= before["elapsed_ms"]):
+        raise VerificationContractError("checkpoint original execution identity conflict")
+    units = {u["proof_id"]: u for u in data["plan"]["units"]}
+    seen, outstanding = [], []
+    used_evidence = []
+    execution_population = []
+    for fact in data["proofs"]:
+        _app_exact(fact, ("proof_id", "unit_id", "evidence_id", "evidence_sha256", "raw_sha256", "raw_size",
+            "native_sha256", "native_size", "manifest_sha256", "complete", "stable", "outcome", "satisfactory", "source_run_id", "subject_sha"))
+        unit = units.get(fact["proof_id"])
+        if (unit is None or unit["unit_id"] != fact["unit_id"] or fact["evidence_id"] not in ids
+                or fact["complete"] is not True or fact["stable"] is not True
+                or type(fact["outcome"]) is not str or fact["outcome"] not in {"PASS", "FAIL", "ERROR"}
+                or type(fact["satisfactory"]) is not bool or fact["satisfactory"] != (fact["outcome"] == "PASS")
+                or (fact["source_run_id"], fact["subject_sha"]) != (
+                    request.scheduler.target.run_id, request.scheduler.subject_sha)
+                or any(type(fact[key]) is not int or not 0 < fact[key] <= CHECKPOINT_RESOURCE_LIMITS["raw_bytes"]
+                       for key in ("raw_size", "native_size"))):
+            raise VerificationContractError("checkpoint proof fact substitution")
+        for key in ("evidence_sha256", "raw_sha256", "native_sha256", "manifest_sha256"):
+            _original_hash(fact[key])
+        item = data["evidence"][ids.index(fact["evidence_id"])]
+        if hashlib.sha256(_original_json(item).encode("ascii")).hexdigest() != fact["evidence_sha256"]:
+            raise VerificationContractError("checkpoint evidence substitution")
+        candidate = item["verification"]["candidate"]
+        execution_population.append(dict(proof_id=fact["proof_id"], command=item["source"]["command"],
+            profile=candidate["profile"], toolchain=candidate["toolchain"], collection=candidate.get("collection")))
+        seen.append(fact["proof_id"])
+        used_evidence.append(fact["evidence_id"])
+        if not fact["satisfactory"]:
+            outstanding.extend(unit["obligation_ids"])
+    from .verification_contract import verification_digest
+    if (data["execution_identity"] != verification_digest(execution_population)
+            or seen != sorted(units) or len(set(used_evidence)) != len(used_evidence) or set(used_evidence) != set(ids)
+            or data["outstanding"] != sorted(set(outstanding)) or data["affected"] != []
+            or after["raw_bytes"] - before["raw_bytes"] != sum(p["raw_size"] + p["native_size"] for p in data["proofs"])):
+        raise VerificationContractError("checkpoint incomplete coverage or accounting")
+    return RuntimeCheckpoint(content.decode("ascii"))
