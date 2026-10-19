@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Sequence
 
+from .proof_coverage_contract import CoverageDeclaration
+
 
 MINIMUM_SUFFICIENT_V1 = "minimum-sufficient-v1"
 MINIMUM_SUFFICIENT_V2 = "minimum-sufficient-v2"
@@ -2190,3 +2192,308 @@ def parse_reuse(content: bytes) -> ProofReuseWitness:
     if format_reuse(witness) != content:
         raise VerificationContractError("reuse fields, outcome or authority promotion")
     return witness
+
+
+# L3-01 is explicitly invoked, prospective planning only. These types are not
+# added to VERIFICATION_POLICIES or any execution/decoder dispatch table.
+SCHEDULER_VERSION = 1
+SCHEDULER_REQUEST_FORMAT = "AIOS_L3_PROOF_SCHEDULER_REQUEST"
+SCHEDULER_PLAN_FORMAT = "AIOS_L3_PROOF_SCHEDULER_PLAN"
+MAX_SCHEDULER_SOURCES = 32
+SCHEDULER_INVARIANT = "ONE_REVIEWED_EQUIVALENT_PROOF_UNIT_NO_EQUIVALENT_DUPLICATE_EXECUTION"
+
+
+@dataclass(frozen=True, slots=True)
+class ProofSchedulerRequest:
+    """Locators only; neither a review assertion nor an execution permit."""
+
+    version: int
+    target: ApplicabilityTargetRequest
+    expected_main_sha: str
+    contract: ApplicabilityDeclarationPin
+    mapping: ApplicabilityDeclarationPin
+    operation: str
+    subject_sha: str
+    sources: tuple[ProofReuseRequest, ...] = ()
+    correction: ReuseCorrectionLocator | None = None
+
+    def __post_init__(self):
+        if type(self.version) is not int or self.version != SCHEDULER_VERSION:
+            raise VerificationContractError("unsupported scheduler version")
+        for value, cls in ((self.target, ApplicabilityTargetRequest),
+                           (self.contract, ApplicabilityDeclarationPin), (self.mapping, ApplicabilityDeclarationPin)):
+            if type(value) is not cls:
+                raise VerificationContractError("exact typed scheduler locator required")
+            value.__post_init__()
+        _original_hash(self.expected_main_sha, 40)
+        _original_hash(self.subject_sha, 40)
+        if self.subject_sha != self.target.candidate_sha:
+            raise VerificationContractError("scheduler subject substitution")
+        # Unsupported operations are representable for attributable BLOCKED
+        # results. No arbitrary text or operation can select a positive path.
+        _app_id(self.operation)
+        if type(self.sources) is not tuple or len(self.sources) > MAX_SCHEDULER_SOURCES:
+            raise VerificationContractError("bounded immutable scheduler source population required")
+        identities = []
+        for source in self.sources:
+            if type(source) is not ProofReuseRequest:
+                raise VerificationContractError("scheduler accepts source locators, never witnesses")
+            source.__post_init__()
+            app = source.applicability
+            if (app.target, app.expected_main_sha, app.contract, app.mapping, source.operation, source.correction) != (
+                    self.target, self.expected_main_sha, self.contract, self.mapping, self.operation, self.correction):
+                raise VerificationContractError("swapped scheduler source target or authority")
+            identities.append(app.obligation_id)
+        if identities != sorted(set(identities)):
+            raise VerificationContractError("unordered or duplicate scheduler source obligation")
+        if self.correction is not None:
+            if type(self.correction) is not ReuseCorrectionLocator or self.operation == "PRIMARY":
+                raise VerificationContractError("scheduler correction authority switching")
+            self.correction.__post_init__()
+
+
+def scheduler_request_data(value: ProofSchedulerRequest) -> dict:
+    if type(value) is not ProofSchedulerRequest:
+        raise VerificationContractError("exact typed scheduler request required")
+    value.__post_init__()
+    return dict(format=SCHEDULER_REQUEST_FORMAT, version=value.version,
+        target=applicability_target_data(value.target), expected_main_sha=value.expected_main_sha,
+        contract=_app_fields(value.contract), mapping=_app_fields(value.mapping), operation=value.operation,
+        subject_sha=value.subject_sha, sources=[reuse_request_data(s) for s in value.sources],
+        correction=None if value.correction is None else {
+            **_app_fields(value.correction), "finding_ids": list(value.correction.finding_ids)})
+
+
+def format_scheduler_request(value: ProofSchedulerRequest) -> bytes:
+    return _original_json(scheduler_request_data(value)).encode("ascii")
+
+
+def parse_scheduler_request(content: bytes) -> ProofSchedulerRequest:
+    data = dict(_app_exact(_reuse_decode(content), (*ProofSchedulerRequest.__dataclass_fields__, "format")))
+    if (data.pop("format") != SCHEDULER_REQUEST_FORMAT or type(data["sources"]) is not list
+            or len(data["sources"]) > MAX_SCHEDULER_SOURCES):
+        raise VerificationContractError("invalid scheduler request schema")
+    data["target"] = _app_target(data["target"])
+    for key in ("contract", "mapping"):
+        data[key] = ApplicabilityDeclarationPin(**_app_exact(data[key], ApplicabilityDeclarationPin.__dataclass_fields__))
+    data["sources"] = tuple(parse_reuse_request(_original_json(s).encode("ascii")) for s in data["sources"])
+    if data["correction"] is not None:
+        item = dict(_app_exact(data["correction"], ReuseCorrectionLocator.__dataclass_fields__))
+        if type(item["finding_ids"]) is not list:
+            raise VerificationContractError("invalid scheduler finding population")
+        item["finding_ids"] = tuple(item["finding_ids"])
+        data["correction"] = ReuseCorrectionLocator(**item)
+    return ProofSchedulerRequest(**data)
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerSourceDecision:
+    obligation_id: str
+    outcome: str
+    reason: str
+    original: ApplicabilitySourceSnapshot | None
+    witness_sha256: str
+
+    def __post_init__(self):
+        _app_id(self.obligation_id)
+        if type(self.outcome) is not str or self.outcome not in {"REUSE_ELIGIBLE", "INVALIDATED", "BLOCKED"}:
+            raise VerificationContractError("invalid scheduler source decision")
+        _original_text(self.reason, 256)
+        _original_hash(self.witness_sha256)
+        if self.original is not None:
+            if type(self.original) is not ApplicabilitySourceSnapshot:
+                raise VerificationContractError("typed scheduler original snapshot required")
+            self.original.__post_init__()
+        if self.outcome == "REUSE_ELIGIBLE" and (self.original is None or self.original.outcome != "PASS"):
+            raise VerificationContractError("scheduler source outcome promotion")
+
+
+def _scheduler_plain(value):
+    if type(value) in (tuple, list):
+        return [_scheduler_plain(v) for v in value]
+    if type(value) is dict:
+        return {k: _scheduler_plain(v) for k, v in value.items()}
+    return value
+
+
+def _scheduler_coverage(value):
+    from dataclasses import asdict
+    return None if value is None else _scheduler_plain(asdict(value))
+
+
+def _scheduler_validate_coverage(data, request):
+    from .proof_coverage_contract import validate_proof_mapping
+    data = _app_exact(data, ("contract", "mapping"))
+    contract = data["contract"]
+    coverage = validate_proof_mapping(contract, data["mapping"], expected_task=contract["task"],
+                                     expected_mapping=_app_fields(request.mapping))
+    task = coverage.contract.task
+    if ((task.task_id, task.revision) != (request.target.task_id, request.target.task_revision)
+            or (coverage.contract.id, coverage.contract.revision, coverage.contract.digest) != (
+                request.contract.id, request.contract.revision, request.contract.digest)
+            or any(o.conditions.candidate_sha != request.subject_sha
+                   or o.kind == "comparison" and o.conditions.base_sha != request.target.base_sha
+                   for o in coverage.contract.obligations)):
+        raise VerificationContractError("scheduler reviewed population substitution")
+    return coverage
+
+
+@dataclass(frozen=True, slots=True)
+class ProofSchedulerPlan:
+    """Immutable inspection result. Parsing can never reauthenticate this plan."""
+
+    version: int
+    request: ProofSchedulerRequest
+    authentication: str
+    reason: str
+    coverage: CoverageDeclaration | None
+    authority_json: str | None
+    sources: tuple[SchedulerSourceDecision, ...]
+
+    def __post_init__(self):
+        from .proof_coverage_contract import CoverageDeclaration
+        if type(self.version) is not int or self.version != SCHEDULER_VERSION or type(self.request) is not ProofSchedulerRequest:
+            raise VerificationContractError("invalid typed scheduler plan")
+        self.request.__post_init__()
+        _original_text(self.reason, 256)
+        if type(self.authentication) is not str or self.authentication not in {"AUTHENTICATED", "NOT_ESTABLISHED"}:
+            raise VerificationContractError("invalid scheduler authentication")
+        if self.coverage is not None:
+            if type(self.coverage) is not CoverageDeclaration:
+                raise VerificationContractError("typed scheduler coverage required")
+            if _scheduler_validate_coverage(_scheduler_coverage(self.coverage), self.request) != self.coverage:
+                raise VerificationContractError("noncanonical scheduler coverage")
+        if self.authority_json is not None:
+            authority = _app_exact(_reuse_decode(self.authority_json.encode("ascii")), (
+                "main_sha", "selection_sha", "review_candidate_sha", "artifacts_sha", "decision_sha",
+                "binding", "target"))
+            for key in ("main_sha", "selection_sha", "review_candidate_sha", "artifacts_sha", "decision_sha"):
+                _original_hash(authority[key], 40)
+            if authority["main_sha"] != self.request.expected_main_sha:
+                raise VerificationContractError("scheduler main authority substitution")
+            binding = _app_exact(authority["binding"], ("upstream_sha256", "human_event_identity", "review_id",
+                "review_run_id", "run_sha256", "result_sha256", "review_sha256", "scope_sha256", "sources"))
+            for key in ("upstream_sha256", "run_sha256", "result_sha256", "review_sha256", "scope_sha256"):
+                _original_hash(binding[key])
+            for key in ("human_event_identity", "review_id", "review_run_id"):
+                _original_text(binding[key], 256)
+            source_pins = _app_exact(binding["sources"], ("task", "contract", "mapping", "review_task"))
+            for source in source_pins.values():
+                _app_exact(source, ("source_sha", "tree_sha", "path", "blob_sha", "sha256"))
+                for key in ("source_sha", "tree_sha", "blob_sha"):
+                    _original_hash(source[key], 40)
+                _original_hash(source["sha256"])
+                _app_path(source["path"])
+            target = _app_exact(authority["target"], ("task_blob_sha", "task_sha256", "canonical_run_sha256",
+                "lineage_sha256", "condition_proof_sha256"))
+            _original_hash(target["task_blob_sha"], 40)
+            for key in ("task_sha256", "canonical_run_sha256", "lineage_sha256"):
+                _original_hash(target[key])
+            if target["condition_proof_sha256"] is not None:
+                _original_hash(target["condition_proof_sha256"])
+            if (self.coverage is None or self.coverage.contract.task.envelope_digest != target["task_sha256"]
+                    or source_pins["task"]["blob_sha"] != target["task_blob_sha"]
+                    or source_pins["task"]["sha256"] != target["task_sha256"]):
+                raise VerificationContractError("scheduler TASK authority conflict")
+        if self.authentication == "AUTHENTICATED" and (
+                self.request.operation != "PRIMARY" or self.coverage is None or self.authority_json is None):
+            raise VerificationContractError("scheduler operation or review authority promotion")
+        if type(self.sources) is not tuple or len(self.sources) > MAX_SCHEDULER_SOURCES:
+            raise VerificationContractError("bounded immutable scheduler decisions required")
+        requests = {s.applicability.obligation_id: s for s in self.request.sources}
+        ids = []
+        for source in self.sources:
+            if type(source) is not SchedulerSourceDecision:
+                raise VerificationContractError("typed scheduler source decision required")
+            source.__post_init__()
+            ids.append(source.obligation_id)
+            locator = requests.get(source.obligation_id)
+            if locator is None or source.outcome == "REUSE_ELIGIBLE" and source.original != locator.original:
+                raise VerificationContractError("scheduler source substitution")
+        if ids != sorted(set(ids)) or self.authentication == "AUTHENTICATED" and set(ids) != set(requests):
+            raise VerificationContractError("incomplete or duplicate scheduler source decisions")
+
+
+def _scheduler_projection(plan):
+    """One pure projection for both consumers; no alternate proof scheduler."""
+    from dataclasses import asdict
+    if plan.coverage is None:
+        return [], []
+    entries = {e.obligation_id: e for e in plan.coverage.mapping.entries}
+    observations = {s.obligation_id: s for s in plan.sources}
+    rows, units = [], []
+    for proof in sorted(plan.coverage.mapping.proofs, key=lambda p: (p.kind == "comparison", p.id)):
+        obligations = tuple(o for o in plan.coverage.contract.obligations if entries[o.id].proof_id == proof.id)
+        decisions = [observations.get(o.id) for o in obligations]
+        if plan.authentication != "AUTHENTICATED":
+            state, reason = "BLOCKED", "CURRENT_PLAN_AUTHORITY_NOT_ESTABLISHED"
+        elif proof.kind == "comparison":
+            state, reason = "BLOCKED", "BR_1_THROUGH_BR_6_NATIVE_ATTESTATION_NOT_ESTABLISHED"
+        elif any(d is not None and d.outcome == "BLOCKED" for d in decisions):
+            state, reason = "BLOCKED", "SOURCE_PROOF_UNKNOWN_OR_UNSATISFACTORY"
+        elif all(d is not None and d.outcome == "REUSE_ELIGIBLE" for d in decisions):
+            state, reason = "REUSE_ELIGIBLE", "EVERY_MAPPED_OBLIGATION_HAS_AUTHENTICATED_SATISFACTORY_SOURCE"
+        else:
+            state, reason = "OUTSTANDING_PLANNED", "FULL_REVIEWED_UNIT_REQUIRES_ORIGINAL_CANDIDATE_PROOF"
+        proof_data = _scheduler_plain(asdict(proof))
+        identity = verification_digest(proof_data)
+        unit = dict(unit_id=identity, proof_id=proof.id, proof_sha256=identity, proof=proof_data,
+            obligation_ids=[o.id for o in obligations],
+            acceptance_ids=sorted({a for o in obligations for a in o.acceptance_ids}), state=state, reason=reason,
+            execution_permission="NOT_AUTHORIZED", base_replay="NOT_AUTHORIZED")
+        units.append(unit)
+        for obligation in obligations:
+            rows.append(dict(obligation=_scheduler_plain(asdict(obligation)), obligation_sha256=obligation.digest,
+                unit_id=identity, proof_id=proof.id, state=state, reason=reason))
+    return sorted(rows, key=lambda r: r["obligation"]["id"]), units
+
+
+def scheduler_plan_data(value: ProofSchedulerPlan) -> dict:
+    if type(value) is not ProofSchedulerPlan:
+        raise VerificationContractError("exact typed scheduler plan required")
+    value.__post_init__()
+    rows, units = _scheduler_projection(value)
+    authority = None if value.authority_json is None else _reuse_decode(value.authority_json.encode("ascii"))
+    data = dict(format=SCHEDULER_PLAN_FORMAT, version=value.version, request=scheduler_request_data(value.request),
+        authentication=value.authentication, reason=value.reason, coverage=_scheduler_coverage(value.coverage),
+        authority=authority, sources=[{**_app_fields(s), "original": _reuse_snapshot_data(s.original)} for s in value.sources],
+        obligations=rows, units=units)
+    coverage_identity = verification_digest(dict(request={k: v for k, v in data["request"].items() if k != "sources"},
+                                               coverage=data["coverage"], authority=authority))
+    plan_identity = verification_digest(data)
+    consumer = dict(plan_identity=plan_identity, coverage_identity=coverage_identity, units=units,
+        invariant=SCHEDULER_INVARIANT, equivalent_fresh_checkpoint="ELIGIBLE_ONLY_AFTER_SAME_CORE_REAUTHENTICATION",
+        checkpoint_sealed="NOT_ASSERTED", actual_execution="NOT_ASSERTED", target_acceptance="NOT_ASSERTED",
+        execution_permission="NOT_AUTHORIZED", consumer_gate="FUTURE_RUNTIME_INTEGRATION_AND_REAUTHENTICATION_REQUIRED")
+    return {**data, "plan_identity": plan_identity, "coverage_identity": coverage_identity,
+        "status": "BLOCKED" if value.authentication != "AUTHENTICATED" or any(u["state"] == "BLOCKED" for u in units)
+                  else "PLANNED", "ordering": "CANDIDATE_FIRST_NO_AUTOMATIC_BASE_REPLAY",
+        "invariant": SCHEDULER_INVARIANT, "checkpoint": consumer, "terminal": dict(consumer),
+        "target_execution": "NOT_ASSERTED", "target_acceptance": "NOT_ASSERTED",
+        "execution_permission": "NOT_AUTHORIZED", "production_activation": "NOT_ACTIVATED"}
+
+
+def format_scheduler_plan(value: ProofSchedulerPlan) -> bytes:
+    return _original_json(scheduler_plan_data(value)).encode("ascii")
+
+
+def parse_scheduler_plan(content: bytes) -> ProofSchedulerPlan:
+    """Closed structural inspection only; not accepted by plan_candidate_proofs."""
+    data = _app_exact(_reuse_decode(content), ("format", "version", "request", "authentication", "reason",
+        "coverage", "authority", "sources", "obligations", "units", "plan_identity", "coverage_identity",
+        "status", "ordering", "invariant", "checkpoint", "terminal", "target_execution", "target_acceptance",
+        "execution_permission", "production_activation"))
+    request = parse_scheduler_request(_original_json(data["request"]).encode("ascii"))
+    coverage = None if data["coverage"] is None else _scheduler_validate_coverage(data["coverage"], request)
+    if type(data["sources"]) is not list or len(data["sources"]) > MAX_SCHEDULER_SOURCES:
+        raise VerificationContractError("invalid scheduler source decisions")
+    sources = []
+    for value in data["sources"]:
+        item = dict(_app_exact(value, SchedulerSourceDecision.__dataclass_fields__))
+        item["original"] = None if item["original"] is None else _reuse_snapshot(item["original"])
+        sources.append(SchedulerSourceDecision(**item))
+    result = ProofSchedulerPlan(data["version"], request, data["authentication"], data["reason"], coverage,
+        None if data["authority"] is None else _original_json(data["authority"]), tuple(sources))
+    if scheduler_plan_data(result) != data:
+        raise VerificationContractError("extra, missing or substituted scheduler projection")
+    return result

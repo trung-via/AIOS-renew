@@ -45,6 +45,7 @@ from .verification_contract import (
     applicability_source_snapshot,
     ProofReuseRequest, ProofReuseWitness, format_reuse, _reuse_primary_bound,
     _reuse_reviewed,
+    ProofSchedulerRequest, ProofSchedulerPlan,
 )
 from .parallel_verification import (
     EXECUTION_CONTRACT, ProbeError, effective_pytest_profile, git_executable,
@@ -2053,9 +2054,9 @@ def _app_selection_authentication(reader: _ApplicabilityReader, record: dict, ma
     return f"github-issue:{actual['repository']}#{actual['issue_number']}@{actual['actor']}"
 
 
-def _app_reviewed_authority(repository: Path, request: ProofApplicabilityRequest,
-                            target: ApplicabilityTargetProvenance, task, source: OriginalProofProvenance,
-                            reader: _ApplicabilityReader, url: str):
+def _app_reviewed_population(repository: Path, request,
+                             target: ApplicabilityTargetProvenance, task,
+                             reader: _ApplicabilityReader, url: str):
     """No selector supplied by the caller can replace the existing L1 selection.
 
     L1's structural, scope, RESULT and REVIEW validators remain the owners of
@@ -2204,6 +2205,28 @@ def _app_reviewed_authority(repository: Path, request: ProofApplicabilityRequest
             or set(review.acceptance) != set(review_pin.acceptance_ids)
             or any(v != "PASS" for v in review.acceptance.values())):
         raise VerificationContractError("INDEPENDENT_MAPPING_REVIEW_PASS_ABSENT")
+    # Shared authentication only: no source proof is necessary to authenticate
+    # the complete selected population. L2 retains its exact per-source checks.
+    binding = dict(upstream_sha256=hashlib.sha256(url.encode("utf-8")).hexdigest(), human_event_identity=human,
+        review_id=review.review_id, review_run_id=run_id, run_sha256=run_pin["sha256"],
+        result_sha256=hashlib.sha256(result_bytes).hexdigest(), review_sha256=hashlib.sha256(review_bytes).hexdigest(),
+        scope_sha256=_app_digest(asdict(scope)), sources=sources)
+    return intake.coverage, scope, binding, dict(main=main, selection_sha=selection_sha,
+        reviewed=reviewed, artifacts=artifacts, decision=decision, trees=trees,
+        decision_tree=decision_tree, base_tree=base_tree, review_task=review_task, result=result), (
+        patterns, tuple(sorted(refs.items())), record)
+
+
+def _app_reviewed_authority(repository: Path, request: ProofApplicabilityRequest,
+                            target: ApplicabilityTargetProvenance, task, source: OriginalProofProvenance,
+                            reader: _ApplicabilityReader, url: str):
+    from dataclasses import asdict
+    coverage, scope, binding, context, currentness = _app_reviewed_population(
+        repository, request, target, task, reader, url)
+    contract = coverage.contract
+    main, selection_sha, reviewed, artifacts, decision, trees, decision_tree, base_tree, review_task, result = (
+        context[key] for key in ("main", "selection_sha", "reviewed", "artifacts", "decision", "trees",
+                                 "decision_tree", "base_tree", "review_task", "result"))
     obligation = next((o for o in contract.obligations if o.id == request.obligation_id), None)
     if (obligation is None or obligation.revision != request.obligation_revision or obligation.digest != request.obligation_digest
             or obligation.acceptance_ids != request.acceptance_ids or obligation.kind != "candidate"):
@@ -2236,14 +2259,11 @@ def _app_reviewed_authority(repository: Path, request: ProofApplicabilityRequest
             or manifest["claim"] != asdict(obligation.claim) or _original_json(manifest["conditions"]) != _original_json(_app_plain(conditions))
             or correspondence is None or manifest["review_acceptance_id"] != correspondence.review_acceptance_id):
         raise VerificationContractError("CONDITION_DOCUMENT_SOURCE_TARGET_OR_SEMANTICS_MISMATCH")
-    binding = dict(upstream_sha256=hashlib.sha256(url.encode("utf-8")).hexdigest(), human_event_identity=human,
-        review_id=review.review_id, review_run_id=run_id, run_sha256=run_pin["sha256"],
-        result_sha256=hashlib.sha256(result_bytes).hexdigest(), review_sha256=hashlib.sha256(review_bytes).hexdigest(),
-        scope_sha256=_app_digest(asdict(scope)), sources=sources, manifest_path=manifest_path,
-        review_acceptance_id=correspondence.review_acceptance_id)
+    binding = {**binding, "manifest_path": manifest_path,
+               "review_acceptance_id": correspondence.review_acceptance_id}
     authority = ApplicabilityAuthority(main, selection_sha, reviewed, artifacts, decision,
         manifest_blob, match[1], _original_json(binding))
-    return authority, manifest, (patterns, tuple(sorted(refs.items())), record)
+    return authority, manifest, currentness
 
 
 def _app_unknown(name: str, reason: str, authority_sha256=None, source=None, target=None):
@@ -2525,3 +2545,160 @@ def observe_proof_reuse(repository: Path, *, expected: ProofReuseRequest) -> Pro
     except VerificationContractError:
         witness = ProofReuseWitness(1, expected, "NOT_ESTABLISHED", "REUSE_PROJECTION_BOUND", None, None, snapshot)
     return witness
+
+
+def _scheduler_namespace(repository: Path, url: str, expected):
+    """Observe the bounded TASK namespace, including successor/correction refs."""
+    prefix = "RUN-" + expected.task_id[5:] + "-"
+    patterns = tuple("refs/heads/aios/" + kind + "/" + prefix + "*" for kind in (
+        "review", "artifacts", "review-decision", "failure", "failure-artifacts", "repair",
+        "publication-recovery", "repair-supersession", "remediation"))
+    refs = _app_refs(repository, url, patterns)
+    number = int(expected.run_id[len(prefix):])
+    for ref, _ in refs:
+        suffix = ref.split("/", 4)[4]
+        match = re.match(re.escape(prefix) + r"(\d{3,})(?:$|[-/])", suffix)
+        if match is None:
+            raise VerificationContractError("SCHEDULER_UNRECOGNIZED_TASK_RUN_REF")
+        observed = prefix + match[1]
+        if int(match[1]) > number or int(match[1]) == number and observed != expected.run_id:
+            raise VerificationContractError("SCHEDULER_TARGET_SUPERSEDED_OR_RUN_ALIAS")
+        if observed == expected.run_id and ref not in {
+                "refs/heads/aios/review/" + observed, "refs/heads/aios/artifacts/" + observed}:
+            raise VerificationContractError("SCHEDULER_TARGET_TERMINAL_OR_CORRECTION_AUTHORITY")
+    return patterns, refs
+
+
+def _scheduler_read_population(repository: Path, expected):
+    """Fresh native admission, PRIMARY and complete selected review authority."""
+    from .verification_contract import _scheduler_validate_coverage, _scheduler_coverage
+
+    transport = _app_transport(repository)
+    url = transport[2]
+    reader = _ApplicabilityReader(repository)
+    target, task, local = _app_target(repository, expected.target, reader)
+    artifact_tree, _ = reader.commit(expected.target.artifacts_sha)
+    node = artifact_tree
+    for part in (".ai", "transport"):
+        mode, node = reader.tree(node).get(part, (None, None))
+        if mode != b"40000":
+            raise VerificationContractError("SCHEDULER_PRIMARY_ADMISSION_TRANSPORT_UNAVAILABLE")
+    if not set(reader.tree(node)) <= {"run.json", "result.json", "observation.json", "execution-profile.json"}:
+        raise VerificationContractError("SCHEDULER_PRIMARY_CANNOT_INHERIT_CORRECTION_ADMISSION")
+    namespace = _scheduler_namespace(repository, url, expected.target)
+    base_tree, _ = reader.commit(expected.target.base_sha)
+    _reuse_scope(reader, base_tree, expected.target.tree_sha, task.scope.modify)
+    coverage, scope, binding, context, currentness = _app_reviewed_population(
+        repository, expected, target, task, reader, url)
+    _scheduler_validate_coverage(_scheduler_coverage(coverage), expected)
+    authority = _original_json(dict(main_sha=context["main"], selection_sha=context["selection_sha"],
+        review_candidate_sha=context["reviewed"], artifacts_sha=context["artifacts"], decision_sha=context["decision"],
+        binding=binding, target=dict(task_blob_sha=target.task_blob_sha, task_sha256=target.task_sha256,
+            canonical_run_sha256=target.canonical_run_sha256, lineage_sha256=target.lineage_sha256,
+            condition_proof_sha256=None if target.conditions is None else _app_proof_digest(target.conditions))))
+    # No cached carrier receipt or immutable object can establish mutable-root
+    # currentness. Reread roots after the complete native validators have run.
+    patterns, refs, record = currentness
+    _app_selection_authentication(reader, record, expected.expected_main_sha, url)
+    if target.conditions is not None and observe_original_evidence(
+            repository, expected=expected.target.condition_evidence).provenance != target.conditions:
+        raise VerificationContractError("SCHEDULER_TARGET_CONDITIONS_MOVED")
+    if (_app_transport(repository) != transport or _app_refs(repository, url, patterns) != refs
+            or _scheduler_namespace(repository, url, expected.target) != namespace
+            or _original_local(local[0], MAX_ORIGINAL_PROOF_BYTES) != local[1] or os.path.lexists(local[2])
+            or _app_target_refs(repository, url, expected.target.run_id) != local[3]
+            or _original_git(repository, "rev-parse", "--verify", "HEAD").decode("ascii").strip() != expected.subject_sha):
+        raise VerificationContractError("SCHEDULER_ADMISSION_REVIEW_OR_TARGET_MOVED")
+    return coverage, authority, (transport, namespace, (patterns, refs), local, target.conditions)
+
+
+def _scheduler_final_roots(repository: Path, expected, roots, witnesses):
+    """Recheck all retained mutable roots after the core's last native reads."""
+    transport, namespace, reviewed_refs, local, target_conditions = roots
+    for locator, witness in zip(expected.sources, witnesses):
+        if witness.authentication != "AUTHENTICATED":
+            continue
+        source = witness.applicability.source
+        if (observe_original_evidence(repository, expected=locator.applicability.source).provenance != source
+                or _app_target_refs(repository, transport[2], source.identity.run_id) != source.source_refs):
+            raise VerificationContractError("SCHEDULER_ORIGINAL_SOURCE_MOVED_AT_FINAL_BOUNDARY")
+    if target_conditions is not None and observe_original_evidence(
+            repository, expected=expected.target.condition_evidence).provenance != target_conditions:
+        raise VerificationContractError("SCHEDULER_TARGET_CONDITIONS_MOVED_AT_FINAL_BOUNDARY")
+    if (_app_transport(repository) != transport
+            or _app_refs(repository, transport[2], reviewed_refs[0]) != reviewed_refs[1]
+            or _scheduler_namespace(repository, transport[2], expected.target) != namespace
+            or _original_local(local[0], MAX_ORIGINAL_PROOF_BYTES) != local[1] or os.path.lexists(local[2])
+            or _app_target_refs(repository, transport[2], expected.target.run_id) != local[3]
+            or _original_git(repository, "rev-parse", "--verify", "HEAD").decode("ascii").strip() != expected.subject_sha):
+        raise VerificationContractError("SCHEDULER_AUTHORITY_MOVED_AT_FINAL_BOUNDARY")
+
+
+def _scheduler_source_assignments(coverage, expected):
+    """Only exact complete reviewed entries can receive a source locator."""
+    from dataclasses import asdict
+    obligations = {o.id: o for o in coverage.contract.obligations}
+    entries = {e.obligation_id: e for e in coverage.mapping.entries}
+    proofs = {p.id: p for p in coverage.mapping.proofs}
+    for source in expected.sources:
+        app = source.applicability
+        obligation = obligations.get(app.obligation_id)
+        if (obligation is None or obligation.kind != "candidate" or not obligation.blocking
+                or (obligation.revision, obligation.digest, obligation.acceptance_ids) != (
+                    app.obligation_revision, app.obligation_digest, app.acceptance_ids)):
+            raise VerificationContractError("SCHEDULER_UNREVIEWED_SOURCE_OBLIGATION")
+        proof = proofs[entries[obligation.id].proof_id]
+        if (source.proof_id, source.proof_sha256) != (proof.id, _app_digest(asdict(proof))):
+            raise VerificationContractError("SCHEDULER_UNREVIEWED_SOURCE_PROOF")
+
+
+def plan_candidate_proofs(repository: Path, *, expected: ProofSchedulerRequest) -> ProofSchedulerPlan:
+    """Single explicit Runtime-owned L3-01 core. Reads only; never proof authority.
+
+    No plan/witness/provider/caller mapping is an input. A first candidate needs
+    the complete native reviewed population, but needs no original evidence.
+    Both future consumers receive projections from this very same plan.
+    """
+    from .verification_contract import (
+        ProofSchedulerRequest, ProofSchedulerPlan, SchedulerSourceDecision,
+        format_scheduler_request, format_scheduler_plan,
+    )
+    if type(expected) is not ProofSchedulerRequest:
+        raise VerificationContractError("EXACT_TYPED_SCHEDULER_REQUEST_REQUIRED")
+    format_scheduler_request(expected)  # Enforce aggregate bounds before I/O.
+    coverage, authority, decisions = None, None, ()
+    try:
+        if expected.operation != "PRIMARY":
+            reason = (expected.operation + "_NATIVE_CORRECTION_LINEAGE_NOT_ESTABLISHED"
+                      if expected.operation in {"REPAIR", "REMEDIATION"} else "SCHEDULER_UNSUPPORTED_OPERATION")
+            raise VerificationContractError(reason)
+        repository = Path(repository).absolute()
+        if repository.resolve(strict=True) != repository:
+            raise VerificationContractError("UNSAFE_SCHEDULER_REPOSITORY")
+        coverage, authority, roots = _scheduler_read_population(repository, expected)
+        _scheduler_source_assignments(coverage, expected)
+        witnesses = tuple(observe_proof_reuse(repository, expected=s) for s in expected.sources)
+        decisions = tuple(SchedulerSourceDecision(s.applicability.obligation_id, w.outcome, w.reason,
+            w.source_snapshot, hashlib.sha256(format_reuse(w)).hexdigest()) for s, w in zip(expected.sources, witnesses))
+        # L3 owns its own final reads after source decisions, even though L2
+        # already authenticated each one. No externally parsed witness is used.
+        current_coverage, current_authority, current_roots = _scheduler_read_population(repository, expected)
+        if (current_coverage, current_authority, current_roots) != (coverage, authority, roots):
+            raise VerificationContractError("SCHEDULER_SOURCE_TARGET_OR_REVIEW_CHANGED_AT_BOUNDARY")
+        refreshed = tuple(observe_proof_reuse(repository, expected=s) for s in expected.sources)
+        if refreshed != witnesses:
+            raise VerificationContractError("SCHEDULER_SOURCE_TARGET_OR_REVIEW_CHANGED_AT_BOUNDARY")
+        _scheduler_final_roots(repository, expected, current_roots, refreshed)
+        plan = ProofSchedulerPlan(1, expected, "AUTHENTICATED", "EXACT_CURRENT_PRIMARY_AND_COMPLETE_REVIEWED_POPULATION",
+                                  coverage, authority, decisions)
+        format_scheduler_plan(plan)
+        return plan
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, StopIteration, UnicodeError,
+            RuntimeError, RecursionError, yaml.YAMLError) as exc:
+        reason = str(exc)[:256] if type(exc) is VerificationContractError else "SCHEDULER_NATIVE_AUTHORITY_OR_INPUT_UNAVAILABLE"
+        plan = ProofSchedulerPlan(1, expected, "NOT_ESTABLISHED", reason, coverage, authority, decisions)
+        try:
+            format_scheduler_plan(plan)
+        except (VerificationContractError, ValueError, TypeError):
+            plan = ProofSchedulerPlan(1, expected, "NOT_ESTABLISHED", "SCHEDULER_PROJECTION_BOUND", None, None, ())
+        return plan
