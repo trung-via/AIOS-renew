@@ -1,0 +1,973 @@
+{
+  "schema": "proof-coverage-v1",
+  "id": "TASK-381-semantic-contract",
+  "revision": 1,
+  "execution_default": "candidate-first-no-reproduction",
+  "task": {
+    "task_id": "TASK-381",
+    "revision": 1,
+    "envelope_digest": "d18a89744492a3e1d7cb31b78969a2f976788d1ca4dedf717378fc0b22465a8d",
+    "acceptance_ids": [
+      "AC1",
+      "AC2",
+      "AC3",
+      "AC4",
+      "AC5",
+      "AC6",
+      "AC7",
+      "AC8",
+      "AC9",
+      "AC10"
+    ]
+  },
+  "provenance": {
+    "authority_ref": "TASK-382-authoring-only-v1",
+    "review_ref": "independent-mapping-review-required-v1",
+    "source_ref": "TASK-381-bf1b3fa-r1"
+  },
+  "obligations": [
+    {
+      "id": "T381-D01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-D01-property-r1",
+        "text": "The separately invoked task-semantic-v1 decoder must preserve complete WHAT, WHY, scope, acceptance and semantic requirements under unordered declaration normalization, and must not introduce command policy, consent, budget or Executor authority."
+      },
+      "acceptance_ids": [
+        "AC1"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-decoder-normalization-r1",
+        "population_size": 3,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-decoder-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-isolated-values-r1",
+        "profile_ref": "t381-pure-decoder-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-fresh-input-per-case-r1",
+        "integration_ref": "t381-decoder-isolation-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-D02",
+      "revision": 1,
+      "claim": {
+        "id": "T381-D02-property-r1",
+        "text": "The future TASK and nested semantic requirements must be frozen independent values; decoding must perform no file, process or network I/O and mutation of caller-owned input must not change decoded meaning."
+      },
+      "acceptance_ids": [
+        "AC1"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-decoder-immutability-r1",
+        "population_size": 6,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-decoder-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-isolated-values-r1",
+        "profile_ref": "t381-pure-decoder-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-fresh-input-per-case-r1",
+        "integration_ref": "t381-decoder-isolation-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-N01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-N01-property-r1",
+        "text": "The strict future decoder must reject missing or ambiguous discriminators, unsupported versions, legacy TASK text, duplicate fields or documents, unsupported YAML graphs and encodings, wrong root shapes and out-of-bound input rather than inferring or admitting a version."
+      },
+      "acceptance_ids": [
+        "AC2"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-version-shape-rejections-r1",
+        "population_size": 15,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-decoder-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-isolated-values-r1",
+        "profile_ref": "t381-pure-decoder-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-fresh-input-per-case-r1",
+        "integration_ref": "t381-decoder-isolation-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-N02",
+      "revision": 1,
+      "claim": {
+        "id": "T381-N02-property-r1",
+        "text": "The future decoder must reject executable command-shaped semantic text and all extra command-policy, provenance, source-pin, Human approval, Executor, budget and activation metadata; no recognized command syntax may become an executable verification request."
+      },
+      "acceptance_ids": [
+        "AC2"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-command-authority-rejections-r1",
+        "population_size": 20,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-decoder-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-isolated-values-r1",
+        "profile_ref": "t381-pure-decoder-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-fresh-input-per-case-r1",
+        "integration_ref": "t381-decoder-isolation-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-N03",
+      "revision": 1,
+      "claim": {
+        "id": "T381-N03-property-r1",
+        "text": "The future decoder must reject duplicate, partial, unknown, conflicting or malformed acceptance and obligations, including omitted condition dimensions, mixed candidate subjects and invalid revisions, with no partial successful semantic TASK."
+      },
+      "acceptance_ids": [
+        "AC2"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-requirement-rejections-r1",
+        "population_size": 10,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-decoder-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-isolated-values-r1",
+        "profile_ref": "t381-pure-decoder-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-fresh-input-per-case-r1",
+        "integration_ref": "t381-decoder-isolation-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-B01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-B01-property-r1",
+        "text": "The immutable requirement adapter and independently sourced contract must retain exact obligation identity, revision, claim, blocking behavior, acceptance and every distinguishing condition; only unordered declaration order may normalize, with no subsumption of different populations, fixtures, profiles or evidence contexts."
+      },
+      "acceptance_ids": [
+        "AC3"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-condition-retention-r1",
+        "population_size": 19,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-decoder-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-isolated-values-r1",
+        "profile_ref": "t381-pure-decoder-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-fresh-input-per-case-r1",
+        "integration_ref": "t381-decoder-isolation-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-B02",
+      "revision": 1,
+      "claim": {
+        "id": "T381-B02-property-r1",
+        "text": "The TASK envelope must contain no self-derived source or contract pin; independently authenticated raw TASK bytes must determine its digest, and circular, normalized-text or stale-envelope substitutions must fail even when labels and acceptance names match."
+      },
+      "acceptance_ids": [
+        "AC3"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-cycle-and-pin-rejections-r1",
+        "population_size": 6,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-canonical-git-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-fresh-local-repositories-r1",
+        "profile_ref": "t381-source-integration-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-stable-ref-observers-r1",
+        "ordering_ref": "t381-base-candidate-main-read-r1",
+        "integration_ref": "t381-source-intake-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-B03",
+      "revision": 1,
+      "claim": {
+        "id": "T381-B03-property-r1",
+        "text": "The decoder must preserve isolated serial and shared integration requirements as separate immutable obligations with their distinct fixtures, worker mode and count, profiles, concurrency and ordering; encoding a parallel requirement must not select or launch runtime workers."
+      },
+      "acceptance_ids": [
+        "AC3"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-profile-separation-r1",
+        "population_size": 2,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-decoder-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-isolated-values-r1",
+        "profile_ref": "t381-pure-decoder-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-fresh-input-per-case-r1",
+        "integration_ref": "t381-decoder-isolation-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-S01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-S01-property-r1",
+        "text": "The explicitly invoked readiness reader must derive TASK identity and complete requirements from immutable authenticated Git bytes and the exact current-main contract and mapping through existing intake and coverage validators; a complete synthetic future-format package must produce source-consistent diagnostics without production admission."
+      },
+      "acceptance_ids": [
+        "AC4"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-authenticated-source-positive-r1",
+        "population_size": 1,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-canonical-git-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-fresh-local-repositories-r1",
+        "profile_ref": "t381-source-integration-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-stable-ref-observers-r1",
+        "ordering_ref": "t381-base-candidate-main-read-r1",
+        "integration_ref": "t381-source-intake-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-S02",
+      "revision": 1,
+      "claim": {
+        "id": "T381-S02-property-r1",
+        "text": "Incoming self-consistent declarations must not replace actual authenticated TASK, contract or mapping sources; cross-TASK, revision, acceptance, candidate, source-role, condition and stale-blob substitutions must be rejected by the existing source reader."
+      },
+      "acceptance_ids": [
+        "AC4"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-source-substitution-rejections-r1",
+        "population_size": 9,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-canonical-git-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-fresh-local-repositories-r1",
+        "profile_ref": "t381-source-integration-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-stable-ref-observers-r1",
+        "ordering_ref": "t381-base-candidate-main-read-r1",
+        "integration_ref": "t381-source-intake-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-S03",
+      "revision": 1,
+      "claim": {
+        "id": "T381-S03-property-r1",
+        "text": "Exact configured remote identity and current-main semantic bytes must survive repeated source observations; stale or moved main, changed transport identity and changed current source blobs must fail closed without returning partial authenticated readiness."
+      },
+      "acceptance_ids": [
+        "AC4"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-source-currentness-rejections-r1",
+        "population_size": 4,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-canonical-git-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-interobservation-ref-state-r1",
+        "profile_ref": "t381-source-race-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-controlled-observation-change-r1",
+        "ordering_ref": "t381-read-change-recheck-r1",
+        "integration_ref": "t381-source-intake-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-A01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-A01-property-r1",
+        "text": "The readiness reader must compose the existing authenticated Human Issue reader and exact mapping-specific TASK, RUN, RESULT, EVIDENCE, PRIMARY REVIEW and Publisher source-containment readers; only complete matching synthetic lineage may establish bounded authority diagnostics, without treating that fixture as live approval."
+      },
+      "acceptance_ids": [
+        "AC5"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-independent-lineage-positive-r1",
+        "population_size": 1,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-human-review-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-independent-local-authorities-r1",
+        "profile_ref": "t381-authority-integration-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-stable-authority-observers-r1",
+        "ordering_ref": "t381-sources-human-review-recheck-r1",
+        "integration_ref": "t381-authority-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-A02",
+      "revision": 1,
+      "claim": {
+        "id": "T381-A02-property-r1",
+        "text": "Absent, untrusted, copied, stale, partial, swapped, unrelated or conflicting Human and mapping-specific review subjects must leave authority NOT_ESTABLISHED with no partial lineage; declaration provenance and an ordinary engineering PASS cannot authenticate selection or mapping adequacy."
+      },
+      "acceptance_ids": [
+        "AC5"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-authority-rejections-r1",
+        "population_size": 11,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-human-review-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-independent-local-authorities-r1",
+        "profile_ref": "t381-authority-integration-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-stable-authority-observers-r1",
+        "ordering_ref": "t381-sources-human-review-recheck-r1",
+        "integration_ref": "t381-authority-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-A03",
+      "revision": 1,
+      "claim": {
+        "id": "T381-A03-property-r1",
+        "text": "The authority reader must reobserve the exact selected Human and independent review refs before returning; replacement between observations must revoke lineage and retain NOT_ESTABLISHED authority rather than reuse the earlier matching subjects."
+      },
+      "acceptance_ids": [
+        "AC5"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-authority-currentness-rejections-r1",
+        "population_size": 2,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-human-review-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-interobservation-ref-state-r1",
+        "profile_ref": "t381-authority-race-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-controlled-authority-change-r1",
+        "ordering_ref": "t381-authority-read-change-recheck-r1",
+        "integration_ref": "t381-authority-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-R01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-R01-property-r1",
+        "text": "Readiness must report structure, source consistency and currentness separately from Human selection, Reviewer and Publisher authority; both complete synthetic and unselected cases must retain unestablished canonical target verification and evidence applicability, NOT_ADMITTED future policy, NOT_ESTABLISHED G3, G6 and opt-in, and NOT_ACTIVATED KA-01."
+      },
+      "acceptance_ids": [
+        "AC6"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-status-separation-r1",
+        "population_size": 2,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-human-review-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-independent-local-authorities-r1",
+        "profile_ref": "t381-authority-integration-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-stable-authority-observers-r1",
+        "ordering_ref": "t381-sources-human-review-recheck-r1",
+        "integration_ref": "t381-authority-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-R02",
+      "revision": 1,
+      "claim": {
+        "id": "T381-R02-property-r1",
+        "text": "Every returned readiness result must remain frozen, production_eligible false and execution_authorized false; neither matching source labels nor complete synthetic authority may yield proof PASS, operative TASK admission, scheduling or production activation."
+      },
+      "acceptance_ids": [
+        "AC6"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-nonoperative-results-r1",
+        "population_size": 2,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-human-review-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-independent-local-authorities-r1",
+        "profile_ref": "t381-authority-integration-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-stable-authority-observers-r1",
+        "ordering_ref": "t381-sources-human-review-recheck-r1",
+        "integration_ref": "t381-authority-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-L01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-L01-property-r1",
+        "text": "Legacy parsing must retain accepted V1 and V2 command-bearing shape, command order and rejection behavior; the future parser must reject legacy envelopes and the canonical parser must reject the future format without auto-detection or reinterpretation."
+      },
+      "acceptance_ids": [
+        "AC7"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-legacy-decoder-compatibility-r1",
+        "population_size": 4,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-legacy-ingress-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-fresh-local-repositories-r1",
+        "profile_ref": "t381-legacy-integration-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-baseline-input-then-future-rejection-r1",
+        "integration_ref": "t381-legacy-ingress-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-L02",
+      "revision": 1,
+      "claim": {
+        "id": "T381-L02-property-r1",
+        "text": "Existing authoring ingress, PRIMARY loading, legacy source binding and Human-selection production must continue to reject unsupported future TASK bytes; no operative verification, correction, publication or historical path may silently call the prospective decoder or register a semantic policy."
+      },
+      "acceptance_ids": [
+        "AC7"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-operative-ingress-rejections-r1",
+        "population_size": 4,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-legacy-ingress-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-fresh-local-repositories-r1",
+        "profile_ref": "t381-legacy-integration-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-baseline-input-then-future-rejection-r1",
+        "integration_ref": "t381-legacy-ingress-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-T01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-T01-property-r1",
+        "text": "The four existing focused test sources must provide meaningful assertions and independent local Git or HTTP fixtures for positive future decoding and authenticated synthetic readiness plus negative cycle, version, acceptance, Human, unrelated PASS, currentness and source-substitution cases; filenames and historical command success alone cannot discharge these properties."
+      },
+      "acceptance_ids": [
+        "AC8"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-existing-test-adequacy-audit-r1",
+        "population_size": 4,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-immutable-source-fixture-r1"
+        ],
+        "shared_state_ref": "t381-read-only-source-state-r1",
+        "profile_ref": "t381-semantic-source-audit-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-read-source-then-callsite-audit-r1",
+        "integration_ref": "t381-source-and-document-audit-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-T02",
+      "revision": 1,
+      "claim": {
+        "id": "T381-T02-property-r1",
+        "text": "Decoder effect traps and readiness process allowlists must forbid semantic commands, test invocation, network-selected authority, ref, index, worktree and remote mutation, allowing only the existing bounded immutable-object Git reads and fetches; snapshots must remain equal outside object acquisition."
+      },
+      "acceptance_ids": [
+        "AC8"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-read-only-effects-r1",
+        "population_size": 2,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-canonical-git-fixtures-r1"
+        ],
+        "shared_state_ref": "t381-interobservation-ref-state-r1",
+        "profile_ref": "t381-source-race-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-controlled-observation-change-r1",
+        "ordering_ref": "t381-read-change-recheck-r1",
+        "integration_ref": "t381-source-intake-integration-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-DOC01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-DOC01-property-r1",
+        "text": "The published versioned semantic-TASK document must accurately specify the exact format, cycle-free association, explicit read-only invocation and conservative statuses, retain legacy compatibility, and leave live mapping approval, eligible G3 engineering and separate KA-01 G6 Human opt-in outstanding."
+      },
+      "acceptance_ids": [
+        "AC9"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-documentation-boundaries-r1",
+        "population_size": 8,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-immutable-source-fixture-r1"
+        ],
+        "shared_state_ref": "t381-read-only-source-state-r1",
+        "profile_ref": "t381-semantic-source-audit-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-read-source-then-callsite-audit-r1",
+        "integration_ref": "t381-source-and-document-audit-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-SC01",
+      "revision": 1,
+      "claim": {
+        "id": "T381-SC01-property-r1",
+        "text": "An exact historical RUN-base to target-candidate source audit must confine the TASK-381 implementation delta to its eight authorized paths; the historical TASK envelope and roadmap must remain unchanged and this later mapping-review delta must not be substituted for that target delta."
+      },
+      "acceptance_ids": [
+        "AC10"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-authorized-target-delta-r1",
+        "population_size": 8,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-immutable-source-fixture-r1"
+        ],
+        "shared_state_ref": "t381-read-only-source-state-r1",
+        "profile_ref": "t381-semantic-source-audit-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-read-source-then-callsite-audit-r1",
+        "integration_ref": "t381-source-and-document-audit-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    },
+    {
+      "id": "T381-SC02",
+      "revision": 1,
+      "claim": {
+        "id": "T381-SC02-property-r1",
+        "text": "Inspection of the exact TASK-381 production delta and call sites must establish that it adds only the explicit prospective decoder and read-only reader composition, with no second Runtime, Reviewer, Publisher, lifecycle database, scheduler, worker or profile selector, or roadmap writer."
+      },
+      "acceptance_ids": [
+        "AC10"
+      ],
+      "kind": "candidate",
+      "blocking": true,
+      "conditions": {
+        "candidate_sha": "bf1b3fa121fc7daebaa8257aa81d6546611e06e7",
+        "base_sha": null,
+        "population_ref": "t381-single-owner-boundaries-r1",
+        "population_size": 7,
+        "test_ref": "t381-published-test-code-bf1-r1",
+        "fixture_refs": [
+          "t381-immutable-source-fixture-r1"
+        ],
+        "shared_state_ref": "t381-read-only-source-state-r1",
+        "profile_ref": "t381-semantic-source-audit-serial-r1",
+        "worker_mode": "serial",
+        "workers": 1,
+        "concurrency_ref": "t381-no-concurrent-observer-r1",
+        "ordering_ref": "t381-read-source-then-callsite-audit-r1",
+        "integration_ref": "t381-source-and-document-audit-r1",
+        "repetition_ref": "t381-one-complete-population-no-retry-r1",
+        "toolchain_ref": "t381-locked-python-git-toolchain-r1",
+        "environment_ref": "t381-isolated-local-offline-authority-r1",
+        "evidence_kind": "prospective-conformance-requirement",
+        "evidence_schema": "runtime-owned-observation-required-v1",
+        "collection_ref": "t381-exact-source-per-case-observation-r1"
+      },
+      "provenance": {
+        "authority_ref": "TASK-382-authoring-only-v1",
+        "review_ref": "independent-mapping-review-required-v1",
+        "source_ref": "TASK-381-bf1b3fa-r1"
+      }
+    }
+  ]
+}
