@@ -15,9 +15,10 @@ import yaml
 import tempfile
 import time
 import tomllib
+import threading
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import ExitStack, contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterator
 
@@ -32,6 +33,9 @@ from .verification_contract import (
     projected_failure_attribution, pytest_collection_command, pytest_projection_command,
     validate_exact_collection, validate_exact_projection, validate_failure_reproduction,
     pytest_execution_profile,
+    OriginalEvidenceRequest, OriginalProofDimension, OriginalProofProvenance,
+    ORIGINAL_PROOF_DIMENSIONS, MAX_ORIGINAL_PROOF_BYTES, MAX_ORIGINAL_RAW_BYTES,
+    _original_decode, _original_json, format_original_proof,
 )
 from .parallel_verification import (
     EXECUTION_CONTRACT, ProbeError, effective_pytest_profile, git_executable,
@@ -1412,3 +1416,362 @@ def _summary(returncode: int, *, stdout: str, stderr: str) -> str:
     if detail:
         return detail
     return "verification passed" if returncode == 0 else "verification failed"
+
+
+@dataclass(frozen=True, slots=True)
+class OriginalEvidenceObservation:
+    """L2-01 read result. Authentication is separate from satisfactory proof."""
+
+    status: str
+    reason: str
+    provenance: OriginalProofProvenance | None
+
+    @property
+    def disposition(self) -> str:
+        return "BLOCK" if self.provenance is None else "SOURCE_OBSERVED_ONLY"
+
+
+def _original_git(repository: Path, *arguments: str, limit: int = 65536) -> bytes:
+    """Only used with fixed read commands below; bounded output, no lazy fetch."""
+    environment = {k: v for k, v in os.environ.items() if not k.upper().startswith("GIT_")}
+    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+                       GIT_NO_REPLACE_OBJECTS="1", GIT_NO_LAZY_FETCH="1",
+                       GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0")
+    command = (git_executable(environment), "--no-replace-objects", "-C", str(repository),
+               "-c", "core.fsmonitor=false", "-c", "protocol.ext.allow=never", *arguments)
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                          env=environment) as process:
+        output = []
+        def read():
+            output.append(process.stdout.read(limit + 1))
+        reader = threading.Thread(target=read, daemon=True)
+        reader.start()
+        reader.join(10)
+        if reader.is_alive() or not output or len(output[0]) > limit:
+            process.kill()
+            process.wait()
+            reader.join(1)
+            raise VerificationContractError("SOURCE_READ_UNAVAILABLE_OR_OVERSIZED")
+        try:
+            code = process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            raise VerificationContractError("SOURCE_READ_TIMEOUT") from None
+        if code:
+            raise VerificationContractError("SOURCE_READ_UNAVAILABLE")
+    return output[0]
+
+
+def _original_object(repository: Path, sha: str, kind: str, limit: int) -> bytes:
+    # Recompute the object identity; replace refs/grafts cannot supply lineage.
+    size = _original_git(repository, "cat-file", "-s", sha).strip()
+    if not size.isdigit() or not 0 < int(size) <= limit:
+        raise VerificationContractError("SOURCE_OBJECT_SIZE")
+    content = _original_git(repository, "cat-file", kind, sha, limit=limit)
+    if (len(content) != int(size)
+            or hashlib.sha1(f"{kind} {len(content)}\0".encode("ascii") + content).hexdigest() != sha):
+        raise VerificationContractError("SOURCE_OBJECT_IDENTITY")
+    return content
+
+
+def _original_commit(repository: Path, sha: str) -> tuple[str, tuple[str, ...]]:
+    content = _original_object(repository, sha, "commit", 65536)
+    header, separator, _ = content.partition(b"\n\n")
+    lines = header.split(b"\n")
+    if not separator or not lines[0].startswith(b"tree "):
+        raise VerificationContractError("SOURCE_COMMIT_SCHEMA")
+    tree = lines[0][5:].decode("ascii")
+    parents, index = [], 1
+    while index < len(lines) and lines[index].startswith(b"parent "):
+        parents.append(lines[index][7:].decode("ascii"))
+        index += 1
+    if (len(parents) > 16 or any(line.startswith((b"tree ", b"parent ")) for line in lines[index:])
+            or any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in (tree, *parents))):
+        raise VerificationContractError("SOURCE_COMMIT_SCHEMA")
+    return tree, tuple(parents)
+
+
+def _original_blob(repository: Path, tree: str, path: str, *, missing_ok: bool = False) -> tuple[str | None, bytes | None]:
+    parts = path.split("/")  # All paths are fixed below, never caller-provided.
+    for index, part in enumerate(parts):
+        raw = _original_object(repository, tree, "tree", MAX_ORIGINAL_PROOF_BYTES)
+        entries = {}
+        while raw:
+            header, separator, tail = raw.partition(b"\0")
+            mode, space, name = header.partition(b" ")
+            if not separator or not space or len(tail) < 20 or name in entries:
+                raise VerificationContractError("SOURCE_TREE_SCHEMA")
+            entries[name] = (mode, tail[:20].hex())
+            raw = tail[20:]
+        mode, sha = entries.get(part.encode("ascii"), (None, None))
+        if mode is None and missing_ok:
+            return None, None
+        if mode != (b"100644" if index == len(parts) - 1 else b"40000"):
+            raise VerificationContractError("SOURCE_BLOB_MISSING_OR_UNSAFE")
+        tree = sha
+    return sha, _original_object(repository, sha, "blob", MAX_ORIGINAL_PROOF_BYTES)
+
+
+def _original_local(path: Path, limit: int) -> bytes:
+    """No symlinks, junctions, traversal, hardlinks, devices or changing reads."""
+    if not path.is_absolute() or ".." in path.parts:
+        raise VerificationContractError("UNSAFE_LOCAL_SOURCE")
+    for parent in (*reversed(path.parents), path):
+        info = parent.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise VerificationContractError("UNSAFE_LOCAL_SOURCE")
+    before = path.lstat()
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or not 0 < before.st_size <= limit:
+        raise VerificationContractError("UNSAFE_OR_OVERSIZED_LOCAL_SOURCE")
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        content = stream.read(limit + 1)
+        after = os.fstat(stream.fileno())
+    def identity(info):
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    if (len(content) != before.st_size or len(content) > limit
+            or not identity(before) == identity(opened) == identity(after) == identity(path.lstat())):
+        raise VerificationContractError("LOCAL_SOURCE_CHANGED")
+    return content
+
+
+def _original_remote(repository: Path) -> str:
+    # Same configured-branch upstream semantics as existing transport. No trust
+    # root, raw locator, resolver callback or environment is accepted by the API.
+    branch = _original_git(repository, "symbolic-ref", "--quiet", "--short", "HEAD").decode("utf-8").strip()
+    remote = _original_git(repository, "config", "--get", f"branch.{branch}.remote").decode("utf-8").strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", remote) is None:
+        raise VerificationContractError("CANONICAL_UPSTREAM_UNAVAILABLE")
+    url = _original_git(repository, "remote", "get-url", remote).decode("utf-8").strip()
+    if not url or len(url) > 4096 or url.startswith("-") or "\n" in url:
+        raise VerificationContractError("CANONICAL_UPSTREAM_UNAVAILABLE")
+    return url
+
+
+def _original_refs(repository: Path, url: str, run_id: str) -> tuple[tuple[str, str], ...]:
+    names = tuple("refs/heads/aios/" + kind + "/" + run_id for kind in
+                  ("review", "artifacts", "failure", "failure-artifacts", "repair"))
+    output = _original_git(repository, "ls-remote", "--refs", url, *names, limit=8192)
+    refs = {}
+    for line in output.decode("ascii").splitlines():
+        sha, tab, ref = line.partition("\t")
+        if not tab or ref not in names or ref in refs or re.fullmatch(r"[0-9a-f]{40}", sha) is None:
+            raise VerificationContractError("COMPETING_OR_MALFORMED_SOURCE_REFS")
+        refs[ref] = sha
+    return tuple(sorted(refs.items()))
+
+
+def _original_dimensions(task: dict, item: dict) -> tuple[OriginalProofDimension, ...]:
+    record = item.get("verification", {})
+    candidate = record.get("candidate", {})
+    complete = candidate.get("complete") is True and candidate.get("unstable") is False
+    # Incomplete V2 diagnostics may retain planned bindings after an observer
+    # fault. They are not authenticated actual process conditions.
+    profile = candidate.get("profile", {}) if complete else {}
+    toolchain = candidate.get("toolchain", {}) if complete else candidate.get("observed_toolchain", {})
+    toolchain_source = "EVIDENCE.verification.candidate." + ("toolchain" if complete else "observed_toolchain")
+    facts = {}
+    def observed(name, value, source):
+        if value is not None:
+            facts[name] = OriginalProofDimension(name, "OBSERVED", _original_json(value), source,
+                                                  "RECORDED_SOURCE_CONTENT")
+    observed("verification_policy", task.get("verification", {}).get("policy"), "TASK.verification.policy")
+    if record:
+        observed("execution_profile", profile or None, "EVIDENCE.verification.candidate.profile")
+        observed("toolchain", toolchain or None, toolchain_source)
+        interpreter = ("python_implementation", "python_version", "python_executable")
+        if all(toolchain.get(key) for key in interpreter):
+            observed("interpreter", {k: toolchain[k] for k in interpreter}, toolchain_source)
+        observed("environment_digest", profile.get("environment_digest"), "EVIDENCE.verification.candidate.profile.environment_digest")
+        # The digest records only Runtime's filtered environment, never its
+        # absent original content or excluded temp/observer variables.
+        observed("configuration", profile.get("repository_tool_blobs"), "EVIDENCE.verification.candidate.profile.repository_tool_blobs")
+        observed("observer", profile.get("observer_blob"), "EVIDENCE.verification.candidate.profile.observer_blob")
+        topology = ("workers", "distribution", "max_worker_restart", "collect_only")
+        if all(key in profile for key in topology):
+            observed("worker_topology", {k: profile[k] for k in topology}, "EVIDENCE.verification.candidate.profile")
+        execution = candidate.get("execution", {})
+        observed("worker_state", execution or None, "EVIDENCE.verification.candidate.execution")
+        observed("collection", candidate.get("collection"), "EVIDENCE.verification.candidate.collection")
+        observed("phase_outcomes", candidate.get("reports"), "EVIDENCE.verification.candidate.reports")
+        if "reports" in candidate:
+            observed("population", sorted({r["nodeid"] for r in candidate["reports"]}), "EVIDENCE.verification.candidate.reports.nodeid")
+        observed("completeness", candidate.get("complete"), "EVIDENCE.verification.candidate.complete")
+        observed("stability", candidate.get("unstable"), "EVIDENCE.verification.candidate.unstable")
+        observed("prior_raw_digest", record.get("raw_digest"), "EVIDENCE.verification.raw_digest")
+        diagnostics = {k: candidate[k] for k in ("errors", "observed_toolchain", "observation_sources") if k in candidate}
+        observed("condition_diagnostics", diagnostics or None, "EVIDENCE.verification.candidate")
+    observed("evidence_kind_schema", {"type": item["type"], "shape": "V2" if record else "V1",
+                                     "keys": sorted(item)}, "canonical RESULT.evidence")
+    return tuple(facts.get(name) or OriginalProofDimension(name, "UNKNOWN", None,
+                 "SOURCE_RECORDS", "NOT_OBSERVED") for name in ORIGINAL_PROOF_DIMENSIONS)
+
+
+def observe_original_evidence(repository: Path, *, expected: OriginalEvidenceRequest) -> OriginalEvidenceObservation:
+    """Explicit Runtime-owned read-only L2-01 observation of one original capture.
+
+    No ordinary V1/V2 execution calls this. Objects must already be local; this
+    reader never fetches, verifies a target, writes state, or issues authority.
+    Invalid/missing/conflicting source material yields NOT_ESTABLISHED/BLOCK.
+    """
+    try:
+        if type(expected) is not OriginalEvidenceRequest:
+            raise VerificationContractError("EXACT_TYPED_SOURCE_REQUIRED")
+        expected.__post_init__()
+        repository = Path(repository).absolute()
+        # Do not resolve away a repository symlink supplied as a locator.
+        if repository.resolve(strict=True) != repository:
+            raise VerificationContractError("UNSAFE_REPOSITORY")
+        url = _original_remote(repository)
+        refs = _original_refs(repository, url, expected.run_id)
+        wanted = tuple(sorted((("refs/heads/aios/review/" + expected.run_id, expected.candidate_sha),
+                               ("refs/heads/aios/artifacts/" + expected.run_id, expected.artifacts_sha))))
+        if refs != wanted:
+            raise VerificationContractError("SOURCE_REFS_MISSING_STALE_OR_COMPETING")
+        tree, _ = _original_commit(repository, expected.candidate_sha)
+        if tree != expected.tree_sha:
+            raise VerificationContractError("SOURCE_TREE_MISMATCH")
+        artifacts_tree, artifact_parents = _original_commit(repository, expected.artifacts_sha)
+        if artifact_parents:
+            raise VerificationContractError("UNSUPPORTED_ARTIFACT_LINEAGE")
+        task_blob, task_bytes = _original_blob(repository, tree, f".ai/tasks/{expected.task_id}.yaml")
+        _, run_bytes = _original_blob(repository, artifacts_tree, ".ai/transport/run.json")
+        _, result_bytes = _original_blob(repository, artifacts_tree, ".ai/transport/result.json")
+        from .task import _TaskLoader, parse_task
+        task = yaml.load(task_bytes.decode("utf-8"), Loader=_TaskLoader)
+        if (type(task) is not dict or task.get("task_id") != expected.task_id
+                or type(task.get("revision")) is not int or task["revision"] != expected.task_revision):
+            raise VerificationContractError("SOURCE_TASK_MISMATCH")
+        # Bound YAML nesting/types as well as bytes; no parser defaults become facts.
+        _original_json(task)
+        parse_task(task_bytes.decode("utf-8"))
+        git_dir = Path(_original_git(repository, "rev-parse", "--absolute-git-dir").decode("utf-8").strip())
+        state = git_dir / "aios"
+        run_path = state / "runs" / (expected.run_id + ".json")
+        result_path = state / "results" / (expected.run_id + ".json")
+        failure_path = state / "failures" / (expected.run_id + ".json")
+        if os.path.lexists(failure_path):
+            raise VerificationContractError("COMPETING_LOCAL_FAILURE")
+        local_run = _original_local(run_path, MAX_ORIGINAL_PROOF_BYTES)
+        local_result = _original_local(result_path, MAX_ORIGINAL_PROOF_BYTES)
+        run, result = _original_decode(local_run), _original_decode(local_result)
+        canonical_run, canonical_result = _original_decode(run_bytes), _original_decode(result_bytes)
+        from .review_transport import public_run, public_result
+        if (canonical_run not in (run, _original_decode(public_run(local_run)))
+                or canonical_result not in (result, _original_decode(public_result(local_result)))):
+            raise VerificationContractError("LOCAL_CANONICAL_ARTIFACT_CONFLICT")
+        from .review_transport import _bind_performance_terminal_identity
+        bound = _bind_performance_terminal_identity(run_bytes, result_bytes,
+            ref="refs/heads/aios/artifacts/" + expected.run_id, run_id=expected.run_id,
+            task_id=expected.task_id, terminal_kind="RESULT")
+        if bound[0] != expected.task_revision or bound[3] != expected.candidate_sha:
+            raise VerificationContractError("SOURCE_CANONICAL_TERMINAL_MISMATCH")
+        if (set(result) != {"result", "evidence"}
+                or type(run.get("task", {}).get("revision")) is not int
+                or run.get("run_id") != expected.run_id or run.get("task") != {"id": expected.task_id, "revision": expected.task_revision}
+                or run.get("head_sha") not in (None, expected.candidate_sha)
+                or result.get("result", {}).get("head_sha") != expected.candidate_sha):
+            raise VerificationContractError("SOURCE_RUN_CANDIDATE_MISMATCH")
+        base_sha = run["base_sha"]
+        if type(base_sha) is not str or re.fullmatch(r"[0-9a-f]{40}", base_sha) is None:
+            raise VerificationContractError("SOURCE_BASE_MISMATCH")
+        # Walk raw immutable parent headers, bounded independently of local
+        # grafts/shallow/replace metadata, to establish the admitted base.
+        pending, seen = [expected.candidate_sha], set()
+        while pending and base_sha not in seen:
+            sha = pending.pop()
+            if sha in seen:
+                continue
+            if len(seen) >= 4096:
+                raise VerificationContractError("SOURCE_LINEAGE_BOUND")
+            seen.add(sha)
+            _, parents = _original_commit(repository, sha)
+            pending.extend(parents)
+        if base_sha not in seen:
+            raise VerificationContractError("SOURCE_BASE_NOT_IN_LINEAGE")
+        base_tree, _ = _original_commit(repository, base_sha)
+        base_task_blob, _ = _original_blob(repository, base_tree, f".ai/tasks/{expected.task_id}.yaml")
+        if base_task_blob != task_blob:
+            raise VerificationContractError("SOURCE_TASK_CHANGED_AFTER_ADMISSION")
+        population = result.get("evidence")
+        if type(population) is not list or not 0 < len(population) <= 256:
+            raise VerificationContractError("SOURCE_EVIDENCE_POPULATION")
+        ids = [i["evidence_id"] for i in population]
+        if len(ids) != len(set(ids)):
+            raise VerificationContractError("COMPETING_EVIDENCE_IDENTITY")
+        matches = [i for i in population if i["evidence_id"] == expected.evidence_id]
+        if len(matches) != 1:
+            raise VerificationContractError("SOURCE_EVIDENCE_UNKNOWN")
+        item = matches[0]
+        keys = {"evidence_id", "run_id", "subject_sha", "type", "source", "result", "raw"}
+        if (set(item) not in (keys, keys | {"verification"}) or set(item["source"]) != {"command"}
+                or set(item["result"]) != {"exit_code", "summary"} or set(item["raw"]) != {"path"}):
+            raise VerificationContractError("SOURCE_EVIDENCE_SCHEMA")
+        from .artifacts import validate_evidence
+        validate_evidence(item)  # Preserve existing V1/V2 interpretation.
+        if (item["run_id"] != expected.run_id or item["subject_sha"] != expected.subject_sha
+                or item["type"] != "VERIFICATION" or item["source"]["command"] != expected.command
+                or type(item["result"]["exit_code"]) is not int or item["result"]["exit_code"] != expected.exit_code):
+            raise VerificationContractError("SOURCE_EVIDENCE_BINDING_MISMATCH")
+        record = item.get("verification")
+        directory = state / "verification" / expected.run_id
+        v2 = task.get("verification", {}).get("policy") == MINIMUM_SUFFICIENT_V2
+        raw_path = directory / ("candidate" if v2 else "") / (expected.evidence_id + ".raw")
+        # Exact existing layout only. Public redacted paths are never opened.
+        if item["raw"]["path"] != str(raw_path):
+            raise VerificationContractError("SUBSTITUTED_OR_UNAVAILABLE_RAW_PATH")
+        raw = _original_local(raw_path, MAX_ORIGINAL_RAW_BYTES)
+        raw_digest = hashlib.sha256(raw).hexdigest()
+        if not raw.startswith(b"STDOUT\n") or b"\nSTDERR\n" not in raw:
+            raise VerificationContractError("SOURCE_RAW_FORMAT")
+        outcome = "FAIL" if expected.exit_code == 1 else "ERROR" if expected.exit_code != 0 else "PASS"
+        if record is not None:
+            if (record.get("disposition") != "EXECUTED" or "reuse" in record or "early_probe" in record
+                    or record.get("evidence_id") != expected.evidence_id or record.get("run_id") != expected.run_id
+                    or record.get("raw_path") != str(raw_path) or record.get("raw_digest") != raw_digest
+                    or record["binding"]["tree_sha"] != tree or record["binding"]["base_sha"] != base_sha
+                    or record["binding"]["subject_sha"] != expected.candidate_sha
+                    or task.get("verification", {}).get("policy") != MINIMUM_SUFFICIENT_V2):
+                raise VerificationContractError("SOURCE_V2_OR_RAW_DIGEST_CONFLICT")
+            candidate = record["candidate"]
+            profile = candidate.get("profile", {})
+            if candidate.get("complete") is True and candidate.get("unstable") is False:
+                # Authenticate the recorded Git-based configuration/observer
+                # identities against the original tree, not matching labels.
+                tools = {"pyproject.toml", "src/aios_renew/verification_contract.py", "tests/conftest.py",
+                         "src/aios_renew/parallel_verification.py", "tests/git_fixture_support.py",
+                         "scripts/aios_parallel_full_suite.py", "src/aios_renew/verification_profile.py"}
+                recorded_tools = profile.get("repository_tool_blobs", {})
+                if type(recorded_tools) is not dict or set(recorded_tools) - tools:
+                    raise VerificationContractError("SOURCE_CONFIGURATION_SCHEMA")
+                for path, blob_sha in recorded_tools.items():
+                    actual, _ = _original_blob(repository, tree, path, missing_ok=True)
+                    if actual != blob_sha:
+                        raise VerificationContractError("SOURCE_CONFIGURATION_BLOB_CONFLICT")
+                for key, path in (("observer_blob", "tests/bp_v4_probe_plugin.py"),
+                                  ("selected_policy_blob", ".ai/verification-profiles.yaml")):
+                    if profile.get(key) is not None:
+                        actual, _ = _original_blob(repository, tree, path, missing_ok=True)
+                        if actual != profile[key]:
+                            raise VerificationContractError("SOURCE_OBSERVER_POLICY_CONFLICT")
+            if candidate.get("complete") is not True or candidate.get("unstable") is not False:
+                if expected.exit_code == 0:
+                    outcome = "UNKNOWN"
+        dimensions = _original_dimensions(task, item)
+        digest = lambda content: hashlib.sha256(content).hexdigest()
+        provenance = OriginalProofProvenance(1, expected, base_sha, task_blob, digest(task_bytes),
+            digest(run_bytes), digest(local_run), digest(result_bytes), digest(local_result),
+            digest(_original_json(item).encode("ascii")), raw_digest, len(raw), outcome, refs, dimensions,
+            digest(url.encode("utf-8")))
+        format_original_proof(provenance)  # Enforce the total projection bound.
+        if (_original_remote(repository) != url or _original_refs(repository, url, expected.run_id) != refs
+                or os.path.lexists(failure_path) or _original_local(run_path, MAX_ORIGINAL_PROOF_BYTES) != local_run
+                or _original_local(result_path, MAX_ORIGINAL_PROOF_BYTES) != local_result
+                or _original_local(raw_path, MAX_ORIGINAL_RAW_BYTES) != raw):
+            raise VerificationContractError("SOURCE_CHANGED_DURING_OBSERVATION")
+        return OriginalEvidenceObservation("AUTHENTICATED", "EXACT_ORIGINAL_SOURCE", provenance)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError, RuntimeError,
+            RecursionError, yaml.YAMLError) as exc:
+        reason = str(exc) if isinstance(exc, VerificationContractError) else "SOURCE_UNAVAILABLE_OR_MALFORMED"
+        return OriginalEvidenceObservation("NOT_ESTABLISHED", reason[:256], None)

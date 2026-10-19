@@ -1073,3 +1073,328 @@ def derive_minimum_verification(
                     affected_requirements.append((probe, command))
     return VerificationPlan(tuple(c for c in commands if c not in moved_authored),
                             tuple(reused), tuple(affected), tuple(fallback), tuple(affected_requirements))
+
+
+# L2-01 is an explicit observation projection, never an EVIDENCE/lifecycle type.
+ORIGINAL_PROOF_FORMAT = "AIOS_L2_ORIGINAL_PROOF"
+ORIGINAL_PROOF_VERSION = 1
+MAX_ORIGINAL_PROOF_BYTES = 2 * 1024 * 1024
+MAX_ORIGINAL_RAW_BYTES = 16 * 1024 * 1024
+ORIGINAL_PROOF_DIMENSIONS = (
+    "verification_policy", "execution_profile", "toolchain", "interpreter",
+    "environment_digest", "environment_content", "configuration", "observer",
+    "worker_topology", "worker_state", "collection", "population", "phase_outcomes",
+    "completeness", "stability", "test_dependencies", "fixtures_helpers_shared_state",
+    "concurrency_interference", "ordering", "repetition", "integration_external_boundaries",
+    "evidence_kind_schema", "prior_raw_digest", "condition_diagnostics",
+)
+_ORIGINAL_DIMENSION_SOURCES = {
+    "verification_policy": "TASK.verification.policy",
+    "execution_profile": "EVIDENCE.verification.candidate.profile",
+    "toolchain": ("EVIDENCE.verification.candidate.toolchain", "EVIDENCE.verification.candidate.observed_toolchain"),
+    "interpreter": ("EVIDENCE.verification.candidate.toolchain", "EVIDENCE.verification.candidate.observed_toolchain"),
+    "environment_digest": "EVIDENCE.verification.candidate.profile.environment_digest",
+    "configuration": "EVIDENCE.verification.candidate.profile.repository_tool_blobs",
+    "observer": "EVIDENCE.verification.candidate.profile.observer_blob",
+    "worker_topology": "EVIDENCE.verification.candidate.profile",
+    "worker_state": "EVIDENCE.verification.candidate.execution",
+    "collection": "EVIDENCE.verification.candidate.collection",
+    "phase_outcomes": "EVIDENCE.verification.candidate.reports",
+    "population": "EVIDENCE.verification.candidate.reports.nodeid",
+    "completeness": "EVIDENCE.verification.candidate.complete",
+    "stability": "EVIDENCE.verification.candidate.unstable",
+    "prior_raw_digest": "EVIDENCE.verification.raw_digest",
+    "evidence_kind_schema": "canonical RESULT.evidence",
+    "condition_diagnostics": "EVIDENCE.verification.candidate",
+}
+
+
+def _original_text(value: object, limit: int = 8192) -> str:
+    if (type(value) is not str or not value or len(value) > limit
+            or any(ord(c) < 32 or ord(c) == 127 for c in value)):
+        raise VerificationContractError("invalid bounded original-proof text")
+    value.encode("utf-8", errors="strict")
+    return value
+
+
+def _original_hash(value: object, length: int = 64) -> str:
+    if type(value) is not str or re.fullmatch(r"[0-9a-f]{%d}" % length, value) is None:
+        raise VerificationContractError("invalid original-proof digest/identity")
+    return value
+
+
+def _original_json(value: object) -> str:
+    """One bounded, strict, independently reproducible encoding."""
+    nodes, characters = 0, 0
+    def bound(item, depth=0):
+        nonlocal nodes, characters
+        nodes += 1
+        characters += len(item) if type(item) is str else 0
+        if nodes > 200000 or characters > MAX_ORIGINAL_PROOF_BYTES:
+            raise VerificationContractError("original-proof content exceeds bound")
+        if depth > 24:
+            raise VerificationContractError("original-proof nesting exceeds bound")
+        if item is None or type(item) is bool:
+            return
+        if type(item) is int and -(2**63) <= item < 2**63:
+            return
+        if type(item) is str and len(item) <= 65536:
+            return
+        if type(item) is list and len(item) <= 100000:
+            for child in item:
+                bound(child, depth + 1)
+            return
+        if type(item) is dict and len(item) <= 100000:
+            for key, child in item.items():
+                _original_text(key, 256)
+                bound(child, depth + 1)
+            return
+        raise VerificationContractError("invalid original-proof JSON type/size")
+    bound(value)
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=True, allow_nan=False)
+    if len(encoded) > MAX_ORIGINAL_PROOF_BYTES:
+        raise VerificationContractError("original-proof byte bound exceeded")
+    return encoded
+
+
+def _original_decode(content: bytes) -> object:
+    if type(content) is not bytes or len(content) > MAX_ORIGINAL_PROOF_BYTES:
+        raise VerificationContractError("original-proof input byte bound exceeded")
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise VerificationContractError("duplicate original-proof key")
+            result[key] = value
+        return result
+    try:
+        value = json.loads(content.decode("utf-8", errors="strict"), object_pairs_hook=pairs)
+        _original_json(value)
+        return value
+    except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
+        raise VerificationContractError("invalid original-proof JSON") from exc
+
+
+@dataclass(frozen=True, slots=True)
+class OriginalEvidenceRequest:
+    """Expected pins are locators, authenticated independently by Runtime."""
+
+    task_id: str
+    task_revision: int
+    run_id: str
+    candidate_sha: str
+    tree_sha: str
+    artifacts_sha: str
+    evidence_id: str
+    subject_sha: str
+    command: str
+    exit_code: int
+
+    def __post_init__(self):
+        _original_text(self.task_id, 80)
+        if re.fullmatch(r"TASK-[A-Za-z0-9_-]+", self.task_id) is None:
+            raise VerificationContractError("invalid original TASK identity")
+        prefix = "RUN-" + self.task_id[5:] + "-"
+        if (type(self.run_id) is not str or len(self.run_id) > 88
+                or re.fullmatch(re.escape(prefix) + r"\d{3,}", self.run_id) is None
+                or type(self.evidence_id) is not str
+                or re.fullmatch(re.escape(self.run_id) + r"-V\d{3,}", self.evidence_id) is None
+                or len(self.evidence_id) > 96):
+            raise VerificationContractError("invalid original RUN/EVIDENCE identity")
+        if type(self.task_revision) is not int or not 1 <= self.task_revision <= 1000000:
+            raise VerificationContractError("invalid original TASK revision")
+        for value in (self.candidate_sha, self.tree_sha, self.artifacts_sha, self.subject_sha):
+            _original_hash(value, 40)
+        if self.subject_sha != self.candidate_sha:
+            raise VerificationContractError("original evidence must retain its source candidate")
+        _original_text(self.command)
+        if type(self.exit_code) is not int or not -(2**31) <= self.exit_code < 2**31:
+            raise VerificationContractError("invalid original exit status")
+
+
+@dataclass(frozen=True, slots=True)
+class OriginalProofDimension:
+    """Immutable canonical JSON retains recorded content without mutable aliases."""
+
+    name: str
+    status: str
+    value_json: str | None
+    source: str
+    reason: str
+
+    def __post_init__(self):
+        if (type(self.name) is not str or self.name not in ORIGINAL_PROOF_DIMENSIONS
+                or type(self.status) is not str or self.status not in {"OBSERVED", "UNKNOWN"}):
+            raise VerificationContractError("invalid original-proof dimension")
+        _original_text(self.source, 256)
+        _original_text(self.reason, 256)
+        if self.status == "UNKNOWN":
+            if self.value_json is not None or self.reason != "NOT_OBSERVED" or self.source != "SOURCE_RECORDS":
+                raise VerificationContractError("unknown dimension cannot contain an assertion")
+        elif (self.source not in ((_ORIGINAL_DIMENSION_SOURCES.get(self.name),)
+                                 if type(_ORIGINAL_DIMENSION_SOURCES.get(self.name)) is str
+                                 else _ORIGINAL_DIMENSION_SOURCES.get(self.name, ()))
+              or type(self.value_json) is not str or self.reason != "RECORDED_SOURCE_CONTENT"
+              or _original_json(_original_decode(self.value_json.encode("utf-8"))) != self.value_json):
+            raise VerificationContractError("noncanonical observed dimension")
+        if self.status == "UNKNOWN":
+            return
+        value = _original_decode(self.value_json.encode("ascii"))
+        if value is None:
+            raise VerificationContractError("observed dimension requires recorded content")
+        if self.name in {"environment_digest", "prior_raw_digest", "observer"}:
+            _original_hash(value, 40 if self.name == "observer" else 64)
+        if self.name in {"completeness", "stability"} and type(value) is not bool:
+            raise VerificationContractError("invalid original completeness/stability")
+        if self.name == "verification_policy" and value not in ("minimum-sufficient-v1", "minimum-sufficient-v2"):
+            raise VerificationContractError("invalid original verification policy")
+        if self.name in {"execution_profile", "toolchain", "interpreter", "configuration", "worker_topology",
+                         "worker_state", "collection", "condition_diagnostics", "evidence_kind_schema"}:
+            if type(value) is not dict or not value:
+                raise VerificationContractError("invalid recorded original context")
+        if self.name == "interpreter":
+            if set(value) != {"python_implementation", "python_version", "python_executable"}:
+                raise VerificationContractError("partial original interpreter")
+            for field in value.values():
+                _original_text(field)
+        if self.name == "configuration":
+            for path, sha in value.items():
+                if (PurePosixPath(path).is_absolute() or ".." in path.split("/")
+                        or "\\" in path or ":" in path):
+                    raise VerificationContractError("unsafe original configuration identity")
+                if sha is not None:
+                    _original_hash(sha, 40)
+        if self.name == "worker_topology":
+            if (set(value) != {"workers", "distribution", "max_worker_restart", "collect_only"}
+                    or type(value["workers"]) is not int or not 0 <= value["workers"] <= 1024
+                    or value["distribution"] != ("load" if value["workers"] else "no")
+                    or type(value["max_worker_restart"]) is not int or value["max_worker_restart"] != 0
+                    or type(value["collect_only"]) is not bool):
+                raise VerificationContractError("partial or conflicting original worker topology")
+        if self.name in {"population", "phase_outcomes"}:
+            if type(value) is not list:
+                raise VerificationContractError("invalid original proof population")
+            if self.name == "population":
+                for node in value:
+                    _original_text(node, 16384)
+                if value != sorted(set(value)):
+                    raise VerificationContractError("unordered original proof population")
+
+
+@dataclass(frozen=True, slots=True)
+class OriginalProofProvenance:
+    """Authenticated original source snapshot; contains no target or reuse state."""
+
+    version: int
+    identity: OriginalEvidenceRequest
+    base_sha: str
+    task_blob_sha: str
+    task_sha256: str
+    run_sha256: str
+    local_run_sha256: str
+    result_sha256: str
+    local_result_sha256: str
+    evidence_sha256: str
+    raw_sha256: str
+    raw_size: int
+    outcome: str
+    source_refs: tuple[tuple[str, str], ...]
+    dimensions: tuple[OriginalProofDimension, ...]
+    upstream_sha256: str
+
+    def __post_init__(self):
+        if type(self.version) is not int or self.version != ORIGINAL_PROOF_VERSION:
+            raise VerificationContractError("unsupported original-proof version")
+        if type(self.identity) is not OriginalEvidenceRequest:
+            raise VerificationContractError("missing typed original source")
+        self.identity.__post_init__()
+        for name in ("base_sha", "task_blob_sha"):
+            _original_hash(getattr(self, name), 40)
+        for name in ("task_sha256", "run_sha256", "local_run_sha256", "result_sha256",
+                     "local_result_sha256", "evidence_sha256", "raw_sha256", "upstream_sha256"):
+            _original_hash(getattr(self, name))
+        if type(self.raw_size) is not int or not 0 < self.raw_size <= MAX_ORIGINAL_RAW_BYTES:
+            raise VerificationContractError("invalid original raw size")
+        code = self.identity.exit_code
+        expected = "FAIL" if code == 1 else "ERROR" if code != 0 else "PASS"
+        if type(self.outcome) is not str or self.outcome not in {expected, "UNKNOWN"} or code != 0 and self.outcome != expected:
+            raise VerificationContractError("original outcome promotion or relabeling")
+        prefix = "refs/heads/aios/"
+        expected_refs = tuple(sorted(((prefix + "artifacts/" + self.identity.run_id, self.identity.artifacts_sha),
+                                      (prefix + "review/" + self.identity.run_id, self.identity.candidate_sha))))
+        if type(self.source_refs) is not tuple or self.source_refs != expected_refs:
+            raise VerificationContractError("invalid exact original source refs")
+        if (type(self.dimensions) is not tuple or any(type(d) is not OriginalProofDimension for d in self.dimensions)
+                or tuple(d.name for d in self.dimensions) != ORIGINAL_PROOF_DIMENSIONS):
+            raise VerificationContractError("missing, reordered or extra original dimensions")
+        for dimension in self.dimensions:
+            dimension.__post_init__()
+        if sum(len(d.value_json or "") for d in self.dimensions) + len(self.identity.command) + 16384 > MAX_ORIGINAL_PROOF_BYTES:
+            raise VerificationContractError("original-proof dimensions exceed total bound")
+        dimensions = {d.name: d for d in self.dimensions}
+        prior = dimensions["prior_raw_digest"]
+        if prior.status == "OBSERVED" and _original_decode(prior.value_json.encode("ascii")) != self.raw_sha256:
+            raise VerificationContractError("original raw digest conflict")
+        schema = dimensions["evidence_kind_schema"]
+        if schema.status != "OBSERVED":
+            raise VerificationContractError("original evidence schema must be observed")
+        shape = _original_decode(schema.value_json.encode("ascii"))
+        if (type(shape) is not dict or set(shape) != {"type", "shape", "keys"}
+                or shape["type"] != "VERIFICATION" or type(shape["shape"]) is not str or shape["shape"] not in {"V1", "V2"}
+                or type(shape["keys"]) is not list):
+            raise VerificationContractError("invalid original evidence shape")
+        keys = {"evidence_id", "run_id", "subject_sha", "type", "source", "result", "raw"}
+        if shape["keys"] != sorted(keys | ({"verification"} if shape["shape"] == "V2" else set())):
+            raise VerificationContractError("conflicting original evidence schema")
+        if self.outcome == "PASS" and shape["shape"] == "V2":
+            if dimensions["completeness"].value_json != "true" or dimensions["stability"].value_json != "false":
+                raise VerificationContractError("incomplete original observation cannot become PASS")
+
+
+def original_proof_data(value: OriginalProofProvenance) -> dict:
+    """Detached consumer projection. Parsing it does not authenticate authority."""
+    if type(value) is not OriginalProofProvenance:
+        raise VerificationContractError("typed original-proof record required")
+    value.__post_init__()
+    data = {key: getattr(value, key) for key in (
+        "version", "base_sha", "task_blob_sha", "task_sha256", "run_sha256", "local_run_sha256",
+        "result_sha256", "local_result_sha256", "evidence_sha256", "raw_sha256", "raw_size", "outcome", "upstream_sha256")}
+    data.update(format=ORIGINAL_PROOF_FORMAT,
+                identity={k: getattr(value.identity, k) for k in OriginalEvidenceRequest.__dataclass_fields__},
+                source_refs=[dict(ref=ref, sha=sha) for ref, sha in value.source_refs],
+                dimensions=[dict(name=d.name, status=d.status,
+                                 value=None if d.value_json is None else _original_decode(d.value_json.encode("utf-8")),
+                                 source=d.source, reason=d.reason) for d in value.dimensions])
+    return data
+
+
+def format_original_proof(value: OriginalProofProvenance) -> bytes:
+    """Explicit pure formatter, no observation, execution or persistence."""
+    return _original_json(original_proof_data(value)).encode("ascii")
+
+
+def parse_original_proof(content: bytes) -> OriginalProofProvenance:
+    """Strict structural decoding only; cannot grant source authentication."""
+    data = _original_decode(content)
+    fields = set(OriginalProofProvenance.__dataclass_fields__) | {"format"}
+    if type(data) is not dict or set(data) != fields or data["format"] != ORIGINAL_PROOF_FORMAT:
+        raise VerificationContractError("invalid original-proof schema")
+    identity = data["identity"]
+    if type(identity) is not dict or set(identity) != set(OriginalEvidenceRequest.__dataclass_fields__):
+        raise VerificationContractError("invalid original source schema")
+    if type(data["dimensions"]) is not list or len(data["dimensions"]) != len(ORIGINAL_PROOF_DIMENSIONS):
+        raise VerificationContractError("invalid original dimension schema")
+    dimensions = []
+    for item in data["dimensions"]:
+        if type(item) is not dict or set(item) != {"name", "status", "value", "source", "reason"}:
+            raise VerificationContractError("invalid original dimension schema")
+        dimensions.append(OriginalProofDimension(item["name"], item["status"],
+            None if item["value"] is None else _original_json(item["value"]), item["source"], item["reason"]))
+    refs = data["source_refs"]
+    if (type(refs) is not list or len(refs) != 2
+            or any(type(r) is not dict or set(r) != {"ref", "sha"} for r in refs)):
+        raise VerificationContractError("invalid original refs schema")
+    values = {k: v for k, v in data.items() if k not in {"format", "identity", "dimensions", "source_refs"}}
+    return OriginalProofProvenance(**values, identity=OriginalEvidenceRequest(**identity),
+        dimensions=tuple(dimensions), source_refs=tuple((r["ref"], r["sha"]) for r in refs))
