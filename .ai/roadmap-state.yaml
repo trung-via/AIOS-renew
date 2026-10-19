@@ -2,6 +2,39 @@ version: 1
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+human_lean_vp_l3_01_reconciliation_20261019:
+  authority: HUMAN_BRAIN_EXPLICIT_CONTINUE_AFTER_VERIFIED_L2_03_PUBLICATION
+  approved_on: "2026-10-19"
+  planning_only: true
+  snapshot_main_sha: f2b79b6f10ffddaa2729941cc3004a8b60d9d8de
+  verified_predecessor:
+    task: TASK-387
+    revision: 1
+    failed_primary_run: RUN-387-001
+    repair_authorization_sha: a34d16c99291587bab608fb61e14dd2ac88d9913
+    successful_run: RUN-387-002
+    evidence: RUN-387-002-V001
+    review: REVIEW-387-001
+    verdict: PASS
+    acceptance: 12_OF_12_PASS
+    review_decision_sha: ed1c47e3f77c8e8e2104308baa6794f04545ed79
+    reviewed_published_sha: f2b79b6f10ffddaa2729941cc3004a8b60d9d8de
+    main_relation: EXACT_REVIEWED_CANDIDATE
+  roadmap:
+    unique_high_level_next: lean-vp-intelligent-intra-primary-after-r21
+    current_slice: L3_01_SINGLE_RUNTIME_PROOF_SCHEDULER_CORE
+    task: REQUIRES_FRESH_TCA1_AND_AUTHOR_TASK
+    status: HUMAN_BRAIN_PLANNING_SELECTED_NOT_ENGINEERING_TRUTH
+    executor: NOT_DELEGATED_FOR_NEXT_TASK
+    next_l3_slices: L3_02_TO_L3_06
+    original_lean_vp_delivery_slots: 16_PRESERVED
+  boundaries:
+    - KA01_V1_2_NOT_ACTIVATED
+    - NO_PRODUCTION_SCHEDULER_CUTOVER_OR_G6_OPT_IN
+    - NO_INTRA_RUN_CORRECTION_OR_AUTOMATIC_EXECUTOR_SELECTION
+    - NO_LIFECYCLE_AUTOMATIC_ROADMAP_ADVANCEMENT
+    - NO_NEW_RUNTIME_OR_SECOND_PROOF_OWNER
+
 human_lean_vp_l2_03_reconciliation_20261019:
   authority: HUMAN_BRAIN_EXPLICIT_CONTINUE_AFTER_VERIFIED_NORMATIVE_PUBLICATION
   approved_on: "2026-10-19"
@@ -3335,7 +3368,7 @@ sequence:
       UNKNOWN or lost authority, and finish with one terminal RESULT or FAILURE.
       The new correction operation permissions require separately reviewed and
       published KA-01 normative authority before L2-03/L3 implementation.
-    next_approved_slice: L2_03_REUSE_AND_CORRECTION_APPLICABILITY_CONFORMANCE
+    next_approved_slice: L3_01_SINGLE_RUNTIME_PROOF_SCHEDULER_CORE
     normative_task_authoring_status: TASK386_REVIEWED_PUBLISHED_SEPARATE_NORMATIVE_G2_DONE
     original_lean_vp_slot_count: 16
     separate_ka01_normative_task_count: 1
