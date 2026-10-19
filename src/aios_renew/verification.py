@@ -2705,6 +2705,32 @@ def plan_candidate_proofs(repository: Path, *, expected: ProofSchedulerRequest) 
 
 # L3-02: native proof capture/observation helpers, subordinate to RuntimeCompletion.
 # No policy registration, baseline derivation, retry or caller-provided evidence.
+def _checkpoint_pytest_coverage(command: str):
+    """Recognize checkpoint selectors plus one explicit bounded worker suffix.
+
+    Keep the historical V1/V2 coverage grammar unchanged. Only selection is
+    normalized here; the original authored argv, effective profile and actual
+    native worker population remain independently bound and checked.
+    """
+    coverage = parse_pytest_coverage(command)
+    if coverage is None:
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return None
+        if len(tokens) < 7:
+            return None
+        pin, workers, dist, distribution, restart, retries = tokens[-6:]
+        if (pin != "-n" or dist != "--dist" or restart != "--max-worker-restart" or retries != "0"
+                or re.fullmatch(r"0|[1-9][0-9]{0,2}", workers) is None or int(workers) > 256
+                or distribution != ("no" if workers == "0" else "load")):
+            return None
+        coverage = parse_pytest_coverage(shlex.join(tokens[:-6]))
+    if coverage is None or coverage.measurement or coverage.selected_parallel:
+        return None
+    return coverage
+
+
 def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=None):
     from .verification_contract import (
         CHECKPOINT_EXECUTION_FORMAT, format_checkpoint_request, format_scheduler_plan,
@@ -2765,7 +2791,7 @@ def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=N
                 or manifest["conditions"] != conditions or type(index) is not int or not 0 <= index < len(commands)
                 or conditions["evidence_kind"] != "VERIFICATION" or conditions["evidence_schema"] != "V2"):
             raise VerificationContractError("CHECKPOINT_REVIEWED_FULL_PROOF_BINDING_CONFLICT")
-        coverage = parse_pytest_coverage(commands[index])
+        coverage = _checkpoint_pytest_coverage(commands[index])
         if commands[index] == SELECTED_FULL_SUITE_COMMAND or coverage is None or coverage.measurement:
             raise VerificationContractError("CHECKPOINT_NATIVE_COMPLETE_OBSERVER_REQUIRED")
         nodes = validate_exact_collection(manifest["collection"])
@@ -2807,7 +2833,7 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                     "profile", "workers", "distribution", "max_worker_restart", "collect_only")}))
             command_env["PYTHONPATH"] = os.pathsep.join((str(subject / "src"), str(subject / "tests"), env.get("PYTHONPATH", "")))
             if command != SELECTED_FULL_SUITE_COMMAND:
-                coverage = parse_pytest_coverage(command)
+                coverage = _checkpoint_pytest_coverage(command)
                 if coverage is None or coverage.measurement:
                     raise VerificationContractError("CHECKPOINT_NATIVE_COMPLETE_OBSERVER_REQUIRED")
                 command_env.pop("PYTEST_ADDOPTS", None)

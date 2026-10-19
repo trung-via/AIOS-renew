@@ -68,6 +68,14 @@ commands, measurement commands and the selected full-suite wrapper's different
 capture layout are BLOCKED here before launch; their mandatory obligations are
 retained. Ordinary exact pytest integration/full-population commands remain
 eligible when their complete native binding fits the bounds.
+The checkpoint seam also recognizes a single exact trailing worker suffix:
+`-n N --dist D --max-worker-restart 0`, with canonical decimal N from 0 through
+256, D=`no` for N=0 and D=`load` otherwise. Only coverage selection is normalized;
+the unchanged authored command, effective native profile and observed worker
+population are still authenticated in full. Duplicate, conflicting, automatic,
+partial or unknown options remain BLOCKED. This prospective recognition does
+not extend the historical V1/V2 command grammar or admit measurement/wrapper
+commands.
 
 The existing Runtime verifier runs each unchanged authored command exactly once
 on its existing clean materialized candidate. Its existing native pytest

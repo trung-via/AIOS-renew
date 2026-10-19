@@ -216,6 +216,49 @@ def native(tmp_path, monkeypatch):
     return NativeCheckpointFixture(tmp_path / "native", monkeypatch)
 
 
+@pytest.mark.parametrize("workers,distribution", [(0, "no"), (1, "load"), (2, "load"), (256, "load")])
+def test_checkpoint_worker_suffix_preserves_selection_and_legacy_grammar(workers, distribution):
+    selector = "python -m pytest -q tests/test_artifacts.py -k 'sample and not omitted'"
+    command = f"{selector} -n {workers} --dist {distribution} --max-worker-restart 0"
+    assert verifier.parse_pytest_coverage(command) is None
+    coverage = verifier._checkpoint_pytest_coverage(command)
+    assert coverage == verifier.parse_pytest_coverage(selector)
+    assert coverage.paths == ("tests/test_artifacts.py",)
+    assert coverage.filter_expression == "sample and not omitted"
+
+
+@pytest.mark.parametrize("arguments", [
+    "-n auto --dist load --max-worker-restart 0",
+    "-n -1 --dist load --max-worker-restart 0",
+    "-n 257 --dist load --max-worker-restart 0",
+    "-n 02 --dist load --max-worker-restart 0",
+    "-n 2 --dist no --max-worker-restart 0",
+    "-n 0 --dist load --max-worker-restart 0",
+    "-n 2 --dist loadscope --max-worker-restart 0",
+    "-n 2 --dist load --max-worker-restart 1",
+    "-n 2 --dist load",
+    "-n 0 -n 2 --dist load --max-worker-restart 0",
+    "--dist no -n 2 --dist load --max-worker-restart 0",
+    "--collect-only -n 2 --dist load --max-worker-restart 0",
+    "--deselect tests/test_artifacts.py::test_sample -n 2 --dist load --max-worker-restart 0",
+    "--unknown-option -n 2 --dist load --max-worker-restart 0",
+    "-n 2 --dist load --max-worker-restart 0 --unknown-option",
+    "-n 2 --dist load --max-worker-restart '0",
+])
+def test_checkpoint_worker_suffix_rejects_unknown_or_conflicting_options(arguments):
+    assert verifier._checkpoint_pytest_coverage("python -m pytest tests/test_artifacts.py " + arguments) is None
+
+
+@pytest.mark.parametrize("command", [
+    "python scripts/aios_parallel_full_suite.py",
+    "python scripts/aios_parallel_full_suite.py -n 2 --dist load --max-worker-restart 0",
+    "python scripts/bp_v4_parallel_probe.py --workers 2",
+    "python scripts/bp_v4_parallel_rebaseline.py --workers 4 8 12 16",
+])
+def test_checkpoint_worker_suffix_does_not_promote_wrapper_or_measurement(command):
+    assert verifier._checkpoint_pytest_coverage(command) is None
+
+
 def test_real_first_seal_replay_and_terminal_reuse_without_equivalent_execution(native):
     f = native
     request = f.checkpoint_request()
