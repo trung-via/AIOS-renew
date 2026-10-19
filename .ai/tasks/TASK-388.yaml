@@ -1,0 +1,260 @@
+task_id: TASK-388
+revision: 1
+goal: 'Deliver exactly Lean VP L3-01: one deterministic Runtime-owned prospective
+  proof-scheduling CORE for an authenticated, exact, admitted ACTIVE candidate, using
+  a complete independently reviewed semantic obligation/mapping population and existing
+  L2 source/applicability/reuse facts. Produce a strictly typed, bounded candidate-first
+  plan with each required obligation either grouped under one soundly equivalent proof,
+  genuinely eligible source-proof reuse, independently authorized distinct outstanding
+  proof, or BLOCKED/UNKNOWN; support checkpoint and terminal consumers through this
+  same plan identity without executing proof, sealing K/F, or activating KA-01. Retain
+  fail-closed PRIMARY/REPAIR/REMEDIATION distinctions.'
+problem: Published Lean VP L2-01..L2-03 can authenticate original raw/evidence, judge
+  condition applicability and conservatively identify source-proof reuse eligibility,
+  but do not supply a complete prospective scheduling plan across reviewed mandatory
+  obligations for candidate-first, future checkpoints and finalization. Today historical
+  minimum-sufficient-v1/V2 remain the only operational verification paths. Without
+  the first bounded single-owner scheduling core, a future L3 consumer might execute
+  equivalent tests twice, treat one narrow PASS as full coverage, skip an integration/ordering/worker
+  purpose, schedule base replay on raw FAIL, or rely on untrusted calls to L2 read-only
+  APIs as execution permission.
+assumptions:
+- "Exact Human/Brain '\u0110\xE3 publish, ti\u1EBFp t\u1EE5c' selects the next original\
+  \ Lean VP L3-01 slot under the uniquely active Lean VP high-level NEXT; canonical\
+  \ planning reconciliation commit ab33d23e4b529449f6c427e4439707c46057254a supersedes\
+  \ the previous L2-03 slice bookmark prospectively. This authoring decision does\
+  \ not infer Executor delegation or production activation."
+- "TASK-387 r1 RUN-387-001 failed verification, exact REPAIR authorization REPAIR-387-001\
+  \ SHA a34d16c99291587bab608fb61e14dd2ac88d9913 admitted successor RUN-387-002. Runtime\
+  \ EVIDENCE RUN-387-002-V001 exit 0; independent REVIEW-387-001 PRIMARY PASS AC1\u2013\
+  AC12, review-decision SHA ed1c47e3f77c8e8e2104308baa6794f04545ed79; exact candidate\
+  \ f2b79b6f10ffddaa2729941cc3004a8b60d9d8de was published and equals main immediately\
+  \ before planning reconciliation. Engineering truth remains exact Runtime lineage."
+- Published KA-01 prospective amendment v1.2 covers separately opted-in ACTIVE PRIMARY,
+  REPAIR and REMEDIATION under exact unique operation authority, live leased same
+  Executor, finite Human guardrails and one Runtime-owned scheduler. Its activation
+  flag remains NOT_ACTIVATED; D.1 G3/G6 are outstanding. No production checkpoint/correction
+  consent is granted by L3-01.
+- Published L2-01 original source observation, L2-02 source-to-target applicability,
+  and L2-03 observe_proof_reuse are explicitly read-only, authenticated and never
+  target execution authority. L2-03 has a supported positive PRIMARY reuse path; correction-operation
+  positive reuse is deliberately NOT_ESTABLISHED/BLOCKED until independent native
+  correction lineage becomes available. A first committed candidate may have no preceding
+  source proof and still needs authorized original candidate proof planning.
+- Canonical L1 reviewed semantic coverage/mapping and selection authority exists in
+  the existing proof_coverage_contract/review_transport paths. It must be authenticated
+  for each exact TASK/RUN/candidate and may not be selected from structural digests,
+  legacy fixture labels or caller-supplied mapping validity. Existing proof equivalence
+  helpers validate full conditions, not nodeid equality alone.
+- Brain performed the canonical active TCA-1 v1 TASK_AUTHORING two focused passes
+  (CONSTRUCT; ADVERSARIAL_AUDIT_AND_RECONCILE), including acceptance proof-phase and
+  false-completion/hidden-consumer challenges, and one CANDIDATE closure. All final
+  ACs are CLAIM_NOW implementation properties; later Runtime verification, independent
+  Reviewer, publication, policy activation and measured performance remain distinct
+  PROOF_LATER authority. Active TCA profile normalized digest 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2.
+  No audit packet or parallel profile is an AUTHOR_TASK field.
+- This L3-01 slice implements only the scheduler's strict core plan/decision boundary.
+  Separate future L3 slices own actual execution integration, immutable K_i, bounded
+  factual F_i, continuation/live lease/consent/accounting and integrated negative
+  safety. New code can be verified offline under ordinary minimum-sufficient-v1 TASK
+  without a previously activated KA-01 production loop.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/brain-audit-profiles.yaml
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-L2-ORIGINAL-EVIDENCE.md
+  - docs/AIOS-LEAN-VP-L2-APPLICABILITY.md
+  - docs/AIOS-LEAN-VP-L2-REUSE-CONFORMANCE.md
+  - .ai/tasks/TASK-381.yaml
+  - .ai/tasks/TASK-383.yaml
+  - .ai/tasks/TASK-384.yaml
+  - .ai/tasks/TASK-385.yaml
+  - .ai/tasks/TASK-386.yaml
+  - .ai/tasks/TASK-387.yaml
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/run.py
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/parallel_verification.py
+  - tests/test_lean_vp_l2_original_evidence.py
+  - tests/test_lean_vp_l2_applicability.py
+  - tests/test_lean_vp_l2_reuse_conformance.py
+  - tests/test_intra_run_proof_contract.py
+  - tests/git_fixture_support.py
+  modify:
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - tests/test_lean_vp_l3_proof_scheduler.py
+  - docs/AIOS-LEAN-VP-L3-SINGLE-PROOF-SCHEDULER.md
+non_goals:
+- No production opt-in or admission of KA-01 v1.2 policy, G3/G6 completion, hot-path
+  cutover, alteration of current minimum-sufficient-v1/V2 execution/decoder/scheduling,
+  full VP04/VP05 retirement, alternate Runtime or second scheduler. This bounded scheduler
+  core does not yet execute approved proof.
+- No K_i/F_i storage, feedback delivery, native Executor continuation, checkpoint
+  journal, terminal RESULT/FAILURE writing, correction dispatch/retry/failover, model/profile
+  selection, live lease acquisition, cross-RUN extension or replay authority; those
+  are later L3 slices and existing Runtime owners.
+- No automatic derivation of semantic obligations, dependency impact or approved mappings
+  from file diffs/nodeids/commands/model scoring; no omission or weakening of required
+  independent broad/integration/parallel/repetition/concurrency/ordering proof.
+- No promotion of an L2-03 REUSE_ELIGIBLE label, SHA pin, externally parsed witness
+  or review carrier receipt to canonical proof. No fabricated target execution, original
+  source subject rewriting, raw/evidence replacement or arbitrary broad base replay.
+- No automatic positive REPAIR/REMEDIATION reuse/operation authorization while native
+  correction lineage remains unestablished; their operation-specific authorization
+  cannot be inherited from PRIMARY or historical Human approval.
+- No changes to historical TASK/RUN/RESULT/FAILURE/REVIEW/REPAIR/REMEDIATION, reviewed
+  KA-01 v1.2 or frozen Kernel, roadmap, publication, downstream pin, Runner/GitHub
+  transport, Reviewer/Publisher or current Human delegation.
+constraints:
+  hard:
+  - Expose a single explicit nondefault Runtime-owned deterministic typed scheduler-plan
+    API that produces an immutable versioned closed-schema read-only result. Bind
+    the exact current canonical TASK/revision/base, admitted ACTIVE RUN identity/operation,
+    committed candidate SHA/tree, independently selected REVIEWed semantic contract/mapping
+    and full mandatory obligation population. Strict bounds, canonical encoding and
+    stale/ref-race rechecks apply; source-provided/serialized plan cannot reauthenticate
+    itself.
+  - First candidate C1 must be plan-able from exact authenticated reviewed mandatory
+    obligations even with NO prior source EVIDENCE; it must NOT be marked satisfied/reused
+    merely because no prior proof exists. A later C_i may reuse only independently
+    authenticated eligible actual source proof. No premise that a prior L2-03 witness
+    always exists for first-run scheduling.
+  - 'For every independently required reviewed obligation, account by stable identity/revision/claim/acceptance/conditions/provenance
+    and one explicit conservative state: verified-source REUSE_ELIGIBLE, original
+    candidate proof OUTSTANDING_PLANNED (not execution permission), or BLOCKED/UNKNOWN.
+    No absent mandatory row, unknown acceptance, caller-added proof, synthetic source
+    PASS or fallback scope. Preserve an auditable, closed, deterministic proof-to-obligation/acceptance
+    coverage projection.'
+  - Deduplicate only actual equivalent proof execution when complete reviewed claim
+    plus all distinguishing condition/phase/population/test/fixture/helper/state/toolchain/environment/profile/worker/collection/concurrency/order/integration/repetition/evidence
+    schema are soundly equivalent. One proof may cover several approved obligations
+    only when the existing reviewed mapping explicitly binds them. No duplicate runtime
+    execution units for the same full proof identity, no split/accidental collapse
+    of distinct or broad proof, no unreviewed test-subset consolidation.
+  - Consume published L2-01/L2-02/L2-03 source/currentness through independently rechecked
+    Runtime authority as appropriate; a parsed witness, valid-looking hash, `VALID`
+    applicability, raw exit 0 or a clean test claim is insufficient to schedule reuse.
+    REUSE_ELIGIBLE must preserve original source RUN/subject/EVIDENCE/raw and prove
+    satisfaction, mapping, exact target conditions/currentness. An INVALIDATED proof
+    cannot be reused; UNKNOWN, unstable, incomplete, disputed or stale input BLOCKS
+    rather than silently becoming PASS.
+  - Keep candidate-first ordering as a declared proof plan; no automatic baseline
+    collection/materialization or base replay by a FAIL or no source. An independently
+    mandatory baseline comparison must be explicitly retained; any planned replay
+    must require all BR-1..BR-6 affirmative reviewed basis, exact comparability and
+    bounded budget; missing gate yields blocked comparison with no test command/effect.
+    A candidate failure cannot erase a distinct mandatory comparison obligation.
+  - Candidate checkpoint planning and future terminal planning must share the identical
+    authenticated plan owner/coverage identity and source-to-target equality rule;
+    an eligible fresh equivalent final checkpoint is eligible for future terminal
+    reuse without equivalent duplicate execution. L3-01 only expresses this invariant
+    and conservative plan/consumer gate; terminalization, checkpoint sealing and actual
+    proof execution remain outside this TASK.
+  - 'Scope of positive scheduling must not conflate operation authorities: only independently
+    authenticated PRIMARY may reach a positive native path currently supported by
+    L2/selection authority. REPAIR requires exact predecessor admitted failed RUN,
+    immutable FAILURE and current AUTHOR_REPAIR action/scope/original/affected verification;
+    REMEDIATION requires CHANGES_REQUIRED REVIEW/selected still-outstanding finding(s),
+    current correction authorization/action/scope, affected verification and DELTA-review
+    continuity. Missing native operation-specific attestation returns BLOCKED/NOT_ESTABLISHED,
+    not generic primary execution eligibility.'
+  - Plan decisions are not a second lifecycle truth, Review verdict, permit-to-execute
+    token, code strategy, automation trigger or TASK mutation. The currently admitted
+    Runtime later remains solely responsible for executing any scheduled proof, checkpoint
+    effects, EVIDENCE and terminalization. L3-01 itself performs NO proof execution,
+    authorized modification, model inference or durable writes, and cannot change
+    production verification behavior by default.
+  - Native isolated real-Git/canonical-shaped test fixtures must prove at least one
+    valid reviewed PRIMARY C1 plan (without prior source), authenticated source eligible
+    reuse, invalidated & unknown conditions, distinct mandatory integration/concurrency/ordering,
+    overlapping reviewed equivalent proof, no equivalent duplicate planned unit, stale/swapped
+    review or target, forbidden base replay, correction without current authority,
+    and checkpoint-vs-terminal double-execution prevention as a non-effectful plan;
+    use real validators, not affirmative mocks.
+  - Keep all four modified paths exact and leave existing L2 contracts and legacy
+    minimum-sufficient-v1/V2 behavior unchanged; document future L3 execution/checkpoint/feedback/lease/consent
+    gates and explicit NOT_ACTIVATED status. Do not alter external proof contract
+    semantics, Kernel, GitHub workflow, roadmap or downstream.
+acceptance:
+- id: AC1
+  condition: A single explicit versioned typed scheduler-core request and result provide
+    bounded canonical closed-schema plan structure for exact TASK/revision/RUN/operation/base/candidate/subject
+    and current reviewed proof mapping/obligation identities; malformed, replayed,
+    extra, swapped and oversized structures cannot grant an authorized plan.
+- id: AC2
+  condition: Scheduler independently authenticates the exact current admitted ACTIVE
+    canonical candidate and selected complete reviewed semantic mapping/obligations
+    rather than treating caller pins or structural validation as review authority;
+    stale, moving or inconsistent input returns blocked without granting proof permission.
+- id: AC3
+  condition: For a first committed candidate with no prior source evidence, the plan
+    correctly preserves every reviewed mandatory obligation as unsatisfied/outstanding
+    with exact required coverage; lack of source does not invent REUSE_ELIGIBLE, PASS,
+    prior execution or a separate scheduler.
+- id: AC4
+  condition: For a later candidate with exact still-applicable genuinely satisfactory
+    original proof, the scheduler yields source-preserving read-only eligible reuse
+    only after independent L2-03 authentication, preserving original subject/EVIDENCE/raw
+    and target currentness; a parsed VALID/eligibility witness alone cannot discharge
+    the target.
+- id: AC5
+  condition: Every distinct mandatory obligation and full reviewed semantic coverage
+    survives deterministic mapping into at most one matching equivalent planned proof
+    unit, with complete per-obligation assignment; no narrow/different worker/order/integration/repetition/fixture
+    proof may silently replace a separate required proof or acceptance.
+- id: AC6
+  condition: Identical fully reviewed equivalent obligation execution is consolidated
+    without duplicate planned execution while legitimately distinct full-condition
+    proofs remain distinct and outstanding. Executor claims, common nodeids, command
+    text or disjoint diffs never establish equivalence.
+- id: AC7
+  condition: INVALIDATED, incomplete/unstable, raw failure/error, unknown, missing/stale/cross-source/ref-conflicting
+    evidence and altered reviewed conditions cannot grant source reuse or acceptance
+    PASS; unknown/unsupported operation or authority blocks with a bounded attributable
+    reason.
+- id: AC8
+  condition: The candidate-first plan retains independently authorized baseline comparison
+    obligations but never proposes base materialization, collection or execution unless
+    every BR-1..BR-6 reviewed necessity/comparability/cost gate is affirmatively established;
+    FAIL alone never authorizes reproduction or broad fallback.
+- id: AC9
+  condition: The same deterministic scheduler core emits checkpoint and terminal consumer
+    projections with proof identity/conditions and explicit reuse/no-equivalent-duplicate
+    invariant; they assert neither a sealed checkpoint nor an actual execution, and
+    cannot trigger duplicate proof through distinct competing schedulers.
+- id: AC10
+  condition: Operation-specific REPAIR/REMEDIATION requests lacking fully independently
+    authenticated predecessor FAIL/REVIEW, unique current correction authorization/action/scope/findings
+    and affected verification/DELTA continuity fail closed; no PRIMARY authority inference,
+    model selection, correction or workflow delivery is introduced.
+- id: AC11
+  condition: Real Git and canonical-shaped native authority/fixture conformance covers
+    first-candidate and subsequent reuse, exact mapping, completeness, equivalence
+    versus distinct proof, changed/unknown proof, BR denial, stale/superseded/correction
+    attempts and checkpoint/terminal planning; genuine validators are exercised rather
+    than affirmative auth mocks.
+- id: AC12
+  condition: All changes stay inside four authorized paths, add no proof execution/lifecycle
+    mutation/hot-path scheduling/second owner, preserve unchanged L2 and legacy V1/V2
+    behavior, and document future L3 core integration and KA-01 G3/G6 remaining NOT_ACTIVATED
+    gates.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_lean_vp_l3_proof_scheduler.py tests/test_lean_vp_l2_reuse_conformance.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
