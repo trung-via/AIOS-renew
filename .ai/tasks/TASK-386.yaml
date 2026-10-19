@@ -1,0 +1,193 @@
+task_id: TASK-386
+revision: 1
+goal: Publish one prospective, explicitly versioned KA-01 normative successor that
+  extends bounded Runtime-canonical preterminal proof feedback and same-RUN correction
+  eligibility from PRIMARY-only to individually Human-opted-in ACTIVE PRIMARY, REPAIR
+  and REMEDIATION. Share one Runtime-owned scheduler, preserve exact operation-specific
+  correction authorization and frozen history; establish normative eligibility for
+  later L2-03/L3 engineering without activating any production loop.
+problem: KA-01 v1.1 C.1 explicitly excludes REPAIR and REMEDIATION from the bounded
+  checkpoint-feedback continuation authorized for PRIMARY. Human on 2026-10-19 approved
+  the Lean VP intra-RUN scope expansion after exact TASK-385 L2-02 publication. Without
+  one separately reviewed/published normative successor, L2-03/L3 could conflate correction-run
+  lineage and original TASK authority, silently give Runtime new retry authority,
+  or assume document planning activates a new execution contract. The smallest lawful
+  next delta is a versioned KA-01 specification-only amendment, not a second proof
+  scheduler or premature implementation.
+assumptions:
+- Canonical source base at authoring is fde6f5a90ba416c03c8ae100ad69cdf53e062935,
+  consisting of Human/Brain roadmap reconciliation commit 41afd08c3b4dfa91531798b54dabae6c3873abba
+  and Lean VP planning-document reconciliation commit fde6f5a90ba416c03c8ae100ad69cdf53e062935.
+  Runtime independently authenticates actual current-main and identity/CAS; these
+  prose SHA values are not self-attestation.
+- TASK-385 r1 RUN-385-001 produced immutable EVIDENCE RUN-385-001-V001 exit 0 and
+  REVIEW-385-001 PRIMARY PASS AC1-AC11, decision SHA 5266b9ea20d8205ae3ef47988e6c5d70a1c625d9,
+  exact reviewed/published candidate aaab7a87c63fd40b592dee817fdbfada759a2085. This
+  only establishes L2-02 applicability observation, not L2-03 reuse, G3 eligibility
+  or G6 activation.
+- 'Human explicitly accepted the AOA-1 minimum lawful design delta: one shared Runtime
+  proof authority for prospective Human-opted-in PRIMARY, REPAIR and REMEDIATION,
+  with operation-specific immutable authorizations and same current-RUN leased Executor.
+  The 2026-10-19 canonical Human/Brain roadmap record controls priority; GitHub planning
+  Issues #2168 and #2208 are supporting context only.'
+- Current KA-01 document identifies prospective v1.1 and forbids REPAIR/REMEDIATION
+  by analogy. This TASK authors its separately versioned prospective v1.2 successor
+  only; versioned normative edits do not retroactively change historical v1.0/v1.1,
+  frozen Kernel v0.1 or existing admitted TASK/RUN/RESULT/FAILURE/REVIEW/EVIDENCE.
+- TASK-386 is a new separate normative change outside the Human-approved original
+  16 Lean VP L1-L4 delivery slots. L2-03 and L3 cross-operation engineering follow
+  only after this exact task is Runtime-verified, semantically reviewed PASS and Publisher-published.
+  KA-01 G6 remains a distinct future authenticated Human per-RUN activation/finite
+  budget decision, not authorized here.
+- Current canonical TASK_AUTHORING audit identity is tca-1 v1 digest 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2.
+  Brain applied the TCA-1 CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE checks with
+  all proposed acceptance properties classified CLAIM_NOW. TCA semantic support is
+  not an ingress mutation prerequisite or Runtime verification.
+- Human's standing new AIOS-renew TASK route remains explicit LEGACY_REPOSITORY_DEFAULT_ROUTE.
+  No Executor/model/effort, finite correction budget or downstream pin is selected
+  by this TASK; any execution still requires separate Human delegation.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-374.yaml
+  - .ai/tasks/TASK-385.yaml
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/run.py
+  - src/aios_renew/review_transport.py
+  - tests/test_intra_run_proof_contract.py
+  modify:
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+non_goals:
+- No implementation of production scheduler, checkpoint, feedback delivery, retry,
+  repair, remediation, verification policy cutover, rollout or activation; no changes
+  to Runtime code/tests, GitHub transport or existing execution mechanics.
+- No direct re-authoring of TASK-385, rewriting prior KA-01 v1.0/v1.1 reviewed/published
+  history, frozen Kernel v0.1, current minimum-sufficient V1/V2 admissions, any terminal
+  RUN or downstream dependency.
+- No Human per-RUN opt-in, default correction budget, Executor/model/effort assignment,
+  automatic G6, automatic roadmap advancement, or branch/candidate/review publication
+  from task authoring.
+- No second proof scheduler, generic lifecycle router, semantic dependency oracle,
+  verifier agent, autonomous correction agent, fallback/failover executor picker,
+  evidence database or issuer.
+- No new permission to alter original TASK intent, remediation finding groups, authorization
+  scope, risk or source lineage; no converting UNKNOWN, ERROR or flaky proof into
+  PASS or correction permission.
+constraints:
+  hard:
+  - Define a distinctly versioned prospective KA-01 successor (v1.2 on the current
+    v1.1 baseline), noting exact 2026-10-19 Human decision and independently gated
+    publication. Preserve v1.0/v1.1 history and explicit NOT_ACTIVATED status. Do
+    not amend frozen Kernel v0.1 in place.
+  - Reconcile KA-01 normative sections A/B/C/D consistently so C.1 eligibility recognizes
+    only a future, exact-version, per-RUN Human-opted-in, already admitted ACTIVE
+    PRIMARY, REPAIR, or REMEDIATION; DIRECT_CANDIDATE and preadmission/terminal operations
+    remain excluded. Older operation semantics are unchanged.
+  - PRIMARY keeps original TASK/revision, base, acceptance, scope and full mapped
+    proof; REPAIR additionally binds the exact failed admitted RUN/FAILURE and immutable
+    currently authorized AUTHOR_REPAIR action, origin/affected verification, correction
+    scope and source/currentness; REMEDIATION binds the exact CHANGES_REQUIRED REVIEW,
+    reviewed source and immutable authorized outstanding finding(s)/approved causal
+    group, affected verification, delta review continuity and correction scope. No
+    implicit finding addition or strategy replacement.
+  - Each eligible operation checks actual Executor selected for the current RUN, native
+    lease identity/generation/live status and original finite Human per-RUN consent/limits;
+    do not assume the Executor of preceding PRIMARY persists across a separately admitted
+    correction RUN. Runtime supplies only bounded factual proof feedback; Executor
+    owns HOW.
+  - Preserve exactly one Runtime-owned scheduler; immutable monotonic exact committed
+    candidates/checkpoints/factual feedback, single consumption/progress/causality
+    checks, authenticated applicability to original evidence and complete independently
+    reviewed semantic obligations, no equivalent final proof rerun, and exactly one
+    terminal RESULT or FAILURE. No prior terminal is reopened.
+  - Continue only on stable, complete, decisive candidate proof FAIL plus all authority/scope/lease/progress/resource
+    guards; ERROR, UNKNOWN, incomplete, conflicting, flaky, stale/ref-moving, forged
+    or budget-overrun conditions must STOP under current Runtime authority. STOP never
+    mints new AUTHOR_REPAIR/REMEDIATION or edits canonical history.
+  - Keep G1/G2 normative eligibility, actual separately reviewed/published G3 L1-L3
+    core, and G6 exact future version/profile/policy/finite Human per-RUN opt-in distinct;
+    G4/G5 real production L4 measurement and full VP-07 conformance remain unproved
+    postactivation duties. No cyclic gate, no synthetic G3/G6 activation.
+  - 'Preserve complete security/privacy provenance and non-interference: no untrusted
+    logs promoted to instructions; no caller-provided proof of consent or validity,
+    no hidden test weakening, no silent background repair, no new trust root, and
+    independent Reviewer/Publisher authority untouched.'
+  - The sole allowed modification is the named KA-01 normative document. It must state
+    that the separate L2-03/L3 implementation still needs new admitted Tasks and own
+    verification/review/publication; the already canonized Lean VP roadmap and 16+one
+    separate normative task planning are not rewritten by this Task.
+acceptance:
+- id: AC1
+  condition: KA-01 explicitly identifies prospective v1.2 and the 2026-10-19 Human
+    scope decision, preserving distinguishable historical v1.0/v1.1, frozen v0.1 and
+    NOT_ACTIVATED status.
+- id: AC2
+  condition: Normative C.1 and related scope clauses admit only future exact-version
+    and Human-opted-in ACTIVE PRIMARY, REPAIR, and REMEDIATION operations, while excluding
+    DIRECT_CANDIDATE, preadmission and terminal RUNs.
+- id: AC3
+  condition: The PRIMARY authorization contract explicitly retains original TASK/revision,
+    acceptance, base, scope and complete required proof without importing correction
+    authority.
+- id: AC4
+  condition: The REPAIR authorization contract binds exact predecessor admitted FAILURE,
+    immutable current AUTHOR_REPAIR action/scope and original/affected verification;
+    any feedback correction remains within that authorization and cannot reopen an
+    earlier terminal.
+- id: AC5
+  condition: The REMEDIATION contract binds exact CHANGES_REQUIRED REVIEW, outstanding
+    selected finding or approved causal finding group, authorized remediation source/scope
+    and affected verification with independent DELTA-review continuity, rejecting
+    unrelated or unauthorized findings.
+- id: AC6
+  condition: All three operations require the exact same live leased Executor of the
+    currently admitted RUN and finite explicitly authenticated Human per-RUN consent/profile/resources;
+    neither another RUN's Executor nor a prior consent record grants permission.
+- id: AC7
+  condition: The amended preterminal protocol keeps one existing Runtime proof scheduler,
+    immutable C_i/K_i/F_i lineage, single-consumption factual feedback, causal progress,
+    idempotent recovery, no duplicated valid proof and exactly one canonical terminal
+    RESULT or FAILURE.
+- id: AC8
+  condition: The amendment preserves complete reviewed semantic proof obligations
+    and authenticated original-subject evidence applicability; changed test/fixture/worker/environment/contract
+    conditions become INVALIDATED or UNKNOWN, never synthetic PASS, with only lawfully
+    required fresh proof.
+- id: AC9
+  condition: Normative continuation and STOP clauses explicitly distinguish decisive
+    stable complete candidate FAIL from ERROR/UNKNOWN/flaky/partial/stale observations,
+    rejecting scope/risk drift, exhausted budgets, lost leases, duplicate feedback,
+    no progress and terminal re-entry.
+- id: AC10
+  condition: 'G1/G2/G3/G6 and later G4/G5 obligations are unambiguously sequenced
+    for the prospective three-operation version: separately published norm and implementation
+    before exact Human per-RUN production opt-in, real matched L4 measurement/conformance
+    only afterward.'
+- id: AC11
+  condition: The KA-01 text distinguishes future per-operation production eligibility
+    from current historical v1.0/v1.1 and minimum-sufficient V1/V2 behavior, providing
+    explicit prospective rollback without changing original lineage, Reviewer/Publisher
+    responsibility or downstream pins.
+- id: AC12
+  condition: The completed normative document changes only the authorized KA-01 source
+    path, introduces no runtime code, second scheduler/router or execution claims,
+    and consistently states that L2-03/L3 and G6 remain separately gated and KA-01
+    production remains inactive.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_intra_run_proof_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
