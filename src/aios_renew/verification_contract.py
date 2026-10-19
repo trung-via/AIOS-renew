@@ -2497,3 +2497,50 @@ def parse_scheduler_plan(content: bytes) -> ProofSchedulerPlan:
     if scheduler_plan_data(result) != data:
         raise VerificationContractError("extra, missing or substituted scheduler projection")
     return result
+
+
+# L3-02 locators. Decoding never authenticates evidence or grants execution.
+CHECKPOINT_REQUEST_FORMAT = "AIOS_L3_CHECKPOINT_REQUEST"
+CHECKPOINT_EXECUTION_FORMAT = "AIOS_L3_EXECUTED_CONDITIONS"
+MAX_RUNTIME_CHECKPOINTS = 17
+
+
+@dataclass(frozen=True, slots=True)
+class ProofCheckpointRequest:
+    version: int
+    scheduler: ProofSchedulerRequest
+    ordinal: int
+    predecessor_digest: str | None
+
+    def __post_init__(self):
+        if type(self.version) is not int or self.version != 1 or type(self.scheduler) is not ProofSchedulerRequest:
+            raise VerificationContractError("invalid checkpoint request version or scheduler")
+        self.scheduler.__post_init__()
+        if type(self.ordinal) is not int or not 1 <= self.ordinal <= MAX_RUNTIME_CHECKPOINTS:
+            raise VerificationContractError("checkpoint ordinal exceeds bound")
+        if self.ordinal == 1:
+            if self.predecessor_digest is not None:
+                raise VerificationContractError("first checkpoint has no predecessor")
+        else:
+            _original_hash(self.predecessor_digest)
+
+
+def checkpoint_request_data(value: ProofCheckpointRequest) -> dict:
+    if type(value) is not ProofCheckpointRequest:
+        raise VerificationContractError("exact typed checkpoint locator required")
+    value.__post_init__()
+    return dict(format=CHECKPOINT_REQUEST_FORMAT, version=value.version,
+        scheduler=scheduler_request_data(value.scheduler), ordinal=value.ordinal,
+        predecessor_digest=value.predecessor_digest)
+
+
+def format_checkpoint_request(value: ProofCheckpointRequest) -> bytes:
+    return _original_json(checkpoint_request_data(value)).encode("ascii")
+
+
+def parse_checkpoint_request(content: bytes) -> ProofCheckpointRequest:
+    raw = dict(_app_exact(_reuse_decode(content), (*ProofCheckpointRequest.__dataclass_fields__, "format")))
+    if raw.pop("format") != CHECKPOINT_REQUEST_FORMAT:
+        raise VerificationContractError("invalid checkpoint request format")
+    raw["scheduler"] = parse_scheduler_request(_original_json(raw["scheduler"]).encode("ascii"))
+    return ProofCheckpointRequest(**raw)
