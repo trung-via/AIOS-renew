@@ -1398,3 +1398,480 @@ def parse_original_proof(content: bytes) -> OriginalProofProvenance:
     values = {k: v for k, v in data.items() if k not in {"format", "identity", "dimensions", "source_refs"}}
     return OriginalProofProvenance(**values, identity=OriginalEvidenceRequest(**identity),
         dimensions=tuple(dimensions), source_refs=tuple((r["ref"], r["sha"]) for r in refs))
+
+
+# L2-02 is an explicit, non-operative projection. None of these structural
+# types, including a parsed VALID witness, authenticates a Runtime observation.
+APPLICABILITY_VERSION = 1
+APPLICABILITY_REQUEST_FORMAT = "AIOS_L2_APPLICABILITY_REQUEST"
+APPLICABILITY_FORMAT = "AIOS_L2_APPLICABILITY"
+APPLICABILITY_CONDITIONS_FORMAT = "AIOS_L2_REVIEWED_CONDITIONS"
+APPLICABILITY_DIMENSIONS = (
+    "implementation_dependencies", "test_dependencies", "population",
+    "fixtures_setup_teardown", "helpers", "shared_state", "generated_state",
+    "interpreter", "toolchain", "observer", "environment_digest",
+    "environment_content", "configuration", "verification_policy",
+    "execution_profile", "worker_topology", "worker_state",
+    "concurrency_interference", "ordering", "repetition", "collection",
+    "completeness", "stability", "phase_outcomes",
+    "integration_external_boundaries", "evidence_kind_schema", "condition_diagnostics",
+)
+APPLICABILITY_GIT_DIMENSIONS = frozenset((
+    "implementation_dependencies", "test_dependencies", "fixtures_setup_teardown",
+    "helpers", "shared_state", "generated_state",
+))
+MAX_APPLICABILITY_PATHS = 64
+
+
+def _app_id(value: object) -> str:
+    if type(value) is not str or re.fullmatch(r"[A-Za-z][A-Za-z0-9_.:-]{0,127}", value) is None:
+        raise VerificationContractError("invalid applicability semantic identity")
+    return value
+
+
+def _app_revision(value: object) -> None:
+    if type(value) is not int or not 1 <= value <= 1_000_000:
+        raise VerificationContractError("invalid applicability revision")
+
+
+def _app_ids(value: object) -> None:
+    if type(value) is not tuple or not 0 < len(value) <= 256:
+        raise VerificationContractError("bounded immutable applicability acceptance required")
+    for item in value:
+        _app_id(item)
+    if value != tuple(sorted(set(value))):
+        raise VerificationContractError("unordered or duplicate applicability acceptance")
+
+
+def _app_path(value: object) -> str:
+    if (type(value) is not str or len(value) > 512 or len(value.split("/")) > 32
+            or re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", value) is None
+            or any(p in {".", "..", ".git"} for p in value.split("/"))):
+        raise VerificationContractError("unsafe applicability Git path")
+    return value
+
+
+def _app_exact(value: object, fields) -> dict:
+    if type(value) is not dict or set(value) != set(fields):
+        raise VerificationContractError("missing or unknown applicability fields")
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicabilityDeclarationPin:
+    id: str
+    revision: int
+    digest: str
+
+    def __post_init__(self):
+        _app_id(self.id)
+        _app_revision(self.revision)
+        _original_hash(self.digest)
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicabilityTargetRequest:
+    """Locates one existing Runtime admission; no caller condition assertions."""
+
+    task_id: str
+    task_revision: int
+    run_id: str
+    base_sha: str
+    candidate_sha: str
+    tree_sha: str
+    artifacts_sha: str
+    run_sha256: str
+    condition_evidence: OriginalEvidenceRequest | None = None
+
+    def __post_init__(self):
+        if (type(self.task_id) is not str or len(self.task_id) > 80
+                or re.fullmatch(r"TASK-[A-Za-z0-9_-]+", self.task_id) is None
+                or type(self.run_id) is not str or len(self.run_id) > 88
+                or re.fullmatch(re.escape("RUN-" + self.task_id[5:] + "-") + r"\d{3,}", self.run_id) is None):
+            raise VerificationContractError("invalid exact applicability target TASK/RUN")
+        _app_revision(self.task_revision)
+        for sha in (self.base_sha, self.candidate_sha, self.tree_sha, self.artifacts_sha):
+            _original_hash(sha, 40)
+        _original_hash(self.run_sha256)
+        if self.condition_evidence is not None:
+            if type(self.condition_evidence) is not OriginalEvidenceRequest:
+                raise VerificationContractError("typed target condition locator required")
+            item = self.condition_evidence
+            item.__post_init__()
+            if (item.task_id, item.task_revision, item.run_id, item.candidate_sha, item.tree_sha, item.artifacts_sha) != (
+                    self.task_id, self.task_revision, self.run_id, self.candidate_sha, self.tree_sha, self.artifacts_sha):
+                raise VerificationContractError("target condition observation substitution")
+
+
+@dataclass(frozen=True, slots=True)
+class ProofApplicabilityRequest:
+    version: int
+    source: OriginalEvidenceRequest
+    target: ApplicabilityTargetRequest
+    expected_main_sha: str
+    contract: ApplicabilityDeclarationPin
+    mapping: ApplicabilityDeclarationPin
+    obligation_id: str
+    obligation_revision: int
+    obligation_digest: str
+    acceptance_ids: tuple[str, ...]
+
+    def __post_init__(self):
+        if type(self.version) is not int or self.version != APPLICABILITY_VERSION:
+            raise VerificationContractError("unsupported applicability version")
+        for value, cls in ((self.source, OriginalEvidenceRequest), (self.target, ApplicabilityTargetRequest),
+                           (self.contract, ApplicabilityDeclarationPin), (self.mapping, ApplicabilityDeclarationPin)):
+            if type(value) is not cls:
+                raise VerificationContractError("exact typed applicability request required")
+            value.__post_init__()
+        _original_hash(self.expected_main_sha, 40)
+        _app_id(self.obligation_id)
+        _app_revision(self.obligation_revision)
+        _original_hash(self.obligation_digest)
+        _app_ids(self.acceptance_ids)
+
+
+def _app_fields(value) -> dict:
+    return {k: getattr(value, k) for k in value.__dataclass_fields__}
+
+
+def applicability_target_data(value: ApplicabilityTargetRequest) -> dict:
+    if type(value) is not ApplicabilityTargetRequest:
+        raise VerificationContractError("typed applicability target required")
+    value.__post_init__()
+    return {**_app_fields(value), "condition_evidence": (
+        None if value.condition_evidence is None else _app_fields(value.condition_evidence))}
+
+
+def applicability_request_data(value: ProofApplicabilityRequest) -> dict:
+    if type(value) is not ProofApplicabilityRequest:
+        raise VerificationContractError("typed applicability request required")
+    value.__post_init__()
+    return {**_app_fields(value), "format": APPLICABILITY_REQUEST_FORMAT,
+            "source": _app_fields(value.source), "target": applicability_target_data(value.target),
+            "contract": _app_fields(value.contract), "mapping": _app_fields(value.mapping),
+            "acceptance_ids": list(value.acceptance_ids)}
+
+
+def format_applicability_request(value: ProofApplicabilityRequest) -> bytes:
+    return _original_json(applicability_request_data(value)).encode("ascii")
+
+
+def _app_target(value: object) -> ApplicabilityTargetRequest:
+    item = dict(_app_exact(value, ApplicabilityTargetRequest.__dataclass_fields__))
+    if item["condition_evidence"] is not None:
+        item["condition_evidence"] = OriginalEvidenceRequest(**_app_exact(
+            item["condition_evidence"], OriginalEvidenceRequest.__dataclass_fields__))
+    return ApplicabilityTargetRequest(**item)
+
+
+def parse_applicability_request(content: bytes) -> ProofApplicabilityRequest:
+    data = dict(_app_exact(_original_decode(content), (*ProofApplicabilityRequest.__dataclass_fields__, "format")))
+    if data.pop("format") != APPLICABILITY_REQUEST_FORMAT or type(data["acceptance_ids"]) is not list:
+        raise VerificationContractError("invalid applicability request schema")
+    data["source"] = OriginalEvidenceRequest(**_app_exact(data["source"], OriginalEvidenceRequest.__dataclass_fields__))
+    data["target"] = _app_target(data["target"])
+    for key in ("contract", "mapping"):
+        data[key] = ApplicabilityDeclarationPin(**_app_exact(data[key], ApplicabilityDeclarationPin.__dataclass_fields__))
+    data["acceptance_ids"] = tuple(data["acceptance_ids"])
+    return ProofApplicabilityRequest(**data)
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicabilityCondition:
+    status: str
+    origin: str
+    identity_sha256: str | None
+    value_json: str | None
+
+    def __post_init__(self):
+        if type(self.status) is not str or self.status not in {"OBSERVED", "UNKNOWN", "INAPPLICABLE"}:
+            raise VerificationContractError("invalid applicability condition status")
+        if type(self.origin) is not str or self.origin not in {"L2_ORIGINAL", "GIT_FOOTPRINT", "REVIEWED_SEMANTICS", "UNAVAILABLE"}:
+            raise VerificationContractError("invalid applicability condition origin")
+        if self.status == "UNKNOWN":
+            if self.origin != "UNAVAILABLE" or self.identity_sha256 is not None or self.value_json is not None:
+                raise VerificationContractError("UNKNOWN applicability condition contains assertions")
+        else:
+            _original_hash(self.identity_sha256)
+            if self.status == "INAPPLICABLE":
+                if self.origin != "REVIEWED_SEMANTICS" or self.value_json is not None:
+                    raise VerificationContractError("invalid reviewed inapplicability")
+            elif (self.origin not in {"L2_ORIGINAL", "GIT_FOOTPRINT"} or type(self.value_json) is not str
+                  or _original_decode(self.value_json.encode("utf-8")) is None
+                  or _original_json(_original_decode(self.value_json.encode("utf-8"))) != self.value_json):
+                raise VerificationContractError("invalid observed applicability condition")
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicabilityDimension:
+    name: str
+    status: str
+    source: ApplicabilityCondition
+    target: ApplicabilityCondition
+    reason: str
+    authority_sha256: str | None
+
+    def __post_init__(self):
+        if type(self.name) is not str or self.name not in APPLICABILITY_DIMENSIONS:
+            raise VerificationContractError("invalid applicability dimension")
+        if type(self.status) is not str or self.status not in {"EQUIVALENT", "CHANGED", "UNKNOWN", "INAPPLICABLE"}:
+            raise VerificationContractError("invalid applicability judgment")
+        _original_text(self.reason, 2048)
+        for fact in (self.source, self.target):
+            if type(fact) is not ApplicabilityCondition:
+                raise VerificationContractError("typed applicability conditions required")
+            fact.__post_init__()
+        if self.authority_sha256 is not None:
+            _original_hash(self.authority_sha256)
+        if self.status != "UNKNOWN" and self.authority_sha256 is None:
+            raise VerificationContractError("affirmative applicability lacks semantic authority identity")
+        if self.status in {"EQUIVALENT", "CHANGED"}:
+            if self.source.status != "OBSERVED" or self.target.status != "OBSERVED":
+                raise VerificationContractError("applicability comparison requires both observations")
+            if (self.source.value_json == self.target.value_json) != (self.status == "EQUIVALENT"):
+                raise VerificationContractError("contradictory applicability comparison")
+        if self.status == "INAPPLICABLE" and any(f.status != "INAPPLICABLE" for f in (self.source, self.target)):
+            raise VerificationContractError("inapplicability requires reviewed source and target coverage")
+        if self.status == "UNKNOWN" and self.source.status == self.target.status == "OBSERVED":
+            raise VerificationContractError("observed equality/divergence must be explicit")
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicabilityTargetProvenance:
+    identity: ApplicabilityTargetRequest
+    task_blob_sha: str
+    task_sha256: str
+    canonical_run_sha256: str
+    lineage_sha256: str
+    conditions: OriginalProofProvenance | None
+
+    def __post_init__(self):
+        if type(self.identity) is not ApplicabilityTargetRequest:
+            raise VerificationContractError("typed target provenance required")
+        self.identity.__post_init__()
+        _original_hash(self.task_blob_sha, 40)
+        _original_hash(self.task_sha256)
+        _original_hash(self.canonical_run_sha256)
+        _original_hash(self.lineage_sha256)
+        if self.conditions is not None:
+            if type(self.conditions) is not OriginalProofProvenance:
+                raise VerificationContractError("typed target original condition observation required")
+            self.conditions.__post_init__()
+            if (self.conditions.identity != self.identity.condition_evidence
+                    or self.conditions.base_sha != self.identity.base_sha
+                    or self.conditions.local_run_sha256 != self.identity.run_sha256):
+                raise VerificationContractError("conflicting target condition provenance")
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicabilityAuthority:
+    """Exact independently observed L1 selection/REVIEW/publication identities."""
+
+    main_sha: str
+    selection_sha: str
+    review_candidate_sha: str
+    artifacts_sha: str
+    decision_sha: str
+    manifest_blob_sha: str
+    manifest_sha256: str
+    binding_json: str
+
+    def __post_init__(self):
+        for key in ("main_sha", "selection_sha", "review_candidate_sha", "artifacts_sha", "decision_sha", "manifest_blob_sha"):
+            _original_hash(getattr(self, key), 40)
+        _original_hash(self.manifest_sha256)
+        if (type(self.binding_json) is not str
+                or _original_json(_original_decode(self.binding_json.encode("utf-8"))) != self.binding_json):
+            raise VerificationContractError("noncanonical applicability authority binding")
+        binding = _app_exact(_original_decode(self.binding_json.encode("ascii")), (
+            "upstream_sha256", "human_event_identity", "review_id", "review_run_id", "run_sha256",
+            "result_sha256", "review_sha256", "scope_sha256", "sources", "manifest_path", "review_acceptance_id"))
+        for key in ("upstream_sha256", "run_sha256", "result_sha256", "review_sha256", "scope_sha256"):
+            _original_hash(binding[key])
+        for key in ("human_event_identity", "review_id", "review_run_id", "review_acceptance_id"):
+            _original_text(binding[key], 256)
+        _app_path(binding["manifest_path"])
+        sources = _app_exact(binding["sources"], ("task", "contract", "mapping", "review_task"))
+        for source in sources.values():
+            _app_exact(source, ("source_sha", "tree_sha", "path", "blob_sha", "sha256"))
+            for key in ("source_sha", "tree_sha", "blob_sha"):
+                _original_hash(source[key], 40)
+            _original_hash(source["sha256"])
+            _app_path(source["path"])
+
+
+def reduce_applicability(*, authenticated: bool, dimensions: tuple[ApplicabilityDimension, ...]) -> str:
+    """Pure reduction; its boolean argument is NOT an authentication API."""
+    if (type(authenticated) is not bool or type(dimensions) is not tuple
+            or len(dimensions) != len(APPLICABILITY_DIMENSIONS)
+            or any(type(d) is not ApplicabilityDimension for d in dimensions)
+            or tuple(d.name for d in dimensions) != APPLICABILITY_DIMENSIONS):
+        raise VerificationContractError("incomplete applicability reduction input")
+    for dimension in dimensions:
+        dimension.__post_init__()
+    if not authenticated:
+        return "UNKNOWN"
+    if any(d.status == "CHANGED" for d in dimensions):
+        return "INVALIDATED"
+    return "VALID" if all(d.status in {"EQUIVALENT", "INAPPLICABLE"} for d in dimensions) else "UNKNOWN"
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicabilitySourceSnapshot:
+    """Retained original identity/outcome even when the full output is too big."""
+
+    identity: OriginalEvidenceRequest
+    provenance_sha256: str
+    evidence_sha256: str
+    raw_sha256: str
+    raw_size: int
+    outcome: str
+
+    def __post_init__(self):
+        if type(self.identity) is not OriginalEvidenceRequest:
+            raise VerificationContractError("typed original source snapshot required")
+        self.identity.__post_init__()
+        for sha in (self.provenance_sha256, self.evidence_sha256, self.raw_sha256):
+            _original_hash(sha)
+        if type(self.raw_size) is not int or not 0 < self.raw_size <= MAX_ORIGINAL_RAW_BYTES:
+            raise VerificationContractError("invalid source snapshot raw size")
+        code = self.identity.exit_code
+        expected = "FAIL" if code == 1 else "ERROR" if code != 0 else "PASS"
+        if (type(self.outcome) is not str or self.outcome not in {expected, "UNKNOWN"}
+                or code != 0 and self.outcome != expected):
+            raise VerificationContractError("source snapshot outcome promotion")
+
+
+def applicability_source_snapshot(proof: OriginalProofProvenance) -> ApplicabilitySourceSnapshot:
+    if type(proof) is not OriginalProofProvenance:
+        raise VerificationContractError("typed original provenance required")
+    return ApplicabilitySourceSnapshot(proof.identity, hashlib.sha256(format_original_proof(proof)).hexdigest(),
+        proof.evidence_sha256, proof.raw_sha256, proof.raw_size, proof.outcome)
+
+
+@dataclass(frozen=True, slots=True)
+class ProofApplicabilityWitness:
+    version: int
+    request: ProofApplicabilityRequest
+    authentication: str
+    reason: str
+    source: OriginalProofProvenance | None
+    target: ApplicabilityTargetProvenance | None
+    authority: ApplicabilityAuthority | None
+    dimensions: tuple[ApplicabilityDimension, ...]
+    source_snapshot: ApplicabilitySourceSnapshot | None
+
+    def __post_init__(self):
+        if type(self.version) is not int or self.version != APPLICABILITY_VERSION or type(self.request) is not ProofApplicabilityRequest:
+            raise VerificationContractError("invalid typed applicability witness")
+        self.request.__post_init__()
+        _original_text(self.reason, 256)
+        if type(self.authentication) is not str or self.authentication not in {"AUTHENTICATED", "NOT_ESTABLISHED"}:
+            raise VerificationContractError("invalid applicability authentication status")
+        for item, cls in ((self.source, OriginalProofProvenance), (self.target, ApplicabilityTargetProvenance),
+                          (self.authority, ApplicabilityAuthority), (self.source_snapshot, ApplicabilitySourceSnapshot)):
+            if item is not None:
+                if type(item) is not cls:
+                    raise VerificationContractError("invalid applicability provenance type")
+                item.__post_init__()
+        if self.source is not None and self.source.identity != self.request.source:
+            raise VerificationContractError("applicability source relabeling")
+        if self.source is not None and self.source_snapshot != applicability_source_snapshot(self.source):
+            raise VerificationContractError("applicability source snapshot substitution")
+        if self.source_snapshot is not None and self.source_snapshot.identity != self.request.source:
+            raise VerificationContractError("applicability source snapshot relabeling")
+        if self.target is not None and self.target.identity != self.request.target:
+            raise VerificationContractError("applicability target relabeling")
+        if self.authority is not None and self.authority.main_sha != self.request.expected_main_sha:
+            raise VerificationContractError("applicability main substitution")
+        if self.authentication == "AUTHENTICATED" and any(v is None for v in (self.source, self.target, self.authority)):
+            raise VerificationContractError("authenticated applicability requires complete identities")
+        reduce_applicability(authenticated=self.authentication == "AUTHENTICATED", dimensions=self.dimensions)
+        if self.authentication == "AUTHENTICATED":
+            authority_digest = hashlib.sha256(_original_json(_app_fields(self.authority)).encode("ascii")).hexdigest()
+            if any(d.authority_sha256 != authority_digest for d in self.dimensions):
+                raise VerificationContractError("applicability dimension authority substitution")
+
+    @property
+    def validity(self) -> str:
+        return reduce_applicability(authenticated=self.authentication == "AUTHENTICATED", dimensions=self.dimensions)
+
+    @property
+    def source_outcome(self) -> str:
+        return "UNKNOWN" if self.source_snapshot is None else self.source_snapshot.outcome
+
+    @property
+    def disposition(self) -> str:
+        return "APPLICABILITY_ONLY" if self.validity == "VALID" else "BLOCK"
+
+    @property
+    def satisfactory(self) -> bool:
+        # L2-03, not a read or formatter, owns any future discharge decision.
+        return False
+
+
+def applicability_data(value: ProofApplicabilityWitness) -> dict:
+    if type(value) is not ProofApplicabilityWitness:
+        raise VerificationContractError("typed applicability witness required")
+    value.__post_init__()
+    def fact(item):
+        return {**_app_fields(item), "value_json": item.value_json}
+    target = None if value.target is None else {
+        **_app_fields(value.target), "identity": applicability_target_data(value.target.identity),
+        "conditions": None if value.target.conditions is None else original_proof_data(value.target.conditions)}
+    authority = None if value.authority is None else _app_fields(value.authority)
+    snapshot = None if value.source_snapshot is None else {
+        **_app_fields(value.source_snapshot), "identity": _app_fields(value.source_snapshot.identity)}
+    return dict(format=APPLICABILITY_FORMAT, version=value.version,
+        request=applicability_request_data(value.request), authentication=value.authentication, reason=value.reason,
+        source=None if value.source is None else original_proof_data(value.source), target=target, authority=authority,
+        dimensions=[{**_app_fields(d), "source": fact(d.source), "target": fact(d.target)} for d in value.dimensions],
+        source_snapshot=snapshot,
+        validity=value.validity, source_outcome=value.source_outcome, disposition=value.disposition,
+        satisfactory=False, target_execution="NOT_ASSERTED", reuse="NOT_AUTHORIZED")
+
+
+def format_applicability(value: ProofApplicabilityWitness) -> bytes:
+    """Pure, bounded, detached; never observes, executes or persists anything."""
+    return _original_json(applicability_data(value)).encode("ascii")
+
+
+def parse_applicability(content: bytes) -> ProofApplicabilityWitness:
+    """Closed-schema structural interpretation only, including claimed VALID."""
+    computed = ("validity", "source_outcome", "disposition", "satisfactory", "target_execution", "reuse")
+    data = dict(_app_exact(_original_decode(content), (*ProofApplicabilityWitness.__dataclass_fields__, "format", *computed)))
+    if data.pop("format") != APPLICABILITY_FORMAT:
+        raise VerificationContractError("invalid applicability format")
+    stored = {k: data.pop(k) for k in computed}
+    data["request"] = parse_applicability_request(_original_json(data["request"]).encode("ascii"))
+    if data["source"] is not None:
+        data["source"] = parse_original_proof(_original_json(data["source"]).encode("ascii"))
+    if data["source_snapshot"] is not None:
+        snapshot = dict(_app_exact(data["source_snapshot"], ApplicabilitySourceSnapshot.__dataclass_fields__))
+        snapshot["identity"] = OriginalEvidenceRequest(**_app_exact(snapshot["identity"], OriginalEvidenceRequest.__dataclass_fields__))
+        data["source_snapshot"] = ApplicabilitySourceSnapshot(**snapshot)
+    if data["target"] is not None:
+        target = dict(_app_exact(data["target"], ApplicabilityTargetProvenance.__dataclass_fields__))
+        target["identity"] = _app_target(target["identity"])
+        if target["conditions"] is not None:
+            target["conditions"] = parse_original_proof(_original_json(target["conditions"]).encode("ascii"))
+        data["target"] = ApplicabilityTargetProvenance(**target)
+    if data["authority"] is not None:
+        data["authority"] = ApplicabilityAuthority(**_app_exact(data["authority"], ApplicabilityAuthority.__dataclass_fields__))
+    items = data["dimensions"]
+    if type(items) is not list or len(items) != len(APPLICABILITY_DIMENSIONS):
+        raise VerificationContractError("invalid applicability dimension population")
+    dimensions = []
+    for value in items:
+        value = dict(_app_exact(value, ApplicabilityDimension.__dataclass_fields__))
+        for key in ("source", "target"):
+            value[key] = ApplicabilityCondition(**_app_exact(value[key], ApplicabilityCondition.__dataclass_fields__))
+        dimensions.append(ApplicabilityDimension(**value))
+    data["dimensions"] = tuple(dimensions)
+    witness = ProofApplicabilityWitness(**data)
+    expected = dict(validity=witness.validity, source_outcome=witness.source_outcome, disposition=witness.disposition,
+                    satisfactory=False, target_execution="NOT_ASSERTED", reuse="NOT_AUTHORIZED")
+    if _original_json(stored) != _original_json(expected):
+        raise VerificationContractError("applicability outcome or authority promotion")
+    return witness

@@ -36,6 +36,13 @@ from .verification_contract import (
     OriginalEvidenceRequest, OriginalProofDimension, OriginalProofProvenance,
     ORIGINAL_PROOF_DIMENSIONS, MAX_ORIGINAL_PROOF_BYTES, MAX_ORIGINAL_RAW_BYTES,
     _original_decode, _original_json, format_original_proof,
+    APPLICABILITY_VERSION, APPLICABILITY_DIMENSIONS, APPLICABILITY_GIT_DIMENSIONS,
+    APPLICABILITY_CONDITIONS_FORMAT, MAX_APPLICABILITY_PATHS,
+    ApplicabilityCondition, ApplicabilityDimension, ApplicabilityAuthority,
+    ApplicabilityTargetProvenance, ProofApplicabilityRequest, ProofApplicabilityWitness,
+    _app_exact, _app_fields, _app_path, _original_text, _original_hash,
+    applicability_target_data, format_applicability,
+    applicability_source_snapshot,
 )
 from .parallel_verification import (
     EXECUTION_CONTRACT, ProbeError, effective_pytest_profile, git_executable,
@@ -1781,3 +1788,629 @@ def observe_original_evidence(repository: Path, *, expected: OriginalEvidenceReq
             RecursionError, yaml.YAMLError) as exc:
         reason = str(exc) if isinstance(exc, VerificationContractError) else "SOURCE_UNAVAILABLE_OR_MALFORMED"
         return OriginalEvidenceObservation("NOT_ESTABLISHED", reason[:256], None)
+
+
+# Explicit L2-02 reader. These helpers are not used by verification execution,
+# admission, selection, review, publication or any continuation path.
+class _ApplicabilityReader:
+    """Already-local authenticated objects only, with aggregate read bounds."""
+
+    def __init__(self, repository: Path):
+        self.repository = repository
+        self.objects = {}
+        self.trees = {}
+        self.commits = {}
+        self.byte_count = 0
+
+    def object(self, sha: str, kind: str) -> bytes:
+        _original_hash(sha, 40)
+        key = (sha, kind)
+        if key not in self.objects:
+            if len(self.objects) >= 8192:
+                raise VerificationContractError("APPLICABILITY_OBJECT_COUNT_BOUND")
+            remaining = 32 * 1024 * 1024 - self.byte_count
+            if remaining <= 0:
+                raise VerificationContractError("APPLICABILITY_OBJECT_BYTE_BOUND")
+            content = _original_object(self.repository, sha, kind,
+                min(remaining, 65536 if kind == "commit" else MAX_ORIGINAL_PROOF_BYTES))
+            self.byte_count += len(content)
+            if self.byte_count > 32 * 1024 * 1024:
+                raise VerificationContractError("APPLICABILITY_OBJECT_BYTE_BOUND")
+            self.objects[key] = content
+        return self.objects[key]
+
+    def commit(self, sha: str):
+        if sha not in self.commits:
+            # Same raw-header lineage convention as L2-01, without graph APIs.
+            raw = self.object(sha, "commit")
+            header, separator, _ = raw.partition(b"\n\n")
+            lines = header.split(b"\n")
+            if not separator or not lines[0].startswith(b"tree "):
+                raise VerificationContractError("APPLICABILITY_COMMIT_SCHEMA")
+            tree, parents, index = lines[0][5:].decode("ascii"), [], 1
+            while index < len(lines) and lines[index].startswith(b"parent "):
+                parents.append(lines[index][7:].decode("ascii"))
+                index += 1
+            if len(parents) > 16 or any(line.startswith((b"tree ", b"parent ")) for line in lines[index:]):
+                raise VerificationContractError("APPLICABILITY_COMMIT_SCHEMA")
+            for value in (tree, *parents):
+                _original_hash(value, 40)
+            self.commits[sha] = tree, tuple(parents)
+        return self.commits[sha]
+
+    def anchors(self, head: str, wanted: set[str]) -> dict:
+        pending, found = [head], {}
+        while pending and not wanted <= found.keys():
+            sha = pending.pop()
+            if sha in found:
+                continue
+            if len(found) >= 4096:
+                raise VerificationContractError("APPLICABILITY_LINEAGE_BOUND")
+            tree, parents = self.commit(sha)
+            found[sha] = tree
+            pending.extend(reversed(parents))
+        if not wanted <= found.keys():
+            raise VerificationContractError("APPLICABILITY_LINEAGE_NOT_ESTABLISHED")
+        return found
+
+    def tree(self, sha: str) -> dict:
+        if sha not in self.trees:
+            raw, entries = self.object(sha, "tree"), {}
+            while raw:
+                header, separator, tail = raw.partition(b"\0")
+                mode, space, encoded = header.partition(b" ")
+                if not separator or not space or len(tail) < 20:
+                    raise VerificationContractError("APPLICABILITY_TREE_SCHEMA")
+                name = encoded.decode("utf-8", errors="strict")
+                if (not name or name in entries or "/" in name or name in {".", ".."}
+                        or mode not in {b"40000", b"100644", b"100755", b"120000", b"160000"}):
+                    raise VerificationContractError("APPLICABILITY_TREE_SCHEMA")
+                entries[name] = (mode, tail[:20].hex())
+                raw = tail[20:]
+            self.trees[sha] = entries
+        return self.trees[sha]
+
+    def path(self, tree: str, path: str, *, missing_ok=False):
+        parts = _app_path(path).split("/")
+        for index, part in enumerate(parts):
+            entry = self.tree(tree).get(part)
+            if entry is None and missing_ok:
+                return None
+            if entry is None:
+                raise VerificationContractError("APPLICABILITY_BLOB_UNAVAILABLE")
+            mode, sha = entry
+            if (index < len(parts) - 1 and mode != b"40000"
+                    or index == len(parts) - 1 and mode not in {b"100644", b"100755"}):
+                raise VerificationContractError("APPLICABILITY_UNSAFE_BLOB")
+            tree = sha
+        return sha
+
+    def blob(self, tree: str, path: str) -> bytes:
+        return self.object(self.path(tree, path), "blob")
+
+
+def _app_plain(value):
+    # Internal dataclass tuples are detached to JSON arrays before the shared
+    # strict encoder enforces types, depth, nodes and total bytes.
+    if type(value) in (list, tuple):
+        return [_app_plain(item) for item in value]
+    if type(value) is dict:
+        return {key: _app_plain(item) for key, item in value.items()}
+    return value
+
+
+def _app_digest(value: object) -> str:
+    return hashlib.sha256(_original_json(_app_plain(value)).encode("ascii")).hexdigest()
+
+
+def _app_proof_digest(value: OriginalProofProvenance) -> str:
+    return hashlib.sha256(format_original_proof(value)).hexdigest()
+
+
+def _app_refs(repository: Path, url: str, patterns: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    from fnmatch import fnmatchcase
+    output = _original_git(repository, "ls-remote", "--refs", url, *patterns, limit=32768)
+    refs = {}
+    for line in output.decode("ascii").splitlines():
+        sha, tab, ref = line.partition("\t")
+        _original_hash(sha, 40)
+        if not tab or ref in refs or not any(fnmatchcase(ref, pattern) for pattern in patterns):
+            raise VerificationContractError("APPLICABILITY_REF_CONFLICT")
+        refs[ref] = sha
+    return tuple(sorted(refs.items()))
+
+
+def _app_transport(repository: Path) -> tuple[str, str, str]:
+    branch = _original_git(repository, "symbolic-ref", "--quiet", "--short", "HEAD").decode("utf-8").strip()
+    remote = _original_git(repository, "config", "--get", f"branch.{branch}.remote").decode("utf-8").strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", remote) is None:
+        raise VerificationContractError("APPLICABILITY_UPSTREAM_UNAVAILABLE")
+    raw = _original_git(repository, "config", "--get", f"remote.{remote}.url").decode("utf-8").strip()
+    if raw != _original_remote(repository):
+        raise VerificationContractError("APPLICABILITY_UPSTREAM_REWRITE")
+    return branch, remote, raw
+
+
+def _app_target_refs(repository: Path, url: str, run_id: str):
+    prefix = "refs/heads/aios/"
+    patterns = (*(prefix + kind + "/" + run_id for kind in (
+        "review", "artifacts", "failure", "failure-artifacts", "repair", "publication-recovery")),
+        prefix + "repair-supersession/" + run_id + "/*", prefix + "remediation/" + run_id + "-*")
+    return _app_refs(repository, url, patterns)
+
+
+def _app_target(repository: Path, expected, reader: _ApplicabilityReader):
+    from .publication import _run_from_data
+    from .task import parse_task
+    from .review_transport import _l1_yaml_text, public_run
+
+    if _original_git(repository, "rev-parse", "--verify", "HEAD").decode("ascii").strip() != expected.candidate_sha:
+        raise VerificationContractError("TARGET_IS_NOT_CURRENT_COMMITTED_HEAD")
+    tree, _ = reader.commit(expected.candidate_sha)
+    if tree != expected.tree_sha:
+        raise VerificationContractError("TARGET_TREE_MISMATCH")
+    lineage = reader.anchors(expected.candidate_sha, {expected.base_sha})
+    path = f".ai/tasks/{expected.task_id}.yaml"
+    task_blob = reader.path(tree, path)
+    if reader.path(lineage[expected.base_sha], path) != task_blob:
+        raise VerificationContractError("TARGET_TASK_CHANGED_AFTER_ADMISSION")
+    task_bytes = reader.object(task_blob, "blob")
+    task = parse_task(_l1_yaml_text(task_bytes))
+    if (task.task_id, task.revision) != (expected.task_id, expected.task_revision):
+        raise VerificationContractError("TARGET_TASK_MISMATCH")
+    git_dir = Path(_original_git(repository, "rev-parse", "--absolute-git-dir").decode("utf-8").strip())
+    run_path = git_dir / "aios/runs" / (expected.run_id + ".json")
+    raw = _original_local(run_path, MAX_ORIGINAL_PROOF_BYTES)
+    data = _original_decode(raw)
+    if type(data) is not dict or set(data) - {"run_id", "task", "executor", "base_sha", "workspace", "head_sha", "status", "return_affinity"}:
+        raise VerificationContractError("TARGET_ADMITTED_RUN_SCHEMA")
+    run = _run_from_data(data, "L2-02 target RUN")
+    if (hashlib.sha256(raw).hexdigest() != expected.run_sha256
+            or run.run_id != expected.run_id or run.task.id != expected.task_id
+            or run.task.revision != expected.task_revision or type(data["task"]["revision"]) is not int
+            or run.base_sha != expected.base_sha or run.head_sha not in (None, expected.candidate_sha)
+            or run.status != "ACTIVE" or run.return_affinity != task.return_affinity
+            or Path(run.workspace).absolute() != repository):
+        raise VerificationContractError("TARGET_ADMITTED_RUN_MISMATCH")
+    url = _original_remote(repository)
+    refs = _app_target_refs(repository, url, expected.run_id)
+    wanted = tuple(sorted((("refs/heads/aios/review/" + expected.run_id, expected.candidate_sha),
+                           ("refs/heads/aios/artifacts/" + expected.run_id, expected.artifacts_sha))))
+    if refs != wanted:
+        raise VerificationContractError("TARGET_CANONICAL_REFS_MISSING_STALE_OR_COMPETING")
+    artifact_tree, parents = reader.commit(expected.artifacts_sha)
+    canonical_run = reader.blob(artifact_tree, ".ai/transport/run.json")
+    if parents or _original_decode(canonical_run) not in (data, _original_decode(public_run(raw))):
+        raise VerificationContractError("TARGET_CANONICAL_ADMISSION_CONFLICT")
+    failure_path = git_dir / "aios/failures" / (expected.run_id + ".json")
+    if os.path.lexists(failure_path):
+        raise VerificationContractError("TARGET_COMPETING_LOCAL_FAILURE")
+    conditions = None
+    if expected.condition_evidence is not None:
+        observation = observe_original_evidence(repository, expected=expected.condition_evidence)
+        if observation.status != "AUTHENTICATED" or observation.provenance is None:
+            raise VerificationContractError("TARGET_CONDITION_SOURCE_NOT_ESTABLISHED")
+        conditions = observation.provenance
+    provenance = ApplicabilityTargetProvenance(expected, task_blob, hashlib.sha256(task_bytes).hexdigest(),
+        hashlib.sha256(canonical_run).hexdigest(),
+        _app_digest([[sha, *reader.commit(sha)] for sha in sorted(lineage)]), conditions)
+    return provenance, task, (run_path, raw, failure_path, refs)
+
+
+def _app_selection_record(reader: _ApplicabilityReader, sha: str):
+    """Read the unchanged L1 carrier using local objects, never its fetch path."""
+    from .review_transport import L1_SELECTION_PATH, _l1_selection_request
+    tree, parents = reader.commit(sha)
+    if len(parents) != 1:
+        raise VerificationContractError("MAPPING_SELECTION_PARENT")
+    raw = reader.blob(tree, L1_SELECTION_PATH)
+    data = _app_exact(_original_decode(raw), ("format", "version", "request", "provenance", "policy"))
+    if (len(raw) > 131072 or data["format"] != "AIOS_L1_HUMAN_REVIEW_SELECTION"
+            or type(data["version"]) is not int or data["version"] != 1
+            or raw != json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+            or parents != (data["request"]["expected_state"]["expected_main_sha"],)):
+        raise VerificationContractError("MAPPING_SELECTION_RECORD")
+    request = _l1_selection_request(data["request"])
+    blob = reader.path(tree, L1_SELECTION_PATH)
+
+    def only_added(old_tree, new_tree, parts):
+        old = dict(reader.tree(old_tree)) if old_tree else {}
+        new = dict(reader.tree(new_tree))
+        before, after = old.pop(parts[0], None), new.pop(parts[0], None)
+        if old != new or after is None:
+            raise VerificationContractError("MAPPING_SELECTION_UNRELATED_CHANGE")
+        if len(parts) == 1:
+            if before is not None or after != (b"100644", blob):
+                raise VerificationContractError("MAPPING_SELECTION_NOT_IMMUTABLE_ADDITION")
+        else:
+            if after[0] != b"40000" or before and before[0] != b"40000":
+                raise VerificationContractError("MAPPING_SELECTION_UNSAFE_TREE")
+            only_added(before[1] if before else None, after[1], parts[1:])
+    only_added(reader.commit(parents[0])[0], tree, L1_SELECTION_PATH.split("/"))
+    return data, request
+
+
+def _app_selection_authentication(reader: _ApplicabilityReader, record: dict, main: str, url: str):
+    from .github_issue_ingress import _decode_policy, _authenticate_selection_issue
+    from .review_transport import _l1_selection_request
+    old = record["request"]["expected_state"]["expected_main_sha"]
+    path = ".ai/brain-ingress-carriers.yaml"
+    old_tree, _ = reader.commit(old)
+    main_tree, _ = reader.commit(main)
+    blob = reader.path(old_tree, path)
+    raw = reader.object(blob, "blob")
+    if (len(raw) > 65536 or reader.path(main_tree, path) != blob
+            or record["policy"] != dict(main_sha=old, blob_sha=blob, sha256=hashlib.sha256(raw).hexdigest())
+            or record["request"]["expected_state"]["expected_remote_url"] != url):
+        raise VerificationContractError("MAPPING_SELECTION_POLICY_OR_TRANSPORT_CHANGED")
+    policy = _decode_policy(raw)
+    actual, body = _authenticate_selection_issue(policy, record["provenance"].get("issue_number"))
+    if (actual != record["provenance"]
+            or _l1_selection_request(_original_decode(body)) != record["request"]):
+        raise VerificationContractError("MAPPING_SELECTION_NOT_INDEPENDENTLY_AUTHENTICATED")
+    return f"github-issue:{actual['repository']}#{actual['issue_number']}@{actual['actor']}"
+
+
+def _app_reviewed_authority(repository: Path, request: ProofApplicabilityRequest,
+                            target: ApplicabilityTargetProvenance, task, source: OriginalProofProvenance,
+                            reader: _ApplicabilityReader, url: str):
+    """No selector supplied by the caller can replace the existing L1 selection.
+
+    L1's structural, scope, RESULT and REVIEW validators remain the owners of
+    their contracts. Its fetching readers cannot be called by this read-only
+    seam, so exact local objects are read through the bounded L2 object reader.
+    """
+    from dataclasses import asdict
+    from .review_transport import _l1_selection_ref, _l1_request_scope
+    from .proof_coverage_contract import (
+        validate_proof_contract, proof_mapping_digest, validate_semantic_proof_declaration,
+        validate_mapping_review_scope, TaskBinding,
+    )
+    from .review_transport import _l1_yaml_text
+    from .task import parse_task
+    from .publication import _run_from_data
+    from .artifacts import validate_evidence, validate_result, validate_result_package
+    from .review import parse_review, validate_review
+
+    selected_ref = _l1_selection_ref(request.target.task_id, request.target.candidate_sha)
+    initial_patterns = ("refs/heads/main", selected_ref, selected_ref + "/*")
+    initial = dict(_app_refs(repository, url, initial_patterns))
+    if set(initial) != {"refs/heads/main", selected_ref} or initial["refs/heads/main"] != request.expected_main_sha:
+        raise VerificationContractError("EXACT_CURRENT_MAPPING_SELECTION_UNAVAILABLE")
+    selection_sha = initial[selected_ref]
+    record, selected = _app_selection_record(reader, selection_sha)
+    human = _app_selection_authentication(reader, record, request.expected_main_sha, url)
+    scope = _l1_request_scope(selected)
+    payload, main = selected["payload"], request.expected_main_sha
+    if (scope.target_task.task_id != request.target.task_id or scope.candidate_sha != request.target.candidate_sha
+            or scope.target_task.revision != request.target.task_revision
+            or asdict(scope.contract_pin) != _app_fields(request.contract)
+            or asdict(scope.mapping_pin) != _app_fields(request.mapping)):
+        raise VerificationContractError("UNREVIEWED_OR_REPLAYED_TARGET_MAPPING")
+    run_pin = payload["run"]
+    run_id, reviewed = run_pin["id"], run_pin["candidate_sha"]
+    prefix = "refs/heads/aios/"
+    patterns = (*initial_patterns, *(prefix + kind + "/" + run_id for kind in (
+        "review", "artifacts", "review-decision", "failure", "failure-artifacts", "repair", "publication-recovery")),
+        prefix + "repair-supersession/" + run_id + "/*", prefix + "remediation/" + run_id + "-*")
+    refs = dict(_app_refs(repository, url, patterns))
+    expected_names = {"refs/heads/main", selected_ref, *(prefix + kind + "/" + run_id for kind in ("review", "artifacts", "review-decision"))}
+    if (set(refs) != expected_names or any(refs.get(k) != v for k, v in initial.items())
+            or refs[prefix + "review/" + run_id] != reviewed):
+        raise VerificationContractError("MAPPING_REVIEW_PUBLICATION_REFS_CONFLICT")
+    artifacts, decision = refs[prefix + "artifacts/" + run_id], refs[prefix + "review-decision/" + run_id]
+    locators = {**payload["sources"], "review_task": payload["review_task_source"]}
+    trees = reader.anchors(main, {main, request.target.base_sha, selected["expected_state"]["expected_main_sha"], reviewed,
+        *(locator["source_sha"] for locator in locators.values())})
+    reviewed_trees = reader.anchors(reviewed, {run_pin["base_sha"], *(locator["source_sha"] for locator in locators.values())})
+    contents, sources = {}, {}
+    for role, locator in locators.items():
+        if (trees[locator["source_sha"]] != locator["tree_sha"]
+                or any(reader.path(tree, locator["path"]) != locator["blob_sha"]
+                       for tree in (locator["tree_sha"], trees[main], trees[reviewed]))):
+            raise VerificationContractError("SEMANTIC_SOURCE_STALE_OR_SUBSTITUTED")
+        contents[role] = reader.object(locator["blob_sha"], "blob")
+        sources[role] = {**locator, "sha256": hashlib.sha256(contents[role]).hexdigest()}
+    if (locators["task"]["path"] != f".ai/tasks/{task.task_id}.yaml"
+            or locators["task"]["blob_sha"] != target.task_blob_sha
+            or locators["review_task"]["path"] != f".ai/tasks/{scope.review_task.task_id}.yaml"):
+        raise VerificationContractError("SEMANTIC_TASK_SOURCE_SUBSTITUTION")
+    actual_task = dict(task_id=task.task_id, revision=task.revision, envelope_digest=target.task_sha256,
+                       acceptance_ids=sorted(ac.id for ac in task.acceptance))
+    contract_data, mapping_data = _original_decode(contents["contract"]), _original_decode(contents["mapping"])
+    contract = validate_proof_contract(contract_data, expected_task=actual_task)
+    contract_pin = dict(id=contract.id, revision=contract.revision, digest=contract.digest)
+    mapping_pin = dict(id=mapping_data.get("id"), revision=mapping_data.get("revision"), digest=proof_mapping_digest(mapping_data))
+    if contract_pin != _app_fields(request.contract) or mapping_pin != _app_fields(request.mapping):
+        raise VerificationContractError("SEMANTIC_PIN_MISMATCH")
+    pins = {role: {key: locators[role][key] for key in ("source_sha", "blob_sha")} for role in ("task", "contract", "mapping")}
+    intake = validate_semantic_proof_declaration(dict(schema="task-semantic-proof-intake-v1", task=actual_task,
+        candidate_sha=request.target.candidate_sha, sources=pins, contract=contract_data, mapping=mapping_data),
+        expected_task=actual_task, expected_candidate_sha=request.target.candidate_sha, expected_sources=pins,
+        expected_contract=contract_pin, expected_mapping=mapping_pin)
+    review_task = parse_task(_l1_yaml_text(contents["review_task"]))
+    review_pin = TaskBinding(review_task.task_id, review_task.revision, sources["review_task"]["sha256"],
+                            tuple(sorted(ac.id for ac in review_task.acceptance)))
+    scope = validate_mapping_review_scope(scope, intake=intake, expected_review_task=review_pin)
+    review_locator = locators["review_task"]
+    base_tree = reviewed_trees[run_pin["base_sha"]]
+    if reader.path(base_tree, review_locator["path"]) != review_locator["blob_sha"]:
+        raise VerificationContractError("MAPPING_REVIEW_TASK_CHANGED_AFTER_ADMISSION")
+    semantic_paths, changed_paths = set(), set()
+    for role in ("contract", "mapping"):
+        locator = locators[role]
+        path = locator["path"]
+        semantic_paths.add(path)
+        changed = reader.path(base_tree, path, missing_ok=True) != locator["blob_sha"]
+        if path not in (*review_task.scope.inspect, *review_task.scope.modify) or changed and path not in review_task.scope.modify:
+            raise VerificationContractError("SEMANTIC_SOURCE_OUTSIDE_REVIEW_SCOPE")
+        if changed:
+            changed_paths.add(path)
+        if role == "mapping" and (not changed or locator["source_sha"] != reviewed or locator["tree_sha"] != trees[reviewed]):
+            raise VerificationContractError("MAPPING_HAS_NO_AUTHORIZED_REVIEWED_DELTA")
+    artifact_tree, artifact_parents = reader.commit(artifacts)
+    decision_tree, decision_parents = reader.commit(decision)
+    def subtree(tree, parts):
+        for part in parts:
+            mode, tree = reader.tree(tree).get(part, (None, None))
+            if mode != b"40000":
+                raise VerificationContractError("MAPPING_REVIEW_DIRECTORY_UNAVAILABLE")
+        return reader.tree(tree)
+    artifact_names = set(subtree(artifact_tree, (".ai", "transport")))
+    reviews = subtree(decision_tree, (".ai", "reviews"))
+    if (artifact_parents or decision_parents != (reviewed,) or len(reviews) != 1
+            or not {"run.json", "result.json"} <= artifact_names
+            or not artifact_names <= {"run.json", "result.json", "observation.json", "execution-profile.json"}):
+        raise VerificationContractError("MAPPING_REVIEW_LINEAGE_SCHEMA")
+    review_name = next(iter(reviews))
+    if re.fullmatch(r"REVIEW-[A-Za-z0-9_-]{1,121}\.yaml", review_name) is None:
+        raise VerificationContractError("MAPPING_REVIEW_IDENTITY")
+    for locator in locators.values():
+        if reader.path(decision_tree, locator["path"]) != locator["blob_sha"]:
+            raise VerificationContractError("MAPPING_REVIEW_DECISION_SOURCE_CHANGED")
+    run_bytes, result_bytes = (reader.blob(artifact_tree, ".ai/transport/" + name) for name in ("run.json", "result.json"))
+    run_data = _original_decode(run_bytes)
+    if (type(run_data) is not dict or set(run_data) - {"run_id", "task", "executor", "base_sha", "workspace", "head_sha", "status", "return_affinity"}
+            or run_data.get("task") != dict(id=review_task.task_id, revision=review_task.revision)
+            or type(run_data["task"]["revision"]) is not int
+            or hashlib.sha256(run_bytes).hexdigest() != run_pin["sha256"]):
+        raise VerificationContractError("MAPPING_REVIEW_RUN_MISMATCH")
+    run = _run_from_data(run_data, "L2-02 existing mapping review RUN")
+    if (run.run_id != run_id or run.status != "ACTIVE" or run.base_sha != run_pin["base_sha"]
+            or run.head_sha not in (None, reviewed) or run.return_affinity != review_task.return_affinity):
+        raise VerificationContractError("MAPPING_REVIEW_RUN_BINDING")
+    package = _app_exact(_original_decode(result_bytes), ("result", "evidence"))
+    if type(package["evidence"]) is not list or len(package["evidence"]) > 256:
+        raise VerificationContractError("MAPPING_REVIEW_EVIDENCE_POPULATION")
+    result = validate_result(package["result"])
+    evidence = tuple(validate_evidence(item) for item in package["evidence"])
+    validate_result_package(task=review_task, run=run, result=result, evidence=evidence)
+    if (result.head_sha != reviewed or result.unresolved
+            or {ac for claim in result.claims for ac in claim.satisfies} != set(review_pin.acceptance_ids)
+            or semantic_paths.intersection(result.changed_files) != changed_paths):
+        raise VerificationContractError("MAPPING_REVIEW_RESULT_INCOMPLETE")
+    review_bytes = reader.blob(decision_tree, ".ai/reviews/" + review_name)
+    text = _l1_yaml_text(review_bytes)
+    from .task import _TaskLoader
+    review_data = yaml.load(text, Loader=_TaskLoader)
+    if type(review_data) is not dict or set(review_data) - {"review_id", "reviewed_sha", "mode", "verdict", "acceptance", "findings", "prior_finding_id"}:
+        raise VerificationContractError("MAPPING_REVIEW_SCHEMA")
+    review = parse_review(text)
+    validate_review(task=review_task, result=result, review=review)
+    if (review.review_id != review_name[:-5] or review.reviewed_sha != reviewed or review.verdict != "PASS"
+            or review.mode != "PRIMARY" or review.prior_finding_id is not None or review.findings
+            or set(review.acceptance) != set(review_pin.acceptance_ids)
+            or any(v != "PASS" for v in review.acceptance.values())):
+        raise VerificationContractError("INDEPENDENT_MAPPING_REVIEW_PASS_ABSENT")
+    obligation = next((o for o in contract.obligations if o.id == request.obligation_id), None)
+    if (obligation is None or obligation.revision != request.obligation_revision or obligation.digest != request.obligation_digest
+            or obligation.acceptance_ids != request.acceptance_ids or obligation.kind != "candidate"):
+        raise VerificationContractError("EXACT_REVIEWED_CANDIDATE_OBLIGATION_UNAVAILABLE")
+    # One supported provider: an exact content-addressed reviewed condition
+    # document. Its hash is a locator; the independent review supplies authority.
+    match = re.fullmatch(r"l2c:([0-9a-f]{64})", obligation.conditions.test_ref)
+    if match is None:
+        raise VerificationContractError("UNSUPPORTED_REVIEWED_CONDITION_PROVIDER")
+    manifest_path = "docs/aios-proof-contracts/l2-conditions/" + match[1] + ".json"
+    manifest_blob = reader.path(trees[reviewed], manifest_path)
+    manifest_bytes = reader.object(manifest_blob, "blob")
+    if (hashlib.sha256(manifest_bytes).hexdigest() != match[1]
+            or manifest_path not in review_task.scope.modify or manifest_path not in result.changed_files
+            or reader.path(base_tree, manifest_path, missing_ok=True) == manifest_blob
+            or any(reader.path(tree, manifest_path) != manifest_blob for tree in (trees[main], decision_tree))):
+        raise VerificationContractError("CONDITION_DOCUMENT_NOT_IN_EXACT_REVIEWED_DELTA")
+    manifest = _app_exact(_original_decode(manifest_bytes), ("format", "version", "source_proof_sha256", "target",
+        "obligation_id", "obligation_revision", "acceptance_ids", "claim", "conditions", "review_acceptance_id", "dimensions"))
+    conditions = asdict(obligation.conditions)
+    conditions.pop("test_ref")  # Breaks the content-address cycle, not a condition omission.
+    correspondence = next((ac for ac in scope.acceptance if obligation.id in ac.obligation_ids), None)
+    if (manifest["format"] != APPLICABILITY_CONDITIONS_FORMAT or type(manifest["version"]) is not int or manifest["version"] != 1
+            or manifest_bytes != _original_json(manifest).encode("ascii")
+            or manifest["source_proof_sha256"] != _app_proof_digest(source)
+            or manifest["target"] != applicability_target_data(request.target)
+            or manifest["obligation_id"] != obligation.id or type(manifest["obligation_revision"]) is not int
+            or manifest["obligation_revision"] != obligation.revision
+            or manifest["acceptance_ids"] != list(obligation.acceptance_ids)
+            or manifest["claim"] != asdict(obligation.claim) or _original_json(manifest["conditions"]) != _original_json(_app_plain(conditions))
+            or correspondence is None or manifest["review_acceptance_id"] != correspondence.review_acceptance_id):
+        raise VerificationContractError("CONDITION_DOCUMENT_SOURCE_TARGET_OR_SEMANTICS_MISMATCH")
+    binding = dict(upstream_sha256=hashlib.sha256(url.encode("utf-8")).hexdigest(), human_event_identity=human,
+        review_id=review.review_id, review_run_id=run_id, run_sha256=run_pin["sha256"],
+        result_sha256=hashlib.sha256(result_bytes).hexdigest(), review_sha256=hashlib.sha256(review_bytes).hexdigest(),
+        scope_sha256=_app_digest(asdict(scope)), sources=sources, manifest_path=manifest_path,
+        review_acceptance_id=correspondence.review_acceptance_id)
+    authority = ApplicabilityAuthority(main, selection_sha, reviewed, artifacts, decision,
+        manifest_blob, match[1], _original_json(binding))
+    return authority, manifest, (patterns, tuple(sorted(refs.items())), record)
+
+
+def _app_unknown(name: str, reason: str, authority_sha256=None, source=None, target=None):
+    absent = ApplicabilityCondition("UNKNOWN", "UNAVAILABLE", None, None)
+    return ApplicabilityDimension(name, "UNKNOWN", source or absent, target or absent, reason, authority_sha256)
+
+
+def _app_judgments(source: OriginalProofProvenance, target: ApplicabilityTargetProvenance,
+                   authority: ApplicabilityAuthority, manifest: dict, reader: _ApplicabilityReader):
+    items = manifest["dimensions"]
+    if type(items) is not list or len(items) > len(APPLICABILITY_DIMENSIONS):
+        raise VerificationContractError("REVIEWED_CONDITION_POPULATION")
+    entries, indices = {}, []
+    for item in items:
+        _app_exact(item, ("name", "provider", "reason", "paths"))
+        name = item["name"]
+        if type(name) is not str or name not in APPLICABILITY_DIMENSIONS or name in entries:
+            raise VerificationContractError("REVIEWED_CONDITION_DIMENSION")
+        _original_text(item["reason"], 1800)
+        if type(item["paths"]) is not list or len(item["paths"]) > MAX_APPLICABILITY_PATHS:
+            raise VerificationContractError("REVIEWED_CONDITION_PATH_BOUND")
+        for path in item["paths"]:
+            _app_path(path)
+        if item["paths"] != sorted(set(item["paths"])):
+            raise VerificationContractError("REVIEWED_CONDITION_PATH_ORDER")
+        if item["provider"] not in {"GIT_FOOTPRINT", "L2_ORIGINAL", "INAPPLICABLE", "UNAVAILABLE"}:
+            raise VerificationContractError("UNSUPPORTED_REVIEWED_CONDITION_PROVIDER")
+        if item["provider"] == "GIT_FOOTPRINT":
+            if name not in APPLICABILITY_GIT_DIMENSIONS or not item["paths"]:
+                raise VerificationContractError("UNSUPPORTED_GIT_CONDITION_DIMENSION")
+        elif item["paths"]:
+            raise VerificationContractError("UNSUPPORTED_CONDITION_PATHS")
+        entries[name] = item
+        indices.append(APPLICABILITY_DIMENSIONS.index(name))
+    if indices != sorted(indices):
+        raise VerificationContractError("REVIEWED_CONDITION_ORDER")
+    auth_digest = _app_digest(_app_fields(authority))
+    source_dims = {d.name: d for d in source.dimensions}
+    target_dims = {} if target.conditions is None else {d.name: d for d in target.conditions.dimensions}
+
+    def original(proof, facts, name):
+        dimension = facts.get(name)
+        if proof is None or dimension is None or dimension.status != "OBSERVED":
+            return ApplicabilityCondition("UNKNOWN", "UNAVAILABLE", None, None)
+        return ApplicabilityCondition("OBSERVED", "L2_ORIGINAL", _app_digest(dict(
+            proof_sha256=_app_proof_digest(proof), dimension=name, source=dimension.source,
+            value=_original_decode(dimension.value_json.encode("ascii")))), dimension.value_json)
+
+    def footprint(proof, tree, paths):
+        values = []
+        try:
+            for path in paths:
+                blob = reader.path(tree, path, missing_ok=True)
+                content = None if blob is None else reader.object(blob, "blob")
+                cursor, mode = tree, None
+                if blob is not None:
+                    for part in path.split("/"):
+                        mode, cursor = reader.tree(cursor)[part]
+                values.append(dict(path=path, mode=None if mode is None else mode.decode("ascii"),
+                    blob_sha=blob, sha256=None if content is None else hashlib.sha256(content).hexdigest()))
+        except (OSError, ValueError, RuntimeError, UnicodeError):
+            return ApplicabilityCondition("UNKNOWN", "UNAVAILABLE", None, None)
+        encoded = _original_json(values)
+        return ApplicabilityCondition("OBSERVED", "GIT_FOOTPRINT",
+            _app_digest(dict(provenance=proof, tree_sha=tree, footprint=values)), encoded)
+
+    result = []
+    for name in APPLICABILITY_DIMENSIONS:
+        item = entries.get(name)
+        if item is None or item["provider"] == "UNAVAILABLE":
+            result.append(_app_unknown(name, "DIMENSION_NOT_ESTABLISHED", auth_digest))
+            continue
+        if item["provider"] == "INAPPLICABLE":
+            identity = _app_digest(dict(authority=auth_digest, dimension=name, declaration=item))
+            fact = ApplicabilityCondition("INAPPLICABLE", "REVIEWED_SEMANTICS", identity, None)
+            result.append(ApplicabilityDimension(name, "INAPPLICABLE", fact, fact, item["reason"], auth_digest))
+            continue
+        if item["provider"] == "L2_ORIGINAL":
+            left, right = original(source, source_dims, name), original(target.conditions, target_dims, name)
+        else:
+            left = footprint(_app_proof_digest(source), source.identity.tree_sha, item["paths"])
+            right = footprint(_app_digest(applicability_target_data(target.identity)), target.identity.tree_sha, item["paths"])
+            # A reviewed path list cannot conjure an unobserved source dependency.
+            if left.status == "OBSERVED" and any(value["blob_sha"] is None for value in _original_decode(left.value_json.encode("ascii"))):
+                left = ApplicabilityCondition("UNKNOWN", "UNAVAILABLE", None, None)
+        if left.status != "OBSERVED" or right.status != "OBSERVED":
+            result.append(_app_unknown(name, "SOURCE_OR_TARGET_CONDITION_NOT_OBSERVED", auth_digest, left, right))
+        else:
+            same = left.value_json == right.value_json
+            result.append(ApplicabilityDimension(name, "EQUIVALENT" if same else "CHANGED", left, right,
+                ("AUTHENTICATED_EQUIVALENT: " if same else "PROVED_RELEVANT_DIVERGENCE: ") + item["reason"], auth_digest))
+    # Equality alone is insufficient when actual conditions contradict the
+    # exact reviewed requirement. This is a consistency guard, not selection
+    # or an adequacy judgment inferred from semantic labels.
+    declared = manifest["conditions"]
+    checks = {d.name: d for d in result}
+    def equivalent_value(name):
+        item = checks[name]
+        return _original_decode(item.source.value_json.encode("ascii")) if item.status == "EQUIVALENT" else None
+    population = equivalent_value("population")
+    topology = equivalent_value("worker_topology")
+    schema = equivalent_value("evidence_kind_schema")
+    if (population is not None and len(population) != declared["population_size"]
+            or topology is not None and (topology["collect_only"] is not False
+                or ("parallel" if topology["workers"] else "serial") != declared["worker_mode"]
+                or (topology["workers"] or 1) != declared["workers"])
+            or schema is not None and (schema["type"] != declared["evidence_kind"] or schema["shape"] != declared["evidence_schema"])):
+        raise VerificationContractError("OBSERVED_CONDITIONS_CONTRADICT_REVIEWED_REQUIREMENTS")
+    return tuple(result)
+
+
+def observe_proof_applicability(repository: Path, *, expected: ProofApplicabilityRequest) -> ProofApplicabilityWitness:
+    """Bounded Runtime read of one source -> exact current target, never reuse.
+
+    Only typed locators are accepted. No parsed proof, raw path, provider,
+    condition values, reviewed flag, resolver, runner or trust root is an input.
+    Missing objects/authority/conditions block; nothing is fetched or executed.
+    """
+    if type(expected) is not ProofApplicabilityRequest:
+        raise VerificationContractError("EXACT_TYPED_APPLICABILITY_REQUEST_REQUIRED")
+    expected.__post_init__()
+    source, target, authority, source_snapshot = None, None, None, None
+    dimensions = tuple(_app_unknown(name, "IDENTITIES_NOT_ESTABLISHED") for name in APPLICABILITY_DIMENSIONS)
+    try:
+        repository = Path(repository).absolute()
+        if repository.resolve(strict=True) != repository:
+            raise VerificationContractError("UNSAFE_APPLICABILITY_REPOSITORY")
+        transport = _app_transport(repository)
+        url = transport[2]
+        original = observe_original_evidence(repository, expected=expected.source)
+        if original.status != "AUTHENTICATED" or original.provenance is None:
+            raise VerificationContractError("ORIGINAL_SOURCE_NOT_ESTABLISHED:" + original.reason)
+        source = original.provenance
+        source_snapshot = applicability_source_snapshot(source)
+        reader = _ApplicabilityReader(repository)
+        target, task, local = _app_target(repository, expected.target, reader)
+        authority, manifest, currentness = _app_reviewed_authority(repository, expected, target, task, source, reader, url)
+        dimensions = _app_judgments(source, target, authority, manifest, reader)
+        # Reauthenticate every mutable root after computing judgments. Object
+        # hashes and memoized immutable bytes alone never establish currentness.
+        patterns, refs, record = currentness
+        _app_selection_authentication(reader, record, expected.expected_main_sha, url)
+        if observe_original_evidence(repository, expected=expected.source).provenance != source:
+            raise VerificationContractError("ORIGINAL_SOURCE_CHANGED_DURING_APPLICABILITY")
+        if target.conditions is not None and observe_original_evidence(
+                repository, expected=expected.target.condition_evidence).provenance != target.conditions:
+            raise VerificationContractError("TARGET_CONDITIONS_CHANGED_DURING_APPLICABILITY")
+        if (_app_transport(repository) != transport or _app_refs(repository, url, patterns) != refs
+                or _original_local(local[0], MAX_ORIGINAL_PROOF_BYTES) != local[1] or os.path.lexists(local[2])
+                or _app_target_refs(repository, url, expected.target.run_id) != local[3]
+                or _original_git(repository, "rev-parse", "--verify", "HEAD").decode("ascii").strip() != expected.target.candidate_sha):
+            raise VerificationContractError("SOURCE_TARGET_OR_REVIEW_CURRENTNESS_CHANGED")
+        witness = ProofApplicabilityWitness(1, expected, "AUTHENTICATED", "EXACT_CURRENT_SOURCE_TARGET_AND_REVIEWED_CONDITIONS",
+            source, target, authority, dimensions, source_snapshot)
+        format_applicability(witness)
+        return witness
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError, RuntimeError,
+            RecursionError, yaml.YAMLError) as exc:
+        # External errors can contain private URLs, paths or captures. Only
+        # our fixed reason codes cross this inspection boundary.
+        reason = str(exc) if type(exc) is VerificationContractError else "APPLICABILITY_AUTHORITY_OR_INPUT_UNAVAILABLE"
+        reason = reason[:256]
+        if all(d.reason == "IDENTITIES_NOT_ESTABLISHED" for d in dimensions):
+            identity = None if authority is None else _app_digest(_app_fields(authority))
+            dimensions = tuple(_app_unknown(name, reason, identity) for name in APPLICABILITY_DIMENSIONS)
+        witness = ProofApplicabilityWitness(1, expected, "NOT_ESTABLISHED", reason, source, target, authority, dimensions, source_snapshot)
+        try:
+            format_applicability(witness)
+        except VerificationContractError:
+            witness = ProofApplicabilityWitness(1, expected, "NOT_ESTABLISHED", "APPLICABILITY_PROJECTION_BOUND",
+                None, None, None, tuple(_app_unknown(name, "PROJECTION_UNAVAILABLE") for name in APPLICABILITY_DIMENSIONS), source_snapshot)
+        return witness
