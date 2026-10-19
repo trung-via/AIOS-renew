@@ -1,5 +1,5 @@
 task_id: TASK-383
-revision: 1
+revision: 2
 goal: 'Complete only fixed Lean VP L1-03: deliver a bounded, read-only integrated
   L1 core readiness and falsification boundary connecting the now-authenticated real
   TASK-381/TASK-382 proof-contract/mapping selection/independent review lineage to
@@ -17,9 +17,7 @@ problem: Published TASK-376/377/378/380/381/382 collectively supply source/seman
   admission or discharged Runtime evidence. The Human fixed L1-03 as the last L1 work
   slot in the 16-slot Lean VP plan.
 assumptions:
-- Canonical main at authoring is 0ff5a56674c5f56012e0df551a069d6c461fd8fa, exact published
-  TASK-382 candidate and source; TASK-382 RUN-382-001 REVIEW-382-001 PRIMARY PASS
-  source is published, with four authorized changed paths and actual mapping pair.
+- Canonical main at revision-2 authoring is 5ef721b3dd734dce6ec3010099dede9a4215b9de (TASK-383 r1). The earlier published TASK-382 source remains exactly 0ff5a56674c5f56012e0df551a069d6c461fd8fa; RUN-382-001 and REVIEW-382-001 PRIMARY PASS and four-file original mapping delta remain unchanged.
 - 'An independently authenticated Human SELECT_MAPPING_REVIEW was canonicalized via
   GitHub Issue #2178; immutable selection ref aios/l1-human-selection/TASK-381/bf1b3fa121fc7daebaa8257aa81d6546611e06e7
   has commit c735c45134da36cd581ebce6547d4acf991a72d9 and carries exact TASK-382 r1
@@ -44,6 +42,9 @@ assumptions:
 - Retain standing LEGACY_REPOSITORY_DEFAULT_ROUTE and current minimum-sufficient-v1
   for this implementation TASK only; no Executor, model or effort choice implied by
   this authoring.
+- 'Revision-2 corrective lineage: RUN-383-001 canonical FAILURE commit 28a8fca2d7dce8e21ab3dd8aa218a3bf8672b853, failed head ae00a011d2994099983af1ee97ac700701c13ad4, COMPLETION_GATE UNRESOLVED_ITEMS. REPAIR-383-001 d87507d16e2545c2cd2d035b6e2c94013231f47d continued to RUN-383-002, whose canonical FAILURE commit is 62580b5d8b8e70fe8c97fa0e9beb4142c2680749: no new committed delta, no Runtime verification, and RESULT missing AC2/AC5/AC7/AC9 claims. Historical failures remain immutable and are not evidence PASS.'
+- 'The required original test_mapping_review_delta_is_separate_from_historical_target_delta in tests/test_lean_vp_l1_real_mapping.py incorrectly uses a changing HEAD to assert TASK-382 historical four-file delta and old review_transport.py bytes. It must instead observe the exact immutable published TASK-382 candidate 0ff5a56674c5f56012e0df551a069d6c461fd8fa and its RUN base e381e921bbf82dd131c7178f35c4aad9ccac22dd, retaining its negative checks. TASK-383 r1 lacks authority over this test path, so only a prospective TASK-383 revision can lawfully authorize its correction.'
+- 'Human instructed fixing TASK-383. Revision 2 preserves L1-03 in the preapproved 16-slot plan, original implementation intent and 9 acceptance properties, and adds only this required historical regression path to modification scope. Neither Executor choice for a new PRIMARY nor Runtime PASS, review verdict, publication, KA-01 activation, or roadmap advancement is granted by authoring.'
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -74,13 +75,13 @@ scope:
   - tests/test_lean_vp_l1_human_selection.py
   - tests/test_lean_vp_l1_review_authority.py
   - tests/test_lean_vp_l1_versioned_task.py
-  - tests/test_lean_vp_l1_real_mapping.py
   - tests/test_lean_vp_l1_source_binding.py
   - tests/test_proof_coverage_contract.py
   modify:
   - src/aios_renew/review_transport.py
   - tests/test_lean_vp_l1_integrated_readiness.py
   - docs/AIOS-LEAN-VP-L1-INTEGRATED-READINESS.md
+  - tests/test_lean_vp_l1_real_mapping.py
 non_goals:
 - No new AUTHOR_TASK, SELECT_MAPPING_REVIEW, RUN, RESULT, FAILURE, REVIEW, EVIDENCE,
   Publisher or source registry writer; do not reconstruct a synthetic Human intent/approval
@@ -131,8 +132,9 @@ constraints:
     prospective carrier/admission and L4 VP-01 obligations. The 16-package plan remains
     a Human planning decision, not an implementation completion counter or permission
     to modify .ai/roadmap-state.yaml.
-  - Only the three exact modified paths are permitted and use minimum-sufficient-v1
-    focused verification. All existing lifecycle and parser behavior remains identical.
+  - Only the four exact modified paths are permitted for revision 2; keep the original minimum-sufficient-v1 focused verification contract and preserve all existing lifecycle and parser behavior.
+  - Repair the required historical TASK-382 delta regression without deleting, skipping, xfail, broadening accepted output or weakening invariants. Bind its original four-file Git delta and unchanged historical production function assertions to exact published TASK-382 reviewed candidate 0ff5a56674c5f56012e0df551a069d6c461fd8fa, not the newer TASK-383 HEAD. Keep target-task inspect-only and negative mapping source-role substitution checks.
+  - Retain TASK-383's immutable original implementation goal. Reuse only lawful existing failed candidate material as a new revision-2 implementation source; do not relabel or replay RUN-383-001/002. Truthfully demonstrate AC2, AC5, AC7 and AC9 before including them in RESULT claims. No fake claims, dummy source mutations, undocumented known blockers, synthetic authority elevation or retrospective rewriting.
 acceptance:
 - id: AC1
   condition: An explicitly invoked immutable L1 integrated readiness observation composes
@@ -164,10 +166,7 @@ acceptance:
     publishes code, executes semantic proof or test commands, admits future TASK,
     creates lifecycle objects or changes Human/Executor/Reviewer/Publisher authority.
 - id: AC7
-  condition: Regression tests establish legacy V1/V2 parser and source/selection behavior
-    remain unchanged, and task-semantic-v1 remains a separate unsupported operative
-    admission; new integrated results are read-only cognitive support and never an
-    independent lifecycle truth store.
+  condition: Regression tests establish unchanged legacy V1/V2 parser and source/selection behavior and separate unsupported operative task-semantic-v1 admission; historical TASK-382 delta assertions are anchored to its immutable reviewed/published candidate, not the changing TASK-383 HEAD, with no weakened negative invariants or new lifecycle truth store.
 - id: AC8
   condition: The L1 integrated readiness document supplies a grounded exit checklist
     for L1-01/02/03, exact remaining future semantic admission, L2 proof applicability,
@@ -175,9 +174,7 @@ acceptance:
     measurement deferral to L4, without falsely asserting completed L1 engineering
     before actual PASS/review/publication.
 - id: AC9
-  condition: Only the three permitted files change; no new Runtime scheduler, lifecycle
-    controller, review/publish actor, generic mapping issuer, data registry, roadmap
-    mutation or performance inference is introduced.
+  condition: Only the four permitted files change, including a historical candidate-anchored TASK-382 mapping-review regression preserving original invariant checks; no new Runtime scheduler, lifecycle controller, review/publish actor, generic mapping issuer, data registry, roadmap mutation or performance inference is introduced.
 verification:
   policy: minimum-sufficient-v1
   required:
