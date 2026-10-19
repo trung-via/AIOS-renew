@@ -98,7 +98,7 @@ class NativeCheckpointFixture(SchedulerFixture):
             files = {**files, "fixture-target.txt": b"FAIL\n" if self.failing else b"PASS first\n"}
         return super().worktree_commit(files, message)
 
-    def request(self, ordinal=1, predecessor=None, *, mutate=None):
+    def checkpoint_request(self, ordinal=1, predecessor=None, *, mutate=None):
         """Construct a new canonical-shaped independent review, never a witness."""
         contract, mapping = copy.deepcopy(self.contract), copy.deepcopy(self.mapping)
         # Preserve the original mandatory semantic population at each candidate.
@@ -218,7 +218,7 @@ def native(tmp_path, monkeypatch):
 
 def test_real_first_seal_replay_and_terminal_reuse_without_equivalent_execution(native):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     assert scheduler_plan_data(verifier.plan_candidate_proofs(f.repo, expected=request.scheduler))["status"] == "PLANNED"
     checkpoint = f.owner.seal_checkpoint(request)
     assert checkpoint.data["request"]["ordinal"] == 1
@@ -250,12 +250,12 @@ def test_real_first_seal_replay_and_terminal_reuse_without_equivalent_execution(
 
 def test_distinct_descendant_second_checkpoint_preserves_original_facts(native):
     f = native
-    first_request = f.request()
+    first_request = f.checkpoint_request()
     first = f.owner.seal_checkpoint(first_request)
     original = (f.directory / "k001.json").read_bytes()
     original_raw = Path(first.data["evidence"][0]["raw"]["path"]).read_bytes()
     f.next_candidate()
-    second_request = f.request(2, first.digest)
+    second_request = f.checkpoint_request(2, first.digest)
     second = f.owner.seal_checkpoint(second_request)
     assert second.data["request"]["predecessor_digest"] == first.digest
     assert second.data["population_identity"] == first.data["population_identity"]
@@ -272,7 +272,7 @@ def test_distinct_descendant_second_checkpoint_preserves_original_facts(native):
 
 def test_distinct_integration_worker_order_and_repetition_proofs_remain_mandatory(tmp_path, monkeypatch):
     f = NativeCheckpointFixture(tmp_path / "full", monkeypatch, multi=True)
-    request = f.request()
+    request = f.checkpoint_request()
     checkpoint = f.owner.seal_checkpoint(request)
     assert {p["proof_id"] for p in checkpoint.data["proofs"]} == {"fixture-proof", "integration-proof", "workers-proof"}
     assert len(f.calls) == 3
@@ -285,7 +285,7 @@ def test_distinct_integration_worker_order_and_repetition_proofs_remain_mandator
 
 def test_raw_native_failure_seals_outstanding_facts_but_cannot_finalize(tmp_path, monkeypatch):
     f = NativeCheckpointFixture(tmp_path / "failure", monkeypatch, failing=True)
-    request = f.request()
+    request = f.checkpoint_request()
     checkpoint = f.owner.seal_checkpoint(request)
     assert checkpoint.data["proofs"][0]["outcome"] == "FAIL"
     assert checkpoint.data["outstanding"] == ["fixture-obligation"]
@@ -299,7 +299,7 @@ def test_raw_native_failure_seals_outstanding_facts_but_cannot_finalize(tmp_path
 @pytest.mark.parametrize("defect", ["raw", "observation", "main", "run", "candidate", "failure", "conditions", "history"])
 def test_changed_native_roots_or_proof_never_grant_terminal_reuse(native, defect):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     checkpoint = f.owner.seal_checkpoint(request)
     if defect == "raw":
         Path(checkpoint.data["evidence"][0]["raw"]["path"]).write_bytes(b"changed original raw")
@@ -331,7 +331,7 @@ def test_changed_native_roots_or_proof_never_grant_terminal_reuse(native, defect
 @pytest.mark.parametrize("defect", ["gap", "predecessor", "same", "base", "operation", "tree", "forged-run"])
 def test_checkpoint_identity_and_operation_cannot_authorize_new_effect(native, defect):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     first = f.owner.seal_checkpoint(request)
     if defect == "gap":
         altered = replace(request, ordinal=3, predecessor_digest=first.digest)
@@ -356,7 +356,7 @@ def test_checkpoint_identity_and_operation_cannot_authorize_new_effect(native, d
 
 def test_two_native_writers_exclude_one_effect_and_exact_replay_is_read_only(native):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     def deliver():
         try:
             return f.owner.seal_checkpoint(request)
@@ -372,7 +372,7 @@ def test_two_native_writers_exclude_one_effect_and_exact_replay_is_read_only(nat
 
 def test_interrupted_native_execution_preserves_intent_and_cannot_retry(native):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     def interrupted(*args, **kwargs):
         f.calls.append("interrupted native launch")
         raise KeyboardInterrupt()
@@ -401,7 +401,7 @@ def test_no_real_complete_native_binding_means_no_pass_checkpoint(native, defect
             else:
                 nodes = ["tests/test_artifacts.py::test_unexecuted"]
                 manifest["collection"] = dict(nodeids=nodes, identity=pytest_collection_identity(nodes))
-        request = f.request(mutate=mutate)
+        request = f.checkpoint_request(mutate=mutate)
     with pytest.raises((VerificationContractError, RuntimeError)):
         f.owner.seal_checkpoint(request)
     assert not (f.directory / "k001.json").exists()
@@ -412,7 +412,7 @@ def test_no_real_complete_native_binding_means_no_pass_checkpoint(native, defect
 @pytest.mark.parametrize("operation", ["REPAIR", "REMEDIATION"])
 def test_correction_locators_and_primary_proof_never_supply_correction_authority(native, operation):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     altered = replace(request, scheduler=replace(request.scheduler, operation=operation))
     with pytest.raises(VerificationContractError):
         f.owner.seal_checkpoint(altered)
@@ -421,7 +421,7 @@ def test_correction_locators_and_primary_proof_never_supply_correction_authority
 
 @pytest.mark.parametrize("defect", ["extra", "missing", "duplicate", "float", "encoding", "oversized", "gap-type"])
 def test_closed_bounded_checkpoint_request(native, defect):
-    request = native.request()
+    request = native.checkpoint_request()
     data = checkpoint_request_data(request)
     if defect == "extra":
         data["authenticated"] = True
@@ -454,7 +454,7 @@ def test_unknown_and_exhausted_accounting_are_not_zero_or_retry_permission():
 
 def test_ambiguous_terminal_and_conflicting_replay_do_not_create_another_terminal(native):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     checkpoint = f.owner.seal_checkpoint(request)
     package = f.package()
     outcome = f.owner.complete(package, f.policy, checkpoint=request, checkpoint_digest=checkpoint.digest)
@@ -473,7 +473,7 @@ def test_ambiguous_terminal_and_conflicting_replay_do_not_create_another_termina
 def test_comparison_obligation_keeps_all_six_br_gates_and_never_executes_base(native):
     f = native
     add_obligation(f.contract, f.mapping, "baseline", base_sha=f.run.base_sha)
-    request = f.request()
+    request = f.checkpoint_request()
     plan = verifier.plan_candidate_proofs(f.repo, expected=request.scheduler)
     assert any(u["proof"]["kind"] == "comparison" for u in scheduler_plan_data(plan)["units"])
     with pytest.raises(VerificationContractError, match="BR_1_THROUGH_BR_6"):
@@ -484,7 +484,7 @@ def test_comparison_obligation_keeps_all_six_br_gates_and_never_executes_base(na
 @pytest.mark.parametrize("fault", ["incomplete", "unstable", "changed-root"])
 def test_actual_capture_uncertainty_or_currentness_move_cannot_seal(native, fault):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     def adversarial(command, **kwargs):
         result = f.actual_runner(command, **kwargs)
         if fault == "changed-root":
@@ -509,7 +509,7 @@ def test_actual_capture_uncertainty_or_currentness_move_cannot_seal(native, faul
 @pytest.mark.parametrize("after_write", [False, True])
 def test_checkpoint_write_interruption_is_never_an_implicit_retry(native, monkeypatch, after_write):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     write_once = completion._checkpoint_write_once
     def interrupted(path, content):
         if path == f.directory / "k001.json":
@@ -529,7 +529,7 @@ def test_checkpoint_write_interruption_is_never_an_implicit_retry(native, monkey
 @pytest.mark.parametrize("complete_write", [False, True])
 def test_terminal_crash_only_reconciles_an_exact_durable_fact(native, monkeypatch, complete_write):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     checkpoint = f.owner.seal_checkpoint(request)
     result_path = f.state.results / (f.run.run_id + ".json")
     write_once = completion._checkpoint_write_once
@@ -554,7 +554,7 @@ def test_terminal_crash_only_reconciles_an_exact_durable_fact(native, monkeypatc
 
 def test_concurrent_terminal_and_failure_share_one_existing_runtime_owner(native):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     checkpoint = f.owner.seal_checkpoint(request)
     def finalize():
         try:
@@ -577,7 +577,7 @@ def test_concurrent_terminal_and_failure_share_one_existing_runtime_owner(native
 def test_native_correction_lineage_is_required_even_with_full_primary_source(native, operation, defect):
     from tests.test_lean_vp_l2_reuse_conformance import correction_locator
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     locator = correction_locator(f, operation)
     changes = dict(predecessor=dict(predecessor_run_id="RUN-999-001"),
         action=dict(action="ANOTHER_ACTION"), finding=dict(finding_ids=("unrelated-finding",)),
@@ -594,11 +594,11 @@ def test_native_correction_lineage_is_required_even_with_full_primary_source(nat
 
 def test_changed_predecessor_capture_blocks_second_checkpoint_before_execution(native):
     f = native
-    first_request = f.request()
+    first_request = f.checkpoint_request()
     first = f.owner.seal_checkpoint(first_request)
     original_record = (f.directory / "k001.json").read_bytes()
     f.next_candidate()
-    second_request = f.request(2, first.digest)
+    second_request = f.checkpoint_request(2, first.digest)
     Path(first.data["evidence"][0]["raw"]["path"]).write_bytes(b"changed original predecessor cause")
     with pytest.raises(VerificationContractError):
         f.owner.seal_checkpoint(second_request)
@@ -608,7 +608,7 @@ def test_changed_predecessor_capture_blocks_second_checkpoint_before_execution(n
 
 def test_unaccounted_existing_native_capture_is_never_reset_to_zero(native):
     f = native
-    request = f.request()
+    request = f.checkpoint_request()
     directory = f.state.verification / f.run.run_id
     directory.mkdir()
     original = directory / (f.run.run_id + "-V001.raw")
