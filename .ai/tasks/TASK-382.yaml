@@ -1,0 +1,173 @@
+task_id: TASK-382
+revision: 1
+goal: Deliver the fixed Lean VP L1-02 package's first genuine, independently reviewable
+  semantic proof-contract and mapping source pair for the exact previously published
+  TASK-381 r1 subject and reviewed candidate, with complete acceptance/obligation
+  coverage and distinguishing proof conditions, using existing VP-02 validators and
+  L1 canonical-source review readers. The mapping remains a prospective declaration
+  until an independently authorized Human SELECT_MAPPING_REVIEW event and actual Reviewer/Publisher
+  lineage are separately established; KA-01 stays NOT_ACTIVATED.
+problem: TASK-376/377/378/380/381 have published structural, Git source, independent
+  review and Human-selection consumers, but their positive proof-mapping fixtures
+  are synthetic. No real, source-bound and semantically defensible proof contract/mapping
+  exists for an actual published implementation TASK that can be carried through the
+  existing independent mapping review and separately authenticated Human selection.
+  Without this, L1-02's real approved mapping exit cannot be claimed; further readiness
+  work would otherwise depend on synthetic success.
+assumptions:
+- Current canonical main at authoring is bf1b3fa121fc7daebaa8257aa81d6546611e06e7.
+  TASK-381 r1 raw canonical source .ai/tasks/TASK-381.yaml has blob 3db2f20f9a42560d0d1b55db522bafb0cca87683.
+  RUN-381-002 candidate bf1b3fa121fc7daebaa8257aa81d6546611e06e7 is in main; REVIEW-381-001
+  PRIMARY PASS is the ordinary engineering review, not mapping adequacy approval.
+- 'Human locked a finite Lean VP plan: 16 remaining deliverable slots L1=3 including
+  TASK-381, L2=3, L3=6, L4=4; KA-01 G6 after L3 is separate and uncounted. This is
+  L1-02. The Human decision is recorded as planning carrier GitHub Issue #2168 but
+  not yet incorporated into .ai/roadmap-state.yaml; canonical NEXT remains Lean VP
+  L1.'
+- Human's generic continuation authorizes bounded authoring for this package, not
+  selection of a specific future mapping-review RUN, delegation of Executor/model/effort,
+  independent Reviewer verdict, or production activation. TASK-381 is the bounded
+  suggested real target for reviewable proof mapping, not a Human-authenticated SELECT_MAPPING_REVIEW
+  event.
+- Selected TASK_AUTHORING audit profile from current canonical roadmap is tca-1 v1
+  (normalized digest 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2).
+  The Brain reconciled CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE and closed this
+  one candidate with all AC as CLAIM_NOW. Runtime/Reviewer/Publisher outcomes and
+  Human selection are distinct later gates.
+- Existing TASK-326 VP-02 proof contract/mapping validators, TASK-376 semantic intake,
+  TASK-377 Git source binder, TASK-378 mapping-specific independent review reader,
+  TASK-380 authenticated Human selection and TASK-381 future decoder/readiness are
+  reused without a new owner or production admission.
+- The mapping-review TASK itself is an ordinary minimum-sufficient-v1 engineering
+  TASK with legacy return affinity. The target TASK-381 has ordinary historical command-based
+  verification; overlaying a separate reviewed semantic contract on its exact published
+  code does not reinterpret or reopen its RUN or install a new policy.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-VP02-PROOF-COVERAGE-CONTRACT-v1.md
+  - docs/AIOS-LEAN-VP-L1-SEMANTIC-PROOF-INTAKE.md
+  - docs/AIOS-LEAN-VP-L1-CANONICAL-SOURCE-BINDING.md
+  - docs/AIOS-LEAN-VP-L1-REVIEW-AUTHORITY.md
+  - docs/AIOS-LEAN-VP-L1-HUMAN-REVIEW-SELECTION.md
+  - docs/AIOS-LEAN-VP-L1-VERSIONED-SEMANTIC-TASK.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-381.yaml
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/task.py
+  - src/aios_renew/review_transport.py
+  - tests/test_lean_vp_l1_versioned_task.py
+  - tests/test_lean_vp_l1_review_authority.py
+  - tests/test_lean_vp_l1_human_selection.py
+  - tests/test_proof_coverage_contract.py
+  - tests/test_task.py
+  modify:
+  - docs/aios-proof-contracts/TASK-381-contract.json
+  - docs/aios-proof-contracts/TASK-381-mapping.json
+  - docs/AIOS-LEAN-VP-L1-REAL-MAPPING-REVIEW.md
+  - tests/test_lean_vp_l1_real_mapping.py
+non_goals:
+- No new architecture, new generic trust or evidence registry, Reviewer, Publisher,
+  semantic mapping oracle, validation algorithm, scheduler, workflow, independent
+  Runtime, live opt-in/rollback or versioned operative TASK admission.
+- No mutation of .ai/roadmap-state.yaml, historical TASK-381 or any preexisting TASK/RUN/RESULT/EVIDENCE/REVIEW,
+  or production source/parser/verification modules; no retrospective relabeling of
+  historical RUN-381-002 evidence as semantic proof discharge.
+- No synthetic self-issued review PASS, model-selected Human event, automatic SELECT_MAPPING_REVIEW,
+  post-run review verdict, Publisher claim, or assertion of activated KA-01.
+- No moving to L1-03, L2 or G6 from structural success alone. Human must separately
+  authorize exact immutable mapping-review source selection after it exists, and independent
+  semantic REVIEW must actually judge adequacy.
+constraints:
+  hard:
+  - "Bind contract.task to exact raw TASK-381 r1 envelope SHA-256 and complete 10\
+    \ acceptance IDs/conditions, with the target candidate exact bf1b3fa121fc7daebaa8257aa81d6546611e06e7.\
+    \ Derive digests from canonical bytes, not hardcoded self-declarations. No cyclic\
+    \ TASK\u2192contract\u2192TASK pin."
+  - "Define specific semantically adequate obligations for AC1\u2013AC10 and independent\
+    \ distinguishing candidate/integration/negative proof conditions; preserve population,\
+    \ test-code, fixture/shared state, toolchain, environment, worker/profile, ordering,\
+    \ concurrency and integration distinctions. Historical pytest commands or filenames\
+    \ alone do not establish proof, scope or adequacy."
+  - Construct complete proof-coverage-v1 and proof-mapping-v1 JSON sources meeting
+    the existing strict source schemas and exact obligation/proof digests. Explicitly
+    account for every mandatory obligation and every proof; equivalent claims may
+    share a proof only if complete condition equality and independent semantic adequacy
+    justify it.
+  - Contract/mapping shall be real production-repo source documents, not copied synthetic
+    test fixtures, forged Human selections, or fake PASS. Distinguish declarative
+    reviewable proof conditions from actual executed Runtime EVIDENCE and semantic
+    Reviewer judgment; no claim of true verified execution or savings.
+  - Keep both contract and mapping exact file paths in scope.modify so actual Git
+    deltas can later be attributed to this mapping-review TASK. Keep canonical target
+    TASK source as inspect-only and byte-unchanged; do not silently rewrite any implementation
+    or test code in existing paths.
+  - Focused tests must use actual committed target TASK bytes and the real contract/mapping
+    documents, existing VP-02 source/coverage validators and actual authenticated
+    canonical reader where available; reject wrong task/candidate/digest, missing
+    acceptance or obligation, extra/unused proof, condition conflation, false base
+    equivalence, source/contract swap and copied source labels.
+  - All READINESS without the subsequent real, independently authenticated Human selection
+    and mapping-specific actual Reviewer PASS must remain NOT_ESTABLISHED; tests cannot
+    submit live Human selection, create canonical review, impersonate Publisher or
+    enable a policy. Any source-affinity limitations must be reported honestly.
+  - Provide a precise operator/Brain-readable prospective selection handoff describing
+    the exact fields and authoritative artifacts required only after independent Runtime
+    RESULT, Reviewer PASS and publication, without inventing future SHA or actor/event.
+    Treat legitimate future Human choice and L1-02 slot closure as external milestones.
+  - Keep existing minimum-sufficient-v1 verification focused; preserve current legacy
+    V1/V2 parsing and acceptance. Implement within exact four declared modifications
+    and nothing else.
+acceptance:
+- id: AC1
+  condition: A concrete proof-coverage-v1 contract committed at the declared path
+    binds the exact canonical TASK-381 r1 source envelope digest, revision and all
+    ten acceptance IDs, with no circular source dependency or historical TASK rewrite.
+- id: AC2
+  condition: Every TASK-381 acceptance property has one or more bounded, real semantically
+    meaningful obligations stating what must be proved, including necessary positive
+    and negative conditions; all full distinguishing-condition dimensions are explicitly
+    declared and separable.
+- id: AC3
+  condition: A concrete proof-mapping-v1 file binds the exact contract ID, revision
+    and digest; every obligation maps exactly once to an existing used proof with
+    exact claim, digest and matching conditions; inequivalent integration/concurrency/fixture/ordering
+    profiles are never collapsed.
+- id: AC4
+  condition: The existing VP-02 validators accept the pair from their actual committed
+    file contents and independently derived TASK pins without changing production
+    coverage code or treating matching labels as trusted approval.
+- id: AC5
+  condition: New focused tests also reject incomplete acceptance/obligations, forged/stale
+    target SHA or TASK digest, wrong semantic claim, unused or duplicated mapping
+    entry, changed source conditions and invalid attempted proof reuse.
+- id: AC6
+  condition: The selected mapping-review TASK's exact source paths are declared as
+    scope.modify and its target TASK remains immutable/inspect-only; documentation
+    and tests distinguish the mapping-review candidate Git delta from the older target
+    candidate.
+- id: AC7
+  condition: Documentation identifies exact unobserved authoritative prerequisites
+    for future Human SELECT_MAPPING_REVIEW (RUN/candidate/artifacts/review decision
+    and source locators) and accurately leaves Human selection, semantic Reviewer
+    PASS, Publisher containment, actual evidence applicability and activation unestablished
+    until independently observed.
+- id: AC8
+  condition: All claimed example proof conditions are prospective requirements rather
+    than invented executed verification or synthetic PASS; an unselected or mismatched
+    mapping never elevates read-only L1 reviewer authority or operative task admission.
+- id: AC9
+  condition: The deliverable uses only the four declared modified files and the existing
+    canonical validators/readers, with no new lifecycle owner, Runtime writer, Human
+    approval issuer, new verification scheduler, primary correction mechanism or roadmap
+    mutation.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_lean_vp_l1_real_mapping.py tests/test_proof_coverage_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
