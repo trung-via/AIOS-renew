@@ -3425,6 +3425,8 @@ sequence:
     approved_on: "2026-10-17"
     planning_document: docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
     task_authoring_status: TASK389_R1_CANONICALIZED_NO_RUN_OR_VERDICT
+    task_id: TASK-389
+    task_revision: 1
     current_task_id: TASK-389
     current_task_revision: 1
     current_task_blob_sha: dbf23159c6f26508d6608db54aae0476e993fc00
