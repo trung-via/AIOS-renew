@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from dataclasses import FrozenInstanceError, replace
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -408,6 +409,62 @@ def test_git_symlink_blob_mode_and_local_hardlink_are_rejected(source, tmp_path)
     alias = tmp_path / "hardlinked.raw"
     os.link(source.raw_path, alias)
     blocked(source.observe())
+
+
+def test_local_snapshot_accepts_distinct_path_and_handle_ctime_clocks(tmp_path, monkeypatch):
+    path = tmp_path / "original.raw"
+    content = b"STDOUT\noriginal capture\nSTDERR\n"
+    path.write_bytes(content)
+    original_fstat = runtime.os.fstat
+
+    def handle_stat(fd):
+        info = original_fstat(fd)
+        # Model Windows' different ctime semantics without changing actual
+        # file identity/content or granting any source/canonical authority.
+        return SimpleNamespace(st_dev=info.st_dev, st_ino=info.st_ino,
+            st_size=info.st_size, st_mtime_ns=info.st_mtime_ns,
+            st_ctime_ns=info.st_ctime_ns + 1_000_000_000)
+
+    monkeypatch.setattr(runtime.os, "fstat", handle_stat)
+    assert runtime._original_local(path, len(content)) == content
+
+
+@pytest.mark.parametrize("clock", ["path", "handle"])
+def test_local_snapshot_rejects_ctime_change_with_unchanged_identity(tmp_path, monkeypatch, clock):
+    path = tmp_path / "original.raw"
+    content = b"STDOUT\noriginal capture\nSTDERR\n"
+    path.write_bytes(content)
+    original_lstat, original_fstat = type(path).lstat, runtime.os.fstat
+    calls = 0
+
+    def changed_clock(info):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(st_dev=info.st_dev, st_ino=info.st_ino,
+            st_size=info.st_size, st_mtime_ns=info.st_mtime_ns,
+            st_ctime_ns=info.st_ctime_ns + (1_000_000_000 if calls > 1 else 0),
+            st_mode=info.st_mode, st_nlink=info.st_nlink,
+            st_file_attributes=getattr(info, "st_file_attributes", 0))
+
+    if clock == "path":
+        def path_stat(value, *args, **kwargs):
+            info = original_lstat(value, *args, **kwargs)
+            # The initial safety walk also stats the leaf; change only the
+            # final leaf snapshot, after the pre-open snapshot.
+            return changed_clock(info) if value == path and calls else info
+
+        # Count the pre-open snapshot separately from the safety walk.
+        def handle_stat(fd):
+            nonlocal calls
+            calls = 1
+            return original_fstat(fd)
+
+        monkeypatch.setattr(type(path), "lstat", path_stat)
+        monkeypatch.setattr(runtime.os, "fstat", handle_stat)
+    else:
+        monkeypatch.setattr(runtime.os, "fstat", lambda fd: changed_clock(original_fstat(fd)))
+    with pytest.raises(VerificationContractError, match="LOCAL_SOURCE_CHANGED"):
+        runtime._original_local(path, len(content))
 
 
 def test_read_race_cannot_return_stale_snapshot(source, monkeypatch):

@@ -1528,10 +1528,16 @@ def _original_local(path: Path, limit: int) -> bytes:
         opened = os.fstat(stream.fileno())
         content = stream.read(limit + 1)
         after = os.fstat(stream.fileno())
+    named_after = path.lstat()
     def identity(info):
-        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+    # Windows lstat/fstat can expose creation/change time respectively as
+    # st_ctime_ns. Compare each clock only through the same API, while binding
+    # every snapshot to the same file identity, size and modification time.
     if (len(content) != before.st_size or len(content) > limit
-            or not identity(before) == identity(opened) == identity(after) == identity(path.lstat())):
+            or not identity(before) == identity(opened) == identity(after) == identity(named_after)
+            or before.st_ctime_ns != named_after.st_ctime_ns
+            or opened.st_ctime_ns != after.st_ctime_ns):
         raise VerificationContractError("LOCAL_SOURCE_CHANGED")
     return content
 

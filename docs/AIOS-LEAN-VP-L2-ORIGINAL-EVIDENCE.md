@@ -39,8 +39,12 @@ even with identical bytes/digest/labels, is rejected. A protected public raw
 reference is unavailable; it is never opened or reconstructed. Symlinks,
 junctions/reparse points, traversal, hardlinks, nonregular files, changed reads,
 oversized files and competing local FAILURE records block. Each private record
-and raw capture is reread before return. The raw envelope must retain the
-existing `STDOUT\n...\nSTDERR\n...` shape. SHA-256 covers all original raw bytes.
+and raw capture is reread before return. Local snapshots compare file identity,
+size and modification time across path and handle reads, and compare `ctime`
+within each API: Windows path/handle APIs can expose different creation/change
+clocks under that name. A change in either clock still blocks; an unchanged
+file is not rejected merely because those clocks differ. The raw envelope must
+retain the existing `STDOUT\n...\nSTDERR\n...` shape. SHA-256 covers all original raw bytes.
 V2's recorded original raw hash must match; reused/early-probe records cannot
 impersonate an original execution. No cache glob supplies source authority.
 Recorded V2 observer/selected-policy and permitted repository-tool blob
