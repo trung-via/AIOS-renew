@@ -176,10 +176,13 @@ def published_snapshot(tmp_path, monkeypatch):
     if not common.is_absolute():
         common = REPO / common
     alternate = remote / "objects/info/alternates"
-    alternate.write_text((common / "objects").resolve().as_posix() + "\n", encoding="utf-8")
+    # Git treats a CR from Windows newline translation as part of the path.
+    alternate.write_text((common / "objects").resolve().as_posix() + "\n",
+                         encoding="utf-8", newline="\n")
     git(remote, "index-pack", "--stdin", content=base64.b64decode(_PUBLISHED_OBJECT_PACK))
     alternate = repo / ".git/objects/info/alternates"
-    alternate.write_text((remote / "objects").as_posix() + "\n", encoding="utf-8")
+    alternate.write_text((remote / "objects").as_posix() + "\n",
+                         encoding="utf-8", newline="\n")
     git(repo, "config", "remote.origin.url", URL)
     git(repo, "config", "branch.main.remote", "origin")
     git(repo, "config", "branch.main.merge", "refs/heads/main")
