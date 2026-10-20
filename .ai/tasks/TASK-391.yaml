@@ -1,5 +1,5 @@
 task_id: TASK-391
-revision: 1
+revision: 2
 goal: 'Deliver only Lean VP L3-04: an explicit prospective same-admitted-RUN, same
   currently live Executor feedback-consumption and bounded continuation/STOP core
   built from the published L3-01 reviewed complete proof plan, L3-02 authenticated
@@ -61,6 +61,24 @@ assumptions:
 - 'Claimed Human approval to continue roadmap is not a G6 risk or production permission.
   The new code is an explicit nondefault, prospective local integrated core: no auto
   C2, no new RUN, no default production hook, no self-host workflow change.'
+- Human approved prospective TASK-391 revision 2 on 2026-10-21 to reconcile the historical
+  AST import check with directly callable K_i/F_i codecs, specifically authorizing
+  the additional tests/test_intra_run_proof_contract.py modification path without
+  dropping original negative tests; this is new canonical TASK authority, not a broadened
+  REPAIR of r1.
+- 'Source-bound motivation: REVIEW-391-001 (0fc0173dcf967f891172620659a837fb264f5368)
+  and REVIEW-391-002 (011c7062f01183aa4ea6b8c59c434707f7277700) each marked only AC12
+  FAIL on historical API independence. RUN-391-005 Runtime RESULT 4f2e24573ac6ee7939ed38996634b5f73b433b8
+  was not semantic PASS. RUN-391-013 FAILURE 7cdffeae08258cbeb8268e1e01c9db8c4787e4f9
+  remains immutable. Historical pre-TASK-391 source c8900cbd4420a93daef853dc6ddf7024abb649d4
+  had codec-local imports of canonical verification_contract and artifacts while the
+  AST import test prohibited them.'
+- An admitted r2 PRIMARY must implement from its actual canonical main base; historical
+  r1 candidate 43dca277975c8d0cb02a186d3ce1199ceec0b8a1 is an inspectable unreviewed
+  engineering reference only, not a published source or automatic code transplant.
+  Reuse unchanged valid insight without assuming r1 verification or REVIEW PASS. Human
+  separately selected codex/gpt-6.1-sol/max for dispatch after r2 canonical AUTHOR_TASK;
+  selection is not part of TASK authoring or new default.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -92,6 +110,7 @@ scope:
   - tests/test_intra_run_proof_contract.py
   - tests/test_operator.py
   - tests/test_runtime.py
+  - src/aios_renew/artifacts.py
   modify:
   - src/aios_renew/run.py
   - src/aios_renew/executor.py
@@ -100,6 +119,7 @@ scope:
   - src/aios_renew/intra_run_proof_contract.py
   - tests/test_lean_vp_l3_same_executor_continuation.py
   - docs/AIOS-LEAN-VP-L3-SAME-EXECUTOR-CONTINUATION.md
+  - tests/test_intra_run_proof_contract.py
 non_goals:
 - No production activation, G3/G6 consent, global Runtime policy replacement, default
   Executor hot-path change, automatic F_i routing, automatic retry/correction, C2
@@ -117,8 +137,10 @@ non_goals:
 - No mandatory broad base rerun or V2 gate, no synthetic live performance improvement/conformance,
   no L3-05 per-RUN consent semantics or L3-06 integrated G3 completion asserted from
   this slice.
-- No changes to canonical roadmap, TASK lineage, KA-01 normative source, frozen Kernel,
-  downstream pins or paths outside seven authorized modification files.
+- No Executor mutation of canonical roadmap, TASK lineage, KA-01 normative source,
+  frozen Kernel, downstream pins or paths outside the eight explicitly approved TASK-391
+  r2 modification files. TASK-391 r1 lineage and REVIEW/FAILURE remain immutable;
+  no implicit PASS or retroactive repair.
 constraints:
   hard:
   - Keep one explicit prospective nondefault seam co-located with the existing same
@@ -179,11 +201,27 @@ constraints:
     wrong/released/stale holder, adapter substitution, original K/F tampering, duplicate/reentry,
     concurrent terminal/fence, crash/unknown, ERROR/UNKNOWN, no-progress, operation
     spoof, missing consent/budgets. Unchanged original F_i and K_i tests remain valid.
-  - All changes remain within seven explicit modify paths. Include no default operator/hot-path
-    wiring, no new orchestration, hidden metadata or workflow edits; preserve native
-    fixed V1/V2 verification and existing direct dispatch/repair/remediation paths.
-    Documentation must distinguish local prospective test demonstration from any actual
-    production activation and name L3-05, L3-06, G3, G6, L4 obligations.
+  - All changes remain within eight explicit TASK-391 r2 modify paths. Include no
+    default operator/hot-path wiring, no new orchestration, hidden metadata or workflow
+    edits; preserve native fixed V1/V2 verification and existing direct dispatch/repair/remediation
+    paths. Documentation must distinguish local prospective test demonstration from
+    any actual production activation and name L3-05, L3-06, G3, G6, L4 obligations.
+  - Reconcile the historical test AST check only as needed to preserve both VP-02B
+    offline-import purity and directly callable published K_i/F_i native codecs on
+    a fresh independent import before Runtime initialization. The revised test must
+    still detect production Runtime/kernel/scheduler imports or loaders in offline
+    declarations, forbidden side effects, altered public contracts, invalid nested
+    types, inconsistent source identities, malformed-input acceptance, and bypasses
+    of the existing strict canonical verification/artifacts validators. A blanket
+    allowlist expansion, skipped/removed test, weakened assertion, duplicate validator,
+    hidden import loader, or new global initialization requirement is forbidden.
+  - Preserve canonical L3-01/02/03 and the exact original TASK-391 r1 minimum-sufficient-v1
+    verification command; test changes may touch only tests/test_intra_run_proof_contract.py
+    and tests/test_lean_vp_l3_same_executor_continuation.py within the eight approved
+    paths. Cold-import subprocess positive and negative format/parse checks must execute
+    before importing runtime.py; Runtime/Reviewer retain later verification/semantic
+    verdict. Do not copy unreviewed historical r1 claims or assert that the already
+    failed r1 candidate is published.
 acceptance:
 - id: AC1
   condition: One explicit nondefault, closed bounded prospective API uses the existing
@@ -244,10 +282,19 @@ acceptance:
     concurrent terminal, crash ambiguity, missing budget/consent, no progress and
     correction spoof without using affirmative mocks as the only proof.
 - id: AC12
-  condition: Diff remains confined to the seven permitted paths, preserves L3-01/02/03
-    and original historical V1/V2 behavior, and documents L3-04 as preactivation only;
-    real rollout/finite consent are L3-05, integrated G3 proof is L3-06, G6 exact
-    Human per-RUN activation and postactivation L4 measurement remain separate.
+  condition: The implementation diff is confined to eight authorized TASK-391 r2 paths
+    and preserves L3-01/02/03 and historical V1/V2 behavior. Published K_i/F_i native
+    codec/type API names remain directly callable on a fresh independent import of
+    intra_run_proof_contract before runtime.py has initialized; strict canonical nested
+    types, format/parse validation and negative cases remain intact without second
+    validator owner, hidden loader or mutable Runtime binding prerequisite. The adjusted
+    historical AST test distinguishes independently pure VP-02B offline declarations
+    from published native K_i/F_i codec-local canonical imports while retaining explicit
+    negative tests that reject runtime/kernel dependency, new side effects and weakened
+    validation. Focused cold-import positive and malformed-input regression runs before
+    Runtime initialization. Documentation keeps L3-04 strictly preactivation; L3-05
+    consent, L3-06 integrated G3, G6 per-RUN Human activation and L4 measurement remain
+    separate.
 verification:
   policy: minimum-sufficient-v1
   required:
