@@ -1,4 +1,41 @@
 version: 1
+human_lean_vp_l3_03_reconciliation_20261020:
+  authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_CONTINUATION_AFTER_TASK389_PUBLICATION
+  approved_on: "2026-10-20"
+  planning_only: true
+  anchor_main_sha: e25f5091505e812324579f0d17ad1566319dc1e9
+  verified_predecessor:
+    task: TASK-389
+    revision: 1
+    run: RUN-389-005
+    evidence: RUN-389-005-V001
+    review: REVIEW-389-002
+    verdict: PASS
+    acceptance: 12_OF_12_PASS
+    review_decision_sha: a506d2de5293c4eedc91bda480a2fb90c21974d3
+    artifacts_sha: 1ba8e1cef3af2ddef03259cd31725225e29e7c2c
+    reviewed_published_source_sha: e25f5091505e812324579f0d17ad1566319dc1e9
+    relation: EXACT_REVIEWED_CANDIDATE_EQUALS_CANONICAL_MAIN
+  roadmap:
+    sole_high_level_next: lean-vp-intelligent-intra-primary-after-r21
+    selected_slice: L3_03_BOUNDED_FACTUAL_CHECKPOINT_FEEDBACK
+    next_task_identity: NOT_YET_AUTHORED
+    successor_slices: L3_04_THEN_L3_05_THEN_L3_06_THEN_G6_SEPARATE_THEN_L4
+    finite_original_slots: 16_PRESERVED
+    normative_task: TASK_386_SEPARATE_KA01_V1_2_PUBLISHED
+  scope:
+    - RUNTIME_NATIVE_AUTHENTICATED_KI_TO_BOUNDED_TYPED_FACTUAL_FI
+    - SAME_CURRENT_RUN_OPERATION_SPECIFIC_AUTHORIZATION_GUARDS
+    - NO_RAW_LOG_INSTRUCTION_PROMOTION_OR_AUTO_FIX
+    - NO_LIVE_EXECUTOR_DISPATCH_OR_CONTINUATION_UNTIL_SEPARATELY_AUTHORIZED
+  preservation:
+    - HISTORICAL_L3_02_BOOKMARKS_ARE_NOT_CURRENT_AUTHORING_AUTHORITY
+    - RETIRED_VP03_TO_VP07_RESUME_PATHS_STAY_RETIRED
+    - NO_INTRA_RUN_PRODUCTION_G3_G6_ACTIVATION
+    - NO_AUTOMATIC_EXECUTOR_DELEGATION_OR_ROADMAP_ADVANCEMENT
+    - NO_TASK_RUN_REVIEW_PUBLICATION_OR_DOWNSTREAM_LINEAGE_REWRITE
+    - UNRESOLVED_INGRESS_PRODUCER_CONCURRENCY_REMAINS_SEPARATE_DIAGNOSTIC
+
 active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -3424,14 +3461,13 @@ sequence:
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-17"
     planning_document: docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
-    task_authoring_status: TASK389_R1_CANONICALIZED_NO_RUN_OR_VERDICT
-    task_id: TASK-389
-    task_revision: 1
-    current_task_id: TASK-389
-    current_task_revision: 1
-    current_task_blob_sha: dbf23159c6f26508d6608db54aae0476e993fc00
-    current_task_author_commit_sha: 60352966fd5336ed459e48f235c791b27d8762a7
-    snapshot_selection_rule: LATEST_HUMAN_BRAIN_L3_02_ONLY_PRIOR_LEAN_BOOKMARKS_HISTORICAL
+    task_authoring_status: L3_03_NEXT_TASK_NOT_YET_AUTHORED
+    last_published_task_id: TASK-389
+    last_published_run_id: RUN-389-005
+    last_published_review_id: REVIEW-389-002
+    last_published_review_decision_sha: a506d2de5293c4eedc91bda480a2fb90c21974d3
+    last_published_source_sha: e25f5091505e812324579f0d17ad1566319dc1e9
+    snapshot_selection_rule: LATEST_HUMAN_BRAIN_L3_03_AFTER_VERIFIED_TASK389_PUBLICATION_ONLY_PRIOR_BOOKMARKS_HISTORICAL
     predecessor: four-specialized-audits-r21-human-optional-adaptive-v1
     predecessor_gate: HUMAN_ACCEPTED_R21_PLANNING_CLOSURE_20261018_LIVE_PROOF_DEFERRED
     implementation_authorization: REQUIRES_NEW_TASK_AND_EXPLICIT_HUMAN_EXECUTOR_DELEGATION
@@ -3444,7 +3480,7 @@ sequence:
       UNKNOWN or lost authority, and finish with one terminal RESULT or FAILURE.
       The new correction operation permissions require separately reviewed and
       published KA-01 normative authority before L2-03/L3 implementation.
-    next_approved_slice: L3_02_IMMUTABLE_CHECKPOINTS_AND_TERMINAL_REUSE
+    next_approved_slice: L3_03_BOUNDED_FACTUAL_CHECKPOINT_FEEDBACK
     normative_task_authoring_status: TASK386_REVIEWED_PUBLISHED_SEPARATE_NORMATIVE_G2_DONE
     original_lean_vp_slot_count: 16
     separate_ka01_normative_task_count: 1
