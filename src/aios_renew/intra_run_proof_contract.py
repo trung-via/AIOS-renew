@@ -700,6 +700,594 @@ def describe_lifecycle(data: object, *, expected_lineage: object) -> LifecycleDe
         return LifecycleDescription("BLOCK", "KERNEL_AMENDMENT_REQUIRED", "RUNTIME_ORCHESTRATION_NOT_ACTIVATED")
     return LifecycleDescription("TERMINAL_ONCE", "EXISTING_TERMINAL_ROUTE", "RUNTIME_MUST_ESTABLISH_EXACT_RESULT_OR_FAILURE")
 
-# Native K_i/F_i/consumption codecs belong to the owning runtime module.
-# Runtime exposes historical inspection aliases here when it is loaded;
-# offline imports and declarations have no dependency on that owner.
+
+# L3-02 subordinate immutable records. These codecs are deliberately pure;
+# only RuntimeCompletion can authenticate, persist or consume a record.
+RUNTIME_CHECKPOINT_FORMAT = "AIOS_L3_RUNTIME_CHECKPOINT"
+CHECKPOINT_RESOURCE_LIMITS = dict(checkpoints=17, executions=256,
+                                 raw_bytes=32 * 1024 * 1024, elapsed_ms=3_600_000)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeCheckpoint:
+    content_json: str
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.content_json.encode("ascii")).hexdigest()
+
+    @property
+    def data(self) -> dict:
+        # A detached projection cannot mutate the sealed record.
+        return json.loads(self.content_json)
+
+
+@dataclass(frozen=True, slots=True)
+class TerminalProofDecision:
+    eligible: bool
+    reason: str
+    checkpoint_digest: str
+    candidate_sha: str
+    # Inspection only: completion always independently observes the final K_i.
+    execution_permission: str = "NOT_AUTHORIZED"
+    production_activation: str = "NOT_ACTIVATED"
+
+
+def checkpoint_resource_facts(value: object) -> dict:
+    from .verification_contract import VerificationContractError, _app_exact
+    data = dict(_app_exact(value, CHECKPOINT_RESOURCE_LIMITS))
+    for name, limit in CHECKPOINT_RESOURCE_LIMITS.items():
+        if type(data[name]) is not int or not 0 <= data[name] <= limit:
+            raise VerificationContractError("unknown or exhausted checkpoint accounting: " + name)
+    return data
+
+
+def checkpoint_population_identity(plan) -> str:
+    """Retain original mandatory semantics across current-candidate review pins.
+
+    Only the two candidate-specific locators are erased. Every claim, purpose,
+    condition, mapping assignment and original TASK identity remains exact.
+    """
+    from .verification_contract import scheduler_plan_data, verification_digest
+    data = scheduler_plan_data(plan)["coverage"]
+    data = json.loads(json.dumps(data))
+    for row in data["contract"]["obligations"] + data["mapping"]["proofs"]:
+        row["conditions"]["candidate_sha"] = None
+        row["conditions"]["test_ref"] = "L3_CURRENT_REVIEWED_EXECUTION_LOCATOR"
+    # Digests depend on the candidate-specific locators erased above.
+    data["mapping"]["contract_digest"] = None
+    for entry in data["mapping"]["entries"]:
+        entry["obligation_digest"] = None
+    return verification_digest(data)
+
+
+def format_runtime_checkpoint(value: RuntimeCheckpoint) -> bytes:
+    if type(value) is not RuntimeCheckpoint:
+        from .verification_contract import VerificationContractError
+        raise VerificationContractError("exact typed checkpoint required")
+    content = value.content_json.encode("ascii")
+    parse_runtime_checkpoint(content)
+    return content
+
+
+def parse_runtime_checkpoint(content: bytes) -> RuntimeCheckpoint:
+    """Closed inspection codec; a caller-built record has no sealing authority."""
+    from .verification_contract import (
+        VerificationContractError, _reuse_decode, _app_exact, _original_hash,
+        _original_json, parse_checkpoint_request, parse_scheduler_plan,
+    )
+    data = _app_exact(_reuse_decode(content), ("format", "version", "request", "plan", "population_identity", "execution_identity",
+        "evidence", "proofs", "outstanding", "affected", "resources_before", "resources_after"))
+    if data["format"] != RUNTIME_CHECKPOINT_FORMAT or type(data["version"]) is not int or data["version"] != 1:
+        raise VerificationContractError("invalid runtime checkpoint format")
+    request = parse_checkpoint_request(_original_json(data["request"]).encode("ascii"))
+    plan = parse_scheduler_plan(_original_json(data["plan"]).encode("ascii"))
+    if plan.request != request.scheduler or plan.authentication != "AUTHENTICATED":
+        raise VerificationContractError("checkpoint plan substitution")
+    _original_hash(data["population_identity"])
+    _original_hash(data["execution_identity"])
+    if checkpoint_population_identity(plan) != data["population_identity"]:
+        raise VerificationContractError("checkpoint mandatory population substitution")
+    before, after = (checkpoint_resource_facts(data[key]) for key in ("resources_before", "resources_after"))
+    if (before["checkpoints"] != request.ordinal - 1 or after["checkpoints"] != request.ordinal
+            or any(after[k] < before[k] for k in before)):
+        raise VerificationContractError("checkpoint resource history contradiction")
+    if (type(data["evidence"]) is not list or not 0 < len(data["evidence"]) <= MAX_PROOFS
+            or type(data["proofs"]) is not list or not 0 < len(data["proofs"]) <= MAX_PROOFS):
+        raise VerificationContractError("checkpoint proof population bound")
+    from .artifacts import validate_evidence
+    for item in data["evidence"]:
+        _app_exact(item, ("evidence_id", "run_id", "subject_sha", "type", "source", "result", "raw", "verification"))
+        _app_exact(item["source"], ("command",))
+        _app_exact(item["result"], ("exit_code", "summary"))
+        _app_exact(item["raw"], ("path",))
+        _app_exact(item["verification"], ("policy", "disposition", "binding", "candidate", "candidate_digest",
+            "evidence_id", "run_id", "raw_path", "raw_digest"))
+    evidence = [validate_evidence(item) for item in data["evidence"]]
+    ids = [item.evidence_id for item in evidence]
+    if (len(set(ids)) != len(ids) or any((e.run_id, e.subject_sha) != (
+            request.scheduler.target.run_id, request.scheduler.subject_sha) for e in evidence)
+            or ids != [f"{request.scheduler.target.run_id}-V{before['executions'] + i + 1:03d}" for i in range(len(evidence))]
+            or after["executions"] - before["executions"] != len(evidence)
+            or after["elapsed_ms"] <= before["elapsed_ms"]):
+        raise VerificationContractError("checkpoint original execution identity conflict")
+    units = {u["proof_id"]: u for u in data["plan"]["units"]}
+    seen, outstanding = [], []
+    used_evidence = []
+    execution_population = []
+    for fact in data["proofs"]:
+        _app_exact(fact, ("proof_id", "unit_id", "evidence_id", "evidence_sha256", "raw_sha256", "raw_size",
+            "native_sha256", "native_size", "manifest_sha256", "complete", "stable", "outcome", "satisfactory", "source_run_id", "subject_sha"))
+        unit = units.get(fact["proof_id"])
+        if (unit is None or unit["unit_id"] != fact["unit_id"] or fact["evidence_id"] not in ids
+                or fact["complete"] is not True or fact["stable"] is not True
+                or type(fact["outcome"]) is not str or fact["outcome"] not in {"PASS", "FAIL", "ERROR"}
+                or type(fact["satisfactory"]) is not bool or fact["satisfactory"] != (fact["outcome"] == "PASS")
+                or (fact["source_run_id"], fact["subject_sha"]) != (
+                    request.scheduler.target.run_id, request.scheduler.subject_sha)
+                or any(type(fact[key]) is not int or not 0 < fact[key] <= CHECKPOINT_RESOURCE_LIMITS["raw_bytes"]
+                       for key in ("raw_size", "native_size"))):
+            raise VerificationContractError("checkpoint proof fact substitution")
+        for key in ("evidence_sha256", "raw_sha256", "native_sha256", "manifest_sha256"):
+            _original_hash(fact[key])
+        item = data["evidence"][ids.index(fact["evidence_id"])]
+        if hashlib.sha256(_original_json(item).encode("ascii")).hexdigest() != fact["evidence_sha256"]:
+            raise VerificationContractError("checkpoint evidence substitution")
+        candidate = item["verification"]["candidate"]
+        execution_population.append(dict(proof_id=fact["proof_id"], command=item["source"]["command"],
+            profile=candidate["profile"], toolchain=candidate["toolchain"], collection=candidate.get("collection")))
+        seen.append(fact["proof_id"])
+        used_evidence.append(fact["evidence_id"])
+        if not fact["satisfactory"]:
+            outstanding.extend(unit["obligation_ids"])
+    from .verification_contract import verification_digest
+    if (data["execution_identity"] != verification_digest(execution_population)
+            or seen != sorted(units) or len(set(used_evidence)) != len(used_evidence) or set(used_evidence) != set(ids)
+            or data["outstanding"] != sorted(set(outstanding)) or data["affected"] != []
+            or after["raw_bytes"] - before["raw_bytes"] != sum(p["raw_size"] + p["native_size"] for p in data["proofs"])):
+        raise VerificationContractError("checkpoint incomplete coverage or accounting")
+    return RuntimeCheckpoint(content.decode("ascii"))
+
+
+# L3-03 codecs are inspection data, just like K_i. Only the existing
+# RuntimeCompletion owner authenticates native roots and prepares durable F_i.
+FACTUAL_FEEDBACK_REQUEST_FORMAT = "AIOS_L3_FACTUAL_FEEDBACK_REQUEST"
+RUNTIME_FEEDBACK_FORMAT = "AIOS_L3_FACTUAL_FEEDBACK"
+FEEDBACK_AUTHORITY = dict(
+    dispatch="NOT_AUTHORIZED", delivery="NOT_AUTHORIZED", ack_consumption="NOT_AUTHORIZED",
+    c2_admission="NOT_AUTHORIZED", continuation="NOT_AUTHORIZED", executor_selection="NOT_AUTHORIZED",
+    correction_strategy="NOT_AUTHORIZED", policy_selection="NOT_AUTHORIZED", new_run="NOT_AUTHORIZED",
+    production_activation="NOT_ACTIVATED", live_executor_lease="NOT_ESTABLISHED",
+    human_risk_acceptance="NOT_ESTABLISHED", human_budget="NOT_ESTABLISHED",
+)
+_FEEDBACK_REASONS = {
+    "PREPARED": {"COMPLETE_STABLE_NATIVE_CANDIDATE_FAIL"},
+    "NO_FAILED_PROOF": {"COMPLETE_STABLE_NATIVE_PASS"},
+    "BLOCKED": {"NATIVE_PROOF_UNRESOLVED", "NATIVE_CHECKPOINT_NOT_ESTABLISHED",
+                "CORRECTION_NATIVE_AUTHORITY_NOT_ESTABLISHED", "OPERATION_NOT_SUPPORTED"},
+}
+
+
+@dataclass(frozen=True, slots=True)
+class FactualFeedbackRequest:
+    version: int
+    checkpoint: ProofCheckpointRequest
+    checkpoint_digest: str
+
+    def __post_init__(self):
+        from .verification_contract import VerificationContractError, format_checkpoint_request, _original_hash
+        if type(self.version) is not int or self.version != 1:
+            raise VerificationContractError("invalid factual feedback request version")
+        format_checkpoint_request(self.checkpoint)
+        _original_hash(self.checkpoint_digest)
+
+
+def factual_feedback_request_data(value: FactualFeedbackRequest) -> dict:
+    from .verification_contract import VerificationContractError, checkpoint_request_data
+    if type(value) is not FactualFeedbackRequest:
+        raise VerificationContractError("exact typed factual feedback request required")
+    value.__post_init__()
+    return dict(format=FACTUAL_FEEDBACK_REQUEST_FORMAT, version=value.version,
+                checkpoint=checkpoint_request_data(value.checkpoint), checkpoint_digest=value.checkpoint_digest)
+
+
+def format_factual_feedback_request(value: FactualFeedbackRequest) -> bytes:
+    from .verification_contract import _original_json
+    return _original_json(factual_feedback_request_data(value)).encode("ascii")
+
+
+def parse_factual_feedback_request(content: bytes) -> FactualFeedbackRequest:
+    from .verification_contract import VerificationContractError, _reuse_decode, _app_exact, _original_json, parse_checkpoint_request
+    data = _app_exact(_reuse_decode(content), ("format", "version", "checkpoint", "checkpoint_digest"))
+    if data["format"] != FACTUAL_FEEDBACK_REQUEST_FORMAT:
+        raise VerificationContractError("invalid factual feedback request format")
+    return FactualFeedbackRequest(data["version"],
+        parse_checkpoint_request(_original_json(data["checkpoint"]).encode("ascii")), data["checkpoint_digest"])
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeFactualFeedback:
+    content_json: str
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.content_json.encode("ascii")).hexdigest()
+
+    @property
+    def data(self) -> dict:
+        return json.loads(self.content_json)
+
+
+def format_runtime_feedback(value: RuntimeFactualFeedback) -> bytes:
+    from .verification_contract import VerificationContractError
+    if type(value) is not RuntimeFactualFeedback:
+        raise VerificationContractError("exact typed runtime factual feedback required")
+    content = value.content_json.encode("ascii")
+    parse_runtime_feedback(content)
+    return content
+
+
+def _feedback_summary(proofs, obligations):
+    outcomes = {p["outcome"] for p in proofs}
+    if outcomes - {"PASS", "FAIL"} or not all(p["complete"] and p["stable"] for p in proofs):
+        status, reason = "BLOCKED", "NATIVE_PROOF_UNRESOLVED"
+    elif "FAIL" in outcomes:
+        status, reason = "PREPARED", "COMPLETE_STABLE_NATIVE_CANDIDATE_FAIL"
+    else:
+        status, reason = "NO_FAILED_PROOF", "COMPLETE_STABLE_NATIVE_PASS"
+    affected = [o for o in obligations if o["outcome"] == "FAIL"]
+    outstanding = [o for o in obligations if o["outcome"] != "PASS"]
+    return dict(status=status, reason=reason,
+        acceptance_ids=sorted({a for o in obligations for a in o["acceptance_ids"]}),
+        affected_obligation_ids=sorted(o["obligation_id"] for o in affected),
+        affected_acceptance_ids=sorted({a for o in affected for a in o["acceptance_ids"]}),
+        outstanding_obligation_ids=sorted(o["obligation_id"] for o in outstanding),
+        outstanding_acceptance_ids=sorted({a for o in outstanding for a in o["acceptance_ids"]}))
+
+
+def _blocked_runtime_feedback(reason: str) -> RuntimeFactualFeedback:
+    from .verification_contract import _original_json
+    data = dict(format=RUNTIME_FEEDBACK_FORMAT, version=1, status="BLOCKED", reason=reason,
+        feedback_id=None, binding=None, proofs=[], obligations=[], resources=None,
+        acceptance_ids=[], affected_obligation_ids=[], affected_acceptance_ids=[],
+        outstanding_obligation_ids=[], outstanding_acceptance_ids=[], authority=dict(FEEDBACK_AUTHORITY))
+    return parse_runtime_feedback(_original_json(data).encode("ascii"))
+
+
+def _checkpoint_factual_feedback(record: RuntimeCheckpoint, executor: str) -> RuntimeFactualFeedback:
+    """Deterministic projection, never native authentication or permission.
+
+    No raw text, nodeids, commands, filesystem/user paths, claim prose or
+    implementation advice crosses this boundary. Exact identities remain pinned.
+    """
+    from .verification_contract import verification_digest, _original_json
+    data = record.data
+    request, plan = data["request"], data["plan"]
+    scheduler = request["scheduler"]
+    target = scheduler["target"]
+    binding = dict(task_id=target["task_id"], task_revision=target["task_revision"], run_id=target["run_id"],
+        operation=scheduler["operation"], base_sha=target["base_sha"], candidate_sha=target["candidate_sha"],
+        candidate_tree_sha=target["tree_sha"], admitted_executor=executor, admitted_run_sha256=target["run_sha256"],
+        task_sha256=plan["authority"]["target"]["task_sha256"],
+        authorization_sha256=verification_digest(dict(operation=scheduler["operation"],
+            admitted_run_sha256=target["run_sha256"], reviewed_authority=plan["authority"])),
+        plan_sha256=verification_digest(plan), contract=scheduler["contract"], mapping=scheduler["mapping"],
+        checkpoint_ordinal=request["ordinal"], predecessor_digest=request["predecessor_digest"], checkpoint_digest=record.digest,
+        population_identity=data["population_identity"], execution_identity=data["execution_identity"],
+        currentness="EXACT_LATEST_AT_PREPARATION")
+    units = {u["proof_id"]: u for u in plan["units"]}
+    evidence = {e["evidence_id"]: e for e in data["evidence"]}
+    proofs = []
+    for fact in data["proofs"]:
+        item, unit = evidence[fact["evidence_id"]], units[fact["proof_id"]]
+        observation = item["verification"]["candidate"]
+        reports, exit_code = observation["reports"], item["result"]["exit_code"]
+        # Exit 1 alone includes fixture/collection failures. A decisive candidate
+        # FAIL requires observed call failure, passing setup/teardown and no skip.
+        if (any(r["phase"] != "call" and r["outcome"] == "FAIL" for r in reports)
+                or exit_code not in (0, 1)):
+            outcome = "ERROR"
+        elif (exit_code == 1 and any(r["phase"] == "call" and r["outcome"] == "FAIL" for r in reports)
+                and all(r["outcome"] == "PASS" if r["phase"] != "call" else r["outcome"] in ("PASS", "FAIL") for r in reports)):
+            outcome = "FAIL"
+        elif exit_code == 0 and all(r["outcome"] == "PASS" for r in reports):
+            outcome = "PASS"
+        else:
+            outcome = "UNKNOWN"
+        if not fact["complete"] or not fact["stable"] or observation.get("errors") != []:
+            outcome = "UNKNOWN"
+        order = int(fact["evidence_id"].rsplit("-V", 1)[1])
+        proofs.append(dict(**{key: fact[key] for key in ("proof_id", "unit_id", "evidence_id", "evidence_sha256",
+            "raw_sha256", "raw_size", "native_sha256", "native_size", "manifest_sha256", "source_run_id", "subject_sha",
+            "complete", "stable")}, outcome=outcome, checkpoint_outcome=fact["outcome"],
+            proof_sha256=unit["proof_sha256"], conditions_sha256=verification_digest(unit["proof"]["conditions"]),
+            source_command_sha256=verification_digest(item["source"]["command"]),
+            observation_sha256=item["verification"]["candidate_digest"],
+            raw_locator=f"l3-02/k{request['ordinal']:03d}/{fact['evidence_id']}.raw",
+            native_locator=f"l3-02/k{request['ordinal']:03d}/observation-{order:03d}.json"))
+    by_proof = {p["proof_id"]: p for p in proofs}
+    obligations = []
+    for row in plan["obligations"]:
+        obligation, proof = row["obligation"], by_proof[row["proof_id"]]
+        obligations.append(dict(obligation_id=obligation["id"], revision=obligation["revision"],
+            obligation_sha256=row["obligation_sha256"], claim_id=obligation["claim"]["id"],
+            claim_sha256=verification_digest(obligation["claim"]), kind=obligation["kind"], blocking=obligation["blocking"],
+            conditions_sha256=verification_digest(obligation["conditions"]),
+            provenance_sha256=verification_digest(obligation["provenance"]), acceptance_ids=sorted(obligation["acceptance_ids"]),
+            proof_id=proof["proof_id"], unit_id=proof["unit_id"], outcome=proof["outcome"],
+            complete=proof["complete"], stable=proof["stable"]))
+    result = dict(format=RUNTIME_FEEDBACK_FORMAT, version=1, feedback_id=verification_digest(binding), binding=binding,
+        proofs=proofs, obligations=obligations, resources=data["resources_after"], authority=dict(FEEDBACK_AUTHORITY),
+        **_feedback_summary(proofs, obligations))
+    return parse_runtime_feedback(_original_json(result).encode("ascii"))
+
+
+def parse_runtime_feedback(content: bytes) -> RuntimeFactualFeedback:
+    """Strict bounded inspection codec. Parsed PREPARED is never authority."""
+    from .verification_contract import VerificationContractError, _reuse_decode, _app_exact, _original_hash, verification_digest
+    data = _app_exact(_reuse_decode(content), ("format", "version", "status", "reason", "feedback_id", "binding",
+        "proofs", "obligations", "resources", "acceptance_ids", "affected_obligation_ids", "affected_acceptance_ids",
+        "outstanding_obligation_ids", "outstanding_acceptance_ids", "authority"))
+    def require(condition):
+        if not condition:
+            raise VerificationContractError("invalid bounded factual feedback")
+    def identity(value):
+        require(type(value) is str and _ID.fullmatch(value) is not None and value.lower() not in _COMMAND_NAMES)
+    def identities(values, *, empty=True):
+        require(type(values) is list and len(values) <= MAX_PROOFS and (empty or bool(values)))
+        for value in values:
+            identity(value)
+        require(values == sorted(set(values)))
+    require(data["format"] == RUNTIME_FEEDBACK_FORMAT and type(data["version"]) is int and data["version"] == 1)
+    require(type(data["status"]) is str and data["status"] in _FEEDBACK_REASONS
+            and type(data["reason"]) is str and data["reason"] in _FEEDBACK_REASONS[data["status"]])
+    authority = _app_exact(data["authority"], FEEDBACK_AUTHORITY)
+    require(authority == FEEDBACK_AUTHORITY)
+    for key in ("acceptance_ids", "affected_obligation_ids", "affected_acceptance_ids", "outstanding_obligation_ids", "outstanding_acceptance_ids"):
+        identities(data[key])
+    require(type(data["proofs"]) is list and len(data["proofs"]) <= MAX_PROOFS
+            and type(data["obligations"]) is list and len(data["obligations"]) <= MAX_PROOFS)
+    if data["binding"] is None:
+        require(data["status"] == "BLOCKED" and data["reason"] != "NATIVE_PROOF_UNRESOLVED"
+                and data["feedback_id"] is None and data["resources"] is None
+                and all(data[key] == [] for key in ("proofs", "obligations", "acceptance_ids", "affected_obligation_ids",
+                    "affected_acceptance_ids", "outstanding_obligation_ids", "outstanding_acceptance_ids")))
+        return RuntimeFactualFeedback(content.decode("ascii"))
+    binding = _app_exact(data["binding"], ("task_id", "task_revision", "run_id", "operation", "base_sha", "candidate_sha",
+        "candidate_tree_sha", "admitted_executor", "admitted_run_sha256", "task_sha256", "authorization_sha256", "plan_sha256",
+        "contract", "mapping", "checkpoint_ordinal", "predecessor_digest", "checkpoint_digest", "population_identity",
+        "execution_identity", "currentness"))
+    require(type(binding["task_id"]) is str and re.fullmatch(r"TASK-[A-Za-z0-9_-]{1,75}", binding["task_id"]) is not None)
+    require(type(binding["run_id"]) is str and re.fullmatch(re.escape("RUN-" + binding["task_id"][5:] + "-") + r"[0-9]{3,}", binding["run_id"]) is not None)
+    identity(binding["run_id"])
+    require(type(binding["task_revision"]) is int and 1 <= binding["task_revision"] <= 2_147_483_647
+            and type(binding["checkpoint_ordinal"]) is int and 1 <= binding["checkpoint_ordinal"] <= 17
+            and binding["operation"] == "PRIMARY" and binding["admitted_executor"] in ("codex", "antigravity", "antigravity-minimax")
+            and binding["currentness"] == "EXACT_LATEST_AT_PREPARATION")
+    for key in ("base_sha", "candidate_sha", "candidate_tree_sha"):
+        _original_hash(binding[key], 40)
+    require(binding["candidate_sha"] != binding["base_sha"])
+    for key in ("admitted_run_sha256", "task_sha256", "authorization_sha256", "plan_sha256", "checkpoint_digest", "population_identity", "execution_identity"):
+        _original_hash(binding[key])
+    if binding["checkpoint_ordinal"] == 1:
+        require(binding["predecessor_digest"] is None)
+    else:
+        _original_hash(binding["predecessor_digest"])
+    for key in ("contract", "mapping"):
+        pin = _app_exact(binding[key], ("id", "revision", "digest"))
+        identity(pin["id"])
+        require(type(pin["revision"]) is int and 1 <= pin["revision"] <= 2_147_483_647)
+        _original_hash(pin["digest"])
+    require(data["feedback_id"] == verification_digest(binding))
+    checkpoint_resource_facts(data["resources"])
+    require(data["resources"]["checkpoints"] == binding["checkpoint_ordinal"]
+            and data["resources"]["executions"] >= binding["checkpoint_ordinal"]
+            and data["resources"]["elapsed_ms"] > 0 and bool(data["proofs"]) and bool(data["obligations"]))
+    by_proof, evidence_ids = {}, set()
+    for proof in data["proofs"]:
+        _app_exact(proof, ("proof_id", "unit_id", "evidence_id", "evidence_sha256", "raw_sha256", "raw_size", "native_sha256",
+            "native_size", "manifest_sha256", "source_run_id", "subject_sha", "complete", "stable", "outcome", "checkpoint_outcome",
+            "proof_sha256", "conditions_sha256", "source_command_sha256", "observation_sha256", "raw_locator", "native_locator"))
+        identity(proof["proof_id"])
+        require(type(proof["evidence_id"]) is str and re.fullmatch(re.escape(binding["run_id"]) + r"-V[0-9]{3}", proof["evidence_id"]) is not None)
+        require(proof["proof_id"] not in by_proof and proof["evidence_id"] not in evidence_ids)
+        order = int(proof["evidence_id"].rsplit("-V", 1)[1])
+        require(1 <= order <= data["resources"]["executions"]
+                and (proof["source_run_id"], proof["subject_sha"]) == (binding["run_id"], binding["candidate_sha"]))
+        for key in ("unit_id", "evidence_sha256", "raw_sha256", "native_sha256", "manifest_sha256", "proof_sha256",
+                    "conditions_sha256", "source_command_sha256", "observation_sha256"):
+            _original_hash(proof[key])
+        require(proof["unit_id"] == proof["proof_sha256"])
+        for key in ("raw_size", "native_size"):
+            require(type(proof[key]) is int and 0 < proof[key] <= CHECKPOINT_RESOURCE_LIMITS["raw_bytes"])
+        require(type(proof["complete"]) is bool and type(proof["stable"]) is bool
+                and type(proof["outcome"]) is str and proof["outcome"] in ("PASS", "FAIL", "ERROR", "UNKNOWN")
+                and type(proof["checkpoint_outcome"]) is str and proof["checkpoint_outcome"] in ("PASS", "FAIL", "ERROR"))
+        require(proof["outcome"] not in ("PASS", "FAIL") or (proof["complete"] and proof["stable"] and proof["checkpoint_outcome"] == proof["outcome"]))
+        require(proof["raw_locator"] == f"l3-02/k{binding['checkpoint_ordinal']:03d}/{proof['evidence_id']}.raw"
+                and proof["native_locator"] == f"l3-02/k{binding['checkpoint_ordinal']:03d}/observation-{order:03d}.json")
+        by_proof[proof["proof_id"]] = proof
+        evidence_ids.add(proof["evidence_id"])
+    require(list(by_proof) == sorted(by_proof))
+    require(data["resources"]["raw_bytes"] >= sum(p["raw_size"] + p["native_size"] for p in data["proofs"]))
+    seen, used = [], set()
+    for obligation in data["obligations"]:
+        _app_exact(obligation, ("obligation_id", "revision", "obligation_sha256", "claim_id", "claim_sha256", "kind", "blocking",
+            "conditions_sha256", "provenance_sha256", "acceptance_ids", "proof_id", "unit_id", "outcome", "complete", "stable"))
+        for key in ("obligation_id", "claim_id", "proof_id"):
+            identity(obligation[key])
+        require(type(obligation["revision"]) is int and 1 <= obligation["revision"] <= 2_147_483_647
+                and obligation["kind"] == "candidate" and type(obligation["blocking"]) is bool)
+        for key in ("obligation_sha256", "claim_sha256", "conditions_sha256", "provenance_sha256", "unit_id"):
+            _original_hash(obligation[key])
+        identities(obligation["acceptance_ids"], empty=False)
+        proof = by_proof.get(obligation["proof_id"])
+        require(proof is not None and all(type(obligation[k]) is type(proof[k]) and obligation[k] == proof[k]
+            for k in ("unit_id", "outcome", "complete", "stable", "conditions_sha256")))
+        seen.append(obligation["obligation_id"])
+        used.add(obligation["proof_id"])
+    require(seen == sorted(set(seen)) and used == set(by_proof))
+    summary = _feedback_summary(data["proofs"], data["obligations"])
+    require(all(data[k] == v for k, v in summary.items()))
+    return RuntimeFactualFeedback(content.decode("ascii"))
+
+
+# L3-04: closed inspection material. Only RuntimeCompletion, on the original
+# ExecutorBoundary call stack, can establish a local callback observation.
+CONSUMPTION_REQUEST_FORMAT = "AIOS_L3_LOCAL_CONSUMPTION_REQUEST"
+CONSUMPTION_FORMAT = "AIOS_L3_LOCAL_CONSUMPTION"
+_CONSUMPTION_BLOCKS = frozenset({
+    "STOP_LATCHED", "LIVE_INVOCATION_NOT_ESTABLISHED",
+    "NATIVE_SOURCE_OR_EFFECT_NOT_ESTABLISHED", "NATIVE_PROOF_UNRESOLVED",
+    "CORRECTION_NATIVE_AUTHORITY_NOT_ESTABLISHED", "CHECKPOINT_RESOURCE_LIMIT_REACHED",
+    "CALLBACK_CONFIRMATION_NOT_ESTABLISHED",
+})
+_CONTINUATION_STOPS = frozenset({
+    "NO_VERIFIED_COMMITTED_PROGRESS", "FINITE_HUMAN_OPT_IN_AND_TOKEN_BUDGET_NOT_ESTABLISHED",
+    "CHECKPOINT_RESOURCE_LIMIT_REACHED", "SOURCE_OR_SESSION_NOT_ESTABLISHED",
+})
+_CONSUMPTION_BINDING = (
+    "task_id", "task_revision", "run_id", "operation", "base_sha", "candidate_sha", "candidate_tree_sha",
+    "admitted_executor", "admitted_run_sha256", "authorization_sha256", "checkpoint_ordinal",
+    "checkpoint_digest", "feedback_id", "feedback_digest", "population_identity", "execution_identity",
+    "runtime_identity", "invocation_identity", "profile_sha256",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class FeedbackConsumptionRequest:
+    version: int
+    source: FactualFeedbackRequest
+    feedback_digest: str
+
+    def __post_init__(self):
+        from .verification_contract import VerificationContractError, _original_hash
+        if type(self.version) is not int or self.version != 1:
+            raise VerificationContractError("invalid local consumption version")
+        format_factual_feedback_request(self.source)
+        _original_hash(self.feedback_digest)
+
+
+def format_feedback_consumption_request(value: FeedbackConsumptionRequest) -> bytes:
+    from .verification_contract import VerificationContractError, _original_json
+    if type(value) is not FeedbackConsumptionRequest:
+        raise VerificationContractError("exact typed local consumption request required")
+    value.__post_init__()
+    return _original_json(dict(format=CONSUMPTION_REQUEST_FORMAT, version=value.version,
+        source=factual_feedback_request_data(value.source), feedback_digest=value.feedback_digest)).encode("ascii")
+
+
+def parse_feedback_consumption_request(content: bytes) -> FeedbackConsumptionRequest:
+    from .verification_contract import VerificationContractError, _reuse_decode, _app_exact, _original_json
+    data = _app_exact(_reuse_decode(content), ("format", "version", "source", "feedback_digest"))
+    if data["format"] != CONSUMPTION_REQUEST_FORMAT:
+        raise VerificationContractError("invalid local consumption request format")
+    return FeedbackConsumptionRequest(data["version"],
+        parse_factual_feedback_request(_original_json(data["source"]).encode("ascii")), data["feedback_digest"])
+
+
+@dataclass(frozen=True, slots=True)
+class LocalFeedbackConfirmation:
+    """An adapter's exact echo, accepted only as a direct callback return."""
+    receipt_id: str
+    feedback_digest: str
+
+    def __post_init__(self):
+        from .verification_contract import _original_hash
+        _original_hash(self.receipt_id)
+        _original_hash(self.feedback_digest)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeFeedbackConsumption:
+    content_json: str
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.content_json.encode("ascii")).hexdigest()
+
+    @property
+    def data(self) -> dict:
+        return json.loads(self.content_json)
+
+
+def format_feedback_consumption(value: RuntimeFeedbackConsumption) -> bytes:
+    from .verification_contract import VerificationContractError
+    if type(value) is not RuntimeFeedbackConsumption:
+        raise VerificationContractError("exact typed local consumption required")
+    content = value.content_json.encode("ascii")
+    parse_feedback_consumption(content)
+    return content
+
+
+def parse_feedback_consumption(content: bytes) -> RuntimeFeedbackConsumption:
+    from .verification_contract import VerificationContractError, _reuse_decode, _app_exact, _original_hash, verification_digest
+    data = _app_exact(_reuse_decode(content), ("format", "version", "status", "reason", "receipt_id", "binding",
+        "acknowledgment", "lease_observation", "progress", "resources", "stop", "authority"))
+
+    def require(condition):
+        if not condition:
+            raise VerificationContractError("invalid bounded local consumption")
+
+    require(data["format"] == CONSUMPTION_FORMAT and type(data["version"]) is int and data["version"] == 1)
+    require(_app_exact(data["authority"], FEEDBACK_AUTHORITY) == FEEDBACK_AUTHORITY)
+    stop = _app_exact(data["stop"], ("status", "reason", "c2_admission", "human_opt_in", "token_budget"))
+    require(stop["status"] == "STOP" and type(stop["reason"]) is str and stop["reason"] in _CONTINUATION_STOPS
+            and stop["c2_admission"] == "NOT_AUTHORIZED" and stop["human_opt_in"] == "NOT_ESTABLISHED"
+            and stop["token_budget"] == "NOT_ESTABLISHED")
+    require(type(data["status"]) is str and type(data["reason"]) is str)
+    if data["status"] == "BLOCKED":
+        require(data["reason"] in _CONSUMPTION_BLOCKS and data["receipt_id"] is None and data["binding"] is None
+                and data["acknowledgment"] == data["lease_observation"] == data["progress"] == "NOT_ESTABLISHED"
+                and data["resources"] is None and stop["reason"] == "SOURCE_OR_SESSION_NOT_ESTABLISHED")
+        return RuntimeFeedbackConsumption(content.decode("ascii"))
+    require(data["status"] == "LOCAL_ACKNOWLEDGED" and data["reason"] == "SAME_INVOCATION_ADAPTER_CONFIRMED"
+            and data["acknowledgment"] == "IN_INVOCATION_ADAPTER_CONFIRMED"
+            and data["lease_observation"] == "CURRENT_DURING_LOCAL_CALLBACK"
+            and data["progress"] in ("NOT_ESTABLISHED", "VERIFIED_SCOPED_DESCENDANT_PROGRESS"))
+    binding = _app_exact(data["binding"], _CONSUMPTION_BINDING)
+    require(type(binding["task_id"]) is str and re.fullmatch(r"TASK-[A-Za-z0-9_-]{1,75}", binding["task_id"]) is not None)
+    require(type(binding["run_id"]) is str and len(binding["run_id"]) <= 128
+            and re.fullmatch(re.escape("RUN-" + binding["task_id"][5:] + "-") + r"[0-9]{3,}", binding["run_id"]) is not None)
+    require(type(binding["task_revision"]) is int and 1 <= binding["task_revision"] <= 2_147_483_647
+            and type(binding["checkpoint_ordinal"]) is int and 1 <= binding["checkpoint_ordinal"] <= 17
+            and binding["operation"] == "PRIMARY"
+            and binding["admitted_executor"] in ("codex", "antigravity", "antigravity-minimax"))
+    for key in ("base_sha", "candidate_sha", "candidate_tree_sha"):
+        _original_hash(binding[key], 40)
+    require(binding["candidate_sha"] != binding["base_sha"])
+    for key in ("admitted_run_sha256", "authorization_sha256", "checkpoint_digest", "feedback_id", "feedback_digest",
+                "population_identity", "execution_identity", "runtime_identity", "invocation_identity"):
+        _original_hash(binding[key])
+    if binding["profile_sha256"] is not None:
+        _original_hash(binding["profile_sha256"])
+    require(data["progress"] != "VERIFIED_SCOPED_DESCENDANT_PROGRESS" or binding["checkpoint_ordinal"] >= 2)
+    require(data["receipt_id"] == verification_digest(binding))
+    resources = checkpoint_resource_facts(data["resources"])
+    require(resources["checkpoints"] == binding["checkpoint_ordinal"] and resources["executions"] >= resources["checkpoints"]
+            and resources["raw_bytes"] > 0 and resources["elapsed_ms"] > 0)
+    exhausted = any(resources[k] >= limit for k, limit in CHECKPOINT_RESOURCE_LIMITS.items())
+    expected_stop = ("CHECKPOINT_RESOURCE_LIMIT_REACHED" if exhausted else
+        "NO_VERIFIED_COMMITTED_PROGRESS" if data["progress"] == "NOT_ESTABLISHED" else
+        "FINITE_HUMAN_OPT_IN_AND_TOKEN_BUDGET_NOT_ESTABLISHED")
+    require(stop["reason"] == expected_stop)
+    return RuntimeFeedbackConsumption(content.decode("ascii"))
+
+
+def _consumption_result(*, reason=None, binding=None, resources=None, progress="NOT_ESTABLISHED"):
+    from .verification_contract import _original_json, verification_digest
+    acknowledged = binding is not None
+    exhausted = resources is not None and any(resources[k] >= v for k, v in CHECKPOINT_RESOURCE_LIMITS.items())
+    stop_reason = ("SOURCE_OR_SESSION_NOT_ESTABLISHED" if not acknowledged else
+        "CHECKPOINT_RESOURCE_LIMIT_REACHED" if exhausted else
+        "NO_VERIFIED_COMMITTED_PROGRESS" if progress == "NOT_ESTABLISHED" else
+        "FINITE_HUMAN_OPT_IN_AND_TOKEN_BUDGET_NOT_ESTABLISHED")
+    return parse_feedback_consumption(_original_json(dict(format=CONSUMPTION_FORMAT, version=1,
+        status="LOCAL_ACKNOWLEDGED" if acknowledged else "BLOCKED",
+        reason="SAME_INVOCATION_ADAPTER_CONFIRMED" if acknowledged else reason,
+        receipt_id=verification_digest(binding) if acknowledged else None, binding=binding,
+        acknowledgment="IN_INVOCATION_ADAPTER_CONFIRMED" if acknowledged else "NOT_ESTABLISHED",
+        lease_observation="CURRENT_DURING_LOCAL_CALLBACK" if acknowledged else "NOT_ESTABLISHED",
+        progress=progress, resources=resources, stop=dict(status="STOP", reason=stop_reason,
+            c2_admission="NOT_AUTHORIZED", human_opt_in="NOT_ESTABLISHED", token_budget="NOT_ESTABLISHED"),
+        authority=dict(FEEDBACK_AUTHORITY))).encode("ascii"))

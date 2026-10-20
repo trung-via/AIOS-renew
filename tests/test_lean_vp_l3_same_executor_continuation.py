@@ -7,6 +7,9 @@ inherited HTTP transport is replayed. Runtime owns running these definitions.
 """
 
 import json
+import subprocess
+import sys
+import textwrap
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
@@ -30,6 +33,77 @@ from tests.test_lean_vp_l2_original_evidence import encoded, snapshot
 from tests.test_lean_vp_l2_reuse_conformance import correction_locator
 from tests.test_lean_vp_l3_factual_feedback import FeedbackFixture, PRIVATE_LOG
 from tests.test_lean_vp_l3_proof_scheduler import add_obligation
+
+
+def test_historical_codec_apis_import_cold_without_runtime_dependencies():
+    program = textwrap.dedent('''
+        import sys
+        import types
+
+        # Load the historical module independently of package initialization,
+        # which can otherwise preload owners and hide import-order regressions.
+        package = types.ModuleType("aios_renew")
+        package.__path__ = [sys.argv[1]]
+        sys.modules["aios_renew"] = package
+        allowed = {
+            "aios_renew.intra_run_proof_contract",
+            "aios_renew.proof_coverage_contract",
+        }
+
+        class OfflineImportsOnly:
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname.startswith("aios_renew.") and fullname not in allowed:
+                    raise AssertionError("unexpected offline dependency: " + fullname)
+
+        sys.meta_path.insert(0, OfflineImportsOnly())
+        from aios_renew.intra_run_proof_contract import (
+            RUNTIME_CHECKPOINT_FORMAT, CHECKPOINT_RESOURCE_LIMITS,
+            RuntimeCheckpoint, TerminalProofDecision,
+            checkpoint_resource_facts, checkpoint_population_identity,
+            format_runtime_checkpoint, parse_runtime_checkpoint,
+            FACTUAL_FEEDBACK_REQUEST_FORMAT, RUNTIME_FEEDBACK_FORMAT, FEEDBACK_AUTHORITY,
+            FactualFeedbackRequest, factual_feedback_request_data,
+            format_factual_feedback_request, parse_factual_feedback_request,
+            RuntimeFactualFeedback, format_runtime_feedback, parse_runtime_feedback,
+            CONSUMPTION_REQUEST_FORMAT, CONSUMPTION_FORMAT,
+            FeedbackConsumptionRequest, format_feedback_consumption_request,
+            parse_feedback_consumption_request, LocalFeedbackConfirmation,
+            RuntimeFeedbackConsumption, format_feedback_consumption, parse_feedback_consumption,
+        )
+
+        for name, value in tuple(globals().items()):
+            if not name.startswith("_") and callable(value) and value is not OfflineImportsOnly:
+                assert value.__module__ == "aios_renew.intra_run_proof_contract"
+        assert {name for name in sys.modules if name.startswith("aios_renew.")} == allowed
+        for record_type in (RuntimeCheckpoint, RuntimeFactualFeedback, RuntimeFeedbackConsumption):
+            record = record_type('{"version":1}')
+            projection = record.data
+            projection["version"] = 2
+            assert record.data == {"version": 1}
+            assert len(record.digest) == 64
+        assert TerminalProofDecision(False, "inspection", "a" * 64, "b" * 40).execution_permission == "NOT_AUTHORIZED"
+        assert FEEDBACK_AUTHORITY["continuation"] == "NOT_AUTHORIZED"
+    ''')
+    process = subprocess.run(
+        [sys.executable, "-I", "-c", program,
+         str(Path(__file__).resolve().parents[1] / "src" / "aios_renew")],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    assert process.returncode == 0, process.stdout + process.stderr
+    from aios_renew import intra_run_proof_contract as historical
+    for name in (
+        "RUNTIME_CHECKPOINT_FORMAT", "CHECKPOINT_RESOURCE_LIMITS", "RuntimeCheckpoint",
+        "TerminalProofDecision", "checkpoint_resource_facts", "checkpoint_population_identity",
+        "format_runtime_checkpoint", "parse_runtime_checkpoint", "FACTUAL_FEEDBACK_REQUEST_FORMAT",
+        "RUNTIME_FEEDBACK_FORMAT", "FEEDBACK_AUTHORITY", "FactualFeedbackRequest",
+        "factual_feedback_request_data", "format_factual_feedback_request", "parse_factual_feedback_request",
+        "RuntimeFactualFeedback", "format_runtime_feedback", "parse_runtime_feedback",
+        "CONSUMPTION_REQUEST_FORMAT", "CONSUMPTION_FORMAT", "FeedbackConsumptionRequest",
+        "format_feedback_consumption_request", "parse_feedback_consumption_request",
+        "LocalFeedbackConfirmation", "RuntimeFeedbackConsumption", "format_feedback_consumption",
+        "parse_feedback_consumption",
+    ):
+        assert getattr(completion, name) is getattr(historical, name)
 
 
 class LocalAdapter:
