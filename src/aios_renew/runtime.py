@@ -46,7 +46,8 @@ from .verification_contract import (
     ProofCheckpointRequest, VerificationContractError, _original_json,
     format_checkpoint_request, checkpoint_request_data, format_scheduler_plan,
     scheduler_plan_data, parse_checkpoint_request,
-    verification_digest,
+    verification_digest, _app_exact, _reuse_decode, _original_hash,
+    parse_scheduler_plan,
 )
 # Historical inspection codecs stay independently importable and pure.
 # RuntimeCompletion retains all native authentication and lifecycle authority.
@@ -64,11 +65,24 @@ from .intra_run_proof_contract import (
     parse_feedback_consumption_request, LocalFeedbackConfirmation,
     RuntimeFeedbackConsumption, format_feedback_consumption, parse_feedback_consumption,
     _blocked_runtime_feedback, _checkpoint_factual_feedback, _consumption_result,
+    _NativeInspectionCodecs, _bind_native_inspection_codecs,
 )
 from .verification import (
     _checkpoint_reviewed_execution, _execute_checkpoint_verification, _checkpoint_native_facts,
     _original_git, _original_local, MAX_ORIGINAL_PROOF_BYTES,
 )
+
+# Supply the original canonical inspection functions explicitly. This is a
+# stateless codec adapter, not a Runtime/lease/verification execution authority.
+# Historical API objects are defined in their own module on a cold import;
+# there are no runtime reexports installed with setattr or concealed loaders.
+_bind_native_inspection_codecs(_NativeInspectionCodecs(
+    error_type=VerificationContractError, exact=_app_exact, decode=_reuse_decode,
+    hash_identity=_original_hash, canonical_json=_original_json,
+    digest=verification_digest, checkpoint_data=checkpoint_request_data,
+    checkpoint_format=format_checkpoint_request, checkpoint_parse=parse_checkpoint_request,
+    plan_data=scheduler_plan_data, plan_parse=parse_scheduler_plan, evidence=validate_evidence,
+))
 
 if TYPE_CHECKING:
     from .executor import ExecutorAdapter, ExecutorBoundary

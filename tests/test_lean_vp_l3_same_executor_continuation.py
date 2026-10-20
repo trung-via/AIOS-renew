@@ -106,6 +106,79 @@ def test_historical_codec_apis_import_cold_without_runtime_dependencies():
         assert getattr(completion, name) is getattr(historical, name)
 
 
+def test_cold_historical_references_retain_canonical_native_decoding_after_binding():
+    program = textwrap.dedent('''
+        import json
+        import sys
+        import types
+
+        package = types.ModuleType("aios_renew")
+        package.__path__ = [sys.argv[1]]
+        sys.modules["aios_renew"] = package
+        allowed = {"aios_renew.intra_run_proof_contract", "aios_renew.proof_coverage_contract"}
+
+        class OfflineImportsOnly:
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname.startswith("aios_renew.") and fullname not in allowed:
+                    raise AssertionError("unexpected offline dependency: " + fullname)
+
+        offline = OfflineImportsOnly()
+        sys.meta_path.insert(0, offline)
+        from aios_renew.intra_run_proof_contract import (
+            IntraRunContractError, FactualFeedbackRequest, FeedbackConsumptionRequest,
+            format_feedback_consumption_request, parse_feedback_consumption_request,
+            parse_runtime_checkpoint, parse_runtime_feedback, parse_feedback_consumption,
+        )
+        # An unbound native inspection cannot load its host or accept a caller
+        # projection. The original offline declarations remain independent.
+        for parse in (parse_feedback_consumption_request, parse_runtime_checkpoint,
+                      parse_runtime_feedback, parse_feedback_consumption):
+            try:
+                parse(b'{}')
+            except IntraRunContractError:
+                pass
+            else:
+                raise AssertionError("unbound native inspection accepted input")
+        assert {name for name in sys.modules if name.startswith("aios_renew.")} == allowed
+
+        # Importing the host is explicit. Previously imported API objects stay
+        # usable and preserve the original canonical nested types and errors.
+        sys.meta_path.remove(offline)
+        from aios_renew import runtime
+        from aios_renew.verification_contract import (
+            ApplicabilityDeclarationPin, ApplicabilityTargetRequest,
+            ProofSchedulerRequest, ProofCheckpointRequest, VerificationContractError,
+        )
+        assert runtime.parse_feedback_consumption_request is parse_feedback_consumption_request
+        target = ApplicabilityTargetRequest("TASK-391", 1, "RUN-391-001",
+            "a" * 40, "b" * 40, "c" * 40, "d" * 40, "e" * 64)
+        pin = ApplicabilityDeclarationPin("original-proof", 1, "f" * 64)
+        scheduler = ProofSchedulerRequest(1, target, "a" * 40, pin, pin, "PRIMARY", "b" * 40)
+        checkpoint = ProofCheckpointRequest(1, scheduler, 1, None)
+        request = FeedbackConsumptionRequest(1, FactualFeedbackRequest(1, checkpoint, "1" * 64), "2" * 64)
+        content = format_feedback_consumption_request(request)
+        parsed = parse_feedback_consumption_request(content)
+        assert parsed == request and type(parsed.source.checkpoint) is ProofCheckpointRequest
+        assert type(parsed.source.checkpoint.scheduler) is ProofSchedulerRequest
+        data = json.loads(content)
+        data["source"]["checkpoint"]["scheduler"]["target"]["caller_authority"] = True
+        malformed = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("ascii")
+        for invalid in (malformed, b" " + content, b'{"version":1,' + content[1:]):
+            try:
+                parse_feedback_consumption_request(invalid)
+            except VerificationContractError:
+                pass
+            else:
+                raise AssertionError("canonical native decoding was bypassed")
+    ''')
+    process = subprocess.run(
+        [sys.executable, "-I", "-c", program,
+         str(Path(__file__).resolve().parents[1] / "src" / "aios_renew")],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    assert process.returncode == 0, process.stdout + process.stderr
+
+
 class LocalAdapter:
     def __init__(self, fixture, body, *, profile=None, callback=None):
         self.f = fixture
