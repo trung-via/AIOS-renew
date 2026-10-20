@@ -10,7 +10,6 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
-from threading import Event
 
 import pytest
 
@@ -35,6 +34,13 @@ class FeedbackFixture(NativeCheckpointFixture):
     def __init__(self, root, monkeypatch, *, mode="fail", multi=False):
         self.proof_mode = mode
         super().__init__(root, monkeypatch, failing=mode != "pass", multi=multi)
+        if multi:
+            # Establish all independent command obligations before a caller
+            # adds shared claims; their presence cannot depend on list length.
+            add_obligation(self.contract, self.mapping, "integration", integration_ref="complete-integration-boundary")
+            add_obligation(self.contract, self.mapping, "workers", worker_mode="parallel", workers=2,
+                concurrency_ref="independent-worker-interference", ordering_ref="complete-worker-order",
+                repetition_ref="separate-native-worker-proof")
 
     def worktree_commit(self, files, message):
         sha = super().worktree_commit(files, message)
@@ -388,24 +394,22 @@ def test_competing_writer_and_terminal_exclude_feedback_effect(failed, monkeypat
     f = failed
     request, _ = f.sealed()
     write_once = completion._checkpoint_write_once
-    entered, release = Event(), Event()
     def paused(path, content):
         if path == f.directory / "k001.feedback.json":
-            entered.set()
-            assert release.wait(30)
+            # Start contenders only once native authentication has finished
+            # and the real writer holds its fence at the immutable write.
+            # The contention bound must not time unrelated Git preflight.
+            competing = threads.submit(f.prepare, request)
+            terminal = threads.submit(persist_failure, f.repo, state=f.state, task=f.task, run=f.run,
+                run_path=f.owner.run_path, failure=RuntimeError("competing terminal"), transport=False)
+            assert_blocked(competing.result(timeout=30))
+            terminal.result(timeout=30)
+            assert not (f.state.failures / (f.run.run_id + ".json")).exists()
+            assert not path.exists()
         return write_once(path, content)
     monkeypatch.setattr(completion, "_checkpoint_write_once", paused)
     with ThreadPoolExecutor(max_workers=2) as threads:
-        pending = threads.submit(f.prepare, request)
-        try:
-            assert entered.wait(30)
-            assert_blocked(f.prepare(request))
-            persist_failure(f.repo, state=f.state, task=f.task, run=f.run, run_path=f.owner.run_path,
-                failure=RuntimeError("competing terminal"), transport=False)
-            assert not (f.state.failures / (f.run.run_id + ".json")).exists()
-        finally:
-            release.set()
-        feedback = pending.result()
+        feedback = f.prepare(request)
     assert feedback.data["status"] == "PREPARED"
     assert f.prepare(request) == feedback and len(f.calls) == 1
 
@@ -431,8 +435,13 @@ def test_unknown_partial_flaky_or_contradictory_capture_cannot_supply_feedback(f
             path.write_bytes(encoded(data))
         return process
     f.owner.verification_runner = adversarial
-    with pytest.raises((VerificationContractError, RuntimeError)):
+    with pytest.raises((VerificationContractError, RuntimeError)) as rejected:
         f.owner.seal_checkpoint(checkpoint)
+    if fault == "missing-observer":
+        assert str(rejected.value) == "CHECKPOINT_NATIVE_CAPTURE_UNAVAILABLE"
+    assert (f.directory.parent / ".runtime-mutation/intent.json").exists()
+    assert not (f.directory / "k001.json").exists()
+    assert not (f.directory / "k001.feedback.json").exists()
     before = snapshot(f.directory.parent)
     assert_blocked(f.prepare(FactualFeedbackRequest(1, checkpoint, "1" * 64)))
     assert snapshot(f.directory.parent) == before and len(f.calls) == 1

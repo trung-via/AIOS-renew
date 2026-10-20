@@ -390,10 +390,15 @@ class RuntimeCompletion:
             _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan))
             raw_directory = directory / f"k{request.ordinal:03d}"
             raw_directory.mkdir()  # Exclusive. Never erase an interrupted proof.
-            evidence = _execute_checkpoint_verification(self.repo, request=request, task=task, manifests=manifests,
-                raw_directory=raw_directory, start_order=before["executions"], runner=self.verification_runner,
-                timeout_seconds=(CHECKPOINT_RESOURCE_LIMITS["elapsed_ms"] - before["elapsed_ms"]) / 1000,
-                capture_bytes_remaining=CHECKPOINT_RESOURCE_LIMITS["raw_bytes"] - before["raw_bytes"])
+            try:
+                evidence = _execute_checkpoint_verification(self.repo, request=request, task=task, manifests=manifests,
+                    raw_directory=raw_directory, start_order=before["executions"], runner=self.verification_runner,
+                    timeout_seconds=(CHECKPOINT_RESOURCE_LIMITS["elapsed_ms"] - before["elapsed_ms"]) / 1000,
+                    capture_bytes_remaining=CHECKPOINT_RESOURCE_LIMITS["raw_bytes"] - before["raw_bytes"])
+            except OSError as exc:
+                # Missing/unreadable native captures cannot establish a seal.
+                # Keep the reserved fence and original partial capture intact.
+                raise VerificationContractError("CHECKPOINT_NATIVE_CAPTURE_UNAVAILABLE") from exc
             for path in _checkpoint_capture_inventory(raw_directory, evidence):
                 _original_local(path, 32 * 1024 * 1024)
                 with path.open("r+b") as stream:
