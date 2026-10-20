@@ -477,17 +477,24 @@ class ProgressFixture(FeedbackFixture):
     """Two actual original failures; fixing one leaves decisive current FAIL."""
 
     def worktree_commit(self, files, message):
-        if message == "original factual feedback proof programs":
-            files = {**files, "tests/test_integration.py": (
-                "from pathlib import Path\ndef test_sample():\n"
-                "    assert Path('fixture-target.txt').read_text().endswith('FIXED\\n')\n").encode()}
-        return super().worktree_commit(files, message)
+        sha = super().worktree_commit(files, message)
+        if message != "source dependency closure":
+            return sha
+        # FeedbackFixture commits its proof programs through super(), so the
+        # nested commit never dispatches back through this override. Install
+        # the second failing program after that closure, still in the original
+        # base before admission and the independent mandatory mapping review.
+        return super().worktree_commit({"tests/test_integration.py": (
+            "from pathlib import Path\ndef test_sample():\n"
+            "    assert Path('fixture-target.txt').read_text().endswith('FIXED\\n')\n").encode()},
+            "original progress proof program")
 
 
 @pytest.mark.parametrize("delta", ["improvement", "no-improvement", "same-sha", "empty", "out-of-scope", "dirty"])
 def test_progress_requires_current_committed_scoped_causal_native_improvement(tmp_path, monkeypatch, delta):
     f = ProgressFixture(tmp_path / delta, monkeypatch, multi=True)
     request, first, _ = prepared(f)
+    assert first.data["outstanding"] == ["fixture-obligation", "integration"]
 
     def body(adapter):
         initial = adapter.consume(request)
@@ -536,7 +543,7 @@ def test_progress_requires_current_committed_scoped_causal_native_improvement(tm
         if delta == "improvement":
             assert value.data["progress"] == "VERIFIED_SCOPED_DESCENDANT_PROGRESS"
             assert value.data["stop"]["reason"] == "FINITE_HUMAN_OPT_IN_AND_TOKEN_BUDGET_NOT_ESTABLISHED"
-            assert len(feedback.data["outstanding_obligation_ids"]) == 1
+            assert feedback.data["outstanding_obligation_ids"] == ["integration"]
         else:
             assert value.data["progress"] == "NOT_ESTABLISHED"
             assert value.data["stop"]["reason"] == "NO_VERIFIED_COMMITTED_PROGRESS"
@@ -565,6 +572,7 @@ def test_exhausted_known_native_resource_bound_stops_before_exposure(failed, mon
 def test_crash_reconstructed_owner_cannot_skip_original_receipt_lineage(tmp_path, monkeypatch):
     f = ProgressFixture(tmp_path / "crash-lineage", monkeypatch, multi=True)
     request, first, _ = prepared(f)
+    assert first.data["outstanding"] == ["fixture-obligation", "integration"]
     def initial(adapter):
         value = adapter.consume(request)
         assert value.data["status"] == "LOCAL_ACKNOWLEDGED"
@@ -578,6 +586,7 @@ def test_crash_reconstructed_owner_cannot_skip_original_receipt_lineage(tmp_path
     source = FactualFeedbackRequest(1, second_request, second.digest)
     feedback = f.prepare(source)
     assert feedback.data["status"] == "PREPARED"
+    assert feedback.data["outstanding_obligation_ids"] == ["integration"]
     original = snapshot(f.directory)
     f.owner = RuntimeCompletion(repo=f.repo, state=f.state, task=f.task, run=f.run,
         run_path=f.owner.run_path, verification_runner=f.actual_runner,
