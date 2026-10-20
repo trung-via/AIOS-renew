@@ -1,0 +1,37 @@
+review_id: REVIEW-391-001
+reviewed_sha: c56e1a820450abdc946d4d453a42f2110fe00483
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+  AC11: PASS
+  AC12: FAIL
+findings:
+- id: FINDING-391-001-001
+  basis: AC12
+  action: CODE_FIX
+  location: src/aios_renew/intra_run_proof_contract.py; src/aios_renew/runtime.py;
+    tests/test_lean_vp_l3_same_executor_continuation.py
+  issue: The reviewed candidate moved the published L3-02/L3-03 codec/types out of
+    intra_run_proof_contract.py into runtime.py and reattaches historical names only
+    by runtime import-time setattr. Its scoped tests import runtime before accessing
+    the old module. A fresh process that imports public historical codec/types directly
+    from intra_run_proof_contract before runtime is loaded encounters missing names,
+    contradicting AC12 preservation of original L3-01/02/03 behavior. Static source-bound
+    semantic finding; not a claimed Runtime verification failure.
+  expected: Preserve the existing directly importable historical K_i/F_i codec/type
+    APIs in the original module, including on cold independent import, while retaining
+    its published offline dependency purity and ensuring no new production owner,
+    lifecycle authority or hot-path activation. Provide a focused cold-import regression
+    and retain original native semantics/tests. Keep changes within TASK-391 original
+    seven paths; do not weaken tests, rewrite canonical lineage, add runtime dependency
+    to the pure module or broaden verification beyond affected coverage.
