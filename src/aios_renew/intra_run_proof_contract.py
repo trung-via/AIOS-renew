@@ -12,6 +12,10 @@ import hashlib
 import json
 import re
 from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .verification_contract import ProofCheckpointRequest
 
 from .proof_coverage_contract import (
     BR_GATES, CoverageDeclaration, ProofCoverageError,
@@ -846,3 +850,286 @@ def parse_runtime_checkpoint(content: bytes) -> RuntimeCheckpoint:
             or after["raw_bytes"] - before["raw_bytes"] != sum(p["raw_size"] + p["native_size"] for p in data["proofs"])):
         raise VerificationContractError("checkpoint incomplete coverage or accounting")
     return RuntimeCheckpoint(content.decode("ascii"))
+
+
+# L3-03 codecs are inspection data, just like K_i. Only the existing
+# RuntimeCompletion owner authenticates native roots and prepares durable F_i.
+FACTUAL_FEEDBACK_REQUEST_FORMAT = "AIOS_L3_FACTUAL_FEEDBACK_REQUEST"
+RUNTIME_FEEDBACK_FORMAT = "AIOS_L3_FACTUAL_FEEDBACK"
+FEEDBACK_AUTHORITY = dict(
+    dispatch="NOT_AUTHORIZED", delivery="NOT_AUTHORIZED", ack_consumption="NOT_AUTHORIZED",
+    c2_admission="NOT_AUTHORIZED", continuation="NOT_AUTHORIZED", executor_selection="NOT_AUTHORIZED",
+    correction_strategy="NOT_AUTHORIZED", policy_selection="NOT_AUTHORIZED", new_run="NOT_AUTHORIZED",
+    production_activation="NOT_ACTIVATED", live_executor_lease="NOT_ESTABLISHED",
+    human_risk_acceptance="NOT_ESTABLISHED", human_budget="NOT_ESTABLISHED",
+)
+_FEEDBACK_REASONS = {
+    "PREPARED": {"COMPLETE_STABLE_NATIVE_CANDIDATE_FAIL"},
+    "NO_FAILED_PROOF": {"COMPLETE_STABLE_NATIVE_PASS"},
+    "BLOCKED": {"NATIVE_PROOF_UNRESOLVED", "NATIVE_CHECKPOINT_NOT_ESTABLISHED",
+                "CORRECTION_NATIVE_AUTHORITY_NOT_ESTABLISHED", "OPERATION_NOT_SUPPORTED"},
+}
+
+
+@dataclass(frozen=True, slots=True)
+class FactualFeedbackRequest:
+    version: int
+    checkpoint: ProofCheckpointRequest
+    checkpoint_digest: str
+
+    def __post_init__(self):
+        from .verification_contract import VerificationContractError, format_checkpoint_request, _original_hash
+        if type(self.version) is not int or self.version != 1:
+            raise VerificationContractError("invalid factual feedback request version")
+        format_checkpoint_request(self.checkpoint)
+        _original_hash(self.checkpoint_digest)
+
+
+def factual_feedback_request_data(value: FactualFeedbackRequest) -> dict:
+    from .verification_contract import VerificationContractError, checkpoint_request_data
+    if type(value) is not FactualFeedbackRequest:
+        raise VerificationContractError("exact typed factual feedback request required")
+    value.__post_init__()
+    return dict(format=FACTUAL_FEEDBACK_REQUEST_FORMAT, version=value.version,
+                checkpoint=checkpoint_request_data(value.checkpoint), checkpoint_digest=value.checkpoint_digest)
+
+
+def format_factual_feedback_request(value: FactualFeedbackRequest) -> bytes:
+    from .verification_contract import _original_json
+    return _original_json(factual_feedback_request_data(value)).encode("ascii")
+
+
+def parse_factual_feedback_request(content: bytes) -> FactualFeedbackRequest:
+    from .verification_contract import VerificationContractError, _reuse_decode, _app_exact, _original_json, parse_checkpoint_request
+    data = _app_exact(_reuse_decode(content), ("format", "version", "checkpoint", "checkpoint_digest"))
+    if data["format"] != FACTUAL_FEEDBACK_REQUEST_FORMAT:
+        raise VerificationContractError("invalid factual feedback request format")
+    return FactualFeedbackRequest(data["version"],
+        parse_checkpoint_request(_original_json(data["checkpoint"]).encode("ascii")), data["checkpoint_digest"])
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeFactualFeedback:
+    content_json: str
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.content_json.encode("ascii")).hexdigest()
+
+    @property
+    def data(self) -> dict:
+        return json.loads(self.content_json)
+
+
+def format_runtime_feedback(value: RuntimeFactualFeedback) -> bytes:
+    from .verification_contract import VerificationContractError
+    if type(value) is not RuntimeFactualFeedback:
+        raise VerificationContractError("exact typed runtime factual feedback required")
+    content = value.content_json.encode("ascii")
+    parse_runtime_feedback(content)
+    return content
+
+
+def _feedback_summary(proofs, obligations):
+    outcomes = {p["outcome"] for p in proofs}
+    if outcomes - {"PASS", "FAIL"} or not all(p["complete"] and p["stable"] for p in proofs):
+        status, reason = "BLOCKED", "NATIVE_PROOF_UNRESOLVED"
+    elif "FAIL" in outcomes:
+        status, reason = "PREPARED", "COMPLETE_STABLE_NATIVE_CANDIDATE_FAIL"
+    else:
+        status, reason = "NO_FAILED_PROOF", "COMPLETE_STABLE_NATIVE_PASS"
+    affected = [o for o in obligations if o["outcome"] == "FAIL"]
+    outstanding = [o for o in obligations if o["outcome"] != "PASS"]
+    return dict(status=status, reason=reason,
+        acceptance_ids=sorted({a for o in obligations for a in o["acceptance_ids"]}),
+        affected_obligation_ids=sorted(o["obligation_id"] for o in affected),
+        affected_acceptance_ids=sorted({a for o in affected for a in o["acceptance_ids"]}),
+        outstanding_obligation_ids=sorted(o["obligation_id"] for o in outstanding),
+        outstanding_acceptance_ids=sorted({a for o in outstanding for a in o["acceptance_ids"]}))
+
+
+def _blocked_runtime_feedback(reason: str) -> RuntimeFactualFeedback:
+    from .verification_contract import _original_json
+    data = dict(format=RUNTIME_FEEDBACK_FORMAT, version=1, status="BLOCKED", reason=reason,
+        feedback_id=None, binding=None, proofs=[], obligations=[], resources=None,
+        acceptance_ids=[], affected_obligation_ids=[], affected_acceptance_ids=[],
+        outstanding_obligation_ids=[], outstanding_acceptance_ids=[], authority=dict(FEEDBACK_AUTHORITY))
+    return parse_runtime_feedback(_original_json(data).encode("ascii"))
+
+
+def _checkpoint_factual_feedback(record: RuntimeCheckpoint, executor: str) -> RuntimeFactualFeedback:
+    """Deterministic projection, never native authentication or permission.
+
+    No raw text, nodeids, commands, filesystem/user paths, claim prose or
+    implementation advice crosses this boundary. Exact identities remain pinned.
+    """
+    from .verification_contract import verification_digest, _original_json
+    data = record.data
+    request, plan = data["request"], data["plan"]
+    scheduler = request["scheduler"]
+    target = scheduler["target"]
+    binding = dict(task_id=target["task_id"], task_revision=target["task_revision"], run_id=target["run_id"],
+        operation=scheduler["operation"], base_sha=target["base_sha"], candidate_sha=target["candidate_sha"],
+        candidate_tree_sha=target["tree_sha"], admitted_executor=executor, admitted_run_sha256=target["run_sha256"],
+        task_sha256=plan["authority"]["target"]["task_sha256"],
+        authorization_sha256=verification_digest(dict(operation=scheduler["operation"],
+            admitted_run_sha256=target["run_sha256"], reviewed_authority=plan["authority"])),
+        plan_sha256=verification_digest(plan), contract=scheduler["contract"], mapping=scheduler["mapping"],
+        checkpoint_ordinal=request["ordinal"], predecessor_digest=request["predecessor_digest"], checkpoint_digest=record.digest,
+        population_identity=data["population_identity"], execution_identity=data["execution_identity"],
+        currentness="EXACT_LATEST_AT_PREPARATION")
+    units = {u["proof_id"]: u for u in plan["units"]}
+    evidence = {e["evidence_id"]: e for e in data["evidence"]}
+    proofs = []
+    for fact in data["proofs"]:
+        item, unit = evidence[fact["evidence_id"]], units[fact["proof_id"]]
+        observation = item["verification"]["candidate"]
+        reports, exit_code = observation["reports"], item["result"]["exit_code"]
+        # Exit 1 alone includes fixture/collection failures. A decisive candidate
+        # FAIL requires observed call failure, passing setup/teardown and no skip.
+        if (any(r["phase"] != "call" and r["outcome"] == "FAIL" for r in reports)
+                or exit_code not in (0, 1)):
+            outcome = "ERROR"
+        elif (exit_code == 1 and any(r["phase"] == "call" and r["outcome"] == "FAIL" for r in reports)
+                and all(r["outcome"] == "PASS" if r["phase"] != "call" else r["outcome"] in ("PASS", "FAIL") for r in reports)):
+            outcome = "FAIL"
+        elif exit_code == 0 and all(r["outcome"] == "PASS" for r in reports):
+            outcome = "PASS"
+        else:
+            outcome = "UNKNOWN"
+        if not fact["complete"] or not fact["stable"] or observation.get("errors") != []:
+            outcome = "UNKNOWN"
+        order = int(fact["evidence_id"].rsplit("-V", 1)[1])
+        proofs.append(dict(**{key: fact[key] for key in ("proof_id", "unit_id", "evidence_id", "evidence_sha256",
+            "raw_sha256", "raw_size", "native_sha256", "native_size", "manifest_sha256", "source_run_id", "subject_sha",
+            "complete", "stable")}, outcome=outcome, checkpoint_outcome=fact["outcome"],
+            proof_sha256=unit["proof_sha256"], conditions_sha256=verification_digest(unit["proof"]["conditions"]),
+            source_command_sha256=verification_digest(item["source"]["command"]),
+            observation_sha256=item["verification"]["candidate_digest"],
+            raw_locator=f"l3-02/k{request['ordinal']:03d}/{fact['evidence_id']}.raw",
+            native_locator=f"l3-02/k{request['ordinal']:03d}/observation-{order:03d}.json"))
+    by_proof = {p["proof_id"]: p for p in proofs}
+    obligations = []
+    for row in plan["obligations"]:
+        obligation, proof = row["obligation"], by_proof[row["proof_id"]]
+        obligations.append(dict(obligation_id=obligation["id"], revision=obligation["revision"],
+            obligation_sha256=row["obligation_sha256"], claim_id=obligation["claim"]["id"],
+            claim_sha256=verification_digest(obligation["claim"]), kind=obligation["kind"], blocking=obligation["blocking"],
+            conditions_sha256=verification_digest(obligation["conditions"]),
+            provenance_sha256=verification_digest(obligation["provenance"]), acceptance_ids=sorted(obligation["acceptance_ids"]),
+            proof_id=proof["proof_id"], unit_id=proof["unit_id"], outcome=proof["outcome"],
+            complete=proof["complete"], stable=proof["stable"]))
+    result = dict(format=RUNTIME_FEEDBACK_FORMAT, version=1, feedback_id=verification_digest(binding), binding=binding,
+        proofs=proofs, obligations=obligations, resources=data["resources_after"], authority=dict(FEEDBACK_AUTHORITY),
+        **_feedback_summary(proofs, obligations))
+    return parse_runtime_feedback(_original_json(result).encode("ascii"))
+
+
+def parse_runtime_feedback(content: bytes) -> RuntimeFactualFeedback:
+    """Strict bounded inspection codec. Parsed PREPARED is never authority."""
+    from .verification_contract import VerificationContractError, _reuse_decode, _app_exact, _original_hash, verification_digest
+    data = _app_exact(_reuse_decode(content), ("format", "version", "status", "reason", "feedback_id", "binding",
+        "proofs", "obligations", "resources", "acceptance_ids", "affected_obligation_ids", "affected_acceptance_ids",
+        "outstanding_obligation_ids", "outstanding_acceptance_ids", "authority"))
+    def require(condition):
+        if not condition:
+            raise VerificationContractError("invalid bounded factual feedback")
+    def identity(value):
+        require(type(value) is str and _ID.fullmatch(value) is not None and value.lower() not in _COMMAND_NAMES)
+    def identities(values, *, empty=True):
+        require(type(values) is list and len(values) <= MAX_PROOFS and (empty or bool(values)))
+        for value in values:
+            identity(value)
+        require(values == sorted(set(values)))
+    require(data["format"] == RUNTIME_FEEDBACK_FORMAT and type(data["version"]) is int and data["version"] == 1)
+    require(type(data["status"]) is str and data["status"] in _FEEDBACK_REASONS
+            and type(data["reason"]) is str and data["reason"] in _FEEDBACK_REASONS[data["status"]])
+    authority = _app_exact(data["authority"], FEEDBACK_AUTHORITY)
+    require(authority == FEEDBACK_AUTHORITY)
+    for key in ("acceptance_ids", "affected_obligation_ids", "affected_acceptance_ids", "outstanding_obligation_ids", "outstanding_acceptance_ids"):
+        identities(data[key])
+    require(type(data["proofs"]) is list and len(data["proofs"]) <= MAX_PROOFS
+            and type(data["obligations"]) is list and len(data["obligations"]) <= MAX_PROOFS)
+    if data["binding"] is None:
+        require(data["status"] == "BLOCKED" and data["reason"] != "NATIVE_PROOF_UNRESOLVED"
+                and data["feedback_id"] is None and data["resources"] is None
+                and all(data[key] == [] for key in ("proofs", "obligations", "acceptance_ids", "affected_obligation_ids",
+                    "affected_acceptance_ids", "outstanding_obligation_ids", "outstanding_acceptance_ids")))
+        return RuntimeFactualFeedback(content.decode("ascii"))
+    binding = _app_exact(data["binding"], ("task_id", "task_revision", "run_id", "operation", "base_sha", "candidate_sha",
+        "candidate_tree_sha", "admitted_executor", "admitted_run_sha256", "task_sha256", "authorization_sha256", "plan_sha256",
+        "contract", "mapping", "checkpoint_ordinal", "predecessor_digest", "checkpoint_digest", "population_identity",
+        "execution_identity", "currentness"))
+    require(type(binding["task_id"]) is str and re.fullmatch(r"TASK-[A-Za-z0-9_-]{1,75}", binding["task_id"]) is not None)
+    require(type(binding["run_id"]) is str and re.fullmatch(re.escape("RUN-" + binding["task_id"][5:] + "-") + r"[0-9]{3,}", binding["run_id"]) is not None)
+    identity(binding["run_id"])
+    require(type(binding["task_revision"]) is int and 1 <= binding["task_revision"] <= 2_147_483_647
+            and type(binding["checkpoint_ordinal"]) is int and 1 <= binding["checkpoint_ordinal"] <= 17
+            and binding["operation"] == "PRIMARY" and binding["admitted_executor"] in ("codex", "antigravity", "antigravity-minimax")
+            and binding["currentness"] == "EXACT_LATEST_AT_PREPARATION")
+    for key in ("base_sha", "candidate_sha", "candidate_tree_sha"):
+        _original_hash(binding[key], 40)
+    require(binding["candidate_sha"] != binding["base_sha"])
+    for key in ("admitted_run_sha256", "task_sha256", "authorization_sha256", "plan_sha256", "checkpoint_digest", "population_identity", "execution_identity"):
+        _original_hash(binding[key])
+    if binding["checkpoint_ordinal"] == 1:
+        require(binding["predecessor_digest"] is None)
+    else:
+        _original_hash(binding["predecessor_digest"])
+    for key in ("contract", "mapping"):
+        pin = _app_exact(binding[key], ("id", "revision", "digest"))
+        identity(pin["id"])
+        require(type(pin["revision"]) is int and 1 <= pin["revision"] <= 2_147_483_647)
+        _original_hash(pin["digest"])
+    require(data["feedback_id"] == verification_digest(binding))
+    checkpoint_resource_facts(data["resources"])
+    require(data["resources"]["checkpoints"] == binding["checkpoint_ordinal"]
+            and data["resources"]["executions"] >= binding["checkpoint_ordinal"]
+            and data["resources"]["elapsed_ms"] > 0 and bool(data["proofs"]) and bool(data["obligations"]))
+    by_proof, evidence_ids = {}, set()
+    for proof in data["proofs"]:
+        _app_exact(proof, ("proof_id", "unit_id", "evidence_id", "evidence_sha256", "raw_sha256", "raw_size", "native_sha256",
+            "native_size", "manifest_sha256", "source_run_id", "subject_sha", "complete", "stable", "outcome", "checkpoint_outcome",
+            "proof_sha256", "conditions_sha256", "source_command_sha256", "observation_sha256", "raw_locator", "native_locator"))
+        identity(proof["proof_id"])
+        require(type(proof["evidence_id"]) is str and re.fullmatch(re.escape(binding["run_id"]) + r"-V[0-9]{3}", proof["evidence_id"]) is not None)
+        require(proof["proof_id"] not in by_proof and proof["evidence_id"] not in evidence_ids)
+        order = int(proof["evidence_id"].rsplit("-V", 1)[1])
+        require(1 <= order <= data["resources"]["executions"]
+                and (proof["source_run_id"], proof["subject_sha"]) == (binding["run_id"], binding["candidate_sha"]))
+        for key in ("unit_id", "evidence_sha256", "raw_sha256", "native_sha256", "manifest_sha256", "proof_sha256",
+                    "conditions_sha256", "source_command_sha256", "observation_sha256"):
+            _original_hash(proof[key])
+        require(proof["unit_id"] == proof["proof_sha256"])
+        for key in ("raw_size", "native_size"):
+            require(type(proof[key]) is int and 0 < proof[key] <= CHECKPOINT_RESOURCE_LIMITS["raw_bytes"])
+        require(type(proof["complete"]) is bool and type(proof["stable"]) is bool
+                and type(proof["outcome"]) is str and proof["outcome"] in ("PASS", "FAIL", "ERROR", "UNKNOWN")
+                and type(proof["checkpoint_outcome"]) is str and proof["checkpoint_outcome"] in ("PASS", "FAIL", "ERROR"))
+        require(proof["outcome"] not in ("PASS", "FAIL") or (proof["complete"] and proof["stable"] and proof["checkpoint_outcome"] == proof["outcome"]))
+        require(proof["raw_locator"] == f"l3-02/k{binding['checkpoint_ordinal']:03d}/{proof['evidence_id']}.raw"
+                and proof["native_locator"] == f"l3-02/k{binding['checkpoint_ordinal']:03d}/observation-{order:03d}.json")
+        by_proof[proof["proof_id"]] = proof
+        evidence_ids.add(proof["evidence_id"])
+    require(list(by_proof) == sorted(by_proof))
+    require(data["resources"]["raw_bytes"] >= sum(p["raw_size"] + p["native_size"] for p in data["proofs"]))
+    seen, used = [], set()
+    for obligation in data["obligations"]:
+        _app_exact(obligation, ("obligation_id", "revision", "obligation_sha256", "claim_id", "claim_sha256", "kind", "blocking",
+            "conditions_sha256", "provenance_sha256", "acceptance_ids", "proof_id", "unit_id", "outcome", "complete", "stable"))
+        for key in ("obligation_id", "claim_id", "proof_id"):
+            identity(obligation[key])
+        require(type(obligation["revision"]) is int and 1 <= obligation["revision"] <= 2_147_483_647
+                and obligation["kind"] == "candidate" and type(obligation["blocking"]) is bool)
+        for key in ("obligation_sha256", "claim_sha256", "conditions_sha256", "provenance_sha256", "unit_id"):
+            _original_hash(obligation[key])
+        identities(obligation["acceptance_ids"], empty=False)
+        proof = by_proof.get(obligation["proof_id"])
+        require(proof is not None and all(type(obligation[k]) is type(proof[k]) and obligation[k] == proof[k]
+            for k in ("unit_id", "outcome", "complete", "stable", "conditions_sha256")))
+        seen.append(obligation["obligation_id"])
+        used.add(obligation["proof_id"])
+    require(seen == sorted(set(seen)) and used == set(by_proof))
+    summary = _feedback_summary(data["proofs"], data["obligations"])
+    require(all(data[k] == v for k, v in summary.items()))
+    return RuntimeFactualFeedback(content.decode("ascii"))

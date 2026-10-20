@@ -52,6 +52,8 @@ from .intra_run_proof_contract import (
     RuntimeCheckpoint, TerminalProofDecision, RUNTIME_CHECKPOINT_FORMAT,
     CHECKPOINT_RESOURCE_LIMITS, checkpoint_resource_facts, checkpoint_population_identity,
     parse_runtime_checkpoint,
+    FactualFeedbackRequest, RuntimeFactualFeedback, format_factual_feedback_request,
+    format_runtime_feedback, parse_runtime_feedback, _checkpoint_factual_feedback, _blocked_runtime_feedback,
 )
 from .verification import (
     _checkpoint_reviewed_execution, _execute_checkpoint_verification, _checkpoint_native_facts,
@@ -249,14 +251,14 @@ class RuntimeCompletion:
         with os.scandir(directory) as entries:
             names = []
             for entry in entries:
-                if len(names) >= 37:
+                if len(names) >= 54:
                     raise VerificationContractError("CHECKPOINT_HISTORY_BOUND")
                 names.append(entry.name)
         allowed = {"terminal-intent.json"}
-        if any(name not in allowed and re.fullmatch(r"k(?:00[1-9]|01[0-7])(?:\.json)?", name) is None for name in names):
+        if any(name not in allowed and re.fullmatch(r"k(?:00[1-9]|01[0-7])(?:\.json|\.feedback\.json)?", name) is None for name in names):
             raise VerificationContractError("CHECKPOINT_CONFLICTING_HISTORY")
         run_digest = _checkpoint_digest(_original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES))
-        for name in sorted(n for n in names if n.endswith(".json") and n.startswith("k")):
+        for name in sorted(n for n in names if re.fullmatch(r"k[0-9]{3}\.json", n)):
             record = parse_runtime_checkpoint(_original_local(directory / name, MAX_ORIGINAL_PROOF_BYTES))
             data, previous = record.data, history[-1] if history else None
             request = parse_checkpoint_request(_original_json(data["request"]).encode("ascii"))
@@ -299,6 +301,16 @@ class RuntimeCompletion:
             history.append(record)
         if any(name.startswith("k") and not name.endswith(".json") and name + ".json" not in names for name in names):
             raise VerificationContractError("CHECKPOINT_UNKNOWN_EXECUTION_EFFECT")
+        # F_i is subordinate to its original K_i in this same bounded store.
+        # There is no mutable feedback index, independent owner or recovery path.
+        for name in sorted(n for n in names if n.endswith(".feedback.json")):
+            ordinal = int(name[1:4])
+            if ordinal > len(history):
+                raise VerificationContractError("FEEDBACK_WITHOUT_ORIGINAL_CHECKPOINT")
+            original = parse_runtime_feedback(_original_local(directory / name, MAX_ORIGINAL_PROOF_BYTES))
+            expected = _checkpoint_factual_feedback(history[ordinal - 1], self.run.executor)
+            if original.data["status"] != "PREPARED" or format_runtime_feedback(original) != format_runtime_feedback(expected):
+                raise VerificationContractError("FEEDBACK_IMMUTABLE_IDENTITY_OR_CONTENT_CONFLICT")
         return history
 
     def _authenticate_checkpoint(self, request, digest, *, terminal=False):
@@ -406,6 +418,65 @@ class RuntimeCompletion:
             _checkpoint_write_once(directory / f"k{request.ordinal:03d}.json", content)
             self._authenticate_checkpoint(request, record.digest)
             return record
+
+    def prepare_feedback(self, request: FactualFeedbackRequest) -> RuntimeFactualFeedback:
+        """Explicit inert L3-03 preparation; no proof execution or continuation.
+
+        Only the exact latest native checkpoint of this admitted Runtime owner
+        can produce durable factual F_i. Parsed records, caller outcomes and
+        correction labels confer no authority. All failures expose fixed codes,
+        never exception/log text or user filesystem paths.
+        """
+        format_factual_feedback_request(request)
+        checkpoint = request.checkpoint
+        operation = checkpoint.scheduler.operation
+        if operation in ("REPAIR", "REMEDIATION"):
+            return _blocked_runtime_feedback("CORRECTION_NATIVE_AUTHORITY_NOT_ESTABLISHED")
+        if operation != "PRIMARY":
+            return _blocked_runtime_feedback("OPERATION_NOT_SUPPORTED")
+        try:
+            directory = self._checkpoint_binding(checkpoint)
+            if os.path.lexists(_checkpoint_fence(directory)):
+                raise VerificationContractError("FEEDBACK_COMPETING_OR_INTERRUPTED_EFFECT")
+            record = self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
+            expected = _checkpoint_factual_feedback(record, self.run.executor)
+            path = directory / f"k{checkpoint.ordinal:03d}.feedback.json"
+
+            def reconcile():
+                original = parse_runtime_feedback(_original_local(path, MAX_ORIGINAL_PROOF_BYTES))
+                if (original.data["status"] != "PREPARED"
+                        or format_runtime_feedback(original) != format_runtime_feedback(expected)):
+                    raise VerificationContractError("FEEDBACK_IMMUTABLE_IDENTITY_OR_CONTENT_CONFLICT")
+                return original
+
+            if os.path.lexists(path):
+                original = reconcile()
+                self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
+                if os.path.lexists(_checkpoint_fence(directory)):
+                    raise VerificationContractError("FEEDBACK_COMPETING_OR_INTERRUPTED_EFFECT")
+                return original
+            if expected.data["status"] != "PREPARED":
+                # PASS and authenticated unresolved facts are read-only results.
+                self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
+                if os.path.lexists(_checkpoint_fence(directory)):
+                    raise VerificationContractError("FEEDBACK_COMPETING_OR_INTERRUPTED_EFFECT")
+                return expected
+            intent = dict(version=1, kind="FACTUAL_FEEDBACK", run_id=self.run.run_id,
+                checkpoint_digest=record.digest, feedback_id=expected.data["feedback_id"], feedback_digest=expected.digest)
+            with _checkpoint_mutation(directory, intent):
+                # Same exclusive Runtime fence as checkpoint, RESULT and FAILURE.
+                current = self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
+                if format_runtime_feedback(_checkpoint_factual_feedback(current, self.run.executor)) != format_runtime_feedback(expected):
+                    raise VerificationContractError("FEEDBACK_CHANGED_AT_EFFECT_BOUNDARY")
+                if not os.path.lexists(path):
+                    _checkpoint_write_once(path, format_runtime_feedback(expected))
+                original = reconcile()
+                self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
+                return original
+        except (ValueError, OSError, RuntimeError, TypeError, KeyError):
+            # Unknown/partial effects retain the existing fence and bytes. Never
+            # erase, replace, rerun proof or return a raw diagnostic as F_i.
+            return _blocked_runtime_feedback("NATIVE_CHECKPOINT_NOT_ESTABLISHED")
 
     def terminal_reuse(self, request: ProofCheckpointRequest, *, checkpoint_digest: str) -> TerminalProofDecision:
         """Prospective decision only; it cannot write RESULT or grant execution."""
