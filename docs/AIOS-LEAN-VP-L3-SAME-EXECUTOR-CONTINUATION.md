@@ -24,6 +24,15 @@ prospective frame capture. Normal PRIMARY,
 REPAIR and REMEDIATION dispatch, terminal ownership, historical V1/V2 decoding,
 verification policies and the L3-01/02/03 APIs retain their existing behavior.
 
+Native checkpoint, feedback and consumption inspection types/codecs are defined
+in `aios_renew.runtime`, alongside their existing owner. Loading Runtime also
+exposes the same objects under the historical `intra_run_proof_contract` names
+for native callers that already load Runtime. Standalone offline declarations
+import only their original pure dependencies; they do not import or load
+Runtime, verification, artifacts or a production scheduler. These compatibility
+aliases add no execution route or authority, and the original offline public
+validators remain independent of them.
+
 ## Live process-local holder and adapter observation
 
 `ExecutorBoundary` retains a private invocation frame only while the original
@@ -166,6 +175,12 @@ terminal/fence contention, callback reentry, crash/partial/complete-write
 ambiguity, ERROR/UNKNOWN, absent consent/accounting, exhausted limit, no progress,
 committed partial improvement and correction spoof. Positive liveness comes
 from the actual invocation and registry, not an affirmative validator mock.
+The progress case begins with two original failures and one passing independent
+worker proof. It retains all three complete mandatory proofs and their original
+programs across the scoped subject commit, reconciles the first immutable
+receipt and observes no extra proof/callback effects on exact replay. The crash
+case retains the entire original store and blocks a reconstructed owner before
+another native invocation.
 Runtime owns canonical execution and EVIDENCE for these definitions.
 
 This is **preactivation only**. L3-05 owns real rollout/rollback and finite Human

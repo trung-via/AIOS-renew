@@ -17,7 +17,7 @@ from aios_renew import runtime as completion
 from aios_renew.dispatcher import Dispatcher, DispatcherError
 from aios_renew.executor import ExecutorBoundary, ExecutorBoundaryError
 from aios_renew.execution_profile import ResolvedExecutionProfile
-from aios_renew.intra_run_proof_contract import (
+from aios_renew.runtime import (
     FEEDBACK_AUTHORITY, FactualFeedbackRequest, FeedbackConsumptionRequest,
     LocalFeedbackConfirmation, format_feedback_consumption_request,
     parse_feedback_consumption_request, format_feedback_consumption,
@@ -495,10 +495,20 @@ def test_progress_requires_current_committed_scoped_causal_native_improvement(tm
     f = ProgressFixture(tmp_path / delta, monkeypatch, multi=True)
     request, first, _ = prepared(f)
     assert first.data["outstanding"] == ["fixture-obligation", "integration"]
+    assert {p["proof_id"]: p["outcome"] for p in first.data["proofs"]} == {
+        "fixture-proof": "FAIL", "integration-proof": "FAIL", "workers-proof": "PASS"}
+    assert all(p["complete"] and p["stable"] for p in first.data["proofs"])
+    # All three proof programs predate admission. Candidate progress changes
+    # only the scoped subject, never a test/fixture or mandatory obligation.
+    programs = {name: f.git("show", f.run.base_sha + ":tests/test_" + name + ".py")
+        for name in ("artifacts", "integration", "workers")}
+    assert b"endswith('FIXED\\n')" in programs["integration"]
+    assert len(f.calls) == 3
 
     def body(adapter):
         initial = adapter.consume(request)
         assert initial.data["status"] == "LOCAL_ACKNOWLEDGED"
+        original_receipt = (f.directory / "k001.consumption.json").read_bytes()
         if delta == "same-sha":
             assert adapter.consume(request) == initial
             assert initial.data["progress"] == "NOT_ESTABLISHED"
@@ -529,6 +539,13 @@ def test_progress_requires_current_committed_scoped_causal_native_improvement(tm
             assert_blocked(adapter.consume(request))
             return
         second = f.owner.seal_checkpoint(second_request)
+        assert second.data["population_identity"] == first.data["population_identity"]
+        assert second.data["execution_identity"] == first.data["execution_identity"]
+        assert {p["proof_id"] for p in second.data["proofs"]} == {p["proof_id"] for p in first.data["proofs"]}
+        assert all(p["complete"] and p["stable"] for p in second.data["proofs"])
+        assert all(f.git("show", f.target.sha + ":tests/test_" + name + ".py") == content
+            for name, content in programs.items())
+        assert len(f.calls) == 6
         source = FactualFeedbackRequest(1, second_request, second.digest)
         feedback = f.prepare(source)
         assert feedback.data["status"] == "PREPARED"
@@ -547,7 +564,11 @@ def test_progress_requires_current_committed_scoped_causal_native_improvement(tm
         else:
             assert value.data["progress"] == "NOT_ESTABLISHED"
             assert value.data["stop"]["reason"] == "NO_VERIFIED_COMMITTED_PROGRESS"
+        retained = snapshot(f.directory)
         assert adapter.consume(current) == value
+        assert snapshot(f.directory) == retained
+        assert (f.directory / "k001.consumption.json").read_bytes() == original_receipt
+        assert len(f.calls) == 6 and len(adapter.observed) == 2
 
     adapter = invocation(f, body)
     assert adapter.executions == 1
@@ -587,13 +608,15 @@ def test_crash_reconstructed_owner_cannot_skip_original_receipt_lineage(tmp_path
     feedback = f.prepare(source)
     assert feedback.data["status"] == "PREPARED"
     assert feedback.data["outstanding_obligation_ids"] == ["integration"]
-    original = snapshot(f.directory)
+    original = snapshot(f.directory.parent)
     f.owner = RuntimeCompletion(repo=f.repo, state=f.state, task=f.task, run=f.run,
         run_path=f.owner.run_path, verification_runner=f.actual_runner,
         observation_tracker=None, error_type=RuntimeError)
     current = FeedbackConsumptionRequest(1, source, feedback.digest)
     reconstructed = invocation(f, lambda a: assert_blocked(a.consume(current)), blocked_start=True)
-    assert reconstructed.observed == [] and snapshot(f.directory) == original
+    assert reconstructed.observed == [] and snapshot(f.directory.parent) == original
+    assert first_adapter.executions == 1 and reconstructed.executions == 0
+    assert len(f.calls) == 6
 
 
 def test_invocation_without_any_feedback_receipt_still_cannot_be_reconstructed(failed):
