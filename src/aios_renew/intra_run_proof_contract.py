@@ -1133,3 +1133,164 @@ def parse_runtime_feedback(content: bytes) -> RuntimeFactualFeedback:
     summary = _feedback_summary(data["proofs"], data["obligations"])
     require(all(data[k] == v for k, v in summary.items()))
     return RuntimeFactualFeedback(content.decode("ascii"))
+
+
+# L3-04: closed inspection material. Only RuntimeCompletion, on the original
+# ExecutorBoundary call stack, can establish a local callback observation.
+CONSUMPTION_REQUEST_FORMAT = "AIOS_L3_LOCAL_CONSUMPTION_REQUEST"
+CONSUMPTION_FORMAT = "AIOS_L3_LOCAL_CONSUMPTION"
+_CONSUMPTION_BLOCKS = frozenset({
+    "STOP_LATCHED", "LIVE_INVOCATION_NOT_ESTABLISHED",
+    "NATIVE_SOURCE_OR_EFFECT_NOT_ESTABLISHED", "NATIVE_PROOF_UNRESOLVED",
+    "CORRECTION_NATIVE_AUTHORITY_NOT_ESTABLISHED", "CHECKPOINT_RESOURCE_LIMIT_REACHED",
+    "CALLBACK_CONFIRMATION_NOT_ESTABLISHED",
+})
+_CONTINUATION_STOPS = frozenset({
+    "NO_VERIFIED_COMMITTED_PROGRESS", "FINITE_HUMAN_OPT_IN_AND_TOKEN_BUDGET_NOT_ESTABLISHED",
+    "CHECKPOINT_RESOURCE_LIMIT_REACHED", "SOURCE_OR_SESSION_NOT_ESTABLISHED",
+})
+_CONSUMPTION_BINDING = (
+    "task_id", "task_revision", "run_id", "operation", "base_sha", "candidate_sha", "candidate_tree_sha",
+    "admitted_executor", "admitted_run_sha256", "authorization_sha256", "checkpoint_ordinal",
+    "checkpoint_digest", "feedback_id", "feedback_digest", "population_identity", "execution_identity",
+    "runtime_identity", "invocation_identity", "profile_sha256",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class FeedbackConsumptionRequest:
+    version: int
+    source: FactualFeedbackRequest
+    feedback_digest: str
+
+    def __post_init__(self):
+        from .verification_contract import VerificationContractError, _original_hash
+        if type(self.version) is not int or self.version != 1:
+            raise VerificationContractError("invalid local consumption version")
+        format_factual_feedback_request(self.source)
+        _original_hash(self.feedback_digest)
+
+
+def format_feedback_consumption_request(value: FeedbackConsumptionRequest) -> bytes:
+    from .verification_contract import VerificationContractError, _original_json
+    if type(value) is not FeedbackConsumptionRequest:
+        raise VerificationContractError("exact typed local consumption request required")
+    value.__post_init__()
+    return _original_json(dict(format=CONSUMPTION_REQUEST_FORMAT, version=value.version,
+        source=factual_feedback_request_data(value.source), feedback_digest=value.feedback_digest)).encode("ascii")
+
+
+def parse_feedback_consumption_request(content: bytes) -> FeedbackConsumptionRequest:
+    from .verification_contract import VerificationContractError, _reuse_decode, _app_exact, _original_json
+    data = _app_exact(_reuse_decode(content), ("format", "version", "source", "feedback_digest"))
+    if data["format"] != CONSUMPTION_REQUEST_FORMAT:
+        raise VerificationContractError("invalid local consumption request format")
+    return FeedbackConsumptionRequest(data["version"],
+        parse_factual_feedback_request(_original_json(data["source"]).encode("ascii")), data["feedback_digest"])
+
+
+@dataclass(frozen=True, slots=True)
+class LocalFeedbackConfirmation:
+    """An adapter's exact echo, accepted only as a direct callback return."""
+    receipt_id: str
+    feedback_digest: str
+
+    def __post_init__(self):
+        from .verification_contract import _original_hash
+        _original_hash(self.receipt_id)
+        _original_hash(self.feedback_digest)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeFeedbackConsumption:
+    content_json: str
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.content_json.encode("ascii")).hexdigest()
+
+    @property
+    def data(self) -> dict:
+        return json.loads(self.content_json)
+
+
+def format_feedback_consumption(value: RuntimeFeedbackConsumption) -> bytes:
+    from .verification_contract import VerificationContractError
+    if type(value) is not RuntimeFeedbackConsumption:
+        raise VerificationContractError("exact typed local consumption required")
+    content = value.content_json.encode("ascii")
+    parse_feedback_consumption(content)
+    return content
+
+
+def parse_feedback_consumption(content: bytes) -> RuntimeFeedbackConsumption:
+    from .verification_contract import VerificationContractError, _reuse_decode, _app_exact, _original_hash, verification_digest
+    data = _app_exact(_reuse_decode(content), ("format", "version", "status", "reason", "receipt_id", "binding",
+        "acknowledgment", "lease_observation", "progress", "resources", "stop", "authority"))
+
+    def require(condition):
+        if not condition:
+            raise VerificationContractError("invalid bounded local consumption")
+
+    require(data["format"] == CONSUMPTION_FORMAT and type(data["version"]) is int and data["version"] == 1)
+    require(_app_exact(data["authority"], FEEDBACK_AUTHORITY) == FEEDBACK_AUTHORITY)
+    stop = _app_exact(data["stop"], ("status", "reason", "c2_admission", "human_opt_in", "token_budget"))
+    require(stop["status"] == "STOP" and type(stop["reason"]) is str and stop["reason"] in _CONTINUATION_STOPS
+            and stop["c2_admission"] == "NOT_AUTHORIZED" and stop["human_opt_in"] == "NOT_ESTABLISHED"
+            and stop["token_budget"] == "NOT_ESTABLISHED")
+    require(type(data["status"]) is str and type(data["reason"]) is str)
+    if data["status"] == "BLOCKED":
+        require(data["reason"] in _CONSUMPTION_BLOCKS and data["receipt_id"] is None and data["binding"] is None
+                and data["acknowledgment"] == data["lease_observation"] == data["progress"] == "NOT_ESTABLISHED"
+                and data["resources"] is None and stop["reason"] == "SOURCE_OR_SESSION_NOT_ESTABLISHED")
+        return RuntimeFeedbackConsumption(content.decode("ascii"))
+    require(data["status"] == "LOCAL_ACKNOWLEDGED" and data["reason"] == "SAME_INVOCATION_ADAPTER_CONFIRMED"
+            and data["acknowledgment"] == "IN_INVOCATION_ADAPTER_CONFIRMED"
+            and data["lease_observation"] == "CURRENT_DURING_LOCAL_CALLBACK"
+            and data["progress"] in ("NOT_ESTABLISHED", "VERIFIED_SCOPED_DESCENDANT_PROGRESS"))
+    binding = _app_exact(data["binding"], _CONSUMPTION_BINDING)
+    require(type(binding["task_id"]) is str and re.fullmatch(r"TASK-[A-Za-z0-9_-]{1,75}", binding["task_id"]) is not None)
+    require(type(binding["run_id"]) is str and len(binding["run_id"]) <= 128
+            and re.fullmatch(re.escape("RUN-" + binding["task_id"][5:] + "-") + r"[0-9]{3,}", binding["run_id"]) is not None)
+    require(type(binding["task_revision"]) is int and 1 <= binding["task_revision"] <= 2_147_483_647
+            and type(binding["checkpoint_ordinal"]) is int and 1 <= binding["checkpoint_ordinal"] <= 17
+            and binding["operation"] == "PRIMARY"
+            and binding["admitted_executor"] in ("codex", "antigravity", "antigravity-minimax"))
+    for key in ("base_sha", "candidate_sha", "candidate_tree_sha"):
+        _original_hash(binding[key], 40)
+    require(binding["candidate_sha"] != binding["base_sha"])
+    for key in ("admitted_run_sha256", "authorization_sha256", "checkpoint_digest", "feedback_id", "feedback_digest",
+                "population_identity", "execution_identity", "runtime_identity", "invocation_identity"):
+        _original_hash(binding[key])
+    if binding["profile_sha256"] is not None:
+        _original_hash(binding["profile_sha256"])
+    require(data["progress"] != "VERIFIED_SCOPED_DESCENDANT_PROGRESS" or binding["checkpoint_ordinal"] >= 2)
+    require(data["receipt_id"] == verification_digest(binding))
+    resources = checkpoint_resource_facts(data["resources"])
+    require(resources["checkpoints"] == binding["checkpoint_ordinal"] and resources["executions"] >= resources["checkpoints"]
+            and resources["raw_bytes"] > 0 and resources["elapsed_ms"] > 0)
+    exhausted = any(resources[k] >= limit for k, limit in CHECKPOINT_RESOURCE_LIMITS.items())
+    expected_stop = ("CHECKPOINT_RESOURCE_LIMIT_REACHED" if exhausted else
+        "NO_VERIFIED_COMMITTED_PROGRESS" if data["progress"] == "NOT_ESTABLISHED" else
+        "FINITE_HUMAN_OPT_IN_AND_TOKEN_BUDGET_NOT_ESTABLISHED")
+    require(stop["reason"] == expected_stop)
+    return RuntimeFeedbackConsumption(content.decode("ascii"))
+
+
+def _consumption_result(*, reason=None, binding=None, resources=None, progress="NOT_ESTABLISHED"):
+    from .verification_contract import _original_json, verification_digest
+    acknowledged = binding is not None
+    exhausted = resources is not None and any(resources[k] >= v for k, v in CHECKPOINT_RESOURCE_LIMITS.items())
+    stop_reason = ("SOURCE_OR_SESSION_NOT_ESTABLISHED" if not acknowledged else
+        "CHECKPOINT_RESOURCE_LIMIT_REACHED" if exhausted else
+        "NO_VERIFIED_COMMITTED_PROGRESS" if progress == "NOT_ESTABLISHED" else
+        "FINITE_HUMAN_OPT_IN_AND_TOKEN_BUDGET_NOT_ESTABLISHED")
+    return parse_feedback_consumption(_original_json(dict(format=CONSUMPTION_FORMAT, version=1,
+        status="LOCAL_ACKNOWLEDGED" if acknowledged else "BLOCKED",
+        reason="SAME_INVOCATION_ADAPTER_CONFIRMED" if acknowledged else reason,
+        receipt_id=verification_digest(binding) if acknowledged else None, binding=binding,
+        acknowledgment="IN_INVOCATION_ADAPTER_CONFIRMED" if acknowledged else "NOT_ESTABLISHED",
+        lease_observation="CURRENT_DURING_LOCAL_CALLBACK" if acknowledged else "NOT_ESTABLISHED",
+        progress=progress, resources=resources, stop=dict(status="STOP", reason=stop_reason,
+            c2_admission="NOT_AUTHORIZED", human_opt_in="NOT_ESTABLISHED", token_budget="NOT_ESTABLISHED"),
+        authority=dict(FEEDBACK_AUTHORITY))).encode("ascii"))

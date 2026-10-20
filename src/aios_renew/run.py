@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import contextmanager
 from threading import Lock
 
 from .task import Task
@@ -149,6 +150,22 @@ class RunLeaseRegistry:
 
         with self._lock:
             return self._leases.get(task_id)
+
+    @contextmanager
+    def held(self, lease: RunLease):
+        """Check the original holder around a synchronous local observation.
+
+        Release remains operative during the callback, including from another
+        thread. Reacquisition produces a different token and cannot hide loss
+        of this original holder. No serialized token reconstructs its identity.
+        """
+        with self._lock:
+            if type(lease) is not RunLease or self._leases.get(lease.task_id) is not lease:
+                raise LeaseConflictError("current original lease holder required")
+        yield
+        with self._lock:
+            if self._leases.get(lease.task_id) is not lease:
+                raise LeaseConflictError("original lease was released during observation")
 
 
 def _non_empty(value: object, path: str) -> str:

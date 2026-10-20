@@ -61,6 +61,7 @@ class Dispatcher:
         operation: Operation,
         adapter_factories: Mapping[str, AdapterFactory],
         execution_profile: ResolvedExecutionProfile | None = None,
+        prospective_runtime=None,
     ) -> None:
         try:
             self._adapter_factory = adapter_factories[selected_executor]
@@ -71,7 +72,14 @@ class Dispatcher:
         self._selected_executor = selected_executor
         self._operation = operation
         self._execution_profile = execution_profile
+        self._prospective_runtime = prospective_runtime
         self._invoked = False
+        self._active_boundary: ExecutorBoundary | None = None
+
+    @property
+    def active_boundary(self) -> ExecutorBoundary | None:
+        """Explicit prospective PRIMARY stack; never a lease or dispatch permit."""
+        return self._active_boundary
 
     def dispatch_primary(
         self,
@@ -84,12 +92,15 @@ class Dispatcher:
         """Invoke the selected PRIMARY adapter through the frozen lease boundary."""
 
         adapter = self._claim_adapter(run=run, operation="PRIMARY")
-        return ExecutorBoundary(leases).invoke(
-            task=task,
-            run=run,
-            lease=lease,
-            adapter=adapter,
-        )
+        if self._prospective_runtime is None:
+            return ExecutorBoundary(leases).invoke(task=task, run=run, lease=lease, adapter=adapter)
+        boundary = ExecutorBoundary(leases, execution_profile=self._execution_profile,
+            prospective_runtime=self._prospective_runtime)
+        self._active_boundary = boundary
+        try:
+            return boundary.invoke(task=task, run=run, lease=lease, adapter=adapter)
+        finally:
+            self._active_boundary = None
 
     def dispatch_remediation(
         self, *, execution: RemediationExecution
