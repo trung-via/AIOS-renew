@@ -147,29 +147,22 @@ def _parse_pytest_summary_reports(summary: str, command: str) -> list[dict[str, 
         line = raw_line[:_MAX_SUMMARY_LINE_LENGTH]
 
         if _PYTEST_HEADER_RE.match(line):
-            if current_section:
-                final_reports = current_section
             current_section = []
             continue
 
         if current_section is not None:
             if _PYTEST_FOOTER_RE.match(line):
-                if current_section:
-                    final_reports = current_section
+                final_reports = current_section
                 current_section = None
                 continue
 
             match = _PYTEST_REPORT_RE.match(line)
             if match:
-                node_part = match.group(2)
-                nodeid = node_part.split(" - ", 1)[0]
-                detail = line.split(" - ", 1)[-1] if " - " in line else ""
-                current_section.append(dict(nodeid=nodeid, phase="unknown", detail=detail))
-                if len(current_section) >= _MAX_SUMMARY_REPORTS_CAP:
-                    pass
-
-    if current_section:
-        final_reports = current_section
+                if len(current_section) < _MAX_SUMMARY_REPORTS_CAP:
+                    node_part = match.group(2)
+                    nodeid = node_part.split(" - ", 1)[0]
+                    detail = line.split(" - ", 1)[-1] if " - " in line else ""
+                    current_section.append(dict(nodeid=nodeid, phase="unknown", detail=detail))
 
     return final_reports
 

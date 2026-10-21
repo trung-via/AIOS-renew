@@ -1117,8 +1117,8 @@ def test_failure_transport_recovery_public_legacy_contamination_fails_closed(mon
             reader(contaminated)
 
     def remote_blob(_repo, *args, **_kwargs):
-        if args[0] == "show":
-            assert args[1].endswith(":.ai/transport/failure.json")
+        if args[0] in ("show", "cat-file"):
+            assert args[-1].endswith(":.ai/transport/failure.json")
             return 0, contaminated.decode(), ""
         assert args[0] == "fetch"
         return 0, "", ""
@@ -3184,7 +3184,7 @@ def test_task393_ac2_stderr_only_failure_diagnostic_projection():
     assert detail["failed_nodes"][0]["error_types"] == ["AssertionError"]
 
 
-@pytest.mark.parametrize("count", [0, 1, 32, 33, 40])
+@pytest.mark.parametrize("count", [0, 1, 32, 33, 40, 150])
 def test_task393_ac3_bounded_nodes_and_honest_truncation(count):
     _, private = _native_failure_fixture()
     private.update(run_id="RUN-393-011", task=dict(id="TASK-393", revision=2), phase="VERIFICATION")
@@ -3294,6 +3294,17 @@ def test_task393_ac4_unsupported_malformed_error_only_and_spoofed_headers():
     assert detail["failed_nodes"][0]["identity"] == "tests/test_real.py::test_actual"
     assert detail["failed_nodes"][0]["error_types"] == ["AssertionError"]
 
+    # 6. Truncated summary (missing closing footer line)
+    truncated_summary = (
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_trunc.py::test_trunc - AssertionError: cut off before footer\n"
+    )
+    private["error"]["verification"][0] = dict(command="python -m pytest -q", exit_code=1, summary=truncated_summary)
+    context = review_transport.failure_context(private, artifact_sha="0" * 40)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "UNAVAILABLE"
+    assert detail["failed_nodes"] == []
+
 
 def test_task393_ac5_privacy_and_secret_redaction_in_long_summaries():
     _, private = _native_failure_fixture()
@@ -3326,3 +3337,20 @@ def test_task393_ac5_privacy_and_secret_redaction_in_long_summaries():
     assert "synthetic-secret-xyz" not in serialized
     assert "C:/private" not in serialized
     assert "Traceback" not in serialized
+
+
+def test_task393_reports_capped_at_128_and_requires_footer():
+    from aios_renew.review_transport import _parse_pytest_summary_reports, _MAX_SUMMARY_REPORTS_CAP
+
+    # 150 reports followed by footer -> capped at 128
+    lines = ["=========================== short test summary info ==========================="]
+    for i in range(150):
+        lines.append(f"FAILED tests/test_scale.py::test_{i:03d} - AssertionError: error {i}")
+    lines.append("=========================== 150 failed in 1.00s ===========================")
+    reports = _parse_pytest_summary_reports("\n".join(lines), "python -m pytest -q")
+    assert len(reports) == _MAX_SUMMARY_REPORTS_CAP == 128
+
+    # Unclosed summary (no footer) -> returns []
+    unclosed = "\n".join(lines[:-1])
+    assert _parse_pytest_summary_reports(unclosed, "python -m pytest -q") == []
+

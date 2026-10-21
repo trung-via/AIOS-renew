@@ -695,6 +695,7 @@ def test_task393_exact_sync_observes_long_summary_and_stderr_diagnostic(tmp_path
                 verification=[dict(command="python -m pytest -q tests/test_lean_vp_l3_same_executor_continuation.py",
                                    exit_code=1, summary=long_summary)],
             )
+            self.run["task"] = dict(id="TASK-393", revision=2)
             self.failure = json.loads(public_failure(json.dumps(private).encode()))
 
     canonical = Task393CanonicalSources()
