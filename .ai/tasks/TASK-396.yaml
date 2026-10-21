@@ -1,0 +1,156 @@
+task_id: TASK-396
+revision: 1
+goal: Publish one versioned prospective KA-01 v1.3 default budget normative amendment
+  for eligible PRIMARY/REPAIR/REMEDIATION and, in the same eligible reviewed source,
+  atomically supersede the old Lean VP Intra roadmap NEXT with one budgeted v1.3 successor;
+  preserve all published L3-04 and side-track lineage and G3/G6 gates.
+problem: KA-01 v1.2 has no allowed default finite resource budget. Canonical main
+  roadmap still selects the already-published L3-04 via BOTH next_items and sequence.
+  Human has ratified the precise v1.3 values and expressly demands no competing old
+  roadmap; changing only sequence while next_items remains old creates Brain Sync
+  conflict. A distinct normative successor and coherent planning mutation are needed,
+  without premature production activation.
+assumptions:
+- Human 2026-10-21 explicitly ratified defaults of max_corrections=2, max_checkpoints=3,
+  max_run_wall_minutes=240, max_runtime_verification_minutes=180 within RUN wall and
+  optional/null token cap. Human may override each field independently for each exact
+  TASK/revision across PRIMARY/REPAIR/REMEDIATION.
+- Human expressly approved retiring old live Lean VP Intra planning and prioritizing
+  a separate KA-01 v1.3 normative successor before L3-05, L3-06, separate G6 and L4.
+  Original 16 Lean VP L1-L4 slots are preserved.
+- Canonical main at authoring is b537bebbb1c35bb178e2a6e4e436b30f69966482, the reviewed/published
+  TASK-394 r1 RUN-394-001 REVIEW-394-001 PASS 7/7 source. Runtime must independently
+  authenticate main, identity and CAS.
+- Published TASK-391 r2 RUN-391-015 REVIEW-391-003 PASS 12/12 L3-04 source 50dc508e7c2660c40319fb32b43ec5072ca59ce3
+  and TASK-393 r3 RUN-393-009 REVIEW-393-002 PASS 6/6 source c417f3986a06da8f4fd170e57661ac6aa27c1d98
+  are main ancestors and remain historical immutable engineering truth.
+- Current KA-01 document version is 1.2 HUMAN_RATIFIED_PROSPECTIVE_SPEC and NOT_ACTIVATED,
+  published via TASK-386; v1.0/v1.1/v1.2 history must remain exact. R2.1 selects TCA-2
+  v2 for TASK_AUTHORING and ROA-1 R3 for correction authoring after TASK-395 publication.
+- Current roadmap has next_items=[lean-vp-intelligent-intra-primary-after-r21] and
+  exactly one sequence status NEXT on the same old ID. The v1.3 successor must update
+  both selectors atomically and never invent completed L3-05/G3/G6.
+- This is one normative TASK outside original 16 plus exact transcription of Human-approved
+  planning, not L3-05 implementation or production rollout. Brain owns WHAT/WHY; one
+  later explicitly delegated Executor owns HOW. Proposed TASK-396 must be authenticated
+  and admitted by Runtime before it becomes canonical.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/brain-audit-profiles.yaml
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - .ai/tasks/TASK-386.yaml
+  - .ai/tasks/TASK-391.yaml
+  - .ai/tasks/TASK-394.yaml
+  - .ai/tasks/TASK-395.yaml
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - tests/test_brain_sync.py
+  - tests/test_intra_run_proof_contract.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - tests/test_brain_sync.py
+non_goals:
+- No production KA-01 v1.3 Runtime admission/budget enforcement, G3/G6 activation
+  or per-RUN opt-in within this normative TASK; subsequent engineering and exact Human
+  activation remain distinct.
+- No frozen Kernel edit, historic v1.0/v1.1/v1.2 reinterpretation, old TASK/RUN/RESULT/FAILURE/REVIEW
+  mutation, already admitted run retarget, model/executor selection, downstream pin
+  or automatic roadmap advancement.
+- No second scheduler, planner, lifecycle router, agent, DB, implied correction strategy,
+  unsupported failover or mandatory broad full suite; no relaxation of proof on budget
+  exhaustion.
+constraints:
+  hard:
+  - Amend KA-01 as a separately identifiable prospective version 1.3 on v1.2 while
+    retaining immutable historical versions, normative publication gates and NOT_ACTIVATED
+    status. Only future eligible versioned Human-opted-in admitted ACTIVE PRIMARY/REPAIR/REMEDIATION
+    RUNs may later use the profile.
+  - Define exactly max_corrections=2, max_checkpoints=3, cumulative RUN wall=240 minutes
+    and cumulative Runtime verification=180 minutes INCLUDED within that wall, optional
+    max_tokens=null meaning no KA-01-specific token ceiling; retain external provider/account
+    limits.
+  - Human can override each parameter individually by exact TASK id/revision and applicable
+    operation(s) using separately authenticated operational delegation, not operative
+    semantic TASK fields. Missing fields use published defaults; a previous TASK revision/RUN/operation
+    never creates inherited consent or lease.
+  - Actual future Runtime admission must authenticate exact version/policy/profile,
+    current G6 Human per-RUN opt-in, operation-specific source authority, chosen live
+    Executor lease and concrete effective limits, freezing all bounds in each RUN.
+    Neither default selection nor normative publication grants G6.
+  - Require corrections integer >= 0, checkpoints integer >= 1, positive finite run/verification
+    bounds with verification <= run, optional positive token cap if present, transitions
+    <= min(corrections,checkpoints-1), monotone spent/reserved accounting, safe STOP
+    on exhaustion/UNKNOWN, no duplicate debit/reset/reentry and no suppressed mandatory
+    proof.
+  - 'ROADMAP ATOMICITY: change both canonical next_items and sequence status from
+    old Lean VP ID to exactly one new lean-vp-intra-v13-budget-defaults-successor;
+    retain dated historical planning and every prior task/run, 16 original delivery
+    slots and previously superseded VP-03..07 legacy paths. Do not leave a competing
+    NEXT or old current planning_document.'
+  - Add docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md as one authoritative successor planning
+    pointer, mark old docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md live NEXT claim
+    superseded (history preserved), record reviewed TASK-391 L3-04 completion and
+    distinct published TASK-393/394 side tracks, keep next KA-01 v1.3 then L3-05->L3-06->G6->L4.
+  - Provide focused positive and adversarial source-level tests in permitted tests/test_brain_sync.py
+    for single NEXT resolution versus stale next_items/dual NEXT conflict, retaining
+    current Brain Sync API and fail-closed behavior.
+  - All modifications stay within the five exact listed paths. Runtime verifies under
+    minimum-sufficient-v1; Reviewer and Publisher independently gate eligible publication.
+    No production activate, roadmap auto-advance or measurement claim.
+acceptance:
+- id: AC1
+  condition: "The exact KA-01 document defines prospective version 1.3 and Human 2026-10-21\
+    \ resource decision, preserving distinct historical versions v1.0\u2013v1.2, frozen\
+    \ Kernel and NOT_ACTIVATED status."
+- id: AC2
+  condition: Normative resource profile covers eligible PRIMARY, REPAIR, REMEDIATION
+    with 2 corrections, 3 checkpoints, RUN wall 240m, cumulative verification 180m
+    as subset of wall, and optional token cap null; no extra mandatory token input.
+- id: AC3
+  condition: Authenticated operational per-TASK/revision per-field override, default-fill,
+    versioned per-operation selection and immutable effective per-RUN binding preserve
+    exact G6 opt-in/lease/operation scope without operative TASK budget fields or
+    inherited prior-RUN permission.
+- id: AC4
+  condition: Normative guards reject invalid and stale limits/overrides, exhausted
+    checkpoint/correction/time/applicable tokens, replay/double debits and unverifiable
+    accounting; STOP retains complete mandatory verification, monotone counters and
+    one terminal authority.
+- id: AC5
+  condition: Canonical roadmap successor is the unique status NEXT and sole next_items
+    selection; former Lean VP entry is explicitly superseded and historical planning/side
+    track lineages are retained without false completion or second NEXT.
+- id: AC6
+  condition: New successor document and old source retirement note consistently preserve
+    original 16 slots, reviewed TASK-391 L3-04 completion, separately published TASK-393/394,
+    normative v1.3 first then L3-05/L3-06/G6/L4, without automatic activation.
+- id: AC7
+  condition: Legacy KA-01 normative meanings, old planning historical facts, R2.1
+    active audit profiles and no automatic executor selection remain intact; all current
+    planning-document paths and relevant version references resolve consistently.
+- id: AC8
+  condition: Targeted Brain Sync regression establishes unique v1.3 NEXT under coherent
+    next_items+sequence and detects stale old next_items or dual NEXT conflict without
+    silently resuming old planning.
+- id: AC9
+  condition: Exactly five listed authorized files differ, including no Runtime implementation
+    code; v1.3 remains a prospective specification requiring future actual G3/G6 proof,
+    independent semantic review and publication.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_sync.py tests/test_intra_run_proof_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
