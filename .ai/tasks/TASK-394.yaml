@@ -1,0 +1,167 @@
+task_id: TASK-394
+revision: 1
+goal: 'Deliver P1 Scalable Evidence Retrieval over existing authoritative Runtime
+  verification FAILURE: allow an ordinary Brain Sync/attention reader to discover
+  and request subsequent bounded, authenticated, privacy-safe failed-test pages for
+  difficult runs with many observed errors without copying raw logs into provider
+  context or creating an independent evidence store.'
+problem: The current safe_failure_detail and FAILURE_CONTEXT carry no more than 32
+  failures and expose no authenticated next-page selector. Large pytest populations
+  leave Brain unable to inspect errors beyond first page, including when Human cannot
+  run local scripts; a higher one-shot limit would amplify secrets/size, while original
+  4096 failure_count validation and incomplete text semantics risk misleading conclusions.
+  Extend existing source-bound projection/retrieval minimally, after P0.
+assumptions:
+- Human's current 2026-10-21 priority approves P0 then P1 after TASK-392 published,
+  not Lean VP automatic roadmap NEXT advancement. Task 394 is prospective now; EXECUTION
+  OF TASK-394 IS BLOCKED until TASK-393 has a canonical Runtime RESULT, independent
+  REVIEW PASS and exact Publisher publication. Task-394 authoring does not assert
+  P0 implementation, prove it, or allow automatic dispatch.
+- Canonical main bound to authoring SHA 547233f4d23305c4765dbbb692660e60890a9f23 contains
+  authoritatively authored TASK-393 r1 P0 with 6 acceptance criteria and V1 verification.
+  The TASK-393 authoring ingress receipt was CANONICALIZED; no RESULT/REVIEW/PUBLICATION
+  for Task393 has been observed and cannot be presumed. Re-read exact predecessor's
+  finally published source before admitted Task394 execution and repair any lawful
+  new source/scope conflict with explicit Human/Brain authoring, never silently broaden.
+- TASK-392 r1 / RUN-392-001 / REVIEW-392-001 was published at prior main 86e9a3287b1a5b336275a28c173cf835e9c2366d.
+  R2.1 historical TCA-1 v1 remains the currently approved/default TASK_AUTHORING profile;
+  TCA-2 and ROA successor registry entries introduced by TASK-392 are not activated
+  merely by publication.
+- Existing public FAILURE safe_detail exposes only first 32 error node identities;
+  no complete safe pagination in authenticated Git-only Brain Sync. Existing self-host
+  local reader can add bounded projection for UNAVAILABLE but cannot satisfy portable
+  cross-page retrieval alone. New work must reuse exact Runtime FAILURE/source/transport
+  and Brain attention path, not invent independent lifecycle evidence.
+- Current canonical MAX_CANONICAL_FAILURES is 10000, while safe_detail validator's
+  failure_count ceiling is 4096; source-derived full population and display/status
+  must remain distinct. Historical pre-P0 failures lack prospective manifest and must
+  not be reconstructed by guess or mutated.
+- Human has not provided a new Executor/model/effort approval specific to TASK-394;
+  task authoring and publication dependency do not grant execution delegation.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-393.yaml
+  - .ai/tasks/TASK-392.yaml
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/unified_state.py
+  - tests/test_review_transport.py
+  - tests/test_brain_sync.py
+  - tests/test_operator.py
+  - tests/test_brain_context.py
+  modify:
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/operator.py
+  - tests/test_review_transport.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  - tests/test_failure_detail_pagination.py
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+non_goals:
+- No activation, auto retry, automatic correction, second verifier/Reviewer/Publisher,
+  additional RUN, Executor inference, imported Python Agent/downstream adoption, Human-owned
+  roadmap mutation or Lean VP continuation.
+- No unbounded public FAILURE blob, full private raw transport to ChatGPT/Brain, unfiltered
+  arbitrary paths, private terminal rewrite, custom persisted database, new global
+  state index/router/queue or arbitrary upload service.
+- No default raising 16MiB private/public source limits, native execution timeouts,
+  L3 checkpoints or verification canonical population caps without separately observed
+  need/approval. No full suite or V2 verification policy.
+- No claim that text-only summary supplies complete test population; no P1 dispatch
+  before TASK-393 independently reviewed and published as exact predecessor.
+constraints:
+  hard:
+  - 'P0 publication gate for admission of TASK-394 execution: Runtime verified TASK-393
+    RESULT with independent REVIEW PASS and exact Publisher publication plus current
+    source dependencies. The presence of an authored TASK-393 or GitHub workflow alone
+    is insufficient. No implicit TASK revision if P0 changes manifest shape incompatibly.'
+  - Use existing bound Runtime/FAILURE and canonical Git source access; prospective
+    extra bounded safe projection records, if chosen by Executor, must be subordinated
+    exact original immutable source and page verification, not parallel engineering
+    truth or persisted semantic state. Brain owns interpretation only, Runtime owns
+    verification/completeness.
+  - Preserve existing 32-item portable page cap; cursor/page ties immutable exact
+    RUN/source/command/order and exact bounded range with deterministic digest, without
+    exposing raw node parameter content. Validate once per page with bounded CPU/memory/Git
+    reads and idempotent read-only outcome.
+  - Authorize and test Git-only remote read of page N with source-only authentication,
+    not a fabricated local JSON from caller. Self-host-only evidence may produce typed
+    unavailable if no safe published source, and no additional Issue/wake to move
+    execution authority may be created by the retrieval layer.
+  - Structured reports certify only what canonical source proves; text summaries retain
+    partial-coverage state. If source is missing, expired, beyond original bounds
+    or pagination proof cannot be authenticated, return bounded blocker rather than
+    expanding resource budgets silently.
+  - Version new schema only if essential, retain exact historical public FAILURE/Brain
+    Sync decoders, independent current source digests, and compatibility of task authoring,
+    Reviewer and Publisher consumers.
+  - Focused minimum-sufficient-v1 tests only; all acceptance claims must be code/current-source
+    properties, not post-Runner PASS, Reviewer PASS or publication. All mutations
+    confined to listed files; unchanged source integrity and privacy floors.
+acceptance:
+- id: AC1
+  condition: A read-only bounded paging view is sourced exclusively from the existing
+    authoritative Runtime FAILURE and its immutable source-bound safe projected evidence.
+    Each view and page selector binds exact TASK revision, RUN, failed candidate SHA,
+    original FAILURE digest, ordered verification command and authentic source/manifest
+    identities; external caller data never mints a page or authority.
+- id: AC2
+  condition: Exactly reproducible pages of at most 32 allowlisted failed-node views
+    enumerate the complete source-observed valid node sequence with no omissions or
+    duplicates across pages; parameterized instances with matching display identity
+    retain separate exact source-derived identity digests, and next-page/exhaustion/truncation
+    semantics are deterministic. Bounds are not bypassed by a larger one-shot response.
+- id: AC3
+  condition: Complete and stable structured pytest observations alone may assert complete
+    failure population/count; text summary observations remain explicitly PARTIAL,
+    with identity/count limitations disclosed. Zero observed nodes with nonzero exit
+    code never implies PASS. Unknown, truncated and unsupported source conditions
+    return bounded typed inability instead of synthetic reports or overclaimed completeness.
+- id: AC4
+  condition: Mismatched subject, changed/ref-swapped immutable source, forged/cross-RUN/cross-command/expired
+    or out-of-range cursor, malformed page, missing original local evidence, absent
+    authorized projection and denied self-host context all fail closed with explicit
+    reason and no fallback to pasted raw/caller-provided source. Historical read-only
+    FAILURE projection remains unchanged.
+- id: AC5
+  condition: Paginated safe results and Brain/Reviewer-facing consumers emit no raw
+    pytest parameters, secrets, tracebacks, host paths, native output or executable
+    instructions; full source digest/order identities authenticate source but are
+    not treated as independent Runtime verification or completion evidence. Private
+    original bytes are never sent to provider contexts.
+- id: AC6
+  condition: Large synthetic observations with 33, 64, 1000 and 10000 distinct failures
+    exercise full legal pagination where authoritative population permits it; schema's
+    current failure_count=4096 cap is reconciled with canonical MAX_CANONICAL_FAILURES=10000
+    using precise backward-compatible versioning or an explicit supported upper bound
+    and typed blocker. Benchmark bounded memory, CPU, Git reads, output bytes and
+    disk overhead and reject all uncontrolled resource amplification.
+- id: AC7
+  condition: A clean Git-only Brain Sync/attention consumer can discover and request
+    a later page through the existing authenticated artifact access path without relying
+    on Human PowerShell or privileged raw local paths; existing owner-gated self-host
+    optional detail remains bounded. No new RUN, verification invocation, provider/Executor
+    selector, database, persistent independent truth, generic routing, auto retry,
+    production continuation or historical FAILURE rewrite is introduced.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_failure_detail_pagination.py tests/test_review_transport.py
+    tests/test_brain_sync.py tests/test_brain_context.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
