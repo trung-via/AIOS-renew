@@ -1,22 +1,36 @@
 # Lean VP Intra-RUN v1.3 — Resource Defaults and Remaining Delivery Roadmap
 
-**Human decision:** 2026-10-21. **Planning status:** sole selected successor
-`lean-vp-intra-v13-budget-defaults-successor`, subject to this exact source's
-ordinary Runtime verification, independent semantic review and Publisher gate.
+**Human decision:** 2026-10-21; prospective priority amended 2026-10-22.
+**Planning status:** **PAUSED, RESUMABLE, NOT COMPLETED, NOT RETIRED**.
+`lean-vp-intra-v13-budget-defaults-successor` retains every unfinished obligation.
+The sole current NEXT and planning owner is `git-decision-guard-priority-20261022`,
+under [Git Decision Guard and Conditional Publisher Priority v1](AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md).
 **KA-01:** prospective document version **1.3**,
 **HUMAN_RATIFIED_PROSPECTIVE_SPEC**, **NOT_ACTIVATED**.
 
-This is the authoritative successor planning pointer to the
+This remains the paused successor planning pointer to the
 [retired Lean VP planning source](AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md).
-The controlling Human/Brain record is
+The October 21 Human/Brain record is
 `.ai/roadmap-state.yaml:human_lean_vp_intra_v13_budget_defaults_successor_20261021`.
-Both canonical selectors must identify exactly this one successor:
-`next_items=[lean-vp-intra-v13-budget-defaults-successor]` and the sequence's
-sole `status: NEXT` on that same ID. Root and successor `planning_document`
-point here. A stale old `next_items`, dual NEXT or inconsistent selection is
-a fail-closed conflict, never permission to resume the old plan.
+That dated record preserves the October 21 selection as history. Current root
+`next_items`, the sole sequence `status: NEXT`, `active_track` and root
+`planning_document` must agree on the October 22 Git guard priority and its new
+document. This entry points here for paused obligations and has no current NEXT.
+A stale selector or dual NEXT is a fail-closed conflict. The new controlling
+record is `human_git_guard_publish_priority_20261022`; the older retired Lean VP
+competitor stays retired.
 
-The old high-level entry is **superseded, not completed**. Its dated planning
+Human has prioritized **one G1 TASK (TASK-398 r1)**, then **zero or one separate
+conditional residual Publisher G2 TASK** only for demonstrated non-overlapping
+cost after G1. Explicit Human/Brain reconciliation must check TASK-397 canonical
+state before returning to **L3-05 -> L3-06/G3 -> separate G6 -> L4**. The stalled,
+cancelled TASK-397 Issue #2345 transport does not establish a canonical TASK/RUN
+or engineering completion. Runtime, Reviewer and Publisher outcomes never resume
+this plan or advance NEXT automatically. See the new plan for current scope and
+measurement boundaries; this pause discharges none of the original 16 slots.
+
+The older `lean-vp-intelligent-intra-primary-after-r21` entry remains
+**superseded, not completed**. Its dated planning
 and every prior TASK/RUN/FAILURE/REVIEW/publication remain historical truth.
 This successor is a high-level plan, with no executable `task_id` binding;
 its `normative_task_id` records TASK-396 lineage, not Runtime selection or a
@@ -24,8 +38,9 @@ new dispatch. Later source publication alone cannot advance a planning slice.
 
 ## Reconciled published foundations and separate side tracks
 
-The supplied authoring source is canonical main
-`b537bebbb1c35bb178e2a6e4e436b30f69966482`. Runtime independently authenticates
+The October 21 authoring source was observed canonical main
+`b537bebbb1c35bb178e2a6e4e436b30f69966482`, retained as a historical anchor.
+Runtime independently authenticates
 main, immutable identity, lineage/currentness and CAS; these prose references
 do not replace that authentication.
 
@@ -49,19 +64,22 @@ bounded TASK-387/388/389/390 lineage. L3-04 is the reviewed TASK-391 completion
 above; **L3-05 and L3-06 remain outstanding**, as do L4's commitments.
 
 Historical TASK-386 r1, the published KA-01 **v1.2** normative task approved
-after TASK-385, remains **outside those 16 slots**. New TASK-396 r1 is a
+after TASK-385, remains **outside those 16 slots**. TASK-396 r1 is a
 distinct KA-01 **v1.3** normative task, also **outside those 16**, expressly
 authorized by Human on 2026-10-21. It is not another L3-05 slot. Separate G6
 is an exact later Human activation/opt-in decision, not an extra delivery slot
 or preapproved permission.
 
-## Approved order and remaining gates
+## Preserved order and remaining gates after explicit Human/Brain return
 
-1. **KA-01 v1.3 normative publication first — TASK-396 r1.** Amend the
+1. **KA-01 v1.3 normative lineage — TASK-396 r1.** The October 21 decision was to amend the
    [exact KA-01 specification](AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md),
    retaining v1.0/v1.1/v1.2 and the frozen Kernel. Runtime owns verification
    under minimum-sufficient-v1; independent Reviewer PASS and exact eligible
-   Publisher publication remain required. This specification/planning task
+   Publisher publication govern this exact lineage. The supplied October 22
+   context observes TASK-396 reviewed/published on main
+   `030c1acb582f71f0fdd0342d790aa54d0d9bdd7f`; Runtime independently authenticates
+   currentness. This specification/planning task
    implements no production admission or budget enforcement.
 2. **L3-05 — actual versioned admission, consent, budget and withdrawal.**
    A separately authored/admitted implementation must enforce v1.3's exact

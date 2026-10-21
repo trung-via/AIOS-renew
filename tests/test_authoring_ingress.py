@@ -682,6 +682,68 @@ def test_author_task_without_handoff_has_no_audit_dependencies(tmp_path, monkeyp
     assert execute_ingress(revised, repo=repo).replayed
 
 
+@pytest.mark.parametrize("origin_affine", [False, True])
+def test_author_task_shared_warm_guard_preserves_direct_final_and_immutable_replay(
+    tmp_path, origin_admission_key, origin_affine,
+):
+    from tests.test_decision_guard_optimization import seed_included_decisions
+    repo, remote, main = setup_test_repo(tmp_path)
+    seed_included_decisions(remote, main, 32)
+    git(repo, "fetch", "--quiet", "origin", "+refs/heads/aios/*:refs/remotes/warm/*")
+    envelope, admission = new_task_envelope(main), None
+    if origin_affine:
+        _, envelope, admission = origin_authoring_fixture(tmp_path, repo, main)
+    result = execute_ingress(envelope, repo=repo, origin_admission=admission)
+    assert result.status == "CANONICALIZED" and not result.replayed
+    assert git(remote, "rev-parse", "refs/heads/main") == result.canonical_sha
+    assert git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", main, result.canonical_sha) == ".ai/tasks/TASK-105.yaml"
+    before = git(remote, "show-ref")
+    replay = execute_ingress(envelope, repo=repo, origin_admission=admission)
+    assert replay.status == "IDEMPOTENT" and replay.replayed
+    assert replay.canonical_sha == result.canonical_sha
+    assert git(remote, "show-ref") == before
+    assert envelope.audited_handoff is None
+
+
+@pytest.mark.parametrize("change", ["added_decision", "deleted_decision", "moved_source", "lost_owner"])
+def test_author_task_warm_guard_rechecks_before_main_mutation(tmp_path, monkeypatch, change):
+    from tests.test_decision_guard_optimization import seed_included_decisions
+    from aios_renew import publication
+    repo, remote, main = setup_test_repo(tmp_path)
+    seed_included_decisions(remote, main, 32)
+    git(repo, "fetch", "--quiet", "origin", "+refs/heads/aios/*:refs/remotes/warm/*")
+    actual_reserve = authoring_ingress_module.reserve_publication
+    main_pushes = []
+    actual_write = authoring_ingress_module._publish_ingress_ref
+
+    def mutate_after_snapshot(*args, **kwargs):
+        reservation = actual_reserve(*args, **kwargs)
+        decision = "refs/heads/aios/review-decision/RUN-900-0000"
+        if change == "added_decision":
+            git(remote, "update-ref", "refs/heads/aios/review-decision/RUN-900-new", git(remote, "rev-parse", decision))
+        elif change == "deleted_decision":
+            git(remote, "update-ref", "-d", decision)
+        elif change == "moved_source":
+            # Transfer the proposed source object, then move only a historical ref.
+            git(repo, "push", "--quiet", "origin", f"{kwargs['source_sha']}:refs/heads/fixture-proposed")
+            git(remote, "update-ref", "refs/heads/aios/review/RUN-900-0000", kwargs["source_sha"])
+        else:
+            git(remote, "update-ref", publication.PUBLICATION_RESERVATION_REF, main, reservation.token_sha)
+        return reservation
+
+    def record_write(*args, **kwargs):
+        if args[2] == "refs/heads/main":
+            main_pushes.append(kwargs.get("expected_old_sha"))
+        return actual_write(*args, **kwargs)
+
+    monkeypatch.setattr(authoring_ingress_module, "reserve_publication", mutate_after_snapshot)
+    monkeypatch.setattr(authoring_ingress_module, "_publish_ingress_ref", record_write)
+    with pytest.raises(AuthoringIngressError, match="DECISION_SET_CHANGED|STALE_REVIEW_BINDING|RESERVATION_CAS_FAILED"):
+        execute_ingress(new_task_envelope(main), repo=repo)
+    assert git(remote, "rev-parse", "refs/heads/main") == main
+    assert main_pushes == ([main] if change == "lost_owner" else [])
+
+
 @pytest.mark.parametrize("revision", (1, 2))
 @pytest.mark.parametrize("fault", ("malformed", "identity", "policy_absent", "policy_v2",
                                     "empty_verification", "missing_affinity", "stale_main", "dirty_main"))

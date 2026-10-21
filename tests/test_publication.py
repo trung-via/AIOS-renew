@@ -2317,8 +2317,10 @@ def test_review_321_003_never_authorizes_reset_or_a_different_sha(tmp_path, monk
     def bounded_git(repo, *args, **kwargs):
         commands.append(args)
         if args[0] == "ls-remote":
-            sha = refs[args[-1]]
-            return 0, "" if sha is None else sha + "\t" + args[-1], ""
+            # Exact refs may now share one native observation. Keep this
+            # synthetic metadata fixture's original binding and assertions.
+            return 0, "".join(refs[ref] + "\t" + ref + "\n"
+                               for ref in args[3:] if refs[ref] is not None), ""
         if args[0] == "fetch":
             return 0, "", ""
         if args == ("show", f"{artifact}:{publication_module.PUBLICATION_RECOVERY_PATH}"):
@@ -2340,6 +2342,12 @@ def test_review_321_003_never_authorizes_reset_or_a_different_sha(tmp_path, monk
             return 0, "src/aios_renew/brain_context.py\0", ""
         pytest.fail(f"historical publication attempted an unauthorized operation: {args[0]}")
     monkeypatch.setattr(publication_module, "_git", bounded_git)
+    def verified_fixture_commits(repo, shas, *, run_id):
+        # These intentionally synthetic SHA labels have no object database.
+        # Real bytes/type/hash rejection is exercised by the native-Git tests.
+        assert set(shas).issubset({main, decision, artifact, base, reviewed})
+        return []
+    monkeypatch.setattr(publication_module, "_verified_commits", verified_fixture_commits)
     def exact_lineage(repo, **kwargs):
         assert kwargs["run_id"] == "RUN-321-003" and kwargs["decision_sha"] == decision
         assert kwargs["publication_main_sha"] == main
@@ -3889,6 +3897,80 @@ def test_integrated_inclusion_on_later_observation_cannot_relax_sampled_mutation
     assert main_observations >= 2
     assert pushes == []
     assert remote_main(lineage) == lineage["candidate_sha"]
+
+
+@pytest.mark.parametrize("count", [32, 128])
+def test_warm_shared_guard_preserves_publisher_result_and_immutable_replay(tmp_path, monkeypatch, count):
+    from tests.test_decision_guard_optimization import seed_included_decisions
+    lineage = make_lineage(tmp_path)
+    seed_included_decisions(lineage["remote"], lineage["base_sha"], count)
+    git(lineage["repo"], "fetch", "--quiet", "origin", "+refs/heads/aios/*:refs/remotes/warm/*")
+    actual_git = publication_module._git
+    fetches, main_pushes = [], []
+
+    def record(path, *args, **kwargs):
+        if args[0] == "fetch":
+            fetches.append(args)
+        if args[0] == "push" and args[-1].endswith(":refs/heads/main"):
+            main_pushes.append(args)
+        return actual_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(publication_module, "_git", record)
+    report = publish(lineage)
+    assert report.outcome == "PUBLISHED" and report.cause == "NONE"
+    assert report.reviewed_sha == remote_main(lineage) == lineage["candidate_sha"]
+    assert len(main_pushes) == 1
+    assert f"--force-with-lease=refs/heads/main:{lineage['base_sha']}" in main_pushes[0]
+    before = git(lineage["remote"], "show-ref")
+    replay = publish(lineage)
+    assert replay.outcome == "ALREADY_PUBLISHED"
+    assert replay.lineage.decision_sha == report.lineage.decision_sha == lineage["decision_sha"]
+    assert replay.lineage.artifacts_sha == report.lineage.artifacts_sha
+    assert git(lineage["remote"], "show-ref") == before
+    assert fetches == [] and len(main_pushes) == 1
+
+
+@pytest.mark.parametrize("change,cause", [
+    ("source", "STALE_REVIEW_BINDING"), ("artifacts", "STALE_REVIEW_BINDING"),
+    ("decision", "STALE_REVIEW_BINDING"), ("owner", "RESERVATION_CAS_FAILED"),
+    ("main", "CONCURRENT_MAIN_MOVEMENT"),
+])
+def test_publisher_warm_guard_reservation_races_keep_exact_typed_blocker(tmp_path, monkeypatch, change, cause):
+    from tests.test_decision_guard_optimization import seed_included_decisions
+    lineage = make_lineage(tmp_path)
+    seed_included_decisions(lineage["remote"], lineage["base_sha"], 32)
+    git(lineage["repo"], "fetch", "--quiet", "origin", "+refs/heads/aios/*:refs/remotes/warm/*")
+    actual_reserve, actual_git = publication_module.reserve_publication, publication_module._git
+    main_pushes = []
+
+    def reserve_then_race(*args, **kwargs):
+        reservation = actual_reserve(*args, **kwargs)
+        if change == "source":
+            ref, sha = "refs/heads/aios/review/RUN-900-0000", lineage["candidate_sha"]
+        elif change in {"artifacts", "decision"}:
+            namespace = "review-decision" if change == "decision" else "artifacts"
+            ref, sha = f"refs/heads/aios/{namespace}/{lineage['run_id']}", lineage["base_sha"]
+        elif change == "owner":
+            ref, sha = publication_module.PUBLICATION_RESERVATION_REF, lineage["base_sha"]
+        else:
+            ref, sha = "refs/heads/main", lineage["candidate_sha"]
+        git(lineage["remote"], "update-ref", ref, sha)
+        return reservation
+
+    def record(path, *args, **kwargs):
+        if args[0] == "push" and args[-1].endswith(":refs/heads/main"):
+            main_pushes.append(args)
+        return actual_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(publication_module, "reserve_publication", reserve_then_race)
+    monkeypatch.setattr(publication_module, "_git", record)
+    with pytest.raises(PublicationError) as raised:
+        publish(lineage)
+    assert raised.value.report.cause == cause
+    assert raised.value.report.prior_main_sha == lineage["base_sha"]
+    assert raised.value.report.reviewed_sha == lineage["candidate_sha"]
+    assert main_pushes == []
+    assert remote_main(lineage) == (lineage["candidate_sha"] if change == "main" else lineage["base_sha"])
 
 
 def _remove_fixture_decision(lineage):

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -47,6 +49,15 @@ _RUN_ID = re.compile(r"RUN-[A-Za-z0-9][A-Za-z0-9._-]*")
 _SHA = re.compile(r"[0-9a-f]{40}")
 _DECISION_PREFIX = "refs/heads/aios/review-decision/"
 _MAX_DECISIONS = 1024
+# These ceilings bound both native Windows command lines and captured responses.
+# Capacity is a rejection boundary, never permission to return a partial set.
+_MAX_REF_BYTES = 1024
+_MAX_REMOTE_BYTES = _MAX_DECISIONS * (_MAX_REF_BYTES + 43)
+_MAX_REMOTE_ARG_CHARS = 16000
+_REF_BATCH_COUNT = 64
+_REF_BATCH_CHARS = 8192
+_OBJECT_BATCH_COUNT = 32
+_MAX_COMMIT_BYTES = 1024 * 1024
 PUBLICATION_CAUSES = frozenset({
     "NONE", "PUBLICATION_GATE_FAILED", "MALFORMED_LINEAGE", "STALE_CONTROL_BINDING",
     "STALE_REVIEW_BINDING", "CONCURRENT_MAIN_MOVEMENT", "MAIN_CAS_FAILED",
@@ -356,29 +367,99 @@ class PublicationReport:
         return "CONFLICT_OR_UNKNOWN"
 
 
+def _bounded_git(repo: Path, *args: str, max_stdout: int,
+                 input_bytes: bytes | None = None) -> tuple[int, bytes, bytes]:
+    """Drain native Git with hard byte ceilings, a timeout and no shell.
+
+    Reading stdout/stderr concurrently avoids pipe deadlock on Windows. Neither
+    an oversized response nor a killed/partial process may supply an observation.
+    The only input is a bounded batch of full object IDs, not a ref/cache index.
+    """
+    command = ("git", "--no-replace-objects", "-C", str(repo), *args)
+    if len(subprocess.list2cmdline(command).encode("utf-16-le")) // 2 > _MAX_REMOTE_ARG_CHARS:
+        raise ValueError("Git argument bound exceeded")
+    if input_bytes is not None and len(input_bytes) > _OBJECT_BATCH_COUNT * 41:
+        raise ValueError("Git input bound exceeded")
+    buffers = (bytearray(), bytearray())
+    failed = threading.Event()
+    with subprocess.Popen(command, stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0) as process:
+        def drain(stream, output: bytearray, limit: int) -> None:
+            try:
+                with stream:
+                    while True:
+                        chunk = stream.read(min(65536, limit + 1 - len(output)))
+                        if not chunk:
+                            return
+                        output.extend(chunk)
+                        if len(output) > limit:
+                            raise ValueError("Git response bound exceeded")
+            except (OSError, ValueError):
+                failed.set()
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+
+        readers = [threading.Thread(target=drain, args=(stream, output, limit), daemon=True)
+                   for stream, output, limit in ((process.stdout, buffers[0], max_stdout),
+                                                 (process.stderr, buffers[1], 65536))]
+        for reader in readers:
+            reader.start()
+        try:
+            if input_bytes is not None:
+                with process.stdin:
+                    process.stdin.write(input_bytes)
+            process.wait(timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            process.kill()
+            process.wait()
+            raise
+        finally:
+            for reader in readers:
+                reader.join(timeout=1)
+        if failed.is_set() or any(reader.is_alive() for reader in readers):
+            raise ValueError("Git response exceeded bound or was incomplete")
+        return process.returncode, bytes(buffers[0]), bytes(buffers[1])
+
+
 def _git(
     repo: Path, *args: str, allow_fail: bool = False
 ) -> tuple[int, str, str]:
     try:
-        completed = subprocess.run(
-            ("git", "-C", str(repo), *args),
-            capture_output=True,
-            text=False,
-            check=False,
-            timeout=30,
-        )
-        stdout = completed.stdout.decode("utf-8", errors="strict")
-        if "-z" not in args:
+        limit = None
+        if args and args[0] == "ls-remote":
+            limit = _MAX_REMOTE_BYTES
+        elif args and args[0] == "fetch":
+            limit = 65536
+        elif (args and args[0] == "ls-tree" and args[-1] == ".ai/reviews"
+              or len(args) == 2 and args[0] == "show" and ":.ai/reviews/" in args[1]):
+            limit = _MAX_COMMIT_BYTES
+        if limit is not None:
+            code, raw_stdout, raw_stderr = _bounded_git(repo, *args, max_stdout=limit)
+        else:
+            completed = subprocess.run(
+                ("git", "--no-replace-objects", "-C", str(repo), *args),
+                capture_output=True,
+                text=False,
+                check=False,
+                timeout=30,
+            )
+            code, raw_stdout, raw_stderr = completed.returncode, completed.stdout, completed.stderr
+        stdout = raw_stdout.decode("utf-8", errors="strict")
+        # ls-remote's final newline authenticates complete record framing for
+        # the bounded snapshot parser; do not strip away a truncated last row.
+        if "-z" not in args and (not args or args[0] != "ls-remote"):
             stdout = stdout.strip()
-        stderr = completed.stderr.decode("utf-8", errors="strict").strip()
-    except (OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
+        stderr = raw_stderr.decode("utf-8", errors="strict").strip()
+    except (OSError, ValueError, UnicodeError, subprocess.TimeoutExpired) as exc:
         if allow_fail:
             return 128, "", "Git acquisition failed"
         raise RuntimeError(f"Git command failed: {exc}") from exc
-    if completed.returncode and not allow_fail:
-        detail = stderr or stdout or f"exit {completed.returncode}"
+    if code and not allow_fail:
+        detail = stderr or stdout or f"exit {code}"
         raise RuntimeError(f"Git command failed: {detail}")
-    return completed.returncode, stdout, stderr
+    return code, stdout, stderr
 
 
 def _failed(
@@ -432,26 +513,72 @@ def _single_remote_sha(
     )
     if code:
         raise _failed(run_id, f"cannot query canonical ref {ref}")
-    lines = [line.split() for line in output.splitlines() if line.strip()]
-    if (
-        len(lines) != 1
-        or len(lines[0]) != 2
-        or lines[0][1] != ref
-        or _SHA.fullmatch(lines[0][0]) is None
-    ):
+    rows = _remote_rows(output, run_id=run_id)
+    if len(rows) != 1 or rows[0][0] != ref:
         raise _failed(run_id, f"canonical ref {ref} is missing or ambiguous")
-    return lines[0][0]
+    return rows[0][1]
+
+
+def _verified_commits(repo: Path, shas: Sequence[str], *, run_id: str) -> list[str]:
+    """Check exact raw commit bytes, including hash, without trusting local refs.
+
+    cat-file -t alone accepts a loose object containing valid but misnamed bytes.
+    The batch protocol is size framed; neither replacement refs nor text stripping
+    may change the bytes used to validate the full Git object ID.
+    """
+    try:
+        code, output, _ = _bounded_git(
+            repo, "cat-file", "--batch", input_bytes="".join(sha + "\n" for sha in shas).encode("ascii"),
+            max_stdout=len(shas) * (_MAX_COMMIT_BYTES + 128),
+        )
+        if code:
+            raise ValueError("cannot read exact commit objects")
+        offset = 0
+        missing = []
+        for sha in shas:
+            end = output.find(b"\n", offset)
+            if end < 0 or end - offset > 100:
+                raise ValueError("incomplete commit object header")
+            header = output[offset:end].decode("ascii").split(" ")
+            offset = end + 1
+            if header == [sha, "missing"]:
+                missing.append(sha)
+                continue
+            if len(header) != 3 or header[:2] != [sha, "commit"]:
+                raise ValueError(f"canonical object {sha} is not a commit")
+            size = int(header[2])
+            if size < 0 or size > _MAX_COMMIT_BYTES or offset + size >= len(output):
+                raise ValueError("commit object exceeds bound or is incomplete")
+            content = output[offset:offset + size]
+            if (output[offset + size:offset + size + 1] != b"\n"
+                    or hashlib.sha1(f"commit {size}\0".encode("ascii") + content).hexdigest() != sha):
+                raise ValueError(f"canonical commit object {sha} failed integrity validation")
+            offset += size + 1
+        if offset != len(output):
+            raise ValueError("ambiguous commit object response")
+        return missing
+    except (OSError, ValueError, UnicodeError, subprocess.TimeoutExpired) as exc:
+        raise _failed(run_id, f"cannot validate canonical commit objects: {exc}") from exc
+
+
+def _fetch_objects(repo: Path, remote: str, shas: Sequence[str], *, run_id: str) -> None:
+    """Reuse validated immutable commits; fetch only missing exact full IDs."""
+    unique = tuple(dict.fromkeys(shas))
+    if (len(unique) > 2 * _MAX_DECISIONS + 64
+            or any(not isinstance(sha, str) or _SHA.fullmatch(sha) is None for sha in unique)):
+        raise _failed(run_id, "canonical object request is invalid or over capacity")
+    for start in range(0, len(unique), _OBJECT_BATCH_COUNT):
+        batch = unique[start:start + _OBJECT_BATCH_COUNT]
+        missing = _verified_commits(repo, batch, run_id=run_id)
+        if not missing:
+            continue
+        code, _, _ = _git(repo, "fetch", "--no-tags", remote, *missing, allow_fail=True)
+        if code or _verified_commits(repo, missing, run_id=run_id):
+            raise _failed(run_id, "cannot fetch/validate canonical commit objects")
 
 
 def _fetch_object(repo: Path, remote: str, sha: str, *, run_id: str) -> None:
-    code, _, _ = _git(
-        repo, "fetch", "--no-tags", remote, sha, allow_fail=True
-    )
-    if code:
-        raise _failed(run_id, f"cannot fetch canonical object {sha}")
-    code, kind, _ = _git(repo, "cat-file", "-t", sha, allow_fail=True)
-    if code or kind != "commit":
-        raise _failed(run_id, f"canonical object {sha} is not a commit")
+    _fetch_objects(repo, remote, (sha,), run_id=run_id)
 
 
 def _read_blob(repo: Path, commit_sha: str, path: str, *, run_id: str) -> bytes:
@@ -513,17 +640,12 @@ def _single_optional_remote_sha(
     )
     if code:
         raise _failed(run_id, f"cannot query canonical ref {ref}")
-    lines = [line.split() for line in output.splitlines() if line.strip()]
-    if not lines:
+    rows = _remote_rows(output, run_id=run_id)
+    if not rows:
         return None
-    if (
-        len(lines) != 1
-        or len(lines[0]) != 2
-        or lines[0][1] != ref
-        or _SHA.fullmatch(lines[0][0]) is None
-    ):
+    if len(rows) != 1 or rows[0][0] != ref:
         raise _failed(run_id, f"canonical ref {ref} is missing or ambiguous")
-    return lines[0][0]
+    return rows[0][1]
 
 
 _CANONICAL_PREDECESSOR_FIELDS = frozenset(
@@ -2094,22 +2216,72 @@ def _load_success_lineage(
     return source_sha, package, tuple(task.scope.modify)
 
 
+def _remote_rows(output: str, *, run_id: str) -> list[tuple[str, str]]:
+    if (len(output.encode("utf-8")) > _MAX_REMOTE_BYTES
+            or output and not output.endswith("\n")):
+        raise _failed(run_id, "canonical ref observation exceeds bound or is truncated")
+    rows = []
+    for line in output.splitlines():
+        pair = line.split("\t")
+        if (len(pair) != 2 or _SHA.fullmatch(pair[0]) is None
+                or len(pair[1].encode("utf-8")) > _MAX_REF_BYTES):
+            raise _failed(run_id, "canonical ref observation is malformed or ambiguous")
+        rows.append((pair[1], pair[0]))
+    return rows
+
+
+def _remote_shas(repo: Path, remote: str, refs: Sequence[str], *, run_id: str) -> dict[str, str]:
+    """Query exact refs in bounded batches; every requested ref is mandatory.
+
+    Each call is a fresh remote observation. The returned map is an attempt-local
+    binding, never a persistent ref index or permission to reuse stale authority.
+    """
+    requested = tuple(dict.fromkeys(refs))
+    if (len(requested) > 2 * _MAX_DECISIONS + 64
+            or any(not ref.startswith("refs/heads/") or not ref.isascii()
+                   or len(ref) > _MAX_REF_BYTES
+                   or any(char in ref for char in " ~^:?*[\\\t\r\n") for ref in requested)):
+        raise _failed(run_id, "canonical exact ref request is invalid or over capacity")
+    result = {}
+    offset = 0
+    while offset < len(requested):
+        batch = []
+        size = 0
+        while offset < len(requested) and len(batch) < _REF_BATCH_COUNT:
+            ref = requested[offset]
+            if batch and size + len(ref) + 1 > _REF_BATCH_CHARS:
+                break
+            batch.append(ref)
+            size += len(ref) + 1
+            offset += 1
+        code, output, _ = _git(repo, "ls-remote", "--refs", remote, *batch, allow_fail=True)
+        if code:
+            raise _failed(run_id, "cannot query canonical exact ref batch")
+        observed = {}
+        expected = set(batch)
+        for ref, sha in _remote_rows(output, run_id=run_id):
+            if ref not in expected or ref in observed:
+                raise _failed(run_id, "canonical exact ref batch is malformed or ambiguous")
+            observed[ref] = sha
+        if observed.keys() != expected:
+            raise _failed(run_id, "canonical exact ref batch is missing or ambiguous")
+        result.update(observed)
+    return result
+
+
 def _decision_snapshot(repo: Path, remote: str, *, run_id: str) -> dict[str, str]:
     code, output, _ = _git(
         repo, "ls-remote", "--refs", remote, f"{_DECISION_PREFIX}*", allow_fail=True,
     )
-    lines = output.splitlines()
-    if code or len(lines) > _MAX_DECISIONS:
+    if code or len(output.splitlines()) > _MAX_DECISIONS:
         raise _failed(run_id, "canonical decision snapshot unavailable or over capacity")
     refs: dict[str, str] = {}
-    for line in lines:
-        pair = line.split()
-        if (len(pair) != 2 or _SHA.fullmatch(pair[0]) is None
-                or not pair[1].startswith(_DECISION_PREFIX)
-                or _RUN_ID.fullmatch(pair[1][len(_DECISION_PREFIX):]) is None
-                or pair[1] in refs):
+    for ref, sha in _remote_rows(output, run_id=run_id):
+        if (not ref.startswith(_DECISION_PREFIX)
+                or _RUN_ID.fullmatch(ref[len(_DECISION_PREFIX):]) is None
+                or ref in refs):
             raise _failed(run_id, "canonical decision snapshot is malformed or ambiguous")
-        refs[pair[1]] = pair[0]
+        refs[ref] = sha
     return refs
 
 
@@ -2137,8 +2309,9 @@ def _recheck_binding(repo: Path, remote: str, binding: Mapping[str, str], *,
                         if ref == "refs/heads/main" or ref.startswith("refs/heads/aios/") and ref.rsplit("/", 1)[-1].startswith(prefix)}
             if snapshot != expected:
                 raise _failed(run_id, "batch correction frontier/ref set moved before publication", cause="STALE_REVIEW_BINDING")
+        fresh_binding = _remote_shas(repo, remote, tuple(binding), run_id=run_id)
         for ref, sha in binding.items():
-            if _single_remote_sha(repo, remote, ref, run_id=run_id) != sha:
+            if fresh_binding[ref] != sha:
                 raise _failed(run_id, "canonical review binding changed during publication",
                               cause="STALE_REVIEW_BINDING")
         if decisions is not None and _decision_snapshot(repo, remote, run_id=run_id) != decisions:
@@ -2162,26 +2335,28 @@ def _pending_review_guard(repo: Path, remote: str, *, run_id: str, reviewed_sha:
     New PASS writers and main writers also share PUBLICATION_RESERVATION_REF.
     """
     decisions = _decision_snapshot(repo, remote, run_id=run_id)
-    source_binding: dict[str, str] = {}
+    source_binding = _remote_shas(repo, remote, tuple(
+        f"refs/heads/aios/review/{ref[len(_DECISION_PREFIX):]}" for ref in sorted(decisions)
+    ), run_id=run_id)
+    # Validate every included object, even when ancestry later proves that its
+    # source is already included. No malformed local object can authorize a skip.
+    _fetch_objects(repo, remote, (*source_binding.values(), *decisions.values()), run_id=run_id)
     for ref, decision in sorted(decisions.items()):
         other_run = ref[len(_DECISION_PREFIX):]
-        if other_run == run_id:
-            continue
         source_ref = f"refs/heads/aios/review/{other_run}"
-        source = _single_remote_sha(repo, remote, source_ref, run_id=run_id)
-        source_binding[source_ref] = source
-        _fetch_object(repo, remote, source, run_id=run_id)
-        if (source == main_sha or not _ancestor(
-                repo, main_sha, source, run_id=run_id, reviewed_sha=reviewed_sha, main_sha=main_sha)
-                or _ancestor(repo, source, reviewed_sha, run_id=run_id,
-                             reviewed_sha=reviewed_sha, main_sha=main_sha)):
-            continue
-        _fetch_object(repo, remote, decision, run_id=run_id)
+        source = source_binding[source_ref]
         try:
             review = parse_review(_decision_review_bytes(
                 repo, decision, run_id=other_run).decode("utf-8", errors="strict"))
         except (TypeError, ValueError, UnicodeError) as exc:
             raise _failed(run_id, "pending canonical review is malformed") from exc
+        if review.reviewed_sha != source:
+            raise _failed(run_id, "pending reviewed source changed", cause="STALE_REVIEW_BINDING")
+        if (other_run == run_id or source == main_sha or not _ancestor(
+                repo, main_sha, source, run_id=run_id, reviewed_sha=reviewed_sha, main_sha=main_sha)
+                or _ancestor(repo, source, reviewed_sha, run_id=run_id,
+                             reviewed_sha=reviewed_sha, main_sha=main_sha)):
+            continue
         if review.verdict != "PASS":
             continue
         validated_source, _, _ = _load_success_lineage(

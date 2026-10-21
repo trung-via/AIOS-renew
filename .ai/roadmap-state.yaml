@@ -1,4 +1,45 @@
 version: 1
+human_git_guard_publish_priority_20261022:
+  authority: EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
+  approved_on: "2026-10-22"
+  planning_only: true
+  source_main_sha_at_authoring: 030c1acb582f71f0fdd0342d790aa54d0d9bdd7f
+  source_authentication: RUNTIME_INDEPENDENT_IDENTITY_CURRENTNESS_PROVENANCE_RESERVATION_AND_MAIN_CAS_REQUIRED
+  sole_high_level_next: git-decision-guard-priority-20261022
+  planning_document: docs/AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md
+  planning_owner: git-decision-guard-priority-20261022
+  decision: G1_THEN_CONDITIONAL_RESIDUAL_ONLY_G2_BEFORE_EXPLICIT_RETURN_TO_UNFINISHED_LEAN_VP_V13
+  g1:
+    implementation_task_id: TASK-398
+    implementation_task_revision: 1
+    task_count: 1
+    scope: BOUNDED_SHARED_GIT_DECISION_GUARD_FOR_AUTHOR_TASK_AND_PUBLISHER
+    measurement: PAIRED_NATIVE_GIT_0_32_128_COLD_WARM_FIVE_REPETITIONS_NO_PRODUCTION_LATENCY_CLAIM
+    warm_local_remote_call_target: AT_LEAST_75_PERCENT_REDUCTION_AT_32_AND_128
+  g2:
+    queue_id: publisher-residual-after-git-guard-20261022
+    task_count: ZERO_OR_ONE_SEPARATE_FUTURE_SCOPED_TASK
+    condition: DEMONSTRATED_MATERIAL_NON_OVERLAPPING_PUBLISHER_COST_REMAINING_AFTER_G1
+    shared_guard_gain: MUST_NOT_BE_DOUBLE_COUNTED
+    implementation_authorization: NONE_IN_G1
+  paused_plan:
+    id: lean-vp-intra-v13-budget-defaults-successor
+    planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+    disposition: PAUSED_RESUMABLE_NOT_COMPLETED_NOT_RETIRED
+    remaining: [L3-05, L3-06, G3, G6, L4]
+    original_lean_vp_slots: 16_PRESERVED
+    return: EXPLICIT_HUMAN_BRAIN_RECONCILIATION_THEN_L3_05_L3_06_G3_SEPARATE_G6_L4
+  task397_reconciliation:
+    observed_transport: AUTHOR_TASK_ISSUE_2345_STALLED_AND_CANCELLED_AT_TEN_MINUTE_JOB_LIMIT
+    canonical_task_run_status: NOT_INFERRED_FROM_TRANSPORT_REQUIRES_EXACT_CANONICAL_RECONCILIATION
+    permitted_effect: NO_AUTOMATIC_RESUBMISSION_REWRITE_RUN_CORRECTION_OR_COMPLETION
+  next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NOT_RUNTIME_REVIEWER_OR_PUBLISHER_OUTCOME
+  preservation:
+    - ALL_OLDER_DATED_PLANNING_RECORDS_AND_TASK_RUN_REVIEW_PUBLICATION_LINEAGE_UNCHANGED
+    - RETIRED_OLDER_LEAN_VP_COMPETITOR_AND_LEGACY_VP03_TO_VP07_PATHS_STAY_RETIRED
+    - NO_L3_05_L3_06_G3_G6_L4_COMPLETION_OR_KA01_V1_3_ACTIVATION
+    - LEGACY_ORIGIN_AFFINE_RULES_ACTIVE_AUDIT_PROFILES_AND_RUNTIME_VERIFICATION_OWNERSHIP_UNCHANGED
+
 human_lean_vp_intra_v13_budget_defaults_successor_20261021:
   authority: EXPLICIT_HUMAN_RESOURCE_DECISION_AND_BRAIN_PLANNING_TRANSCRIPTION
   approved_on: "2026-10-21"
@@ -149,9 +190,9 @@ human_lean_vp_l3_03_reconciliation_20261020:
     - NO_TASK_RUN_REVIEW_PUBLICATION_OR_DOWNSTREAM_LINEAGE_REWRITE
     - UNRESOLVED_INGRESS_PRODUCER_CONCURRENCY_REMAINS_SEPARATE_DIAGNOSTIC
 
-active_track: lean-vp-intra-v13-budget-defaults-successor
+active_track: git-decision-guard-priority-20261022
 active_track_status: ACTIVE
-planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+planning_document: docs/AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md
 human_lean_vp_legacy_plan_retirement_and_task389_authoring_reconciliation_20261019:
   authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_RECONCILIATION
   approved_on: "2026-10-19"
@@ -2334,7 +2375,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - lean-vp-intra-v13-budget-defaults-successor
+  - git-decision-guard-priority-20261022
 sequence:
 
   - id: TASK-309
@@ -3647,7 +3688,13 @@ sequence:
     legacy_vp03_resume: RECONCILE_AFTER_R21_NO_AUTOMATIC_RESUME
     measured_performance: UNKNOWN_REQUIRES_PAIRED_WHOLE_EPISODE_EVIDENCE
   - id: lean-vp-intra-v13-budget-defaults-successor
-    status: NEXT
+    status: PAUSED_BY_HUMAN_PRIORITY_20261022
+    historical_status: NEXT
+    paused_on: "2026-10-22"
+    paused_for: git-decision-guard-priority-20261022
+    planning_resume: EXPLICIT_HUMAN_BRAIN_RETURN_TO_L3_05_AFTER_G1_CONDITIONAL_G2_AND_TASK397_RECONCILIATION
+    remaining_obligations: [L3-05, L3-06, G3, G6, L4]
+    disposition: PAUSED_RESUMABLE_NOT_COMPLETED_NOT_RETIRED
     phase: KA01_V1_3_NORMATIVE_DEFAULT_BUDGETS_BEFORE_REMAINING_LEAN_VP_ENGINEERING
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-21"
@@ -3672,13 +3719,51 @@ sequence:
     implementation_authorization: SEPARATE_EXACT_TASK_AND_HUMAN_EXECUTOR_DELEGATION_REQUIRED
     ka01_document_version: "1.3"
     ka01_activation: NOT_ACTIVATED
-    current_next_effect: SOLE_NEXT_BY_EXPLICIT_HUMAN_20261021_NO_AUTOMATIC_LATER_ADVANCEMENT
+    historical_next_effect: SOLE_NEXT_BY_EXPLICIT_HUMAN_20261021_NO_AUTOMATIC_LATER_ADVANCEMENT
+    current_next_effect: PAUSED_RESUMABLE_BY_EXPLICIT_HUMAN_20261022_NO_AUTOMATIC_RETURN
     goal: >-
       Publish the separately identifiable prospective KA-01 v1.3 resource profile
       first, preserving v1.0-v1.2 and all original 16 Lean VP slots. Continue only
       through separately admitted L3-05 admission/consent/budget/withdrawal,
       L3-06 integrated G3 proof, exact separate Human G6 and subsequent L4.
       Defaults never grant consent, an Executor lease or production activation.
+  - id: git-decision-guard-priority-20261022
+    status: NEXT
+    phase: G1_BOUNDED_SHARED_GIT_DECISION_GUARD
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-22"
+    planning_document: docs/AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md
+    planning_owner: git-decision-guard-priority-20261022
+    implementation_task_id: TASK-398
+    implementation_task_revision: 1
+    implementation_task_count: 1
+    task_authoring_status: HIGH_LEVEL_PRIORITY_EXACT_TASK398_LINEAGE_REQUIRES_OWN_RUNTIME_AUTHENTICATION
+    predecessor_planning_id: lean-vp-intra-v13-budget-defaults-successor
+    predecessor_disposition: PAUSED_RESUMABLE_NOT_COMPLETED_NOT_RETIRED
+    conditional_successor: publisher-residual-after-git-guard-20261022
+    later_return: EXPLICIT_HUMAN_BRAIN_RECONCILIATION_TO_L3_05_AFTER_TASK397_CANONICAL_STATE_CHECK
+    next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY
+    measured_production_speedup: UNKNOWN
+    goal: >-
+      Optimize the exact shared remote decision/source guard with bounded native
+      Git observation and authenticated immutable commit reuse. Preserve every
+      fresh recheck, competing PASS blocker, reservation and expected-old-main
+      CAS. Runtime verification, independent review and publication remain gates;
+      their outcomes alone never advance the roadmap or complete Lean VP work.
+  - id: publisher-residual-after-git-guard-20261022
+    status: CONDITIONAL_QUEUE
+    phase: G2_RESIDUAL_PUBLISHER_PERFORMANCE_ONLY
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-22"
+    planning_document: docs/AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md
+    planning_owner: git-decision-guard-priority-20261022
+    predecessor: git-decision-guard-priority-20261022
+    condition: DEMONSTRATED_MATERIAL_NON_OVERLAPPING_RESIDUAL_PUBLISHER_COST_AFTER_G1
+    future_task_count: ZERO_OR_ONE
+    task_authoring_status: NO_TASK_AUTHORED_NO_G2_IMPLEMENTATION_AUTHORIZED_IN_G1
+    shared_guard_gain: MUST_NOT_BE_DOUBLE_COUNTED
+    next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY
+    later_return: RECONCILE_TASK397_THEN_L3_05_L3_06_G3_SEPARATE_G6_L4
   - id: adaptive-brain-audit-v1-retire-v3-prospective-consumers
     status: SUPERSEDED_PROSPECTIVE_PRIORITY
     historical_next_before_20261016: true
