@@ -1,10 +1,35 @@
 # AIOS — Lean VP: Intelligent Verification and Bounded Intra-PRIMARY Correction
 
+> **Retired live planning source — Human 2026-10-21.** The former live NEXT
+> `lean-vp-intelligent-intra-primary-after-r21` is **SUPERSEDED, not completed**,
+> by the sole `lean-vp-intra-v13-budget-defaults-successor` in both canonical
+> `next_items` and sequence NEXT. The authoritative current planning pointer is
+> [Lean VP Intra-RUN v1.3 roadmap](AIOS-LEAN-VP-INTRA-V13-ROADMAP.md).
+> All NEXT/current/profile/version statements below retain their **dated
+> historical meaning only**; none permits resuming this retired plan.
+>
+> The original **16 L1–L4 delivery slots** and all prior lineage are retained.
+> Reviewed/published **TASK-391 r2 / RUN-391-015 / REVIEW-391-003 PASS 12/12**,
+> source `50dc508e7c2660c40319fb32b43ec5072ca59ce3`, completes **L3-04 only**.
+> **TASK-393 r3 / RUN-393-009 / REVIEW-393-002 PASS 6/6**, source
+> `c417f3986a06da8f4fd170e57661ac6aa27c1d98`, and **TASK-394 r1 /
+> RUN-394-001 / REVIEW-394-001 PASS 7/7**, source
+> `b537bebbb1c35bb178e2a6e4e436b30f69966482`, are separately published side
+> tracks, not Lean VP slot completion. Historical TASK-386 v1.2 and new
+> TASK-396 v1.3 normative tasks are each outside the original 16.
+>
+> Approved remaining order: **separate KA-01 v1.3 normative publication first
+> → L3-05 → L3-06/G3 → separate exact Human G6 → L4**. The
+> [KA-01 specification](AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md) remains
+> **NOT_ACTIVATED**. No automatic activation, Executor selection or later
+> roadmap advancement follows. Current R2.1 TCA-2 v2 / ROA-1 R3 v3 and
+> unchanged AOA/MOA/Human V1 option supersede archived profile references.
+
 **Human decision:** 2026-10-17 (Asia/Ho_Chi_Minh)  
 **Prospective activation-sequence amendment:** Human 2026-10-18; KA-01 v1.1, subject to its own independent verification/review/publication.<br>
 **Authority:** HUMAN_APPROVED_PROSPECTIVE_ROADMAP_PLANNING  
 **Sequence:** TASK-360 → TASK-359 → Four Specialized Outcome Audits R2.1 → **Lean VP**  
-**Status:** HUMAN-SELECTED ACTIVE ROADMAP NEXT (2026-10-18); NOT AN IMPLEMENTATION TASK, NOT RUN/REVIEW/PUBLICATION, KA-01 NOT ACTIVATED.  
+**Status:** HISTORICAL HUMAN-SELECTED ROADMAP NEXT (2026-10-18), LIVE NEXT SUPERSEDED 2026-10-21; NOT AN IMPLEMENTATION TASK, NOT RUN/REVIEW/PUBLICATION, KA-01 NOT ACTIVATED.<br>
 **Parent:** `docs/AIOS-VERIFICATION-ARCHITECTURE-REPLACEMENT-v1.md` (v1.1/v1.2); prospective `docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md` v1.1, retaining v1.0's TASK-329 ratification/publication history.<br>
 **Audit basis:** Human-accepted `AIOS_Lean_VP_Final_Semantic_Audit_2026-10-16.md` and its roadmap entry candidate, reconciled against current canonical source at admission. These prior cognitive-support artifacts are not standalone canonical engineering or audit authority.  
 **Brain audit policy at authoring:** `aios-adaptive-brain-audit-v1` v1, digest `982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`; use only the then-current selected policy for any future new material architecture/TASK decision.
@@ -15,7 +40,7 @@
 - TASK-359: `RUN-359-003`, `REVIEW-359-003 DELTA PASS` closing `FINDING-359-002-001`, exact reviewed/published source `a48667c2913193c9af312fd4d5092d16794e091e`.
 - Historical 2026-10-17 planning transition: R2.1 NEXT only after that Human/Brain planning record was lawfully published to `main`; Lean VP followed the explicit R2.1 completion/reconciliation boundary and **never** became NEXT from a source merge alone. The 2026-10-18 reconciliation below now selects Lean VP.
 
-## 1. Roadmap dependency history and current NEXT
+## 1. Historical roadmap dependency and then-current NEXT
 
 The canonical NEXT is **Lean VP**, selected by the explicit 2026-10-18
 Human/Brain reconciliation below. TASK-373 is a published L1 readiness slice
@@ -189,12 +214,12 @@ Full semantic proof, same-Executor/lease, bounded scope/resources/progress,
 UNKNOWN fail-closed, one terminal and KA-01 D.4 historical/rollback boundaries
 remain enforced. No parallel Runtime, automatic PASS or automatic migration.
 
-**Current planning effect:** Lean VP remains the canonical NEXT. This amendment
+**Historical planning effect (2026-10-18; superseded 2026-10-21):** Lean VP remained the canonical NEXT. This amendment
 does not complete the remaining L1 program beyond TASK-373, advance NEXT,
 create/dispatch a TASK/RUN, select an Executor/model/profile/budget or activate production.
 There is no worker change, default correction budget or downstream pin mutation.
 
-## Human/Brain NEXT reconciliation — 2026-10-18 (current)
+## Human/Brain NEXT reconciliation — 2026-10-18 (historical; superseded 2026-10-21)
 
 Human closes R2.1 as a planning milestone after reviewed/published TASK-363/364/366/367/368/369, including TASK-369 RUN-369-003 REVIEW-369-003 PASS and reviewed/published source `2f80521f4bac9259d50002de4f31b8dc57729dfd`. This Human acceptance is not independent live conformance PASS. Real-provider live conformance remains OUTSTANDING and is deferred to subsequent lawful TASK episodes. Existing audit ADMIT/CONTINUE fails closed on invalid sources; no fabricated proof, false acceptance or waived engineering safety.
 

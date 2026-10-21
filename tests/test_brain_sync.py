@@ -276,6 +276,106 @@ def test_brain_sync_ambiguous_next_multiple_items(tmp_path: Path) -> None:
     assert snapshot.blocker["code"] == "AMBIGUOUS_NEXT"
 
 
+_TASK396_V13_NEXT = "lean-vp-intra-v13-budget-defaults-successor"
+_TASK396_RETIRED_NEXT = "lean-vp-intelligent-intra-primary-after-r21"
+
+
+def _task396_source_planning_roadmap() -> dict:
+    """Keep the real successor selectors, excluding unrelated DONE ancestry."""
+    source = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / ".ai/roadmap-state.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert source["next_items"] == [_TASK396_V13_NEXT]
+    successor = [
+        item for item in source["sequence"] if item["id"] == _TASK396_V13_NEXT
+    ]
+    retired = [
+        item for item in source["sequence"] if item["id"] == _TASK396_RETIRED_NEXT
+    ]
+    assert len(successor) == len(retired) == 1
+    assert [item for item in source["sequence"] if item.get("status") == "NEXT"] == successor
+    assert retired[0]["status"].startswith("SUPERSEDED_")
+    assert retired[0]["superseded_by"] == _TASK396_V13_NEXT
+    assert source["planning_document"] == successor[0]["planning_document"] == (
+        "docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md"
+    )
+    assert successor[0]["ka01_document_version"] == "1.3"
+    return {
+        "version": source["version"],
+        "active_track": source["active_track"],
+        "active_track_status": source["active_track_status"],
+        "planning_document": source["planning_document"],
+        "next_items": source["next_items"],
+        "sequence": [retired[0], successor[0]],
+    }
+
+
+def test_task396_v13_source_single_next_resolves_successor_planning_only(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    roadmap = _task396_source_planning_roadmap()
+    successor = roadmap["sequence"][1]
+    assert successor["normative_task_id"] == "TASK-396"
+    assert "task_id" not in successor and "task_revision" not in successor
+    (repo / ".ai/roadmap-state.yaml").write_text(
+        yaml.safe_dump(roadmap), encoding="utf-8"
+    )
+
+    snapshot = observe_brain_sync(repo=repo)
+
+    # One planning successor is resolved; a normative lineage pointer does not
+    # authorize execution or discover/resume an unrelated fixture TASK-101.
+    assert snapshot.roadmap["next_items"] == [_TASK396_V13_NEXT]
+    assert snapshot.selection_status == "UNAUTHORED_TASK"
+    assert snapshot.blocker == {
+        "code": "UNAUTHORED_TASK",
+        "item_id": _TASK396_V13_NEXT,
+        "message": "NEXT item has no associated task_id",
+    }
+    assert snapshot.selected_task is None and snapshot.unified_state is None
+    assert snapshot.lifecycle_state == "BLOCKED"
+    assert snapshot.next_action == "NONE" and snapshot.authority == "NONE"
+    assert not any((snapshot.run_created, snapshot.executor_invoked,
+                    snapshot.verification_invoked, snapshot.state_mutated))
+
+
+@pytest.mark.parametrize(
+    "fault", ["stale_old_next_items", "dual_next", "dual_next_and_next_items"]
+)
+def test_task396_v13_source_selector_conflict_never_resumes_retired_plan(
+    tmp_path: Path, fault: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    roadmap = _task396_source_planning_roadmap()
+    if fault == "stale_old_next_items":
+        # The partial mutation that changes sequence alone must fail closed.
+        roadmap["next_items"] = [_TASK396_RETIRED_NEXT]
+    else:
+        roadmap["sequence"][0]["status"] = "NEXT"
+        if fault == "dual_next_and_next_items":
+            roadmap["next_items"] = [_TASK396_RETIRED_NEXT, _TASK396_V13_NEXT]
+    (repo / ".ai/roadmap-state.yaml").write_text(
+        yaml.safe_dump(roadmap), encoding="utf-8"
+    )
+
+    snapshot = observe_brain_sync(repo=repo)
+
+    assert snapshot.selection_status == "AMBIGUOUS_NEXT"
+    assert snapshot.blocker is not None
+    assert snapshot.blocker["code"] == "AMBIGUOUS_NEXT"
+    assert set(snapshot.blocker["candidates"]) == {
+        _TASK396_RETIRED_NEXT, _TASK396_V13_NEXT,
+    }
+    assert snapshot.selected_task is None and snapshot.unified_state is None
+    assert snapshot.lifecycle_state == "BLOCKED"
+    assert snapshot.next_action == "NONE" and snapshot.authority == "NONE"
+    assert not any((snapshot.run_created, snapshot.executor_invoked,
+                    snapshot.verification_invoked, snapshot.state_mutated))
+
+
 def test_brain_sync_unauthored_next(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     roadmap = {
