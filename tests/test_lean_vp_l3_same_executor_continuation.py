@@ -829,14 +829,35 @@ def test_invocation_intent_crash_blocks_before_native_execute(failed, monkeypatc
 
     monkeypatch.setattr(completion, "_checkpoint_write_once", interrupted)
     original = invocation(f, lambda a: a.consume(request), blocked_start=True)
-    assert original.executions == 0
+    assert original.executions == 0 and original.observed == []
     retained = snapshot(f.directory.parent)
-    assert (f.directory.parent / ".runtime-mutation/intent.json").exists()
+    intent = retained[".runtime-mutation/intent.json"][0]
+    if phase == "before":
+        assert "local-invocation.json" not in retained
+    else:
+        assert retained["local-invocation.json"][0] == (intent[:20] if phase == "partial" else intent)
+    witness = ".runtime-mutation/contested.json"
+    assert witness not in retained
     f.owner = RuntimeCompletion(repo=f.repo, state=f.state, task=f.task, run=f.run,
         run_path=f.owner.run_path, verification_runner=f.actual_runner,
         observation_tracker=None, error_type=RuntimeError)
     reconstructed = invocation(f, lambda a: a.consume(request), blocked_start=True)
-    assert reconstructed.executions == 0 and snapshot(f.directory.parent) == retained
+    assert reconstructed.executions == 0 and reconstructed.observed == []
+    contested = snapshot(f.directory.parent)
+    # Startup contention may add only this immutable negative witness; the
+    # crashed invocation intent, retained fence and native captures stay exact.
+    assert set(contested) == set(retained) | {witness}
+    assert contested[witness][0] == encoded(dict(version=1, kind="COMPETING_RUNTIME_MUTATION"))
+    assert {name: value for name, value in contested.items() if name != witness} == retained
+
+    # Another reconstructed owner must preserve the witness bytes and mtime too.
+    f.owner = RuntimeCompletion(repo=f.repo, state=f.state, task=f.task, run=f.run,
+        run_path=f.owner.run_path, verification_runner=f.actual_runner,
+        observation_tracker=None, error_type=RuntimeError)
+    repeated = invocation(f, lambda a: a.consume(request), blocked_start=True)
+    assert original.executions == reconstructed.executions == repeated.executions == 0
+    assert repeated.observed == [] and len(f.calls) == 1
+    assert snapshot(f.directory.parent) == contested
 
 
 def test_altered_original_invocation_intent_cannot_expose_feedback(failed):
