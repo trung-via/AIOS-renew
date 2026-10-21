@@ -1422,7 +1422,10 @@ def _strict_utf8_command(command: str) -> str:
 
 
 def _summary(returncode: int, *, stdout: str, stderr: str) -> str:
-    detail = stdout.strip() or stderr.strip()
+    # Preserve both captures from this one execution. The protected raw file
+    # retains the exact STDOUT/STDERR byte framing; this summary is no proof of
+    # interleaving, completeness, or a test population.
+    detail = "\n".join(stream.strip() for stream in (stdout, stderr) if stream.strip())
     if detail:
         return detail
     return "verification passed" if returncode == 0 else "verification failed"

@@ -67,6 +67,58 @@ def test_task372_exact_sync_rejects_untrusted_or_absent_canonical_source(tmp_pat
     assert snapshot.diagnostics["blocker"]["action"] == "READ_EXACT_CANONICAL_FAILURE"
 
 
+@pytest.mark.parametrize("closed", [False, True])
+@pytest.mark.parametrize("moved", [False, True])
+def test_task393_sync_and_terminal_attention_keep_long_summary_redacted_and_source_bound(
+    tmp_path, monkeypatch, closed, moved,
+):
+    from aios_renew import brain_sync, review_transport
+    from aios_renew.verification_contract import verification_digest
+    from tests.test_brain_attention import Task372CanonicalSources
+    from tests.test_review_transport import _task393_summary, _task393_summary_failure
+    canonical = Task372CanonicalSources()
+    spoof = _task393_summary(["FAILED tests/test_spoof.py::test_false"])
+    final = "================ short test summary info ================\n" + (
+        "ERROR tests/test_actual.py::test_real[synthetic-secret] - ImportError: private\n")
+    if closed:
+        final += "================ 1 error in 0.12s ================\n"
+    private = _task393_summary_failure(spoof + "private traceback C:/private/ synthetic-secret\n" * 12000 + final)
+    for key in ("run_id", "task", "executor", "base_sha", "failed_head_sha", "candidate"):
+        private[key] = canonical.failure[key]
+    canonical.failure = json.loads(review_transport.public_failure(json.dumps(private).encode()))
+    canonical.moved = moved
+    monkeypatch.setattr(brain_sync, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(brain_sync, "_resolve_main_sha", lambda repo: "d" * 40)
+    monkeypatch.setattr(brain_sync, "_resolve_repository_name", lambda repo: "trung-via/AIOS-renew")
+    # An unavailable local detail read cannot promote an older public identity.
+    private_reads = []
+    def unavailable_detail(repo, context):
+        private_reads.append(context["source"]["private_failure_digest"])
+        return context
+    monkeypatch.setattr(brain_sync.op, "observe_runtime_failure_detail", unavailable_detail)
+    snapshot = observe_brain_sync(repo=tmp_path, run_id=canonical.run_id, canonical_sources=canonical)
+    observed = snapshot.as_dict()
+    if moved:
+        assert observed["diagnostics"]["failure_context"] is None
+        assert observed["diagnostics"]["blocker"]["code"] == "FAILURE_SOURCE_MOVED"
+    else:
+        context = observed["diagnostics"]["failure_context"]
+        review_transport.validate_failure_context(context)
+        assert context["source"]["artifact_sha"] == canonical.artifact_sha
+        assert context["source"]["failure_digest"] == verification_digest(canonical.failure)
+        assert context["source"]["private_failure_digest"] == verification_digest(private)
+        item = context["safe_detail"]["verification"][0]
+        assert item["summary_status"] == ("PARSED" if closed else "FINAL_SUMMARY_UNCLOSED")
+        assert [node["identity"] for node in item["failed_nodes"]] == (
+            ["tests/test_actual.py::test_real"] if closed else [])
+        assert private_reads == ([] if closed else [verification_digest(private)])
+        assert context["proof"] == "NON_PASS_DIAGNOSTIC"
+    assert all(observed[k] is False for k in ("run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    portable = json.dumps(observed) + snapshot.render()
+    assert all(text not in portable for text in ("synthetic-secret", "C:/private", "traceback", "test_spoof"))
+    assert not list(tmp_path.iterdir())
+
+
 def test_brain_sync_ready_single_next_rehydration(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     roadmap = {

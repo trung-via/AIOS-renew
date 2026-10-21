@@ -569,6 +569,71 @@ def completed(returncode=0, stdout=b"ok\n", stderr=b""):
     )
 
 
+@pytest.mark.parametrize("placement", ["stdout", "stderr", "mixed", "stdout-with-stderr-noise"])
+def test_task393_once_only_stream_summary_reaches_source_bound_safe_detail(tmp_path, placement):
+    from aios_renew import review_transport
+    from aios_renew.verification_contract import verification_digest
+    from tests.test_review_transport import _task393_summary, _task393_summary_failure
+
+    command = "python -m pytest -q tests/test_actual.py"
+    summary = _task393_summary([
+        "FAILED tests/test_actual.py::test_real[synthetic-secret] - AssertionError: private",
+        "ERROR tests/test_actual.py::test_setup - TypeError: private"], footer="1 failed, 1 error in 0.12s")
+    summary_bytes = summary.encode("utf-8")
+    noise = b"private traceback C:/private/ synthetic-secret\n"
+    stdout, stderr = {
+        "stdout": (summary_bytes, b""),
+        "stderr": (b"", summary_bytes),
+        "mixed": (noise, summary_bytes),
+        "stdout-with-stderr-noise": (summary_bytes, noise),
+    }[placement]
+    runner = RecordingRunner([completed(returncode=1, stdout=stdout, stderr=stderr)])
+    with pytest.raises(RuntimeVerificationError) as caught:
+        execute_verification((command,), run_id="RUN-391-014", subject_sha="b" * 40,
+            repository=tmp_path, raw_directory=tmp_path / "raw", runner=runner,
+            platform="posix", environment={})
+    assert len(runner.calls) == 1 and runner.calls[0][0] == ("/bin/sh", "-c", command)
+    item, = caught.value.evidence
+    assert item.run_id == "RUN-391-014" and item.subject_sha == "b" * 40
+    assert item.source.command == command and item.result.exit_code == 1 and item.verification is None
+    raw = Path(item.raw_path).read_bytes()
+    assert raw == b"STDOUT\n" + stdout + b"\nSTDERR\n" + stderr
+    assert all(stream.decode().strip() in item.result.summary for stream in (stdout, stderr))
+    private = _task393_summary_failure(item.result.summary, command=command)
+    context = review_transport.failure_context(private, artifact_sha="c" * 40)
+    review_transport.validate_failure_context(context)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["source_digest"] == verification_digest(item.result.summary)
+    assert context["source"]["private_failure_digest"] == verification_digest(private)
+    assert detail["command"] == command and detail["exit_code"] == 1
+    assert detail["summary_status"] == "PARSED" and detail["availability"] == "PARTIAL"
+    assert [node["identity"] for node in detail["failed_nodes"]] == [
+        "tests/test_actual.py::test_real", "tests/test_actual.py::test_setup"]
+    assert detail["complete"] is detail["unstable"] is detail["failure_count"] is None
+    assert all(secret not in json.dumps(context) for secret in ("synthetic-secret", "traceback", "C:/private/"))
+    assert Path(item.raw_path).read_bytes() == raw
+
+
+def test_task393_mixed_stream_unclosed_final_never_revives_stdout_spoof(tmp_path):
+    from aios_renew import review_transport
+    from tests.test_review_transport import _task393_summary, _task393_summary_failure
+    stdout = _task393_summary(["FAILED tests/test_spoof.py::test_false"])
+    stderr = "================ short test summary info ================\nFAILED tests/test_actual.py::test_real\n"
+    runner = RecordingRunner([completed(returncode=1, stdout=stdout.encode(), stderr=stderr.encode())])
+    with pytest.raises(RuntimeVerificationError) as caught:
+        execute_verification(("python -m pytest",), run_id="RUN-393-UNIT", subject_sha="b" * 40,
+            repository=tmp_path, raw_directory=tmp_path / "raw", runner=runner, platform="posix", environment={})
+    assert len(runner.calls) == 1
+    detail = review_transport.safe_failure_detail(_task393_summary_failure(
+        caught.value.evidence[0].result.summary))["verification"][0]
+    assert detail["summary_status"] == "FINAL_SUMMARY_UNCLOSED" and detail["failed_nodes"] == []
+
+
+@pytest.mark.parametrize("exit_code,expected", [(0, "verification passed"), (1, "verification failed")])
+def test_task393_summary_empty_stream_fallback_remains_compatible(exit_code, expected):
+    assert verification_module._summary(exit_code, stdout=" \n", stderr="\r\n") == expected
+
+
 def test_task346_v1_exact_authored_scope_executes_twelve_workers_in_isolated_commit(pytest_process_sandbox, tmp_path):
     root, _ = pytest_process_sandbox
     git(root, "init")

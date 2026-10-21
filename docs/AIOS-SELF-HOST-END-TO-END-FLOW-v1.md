@@ -370,6 +370,33 @@ final-response-shape categories. Unobserved sub-causes remain `UNKNOWN`.
 Neither `task_complete`, clean Git state nor an independent pytest invocation
 establishes canonical completion.
 
+Safe-detail version 2 scans the authenticated protected pytest summary through
+its final section, with a fixed 16 MiB UTF-8 scan budget and at most 32 ordered,
+redacted FAILED/ERROR identities per failed command. A later summary header
+discards earlier observations, including when the later section is unclosed or
+malformed. A closing pytest totals line establishes only a section boundary:
+text never supplies a verified failure count, phase, complete/unstable flag or
+PASS. Empty identity lists therefore differ from an observed zero failure count.
+The private command summary retains nonempty stdout followed by nonempty stderr
+from the same once-only execution; this order does not claim stream interleaving.
+The protected raw bytes retain their original `STDOUT`/`STDERR` framing.
+
+Each V2 verification detail has a fixed `summary_status`: `PARSED`,
+`NO_PARSEABLE_IDENTITIES`, `SOURCE_ABSENT`, `SOURCE_MALFORMED`,
+`UNSUPPORTED_COMMAND`, `SUMMARY_ABSENT`, `MALFORMED_SUMMARY`,
+`FINAL_SUMMARY_UNCLOSED` or `SCAN_BUDGET_EXHAUSTED`; structured observations use
+`NOT_APPLICABLE`. Blocked summaries expose no nodes or population facts. In
+particular, exhausted input cannot establish the final section and never returns
+an earlier prefix identity. An oversized in-memory source that also exceeds the
+original 16 MiB canonical digest bound raises the fixed
+`FAILURE_SUMMARY_SCAN_BUDGET_EXHAUSTED` blocker without enlarging the source-read
+or digest limits. These statuses, exact source digest and owner bindings
+travel through the existing public FAILURE, Brain Sync and terminal attention
+views without carrying source text. Safe-detail V1 and the outer public V1/V2 and
+private FAILURE schemas retain their historical decoder and exact-match paths.
+This is ordinary production behavior when this same TASK's reviewed PASS
+candidate is published; no separate activation task or measurement gate applies.
+
 Historical V1/V2 projections remain readable and exact. Only the existing
 authorized self-host control-plane boundary may supplement absent public detail
 from the exact local FAILURE whose digest equals the canonical context's private

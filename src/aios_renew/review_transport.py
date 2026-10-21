@@ -56,6 +56,7 @@ FAILURE_TRANSPORT_CODES = frozenset({
     "FAILURE_PRIVATE_INTEGRITY_INVALID", "FAILURE_TRANSPORT_IDENTITY_INVALID",
     "FAILURE_TRANSPORT_AFFINITY_INVALID",
     "FAILURE_TRANSPORT_SOURCE_UNAVAILABLE",
+    "FAILURE_SUMMARY_SCAN_BUDGET_EXHAUSTED",
     "FAILURE_CANDIDATE_NOT_PUBLISHABLE", "FAILURE_TRANSPORT_UNAVAILABLE",
 })
 _FAILURE_CATEGORIES = frozenset({
@@ -82,6 +83,18 @@ _DETAIL_CAUSES = frozenset({"UNKNOWN", "MISSING_ACCEPTANCE_CLAIMS", "RESULT_PACK
 _RESPONSE_SHAPES = frozenset({"UNKNOWN", "UNAVAILABLE", "INCOMPLETE_CAPTURE", "EMPTY",
     "INVALID_JSON", "NON_OBJECT", "MISSING_RESULT", "MISSING_EVIDENCE", "INVALID_RESULT",
     "INVALID_EVIDENCE", "INVALID_ENVELOPE_FIELDS", "INVALID_RESULT_FIELDS", "INVALID_CLAIMS", "RESULT_PACKAGE_SHAPE"})
+_PYTEST_SUMMARY_SCAN_BYTES = 16 * 1024 * 1024
+_SUMMARY_STATUSES = frozenset({"NOT_APPLICABLE", "PARSED", "NO_PARSEABLE_IDENTITIES",
+    "SOURCE_ABSENT", "SOURCE_MALFORMED", "UNSUPPORTED_COMMAND", "SUMMARY_ABSENT",
+    "MALFORMED_SUMMARY", "FINAL_SUMMARY_UNCLOSED", "SCAN_BUDGET_EXHAUSTED"})
+_SUMMARY_HEADER = re.compile(r"=+[ \t]+short test summary info[ \t]+=+[ \t]*\r?")
+# Recognize unsupported indentation/colour/spacing as a later candidate too;
+# only the strict header above can actually supply identities.
+_SUMMARY_START = re.compile(r"[ \t]*(?:\x1b\[[0-9;]*m)*=+[ \t]*(?:\x1b\[[0-9;]*m)*short(?: test(?: summary(?: info)?)?)?\b")
+_SUMMARY_TOTALS = re.compile(
+    r"(?:\d+ (?:failed|passed|errors?|skipped|deselected|xfailed|xpassed|warnings?|reruns?)"
+    r"(?:, \d+ (?:failed|passed|errors?|skipped|deselected|xfailed|xpassed|warnings?|reruns?))*"
+    r"|no tests ran)(?: in \d+(?:\.\d+)?s(?: \(\d+:\d{2}:\d{2}\))?)?")
 
 
 def _safe_test_identity(node: str) -> tuple[str | None, bool]:
@@ -104,6 +117,111 @@ def _detail_error_types(text: str) -> list[str]:
     if re.search(r"(?m)^(?:E\s+)?\s*fixture '[^\r\n]*' not found\s*$", text[:65536]):
         found.add("FixtureLookupError")
     return sorted(found) or ["UNKNOWN"]
+
+
+def _pytest_summary_command(command: str) -> bool:
+    return bool(re.match(r"^python(?:3)? -m pytest(?: |$)", command)
+                or command == "python scripts/aios_parallel_full_suite.py")
+
+
+def _summary_source_status(summary: Any, command: str) -> str | None:
+    """Check the scan budget without reading identities or widening source bounds."""
+    if not _pytest_summary_command(command):
+        return "UNSUPPORTED_COMMAND"
+    if summary is None or summary == "":
+        return "SOURCE_ABSENT"
+    if not isinstance(summary, str):
+        return "SOURCE_MALFORMED"
+    # Count UTF-8 bytes in small chunks without allocating an encoded full copy.
+    # A length over the budget already proves that a full scan is impossible.
+    if len(summary) > _PYTEST_SUMMARY_SCAN_BYTES:
+        return "SCAN_BUDGET_EXHAUSTED"
+    remaining = _PYTEST_SUMMARY_SCAN_BYTES
+    for offset in range(0, len(summary), 65536):
+        try:
+            remaining -= len(summary[offset:offset + 65536].encode("utf-8", errors="strict"))
+        except UnicodeError:
+            return "SOURCE_MALFORMED"
+        if remaining < 0:
+            return "SCAN_BUDGET_EXHAUSTED"
+    return None
+
+
+def _pytest_summary_nodes(summary: Any, command: str) -> tuple[list[dict[str, Any]], bool, str]:
+    """Scan the whole bounded source, retaining only the final closed section.
+
+    Closing text proves a section boundary, never a test population or PASS.
+    No prefix can establish which section is final when input is exhausted.
+    """
+    status = _summary_source_status(summary, command)
+    if status is not None:
+        return [], False, status
+
+    nodes: list[dict[str, Any]] = []
+    entries = 0
+    found = closed = malformed = False
+    start = 0
+    while start < len(summary):
+        end = summary.find("\n", start)
+        if end < 0:
+            end = len(summary)
+        stop = end - 1 if end > start and summary[end - 1] == "\r" else end
+        if _SUMMARY_START.match(summary, start, stop):
+            # Even an unclosed/malformed later section invalidates older nodes.
+            nodes, entries = [], 0
+            found, closed = True, False
+            malformed = _SUMMARY_HEADER.fullmatch(summary, start, stop) is None
+        elif found and not malformed:
+            line = summary[start:stop]
+            if not line.strip():
+                pass
+            elif line.startswith(("FAILED ", "ERROR ")):
+                if closed:
+                    malformed = True
+                else:
+                    nodeid, separator, error = line.split(" ", 1)[1].partition(" - ")
+                    identity, parameters = _safe_test_identity(nodeid)
+                    if identity is not None:
+                        entries += 1
+                        if len(nodes) < 32:
+                            nodes.append(dict(identity=identity, identity_digest=_failure_digest(nodeid),
+                                parameters_withheld=parameters, phase="unknown",
+                                error_types=_detail_error_types(error if separator else "")))
+            elif not closed:
+                totals = line.strip()
+                if totals.startswith("="):
+                    inner = totals.strip("=")
+                    totals = (inner.strip(" \t") if totals.endswith("=")
+                        and inner.startswith((" ", "\t")) and inner.endswith((" ", "\t")) else "")
+                if _SUMMARY_TOTALS.fullmatch(totals):
+                    closed = True
+                elif (line.startswith(("SKIPPED ", "XFAIL ", "XPASS ", "PASSED "))
+                      or line.startswith("!") and line.endswith("!")
+                         and line.strip("! \t").startswith("Interrupted: ")):
+                    pass  # Other pytest rows supply no failure or PASS facts.
+                else:
+                    malformed = True
+        start = end + 1
+    if not found:
+        return [], False, "SUMMARY_ABSENT"
+    if malformed:
+        return [], False, "MALFORMED_SUMMARY"
+    if not closed:
+        return [], False, "FINAL_SUMMARY_UNCLOSED"
+    return nodes, entries > len(nodes), "PARSED" if nodes else "NO_PARSEABLE_IDENTITIES"
+
+
+def _legacy_summary_reports(summary: str, command: str) -> list[dict[str, str]]:
+    """Reproduce immutable safe-detail V1 only for exact historical matching."""
+    excerpt = summary[:65536]
+    header = re.search(r"(?m)^=+ short test summary info =+\s*$", excerpt) if _pytest_summary_command(command) else None
+    reports = []
+    for line in (excerpt[header.end():].splitlines() if header else []):
+        match = re.match(r"^(FAILED|ERROR) (tests/[^\r\n]+)", line)
+        if match:
+            reports.append(dict(nodeid=match[2].split(" - ", 1)[0],
+                phase="unknown", detail=line.split(" - ", 1)[-1]))
+    return reports
 
 
 def _response_shape(native: Any) -> str:
@@ -192,11 +310,26 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
     transport writer calls this after validating the private FAILURE's role.
     Historical public input cannot regain withheld observations.
     """
+    return _safe_failure_detail(data, version=2)
+
+
+def _safe_failure_detail(data: Mapping[str, Any], *, version: int) -> dict[str, Any]:
     error = data["error"]
     private = "public_projection" not in data
-    source_digest = (_failure_digest(data) if private else
-                     data["public_projection"]["private_failure_digest"])
-    detail = dict(format="AIOS_SAFE_FAILURE_DETAIL", version=1, run_id=data["run_id"],
+    try:
+        source_digest = (_failure_digest(data) if private else
+                         data["public_projection"]["private_failure_digest"])
+    except ValueError as exc:
+        # The original canonical digest also has a 16 MiB bound. Keep that
+        # boundary: an oversized in-memory source gets an explicit blocker,
+        # never a clipped digest, an earlier node, or a larger read allowance.
+        if (private and version == 2 and data["phase"] == "VERIFICATION"
+                and any(_summary_source_status(outcome.get("summary"), outcome["command"])
+                        == "SCAN_BUDGET_EXHAUSTED" for outcome in error.get("verification", [])[:32]
+                        if outcome["exit_code"] != 0 and "verification" not in outcome)):
+            raise FailureDiagnosticError("FAILURE_SUMMARY_SCAN_BUDGET_EXHAUSTED") from exc
+        raise
+    detail = dict(format="AIOS_SAFE_FAILURE_DETAIL", version=version, run_id=data["run_id"],
         subject_sha=data["failed_head_sha"], private_failure_digest=source_digest, phase=data["phase"],
         availability="UNAVAILABLE", verification=[], verification_truncated=False,
         cause="UNKNOWN", missing_acceptance_ids=[], final_response_shape="UNKNOWN",
@@ -211,6 +344,8 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
         ref = outcome.get("verification")
         observed = ref.get("candidate") if isinstance(ref, dict) else None
         summary = outcome.get("summary", "")
+        summary_status = "NOT_APPLICABLE"
+        nodes_truncated = False
         observation_complete = observed.get("complete") if isinstance(observed, dict) else None
         unstable = observed.get("unstable") if isinstance(observed, dict) else None
         if isinstance(observed, dict):
@@ -221,15 +356,9 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
             # A summary is an observed output excerpt, never a complete pytest
             # report. Exit code 1 alone identifies no individual failing test.
             source_kind, digest = "PROTECTED_SUMMARY", _failure_digest(summary)
-            reports = []
-            excerpt = summary[:65536]
-            pytest_command = re.match(r"^python(?:3)? -m pytest(?: |$)", outcome["command"]) or outcome["command"] == "python scripts/aios_parallel_full_suite.py"
-            header = re.search(r"(?m)^=+ short test summary info =+\s*$", excerpt) if pytest_command else None
-            for line in (excerpt[header.end():].splitlines() if header else []):
-                match = re.match(r"^(FAILED|ERROR) (tests/[^\r\n]+)", line)
-                if match:
-                    reports.append(dict(nodeid=match[2].split(" - ", 1)[0],
-                        phase="unknown", detail=line.split(" - ", 1)[-1]))
+            reports = _legacy_summary_reports(summary, outcome["command"]) if version == 1 else []
+            if version == 2:
+                nodes, nodes_truncated, summary_status = _pytest_summary_nodes(summary, outcome["command"])
             failure_count = None
         for report in reports[:32]:
             identity, parameters = _safe_test_identity(report["nodeid"])
@@ -239,9 +368,10 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
         detail["verification"].append(dict(index=index, command=_public_command(outcome["command"]),
             exit_code=outcome["exit_code"], source_kind=source_kind, source_digest=digest,
             availability="AVAILABLE" if observed and observation_complete and not unstable else
-                "PARTIAL" if reports else "UNAVAILABLE",
+                "PARTIAL" if reports or nodes else "UNAVAILABLE",
             complete=observation_complete, unstable=unstable, failure_count=failure_count,
-            failed_nodes=nodes, nodes_truncated=len(reports) > len(nodes)))
+            failed_nodes=nodes, nodes_truncated=nodes_truncated or len(reports) > len(nodes),
+            **({"summary_status": summary_status} if version == 2 else {})))
     detail["verification_truncated"] = len(outcomes) > 32
     message = error.get("message", "")
     if data["phase"] == "COMPLETION_GATE":
@@ -272,7 +402,7 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
         "availability", "verification", "verification_truncated", "cause", "missing_acceptance_ids",
         "final_response_shape", "raw_output_withheld"}
     if (not isinstance(detail, dict) or set(detail) != fields or detail["format"] != "AIOS_SAFE_FAILURE_DETAIL"
-            or type(detail["version"]) is not int or detail["version"] != 1
+            or type(detail["version"]) is not int or detail["version"] not in {1, 2}
             or any(detail[k] != owner[k] for k in ("run_id", "subject_sha", "private_failure_digest", "phase"))
             or detail["availability"] not in {"UNAVAILABLE", "PARTIAL"}
             or type(detail["verification_truncated"]) is not bool or detail["raw_output_withheld"] is not True
@@ -293,6 +423,8 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
     for item in detail["verification"]:
         fields = {"index", "command", "exit_code", "source_kind", "source_digest", "availability",
             "complete", "unstable", "failure_count", "failed_nodes", "nodes_truncated"}
+        if detail["version"] == 2:
+            fields.add("summary_status")
         if (not isinstance(item, dict) or set(item) != fields or type(item["index"]) is not int
                 or not previous < item["index"] < 32 or item["index"] >= len(owner["verification"])
                 or any(item[k] != owner["verification"][item["index"]][k] for k in ("command", "exit_code"))
@@ -307,6 +439,18 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
             raise ValueError("invalid safe FAILURE verification detail")
         previous = item["index"]
         _public_command(item["command"])
+        if detail["version"] == 2:
+            status = item["summary_status"]
+            if (not isinstance(status, str) or status not in _SUMMARY_STATUSES
+                    or (status == "NOT_APPLICABLE") != (item["source_kind"] == "PROTECTED_OBSERVATION")
+                    or item["source_kind"] == "PROTECTED_SUMMARY" and (
+                        any(item[k] is not None for k in ("complete", "unstable", "failure_count"))
+                        or item["availability"] != ("PARTIAL" if status == "PARSED" else "UNAVAILABLE")
+                        or bool(item["failed_nodes"]) != (status == "PARSED")
+                        or status != "PARSED" and item["nodes_truncated"]
+                        or any(not isinstance(n, dict) or n.get("phase") != "unknown" or n.get("identity") is None
+                               for n in item["failed_nodes"]))):
+                raise ValueError("invalid safe FAILURE summary status")
         for node in item["failed_nodes"]:
             if (not isinstance(node, dict) or set(node) != {"identity", "identity_digest", "parameters_withheld", "phase", "error_types"}
                     or node["identity"] is not None and _safe_test_identity(node["identity"]) != (node["identity"], False)
@@ -675,7 +819,9 @@ def _public_metadata_value(value: Any, template: Any = None) -> Any:
     if value.get("kind") == "FAILURE" and _needs_failure_projection(value):
         marker = template.get("public_projection", {}) if isinstance(template, Mapping) else {}
         return _project_failure(value, projection_format=marker.get("format", PUBLIC_FAILURE_FORMAT),
-            include_detail=("safe_detail" in template.get("error", {}) if marker else True))
+            include_detail=("safe_detail" in template.get("error", {}) if marker else True),
+            _detail_version=(template.get("error", {}).get("safe_detail", {}).get("version", 1)
+                             if marker else 2))
     data = {key: _public_metadata_value(item, template.get(key) if isinstance(template, Mapping) else None)
             for key, item in value.items()}
     if "run_id" in data and "workspace" in data and "task" in data:
@@ -833,7 +979,7 @@ def _project_reference(value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC_FAILURE_FORMAT,
-                     include_detail: bool = True) -> dict[str, Any]:
+                     include_detail: bool = True, _detail_version: int = 2) -> dict[str, Any]:
     """Produce FAILURE metadata; omitted proof remains bound, never recreated."""
     if "public_projection" in data:
         validate_public_failure(data)
@@ -861,7 +1007,8 @@ def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC
             projected["error"]["exit_code"] = error["exit_code"]
         projected["error"]["diagnostic"] = diagnostic
         if include_detail:
-            projected["error"]["safe_detail"] = safe_failure_detail(data)
+            projected["error"]["safe_detail"] = (_safe_failure_detail(data, version=1)
+                if _detail_version == 1 else safe_failure_detail(data))
     # Full EVIDENCE in any validated package role retains identity/digest only.
     identities: dict[str, dict[str, str]] = {}
 

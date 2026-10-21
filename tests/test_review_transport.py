@@ -106,6 +106,197 @@ def _native_failure_fixture(*, exit_code=None, reason="TIMEOUT", dirty=False):
     return run, failure
 
 
+def _task393_summary_failure(summary, *, command="python -m pytest -q tests/test_actual.py"):
+    _, private = _native_failure_fixture()
+    private.update(run_id="RUN-391-014", task=dict(id="TASK-391", revision=1), phase="VERIFICATION")
+    private["error"] = dict(type="RuntimeVerificationError", message="verification failed",
+        verification=[dict(command=command, exit_code=1, summary=summary)])
+    return private
+
+
+def _task393_summary(rows, *, footer="1 failed in 0.12s", newline="\n"):
+    return newline.join(["================ short test summary info ================", *rows,
+                         "================ " + footer + " ================", ""])
+
+
+def test_task393_long_final_summary_matches_short_equivalent_and_rejects_earlier_spoof():
+    from aios_renew.verification_contract import verification_digest
+    rows = ["FAILED tests/test_actual.py::test_real[credential=synthetic-secret] - AssertionError: private",
+            "ERROR tests/test_actual.py::test_setup - TypeError: private"]
+    short = _task393_summary(rows, footer="1 failed, 1 error in 0.12s")
+    spoof = _task393_summary(["FAILED tests/test_spoof.py::test_false - ValueError: private"])
+    # The final section itself exceeds 65536 characters, beyond a RUN-391-014-
+    # shaped traceback tail of more than 418031 characters.
+    long_rows = [row + " private traceback C:/private/ synthetic-secret" * 1700 for row in rows]
+    final = _task393_summary(long_rows, footer="1 failed, 1 error in 0.12s", newline="\r\n")
+    prefix = spoof + "private traceback synthetic-secret\n" * 15000
+    assert len(prefix) > 418031 and len(final) > 65536
+    private = _task393_summary_failure(prefix + final)
+    original = json.dumps(private).encode()
+    public_bytes = review_transport.public_failure(original)
+    public = review_transport.failure_document(public_bytes)
+    context = review_transport.failure_context(public, artifact_sha="c" * 40)
+    review_transport.validate_failure_context(context)
+    actual = context["safe_detail"]["verification"][0]
+    expected = review_transport.safe_failure_detail(_task393_summary_failure(short))["verification"][0]
+    assert actual["failed_nodes"] == expected["failed_nodes"]
+    assert actual["availability"] == "PARTIAL" and actual["summary_status"] == "PARSED"
+    assert actual["complete"] is actual["unstable"] is actual["failure_count"] is None
+    assert actual["source_digest"] == verification_digest(prefix + final)
+    assert context["source"]["private_failure_digest"] == verification_digest(private)
+    assert operator_failure_matches(private, public)
+    assert json.dumps(private).encode() == original
+    portable = json.dumps(context)
+    assert len(portable) < 10000
+    assert all(value not in portable for value in (
+        "synthetic-secret", "C:/private", "traceback", "credential=", "test_spoof"))
+
+
+@pytest.mark.parametrize("count", [0, 1, 32, 33, 70])
+def test_task393_summary_limits_preserve_order_without_population_proof(count):
+    rows = [("FAILED" if i % 2 else "ERROR") + f" tests/test_actual.py::test_case_{i:03d}"
+            "[synthetic-secret] - RuntimeError: private" for i in range(count)]
+    # Totals are never promoted to a verified count, including a textual zero.
+    summary = _task393_summary(rows, footer=f"{count} failed in 0.12s")
+    context = review_transport.failure_context(_task393_summary_failure(summary))
+    review_transport.validate_failure_context(context)
+    item = context["safe_detail"]["verification"][0]
+    assert [node["identity"] for node in item["failed_nodes"]] == [
+        f"tests/test_actual.py::test_case_{i:03d}" for i in range(min(count, 32))]
+    assert item["nodes_truncated"] is (count > 32)
+    assert item["availability"] == ("PARTIAL" if count else "UNAVAILABLE")
+    assert item["summary_status"] == ("PARSED" if count else "NO_PARSEABLE_IDENTITIES")
+    assert item["complete"] is item["unstable"] is item["failure_count"] is None
+    assert all(node["phase"] == "unknown" and node["parameters_withheld"]
+               for node in item["failed_nodes"])
+    assert context["proof"] == "NON_PASS_DIAGNOSTIC"
+    _, observed, _ = _failure_transport_recovery_fixture(nodes=1, failures=0)
+    assert review_transport.safe_failure_detail(observed)["verification"][0]["failure_count"] == 0
+
+
+@pytest.mark.parametrize("suffix,status", [
+    ("================ short test summary info ================\n"
+     "FAILED tests/test_actual.py::test_real\n", "FINAL_SUMMARY_UNCLOSED"),
+    ("================ short test summary info ================\r\n"
+     "ERROR tests/test_actual.py::test_real\r\n", "FINAL_SUMMARY_UNCLOSED"),
+    ("================ short test summary info\nFAILED tests/test_actual.py::test_real\n", "MALFORMED_SUMMARY"),
+    ("================ short test summa", "MALFORMED_SUMMARY"),
+    ("FAILED tests/test_actual.py::test_real\n", "MALFORMED_SUMMARY"),
+    ("  ================ short test summary info ================\n"
+     "FAILED tests/test_actual.py::test_real\n1 failed\n", "MALFORMED_SUMMARY"),
+    ("\x1b[31m================ short test summary info ================\x1b[0m\n"
+     "FAILED tests/test_actual.py::test_real\n1 failed\n", "MALFORMED_SUMMARY"),
+    ("================ short test summary info ================\n"
+     "private malformed row synthetic-secret\n1 failed\n", "MALFORMED_SUMMARY"),
+])
+def test_task393_later_uncertain_section_never_reuses_closed_spoof(suffix, status):
+    spoof = _task393_summary(["FAILED tests/test_spoof.py::test_false"])
+    context = review_transport.failure_context(_task393_summary_failure(spoof + suffix))
+    review_transport.validate_failure_context(context)
+    item = context["safe_detail"]["verification"][0]
+    assert item["failed_nodes"] == [] and item["nodes_truncated"] is False
+    assert item["availability"] == "UNAVAILABLE" and item["summary_status"] == status
+    assert "test_spoof" not in json.dumps(context) and "test_real" not in json.dumps(context)
+
+
+def test_task393_scan_exhaustion_is_distinct_and_never_returns_prefix_identities(monkeypatch):
+    spoof = _task393_summary(["FAILED tests/test_spoof.py::test_false"])
+    final = _task393_summary(["FAILED tests/test_actual.py::test_real"])
+    budget = review_transport._PYTEST_SUMMARY_SCAN_BYTES
+    assert budget == 16 * 1024 * 1024
+    summary = spoof + "x" * budget + "\n" + final
+    # Exhausted input cannot even attempt to publish the prefix's safe node.
+    monkeypatch.setattr(review_transport, "_safe_test_identity", lambda node: pytest.fail("parsed exhausted source"))
+    assert review_transport._pytest_summary_nodes(summary, "python -m pytest") == (
+        [], False, "SCAN_BUDGET_EXHAUSTED")
+    # The immutable digest/source bound remains 16 MiB as well. An in-memory
+    # source exceeding it gets a typed blocker rather than a forged projection.
+    with pytest.raises(review_transport.FailureDiagnosticError) as caught:
+        review_transport.safe_failure_detail(_task393_summary_failure(summary))
+    assert caught.value.code == "FAILURE_SUMMARY_SCAN_BUDGET_EXHAUSTED"
+    assert str(caught.value) == "FAILURE_SUMMARY_SCAN_BUDGET_EXHAUSTED"
+
+
+def test_task393_exhausted_projection_retains_exact_digest_when_source_fits_owner_bound(monkeypatch):
+    from aios_renew.verification_contract import verification_digest
+    summary = (_task393_summary(["FAILED tests/test_spoof.py::test_false"]) + "x" * 1024 + "\n" +
+               _task393_summary(["FAILED tests/test_actual.py::test_real"]))
+    monkeypatch.setattr(review_transport, "_PYTEST_SUMMARY_SCAN_BYTES", 1024)
+    private = _task393_summary_failure(summary)
+    context = review_transport.failure_context(private)
+    review_transport.validate_failure_context(context)
+    item = context["safe_detail"]["verification"][0]
+    assert item["source_digest"] == verification_digest(summary)
+    assert item["summary_status"] == "SCAN_BUDGET_EXHAUSTED"
+    assert item["availability"] == "UNAVAILABLE" and item["failed_nodes"] == []
+    assert item["nodes_truncated"] is False and item["failure_count"] is None
+    assert "test_spoof" not in json.dumps(context) and "test_real" not in json.dumps(context)
+
+
+def test_task393_scan_budget_counts_utf8_bytes_and_accepts_exact_boundary(monkeypatch):
+    summary = _task393_summary(["ERROR tests/test_actual.py::test_real"], footer="1 error")
+    monkeypatch.setattr(review_transport, "_PYTEST_SUMMARY_SCAN_BYTES", len(summary.encode("utf-8")))
+    assert review_transport._pytest_summary_nodes(summary, "python -m pytest")[2] == "PARSED"
+    # Fewer code points can still exhaust a UTF-8 byte budget.
+    summary = "\u00e9" * (len(summary) // 2 + 1)
+    assert len(summary) <= review_transport._PYTEST_SUMMARY_SCAN_BYTES < len(summary.encode("utf-8"))
+    assert review_transport._pytest_summary_nodes(summary, "python -m pytest")[2] == "SCAN_BUDGET_EXHAUSTED"
+
+
+@pytest.mark.parametrize("summary,command,status", [
+    ("", "python -m pytest", "SOURCE_ABSENT"),
+    (None, "python -m pytest", "SOURCE_ABSENT"),
+    ({"stdout": "synthetic-secret"}, "python -m pytest", "SOURCE_MALFORMED"),
+    ("bad\ud800text", "python -m pytest", "SOURCE_MALFORMED"),
+    ("FAILED tests/test_actual.py::test_real\n1 failed", "python -m pytest", "SUMMARY_ABSENT"),
+    (_task393_summary(["FAILED tests/test_actual.py::test_real"]), "git diff --check", "UNSUPPORTED_COMMAND"),
+    (_task393_summary(["ERROR C:/private/test_actual.py::test_secret"]), "python -m pytest", "NO_PARSEABLE_IDENTITIES"),
+])
+def test_task393_controlled_unavailable_sources_have_finite_status(summary, command, status):
+    nodes, truncated, actual = review_transport._pytest_summary_nodes(summary, command)
+    assert (nodes, truncated, actual) == ([], False, status)
+
+
+def test_task393_error_only_mixed_headers_crlf_and_legacy_decoder_compatibility():
+    summary = ("================ warnings summary ================\r\nprivate warning\r\n" +
+        _task393_summary(["ERROR tests/test_actual.py::test_real[synthetic-secret] - ImportError: private"],
+                         footer="1 error in 0.12s", newline="\r\n"))
+    private = _task393_summary_failure(summary)
+    for version in (1, 2):
+        public = review_transport._project_failure(private, _detail_version=version)
+        original = review_transport._public_bytes(public)
+        assert review_transport.public_failure(original) == original
+        assert operator_failure_matches(private, public)
+        context = review_transport.failure_context(public)
+        review_transport.validate_failure_context(context)
+        item = context["safe_detail"]["verification"][0]
+        assert context["safe_detail"]["version"] == version
+        assert item["failed_nodes"][0]["identity"] == "tests/test_actual.py::test_real"
+        assert item["failed_nodes"][0]["error_types"] == ["ImportError"]
+
+
+@pytest.mark.parametrize("fault", ["status", "count", "complete", "phase", "command", "digest", "owner", "raw"])
+def test_task393_summary_details_reject_forged_fields_even_after_public_resealing(fault):
+    summary = _task393_summary(["FAILED tests/test_actual.py::test_real"])
+    private = _task393_summary_failure(summary)
+    public = review_transport._project_failure(private)
+    detail = public["error"]["safe_detail"]
+    item = detail["verification"][0]
+    if fault == "status": item["summary_status"] = "synthetic-secret"
+    elif fault == "count": item["failure_count"] = 1
+    elif fault == "complete": item["complete"] = True
+    elif fault == "phase": item["failed_nodes"][0]["phase"] = "call"
+    elif fault == "command": item["command"] = "git diff --check"
+    elif fault == "digest": item["source_digest"] = "0" * 64
+    elif fault == "owner": detail["subject_sha"] = "c" * 40
+    else: item["stdout"] = "synthetic-secret"
+    _failure_transport_recovery_reseal(public)
+    assert not operator_failure_matches(private, public)
+    if fault != "digest":  # An opaque source digest also requires the exact private source.
+        with pytest.raises((ValueError, ReviewTransportError)):
+            review_transport.failure_document(json.dumps(public).encode())
+
+
 @pytest.mark.parametrize("task", ["358", "360", "371"])
 def test_task372_v1_multicommand_pytest_detail_withholds_parameters_and_raw_text(task):
     _, private = _native_failure_fixture()
