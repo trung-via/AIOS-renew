@@ -1,0 +1,43 @@
+review_id: REVIEW-393-001
+reviewed_sha: c1862e953e5bc7b858e5fde1a22c300a29404746
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: FAIL
+  AC5: PASS
+  AC6: PASS
+findings:
+- id: FINDING-393-001-001
+  basis: AC4
+  action: CODE_FIX
+  location: src/aios_renew/review_transport.py::_parse_pytest_summary_reports (candidate
+    c1862e95, around lines 130-174); tests/test_review_transport.py::test_task393_ac4_unsupported_malformed_error_only_and_spoofed_headers
+  issue: The parser keeps `final_reports` from an earlier closed short-test-summary
+    section when a later, final section starts but is truncated before its footer.
+    A concrete bounded input consisting of a complete earlier spoof section (`FAILED
+    tests/test_spoof.py::test_false`) followed by a final unclosed section (`FAILED
+    tests/test_actual.py::test_real`) returns the earlier spoof identity instead of
+    withholding it as untrustworthy. The candidate's truncated-summary regression
+    tests only an unclosed section with no previously completed section. This contradicts
+    AC4's required fail-closed spoofed/truncated-source behavior and its prohibition
+    on silently misrepresenting source-known failures. Independently, `_parse_pytest_summary_reports`
+    silently applies `_MAX_SUMMARY_SCAN_CHARS = 16 * 1024 * 1024` and returns the
+    same empty list as absent/unsupported/malformed summaries when the scan budget
+    is exhausted before the final section; the public safe_detail then labels it generic
+    `UNAVAILABLE`, without the TASK-hard-required explicit exhausted-input status.
+    Runtime evidence RUN-393-005-V001 proves the authored focused command exited 0
+    but does not semantically close these untested cases.
+  expected: Preserve the current six-file scope, exact task revision, source digests,
+    historic decoders, 32-view limit, privacy, and Runtime verification owner. For
+    a later incomplete/unclosed summary after any earlier complete or spoofed section,
+    fail closed on final-source uncertainty rather than promote earlier identities;
+    add a focused negative regression with both sections. Distinguish bounded source-scan
+    exhaustion from empty/unsupported/malformed input with an explicit, authenticated,
+    finite availability/blocker reason in the existing lawful projection/decoder boundary;
+    do not leak raw logs or silently expand caps. Demonstrate final authentic section
+    beyond 65,536 and stderr-only still works; preserve AC1-AC3/AC5-AC6. Runtime alone
+    re-verifies the original minimum-sufficient-v1 authored command. No TASK-394/P1
+    or unrelated changes.
