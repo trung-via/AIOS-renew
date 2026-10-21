@@ -1,0 +1,169 @@
+task_id: TASK-392
+revision: 1
+goal: Implement one minimum bounded R2.1 semantic audit hardening slice for TCA TASK_AUTHORING
+  and ROA REPAIR_AUTHORING, fixing early source/test/AC/scope satisfiability and claims-only
+  completion repair strategy. Preserve both existing audit shapes, historical identities,
+  AOA/MOA, Reviewer/Runtime authority and first-party exact policy selection. Prepare
+  but do not self-authorize successor default activation.
+problem: 'TASK-391 r1 AC12 contradicted published K_i/F_i direct codec import behavior
+  and an historical AST import test outside r1 modification scope. RUN-391-005 and
+  RUN-391-010 had verification exit 0 but REVIEW-391-001 and REVIEW-391-002 each rejected
+  AC12; r2 Human scope expansion was required. RUN-391-002/007/008/009/012/013 and
+  RUN-383-002 show repeated COMPLETION_GATE missing acceptance claims, often with
+  no candidate changes. Existing TCA/ROA semantic instructions did not reliably prevent
+  these failures. Simply editing profile YAML cannot work: canonical approval pins
+  old digest, code checks exact IDs, and registry already uses 7 entries/40960 bytes.
+  Improve only these two semantic profiles and the indispensable selection/compatibility
+  consumers.'
+assumptions:
+- Explicit current Human priority is one immediate bounded TCA+ROA R2.1 correction
+  TASK after TASK-391, not Lean VP automatic roadmap NEXT advancement or a new Executor
+  delegation.
+- Canonical main at authoring is 50dc508e7c2660c40319fb32b43ec5072ca59ce3; TASK-391
+  r2 RUN-391-015 / REVIEW-391-003 PRIMARY PASS is published. TASK-392 remains proposed
+  until canonical Runtime AUTHOR_TASK admission, exact identity and CAS.
+- Historical exact TCA-1 v1 digest 1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2,
+  ROA-1 R2 digest aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4
+  must stay intact. Human original R2.1 approval/TASK-368 publication and in-flight
+  decisions must never be reissued or silently reinterpreted.
+- Candidate prospective successor identities tca-2 and roa-1-r3 are distinct from
+  historical profile IDs and must receive computed normalized content digests. AOA/MOA
+  and optional Human V1 remain unchanged.
+- Source-bound TCA must surface source/test/scope conflicts as UNKNOWN/NO_DECISION
+  when unsatisfiable. ROA must choose code/completion levers by cause, not invent
+  missing results. Deterministic test proof cannot assert model semantic infallibility.
+- Production successor cutover requires a separately authenticated current Human/Brain
+  canonical policy decision and reviewed/published implementation; Executor has no
+  authority to mutate the Human-owned roadmap or grant activation.
+- Authoring requests LEGACY_REPOSITORY_DEFAULT_ROUTE only where current Runtime lawfully
+  admits it. Executor/model/effort not assigned or guessed.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-368.yaml
+  - .ai/tasks/TASK-369.yaml
+  - .ai/tasks/TASK-383.yaml
+  - .ai/tasks/TASK-391.yaml
+  - .ai/brain-return-contracts.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/task.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_context.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_intra_run_proof_contract.py
+  modify:
+  - .ai/brain-audit-profiles.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider_protocol.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_context.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+non_goals:
+- No edit or remint original TCA-1/ROA-1 R2/AOA/MOA/Adaptive normative bytes or historic
+  approvals, TASK/RUN/RESULT/FAILURE/REVIEW/lineage.
+- No policy cutover by Executor or from registry presence, no edit to Human-owned
+  roadmap in TASK, no automatic roadmap NEXT or dispatch.
+- No extra audit stages, generic router, lifecycle/repair selector, Runtime semantic
+  verification, new Reviewer/Publisher, semantic memory DB or provider fallback.
+- No Lean VP/K_i/F_i code changes, test bypass, full test suite, verification policy
+  weakening or claimed measured semantic superiority.
+constraints:
+  hard:
+  - Keep TCA's original two focused passes (five construct checks, six adversarial
+    checks, one closure) and ROA's five focused checks in one procedure/one closure;
+    strengthen checks, not audit topology.
+  - Preserve old content-digest identities byte exact. New successor identities/digests
+    are separately validated, with closed bounded registry size/count adjustment only
+    as needed; no reinterpreting historical bodies.
+  - TCA existing ACCEPTANCE_SATISFIABILITY/REQUIRED_CONSUMERS and adversarial challenge
+    must explicitly discriminate API preservation, historical import/AST test constraints
+    and scope.inspect/modify, including cases where required changes cannot be permitted.
+    Missing bound source is UNKNOWN and final NO_DECISION.
+  - ROA must discriminate VERIFICATION, EXECUTION, COMPLETION_GATE and private diagnostic
+    UNKNOWN; recognize missing full acceptance claims/no source delta distinctly from
+    real code failure. Choose smallest lawful CODE_FIX, NO_CHANGE, CONTINUE_IMPLEMENTATION
+    or FINALIZE_CANDIDATE with evidence for why it addresses the exact failure; preserve
+    all original TASK ACs and completion schema without synthesizing claims.
+  - Prospective policy preparation must retain exact original 2026-10-17 approval
+    and reviewed TASK-368/RUN-368-001, preserve historical/in-flight selections, and
+    allow only one new separately Human-approved canonical policy record with exact
+    reviewed successor publication/currentness before effective default TCA/ROA change.
+    No duplicate competing authority, no partial profile mapping or silent fallback.
+  - Keep default AOA/MOA profiles, Human V1 option and one existing brain_provider.attempt/R5
+    authenticator/ADMIT/CONTINUE path. Never make tests or selected digest self-authenticate
+    a policy.
+  - Test concrete adversarial TCA TASK-391 AC12 pre-r2 conflict, ROA RUN-391-013 and
+    RUN-383-002 missing-claims with no new source, genuine coding verification failures,
+    historical replay, mixed/stale/forged profile selection and minimal scope.
+  - Do not reintroduce serialized audit as AUTHOR_TASK/REPAIR admission gate; Runtime
+    verifies code/test claims, Reviewer judges semantics, Publisher publishes exact
+    reviewed candidate.
+  - Modify only listed paths; if mandatory consumer cannot be handled in authorized
+    scope, report bounded blocker rather than claim activation.
+acceptance:
+- id: AC1
+  condition: Existing TCA-1 v1, ROA-1 R2, AOA, MOA and Adaptive profile content/digests
+    remain exactly unchanged; distinct bounded TCA and ROA successor identities and
+    normalized digests are defined and accepted without historical substitution.
+- id: AC2
+  condition: TCA successor retains exactly two original focused audit passes and one
+    closure, but its existing satisfiability/consumer/scope/falsifier checks explicitly
+    require challenging bounded source API, legacy tests and modify authority against
+    every material AC and returning NO_DECISION when decisive conflict is unresolved.
+- id: AC3
+  condition: Focused adversarial TCA regressions include TASK-391 r1's published direct
+    native K_i/F_i codec import against historical AST-import restriction with test
+    outside allowed scope; contradictions are not silently regarded as authorable
+    or proven PASS.
+- id: AC4
+  condition: ROA successor retains exactly five focused checks and one closure, distinguishing
+    phase, source and missing claims/final-contract shape from native execution or
+    genuine code/test failure and retaining UNKNOWN when exact cause evidence is absent.
+- id: AC5
+  condition: ROA completion-only counterexamples using RUN-391-013 and RUN-383-002
+    distinguish no source change and missing complete AC claims from CODE_FIX; selected
+    lever explains how exact failure can legally close and retains full original acceptance,
+    sticky Executor and Runtime completion gate. Genuine code regression still permits
+    CODE_FIX.
+- id: AC6
+  condition: Finite registry/parser limits safely admit original seven identities
+    plus exactly two successors without arbitrary versions, duplicate identities,
+    relaxed profile digest checks or oversized/unbounded material.
+- id: AC7
+  condition: First-party source-authenticated FOUR_SPECIALIZED policy can recognize
+    a complete separately Human-approved successor mapping while preserving historical
+    old mapping and immutable admitted continuation; new effective default cannot
+    be selected without authentic prospective canonical authority and reviewed publication.
+    AOA/MOA/V1 option unchanged.
+- id: AC8
+  condition: Focused tests exercise new/old exact digest, stale/forged/partial policy
+    and actual default caller binding; no test-only cutover, duplicate policy authority
+    or silent fallback.
+- id: AC9
+  condition: Documentation names new and historical profile identities, no automatic
+    activation, Human/Brain later canonical approval and no unsupported claims about
+    live semantic correctness, verification, publication or performance.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_context.py tests/test_brain_provider.py
+    tests/test_brain_provider_protocol.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
