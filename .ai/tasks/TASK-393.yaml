@@ -1,5 +1,5 @@
 task_id: TASK-393
-revision: 1
+revision: 2
 goal: Deliver P0 Failure Diagnostic Completeness using the existing Runtime verification
   and safe FAILURE projection, so Brain can identify observed pytest FAILED/ERROR
   tests even when output is extremely long or diagnostic appears in stderr; retain
@@ -35,6 +35,25 @@ assumptions:
 - Follow existing minimum-sufficient-v1 verification; no Human-specified executor/model/effort
   for this new TASK. Previous task-scoped Codex delegation is not inferred as a new
   blanket executor assignment.
+- "EXACT HUMAN-APPROVED TASK-393 r2 RECOVERY 2026-10-21: same TASK id, objective,\
+  \ original AC1\u2013AC6, six-file modification scope, verification minimum-sufficient-v1\
+  \ and return affinity. Canonical r1 has two distinct immutable PRIMARY FAILURES\
+  \ RUN-393-001 (a0def85cc3e15d6199f3b3f26f4e415ff00f8261, native provider capacity\
+  \ and dirty candidate) and RUN-393-002 (e8e2ed0ff04005ce3cbe753597d4d0927f591ae7,\
+  \ native provider capacity and clean zero-delta candidate). A normal REPAIR for\
+  \ RUN-393-002 was rejected with 'canonical correction subject differs from Unified\
+  \ State' because two independent r1 PRIMARY roots yield AMBIGUOUS_LINEAGE_TIP; this\
+  \ is not evidence of source-code failure, does not establish an authorized correction,\
+  \ and must not be bypassed by a fabricated parent. New revision 2 prospectively\
+  \ isolates exact TASK revision lifecycle only. Original r1 FAILURE refs, local guarded\
+  \ backup and recovery proof are preserved; no reassignment/retirement/deletion/rewrite/reclassification\
+  \ of those RUNs, no use of old private work as Runtime proof, and no claim of a\
+  \ successful r2 RUN. Human authorizes continuing with explicitly selected codex\
+  \ gpt-6.1-sol xhigh when available, but model capacity is unverified and no automatic\
+  \ provider/model substitution, looping retries or dispatch authorization is implied\
+  \ solely by TASK authoring. Re-read current main and exact r2 TASK after ingress\
+  \ before any new dispatch. TASK-394/P1 remains blocked until P0 has independently\
+  \ verified, reviewed and published."
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
