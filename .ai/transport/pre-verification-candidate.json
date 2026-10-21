@@ -1,0 +1,1 @@
+{"kind":"PRE_VERIFICATION_CANDIDATE","package":{"evidence":[],"result":{"changed_files":["src/aios_renew/review_transport.py","tests/test_review_transport.py"],"claims":[],"head_sha":"16c7f8992e9908dd5f19eed03841c446cb12e6e6","unresolved":[]}},"run_id":"RUN-393-006","subject_sha":"16c7f8992e9908dd5f19eed03841c446cb12e6e6","task":{"id":"TASK-393","revision":2}}
