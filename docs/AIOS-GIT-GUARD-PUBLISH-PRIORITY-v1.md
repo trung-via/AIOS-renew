@@ -19,7 +19,7 @@ controlling record is
 2. **G2: zero or one separate future residual Publisher TASK.** The single
    `publisher-residual-after-git-guard-20261022` conditional queue is eligible for
    Human/Brain consideration only if measurement after G1 demonstrates material
-   Publisher cost that does not overlap the shared guard gains. It has no authored
+   Publisher cost that is non-overlapping with the shared guard gains. It has no authored
    TASK or implementation authorization in G1. Do not count G1 savings a second
    time. If no such residual exists, propose skipping G2 to Human/Brain.
 3. **Explicit Human/Brain return to unfinished Lean VP Intra v1.3.** Reconcile
