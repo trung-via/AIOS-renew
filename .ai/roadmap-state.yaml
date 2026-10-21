@@ -299,6 +299,44 @@ human_r21_closure_lean_vp_cutover_20261018:
     - NO_PREMATURE_LEAN_VP_PRODUCTION_CUTOVER
     - SINGLE_CANONICAL_EFFECTIVE_NEXT
 
+human_r21_tca_roa_successor_activation:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL
+  approved_on: "2026-10-21"
+  status: ACTIVE
+  human_decision: ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION
+  supersedes: human_r21_four_specialized_activation_20261017
+  superseded_approval_digest: 8db137a966ba2f3047cbf133b4d9513ecb918e80fb9a86d897098a377cce40a9
+  implementation_task: TASK-392
+  implementation_revision: 1
+  implementation_run: RUN-392-001
+  review_id: REVIEW-392-001
+  review_verdict: PASS
+  review_decision_sha: c2e28435c0f98268421ad2b23233acdd0b949d9f
+  reviewed_published_source_sha: 86e9a3287b1a5b336275a28c173cf835e9c2366d
+  approved_against_main_sha: 86e9a3287b1a5b336275a28c173cf835e9c2366d
+  target_policy_format: AIOS_BRAIN_AUDIT_POLICY
+  target_policy_version: 1
+  target_policy_state: FOUR_SPECIALIZED
+  target_profiles:
+    ARCHITECTURE:
+      id: aoa-1
+      version: 1
+      digest: 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b
+    TASK_AUTHORING:
+      id: tca-2
+      version: 2
+      digest: 75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d
+    REMEDIATION_AUTHORING:
+      id: moa-1
+      version: 1
+      digest: 49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903
+    REPAIR_AUTHORING:
+      id: roa-1-r3
+      version: 3
+      digest: cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a
+  architecture_and_task_v1_option: HUMAN_EXPLICIT_EXACT_SUBJECT_V1_ONLY_ONE_NORMATIVE_AUDIT
+  correction_v1_option: HUMAN_EXPLICIT_READ_ONLY_SUPPORT_NO_SECOND_NORMATIVE_AUDIT
+
 human_r21_four_specialized_activation_20261017:
   authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL
   approved_on: "2026-10-17"

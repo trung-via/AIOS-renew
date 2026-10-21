@@ -14,7 +14,9 @@ from aios_renew.brain_provider_protocol import (
     BrainProviderProtocolError, construct_request, revalidate_decision, validate_response,
 )
 from aios_renew.decision_packet import DecisionPacket
-from tests.test_brain_context import CanonicalAuditRepository
+from tests.test_brain_context import (
+    CanonicalAuditRepository, task395_activation_record, task395_canonical_audit_repo,
+)
 from test_brain_provider_protocol import (
     digest, inputs, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
     moa_inputs, moa_package, moa_response,
@@ -295,10 +297,12 @@ def test_first_party_continuation_stops_on_canonical_movement_and_keeps_original
 
 
 @pytest.mark.parametrize("flow", R5_FLOWS)
-@pytest.mark.parametrize("successors", (False, True))
+@pytest.mark.parametrize("successors", (False, True, "task395"))
 def test_first_party_individual_human_choice_is_bound_without_dual_audit(
-        registry, canonical_audit_repo, v1_only_package, flow, successors):
-    if successors:
+        registry, canonical_audit_repo, v1_only_package, flow, successors, task395_activation_record):
+    if successors == "task395":
+        canonical_audit_repo.publish_successor(activation_record=task395_activation_record)
+    elif successors:
         canonical_audit_repo.publish_successor()
     supplied, contract, bindings, sources = production_inputs(registry, flow, canonical_audit_repo)
     if flow in {"ARCHITECTURE", "TASK_AUTHORING"}:
@@ -1429,3 +1433,179 @@ def test_task392_admitted_default_never_switches_when_successor_approval_arrives
         attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
                 fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
     assert len(calls) == 1 and calls[0]["audit_profile_package"]["audit_profile_ref"]["id"] == "tca-1"
+
+
+def task395_production_inputs(registry, flow, canonical):
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical)
+    if flow == "TASK_AUTHORING":
+        context = sources["task_source_context"]
+        context["source_material"] = [{"path": context["authorization"]["scope"]["modify"][0],
+                                       "content": "def retain(context): return context"}]
+    elif flow == "REPAIR_AUTHORING":
+        body = supplied.as_dict()
+        body["canonical_facts"]["task_contract"]["acceptance"] = [
+            {"id": "AC1", "condition": "Preserve the explicit context"}]
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        supplied = DecisionPacket(body)
+    return supplied, contract, bindings, sources
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+def test_task395_approved_record_drives_first_party_production_selection(
+        registry, task395_canonical_audit_repo, flow, kind):
+    from aios_renew.brain_context import _R21_SUCCESSOR_APPROVAL
+    canonical = task395_canonical_audit_repo
+    approval = canonical.roadmap[_R21_SUCCESSOR_APPROVAL]
+    supplied, contract, bindings, sources = task395_production_inputs(registry, flow, canonical)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, provider=kind, model=kind, semantic=r5_response(req))
+    # The ordinary caller authenticates canonical Git. No supplied policy,
+    # explicit profile, selection authenticator or conformance-only path.
+    result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
+                     fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
+    policy = calls[0]["audit_selection"]["policy"]
+    assert policy["profiles"] == approval["target_profiles"]
+    assert policy["profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
+    assert policy["profiles"]["REPAIR_AUTHORING"]["id"] == "roa-1-r3"
+    assert policy["r5_publication_sha"] == canonical.successor_source_sha
+    assert policy["human_authority_digest"] == digest(approval)
+    assert result.decision["audit_profile_ref"] == approval["target_profiles"][flow]
+    assert all(req["audit_profile_package"]["audit_profile_ref"] == approval["target_profiles"][flow]
+               and req["audit_selection"] == calls[0]["audit_selection"] for req in calls)
+    assert [req["request_mode"] for req in calls] == {
+        "ARCHITECTURE": ["AOA_CONSTRUCT", "AOA_RECONCILE"],
+        "TASK_AUTHORING": ["TCA_CONSTRUCT", "TCA_RECONCILE"],
+        "REMEDIATION_AUTHORING": ["MOA_CONSTRUCT", "MOA_RECONCILE"],
+        "REPAIR_AUTHORING": ["ROA_CONFORMANCE"],
+    }[flow]
+    assert revalidate_decision(result.decision, calls[-1]) == result.decision
+    for unchanged in ("ARCHITECTURE", "REMEDIATION_AUTHORING"):
+        assert policy["profiles"][unchanged] == canonical.roadmap[canonical.approval_key]["target_profiles"][unchanged]
+
+
+@pytest.mark.parametrize("fault", (
+    "partial", "mixed_tca", "mixed_roa", "profile_digest", "approval_digest", "old_approval",
+    "review_sha", "review_source", "source_sha", "approved_against", "missing_candidate", "wrong_candidate",
+    "missing_review", "missing_artifact", "forged_artifact", "unpublished", "unreviewed_body",
+    "duplicate", "duplicate_key", "stale_packet", "untrusted_remote", "revoked",
+))
+def test_task395_invalid_activation_stops_ordinary_caller_before_provider(
+        registry, canonical_audit_repo, task395_activation_record, fault):
+    import yaml
+    from aios_renew.brain_context import _R21_SUCCESSOR_APPROVAL
+    canonical = canonical_audit_repo
+    approval = canonical.publish_successor(activation_record=task395_activation_record,
+                                          omit_reviewed_body=fault == "unreviewed_body")
+    if fault == "partial":
+        del approval["target_profiles"]["REPAIR_AUTHORING"]
+    elif fault in {"mixed_tca", "mixed_roa"}:
+        flow = "TASK_AUTHORING" if fault == "mixed_tca" else "REPAIR_AUTHORING"
+        approval["target_profiles"][flow] = deepcopy(canonical.roadmap[canonical.approval_key]["target_profiles"][flow])
+    elif fault == "profile_digest":
+        approval["target_profiles"]["TASK_AUTHORING"]["digest"] = "f" * 64
+    elif fault == "approval_digest":
+        approval["superseded_approval_digest"] = "f" * 64
+    elif fault == "old_approval":
+        canonical.roadmap[canonical.approval_key]["status"] = "ACTIVE"
+    elif fault == "review_sha":
+        approval["review_decision_sha"] = canonical.review_sha
+    elif fault == "review_source":
+        review = yaml.safe_load(canonical.git(canonical.canonical, "show",
+            f"{canonical.successor_review_sha}:.ai/reviews/REVIEW-392-001.yaml"))
+        review["reviewed_sha"] = canonical.source_sha
+        canonical.git(canonical.canonical, "switch", "--detach", canonical.successor_source_sha)
+        canonical.write(".ai/reviews/REVIEW-392-001.yaml", yaml.safe_dump(review).encode())
+        sha = canonical.commit("forged successor review source")
+        canonical.git(canonical.canonical, "update-ref", "refs/heads/aios/review-decision/RUN-392-001", sha)
+        canonical.git(canonical.canonical, "switch", "main")
+        approval["review_decision_sha"] = sha
+    elif fault in {"source_sha", "approved_against"}:
+        approval["reviewed_published_source_sha" if fault == "source_sha" else "approved_against_main_sha"] = canonical.source_sha
+    elif fault in {"missing_candidate", "missing_review", "missing_artifact"}:
+        kind = {"missing_candidate": "review", "missing_review": "review-decision", "missing_artifact": "artifacts"}[fault]
+        canonical.git(canonical.canonical, "update-ref", "-d", f"refs/heads/aios/{kind}/RUN-392-001")
+    elif fault in {"wrong_candidate", "forged_artifact"}:
+        kind, sha = ("review", canonical.source_sha) if fault == "wrong_candidate" else ("artifacts", canonical.artifact_sha)
+        canonical.git(canonical.canonical, "update-ref", f"refs/heads/aios/{kind}/RUN-392-001", sha)
+    elif fault == "unpublished":
+        canonical.git(canonical.canonical, "switch", "--detach", canonical.source_sha)
+        canonical.write(".ai/roadmap-state.yaml", yaml.safe_dump(canonical.roadmap).encode())
+        sha = canonical.commit("activation without successor publication ancestry")
+        canonical.git(canonical.canonical, "branch", "-f", "main", sha)
+        canonical.git(canonical.canonical, "switch", "main")
+    elif fault == "duplicate":
+        canonical.roadmap[_R21_SUCCESSOR_APPROVAL + "_other"] = deepcopy(approval)
+    elif fault == "untrusted_remote":
+        canonical.git(canonical.repo, "config", "branch.main.remote", ".")
+    elif fault == "revoked":
+        approval["status"] = "REVOKED"
+    canonical.save_roadmap()
+    if fault == "duplicate_key":
+        raw = yaml.safe_dump(canonical.roadmap).encode()
+        canonical.save_roadmap(raw + yaml.safe_dump({_R21_SUCCESSOR_APPROVAL: approval}).encode())
+    # Even an unchanged AOA caller must reject any invalid member of the policy.
+    supplied, contract, bindings, sources = production_inputs(registry, "ARCHITECTURE", canonical)
+    if fault == "stale_packet":
+        canonical.main_sha = canonical.commit("main moved after packet composition")
+    calls = []
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(MappingBrainProvider("mapping", "one", lambda req: calls.append(req)), supplied, contract, bindings,
+                fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
+    assert error.value.reason_code == "PROTOCOL_INPUT_INVALID"
+    assert error.value.invocation_count == 0 and calls == []
+
+
+@pytest.mark.parametrize("flow", ("TASK_AUTHORING", "REPAIR_AUTHORING"))
+def test_task395_unpublished_local_record_keeps_old_policy_and_historical_replay(
+        registry, canonical_audit_repo, task395_activation_record, flow):
+    import yaml
+    from aios_renew.brain_context import _R21_SUCCESSOR_APPROVAL
+    canonical = canonical_audit_repo
+    # A local policy carrier, even with the exact approved contents, is untrusted.
+    local = {**deepcopy(canonical.roadmap), _R21_SUCCESSOR_APPROVAL: deepcopy(task395_activation_record)}
+    (canonical.repo / ".ai/roadmap-state.yaml").write_bytes(yaml.safe_dump(local).encode())
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, semantic=r5_response(req))
+    provider = MappingBrainProvider("mapping", "one", callback)
+    old = attempt(provider, supplied, contract, bindings, fresh_packet_supplier=lambda: supplied,
+                  repo=canonical.repo, **sources)
+    historical = deepcopy(calls[-1])
+    assert old.decision["audit_profile_ref"] == canonical.roadmap[canonical.approval_key]["target_profiles"][flow]
+    canonical.publish_successor(activation_record=task395_activation_record)
+    assert revalidate_decision(old.decision, historical) == old.decision
+    supplied, contract, bindings, sources = task395_production_inputs(registry, flow, canonical)
+    new = attempt(provider, supplied, contract, bindings, fresh_packet_supplier=lambda: supplied,
+                  repo=canonical.repo, **sources)
+    assert new.decision["audit_profile_ref"] == canonical.roadmap[_R21_SUCCESSOR_APPROVAL]["target_profiles"][flow]
+    assert old.decision["audit_profile_ref"] != new.decision["audit_profile_ref"]
+    assert revalidate_decision(old.decision, historical) == old.decision
+
+
+@pytest.mark.parametrize("flow", ("TASK_AUTHORING", "REPAIR_AUTHORING"))
+@pytest.mark.parametrize("moved", ("main", "review", "artifacts"))
+def test_task395_admitted_successor_stops_on_movement_without_reselection(
+        registry, task395_canonical_audit_repo, flow, moved):
+    canonical = task395_canonical_audit_repo
+    supplied, contract, bindings, sources = task395_production_inputs(registry, flow, canonical)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        if moved == "main":
+            canonical.main_sha = canonical.commit("main moved during admitted successor audit")
+        else:
+            kind, sha = ("review-decision", canonical.review_sha) if moved == "review" else ("artifacts", canonical.artifact_sha)
+            canonical.git(canonical.canonical, "update-ref", f"refs/heads/aios/{kind}/RUN-392-001", sha)
+        return wrapper(req, semantic=r5_response(req))
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
+    assert error.value.reason_code == "FRESH_PACKET_INVALID"
+    assert error.value.invocation_count == len(calls) == 1
+    assert calls[0]["audit_profile_package"]["audit_profile_ref"]["id"] == (
+        "tca-2" if flow == "TASK_AUTHORING" else "roa-1-r3")

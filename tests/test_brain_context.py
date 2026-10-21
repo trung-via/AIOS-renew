@@ -141,7 +141,7 @@ class CanonicalAuditRepository:
         self.artifact_sha = self.git(self.canonical, "commit-tree", tree, "-m", "canonical R5 artifacts fixture")
         self.git(self.canonical, "update-ref", f"refs/heads/aios/artifacts/{run_id}", self.artifact_sha)
 
-    def publish_successor(self, *, omit_reviewed_body=False):
+    def publish_successor(self, *, omit_reviewed_body=False, activation_record=None):
         """Offline independently reviewed successor publication and later Human approval.
 
         This prepares temporary Git fixtures only; it never changes repository
@@ -185,12 +185,16 @@ class CanonicalAuditRepository:
         if omit_reviewed_body:
             self.write(".ai/brain-audit-profiles.yaml", registry_raw)
             self.commit("registry added after reviewed publication")
-        approval = deepcopy(self.roadmap[self.approval_key])
-        approval.update(approved_on="2026-10-22", implementation_task="TASK-392", implementation_revision=1,
-            implementation_run="RUN-392-001", review_id="REVIEW-392-001", review_decision_sha=self.review_sha,
+        approval = deepcopy(activation_record if activation_record is not None else self.roadmap[self.approval_key])
+        if activation_record is None:
+            approval.update(approved_on="2026-10-22", implementation_task="TASK-392", implementation_revision=1,
+                implementation_run="RUN-392-001", review_id="REVIEW-392-001",
+                human_decision="ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION",
+                target_profiles=_specialized_profiles(successors=True), supersedes=self.approval_key)
+        # TASK-395 tests consume the actual approved record. Only Git object
+        # bindings change to address this independently authenticated offline repo.
+        approval.update(review_decision_sha=self.review_sha,
             reviewed_published_source_sha=self.source_sha, approved_against_main_sha=self.source_sha,
-            human_decision="ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION",
-            target_profiles=_specialized_profiles(successors=True), supersedes=self.approval_key,
             superseded_approval_digest=_digest(self.roadmap[self.approval_key]))
         self.roadmap[_R21_SUCCESSOR_APPROVAL] = approval
         self.save_roadmap()
@@ -202,6 +206,66 @@ class CanonicalAuditRepository:
 @pytest.fixture
 def canonical_audit_repo(tmp_path):
     return CanonicalAuditRepository(tmp_path)
+
+
+@pytest.fixture(scope="module")
+def task395_activation_record():
+    from aios_renew.brain_context import _R21_SUCCESSOR_APPROVAL, _UniqueKeyLoader
+    root = Path(__file__).resolve().parents[1]
+    roadmap = yaml.compose((root / ".ai/roadmap-state.yaml").read_bytes())
+    keys = [key.value for key, _ in roadmap.value]
+    assert len(keys) == len(set(keys))
+    records = [node for key, node in roadmap.value if key.value == _R21_SUCCESSOR_APPROVAL]
+    assert len(records) == 1
+    return yaml.load(yaml.serialize(records[0]), Loader=_UniqueKeyLoader)
+
+
+@pytest.fixture
+def task395_canonical_audit_repo(canonical_audit_repo, task395_activation_record):
+    canonical_audit_repo.publish_successor(activation_record=task395_activation_record)
+    return canonical_audit_repo
+
+
+def test_task395_candidate_binds_exact_published_source_and_preserves_original_approval(task395_activation_record):
+    from aios_renew.brain_audit import parse_profile_registry, profile_ref
+    from aios_renew.brain_context import _digest
+    root = Path(__file__).resolve().parents[1]
+    approval = task395_activation_record
+    source = "86e9a3287b1a5b336275a28c173cf835e9c2366d"
+    assert approval["authority"] == "EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL"
+    assert approval["approved_on"] == "2026-10-21" and approval["status"] == "ACTIVE"
+    assert approval["human_decision"] == "ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION"
+    assert (approval["implementation_task"], approval["implementation_revision"], approval["implementation_run"],
+            approval["review_id"], approval["review_verdict"]) == (
+                "TASK-392", 1, "RUN-392-001", "REVIEW-392-001", "PASS")
+    assert approval["review_decision_sha"] == "c2e28435c0f98268421ad2b23233acdd0b949d9f"
+    assert approval["reviewed_published_source_sha"] == approval["approved_against_main_sha"] == source
+    assert (approval["target_policy_format"], approval["target_policy_version"], approval["target_policy_state"]) == (
+        "AIOS_BRAIN_AUDIT_POLICY", 1, "FOUR_SPECIALIZED")
+    subprocess.run(("git", "-C", str(root), "merge-base", "--is-ancestor", source, "HEAD"), check=True)
+    published = subprocess.check_output(("git", "-C", str(root), "show", f"{source}:.ai/roadmap-state.yaml"))
+    candidate = (root / ".ai/roadmap-state.yaml").read_bytes().replace(b"\r\n", b"\n")
+    # Keep the historical approval byte-exact without freezing future lawful
+    # Human/Brain changes to unrelated roadmap entries.
+    historical_records = []
+    for raw in (published.replace(b"\r\n", b"\n"), candidate):
+        text = raw.decode("utf-8")
+        for key, node in yaml.compose(text).value:
+            if key.value == CanonicalAuditRepository.approval_key:
+                historical_records.append(text[key.start_mark.index:node.end_mark.index])
+    assert len(historical_records) == 2 and historical_records[0] == historical_records[1]
+    original = yaml.safe_load(published)[CanonicalAuditRepository.approval_key]
+    assert approval["supersedes"] == CanonicalAuditRepository.approval_key
+    assert approval["superseded_approval_digest"] == _digest(original) == (
+        "8db137a966ba2f3047cbf133b4d9513ecb918e80fb9a86d897098a377cce40a9")
+    registry = parse_profile_registry(subprocess.check_output((
+        "git", "-C", str(root), "show", f"{source}:.ai/brain-audit-profiles.yaml")))
+    refs = {p["id"]: profile_ref(p) for p in registry["profiles"]}
+    assert approval["target_profiles"] == {flow: refs[identity] for flow, identity in (
+        ("ARCHITECTURE", "aoa-1"), ("TASK_AUTHORING", "tca-2"),
+        ("REMEDIATION_AUTHORING", "moa-1"), ("REPAIR_AUTHORING", "roa-1-r3"))}
+    for key in ("architecture_and_task_v1_option", "correction_v1_option"):
+        assert approval[key] == original[key]
 
 
 @pytest.mark.parametrize("status", CanonicalAuditRepository.activation_states)

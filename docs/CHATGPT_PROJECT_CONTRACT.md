@@ -110,17 +110,21 @@ refs or insufficient fetch fail closed. An older clean checkout with absent unre
 TASK files does not require Human restoration.
 
 For new production Brain attempts, the approved R2.1 policy selects AOA-1 for
-ARCHITECTURE, TCA-1 for TASK_AUTHORING, MOA-1 for REMEDIATION_AUTHORING and ROA-1 R2
-for REPAIR_AUTHORING. AOA/TCA/MOA use their published two focused passes and one
+ARCHITECTURE, TCA-2 version 2 for TASK_AUTHORING, MOA-1 for REMEDIATION_AUTHORING
+and ROA-1 R3 version 3 for REPAIR_AUTHORING. AOA/TCA/MOA use their published two focused passes and one
 closure; ROA uses its single focused procedure. `aios_renew.brain_provider.attempt`
 obtains the complete canonical policy, exact profile and independent R5 selection
 authenticator through `brain_context.canonical_audit_inputs` without caller-supplied
 policy or `conformance_only`. It authenticates the canonical Human activation record,
-TASK-368 reviewed publication, all four pinned identities and the current bound
+TASK-368 historical reviewed publication and the separately approved TASK-392
+reviewed publication, all four pinned identities and the current bound
 main/work context, subject, sources and return at ADMIT and CONTINUE. Missing,
 conflicting, unavailable or stale authority fails closed before a new provider call,
-without V1/V3 fallback. The existing Human activation is sufficient; no renewed
-approval or roadmap edit is required by this implementation.
+without V1/V3 fallback. The 2026-10-21 Human-approved successor record takes effect
+only after Publisher publishes the exact eligible TASK-395 activation candidate
+to canonical main. An Issue receipt, Executor RESULT or local candidate cannot
+activate it. The original 2026-10-17 approval remains unchanged for exact historical
+replay; no additional activation TASK or renewed Human approval is required.
 
 Adaptive V1 remains an individually authenticated exact-subject Human option:
 V1_ONLY replaces AOA/TCA alone for Architecture/Task, while V1_READ_ONLY provides
@@ -129,8 +133,9 @@ The ordinary caller supplies `human_choice_authenticator` from its trusted Human
 input channel for either choice; a label, hash or model preference is insufficient.
 Historical V1/V2/V3 requests and admitted stage/profile/return lineage remain exact.
 The first-party caller rejects canonical movement during continuation rather than
-reselecting an admitted subject. Details and pinned digests are in the
-[Brain semantic audit protocol, section 23](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#23-r21r5-policy-binding-and-approved-first-party-activation).
+reselecting an admitted subject. The historical policy and successor digests are in
+[Brain semantic audit protocol section 23](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#23-r21r5-policy-binding-and-approved-first-party-activation)
+and [section 24](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#24-bounded-tcaroa-successors-prepared-by-task-392).
 
 Runtime owns verification and EVIDENCE; Reviewer and Publisher retain
 their independent authority. Audit support creates no direct-final AUTHOR_TASK,
@@ -391,6 +396,25 @@ Before authoring a new TASK:
 
 Do not audit the entire repository indiscriminately.
 
+### End-to-end improvement delivery
+
+Every future improvement plan and TASK must include both implementation and
+production activation in the same TASK's delivered scope and acceptance criteria.
+Delivery must reach the intended ordinary production caller through the existing
+Runtime verification, independent Reviewer PASS and Publisher publication gates,
+including the explicit canonical activation required by that capability. Prepared
+profiles, dormant implementations or documentation of a later activation step do
+not count as successful delivery. Do not defer activation to another TASK unless
+Human explicitly approves a phased plan with bounded activation scope and gates.
+
+Performance measurements occur after production activation. They are nonblocking
+follow-up observations, never a prerequisite for activation or a benchmark gate
+before delivery. This ordering does not relax security, provenance, authorization,
+fail-closed currentness, Runtime verification, independent review, exact-source
+publication or explicit Human consent where required. Runtime owns verification
+and EVIDENCE; Reviewer judges semantics and Publisher alone publishes eligible
+source. Publication does not automatically advance the roadmap.
+
 ## 12. Publication
 
 Current publication ordering and canonical locators are defined by
@@ -460,10 +484,12 @@ Interruption and resume semantics preserve Human and Brain roadmap authority:
 4. **Fail-Closed Selection**: Completed tracks with zero NEXT items, missing roadmap state, ambiguous/multiple NEXT items, unauthored NEXT tasks, and roadmap/lineage contradictions fail closed for automatic continuation selection. The snapshot reports explicit blockers rather than silently choosing through them.
 
 
-## 15. Prepared TCA/ROA successors and later Human policy authority
+## 15. Human-approved TCA/ROA successor activation
 
-TASK-392 prepares `tca-2` version 2 and `roa-1-r3` version 3 without activating
-them. Historical `tca-1` version 1 and `roa-1-r2` version 2 retain exact content
+TASK-392 published `tca-2` version 2 and `roa-1-r3` version 3 without activating
+them. Human approved their joint production activation on 2026-10-21, delivered
+within TASK-395 through the canonical `human_r21_tca_roa_successor_activation`
+record. Historical `tca-1` version 1 and `roa-1-r2` version 2 retain exact content
 and digests under the original 2026-10-17 approval / reviewed TASK-368 publication.
 AOA-1, MOA-1 and the explicit Human Adaptive V1 option remain unchanged.
 
@@ -475,11 +501,17 @@ full AC claims/final-contract completion from native execution or genuine code/t
 failure. Brain must explain the smallest lawful lever, preserving full acceptance,
 sticky Executor, truthful completion claims and the Runtime completion gate.
 
-The registry cannot activate successors. A later separate Human/Brain canonical
-approval must preserve the original record and bind a complete successor mapping
-to the exact reviewed/published TASK-392 source through the existing first-party
-R5 authenticator. Stale, forged, partial or competing policy fails closed; admitted
+The registry cannot activate successors. The approved record preserves the original
+approval with normalized digest
+`8db137a966ba2f3047cbf133b4d9513ecb918e80fb9a86d897098a377cce40a9`
+and binds the complete successor mapping to TASK-392 r1 / RUN-392-001 /
+REVIEW-392-001 PRIMARY PASS, source
+`86e9a3287b1a5b336275a28c173cf835e9c2366d` and review decision
+`c2e28435c0f98268421ad2b23233acdd0b949d9f`, through the existing first-party
+R5 authenticator. Activation requires exact eligible TASK-395 publication to
+canonical main; there is no separate activation step or performance prerequisite.
+Stale, forged, partial or competing policy fails closed; admitted
 selection never switches in flight. No live correctness, verification, publication
 or performance is inferred from these profiles or their deterministic regressions.
-The exact digests, bounded source contract and future approval requirements are in
+The exact digests, bounded source contract and source-authentication requirements are in
 [Brain semantic audit protocol section 24](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#24-bounded-tcaroa-successors-prepared-by-task-392).
