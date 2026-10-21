@@ -6,11 +6,13 @@ Scope: read-only retrospective plus BP-4A architecture intent; no implementation
 
 Sections 1–17 preserve the original BP-4A planning and completion claims in their
 historical context. Their `v1` / `brain-high-value-v1` refers to that original
-protocol, not `AIOS_ADAPTIVE_BRAIN_AUDIT_V1`. The sole active prospective
+protocol, not `AIOS_ADAPTIVE_BRAIN_AUDIT_V1`. The historical prospective baseline
 profile is `aios-adaptive-brain-audit-v1`, version 1, normalized digest
 `982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718`, under
 the explicit Human/Brain cutover in section 18.6. V2/V3 remain historical and
 exact in-flight compatibility material; registry order does not select a profile.
+Section 23 describes the authenticated historical FOUR_SPECIALIZED mapping;
+section 24 prepares two successors without activating them.
 
 ## 1. Purpose
 
@@ -1624,3 +1626,124 @@ Runtime owns canonical focused verification and EVIDENCE. The Executor's bounded
 implementation and local sanity do not establish live canonical verification,
 publication, roadmap advancement, Lean VP activation, downstream adoption or
 empirical provider-quality improvement. No full-suite work is required.
+
+
+## 24. Bounded TCA/ROA successors prepared by TASK-392
+
+This section specifies implementation support, not activation, Runtime verification,
+semantic Reviewer PASS, publication, live provider correctness or measured performance.
+The original 2026-10-17 Human approval and reviewed TASK-368 / RUN-368-001 remain
+historical authority for the old mapping. TASK-392 does not amend that approval,
+change the Human-owned roadmap or authorize another execution.
+
+| Flow | Historical exact identity | Prepared successor identity |
+| --- | --- | --- |
+| TASK_AUTHORING | `tca-1`, version 1 (TCA-1) | `tca-2`, version 2 (TCA-2) |
+| REPAIR_AUTHORING | `roa-1-r2`, version 2 (ROA-1 R2) | `roa-1-r3`, version 3 (ROA-1 R3) |
+
+Normalized SHA-256 content digests:
+
+- TCA-1: `1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2`
+- TCA-2: `75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d`
+- ROA-1 R2: `aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4`
+- ROA-1 R3: `cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a`
+
+All seven original profile bodies stay exact. AOA-1, MOA-1 and Adaptive V1,
+including the Human V1 option, keep their existing meaning and digest. The closed
+registry admits at most nine identities and 57,344 UTF-8 bytes. Profile-specific
+bounds, exact successor digests, versions, duplicate rejection and normalized
+content comparison still apply. There is no arbitrary successor/version ordering.
+The existing portable audit envelope versions and return contracts remain in use;
+profile revisions do not introduce new audit stages or admission prerequisites.
+
+### 24.1. TCA-2 source/test/scope satisfiability
+
+Keep CONSTRUCT's five checks, ADVERSARIAL_AUDIT_AND_RECONCILE's six checks and one
+closure. In the existing satisfiability, consumer, scope and falsifier checks,
+challenge every material AC against the bounded source API, historical tests
+(including import/AST restrictions), and exact inspect versus modify authority.
+Preserve public direct-call behavior as well as test obligations. A required edit
+outside modify authority is a conflict for Human/Brain resolution, not implicit
+permission, a reason to bypass a test or a reason to narrow a published API.
+
+TCA source context may carry `source_material`, a list of exact `{path, content}`
+excerpts. It is optional for historical replay; TCA-2 requires it as a decisive
+source. At most 16 unique permitted paths, 16,384 UTF-8 bytes per excerpt and
+65,536 bytes for the whole existing source context are allowed. Paths must be
+within bound inspect/modify authority. Hashes bind supplied excerpts; the trusted
+caller remains responsible for their authenticity and relevant completeness.
+TCA-2 judgments cite this source plus authorization. Missing decisive source
+requires UNKNOWN/BLOCKER and final NO_DECISION; no speculative TASK is exposed.
+
+TASK-391 r1 AC12 is the concrete adversarial case: directly callable published
+native K_i/F_i codecs use local `verification_contract` / `artifacts` imports,
+while the historical AST guard prohibited those imports and its test file was
+outside r1 modify scope. The API, test and authority cannot be assumed compatible.
+An all-CLEAR later pass cannot erase unresolved first-pass blockers. Verification
+exit 0 cannot establish semantic PASS. The later separately authorized r2 test
+scope is not retroactive permission for r1.
+
+### 24.2. ROA-1 R3 completion cause and lawful lever
+
+Keep exactly five focused checks in one procedure and one closure. Distinguish
+VERIFICATION, EXECUTION, COMPLETION_GATE and private diagnostic UNKNOWN using
+exact failure and cause evidence. Native invocation failure is distinct from a
+code/test regression, missing full acceptance claims and invalid final-contract
+shape. Absent discriminating source remains UNKNOWN, even with a plausible fix.
+The full original acceptance set is required in the bound TASK contract for R3
+readiness; a failed ResultPackage's partial claims cannot replace it.
+
+RUN-391-013 and RUN-383-002 motivate completion-only counterexamples: no new source
+and missing complete AC claims do not themselves establish CODE_FIX. Brain chooses
+and explains the smallest lawful CODE_FIX, NO_CHANGE, CONTINUE_IMPLEMENTATION or
+FINALIZE_CANDIDATE, including how it closes the exact failure and what falsifies
+that diagnosis. Completion work must establish truthful full AC claims and the
+exact ResultPackage shape; it cannot synthesize unsupported implementation claims.
+NO_CHANGE does not waive a missing completion obligation. Evidenced faulty code
+still permits CODE_FIX within the original scope. These instructions do not add
+a deterministic strategy selector or claim model semantic infallibility.
+
+Every lever preserves full original TASK acceptance, constraints, correction
+lineage, sticky admitted Executor and the unchanged Runtime completion gate.
+Runtime owns execution, verification and EVIDENCE; Reviewer judges semantics and
+Publisher publishes the exact eligible reviewed source.
+
+### 24.3. Separate prospective canonical authority, no automatic cutover
+
+Only two complete FOUR_SPECIALIZED mappings are recognized: the historical four,
+or TCA-2 plus ROA-1 R3 with unchanged AOA-1 and MOA-1. Partial or mixed mappings
+fail closed. Merely normalizing either mapping does not authenticate it.
+
+A later explicit Human/Brain canonical decision may add the single record
+`human_r21_tca_roa_successor_activation` to canonical roadmap state. This TASK does
+not add it. The record must retain the original approval, identify it in
+`supersedes`, and bind its exact normalized digest in `superseded_approval_digest`.
+It must independently state:
+
+- `authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL`, an explicit
+  `approved_on` date and a recognized approved status;
+- `human_decision: ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION`;
+- TASK-392 revision 1, its exact PRIMARY RUN, PASS REVIEW, source/publication SHA
+  and review-decision SHA, with `approved_against_main_sha` equal to that source;
+- the complete successor mapping, existing policy format/version/state and both
+  unchanged individual Human V1 option declarations from section 23.
+
+The existing first-party `brain_provider.attempt` ? R5 authenticator path reads
+both approvals from independent canonical Git. It validates original TASK-368
+publication as before, and separately validates the successor TASK/RUN, nested
+ResultPackage and evidence, exact PRIMARY PASS review with complete acceptance,
+review metadata parent, candidate ref and publication ancestry. The successor
+mapping must exist in its exact reviewed publication and in current main.
+Duplicate competing records, forged or stale pins, missing bodies, unpublished
+sources or partial approvals fail closed without falling back to the old mapping.
+The public policy envelope retains `r5_publication_sha` as the selected reviewed
+publication binding; it is not a second policy authority.
+
+ADMIT and CONTINUE reauthenticate the same selected source and currentness. A
+canonical movement stops an admitted attempt rather than reselecting its profile
+or mixing stages. Historical serialized replay remains exact. Human V1 selection
+and read-only correction support still use their existing separate authenticator;
+no profile or test self-authenticates approval. Serialized audits never become an
+AUTHOR_TASK or REPAIR admission gate. Later approval, review and publication are
+separate role-owned decisions; no activation or live semantic/performance result
+is asserted here.

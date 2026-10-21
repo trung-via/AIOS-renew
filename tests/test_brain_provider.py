@@ -295,8 +295,11 @@ def test_first_party_continuation_stops_on_canonical_movement_and_keeps_original
 
 
 @pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("successors", (False, True))
 def test_first_party_individual_human_choice_is_bound_without_dual_audit(
-        registry, canonical_audit_repo, v1_only_package, flow):
+        registry, canonical_audit_repo, v1_only_package, flow, successors):
+    if successors:
+        canonical_audit_repo.publish_successor()
     supplied, contract, bindings, sources = production_inputs(registry, flow, canonical_audit_repo)
     if flow in {"ARCHITECTURE", "TASK_AUTHORING"}:
         context = sources["architecture_source_context" if flow == "ARCHITECTURE" else "task_source_context"]
@@ -1380,3 +1383,49 @@ def test_changed_candidate_no_decision_stays_transient(registry, profile_package
     assert result.decision["semantic_value"]["handoff_candidate"] is None
     with pytest.raises(BrainProviderProtocolError):
         revalidate_decision(result.decision, calls[1])
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+def test_task392_first_party_default_caller_uses_separately_published_mapping(registry, canonical_audit_repo, flow):
+    canonical = canonical_audit_repo
+    original = deepcopy(canonical.roadmap[canonical.approval_key])
+    approval = canonical.publish_successor()
+    supplied, contract, bindings, sources = production_inputs(registry, flow, canonical)
+    if flow == "TASK_AUTHORING":
+        context = sources["task_source_context"]
+        context["source_material"] = [{"path": context["authorization"]["scope"]["modify"][0],
+                                       "content": "def retain(context): return context"}]
+    elif flow == "REPAIR_AUTHORING":
+        body = supplied.as_dict()
+        body["canonical_facts"]["task_contract"]["acceptance"] = [{"id": "AC1", "condition": "Preserve the explicit context"}]
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        supplied = DecisionPacket(body)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, semantic=r5_response(req))
+    # No policy, authenticator, explicit package or isolated conformance cutover.
+    result = attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                     fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()), repo=canonical.repo, **sources)
+    expected = approval["target_profiles"][flow]
+    assert result.decision["audit_profile_ref"] == expected
+    assert all(c["audit_profile_package"]["audit_profile_ref"] == expected for c in calls)
+    assert calls[0]["audit_selection"]["policy"]["r5_publication_sha"] == canonical.successor_source_sha
+    assert len(calls) == (1 if flow == "REPAIR_AUTHORING" else 2)
+    assert canonical.roadmap[canonical.approval_key] == original
+    if flow in {"ARCHITECTURE", "REMEDIATION_AUTHORING"}:
+        assert expected == original["target_profiles"][flow]
+
+
+def test_task392_admitted_default_never_switches_when_successor_approval_arrives(registry, canonical_audit_repo):
+    canonical = canonical_audit_repo
+    supplied, contract, bindings, sources = production_inputs(registry, "TASK_AUTHORING", canonical)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        canonical.publish_successor()
+        return wrapper(req, semantic=r5_response(req))
+    with pytest.raises(BrainAttemptError):
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
+    assert len(calls) == 1 and calls[0]["audit_profile_package"]["audit_profile_ref"]["id"] == "tca-1"

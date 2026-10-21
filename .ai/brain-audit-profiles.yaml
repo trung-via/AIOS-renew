@@ -578,3 +578,188 @@ profiles:
       outcome_bytes: 262144
       source_context_bytes: 65536
       max_depth: 32
+  - id: tca-2
+    version: 2
+    applicable_flows:
+    - TASK_AUTHORING
+    passes:
+    - id: CONSTRUCT
+      checks:
+      - id: HUMAN_INTENT_FIDELITY
+        check: Bind exact supplied Human intent and canonical snapshot to this TASK. Detect ambiguous authority
+          or hidden intent; no authorization from model, registry order, memory or size. Brain owns WHAT/WHY;
+          one admitted Executor HOW. Missing intent/source is UNKNOWN/BLOCKER.
+      - id: TASK_OBJECTIVE_OUTCOME
+        check: Trace goal/problem to a useful outcome under exact Human intent. Challenge contradictory,
+          circular, impossible or ambiguous objectives and executor-specific instructions. Proposal, transport
+          receipt or Executor self-report cannot guarantee PASS.
+      - id: ACCEPTANCE_SATISFIABILITY
+        check: 'Review each acceptance id exactly once: exact condition, observable implementation property
+          and falsifying case. CLAIM_NOW precedes Runtime verification; Runtime results/EVIDENCE, Reviewer
+          verdict, publication and roadmap are PROOF_LATER/BLOCKER. Missing, duplicate, circular or unobservable
+          criteria cannot suffice. Account for each retained/replaced/moved id; remove proof-phase risk
+          from final acceptance or NO_DECISION. Never silently drop intent. For every material AC, challenge
+          the bounded source API and public direct-call behavior, historical tests including AST/import
+          restrictions, and exact scope.inspect versus scope.modify. Require source_material with relevant
+          path/content excerpts; declarations or absent sources are not evidence of compatibility. A source/API
+          preservation AC conflicting with a legacy test outside modify authority is unsatisfiable under
+          current authority: UNKNOWN/BLOCKER and final NO_DECISION until separately authorized reconciliation.
+          Do not rewrite away the required API or claim a passing command proves semantic consistency.'
+      - id: SCOPE_AND_AUTHORITY
+        check: Compare exact authorized scope/constraints/non-goals. scope.inspect grants no mutation. Reject
+          unbounded scope, contradictions, new intent and Human/Executor authority conflation. Runtime admits/verifies/creates
+          EVIDENCE, Reviewer judges, Publisher publishes. This audit cannot mutate TASK/RUN/REVIEW/roadmap
+          or delegate execution. Bind each necessary API/test change to explicit modify authority. Inspect-only
+          paths cannot be edited, tests cannot be bypassed, and missing permission cannot be inferred from
+          an AC. If required reconciliation needs a forbidden path, retain the blocker for Human/Brain resolution.
+      - id: REQUIRED_CONSUMERS
+        check: Trace declared material consumers, including affected Runtime/transport, to claimable acceptance
+          and observable outcomes. Check caller-owned inputs, return contract, canonical shapes and terminal/correction
+          paths where material. Missing/hidden consumer is BLOCKER. Trace each material AC through actual
+          bounded source API entrypoints, direct native callers/codecs and legacy tests, including AST import
+          guards. Cross-check source_material against inspect and modify authority. A declared consumer
+          list cannot substitute for decisive source excerpts; missing source is UNKNOWN/BLOCKER.
+    - id: ADVERSARIAL_AUDIT_AND_RECONCILE
+      checks:
+      - id: FALSE_COMPLETION_CHALLENGE
+        check: 'Construct false success: all acceptance holds while Human outcome fails, criteria are circular
+          or Executor reports PASS without implementation. Test every final condition and falsifying case;
+          reject falsely sufficient closure. Attack the case that verification exit 0 coexists with an unsatisfied
+          API-preservation AC or a legacy AST/import guard omitted from the permitted test surface. No command
+          success or synthetic audit output establishes semantic PASS.'
+      - id: MATERIAL_CONSUMER_CHALLENGE
+        check: Seek hidden/untested Runtime, transport or other consumers, missing caller-owned context,
+          canonical shapes and correction paths. Declared coverage cannot excuse an omitted consumer. Missing
+          decisive context remains UNKNOWN. Independently challenge direct native K_i/F_i codec consumers
+          against historical AST import restrictions for every material AC; bound the source and test excerpts
+          and their modification authority.
+      - id: SCOPE_AND_HIDDEN_INTENT_CHALLENGE
+        check: Attack scope/non-goal contradictions, unbounded edits and hidden intent. Reconcile within
+          exact Human authority, retaining bound goal/problem. No automatic re-authoring, architecture,
+          profile selector or extra normative audit. Test a required legacy test edit outside scope.modify
+          despite its presence in scope.inspect. Without separate Human/Brain scope authority it remains
+          UNKNOWN/BLOCKER and NO_DECISION; never silently widen scope or restrict a published API.
+      - id: AUTHORITY_AND_PROOF_ORDER_CHALLENGE
+        check: Test premature proof, false Executor PASS, inferred Human opt-in and merged authority. Final
+          acceptance is all CLAIM_NOW; moving PROOF_LATER needs explicit lawful accounting on existing verification/constraint/non-goal
+          surfaces, never a promise of proof.
+      - id: FALSIFYING_COUNTEREXAMPLE_CHALLENGE
+        check: 'Falsify each challenge and final acceptance id; recheck previously clear obligations and
+          consumers after reconciliation. First-pass BLOCKER/UNKNOWN survives an all-CLEAR second pass until
+          explicitly resolved by bound sources, lawful changed candidate and changed anchors. Use the TASK-391
+          r1 AC12 counterexample: published direct K_i/F_i codecs import canonical verification_contract/artifacts
+          locally, while the historical AST test forbids those imports and lies outside allowed modification
+          scope. Preserve the direct API, the test obligation and the scope conflict; do not regard it as
+          authorable or proven PASS. Recheck every material AC against source API, legacy tests and modify
+          authority after reconciliation.'
+      - id: SOURCE_CURRENTNESS_AND_PORTABILITY_CHALLENGE
+        check: Challenge wrong packet/subject/return, stale sources, profile/digest swaps, mixed stages,
+          hidden executor instructions and private payloads. Bound supplied sources only; no chat/CoT/raw
+          logs/secrets/provider/session/local metadata. One CANDIDATE or NO_DECISION; no V3 fallback or
+          TCA plus V1 dual audit. Missing decisive bounded source API or legacy test excerpts requires UNKNOWN
+          and final NO_DECISION. Request only the relevant permitted source surface; no repository-wide
+          rediscovery or new audit stage.
+    procedure:
+      name: TASK_CONTRACT_AUDIT
+      stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+      check_outcomes:
+      - CLEAR
+      - BLOCKER
+      knowledge_states:
+      - OBSERVED
+      - INFERRED
+      - UNKNOWN
+      acceptance_phases:
+      - CLAIM_NOW
+      - PROOF_LATER
+      challenge_dispositions:
+      - REJECTED_WITH_BOUNDED_BASIS
+      - ADDRESSED_BY_RECONCILIATION
+      - BLOCKER
+      blocker_dispositions:
+      - UNRESOLVED
+      - RESOLVED
+      final_outcomes:
+      - CANDIDATE
+      - NO_DECISION
+      final_closure: true
+    bounds:
+      check_bytes: 2048
+      candidate_bytes: 131072
+      basis_bytes: 2048
+      evidence_refs_per_check: 5
+      acceptance_count: 256
+      consumer_count: 16
+      closure_summary_bytes: 2048
+      outcome_bytes: 262144
+      source_context_bytes: 65536
+      max_depth: 32
+  - id: roa-1-r3
+    version: 3
+    applicable_flows:
+    - REPAIR_AUTHORING
+    checks:
+    - id: EXACT_FAILURE_BOUNDARY
+      check: 'Bind the exact failed RUN, failed head, original TASK revision, immutable FAILURE and packet-bound
+        sources. Distinguish VERIFICATION, EXECUTION, COMPLETION_GATE and private diagnostic UNKNOWN. Name
+        the observed phase, error type, source and actual failing boundary: native invocation failure, genuine
+        code/test regression, or missing complete AC claims/final ResultPackage shape. A private diagnostic
+        or verification exit 0 alone does not establish the exact cause. Missing, stale or withheld decisive
+        evidence requires UNKNOWN/BLOCKER, never guessed CODE_FIX.'
+    - id: EVIDENCE_DISCRIMINATING_CAUSE
+      check: 'Use current packet-bound observations to discriminate causes. At COMPLETION_GATE compare failed
+        source delta, clean committed candidate, missing acceptance IDs and complete final-contract shape
+        separately from any native execution or code/test failure. RUN-391-013 and RUN-383-002 are completion-only
+        counterexamples with no new source and missing full acceptance claims: they do not establish a code
+        regression. Inspect the full original acceptance, actual established implementation properties and
+        exact completion gate; never invent missing results, synthesize claims or treat prior command success
+        as semantic PASS. Mark OBSERVED, INFERRED or UNKNOWN with discriminating source refs; absent exact
+        cause evidence stays UNKNOWN/BLOCKER.'
+    - id: MATERIAL_REPAIR_LEVER
+      check: Brain alone selects the smallest lawful CODE_FIX, NO_CHANGE, CONTINUE_IMPLEMENTATION or FINALIZE_CANDIDATE
+        by evidenced cause, not by phase label or structural eligibility alone. Explain how the selected
+        lever can legally close this exact failure, with a falsifier. A committed unchanged candidate missing
+        complete truthful AC claims/final shape needs completion work rather than unsupported CODE_FIX;
+        incomplete implementation may need CONTINUE_IMPLEMENTATION; an evidenced genuine code/test regression
+        may need CODE_FIX within authorized scope. NO_CHANGE cannot erase a missing completion obligation.
+        Preserve full original TASK acceptance, constraints, exact completion schema, correction lineage
+        and sticky admitted Executor. Unsupported lever or missing implementation support blocks; never
+        manufacture claims to satisfy a gate.
+    - id: FALSIFYING_CHALLENGE
+      check: State a concrete observation that would falsify the diagnosis or selected lever and its disposition
+        on the final candidate. Challenge RUN-391-013/RUN-383-002-style missing claims with no source delta
+        against genuine verification code regressions and native invocation failures. Repeating an empty
+        code repair or resubmitting an incomplete claim set cannot close a completion-only failure. Conversely
+        completion work cannot fix evidenced faulty code. Challenge stale/forged/absent sources, non-interference
+        and false PASS inside the same five-check procedure; no second audit.
+    - id: LAWFUL_READINESS
+      check: Require current source/authorization, full original TASK acceptance and constraints, exact
+        return identity and final ResultPackage contract, bounded scope and sticky Executor. Instructions
+        must preserve every original AC and require truthful complete implementation claims; unsupported
+        claims remain blockers, not fabricated results. Runtime alone applies its unchanged completion gate,
+        execution, verification, EVIDENCE and CAS; Reviewer judges and Publisher publishes. Missing decisive
+        source or exact cause is UNKNOWN and final NO_DECISION. End with one closure, never execution approval,
+        dual normative V1 audit, fallback, automatic retry, activation or roadmap advancement.
+    procedure:
+      name: REPAIR_OUTCOME_AUDIT
+      check_outcomes:
+      - CLEAR
+      - BLOCKER
+      knowledge_states:
+      - OBSERVED
+      - INFERRED
+      - UNKNOWN
+      final_outcomes:
+      - CANDIDATE
+      - NO_DECISION
+      final_closure: true
+    bounds:
+      check_bytes: 2048
+      candidate_bytes: 131072
+      basis_bytes: 4096
+      evidence_refs_per_check: 4
+      closure_summary_bytes: 4096
+      outcome_bytes: 196608
+      max_depth: 32

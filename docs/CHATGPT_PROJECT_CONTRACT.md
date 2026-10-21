@@ -458,3 +458,28 @@ Interruption and resume semantics preserve Human and Brain roadmap authority:
 2. **Current Human Override vs. Generic Continuation**: An explicit current Human priority change outranks an older roadmap bookmark prospectively. However, future generic continuation ("continue roadmap") relies solely on a canonicalized bookmark reconciled with exact Git and artifact lineage.
 3. **Interruption and Side-track Return**: Returning from an interruption or bounded side-track must be resolved strictly from current canonical bookmark plus lineage, never from chat or model memory.
 4. **Fail-Closed Selection**: Completed tracks with zero NEXT items, missing roadmap state, ambiguous/multiple NEXT items, unauthored NEXT tasks, and roadmap/lineage contradictions fail closed for automatic continuation selection. The snapshot reports explicit blockers rather than silently choosing through them.
+
+
+## 15. Prepared TCA/ROA successors and later Human policy authority
+
+TASK-392 prepares `tca-2` version 2 and `roa-1-r3` version 3 without activating
+them. Historical `tca-1` version 1 and `roa-1-r2` version 2 retain exact content
+and digests under the original 2026-10-17 approval / reviewed TASK-368 publication.
+AOA-1, MOA-1 and the explicit Human Adaptive V1 option remain unchanged.
+
+TCA-2 keeps two focused passes and one closure, challenging every material AC
+against bounded source API behavior, legacy tests and inspect/modify authority.
+An unresolved API/test/scope conflict or missing decisive source yields UNKNOWN
+and NO_DECISION. ROA-1 R3 keeps five checks and one closure, distinguishing missing
+full AC claims/final-contract completion from native execution or genuine code/test
+failure. Brain must explain the smallest lawful lever, preserving full acceptance,
+sticky Executor, truthful completion claims and the Runtime completion gate.
+
+The registry cannot activate successors. A later separate Human/Brain canonical
+approval must preserve the original record and bind a complete successor mapping
+to the exact reviewed/published TASK-392 source through the existing first-party
+R5 authenticator. Stale, forged, partial or competing policy fails closed; admitted
+selection never switches in flight. No live correctness, verification, publication
+or performance is inferred from these profiles or their deterministic regressions.
+The exact digests, bounded source contract and future approval requirements are in
+[Brain semantic audit protocol section 24](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#24-bounded-tcaroa-successors-prepared-by-task-392).

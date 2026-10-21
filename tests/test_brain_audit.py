@@ -454,10 +454,13 @@ def tca_example():
 
 def tca_subject(body, profile, context):
     return construct_tca_subject(body, profile, {"selected_flow": "TASK_AUTHORING", "version": 1, "digest": "c" * 64},
-                                 {"task_id": "TASK-002", "revision": 1}, context)
+                                 {"task_id": context["task"]["task_id"] if context["task"] is not None else "TASK-002",
+                                  "revision": context["task"]["revision"] if context["task"] is not None else 1}, context)
 
 
 def tca_judgment(identity, subject, roles):
+    if subject["audit_profile_ref"]["id"] == "tca-2":
+        roles = tuple(dict.fromkeys((*roles, "implementation", "authorization")))
     missing = subject["sources"]["canonical"] is None or any(subject["sources"][r] is None for r in roles)
     return {"id": identity, "outcome": "BLOCKER" if missing else "CLEAR",
             "knowledge": "UNKNOWN" if missing else "INFERRED",
@@ -499,8 +502,8 @@ def tca_final(context, profile, subject, first):
         "A rehashed old packet or substituted profile can hide a moved canonical main or different Human intent.",
     )
     challenges = [{**tca_judgment(c["id"], subject, r), "counterexample": example,
-                   "disposition": "BLOCKER" if subject["sources"]["canonical"] is None or any(
-                       subject["sources"][role] is None for role in r) else "REJECTED_WITH_BOUNDED_BASIS"}
+                   "disposition": "BLOCKER" if tca_judgment(c["id"], subject, r)["outcome"] == "BLOCKER"
+                   else "REJECTED_WITH_BOUNDED_BASIS"}
                   for c, r, example in zip(profile["passes"][1]["checks"], roles, cases)]
     prior = [(kind, c) for kind, field in (("CHECK", "checks"), ("ACCEPTANCE", "acceptance_checks"),
                                           ("CONSUMER", "consumer_checks")) for c in first[field] if c["outcome"] == "BLOCKER"]
@@ -512,7 +515,7 @@ def tca_final(context, profile, subject, first):
             "consumer_checks": tca_consumers(context["task"], context, subject),
             "acceptance_accounting": [{"id": c["id"], "disposition": "RETAINED", "final_ids": [c["id"]],
                                        "candidate_anchors": [], "basis": "Exact original condition retained.",
-                                       "evidence_refs": [subject["sources"]["task"]]} for c in (
+                                       "evidence_refs": tca_judgment(c["id"], subject, ("task",))["evidence_refs"]} for c in (
                                            [] if context["task"] is None else context["task"]["acceptance"])],
             "reconciliation": [{"kind": kind, "id": c["id"], "disposition": "UNRESOLVED", "knowledge": c["knowledge"],
                                 "basis": c["basis"], "evidence_refs": c["evidence_refs"], "candidate_anchors": []} for kind, c in prior],
@@ -1314,7 +1317,7 @@ def test_roa_profile_cannot_be_reminted_or_disguised_as_v1(roa_profile, fault):
 def test_registry_remains_finite_and_historical_profile_bytes_are_unchanged(roa_profile):
     import yaml
     registry = parse_profile_registry(REGISTRY.read_bytes())
-    assert len(registry["profiles"]) == 7 and len(REGISTRY.read_bytes()) < 40960
+    assert len(registry["profiles"]) == 9 and len(REGISTRY.read_bytes()) < 57344
     registry["profiles"].append(deepcopy(roa_profile))
     with pytest.raises(BrainAuditError):
         parse_profile_registry(yaml.safe_dump(registry))
@@ -1324,7 +1327,8 @@ def test_registry_remains_finite_and_historical_profile_bytes_are_unchanged(roa_
                 "aios-adaptive-brain-audit-v1": "982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718",
                 "roa-1-r2": "aa6a5b60997849d6a00f9e4174ca7ef20fbc62ed64da645ee938a94f8e2639e4",
                 "moa-1": "49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903",
-                "tca-1": "1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2"}
+                "tca-1": "1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2",
+                "aoa-1": "7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b"}
     for profile in parse_profile_registry(REGISTRY.read_bytes())["profiles"]:
         if profile["id"] in expected:
             assert profile_ref(profile)["digest"] == expected[profile["id"]]
@@ -2670,3 +2674,241 @@ _COMPARISON_CANONICAL_CASES = json.loads(r'''
   }
 ]
 ''')
+
+
+# TASK-392 fixtures model explicit Brain judgments, not model semantic proof.
+def successor_profile(identity):
+    return next(p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"] if p["id"] == identity)
+
+
+@pytest.mark.parametrize("identity,version,pin", (
+    ("tca-2", 2, "75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d"),
+    ("roa-1-r3", 3, "cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a"),
+))
+def test_task392_successors_have_distinct_exact_content_and_original_topology(identity, version, pin):
+    profile = successor_profile(identity)
+    assert profile_ref(profile) == {"id": identity, "version": version, "digest": pin}
+    if identity == "tca-2":
+        assert [len(p["checks"]) for p in profile["passes"]] == [5, 6]
+        assert profile["procedure"] == successor_profile("tca-1")["procedure"]
+    else:
+        assert len(profile["checks"]) == 5 and "stages" not in profile["procedure"]
+        assert profile["procedure"] == successor_profile("roa-1-r2")["procedure"]
+    for fault in ("version", "content", "old_body", "unknown", "bounds"):
+        bad = deepcopy(profile)
+        if fault == "version":
+            bad["version"] += 1
+        elif fault == "content":
+            checks = bad["passes"][0]["checks"] if "passes" in bad else bad["checks"]
+            checks[0]["check"] += " Trust supplied claims."
+        elif fault == "old_body":
+            bad = successor_profile("tca-1" if identity == "tca-2" else "roa-1-r2")
+            bad = {**bad, "id": identity, "version": version}
+        elif fault == "unknown":
+            bad["id"] += "-next"
+        else:
+            bad["bounds"]["candidate_bytes"] += 1
+        with pytest.raises(BrainAuditError):
+            normalize_profile(bad)
+
+
+def test_task392_registry_limits_reject_extra_duplicate_and_oversized_material():
+    import yaml
+    raw = REGISTRY.read_bytes()
+    registry = parse_profile_registry(raw)
+    assert len(registry["profiles"]) == 9
+    with pytest.raises(BrainAuditError, match="57344"):
+        parse_profile_registry(raw + b" " * (57345 - len(raw)))
+    for extra in (deepcopy(registry["profiles"][0]), {"id": "tca-99", "version": 99}):
+        bad = deepcopy(registry)
+        bad["profiles"].append(extra)
+        with pytest.raises(BrainAuditError):
+            parse_profile_registry(yaml.safe_dump(bad))
+    registry["profiles"][0] = deepcopy(registry["profiles"][1])
+    with pytest.raises(BrainAuditError, match="duplicate"):
+        parse_profile_registry(yaml.safe_dump(registry))
+
+
+def task392_tca_context():
+    body, context = tca_example()
+    path = context["authorization"]["scope"]["modify"][0]
+    context["source_material"] = [{"path": path, "content": "def retain(context): return context"}]
+    return body, context
+
+
+def test_task392_tca_missing_source_is_unknown_and_cannot_emit_a_candidate():
+    profile = successor_profile("tca-2")
+    body, context = tca_example()
+    subject = tca_subject(body, profile, context)
+    assert subject["sources"]["implementation"] is None
+    first = construct_tca(body, profile, subject, tca_first(context, profile, subject), context)
+    final = tca_final(context, profile, subject, first)
+    result = validate_tca(body, profile, subject, first, final, context)
+    assert result["closure"]["outcome"] == "NO_DECISION"
+    assert result["closure"]["knowledge"] == "UNKNOWN" and result["handoff_candidate"] is None
+    false = deepcopy(final)
+    false["reconciled_candidate"] = deepcopy(context["task"])
+    false["closure"].update(outcome="CANDIDATE", candidate_fingerprint=digest(context["task"]))
+    with pytest.raises(BrainAuditError):
+        validate_tca(body, profile, subject, first, false, context)
+
+
+def test_task392_tca391_r1_direct_codec_api_versus_inspect_only_historical_ast_test():
+    profile = successor_profile("tca-2")
+    body, context = tca_example()
+    code = "src/aios_renew/intra_run_proof_contract.py"
+    legacy = "tests/test_intra_run_proof_contract.py"
+    # Frozen relevant pre-r2 source excerpts at c8900cbd4420a93daef853dc6ddf7024abb649d4.
+    context["task"].update(task_id="TASK-391", revision=1,
+                           goal="Preserve published direct native K_i/F_i codec APIs while adding the bounded L3-04 preactivation seam.",
+                           problem="The historical AST import guard conflicts with published native codec-local imports.")
+    body["human_input"] = "Implement bounded L3-04 while preserving L3-01/02/03 and historical behavior; only the seven r1 paths are authorized."
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    context["task"]["scope"] = {"inspect": [code, legacy], "modify": [code]}
+    context["authorization"]["scope"] = deepcopy(context["task"]["scope"])
+    context["task"]["acceptance"] = [{"id": "AC12", "condition":
+        "Diff remains confined to the seven permitted paths, preserves L3-01/02/03 and original historical V1/V2 behavior, and documents L3-04 as preactivation only; real rollout/finite consent are L3-05, integrated G3 proof is L3-06, G6 exact Human per-RUN activation and postactivation L4 measurement remain separate."}]
+    context["source_material"] = [
+        {"path": code, "content": "def parse_runtime_checkpoint(content: bytes) -> RuntimeCheckpoint:\n    from .verification_contract import (VerificationContractError, _reuse_decode, _app_exact, _original_hash, _original_json, parse_checkpoint_request, parse_scheduler_plan)\n    # ... bounded checkpoint decoding ...\n    from .artifacts import validate_evidence\n"},
+        {"path": legacy, "content": 'for node in ast.walk(tree):\n    if isinstance(node, ast.ImportFrom): imports.add(node.module)\nassert imports == {"__future__", "hashlib", "json", "re", "dataclasses", "proof_coverage_contract"}'}]
+    context["consumers"] = [
+        {"id": "native-codecs", "authority": "RUNTIME", "requirement": "Preserve directly callable published K_i/F_i codecs with canonical local imports."},
+        {"id": "historical-ast-test", "authority": "EXECUTOR", "requirement": "Historical AST guard forbids verification_contract/artifacts imports; test is inspect-only in TASK-391 r1."}]
+    subject = tca_subject(body, profile, context)
+    material = tca_first(context, profile, subject)
+    conflict = "TASK-391 r1 AC12 cannot preserve direct native codecs and the AST guard without separately authorized legacy-test modification."
+    for c in [*material["checks"][2:], *material["acceptance_checks"], *material["consumer_checks"]]:
+        c.update(outcome="BLOCKER", knowledge="UNKNOWN", basis=conflict)
+    first = construct_tca(body, profile, subject, material, context)
+    final = tca_final(context, profile, subject, first)
+    for index in (1, 2, 4):
+        final["challenges"][index].update(outcome="BLOCKER", knowledge="UNKNOWN", disposition="BLOCKER",
+                                           basis=conflict, counterexample=conflict)
+    result = validate_tca(body, profile, subject, first, final, context)
+    assert result["closure"]["outcome"] == "NO_DECISION" and result["handoff_candidate"] is None
+    assert legacy not in context["authorization"]["scope"]["modify"]
+    # An all-CLEAR later pass, command exit 0 or omitted reconciliation cannot erase the first conflict.
+    final["challenges"] = tca_final(context, profile, subject, first)["challenges"]
+    final["reconciliation"] = []
+    final["reconciled_candidate"] = deepcopy(context["task"])
+    final["closure"].update(outcome="CANDIDATE", knowledge="INFERRED", candidate_fingerprint=digest(context["task"]))
+    with pytest.raises(BrainAuditError):
+        validate_tca(body, profile, subject, first, final, context)
+    final["reconciled_candidate"]["scope"]["modify"].append(legacy)
+    with pytest.raises(BrainAuditError, match="scope"):
+        validate_tca(body, profile, subject, first, final, context)
+
+
+def test_task392_tca_source_content_currentness_and_minimal_scope():
+    profile = successor_profile("tca-2")
+    body, context = task392_tca_context()
+    subject = tca_subject(body, profile, context)
+    first = construct_tca(body, profile, subject, tca_first(context, profile, subject), context)
+    final = tca_final(context, profile, subject, first)
+    assert validate_tca(body, profile, subject, first, final, context)["closure"]["outcome"] == "CANDIDATE"
+    changed = deepcopy(context)
+    changed["source_material"][0]["content"] += "\n# changed source"
+    with pytest.raises(BrainAuditError, match="binding"):
+        validate_tca(body, profile, subject, first, final, changed)
+    changed["source_material"][0]["path"] = "src/forbidden.py"
+    with pytest.raises(BrainAuditError, match="authority"):
+        tca_subject(body, profile, changed)
+
+
+def task392_roa_episode(run_id):
+    body = roa_packet()
+    task_id = "TASK-" + run_id.split("-")[1]
+    body["canonical_facts"]["selected_task"] = {"id": task_id, "revision": 1}
+    body["subject"].update(failed_run_id=run_id, failed_changed_files=[])
+    contract = body["canonical_facts"]["task_contract"]
+    contract.update(task_id=task_id, acceptance=[{"id": f"AC{i}", "condition": f"Established original implementation property {i}"}
+                                               for i in range(1, 13 if task_id == "TASK-391" else 10)])
+    correction = body["canonical_facts"]["correction_subject"]
+    correction.update(task=body["canonical_facts"]["selected_task"], failed_run_id=run_id)
+    body["bounded_observations"]["strategy_facts"].update(
+        source_delta=[], missing_complete_acceptance_claims=True,
+        structural_result_package="PRESENT_INCOMPLETE_CLAIMS", verification_invoked=False)
+    if run_id == "RUN-383-002":
+        body["bounded_observations"]["strategy_facts"]["missing_acceptance_ids"] = ["AC2", "AC5", "AC7", "AC9"]
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    return body
+
+
+@pytest.mark.parametrize("run_id", ("RUN-391-013", "RUN-383-002"))
+def test_task392_roa_completion_only_missing_claims_has_a_completion_lever(run_id):
+    profile = successor_profile("roa-1-r3")
+    body = task392_roa_episode(run_id)
+    before = deepcopy(body)
+    subject = roa_subject(body, profile)
+    material = roa_output(subject, profile)
+    material["checks"][1]["basis"] = "COMPLETION_GATE, ArtifactValidationError: no source delta, missing full AC claims; no evidenced code failure."
+    material["checks"][2]["basis"] = "FINALIZE_CANDIDATE supplies the complete truthful final contract from established implementation, closing the exact missing-claims gate without a source edit."
+    material["checks"][3]["basis"] = "An unsupported AC or actual failing code would falsify completion-only readiness; retain a blocker rather than synthesize that claim."
+    candidate = material["candidate"]
+    candidate.update(action="FINALIZE_CANDIDATE", modification_scope=[], instructions=[
+        "Establish every original AC from the committed candidate; return the complete ResultPackage with truthful full AC claims and exact schema. If any property is unsupported, retain a blocker; do not manufacture claims.",
+        "Keep the admitted Executor; Runtime applies the unchanged completion gate and owns verification/EVIDENCE."])
+    candidate["instructions"].extend(f"Retain {c['id']}: {c['condition']}" for c in body["canonical_facts"]["task_contract"]["acceptance"])
+    material["closure"]["candidate_fingerprint"] = digest(candidate)
+    final = validate_roa(body, profile, subject, material)
+    assert final["handoff_candidate"]["action"] == "FINALIZE_CANDIDATE"
+    assert final["handoff_candidate"]["modification_scope"] == []
+    assert len(final["checks"]) == 5 and body == before
+    assert final["handoff_candidate"]["constraints"] == body["canonical_facts"]["task_contract"]["constraints"]["hard"]
+
+
+@pytest.mark.parametrize("phase", ("VERIFICATION", "EXECUTION", "UNKNOWN"))
+def test_task392_roa_code_failure_and_native_or_private_unknown_are_distinct(phase):
+    profile = successor_profile("roa-1-r3")
+    body = task392_roa_episode("RUN-391-013")
+    body["bounded_observations"] = {"phase": phase, "error": {"type": "AssertionError" if phase == "VERIFICATION" else "NativeInvocationError"},
+        "strategy_facts": {"failed_test": "test_preserve_context", "actual": "context discarded"} if phase == "VERIFICATION" else {}}
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    subject = roa_subject(body, profile)
+    material = roa_output(subject, profile)
+    if phase == "VERIFICATION":
+        material["candidate"].update(action="CODE_FIX", instructions=["Fix the evidenced context-discard regression within original scope, retaining every AC and the Runtime completion gate."])
+        material["checks"][1]["basis"] = "Native verification assertion distinguishes actual lost context from missing claims."
+        material["checks"][2]["basis"] = "CODE_FIX restores the faulty context path; final claims alone cannot repair it."
+        material["closure"]["candidate_fingerprint"] = digest(material["candidate"])
+    final = validate_roa(body, profile, subject, material)
+    assert final["closure"]["outcome"] == ("CANDIDATE" if phase == "VERIFICATION" else "NO_DECISION")
+    if phase != "VERIFICATION":
+        assert final["closure"]["knowledge"] == "UNKNOWN" and final["handoff_candidate"] is None
+
+
+def test_task392_roa_requires_full_original_acceptance_source():
+    profile = successor_profile("roa-1-r3")
+    body = task392_roa_episode("RUN-383-002")
+    body["canonical_facts"]["task_contract"].pop("acceptance")
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    subject = roa_subject(body, profile)
+    material = roa_output(subject, profile)
+    assert subject["sources"]["authorization"] is None
+    assert validate_roa(body, profile, subject, material)["closure"]["outcome"] == "NO_DECISION"
+
+
+@pytest.mark.parametrize("identity", (None, [], {}, True, "tca-99"))
+def test_task392_malformed_identity_is_a_closed_parser_error(identity):
+    profile = deepcopy(successor_profile("tca-2"))
+    profile["id"] = identity
+    with pytest.raises(BrainAuditError):
+        normalize_profile(profile)
+
+
+def test_task392_roa_unsupported_code_fix_cannot_escape_a_completion_blocker():
+    profile = successor_profile("roa-1-r3")
+    body = task392_roa_episode("RUN-383-002")
+    subject = roa_subject(body, profile)
+    material = roa_output(subject, profile)
+    code_fix = deepcopy(material["candidate"])
+    code_fix["action"] = "CODE_FIX"
+    material["checks"][2].update(outcome="BLOCKER", knowledge="UNKNOWN",
+        basis="No source delta or code failure supports CODE_FIX. Missing AC2/AC5/AC7/AC9 must first be truthfully established for the complete final contract.")
+    material["closure"].update(outcome="NO_DECISION", knowledge="UNKNOWN", candidate_fingerprint=None)
+    material["candidate"] = None
+    assert validate_roa(body, profile, subject, material)["handoff_candidate"] is None
+    material["candidate"] = code_fix
+    material["closure"]["candidate_fingerprint"] = digest(code_fix)
+    with pytest.raises(BrainAuditError, match="blocker"):
+        validate_roa(body, profile, subject, material)

@@ -121,14 +121,14 @@ class CanonicalAuditRepository:
         self.write(".ai/roadmap-state.yaml", raw if raw is not None else yaml.safe_dump(self.roadmap).encode())
         self.main_sha = self.commit("canonical planning fixture")
 
-    def save_review(self):
+    def save_review(self, *, run_id="RUN-368-001"):
         self.git(self.canonical, "switch", "--detach", self.source_sha)
-        self.write(".ai/reviews/REVIEW-368-001.yaml", yaml.safe_dump(self.review).encode())
+        self.write(f".ai/reviews/{self.review['review_id']}.yaml", yaml.safe_dump(self.review).encode())
         self.review_sha = self.commit("canonical R5 PRIMARY review fixture")
-        self.git(self.canonical, "update-ref", "refs/heads/aios/review-decision/RUN-368-001", self.review_sha)
+        self.git(self.canonical, "update-ref", f"refs/heads/aios/review-decision/{run_id}", self.review_sha)
         self.git(self.canonical, "switch", "main")
 
-    def save_artifacts(self):
+    def save_artifacts(self, *, run_id="RUN-368-001"):
         # Runtime artifacts are an independent immutable snapshot, not a commit
         # on the candidate or review branch. Keep that separation in the fixture.
         entries = []
@@ -139,7 +139,64 @@ class CanonicalAuditRepository:
         tree = self.git(self.canonical, "mktree", input=f"040000 tree {tree}\ttransport\n")
         tree = self.git(self.canonical, "mktree", input=f"040000 tree {tree}\t.ai\n")
         self.artifact_sha = self.git(self.canonical, "commit-tree", tree, "-m", "canonical R5 artifacts fixture")
-        self.git(self.canonical, "update-ref", "refs/heads/aios/artifacts/RUN-368-001", self.artifact_sha)
+        self.git(self.canonical, "update-ref", f"refs/heads/aios/artifacts/{run_id}", self.artifact_sha)
+
+    def publish_successor(self, *, omit_reviewed_body=False):
+        """Offline independently reviewed successor publication and later Human approval.
+
+        This prepares temporary Git fixtures only; it never changes repository
+        policy or stands in for the actual Runtime/Reviewer/Publisher outcome.
+        """
+        from aios_renew.brain_audit import _specialized_profiles
+        from aios_renew.brain_context import _digest, _R21_SUCCESSOR_APPROVAL
+        root = Path(__file__).resolve().parents[1]
+        original = {key: deepcopy(getattr(self, key)) for key in (
+            "base_sha", "source_sha", "review_sha", "artifact_sha", "run", "result_package", "review")}
+        task_raw = (root / ".ai/tasks/TASK-392.yaml").read_bytes()
+        task = yaml.safe_load(task_raw)
+        self.base_sha = self.main_sha
+        registry_raw = (root / ".ai/brain-audit-profiles.yaml").read_bytes()
+        if omit_reviewed_body:
+            registry = yaml.safe_load(registry_raw)
+            registry["profiles"] = [p for p in registry["profiles"] if p["id"] != "tca-2"]
+            self.write(".ai/brain-audit-profiles.yaml", yaml.safe_dump(registry).encode())
+        self.write(".ai/tasks/TASK-392.yaml", task_raw)
+        self.source_sha = self.commit("successor implementation fixture")
+        self.successor_source_sha = self.source_sha
+        self.git(self.canonical, "update-ref", "refs/heads/aios/review/RUN-392-001", self.source_sha)
+        self.run = {**deepcopy(original["run"]), "run_id": "RUN-392-001", "task": {"id": "TASK-392", "revision": 1},
+                    "base_sha": self.base_sha}
+        evidence_id = "RUN-392-001-V001"
+        self.result_package = {
+            "result": {"head_sha": self.source_sha,
+                "claims": [{"id": f"C{i}", "satisfies": [c["id"]], "claim": c["condition"], "evidence": [evidence_id]}
+                           for i, c in enumerate(task["acceptance"], 1)],
+                "changed_files": [".ai/brain-audit-profiles.yaml"], "unresolved": []},
+            "evidence": [{"evidence_id": evidence_id, "run_id": self.run["run_id"], "subject_sha": self.source_sha,
+                "type": "VERIFICATION", "source": {"command": task["verification"]["required"][0]},
+                "result": {"exit_code": 0, "summary": "Synthetic Runtime fixture"},
+                "raw": {"path": "protected-runtime-raw/successor"}}]}
+        self.save_artifacts(run_id="RUN-392-001")
+        self.successor_artifact_sha = self.artifact_sha
+        self.review = {"review_id": "REVIEW-392-001", "reviewed_sha": self.source_sha, "mode": "PRIMARY",
+                       "verdict": "PASS", "findings": [], "acceptance": {c["id"]: "PASS" for c in task["acceptance"]}}
+        self.save_review(run_id="RUN-392-001")
+        self.successor_review_sha = self.review_sha
+        if omit_reviewed_body:
+            self.write(".ai/brain-audit-profiles.yaml", registry_raw)
+            self.commit("registry added after reviewed publication")
+        approval = deepcopy(self.roadmap[self.approval_key])
+        approval.update(approved_on="2026-10-22", implementation_task="TASK-392", implementation_revision=1,
+            implementation_run="RUN-392-001", review_id="REVIEW-392-001", review_decision_sha=self.review_sha,
+            reviewed_published_source_sha=self.source_sha, approved_against_main_sha=self.source_sha,
+            human_decision="ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION",
+            target_profiles=_specialized_profiles(successors=True), supersedes=self.approval_key,
+            superseded_approval_digest=_digest(self.roadmap[self.approval_key]))
+        self.roadmap[_R21_SUCCESSOR_APPROVAL] = approval
+        self.save_roadmap()
+        for key, value in original.items():
+            setattr(self, key, value)
+        return approval
 
 
 @pytest.fixture
@@ -529,3 +586,71 @@ def test_fresh_failure_work_context_carries_safe_cause_and_invalidates_on_source
     second = compose_brain_work_context(replace(source, unified_state=changed))
     assert first.invalidation_fingerprint != second.invalidation_fingerprint
     assert resolve_flow(first).selected_flow == resolve_flow(second).selected_flow == "REPAIR_AUTHORING"
+
+
+def test_task392_canonical_successor_policy_preserves_old_admission_or_stops(canonical_audit_repo):
+    from aios_renew.brain_context import canonical_audit_inputs
+    from aios_renew.brain_provider_protocol import construct_request
+    from aios_renew.brain_return_contract import parse_return_contract_registry
+    from test_brain_provider_protocol import production_inputs
+    root = Path(__file__).resolve().parents[1]
+    registry = parse_return_contract_registry((root / ".ai/brain-return-contracts.yaml").read_bytes())
+    supplied, contract, bindings, sources = production_inputs(registry, "TASK_AUTHORING", canonical_audit_repo)
+    policy, package, authenticate = canonical_audit_inputs(supplied, contract, bindings, repo=canonical_audit_repo.repo, **sources)
+    assert package["audit_profile_ref"]["id"] == "tca-1"  # Nine registry entries do not activate anything.
+    req = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE", audit_policy=policy,
+                            selection_authenticator=authenticate, **sources)
+    original_approval = deepcopy(canonical_audit_repo.roadmap[canonical_audit_repo.approval_key])
+    canonical_audit_repo.publish_successor()
+    assert canonical_audit_repo.roadmap[canonical_audit_repo.approval_key] == original_approval
+    assert authenticate(req["audit_selection"], "CONTINUE") is False
+    assert req["audit_profile_package"] == package and req["audit_selection"]["policy"] == policy
+    with pytest.raises(BrainContextError):
+        canonical_audit_inputs(supplied, contract, bindings, repo=canonical_audit_repo.repo, **sources)
+
+
+@pytest.mark.parametrize("fault", ("partial", "mixed", "digest", "bool_version", "supersedes", "old_approval",
+    "duplicate", "missing_review", "review_sha", "unpublished", "missing_artifact", "wrong_run", "unreviewed_body"))
+def test_task392_canonical_successor_cannot_replace_authority_with_a_digest(canonical_audit_repo, fault):
+    from aios_renew.brain_context import canonical_audit_inputs, _R21_SUCCESSOR_APPROVAL
+    from aios_renew.brain_return_contract import parse_return_contract_registry
+    from test_brain_provider_protocol import production_inputs
+    root = Path(__file__).resolve().parents[1]
+    canonical = canonical_audit_repo
+    approval = canonical.publish_successor(omit_reviewed_body=fault == "unreviewed_body")
+    if fault == "partial":
+        del approval["target_profiles"]["REPAIR_AUTHORING"]
+    elif fault == "mixed":
+        approval["target_profiles"]["TASK_AUTHORING"] = canonical.roadmap[canonical.approval_key]["target_profiles"]["TASK_AUTHORING"]
+    elif fault == "digest":
+        approval["target_profiles"]["TASK_AUTHORING"]["digest"] = "f" * 64
+    elif fault == "bool_version":
+        approval["target_profiles"]["ARCHITECTURE"]["version"] = True
+    elif fault == "supersedes":
+        approval["superseded_approval_digest"] = "f" * 64
+    elif fault == "old_approval":
+        canonical.roadmap[canonical.approval_key]["approved_on"] = "2026-10-22"
+    elif fault == "duplicate":
+        canonical.roadmap[_R21_SUCCESSOR_APPROVAL + "_other"] = deepcopy(approval)
+    elif fault == "missing_review":
+        canonical.git(canonical.canonical, "update-ref", "-d", "refs/heads/aios/review-decision/RUN-392-001")
+    elif fault == "review_sha":
+        approval["review_decision_sha"] = canonical.review_sha
+    elif fault == "unpublished":
+        canonical.git(canonical.canonical, "switch", "--detach", canonical.source_sha)
+        canonical.write(".ai/roadmap-state.yaml", yaml.safe_dump(canonical.roadmap).encode())
+        unrelated = canonical.commit("approval without successor publication ancestry")
+        canonical.git(canonical.canonical, "branch", "-f", "main", unrelated)
+        canonical.git(canonical.canonical, "switch", "main")
+    elif fault == "missing_artifact":
+        canonical.git(canonical.canonical, "update-ref", "-d", "refs/heads/aios/artifacts/RUN-392-001")
+    elif fault == "wrong_run":
+        canonical.git(canonical.canonical, "update-ref", "refs/heads/aios/artifacts/RUN-392-001", canonical.artifact_sha)
+    if fault != "unpublished":
+        canonical.save_roadmap()
+    else:
+        canonical.main_sha = unrelated
+    registry = parse_return_contract_registry((root / ".ai/brain-return-contracts.yaml").read_bytes())
+    supplied, contract, bindings, sources = production_inputs(registry, "TASK_AUTHORING", canonical)
+    with pytest.raises(BrainContextError):
+        canonical_audit_inputs(supplied, contract, bindings, repo=canonical.repo, **sources)

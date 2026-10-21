@@ -419,6 +419,7 @@ _R21_APPROVAL = "human_r21_four_specialized_activation_20261017"
 _R21_APPROVAL_STATES = frozenset({
     "HUMAN_APPROVED_CANONICALIZED_LIVE_PRODUCTION_CONFORMANCE_OUTSTANDING", "ACTIVE",
 })
+_R21_SUCCESSOR_APPROVAL = "human_r21_tca_roa_successor_activation"
 _R5_CANDIDATE_REF = "refs/heads/aios/review/RUN-368-001"
 _R5_REVIEW_REF = "refs/heads/aios/review-decision/RUN-368-001"
 _R5_ARTIFACT_REF = "refs/heads/aios/artifacts/RUN-368-001"
@@ -435,7 +436,7 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         _json_no_dups, _run_from_data, _validate_metadata_commit,
     )
     from .artifacts import validate_result, validate_evidence, validate_result_package
-    from .brain_audit import parse_profile_registry
+    from .brain_audit import parse_profile_registry, profile_ref, _specialized_profiles
     from .brain_return_contract import parse_return_contract_registry
     from .operator import _git_is_ancestor
     from .return_affinity import require_same_affinity
@@ -473,8 +474,8 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
             raise BrainContextError("canonical audit source is unavailable")
         return raw
 
-    # Old unrelated roadmap sections contain numeric keys. Decode just the
-    # selected approval strictly, while rejecting ambiguous top-level mirrors.
+    # Decode only bounded selected approvals; unrelated historical roadmap keys
+    # may be numeric, but top-level duplicate/mirrored authority is forbidden.
     raw = blob(main, ".ai/roadmap-state.yaml")
     if len(raw) > 1048576:
         raise BrainContextError("canonical audit roadmap exceeds bound")
@@ -488,87 +489,127 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         nodes[key.value] = value
     if _R21_APPROVAL not in nodes:
         raise BrainContextError("canonical Human R2.1 approval is missing")
-    approval = yaml.load(yaml.serialize(nodes[_R21_APPROVAL]), Loader=_UniqueKeyLoader)
-    required = {
-        "authority": "EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL",
-        "human_decision": "ACTIVATE_R21_FOUR_SPECIALIZED_DEFAULT_WITH_ADAPTIVE_V1_AS_HUMAN_OPTION",
-        "implementation_task": "TASK-368", "implementation_revision": 1,
-        "implementation_run": "RUN-368-001", "review_id": "REVIEW-368-001", "review_verdict": "PASS",
-        "target_policy_format": "AIOS_BRAIN_AUDIT_POLICY", "target_policy_version": 1,
-        "target_policy_state": "FOUR_SPECIALIZED",
-        "architecture_and_task_v1_option": "HUMAN_EXPLICIT_EXACT_SUBJECT_V1_ONLY_ONE_NORMATIVE_AUDIT",
-        "correction_v1_option": "HUMAN_EXPLICIT_READ_ONLY_SUPPORT_NO_SECOND_NORMATIVE_AUDIT",
-    }
-    if (not isinstance(approval, dict)
-            or any(_stable_copy(approval.get(k)) != v for k, v in required.items())
-            or type(approval.get("implementation_revision")) is not int
-            or type(approval.get("target_policy_version")) is not int
-            # Human/Brain reconciliation may complete this finite transition;
-            # either state still requires every approval and Git binding below.
-            or approval.get("status") not in _R21_APPROVAL_STATES
-            or approval.get("review_decision_sha") != refs[_R5_REVIEW_REF]):
-        raise BrainContextError("canonical Human R2.1 approval conflicts with activation")
-    # The newer explicit activation supersedes the dated V1 cutover. Another
-    # current activation declaration cannot compete with this complete mapping.
     for key in nodes:
-        if key != _R21_APPROVAL and key.startswith("human_r21_four_specialized_activation_"):
+        if ((key.startswith("human_r21_four_specialized_activation_") and key != _R21_APPROVAL)
+                or (key.startswith(_R21_SUCCESSOR_APPROVAL) and key != _R21_SUCCESSOR_APPROVAL)):
             raise BrainContextError("conflicting canonical Human R2.1 approvals")
-    artifact_sha = refs[_R5_ARTIFACT_REF]
-    run_data = _json_no_dups(blob(artifact_sha, ".ai/transport/run.json"), "R5 RUN")
-    if "kind" in run_data:
-        raise BrainContextError("canonical R5 artifact must be the original PRIMARY RUN")
-    run = _run_from_data(run_data, "R5 RUN")
-    result_data = _json_no_dups(blob(artifact_sha, ".ai/transport/result.json"), "R5 ResultPackage")
-    if set(result_data) != {"result", "evidence"} or not isinstance(result_data["evidence"], list):
-        raise BrainContextError("canonical R5 artifact must contain a nested ResultPackage")
-    result = validate_result(result_data["result"])
-    evidence = tuple(validate_evidence(item) for item in result_data["evidence"])
-    # The admitted RUN is immutable: ACTIVE/head_sha=null is canonical. The
-    # completed source comes from RESULT, corroborated independently by Git.
-    source = result.head_sha
-    if (not isinstance(source, str) or re.fullmatch(r"[0-9a-f]{40}", source) is None
-            or approval.get("reviewed_published_source_sha") != source
-            or approval.get("approved_against_main_sha") != source
-            or refs[_R5_CANDIDATE_REF] != source):
-        raise BrainContextError("canonical R5 publication identity is invalid")
-    published_task = parse_task(blob(source, ".ai/tasks/TASK-368.yaml").decode("utf-8"))
-    if (published_task.task_id != "TASK-368" or published_task.revision != 1
-            or not _git_is_ancestor(repo, source, main)):
-        raise BrainContextError("reviewed R5 source is not published on canonical main")
-    if (run.run_id != "RUN-368-001" or run.task.id != "TASK-368" or run.task.revision != 1
-            or run.status != ACTIVE or re.fullmatch(r"[0-9a-f]{40}", run.base_sha) is None
-            or not _git_is_ancestor(repo, run.base_sha, source)):
-        raise BrainContextError("canonical R5 RUN publication lineage conflicts")
-    require_same_affinity(published_task, run)
-    validate_result_package(task=published_task, run=run, result=result, evidence=evidence)
-    if result.unresolved:
-        raise BrainContextError("canonical R5 RESULT contains unresolved items")
-    review_sha = refs[_R5_REVIEW_REF]
-    # REVIEWs live on their immutable decision ref, outside the source tree.
-    if not _ls_tree(repo, review_sha, ".ai/reviews"):
-        _fetch_if_remote(repo, remote, review_sha)
-    paths = [p for p in _ls_tree(repo, review_sha, ".ai/reviews") if p.endswith((".yaml", ".yml"))]
-    if len(paths) != 1:
-        raise BrainContextError("canonical R5 REVIEW is missing or ambiguous")
-    review_raw = blob(review_sha, paths[0])
-    review = parse_review(review_raw.decode("utf-8"))
-    _validate_metadata_commit(repo, review_sha, expected_parent_sha=source,
-                              metadata_path=paths[0], metadata_bytes=review_raw, operation="R5 REVIEW")
-    validate_review(task=published_task, result=result, review=review)
-    if (review.review_id != approval["review_id"] or review.reviewed_sha != source
-            or review.mode != "PRIMARY" or review.verdict != "PASS"
-            or set(review.acceptance) != {item.id for item in published_task.acceptance}
-            or any(value != "PASS" for value in review.acceptance.values())):
-        raise BrainContextError("canonical R5 REVIEW does not approve the published source")
+
+    def approval_record(key: str, *, successor: bool) -> dict:
+        encoded = yaml.serialize(nodes[key])
+        if len(encoded.encode("utf-8")) > 8192:
+            raise BrainContextError("canonical audit approval exceeds bound")
+        record = yaml.load(encoded, Loader=_UniqueKeyLoader)
+        required = {
+            "authority": "EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL",
+            "human_decision": ("ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION"
+                               if successor else "ACTIVATE_R21_FOUR_SPECIALIZED_DEFAULT_WITH_ADAPTIVE_V1_AS_HUMAN_OPTION"),
+            "implementation_task": "TASK-392" if successor else "TASK-368", "implementation_revision": 1,
+            "review_verdict": "PASS", "target_policy_format": "AIOS_BRAIN_AUDIT_POLICY",
+            "target_policy_version": 1, "target_policy_state": "FOUR_SPECIALIZED",
+            "target_profiles": _specialized_profiles(successors=successor),
+            "architecture_and_task_v1_option": "HUMAN_EXPLICIT_EXACT_SUBJECT_V1_ONLY_ONE_NORMATIVE_AUDIT",
+            "correction_v1_option": "HUMAN_EXPLICIT_READ_ONLY_SUPPORT_NO_SECOND_NORMATIVE_AUDIT",
+        }
+        if not successor:
+            required.update(approved_on="2026-10-17", implementation_run="RUN-368-001", review_id="REVIEW-368-001")
+        if (not isinstance(record, dict)
+                or any(_digest(record.get(k)) != _digest(v) for k, v in required.items())
+                or type(record.get("implementation_revision")) is not int
+                or type(record.get("target_policy_version")) is not int
+                or record.get("status") not in _R21_APPROVAL_STATES):
+            raise BrainContextError("canonical Human R2.1 approval conflicts with activation")
+        if successor and (
+                not isinstance(record.get("approved_on"), str)
+                or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", record["approved_on"]) is None
+                or re.fullmatch(r"RUN-392-[0-9]{3,}", str(record.get("implementation_run"))) is None
+                or re.fullmatch(r"REVIEW-392-[0-9]{3,}", str(record.get("review_id"))) is None):
+            raise BrainContextError("invalid separately approved successor identity")
+        return record
+
+    original = approval_record(_R21_APPROVAL, successor=False)
+    selected = original
+    successor = None
+    if _R21_SUCCESSOR_APPROVAL in nodes:
+        successor = approval_record(_R21_SUCCESSOR_APPROVAL, successor=True)
+        if (successor.get("supersedes") != _R21_APPROVAL
+                or successor.get("superseded_approval_digest") != _digest(original)):
+            raise BrainContextError("successor does not preserve the exact historical approval")
+        run_id = successor["implementation_run"]
+        successor_patterns = tuple(f"refs/heads/aios/{kind}/{run_id}"
+                                   for kind in ("review", "review-decision", "artifacts"))
+        additional = _query_matching_refs(repo, remote, *successor_patterns)
+        if set(additional) != set(successor_patterns):
+            raise BrainContextError("successor reviewed publication is unavailable")
+        refs.update(additional)
+        patterns = (*patterns, *successor_patterns)
+        selected = successor
+
+    def publication(record: dict, candidate_ref: str, review_ref: str, artifact_ref: str) -> str:
+        # Both approvals use the same original PRIMARY RUN/RESULT/REVIEW trust
+        # path. Registry presence and selected digests cannot authenticate policy.
+        artifact_sha = refs[artifact_ref]
+        run_data = _json_no_dups(blob(artifact_sha, ".ai/transport/run.json"), "R5 RUN")
+        if "kind" in run_data:
+            raise BrainContextError("canonical R5 artifact must be the original PRIMARY RUN")
+        run = _run_from_data(run_data, "R5 RUN")
+        result_data = _json_no_dups(blob(artifact_sha, ".ai/transport/result.json"), "R5 ResultPackage")
+        if set(result_data) != {"result", "evidence"} or not isinstance(result_data["evidence"], list):
+            raise BrainContextError("canonical R5 artifact must contain a nested ResultPackage")
+        result = validate_result(result_data["result"])
+        evidence = tuple(validate_evidence(item) for item in result_data["evidence"])
+        source = result.head_sha
+        if (not isinstance(source, str) or re.fullmatch(r"[0-9a-f]{40}", source) is None
+                or record.get("reviewed_published_source_sha") != source
+                or record.get("approved_against_main_sha") != source
+                or refs[candidate_ref] != source or record.get("review_decision_sha") != refs[review_ref]):
+            raise BrainContextError("canonical R5 publication identity is invalid")
+        task_id = record["implementation_task"]
+        published_task = parse_task(blob(source, f".ai/tasks/{task_id}.yaml").decode("utf-8"))
+        if (published_task.task_id != task_id or published_task.revision != record["implementation_revision"]
+                or not _git_is_ancestor(repo, source, main)):
+            raise BrainContextError("reviewed R5 source is not published on canonical main")
+        if (run.run_id != record["implementation_run"] or run.task.id != task_id
+                or run.task.revision != published_task.revision or run.status != ACTIVE
+                or re.fullmatch(r"[0-9a-f]{40}", run.base_sha) is None
+                or not _git_is_ancestor(repo, run.base_sha, source)):
+            raise BrainContextError("canonical R5 RUN publication lineage conflicts")
+        require_same_affinity(published_task, run)
+        validate_result_package(task=published_task, run=run, result=result, evidence=evidence)
+        if result.unresolved:
+            raise BrainContextError("canonical R5 RESULT contains unresolved items")
+        review_sha = refs[review_ref]
+        if not _ls_tree(repo, review_sha, ".ai/reviews"):
+            _fetch_if_remote(repo, remote, review_sha)
+        paths = [p for p in _ls_tree(repo, review_sha, ".ai/reviews") if p.endswith((".yaml", ".yml"))]
+        if len(paths) != 1:
+            raise BrainContextError("canonical R5 REVIEW is missing or ambiguous")
+        review_raw = blob(review_sha, paths[0])
+        review = parse_review(review_raw.decode("utf-8"))
+        _validate_metadata_commit(repo, review_sha, expected_parent_sha=source,
+                                  metadata_path=paths[0], metadata_bytes=review_raw, operation="R5 REVIEW")
+        validate_review(task=published_task, result=result, review=review)
+        if (review.review_id != record["review_id"] or review.reviewed_sha != source
+                or review.mode != "PRIMARY" or review.verdict != "PASS"
+                or set(review.acceptance) != {item.id for item in published_task.acceptance}
+                or any(value != "PASS" for value in review.acceptance.values())):
+            raise BrainContextError("canonical R5 REVIEW does not approve the published source")
+        if record is successor:
+            published_profiles = parse_profile_registry(blob(source, ".ai/brain-audit-profiles.yaml"))
+            published_refs = [profile_ref(p) for p in published_profiles["profiles"]]
+            if any(ref not in published_refs for ref in record["target_profiles"].values()):
+                raise BrainContextError("successor mapping was not present in its reviewed publication")
+        return hashlib.sha256(review_raw).hexdigest()
+
+    original_review_digest = publication(original, _R5_CANDIDATE_REF, _R5_REVIEW_REF, _R5_ARTIFACT_REF)
+    review_digest = publication(successor, *successor_patterns) if successor is not None else original_review_digest
     profiles = parse_profile_registry(blob(main, ".ai/brain-audit-profiles.yaml"))
     returns = parse_return_contract_registry(blob(main, ".ai/brain-return-contracts.yaml"))
     if _query_matching_refs(repo, remote, *patterns) != refs or transport() != (remote, remote_url):
         raise BrainContextError("canonical audit sources moved while reading")
-    # Transport identity remains private, including any credentials in its URL.
-    authority = {"remote": remote, "remote_url": remote_url, "refs": refs, "approval": approval,
-                 "review_digest": hashlib.sha256(review_raw).hexdigest(), "registry": profiles,
-                 "return_contracts": returns}
-    return approval, profiles, authority
+    authority = {"remote": remote, "remote_url": remote_url, "refs": refs, "approval": selected,
+                 "historical_approval": original, "historical_review_digest": original_review_digest,
+                 "review_digest": review_digest, "registry": profiles, "return_contracts": returns}
+    return selected, profiles, authority
 
 
 def canonical_audit_inputs(

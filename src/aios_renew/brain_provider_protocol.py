@@ -14,8 +14,8 @@ from copy import deepcopy
 from typing import Any, Callable, Mapping
 
 from .brain_audit import (
-    BrainAuditError, _CONFORMANCE_LENSES, _ROA_ID, _MOA_ID, _MOA_FINAL_FIELDS,
-    _TCA_ID, _ADAPTIVE_ID, _TCA_FINAL_FIELDS, _tca_source_context, _tca_construct,
+    BrainAuditError, _CONFORMANCE_LENSES, _ROA_IDS, _MOA_ID, _MOA_FINAL_FIELDS,
+    _TCA_IDS, _ADAPTIVE_ID, _TCA_FINAL_FIELDS, _tca_source_context, _tca_construct,
     _has_conformance, _ordered_lenses, _packet, _moa_construct, _moa_source_context,
     _stage1, construct_roa_subject, construct_stage1, construct_moa_subject, construct_moa,
     normalize_profile, normalize_audit_policy, profile_ref, validate_roa, validate_stage2, validate_moa,
@@ -380,13 +380,13 @@ def _mode(packet: dict[str, Any], profile: dict[str, Any] | None, mode: Any) -> 
     if type(mode) is not str or packet["authority_owner"] != "BRAIN":
         raise BrainProviderProtocolError("flow and request mode do not apply")
     flow = packet["selected_flow"]
-    if profile is not None and profile["profile"]["id"] == _ROA_ID:
+    if profile is not None and profile["profile"]["id"] in _ROA_IDS:
         if flow != "REPAIR_AUTHORING" or mode != "ROA_CONFORMANCE":
             raise BrainProviderProtocolError("ROA requires its exact single procedure; no mixed stages")
     elif profile is not None and profile["profile"]["id"] == _MOA_ID:
         if flow != "REMEDIATION_AUTHORING" or mode not in {"MOA_CONSTRUCT", "MOA_RECONCILE"}:
             raise BrainProviderProtocolError("MOA requires its exact focused passes; no mixed stages")
-    elif profile is not None and profile["profile"]["id"] == _TCA_ID:
+    elif profile is not None and profile["profile"]["id"] in _TCA_IDS:
         if flow != "TASK_AUTHORING" or mode not in {"TCA_CONSTRUCT", "TCA_RECONCILE"}:
             raise BrainProviderProtocolError("TCA requires its exact focused passes; no mixed stages")
     elif profile is not None and profile["profile"]["id"] == _AOA_ID:

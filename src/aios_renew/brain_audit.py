@@ -113,10 +113,17 @@ _MOA_ID = "moa-1"
 _MOA_DIGEST = "49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903"
 _TCA_ID = "tca-1"
 _TCA_DIGEST = "1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2"
+_TCA_SUCCESSOR_ID = "tca-2"
+_TCA_SUCCESSOR_DIGEST = "75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d"
+_ROA_SUCCESSOR_ID = "roa-1-r3"
+_ROA_SUCCESSOR_DIGEST = "cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a"
+_TCA_IDS = frozenset({_TCA_ID, _TCA_SUCCESSOR_ID})
+_ROA_IDS = frozenset({_ROA_ID, _ROA_SUCCESSOR_ID})
 _AOA_ID = "aoa-1"
 _AOA_DIGEST = "7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b"
 _PROFILE_VERSIONS = {"brain-high-value-v2": 2, "brain-high-value-v3": 3,
-                     _ADAPTIVE_ID: 1, _ROA_ID: 2, _MOA_ID: 1, _TCA_ID: 1, _AOA_ID: 1}
+                     _ADAPTIVE_ID: 1, _ROA_ID: 2, _MOA_ID: 1, _TCA_ID: 1, _AOA_ID: 1,
+                     _TCA_SUCCESSOR_ID: 2, _ROA_SUCCESSOR_ID: 3}
 _AOA_CONSTRUCT_IDS = (
     "HUMAN_OUTCOME_AND_NECESSITY", "COUNTERFACTUAL_ALTERNATIVES", "EPISODE_COST_AND_EXTERNALITIES",
     "DISCRIMINATING_INFORMATION", "THREATS_AUTHORITY_AND_REVERSIBILITY",
@@ -362,11 +369,11 @@ _UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _u
 
 def _profile(value: Any) -> dict[str, Any]:
     normalized = _normal(value, depth=0, max_depth=32)
-    if type(normalized) is dict and normalized.get("id") == _ROA_ID:
+    if type(normalized) is dict and type(normalized.get("id")) is str and normalized["id"] in _ROA_IDS:
         return _roa_profile(normalized)
     if type(normalized) is dict and normalized.get("id") == _MOA_ID:
         return _moa_profile(normalized)
-    if type(normalized) is dict and normalized.get("id") == _TCA_ID:
+    if type(normalized) is dict and type(normalized.get("id")) is str and normalized["id"] in _TCA_IDS:
         return _tca_profile(normalized)
     if type(normalized) is dict and normalized.get("id") == _AOA_ID:
         return _aoa_profile(normalized)
@@ -425,7 +432,7 @@ def _profile(value: Any) -> dict[str, Any]:
 
 def _roa_profile(value: dict[str, Any]) -> dict[str, Any]:
     profile = _fields(value, (_PROFILE_FIELDS - {"lenses"}) | {"checks"}, "ROA profile")
-    if (type(profile["version"]) is not int or profile["version"] != 2
+    if (type(profile["version"]) is not int or profile["version"] != _PROFILE_VERSIONS[profile["id"]]
             or profile["applicable_flows"] != ["REPAIR_AUTHORING"]
             or _json(profile["procedure"]) != _json(_ROA_PROCEDURE)
             or _json(profile["bounds"]) != _json(_ROA_BOUNDS)):
@@ -439,7 +446,7 @@ def _roa_profile(value: dict[str, Any]) -> dict[str, Any]:
             raise BrainAuditError("unknown, duplicate or out-of-order ROA check")
         _text(check["check"], _ROA_BOUNDS["check_bytes"], "ROA check instruction")
     _bounded(profile, 8192, "ROA profile")
-    if _digest(profile) != _ROA_DIGEST:
+    if _digest(profile) != {_ROA_ID: _ROA_DIGEST, _ROA_SUCCESSOR_ID: _ROA_SUCCESSOR_DIGEST}[profile["id"]]:
         raise BrainAuditError("unsupported ROA profile content")
     return profile
 
@@ -472,7 +479,7 @@ def _moa_profile(value: dict[str, Any]) -> dict[str, Any]:
 
 def _tca_profile(value: dict[str, Any]) -> dict[str, Any]:
     profile = _fields(value, (_PROFILE_FIELDS - {"lenses"}) | {"passes"}, "TCA profile")
-    if (type(profile["version"]) is not int or profile["version"] != 1
+    if (type(profile["version"]) is not int or profile["version"] != _PROFILE_VERSIONS[profile["id"]]
             or profile["applicable_flows"] != ["TASK_AUTHORING"]
             or _json(profile["procedure"]) != _json(_TCA_PROCEDURE)
             or _json(profile["bounds"]) != _json(_TCA_BOUNDS)):
@@ -491,7 +498,7 @@ def _tca_profile(value: dict[str, Any]) -> dict[str, Any]:
                 raise BrainAuditError("unknown, duplicate or out-of-order TCA instruction")
             _text(check["check"], _TCA_BOUNDS["check_bytes"], "TCA instruction")
     _bounded(profile, 12288, "TCA profile")
-    if _digest(profile) != _TCA_DIGEST:
+    if _digest(profile) != {_TCA_ID: _TCA_DIGEST, _TCA_SUCCESSOR_ID: _TCA_SUCCESSOR_DIGEST}[profile["id"]]:
         raise BrainAuditError("unsupported TCA profile content")
     return profile
 
@@ -532,8 +539,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
         encoded = raw
     else:
         raise BrainAuditError("registry must be UTF-8 YAML")
-    if len(encoded) > 40960:
-        raise BrainAuditError("registry exceeds 40960 UTF-8 bytes")
+    if len(encoded) > 57344:
+        raise BrainAuditError("registry exceeds 57344 UTF-8 bytes")
     try:
         loaded = yaml.load(encoded.decode("utf-8", errors="strict"), Loader=_UniqueLoader)
     except (UnicodeError, yaml.YAMLError, ValueError, TypeError) as exc:
@@ -542,8 +549,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     if registry["format"] != "AIOS_BRAIN_AUDIT_PROFILES" or type(registry["version"]) is not int or registry["version"] != 1:
         raise BrainAuditError("unknown audit-profile registry")
     profiles = registry["profiles"]
-    if type(profiles) is not list or not 1 <= len(profiles) <= 7:
-        raise BrainAuditError("registry requires one to seven recognized profiles")
+    if type(profiles) is not list or not 1 <= len(profiles) <= 9:
+        raise BrainAuditError("registry requires one to nine recognized profiles")
     normalized = [_profile(profile) for profile in profiles]
     if len({profile["id"] for profile in normalized}) != len(normalized):
         raise BrainAuditError("duplicate profile identity")
@@ -558,6 +565,20 @@ def normalize_profile(value: Mapping[str, Any]) -> dict[str, Any]:
 def profile_ref(profile: Mapping[str, Any]) -> dict[str, Any]:
     body = _profile(profile)
     return {"id": body["id"], "version": body["version"], "digest": _digest(body)}
+
+
+def _specialized_profiles(*, successors: bool = False) -> dict[str, dict[str, Any]]:
+    """Two complete finite mappings; registry order never selects a default."""
+    identities = {
+        "ARCHITECTURE": (_AOA_ID, 1, _AOA_DIGEST),
+        "TASK_AUTHORING": ((_TCA_SUCCESSOR_ID, 2, _TCA_SUCCESSOR_DIGEST) if successors
+                           else (_TCA_ID, 1, _TCA_DIGEST)),
+        "REMEDIATION_AUTHORING": (_MOA_ID, 1, _MOA_DIGEST),
+        "REPAIR_AUTHORING": ((_ROA_SUCCESSOR_ID, 3, _ROA_SUCCESSOR_DIGEST) if successors
+                             else (_ROA_ID, 2, _ROA_DIGEST)),
+    }
+    return {flow: {"id": identity, "version": version, "digest": digest}
+            for flow, (identity, version, digest) in identities.items()}
 
 
 def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -582,19 +603,14 @@ def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
         _git_sha(policy["r5_publication_sha"], "reviewed R5 publication")
     if policy["state"] == "FOUR_SPECIALIZED" and policy["r5_publication_sha"] is None:
         raise BrainAuditError("future cutover requires separately authenticated reviewed R5 publication")
-    identities = {
-        "ARCHITECTURE": (_AOA_ID, 1, _AOA_DIGEST),
-        "TASK_AUTHORING": (_TCA_ID, 1, _TCA_DIGEST),
-        "REMEDIATION_AUTHORING": (_MOA_ID, 1, _MOA_DIGEST),
-        "REPAIR_AUTHORING": (_ROA_ID, 2, _ROA_DIGEST),
-    }
-    expected = {flow: {"id": identity, "version": version, "digest": digest}
-                for flow, (identity, version, digest) in identities.items()}
+    expected = _specialized_profiles()
+    successor = _specialized_profiles(successors=True)
     if policy["state"] == "ADAPTIVE_V1":
         expected = {flow: {"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
-                    for flow in identities}
+                    for flow in expected}
     # Strict JSON comparison rejects bool-as-version and partial/mixed activation.
-    if _json(policy["profiles"]) != _json(expected):
+    if (_json(policy["profiles"]) != _json(expected)
+            and (policy["state"] != "FOUR_SPECIALIZED" or _json(policy["profiles"]) != _json(successor))):
         raise BrainAuditError("prospective policy must pin all four exact profile identities")
     return policy
 
@@ -627,8 +643,8 @@ def profile_applies(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
 
 def _candidate(value: Any, policy: dict[str, Any]) -> dict[str, Any]:
     candidate = _normal(value, depth=0, max_depth=policy["bounds"]["max_depth"], private=True,
-                        v3=_has_conformance(policy) or policy["id"] in {_ROA_ID, _MOA_ID, _TCA_ID},
-                        adaptive=policy["id"] in {_ADAPTIVE_ID, _ROA_ID, _MOA_ID, _TCA_ID})
+                        v3=_has_conformance(policy) or policy["id"] in (_ROA_IDS | _TCA_IDS | {_MOA_ID}),
+                        adaptive=policy["id"] in (_ROA_IDS | _TCA_IDS | {_ADAPTIVE_ID, _MOA_ID}))
     if type(candidate) is not dict:
         raise BrainAuditError("candidate must be a strict-JSON mapping")
     _bounded(candidate, policy["bounds"]["candidate_bytes"], "candidate")
@@ -639,11 +655,11 @@ def construct_stage1(packet: DecisionPacket | Mapping[str, Any], profile: Mappin
                      construct_candidate: Mapping[str, Any]) -> dict[str, Any]:
     """Bind one normalized construct to one exact packet and profile."""
     body, policy = _packet(packet), _profile(profile)
-    if policy["id"] == _ROA_ID:
+    if policy["id"] in _ROA_IDS:
         raise BrainAuditError("ROA has one procedure and cannot construct a historical stage")
     if policy["id"] == _MOA_ID:
         raise BrainAuditError("MOA cannot construct a historical stage")
-    if policy["id"] == _TCA_ID:
+    if policy["id"] in _TCA_IDS:
         raise BrainAuditError("TCA cannot construct a historical stage")
     if policy["id"] == _AOA_ID:
         raise BrainAuditError("AOA cannot construct a historical stage")
@@ -783,11 +799,11 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
                     stage1: Mapping[str, Any], semantic_output: Mapping[str, Any]) -> dict[str, Any]:
     """Validate one audit, reconciliation and final closure within Stage 2."""
     body, policy = _packet(packet), _profile(profile)
-    if policy["id"] == _ROA_ID:
+    if policy["id"] in _ROA_IDS:
         raise BrainAuditError("ROA cannot reconcile a historical stage")
     if policy["id"] == _MOA_ID:
         raise BrainAuditError("MOA cannot reconcile a historical stage")
-    if policy["id"] == _TCA_ID:
+    if policy["id"] in _TCA_IDS:
         raise BrainAuditError("TCA cannot reconcile a historical stage")
     if body["authority_owner"] != "BRAIN" or body["selected_flow"] not in policy["applicable_flows"]:
         raise BrainAuditError("profile does not apply to selected flow")
@@ -873,7 +889,7 @@ def construct_roa_subject(packet: DecisionPacket | Mapping[str, Any], profile: M
     caller references or model-written evidence cannot fill those slots.
     """
     body, policy = _packet(packet), _profile(profile)
-    if (policy["id"] != _ROA_ID or body["selected_flow"] != "REPAIR_AUTHORING"
+    if (policy["id"] not in _ROA_IDS or body["selected_flow"] != "REPAIR_AUTHORING"
             or body["authority_owner"] != "BRAIN"
             or body["decision_family_ref"] != "publication._validate_repair_authorization"
             or body["handoff_target"] != "AUTHORING_INGRESS"
@@ -938,6 +954,16 @@ def construct_roa_subject(packet: DecisionPacket | Mapping[str, Any], profile: M
                 and facts.get("canonical_next_action") in ("AUTHOR_REPAIR", "EXECUTE_REPAIR")
                 and body["canonical_blocker"] is None):
             sources["authorization"] = _roa_source("canonical_facts.task_contract", contract)
+    if policy["id"] == _ROA_SUCCESSOR_ID and sources["authorization"] is not None:
+        acceptance = contract.get("acceptance")
+        # A completion strategy needs the entire original acceptance, not just
+        # the subset the failed ResultPackage happened to claim.
+        if (type(acceptance) is not list or not 1 <= len(acceptance) <= 256
+                or any(type(c) is not dict or set(c) != {"id", "condition"}
+                       or any(type(c[k]) is not str or not c[k].strip() or len(c[k].encode("utf-8")) > 16384
+                              for k in ("id", "condition")) for c in acceptance)
+                or len({c["id"] for c in acceptance}) != len(acceptance)):
+            sources["authorization"] = None
     prior = body["prior_semantic_decisions"]
     if supersession:
         if (type(prior) is dict and prior.get("kind") == "REPAIR"
@@ -1538,7 +1564,8 @@ def _tca_source_context(value: Any) -> dict[str, Any]:
     # These hashes bind content; they do not authenticate Human authorization.
     context = {"task": None, "authorization": None, "consumers": []} if value is None else _normal(
         value, depth=0, max_depth=32)
-    _fields(context, {"task", "authorization", "consumers"}, "TCA source context")
+    _fields(context, {"task", "authorization", "consumers"} | (
+        {"source_material"} if "source_material" in context else set()), "TCA source context")
     _bounded(context, _TCA_BOUNDS["source_context_bytes"], "TCA source context")
     _tca_private(context)
     if context["task"] is not None:
@@ -1571,6 +1598,23 @@ def _tca_source_context(value: Any) -> dict[str, Any]:
                 "HUMAN", "BRAIN", "EXECUTOR", "RUNTIME", "REVIEWER", "PUBLISHER", "TRANSPORT"):
             raise BrainAuditError("duplicate consumer or invalid consumer authority")
         seen.add(identity)
+    # Optional for historical replay; mandatory decisive source for tca-2.
+    material = context.get("source_material", [])
+    if type(material) is not list or len(material) > 16:
+        raise BrainAuditError("unbounded TCA source material")
+    paths = set()
+    for source in material:
+        from .task import TaskValidationError, _exact_repo_path
+        _fields(source, {"path", "content"}, "TCA source excerpt")
+        try:
+            _exact_repo_path(source["path"], "TCA source path")
+        except TaskValidationError as exc:
+            raise BrainAuditError("invalid TCA source path") from exc
+        _text(source["content"], 16384, "TCA source content")
+        if (source["path"] in paths or auth is None
+                or source["path"] not in auth["scope"]["inspect"] + auth["scope"]["modify"]):
+            raise BrainAuditError("TCA source path is duplicate or outside inspect/modify authority")
+        paths.add(source["path"])
     return context
 
 
@@ -1579,7 +1623,7 @@ def construct_tca_subject(packet: DecisionPacket | Mapping[str, Any], profile: M
                           source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Bind one explicit TASK subject to supplied intent, authority and source content."""
     body, policy = _packet(packet), _profile(profile)
-    if (policy["id"] != _TCA_ID or body["selected_flow"] != "TASK_AUTHORING"
+    if (policy["id"] not in _TCA_IDS or body["selected_flow"] != "TASK_AUTHORING"
             or body["authority_owner"] != "BRAIN" or body["subject"] != {"kind": "TASK_AUTHORING"}
             or body["selection_basis"] not in ("EXPLICIT_SELECTOR", "UNIQUE_UNAUTHORED_NEXT")
             or body["decision_family_ref"] != "task.validate_task+authoring_ingress"
@@ -1623,6 +1667,9 @@ def construct_tca_subject(packet: DecisionPacket | Mapping[str, Any], profile: M
         "consumers": None if not context["consumers"] else _roa_source("task_source_context.consumers", context["consumers"]),
         "canonical": _roa_source("canonical_facts", facts) if canonical_available else None,
     }
+    if policy["id"] == _TCA_SUCCESSOR_ID:
+        sources["implementation"] = (_roa_source("task_source_context.source_material", context["source_material"])
+                                     if context.get("source_material") else None)
     result = {"format": "AIOS_TCA_SUBJECT", "version": 1, "selected_flow": "TASK_AUTHORING",
               "packet_fingerprint": body["packet_fingerprint"], "work_context_fingerprint": body["work_context_fingerprint"],
               "audit_profile_ref": profile_ref(policy), "return_contract_ref": ref, "external_bindings": bindings,
@@ -1652,6 +1699,8 @@ def _tca_judgment(check: dict[str, Any], bound: dict[str, Any], roles: tuple[str
         raise BrainAuditError("invalid TCA judgment")
     _text(check["basis"], 2048, "TCA judgment basis")
     refs, sources = check["evidence_refs"], bound["sources"]
+    if bound["audit_profile_ref"]["id"] == _TCA_SUCCESSOR_ID:
+        roles = tuple(dict.fromkeys((*roles, "implementation", "authorization")))
     if (type(refs) is not list or len(refs) > _TCA_BOUNDS["evidence_refs_per_check"]
             or len({_json(r) for r in refs}) != len(refs)
             or any(r not in [s for s in sources.values() if s is not None] for r in refs)):
@@ -1819,7 +1868,9 @@ def _tca_accounting(value: Any, original: Any, candidate: Any, bound: dict[str, 
                 "TCA acceptance accounting")
         if record["id"] != criterion["id"]:
             raise BrainAuditError("TCA acceptance accounting dropped, duplicated or replaced an id")
-        missing = bound["sources"]["task"] is None or bound["sources"]["canonical"] is None
+        roles = ("task", "canonical") + (("implementation", "authorization")
+                 if bound["audit_profile_ref"]["id"] == _TCA_SUCCESSOR_ID else ())
+        missing = any(bound["sources"][role] is None for role in roles)
         _tca_judgment({**record, "outcome": "BLOCKER" if missing else "CLEAR",
                        "knowledge": "UNKNOWN" if missing else "INFERRED"}, bound, ("task",))
         ids = _tca_texts(record["final_ids"], 256, "TCA final acceptance ids")
