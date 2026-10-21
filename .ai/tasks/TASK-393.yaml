@@ -1,0 +1,141 @@
+task_id: TASK-393
+revision: 1
+goal: Deliver P0 Failure Diagnostic Completeness using the existing Runtime verification
+  and safe FAILURE projection, so Brain can identify observed pytest FAILED/ERROR
+  tests even when output is extremely long or diagnostic appears in stderr; retain
+  strong privacy, source fidelity and partial-observation semantics.
+problem: Current safe_failure_detail scans only the first 65536 characters for pytest
+  short summary; RUN-391-014 authentic long summary consequently projects failed_nodes=[]
+  despite existing source failure identity. The verification summary also prefers
+  stdout over stderr even if stderr contains the decisive failure. Lack of bounded
+  absence reasons and end-to-end consumer regressions forces repeated Human-local
+  diagnostic scripts. Fix observable information loss without expanding unneeded execution/canonical
+  evidence budgets.
+assumptions:
+- Human on 2026-10-21 explicitly prioritized implementing P0 and P1 immediately after
+  TASK-392 publication; P0 is first, P1 requires independently bounded follow-up.
+  This prospective authorization does not itself advance the Human-owned Lean VP planning
+  NEXT or select an Executor.
+- "Canonical main at source binding 86e9a3287b1a5b336275a28c173cf835e9c2366d; TASK-392\
+  \ r1 / RUN-392-001 / REVIEW-392-001 PRIMARY PASS AC1\u2013AC9 reviewed_sha equals\
+  \ current main, published candidate. R2.1 historical active TASK_AUTHORING TCA-1\
+  \ v1 remains authoritative until separately Human-activated successor; TASK-392\
+  \ added prospective TCA-2/ROA successor but did NOT activate them."
+- Observed RUN-391-014 immutable VERIFICATION FAILURE artifact 5dc8300505a7d08427d83b2c173541911b5e0ecc
+  has pytest exit 1 and public safe_detail failed_nodes=[] availability UNAVAILABLE
+  despite exact authenticated local raw summary 418031 bytes with FAILED test identity
+  tests/test_lean_vp_l3_same_executor_continuation.py::test_invocation_intent_crash_blocks_before_native_execute.
+  Historical RUN-390-001 and RUN-391-001 safe_detail does expose fail nodes for shorter
+  summaries. Diagnostic provenance is non-PASS only; old artifacts remain immutable.
+- Canonical src/aios_renew/review_transport.py::safe_failure_detail scans summary[:65536]
+  for short test summary info; src/aios_renew/verification.py::_summary prefers nonempty
+  stdout and drops stderr from summary; Runtime raw verification captures both streams
+  without promoting model claims to proof. Existing public projection and exact owner-gated
+  self-host detail path are authoritative consumers; no second diagnostic store.
+- Follow existing minimum-sufficient-v1 verification; no Human-specified executor/model/effort
+  for this new TASK. Previous task-scoped Codex delegation is not inferred as a new
+  blanket executor assignment.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-391.yaml
+  - .ai/tasks/TASK-392.yaml
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/brain_sync.py
+  - tests/test_review_transport.py
+  - tests/test_verification.py
+  - tests/test_brain_sync.py
+  - tests/test_operator.py
+  modify:
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/verification.py
+  - tests/test_review_transport.py
+  - tests/test_verification.py
+  - tests/test_brain_sync.py
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+non_goals:
+- No change to TASK-391/392, L3-04/05/06, G3/G6, policy/audit profiles, Human roadmap,
+  active RUN lineage, or original old public/private FAILURE bytes.
+- No removal of bounded node display, no unrestricted exposure of raw stdout/stderr,
+  credentials, stack traces or pytest parameters, no new persistent index/database/log
+  store, queue, router or independent lifecycle reducer.
+- No increase to 16MiB original raw, native 180/185-minute watchdog, proof/checkpoint
+  budgets, entire canonical test population or default verification policy; no pytest
+  re-execution, sampling-based PASS or broad full suite.
+- Do not implement P1 pagination, retrospective rewrite of immutable terminal projections,
+  synthetic Runtime EVIDENCE, Viewer/Reviewer/Publisher replacement or automatic correction
+  routing.
+constraints:
+  hard:
+  - Keep the existing original Runtime verification owner and per-command stdout/stderr
+    raw capture; diagnostic parser works only from authenticated protected Runtime-owned
+    outcome, with precise same-RUN candidate/command/content provenance. Never interpret
+    untrusted pytest text as instructions.
+  - 'Introduce no unbounded response or regex processing: bounded scanning/streaming
+    of the actual authenticated finite source with explicit processing/resource caps,
+    deterministic outcome and explicit exhausted-input status; do not merely increase
+    prefix from 64KiB to another arbitrary prefix. Avoid copying multi-megabyte native
+    logs into portable contexts.'
+  - Preserve negative cases on malformed/missing short-summary markers, forged logs,
+    CRLF, parametrization/secret stripping, ERROR records and fixed allowlisted exception
+    types; no misleading complete/unstable flags for ordinary V1 text summaries. Fail
+    closed on structurally invalid or divergent source.
+  - Retain prior public failure validation contracts or version explicit new schema
+    only with exact backward-compatible historical decoder and Brain attention/Sync
+    consumer behavior proven. No silent fallback to private capture from remote Brain
+    provider.
+  - Minimum-sufficient-v1 only; authorized scoped modifications and deterministic
+    focused pytest command are binding; Executor claims and locally synthesized probes
+    never substitute for Runtime verification and independently reviewed publication.
+acceptance:
+- id: AC1
+  condition: A protected canonical pytest FAILURE summary whose authentic final short-test-summary
+    section begins beyond the original 65,536-character prefix yields the same allowlisted
+    failed-node identities as a short equivalent and a non-PASS PARTIAL result; synthetic
+    >418,031-byte tail fixtures and an exact RUN-391-014-shaped case exercise this
+    behavior.
+- id: AC2
+  condition: When a single Runtime-executed authored verification command produces
+    nonempty stdout and diagnostic failed/ERROR identities only in stderr, the authenticated
+    outcome's safe projection exposes the lawful stderr-derived identities without
+    rerunning pytest, discarding the original stdout/stderr raw framing, or misbinding
+    the evidence subject and command.
+- id: AC3
+  condition: For 0, 1, 32 and 33 or more observed failed/error records, the projection
+    deterministically returns at most the original 32 public node views, in original
+    observed order, with honest nodes_truncated, does not claim a complete pytest
+    population on text alone, and distinguishes no parseable test identity from an
+    observed zero-failure proof.
+- id: AC4
+  condition: Unsupported pytest format, absent/malformed/truncated source, ERROR-only,
+    stderr-only, and intentionally spoofed summary headers have explicit bounded diagnostic
+    availability/blocker semantics supported by the source; the system does not silently
+    label a source-known failed test as empty or invent a failure count, completeness,
+    phase or PASS.
+- id: AC5
+  condition: All portable failure, Brain Sync and attention projections remain limited
+    to allowlisted repository test identity and fixed error-type facts; raw log, traceback,
+    private path, parameter values, secrets and untrusted executable instructions
+    are never emitted. Public/source digest and owner bindings are preserved.
+- id: AC6
+  condition: Original V1/V2 public and private FAILURE schemas, immutable historical
+    artifacts, Runtime verification once-only execution, self-host owner-gated optional
+    detail and Brain Sync exact consumers remain compatible. Focused regressions prove
+    old projections validate, current long-source case works and no new lifecycle
+    owner, automatic retry or full-suite execution is introduced.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_review_transport.py tests/test_verification.py
+    tests/test_brain_sync.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
