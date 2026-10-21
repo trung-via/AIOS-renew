@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from .antigravity_adapter import AntigravityExecutionError
 from .artifacts import (
@@ -54,11 +54,17 @@ from .intra_run_proof_contract import (
     parse_runtime_checkpoint,
     FactualFeedbackRequest, RuntimeFactualFeedback, format_factual_feedback_request,
     format_runtime_feedback, parse_runtime_feedback, _checkpoint_factual_feedback, _blocked_runtime_feedback,
+    FeedbackConsumptionRequest, format_feedback_consumption_request, LocalFeedbackConfirmation,
+    RuntimeFeedbackConsumption, format_feedback_consumption, parse_feedback_consumption, _consumption_result,
 )
 from .verification import (
     _checkpoint_reviewed_execution, _execute_checkpoint_verification, _checkpoint_native_facts,
     _original_git, _original_local, MAX_ORIGINAL_PROOF_BYTES,
 )
+
+if TYPE_CHECKING:
+    from .executor import ExecutorAdapter, ExecutorBoundary
+    from .run import RunLease
 
 
 class RuntimeState(Protocol):
@@ -204,6 +210,12 @@ class RuntimeCompletion:
         self.transport_repo = transport_repo or repo
         self.interruption_phase = "COMPLETION_GATE"
         self.verification_subject_sha: str | None = None
+        # Process-local capabilities; disk ACKs can never reconstruct these.
+        self._local_feedback_identity: str | None = None
+        self._local_feedback_invocation = None
+        self._local_feedback_invocation_bytes: bytes | None = None
+        self._local_feedback_stopped = False
+        self._local_feedback_receipts: dict[int, bytes] = {}
 
     def _checkpoint_directory(self) -> Path:
         """Derive storage from the existing admitted Git/Runtime owner only."""
@@ -221,7 +233,7 @@ class RuntimeCompletion:
             _checkpoint_safe_directory(directory.parent)
             with os.scandir(directory.parent) as entries:
                 for index, entry in enumerate(entries):
-                    if index >= 2 or entry.name not in {"l3-02", ".runtime-mutation"}:
+                    if index >= 3 or entry.name not in {"l3-02", ".runtime-mutation", "local-invocation.json"}:
                         raise VerificationContractError("CHECKPOINT_PREEXISTING_OR_UNKNOWN_EXECUTION_EFFECT")
         return directory
 
@@ -251,11 +263,11 @@ class RuntimeCompletion:
         with os.scandir(directory) as entries:
             names = []
             for entry in entries:
-                if len(names) >= 54:
+                if len(names) >= 72:
                     raise VerificationContractError("CHECKPOINT_HISTORY_BOUND")
                 names.append(entry.name)
         allowed = {"terminal-intent.json"}
-        if any(name not in allowed and re.fullmatch(r"k(?:00[1-9]|01[0-7])(?:\.json|\.feedback\.json)?", name) is None for name in names):
+        if any(name not in allowed and re.fullmatch(r"k(?:00[1-9]|01[0-7])(?:\.json|\.feedback\.json|\.consumption\.json)?", name) is None for name in names):
             raise VerificationContractError("CHECKPOINT_CONFLICTING_HISTORY")
         run_digest = _checkpoint_digest(_original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES))
         for name in sorted(n for n in names if re.fullmatch(r"k[0-9]{3}\.json", n)):
@@ -311,6 +323,19 @@ class RuntimeCompletion:
             expected = _checkpoint_factual_feedback(history[ordinal - 1], self.run.executor)
             if original.data["status"] != "PREPARED" or format_runtime_feedback(original) != format_runtime_feedback(expected):
                 raise VerificationContractError("FEEDBACK_IMMUTABLE_IDENTITY_OR_CONTENT_CONFLICT")
+        for name in sorted(n for n in names if n.endswith(".consumption.json")):
+            ordinal = int(name[1:4])
+            if ordinal > len(history) or f"k{ordinal:03d}.feedback.json" not in names:
+                raise VerificationContractError("CONSUMPTION_WITHOUT_ORIGINAL_FEEDBACK")
+            original = parse_feedback_consumption(_original_local(directory / name, MAX_ORIGINAL_PROOF_BYTES)).data
+            expected = _checkpoint_factual_feedback(history[ordinal - 1], self.run.executor)
+            binding = original["binding"]
+            if (original["status"] != "LOCAL_ACKNOWLEDGED" or binding is None
+                    or any(binding[k] != expected.data["binding"][k] for k in expected.data["binding"] if k in binding)
+                    or binding["feedback_id"] != expected.data["feedback_id"]
+                    or binding["feedback_digest"] != expected.digest
+                    or original["resources"] != history[ordinal - 1].data["resources_after"]):
+                raise VerificationContractError("CONSUMPTION_IMMUTABLE_SOURCE_CONFLICT")
         return history
 
     def _authenticate_checkpoint(self, request, digest, *, terminal=False):
@@ -347,10 +372,20 @@ class RuntimeCompletion:
         one immutable effect, invokes the existing verifier once, then seals.
         No caller evidence, plan validity flag, command or runner is an input.
         """
+        try:
+            if self._local_feedback_invocation is not None and self._local_feedback_stopped:
+                raise VerificationContractError("LOCAL_FEEDBACK_STOP_LATCHED")
+            return self._seal_checkpoint(request)
+        except BaseException:
+            if self._local_feedback_invocation is not None:
+                self._local_feedback_stopped = True
+            raise
+
+    def _seal_checkpoint(self, request: ProofCheckpointRequest) -> RuntimeCheckpoint:
         started = time.monotonic_ns()
         directory = self._checkpoint_binding(request)
         history = self._checkpoint_history(directory)
-        if os.path.lexists(_checkpoint_fence(directory)):
+        if _checkpoint_effect_present(directory):
             raise VerificationContractError("CHECKPOINT_COMPETING_OR_INTERRUPTED_EFFECT")
         if request.ordinal <= len(history):
             record = history[request.ordinal - 1]
@@ -432,16 +467,22 @@ class RuntimeCompletion:
         correction labels confer no authority. All failures expose fixed codes,
         never exception/log text or user filesystem paths.
         """
+        if self._local_feedback_invocation is not None and self._local_feedback_stopped:
+            return _blocked_runtime_feedback("NATIVE_CHECKPOINT_NOT_ESTABLISHED")
         format_factual_feedback_request(request)
         checkpoint = request.checkpoint
         operation = checkpoint.scheduler.operation
         if operation in ("REPAIR", "REMEDIATION"):
+            if self._local_feedback_invocation is not None:
+                self._local_feedback_stopped = True
             return _blocked_runtime_feedback("CORRECTION_NATIVE_AUTHORITY_NOT_ESTABLISHED")
         if operation != "PRIMARY":
+            if self._local_feedback_invocation is not None:
+                self._local_feedback_stopped = True
             return _blocked_runtime_feedback("OPERATION_NOT_SUPPORTED")
         try:
             directory = self._checkpoint_binding(checkpoint)
-            if os.path.lexists(_checkpoint_fence(directory)):
+            if _checkpoint_effect_present(directory):
                 raise VerificationContractError("FEEDBACK_COMPETING_OR_INTERRUPTED_EFFECT")
             record = self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
             expected = _checkpoint_factual_feedback(record, self.run.executor)
@@ -457,14 +498,16 @@ class RuntimeCompletion:
             if os.path.lexists(path):
                 original = reconcile()
                 self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
-                if os.path.lexists(_checkpoint_fence(directory)):
+                if _checkpoint_effect_present(directory):
                     raise VerificationContractError("FEEDBACK_COMPETING_OR_INTERRUPTED_EFFECT")
                 return original
             if expected.data["status"] != "PREPARED":
                 # PASS and authenticated unresolved facts are read-only results.
                 self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
-                if os.path.lexists(_checkpoint_fence(directory)):
+                if _checkpoint_effect_present(directory):
                     raise VerificationContractError("FEEDBACK_COMPETING_OR_INTERRUPTED_EFFECT")
+                if expected.data["status"] == "BLOCKED" and self._local_feedback_invocation is not None:
+                    self._local_feedback_stopped = True
                 return expected
             intent = dict(version=1, kind="FACTUAL_FEEDBACK", run_id=self.run.run_id,
                 checkpoint_digest=record.digest, feedback_id=expected.data["feedback_id"], feedback_digest=expected.digest)
@@ -479,9 +522,209 @@ class RuntimeCompletion:
                 self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
                 return original
         except (ValueError, OSError, RuntimeError, TypeError, KeyError):
+            if self._local_feedback_invocation is not None:
+                self._local_feedback_stopped = True
             # Unknown/partial effects retain the existing fence and bytes. Never
             # erase, replace, rerun proof or return a raw diagnostic as F_i.
             return _blocked_runtime_feedback("NATIVE_CHECKPOINT_NOT_ESTABLISHED")
+
+    def _begin_local_feedback_invocation(self, *, boundary, frame):
+        """Reserve one explicit invocation, without creating a durable lease.
+
+        An interrupted or reconstructed owner cannot invoke execute() again.
+        Liveness still requires the original active frame and registry holder.
+        """
+        from .publication import _run_from_data
+        try:
+            if (self._local_feedback_stopped or self._local_feedback_invocation is not None
+                    or frame.owner is not self or frame.task != self.task or frame.run != self.run
+                    or boundary._live is not frame):
+                raise VerificationContractError("original Runtime invocation required")
+            directory = self._checkpoint_directory()
+            path = directory.parent / "local-invocation.json"
+            if _checkpoint_effect_present(directory):
+                raise VerificationContractError("unknown or competing original invocation")
+            admitted = _original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES)
+
+            def current():
+                if (self._local_feedback_stopped
+                        or _run_from_data(json.loads(admitted), "L3-04 original RUN") != self.run
+                        or self.run.status != "ACTIVE"
+                        or _original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES) != admitted
+                        or os.path.lexists(path)
+                        or any(os.path.lexists(p) for p in (
+                            self.state.results / (self.run.run_id + ".json"),
+                            self.state.failures / (self.run.run_id + ".json"), directory / "terminal-intent.json"))):
+                    raise VerificationContractError("original invocation unavailable or terminal")
+
+            current()
+            self._local_feedback_identity = hashlib.sha256(os.urandom(32)).hexdigest()
+            content = _checkpoint_json(dict(version=1, kind="LOCAL_INVOCATION", run_id=self.run.run_id,
+                admitted_run_sha256=_checkpoint_digest(admitted), runtime_identity=self._local_feedback_identity,
+                invocation_identity=_checkpoint_digest(frame.identity.encode("ascii"))))
+            with boundary._leases.held(frame.lease):
+                with _checkpoint_mutation(directory, json.loads(content)):
+                    current()
+                    _checkpoint_write_once(path, content)
+                    if _original_local(path, MAX_ORIGINAL_PROOF_BYTES) != content:
+                        raise VerificationContractError("unknown original invocation intent")
+                self._local_feedback_invocation = (boundary, frame.identity)
+                self._local_feedback_invocation_bytes = content
+        except BaseException:
+            self._local_feedback_stopped = True
+            raise
+
+    def consume_same_executor_feedback(self, request: FeedbackConsumptionRequest, *,
+            boundary: ExecutorBoundary, lease: RunLease, adapter: ExecutorAdapter) -> RuntimeFeedbackConsumption:
+        """Explicit preactivation observation inside the original execute().
+
+        Authenticate existing sealed proof without executing proof or dispatch.
+        Only a direct confirmation by that same live adapter acknowledges the
+        local observation. C2 and production authority remain denied.
+        """
+        try:
+            format_feedback_consumption_request(request)
+        except (ValueError, TypeError, AttributeError):
+            self._local_feedback_stopped = True
+            raise
+        if self._local_feedback_stopped:
+            return _consumption_result(reason="STOP_LATCHED")
+        if request.source.checkpoint.scheduler.operation != "PRIMARY":
+            self._local_feedback_stopped = True
+            return _consumption_result(reason="CORRECTION_NATIVE_AUTHORITY_NOT_ESTABLISHED")
+        reason = "LIVE_INVOCATION_NOT_ESTABLISHED"
+        try:
+            from .executor import ExecutorBoundary
+            if type(boundary) is not ExecutorBoundary:
+                raise VerificationContractError("original native boundary required")
+            with boundary._same_invocation(owner=self, task=self.task, run=self.run,
+                    lease=lease, adapter=adapter) as (frame, live):
+                if self._local_feedback_invocation != (boundary, frame.identity):
+                    raise VerificationContractError("replacement invocation forbidden")
+                reason = "NATIVE_SOURCE_OR_EFFECT_NOT_ESTABLISHED"
+                source = request.source
+                checkpoint = source.checkpoint
+                directory = self._checkpoint_binding(checkpoint)
+                intent = dict(version=1, kind="LOCAL_FEEDBACK", run_id=self.run.run_id,
+                    checkpoint_digest=source.checkpoint_digest, feedback_digest=request.feedback_digest,
+                    runtime_identity=self._local_feedback_identity,
+                    invocation_identity=_checkpoint_digest(frame.identity.encode("ascii")))
+
+                def authenticate(*, pending_receipt=None):
+                    if self._local_feedback_stopped:
+                        raise VerificationContractError("local continuation already stopped")
+                    live()
+                    if (self._local_feedback_invocation_bytes is None or _original_local(
+                            directory.parent / "local-invocation.json", MAX_ORIGINAL_PROOF_BYTES)
+                            != self._local_feedback_invocation_bytes):
+                        raise VerificationContractError("original invocation intent not established")
+                    record = self._authenticate_checkpoint(checkpoint, source.checkpoint_digest)
+                    feedback = _checkpoint_factual_feedback(record, self.run.executor)
+                    original = _original_local(directory / f"k{checkpoint.ordinal:03d}.feedback.json", MAX_ORIGINAL_PROOF_BYTES)
+                    if (feedback.data["status"] != "PREPARED" or feedback.digest != request.feedback_digest
+                            or original != format_runtime_feedback(feedback)):
+                        raise VerificationContractError("original decisive current feedback required")
+                    # Prior receipts must belong to this actual callback lineage;
+                    # serialized ACKs never establish a reconstructed session.
+                    for prior in self._checkpoint_history(directory):
+                        ordinal = prior.data["request"]["ordinal"]
+                        receipt_path = directory / f"k{ordinal:03d}.consumption.json"
+                        retained = self._local_feedback_receipts.get(ordinal)
+                        if not os.path.lexists(receipt_path):
+                            if retained is not None:
+                                raise VerificationContractError("original local receipt removed")
+                            continue
+                        original_receipt = _original_local(receipt_path, MAX_ORIGINAL_PROOF_BYTES)
+                        local = parse_feedback_consumption(original_receipt).data["binding"]
+                        allowed = retained
+                        if ordinal == checkpoint.ordinal and pending_receipt is not None:
+                            allowed = pending_receipt
+                        if (original_receipt != allowed or local["runtime_identity"] != self._local_feedback_identity
+                                or local["invocation_identity"] != intent["invocation_identity"]):
+                            raise VerificationContractError("original callback lineage not established")
+                    live()
+                    return record, feedback
+
+                # Use the original Runtime fence for both effects and replay.
+                with _checkpoint_mutation(directory, intent):
+                    record, feedback = authenticate()
+                    _local_feedback_fence(directory, intent)
+                    resources = record.data["resources_after"]
+                    if any(resources[k] >= v for k, v in CHECKPOINT_RESOURCE_LIMITS.items()):
+                        reason = "CHECKPOINT_RESOURCE_LIMIT_REACHED"
+                        raise VerificationContractError("finite native resource bound reached")
+                    binding = {k: v for k, v in feedback.data["binding"].items() if k in (
+                        "task_id", "task_revision", "run_id", "operation", "base_sha", "candidate_sha", "candidate_tree_sha",
+                        "admitted_executor", "admitted_run_sha256", "authorization_sha256", "checkpoint_ordinal",
+                        "checkpoint_digest", "population_identity", "execution_identity")}
+                    binding.update(feedback_id=feedback.data["feedback_id"], feedback_digest=feedback.digest,
+                        runtime_identity=self._local_feedback_identity,
+                        invocation_identity=intent["invocation_identity"],
+                        profile_sha256=None if frame.profile is None else verification_digest(frame.profile.as_dict()))
+                    progress = self._local_feedback_progress(directory, record, feedback)
+                    expected = _consumption_result(binding=binding, resources=resources, progress=progress)
+                    content = format_feedback_consumption(expected)
+                    path = directory / f"k{checkpoint.ordinal:03d}.consumption.json"
+                    if os.path.lexists(path):
+                        original = _original_local(path, MAX_ORIGINAL_PROOF_BYTES)
+                        if original != content or self._local_feedback_receipts.get(checkpoint.ordinal) != original:
+                            raise VerificationContractError("receipt collision or unknown callback state")
+                        authenticate()
+                        _local_feedback_fence(directory, intent)
+                        return parse_feedback_consumption(original)
+                    if checkpoint.ordinal in self._local_feedback_receipts:
+                        raise VerificationContractError("original receipt removed")
+                    # Last native read before exposing F_i to this same adapter.
+                    authenticate()
+                    _local_feedback_fence(directory, intent)
+                    reason = "CALLBACK_CONFIRMATION_NOT_ESTABLISHED"
+                    confirmation = frame.callback(feedback=feedback, receipt_id=expected.data["receipt_id"])
+                    if type(confirmation) is not LocalFeedbackConfirmation:
+                        raise VerificationContractError("direct typed adapter confirmation required")
+                    confirmation.__post_init__()
+                    if (confirmation.receipt_id, confirmation.feedback_digest) != (expected.data["receipt_id"], feedback.digest):
+                        raise VerificationContractError("conflicting adapter confirmation")
+                    reason = "NATIVE_SOURCE_OR_EFFECT_NOT_ESTABLISHED"
+                    authenticate()
+                    _local_feedback_fence(directory, intent)
+                    _checkpoint_write_once(path, content)
+                    authenticate(pending_receipt=content)
+                    _local_feedback_fence(directory, intent)
+                    if _original_local(path, MAX_ORIGINAL_PROOF_BYTES) != content:
+                        raise VerificationContractError("receipt changed after callback")
+                    self._local_feedback_receipts[checkpoint.ordinal] = content
+                    return expected
+        except BaseException as exc:
+            self._local_feedback_stopped = True
+            if not isinstance(exc, Exception):
+                raise
+            # Preserve original effects and never disclose callback/source text.
+            return _consumption_result(reason=reason)
+
+    def _local_feedback_progress(self, directory, record, feedback):
+        """Require strict improvement of the original failed obligations.
+
+        Native history already requires changed trees, committed scoped
+        descendants and unchanged full semantics. Only actual prior local
+        consumption supplies a causal source; callers supply no progress facts.
+        """
+        history = self._checkpoint_history(directory)
+        if len(history) < 2:
+            return "NOT_ESTABLISHED"
+        previous = history[-2]
+        ordinal = previous.data["request"]["ordinal"]
+        retained = self._local_feedback_receipts.get(ordinal)
+        if retained is None:
+            return "NOT_ESTABLISHED"
+        if _original_local(directory / f"k{ordinal:03d}.consumption.json", MAX_ORIGINAL_PROOF_BYTES) != retained:
+            raise VerificationContractError("original progress receipt changed")
+        before = _checkpoint_factual_feedback(previous, self.run.executor)
+        if (before.data["status"] == "PREPARED"
+                and set(feedback.data["outstanding_obligation_ids"]) < set(before.data["outstanding_obligation_ids"])
+                and record.data["population_identity"] == previous.data["population_identity"]
+                and record.data["execution_identity"] == previous.data["execution_identity"]):
+            return "VERIFIED_SCOPED_DESCENDANT_PROGRESS"
+        return "NOT_ESTABLISHED"
 
     def terminal_reuse(self, request: ProofCheckpointRequest, *, checkpoint_digest: str) -> TerminalProofDecision:
         """Prospective decision only; it cannot write RESULT or grant execution."""
@@ -490,7 +733,7 @@ class RuntimeCompletion:
         _original_hash(checkpoint_digest)
         try:
             directory = self._checkpoint_binding(request)
-            if os.path.lexists(_checkpoint_fence(directory)):
+            if _checkpoint_effect_present(directory):
                 raise VerificationContractError("CHECKPOINT_COMPETING_OR_INTERRUPTED_EFFECT")
             record = self._authenticate_checkpoint(request, checkpoint_digest)
             if record.data["outstanding"] or not all(p["satisfactory"] for p in record.data["proofs"]):
@@ -498,6 +741,8 @@ class RuntimeCompletion:
             return TerminalProofDecision(True, "EXACT_CURRENT_COMPLETE_STABLE_SATISFACTORY_NATIVE_PROOF", record.digest,
                                          request.scheduler.subject_sha)
         except (ValueError, OSError, RuntimeError) as exc:
+            if self._local_feedback_invocation is not None:
+                self._local_feedback_stopped = True
             return TerminalProofDecision(False, str(exc)[:256], checkpoint_digest, request.scheduler.subject_sha)
 
     def complete(self, package: ResultPackage, policy: CompletionPolicy, *,
@@ -1533,6 +1778,46 @@ def _checkpoint_fence(directory: Path) -> Path:
     return directory.parent / ".runtime-mutation"
 
 
+def _local_feedback_contention(fence: Path):
+    """Retain negative contention only for an explicit local invocation.
+
+    Preflight rejection and exclusive-create rejection must both be visible
+    to the live owner even if the competing caller swallows the exception.
+    Historical checkpoint/terminal fences keep their original behavior.
+    """
+    try:
+        current = json.loads(_original_local(fence / "intent.json", MAX_ORIGINAL_PROOF_BYTES))
+        if (type(current) is dict and current.get("kind") in {"LOCAL_FEEDBACK", "LOCAL_INVOCATION"}
+                and not os.path.lexists(fence / "contested.json")):
+            _checkpoint_write_once(fence / "contested.json",
+                _checkpoint_json(dict(version=1, kind="COMPETING_RUNTIME_MUTATION")))
+    except (ValueError, OSError, RuntimeError, TypeError):
+        pass
+
+
+def _checkpoint_effect_present(directory: Path) -> bool:
+    fence = _checkpoint_fence(directory)
+    if not os.path.lexists(fence):
+        return False
+    _local_feedback_contention(fence)
+    return True
+
+
+def _local_feedback_fence(directory: Path, intent: dict):
+    fence = _checkpoint_fence(directory)
+    _checkpoint_safe_directory(fence)
+    with os.scandir(fence) as entries:
+        names = []
+        for entry in entries:
+            if len(names) >= 1 or entry.name != "intent.json":
+                raise VerificationContractError("LOCAL_FEEDBACK_COMPETING_OR_UNKNOWN_EFFECT")
+            names.append(entry.name)
+        if names != ["intent.json"]:
+            raise VerificationContractError("LOCAL_FEEDBACK_COMPETING_OR_UNKNOWN_EFFECT")
+    if _original_local(fence / "intent.json", MAX_ORIGINAL_PROOF_BYTES) != _checkpoint_json(intent):
+        raise VerificationContractError("LOCAL_FEEDBACK_CHANGED_RUNTIME_INTENT")
+
+
 @contextmanager
 def _runtime_effect(directory: Path, intent: dict, *, retain_ambiguity=True):
     _checkpoint_make_directory(directory)
@@ -1541,6 +1826,7 @@ def _runtime_effect(directory: Path, intent: dict, *, retain_ambiguity=True):
     try:
         fence.mkdir()
     except FileExistsError as exc:
+        _local_feedback_contention(fence)
         raise VerificationContractError("CHECKPOINT_COMPETING_OR_INTERRUPTED_EFFECT") from exc
     _checkpoint_sync_directory(directory)
     _checkpoint_write_once(fence / "intent.json", _checkpoint_json(intent))
@@ -1555,6 +1841,8 @@ def _runtime_effect(directory: Path, intent: dict, *, retain_ambiguity=True):
             _checkpoint_sync_directory(directory)
         raise
     else:
+        if intent.get("kind") in {"LOCAL_FEEDBACK", "LOCAL_INVOCATION"}:
+            _local_feedback_fence(directory / "l3-02", intent)
         (fence / "intent.json").unlink()
         fence.rmdir()
         _checkpoint_sync_directory(directory)

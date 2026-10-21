@@ -760,16 +760,154 @@ def test_terminal_result_requires_a_candidate_instead_of_a_bare_terminal_label()
         describe_lifecycle(data, expected_lineage=expected)
 
 
+# These are named codec-local imports, not a module-wide dependency allowlist.
+# VP-02B declarations still cannot import even these canonical native codecs.
+_NATIVE_CODEC_IMPORTS = {
+    "checkpoint_resource_facts": {"VerificationContractError", "_app_exact"},
+    "checkpoint_population_identity": {"scheduler_plan_data", "verification_digest"},
+    "format_runtime_checkpoint": {"VerificationContractError"},
+    "parse_runtime_checkpoint": {"VerificationContractError", "_reuse_decode", "_app_exact", "_original_hash",
+        "_original_json", "parse_checkpoint_request", "parse_scheduler_plan", "verification_digest"},
+    "FactualFeedbackRequest": {"VerificationContractError", "format_checkpoint_request", "_original_hash"},
+    "factual_feedback_request_data": {"VerificationContractError", "checkpoint_request_data"},
+    "format_factual_feedback_request": {"_original_json"},
+    "parse_factual_feedback_request": {"VerificationContractError", "_reuse_decode", "_app_exact", "_original_json", "parse_checkpoint_request"},
+    "format_runtime_feedback": {"VerificationContractError"},
+    "_blocked_runtime_feedback": {"_original_json"},
+    "_checkpoint_factual_feedback": {"verification_digest", "_original_json"},
+    "parse_runtime_feedback": {"VerificationContractError", "_reuse_decode", "_app_exact", "_original_hash", "verification_digest"},
+    "FeedbackConsumptionRequest": {"VerificationContractError", "_original_hash"},
+    "format_feedback_consumption_request": {"VerificationContractError", "_original_json"},
+    "parse_feedback_consumption_request": {"VerificationContractError", "_reuse_decode", "_app_exact", "_original_json"},
+    "LocalFeedbackConfirmation": {"_original_hash"},
+    "format_feedback_consumption": {"VerificationContractError"},
+    "parse_feedback_consumption": {"VerificationContractError", "_reuse_decode", "_app_exact", "_original_hash", "verification_digest"},
+    "_consumption_result": {"_original_json", "verification_digest"},
+}
+_CANONICAL_CODEC_CALLS = {
+    "checkpoint_resource_facts": {"_app_exact"},
+    "checkpoint_population_identity": {"scheduler_plan_data", "verification_digest"},
+    "format_runtime_checkpoint": {"type", "parse_runtime_checkpoint"},
+    "parse_runtime_checkpoint": {"_reuse_decode", "_app_exact", "_original_hash", "parse_checkpoint_request",
+        "parse_scheduler_plan", "checkpoint_population_identity", "checkpoint_resource_facts", "validate_evidence", "verification_digest"},
+    "FactualFeedbackRequest": {"type", "format_checkpoint_request", "_original_hash"},
+    "factual_feedback_request_data": {"type", "checkpoint_request_data"},
+    "parse_factual_feedback_request": {"_reuse_decode", "_app_exact", "parse_checkpoint_request", "FactualFeedbackRequest"},
+    "format_runtime_feedback": {"type", "parse_runtime_feedback"},
+    "parse_runtime_feedback": {"_reuse_decode", "_app_exact", "_original_hash", "checkpoint_resource_facts", "verification_digest", "_feedback_summary"},
+    "FeedbackConsumptionRequest": {"type", "format_factual_feedback_request", "_original_hash"},
+    "format_feedback_consumption_request": {"type", "factual_feedback_request_data"},
+    "parse_feedback_consumption_request": {"_reuse_decode", "_app_exact", "parse_factual_feedback_request", "FeedbackConsumptionRequest"},
+    "LocalFeedbackConfirmation": {"_original_hash"},
+    "format_feedback_consumption": {"type", "parse_feedback_consumption"},
+    "parse_feedback_consumption": {"_reuse_decode", "_app_exact", "_original_hash", "checkpoint_resource_facts", "verification_digest"},
+}
+
+
+def _assert_contract_dependency_boundaries(tree):
+    eager = set()
+    seen_native = {}
+    for declaration in tree.body:
+        if isinstance(declaration, (ast.Import, ast.ImportFrom)):
+            if isinstance(declaration, ast.Import):
+                assert all(alias.asname is None for alias in declaration.names)
+                eager.update((alias.name, None, 0) for alias in declaration.names)
+            else:
+                eager.update((declaration.module, alias.name, declaration.level) for alias in declaration.names)
+                assert all(alias.asname is None for alias in declaration.names)
+            continue
+        if isinstance(declaration, ast.If):
+            # One annotation-only forward type, with no eager native import.
+            assert isinstance(declaration.test, ast.Name) and declaration.test.id == "TYPE_CHECKING"
+            assert not declaration.orelse and len(declaration.body) == 1
+            annotation = declaration.body[0]
+            assert isinstance(annotation, ast.ImportFrom) and annotation.level == 1
+            assert annotation.module == "verification_contract"
+            assert [(a.name, a.asname) for a in annotation.names] == [("ProofCheckpointRequest", None)]
+            continue
+        if not isinstance(declaration, (ast.FunctionDef, ast.ClassDef)):
+            assert isinstance(declaration, (ast.Assign, ast.AnnAssign)) or (
+                isinstance(declaration, ast.Expr) and isinstance(declaration.value, ast.Constant)
+                and isinstance(declaration.value.value, str))
+            # No new eager initialization, loader or host-supplied binding.
+            for call in (n for n in ast.walk(declaration) if isinstance(n, ast.Call)):
+                assert ast.unparse(call.func) in {"dict", "frozenset", "re.compile"}
+            continue
+        native = set()
+        artifact_imports = []
+        for node in ast.walk(declaration):
+            if isinstance(node, ast.Import):
+                raise AssertionError("local module import or loader")
+            if isinstance(node, ast.ImportFrom):
+                assert declaration.name in _NATIVE_CODEC_IMPORTS
+                assert node.level == 1 and all(a.asname is None for a in node.names)
+                if node.module == "artifacts":
+                    assert declaration.name == "parse_runtime_checkpoint"
+                    artifact_imports.extend(a.name for a in node.names)
+                else:
+                    assert node.module == "verification_contract"
+                    native.update(a.name for a in node.names)
+            if isinstance(node, ast.Call):
+                name = ast.unparse(node.func)
+                assert name not in {"__import__", "eval", "exec", "compile", "open", "input", "globals", "locals", "getattr", "setattr", "delattr"}
+                assert name.rsplit(".", 1)[-1] not in {
+                    "import_module", "find_spec", "load_module", "exec_module", "open", "write_text", "write_bytes",
+                    "Popen", "run", "system", "popen", "getenv", "putenv", "socket", "connect", "urlopen",
+                }
+        if isinstance(declaration, ast.ClassDef):
+            assert not any(isinstance(n, (ast.Import, ast.ImportFrom)) for n in declaration.body)
+        if native:
+            seen_native[declaration.name] = native
+        assert artifact_imports == (["validate_evidence"] if declaration.name == "parse_runtime_checkpoint" else [])
+        if declaration.name in _CANONICAL_CODEC_CALLS:
+            calls = {n.func.id for n in ast.walk(declaration) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+            assert _CANONICAL_CODEC_CALLS[declaration.name] <= calls
+    assert eager == {
+        ("__future__", "annotations", 0), ("hashlib", None, 0), ("json", None, 0), ("re", None, 0),
+        ("dataclasses", "asdict", 0), ("dataclasses", "dataclass", 0), ("typing", "TYPE_CHECKING", 0),
+        *(("proof_coverage_contract", name, 1) for name in (
+            "BR_GATES", "CoverageDeclaration", "ProofCoverageError", "proof_conditions_equivalent", "validate_proof_mapping")),
+    }
+    assert seen_native == _NATIVE_CODEC_IMPORTS
+
+
 def test_module_has_no_production_kernel_v2_or_runtime_dependency():
-    # Inspect the changed surface only, outside public-call effect traps.
+    # Preserve offline purity; permit only the published native codec imports.
+    _assert_contract_dependency_boundaries(ast.parse(Path(contract_module.__file__).read_text(encoding="utf-8")))
+
+
+@pytest.mark.parametrize("target, injected", [
+    ("validate_intra_run_contract", "from .runtime import RuntimeCompletion"),
+    ("validate_intra_run_contract", "from .verification_contract import _reuse_decode"),
+    ("describe_lifecycle", "from .kernel import authorize"),
+    ("parse_runtime_checkpoint", "from .runtime import RuntimeCompletion"),
+    ("parse_runtime_checkpoint", "from .verification import execute_verification"),
+    ("parse_runtime_checkpoint", "from .verification_contract import os"),
+    ("parse_runtime_checkpoint", "__import__('aios_renew.runtime')"),
+    ("parse_runtime_feedback", "import importlib"),
+    ("parse_runtime_feedback", "open('new-effect', 'w')"),
+    ("MODULE", "open('new-effect', 'w')"),
+])
+def test_ast_boundary_rejects_offline_native_dependency_loaders_and_new_effects(target, injected):
     tree = ast.parse(Path(contract_module.__file__).read_text(encoding="utf-8"))
-    imports = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imports.add(node.module)
-    assert imports == {"__future__", "hashlib", "json", "re", "dataclasses", "proof_coverage_contract"}
+    body = tree.body if target == "MODULE" else next(n.body for n in tree.body if getattr(n, "name", None) == target)
+    body.append(ast.parse(injected).body[0])
+    with pytest.raises(AssertionError):
+        _assert_contract_dependency_boundaries(tree)
+
+
+@pytest.mark.parametrize("name, validator", [
+    ("parse_runtime_checkpoint", "_reuse_decode"), ("parse_runtime_checkpoint", "validate_evidence"),
+    ("parse_factual_feedback_request", "parse_checkpoint_request"), ("parse_runtime_feedback", "_original_hash"),
+])
+def test_ast_boundary_rejects_removal_of_canonical_native_validation(name, validator):
+    tree = ast.parse(Path(contract_module.__file__).read_text(encoding="utf-8"))
+    declaration = next(n for n in tree.body if getattr(n, "name", None) == name)
+    for node in ast.walk(declaration):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == validator:
+            node.func.id = "caller_bypass"
+    with pytest.raises(AssertionError):
+        _assert_contract_dependency_boundaries(tree)
 
 
 def test_all_public_calls_are_pure_with_zero_process_git_network_fs_env_pytest_or_lifecycle_effects(monkeypatch):
