@@ -360,10 +360,13 @@ schemas; changed diagnostic source material invalidates the context fingerprint.
 New public FAILURE projections add bounded `safe_detail`, linked to the immutable
 RUN, subject and private-source digest. Verification detail preserves the ordered
 failed authored command, observation/summary digest, count when observed,
-complete/unstable flags and at most 32 failed-node views. Pytest parameters are
-entirely withheld; only admissible repository test identities and fixed error
-class names survive. A protected text summary is explicitly partial, and exit
-code 1 alone supplies no failed test identity. Completion detail can identify
+complete/unstable flags and at most 32 failed-node views in original observed order.
+A protected text summary across stdout and stderr is scanned boundedly for the
+authentic final short-test-summary section, exposing lawful failed and error identities
+with honest truncation without prefix-only loss or raw log disclosure; exit
+code 1 alone supplies no failed test identity. Pytest parameters are entirely
+withheld; only admissible repository test identities and fixed error class names
+survive. A protected text summary is explicitly partial. Completion detail can identify
 owner-observed missing acceptance IDs, invalid ResultPackage/evidence structure
 or unresolved items. Native detail exposes fixed exit/interruption/output and
 final-response-shape categories. Unobserved sub-causes remain `UNKNOWN`.

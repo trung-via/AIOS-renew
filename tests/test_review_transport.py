@@ -3105,3 +3105,224 @@ def test_delivery_alias_rejects_identical_bytes_at_conflicting_commits(tmp_path:
             repo, family="PRIMARY", delivery_id=payload["dispatch_id"],
         )
     assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+def test_task393_ac1_long_summary_and_run391_014_tail_preservation():
+    node = "tests/test_lean_vp_l3_same_executor_continuation.py::test_invocation_intent_crash_blocks_before_native_execute"
+    tail = (
+        "=========================== short test summary info ===========================\n"
+        f"FAILED {node} - AssertionError: intent crash\n"
+        "=========================== 1 failed in 12.34s ===========================\n"
+    )
+    # Generate >418,031 bytes prefix of dummy test output and tracebacks
+    padding = "line of pytest execution log without summary header\n" * 8500
+    long_summary = padding + tail
+    assert len(long_summary.encode("utf-8")) > 418031
+    assert long_summary.find("short test summary info") > 65536
+
+    _, private = _native_failure_fixture()
+    private.update(run_id="RUN-391-014", task=dict(id="TASK-391", revision=2), phase="VERIFICATION")
+    command = "python -m pytest -q tests/test_lean_vp_l3_same_executor_continuation.py"
+    private["error"] = dict(
+        type="RuntimeVerificationError",
+        message="verification failed",
+        verification=[dict(command=command, exit_code=1, summary=long_summary)],
+    )
+
+    public = review_transport.failure_document(review_transport.public_failure(json.dumps(private).encode()))
+    context = review_transport.failure_context(public, artifact_sha="d" * 40)
+    review_transport.validate_failure_context(context)
+
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "PARTIAL"
+    assert detail["complete"] is None
+    assert detail["failure_count"] is None
+    assert detail["nodes_truncated"] is False
+    assert len(detail["failed_nodes"]) == 1
+    assert detail["failed_nodes"][0]["identity"] == node
+    assert detail["failed_nodes"][0]["parameters_withheld"] is False
+    assert detail["failed_nodes"][0]["error_types"] == ["AssertionError"]
+    assert detail["failed_nodes"][0]["phase"] == "unknown"
+
+    # Verify short equivalent summary yields identical failed nodes
+    private["error"]["verification"][0]["summary"] = tail
+    short_public = review_transport.failure_document(review_transport.public_failure(json.dumps(private).encode()))
+    short_context = review_transport.failure_context(short_public, artifact_sha="d" * 40)
+    assert short_context["safe_detail"]["verification"][0]["failed_nodes"] == detail["failed_nodes"]
+
+
+def test_task393_ac2_stderr_only_failure_diagnostic_projection():
+    _, private = _native_failure_fixture()
+    private.update(run_id="RUN-393-010", task=dict(id="TASK-393", revision=2), phase="VERIFICATION")
+    command = "python -m pytest -q tests/test_verification.py"
+    # Verification produced nonempty stdout and diagnostic failed identities only in stderr
+    stdout = "running 1 test\nsetup complete\n"
+    stderr = (
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_verification.py::test_stderr_diagnostic - AssertionError: fail in stderr\n"
+        "=========================== 1 failed in 0.50s ===========================\n"
+    )
+    from aios_renew.verification import _summary
+    combined_summary = _summary(1, stdout=stdout, stderr=stderr)
+    assert stdout.strip() in combined_summary
+    assert "test_stderr_diagnostic" in combined_summary
+
+    private["error"] = dict(
+        type="RuntimeVerificationError",
+        message="verification failed",
+        verification=[dict(command=command, exit_code=1, summary=combined_summary)],
+    )
+
+    public = review_transport.failure_document(review_transport.public_failure(json.dumps(private).encode()))
+    context = review_transport.failure_context(public, artifact_sha="e" * 40)
+    review_transport.validate_failure_context(context)
+
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "PARTIAL"
+    assert len(detail["failed_nodes"]) == 1
+    assert detail["failed_nodes"][0]["identity"] == "tests/test_verification.py::test_stderr_diagnostic"
+    assert detail["failed_nodes"][0]["error_types"] == ["AssertionError"]
+
+
+@pytest.mark.parametrize("count", [0, 1, 32, 33, 40])
+def test_task393_ac3_bounded_nodes_and_honest_truncation(count):
+    _, private = _native_failure_fixture()
+    private.update(run_id="RUN-393-011", task=dict(id="TASK-393", revision=2), phase="VERIFICATION")
+    command = "python -m pytest -q tests/test_scale.py"
+
+    if count == 0:
+        summary = "syntax error in conftest.py: cannot import name 'foo'\nno tests collected"
+    else:
+        lines = ["=========================== short test summary info ==========================="]
+        for i in range(count):
+            lines.append(f"FAILED tests/test_scale.py::test_{i:03d} - AssertionError: error {i}")
+        lines.append(f"=========================== {count} failed in 1.00s ===========================")
+        summary = "\n".join(lines)
+
+    private["error"] = dict(
+        type="RuntimeVerificationError",
+        message="verification failed",
+        verification=[dict(command=command, exit_code=1, summary=summary)],
+    )
+
+    context = review_transport.failure_context(private, artifact_sha="f" * 40)
+    review_transport.validate_failure_context(context)
+    detail = context["safe_detail"]["verification"][0]
+
+    if count == 0:
+        assert detail["availability"] == "UNAVAILABLE"
+        assert detail["failed_nodes"] == []
+        assert detail["nodes_truncated"] is False
+    elif count <= 32:
+        assert detail["availability"] == "PARTIAL"
+        assert len(detail["failed_nodes"]) == count
+        assert detail["nodes_truncated"] is False
+        for i in range(count):
+            assert detail["failed_nodes"][i]["identity"] == f"tests/test_scale.py::test_{i:03d}"
+    else:
+        assert detail["availability"] == "PARTIAL"
+        assert len(detail["failed_nodes"]) == 32
+        assert detail["nodes_truncated"] is True
+        for i in range(32):
+            assert detail["failed_nodes"][i]["identity"] == f"tests/test_scale.py::test_{i:03d}"
+
+    assert detail["complete"] is None
+    assert detail["failure_count"] is None
+
+
+def test_task393_ac4_unsupported_malformed_error_only_and_spoofed_headers():
+    _, private = _native_failure_fixture()
+    private.update(run_id="RUN-393-012", task=dict(id="TASK-393", revision=2), phase="VERIFICATION")
+
+    # 1. Unsupported command format
+    private["error"] = dict(
+        type="RuntimeVerificationError",
+        message="verification failed",
+        verification=[dict(command="bash run_tests.sh", exit_code=1, summary="FAILED tests/test_foo.py::test_bar")],
+    )
+    context = review_transport.failure_context(private, artifact_sha="0" * 40)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "UNAVAILABLE"
+    assert detail["failed_nodes"] == []
+
+    # 2. Absent / empty source
+    private["error"]["verification"][0] = dict(command="python -m pytest -q", exit_code=1, summary="")
+    context = review_transport.failure_context(private, artifact_sha="0" * 40)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "UNAVAILABLE"
+    assert detail["failed_nodes"] == []
+
+    # 3. Malformed header (missing info / wrong delimiter)
+    private["error"]["verification"][0] = dict(
+        command="python -m pytest -q", exit_code=1,
+        summary="=== wrong header ===\nFAILED tests/test_a.py::test_1 - AssertionError: a",
+    )
+    context = review_transport.failure_context(private, artifact_sha="0" * 40)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "UNAVAILABLE"
+    assert detail["failed_nodes"] == []
+
+    # 4. ERROR-only pytest summary
+    error_summary = (
+        "=========================== short test summary info ===========================\n"
+        "ERROR tests/test_setup.py::test_init - RuntimeError: collection failed\n"
+        "1 error\n"
+    )
+    private["error"]["verification"][0] = dict(command="python -m pytest -q", exit_code=1, summary=error_summary)
+    context = review_transport.failure_context(private, artifact_sha="0" * 40)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "PARTIAL"
+    assert len(detail["failed_nodes"]) == 1
+    assert detail["failed_nodes"][0]["identity"] == "tests/test_setup.py::test_init"
+    assert detail["failed_nodes"][0]["error_types"] == ["RuntimeError"]
+
+    # 5. Intentionally spoofed header earlier in log
+    spoofed_summary = (
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_spoof.py::test_spoof - ValueError: spoof\n"
+        "=========================== 1 failed in 0.01s ===========================\n"
+        "some other text in between during real test run\n"
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_real.py::test_actual - AssertionError: real failure\n"
+        "=========================== 1 failed in 1.23s ===========================\n"
+    )
+    private["error"]["verification"][0] = dict(command="python -m pytest -q", exit_code=1, summary=spoofed_summary)
+    context = review_transport.failure_context(private, artifact_sha="0" * 40)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "PARTIAL"
+    assert len(detail["failed_nodes"]) == 1
+    assert detail["failed_nodes"][0]["identity"] == "tests/test_real.py::test_actual"
+    assert detail["failed_nodes"][0]["error_types"] == ["AssertionError"]
+
+
+def test_task393_ac5_privacy_and_secret_redaction_in_long_summaries():
+    _, private = _native_failure_fixture()
+    private.update(run_id="RUN-393-013", task=dict(id="TASK-393", revision=2), phase="VERIFICATION")
+    summary = (
+        "Traceback (most recent call last):\n"
+        "  File 'C:/private/repo/tests/test_secret.py', line 42, in test_secret\n"
+        "    token = 'synthetic-secret-xyz'\n"
+        "TypeError: private-token=synthetic-secret-xyz\n"
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_secret.py::test_leak[secret_key=synthetic-secret-xyz] - TypeError: failure\n"
+        "=========================== 1 failed in 0.50s ===========================\n"
+    )
+    private["error"] = dict(
+        type="RuntimeVerificationError",
+        message="verification failed",
+        verification=[dict(command="python -m pytest -q", exit_code=1, summary=summary)],
+    )
+
+    public = review_transport.failure_document(review_transport.public_failure(json.dumps(private).encode()))
+    context = review_transport.failure_context(public, artifact_sha="1" * 40)
+    review_transport.validate_failure_context(context)
+
+    node = context["safe_detail"]["verification"][0]["failed_nodes"][0]
+    assert node["identity"] == "tests/test_secret.py::test_leak"
+    assert node["parameters_withheld"] is True
+    assert node["error_types"] == ["TypeError"]
+
+    serialized = json.dumps(context)
+    assert "synthetic-secret-xyz" not in serialized
+    assert "C:/private" not in serialized
+    assert "Traceback" not in serialized

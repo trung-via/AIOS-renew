@@ -106,6 +106,74 @@ def _detail_error_types(text: str) -> list[str]:
     return sorted(found) or ["UNKNOWN"]
 
 
+_MAX_SUMMARY_SCAN_CHARS = 16 * 1024 * 1024
+_MAX_SUMMARY_LINE_LENGTH = 8192
+_MAX_SUMMARY_REPORTS_CAP = 128
+_PYTEST_HEADER_RE = re.compile(r"^\s*=+ short test summary info =+\s*$")
+_PYTEST_FOOTER_RE = re.compile(
+    r"^(?:(=+|!+)\s*.*\1\s*|[0-9]+\s+(?:failed|passed|error|skipped|warning|xfailed|xpassed)[^\r\n]*)$",
+    re.IGNORECASE,
+)
+_PYTEST_REPORT_RE = re.compile(r"^\s*(FAILED|ERROR)\s+(tests/[^\r\n]+)")
+
+
+def _parse_pytest_summary_reports(summary: str, command: str) -> list[dict[str, str]]:
+    if not isinstance(summary, str) or not summary.strip():
+        return []
+    is_pytest = bool(
+        re.match(r"^(?:python(?:3)? -m )?pytest(?: |$)", command)
+        or command == "python scripts/aios_parallel_full_suite.py"
+    )
+    if not is_pytest:
+        return []
+
+    final_reports: list[dict[str, str]] = []
+    current_section: list[dict[str, str]] | None = None
+
+    pos = 0
+    text_len = min(len(summary), _MAX_SUMMARY_SCAN_CHARS)
+
+    while pos < text_len:
+        newline_idx = summary.find("\n", pos, text_len)
+        if newline_idx == -1:
+            raw_line = summary[pos:text_len]
+            pos = text_len
+        else:
+            raw_line = summary[pos:newline_idx]
+            pos = newline_idx + 1
+
+        if raw_line.endswith("\r"):
+            raw_line = raw_line[:-1]
+        line = raw_line[:_MAX_SUMMARY_LINE_LENGTH]
+
+        if _PYTEST_HEADER_RE.match(line):
+            if current_section:
+                final_reports = current_section
+            current_section = []
+            continue
+
+        if current_section is not None:
+            if _PYTEST_FOOTER_RE.match(line):
+                if current_section:
+                    final_reports = current_section
+                current_section = None
+                continue
+
+            match = _PYTEST_REPORT_RE.match(line)
+            if match:
+                node_part = match.group(2)
+                nodeid = node_part.split(" - ", 1)[0]
+                detail = line.split(" - ", 1)[-1] if " - " in line else ""
+                current_section.append(dict(nodeid=nodeid, phase="unknown", detail=detail))
+                if len(current_section) >= _MAX_SUMMARY_REPORTS_CAP:
+                    pass
+
+    if current_section:
+        final_reports = current_section
+
+    return final_reports
+
+
 def _response_shape(native: Any) -> str:
     if not isinstance(native, dict):
         return "UNAVAILABLE"
@@ -221,15 +289,7 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
             # A summary is an observed output excerpt, never a complete pytest
             # report. Exit code 1 alone identifies no individual failing test.
             source_kind, digest = "PROTECTED_SUMMARY", _failure_digest(summary)
-            reports = []
-            excerpt = summary[:65536]
-            pytest_command = re.match(r"^python(?:3)? -m pytest(?: |$)", outcome["command"]) or outcome["command"] == "python scripts/aios_parallel_full_suite.py"
-            header = re.search(r"(?m)^=+ short test summary info =+\s*$", excerpt) if pytest_command else None
-            for line in (excerpt[header.end():].splitlines() if header else []):
-                match = re.match(r"^(FAILED|ERROR) (tests/[^\r\n]+)", line)
-                if match:
-                    reports.append(dict(nodeid=match[2].split(" - ", 1)[0],
-                        phase="unknown", detail=line.split(" - ", 1)[-1]))
+            reports = _parse_pytest_summary_reports(summary, outcome["command"])
             failure_count = None
         for report in reports[:32]:
             identity, parameters = _safe_test_identity(report["nodeid"])

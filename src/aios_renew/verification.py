@@ -1422,7 +1422,12 @@ def _strict_utf8_command(command: str) -> str:
 
 
 def _summary(returncode: int, *, stdout: str, stderr: str) -> str:
-    detail = stdout.strip() or stderr.strip()
+    out = stdout.strip()
+    err = stderr.strip()
+    if out and err:
+        detail = f"{out}\n{err}"
+    else:
+        detail = out or err
     if detail:
         return detail
     return "verification passed" if returncode == 0 else "verification failed"

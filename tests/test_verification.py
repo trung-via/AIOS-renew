@@ -1608,3 +1608,48 @@ def test_windows_real_subprocess_propagates_native_nonzero_exit_code(
     assert "fatal boom" in caught.value.evidence[0].result.summary
     raw_content = (raw / "RUN-036-REG-V001.raw").read_bytes()
     assert b"fatal boom" in raw_content
+
+
+def test_task393_summary_combines_nonempty_stdout_and_stderr():
+    from aios_renew.verification import _summary
+
+    assert _summary(0, stdout="", stderr="") == "verification passed"
+    assert _summary(1, stdout="", stderr="") == "verification failed"
+    assert _summary(0, stdout="out only", stderr="") == "out only"
+    assert _summary(1, stdout="", stderr="err only") == "err only"
+    assert _summary(1, stdout="out content", stderr="err content") == "out content\nerr content"
+    assert _summary(0, stdout="  out with spaces  ", stderr="  err with spaces  ") == "out with spaces\nerr with spaces"
+
+
+def test_task393_execute_verification_preserves_raw_framing_and_captures_both_streams(tmp_path: Path):
+    from aios_renew.verification import execute_verification, RuntimeVerificationError
+    import subprocess
+
+    def fake_runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=1,
+            stdout=b"STDOUT sample text\n",
+            stderr=b"================ short test summary info ================\nFAILED tests/test_foo.py::test_bar - AssertionError\n",
+        )
+
+    raw_dir = tmp_path / "raw"
+    with pytest.raises(RuntimeVerificationError) as caught:
+        execute_verification(
+            ["python -m pytest -q tests/test_foo.py"],
+            run_id="RUN-393-020",
+            subject_sha="c" * 40,
+            repository=tmp_path,
+            raw_directory=raw_dir,
+            runner=fake_runner,
+            platform="posix",
+        )
+
+    evidence = caught.value.evidence
+    assert len(evidence) == 1
+    item = evidence[0]
+    assert item.result.exit_code == 1
+    assert "STDOUT sample text" in item.result.summary
+    assert "FAILED tests/test_foo.py::test_bar" in item.result.summary
+    raw_bytes = Path(item.raw_path).read_bytes()
+    assert raw_bytes.startswith(b"STDOUT\nSTDOUT sample text\n\nSTDERR\n================ short test summary info ================")

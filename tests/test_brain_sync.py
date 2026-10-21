@@ -667,3 +667,48 @@ def test_brain_sync_live_repository_smoke() -> None:
     assert git(repo, "status", "--porcelain=v1") == before_status
     assert git(repo, "rev-parse", "HEAD") == before_head
     assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+
+
+def test_task393_exact_sync_observes_long_summary_and_stderr_diagnostic(tmp_path, monkeypatch):
+    from aios_renew import brain_sync
+    from aios_renew.review_transport import public_failure
+    from tests.test_brain_attention import Task372CanonicalSources
+    from tests.test_operational_receipt import Task372Actions
+
+    class Task393CanonicalSources(Task372CanonicalSources):
+        def __init__(self):
+            super().__init__(run_id="RUN-393-001", task_id="TASK-393")
+            node = "tests/test_lean_vp_l3_same_executor_continuation.py::test_invocation_intent_crash_blocks_before_native_execute"
+            tail = (
+                "=========================== short test summary info ===========================\n"
+                f"FAILED {node} - AssertionError: intent crash\n"
+                "=========================== 1 failed in 12.34s ===========================\n"
+            )
+            padding = "test log line without summary\n" * 15000
+            long_summary = padding + tail
+            from tests.test_review_transport import _native_failure_fixture
+            _, private = _native_failure_fixture()
+            private.update(run_id="RUN-393-001", task=dict(id="TASK-393", revision=2), phase="VERIFICATION")
+            private["error"] = dict(
+                type="RuntimeVerificationError",
+                message="Runtime verification failed",
+                verification=[dict(command="python -m pytest -q tests/test_lean_vp_l3_same_executor_continuation.py",
+                                   exit_code=1, summary=long_summary)],
+            )
+            self.failure = json.loads(public_failure(json.dumps(private).encode()))
+
+    canonical = Task393CanonicalSources()
+    actions = Task372Actions()
+    monkeypatch.setattr(brain_sync, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(brain_sync, "_resolve_main_sha", lambda repo: "d" * 40)
+    monkeypatch.setattr(brain_sync, "_resolve_repository_name", lambda repo: "trung-via/AIOS-renew")
+
+    snapshot = brain_sync.observe_brain_sync(repo=tmp_path, run_id=canonical.run_id, canonical_sources=canonical)
+    observed = snapshot.as_dict()
+    diagnostic = observed["diagnostics"]
+    assert diagnostic["blocker"] is None
+    verification = diagnostic["failure_context"]["safe_detail"]["verification"]
+    assert len(verification) == 1
+    assert verification[0]["availability"] == "PARTIAL"
+    assert verification[0]["failed_nodes"][0]["identity"] == "tests/test_lean_vp_l3_same_executor_continuation.py::test_invocation_intent_crash_blocks_before_native_execute"
+    assert verification[0]["failed_nodes"][0]["error_types"] == ["AssertionError"]
