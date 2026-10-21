@@ -68,6 +68,8 @@ def population(root: Path, count: int, *, padding: int = 0) -> Path:
     remote = root / "remote.git"
     remote.mkdir(parents=True)
     git(remote, "init", "--bare", "--quiet")
+    # The long-ref case must reach the guard even under deep Windows temp roots.
+    git(remote, "config", "core.longpaths", "true")
     stream = bytearray(b"blob\nmark :1\ndata 5\nbase\n\n")
     previous = None
     for index in range(count + 1):
@@ -120,6 +122,7 @@ def reader(root: Path, remote: Path, *, warm: bool) -> tuple[Path, str, str]:
     """Prepare identical main/candidate prerequisites, then optionally warm metadata."""
     root.mkdir(parents=True)
     git(root, "init", "--quiet")
+    git(root, "config", "core.longpaths", "true")
     git(root, "config", "user.name", "Guard Fixture")
     git(root, "config", "user.email", "guard@example.invalid")
     git(root, "remote", "add", "origin", str(remote))
@@ -386,14 +389,29 @@ def test_batching_bounds_windows_arguments_with_long_exact_refs(tmp_path, monkey
 
     def record(path, *args, **kwargs):
         if args[0] in REMOTE_CATEGORIES:
-            assert len(subprocess.list2cmdline(("git", "-C", str(path), *args)).encode("utf-16-le")) // 2 <= candidate._MAX_REMOTE_ARG_CHARS
+            assert len(subprocess.list2cmdline(("git", "--no-replace-objects", "-C", str(path), *args)).encode("utf-16-le")) // 2 <= candidate._MAX_REMOTE_ARG_CHARS
             calls.append(args)
-        return actual(path, *args, **kwargs)
+        result = actual(path, *args, **kwargs)
+        if args[0] == "ls-remote":
+            assert len(result[1].encode("utf-8")) <= candidate._MAX_REMOTE_BYTES
+        return result
 
     monkeypatch.setattr(candidate, "_git", record)
     result = measure(candidate, repo, main, proposed)
-    assert len(result["outcome"]["sources"]) == 128
-    assert sum(any(ref.startswith(SOURCE) for ref in args[3:]) for args in calls) > 4
+    for namespace, key in ((SOURCE, "sources"), (DECISION, "decisions")):
+        expected = dict(line.split(" ", 1) for line in git(
+            remote, "for-each-ref", "--format=%(refname) %(objectname)", namespace,
+        ).splitlines())
+        assert len(expected) == 128
+        assert result["outcome"][key] == expected
+    source_batches = [args[3:] for args in calls if args[0] == "ls-remote"
+                      and any(ref.startswith(SOURCE) for ref in args[3:])]
+    # Every long source is observed initially and freshly rechecked, regardless
+    # of how many bounded subprocesses the batching policy needs.
+    assert all(sum(ref in batch for batch in source_batches) == 2
+               for ref in result["outcome"]["sources"])
+    assert sum(args[-1] == DECISION + "*" for args in calls) == 2
+    assert calls[-1] == ("ls-remote", "--refs", "origin", "refs/heads/main")
     assert result["remote_calls"]["fetch"] == 0
 
 
@@ -487,6 +505,10 @@ def test_native_local_commit_integrity_is_not_just_cat_file_type(tmp_path, corru
                              capture_output=True, check=True).stdout
     loose = repo / ".git/objects" / sha[:2] / sha[2:]
     loose.parent.mkdir(parents=True, exist_ok=True)
+    if loose.exists():
+        # Git's loose objects are read-only on Windows; this fixture must damage
+        # the object before exercising production integrity validation.
+        loose.chmod(0o600)
     if corruption == "valid_wrong_content":
         damaged = content.replace(b"decision 0", b"decision X")
         assert damaged != content
