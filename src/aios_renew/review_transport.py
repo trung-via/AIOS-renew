@@ -117,21 +117,24 @@ _PYTEST_FOOTER_RE = re.compile(
 _PYTEST_REPORT_RE = re.compile(r"^\s*(FAILED|ERROR)\s+(tests/[^\r\n]+)")
 
 
-def _parse_pytest_summary_reports(summary: str, command: str) -> list[dict[str, str]]:
+def _parse_pytest_summary_reports(summary: str, command: str) -> tuple[list[dict[str, str]], str]:
     if not isinstance(summary, str) or not summary.strip():
-        return []
+        return [], "UNAVAILABLE"
     is_pytest = bool(
         re.match(r"^(?:python(?:3)? -m )?pytest(?: |$)", command)
         or command == "python scripts/aios_parallel_full_suite.py"
     )
     if not is_pytest:
-        return []
+        return [], "UNAVAILABLE"
+
+    if len(summary) > _MAX_SUMMARY_SCAN_CHARS:
+        return [], "EXHAUSTED"
 
     final_reports: list[dict[str, str]] = []
     current_section: list[dict[str, str]] | None = None
 
     pos = 0
-    text_len = min(len(summary), _MAX_SUMMARY_SCAN_CHARS)
+    text_len = len(summary)
 
     while pos < text_len:
         newline_idx = summary.find("\n", pos, text_len)
@@ -164,7 +167,10 @@ def _parse_pytest_summary_reports(summary: str, command: str) -> list[dict[str, 
                     detail = line.split(" - ", 1)[-1] if " - " in line else ""
                     current_section.append(dict(nodeid=nodeid, phase="unknown", detail=detail))
 
-    return final_reports
+    if current_section is not None:
+        return [], "UNAVAILABLE"
+
+    return final_reports, "PARTIAL" if final_reports else "UNAVAILABLE"
 
 
 def _response_shape(native: Any) -> str:
@@ -278,11 +284,12 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
             reports = [r for r in observed["reports"] if r["outcome"] == "FAIL"]
             source_kind, digest = "PROTECTED_OBSERVATION", _failure_digest(observed)
             failure_count = observed["failure_count"]
+            summary_status = "PARTIAL" if reports else "UNAVAILABLE"
         else:
             # A summary is an observed output excerpt, never a complete pytest
             # report. Exit code 1 alone identifies no individual failing test.
             source_kind, digest = "PROTECTED_SUMMARY", _failure_digest(summary)
-            reports = _parse_pytest_summary_reports(summary, outcome["command"])
+            reports, summary_status = _parse_pytest_summary_reports(summary, outcome["command"])
             failure_count = None
         for report in reports[:32]:
             identity, parameters = _safe_test_identity(report["nodeid"])
@@ -292,7 +299,7 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
         detail["verification"].append(dict(index=index, command=_public_command(outcome["command"]),
             exit_code=outcome["exit_code"], source_kind=source_kind, source_digest=digest,
             availability="AVAILABLE" if observed and observation_complete and not unstable else
-                "PARTIAL" if reports else "UNAVAILABLE",
+                "PARTIAL" if reports else summary_status,
             complete=observation_complete, unstable=unstable, failure_count=failure_count,
             failed_nodes=nodes, nodes_truncated=len(reports) > len(nodes)))
     detail["verification_truncated"] = len(outcomes) > 32
@@ -315,8 +322,10 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
             detail["cause"] = category
         if error.get("type") in {"CodexOutputError", "AntigravityOutputError"}:
             detail["final_response_shape"] = _response_shape(error.get("native_diagnostics"))
-    if detail["cause"] != "UNKNOWN" or any(v["availability"] != "UNAVAILABLE" for v in detail["verification"]):
+    if detail["cause"] != "UNKNOWN" or any(v["availability"] not in {"UNAVAILABLE", "EXHAUSTED"} for v in detail["verification"]):
         detail["availability"] = "PARTIAL"  # Only allowlisted structural observations, never full diagnostics.
+    elif any(v["availability"] == "EXHAUSTED" for v in detail["verification"]):
+        detail["availability"] = "EXHAUSTED"
     return detail
 
 
@@ -327,7 +336,7 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
     if (not isinstance(detail, dict) or set(detail) != fields or detail["format"] != "AIOS_SAFE_FAILURE_DETAIL"
             or type(detail["version"]) is not int or detail["version"] != 1
             or any(detail[k] != owner[k] for k in ("run_id", "subject_sha", "private_failure_digest", "phase"))
-            or detail["availability"] not in {"UNAVAILABLE", "PARTIAL"}
+            or detail["availability"] not in {"UNAVAILABLE", "PARTIAL", "EXHAUSTED"}
             or type(detail["verification_truncated"]) is not bool or detail["raw_output_withheld"] is not True
             or detail["cause"] not in _DETAIL_CAUSES or detail["final_response_shape"] not in _RESPONSE_SHAPES
             or not isinstance(detail["verification"], list) or len(detail["verification"]) > 32
@@ -351,7 +360,7 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
                 or any(item[k] != owner["verification"][item["index"]][k] for k in ("command", "exit_code"))
                 or type(item["exit_code"]) is not int or item["exit_code"] == 0
                 or item["source_kind"] not in {"PROTECTED_OBSERVATION", "PROTECTED_SUMMARY"}
-                or not _is_digest(item["source_digest"]) or item["availability"] not in {"AVAILABLE", "PARTIAL", "UNAVAILABLE"}
+                or not _is_digest(item["source_digest"]) or item["availability"] not in {"AVAILABLE", "PARTIAL", "UNAVAILABLE", "EXHAUSTED"}
                 or any(item[k] is not None and type(item[k]) is not bool for k in ("complete", "unstable"))
                 or (item["complete"] is True and item["unstable"] is True)
                 or item["failure_count"] is not None and (type(item["failure_count"]) is not int or not 0 <= item["failure_count"] <= 4096)

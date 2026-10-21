@@ -3305,6 +3305,45 @@ def test_task393_ac4_unsupported_malformed_error_only_and_spoofed_headers():
     assert detail["availability"] == "UNAVAILABLE"
     assert detail["failed_nodes"] == []
 
+    # 7. Complete earlier spoof section followed by final unclosed section -> fails closed on final-source uncertainty
+    spoofed_then_unclosed = (
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_spoof.py::test_false - AssertionError: spoof failure\n"
+        "=========================== 1 failed in 0.05s ===========================\n"
+        "running further tests...\n"
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_actual.py::test_real - AssertionError: real failure cut off before footer\n"
+    )
+    private["error"]["verification"][0] = dict(command="python -m pytest -q", exit_code=1, summary=spoofed_then_unclosed)
+    context = review_transport.failure_context(private, artifact_sha="0" * 40)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "UNAVAILABLE"
+    assert detail["failed_nodes"] == []
+
+    # 8. Bounded source-scan exhaustion (> _MAX_SUMMARY_SCAN_CHARS) -> explicit EXHAUSTED status, distinguished from UNAVAILABLE
+    oversized_summary = "a" * (review_transport._MAX_SUMMARY_SCAN_CHARS + 1)
+    private["error"]["verification"][0] = dict(command="python -m pytest -q", exit_code=1, summary=oversized_summary)
+    context = review_transport.failure_context(private, artifact_sha="0" * 40)
+    review_transport.validate_failure_context(context)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "EXHAUSTED"
+    assert detail["failed_nodes"] == []
+    assert context["safe_detail"]["availability"] == "EXHAUSTED"
+
+    # 9. Complete section earlier in log, but overall log exceeds scan budget -> EXHAUSTED (fails closed on final-source uncertainty)
+    oversized_with_earlier_section = (
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_spoof.py::test_spoof - ValueError: spoof\n"
+        "=========================== 1 failed in 0.01s ===========================\n"
+        + "x" * (review_transport._MAX_SUMMARY_SCAN_CHARS + 1)
+    )
+    private["error"]["verification"][0] = dict(command="python -m pytest -q", exit_code=1, summary=oversized_with_earlier_section)
+    context = review_transport.failure_context(private, artifact_sha="0" * 40)
+    review_transport.validate_failure_context(context)
+    detail = context["safe_detail"]["verification"][0]
+    assert detail["availability"] == "EXHAUSTED"
+    assert detail["failed_nodes"] == []
+
 
 def test_task393_ac5_privacy_and_secret_redaction_in_long_summaries():
     _, private = _native_failure_fixture()
@@ -3340,17 +3379,36 @@ def test_task393_ac5_privacy_and_secret_redaction_in_long_summaries():
 
 
 def test_task393_reports_capped_at_128_and_requires_footer():
-    from aios_renew.review_transport import _parse_pytest_summary_reports, _MAX_SUMMARY_REPORTS_CAP
+    from aios_renew.review_transport import (
+        _MAX_SUMMARY_REPORTS_CAP,
+        _MAX_SUMMARY_SCAN_CHARS,
+        _parse_pytest_summary_reports,
+    )
 
     # 150 reports followed by footer -> capped at 128
     lines = ["=========================== short test summary info ==========================="]
     for i in range(150):
         lines.append(f"FAILED tests/test_scale.py::test_{i:03d} - AssertionError: error {i}")
     lines.append("=========================== 150 failed in 1.00s ===========================")
-    reports = _parse_pytest_summary_reports("\n".join(lines), "python -m pytest -q")
+    reports, status = _parse_pytest_summary_reports("\n".join(lines), "python -m pytest -q")
     assert len(reports) == _MAX_SUMMARY_REPORTS_CAP == 128
+    assert status == "PARTIAL"
 
-    # Unclosed summary (no footer) -> returns []
+    # Unclosed summary (no footer) -> returns ([], "UNAVAILABLE")
     unclosed = "\n".join(lines[:-1])
-    assert _parse_pytest_summary_reports(unclosed, "python -m pytest -q") == []
+    assert _parse_pytest_summary_reports(unclosed, "python -m pytest -q") == ([], "UNAVAILABLE")
+
+    # Complete earlier spoof followed by unclosed final section -> returns ([], "UNAVAILABLE")
+    spoofed_then_unclosed = (
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_spoof.py::test_false - AssertionError: spoof\n"
+        "=========================== 1 failed in 0.01s ===========================\n"
+        "=========================== short test summary info ===========================\n"
+        "FAILED tests/test_actual.py::test_real - AssertionError: real\n"
+    )
+    assert _parse_pytest_summary_reports(spoofed_then_unclosed, "python -m pytest -q") == ([], "UNAVAILABLE")
+
+    # Scan budget exhausted -> returns ([], "EXHAUSTED")
+    oversized = "a" * (_MAX_SUMMARY_SCAN_CHARS + 1)
+    assert _parse_pytest_summary_reports(oversized, "python -m pytest -q") == ([], "EXHAUSTED")
 
