@@ -1308,8 +1308,8 @@ def test_failure_transport_recovery_public_legacy_contamination_fails_closed(mon
             reader(contaminated)
 
     def remote_blob(_repo, *args, **_kwargs):
-        if args[0] == "show":
-            assert args[1].endswith(":.ai/transport/failure.json")
+        if args[0] in {"show", "cat-file"}:
+            assert args[-1].endswith(":.ai/transport/failure.json")
             return 0, contaminated.decode(), ""
         assert args[0] == "fetch"
         return 0, "", ""
