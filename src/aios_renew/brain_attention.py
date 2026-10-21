@@ -510,12 +510,12 @@ def operational_observation(receipt):
                 operational_cause=_operational_cause(cause, projected), **subject)
 
 
-def terminal_failure_context(item, sources):
+def terminal_failure_context(item, sources, *, include_paging=False, page_selector=None):
     """Resolve useful diagnostics from the exact terminal attention source."""
     if item.family != FAILURE:
         raise AttentionError("FAILURE_CONTEXT_REQUIRES_FAILURE_ATTENTION")
     from .review_transport import (
-        ReviewTransportError, _bind_performance_terminal_identity, failure_context, failure_document,
+        ReviewTransportError, _bind_performance_terminal_identity, _failure_context_from_validated, failure_context, failure_document,
     )
     run_id, sha = item.selectors["run_id"], item.selectors["artifact_sha"]
     root = "refs/heads/aios/"
@@ -526,27 +526,65 @@ def terminal_failure_context(item, sources):
         if before.get(terminal_ref) != sha or root + "artifacts/" + run_id in before or root + "review/" + run_id in before:
             raise AttentionError("FAILURE_SOURCE_IDENTITY_MISMATCH")
         try:
-            run = sources.document(sha, ".ai/transport/run.json")
-            failure = sources.document(sha, ".ai/transport/failure.json")
+            identity_reader = getattr(sources, "failure_identity_document", sources.document)
+            run = identity_reader(sha, ".ai/transport/run.json")
+            failure = identity_reader(sha, ".ai/transport/failure.json")
         except (KeyError, OSError) as exc:
             raise AttentionError("FAILURE_SOURCE_UNAVAILABLE") from exc
         terminal = failure_document(canonical(failure))
         head = _bind_performance_terminal_identity(
             canonical(run), canonical(terminal), ref=terminal_ref, run_id=run_id,
-            task_id=terminal["task"]["id"], terminal_kind="FAILURE")[3]
+            task_id=terminal["task"]["id"], terminal_kind="FAILURE", _validated_failure=terminal)[3]
         if before.get(candidate_ref) not in (None, head):
             raise AttentionError("FAILURE_CANDIDATE_IDENTITY_MISMATCH")
-        context = failure_context(terminal, artifact_sha=sha,
-                                  candidate_available=before.get(candidate_ref) == head)
+        context = (_failure_context_from_validated(terminal, original=terminal, artifact_sha=sha,
+                    candidate_available=before.get(candidate_ref) == head) if "public_projection" in terminal else
+                   failure_context(terminal, artifact_sha=sha, candidate_available=before.get(candidate_ref) == head))
+        result = context
+        if context is not None and (include_paging or page_selector is not None):
+            from .review_transport import read_failure_detail_projection, FailureDiagnosticError
+            reader = getattr(sources, "failure_detail_document", lambda *args: None)
+            try:
+                projection = read_failure_detail_projection(context, reader, selector=page_selector)
+                if page_selector is not None:
+                    result = projection
+                elif projection is not None:
+                    context["paging"] = projection
+            except FailureDiagnosticError as exc:
+                if page_selector is not None:
+                    raise
+                context["paging_blocker"] = exc.code
         if sources.refs(*patterns) != before:
             raise AttentionError("FAILURE_SOURCE_MOVED")
-        return context
+        return result
     except AttentionError:
         raise
     except OSError as exc:
         raise AttentionError("FAILURE_SOURCE_UNAVAILABLE") from exc
     except (ReviewTransportError, KeyError, TypeError, ValueError) as exc:
+        from .review_transport import FailureDiagnosticError
+        if isinstance(exc, FailureDiagnosticError):
+            raise
         raise AttentionError("FAILURE_SOURCE_INTEGRITY_INVALID") from exc
+
+
+def terminal_failure_page(selector, sources):
+    """Read one authenticated page; selectors confer no execution authority."""
+    from .review_transport import (FailureDiagnosticError, failure_page_unavailable,
+        validate_failure_page_selector)
+    try:
+        validate_failure_page_selector(selector)
+        item = attention(FAILURE, dict(run_id=selector["binding"]["run_id"], artifact_sha=selector["artifact_sha"]))
+        result = terminal_failure_context(item, sources, page_selector=selector)
+        return result if result is not None else failure_page_unavailable("PROJECTION_UNAVAILABLE")
+    except FailureDiagnosticError as exc:
+        return failure_page_unavailable(exc.code)
+    except AttentionError as exc:
+        code = str(exc)
+        return failure_page_unavailable(code if code in {"FAILURE_SOURCE_UNAVAILABLE", "FAILURE_SOURCE_MOVED"}
+            else "FAILURE_SOURCE_INTEGRITY_INVALID")
+    except (OSError, KeyError, TypeError, ValueError, AttributeError):
+        return failure_page_unavailable("FAILURE_SOURCE_INTEGRITY_INVALID")
 
 
 def _delivery_subject(operation, selectors):
@@ -709,6 +747,43 @@ class GitSources:
     def document(self, sha, name):
         self.fetch(sha)
         return _load_yaml(self.git(self.path, "show", sha + ":" + name), "attention source identity")
+
+    def failure_detail_document(self, sha, name, limit):
+        """Fixed safe artifact names and a byte check before reading/decoding."""
+        from .review_transport import (FAILURE_DETAIL_MANIFEST, FAILURE_MANIFEST_MAX_BYTES,
+            FAILURE_PAGE_MAX_BYTES, FailureDiagnosticError)
+        expected = FAILURE_MANIFEST_MAX_BYTES if name == FAILURE_DETAIL_MANIFEST else FAILURE_PAGE_MAX_BYTES
+        if (limit != expected or re.fullmatch(r"\.ai/transport/failure-detail-(?:manifest|\d{2}-\d{5})\.json", name) is None):
+            raise FailureDiagnosticError("PROJECTION_INVALID")
+        return self._bounded_failure_json(sha, name, limit)
+
+    def failure_identity_document(self, sha, name):
+        from .review_transport import PUBLIC_ARTIFACT_MAX_BYTES, PUBLIC_FAILURE_MAX_BYTES, FailureDiagnosticError
+        limits = {".ai/transport/run.json": PUBLIC_ARTIFACT_MAX_BYTES,
+                  ".ai/transport/failure.json": PUBLIC_FAILURE_MAX_BYTES}
+        if name not in limits:
+            raise FailureDiagnosticError("PROJECTION_INVALID")
+        result = self._bounded_failure_json(sha, name, limits[name])
+        if result is None:
+            raise AttentionError("FAILURE_SOURCE_UNAVAILABLE")
+        return result
+
+    def _bounded_failure_json(self, sha, name, limit):
+        from .review_transport import FailureDiagnosticError
+        self.fetch(sha)
+        entries = self.git(self.path, "ls-tree", "-l", sha, "--", name).splitlines()
+        if not entries:
+            return None
+        if len(entries) != 1:
+            raise FailureDiagnosticError("PROJECTION_INVALID")
+        match = re.fullmatch(r"100644 blob [0-9a-f]{40}\s+(\d+)\t" + re.escape(name), entries[0])
+        if match is None or not 0 < int(match[1]) <= limit:
+            raise FailureDiagnosticError("PROJECTION_BUDGET_EXHAUSTED")
+        raw = self.git(self.path, "show", sha + ":" + name)
+        try:
+            return load_json(raw, limit)
+        except (AttentionError, RecursionError) as exc:
+            raise FailureDiagnosticError("PROJECTION_INVALID") from exc
 
     def optional_document(self, sha, name):
         self.fetch(sha)

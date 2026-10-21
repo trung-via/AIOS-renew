@@ -397,6 +397,77 @@ private FAILURE schemas retain their historical decoder and exact-match paths.
 This is ordinary production behavior when this same TASK's reviewed PASS
 candidate is published; no separate activation task or measurement gate applies.
 
+Prospective verification FAILURE transports also contain
+`failure-detail-manifest.json` and bounded `failure-detail-CC-OOOOO.json` safe
+pages in the **same immutable artifacts tree**. These are projections of the
+original Runtime FAILURE, subordinate to its public and private digests. They
+are not verification reports, EVIDENCE or completion decisions. Existing refs
+are never backfilled, and historical FAILURE JSON and decoder versions remain
+unchanged. Missing historical projections remain unavailable.
+
+An exact RUN Brain Sync observation discovers `failure_context.paging.commands`.
+Each command supplies `first_selector` or a typed blocker. An ordinary Git-only
+reader can request a page and follow `next_selector` through the existing
+authenticated artifact path, without a Human shell, raw path or provider change:
+
+```python
+discovery = observe_brain_sync(repo=repo, run_id=failed_run_id)
+selector = discovery.diagnostics["failure_context"]["paging"]["commands"][0]["first_selector"]
+page_snapshot = observe_brain_sync(repo=repo, failure_page_selector=selector)
+view = page_snapshot.failure_page
+# A subsequent read uses view["next_selector"], when non-null.
+context = compose_brain_work_context(
+    page_snapshot, current_request={"flow_selector": "DIAGNOSTIC"})
+```
+
+Page selection is exclusive of other diagnostic selectors. Each response has
+at most 32 allowlisted views and does not append the first page's nodes to a
+later page. Discovery itself contains no additional failed-node views. Portable
+page snapshots and Work Context redact the operational checkout root. No new
+attention Issue, wake, RUN, execution or verification invocation is produced.
+
+Selectors bind exact TASK revision, RUN, failed SHA, original public/private
+FAILURE digests, ordered command index and command digest, full protected source
+digest, ordered safe sequence digest, artifact SHA, manifest digest, range and
+page digest. They are deterministic source selectors, not execution capability
+tokens or independently verified evidence. Their validity lasts only while the
+exact immutable terminal ref still matches; deleted, replaced or ref-swapped
+sources expire the selector. Ref snapshots before and after each read reject
+movement. Caller-supplied source documents, paths and pasted logs are not accepted.
+
+Structured complete, stable observations alone expose `coverage=COMPLETE` and
+a failure count. `observed_count` counts the allowlisted exact identity/phase
+sequence; `withheld_count` discloses excluded identities, so it need not equal
+the complete source population. Text stays `PARTIAL`, with a null failure count
+and `TEXT_POPULATION_UNKNOWN`; incomplete structured sources disclose
+`OBSERVATION_INCOMPLETE`. Repeated exact text identities are deduplicated in
+first-observed order. Different parameterized instances retain different full
+source-derived identity digests even when their redacted displays match. Source
+parameters, captures, host paths, tracebacks and native output never enter pages.
+An empty observation with nonzero exit never implies PASS. `exhausted` means the
+safe sequence is exhausted, not that verification succeeded; `nodes_truncated`
+means another legal page exists.
+
+Safe-detail V3 is selected only when a canonical structured failure count exceeds
+4096. Its only schema change from V2 is a count ceiling equal to the existing
+`MAX_CANONICAL_FAILURES=10000`. V1/V2 keep their exact historical 4096 ceiling.
+Neither private source nor canonical verification population limits are raised.
+Pagination supports at most 10000 safe identities in total across the first 32
+ordered commands. Larger observed populations return `OBSERVED_POPULATION_LIMIT`
+instead of clipped completeness. Each page blob is at most 32 KiB, a page view
+64 KiB, the manifest 64 KiB, and all extra projection blobs together 16 MiB
+(at most 344 page blobs plus the manifest). Output/disk exhaustion returns
+`PROJECTION_BUDGET_EXHAUSTED`; absent, unsupported, uncertain final summaries,
+invalid projections and bad/expired/range-invalid selectors have fixed typed
+blockers. Byte limits are checked before Git blob decoding. A page requires at
+most ten Git operations after one exact-SHA fetch in an observation backend;
+no per-node Git reads or persistent semantic cache is introduced. A fresh
+backend may fetch the bounded safe artifacts tree once; private originals are
+never in that tree. Focused synthetic 33/64/1000/10000-failure fixtures traverse
+all legal pages and measure CPU, memory, Git reads/output, portable bytes and
+disk overhead with finite assertions. These measurements are test-local and
+do not create lifecycle EVIDENCE.
+
 Historical V1/V2 projections remain readable and exact. Only the existing
 authorized self-host control-plane boundary may supplement absent public detail
 from the exact local FAILURE whose digest equals the canonical context's private

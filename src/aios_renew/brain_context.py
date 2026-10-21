@@ -15,7 +15,7 @@ from typing import Any, Callable, Mapping
 
 import yaml
 
-from .brain_sync import BrainSyncError, BrainSyncSnapshot, observe_brain_sync
+from .brain_sync import BrainSyncError, BrainSyncSnapshot, observe_brain_sync, _has_failure_pages
 
 
 class BrainContextError(ValueError):
@@ -164,6 +164,8 @@ def _invalidation_basis(observed: Mapping[str, Any], request: Mapping[str, str] 
         basis["correction_subject_sha256"] = _digest(observed["correction_subject"])
     if "diagnostics" in observed:
         basis["diagnostics_sha256"] = _digest(observed["diagnostics"])
+    if "failure_page" in observed:
+        basis["failure_page_sha256"] = _digest(observed["failure_page"])
     return basis
 
 
@@ -190,7 +192,15 @@ class BrainWorkContext:
 
     def as_dict(self) -> dict[str, Any]:
         from .brain_sync import validate_diagnostic_context
-        from .review_transport import validate_failure_context
+        from .review_transport import validate_failure_context, validate_failure_detail_view, ReviewTransportError
+        if "failure_page" in self.canonical_observation:
+            view = self.canonical_observation["failure_page"]
+            try:
+                validate_failure_detail_view(view)
+            except (ReviewTransportError, ValueError, TypeError, KeyError) as exc:
+                raise BrainContextError("FAILURE_PAGE_INTEGRITY_INVALID") from exc
+            if view["binding"] is not None and view["binding"]["task"] != self.canonical_observation.get("selected_task"):
+                raise BrainContextError("FAILURE_CONTEXT_SUBSTITUTION")
         diagnostics = self.canonical_observation.get("diagnostics")
         if diagnostics is not None:
             validate_diagnostic_context(diagnostics, self.canonical_observation.get("selected_task"))
@@ -201,10 +211,13 @@ class BrainWorkContext:
                     or unified["failure_context"]["subject_sha"] != unified.get("failed_head_sha")
                     or unified["failure_context"]["task"] != unified.get("task")):
                 raise BrainContextError("FAILURE_CONTEXT_SUBSTITUTION")
+        portable = _stable_copy(self.canonical_observation)
+        if _has_failure_pages(portable):
+            portable["repository"]["root"] = "protected-repository-root"
         return {
             "format": "AIOS_BRAIN_WORK_CONTEXT", "version": 1,
             "kind": "BRAIN_WORK_CONTEXT",
-            "canonical_observation": _stable_copy(self.canonical_observation),
+            "canonical_observation": portable,
             "current_request": _stable_copy(self.current_request),
             "invalidation_basis": _stable_copy(self.invalidation_basis),
             "invalidation_fingerprint": self.invalidation_fingerprint,
@@ -225,7 +238,7 @@ def compose_brain_work_context(
 ) -> BrainWorkContext:
     """Compose one request-scoped view from current Brain Sync observation."""
     if diagnostic_selector is not None and (not isinstance(diagnostic_selector, Mapping) or not diagnostic_selector
-            or set(diagnostic_selector) - {"task_id", "run_id", "delivery_id", "issue_number", "workflow_run_id", "run_attempt"}):
+            or set(diagnostic_selector) - {"task_id", "run_id", "delivery_id", "issue_number", "workflow_run_id", "run_attempt", "failure_page_selector"}):
         raise BrainContextError("invalid diagnostic selector")
     if snapshot is None:
         snapshot = observe_brain_sync(repo=repo, **dict(diagnostic_selector or {}))
@@ -233,6 +246,10 @@ def compose_brain_work_context(
         raise BrainContextError("supply either a Brain Sync snapshot or repository")
     request = _request(current_request)
     observed = snapshot.as_dict()
+    if _has_failure_pages(observed):
+        # Keep the operational root private for local Flow Card integrity checks.
+        # Both portable serializers redact it before a provider sees this view.
+        observed["repository"]["root"] = snapshot.repository["root"]
     # Brain Sync may expose a transport URL for operators. It is not needed by
     # reasoning and can contain credentials, so only canonical identity is copied.
     repository = observed["repository"]

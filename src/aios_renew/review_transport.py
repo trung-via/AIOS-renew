@@ -147,7 +147,7 @@ def _summary_source_status(summary: Any, command: str) -> str | None:
     return None
 
 
-def _pytest_summary_nodes(summary: Any, command: str) -> tuple[list[dict[str, Any]], bool, str]:
+def _pytest_summary_nodes(summary: Any, command: str, *, limit: int = 32) -> tuple[list[dict[str, Any]], bool, str]:
     """Scan the whole bounded source, retaining only the final closed section.
 
     Closing text proves a section boundary, never a test population or PASS.
@@ -183,7 +183,7 @@ def _pytest_summary_nodes(summary: Any, command: str) -> tuple[list[dict[str, An
                     identity, parameters = _safe_test_identity(nodeid)
                     if identity is not None:
                         entries += 1
-                        if len(nodes) < 32:
+                        if len(nodes) < limit:
                             nodes.append(dict(identity=identity, identity_digest=_failure_digest(nodeid),
                                 parameters_withheld=parameters, phase="unknown",
                                 error_types=_detail_error_types(error if separator else "")))
@@ -310,7 +310,13 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
     transport writer calls this after validating the private FAILURE's role.
     Historical public input cannot regain withheld observations.
     """
-    return _safe_failure_detail(data, version=2)
+    # V1/V2 retain their historical 4096 count ceiling. V3 changes only that
+    # ceiling, and is necessary only for a larger canonical observation.
+    large = "public_projection" not in data and any(isinstance(item.get("verification"), dict)
+        and isinstance(item["verification"].get("candidate"), dict)
+        and item["verification"]["candidate"].get("failure_count", 0) > 4096
+        for item in data["error"].get("verification", [])[:32])
+    return _safe_failure_detail(data, version=3 if large else 2)
 
 
 def _safe_failure_detail(data: Mapping[str, Any], *, version: int) -> dict[str, Any]:
@@ -323,7 +329,7 @@ def _safe_failure_detail(data: Mapping[str, Any], *, version: int) -> dict[str, 
         # The original canonical digest also has a 16 MiB bound. Keep that
         # boundary: an oversized in-memory source gets an explicit blocker,
         # never a clipped digest, an earlier node, or a larger read allowance.
-        if (private and version == 2 and data["phase"] == "VERIFICATION"
+        if (private and version >= 2 and data["phase"] == "VERIFICATION"
                 and any(_summary_source_status(outcome.get("summary"), outcome["command"])
                         == "SCAN_BUDGET_EXHAUSTED" for outcome in error.get("verification", [])[:32]
                         if outcome["exit_code"] != 0 and "verification" not in outcome)):
@@ -357,7 +363,7 @@ def _safe_failure_detail(data: Mapping[str, Any], *, version: int) -> dict[str, 
             # report. Exit code 1 alone identifies no individual failing test.
             source_kind, digest = "PROTECTED_SUMMARY", _failure_digest(summary)
             reports = _legacy_summary_reports(summary, outcome["command"]) if version == 1 else []
-            if version == 2:
+            if version >= 2:
                 nodes, nodes_truncated, summary_status = _pytest_summary_nodes(summary, outcome["command"])
             failure_count = None
         for report in reports[:32]:
@@ -371,7 +377,7 @@ def _safe_failure_detail(data: Mapping[str, Any], *, version: int) -> dict[str, 
                 "PARTIAL" if reports or nodes else "UNAVAILABLE",
             complete=observation_complete, unstable=unstable, failure_count=failure_count,
             failed_nodes=nodes, nodes_truncated=nodes_truncated or len(reports) > len(nodes),
-            **({"summary_status": summary_status} if version == 2 else {})))
+            **({"summary_status": summary_status} if version >= 2 else {})))
     detail["verification_truncated"] = len(outcomes) > 32
     message = error.get("message", "")
     if data["phase"] == "COMPLETION_GATE":
@@ -398,11 +404,12 @@ def _safe_failure_detail(data: Mapping[str, Any], *, version: int) -> dict[str, 
 
 
 def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
+    from .verification_contract import MAX_CANONICAL_FAILURES
     fields = {"format", "version", "run_id", "subject_sha", "private_failure_digest", "phase",
         "availability", "verification", "verification_truncated", "cause", "missing_acceptance_ids",
         "final_response_shape", "raw_output_withheld"}
     if (not isinstance(detail, dict) or set(detail) != fields or detail["format"] != "AIOS_SAFE_FAILURE_DETAIL"
-            or type(detail["version"]) is not int or detail["version"] not in {1, 2}
+            or type(detail["version"]) is not int or detail["version"] not in {1, 2, 3}
             or any(detail[k] != owner[k] for k in ("run_id", "subject_sha", "private_failure_digest", "phase"))
             or detail["availability"] not in {"UNAVAILABLE", "PARTIAL"}
             or type(detail["verification_truncated"]) is not bool or detail["raw_output_withheld"] is not True
@@ -423,7 +430,7 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
     for item in detail["verification"]:
         fields = {"index", "command", "exit_code", "source_kind", "source_digest", "availability",
             "complete", "unstable", "failure_count", "failed_nodes", "nodes_truncated"}
-        if detail["version"] == 2:
+        if detail["version"] >= 2:
             fields.add("summary_status")
         if (not isinstance(item, dict) or set(item) != fields or type(item["index"]) is not int
                 or not previous < item["index"] < 32 or item["index"] >= len(owner["verification"])
@@ -433,13 +440,13 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
                 or not _is_digest(item["source_digest"]) or item["availability"] not in {"AVAILABLE", "PARTIAL", "UNAVAILABLE"}
                 or any(item[k] is not None and type(item[k]) is not bool for k in ("complete", "unstable"))
                 or (item["complete"] is True and item["unstable"] is True)
-                or item["failure_count"] is not None and (type(item["failure_count"]) is not int or not 0 <= item["failure_count"] <= 4096)
+                or item["failure_count"] is not None and (type(item["failure_count"]) is not int or not 0 <= item["failure_count"] <= (MAX_CANONICAL_FAILURES if detail["version"] == 3 else 4096))
                 or not isinstance(item["failed_nodes"], list) or len(item["failed_nodes"]) > 32
                 or type(item["nodes_truncated"]) is not bool):
             raise ValueError("invalid safe FAILURE verification detail")
         previous = item["index"]
         _public_command(item["command"])
-        if detail["version"] == 2:
+        if detail["version"] >= 2:
             status = item["summary_status"]
             if (not isinstance(status, str) or status not in _SUMMARY_STATUSES
                     or (status == "NOT_APPLICABLE") != (item["source_kind"] == "PROTECTED_OBSERVATION")
@@ -459,6 +466,376 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
                     or not isinstance(node["error_types"], list) or not 1 <= len(node["error_types"]) <= len(_DETAIL_ERRORS)
                     or any(not isinstance(t, str) or t not in _DETAIL_ERRORS for t in node["error_types"])):
                 raise ValueError("invalid safe failed node")
+
+
+# Prospective, subordinate blobs in the SAME immutable FAILURE artifacts tree.
+# No raw locator, caller-provided document, clock, cache or second truth store.
+FAILURE_DETAIL_MANIFEST = ".ai/transport/failure-detail-manifest.json"
+FAILURE_PAGE_SIZE = 32
+FAILURE_PAGE_MAX_BYTES = 32 * 1024
+FAILURE_MANIFEST_MAX_BYTES = 64 * 1024
+FAILURE_VIEW_MAX_BYTES = 64 * 1024
+FAILURE_PROJECTION_MAX_BYTES = 16 * 1024 * 1024
+_PAGE_OWNER_FIELDS = {"task", "run_id", "subject_sha", "failure_digest", "private_failure_digest"}
+_PAGE_COMMAND_FIELDS = {"index", "command", "exit_code", "source_kind", "source_digest",
+    "sequence_digest", "coverage", "failure_count", "observed_count", "withheld_count", "limitation", "blocker", "pages"}
+_PAGE_BLOCKERS = frozenset(_SUMMARY_STATUSES - {"PARSED", "NOT_APPLICABLE"}) | frozenset({
+    "PROJECTION_UNAVAILABLE", "PROJECTION_INVALID", "PROJECTION_BUDGET_EXHAUSTED",
+    "OBSERVED_POPULATION_LIMIT", "SELECTOR_INVALID", "SELECTOR_EXPIRED", "PAGE_OUT_OF_RANGE",
+    "PAGE_INVALID", "FAILURE_SOURCE_UNAVAILABLE", "FAILURE_SOURCE_MOVED",
+    "FAILURE_SOURCE_INTEGRITY_INVALID", "FAILURE_SUBJECT_MISMATCH"})
+
+
+def _page_owner(context):
+    return dict(task=context["task"], run_id=context["run_id"], subject_sha=context["subject_sha"],
+        failure_digest=context["source"]["failure_digest"],
+        private_failure_digest=context["source"]["private_failure_digest"])
+
+
+def _page_name(index, start):
+    return f".ai/transport/failure-detail-{index:02d}-{start:05d}.json"
+
+
+def _page_binding(owner, command):
+    return dict(owner, index=command["index"], command_digest=_failure_digest(command["command"]),
+        source_kind=command["source_kind"], source_digest=command["source_digest"],
+        sequence_digest=command["sequence_digest"])
+
+
+def _page_selector(manifest, artifact_sha, command, start):
+    count = command["observed_count"]
+    value = dict(format="AIOS_FAILURE_PAGE_SELECTOR", version=1,
+        artifact_sha=artifact_sha, manifest_digest=_failure_digest(manifest),
+        binding=_page_binding(manifest["binding"], command), start=start,
+        stop=min(start + FAILURE_PAGE_SIZE, count), page_digest=command["pages"][start // FAILURE_PAGE_SIZE])
+    return dict(value, selector_digest=_failure_digest(value))
+
+
+def validate_failure_page_selector(value):
+    fields = {"format", "version", "artifact_sha", "manifest_digest", "binding", "start", "stop", "page_digest", "selector_digest"}
+    if (not isinstance(value, dict) or len(value) != len(fields) or set(value) != fields
+            or value["format"] != "AIOS_FAILURE_PAGE_SELECTOR" or type(value["version"]) is not int or value["version"] != 1
+            or not isinstance(value["artifact_sha"], str) or re.fullmatch(r"[0-9a-f]{40}", value["artifact_sha"]) is None
+            or any(not _is_digest(value[k]) for k in ("manifest_digest", "page_digest", "selector_digest"))
+            or any(type(value[k]) is not int for k in ("start", "stop"))
+            or not 0 <= value["start"] <= value["stop"] <= 10000
+            or value["start"] % FAILURE_PAGE_SIZE or value["stop"] - value["start"] > FAILURE_PAGE_SIZE):
+        raise FailureDiagnosticError("SELECTOR_INVALID")
+    binding = value["binding"]
+    if (not isinstance(binding, dict) or len(binding) != len(_PAGE_OWNER_FIELDS) + 5 or set(binding) != _PAGE_OWNER_FIELDS | {
+            "index", "command_digest", "source_kind", "source_digest", "sequence_digest"}
+            or not isinstance(binding["task"], dict) or len(binding["task"]) != 2 or set(binding["task"]) != {"id", "revision"}
+            or not isinstance(binding["task"]["id"], str) or len(binding["task"]["id"]) > 128 or re.fullmatch(r"TASK-[A-Za-z0-9_-]+", binding["task"]["id"]) is None
+            or type(binding["task"]["revision"]) is not int or binding["task"]["revision"] < 1
+            or not isinstance(binding["run_id"], str) or len(binding["run_id"]) > 128 or re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", binding["run_id"]) is None
+            or not isinstance(binding["subject_sha"], str) or re.fullmatch(r"[0-9a-f]{40}", binding["subject_sha"]) is None
+            or type(binding["index"]) is not int or not 0 <= binding["index"] < 32
+            or binding["source_kind"] not in {"PROTECTED_SUMMARY", "PROTECTED_OBSERVATION"}
+            or any(not _is_digest(binding[k]) for k in ("command_digest", "source_digest", "sequence_digest", "failure_digest", "private_failure_digest"))
+            ):
+        raise FailureDiagnosticError("SELECTOR_INVALID")
+    try:
+        _public_bytes(value, max_bytes=8192)
+        if value["selector_digest"] != _failure_digest({k: v for k, v in value.items() if k != "selector_digest"}):
+            raise FailureDiagnosticError("SELECTOR_INVALID")
+    except ReviewTransportError as exc:
+        raise FailureDiagnosticError("SELECTOR_INVALID") from exc
+
+
+def failure_page_unavailable(code):
+    if code not in _PAGE_BLOCKERS:
+        code = "PROJECTION_INVALID"
+    return dict(format="AIOS_FAILURE_DETAIL_VIEW", version=1, availability="UNAVAILABLE",
+        binding=None, selector=None, page=None, next_selector=None, blocker=code,
+        proof="NON_PASS_DIAGNOSTIC", raw_output_withheld=True)
+
+
+def _validate_page_nodes(nodes):
+    if not isinstance(nodes, list) or len(nodes) > FAILURE_PAGE_SIZE:
+        raise FailureDiagnosticError("PAGE_INVALID")
+    seen = set()
+    for node in nodes:
+        if (not isinstance(node, dict) or len(node) != 5 or set(node) != {"identity", "identity_digest", "parameters_withheld", "phase", "error_types"}
+                or not isinstance(node["identity"], str) or _safe_test_identity(node["identity"]) != (node["identity"], False)
+                or not _is_digest(node["identity_digest"]) or type(node["parameters_withheld"]) is not bool
+                or node["phase"] not in {"collect", "setup", "call", "teardown", "unknown"}
+                or not isinstance(node["error_types"], list) or not 1 <= len(node["error_types"]) <= len(_DETAIL_ERRORS)
+                or any(not isinstance(t, str) or t not in _DETAIL_ERRORS for t in node["error_types"])):
+            raise FailureDiagnosticError("PAGE_INVALID")
+        identity = node["identity_digest"], node["phase"]
+        if identity in seen:
+            raise FailureDiagnosticError("PAGE_INVALID")
+        seen.add(identity)
+
+
+def validate_failure_detail_view(value):
+    fields = {"format", "version", "availability", "binding", "selector", "page", "next_selector", "blocker", "proof", "raw_output_withheld"}
+    if (not isinstance(value, dict) or len(value) != len(fields) or set(value) != fields or value["format"] != "AIOS_FAILURE_DETAIL_VIEW"
+            or type(value["version"]) is not int or value["version"] != 1
+            or value["proof"] != "NON_PASS_DIAGNOSTIC" or value["raw_output_withheld"] is not True):
+        raise FailureDiagnosticError("PAGE_INVALID")
+    if value["availability"] == "UNAVAILABLE":
+        if value["blocker"] not in _PAGE_BLOCKERS or any(value[k] is not None for k in ("binding", "selector", "page", "next_selector")):
+            raise FailureDiagnosticError("PAGE_INVALID")
+    else:
+        selector, page = value["selector"], value["page"]
+        validate_failure_page_selector(selector)
+        fields = {"format", "version", "binding", "command", "exit_code", "coverage", "failure_count", "observed_count", "withheld_count", "limitation",
+            "start", "stop", "failed_nodes", "next_offset", "exhausted", "nodes_truncated", "proof", "raw_output_withheld"}
+        if (not isinstance(page, dict) or len(page) != len(fields) or set(page) != fields or page["format"] != "AIOS_SAFE_FAILURE_PAGE"
+                or type(page["version"]) is not int or page["version"] != 1
+                or page["binding"] != selector["binding"] or value["binding"] != selector["binding"]
+                or any(page[k] != selector[k] for k in ("start", "stop"))
+                or _failure_digest(page) != selector["page_digest"]
+                or type(page["observed_count"]) is not int or not page["stop"] <= page["observed_count"] <= 10000
+                or page["stop"] != min(page["start"] + FAILURE_PAGE_SIZE, page["observed_count"])
+                or type(page["exit_code"]) is not int or page["exit_code"] == 0
+                or _failure_digest(_public_command(page["command"])) != selector["binding"]["command_digest"]
+                or page["coverage"] not in {"COMPLETE", "PARTIAL"}
+                or value["availability"] != ("AVAILABLE" if page["coverage"] == "COMPLETE" else "PARTIAL")
+                or page["limitation"] not in {"ALLOWLIST_AND_PARAMETERS_WITHHELD", "TEXT_POPULATION_UNKNOWN", "OBSERVATION_INCOMPLETE"}
+                or page["limitation"] != ("ALLOWLIST_AND_PARAMETERS_WITHHELD" if page["coverage"] == "COMPLETE" else
+                    "TEXT_POPULATION_UNKNOWN" if selector["binding"]["source_kind"] == "PROTECTED_SUMMARY" else "OBSERVATION_INCOMPLETE")
+                or page["withheld_count"] is not None and (type(page["withheld_count"]) is not int or not 0 <= page["withheld_count"] <= 10000)
+                or selector["binding"]["source_kind"] == "PROTECTED_SUMMARY" and page["withheld_count"] is not None
+                or page["coverage"] == "COMPLETE" and (selector["binding"]["source_kind"] != "PROTECTED_OBSERVATION"
+                    or type(page["failure_count"]) is not int or type(page["withheld_count"]) is not int
+                    or not 0 <= page["withheld_count"] <= page["failure_count"] <= 10000
+                    or page["failure_count"] != page["observed_count"] + page["withheld_count"])
+                or page["coverage"] == "PARTIAL" and page["failure_count"] is not None
+                or page["proof"] != "NON_PASS_DIAGNOSTIC" or page["raw_output_withheld"] is not True
+                or value["blocker"] is not None):
+            raise FailureDiagnosticError("PAGE_INVALID")
+        _validate_page_nodes(page["failed_nodes"])
+        more = page["stop"] < page["observed_count"]
+        if (len(page["failed_nodes"]) != page["stop"] - page["start"]
+                or page["exhausted"] is not (not more) or page["nodes_truncated"] is not more
+                or page["next_offset"] != (page["stop"] if more else None)
+                or more != (value["next_selector"] is not None)):
+            raise FailureDiagnosticError("PAGE_INVALID")
+        if more:
+            next_selector = value["next_selector"]
+            validate_failure_page_selector(next_selector)
+            if (next_selector["binding"] != selector["binding"] or next_selector["start"] != page["stop"]
+                    or any(next_selector[k] != selector[k] for k in ("artifact_sha", "manifest_digest"))):
+                raise FailureDiagnosticError("PAGE_INVALID")
+        _public_bytes(page, max_bytes=FAILURE_PAGE_MAX_BYTES)
+    _public_bytes(value, max_bytes=FAILURE_VIEW_MAX_BYTES)
+
+
+def _failure_detail_projection_inputs(private, public):
+    """Runtime transport writer only, after authenticating the original role.
+
+    At most 10000 allowlisted identities in total, 32 commands, 344 page blobs,
+    16 MiB extra bytes. Exceeding a bound produces an explicit command blocker.
+    The immutable tree, not this pure projector's arguments, grants read authority.
+    """
+    from .verification_contract import MAX_CANONICAL_FAILURES
+    if ("public_projection" in private or _failure_digest(private) != public["public_projection"]["private_failure_digest"]
+            or any(private[k] != public[k] for k in ("kind", "run_id", "task", "executor", "base_sha", "failed_head_sha", "phase"))):
+        raise FailureDiagnosticError("PROJECTION_INVALID")
+    # Both roles were validated by the transport writer. Reprojecting the full
+    # private population here would repeat expensive source validation and
+    # serialization without adding authority to this immutable digest binding.
+    context = _failure_context_from_validated(public, original=public)
+    manifest = dict(format="AIOS_FAILURE_DETAIL_MANIFEST", version=1, binding=_page_owner(context),
+        commands=[], proof="NON_PASS_DIAGNOSTIC", raw_output_withheld=True)
+    inputs, used, population = {}, 0, 0
+    if private["phase"] != "VERIFICATION":
+        return {}
+    details = {v["index"]: v for v in public["error"]["safe_detail"]["verification"]}
+    for index, outcome in enumerate(private["error"].get("verification", [])[:32]):
+        if outcome["exit_code"] == 0:
+            continue
+        detail = details[index]
+        entry = dict(index=index, command=detail["command"], exit_code=detail["exit_code"],
+            source_kind=detail["source_kind"], source_digest=detail["source_digest"], sequence_digest=None,
+            coverage="PARTIAL", failure_count=None, observed_count=None, withheld_count=None,
+            limitation="TEXT_POPULATION_UNKNOWN" if detail["source_kind"] == "PROTECTED_SUMMARY" else "OBSERVATION_INCOMPLETE",
+            blocker=None, pages=[])
+        manifest["commands"].append(entry)
+        ref = outcome.get("verification")
+        observed = ref.get("candidate") if isinstance(ref, dict) else None
+        if observed is not None:
+            reports = (r for r in observed["reports"] if r["outcome"] == "FAIL")
+            nodes = []
+            withheld = 0
+            for report in reports:
+                identity, parameters = _safe_test_identity(report["nodeid"])
+                if identity is None:
+                    withheld += 1
+                else:
+                    nodes.append(dict(identity=identity, identity_digest=_failure_digest(report["nodeid"]),
+                        parameters_withheld=parameters, phase=report["phase"], error_types=_detail_error_types(report.get("detail", ""))))
+            complete = observed["complete"] is True and observed["unstable"] is False
+        else:
+            nodes, truncated, status = _pytest_summary_nodes(outcome.get("summary"), outcome["command"], limit=MAX_CANONICAL_FAILURES + 1)
+            if status != "PARSED":
+                entry["blocker"] = status
+                continue
+            if truncated or len(nodes) > MAX_CANONICAL_FAILURES:
+                entry["blocker"] = "OBSERVED_POPULATION_LIMIT"
+                continue
+            complete, withheld = False, None
+        # Exact source identities remain separate even when parameter stripping
+        # produces identical displays. Repeated text rows are one exact identity.
+        seen, unique = set(), []
+        for node in nodes:
+            key = node["identity_digest"], node["phase"]
+            if key not in seen:
+                seen.add(key)
+                unique.append(node)
+        nodes = unique
+        if population + len(nodes) > MAX_CANONICAL_FAILURES:
+            entry["blocker"] = "OBSERVED_POPULATION_LIMIT"
+            continue
+        entry.update(observed_count=len(nodes), withheld_count=withheld,
+            coverage="COMPLETE" if complete else "PARTIAL",
+            failure_count=observed["failure_count"] if complete else None,
+            limitation="ALLOWLIST_AND_PARAMETERS_WITHHELD" if complete else entry["limitation"],
+            sequence_digest=_failure_digest(nodes))
+        pending, pending_bytes = {}, 0
+        try:
+            for start in range(0, max(1, len(nodes)), FAILURE_PAGE_SIZE):
+                stop = min(start + FAILURE_PAGE_SIZE, len(nodes))
+                more = stop < len(nodes)
+                page = dict(format="AIOS_SAFE_FAILURE_PAGE", version=1, binding=_page_binding(manifest["binding"], entry),
+                    **{k: entry[k] for k in ("command", "exit_code", "coverage", "failure_count", "observed_count", "withheld_count", "limitation")},
+                    start=start, stop=stop, failed_nodes=nodes[start:stop], next_offset=stop if more else None,
+                    exhausted=not more, nodes_truncated=more, proof="NON_PASS_DIAGNOSTIC", raw_output_withheld=True)
+                raw = _public_bytes(page, max_bytes=FAILURE_PAGE_MAX_BYTES)
+                if used + pending_bytes + len(raw) > FAILURE_PROJECTION_MAX_BYTES - FAILURE_MANIFEST_MAX_BYTES:
+                    raise ValueError("projection budget")
+                pending[_page_name(index, start)] = raw
+                pending_bytes += len(raw)
+                entry["pages"].append(_failure_digest(page))
+        except (ValueError, ReviewTransportError):
+            entry.update(sequence_digest=None, coverage="PARTIAL", failure_count=None, observed_count=None,
+                withheld_count=None, blocker="PROJECTION_BUDGET_EXHAUSTED", pages=[])
+            continue
+        population += len(nodes)
+        used += pending_bytes
+        inputs.update(pending)
+    inputs[FAILURE_DETAIL_MANIFEST] = _public_bytes(manifest, max_bytes=FAILURE_MANIFEST_MAX_BYTES)
+    return inputs
+
+
+def _validate_failure_manifest(manifest, context):
+    if (not isinstance(manifest, dict) or set(manifest) != {"format", "version", "binding", "commands", "proof", "raw_output_withheld"}
+            or manifest["format"] != "AIOS_FAILURE_DETAIL_MANIFEST" or type(manifest["version"]) is not int or manifest["version"] != 1
+            or manifest["binding"] != _page_owner(context) or manifest["proof"] != "NON_PASS_DIAGNOSTIC"
+            or manifest["raw_output_withheld"] is not True or not isinstance(manifest["commands"], list) or len(manifest["commands"]) > 32):
+        raise FailureDiagnosticError("PROJECTION_INVALID")
+    details = {v["index"]: v for v in context.get("safe_detail", {}).get("verification", [])}
+    expected = [i for i, v in enumerate(context["verification"]) if v["exit_code"] != 0]
+    if [v.get("index") for v in manifest["commands"] if isinstance(v, dict)] != expected:
+        raise FailureDiagnosticError("PROJECTION_INVALID")
+    total = 0
+    for command in manifest["commands"]:
+        if not isinstance(command, dict) or set(command) != _PAGE_COMMAND_FIELDS:
+            raise FailureDiagnosticError("PROJECTION_INVALID")
+        detail = details.get(command["index"])
+        if detail is None or any(command[k] != detail[k] for k in ("command", "exit_code", "source_kind", "source_digest")):
+            raise FailureDiagnosticError("PROJECTION_INVALID")
+        if (command["coverage"] not in {"COMPLETE", "PARTIAL"}
+                or command["limitation"] not in {"ALLOWLIST_AND_PARAMETERS_WITHHELD", "TEXT_POPULATION_UNKNOWN", "OBSERVATION_INCOMPLETE"}
+                or not isinstance(command["pages"], list)):
+            raise FailureDiagnosticError("PROJECTION_INVALID")
+        if command["blocker"] is not None:
+            if (command["blocker"] not in _PAGE_BLOCKERS or command["pages"] or command["coverage"] != "PARTIAL"
+                    or any(command[k] is not None for k in ("sequence_digest", "observed_count", "failure_count", "withheld_count"))):
+                raise FailureDiagnosticError("PROJECTION_INVALID")
+            continue
+        count = command["observed_count"]
+        complete = detail["source_kind"] == "PROTECTED_OBSERVATION" and detail["complete"] is True and detail["unstable"] is False
+        if (type(count) is not int or not 0 <= count <= 10000 or not _is_digest(command["sequence_digest"])
+                or command["coverage"] != ("COMPLETE" if complete else "PARTIAL")
+                or command["failure_count"] != (detail["failure_count"] if complete else None)
+                or command["source_kind"] == "PROTECTED_SUMMARY" and (detail.get("summary_status") != "PARSED" or not count)
+                or command["limitation"] != ("ALLOWLIST_AND_PARAMETERS_WITHHELD" if complete else
+                    "TEXT_POPULATION_UNKNOWN" if command["source_kind"] == "PROTECTED_SUMMARY" else "OBSERVATION_INCOMPLETE")
+                or command["withheld_count"] is not None and (type(command["withheld_count"]) is not int or not 0 <= command["withheld_count"] <= 10000)
+                or command["source_kind"] == "PROTECTED_SUMMARY" and command["withheld_count"] is not None
+                or complete and (type(command["withheld_count"]) is not int or command["withheld_count"] < 0
+                    or count + command["withheld_count"] != command["failure_count"])
+                or len(command["pages"]) != max(1, (count + FAILURE_PAGE_SIZE - 1) // FAILURE_PAGE_SIZE)
+                or any(not _is_digest(v) for v in command["pages"])):
+            raise FailureDiagnosticError("PROJECTION_INVALID")
+        total += count
+    if total > 10000:
+        raise FailureDiagnosticError("OBSERVED_POPULATION_LIMIT")
+    _public_bytes(manifest, max_bytes=FAILURE_MANIFEST_MAX_BYTES)
+
+
+def read_failure_detail_projection(context, read_document, *, selector=None):
+    """Read only safe blobs at the authenticated terminal's exact Git SHA.
+
+    The backend enforces byte bounds BEFORE decoding. A selector is compared to
+    the authoritative manifest; it never supplies a source or creates a page.
+    With no selector this returns discovery only, containing no failed nodes.
+    """
+    sha = context["source"]["artifact_sha"]
+    if selector is not None:
+        validate_failure_page_selector(selector)
+        if selector["artifact_sha"] != sha or any(selector["binding"][k] != v for k, v in _page_owner(context).items()):
+            raise FailureDiagnosticError("SELECTOR_EXPIRED")
+    manifest = read_document(sha, FAILURE_DETAIL_MANIFEST, FAILURE_MANIFEST_MAX_BYTES)
+    if manifest is None:
+        if selector is None:
+            return None  # Historical FAILURE remains byte-for-byte unchanged.
+        raise FailureDiagnosticError("PROJECTION_UNAVAILABLE")
+    _validate_failure_manifest(manifest, context)
+    if selector is None:
+        return dict(format="AIOS_FAILURE_PAGING", version=1, binding=manifest["binding"], artifact_sha=sha,
+            manifest_digest=_failure_digest(manifest), commands=[dict(
+                **{k: c[k] for k in _PAGE_COMMAND_FIELDS - {"pages"}},
+                first_selector=_page_selector(manifest, sha, c, 0) if c["pages"] else None) for c in manifest["commands"]])
+    if selector["manifest_digest"] != _failure_digest(manifest):
+        raise FailureDiagnosticError("SELECTOR_EXPIRED")
+    command = next((c for c in manifest["commands"] if c["index"] == selector["binding"]["index"]), None)
+    if command is None or command["blocker"]:
+        raise FailureDiagnosticError(command["blocker"] if command else "PAGE_OUT_OF_RANGE")
+    start = selector["start"]
+    if start >= max(1, command["observed_count"]):
+        raise FailureDiagnosticError("PAGE_OUT_OF_RANGE")
+    if selector != _page_selector(manifest, sha, command, start):
+        raise FailureDiagnosticError("SELECTOR_INVALID")
+    page = read_document(sha, _page_name(command["index"], start), FAILURE_PAGE_MAX_BYTES)
+    if page is None or _failure_digest(page) != selector["page_digest"]:
+        raise FailureDiagnosticError("PAGE_INVALID")
+    if any(page.get(k) != command[k] for k in ("command", "exit_code", "coverage", "failure_count", "observed_count", "withheld_count", "limitation")):
+        raise FailureDiagnosticError("PAGE_INVALID")
+    following = _page_selector(manifest, sha, command, page["stop"]) if page["next_offset"] is not None else None
+    view = dict(format="AIOS_FAILURE_DETAIL_VIEW", version=1,
+        availability="AVAILABLE" if command["coverage"] == "COMPLETE" else "PARTIAL",
+        binding=page["binding"], selector=selector, page=page, next_selector=following, blocker=None,
+        proof="NON_PASS_DIAGNOSTIC", raw_output_withheld=True)
+    validate_failure_detail_view(view)
+    return view
+
+
+def validate_failure_paging(value, context):
+    if (not isinstance(value, dict) or set(value) != {"format", "version", "binding", "artifact_sha", "manifest_digest", "commands"}
+            or value["format"] != "AIOS_FAILURE_PAGING" or type(value["version"]) is not int or value["version"] != 1
+            or value["binding"] != _page_owner(context) or value["artifact_sha"] != context["source"]["artifact_sha"]
+            or not _is_digest(value["manifest_digest"]) or not isinstance(value["commands"], list) or len(value["commands"]) > 32):
+        raise FailureDiagnosticError("PROJECTION_INVALID")
+    reconstructed = []
+    for command in value["commands"]:
+        if not isinstance(command, dict) or set(command) != _PAGE_COMMAND_FIELDS - {"pages"} | {"first_selector"}:
+            raise FailureDiagnosticError("PROJECTION_INVALID")
+        first = command["first_selector"]
+        if first is not None:
+            validate_failure_page_selector(first)
+            if (first["binding"] != _page_binding(value["binding"], command) or first["start"] != 0
+                    or any(first[k] != value[k] for k in ("artifact_sha", "manifest_digest"))):
+                raise FailureDiagnosticError("PROJECTION_INVALID")
+        elif command["blocker"] is None:
+            raise FailureDiagnosticError("PROJECTION_INVALID")
+        reconstructed.append(dict(**{k: v for k, v in command.items() if k != "first_selector"},
+            pages=([first["page_digest"]] * max(1, (command["observed_count"] + 31) // 32)) if first else []))
+    _validate_failure_manifest(dict(format="AIOS_FAILURE_DETAIL_MANIFEST", version=1, binding=value["binding"],
+        commands=reconstructed, proof="NON_PASS_DIAGNOSTIC", raw_output_withheld=True), context)
 
 
 def _capture_fact(value: Any, *, partial: bool) -> dict[str, Any]:
@@ -639,6 +1016,12 @@ def failure_context(data: Mapping[str, Any], *, artifact_sha: str | None = None,
         return None
     else:
         public = _project_failure(data)
+    return _failure_context_from_validated(public, original=data, artifact_sha=artifact_sha,
+        candidate_available=candidate_available)
+
+
+def _failure_context_from_validated(public, *, original, artifact_sha=None, candidate_available=None):
+    """Internal projection of a FAILURE already validated in this exact read."""
     error = public["error"]
     diagnostic = error.get("diagnostic")
     if diagnostic is None:
@@ -670,7 +1053,7 @@ def failure_context(data: Mapping[str, Any], *, artifact_sha: str | None = None,
                 verification_truncated=len(error["verification"]) > len(outcomes),
                 evidence_identities=error.get("evidence_identities", [])[:32],
                 evidence_identities_truncated=len(error.get("evidence_identities", [])) > 32,
-                source=dict(artifact_sha=artifact_sha, failure_digest=_failure_digest(data),
+                source=dict(artifact_sha=artifact_sha, failure_digest=_failure_digest(original),
                             private_failure_digest=public["public_projection"]["private_failure_digest"]),
                 proof="NON_PASS_DIAGNOSTIC")
     context["safe_detail"] = error.get("safe_detail") or safe_failure_detail(public)
@@ -683,7 +1066,7 @@ def validate_failure_context(value: Any) -> None:
     fields = {"format", "version", "kind", "run_id", "task", "executor", "base_sha", "subject_sha", "phase",
               "candidate", "candidate_availability", "diagnostic", "verification", "verification_truncated", "evidence_identities",
               "evidence_identities_truncated", "source", "proof"}
-    if (not isinstance(value, dict) or set(value) - {"safe_detail", "detail_blocker"} != fields or value["format"] != "AIOS_FAILURE_CONTEXT"
+    if (not isinstance(value, dict) or set(value) - {"safe_detail", "detail_blocker", "paging", "paging_blocker"} != fields or value["format"] != "AIOS_FAILURE_CONTEXT"
             or type(value["version"]) is not int or value["version"] != 1 or value["kind"] != "FAILURE_CONTEXT"
             or value["proof"] != "NON_PASS_DIAGNOSTIC"
             or value["candidate_availability"] not in {"AVAILABLE", "UNAVAILABLE", "UNKNOWN"}
@@ -737,6 +1120,10 @@ def validate_failure_context(value: Any) -> None:
                 or blocker["code"] not in {"PRIVATE_DETAIL_UNAVAILABLE", "PRIVATE_DETAIL_ACCESS_DENIED", "PRIVATE_DETAIL_INTEGRITY_INVALID"}
                 or blocker["action"] != "READ_EXACT_RUNTIME_PROJECTION"):
             raise ValueError("invalid FAILURE detail blocker")
+    if "paging" in value:
+        validate_failure_paging(value["paging"], value)
+    if "paging_blocker" in value and (value["paging_blocker"] not in _PAGE_BLOCKERS or "paging" in value):
+        raise ValueError("invalid FAILURE paging blocker")
     _public_bytes(value, max_bytes=256 * 1024)
 
 
@@ -821,7 +1208,7 @@ def _public_metadata_value(value: Any, template: Any = None) -> Any:
         return _project_failure(value, projection_format=marker.get("format", PUBLIC_FAILURE_FORMAT),
             include_detail=("safe_detail" in template.get("error", {}) if marker else True),
             _detail_version=(template.get("error", {}).get("safe_detail", {}).get("version", 1)
-                             if marker else 2))
+                             if marker else None))
     data = {key: _public_metadata_value(item, template.get(key) if isinstance(template, Mapping) else None)
             for key, item in value.items()}
     if "run_id" in data and "workspace" in data and "task" in data:
@@ -979,7 +1366,7 @@ def _project_reference(value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC_FAILURE_FORMAT,
-                     include_detail: bool = True, _detail_version: int = 2) -> dict[str, Any]:
+                     include_detail: bool = True, _detail_version: int | None = None) -> dict[str, Any]:
     """Produce FAILURE metadata; omitted proof remains bound, never recreated."""
     if "public_projection" in data:
         validate_public_failure(data)
@@ -1007,8 +1394,8 @@ def _project_failure(data: Mapping[str, Any], *, projection_format: str = PUBLIC
             projected["error"]["exit_code"] = error["exit_code"]
         projected["error"]["diagnostic"] = diagnostic
         if include_detail:
-            projected["error"]["safe_detail"] = (_safe_failure_detail(data, version=1)
-                if _detail_version == 1 else safe_failure_detail(data))
+            projected["error"]["safe_detail"] = (_safe_failure_detail(data, version=_detail_version)
+                if _detail_version is not None else safe_failure_detail(data))
     # Full EVIDENCE in any validated package role retains identity/digest only.
     identities: dict[str, dict[str, str]] = {}
 
@@ -2045,6 +2432,7 @@ def _bind_performance_terminal_identity(
     run_id: str,
     task_id: str,
     terminal_kind: str,
+    _validated_failure: Mapping[str, Any] | None = None,
 ) -> tuple[int, str, str, str]:
     """Bind terminal identity to a fully validated admitted RUN."""
 
@@ -2098,7 +2486,9 @@ def _bind_performance_terminal_identity(
             f"canonical RUN SHA identity is invalid for {run_id}"
         )
 
-    terminal = _performance_json_mapping(terminal_bytes, terminal_kind)
+    if _validated_failure is not None and terminal_kind != "FAILURE":
+        raise ReviewTransportError("validated FAILURE cannot bind another terminal family")
+    terminal = _validated_failure if _validated_failure is not None else _performance_json_mapping(terminal_bytes, terminal_kind)
     if terminal_kind == "RESULT":
         if set(terminal) != {"result", "evidence"}:
             raise ReviewTransportError(
@@ -4880,6 +5270,15 @@ def _create_named_artifacts_commit(
                 f"persisted execution profile JSON missing: {execution_profile_path}"
             )
         inputs.append(("execution-profile.json", execution_profile_path))
+    if projected_inputs is not None and artifact_name == "failure.json":
+        extra = {name: raw for name, raw in projected_inputs.items()
+                 if name.startswith(".ai/transport/failure-detail-")}
+        if (len(extra) > 345 or sum(map(len, extra.values())) > FAILURE_PROJECTION_MAX_BYTES
+                or any(re.fullmatch(r"\.ai/transport/failure-detail-(?:manifest|\d{2}-\d{5})\.json", name) is None
+                       or len(raw) > (FAILURE_MANIFEST_MAX_BYTES if name == FAILURE_DETAIL_MANIFEST else FAILURE_PAGE_MAX_BYTES)
+                       for name, raw in extra.items())):
+            raise FailureDiagnosticError("PROJECTION_BUDGET_EXHAUSTED")
+        inputs.extend((name.removeprefix(".ai/transport/"), None) for name in sorted(extra))
     for name, path in inputs:
         try:
             proc = subprocess.run(
@@ -5042,6 +5441,11 @@ def transport_failure(
             )
     else:
         projected_inputs = dict(expected)
+        # Only prospective transport gets safe projection blobs. Retrying an
+        # existing immutable ref never backfills or rewrites historical FAILURE.
+        if "public_projection" in failure and failure["phase"] == "VERIFICATION":
+            original = failure_document(failure_path.read_bytes(), private_original=True)
+            projected_inputs.update(_failure_detail_projection_inputs(original, failure))
         for name, content in (("observation.json", expected_observation),
                               ("pre-verification-candidate.json", expected_preverification),
                               ("execution-profile.json", expected_execution_profile)):

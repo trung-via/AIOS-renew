@@ -40,6 +40,12 @@ class BrainSyncError(OperatorError):
     """Raised when Brain Sync observation cannot be completed."""
 
 
+def _has_failure_pages(value):
+    diagnostics, unified = value.get("diagnostics") or {}, value.get("unified_state") or {}
+    return "failure_page" in value or any("paging" in (context or {}) for context in (
+        diagnostics.get("failure_context"), diagnostics.get("attributed_failure_context"), unified.get("failure_context")))
+
+
 @dataclass(frozen=True)
 class BrainSyncSnapshot:
     """Versioned, bounded, and mutation-free Brain Sync observation snapshot."""
@@ -64,8 +70,18 @@ class BrainSyncSnapshot:
     # Exact correction observations supply this; ordinary planning never does.
     correction_subject: Mapping[str, Any] | None = None
     diagnostics: Mapping[str, Any] | None = None
+    failure_page: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        if self.failure_page is not None:
+            from .review_transport import validate_failure_detail_view
+            try:
+                validate_failure_detail_view(self.failure_page)
+            except (ReviewTransportError, ValueError, TypeError, KeyError) as exc:
+                raise BrainSyncError("FAILURE_PAGE_INTEGRITY_INVALID") from exc
+            if (self.unified_state is not None or self.diagnostics is not None
+                    or self.failure_page["binding"] is not None and self.selected_task != self.failure_page["binding"]["task"]):
+                raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
         if self.diagnostics is not None:
             validate_diagnostic_context(self.diagnostics, self.selected_task)
         if self.unified_state and self.unified_state.get("failure_context") is not None:
@@ -112,6 +128,10 @@ class BrainSyncSnapshot:
             body["correction_subject"] = dict(self.correction_subject)
         if self.diagnostics is not None:
             body["diagnostics"] = dict(self.diagnostics)
+        if self.failure_page is not None:
+            body["failure_page"] = dict(self.failure_page)
+        if _has_failure_pages(body):
+            body["repository"]["root"] = "protected-repository-root"
         return body
 
     def render(self) -> str:
@@ -275,7 +295,7 @@ def _exact_failure_context(root, run_id, sources=None):
         if sha is None:
             raise BrainSyncError("FAILURE_SOURCE_UNAVAILABLE")
         item = attention(FAILURE, dict(run_id=run_id, artifact_sha=sha))
-        context = terminal_failure_context(item, backend)
+        context = terminal_failure_context(item, backend, include_paging=True)
         if context is None:
             raise BrainSyncError("FAILURE_DETAIL_UNAVAILABLE")
         # This owner-gated helper can only add a safe projection; a provider can
@@ -297,12 +317,17 @@ def _exact_failure_context(root, run_id, sources=None):
 def observe_brain_sync(repo: str | Path | None = None, *, task_id: str | None = None,
                        run_id: str | None = None, delivery_id: str | None = None,
                        issue_number: int | None = None, workflow_run_id: int | None = None,
-                       run_attempt: int | None = None, operational_sources=None, canonical_sources=None) -> BrainSyncSnapshot:
+                       run_attempt: int | None = None, operational_sources=None, canonical_sources=None,
+                       failure_page_selector: Mapping[str, Any] | None = None) -> BrainSyncSnapshot:
     """Existing planning Sync, or an explicitly selected read-only diagnostic.
 
     Exact diagnostic selectors do not select work or change a planning bookmark.
     Neither user URLs/blocks nor filesystem locators are accepted.
     """
+    if failure_page_selector is not None:
+        if any(x is not None for x in (task_id, run_id, delivery_id, issue_number, workflow_run_id, run_attempt, operational_sources)):
+            raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
+        return _observe_failure_page(repo, failure_page_selector, canonical_sources)
     if all(x is None for x in (task_id, run_id, delivery_id, issue_number, workflow_run_id, run_attempt)):
         return _observe_brain_sync(repo=repo)
     root = resolve_repository(repo)
@@ -356,6 +381,28 @@ def observe_brain_sync(repo: str | Path | None = None, *, task_id: str | None = 
         selection_status="EXACT_DIAGNOSTIC_SUBJECT", lifecycle_state=unified["lifecycle_state"] if unified else "OBSERVATION",
         next_action=unified["next_action"] if unified else "NONE", authority=unified["authority"] if unified else "NONE",
         selected_task=selected, unified_state=unified, blocker=None, diagnostics=contexts)
+    snapshot.as_dict()
+    return snapshot
+
+
+def _observe_failure_page(repo, selector, sources=None):
+    """Same Git-only artifact access as attention; no local/raw fallback."""
+    from .brain_attention import GitSources, terminal_failure_page
+    from .review_transport import failure_page_unavailable
+    root = resolve_repository(repo)
+    main = _resolve_main_sha(root)
+    try:
+        if sources is not None:
+            view = terminal_failure_page(selector, sources)
+        else:
+            with op._remote_observation_repository(root) as observer:
+                view = terminal_failure_page(selector, GitSources(observer, op._git, resolve_transport_remote(observer)))
+    except (OperatorError, ReviewTransportError, OSError, ValueError, TypeError, KeyError):
+        view = failure_page_unavailable("FAILURE_SOURCE_UNAVAILABLE")
+    snapshot = BrainSyncSnapshot(repository=dict(root=str(root), name=_resolve_repository_name(root), main_sha=main, remote=None),
+        main_sha=main, roadmap={"selection": "EXACT_FAILURE_PAGE"}, selection_status="EXACT_DIAGNOSTIC_SUBJECT",
+        lifecycle_state="OBSERVATION", next_action="NONE", authority="NONE",
+        selected_task=view["binding"]["task"] if view["binding"] is not None else None, failure_page=view)
     snapshot.as_dict()
     return snapshot
 

@@ -18,6 +18,33 @@ from aios_renew.brain_context import (
 from aios_renew.brain_sync import BrainSyncSnapshot
 
 
+def test_task394_work_context_carries_one_safe_page_and_invalidates_on_page_change(tmp_path, monkeypatch):
+    from aios_renew import brain_sync, brain_context
+    from tests.test_failure_detail_pagination import GitFailure, summary_failure
+    canonical = GitFailure(tmp_path / "page-context", *summary_failure(33))
+    monkeypatch.setattr(brain_sync, "_resolve_main_sha", lambda repo: "d" * 40)
+    monkeypatch.setattr(brain_sync, "_resolve_repository_name", lambda repo: "trung-via/AIOS-renew")
+    selector = canonical.discover()["paging"]["commands"][0]["first_selector"]
+    real = brain_sync.observe_brain_sync
+    monkeypatch.setattr(brain_context, "observe_brain_sync", lambda **kw: real(**kw, canonical_sources=canonical.sources))
+    first = compose_brain_work_context(repo=canonical.reader,
+        diagnostic_selector={"failure_page_selector": selector}, current_request={"flow_selector": "DIAGNOSTIC"})
+    later = compose_brain_work_context(repo=canonical.reader,
+        diagnostic_selector={"failure_page_selector": first.canonical_observation["failure_page"]["next_selector"]},
+        current_request={"flow_selector": "DIAGNOSTIC"})
+    assert first.invalidation_fingerprint != later.invalidation_fingerprint
+    assert "failure_page_sha256" in later.invalidation_basis
+    rendered = later.render()
+    assert later.as_dict()["canonical_observation"]["repository"]["root"] == "protected-repository-root"
+    assert json.dumps(str(canonical.reader))[1:-1] not in rendered
+    assert all(s not in rendered for s in ("synthetic-secret", "C:/private", "raw_path", "traceback"))
+    assert len(later.canonical_observation["failure_page"]["page"]["failed_nodes"]) == 1
+    forged = deepcopy(later.canonical_observation)
+    forged["failure_page"]["page"]["failed_nodes"][0]["identity"] = "C:/private/host"
+    with pytest.raises(ValueError):
+        replace(later, canonical_observation=forged).render()
+
+
 def test_task372_provider_neutral_work_context_carries_only_bound_safe_detail(monkeypatch, tmp_path):
     from aios_renew import brain_sync, brain_context
     from tests.test_brain_attention import Task372CanonicalSources

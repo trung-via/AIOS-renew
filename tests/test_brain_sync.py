@@ -25,6 +25,32 @@ from tests.operator_test_support import (
 )
 
 
+def test_task394_git_only_sync_discovers_and_requests_later_page(tmp_path, monkeypatch):
+    from aios_renew import brain_sync
+    from tests.test_failure_detail_pagination import GitFailure, summary_failure
+    canonical = GitFailure(tmp_path / "canonical-pages", *summary_failure(33))
+    monkeypatch.setattr(brain_sync, "_resolve_main_sha", lambda repo: "d" * 40)
+    monkeypatch.setattr(brain_sync, "_resolve_repository_name", lambda repo: "trung-via/AIOS-renew")
+    def denied_raw(*args):
+        raise AssertionError("portable pagination must use Git safe artifacts")
+    monkeypatch.setattr(brain_sync.op, "observe_runtime_failure_detail", denied_raw)
+    discovery = observe_brain_sync(repo=canonical.reader, run_id=canonical.run["run_id"], canonical_sources=canonical.sources)
+    first_selector = discovery.diagnostics["failure_context"]["paging"]["commands"][0]["first_selector"]
+    first = observe_brain_sync(repo=canonical.reader, failure_page_selector=first_selector, canonical_sources=canonical.sources)
+    later = observe_brain_sync(repo=canonical.reader, failure_page_selector=first.failure_page["next_selector"], canonical_sources=canonical.sources)
+    exported = later.as_dict()
+    assert discovery.as_dict()["repository"]["root"] == exported["repository"]["root"] == "protected-repository-root"
+    assert exported["failure_page"]["page"]["start"] == 32
+    assert len(exported["failure_page"]["page"]["failed_nodes"]) == 1
+    assert "diagnostics" not in exported and exported["unified_state"] is None
+    assert exported["authority"] == "NONE" and exported["next_action"] == "NONE"
+    assert all(exported[k] is False for k in ("run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert "synthetic-secret" not in later.render() and "C:/private" not in later.render()
+    assert not list(canonical.reader.glob("*.json"))
+    with pytest.raises(BrainSyncError, match="FAILURE_SUBJECT_MISMATCH"):
+        observe_brain_sync(repo=canonical.reader, run_id=canonical.run["run_id"], failure_page_selector=first_selector)
+
+
 @pytest.mark.parametrize("selector", ["issue", "delivery", "run"])
 def test_task372_exact_sync_composes_real_readers_without_human_url(tmp_path, monkeypatch, selector):
     from aios_renew import brain_sync
