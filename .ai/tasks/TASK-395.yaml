@@ -1,0 +1,101 @@
+task_id: TASK-395
+revision: 1
+goal: 'Activate published TCA-2 and ROA-1 R3 in production within this single TASK
+  and update the Project Contract: future improvement TASKs include activation; measure
+  performance only afterward.'
+problem: TASK-392/RUN-392-001/REVIEW-392-001 published new profiles but left them
+  inactive; TASK-393 still used old ROA. Human explicitly requires actual activation,
+  not a prepared-only task or benchmark gate.
+assumptions:
+- Human 2026-10-21 explicitly prioritizes TASK-395 over further TASK-393 work; preserve
+  all TASK-393 terminal artifacts without repair, reset or cleanup.
+- AUTHOR_TASK base is canonical main 4c18172b35b5f66b44f0835010061ed48c8cceb7; check
+  fresh SHA before dispatch or publish. TASK-394 is already authored; do not modify
+  it.
+- TASK-392 r1 RUN-392-001 REVIEW-392-001 PRIMARY PASS reviewed/published candidate
+  86e9a3287b1a5b336275a28c173cf835e9c2366d, review SHA c2e28435c0f98268421ad2b23233acdd0b949d9f,
+  artifact c62e625bbf000b5916ff3545572d89e484cc60a7; independently authenticate sources.
+- Human owns exact activation decision; Brain owns planning semantics; Executor only
+  transcribes already approved policy contents into candidate, Runtime verifies, Reviewer
+  judges and Publisher alone publishes eligible source.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-392.yaml
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider.py
+  - tests/test_brain_context.py
+  - tests/test_brain_provider.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - tests/test_brain_context.py
+  - tests/test_brain_provider.py
+non_goals:
+- No separate activation TASK, no performance measurement gate, no staged-only delivery
+  or benchmark before activation.
+- No edits to historical approved profile bodies, TASK-368/392/393/394 artifacts,
+  Runtime lifecycle, frozen Kernel or Git execution authority; no unauthorized reset
+  of dirty self-host.
+constraints:
+  hard:
+  - Insert exact approved human_r21_tca_roa_successor_activation record into canonical
+    roadmap candidate, retain original 2026-10-17 Human approval unchanged; supersedes
+    it using authenticated normalized digest 8db137a966ba2f3047cbf133b4d9513ecb918e80fb9a86d897098a377cce40a9.
+    Policy decision ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION;
+    TASK-392 r1, RUN-392-001, REVIEW-392-001 PASS, published source 86e9a3287b1a5b336275a28c173cf835e9c2366d,
+    decision c2e28435c0f98268421ad2b23233acdd0b949d9f. Retain unchanged AOA-1, MOA-1,
+    Human V1 option; use exact successor profile IDs/digests already published in
+    main.
+  - The Human-approved record is immutable semantic content; Executor must not choose
+    planning priority, profile mapping or new approval. No other roadmap change except
+    bounded Human priority note deferring TASK-393, if permitted by source. No automatic
+    planning NEXT advancement.
+  - 'Update docs/CHATGPT_PROJECT_CONTRACT.md in same candidate: all future improvement
+    plans must include implementation AND production activation within the same TASK''s
+    end-to-end delivery, not leave prepared-only as success; post-activation performance
+    measurement is nonblocking and not an activation prerequisite. Keep mandatory
+    Runtime verification, independent review, publication and explicit Human exception
+    for phased plans.'
+  - 'Exercise actual first-party canonical source/authenticated profile selection:
+    TCA-2 v2 + ROA-1 R3 v3 together, AOA/MOA unchanged, retained historical replay.
+    Missing/mismatched review/source SHA, stale main, duplicate/mixed activation policy
+    and untrusted source must fail closed.'
+  - Use exact source-binding and clean committed candidate; do not touch TASK-393
+    dirty local files. Runtime alone runs original minimum-sufficient-v1 command;
+    Reviewer/Pub gates preserved. Policy becomes active only after exact eligible
+    candidate publication, never on Issue receipt/RESULT.
+acceptance:
+- id: AC1
+  condition: Candidate contains complete Human-approved successor activation record
+    bound to original approval and exact reviewed/published TASK-392 and four profile
+    digests; old roadmap state untouched except this approved activation and bounded
+    priority note.
+- id: AC2
+  condition: First-party R5 source-authenticated policy selects TCA-2 and ROA-1 R3
+    together for new Brain attempts, preserving AOA/MOA, Human V1 option and exact
+    historical in-flight selections; focused tests exercise real caller.
+- id: AC3
+  condition: Adversarial tests fail closed on stale/forged/partial/mixed activation,
+    wrong approval digest or source/review SHA, missing published source or moved
+    main; old policy remains lawful for historical replay.
+- id: AC4
+  condition: Project Contract now mandates activation as part of each future improvement
+    TASK's delivered scope and rejects prepared-only success; performance measurements
+    are explicitly after activation, not a precondition, while security and Runtime/Reviewer/Publisher
+    gates remain intact.
+- id: AC5
+  condition: Changes confined to four authorized files; exact TASK-392 publication
+    ancestry and active policy source are testable before claims, no TASK-393 recovery,
+    full suite, separate activation step or unrelated roadmap/Kernel mutation.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_context.py tests/test_brain_provider.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
