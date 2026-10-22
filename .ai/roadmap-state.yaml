@@ -1,4 +1,40 @@
 version: 1
+human_bounded_unresolved_handoff_priority_20261022:
+  authority: EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
+  approved_on: "2026-10-22"
+  planning_only: true
+  source_main_sha_at_authoring: 8fc9ef2784b7781c287d760ec4597ab203052768
+  source_authentication: RUNTIME_INDEPENDENT_IDENTITY_CURRENTNESS_PROVENANCE_RESERVATION_AND_MAIN_CAS_REQUIRED
+  sole_high_level_next: bounded-unresolved-diagnostic-handoff-20261022
+  planning_document: docs/AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md
+  planning_owner: bounded-unresolved-diagnostic-handoff-20261022
+  implementation_task_id: TASK-399
+  implementation_task_revision: 1
+  decision: IMMEDIATE_BOUNDED_HANDOFF_BEFORE_CONDITIONAL_PUBLISHER_G2
+  g1_disposition: HISTORICAL_TASK398_IDENTITIES_PRESERVED_NO_NEW_COMPLETION_OR_PUBLICATION_INFERENCE
+  historical_failure:
+    run_id: RUN-398-004
+    task_id: TASK-398
+    task_revision: 1
+    artifact_sha: 70fec2ab3f681f51c3bdfa40f51bcba50fa33852
+    failed_head_sha: 2e97623c2ac283e151ffdc41485a90b8df14b19d
+    private_failure_digest: b2e60c61f1d6885802e68c81612355445b290c936754f7eda6faba77b17b0455
+    staged_byte_digest: UNKNOWN_NOT_BACKFILLED
+    disposition: IMMUTABLE_HISTORICAL_NON_PASS
+  g2:
+    queue_id: publisher-residual-after-git-guard-20261022
+    status: NOT_STARTED_CONDITIONAL
+    implementation_authorization: NONE_FROM_TASK399
+    reconsideration: EXPLICIT_SUBSEQUENT_HUMAN_BRAIN_RECONCILIATION
+  paused_plan:
+    id: lean-vp-intra-v13-budget-defaults-successor
+    planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+    disposition: PAUSED_RESUMABLE_NOT_COMPLETED_NOT_RETIRED
+    remaining: [L3-05, L3-06, G3, G6, L4]
+    original_lean_vp_slots: 16_PRESERVED
+  next_transition_authority: EXPLICIT_SUBSEQUENT_HUMAN_BRAIN_RECONCILIATION_NOT_RESULT_REVIEW_OR_PUBLISH
+  historical_snapshot_rule: OLDER_DATED_NEXT_AND_G1_BOOKMARKS_RETAIN_HISTORY_ONLY_NOT_AN_ADDITIONAL_CURRENT_NEXT
+
 human_git_guard_publish_priority_20261022:
   authority: EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
   approved_on: "2026-10-22"
@@ -190,9 +226,9 @@ human_lean_vp_l3_03_reconciliation_20261020:
     - NO_TASK_RUN_REVIEW_PUBLICATION_OR_DOWNSTREAM_LINEAGE_REWRITE
     - UNRESOLVED_INGRESS_PRODUCER_CONCURRENCY_REMAINS_SEPARATE_DIAGNOSTIC
 
-active_track: git-decision-guard-priority-20261022
+active_track: bounded-unresolved-diagnostic-handoff-20261022
 active_track_status: ACTIVE
-planning_document: docs/AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md
+planning_document: docs/AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md
 human_lean_vp_legacy_plan_retirement_and_task389_authoring_reconciliation_20261019:
   authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_RECONCILIATION
   approved_on: "2026-10-19"
@@ -2375,7 +2411,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - git-decision-guard-priority-20261022
+  - bounded-unresolved-diagnostic-handoff-20261022
 sequence:
 
   - id: TASK-309
@@ -3728,7 +3764,9 @@ sequence:
       L3-06 integrated G3 proof, exact separate Human G6 and subsequent L4.
       Defaults never grant consent, an Executor lease or production activation.
   - id: git-decision-guard-priority-20261022
-    status: NEXT
+    status: HISTORICAL_ONLY
+    historical_status: NEXT
+    prospective_priority_owner: bounded-unresolved-diagnostic-handoff-20261022
     phase: G1_BOUNDED_SHARED_GIT_DECISION_GUARD
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-22"
@@ -3750,8 +3788,32 @@ sequence:
       fresh recheck, competing PASS blocker, reservation and expected-old-main
       CAS. Runtime verification, independent review and publication remain gates;
       their outcomes alone never advance the roadmap or complete Lean VP work.
+  - id: bounded-unresolved-diagnostic-handoff-20261022
+    status: NEXT
+    phase: TASK399_BOUNDED_UNRESOLVED_FAILURE_HANDOFF
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-22"
+    planning_document: docs/AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md
+    planning_owner: bounded-unresolved-diagnostic-handoff-20261022
+    implementation_task_id: TASK-399
+    implementation_task_revision: 1
+    implementation_task_count: 1
+    predecessor: git-decision-guard-priority-20261022
+    predecessor_disposition: HISTORICAL_IDENTITIES_PRESERVED_NO_RETROACTIVE_REPAIR
+    conditional_successor: publisher-residual-after-git-guard-20261022
+    later_return: EXPLICIT_HUMAN_BRAIN_RECONCILIATION_WITH_PAUSED_RESUMABLE_LEAN_VP_V13
+    next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_LIFECYCLE_ADVANCEMENT
+    goal: >-
+      Implement the bounded source-bound non-PASS unresolved handoff in existing
+      Runtime FAILURE and authorized readers. Runtime verification, independent
+      Reviewer PASS and exact Publisher publication remain separate gates. G2
+      remains conditional and not started; Lean VP L3-05/L3-06/G3/G6/L4 remain
+      unfinished. Completion never automatically changes the planning NEXT.
+
   - id: publisher-residual-after-git-guard-20261022
     status: CONDITIONAL_QUEUE
+    implementation_status: NOT_STARTED
+    reconsider_after: EXPLICIT_HUMAN_BRAIN_RECONCILIATION_AFTER_TASK399
     phase: G2_RESIDUAL_PUBLISHER_PERFORMANCE_ONLY
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-22"
@@ -3764,6 +3826,7 @@ sequence:
     shared_guard_gain: MUST_NOT_BE_DOUBLE_COUNTED
     next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY
     later_return: RECONCILE_TASK397_THEN_L3_05_L3_06_G3_SEPARATE_G6_L4
+
   - id: adaptive-brain-audit-v1-retire-v3-prospective-consumers
     status: SUPERSEDED_PROSPECTIVE_PRIORITY
     historical_next_before_20261016: true

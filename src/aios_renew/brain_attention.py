@@ -540,6 +540,10 @@ def terminal_failure_context(item, sources, *, include_paging=False, page_select
         context = (_failure_context_from_validated(terminal, original=terminal, artifact_sha=sha,
                     candidate_available=before.get(candidate_ref) == head) if "public_projection" in terminal else
                    failure_context(terminal, artifact_sha=sha, candidate_available=before.get(candidate_ref) == head))
+        if (context is not None and context.get("safe_detail", {}).get("cause") == "UNRESOLVED_ITEMS"
+                and getattr(sources, "runtime_repo", None) is not None):
+            from .operator import observe_runtime_failure_detail
+            context = observe_runtime_failure_detail(sources.runtime_repo, context)
         result = context
         if context is not None and (include_paging or page_selector is not None):
             from .review_transport import read_failure_detail_projection, FailureDiagnosticError
@@ -703,8 +707,9 @@ def observe_ingress_success(delivery, repo):
 class GitSources:
     """Read exact refs and bounded identity blobs in a disposable Git store."""
 
-    def __init__(self, path, git, remote):
+    def __init__(self, path, git, remote, *, runtime_repo=None):
         self.path, self.git, self.remote = path, git, remote
+        self.runtime_repo = runtime_repo if runtime_repo is not None else path
         # This reader belongs to one disposable observation. Only successful
         # exact-SHA fetches are reusable; mutable ref snapshots are never cached.
         self._fetched = set()

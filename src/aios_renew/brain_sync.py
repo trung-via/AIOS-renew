@@ -46,6 +46,19 @@ def _has_failure_pages(value):
         diagnostics.get("failure_context"), diagnostics.get("attributed_failure_context"), unified.get("failure_context")))
 
 
+def _has_unresolved_diagnostic(value):
+    diagnostics, unified = value.get("diagnostics") or {}, value.get("unified_state") or {}
+    return (diagnostics.get("blocker") or {}).get("code") == "LIMIT_EXHAUSTED" or any((context or {}).get("safe_detail", {}).get("cause") == "UNRESOLVED_ITEMS" for context in (
+        diagnostics.get("failure_context"), diagnostics.get("attributed_failure_context"), unified.get("failure_context")))
+
+
+def _unresolved_portable_exhausted(value):
+    diagnostics, unified = value.get("diagnostics") or {}, value.get("unified_state") or {}
+    contexts = (diagnostics.get("failure_context"), diagnostics.get("attributed_failure_context"), unified.get("failure_context"))
+    return (sum(len((c or {}).get("safe_detail", {}).get("unresolved", {}).get("anchors", [])) for c in contexts) > 32
+        or len(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 8192)
+
+
 @dataclass(frozen=True)
 class BrainSyncSnapshot:
     """Versioned, bounded, and mutation-free Brain Sync observation snapshot."""
@@ -130,8 +143,12 @@ class BrainSyncSnapshot:
             body["diagnostics"] = dict(self.diagnostics)
         if self.failure_page is not None:
             body["failure_page"] = dict(self.failure_page)
-        if _has_failure_pages(body):
+        if _has_failure_pages(body) or _has_unresolved_diagnostic(body):
             body["repository"]["root"] = "protected-repository-root"
+        if _has_unresolved_diagnostic(body):
+            body["repository"].pop("remote_url", None)
+        if _has_unresolved_diagnostic(body) and _unresolved_portable_exhausted(body):
+            raise BrainSyncError("LIMIT_EXHAUSTED")
         return body
 
     def render(self) -> str:
@@ -280,7 +297,7 @@ def validate_diagnostic_context(value, task=None):
     blocker = value["blocker"]
     if blocker is not None and (not isinstance(blocker, dict) or set(blocker) != {"code", "action"}
             or blocker["code"] not in {"FAILURE_SOURCE_UNAVAILABLE", "FAILURE_SOURCE_INTEGRITY_INVALID",
-                "FAILURE_SOURCE_MOVED", "FAILURE_SUBJECT_MISMATCH", "FAILURE_DETAIL_UNAVAILABLE", "RUNTIME_TERMINAL_UNAVAILABLE"}
+                "FAILURE_SOURCE_MOVED", "FAILURE_SUBJECT_MISMATCH", "FAILURE_DETAIL_UNAVAILABLE", "RUNTIME_TERMINAL_UNAVAILABLE", "LIMIT_EXHAUSTED"}
             or blocker["action"] != "READ_EXACT_CANONICAL_FAILURE"):
         raise BrainSyncError("DIAGNOSTIC_BLOCKER_INVALID")
 
@@ -300,14 +317,16 @@ def _exact_failure_context(root, run_id, sources=None):
             raise BrainSyncError("FAILURE_DETAIL_UNAVAILABLE")
         # This owner-gated helper can only add a safe projection; a provider can
         # neither select a private path nor receive raw capture through Sync.
-        if context.get("safe_detail", {}).get("availability") == "UNAVAILABLE":
+        if (context.get("safe_detail", {}).get("availability") == "UNAVAILABLE"
+                or context.get("safe_detail", {}).get("cause") == "UNRESOLVED_ITEMS"
+                and getattr(backend, "runtime_repo", None) is None):
             context = op.observe_runtime_failure_detail(root, context)
         return context
     try:
         if sources is not None:
             return read(sources)
         with op._remote_observation_repository(root) as observer:
-            return read(GitSources(observer, op._git, resolve_transport_remote(observer)))
+            return read(GitSources(observer, op._git, resolve_transport_remote(observer), runtime_repo=root))
     except AttentionError as exc:
         code = "FAILURE_SOURCE_MOVED" if str(exc) == "FAILURE_SOURCE_MOVED" else (
             "FAILURE_SOURCE_UNAVAILABLE" if str(exc) == "FAILURE_SOURCE_UNAVAILABLE" else "FAILURE_SOURCE_INTEGRITY_INVALID")
@@ -365,7 +384,7 @@ def observe_brain_sync(repo: str | Path | None = None, *, task_id: str | None = 
                 raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
             selected, contexts["failure_context"] = failure["task"], failure
         except (BrainSyncError, ReviewTransportError, OperatorError, OSError, ValueError, TypeError, KeyError) as exc:
-            code = str(exc) if str(exc) in {"FAILURE_SOURCE_UNAVAILABLE", "FAILURE_SOURCE_MOVED", "FAILURE_SUBJECT_MISMATCH", "FAILURE_DETAIL_UNAVAILABLE"} else "FAILURE_SOURCE_INTEGRITY_INVALID"
+            code = str(exc) if str(exc) in {"FAILURE_SOURCE_UNAVAILABLE", "FAILURE_SOURCE_MOVED", "FAILURE_SUBJECT_MISMATCH", "FAILURE_DETAIL_UNAVAILABLE", "LIMIT_EXHAUSTED"} else "FAILURE_SOURCE_INTEGRITY_INVALID"
             contexts["blocker"] = dict(code=code, action="READ_EXACT_CANONICAL_FAILURE")
             if selected is not None:
                 contexts["operational_context"] = None

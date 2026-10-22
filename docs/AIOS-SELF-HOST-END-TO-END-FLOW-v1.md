@@ -553,6 +553,21 @@ its RUN, subject and artifact identity. Existing lifecycle authorities continue 
 choose any next action. BP-2 failures retain typed operational causes and
 `run_created=false`, without creating a terminal lineage.
 
+### Unresolved structural ResultPackage handoff
+
+The [bounded unresolved handoff](AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md)
+extends ordinary Runtime FAILURE and the existing authorized readers. Safe detail
+V4 carries fixed non-PASS source-bound facts: an exact Runtime-observed count or
+null, staged byte SHA-256, immutable private FAILURE identity, typed availability
+and up to 32 allowlisted anchors within 8 KiB. Public `PINNED` is an original
+terminal observation. Authenticated self-host/active-admission readers recheck
+the exact recorded staging bytes before returning `AVAILABLE`; missing, changed,
+malformed, unauthorized and over-budget sources return fixed blockers without
+raw unresolved text. Brain Sync, work context and terminal attention preserve
+this same diagnostic and source binding. Legacy unbound history, including
+RUN-398-004, gains no fabricated digest or count. This read-only handoff does not
+weaken incomplete-RESULT rejection or create execution/correction authority.
+
 ## 9. Bounded impact map before scope closure
 
 This finite reference exposes known contract/call/transport edges, not an execution

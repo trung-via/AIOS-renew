@@ -648,9 +648,16 @@ def _validated_private_public_view(
                 if not isinstance(error["native_reason"], str) or error["native_reason"] not in _NATIVE_REASONS:
                     raise ValueError("invalid private FAILURE native reason")
             _validate_native_failure_exit(data)
+            if "unresolved_source" in error:
+                from .runtime import _validate_unresolved_pin
+                if (data.get("phase") != "COMPLETION_GATE" or error["message"] not in {
+                        "RESULT has unresolved items", "remediation RESULT has unresolved items"}):
+                    raise ValueError("unresolved pin outside its terminal cause")
+                _validate_unresolved_pin(error["unresolved_source"], data)
             error["message"] = "Protected Runtime diagnostics remain local."
             error.pop("native_diagnostics", None)
             error.pop("executor_diagnostics", None)
+            error.pop("unresolved_source", None)
             for item in error.get("verification", []):
                 if (not isinstance(item, dict) or type(item.get("exit_code")) is not int
                         or not isinstance(item.get("summary"), str)):

@@ -39,6 +39,119 @@ PUBLIC_FAILURE_FORMAT = "AIOS_PUBLIC_FAILURE_V2"
 PUBLIC_OBSERVATION_FORMAT = "AIOS_PRIVATE_OBSERVATION_V1"
 INCOMPLETE_OBSERVATION_FORMAT = "AIOS_PRIVATE_OBSERVATION_V2"
 _PROTECTED_DIAGNOSTICS = "Protected Runtime diagnostics remain local."
+UNRESOLVED_SOURCE_MAX_BYTES = 16 * 1024 * 1024
+UNRESOLVED_VIEW_MAX_BYTES = 8192
+UNRESOLVED_MAX_ANCHORS = 32
+UNRESOLVED_BLOCKERS = frozenset({"SOURCE_MISSING", "LEGACY_UNBOUND", "SOURCE_MISMATCH",
+    "SOURCE_INVALID", "ACCESS_DENIED", "LIMIT_EXHAUSTED"})
+_UNRESOLVED_LIMITATIONS = frozenset({"SEMANTIC_CAUSE_UNKNOWN", "UNRESOLVED_TEXT_WITHHELD",
+    "ANCHORS_TRUNCATED", "TEST_IDENTITIES_WITHHELD"})
+
+
+def _unresolved_path(value):
+    return (isinstance(value, str) and len(value) <= 256
+        and re.fullmatch(r"(?:docs/[A-Za-z0-9_./-]+\.md|tests/[A-Za-z0-9_./-]+\.py|src/[A-Za-z0-9_./-]+\.py|\.ai/tasks/TASK-[A-Za-z0-9_-]+\.yaml)", value) is not None
+        and all(part not in {"", ".", ".."} for part in value.split("/")))
+
+
+def _unresolved_portable_bytes(value):
+    try:
+        return _public_bytes(value, max_bytes=UNRESOLVED_VIEW_MAX_BYTES)
+    except ReviewTransportError as exc:
+        raise FailureDiagnosticError("LIMIT_EXHAUSTED") from exc
+
+
+def unresolved_diagnostic(owner, pin=None, *, blocker=None, current=False):
+    """Pure closed projection. A pin is supplied only by the FAILURE owner.
+
+    PINNED describes the original terminal observation; AVAILABLE requires an
+    authorized reader to reauthenticate the exact original staged bytes.
+    """
+    source = dict(run_id=owner["run_id"], task=owner["task"],
+        failed_head_sha=owner.get("failed_head_sha", owner.get("subject_sha")),
+        private_failure_digest=owner["private_failure_digest"],
+        failure_id="runtime-failure:" + owner["run_id"],
+        source_id="runtime-staging:" + owner["run_id"],
+        staged_head_sha=None, staged_sha256=None, staged_bytes=None, task_digest=None)
+    if pin is not None:
+        source.update({key: pin[key] for key in
+            ("staged_head_sha", "staged_sha256", "staged_bytes", "task_digest")})
+    code = blocker or (pin["blocker"] if pin is not None else "LEGACY_UNBOUND")
+    value = dict(format="AIOS_UNRESOLVED_DIAGNOSTIC", version=1, cause="UNRESOLVED_ITEMS",
+        proof="NON_PASS_DIAGNOSTIC", availability="UNAVAILABLE" if code else "AVAILABLE" if current else "PINNED",
+        blocker=code, unresolved_count=None if code else pin["unresolved_count"], source=source,
+        anchors=[] if code else pin["anchors"],
+        limitations=sorted({"SEMANTIC_CAUSE_UNKNOWN", "UNRESOLVED_TEXT_WITHHELD"}
+            | (set(pin["limitations"]) if pin is not None else set())), raw_text_withheld=True)
+    validate_unresolved_diagnostic(value, owner)
+    return value
+
+
+def validate_unresolved_diagnostic(value, owner):
+    fields = {"format", "version", "cause", "proof", "availability", "blocker", "unresolved_count",
+        "source", "anchors", "limitations", "raw_text_withheld"}
+    if (not isinstance(value, dict) or set(value) != fields
+            or value["format"] != "AIOS_UNRESOLVED_DIAGNOSTIC" or type(value["version"]) is not int or value["version"] != 1
+            or value["cause"] != "UNRESOLVED_ITEMS" or value["proof"] != "NON_PASS_DIAGNOSTIC"
+            or value["availability"] not in {"PINNED", "AVAILABLE", "UNAVAILABLE"}
+            or value["raw_text_withheld"] is not True
+            or not isinstance(value["limitations"], list) or any(not isinstance(x, str) or x not in _UNRESOLVED_LIMITATIONS for x in value["limitations"])
+            or value["limitations"] != sorted(set(value["limitations"]))
+            or not {"SEMANTIC_CAUSE_UNKNOWN", "UNRESOLVED_TEXT_WITHHELD"} <= set(value["limitations"])):
+        raise ValueError("invalid unresolved diagnostic")
+    unavailable = value["availability"] == "UNAVAILABLE"
+    if (unavailable and (not isinstance(value["blocker"], str) or value["blocker"] not in UNRESOLVED_BLOCKERS
+                         or value["unresolved_count"] is not None or value["anchors"] != [])
+            or not unavailable and (value["blocker"] is not None or type(value["unresolved_count"]) is not int
+                or not 0 <= value["unresolved_count"] <= 65536)):
+        raise ValueError("invalid unresolved availability")
+    source = value["source"]
+    fields = {"run_id", "task", "failed_head_sha", "private_failure_digest", "failure_id", "source_id",
+        "staged_head_sha", "staged_sha256", "staged_bytes", "task_digest"}
+    if (not isinstance(source, dict) or set(source) != fields
+            or source["run_id"] != owner["run_id"]
+            or source["failed_head_sha"] != owner.get("failed_head_sha", owner.get("subject_sha"))
+            or source["private_failure_digest"] != owner["private_failure_digest"]
+            or "task" in owner and source["task"] != owner["task"]
+            or source["source_id"] != "runtime-staging:" + source["run_id"]
+            or source["failure_id"] != "runtime-failure:" + source["run_id"]
+            or not isinstance(source["task"], dict) or set(source["task"]) != {"id", "revision"}
+            or not isinstance(source["task"]["id"], str) or re.fullmatch(r"TASK-[A-Za-z0-9_-]+", source["task"]["id"]) is None
+            or type(source["task"]["revision"]) is not int or source["task"]["revision"] < 1
+            or any(source[k] is not None and not _is_digest(source[k]) for k in ("staged_sha256", "task_digest"))
+            or source["staged_head_sha"] is not None and (not isinstance(source["staged_head_sha"], str)
+                or re.fullmatch(r"[0-9a-f]{40}", source["staged_head_sha"]) is None)
+            or source["staged_bytes"] is not None and (type(source["staged_bytes"]) is not int or source["staged_bytes"] < 0)):
+        raise ValueError("invalid unresolved source")
+    if not unavailable and (any(source[k] is None for k in ("staged_head_sha", "staged_sha256", "staged_bytes", "task_digest"))
+            or source["staged_head_sha"] != source["failed_head_sha"]
+            or not 0 < source["staged_bytes"] <= UNRESOLVED_SOURCE_MAX_BYTES):
+        raise ValueError("unbound unresolved source")
+    if value["blocker"] == "LEGACY_UNBOUND" and any(source[k] is not None for k in (
+            "staged_head_sha", "staged_sha256", "staged_bytes", "task_digest")):
+        raise ValueError("legacy unresolved source cannot fabricate a pin")
+    anchors = value["anchors"]
+    if (not isinstance(anchors, list) or len(anchors) > UNRESOLVED_MAX_ANCHORS
+            or not unavailable and bool(anchors) != bool(value["unresolved_count"])):
+        raise ValueError("invalid unresolved anchors")
+    previous, seen = -1, set()
+    for anchor in anchors:
+        if (not isinstance(anchor, dict) or set(anchor) != {"item", "item_digest", "type", "identity"}
+                or type(anchor["item"]) is not int or not previous <= anchor["item"] < value["unresolved_count"]
+                or not _is_digest(anchor["item_digest"]) or anchor["type"] not in {"AC", "REPOSITORY_PATH", "TEST", "OPAQUE_ITEM"}):
+            raise ValueError("invalid unresolved anchor")
+        kind, identity = anchor["type"], anchor["identity"]
+        if (kind == "AC" and (not isinstance(identity, str) or re.fullmatch(r"AC[A-Za-z0-9_-]{1,64}", identity) is None)
+                or kind == "REPOSITORY_PATH" and not _unresolved_path(identity)
+                or kind == "TEST" and (not isinstance(identity, str) or len(identity) > 256 or _safe_test_identity(identity) != (identity, False))
+                or kind == "OPAQUE_ITEM" and identity is not None):
+            raise ValueError("unsafe unresolved anchor")
+        key = (anchor["item"], kind, identity)
+        if key in seen:
+            raise ValueError("duplicate unresolved anchor")
+        seen.add(key)
+        previous = anchor["item"]
+    _unresolved_portable_bytes(value)
 
 
 class FailureDiagnosticError(ReviewTransportError):
@@ -310,13 +423,18 @@ def safe_failure_detail(data: Mapping[str, Any]) -> dict[str, Any]:
     transport writer calls this after validating the private FAILURE's role.
     Historical public input cannot regain withheld observations.
     """
+    if "public_projection" in data and data.get("error", {}).get("safe_detail", {}).get("version") == 4:
+        validate_public_failure(data)
+        return json.loads(json.dumps(data["error"]["safe_detail"]))
     # V1/V2 retain their historical 4096 count ceiling. V3 changes only that
     # ceiling, and is necessary only for a larger canonical observation.
     large = "public_projection" not in data and any(isinstance(item.get("verification"), dict)
         and isinstance(item["verification"].get("candidate"), dict)
         and item["verification"]["candidate"].get("failure_count", 0) > 4096
         for item in data["error"].get("verification", [])[:32])
-    return _safe_failure_detail(data, version=3 if large else 2)
+    unresolved = ("public_projection" not in data and data["phase"] == "COMPLETION_GATE"
+        and data["error"].get("message") in {"RESULT has unresolved items", "remediation RESULT has unresolved items"})
+    return _safe_failure_detail(data, version=4 if unresolved else 3 if large else 2)
 
 
 def _safe_failure_detail(data: Mapping[str, Any], *, version: int) -> dict[str, Any]:
@@ -386,7 +504,7 @@ def _safe_failure_detail(data: Mapping[str, Any], *, version: int) -> dict[str, 
             detail.update(cause="MISSING_ACCEPTANCE_CLAIMS", missing_acceptance_ids=missing[1].split(", "))
         elif message.startswith("invalid canonical ResultPackage: "):
             detail["cause"] = "RESULT_PACKAGE_INVALID"
-        elif message == "RESULT has unresolved items":
+        elif message == "RESULT has unresolved items" or version == 4 and message == "remediation RESULT has unresolved items":
             detail["cause"] = "UNRESOLVED_ITEMS"
         elif message in {"executor structural output evidence must be empty",
                          "executor structural claim evidence references must be empty"}:
@@ -400,6 +518,12 @@ def _safe_failure_detail(data: Mapping[str, Any], *, version: int) -> dict[str, 
             detail["final_response_shape"] = _response_shape(error.get("native_diagnostics"))
     if detail["cause"] != "UNKNOWN" or any(v["availability"] != "UNAVAILABLE" for v in detail["verification"]):
         detail["availability"] = "PARTIAL"  # Only allowlisted structural observations, never full diagnostics.
+    if version == 4:
+        from .runtime import _validate_unresolved_pin
+        pin = error.get("unresolved_source")
+        if pin is not None:
+            _validate_unresolved_pin(pin, data)
+        detail["unresolved"] = unresolved_diagnostic(dict(data, private_failure_digest=source_digest), pin)
     return detail
 
 
@@ -408,8 +532,10 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
     fields = {"format", "version", "run_id", "subject_sha", "private_failure_digest", "phase",
         "availability", "verification", "verification_truncated", "cause", "missing_acceptance_ids",
         "final_response_shape", "raw_output_withheld"}
+    if isinstance(detail, dict) and detail.get("version") == 4:
+        fields.add("unresolved")
     if (not isinstance(detail, dict) or set(detail) != fields or detail["format"] != "AIOS_SAFE_FAILURE_DETAIL"
-            or type(detail["version"]) is not int or detail["version"] not in {1, 2, 3}
+            or type(detail["version"]) is not int or detail["version"] not in {1, 2, 3, 4}
             or any(detail[k] != owner[k] for k in ("run_id", "subject_sha", "private_failure_digest", "phase"))
             or detail["availability"] not in {"UNAVAILABLE", "PARTIAL"}
             or type(detail["verification_truncated"]) is not bool or detail["raw_output_withheld"] is not True
@@ -426,6 +552,12 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
             or detail["final_response_shape"] != "UNKNOWN" and detail["phase"] != "EXECUTION"
             or detail["verification"] and detail["phase"] != "VERIFICATION"):
         raise ValueError("safe FAILURE detail phase mismatch")
+    if detail["version"] == 4:
+        if (detail["cause"] != "UNRESOLVED_ITEMS" or detail["verification"] or detail["availability"] != "PARTIAL"
+                or "task" not in owner):
+            raise ValueError("invalid unresolved safe detail")
+        validate_unresolved_diagnostic(detail["unresolved"], owner)
+        _unresolved_portable_bytes(detail)
     previous = -1
     for item in detail["verification"]:
         fields = {"index", "command", "exit_code", "source_kind", "source_digest", "availability",
@@ -440,7 +572,7 @@ def validate_safe_failure_detail(detail: Any, owner: Mapping[str, Any]) -> None:
                 or not _is_digest(item["source_digest"]) or item["availability"] not in {"AVAILABLE", "PARTIAL", "UNAVAILABLE"}
                 or any(item[k] is not None and type(item[k]) is not bool for k in ("complete", "unstable"))
                 or (item["complete"] is True and item["unstable"] is True)
-                or item["failure_count"] is not None and (type(item["failure_count"]) is not int or not 0 <= item["failure_count"] <= (MAX_CANONICAL_FAILURES if detail["version"] == 3 else 4096))
+                or item["failure_count"] is not None and (type(item["failure_count"]) is not int or not 0 <= item["failure_count"] <= (MAX_CANONICAL_FAILURES if detail["version"] >= 3 else 4096))
                 or not isinstance(item["failed_nodes"], list) or len(item["failed_nodes"]) > 32
                 or type(item["nodes_truncated"]) is not bool):
             raise ValueError("invalid safe FAILURE verification detail")
@@ -1057,6 +1189,13 @@ def _failure_context_from_validated(public, *, original, artifact_sha=None, cand
                             private_failure_digest=public["public_projection"]["private_failure_digest"]),
                 proof="NON_PASS_DIAGNOSTIC")
     context["safe_detail"] = error.get("safe_detail") or safe_failure_detail(public)
+    detail = context["safe_detail"]
+    if detail["cause"] == "UNRESOLVED_ITEMS" and detail["version"] < 4:
+        # Enrich the read view only. Historical terminal bytes remain immutable.
+        context["safe_detail"] = dict(detail, version=4, unresolved=unresolved_diagnostic(
+            dict(public, private_failure_digest=context["source"]["private_failure_digest"])))
+    if context["safe_detail"].get("unresolved") is not None:
+        _unresolved_portable_bytes(context)
     return context
 
 
@@ -1113,7 +1252,7 @@ def validate_failure_context(value: Any) -> None:
     if "safe_detail" in value:
         validate_safe_failure_detail(value["safe_detail"], dict(run_id=value["run_id"],
             subject_sha=value["subject_sha"], phase=value["phase"],
-            private_failure_digest=source["private_failure_digest"], verification=value["verification"]))
+            task=value["task"], private_failure_digest=source["private_failure_digest"], verification=value["verification"]))
     if "detail_blocker" in value:
         blocker = value["detail_blocker"]
         if (not isinstance(blocker, dict) or set(blocker) != {"code", "action"}
@@ -1124,7 +1263,10 @@ def validate_failure_context(value: Any) -> None:
         validate_failure_paging(value["paging"], value)
     if "paging_blocker" in value and (value["paging_blocker"] not in _PAGE_BLOCKERS or "paging" in value):
         raise ValueError("invalid FAILURE paging blocker")
-    _public_bytes(value, max_bytes=256 * 1024)
+    if value.get("safe_detail", {}).get("version") == 4:
+        _unresolved_portable_bytes(value)
+    else:
+        _public_bytes(value, max_bytes=256 * 1024)
 
 
 def _public_document(
@@ -1221,6 +1363,7 @@ def _public_metadata_value(value: Any, template: Any = None) -> Any:
         error["message"] = "Protected Runtime diagnostics remain local."
         error.pop("native_diagnostics", None)
         error.pop("executor_diagnostics", None)
+        error.pop("unresolved_source", None)
         error.pop("native_reason", None)
         for item in error.get("verification", []):
             item["summary"] = "Runtime verification exit code " + str(item["exit_code"])
@@ -1640,7 +1783,9 @@ def validate_public_failure(data: Mapping[str, Any]) -> None:
     if "safe_detail" in error:
         validate_safe_failure_detail(error["safe_detail"], dict(run_id=data["run_id"],
             subject_sha=data["failed_head_sha"], phase=data["phase"],
-            private_failure_digest=marker["private_failure_digest"], verification=error["verification"]))
+            task=data["task"], private_failure_digest=marker["private_failure_digest"], verification=error["verification"]))
+        if error["safe_detail"].get("unresolved", {}).get("availability") == "AVAILABLE":
+            raise ValueError("public FAILURE cannot assert current private source availability")
     identities = error.get("evidence_identities", [])
     if not isinstance(identities, list):
         raise ValueError("invalid public FAILURE evidence identities")

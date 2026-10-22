@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import ast
 import hashlib
 import os
 import re
@@ -82,6 +83,17 @@ class RuntimeState(Protocol):
 BoundaryError = type[Exception]
 CompletionKind = Literal["PRIMARY", "REMEDIATION", "REPAIR", "DIRECT_CANDIDATE"]
 NATIVE_DIAGNOSTIC_LIMIT = 4096
+
+
+@dataclass(frozen=True)
+class _StagedResultReceipt:
+    """Process-local Runtime observation, never reconstructible from Executor JSON."""
+    path: Path
+    run_digest: str
+    task_digest: str
+    head_sha: str
+    sha256: str
+    size: int
 
 
 @dataclass(frozen=True)
@@ -210,6 +222,7 @@ class RuntimeCompletion:
         self.transport_repo = transport_repo or repo
         self.interruption_phase = "COMPLETION_GATE"
         self.verification_subject_sha: str | None = None
+        self._staged_result_receipt: _StagedResultReceipt | None = None
         # Process-local capabilities; disk ACKs can never reconstruct these.
         self._local_feedback_identity: str | None = None
         self._local_feedback_invocation = None
@@ -812,11 +825,16 @@ class RuntimeCompletion:
         """Produce one canonical RESULT or raise before/after terminal persistence."""
 
         result_path = self.state.results / f"{self.run.run_id}.json"
+        self._staged_result_receipt = None
         if policy.stage_structural_package:
-            _write_json(
-                self.state.staging / f"{self.run.run_id}.json",
-                result_package_data(package),
-            )
+            staged = self.state.staging / f"{self.run.run_id}.json"
+            content = json.dumps(result_package_data(package), sort_keys=True, separators=(",", ":")).encode("utf-8")
+            staged.parent.mkdir(parents=True, exist_ok=True)
+            staged.write_bytes(content)
+            self._staged_result_receipt = _StagedResultReceipt(staged.absolute(),
+                _checkpoint_digest(_checkpoint_json(asdict(self.run))),
+                _checkpoint_digest(_checkpoint_json(asdict(self.task))), package.result.head_sha,
+                _checkpoint_digest(content), len(content))
         self._require_executor_structure(package)
 
         actual_head = self._git("rev-parse", "HEAD")
@@ -1230,6 +1248,8 @@ class RuntimeCompletion:
 
     def _raise(self, message: str, *, cause: Exception | None = None) -> None:
         error = self.error_type(message)
+        if self._staged_result_receipt is not None:
+            error._runtime_staged_result = self._staged_result_receipt
         if cause is None:
             raise error
         raise error from cause
@@ -1273,6 +1293,11 @@ def _persist_failure(
     """Persist one admitted FAILURE and optionally best-effort transport it."""
 
     try:
+        if (str(failure) in {"RESULT has unresolved items", "remediation RESULT has unresolved items"}
+                and os.path.lexists(state.failures / (run.run_id + ".json"))):
+            # The original pin is immutable. Currentness is checked by the
+            # authorized reader, without repinning or repeating inventory Git.
+            return
         if observation_path is None:
             observation_path = persist_terminal_observation(
                 state, observation_tracker, "FAILURE"
@@ -1377,11 +1402,16 @@ def _persist_failure(
                 }
                 for item in cause.evidence
             ]
-        executor_unresolved = _read_staged_executor_unresolved(state, task, run)
+        pin, executor_unresolved = _pin_staged_unresolved(root, state, task, run, head_sha, failure)
+        if phase == "COMPLETION_GATE" and error_message in {
+                "RESULT has unresolved items", "remediation RESULT has unresolved items"}:
+            record["error"]["unresolved_source"] = pin
         if executor_unresolved:
-            record["error"]["executor_diagnostics"] = {
-                "unresolved": executor_unresolved
-            }
+            from .review_transport import PUBLIC_FAILURE_MAX_BYTES
+            # The pinned staging remains the full source. Duplicating it cannot
+            # consume more than the existing private FAILURE capture allowance.
+            if len(_checkpoint_json(record)) + len(_checkpoint_json(executor_unresolved)) + 64 <= PUBLIC_FAILURE_MAX_BYTES:
+                record["error"]["executor_diagnostics"] = {"unresolved": executor_unresolved}
         failure_path = state.failures / f"{run.run_id}.json"
         failure_path.parent.mkdir(parents=True, exist_ok=True)
         encoded = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -1577,27 +1607,225 @@ def validate_preverification_candidate(
     return package
 
 
-def _read_staged_executor_unresolved(
-    state: RuntimeState, task: Task, run: Run
-) -> list[str] | None:
+def _read_unresolved_bytes(path: Path, limit: int) -> bytes:
+    """Finite regular-file read, with size checked before parsing or allocation."""
+    from .review_transport import FailureDiagnosticError
     try:
-        payload = json.loads(
-            (state.staging / f"{run.run_id}.json").read_text(encoding="utf-8")
-        )
-        if not isinstance(payload, Mapping):
-            return None
-        evidence_data = payload["evidence"]
-        if not isinstance(evidence_data, list):
-            return None
-        package = validate_structural_result_package(
-            task=task,
-            run=run,
-            result=validate_structural_result(payload["result"]),
-            evidence=tuple(validate_evidence(item) for item in evidence_data),
-        )
-        return list(package.result.unresolved)
-    except Exception:
-        return None
+        for part in (path, *path.parents):
+            info = part.lstat()
+            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+                raise FailureDiagnosticError("ACCESS_DENIED")
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode):
+            raise FailureDiagnosticError("ACCESS_DENIED")
+        if before.st_size > limit:
+            raise FailureDiagnosticError("LIMIT_EXHAUSTED")
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(descriptor, "rb") as stream:
+            opened = os.fstat(stream.fileno())
+            linked = path.lstat()
+            if stat.S_ISLNK(linked.st_mode) or getattr(linked, "st_file_attributes", 0) & 0x400:
+                raise FailureDiagnosticError("ACCESS_DENIED")
+            if (opened.st_dev, opened.st_ino, opened.st_size) != (before.st_dev, before.st_ino, before.st_size):
+                raise FailureDiagnosticError("SOURCE_MISMATCH")
+            content = stream.read(limit + 1)
+            after = os.fstat(stream.fileno())
+        current = path.lstat()
+        if len(content) > limit:
+            raise FailureDiagnosticError("LIMIT_EXHAUSTED")
+        if any((item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns) !=
+               (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) for item in (opened, after, current)):
+            raise FailureDiagnosticError("SOURCE_MISMATCH")
+        return content
+    except FileNotFoundError as exc:
+        raise FailureDiagnosticError("SOURCE_MISSING") from exc
+    except PermissionError as exc:
+        raise FailureDiagnosticError("ACCESS_DENIED") from exc
+    except OSError as exc:
+        raise FailureDiagnosticError("SOURCE_INVALID") from exc
+
+
+def _unresolved_package(raw, task, run, head_sha):
+    from .review_transport import FailureDiagnosticError, UNRESOLVED_SOURCE_MAX_BYTES, _public_document
+    if len(raw) > UNRESOLVED_SOURCE_MAX_BYTES or raw.count(b",") > 65536 or raw.count(b"{") + raw.count(b"[") > 65536:
+        raise FailureDiagnosticError("LIMIT_EXHAUSTED")
+    try:
+        payload = _public_document(raw, max_bytes=UNRESOLVED_SOURCE_MAX_BYTES)
+        if (set(payload) != {"result", "evidence"} or payload["evidence"] != []
+                or not isinstance(payload["result"], dict)
+                or set(payload["result"]) != {"head_sha", "claims", "changed_files", "unresolved"}
+                or not isinstance(payload["result"]["claims"], list)
+                or any(not isinstance(c, dict) or set(c) != {"id", "claim", "satisfies", "evidence"}
+                       or c["evidence"] != [] for c in payload["result"]["claims"])):
+            raise ValueError("invalid structural envelope")
+        package = validate_structural_result_package(task=task, run=run,
+            result=validate_structural_result(payload["result"]), evidence=())
+        if package.result.head_sha != head_sha or payload["result"]["head_sha"] != head_sha:
+            raise FailureDiagnosticError("SOURCE_MISMATCH")
+        if len(package.result.unresolved) > 65536:
+            raise FailureDiagnosticError("LIMIT_EXHAUSTED")
+        for item in payload["result"]["unresolved"]:
+            item.encode("utf-8")  # Reject unpaired JSON surrogate escapes.
+        return replace(package, result=replace(package.result, unresolved=tuple(payload["result"]["unresolved"])))
+    except FailureDiagnosticError:
+        raise
+    except (ReviewTransportError, ValueError, TypeError, KeyError, RecursionError) as exc:
+        raise FailureDiagnosticError("SOURCE_INVALID") from exc
+
+
+def _unresolved_test_inventory(root, task, head_sha, items):
+    """At most eight exact Git blobs, 256 KiB each, one ten-second total budget.
+
+    Only committed Python definitions grant a test-identity allowlist. Unknown
+    names and parameters never become public merely because an Executor said so.
+    The immutable private FAILURE retains this Runtime-observed allowlist, so
+    repeated readers need no Git fetch or test execution.
+    """
+    from .review_transport import _unresolved_path, _safe_test_identity
+    allowed_paths = {p for p in (*task.scope.inspect, *task.scope.modify) if _unresolved_path(p) and p.startswith("tests/")}
+    mentioned = set()
+    for item in items:
+        for match in re.finditer(r"tests/[A-Za-z0-9_./-]+\.py(?:::[A-Za-z_][A-Za-z0-9_]*)+", item):
+            if match[0].split("::", 1)[0] in allowed_paths:
+                mentioned.add(match[0])
+            if len(mentioned) >= 256:
+                break
+        if len(mentioned) >= 256:
+            break
+    paths = sorted({t.split("::", 1)[0] for t in mentioned})
+    identities = set()
+    deadline = time.monotonic() + 10
+    for path in paths[:8]:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            size = subprocess.run(["git", "cat-file", "-s", head_sha + ":" + path], cwd=root,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=min(2, remaining), check=False)
+            if size.returncode or not size.stdout.strip().isdigit() or int(size.stdout) > 256 * 1024:
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            result = subprocess.run(["git", "cat-file", "blob", head_sha + ":" + path], cwd=root,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=min(2, remaining), check=False)
+            if result.returncode or len(result.stdout) != int(size.stdout):
+                continue
+            tree = ast.parse(result.stdout.decode("utf-8"))
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
+                    identities.add(path + "::" + node.name)
+                elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+                    identities.update(path + "::" + node.name + "::" + member.name for member in node.body
+                        if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name.startswith("test_"))
+        except (OSError, ValueError, SyntaxError, UnicodeError, RecursionError, subprocess.TimeoutExpired):
+            continue
+    # Store only names actually referenced, never the entire test population.
+    return sorted(identity for identity in identities if len(identity) <= 256
+        and _safe_test_identity(identity) == (identity, False) and identity in mentioned)[:256]
+
+
+def _unresolved_anchors(task, items, test_identities):
+    from .review_transport import _unresolved_path
+    acceptance = {c.id for c in task.acceptance}
+    paths = {p for p in (*task.scope.inspect, *task.scope.modify, f".ai/tasks/{task.task_id}.yaml") if _unresolved_path(p)}
+    tests = set(test_identities)
+    anchors, truncated, test_withheld = [], False, False
+    # Tokenization is linear in the bounded source. Nothing outside these exact
+    # canonical allowlists can become an anchor, including secret-looking paths.
+    token = re.compile(r"(?<![A-Za-z0-9_./:\\-])(?:AC[A-Za-z0-9_-]{1,64}|(?:docs|tests|src|\.ai/tasks)/[A-Za-z0-9_./-]+(?:::[A-Za-z_][A-Za-z0-9_]*)*)(?![A-Za-z0-9_./:\\-])")
+    for index, item in enumerate(items):
+        rows, seen = [], set()
+        item_digest = _checkpoint_digest(item.encode("utf-8"))
+        for match in token.finditer(item):
+            identity = match[0]
+            kind = "AC" if identity in acceptance else "TEST" if identity in tests else "REPOSITORY_PATH" if identity in paths else None
+            if kind is None and "::" in identity:
+                test_withheld = True
+                path = identity.split("::", 1)[0]
+                if path in paths:
+                    kind, identity = "REPOSITORY_PATH", path
+            if kind is not None and (kind, identity) not in seen:
+                seen.add((kind, identity))
+                rows.append(dict(item=index, item_digest=item_digest, type=kind, identity=identity))
+            if len(rows) > 32:
+                truncated = True
+                break
+        if not rows:
+            rows = [dict(item=index, item_digest=item_digest, type="OPAQUE_ITEM", identity=None)]
+        for row in rows:
+            # Reserve room for context/source/Sync envelopes as well as the 8KiB
+            # per-view ceiling. Truncation is explicit and deterministic.
+            if len(anchors) == 32 or len(_checkpoint_json(anchors + [row])) > 2800:
+                truncated = True
+                break
+            anchors.append(row)
+        if truncated:
+            break
+    limitations = ["SEMANTIC_CAUSE_UNKNOWN", "UNRESOLVED_TEXT_WITHHELD"]
+    if truncated:
+        limitations.append("ANCHORS_TRUNCATED")
+    if test_withheld:
+        limitations.append("TEST_IDENTITIES_WITHHELD")
+    return anchors, sorted(limitations)
+
+
+def _pin_staged_unresolved(root, state, task, run, head_sha, failure):
+    from .review_transport import FailureDiagnosticError, UNRESOLVED_SOURCE_MAX_BYTES
+    receipt = getattr(failure, "_runtime_staged_result", None)
+    pin = dict(format="AIOS_RUNTIME_UNRESOLVED_SOURCE", version=1, run_id=run.run_id,
+        task=dict(id=task.task_id, revision=task.revision), failed_head_sha=head_sha,
+        source_id="runtime-staging:" + run.run_id, staged_head_sha=None, staged_sha256=None,
+        staged_bytes=None, task_digest=None, run_digest=None, unresolved_count=None, blocker="SOURCE_MISSING",
+        anchors=[], test_identities=[], limitations=["SEMANTIC_CAUSE_UNKNOWN", "UNRESOLVED_TEXT_WITHHELD"])
+    path = state.staging / (run.run_id + ".json")
+    try:
+        if not isinstance(receipt, _StagedResultReceipt):
+            pin["blocker"] = "SOURCE_MISMATCH" if path.exists() else "SOURCE_MISSING"
+            return pin, None
+        pin.update(staged_head_sha=receipt.head_sha, staged_sha256=receipt.sha256,
+            staged_bytes=receipt.size, task_digest=receipt.task_digest, run_digest=receipt.run_digest)
+        if (receipt.path != path.absolute() or receipt.head_sha != head_sha
+                or receipt.run_digest != _checkpoint_digest(_checkpoint_json(asdict(run)))
+                or receipt.task_digest != _checkpoint_digest(_checkpoint_json(asdict(task)))):
+            raise FailureDiagnosticError("SOURCE_MISMATCH")
+        raw = _read_unresolved_bytes(path, UNRESOLVED_SOURCE_MAX_BYTES)
+        if len(raw) != receipt.size or _checkpoint_digest(raw) != receipt.sha256:
+            raise FailureDiagnosticError("SOURCE_MISMATCH")
+        package = _unresolved_package(raw, task, run, head_sha)
+        items = list(package.result.unresolved)
+        tests = _unresolved_test_inventory(root, task, head_sha, items) if items else []
+        anchors, limitations = _unresolved_anchors(task, items, tests)
+        pin.update(unresolved_count=len(items), blocker=None, anchors=anchors,
+            test_identities=tests, limitations=limitations)
+        return pin, items
+    except FailureDiagnosticError as exc:
+        pin["blocker"] = exc.code
+        return pin, None
+    except (OSError, ValueError, TypeError, KeyError, RecursionError):
+        pin["blocker"] = "SOURCE_INVALID"
+        return pin, None
+
+
+def _validate_unresolved_pin(pin, owner):
+    from .review_transport import unresolved_diagnostic, _safe_test_identity, _unresolved_path, _is_digest
+    fields = {"format", "version", "run_id", "task", "failed_head_sha", "source_id", "staged_head_sha",
+        "staged_sha256", "staged_bytes", "task_digest", "run_digest", "unresolved_count", "blocker", "anchors", "test_identities", "limitations"}
+    if (not isinstance(pin, dict) or set(pin) != fields or pin["format"] != "AIOS_RUNTIME_UNRESOLVED_SOURCE"
+            or type(pin["version"]) is not int or pin["version"] != 1
+            or any(pin[k] != owner[k] for k in ("run_id", "task", "failed_head_sha"))
+            or pin["source_id"] != "runtime-staging:" + owner["run_id"]
+            or pin["run_digest"] is not None and not _is_digest(pin["run_digest"])
+            or pin["blocker"] is None and pin["run_digest"] is None
+            or not isinstance(pin["test_identities"], list) or len(pin["test_identities"]) > 256
+            or any(not isinstance(t, str) or len(t) > 256 or _safe_test_identity(t) != (t, False)
+                or not _unresolved_path(t.split("::", 1)[0]) for t in pin["test_identities"])
+            or pin["test_identities"] != sorted(set(pin["test_identities"]))):
+        raise ValueError("invalid Runtime unresolved pin")
+    if pin["blocker"] is not None and (pin["unresolved_count"] is not None or pin["anchors"] or pin["test_identities"]):
+        raise ValueError("blocked Runtime pin retains unavailable facts")
+    unresolved_diagnostic(dict(owner, private_failure_digest="0" * 64), pin)
 
 
 def _is_native_timeout(failure: BaseException | None) -> bool:

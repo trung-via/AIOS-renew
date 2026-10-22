@@ -639,45 +639,137 @@ def _runtime_paths_readonly(repo: str | Path) -> RuntimePaths:
     )
 
 
-def observe_runtime_failure_detail(repo: str | Path, context: Mapping[str, Any]) -> dict[str, Any]:
+def observe_runtime_failure_detail(repo: str | Path, context: Mapping[str, Any], *,
+                                   _admitted_run: Run | None = None) -> dict[str, Any]:
     """Existing self-host control-plane projection; returns no private bytes/path.
 
     The canonical context must already be authenticated by its caller. Access is
     restricted to the exact local FAILURE and its immutable private-source digest.
     The separate admitted-Executor private-read API below is unchanged.
     """
-    from .review_transport import (PUBLIC_FAILURE_MAX_BYTES, _failure_digest,
-        failure_document, safe_failure_detail, validate_failure_context)
+    from .review_transport import (PUBLIC_FAILURE_MAX_BYTES, UNRESOLVED_SOURCE_MAX_BYTES,
+        FailureDiagnosticError, _failure_digest, _failure_input,
+        failure_document, safe_failure_detail, validate_failure_context, unresolved_diagnostic)
+    from .runtime import (_read_unresolved_bytes, _unresolved_package, _validate_unresolved_pin,
+        _unresolved_anchors, _checkpoint_digest, _checkpoint_json)
     validate_failure_context(context)
     observed = dict(context)
-    if observed.get("safe_detail", {}).get("availability") == "PARTIAL":
+    unresolved = context.get("safe_detail", {}).get("cause") == "UNRESOLVED_ITEMS"
+    if not unresolved and observed.get("safe_detail", {}).get("availability") == "PARTIAL":
         return observed
     def blocked(code):
+        if unresolved:
+            detail = dict(observed["safe_detail"], version=4)
+            view = detail.get("unresolved") or unresolved_diagnostic(dict(context,
+                private_failure_digest=context["source"]["private_failure_digest"]))
+            detail["unresolved"] = dict(view, availability="UNAVAILABLE", blocker=code,
+                unresolved_count=None, anchors=[])
+            observed["safe_detail"] = detail
+            observed.pop("detail_blocker", None)
+            validate_failure_context(observed)
+            return observed
         observed["detail_blocker"] = {"code": code, "action": "READ_EXACT_RUNTIME_PROJECTION"}
         return observed
-    if os.environ.get("RUNNER_ENVIRONMENT") != "self-hosted":
-        return blocked("PRIVATE_DETAIL_ACCESS_DENIED")
-    path = _runtime_paths_readonly(repo).failures / (context["run_id"] + ".json")
+    if os.environ.get("RUNNER_ENVIRONMENT") != "self-hosted" and _admitted_run is None:
+        return blocked("ACCESS_DENIED" if unresolved else "PRIVATE_DETAIL_ACCESS_DENIED")
+    if _admitted_run is not None and (not unresolved or not _unresolved_admission_matches(repo, _admitted_run, context)):
+        return blocked("ACCESS_DENIED" if unresolved else "PRIVATE_DETAIL_ACCESS_DENIED")
+    if (unresolved and _admitted_run is None
+            and context.get("safe_detail", {}).get("unresolved", {}).get("blocker") == "LEGACY_UNBOUND"):
+        return blocked("LEGACY_UNBOUND")
+    state = _runtime_paths_readonly(repo)
+    path = state.failures / (context["run_id"] + ".json")
     try:
-        if path.is_symlink() or path.resolve() != path.absolute():
-            return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
-        with path.open("rb") as stream:
-            raw = stream.read(PUBLIC_FAILURE_MAX_BYTES + 1)
-        if len(raw) > PUBLIC_FAILURE_MAX_BYTES:
-            return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
-        private = failure_document(raw, private_original=True)
+        raw = _read_unresolved_bytes(path, PUBLIC_FAILURE_MAX_BYTES)
+        private = _failure_input(raw) if unresolved else failure_document(raw, private_original=True)
         if ("public_projection" in private or _failure_digest(private) != context["source"]["private_failure_digest"]
                 or any(private[k] != context[k] for k in ("run_id", "task", "executor", "base_sha", "phase"))
                 or private["failed_head_sha"] != context["subject_sha"]):
-            return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
-        observed["safe_detail"] = safe_failure_detail(private)
+            return blocked("SOURCE_MISMATCH" if unresolved else "PRIVATE_DETAIL_INTEGRITY_INVALID")
+        if unresolved:
+            private = failure_document(raw, private_original=True)
+        expected = safe_failure_detail(private)
+        if unresolved:
+            pin = private["error"].get("unresolved_source")
+            if pin is None:
+                return blocked("LEGACY_UNBOUND")
+            _validate_unresolved_pin(pin, private)
+            supplied = context["safe_detail"].get("unresolved")
+            original = expected["unresolved"]
+            if (supplied is not None and (supplied["source"] != original["source"]
+                    or supplied["availability"] in {"PINNED", "AVAILABLE"} and
+                    dict(supplied, availability="PINNED") != original)):
+                return blocked("SOURCE_MISMATCH")
+            run_raw = _read_unresolved_bytes(state.runs / (context["run_id"] + ".json"), 1024 * 1024)
+            persisted = _decode_remote_mapping(run_raw, "RUN")
+            if persisted.get("kind") == "REMEDIATION":
+                persisted = persisted["execution"]["run"]
+            run = _run_from_data(persisted)
+            if _admitted_run is not None and (not isinstance(_admitted_run, Run)
+                    or _admitted_run.status != "ACTIVE" or run != _admitted_run):
+                return blocked("ACCESS_DENIED")
+            if pin["blocker"] is not None:
+                return blocked(pin["blocker"])
+            task = load_task(Path(repo), context["task"]["id"])
+            if (run.run_id != context["run_id"] or run.task.id != task.task_id
+                    or run.task.revision != task.revision or private["task"] != asdict(run.task)
+                    or run.base_sha != context["base_sha"] or run.executor != context["executor"]
+                    or run.head_sha not in (None, context["subject_sha"])
+                    or pin["run_digest"] != _checkpoint_digest(_checkpoint_json(asdict(run)))
+                    or pin["task_digest"] != _checkpoint_digest(_checkpoint_json(asdict(task)))):
+                return blocked("SOURCE_MISMATCH")
+            raw = _read_unresolved_bytes(state.staging / (context["run_id"] + ".json"), UNRESOLVED_SOURCE_MAX_BYTES)
+            if len(raw) != pin["staged_bytes"] or hashlib.sha256(raw).hexdigest() != pin["staged_sha256"]:
+                return blocked("SOURCE_MISMATCH")
+            package = _unresolved_package(raw, task, run, context["subject_sha"])
+            anchors, limitations = _unresolved_anchors(task, package.result.unresolved, pin["test_identities"])
+            if (len(package.result.unresolved) != pin["unresolved_count"]
+                    or anchors != pin["anchors"] or limitations != pin["limitations"]):
+                return blocked("SOURCE_MISMATCH")
+            expected["unresolved"] = unresolved_diagnostic(dict(private,
+                private_failure_digest=context["source"]["private_failure_digest"]), pin, current=True)
+        observed["safe_detail"] = expected
         observed.pop("detail_blocker", None)
         validate_failure_context(observed)
         return observed
+    except FailureDiagnosticError as exc:
+        return blocked(exc.code if unresolved and exc.code in {"SOURCE_MISSING", "SOURCE_MISMATCH", "SOURCE_INVALID", "ACCESS_DENIED", "LIMIT_EXHAUSTED"}
+            else "SOURCE_INVALID" if unresolved else "PRIVATE_DETAIL_UNAVAILABLE" if exc.code == "SOURCE_MISSING" else "PRIVATE_DETAIL_INTEGRITY_INVALID")
     except OSError:
-        return blocked("PRIVATE_DETAIL_UNAVAILABLE")
-    except (ReviewTransportError, ValueError, TypeError, KeyError):
-        return blocked("PRIVATE_DETAIL_INTEGRITY_INVALID")
+        return blocked("SOURCE_MISSING" if unresolved else "PRIVATE_DETAIL_UNAVAILABLE")
+    except (ReviewTransportError, ValueError, TypeError, KeyError, OperatorError):
+        return blocked("SOURCE_INVALID" if unresolved else "PRIVATE_DETAIL_INTEGRITY_INVALID")
+
+
+def _unresolved_admission_matches(repo, admitted_run, context):
+    """Authenticate admission before opening any protected diagnostic source."""
+    authorized = (isinstance(admitted_run, Run) and admitted_run.status == "ACTIVE"
+        and admitted_run.run_id == context["run_id"] and asdict(admitted_run.task) == context["task"]
+        and admitted_run.executor == context["executor"] and admitted_run.base_sha == context["base_sha"]
+        and admitted_run.head_sha in (None, context["subject_sha"])
+        and Path(admitted_run.workspace).resolve() == Path(repo).resolve())
+    if authorized:
+        try:
+            from .runtime import _read_unresolved_bytes
+            persisted = _decode_remote_mapping(_read_unresolved_bytes(
+                _runtime_paths_readonly(repo).runs / (admitted_run.run_id + ".json"), 1024 * 1024), "RUN")
+            if persisted.get("kind") == "REMEDIATION":
+                persisted = persisted["execution"]["run"]
+            authorized = _run_from_data(persisted) == admitted_run
+        except (ReviewTransportError, OSError, ValueError, TypeError, KeyError):
+            authorized = False
+    return authorized
+
+
+def read_executor_unresolved_diagnostic(repo: str | Path, *, admitted_run: Run,
+                                      context: Mapping[str, Any]) -> dict[str, Any]:
+    """Safe view under an existing admission; selectors never grant a new one."""
+    from .review_transport import validate_failure_context, unresolved_diagnostic
+    validate_failure_context(context)
+    if context.get("safe_detail", {}).get("cause") != "UNRESOLVED_ITEMS":
+        return unresolved_diagnostic(dict(context, private_failure_digest=context["source"]["private_failure_digest"]), blocker="ACCESS_DENIED")
+    observed = observe_runtime_failure_detail(repo, context, _admitted_run=admitted_run)
+    return observed["safe_detail"]["unresolved"]
 
 
 def read_executor_private_failure(
@@ -757,7 +849,7 @@ def read_executor_private_diagnostic(
     repo: str | Path, *, admitted_run: Run, subject_sha: str, locator: str,
     expected_sha256: str, failure_sha256: str,
 ) -> bytes:
-    """Read one candidate raw capture referenced by the authenticated local FAILURE.
+    """Read an admitted capture or the bounded unresolved diagnostic view.
 
     Base captures and reused captures owned by another RUN are deliberately not
     capabilities of this admission. Locators never contain host paths.
@@ -770,6 +862,17 @@ def read_executor_private_diagnostic(
             raise FailureDiagnosticError("PRIVATE_FAILURE_DIGEST_MISMATCH")
         return original
     failure = failure_document(original, private_original=True)
+    if locator == "runtime-unresolved:" + admitted_run.run_id:
+        # A read selector only: reuse the existing exact private-FAILURE
+        # admission/digest gate above, then return the canonical safe projection.
+        from .review_transport import failure_context, _public_bytes, UNRESOLVED_VIEW_MAX_BYTES
+        if expected_sha256 != failure_sha256:
+            raise FailureDiagnosticError("PRIVATE_FAILURE_DIGEST_MISMATCH")
+        context = failure_context(failure)
+        if context is None or context.get("safe_detail", {}).get("cause") != "UNRESOLVED_ITEMS":
+            raise FailureDiagnosticError("PRIVATE_FAILURE_LOCATOR_INVALID")
+        return _public_bytes(read_executor_unresolved_diagnostic(repo, admitted_run=admitted_run, context=context),
+            max_bytes=UNRESOLVED_VIEW_MAX_BYTES)
     references = [item["verification"] for item in failure["error"].get("verification", [])
                   if isinstance(item.get("verification"), dict)
                   and locator == "runtime-verification:" + admitted_run.run_id + ":" + item["verification"]["evidence_id"]]

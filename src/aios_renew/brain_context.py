@@ -15,7 +15,10 @@ from typing import Any, Callable, Mapping
 
 import yaml
 
-from .brain_sync import BrainSyncError, BrainSyncSnapshot, observe_brain_sync, _has_failure_pages
+from .brain_sync import (
+    BrainSyncError, BrainSyncSnapshot, observe_brain_sync, _has_failure_pages,
+    _has_unresolved_diagnostic, _unresolved_portable_exhausted,
+)
 
 
 class BrainContextError(ValueError):
@@ -212,9 +215,9 @@ class BrainWorkContext:
                     or unified["failure_context"]["task"] != unified.get("task")):
                 raise BrainContextError("FAILURE_CONTEXT_SUBSTITUTION")
         portable = _stable_copy(self.canonical_observation)
-        if _has_failure_pages(portable):
+        if _has_failure_pages(portable) or _has_unresolved_diagnostic(portable):
             portable["repository"]["root"] = "protected-repository-root"
-        return {
+        value = {
             "format": "AIOS_BRAIN_WORK_CONTEXT", "version": 1,
             "kind": "BRAIN_WORK_CONTEXT",
             "canonical_observation": portable,
@@ -224,6 +227,10 @@ class BrainWorkContext:
             "run_created": False, "executor_invoked": False,
             "verification_invoked": False, "state_mutated": False,
         }
+        if _has_unresolved_diagnostic(portable) and (_unresolved_portable_exhausted(portable)
+                or len(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 8192):
+            raise BrainContextError("LIMIT_EXHAUSTED")
+        return value
 
     def render(self) -> str:
         return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -246,7 +253,7 @@ def compose_brain_work_context(
         raise BrainContextError("supply either a Brain Sync snapshot or repository")
     request = _request(current_request)
     observed = snapshot.as_dict()
-    if _has_failure_pages(observed):
+    if _has_failure_pages(observed) or _has_unresolved_diagnostic(observed):
         # Keep the operational root private for local Flow Card integrity checks.
         # Both portable serializers redact it before a provider sees this view.
         observed["repository"]["root"] = snapshot.repository["root"]
