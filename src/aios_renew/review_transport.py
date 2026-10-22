@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from .return_affinity import document_affinity
 
 import hashlib
+import ast
 import json
 import math
 import re
@@ -160,6 +161,315 @@ class FailureDiagnosticError(ReviewTransportError):
     def __init__(self, code: str, message: str | None = None) -> None:
         self.code = code
         super().__init__(code if message is None else code + ": " + message)
+
+
+# Reader-only extension. Immutable public FAILURE and safe detail V1-V4 retain
+# their exact formats. Raw text is never a value in this portable document.
+DIAGNOSTIC_SOURCE_MAX_BYTES = 2 * 1024 * 1024
+DIAGNOSTIC_VIEW_MAX_BYTES = 24 * 1024
+DIAGNOSTIC_MAX_CALLS = 32
+DIAGNOSTIC_SECONDS = 5
+_DIAGNOSTIC_CODES = frozenset({"SOURCE_UNPROVEN", "SOURCE_MISSING", "SOURCE_INVALID",
+    "SOURCE_MISMATCH", "ACCESS_DENIED", "LIMIT_EXHAUSTED"})
+_DIAGNOSTIC_REASONS = frozenset({"READER_AUTHORITY", "ORIGIN", "CURRENT_REFS", "TERMINAL_IDENTITY",
+    "PRIVATE_FAILURE", "CAPTURE_UNPINNED", "CAPTURE", "CAPTURE_ENCODING", "CAPTURE_FRAMING",
+    "REUSED_OR_FOREIGN_CAPTURE", "REPOSITORY_HISTORY", "TECHNICAL_SOURCE_MISSING", "BOUND"})
+_DIAGNOSTIC_SIGNALS = frozenset({"NATIVE_PATCH_CONTEXT_MISMATCH", "ASSERTION", "FIXTURE_LOOKUP",
+    "IMPORT", "PYTEST_CONFIGURATION", "PYTEST_EXECUTION_PROFILE", "WORKER_CRASH", "MISSING_GIT_HISTORY", "OUTPUT_ENCODING",
+    "SUMMARY_UNPARSEABLE", "OTHER_UNKNOWN"})
+_DIAGNOSTIC_EXCEPTIONS = frozenset({"AssertionError", "TypeError", "AttributeError", "ValueError",
+    "NameError", "KeyError", "IndexError", "ImportError", "ModuleNotFoundError", "SyntaxError",
+    "RuntimeError", "FixtureLookupError", "Failed", "OperatorError", "OSError", "PermissionError",
+    "FileNotFoundError", "CalledProcessError", "TimeoutExpired", "RuntimeVerificationError"})
+_DIAGNOSTIC_DECISIONS = frozenset({"RELEASED_STRUCTURE", "RELEASED_TECHNICAL", "WITHHELD_SECRET",
+    "WITHHELD_UNRECOGNIZED", "WITHHELD_PARAMETER", "WITHHELD_ENCODING", "WITHHELD_INSTRUCTION"})
+_DIAGNOSTIC_FIELDS = frozenset({"node", "exception", "frame", "assertion", "text"})
+_DIAGNOSTIC_LIMITATIONS = frozenset({"RAW_WITHHELD", "SEMANTIC_CAUSE_NOT_ESTABLISHED",
+    "POST_HOC_OBSERVATION", "TECHNICAL_SPANS_WITHHELD", "FIELDS_TRUNCATED", "ORIGINAL_CAPTURE_UNPROVEN"})
+_DIAGNOSTIC_LITERALS = frozenset({"PASS", "FAIL", "FAILED", "AVAILABLE", "UNAVAILABLE", "UNKNOWN",
+    "READY", "BLOCKED", "ACTIVE", "NONE", "PRIMARY", "REPAIR", "REMEDIATION"})
+
+
+def source_failure_diagnostic(context, *, code=None, reason="TECHNICAL_SOURCE_MISSING", authority=None):
+    """An exact observation selector confers no private-read authority."""
+    return dict(format="AIOS_SOURCE_FAILURE_DIAGNOSTIC", version=1,
+        binding=dict(task=dict(context["task"]), run_id=context["run_id"], base_sha=context["base_sha"],
+            subject_sha=context["subject_sha"], phase=context["phase"], **context["source"]),
+        authority=authority, provenance="SOURCE_UNPROVEN", availability="UNAVAILABLE", blocker=(dict(code=code, reason=reason,
+            action="READ_EXACT_PROTECTED_SOURCE") if code else None), witnesses=[], nodes=[],
+        technical_availability=dict(test_identity="SOURCE_MISSING", exception_type="SOURCE_MISSING",
+            file_line="SOURCE_MISSING", assertion="SOURCE_MISSING"),
+        exceptions=[], frames=[], assertions=[], signals=[], redactions=[],
+        limitations=["POST_HOC_OBSERVATION", "RAW_WITHHELD", "SEMANTIC_CAUSE_NOT_ESTABLISHED"],
+        next_read=(dict(reader="observe_runtime_failure_detail", run_id=context["run_id"],
+            artifact_sha=context["source"]["artifact_sha"]) if code else None),
+        proof="NON_PASS_DIAGNOSTIC")
+
+
+def needs_source_failure_diagnostic(context):
+    """Keep sufficient legacy/Git page reads free of protected-source access."""
+    if context["phase"] != "VERIFICATION":
+        return True
+    commands = context.get("safe_detail", {}).get("verification", [])
+    return not commands or any(not item["failed_nodes"]
+        or item.get("summary_status", "NOT_APPLICABLE") not in {"PARSED", "NOT_APPLICABLE"}
+        or any("UNKNOWN" in node["error_types"] for node in item["failed_nodes"]) for item in commands)
+
+
+def _diagnostic_scalar(value):
+    return (value is None or type(value) is bool or type(value) is int and abs(value) <= 10**12
+        or type(value) is float and math.isfinite(value) and abs(value) <= 10**12
+        or isinstance(value, str) and value in _DIAGNOSTIC_LITERALS)
+
+
+def validate_source_failure_diagnostic(value, context):
+    template = source_failure_diagnostic(context)
+    if (not isinstance(value, dict) or set(value) != set(template)
+            or any(value[k] != template[k] for k in ("format", "version", "binding", "proof"))
+            or type(value["version"]) is not int
+            or value["provenance"] not in {"SOURCE_UNPROVEN", "SOURCE_AUTHENTICATED"}
+            or value["availability"] not in {"UNAVAILABLE", "PARTIAL"}):
+        raise ValueError("invalid source FAILURE diagnostic")
+    authority = value["authority"]
+    if authority is not None and (not isinstance(authority, dict)
+            or set(authority) != {"kind", "origin_digest", "refs_digest"}
+            or authority["kind"] != "SELF_HOST_CONTROL_PLANE"
+            or any(not _is_digest(authority[k]) for k in ("origin_digest", "refs_digest"))):
+        raise ValueError("invalid diagnostic authority")
+    blocker = value["blocker"]
+    if blocker is not None and (not isinstance(blocker, dict) or set(blocker) != {"code", "reason", "action"}
+            or blocker["code"] not in _DIAGNOSTIC_CODES or blocker["reason"] not in _DIAGNOSTIC_REASONS
+            or blocker["action"] != "READ_EXACT_PROTECTED_SOURCE"):
+        raise ValueError("invalid diagnostic blocker")
+    expected_next = source_failure_diagnostic(context, code="SOURCE_UNPROVEN")["next_read"] if blocker else None
+    if value["next_read"] != expected_next:
+        raise ValueError("invalid diagnostic next read")
+    availability = value["technical_availability"]
+    if (not isinstance(availability, dict) or set(availability) != set(template["technical_availability"])
+            or any(v not in {"AVAILABLE", "ABSENT", "WITHHELD", "SOURCE_MISSING"} for v in availability.values())
+            or any((availability[k] == "AVAILABLE") != bool(value[f]) for k, f in (
+                ("test_identity", "nodes"), ("exception_type", "exceptions"), ("file_line", "frames"), ("assertion", "assertions")))):
+        raise ValueError("invalid technical field availability")
+    for field, allowed, maximum in (("exceptions", _DIAGNOSTIC_EXCEPTIONS, 8),
+            ("signals", _DIAGNOSTIC_SIGNALS, 16), ("limitations", _DIAGNOSTIC_LIMITATIONS, 6)):
+        items = value[field]
+        if (not isinstance(items, list) or len(items) > maximum or any(not isinstance(x, str) or x not in allowed for x in items)
+                or items != sorted(set(items))):
+            raise ValueError("invalid diagnostic enum")
+    if not set(template["limitations"]) <= set(value["limitations"]):
+        raise ValueError("missing diagnostic limitations")
+    bounds = {"nodes": 8, "frames": 8, "assertions": 4, "redactions": 32, "witnesses": 4}
+    if any(not isinstance(value[k], list) or len(value[k]) > n for k, n in bounds.items()):
+        raise ValueError("diagnostic field bound exceeded")
+    for node in value["nodes"]:
+        if (not isinstance(node, dict) or set(node) != {"identity", "parameters_withheld"}
+                or _safe_test_identity(node["identity"]) != (node["identity"], False)
+                or type(node["parameters_withheld"]) is not bool):
+            raise ValueError("invalid diagnostic node")
+    for frame in value["frames"]:
+        if (not isinstance(frame, dict) or set(frame) != {"path", "line"} or not _unresolved_path(frame["path"])
+                or type(frame["line"]) is not int or not 1 <= frame["line"] <= 65536):
+            raise ValueError("invalid diagnostic frame")
+    for assertion in value["assertions"]:
+        if (not isinstance(assertion, dict) or set(assertion) != {"actual", "operator", "expected"}
+                or assertion["operator"] not in {"==", "!=", "<", ">", "<=", ">="}
+                or not all(_diagnostic_scalar(assertion[k]) for k in ("actual", "expected"))):
+            raise ValueError("unsafe diagnostic assertion")
+    for redaction in value["redactions"]:
+        if (not isinstance(redaction, dict) or set(redaction) != {"segment", "field", "decision"}
+                or type(redaction["segment"]) is not int or not 0 <= redaction["segment"] <= 65536
+                or redaction["field"] not in _DIAGNOSTIC_FIELDS or redaction["decision"] not in _DIAGNOSTIC_DECISIONS):
+            raise ValueError("invalid diagnostic redaction")
+    for witness in value["witnesses"]:
+        if (not isinstance(witness, dict) or set(witness) != {"kind", "digest", "index"}
+                or witness["kind"] not in {"PRIVATE_FAILURE", "SUMMARY", "CAPTURE", "OBSERVATION"}
+                or not _is_digest(witness["digest"])
+                or witness["index"] is not None and (type(witness["index"]) is not int or not 0 <= witness["index"] < 32)):
+            raise ValueError("invalid diagnostic witness")
+    populated = any(value[k] for k in ("nodes", "exceptions", "frames", "assertions", "signals"))
+    if (value["availability"] != ("PARTIAL" if populated else "UNAVAILABLE")
+            or (value["provenance"] == "SOURCE_AUTHENTICATED") != bool(value["witnesses"])
+            or (populated or value["witnesses"]) and (authority is None or not value["witnesses"]
+                or value["witnesses"][0] != dict(kind="PRIVATE_FAILURE", digest=context["source"]["private_failure_digest"], index=None))):
+        raise ValueError("unproven diagnostic content")
+    _public_bytes(value, max_bytes=DIAGNOSTIC_VIEW_MAX_BYTES)
+
+
+def filter_failure_technical_spans(view, text, *, repository_source, pytest_command=False, observed_nodes=(), budget_check=None):
+    """Closed field grammars, with committed-source checks for identities/frames.
+
+    repository_source(path) returns bounded committed UTF-8, never a local file
+    selected by captured text. No arbitrary prose, string literal, expression,
+    nested JSON or decoded payload can become a technical fact.
+    """
+    if not isinstance(text, str) or len(text.encode("utf-8")) > DIAGNOSTIC_SOURCE_MAX_BYTES:
+        raise FailureDiagnosticError("LIMIT_EXHAUSTED")
+    if text.count("\n") > 65536:
+        raise FailureDiagnosticError("LIMIT_EXHAUSTED")
+    check = budget_check or (lambda: None)
+    check()
+    view["technical_availability"] = dict.fromkeys(view["technical_availability"], "ABSENT")
+    assertion_allowlist = set()
+    def committed_assertions(source):
+        try:
+            for node in ast.walk(ast.parse(source)):
+                if isinstance(node, ast.Assert):
+                    assertion_allowlist.add(ast.dump(node.test, include_attributes=False))
+        except (SyntaxError, ValueError):
+            pass
+    def decision(segment, field, code):
+        row = dict(segment=segment, field=field, decision=code)
+        if len(view["redactions"]) < 32:
+            view["redactions"].append(row)
+        else:
+            view["limitations"] = sorted(set(view["limitations"]) | {"FIELDS_TRUNCATED"})
+        if code.startswith("WITHHELD_"):
+            view["limitations"] = sorted(set(view["limitations"]) | {"TECHNICAL_SPANS_WITHHELD"})
+            facet = {"node": "test_identity", "exception": "exception_type", "frame": "file_line", "assertion": "assertion"}.get(field)
+            if facet is not None and view["technical_availability"][facet] != "AVAILABLE":
+                view["technical_availability"][facet] = "WITHHELD"
+    def append(field, item, maximum):
+        if item not in view[field]:
+            if len(view[field]) < maximum:
+                view[field].append(item)
+            else:
+                view["limitations"] = sorted(set(view["limitations"]) | {"FIELDS_TRUNCATED"})
+    # Normalization grants no new free-text release. Unsupported escape/control
+    # sequences are withheld; known SGR can preserve separate structural fields.
+    clean = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    nodes, _, _ = _pytest_summary_nodes(clean, "python -m pytest") if pytest_command else ([], False, "UNSUPPORTED_COMMAND")
+    nodes = list(observed_nodes)[:8] + nodes
+    for node in nodes[:8]:
+        check()
+        identity = node["identity"]
+        if not isinstance(identity, str) or _safe_test_identity(identity) != (identity, False):
+            decision(0, "node", "WITHHELD_UNRECOGNIZED")
+            continue
+        source = repository_source(identity.split("::", 1)[0])
+        if source is not None:
+            committed_assertions(source)
+            try:
+                tree = ast.parse(source)
+                parts = identity.split("::")[1:]
+                body = tree.body
+                for part in parts:
+                    found = [n for n in body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name == part]
+                    if len(found) != 1:
+                        break
+                    body = found[0].body
+                else:
+                    append("nodes", dict(identity=identity, parameters_withheld=node["parameters_withheld"]), 8)
+                    decision(0, "node", "RELEASED_STRUCTURE")
+                    if node["parameters_withheld"]:
+                        decision(0, "node", "WITHHELD_PARAMETER")
+            except (SyntaxError, ValueError):
+                decision(0, "node", "WITHHELD_UNRECOGNIZED")
+    locations, proven_paths = {}, set()
+    frame_pattern = r'^(?:\s*File "((?:src|tests)/[A-Za-z0-9_./-]+\.py)", line (\d+)|((?:src|tests)/[A-Za-z0-9_./-]+\.py):(\d+):)'
+    # pytest often prints its file/line footer after the assertion. Collect
+    # source proof first so release does not depend on that presentation order.
+    for segment, original in enumerate(text.splitlines()):
+        if segment % 128 == 0: check()
+        if len(original) > 4096: continue
+        frame = re.match(frame_pattern, re.sub(r"\x1b\[[0-9;]*m", "", original))
+        if frame:
+            path, number = (frame[1], frame[2]) if frame[1] else (frame[3], frame[4])
+            if _unresolved_path(path) and len(number) <= 5:
+                source = repository_source(path)
+                if source is not None and 1 <= int(number) <= min(65536, len(source.splitlines())):
+                    if path not in proven_paths:
+                        committed_assertions(source)
+                        proven_paths.add(path)
+                    locations[segment] = dict(path=path, line=int(number))
+    # Linear, line-bounded symptom recognition. These fixed observations never
+    # release the matched text or promote it to an established semantic cause.
+    for segment, row in enumerate(clean.splitlines()):
+        if segment % 128 == 0: check()
+        if len(row) > 4096: continue
+        lower = row.lower().strip()
+        body = lower[1:].lstrip() if lower.startswith("e ") else lower
+        if (lower.startswith(("failed to find expected lines", "apply_patch verification failed: failed to find expected lines"))
+                or "patch" in lower and ("context mismatch" in lower or "invalid context" in lower)):
+            append("signals", "NATIVE_PATCH_CONTEXT_MISMATCH", 16)
+        if body.startswith("fixture '") and body.endswith("' not found"):
+            append("signals", "FIXTURE_LOOKUP", 16)
+        if (lower.startswith(("error: usage:", "error: unrecognized arguments:"))
+                or "pytest" in lower and ("configuration" in lower or "config error" in lower)):
+            append("signals", "PYTEST_CONFIGURATION", 16)
+        if lower.startswith("aios pytest execution failed:") and any(
+                marker in lower for marker in ("profile", "worker collection", "worker population")):
+            append("signals", "PYTEST_EXECUTION_PROFILE", 16)
+        if ((lower.startswith("[gw") and ("crashed" in lower or "not properly terminated" in lower))
+                or "worker" in lower and "crashed" in lower):
+            append("signals", "WORKER_CRASH", 16)
+        if (lower.startswith(("fatal: bad object", "fatal: invalid object name", "fatal: not a valid object name",
+                "fatal: ambiguous argument", "fatal: not a git repository"))
+                or "shallow history" in lower or "missing git history" in lower):
+            append("signals", "MISSING_GIT_HISTORY", 16)
+        if "unicodedecodeerror" in lower or "not strict utf-8" in lower:
+            append("signals", "OUTPUT_ENCODING", 16)
+    for segment, original in enumerate(text.splitlines()):
+        if segment % 128 == 0: check()
+        if len(original) > 4096:
+            decision(segment, "text", "WITHHELD_UNRECOGNIZED")
+            continue
+        line = re.sub(r"\x1b\[[0-9;]*m", "", original)
+        high_risk = re.search(r"(?i)(?:password|secret|credential|api[_ -]?key|token|cookie|authorization|bearer|PRIVATE KEY|https?://|[A-Z]:[/\\]|(?:^|\s)/(?:home|Users|tmp|var)/|@|customer|person[_ -]?id)", line)
+        instruction = re.search(r"(?i)(?:ignore .*instructions|system prompt|developer message|execute this|run this command|<\|(?:system|assistant)|prompt.inject)", line)
+        encoded = any(ord(c) < 32 and c != "\t" or ord(c) > 126 for c in line) or bool(re.search(r"(?:\\[ux][0-9a-fA-F]{2,}|[A-Za-z0-9+/]{40,}={0,2}|^\s*[\[{])", line))
+        # Structural exceptions and relative locations survive adjacent unsafe
+        # messages. Only the closed type/path/line fields are copied.
+        error = re.search(r"(?:^|^E\s+|: )(?:[A-Za-z_][A-Za-z0-9_]*\.)*(" + "|".join(sorted(_DIAGNOSTIC_EXCEPTIONS)) + r")(?:\s*:|\s*$)", line)
+        if error:
+            append("exceptions", error[1], 8)
+            decision(segment, "exception", "RELEASED_STRUCTURE")
+            if error[1] == "AssertionError": append("signals", "ASSERTION", 16)
+            if error[1] in {"ImportError", "ModuleNotFoundError"}: append("signals", "IMPORT", 16)
+        elif re.search(r"^(?:E\s+)?(?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception):", line):
+            decision(segment, "exception", "WITHHELD_UNRECOGNIZED")
+        if segment in locations:
+            append("frames", locations[segment], 8)
+            decision(segment, "frame", "RELEASED_STRUCTURE")
+        elif re.match(r'^\s*File "', line):
+            decision(segment, "frame", "WITHHELD_UNRECOGNIZED")
+        if high_risk or instruction or encoded or original != line:
+            field = "assertion" if re.match(r"^(?:E\s+)?(?:AssertionError: )?assert ", line.strip()) else "text"
+            decision(segment, field, "WITHHELD_INSTRUCTION" if instruction else "WITHHELD_ENCODING" if encoded or original != line else "WITHHELD_SECRET")
+            continue
+        assertion = re.match(r"^(?:E\s+)?(?:AssertionError: )?assert (.{1,256})$", line.strip())
+        if assertion:
+            append("signals", "ASSERTION", 16)
+            try:
+                parsed = ast.parse(assertion[1], mode="eval").body
+                if not isinstance(parsed, ast.Compare) or len(parsed.ops) != 1 or len(parsed.comparators) != 1:
+                    raise ValueError("unsupported assertion")
+                # A numeric/status-shaped string alone is no secrecy proof.
+                # Only a comparison already present in authenticated committed
+                # source is releasable; dynamic values remain a withheld span.
+                if ast.dump(parsed, include_attributes=False) not in assertion_allowlist:
+                    raise ValueError("unproved assertion operands")
+                def scalar(node):
+                    if isinstance(node, ast.Constant) and _diagnostic_scalar(node.value): return node.value
+                    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant) and type(node.operand.value) in (int, float) and _diagnostic_scalar(-node.operand.value): return -node.operand.value
+                    raise ValueError("withheld operand")
+                operator = {ast.Eq: "==", ast.NotEq: "!=", ast.Lt: "<", ast.Gt: ">", ast.LtE: "<=", ast.GtE: ">="}[type(parsed.ops[0])]
+                append("assertions", dict(actual=scalar(parsed.left), operator=operator, expected=scalar(parsed.comparators[0])), 4)
+                append("signals", "ASSERTION", 16)
+                decision(segment, "assertion", "RELEASED_TECHNICAL")
+                continue
+            except (SyntaxError, ValueError, KeyError, RecursionError):
+                decision(segment, "assertion", "WITHHELD_UNRECOGNIZED")
+        if line.strip():
+            decision(segment, "text", "WITHHELD_UNRECOGNIZED")
+    for field in ("exceptions", "signals", "limitations"):
+        view[field] = sorted(set(view[field]))
+    for facet, field in (("test_identity", "nodes"), ("exception_type", "exceptions"), ("file_line", "frames"), ("assertion", "assertions")):
+        if view[field]: view["technical_availability"][facet] = "AVAILABLE"
+    if (text.strip() and not any(view[k] for k in ("nodes", "exceptions", "frames", "assertions"))
+            and not set(view["signals"]) - {"SUMMARY_UNPARSEABLE"}):
+        view["signals"] = sorted(set(view["signals"]) | {"OTHER_UNKNOWN"})
+    view["availability"] = "PARTIAL" if any(view[k] for k in ("nodes", "exceptions", "frames", "assertions", "signals")) else "UNAVAILABLE"
+    return view
 
 
 _NATIVE_REASONS = frozenset({"TIMEOUT", "INTERRUPTED", "PROCESS_EXIT", "INVOCATION_FAILED", "OUTPUT_INVALID"})
@@ -1205,7 +1515,7 @@ def validate_failure_context(value: Any) -> None:
     fields = {"format", "version", "kind", "run_id", "task", "executor", "base_sha", "subject_sha", "phase",
               "candidate", "candidate_availability", "diagnostic", "verification", "verification_truncated", "evidence_identities",
               "evidence_identities_truncated", "source", "proof"}
-    if (not isinstance(value, dict) or set(value) - {"safe_detail", "detail_blocker", "paging", "paging_blocker"} != fields or value["format"] != "AIOS_FAILURE_CONTEXT"
+    if (not isinstance(value, dict) or set(value) - {"safe_detail", "detail_blocker", "paging", "paging_blocker", "diagnostic_read"} != fields or value["format"] != "AIOS_FAILURE_CONTEXT"
             or type(value["version"]) is not int or value["version"] != 1 or value["kind"] != "FAILURE_CONTEXT"
             or value["proof"] != "NON_PASS_DIAGNOSTIC"
             or value["candidate_availability"] not in {"AVAILABLE", "UNAVAILABLE", "UNKNOWN"}
@@ -1263,6 +1573,8 @@ def validate_failure_context(value: Any) -> None:
         validate_failure_paging(value["paging"], value)
     if "paging_blocker" in value and (value["paging_blocker"] not in _PAGE_BLOCKERS or "paging" in value):
         raise ValueError("invalid FAILURE paging blocker")
+    if "diagnostic_read" in value:
+        validate_source_failure_diagnostic(value["diagnostic_read"], value)
     if value.get("safe_detail", {}).get("version") == 4:
         _unresolved_portable_bytes(value)
     else:

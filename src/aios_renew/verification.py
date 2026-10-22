@@ -301,8 +301,9 @@ def execute_verification(
 
             stdout = _require_bytes(completed.stdout, "stdout")
             stderr = _require_bytes(completed.stderr, "stderr")
+            captured = b"STDOUT\n" + stdout + b"\nSTDERR\n" + stderr
             with raw_path.open("xb") as stream:
-                stream.write(b"STDOUT\n" + stdout + b"\nSTDERR\n" + stderr)
+                stream.write(captured)
             try:
                 decoded_stdout = stdout.decode("utf-8", errors="strict")
                 decoded_stderr = stderr.decode("utf-8", errors="strict")
@@ -320,11 +321,12 @@ def execute_verification(
                 source=EvidenceSource(command=command),
                 result=EvidenceOutcome(
                     exit_code=completed.returncode,
-                    summary=_summary(
-                        completed.returncode,
-                        stdout=decoded_stdout,
-                        stderr=decoded_stderr,
-                    ),
+                    summary=_diagnostic_capture_summary(
+                        _summary(completed.returncode, stdout=decoded_stdout, stderr=decoded_stderr),
+                        captured=captured, run_id=run_id, subject_sha=subject_sha,
+                        evidence_id=evidence_id, command=command,
+                    ) if completed.returncode else _summary(
+                        completed.returncode, stdout=decoded_stdout, stderr=decoded_stderr),
                 ),
                 raw_path=str(raw_path),
             )
@@ -1429,6 +1431,20 @@ def _summary(returncode: int, *, stdout: str, stderr: str) -> str:
     if detail:
         return detail
     return "verification passed" if returncode == 0 else "verification failed"
+
+
+def _diagnostic_capture_summary(summary: str, *, captured: bytes, run_id: str,
+                                subject_sha: str, evidence_id: str, command: str) -> str:
+    """Pin this original capture inside the existing protected FAILURE summary.
+
+    This is observation metadata, not verification proof. No extra store or
+    historical backfill is needed; public FAILURE always withholds the summary.
+    Keep _summary and the original raw framing compatible with old readers.
+    """
+    pin = dict(run_id=run_id, subject_sha=subject_sha, evidence_id=evidence_id,
+        command_digest=hashlib.sha256(command.encode("utf-8")).hexdigest(),
+        raw_digest=hashlib.sha256(captured).hexdigest(), raw_bytes=len(captured))
+    return "AIOS_DIAGNOSTIC_CAPTURE_V1 " + json.dumps(pin, sort_keys=True, separators=(",", ":")) + "\n" + summary
 
 
 @dataclass(frozen=True, slots=True)

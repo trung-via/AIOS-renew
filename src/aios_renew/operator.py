@@ -640,6 +640,290 @@ def _runtime_paths_readonly(repo: str | Path) -> RuntimePaths:
 
 
 def observe_runtime_failure_detail(repo: str | Path, context: Mapping[str, Any], *,
+                                   _admitted_run: Run | None = None,
+                                   _diagnostic_sources=None) -> dict[str, Any]:
+    """Extend the existing protected reader with one bounded observational read.
+
+    The old safe-detail/unresolved APIs keep their admission and return contract.
+    The extension authenticates its own current canonical source before opening
+    protected content, including when legacy detail already says PARTIAL.
+    """
+    observed = _observe_legacy_runtime_failure_detail(repo, context, _admitted_run=_admitted_run)
+    if observed.get("safe_detail", {}).get("cause") != "UNRESOLVED_ITEMS":
+        observed["diagnostic_read"] = _observe_source_failure_diagnostic(repo, observed, sources=_diagnostic_sources)
+    return observed
+
+
+def _failure_source_git(repo, *args):
+    """Bound the existing GitSources caller bridge, without exporting stderr."""
+    from .review_transport import FailureDiagnosticError, PUBLIC_FAILURE_MAX_BYTES
+    try:
+        result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=False,
+            timeout=15, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        if len(result.stdout) > PUBLIC_FAILURE_MAX_BYTES:
+            raise FailureDiagnosticError("LIMIT_EXHAUSTED")
+        if result.returncode:
+            raise FailureDiagnosticError("FAILURE_SOURCE_UNAVAILABLE")
+        return result.stdout.decode("utf-8", errors="strict").strip()
+    except subprocess.TimeoutExpired as exc:
+        raise FailureDiagnosticError("LIMIT_EXHAUSTED") from exc
+    except (OSError, UnicodeError) as exc:
+        raise FailureDiagnosticError("FAILURE_SOURCE_UNAVAILABLE") from exc
+
+
+def _observe_source_failure_diagnostic(repo, context, *, sources=None):
+    from . import review_transport as rt
+    from .brain_attention import GitSources
+    from .runtime import _read_unresolved_bytes
+    rt.validate_failure_context(context)
+    view = rt.source_failure_diagnostic(context, code="SOURCE_UNPROVEN", reason="READER_AUTHORITY")
+    if os.environ.get("RUNNER_ENVIRONMENT") != "self-hosted":
+        view["blocker"]["code"] = "ACCESS_DENIED"
+        return view
+    deadline, calls = time.monotonic() + rt.DIAGNOSTIC_SECONDS, 0
+    reason = "CURRENT_REFS"
+    def check():
+        if time.monotonic() >= deadline:
+            raise rt.FailureDiagnosticError("LIMIT_EXHAUSTED")
+    def git(path, *args):
+        nonlocal calls
+        check()
+        calls += 1
+        if calls > rt.DIAGNOSTIC_MAX_CALLS:
+            raise rt.FailureDiagnosticError("LIMIT_EXHAUSTED")
+        try:
+            result = subprocess.run(["git", "-C", str(path), *args], capture_output=True,
+                timeout=max(0.001, min(2, deadline - time.monotonic())), check=False,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        except subprocess.TimeoutExpired as exc:
+            raise rt.FailureDiagnosticError("LIMIT_EXHAUSTED") from exc
+        if result.returncode:
+            raise rt.FailureDiagnosticError("SOURCE_UNPROVEN")
+        if len(result.stdout) > rt.DIAGNOSTIC_SOURCE_MAX_BYTES:
+            raise rt.FailureDiagnosticError("LIMIT_EXHAUSTED")
+        try:
+            return result.stdout.decode("utf-8", errors="strict").strip()
+        except UnicodeError as exc:
+            raise rt.FailureDiagnosticError("SOURCE_INVALID") from exc
+    def read(path, limit):
+        check()
+        content = _read_unresolved_bytes(path, limit)
+        check()
+        return content
+    def blocked(code, why):
+        # Identity/currentness failures erase all private-derived content. A
+        # missing capture can retain fields proved by the private summary.
+        return rt.source_failure_diagnostic(context, code=code, reason=why)
+    def observe(backend):
+        nonlocal reason, view
+        root = Path(repo).resolve()
+        reason = "ORIGIN"
+        if (not isinstance(backend, GitSources) or Path(backend.runtime_repo).resolve() != root):
+            raise rt.FailureDiagnosticError("SOURCE_UNPROVEN")
+        origin = git(root, "remote", "get-url", "origin")
+        source_origin = (git(backend.path, "remote", "get-url", backend.remote)
+            if re.fullmatch(r"[A-Za-z0-9_-]+", backend.remote) else backend.remote)
+        canonical_origins = {
+            "https://github.com/trung-via/AIOS-renew", "https://github.com/trung-via/AIOS-renew.git",
+            "git@github.com:trung-via/AIOS-renew", "git@github.com:trung-via/AIOS-renew.git",
+            "ssh://git@github.com/trung-via/AIOS-renew", "ssh://git@github.com/trung-via/AIOS-renew.git"}
+        # Local Git authorities support isolated, labeled source fixtures and
+        # existing local transports. No arbitrary network host or pasted URL is
+        # a protected-reader origin, even when it serves a replayed artifact.
+        local_origin = Path(origin).is_absolute() and not origin.startswith(("\\\\", "//")) and "://" not in origin
+        if (origin != source_origin or re.search(r"[?#\r\n]", origin)
+                or re.match(r"https?://[^/]*@", origin)
+                or origin not in canonical_origins and not local_origin):
+            raise rt.FailureDiagnosticError("SOURCE_UNPROVEN")
+        source = GitSources(backend.path, git, backend.remote, runtime_repo=root)
+        prefix, run_id = "refs/heads/aios/", context["run_id"]
+        patterns = [prefix + name + "/" + run_id for name in ("failure-artifacts", "failure", "artifacts", "review")]
+        reason = "CURRENT_REFS"
+        before = source.refs(*patterns)
+        if (context["source"]["artifact_sha"] is None
+                or before.get(prefix + "failure-artifacts/" + run_id) != context["source"]["artifact_sha"]
+                or before.get(prefix + "failure/" + run_id) not in (None, context["subject_sha"])
+                or any(prefix + name + "/" + run_id in before for name in ("artifacts", "review"))):
+            raise rt.FailureDiagnosticError("SOURCE_MISMATCH")
+        reason = "TERMINAL_IDENTITY"
+        artifact = context["source"]["artifact_sha"]
+        run = source.failure_identity_document(artifact, ".ai/transport/run.json")
+        terminal = rt.failure_document(rt._public_bytes(source.failure_identity_document(artifact, ".ai/transport/failure.json"),
+            max_bytes=rt.PUBLIC_FAILURE_MAX_BYTES))
+        head = rt._bind_performance_terminal_identity(rt._public_bytes(run), rt._public_bytes(terminal,
+            max_bytes=rt.PUBLIC_FAILURE_MAX_BYTES), ref=prefix + "failure-artifacts/" + run_id,
+            run_id=run_id, task_id=context["task"]["id"], terminal_kind="FAILURE", _validated_failure=terminal)[3]
+        canonical = rt.failure_context(terminal, artifact_sha=artifact)
+        if (canonical is None or head != context["subject_sha"]
+                or any(canonical[k] != context[k] for k in ("task", "run_id", "base_sha", "subject_sha", "phase", "executor", "source"))):
+            raise rt.FailureDiagnosticError("SOURCE_MISMATCH")
+        reason = "PRIVATE_FAILURE"
+        state = _runtime_paths_readonly(root)
+        private_path = state.failures / (run_id + ".json")
+        original = read(private_path, rt.PUBLIC_FAILURE_MAX_BYTES)
+        private = rt.failure_document(original, private_original=True)
+        if ("public_projection" in private or rt._failure_digest(private) != context["source"]["private_failure_digest"]
+                or any(private[k] != context[k] for k in ("task", "run_id", "base_sha", "phase", "executor"))
+                or private["failed_head_sha"] != context["subject_sha"]):
+            raise rt.FailureDiagnosticError("SOURCE_MISMATCH")
+        view = rt.source_failure_diagnostic(context, authority=dict(kind="SELF_HOST_CONTROL_PLANE",
+            origin_digest=rt._failure_digest(origin), refs_digest=rt._failure_digest(before)))
+        view["provenance"] = "SOURCE_AUTHENTICATED"
+        view["witnesses"].append(dict(kind="PRIVATE_FAILURE", digest=rt._failure_digest(private), index=None))
+        cache = {}
+        reason = "REPOSITORY_HISTORY"
+        def repository_source(path):
+            check()
+            if not rt._unresolved_path(path): return None
+            if path in cache: return cache[path]
+            if len(cache) >= 4:
+                raise rt.FailureDiagnosticError("LIMIT_EXHAUSTED")
+            # Only exact committed regular blobs. Captured paths never select
+            # worktree files, imports, commands, URLs or a different subject.
+            entry = git(root, "ls-tree", "-l", context["subject_sha"], "--", path)
+            match = re.fullmatch(r"100644 blob [0-9a-f]{40}\s+(\d+)\t" + re.escape(path), entry)
+            if match is None:
+                cache[path] = None
+            elif int(match[1]) > 65536:
+                raise rt.FailureDiagnosticError("LIMIT_EXHAUSTED")
+            else:
+                cache[path] = git(root, "show", context["subject_sha"] + ":" + path)
+            return cache[path]
+        error = private["error"]
+        text = ""
+        capture_problem = None
+        capture_witness = None
+        pytest_command, observed_nodes, observation_text = False, [], ""
+        reason = "CAPTURE"
+        if context["phase"] == "VERIFICATION":
+            details = context.get("safe_detail", {}).get("verification", [])
+            needed = {item["index"] for item in details if not item["failed_nodes"]
+                or item.get("summary_status", "NOT_APPLICABLE") not in {"PARSED", "NOT_APPLICABLE"}
+                or any("UNKNOWN" in node["error_types"] for node in item["failed_nodes"])}
+            failures = [(i, item) for i, item in enumerate(error.get("verification", [])[:32]) if item["exit_code"] != 0]
+            selected = next((pair for pair in failures if pair[0] in needed), failures[0] if failures else None)
+            if len(needed) > 1:
+                view["limitations"].append("FIELDS_TRUNCATED")
+            if selected:
+                index, outcome = selected
+                pytest_command = rt._pytest_summary_command(outcome["command"])
+                observed_nodes = [node for item in context.get("safe_detail", {}).get("verification", [])
+                    if item["index"] == index for node in item["failed_nodes"]][:8]
+                text = outcome.get("summary", "")
+                view["witnesses"].append(dict(kind="SUMMARY", digest=rt._failure_digest(text), index=index))
+                reference = outcome.get("verification")
+                pin = None
+                if isinstance(reference, dict):
+                    if (reference["run_id"] != run_id or reference["binding"]["subject_sha"] != context["subject_sha"]
+                            or reference["candidate"]["subject_sha"] != context["subject_sha"] or "reuse" in reference):
+                        reason = "REUSED_OR_FOREIGN_CAPTURE"
+                        raise rt.FailureDiagnosticError("SOURCE_UNPROVEN")
+                    pin = dict(evidence_id=reference["evidence_id"], raw_digest=reference["raw_digest"], raw_bytes=None)
+                    observed = reference["candidate"]
+                    reports = [report for report in observed["reports"] if report["outcome"] == "FAIL"]
+                    observation_text = "\n".join(report.get("detail", "") for report in reports[:4])
+                    if len(reports) > 4:
+                        view["limitations"].append("FIELDS_TRUNCATED")
+                    view["witnesses"].append(dict(kind="OBSERVATION", digest=rt._failure_digest(observed), index=index))
+                    path = Path(reference["raw_path"])
+                    if not path.is_absolute(): path = root / path
+                elif text.startswith("AIOS_DIAGNOSTIC_CAPTURE_V1 "):
+                    row, _, text = text.partition("\n")
+                    pin = rt._public_document(row[len("AIOS_DIAGNOSTIC_CAPTURE_V1 "):].encode(), max_bytes=2048)
+                    if (set(pin) != {"run_id", "subject_sha", "evidence_id", "command_digest", "raw_digest", "raw_bytes"}
+                            or pin["run_id"] != run_id or pin["subject_sha"] != context["subject_sha"]
+                            or pin["command_digest"] != hashlib.sha256(outcome["command"].encode()).hexdigest()
+                            or not rt._is_digest(pin["raw_digest"]) or type(pin["raw_bytes"]) is not int
+                            or pin["raw_bytes"] <= 0
+                            or not isinstance(pin["evidence_id"], str)
+                            or re.fullmatch(re.escape(run_id) + r"-V[0-9]{3,6}", pin["evidence_id"]) is None):
+                        raise rt.FailureDiagnosticError("SOURCE_INVALID")
+                    if pin["raw_bytes"] > rt.DIAGNOSTIC_SOURCE_MAX_BYTES:
+                        raise rt.FailureDiagnosticError("LIMIT_EXHAUSTED")
+                    path = state.verification / run_id / (pin["evidence_id"] + ".raw")
+                if pin is None:
+                    capture_problem = ("SOURCE_UNPROVEN", "CAPTURE_UNPINNED")
+                    view["limitations"].append("ORIGINAL_CAPTURE_UNPROVEN")
+                else:
+                    permitted = state.verification / run_id
+                    if (path.name != pin["evidence_id"] + ".raw" or ".." in path.parts
+                            or not path.absolute().is_relative_to(permitted.absolute())):
+                        raise rt.FailureDiagnosticError("ACCESS_DENIED")
+                    try:
+                        captured = read(path, rt.DIAGNOSTIC_SOURCE_MAX_BYTES)
+                        if (hashlib.sha256(captured).hexdigest() != pin["raw_digest"]
+                                or pin["raw_bytes"] is not None and len(captured) != pin["raw_bytes"]):
+                            raise rt.FailureDiagnosticError("SOURCE_MISMATCH")
+                        if not captured.startswith(b"STDOUT\n") or b"\nSTDERR\n" not in captured:
+                            reason = "CAPTURE_FRAMING"
+                            raise rt.FailureDiagnosticError("SOURCE_INVALID")
+                        stdout, _, stderr = captured[7:].partition(b"\nSTDERR\n")
+                        try:
+                            text = stdout.decode("utf-8", errors="strict") + "\n" + stderr.decode("utf-8", errors="strict")
+                        except UnicodeError:
+                            reason = "CAPTURE_ENCODING"
+                            raise rt.FailureDiagnosticError("SOURCE_INVALID") from None
+                        view["witnesses"].append(dict(kind="CAPTURE", digest=pin["raw_digest"], index=index))
+                        capture_witness = (path, pin["raw_digest"])
+                    except rt.FailureDiagnosticError as exc:
+                        if exc.code not in {"SOURCE_MISSING", "ACCESS_DENIED", "LIMIT_EXHAUSTED"}: raise
+                        capture_problem = (exc.code, "CAPTURE")
+                detail = context.get("safe_detail", {}).get("verification", [])
+                if any(item.get("summary_status") not in {"PARSED", "NOT_APPLICABLE"} or not item["failed_nodes"] for item in detail):
+                    view["signals"].append("SUMMARY_UNPARSEABLE")
+        elif context["phase"] == "EXECUTION":
+            native = error.get("native_diagnostics", {})
+            streams = [native.get(key) for key in ("stdout", "stderr")]
+            text = "\n".join(s if isinstance(s, str) else s.get("text", "") if isinstance(s, dict) else "" for s in streams)
+            # The native capture's exact digest is the immutable private FAILURE
+            # digest. Tool/event JSON remains withheld; no nested instructions run.
+        else:
+            text = error.get("message", "")
+        reason = "REPOSITORY_HISTORY"
+        rt.filter_failure_technical_spans(view, text + ("\n" + observation_text if observation_text else ""),
+            repository_source=repository_source, pytest_command=pytest_command, observed_nodes=observed_nodes, budget_check=check)
+        if capture_problem:
+            code, why = capture_problem
+        elif not (view["exceptions"] or view["frames"] or view["assertions"]
+                  or set(view["signals"]) - {"SUMMARY_UNPARSEABLE", "OTHER_UNKNOWN"}):
+            code, why = "SOURCE_UNPROVEN", "TECHNICAL_SOURCE_MISSING"
+        else:
+            code = why = None
+        if code:
+            view["blocker"] = dict(code=code, reason=why, action="READ_EXACT_PROTECTED_SOURCE")
+            view["next_read"] = rt.source_failure_diagnostic(context, code=code)["next_read"]
+        # No private-derived field is returned until all mutable authority and
+        # original-source witnesses are reread. Historical artifacts are untouched.
+        reason = "CURRENT_REFS"
+        if source.refs(*patterns) != before or git(root, "remote", "get-url", "origin") != origin:
+            raise rt.FailureDiagnosticError("SOURCE_MISMATCH")
+        if re.fullmatch(r"[A-Za-z0-9_-]+", backend.remote) and git(backend.path, "remote", "get-url", backend.remote) != origin:
+            raise rt.FailureDiagnosticError("SOURCE_MISMATCH")
+        if os.environ.get("RUNNER_ENVIRONMENT") != "self-hosted":
+            raise rt.FailureDiagnosticError("ACCESS_DENIED")
+        reason = "PRIVATE_FAILURE"
+        if read(private_path, rt.PUBLIC_FAILURE_MAX_BYTES) != original:
+            raise rt.FailureDiagnosticError("SOURCE_MISMATCH")
+        if capture_witness is not None:
+            reason = "CAPTURE"
+            if hashlib.sha256(read(capture_witness[0], rt.DIAGNOSTIC_SOURCE_MAX_BYTES)).hexdigest() != capture_witness[1]:
+                raise rt.FailureDiagnosticError("SOURCE_MISMATCH")
+        check()
+        view["limitations"] = sorted(set(view["limitations"]))
+        rt.validate_source_failure_diagnostic(view, context)
+        return view
+    try:
+        if sources is not None:
+            return observe(sources)
+        with _remote_observation_repository(Path(repo).resolve()) as observer:
+            return observe(GitSources(observer, git, resolve_transport_remote(observer), runtime_repo=repo))
+    except rt.FailureDiagnosticError as exc:
+        return blocked(exc.code if exc.code in rt._DIAGNOSTIC_CODES else "SOURCE_INVALID", reason)
+    except (OSError, ValueError, TypeError, KeyError, OperatorError, ReviewTransportError, RecursionError):
+        return blocked("SOURCE_UNPROVEN", reason)
+
+
+def _observe_legacy_runtime_failure_detail(repo: str | Path, context: Mapping[str, Any], *,
                                    _admitted_run: Run | None = None) -> dict[str, Any]:
     """Existing self-host control-plane projection; returns no private bytes/path.
 

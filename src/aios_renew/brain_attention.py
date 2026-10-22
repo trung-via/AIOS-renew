@@ -547,10 +547,15 @@ def terminal_failure_context(item, sources, *, include_paging=False, page_select
         context = (_failure_context_from_validated(terminal, original=terminal, artifact_sha=sha,
                     candidate_available=before.get(candidate_ref) == head) if "public_projection" in terminal else
                    failure_context(terminal, artifact_sha=sha, candidate_available=before.get(candidate_ref) == head))
-        if (context is not None and context.get("safe_detail", {}).get("cause") == "UNRESOLVED_ITEMS"
-                and getattr(sources, "runtime_repo", None) is not None):
-            from .operator import observe_runtime_failure_detail
-            context = observe_runtime_failure_detail(sources.runtime_repo, context)
+        from .review_transport import needs_source_failure_diagnostic
+        if context is not None and page_selector is None and needs_source_failure_diagnostic(context):
+            if getattr(sources, "runtime_repo", None) is not None:
+                from .operator import observe_runtime_failure_detail
+                context = observe_runtime_failure_detail(sources.runtime_repo, context, _diagnostic_sources=sources)
+            elif context.get("safe_detail", {}).get("cause") != "UNRESOLVED_ITEMS":
+                from .review_transport import source_failure_diagnostic
+                context["diagnostic_read"] = source_failure_diagnostic(context,
+                    code="SOURCE_UNPROVEN", reason="READER_AUTHORITY")
         result = context
         if context is not None and (include_paging or page_selector is not None):
             from .review_transport import read_failure_detail_projection, FailureDiagnosticError

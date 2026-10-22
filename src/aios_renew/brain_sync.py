@@ -48,6 +48,12 @@ def _has_failure_pages(value):
         diagnostics.get("failure_context"), diagnostics.get("attributed_failure_context"), unified.get("failure_context")))
 
 
+def _has_source_diagnostic(value):
+    diagnostics, unified = value.get("diagnostics") or {}, value.get("unified_state") or {}
+    return any("diagnostic_read" in (context or {}) for context in (
+        diagnostics.get("failure_context"), diagnostics.get("attributed_failure_context"), unified.get("failure_context")))
+
+
 def _has_unresolved_diagnostic(value):
     diagnostics, unified = value.get("diagnostics") or {}, value.get("unified_state") or {}
     return (diagnostics.get("blocker") or {}).get("code") == "LIMIT_EXHAUSTED" or any((context or {}).get("safe_detail", {}).get("cause") == "UNRESOLVED_ITEMS" for context in (
@@ -89,8 +95,16 @@ class BrainSyncSnapshot:
     post_task: Mapping[str, Any] | None = None
     _post_task_digest: str | None = field(default=None, repr=False, compare=False)
     _post_task_current: Any = field(default=None, repr=False, compare=False)
+    _diagnostic_digest: str | None = field(default=None, repr=False, compare=False)
+    _diagnostic_current: Any = field(default=None, repr=False, compare=False)
 
     def as_dict(self) -> dict[str, Any]:
+        if self._diagnostic_digest is not None and _post_digest(self.diagnostics) != self._diagnostic_digest:
+            raise BrainSyncError("DIAGNOSTIC_CONTEXT_INVALID")
+        if self._diagnostic_current is not None:
+            code = self._diagnostic_current()
+            if code is not None:
+                raise BrainSyncError(code)
         if self.post_task is not None:
             if (_post_digest(dict(view=self.post_task, unified=self.unified_state, repository=self.repository)) != self._post_task_digest
                     or self.selected_task != self.post_task["task"]
@@ -167,8 +181,13 @@ class BrainSyncSnapshot:
             body["repository"] = dict(self.repository, root="protected-repository-root")
             if len(_post_encode(body).encode("utf-8")) > 8192:
                 return _post_unknown("POST_TASK_LIMIT_EXHAUSTED").as_dict()
-        if _has_failure_pages(body) or _has_unresolved_diagnostic(body):
+        if _has_failure_pages(body) or _has_unresolved_diagnostic(body) or _has_source_diagnostic(body):
             body["repository"]["root"] = "protected-repository-root"
+        if _has_source_diagnostic(body):
+            body["repository"].pop("remote_url", None)
+            body["repository"]["remote"] = None
+            if len(json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 64 * 1024:
+                raise BrainSyncError("LIMIT_EXHAUSTED")
         if _has_unresolved_diagnostic(body):
             body["repository"].pop("remote_url", None)
         if _has_unresolved_diagnostic(body) and _unresolved_portable_exhausted(body):
@@ -347,6 +366,7 @@ def _exact_failure_context(root, run_id, sources=None):
         # This owner-gated helper can only add a safe projection; a provider can
         # neither select a private path nor receive raw capture through Sync.
         if (context.get("safe_detail", {}).get("availability") == "UNAVAILABLE"
+                and ("diagnostic_read" not in context or getattr(backend, "runtime_repo", None) is None)
                 or context.get("safe_detail", {}).get("cause") == "UNRESOLVED_ITEMS"
                 and getattr(backend, "runtime_repo", None) is None):
             context = op.observe_runtime_failure_detail(root, context)
@@ -355,11 +375,36 @@ def _exact_failure_context(root, run_id, sources=None):
         if sources is not None:
             return read(sources)
         with op._remote_observation_repository(root) as observer:
-            return read(GitSources(observer, op._git, resolve_transport_remote(observer), runtime_repo=root))
+            return read(GitSources(observer, op._failure_source_git, resolve_transport_remote(observer), runtime_repo=root))
     except AttentionError as exc:
         code = "FAILURE_SOURCE_MOVED" if str(exc) == "FAILURE_SOURCE_MOVED" else (
             "FAILURE_SOURCE_UNAVAILABLE" if str(exc) == "FAILURE_SOURCE_UNAVAILABLE" else "FAILURE_SOURCE_INTEGRITY_INVALID")
         raise BrainSyncError(code) from None
+
+
+def _diagnostic_current_guard(root, contexts, sources):
+    """Request-local receipt, never a cache, portable capability or truth store.
+
+    Reuse the SAME authorized reader when a protected projection is serialized
+    later. A snapshot cannot replay private-derived fields after refs, origin,
+    retention or reader authority have changed.
+    """
+    pinned = [(context["run_id"], _post_digest(context["diagnostic_read"]))
+        for key in ("failure_context", "attributed_failure_context")
+        if (context := contexts.get(key)) is not None
+        and context.get("diagnostic_read", {}).get("authority") is not None]
+    if not pinned:
+        return None
+    def current():
+        for run_id, expected in pinned:
+            try:
+                context = _exact_failure_context(root, run_id, sources)
+                if _post_digest(context.get("diagnostic_read")) != expected:
+                    return "FAILURE_DETAIL_UNAVAILABLE"
+            except (BrainSyncError, ReviewTransportError, OperatorError, OSError, ValueError, TypeError, KeyError):
+                return "FAILURE_SOURCE_MOVED"
+        return None
+    return current
 
 
 def observe_brain_sync(repo: str | Path | None = None, *, task_id: str | None = None,
@@ -437,7 +482,9 @@ def observe_brain_sync(repo: str | Path | None = None, *, task_id: str | None = 
     snapshot = BrainSyncSnapshot(repository=repository, main_sha=main, roadmap={"selection": "EXACT_DIAGNOSTIC_SUBJECT"},
         selection_status="EXACT_DIAGNOSTIC_SUBJECT", lifecycle_state=unified["lifecycle_state"] if unified else "OBSERVATION",
         next_action=unified["next_action"] if unified else "NONE", authority=unified["authority"] if unified else "NONE",
-        selected_task=selected, unified_state=unified, blocker=None, diagnostics=contexts)
+        selected_task=selected, unified_state=unified, blocker=None, diagnostics=contexts,
+        _diagnostic_digest=_post_digest(contexts),
+        _diagnostic_current=_diagnostic_current_guard(root, contexts, canonical_sources))
     snapshot.as_dict()
     return snapshot
 

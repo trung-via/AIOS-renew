@@ -17,7 +17,7 @@ import yaml
 
 from .brain_sync import (
     BrainSyncError, BrainSyncSnapshot, observe_brain_sync, _has_failure_pages,
-    _has_unresolved_diagnostic, _unresolved_portable_exhausted,
+    _has_unresolved_diagnostic, _unresolved_portable_exhausted, _has_source_diagnostic,
 )
 
 
@@ -197,6 +197,7 @@ class BrainWorkContext:
     # Private compiler input; raw FAILURE diagnostics never become Brain facts.
     repair_supersession_material: Mapping[str, Any] | None = field(default=None, repr=False)
     _post_task_current: Any = field(default=None, repr=False, compare=False)
+    _diagnostic_current: Any = field(default=None, repr=False, compare=False)
 
     def as_dict(self) -> dict[str, Any]:
         from .brain_sync import validate_diagnostic_context
@@ -205,10 +206,15 @@ class BrainWorkContext:
             code = self._post_task_current()
             if code is not None:
                 raise BrainContextError(code)
-        if "post_task" in self.canonical_observation and (
+        if ("post_task" in self.canonical_observation or _has_source_diagnostic(self.canonical_observation)) and (
                 _invalidation_basis(self.canonical_observation, self.current_request) != self.invalidation_basis
                 or _digest(self.invalidation_basis) != self.invalidation_fingerprint):
-            raise BrainContextError("stale or altered Post-TASK Work Context")
+            raise BrainContextError("stale or altered Post-TASK Work Context" if "post_task" in self.canonical_observation
+                else "stale or altered source-bound Work Context")
+        if self._diagnostic_current is not None:
+            code = self._diagnostic_current()
+            if code is not None:
+                raise BrainContextError(code)
         if "failure_page" in self.canonical_observation:
             view = self.canonical_observation["failure_page"]
             try:
@@ -228,8 +234,10 @@ class BrainWorkContext:
                     or unified["failure_context"]["task"] != unified.get("task")):
                 raise BrainContextError("FAILURE_CONTEXT_SUBSTITUTION")
         portable = _stable_copy(self.canonical_observation)
-        if "post_task" in portable or _has_failure_pages(portable) or _has_unresolved_diagnostic(portable):
+        if "post_task" in portable or _has_failure_pages(portable) or _has_unresolved_diagnostic(portable) or _has_source_diagnostic(portable):
             portable["repository"]["root"] = "protected-repository-root"
+        if _has_source_diagnostic(portable):
+            portable["repository"]["remote"] = None
         value = {
             "format": "AIOS_BRAIN_WORK_CONTEXT", "version": 1,
             "kind": "BRAIN_WORK_CONTEXT",
@@ -245,6 +253,8 @@ class BrainWorkContext:
             raise BrainContextError("LIMIT_EXHAUSTED")
         if "post_task" in portable and len(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 8192:
             raise BrainContextError("POST_TASK_LIMIT_EXHAUSTED")
+        if _has_source_diagnostic(portable) and len(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 64 * 1024:
+            raise BrainContextError("LIMIT_EXHAUSTED")
         return value
 
     def render(self) -> str:
@@ -274,7 +284,7 @@ def compose_brain_work_context(
         raise BrainContextError("supply either a Brain Sync snapshot or repository")
     request = _request(current_request)
     observed = snapshot.as_dict()
-    if "post_task" in observed or _has_failure_pages(observed) or _has_unresolved_diagnostic(observed):
+    if "post_task" in observed or _has_failure_pages(observed) or _has_unresolved_diagnostic(observed) or _has_source_diagnostic(observed):
         # Keep the operational root private for local Flow Card integrity checks.
         # Both portable serializers redact it before a provider sees this view.
         observed["repository"]["root"] = snapshot.repository["root"]
@@ -304,7 +314,8 @@ def compose_brain_work_context(
     basis = _invalidation_basis(observed, request)
     fingerprint = _digest(basis)
     return BrainWorkContext(observed, request, basis, fingerprint, observed["repository"]["root"], supersession,
-                            snapshot._post_task_current if post_task_selector is not None else None)
+                            snapshot._post_task_current if post_task_selector is not None else None,
+                            snapshot._diagnostic_current)
 
 
 def _tokens(value: Any, *, allowed: frozenset[str], nonempty: bool = True) -> list[str]:
