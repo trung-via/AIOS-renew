@@ -515,7 +515,7 @@ def terminal_failure_context(item, sources, *, include_paging=False, page_select
     if item.family != FAILURE:
         raise AttentionError("FAILURE_CONTEXT_REQUIRES_FAILURE_ATTENTION")
     from .review_transport import (
-        ReviewTransportError, _bind_performance_terminal_identity, _failure_context_from_validated, failure_context, failure_document,
+        FailureDiagnosticError, ReviewTransportError, _bind_performance_terminal_identity, _failure_context_from_validated, failure_context, failure_document,
     )
     run_id, sha = item.selectors["run_id"], item.selectors["artifact_sha"]
     root = "refs/heads/aios/"
@@ -529,9 +529,16 @@ def terminal_failure_context(item, sources, *, include_paging=False, page_select
             identity_reader = getattr(sources, "failure_identity_document", sources.document)
             run = identity_reader(sha, ".ai/transport/run.json")
             failure = identity_reader(sha, ".ai/transport/failure.json")
+            terminal = failure_document(canonical(failure))
         except (KeyError, OSError) as exc:
             raise AttentionError("FAILURE_SOURCE_UNAVAILABLE") from exc
-        terminal = failure_document(canonical(failure))
+        except FailureDiagnosticError as exc:
+            # Invalid identity documents belong to the source boundary. Keep
+            # resource blockers and later detail/paging diagnostics typed.
+            if exc.code not in {"PROJECTION_INVALID", "FAILURE_SOURCE_DOCUMENT_INVALID", "FAILURE_KIND_INVALID",
+                    "FAILURE_PUBLIC_PRIVACY_INVALID", "FAILURE_PUBLIC_INTEGRITY_INVALID", "FAILURE_PRIVATE_INTEGRITY_INVALID"}:
+                raise
+            raise AttentionError("FAILURE_SOURCE_INTEGRITY_INVALID") from exc
         head = _bind_performance_terminal_identity(
             canonical(run), canonical(terminal), ref=terminal_ref, run_id=run_id,
             task_id=terminal["task"]["id"], terminal_kind="FAILURE", _validated_failure=terminal)[3]
