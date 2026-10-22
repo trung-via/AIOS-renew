@@ -1,34 +1,51 @@
 task_id: TASK-402
-revision: 1
+revision: 2
 goal: 'PTE-01: restore reliable exact terminal-attention return affinity and local
   Chat wake for an admitted EXECUTION FAILURE with dirty/untransportable worktree
   and no committed failed-candidate ref, while preserving all identity, privacy and
   at-most-once controls.'
-problem: RUN-401-002 published canonical failure-artifacts cd92896f6d4f11bcf3777ba37cfa014072b3daee,
-  without aios/failure/RUN-401-002 candidate ref. Terminal-attention admission and
-  Issue succeeded, but local wake failed AFFINITY_UNPROVEN. Canonical brain_attention.resolve_return_affinity.run_affinity
-  requires the absent candidate, as does local_chat_wake.CanonicalFreshness.observe;
-  two independent paths need source-bound correction. RUN-401-001 wake also had STATE_LOCKED_OR_UNAVAILABLE.
-  This TASK covers terminal wake only, not future dirty worktree preservation/recovery.
+problem: PTE-01 source implementation in immutable failed RUN-402-001 candidate b746631cb0ae4b1758f745a0b5ac42158228a0ef
+  reached canonical VERIFICATION with a single identified historical roadmap test
+  failure. The canonical base 49727a00b91366cce6aff13b50f276683ac760d8 had two current_next_effect
+  mapping keys in the paused Lean VP sequence entry; strict _load_yaml rejected this
+  source, causing tests/test_brain_attention.py::test_repaired_repository_roadmap_uses_unique_keys_and_exact_planning_bookmarks
+  to fail independent of the PTE-01 behavior. Human/Brain planning correction e2264fb1078fd7f854a3c1db76baa6c768fff9b4
+  removes only the obsolete key, retaining single PTE NEXT. Immutable prior candidate
+  and FAILURE remain historical. Prospectively deliver the original eight-AC PTE-01
+  behavior on the corrected valid canonical source without modifying roadmap or weakening
+  strict YAML/test guards.
 assumptions:
-- Human explicitly approved PTE-01..06 then TASK-401 r3 on 2026-10-22. Current main
-  42ee0c9a66b5b2221562a3e82d3a95c2489cca37 has unique PTE-01 NEXT and the bounded
-  planning document; TASK/RUN/EXECUTOR still require distinct Runtime admission.
-- Observed failure-artifacts SHA and local wake job AFFINITY_UNPROVEN bind the original
-  incident; no candidate ref is expected for untransportable FAILURE. This does not
-  independently prove full executor exit cause or repair eligibility.
-- Source tests show both return-affinity resolver and CanonicalFreshness freshness
-  probe dereference missing candidate. Existing terminal_attention admission validates
-  artifact without candidate. Direct native callers and tests for RESULT, clean FAILURE,
-  ref drift, lane lock and duplicate delivery must remain compatible.
-- Active TCA-2 v2 CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE challenged all ACs
-  against the bounded source API and historical tests. No nonclaimable proof-phase
-  acceptance or required out-of-scope test edit is authorized.
-- Current canonical Human standing override for new AIOS-renew TASKs explicitly selects
-  LEGACY_REPOSITORY_DEFAULT_ROUTE until live proven origin fix; no origin proof is
-  fabricated or attached.
-- PTE-02/03/04/05/06, Kernel amendment risk, prospective TASK-401 r3/G3 and KA-01
-  G6 remain separate, not activated by PTE-01.
+- Human requested FIX TASK-402 after canonical VERIFICATION FAILURE RUN-402-001, and
+  previously delegated Codex GPT-6.1 Sol Max to PTE-01..06. This is a revision of
+  the same TASK, not a new PTE, automatic retry or a retrospective change to RUN-402-001.
+- Exact previous TASK-402 r1 source 49727a00b91366cce6aff13b50f276683ac760d8, failed
+  committed candidate b746631cb0ae4b1758f745a0b5ac42158228a0ef, immutable failure
+  artifacts ddfdc3f16dcc9c13e93deae86fdc546281955d4e and failed verification node
+  tests/test_brain_attention.py::test_repaired_repository_roadmap_uses_unique_keys_and_exact_planning_bookmarks
+  are separate canonical identities.
+- Canonical old roadmap entry lean-vp-intra-v13-budget-defaults-successor contained
+  two current_next_effect keys. terminal_attention._UniqueKeyLoader rejects the duplicate
+  at tests/test_brain_attention.py:1395 when test loads repository roadmap; it is
+  not a PTE-01 source regression. Planning-only commit e2264fb1078fd7f854a3c1db76baa6c768fff9b4
+  fixes the duplicate and maintains active PTE-01 NEXT, Lean VP paused, no automatic
+  roadmap change.
+- New TASK-402 r2 must use corrected canonical main as its source and preserve inherited
+  original AC1-AC8, verification commands, return affinity LEGACY_REPOSITORY_DEFAULT_ROUTE,
+  all original inspect/modify bounds. Runtime independently authenticates source and
+  task revision, and Executor may preserve and apply relevant r1 delta only under
+  current scope and origin conditions.
+- Candidate r1 was clean, descends from base, changed only src/aios_renew/brain_attention.py,
+  src/aios_renew/local_chat_wake.py and three in-scope tests, with failure.candidate.repairable=true.
+  Historical delta may be inspected/reused; this is not Runtime verification, Reviewer
+  PASS or automatic authorization of a cherry-pick.
+- Production attention/freshness exact head/artifact-only FAILURE behavior must retain
+  old RESULT and clean FAILURE guards; no test skip, xfail, parser relaxation or synthetic
+  fake production success. Scope remains seven original paths and no .ai/roadmap-state.yaml
+  mutation.
+- Active canonical TASK_AUTHORING profile TCA-2 v2 was checked against the exact original
+  TASK, five existing candidate deltas, strict YAML loader, roadmap correction, affected
+  publication-attention test and Runtime control. Two-stage authoring preserves all
+  eight CLAIM_NOW acceptance properties, no new authority and no proof-later claims.
 scope:
   inspect:
   - src/aios_renew/brain_attention.py
@@ -69,24 +86,34 @@ non_goals:
   local diagnostics, unsafe resend or weakened tests.
 constraints:
   hard:
-  - Authenticate exact canonical RUN/TASK revision/base/head and failure-artifacts
-    SHA without trusting a fabricated failed-candidate ref; a missing candidate by
-    itself never proves terminal identity or source validity.
-  - Keep candidate-present exact ref binding, opposite terminal/competing or stale
-    ref rejection, historical RESULT/clean failure/REPAIR lineage, route/generation
-    and privacy unchanged.
-  - Retain original-lane delivery, durable inbox, lock acquisition, held/ambiguous
-    Send safeguards and at-most-once semantics, without setting lifecycle next_action
-    in the attention projector.
-  - Enforce each actual necessary production/test change against scope.modify. Do
-    not edit inspect-only paths; if a decisive consumer needs it, surface authoring
-    blocker instead of bypassing scope.
-  - Only preserve current Runtime/Reviewer/Publisher authority and existing canonical
-    verification policy. No mutation of old failure records, new snapshot, false PASS
-    or unauthorized Executor access.
-  - Focused minimum-sufficient-v1 tests; no full suite, baseline replay or synthetic
-    live wake/publication claim. Executor owns HOW; Runtime verifies evidence and
-    source; independent Reviewer/Publisher finish.
+  - 'Exact source transition: previous failed candidate b746631cb0ae4b1758f745a0b5ac42158228a0ef
+    derives from old TASK-402 r1 main 49727a00b91366cce6aff13b50f276683ac760d8; new
+    TASK-402 r2 source must retain canonical planning correction e2264fb1078fd7f854a3c1db76baa6c768fff9b4
+    and the duplicate-free .ai/roadmap-state.yaml byte identity on the new base. Never
+    carry the old duplicate into the r2 candidate or silently rewrite old RUN/FAILURE.'
+  - Carry forward original PTE-01 behavioral implementation and targeted positive/negative
+    tests from authenticated r1 delta only when consistent with the new source and
+    allowed modify list. Exactly one Executor owns HOW; if H1R fails preservation/currentness,
+    stop with typed blocker, do not force-reset or overwrite.
+  - All actual r2 code/test changes limited to the ORIGINAL seven-file scope.modify.
+    .ai/roadmap-state.yaml, strict terminal_attention._UniqueKeyLoader and existing
+    verification contract are INSPECT-ONLY, already corrected separately as planning
+    data; no new permission to edit them via Executor.
+  - Preserve original AC1-AC8 unchanged as exact implementation claims; preserve existing
+    source/RETURN affinity for artifact-only dirty FAILURE, candidate-present exact
+    ref, conflicting terminal, spoofed TASK/RUN/HEAD, duplicate wake and lock contention,
+    and no new router/reducer/Reviewer/Publisher.
+  - Keep the genuine strict YAML negative coverage of duplicate mapping keys. Do not
+    delete/skip/xfail tests, weaken _load_yaml, turn unknown evidence into PASS or
+    evade fixed 30-second freshness deadline. The real current valid roadmap must
+    continue parsing, and an intentionally duplicated key must still fail closed.
+  - Maintain minimum-sufficient-v1 exact original two verification commands and no
+    full suite. Runtime separately verifies and issues canonical RESULT/EVIDENCE/FAILURE,
+    independent Reviewer judges, Publisher includes only exact eligible reviewed candidate;
+    no auto roadmap NEXT advancement, G6 activation or semantic authority transfer.
+  - Sticky Human-delegated executor Codex gpt-6.1-sol max applies to actual PRIMARY
+    if separately admitted by the approved Runtime dispatch route; this TASK revision
+    authoring does not invoke Codex, create RUN, or erase prior FAILURE.
 acceptance:
 - id: AC1
   condition: Exact admitted canonical dirty/nontransportable EXECUTION FAILURE with
