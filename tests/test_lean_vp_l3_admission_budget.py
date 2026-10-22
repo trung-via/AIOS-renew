@@ -46,7 +46,6 @@ class BudgetFixture(FeedbackFixture):
         self.owner = RuntimeCompletion(repo=self.repo, state=self.state, task=self.task, run=self.run,
             run_path=self.owner.run_path, verification_runner=self.actual_runner,
             observation_tracker=tracker, error_type=RuntimeError)
-        self.native_request = self.checkpoint_request()
         self.profile = ResolvedExecutionProfile(self.run.run_id, self.run.executor,
             "explicit-offline-model", "high", "EXPLICIT", "EXPLICIT")
         self.leases = RunLeaseRegistry()
@@ -78,6 +77,11 @@ class BudgetFixture(FeedbackFixture):
 
     def authorize(self, overrides=(), *, selection_change=None, consent_change=None,
                   override_change=None, operation="PRIMARY", policy=None, source_operation=None):
+        if (source_operation or operation) == "PRIMARY":
+            # The verifier binds the actual environment, including pytest's
+            # phase. Produce the reviewed manifest in the same call phase as
+            # native execution, rather than freezing a fixture-setup digest.
+            self.native_request = self.checkpoint_request()
         self.selected_policy = policy or self.policy
         pins = []
         for index, values in enumerate(overrides):
@@ -186,7 +190,8 @@ class BudgetFixture(FeedbackFixture):
             review_data = dict(review_id="REVIEW-005-CORRECTION", reviewed_sha=self.source.sha, mode="PRIMARY",
                 verdict="CHANGES_REQUIRED", acceptance=dict(AC1="FAIL"), findings=[finding])
             remediation_data = dict(finding_id="F1", action="CODE_FIX", reviewed_sha=self.source.sha,
-                modification_scope=["fixture-target.txt"], affected_verification=list(self.task.verification.required),
+                modification_scope=["fixture-target.txt"], verification=dict(policy=self.task.verification.policy,
+                    affected=list(self.task.verification.required)),
                 constraints=dict(hard=list(self.task.constraints.hard)))
             files = _tree_files(self.repo, self.source.tree)
             files.update({".ai/reviews/REVIEW-005-CORRECTION.yaml": yaml.safe_dump(review_data).encode(),
@@ -346,15 +351,34 @@ def test_nonnull_token_cap_stops_on_missing_complete_first_party_usage(budgeted)
     assert f.calls == [] and f.owner._ka01_opted
 
 
-@pytest.mark.parametrize("defect", ["missing-selector", "competing-selector", "missing-consent", "withdrawn-consent"])
+def test_unambiguous_packed_first_party_selector_remains_eligible(budgeted):
+    f = budgeted
+    f.authorize()
+    f.git("--git-dir=" + str(f.remote), "pack-refs", "--all")
+    assert not (f.remote / f.consent_ref).exists()
+    admitted = f.admit()
+    assert admitted["status"] == "ADMITTED_PREACTIVATION"
+    assert admitted["authority"]["original_selector"] == dict(ref=f.consent_ref, sha=f.consent_carrier)
+    assert f.calls == []
+
+
+@pytest.mark.parametrize("defect", ["missing-selector", "competing-selector", "packed-loose-conflict", "missing-consent", "withdrawn-consent"])
 def test_missing_or_competing_first_party_selection_and_consent_reject(budgeted, defect):
     f = budgeted
     f.authorize()
     if defect == "missing-selector":
         (f.remote / f.consent_ref).unlink()
     elif defect == "competing-selector":
-        # A genuine Git advertisement, including packed/loose D/F ambiguity;
-        # no affirmative remote-ref reader is mocked.
+        # Two valid, genuinely advertised selectors cannot select one consent.
+        (f.remote / f.consent_ref).unlink()
+        f.set_ref(f.consent_ref + "/original", f.consent_carrier)
+        f.set_ref(f.consent_ref + "/competing", f.consent_carrier)
+        from aios_renew.verification import _app_refs
+        refs = dict(_app_refs(f.repo, f.url, (f.consent_ref, f.consent_ref + "/*")))
+        assert set(refs) == {f.consent_ref + "/original", f.consent_ref + "/competing"}
+    elif defect == "packed-loose-conflict":
+        # This inconsistent ref store is distinct from advertised competition:
+        # Git hides its packed child behind the loose parent. Reject it too.
         (f.remote / "packed-refs").write_text(
             "# pack-refs with: peeled fully-peeled sorted\n" + f.consent_carrier + " " + f.consent_ref + "/competing\n")
     elif defect == "missing-consent":
@@ -469,7 +493,7 @@ def test_nonimproving_committed_candidate_cannot_buy_another_correction(budgeted
     assert len(f.calls) == 2
 
 
-@pytest.mark.parametrize("defect", ["withdraw-selection", "withdraw-consent", "withdraw-override", "profile", "lease", "scope", "clock", "wall", "verification", "ledger", "terminal"])
+@pytest.mark.parametrize("defect", ["withdraw-selection", "withdraw-consent", "withdraw-override", "packed-selector", "profile", "lease", "scope", "clock", "wall", "verification", "ledger", "terminal"])
 def test_live_guards_latch_stop_and_preserve_prior_cost_and_source(budgeted, monkeypatch, defect):
     f = budgeted
     f.authorize([{"max_corrections": 2}])
@@ -481,6 +505,9 @@ def test_live_guards_latch_stop_and_preserve_prior_cost_and_source(budgeted, mon
         if defect.startswith("withdraw-"):
             number = {"withdraw-selection": 1100, "withdraw-consent": 1101, "withdraw-override": 1000}[defect]
             f.issues[number]["state"] = "closed"
+        elif defect == "packed-selector":
+            (f.remote / "packed-refs").write_text(
+                "# pack-refs with: peeled fully-peeled sorted\n" + f.consent_carrier + " " + f.consent_ref + "/competing\n")
         elif defect == "profile":
             adapter.execution_profile = replace(f.profile, model="substitution")
         elif defect == "lease":

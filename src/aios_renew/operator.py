@@ -1456,7 +1456,8 @@ def _ka01_operation_source(owner, operation, policy):
                 or policy != expected_policy):
             _deny("REMEDIATION_CURRENT_FINDING_SCOPE_OR_PROOF_MISMATCH")
         facts.update(predecessor=source_run_id, authorization_sha=document["remediation_authorization_sha"],
-                     review_sha256=_digest(asdict(review)), finding_id=remediation.finding_id,
+                     review_sha256=_digest(asdict(replace(review, acceptance=dict(review.acceptance)))),
+                     finding_id=remediation.finding_id,
                      affected_verification_sha256=_digest(list(remediation.affected_verification)))
         return facts
     _deny("OPERATION_NOT_ADMITTED")

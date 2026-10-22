@@ -135,7 +135,7 @@ def production_gate(request):
 
 def _authority(owner, request, operation, profile, policy):
     from .github_issue_ingress import _decode_policy, _authenticate_selection_issue, _github_selection_json
-    from .verification import _ApplicabilityReader, _original_remote, _original_git, _app_refs
+    from .verification import _ApplicabilityReader, _original_remote, _original_git, _original_local, _app_refs
     from .operator import _ka01_operation_source
     from .execution_profile import ResolvedExecutionProfile
     from .runtime import CompletionPolicy
@@ -159,9 +159,23 @@ def _authority(owner, request, operation, profile, policy):
     reader = _ApplicabilityReader(owner.repo)
     selected_ref = "refs/heads/aios/ka01-v13-consent/" + owner.run.run_id
     patterns = ("refs/heads/main", selected_ref, selected_ref + "/*")
-    refs = dict(_app_refs(owner.repo, url, patterns))
-    if set(refs) != {"refs/heads/main", selected_ref}:
-        _deny("EXACT_UNAMBIGUOUS_FIRST_PARTY_SELECTION_REQUIRED")
+
+    def selected_refs():
+        refs = dict(_app_refs(owner.repo, url, patterns))
+        # Git can hide packed descendants behind a loose parent ref. This
+        # controlled bare source must also reject that inconsistent storage;
+        # packed bytes supply only a negative guard, never selection authority.
+        packed = remote / "packed-refs"
+        if os.path.lexists(packed):
+            prefix = (selected_ref + "/").encode("ascii")
+            for line in _original_local(packed, 32768).splitlines():
+                if not line.startswith((b"#", b"^")) and line.partition(b" ")[2].startswith(prefix):
+                    _deny("EXACT_UNAMBIGUOUS_FIRST_PARTY_SELECTION_REQUIRED")
+        if set(refs) != {"refs/heads/main", selected_ref}:
+            _deny("EXACT_UNAMBIGUOUS_FIRST_PARTY_SELECTION_REQUIRED")
+        return refs
+
+    refs = selected_refs()
     selection_tree, parents = reader.commit(refs[selected_ref])
     if parents or reader.blob(selection_tree, ".ai/transport/ka01-v13.json") != _bytes(asdict(request)):
         _deny("ORIGINAL_FIRST_PARTY_SELECTION_MISMATCH")
@@ -232,7 +246,7 @@ def _authority(owner, request, operation, profile, policy):
         operation_source_sha256=_digest(source), effective_limits_sha256=_digest(limits))
     if _bytes(consent) != _bytes(expected):
         _deny("EXACT_FRESH_RUN_CONSENT_REQUIRED")
-    if dict(_app_refs(owner.repo, url, patterns)) != refs:
+    if selected_refs() != refs:
         _deny("SOURCE_MOVED_DURING_ADMISSION")
     return dict(implementation=IMPLEMENTATION, ka01_version=VERSION, profile=PROFILE,
         policy=selection["policy"], normative=normative, ingress_policy_sha256=_digest(ingress_bytes),
