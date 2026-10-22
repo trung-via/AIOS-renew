@@ -6523,13 +6523,19 @@ def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = make_repo(tmp_path)
+
+    def fixture_commit(label: str) -> str:
+        # Object availability is checked independently of the synthetic Git
+        # provenance below, so every fetched ref must name a real local commit.
+        return git(repo, "commit-tree", "HEAD^{tree}", "-m", f"RUN-125 {label}")
+
     task_source = TASK_SOURCE.replace("TASK-101", "TASK-125")
     # Genuine historical lineage uses the explicit repository-default class.
     legacy = {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}
     task_source += "\nreturn_affinity: " + json.dumps(legacy) + "\n"
     task_ref = {"id": "TASK-125", "revision": 1}
     root_base_sha = "d47ed9c048cacd152452cf2a7054c662e1043c82"
-    reviewed_sha = "11fa6d596434f6fd3ee100b2bb481c4a2093b8bd"
+    reviewed_sha = fixture_commit("reviewed candidate")
     heads = {
         "RUN-125-006": "head-006",
         "RUN-125-007": "head-007",
@@ -6641,7 +6647,7 @@ def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
         "run_id": "RUN-125-005",
         "task": task_ref,
         "executor": "codex",
-        "base_sha": "f" * 40,
+        "base_sha": fixture_commit("failed predecessor"),
         "workspace": "legacy",
         "head_sha": None,
         "status": "ACTIVE",
@@ -6699,12 +6705,12 @@ def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
     # Supply the exact canonical transport, decision and predecessor provenance
     # at the Git boundary; keep the production lineage validators in the path.
     refs = {
-        "refs/heads/aios/artifacts/RUN-125-005": "a" * 40,
+        "refs/heads/aios/artifacts/RUN-125-005": fixture_commit("result artifacts"),
         "refs/heads/aios/review/RUN-125-005": reviewed_sha,
-        "refs/heads/aios/review-decision/RUN-125-005": "b" * 40,
-        "refs/heads/aios/failure-artifacts/RUN-125-004": "c" * 40,
+        "refs/heads/aios/review-decision/RUN-125-005": fixture_commit("review decision"),
+        "refs/heads/aios/failure-artifacts/RUN-125-004": fixture_commit("failure artifacts"),
         "refs/heads/aios/failure/RUN-125-004": source_run["base_sha"],
-        "refs/heads/aios/repair/RUN-125-004": "e" * 40,
+        "refs/heads/aios/repair/RUN-125-004": fixture_commit("repair authorization"),
     }
     review_path = ".ai/reviews/REVIEW-125-001.yaml"
     blobs = {
@@ -6717,15 +6723,21 @@ def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
     }
     ancestors = {(root_base_sha, source_run["base_sha"]), (root_base_sha, reviewed_sha)}
     deltas = ancestors | {(source_run["base_sha"], reviewed_sha)}
+    real_publication_git = publication_module._git
 
     def canonical_git(root, *args, **kwargs):
         assert root == repo
         if args[0] == "ls-remote":
             ref = args[-1]
             return 0, f"{refs[ref]}\t{ref}\n" if ref in refs else "", ""
-        if args[0] in {"fetch", "cat-file"}:
+        if args[0] == "fetch":
+            assert args[:3] == ("fetch", "--no-tags", "origin")
+            assert args[3:] and set(args[3:]).issubset(refs.values())
+            return real_publication_git(root, *args, **kwargs)
+        if args[0] == "cat-file":
+            assert args[:2] == ("cat-file", "-t") and len(args) == 3
             assert args[-1] in set(refs.values())
-            return 0, "commit" if args[0] == "cat-file" else "", ""
+            return real_publication_git(root, *args, **kwargs)
         if args[0] == "show":
             key = tuple(args[1].split(":", 1))
             return (0, blobs[key].decode(), "") if key in blobs else (1, "", "missing")
