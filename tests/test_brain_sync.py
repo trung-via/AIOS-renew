@@ -389,6 +389,7 @@ _TASK399_PLANNING_SOURCE_SHA = "60d47926448c1a537f3e9fcbf077c1aec75082f1"
 _TASK400_RETURN_RECORD = "human_lean_vp_l3_06_g3_return_reconciliation_20261022"
 _TASK400_PLAN = "docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md"
 _TASK400_SLICE = "L3_06_INTEGRATED_CORE_G3_PROOF"
+_TASK400_PLANNING_SOURCE_SHA = "bc0d4fd84405ebbb1a40f3b1e7e6508532de34bd"
 
 
 def _task398_source_planning_roadmap() -> dict:
@@ -607,13 +608,18 @@ def test_task399_current_priority_observation_never_dispatches_or_advances(tmp_p
     assert path.read_bytes() == before and git(repo, "show-ref") == refs
 
 
-def _task400_current_planning_roadmap() -> dict:
+def _task400_source_planning_roadmap() -> dict:
+    """Preserve TASK-400's then-current Lean VP selection and dated history.
+
+    The later PTE priority is a distinct prospective selection, not a change to
+    this immutable snapshot's positive/negative selectors or permission gates.
+    """
     root = Path(__file__).resolve().parents[1]
-    return yaml.safe_load((root / ".ai/roadmap-state.yaml").read_text(encoding="utf-8"))
+    return yaml.safe_load(git(root, "show", f"{_TASK400_PLANNING_SOURCE_SHA}:.ai/roadmap-state.yaml"))
 
 
 def test_task400_current_single_l3_06_next_preserves_dated_history():
-    source = _task400_current_planning_roadmap()
+    source = _task400_source_planning_roadmap()
     historical = _task399_source_planning_roadmap()
     by_id = {item["id"]: item for item in source["sequence"]}
     assert len(by_id) == len(source["sequence"])
@@ -698,7 +704,7 @@ def test_task400_current_single_l3_06_next_preserves_dated_history():
 def test_task400_current_planning_documents_identify_one_return_and_remaining_gates():
     root = Path(__file__).resolve().parents[1]
     for path in (_TASK400_PLAN, _TASK398_PLAN, _TASK399_PLAN):
-        text = (root / path).read_text(encoding="utf-8")
+        text = git(root, "show", f"{_TASK400_PLANNING_SOURCE_SHA}:{path}")
         for expected in (_TASK400_RETURN_RECORD, _TASK396_V13_NEXT, "2026-10-22",
                          "TASK-391", "TASK-397 r1", "RUN-397-002", "REVIEW-397-001",
                          _TASK399_PLANNING_SOURCE_SHA, "1f1ee2d1c51197b5e24514a94a75905872ad744e",
@@ -711,8 +717,8 @@ def test_task400_current_planning_documents_identify_one_return_and_remaining_ga
 
 def _task400_observation_fixture(tmp_path):
     repo = make_repo(tmp_path)
-    roadmap = _task400_current_planning_roadmap()
-    # Keep actual current planning entries; unrelated historical DONE anchors
+    roadmap = _task400_source_planning_roadmap()
+    # Keep TASK-400's historical planning entries; unrelated DONE anchors
     # are not present in this temporary repository's Git object database.
     planning_ids = {_TASK396_V13_NEXT, _TASK396_RETIRED_NEXT, _TASK398_NEXT,
                     _TASK399_NEXT, _TASK398_RESIDUAL}
