@@ -633,7 +633,7 @@ class CanonicalFreshness:
         patterns = (terminal, opposite, candidate, decision, repair, root + "repair-supersession/" + run_id + "/*")
         main = "refs/heads/main"
         if kind == "FAILURE":
-            patterns += (main,)
+            patterns += (main, root + "review/" + run_id)
         try:
             with tempfile.TemporaryDirectory(prefix="aios-wake-observe-") as location:
                 path = Path(location)
@@ -649,7 +649,10 @@ class CanonicalFreshness:
                     return result
 
                 observed = refs()
-                if observed.get(terminal) != artifact_sha or opposite in observed or candidate not in observed:
+                artifact_only = kind == "FAILURE" and candidate not in observed
+                if (observed.get(terminal) != artifact_sha or opposite in observed
+                        or kind == "RESULT" and candidate not in observed
+                        or kind == "FAILURE" and root + "review/" + run_id in observed):
                     return "UNKNOWN"
                 for sha in {sha for ref, sha in observed.items() if ref != main}:
                     self.git(path, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
@@ -662,7 +665,7 @@ class CanonicalFreshness:
                     # Reuse duplicate-key rejection without exporting any artifact content.
                     return _load_yaml(blob(sha, name), "wake canonical identity")
 
-                run = document(artifact_sha, ".ai/transport/run.json")
+                run_document = run = document(artifact_sha, ".ai/transport/run.json")
                 if run.get("kind") == "REMEDIATION":
                     run = run.get("execution", {}).get("run", {})
                 elif "kind" in run:
@@ -676,7 +679,21 @@ class CanonicalFreshness:
                 name = "result.json" if kind == "RESULT" else "failure.json"
                 package = document(artifact_sha, ".ai/transport/" + name)
                 head = package.get("result", {}).get("head_sha") if kind == "RESULT" else package.get("failed_head_sha")
-                if (head != observed[candidate] or run.get("head_sha") not in (None, head)
+                affinity = None
+                if kind == "FAILURE":
+                    from .brain_attention import _failure_terminal_head
+                    if _failure_terminal_head(run_id, run_document, package, candidate_available=not artifact_only) != head:
+                        return "UNKNOWN"
+                if artifact_only:
+                    from .brain_attention import GitSources, resolve_return_affinity
+                    if decision in observed:
+                        return "UNKNOWN"
+                    # Reuse the same exact TASK/base/head and descendant proof as
+                    # admission. A missing ref never authenticates a failed head.
+                    affinity = resolve_return_affinity(event_id, GitSources(path, self.git, self.remote))
+                    if affinity is None:
+                        return "UNKNOWN"
+                if ((not artifact_only and head != observed[candidate]) or run.get("head_sha") not in (None, head)
                         or (kind == "FAILURE" and (package.get("run_id") != run_id or package.get("task") != task))):
                     return "UNKNOWN"
                 resolved = False
@@ -732,6 +749,8 @@ class CanonicalFreshness:
                              "--refmap=", self.remote, observed[main])
                     current_task = validate_task(document(observed[main], ".ai/tasks/" + task["id"] + ".yaml"))
                     if current_task.task_id != task["id"] or current_task.revision < task["revision"]:
+                        return "UNKNOWN"
+                    if artifact_only and current_task.return_affinity != affinity:
                         return "UNKNOWN"
                     resolved = current_task.revision > task["revision"]
                 if refs() != observed:

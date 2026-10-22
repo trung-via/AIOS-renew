@@ -237,6 +237,166 @@ def canonical_fixture(monkeypatch, kind="RESULT"):
                            main=main, main_sha=main_sha, task_path=task_path, current_task=current_task)
 
 
+def artifact_only_fixture(monkeypatch, *, candidate_present=False, selector=None, dirty=True, phase="EXECUTION"):
+    from tests.test_brain_attention import canonical_execution_failure
+    import copy
+
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.run = fixture.blobs[fixture.artifact, ".ai/transport/run.json"]
+    selector = dict(kind="LEGACY_REPOSITORY_DEFAULT_ROUTE") if selector is None else selector
+    fixture.run["return_affinity"] = copy.deepcopy(selector)
+    for sha in (fixture.run["base_sha"], fixture.head, fixture.main_sha):
+        fixture.blobs[sha, fixture.task_path]["return_affinity"] = copy.deepcopy(selector)
+    fixture.failure = canonical_execution_failure(fixture.run, fixture.head, dirty=dirty, phase=phase)
+    fixture.blobs[fixture.artifact, ".ai/transport/failure.json"] = fixture.failure
+    if not candidate_present:
+        del fixture.refs[fixture.candidate]
+    return fixture
+
+
+@pytest.mark.parametrize("candidate_present", [False, True])
+def test_task402_artifact_only_freshness_and_affinity_use_same_exact_source(monkeypatch, candidate_present):
+    from aios_renew.return_affinity import LEGACY
+    fixture = artifact_only_fixture(monkeypatch, candidate_present=candidate_present)
+    before = dict(fixture.refs)
+    assert fixture.projection.affinity(fixture.event) == LEGACY
+    assert fixture.projection.observe(fixture.event) == "UNRESOLVED"
+    assert fixture.refs == before
+    assert all(call[0] in {"init", "fetch", "ls-remote", "show", "ls-tree", "rev-list"} for call in fixture.calls)
+    assert "synthetic-secret" not in wake.doorbell(fixture.event, wake.REPOSITORY)
+
+
+@pytest.mark.parametrize("defect", ["run", "task", "base", "run-head", "base-task", "head-task", "run-route",
+    "head-route", "unreadable-head", "unverified-ancestry", "integrity", "partial", "opposite", "opposite-candidate",
+    "opposite-decision", "divergent-ref", "malformed-ref", "candidate-appears", "terminal-race"])
+def test_task402_artifact_only_freshness_rejects_invalid_lineage(monkeypatch, defect):
+    fixture = artifact_only_fixture(monkeypatch)
+    if defect in {"run", "task", "base", "run-head"}:
+        key, value = {"run": ("run_id", "RUN-other-001"), "task": ("task", dict(id="TASK-other", revision=1)),
+                      "base": ("base_sha", "d" * 40), "run-head": ("head_sha", "d" * 40)}[defect]
+        fixture.run[key] = value
+    elif defect in {"base-task", "head-task"}:
+        sha = fixture.run["base_sha"] if defect == "base-task" else fixture.head
+        fixture.blobs[sha, fixture.task_path]["revision"] = 2
+    elif defect in {"run-route", "head-route"}:
+        document = fixture.run if defect == "run-route" else fixture.blobs[fixture.head, fixture.task_path]
+        document["return_affinity"] = dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "a" * 64, generation=2)
+    elif defect == "unreadable-head":
+        del fixture.blobs[fixture.head, fixture.task_path]
+    elif defect == "unverified-ancestry":
+        original = fixture.projection.git
+        def no_ancestry(path, *args):
+            return "d" * 40 if args[0] == "rev-list" else original(path, *args)
+        monkeypatch.setattr(fixture.projection, "git", no_ancestry)
+    elif defect == "integrity":
+        fixture.failure["public_projection"]["projection_digest"] = "0" * 64
+    elif defect == "partial":
+        fixture.blobs[fixture.artifact, ".ai/transport/failure.json"] = dict(kind="FAILURE", run_id=fixture.run_id,
+            task=fixture.task, failed_head_sha=fixture.head)
+    elif defect.startswith("opposite"):
+        namespace = {"opposite": "artifacts", "opposite-candidate": "review", "opposite-decision": "review-decision"}[defect]
+        fixture.refs[fixture.root + namespace + "/" + fixture.run_id] = "d" * 40
+    elif defect in {"divergent-ref", "malformed-ref"}:
+        fixture.refs[fixture.candidate] = "d" * 40 if defect == "divergent-ref" else "bad"
+    else:
+        fixture.drift.append(fixture.candidate if defect == "candidate-appears" else fixture.terminal)
+    assert fixture.projection.observe(fixture.event) == "UNKNOWN"
+
+
+@pytest.mark.parametrize("defect", ["integrity", "review", "review-decision"])
+def test_task402_present_candidate_freshness_rejects_canonical_failure_corruption(monkeypatch, defect):
+    fixture = artifact_only_fixture(monkeypatch, candidate_present=True)
+    if defect == "integrity":
+        fixture.failure["public_projection"]["projection_digest"] = "0" * 64
+    else:
+        fixture.refs[fixture.root + defect + "/" + fixture.run_id] = "d" * 40
+    assert fixture.projection.observe(fixture.event) == "UNKNOWN"
+
+
+@pytest.mark.parametrize("dirty, phase", [(False, "EXECUTION"), (True, "VERIFICATION")])
+def test_task402_missing_candidate_freshness_requires_nontransportable_execution(monkeypatch, dirty, phase):
+    fixture = artifact_only_fixture(monkeypatch, dirty=dirty, phase=phase)
+    assert fixture.projection.observe(fixture.event) == "UNKNOWN"
+
+
+@pytest.mark.parametrize("successor, expected", [("none", "UNRESOLVED"), ("unrelated", "UNRESOLVED"),
+    ("repair", "RESOLVED"), ("run", "UNKNOWN"), ("head", "UNKNOWN"), ("task", "UNKNOWN"),
+    ("chain", "RESOLVED"), ("orphan", "UNKNOWN"), ("gap", "UNKNOWN"), ("artifact", "UNKNOWN"),
+    ("predecessor", "UNKNOWN"), ("competing", "UNKNOWN"), ("task-revision", "RESOLVED"),
+    ("task-route", "UNKNOWN"), ("missing-main", "UNKNOWN"), ("moved", "UNKNOWN")])
+def test_task402_artifact_only_failure_resolves_only_exact_authorized_successor(monkeypatch, successor, expected):
+    fixture = artifact_only_fixture(monkeypatch)
+    authorization = dict(failed_run_id=fixture.run_id, failed_head_sha=fixture.head, task=dict(fixture.task))
+    if successor in {"repair", "run", "head", "task", "chain", "gap", "artifact", "predecessor", "competing", "moved"}:
+        fixture.refs[fixture.root + "repair/" + fixture.run_id] = fixture.successor
+        fixture.blobs[fixture.successor, ".ai/transport/repair.json"] = authorization
+    if successor in {"run", "head", "task"}:
+        key, value = {"run": ("failed_run_id", "RUN-other-001"), "head": ("failed_head_sha", "d" * 40),
+                      "task": ("task", dict(id="TASK-other", revision=1))}[successor]
+        authorization[key] = value
+    if successor in {"chain", "orphan", "gap", "artifact", "predecessor", "competing"}:
+        child = "d" * 40
+        suffix = "3" if successor == "gap" else "2"
+        ref = fixture.root + "repair-supersession/" + fixture.run_id + "/"
+        fixture.refs[ref + suffix] = child
+        fixture.blobs[child, ".ai/transport/repair.json"] = dict(authorization)
+        metadata = dict(format="AIOS_REPAIR_SUPERSESSION", version=1, failed_run_id=fixture.run_id,
+                        authorization_revision=2, predecessor_repair_sha=fixture.successor, failure_artifacts_sha=fixture.artifact)
+        if successor == "artifact":
+            metadata["failure_artifacts_sha"] = "f" * 40
+        if successor == "predecessor":
+            metadata["predecessor_repair_sha"] = "f" * 40
+        if successor == "competing":
+            fixture.refs[ref + "02"] = "f" * 40
+        fixture.blobs[child, ".ai/transport/repair-supersession.json"] = metadata
+    if successor == "unrelated":
+        fixture.refs[fixture.root + "repair/RUN-other-001"] = fixture.successor
+    if successor in {"task-revision", "task-route"}:
+        fixture.current_task["revision"] = 2
+        if successor == "task-route":
+            fixture.current_task["return_affinity"] = dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "a" * 64, generation=2)
+    if successor == "missing-main":
+        del fixture.refs[fixture.main]
+    if successor == "moved":
+        fixture.drift.append(fixture.root + "repair/" + fixture.run_id)
+    assert fixture.projection.observe(fixture.event) == expected
+
+
+@pytest.mark.parametrize("proof", [False, True])
+def test_task402_locked_duplicate_deferred_and_ambiguous_wake_keep_original_subject(monkeypatch, binding, proof):
+    fixture = artifact_only_fixture(monkeypatch)
+    state = wake.State(binding.state_path, binding.repository)
+    inbox = wake._inbox(state)
+    with state.locked():
+        for _ in range(2):
+            receipt = wake.deliver(fixture.event, binding.repository, binding,
+                lambda _: pytest.fail("locked intake cannot attach"), fixture.projection)
+            assert receipt["reason"] == "STATE_LOCKED_OR_UNAVAILABLE"
+        assert len(list(inbox.iterdir())) == 1
+        assert json.loads(next(inbox.iterdir()).read_text())["event_id"] == fixture.event
+    adapter = RecoveryAdapter(binding, block="DRAFT_PRESENT", proof=proof)
+    wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter, projection=fixture.projection)
+    assert stored(binding)["events"][fixture.event]["status"] == "DEFERRED"
+    assert not list(inbox.iterdir()) and not adapter.inserts and not adapter.submits
+    adapter.block = None
+    wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter, projection=fixture.projection)
+    assert stored(binding)["events"][fixture.event]["status"] == ("SUBMITTED" if proof else "AMBIGUOUS")
+    wake.deliver(fixture.event, binding.repository, binding, lambda _: adapter, fixture.projection)
+    assert len(adapter.submits) == 1
+    assert list(stored(binding)["events"]) == [fixture.event]
+    assert fixture.projection.observe(fixture.event) == "UNRESOLVED"
+
+
+def test_task402_artifact_only_failure_cannot_rebind_to_another_origin(monkeypatch, binding):
+    selector = dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "a" * 64, generation=3)
+    fixture = artifact_only_fixture(monkeypatch, selector=selector)
+    assert fixture.projection.affinity(fixture.event) == wake.parse_affinity(selector)
+    receipt = wake.deliver(fixture.event, binding.repository, binding,
+        lambda _: pytest.fail("origin mismatch cannot attach"), fixture.projection)
+    assert receipt["reason"] == "AFFINITY_UNPROVEN"
+    assert not binding.state_path.exists() and not wake._inbox(wake.State(binding.state_path)).exists()
+
+
 @pytest.mark.parametrize("kind", ["RESULT", "FAILURE"])
 def test_canonical_observer_exact_terminal_and_no_checkout_or_semantic_mutation(monkeypatch, kind):
     fixture = canonical_fixture(monkeypatch, kind)

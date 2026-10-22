@@ -1545,6 +1545,119 @@ class AffinitySources:
                                               findings=[dict(id="F1", action="CODE_FIX")])
 
 
+def canonical_execution_failure(run, head, *, dirty=True, phase="EXECUTION"):
+    from aios_renew.review_transport import public_failure
+    from tests.test_review_transport import _native_failure_fixture
+
+    _, private = _native_failure_fixture(dirty=dirty)
+    private.update(run_id=run["run_id"], task=copy.deepcopy(run["task"]), executor=run["executor"],
+                   base_sha=run["base_sha"], failed_head_sha=head)
+    if phase != "EXECUTION":
+        private.update(phase=phase, error=dict(type="RuntimeVerificationError", message="Runtime verification failed"))
+    return json.loads(public_failure(json.dumps(private).encode()))
+
+
+class ArtifactOnlyFailureSources(AffinitySources):
+    """RUN-401-002-shaped public artifact with an independently readable HEAD."""
+    def __init__(self, *, candidate_present=False, selector=None, dirty=True, phase="EXECUTION"):
+        super().__init__("FAILURE", selector)
+        self.run_id, self.artifact, self.head = (IDENTITY[key] for key in ("run_id", "artifact_sha", "reviewed_sha"))
+        self.run = self.docs[self.artifact, ".ai/transport/run.json"]
+        self.failure = canonical_execution_failure(self.run, self.head, dirty=dirty, phase=phase)
+        self.docs[self.artifact, ".ai/transport/failure.json"] = self.failure
+        self.candidate_ref = "refs/heads/aios/failure/" + self.run_id
+        self.terminal_ref = "refs/heads/aios/failure-artifacts/" + self.run_id
+        if not candidate_present:
+            del self.values[self.candidate_ref]
+        del self.values["refs/heads/aios/review-decision/" + self.run_id]
+        self.event = brain.attention(brain.FAILURE, dict(run_id=self.run_id, artifact_sha=self.artifact)).event_id
+
+
+@pytest.mark.parametrize("candidate_present", [False, True])
+@pytest.mark.parametrize("selector", [dict(kind="LEGACY_REPOSITORY_DEFAULT_ROUTE"),
+    dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "a" * 64, generation=3)])
+def test_task402_artifact_only_failure_preserves_exact_original_affinity(candidate_present, selector):
+    from aios_renew.return_affinity import parse_affinity
+    sources = ArtifactOnlyFailureSources(candidate_present=candidate_present, selector=selector)
+    before = copy.deepcopy((sources.values, sources.docs))
+    assert sources.failure["phase"] == "EXECUTION"
+    assert sources.failure["candidate"]["dirty"] is True
+    assert sources.failure["candidate"]["transportable"] is False
+    assert brain.resolve_return_affinity(sources.event, sources) == parse_affinity(selector)
+    recovery = brain.attention(brain.RECOVERY, dict(original_event_id=sources.event))
+    assert brain.resolve_return_affinity(recovery.event_id, sources) == parse_affinity(selector)
+    assert (sources.values, sources.docs) == before
+
+
+@pytest.mark.parametrize("defect", ["run", "task", "run-head", "base", "base-task", "head-task", "run-route",
+    "head-route", "ancestry", "unreadable-head", "partial", "integrity", "transportable", "phase",
+    "opposite", "opposite-candidate", "opposite-decision", "divergent-ref", "malformed-ref", "null-ref", "race"])
+def test_task402_artifact_only_affinity_rejects_unproved_or_contradictory_source(defect):
+    selector = dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "a" * 64, generation=3)
+    sources = ArtifactOnlyFailureSources(selector=selector)
+    path = ".ai/tasks/TASK-fixture.yaml"
+    if defect == "run":
+        sources.run["run_id"] = "RUN-other-001"
+    elif defect == "task":
+        sources.run["task"] = dict(id="TASK-other", revision=1)
+    elif defect == "run-head":
+        sources.run["head_sha"] = "f" * 40
+    elif defect == "base":
+        sources.run["base_sha"] = "f" * 40
+    elif defect in {"base-task", "head-task"}:
+        sha = sources.run["base_sha"] if defect == "base-task" else sources.head
+        sources.docs[sha, path]["revision"] = 2
+    elif defect in {"run-route", "head-route"}:
+        document = sources.run if defect == "run-route" else sources.docs[sources.head, path]
+        document["return_affinity"] = dict(kind="LEGACY_REPOSITORY_DEFAULT_ROUTE")
+    elif defect == "ancestry":
+        sources.included = lambda *_: False
+    elif defect == "unreadable-head":
+        del sources.docs[sources.head, path]
+    elif defect == "partial":
+        sources.docs[sources.artifact, ".ai/transport/failure.json"] = dict(run_id=sources.run_id,
+            task=sources.run["task"], failed_head_sha=sources.head)
+    elif defect in {"integrity", "transportable", "phase"}:
+        sources.failure["phase"] = "VERIFICATION" if defect == "phase" else sources.failure["phase"]
+        if defect == "transportable":
+            sources.failure["candidate"]["transportable"] = True
+        elif defect == "integrity":
+            sources.failure["public_projection"]["projection_digest"] = "0" * 64
+    elif defect.startswith("opposite"):
+        namespace = {"opposite": "artifacts", "opposite-candidate": "review", "opposite-decision": "review-decision"}[defect]
+        sources.values["refs/heads/aios/" + namespace + "/" + sources.run_id] = "f" * 40
+    elif defect in {"divergent-ref", "malformed-ref", "null-ref"}:
+        sources.values[sources.candidate_ref] = {"divergent-ref": "f" * 40, "malformed-ref": "bad", "null-ref": None}[defect]
+    else:
+        sources.drift = True
+    assert brain.resolve_return_affinity(sources.event, sources) is None
+
+
+@pytest.mark.parametrize("defect", ["integrity", "review", "review-decision"])
+def test_task402_present_candidate_cannot_hide_canonical_failure_corruption(defect):
+    sources = ArtifactOnlyFailureSources(candidate_present=True)
+    if defect == "integrity":
+        sources.failure["public_projection"]["projection_digest"] = "0" * 64
+    else:
+        sources.values["refs/heads/aios/" + defect + "/" + sources.run_id] = "f" * 40
+    assert brain.resolve_return_affinity(sources.event, sources) is None
+
+
+@pytest.mark.parametrize("candidate_present", [False, True])
+@pytest.mark.parametrize("dirty, phase", [(False, "EXECUTION"), (True, "VERIFICATION")])
+def test_task402_missing_candidate_permission_requires_nontransportable_execution(candidate_present, dirty, phase):
+    from aios_renew.return_affinity import LEGACY
+    sources = ArtifactOnlyFailureSources(candidate_present=candidate_present, dirty=dirty, phase=phase)
+    assert brain.resolve_return_affinity(sources.event, sources) == (LEGACY if candidate_present else None)
+
+
+def test_task402_result_still_requires_candidate_ref():
+    sources = AffinitySources()
+    del sources.values["refs/heads/aios/review/" + IDENTITY["run_id"]]
+    item = brain.attention(brain.RESULT, dict(run_id=IDENTITY["run_id"], artifact_sha=IDENTITY["artifact_sha"]))
+    assert brain.resolve_return_affinity(item.event_id, sources) is None
+
+
 @pytest.mark.parametrize("family", [brain.RESULT, brain.FAILURE, brain.REVIEW,
                                     brain.PUBLICATION_SUCCESS, brain.PUBLICATION_FAILURE])
 def test_h4c1_exact_terminal_review_publication_lineage_and_recovery(family):
