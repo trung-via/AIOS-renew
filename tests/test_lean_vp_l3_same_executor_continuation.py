@@ -330,6 +330,25 @@ def test_actual_same_holder_ack_preserves_full_mapping_and_exact_replay(tmp_path
         adapter.dispatcher.dispatch_primary(task=f.task, run=f.run, lease=adapter.lease, leases=adapter.leases)
 
 
+def test_unopted_direct_callback_never_reads_v13_selection_or_changes_stop_vector(failed, monkeypatch):
+    from aios_renew import ka01_admission
+    def forbidden(*args, **kwargs):
+        pytest.fail("unopted native API attempted v1.3 authority")
+    monkeypatch.setattr(ka01_admission, "_authority", forbidden)
+    request, _, feedback = prepared(failed)
+    def body(adapter):
+        result = adapter.consume(request)
+        assert result.data["status"] == "LOCAL_ACKNOWLEDGED"
+        assert_stop(result)
+        assert adapter.consume(request) == result
+        assert adapter.observed[0][0] is not None
+        assert adapter.observed[0][0] == feedback
+    adapter = invocation(failed, body)
+    assert len(adapter.observed) == len(failed.calls) == 1
+    assert failed.owner._ka01_budget is None and not failed.owner._ka01_opted
+    assert not (failed.directory.parent / "ka01-v13").exists()
+
+
 @pytest.mark.parametrize("defect", ["copied-token", "released", "reacquired", "cross-run", "other-registry", "replacement-adapter", "detached"])
 def test_lease_and_adapter_identity_cannot_be_projected_or_reconstructed(failed, defect):
     f = failed

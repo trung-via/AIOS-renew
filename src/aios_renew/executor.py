@@ -80,6 +80,12 @@ class ExecutorBoundary:
         if self._prospective_runtime is None:
             package = adapter.execute(task=task, run=run)
         else:
+            budget = getattr(self._prospective_runtime, "_ka01_budget", None)
+            if getattr(self._prospective_runtime, "_ka01_opted", False) and budget is None:
+                raise ExecutorBoundaryError("KA01_V13_OPTED_RUN_STOP_LATCHED")
+            if budget is not None and budget.operation != "PRIMARY":
+                budget.stop()
+                raise ExecutorBoundaryError("KA01_V13_CROSS_OPERATION_INVOCATION_BLOCKED")
             package = self._invoke_prospective(task=task, run=run, lease=lease, adapter=adapter)
         if not isinstance(package, ResultPackage):
             raise ExecutorBoundaryError(

@@ -33,6 +33,7 @@ from .review_transport import ReviewTransportError, transport_failure, transport
 from .run import Run
 from .run_observation import RunObservationTracker, persist_observation
 from .task import Task
+from .ka01_admission import guarded as _ka01_guarded
 from .verification import (
     RuntimeVerificationError,
     VerificationRunner,
@@ -211,6 +212,17 @@ class RuntimeCompletion:
         error_type: BoundaryError,
         transport_repo: Path | None = None,
     ) -> None:
+        self._ka01_started_ns = time.monotonic_ns()
+        self._ka01_started_real_ns = time.time_ns()
+        self._ka01_original_tracker = observation_tracker
+        self._ka01_admitted_at = getattr(observation_tracker, "_admitted_at", None)
+        if (type(observation_tracker) is RunObservationTracker and observation_tracker._clock is time.monotonic
+                and observation_tracker._run == run and type(self._ka01_admitted_at) is float):
+            admitted_ns = int(self._ka01_admitted_at * 1_000_000_000)
+            self._ka01_started_real_ns -= self._ka01_started_ns - admitted_ns
+            self._ka01_started_ns = admitted_ns
+        self._ka01_opted = False
+        self._ka01_budget = None
         self.repo = repo
         self.state = state
         self.task = task
@@ -246,9 +258,42 @@ class RuntimeCompletion:
             _checkpoint_safe_directory(directory.parent)
             with os.scandir(directory.parent) as entries:
                 for index, entry in enumerate(entries):
-                    if index >= 3 or entry.name not in {"l3-02", ".runtime-mutation", "local-invocation.json"}:
+                    allowed = {"l3-02", ".runtime-mutation", "local-invocation.json"}
+                    if self._ka01_opted:
+                        allowed.add("ka01-v13")
+                    if index >= len(allowed) or entry.name not in allowed:
                         raise VerificationContractError("CHECKPOINT_PREEXISTING_OR_UNKNOWN_EXECUTION_EFFECT")
         return directory
+
+    @contextmanager
+    def _checkpoint_effect(self, directory, intent):
+        """Subordinate v1.3 reservations share the original mutation fence."""
+        if self._ka01_budget is not None:
+            self._ka01_budget.capacity(intent)
+        with _checkpoint_mutation(directory, intent):
+            if self._ka01_budget is None:
+                if self._ka01_opted:
+                    raise VerificationContractError("KA01_V13_OPTED_RUN_STOP_LATCHED")
+                yield
+            else:
+                with self._ka01_budget.effect(intent):
+                    yield
+                    if intent["kind"] == "CHECKPOINT":
+                        history = self._checkpoint_history(directory)
+                        if len(history) > 1 and not set(history[-1].data["outstanding"]) < set(history[-2].data["outstanding"]):
+                            raise VerificationContractError("KA01_V13_CAUSAL_PROGRESS_NOT_ESTABLISHED")
+
+    def _ka01_verification_runner(self, command, **kwargs):
+        """Bound each existing verifier call by the original remaining time."""
+        budget = self._ka01_budget
+        budget.guard()
+        remaining = budget.remaining_seconds()
+        current = kwargs.get("timeout")
+        kwargs["timeout"] = remaining if current is None else min(current, remaining)
+        result = self.verification_runner(command, **kwargs)
+        budget.guard()
+        budget.remaining_seconds()
+        return result
 
     def _checkpoint_binding(self, request: ProofCheckpointRequest, *, terminal=False):
         format_checkpoint_request(request)
@@ -378,6 +423,7 @@ class RuntimeCompletion:
             raise VerificationContractError("CHECKPOINT_HISTORY_CHANGED_AT_FINAL_BOUNDARY")
         return record
 
+    @_ka01_guarded
     def seal_checkpoint(self, request: ProofCheckpointRequest) -> RuntimeCheckpoint:
         """Explicit offline/prospective effect under this admitted Runtime owner.
 
@@ -405,7 +451,10 @@ class RuntimeCompletion:
             if record.data["request"] != checkpoint_request_data(request):
                 raise VerificationContractError("CHECKPOINT_IDENTITY_COLLISION")
             # Only the current candidate can reconcile; old seals never reopen.
-            return self._authenticate_checkpoint(request, record.digest)
+            if self._ka01_budget is None:
+                return self._authenticate_checkpoint(request, record.digest)
+            with self._checkpoint_effect(directory, dict(version=1, kind="CHECKPOINT_REPLAY", digest=record.digest)):
+                return self._authenticate_checkpoint(request, record.digest)
         if request.ordinal != len(history) + 1 or request.predecessor_digest != (history[-1].digest if history else None):
             raise VerificationContractError("CHECKPOINT_GAP_OR_PREDECESSOR_CONFLICT")
         plan, task, manifests = _checkpoint_reviewed_execution(self.repo, request)
@@ -431,7 +480,7 @@ class RuntimeCompletion:
             _ApplicabilityReader(self.repo).anchors(request.scheduler.subject_sha, {old["candidate_sha"]})
         intent = dict(version=1, kind="CHECKPOINT", request=checkpoint_request_data(request),
             plan_sha256=_checkpoint_digest(format_scheduler_plan(plan)), resources_before=before)
-        with _checkpoint_mutation(directory, intent):
+        with self._checkpoint_effect(directory, intent):
             self._checkpoint_binding(request)
             if self._checkpoint_history(directory) != history:
                 raise VerificationContractError("CHECKPOINT_COMPETING_MUTATION")
@@ -440,7 +489,8 @@ class RuntimeCompletion:
             raw_directory.mkdir()  # Exclusive. Never erase an interrupted proof.
             try:
                 evidence = _execute_checkpoint_verification(self.repo, request=request, task=task, manifests=manifests,
-                    raw_directory=raw_directory, start_order=before["executions"], runner=self.verification_runner,
+                    raw_directory=raw_directory, start_order=before["executions"],
+                    runner=self.verification_runner if self._ka01_budget is None else self._ka01_verification_runner,
                     timeout_seconds=(CHECKPOINT_RESOURCE_LIMITS["elapsed_ms"] - before["elapsed_ms"]) / 1000,
                     capture_bytes_remaining=CHECKPOINT_RESOURCE_LIMITS["raw_bytes"] - before["raw_bytes"])
             except OSError as exc:
@@ -472,6 +522,7 @@ class RuntimeCompletion:
             self._authenticate_checkpoint(request, record.digest)
             return record
 
+    @_ka01_guarded
     def prepare_feedback(self, request: FactualFeedbackRequest) -> RuntimeFactualFeedback:
         """Explicit inert L3-03 preparation; no proof execution or continuation.
 
@@ -509,6 +560,11 @@ class RuntimeCompletion:
                 return original
 
             if os.path.lexists(path):
+                if self._ka01_budget is not None:
+                    with self._checkpoint_effect(directory, dict(version=1, kind="FEEDBACK_REPLAY", digest=expected.digest)):
+                        original = reconcile()
+                        self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
+                        return original
                 original = reconcile()
                 self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
                 if _checkpoint_effect_present(directory):
@@ -524,7 +580,7 @@ class RuntimeCompletion:
                 return expected
             intent = dict(version=1, kind="FACTUAL_FEEDBACK", run_id=self.run.run_id,
                 checkpoint_digest=record.digest, feedback_id=expected.data["feedback_id"], feedback_digest=expected.digest)
-            with _checkpoint_mutation(directory, intent):
+            with self._checkpoint_effect(directory, intent):
                 # Same exclusive Runtime fence as checkpoint, RESULT and FAILURE.
                 current = self._authenticate_checkpoint(checkpoint, request.checkpoint_digest)
                 if format_runtime_feedback(_checkpoint_factual_feedback(current, self.run.executor)) != format_runtime_feedback(expected):
@@ -549,6 +605,10 @@ class RuntimeCompletion:
         """
         from .publication import _run_from_data
         try:
+            if self._ka01_opted:
+                if self._ka01_budget is None:
+                    raise VerificationContractError("KA01_V13_OPTED_RUN_STOP_LATCHED")
+                self._ka01_budget.bind(boundary, frame)
             if (self._local_feedback_stopped or self._local_feedback_invocation is not None
                     or frame.owner is not self or frame.task != self.task or frame.run != self.run
                     or boundary._live is not frame):
@@ -587,6 +647,7 @@ class RuntimeCompletion:
             self._local_feedback_stopped = True
             raise
 
+    @_ka01_guarded
     def consume_same_executor_feedback(self, request: FeedbackConsumptionRequest, *,
             boundary: ExecutorBoundary, lease: RunLease, adapter: ExecutorAdapter) -> RuntimeFeedbackConsumption:
         """Explicit preactivation observation inside the original execute().
@@ -659,7 +720,7 @@ class RuntimeCompletion:
                     return record, feedback
 
                 # Use the original Runtime fence for both effects and replay.
-                with _checkpoint_mutation(directory, intent):
+                with self._checkpoint_effect(directory, intent):
                     record, feedback = authenticate()
                     _local_feedback_fence(directory, intent)
                     resources = record.data["resources_after"]
@@ -739,9 +800,14 @@ class RuntimeCompletion:
             return "VERIFIED_SCOPED_DESCENDANT_PROGRESS"
         return "NOT_ESTABLISHED"
 
+    @_ka01_guarded
     def terminal_reuse(self, request: ProofCheckpointRequest, *, checkpoint_digest: str) -> TerminalProofDecision:
         """Prospective decision only; it cannot write RESULT or grant execution."""
         from .verification_contract import _original_hash
+        if self._ka01_opted:
+            if self._ka01_budget is None:
+                raise VerificationContractError("KA01_V13_OPTED_RUN_STOP_LATCHED")
+            self._ka01_budget.guard()
         format_checkpoint_request(request)
         _original_hash(checkpoint_digest)
         try:
@@ -758,9 +824,12 @@ class RuntimeCompletion:
                 self._local_feedback_stopped = True
             return TerminalProofDecision(False, str(exc)[:256], checkpoint_digest, request.scheduler.subject_sha)
 
+    @_ka01_guarded
     def complete(self, package: ResultPackage, policy: CompletionPolicy, *,
                  checkpoint: ProofCheckpointRequest | None = None, checkpoint_digest: str | None = None) -> CompletionOutcome:
         """Keep the default V1/V2 path; explicit checkpoint proof uses this same writer."""
+        if self._ka01_opted and (checkpoint is None or policy != self._ka01_budget.policy):
+            raise VerificationContractError("KA01_V13_EXACT_CHECKPOINT_TERMINAL_REQUIRED")
         if checkpoint is None:
             if checkpoint_digest is not None:
                 raise VerificationContractError("CHECKPOINT_EXACT_REQUEST_REQUIRED")
@@ -785,7 +854,7 @@ class RuntimeCompletion:
         if not decision.eligible:
             raise VerificationContractError(decision.reason)
         intent = dict(version=1, kind="TERMINAL", request=checkpoint_request_data(checkpoint), checkpoint_digest=checkpoint_digest)
-        with _checkpoint_mutation(directory, intent):
+        with self._checkpoint_effect(directory, intent):
             record = self._authenticate_checkpoint(checkpoint, checkpoint_digest)
             reviewed = {}
             for row in record.data["plan"]["obligations"]:
@@ -957,8 +1026,13 @@ class RuntimeCompletion:
                 request=checkpoint_record.data["request"], package_sha256=_checkpoint_digest(_checkpoint_json(result_package_data(package))),
                 policy_sha256=_checkpoint_digest(_checkpoint_json(asdict(policy))), result_sha256=_checkpoint_digest(content))
             directory = self._checkpoint_directory()
+            if self._ka01_budget is not None:
+                self._ka01_budget.guard()
+                self._ka01_budget.remaining_seconds()
             _checkpoint_write_once(directory / "terminal-intent.json", _checkpoint_json(intent))
             _checkpoint_write_once(result_path, content)
+            if self._ka01_budget is not None:
+                self._ka01_budget.terminal_digest = _checkpoint_digest(content)
         observation_path = persist_terminal_observation(
             self.state, self.observation_tracker, "RESULT"
         )

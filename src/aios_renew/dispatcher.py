@@ -91,6 +91,17 @@ class Dispatcher:
     ) -> ResultPackage:
         """Invoke the selected PRIMARY adapter through the frozen lease boundary."""
 
+        owner = self._prospective_runtime
+        if owner is not None and getattr(owner, "_ka01_opted", False):
+            budget = owner._ka01_budget
+            if budget is None:
+                raise DispatcherError("KA01_V13_OPTED_RUN_STOP_LATCHED")
+            budget.guard(live=False)
+            if (budget.operation != "PRIMARY" or task != owner.task or run != owner.run
+                    or lease is not budget.lease or leases is not budget.leases
+                    or self._execution_profile != budget.profile):
+                budget.stop()
+                raise DispatcherError("KA01_V13_ORIGINAL_DISPATCH_BINDING_REQUIRED")
         adapter = self._claim_adapter(run=run, operation="PRIMARY")
         if self._prospective_runtime is None:
             return ExecutorBoundary(leases).invoke(task=task, run=run, lease=lease, adapter=adapter)
@@ -107,6 +118,8 @@ class Dispatcher:
     ) -> ResultPackage:
         """Invoke the selected adapter for one admitted REMEDIATION."""
 
+        self._require_native_continuity()
+
         adapter = self._claim_adapter(
             run=execution.run, operation="REMEDIATION"
         )
@@ -119,11 +132,20 @@ class Dispatcher:
     ) -> ResultPackage:
         """Invoke the selected adapter for one admitted REPAIR continuation."""
 
+        self._require_native_continuity()
+
         run = execution.get("run")
         if not isinstance(run, Run):
             raise DispatcherError("REPAIR execution has no bound RUN")
         adapter = self._claim_adapter(run=run, operation="REPAIR")
         return self._require_package(adapter.execute_repair(execution=execution))
+
+    def _require_native_continuity(self):
+        if self._prospective_runtime is not None and getattr(self._prospective_runtime, "_ka01_opted", False):
+            budget = self._prospective_runtime._ka01_budget
+            if budget is not None:
+                budget.stop()
+            raise DispatcherError("KA01_V13_CORRECTION_NATIVE_CONTINUITY_BLOCKED")
 
     def _claim_adapter(
         self, *, run: Run, operation: Operation

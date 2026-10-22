@@ -357,6 +357,22 @@ def test_failure_transport_recovery_operator_original_equality_and_nested_correc
     assert not operator_module._matches_correction_document(correction, projected, "METADATA")
 
 
+@pytest.mark.parametrize("entrypoint,identity", [
+    (run_task, "TASK-397"), (run_repair, "RUN-397-001"), (run_remediation, "TASK-397")])
+@pytest.mark.parametrize("admission_input", [True, {"consent": "G6", "authenticated": True}, "previous-run-receipt"])
+def test_v13_production_opt_in_is_not_activated_before_any_dispatch_or_run(
+    tmp_path, entrypoint, identity, admission_input,
+):
+    from aios_renew.verification_contract import VerificationContractError
+    repo = tmp_path / "must-not-be-created"
+    def forbidden(*args, **kwargs):
+        pytest.fail("unactivated opt-in reached native or verification")
+    with pytest.raises(VerificationContractError, match="KA01_V13_NOT_ACTIVATED"):
+        entrypoint(identity, executor="codex", repo=repo, ka01_admission=admission_input,
+                   native_runner=forbidden, verification_runner=forbidden)
+    assert not repo.exists()
+
+
 def result_payload(
     run_id: str,
     head_sha: str,

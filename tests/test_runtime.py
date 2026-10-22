@@ -40,6 +40,36 @@ class BoundaryError(RuntimeError):
     pass
 
 
+def test_rejected_v13_opt_in_cannot_fall_through_to_legacy_completion(tmp_path):
+    from aios_renew.verification_contract import VerificationContractError
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    boundary = RuntimeCompletion(repo=tmp_path, state=state, task=task, run=run,
+        run_path=run_path, verification_runner=lambda *a, **k: pytest.fail("verification after STOP"),
+        observation_tracker=None, error_type=BoundaryError)
+    boundary._ka01_opted = True
+    boundary._local_feedback_stopped = True
+    with pytest.raises(VerificationContractError, match="OPTED_RUN_STOP_LATCHED"):
+        boundary.complete(package, primary_completion_policy(task, base_sha=run.base_sha))
+    assert not state.results.exists() and not state.verification.exists()
+
+
+def test_unopted_legacy_completion_does_not_consult_v13_authority(tmp_path, monkeypatch):
+    from aios_renew import ka01_admission
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    def forbidden(*args, **kwargs):
+        pytest.fail("legacy completion read v1.3 selection")
+    monkeypatch.setattr(ka01_admission, "_authority", forbidden)
+    monkeypatch.setattr(runtime_module, "execute_verification", lambda commands, **kwargs:
+        evidence_for(kwargs["run_id"], kwargs["subject_sha"], tuple(commands)))
+    monkeypatch.setattr(runtime_module, "transport_post_pass", lambda *args, **kwargs: None)
+    boundary = StubRuntimeCompletion(repo=tmp_path, state=state, task=task, run=run,
+        run_path=run_path, verification_runner=forbidden, observation_tracker=None,
+        error_type=BoundaryError, head_sha="head", changed_files={"OUTPUT.txt"})
+    outcome = boundary.complete(package, primary_completion_policy(task, base_sha=run.base_sha))
+    assert outcome.result_path.is_file()
+    assert boundary._ka01_budget is None and not boundary._ka01_opted
+
+
 @pytest.fixture(autouse=True)
 def stub_verification_subject(monkeypatch: pytest.MonkeyPatch):
     """Keep completion-policy unit tests independent of Git materialization."""

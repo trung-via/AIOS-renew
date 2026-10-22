@@ -1321,6 +1321,178 @@ def _validate_persisted_remediation_result(
     )
 
 
+def _ka01_operation_source(owner, operation, policy):
+    """Reauthenticate the original admitted operation; never select a strategy.
+
+    Correction selectors use the same current first-party lineage resolvers as
+    the ordinary admissions. A PRIMARY receipt cannot stand in for either one.
+    The returned digests locate facts and are never accepted as authentication.
+    """
+    from .ka01_admission import _digest, _deny
+    from .verification import _original_local, _original_git, MAX_ORIGINAL_PROOF_BYTES
+
+    run, task = owner.run, owner.task
+    if (run.status != "ACTIVE" or run.head_sha is not None
+            or (run.task.id, run.task.revision) != (task.task_id, task.revision)
+            or Path(run.workspace).absolute() != owner.repo.absolute() or policy.kind != operation):
+        _deny("ORIGINAL_ACTIVE_RUN_REQUIRED")
+    raw = _original_local(owner.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES)
+    document = _decode_remote_mapping(raw, "KA-01 original admission")
+    directory = owner.state.verification / run.run_id / "l3-02"
+    if any(os.path.lexists(p) for p in (
+            owner.state.results / (run.run_id + ".json"), owner.state.failures / (run.run_id + ".json"),
+            directory / "terminal-intent.json")):
+        _deny("TERMINAL_RUN")
+    # TASK, scope, constraints and original proof population cannot drift in a
+    # clean committed candidate, even if a caller retains the old Python object.
+    if _original_git(owner.repo, "status", "--porcelain"):
+        _deny("CLEAN_COMMITTED_SOURCE_REQUIRED")
+    current_task = parse_task(_original_git(owner.repo, "show", "HEAD:.ai/tasks/" + task.task_id + ".yaml").decode("utf-8"))
+    base_task = parse_task(_original_git(owner.repo, "show", run.base_sha + ":.ai/tasks/" + task.task_id + ".yaml").decode("utf-8"))
+    if current_task != task or base_task != task:
+        _deny("TASK_SCOPE_RISK_OR_PROOF_CHANGED")
+    policy_data = asdict(policy)
+    if policy_data["lineage_path"] is not None:
+        policy_data["lineage_path"] = str(policy_data["lineage_path"])
+    facts = dict(operation=operation, task_sha256=_digest(asdict(task)), policy_sha256=_digest(policy_data),
+                 admitted_run_sha256=_digest(raw), base_sha=run.base_sha)
+    if operation == "PRIMARY":
+        if (_run_from_data(document) != run or document.get("kind") is not None
+                or policy != primary_completion_policy(task, base_sha=run.base_sha)
+                or os.path.lexists(owner.state.repairs / (run.run_id + ".json"))):
+            _deny("PRIMARY_SOURCE_MISMATCH")
+        from .verification import _original_remote, _app_target_refs, _app_target, _ApplicabilityReader
+        from .verification_contract import ApplicabilityTargetRequest
+        url = _original_remote(owner.repo)
+        refs = dict(_app_target_refs(owner.repo, url, run.run_id))
+        artifact_ref = "refs/heads/aios/artifacts/" + run.run_id
+        if artifact_ref not in refs:
+            _deny("ORIGINAL_CANONICAL_ADMISSION_REQUIRED")
+        head = _original_git(owner.repo, "rev-parse", "HEAD").decode("ascii").strip()
+        reader = _ApplicabilityReader(owner.repo)
+        artifact_tree, _ = reader.commit(refs[artifact_ref])
+        if reader.path(artifact_tree, ".ai/transport/repair.json", missing_ok=True) is not None:
+            _deny("PRIMARY_CANNOT_INHERIT_REPAIR_SOURCE")
+        target = ApplicabilityTargetRequest(task.task_id, task.revision, run.run_id, run.base_sha,
+            head, reader.commit(head)[0], refs[artifact_ref], _digest(raw))
+        _, authenticated_task, _ = _app_target(owner.repo, target, reader)
+        if authenticated_task != task:
+            _deny("PRIMARY_ORIGINAL_TASK_MISMATCH")
+        facts["admission_artifacts_sha"] = refs[artifact_ref]
+        return facts
+    if operation == "REPAIR":
+        if (_run_from_data(document) != run or set(document) - {
+                "run_id", "task", "executor", "base_sha", "workspace", "head_sha", "status", "return_affinity"}):
+            _deny("REPAIR_RUN_MISMATCH")
+        path = owner.state.repairs / (run.run_id + ".json")
+        execution_raw = _original_local(path, MAX_ORIGINAL_PROOF_BYTES)
+        execution = _decode_remote_mapping(execution_raw, "KA-01 original repair")
+        if (set(execution) != {"failed_run_id", "root_base_sha", "result_base_sha", "failed_head_sha",
+                "failure", "task", "repair", "run", "repair_authorization_sha"}
+                or _digest(execution["task"]) != _digest(_executor_task_data(task))):
+            _deny("REPAIR_ORIGINAL_ADMISSION_SCHEMA")
+        predecessor = execution.get("failed_run_id")
+        if not isinstance(predecessor, str) or predecessor == run.run_id or execution.get("run") != asdict(run):
+            _deny("REPAIR_PREDECESSOR_MISMATCH")
+        resolved = _resolve_historical_repair_admission(owner.transport_repo, predecessor, admission={})
+        authorization = resolve_remote_repair_authorization(owner.transport_repo, predecessor)
+        repair = _decode_remote_mapping(authorization.repair, "KA-01 current AUTHOR_REPAIR")
+        failure = resolved.failure
+        from .publication import _validate_repair_authorization
+        _validate_repair_authorization(repair, failed_run_id=predecessor,
+            failed_head_sha=failure["failed_head_sha"], task=task,
+            failed_changed_files=set(failure.get("candidate", {}).get("changed_files", ())))
+        if (execution.get("repair_authorization_sha") != authorization.commit_sha
+                or resolved.task != task or execution["root_base_sha"] != resolved.root_base_sha
+                or execution["result_base_sha"] != resolved.result_base_sha
+                or execution["failed_head_sha"] != failure["failed_head_sha"]
+                or not _matches_failure_projection(execution.get("failure"), failure) or execution.get("repair") != repair
+                or repair.get("failed_run_id") != predecessor or repair.get("task") != asdict(run.task)
+                or repair.get("failed_head_sha") != failure.get("failed_head_sha")
+                or failure.get("kind") != "FAILURE" or failure.get("task") != asdict(run.task)
+                or repair.get("action") not in {"CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"}
+                or not isinstance(repair.get("modification_scope"), list)
+                or set(repair["modification_scope"]) - set(task.scope.modify).union(failure.get("candidate", {}).get("changed_files", ()))
+                or policy != repair_completion_policy(task, root_base_sha=resolved.root_base_sha,
+                    result_base_sha=resolved.result_base_sha, failed_head_sha=failure["failed_head_sha"],
+                    action=repair["action"], modification_scope=repair["modification_scope"], lineage_path=path,
+                    origin_affected_verification=resolved.origin_affected_verification)):
+            _deny("REPAIR_CURRENT_ACTION_SCOPE_OR_PROOF_MISMATCH")
+        facts.update(predecessor=predecessor, original_execution_sha256=_digest(execution_raw),
+                     failure_sha256=_digest(failure), authorization_sha=authorization.commit_sha,
+                     affected_verification_sha256=_digest(list(policy.verification_commands)))
+        return facts
+    if operation == "REMEDIATION":
+        if (document.get("kind") != "REMEDIATION" or set(document) - {
+                "kind", "execution", "predecessor", "remediation_authorization_sha", "execution_base"}):
+            _deny("REMEDIATION_OR_DIRECT_CANDIDATE_SOURCE_INVALID")
+        execution = _remediation_execution_from_data(document["execution"])
+        if execution.run != run or policy.remediation_execution != execution:
+            _deny("REMEDIATION_RUN_MISMATCH")
+        remediation = execution.remediation
+        predecessor = document.get("predecessor", {})
+        source_run_id = predecessor.get("source_run_id")
+        # Batch approval needs its own native continuity integration. It cannot
+        # borrow the single-finding receipt or imply group expansion here.
+        if isinstance(remediation, BatchRemediation) or not isinstance(source_run_id, str):
+            _deny("REMEDIATION_EXACT_SINGLE_FINDING_REQUIRED")
+        observed = {}
+        review, authorized, prior_result, prior_review, current_task = _resolve_remote_remediation_lineage_with_reviewed_task(
+            owner.transport_repo, task=task, finding_id=remediation.finding_id, source_run_id=source_run_id,
+            required_remediation_sha=document.get("remediation_authorization_sha"), admission=observed)
+        validate_review(task=task, result=prior_result, review=review, prior_review=prior_review)
+        validate_remediation(review=review, remediation=authorized, task=task)
+        expected_policy = remediation_completion_policy(execution)
+        if "execution_base" in document:
+            _repair_result_base_from_origin(owner.transport_repo, task=task, run_data=document, run=run,
+                                           root_base_sha=_derive_remediation_source_root(owner.transport_repo, task=task, execution=execution))
+            expected_policy = replace(expected_policy, result_base_sha=run.base_sha)
+        if (current_task != task or authorized != remediation or review.verdict != "CHANGES_REQUIRED"
+                or not remediation.affected_verification or not document.get("remediation_authorization_sha")
+                or execution.review_id != review.review_id
+                or execution.finding not in review.findings
+                or predecessor != dict(source_run_id=source_run_id, review_id=review.review_id,
+                                       finding_id=remediation.finding_id, reviewed_sha=review.reviewed_sha)
+                or policy != expected_policy):
+            _deny("REMEDIATION_CURRENT_FINDING_SCOPE_OR_PROOF_MISMATCH")
+        facts.update(predecessor=source_run_id, authorization_sha=document["remediation_authorization_sha"],
+                     review_sha256=_digest(asdict(review)), finding_id=remediation.finding_id,
+                     affected_verification_sha256=_digest(list(remediation.affected_verification)))
+        return facts
+    _deny("OPERATION_NOT_ADMITTED")
+
+
+def preactivate_ka01_v13(*, runtime, request, operation, execution_profile, policy, leases, lease):
+    """Version-1 controlled offline admission of one already admitted RUN.
+
+    This entrypoint neither admits a RUN nor dispatches. The caller must still
+    use the original Dispatcher and Runtime checkpoint/feedback/terminal APIs.
+    Production run_task/run_repair/run_remediation remain NOT_ACTIVATED.
+    """
+    from .ka01_admission import _AdmissionBudget, _deny
+    from .runtime import _checkpoint_mutation
+    if type(runtime) is not RuntimeCompletion or runtime._ka01_opted:
+        _deny("ORIGINAL_RUNTIME_ALREADY_SELECTED")
+    runtime._ka01_opted = True  # Sticky even when authentication fails.
+    try:
+        directory = runtime._checkpoint_directory()
+        if os.path.lexists(directory) or os.path.lexists(directory.parent / "local-invocation.json"):
+            _deny("PREEXISTING_UNACCOUNTED_NATIVE_WORK")
+        # Even a rejected/interrupted selection leaves the original negative
+        # fence. Restart cannot silently downgrade this RUN to legacy work.
+        with _checkpoint_mutation(directory, dict(version=1, kind="KA01_ADMISSION")):
+            runtime._ka01_budget = _AdmissionBudget(runtime, request, operation, execution_profile, policy, leases, lease)
+        authority = json.loads(runtime._ka01_budget.authority)
+        return dict(version=1, status="ADMITTED_PREACTIVATION", authority=authority,
+            native_continuity="LOCAL_PRIMARY_ONLY" if operation == "PRIMARY" else "BLOCKED",
+            production_activation="NOT_ACTIVATED", continuation="NOT_AUTHORIZED")
+    except BaseException:
+        runtime._local_feedback_stopped = True
+        if runtime._ka01_budget is not None:
+            runtime._ka01_budget.stop()
+        raise
+
+
 def run_task(
     task_id: str,
     *,
@@ -1341,9 +1513,12 @@ def run_task(
     effort_source: str | None = None,
     _migration_handoff: str | None = None,
     _successor_transport: str | None = None,
+    ka01_admission=None,
 ) -> RunSummary:
     """Execute a TASK and persist/transport deterministic pre-PASS failure facts."""
 
+    from .ka01_admission import production_gate
+    production_gate(ka01_admission)
     root = resolve_repository(repo)
     if _successor_transport is not None:
         if _migration_handoff is not None:
@@ -1852,9 +2027,12 @@ def run_repair(
     reasoning_effort: str | None = None,
     model_source: str | None = None,
     effort_source: str | None = None,
+    ka01_admission=None,
 ) -> RepairSummary:
     """Accept and execute one GitHub-authored REPAIR as a continuation RUN."""
 
+    from .ka01_admission import production_gate
+    production_gate(ka01_admission)
     root = resolve_repository(repo)
     if repair_dispatch_id is not None and required_repair_sha is None:
         raise OperatorError("repair dispatch requires the exact canonical REPAIR SHA")
@@ -7181,9 +7359,12 @@ def run_remediation(
     reasoning_effort: str | None = None,
     model_source: str | None = None,
     effort_source: str | None = None,
+    ka01_admission=None,
 ) -> RemediationSummary:
     """Execute one remediation and persist deterministic pre-PASS failures."""
 
+    from .ka01_admission import production_gate
+    production_gate(ka01_admission)
     root = resolve_repository(repo)
     state = runtime_paths(root)
     observation_tracker = RunObservationTracker(
