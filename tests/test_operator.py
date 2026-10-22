@@ -6722,7 +6722,7 @@ def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
         assert root == repo
         if args[0] == "ls-remote":
             ref = args[-1]
-            return 0, f"{refs[ref]}\t{ref}" if ref in refs else "", ""
+            return 0, f"{refs[ref]}\t{ref}\n" if ref in refs else "", ""
         if args[0] in {"fetch", "cat-file"}:
             assert args[-1] in set(refs.values())
             return 0, "commit" if args[0] == "cat-file" else "", ""
