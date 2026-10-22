@@ -1,0 +1,172 @@
+task_id: TASK-400
+revision: 1
+goal: Canonicalize the Human/Brain prospective return to the paused Lean VP Intra-RUN
+  v1.3 roadmap after separately reviewed/published TASK-397 L3-05, establishing exactly
+  one high-level L3-06/G3 NEXT while retaining TASK-398/399 and conditional Publisher
+  G2 as immutable historical/planning context. Do not implement G3 or activate G6
+  in this planning reconciliation.
+problem: Current main contains the exact reviewed/published TASK-397 L3-05 source,
+  but .ai/roadmap-state.yaml still selects the already-published bounded-unresolved-diagnostic-handoff-20261022
+  TASK-399 as its sole NEXT; docs and live tests/test_brain_sync.py likewise assert
+  that dated historical priority. The Human's explicit 2026-10-22 instruction is to
+  continue the Lean VP roadmap after TASK-397 publication. Future generic continuation
+  must not infer a new NEXT from chat or RESULT; one authorized prospective canonical
+  planning transition and historical test/source reconciliation is required before
+  L3-06/G3 TASK authoring relies on it.
+assumptions:
+- Observed canonical main at authoring 60d47926448c1a537f3e9fcbf077c1aec75082f1, independently
+  published TASK-397 r1 candidate RUN-397-002 60d47926448c1a537f3e9fcbf077c1aec75082f1,
+  with REVIEW-397-001 PRIMARY PASS AC1-AC12 at canonical review-decision ref 1f1ee2d1c51197b5e24514a94a75905872ad744e.
+  Runtime must independently authenticate main, required proof and authorship CAS;
+  this observation alone grants no mutation authority.
+- TASK-396 r1 is the separately published KA-01 v1.3 normative specification, TASK-391
+  r2 established L3-04, TASK-397 r1 establishes bounded L3-05 only. KA-01 source and
+  production status remain HUMAN_RATIFIED_PROSPECTIVE_SPEC / NOT_ACTIVATED. L3-06/G3
+  actual integrated core, separate Human G6 and L4 remain outstanding.
+- The current top Human planning record human_bounded_unresolved_handoff_priority_20261022,
+  root next_items, active_track, planning_document, and the unique sequence status
+  NEXT name bounded-unresolved-diagnostic-handoff-20261022. Earlier G1 and old Lean
+  VP records are historical. Existing test_task399_current_priority_* exercises current-source
+  assertions that must be preserved as dated historical test semantics rather than
+  left pointed at changing current main.
+- The Human explicitly directs continuation of the roadmap after publishing TASK-397.
+  Reconcile priority prospectively toward the already-approved Lean VP v1.3 successor
+  slice L3-06/G3; do not imply TASK-399 publication mechanically advanced planning
+  or that a model, Runtime, workflow, Reviewer or Publisher independently selected
+  this transition.
+- Publisher residual G2 after Git guard is zero-or-one conditional, requires later
+  distinct non-overlapping material cost evidence and Human/Brain selection; no such
+  finding or separate G2 TASK is established by this request. Keep it deferred/conditional
+  without labelling skipped, DONE or included in G3.
+- Active TASK_AUTHORING audit is TCA-2 v2 from current canonical main. Brain has performed
+  two focused stages against roadmap/test/docs and retained exact historic snapshots;
+  no V1 dual audit, audited_handoff or automated correction selection. This authoring
+  has no separate Human Executor/model/effort delegation.
+- This TASK is planning-only engineering of exact Human/Brain decisions. It is outside
+  the preserved original 16 Lean VP delivery slots, does not change engineering truth
+  of any historical TASK/RUN, and does not pre-author or dispatch the later actual
+  L3-06/G3 implementation TASK.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - .ai/brain-audit-profiles.yaml
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - docs/AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md
+  - docs/AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md
+  - .ai/tasks/TASK-396.yaml
+  - .ai/tasks/TASK-397.yaml
+  - .ai/tasks/TASK-398.yaml
+  - .ai/tasks/TASK-399.yaml
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/unified_state.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  - tests/test_operator_unified_state.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - docs/AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md
+  - docs/AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md
+  - tests/test_brain_sync.py
+non_goals:
+- No actual L3-06/G3 implementation or Runtime G3 proof, no KA-01 G6 production activation/consent,
+  no L4 production measurements or VP-07 conformance claims. No new kernel version,
+  task decoder, execution adapter, scheduler, model/Executor routing, DB, repair selector,
+  Runtime verification owner or Publisher.
+- No declaration that TASK-398/399, residual Publisher G2 or existing Lean VP slots
+  are DONE through roadmap alone, and no modification to immutable historical Human
+  decisions, TASK/RUN/RESULT/FAILURE/REVIEW or previously published sources.
+- No changes to src/aios_renew or other inspect-only consumers, historical tests'
+  original G1/G2/TASK399 meaning, security/source gates, downstream pins or existing
+  Runtime/Reviewer/Publisher admission.
+- No automatic roadmap transition on future RESULT/REVIEW/publication; no second NEXT,
+  resumed retired old Lean VP roadmap or skipping the separately authorized G6 gate.
+constraints:
+  hard:
+  - Treat 60d47926448c1a537f3e9fcbf077c1aec75082f1 as source observation, not runtime
+    authorization; use one exact new Human/Brain prospective reconciliation record
+    on current main, with canonical TASK-397 r1 RUN-397-002 REVIEW-397-001 and published
+    source 60d47926448c1a537f3e9fcbf077c1aec75082f1. Runtime still owns exact TASK
+    authoring provenance, currentness and main CAS.
+  - 'Set one and only one current planning NEXT: lean-vp-intra-v13-budget-defaults-successor
+    with selected slice L3-06/G3. Atomically align root next_items, active_track,
+    active_track_status, planning_document, sequence''s sole status NEXT and selected
+    planning owner/approved slice; the selected high-level plan must not pretend to
+    carry an executable task_id, delegation or already-admitted G3 task. Preserve
+    16 original slots and historic completion identity L3-04 TASK-391 and L3-05 TASK-397.'
+  - Prospectively convert the previously selected TASK-399 planning entry to HISTORICAL_ONLY
+    with its prior NEXT as historical_status, while leaving its original dated Human
+    record and original implementation TASK-399 engineering lineage exact. Leave old
+    G1 as historical, old retired Lean VP competitor retired. Preserve all prior dated
+    human_* records unmodified, including the source priority which was correct when
+    written; add a new dated Human/Brain successor record rather than rewrite it.
+  - Maintain Publisher residual G2 queue NOT_STARTED/CONDITIONAL, with no proof of
+    material non-overlapping cost, no new implementation authorization and no assumed
+    permanent skip. Its deferral under current Human priority does not create another
+    NEXT, consume a Lean VP slot or discharge a separate decision.
+  - 'Update four existing planning documents coherently: the Lean VP v1.3 document
+    must identify the new active single-next L3-06/G3 and published L3-05 lineage,
+    while Git Guard and bounded unresolved handoff documents explicitly distinguish
+    their dated original priorities from superseded current NEXT. Never rewrite normative
+    KA-01 or Kernel documents to backdate activation.'
+  - tests/test_brain_sync.py must keep TASK-398/G1 and TASK-399 historical behavior
+    under exact immutable previous source commits rather than reading current roadmap
+    for retired priority assertions. Add independent current-source positive test
+    of exactly one selected L3-06/G3 NEXT and negative tests for stale TASK-399 root,
+    dual NEXT, retired-old-plan reactivation and unauthorized lifecycle-driven advancement;
+    preserve all original retrospective regression assertions and no-mutation source
+    behavior. Any test failing outside the five permitted paths is a bounded blocker,
+    not authority to bypass a guard.
+  - All original acceptance claims are implementable now as source/document/test properties,
+    not external later Runtime test PASS, Reviewer verdict, Publisher publication,
+    L3-06 readiness or G6 decision. The Executor returns truthful complete ResultPackage
+    and clean candidate, without inventing proof outcomes.
+  - Use minimum-sufficient-v1 targeted tests only, preserve source-authenticated Brain
+    Sync and Unified State readers unchanged, and avoid full suite/v2 gate. Do not
+    widen scope, auto-select Executor, mutate downstream or push/publish as Executor.
+acceptance:
+- id: AC1
+  condition: One new prospective Human/Brain planning decision dated 2026-10-22 binds
+    published TASK-397 r1 / RUN-397-002 / REVIEW-397-001 and exact main source while
+    leaving every older dated Human priority record intact and separately distinguishing
+    planning from Runtime engineering truth.
+- id: AC2
+  condition: Root next_items, active_track, active_track_status, planning_document,
+    and exactly one sequence NEXT select lean-vp-intra-v13-budget-defaults-successor
+    with L3-06/G3 the first remaining slice; no second NEXT, no premature executable
+    task_id/Executor binding and old Lean VP retired competitors stay inactive.
+- id: AC3
+  condition: The prospective Lean VP entry retains original 16 slots, published L3-04
+    and L3-05 anchors and remaining G3, separate G6 and L4 duties; KA-01 remains NOT_ACTIVATED,
+    no G3 or G6 success is inferred from TASK-397 publication.
+- id: AC4
+  condition: Original TASK-398 G1 and TASK-399 handoff priority/engineering history
+    remains exact in retained historical records; previous TASK-399 NEXT is marked
+    historical, and conditional residual G2 stays unstarted, nonauthorized and subordinate
+    pending separate measured Human/Brain decision.
+- id: AC5
+  condition: The four authorized planning documents consistently state which priority
+    was historical, why the Human returned to Lean VP, what single NEXT now is, and
+    what G3/G6/L4 still require without a second conflicting live bookmark.
+- id: AC6
+  condition: Actual Brain Sync regression isolates historical G1/TASK-399 snapshots
+    by immutable Git source and independently tests current single L3-06/G3 NEXT,
+    stale or dual NEXT, and nonmutation, without disabling historical negative tests
+    or changing production Brain Sync code.
+- id: AC7
+  condition: Only the five authorized planning/document/test paths differ; no src
+    change, norm/Kernel edit, automated Executor/review/publication/G6 activation,
+    history rewriting, G2 auto-skip or new lifecycle/planning router is introduced.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_sync.py
+  - python -m pytest -q tests/test_brain_context.py tests/test_operator_unified_state.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
