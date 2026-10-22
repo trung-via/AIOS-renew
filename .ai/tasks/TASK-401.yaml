@@ -1,0 +1,254 @@
+task_id: TASK-401
+revision: 1
+goal: Implement and independently Runtime-verify Lean VP Intra-RUN v1.3 L3-06/G3 actual
+  eligible core for separately authorized PRIMARY, REPAIR, REMEDIATION, integrating
+  prospective versioned L1 semantic proof, L2 authenticated provenance/reuse, L3 single
+  scheduler, real current native Executor continuity/checkpoints/factual feedback,
+  per-RUN C.8 limits and hard STOP. Keep production G6 NOT_ACTIVATED and L4 future.
+problem: 'Published TASK-391 L3-04 and TASK-397 L3-05 are preactivation foundations,
+  not actual operation-specific G3 proof. Current direct APIs show a gap: `task.parse_semantic_task`
+  is read-only future decoder while normal authoring uses legacy `parse_task`; `RuntimeCompletion._checkpoint_binding`
+  and `consume_same_executor_feedback` require PRIMARY; `Dispatcher._require_native_continuity`
+  rejects opted REPAIR and REMEDIATION; `preactivate_ka01_v13` reports corrections
+  native continuity BLOCKED. Existing L1/L2/L3 isolated and synthetic tests cannot
+  certify original live operation-specific G3 integration, and production G6 must
+  not be silently enabled.'
+assumptions:
+- Canonical main bc0d4fd84405ebbb1a40f3b1e7e6508532de34bd is the separately published
+  TASK-400 r1 reviewed candidate. The canonical roadmap's unique NEXT is lean-vp-intra-v13-budget-defaults-successor,
+  first slice L3-06/G3; KA-01 v1.3 is HUMAN_RATIFIED_PROSPECTIVE_SPEC / NOT_ACTIVATED.
+  Source observation is not Runtime authority.
+- TASK-396 r1 v1.3 normative, TASK-391 r2 L3-04 and TASK-397 r1 L3-05 published foundations
+  are separately bound. G3 before G6; full production measurements and VP-07 AC-01..AC-36
+  remain postactivation L4. No automatic roadmap advancement from TASK result or review.
+- Canonical TCA-2 v2 TASK_AUTHORING profile digest 75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d
+  is active. Brain applied CONSTRUCT five checks, ADVERSARIAL_AUDIT_AND_RECONCILE
+  six checks and falsifying closure on main's KA-01 D.1, L1/L2/L3 direct APIs, legacy
+  AST/import and modify authority. Only current-implementation acceptance remains;
+  verification, review and publication are later distinct proof gates.
+- Current sources show Dispatcher blocked correction native continuity, primary-only
+  Runtime checkpoint binding and local callback, but a separate controlled offline
+  G3 native test path is permitted under a lawfully admitted engineering TASK without
+  G6 activation. Positive support requires current real native Executor, not a fake
+  invocation/approval witness.
+- Human authorizes continued L3-06 engineering scope now. Human has NOT explicitly
+  selected a coding Executor/model/effort for this new TASK-401; AUTHOR_TASK is not
+  dispatch or independent G6 activation.
+scope:
+  inspect:
+  - src/aios_renew/task.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/executor.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/codex_adapter.py
+  - src/aios_renew/review_transport.py
+  - tests/test_lean_vp_l3_g3_integrated_core.py
+  - tests/test_lean_vp_l3_admission_budget.py
+  - tests/test_lean_vp_l3_same_executor_continuation.py
+  - tests/test_lean_vp_l3_factual_feedback.py
+  - tests/test_lean_vp_l3_proof_scheduler.py
+  - tests/test_lean_vp_l3_checkpoint_terminal_reuse.py
+  - tests/test_lean_vp_l1_versioned_task.py
+  - tests/test_lean_vp_l1_integrated_readiness.py
+  - tests/test_lean_vp_l2_reuse_conformance.py
+  - tests/test_task.py
+  - tests/test_authoring_ingress.py
+  - tests/test_runtime.py
+  - tests/test_operator.py
+  - tests/test_dispatcher.py
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - docs/AIOS-LEAN-VP-L1-VERSIONED-SEMANTIC-TASK.md
+  - docs/AIOS-LEAN-VP-L1-INTEGRATED-READINESS.md
+  - docs/AIOS-LEAN-VP-L2-REUSE-CONFORMANCE.md
+  - docs/AIOS-LEAN-VP-L3-ADMISSION-BUDGET.md
+  - docs/AIOS-LEAN-VP-L3-SAME-EXECUTOR-CONTINUATION.md
+  - docs/AIOS-LEAN-VP-L3-SINGLE-PROOF-SCHEDULER.md
+  - docs/AIOS-LEAN-VP-L3-CHECKPOINT-TERMINAL-REUSE.md
+  - docs/AIOS-LEAN-VP-L3-FACTUAL-FEEDBACK.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-391.yaml
+  - .ai/tasks/TASK-396.yaml
+  - .ai/tasks/TASK-397.yaml
+  - .ai/tasks/TASK-400.yaml
+  - src/aios_renew/run.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/antigravity_adapter.py
+  - src/aios_renew/antigravity_minimax_adapter.py
+  - tests/test_intra_run_proof_contract.py
+  - tests/test_correction_dispatch.py
+  - tests/test_correction_integration.py
+  - tests/test_publication.py
+  modify:
+  - src/aios_renew/task.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/executor.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/codex_adapter.py
+  - src/aios_renew/review_transport.py
+  - tests/test_lean_vp_l3_g3_integrated_core.py
+  - tests/test_lean_vp_l3_admission_budget.py
+  - tests/test_lean_vp_l3_same_executor_continuation.py
+  - tests/test_lean_vp_l3_factual_feedback.py
+  - tests/test_lean_vp_l3_proof_scheduler.py
+  - tests/test_lean_vp_l3_checkpoint_terminal_reuse.py
+  - tests/test_lean_vp_l1_versioned_task.py
+  - tests/test_lean_vp_l1_integrated_readiness.py
+  - tests/test_lean_vp_l2_reuse_conformance.py
+  - tests/test_task.py
+  - tests/test_authoring_ingress.py
+  - tests/test_runtime.py
+  - tests/test_operator.py
+  - tests/test_dispatcher.py
+  - docs/AIOS-LEAN-VP-L3-INTEGRATED-G3.md
+non_goals:
+- No G6 production activation, generic v1.3 opt-in, account/model/provider authorization,
+  predecessor RUN consent migration, full production G4/G5/L4 measurement or VP-07
+  conformance verdict.
+- No extra scheduler, Planner, router, retry/failover mechanism, auto-repair selection,
+  new DB, second verifier, independent Reviewer/Publisher or automatic roadmap NEXT
+  update.
+- No frozen Kernel/Constitution/KA-01 normative edits; no historical V1/V2 reinterpretation,
+  changed review/declaration/RESULT history or publication through Executor.
+- No full suite, broad base replay, synthetic test/proof PASS, rewriting direct K_i/F_i
+  imports or AST guard, weakening unopted/correction-negative tests, claiming unsupported
+  native provider capability.
+constraints:
+  hard:
+  - 'Implement only L3-06/G3 of KA-01 v1.3 D.1: existing v1.3 normative TASK-396,
+    L3-04 TASK-391 r2 and L3-05 TASK-397 r1 are distinct published predecessors; current
+    published planning TASK-400 r1 main bc0d4fd84405ebbb1a40f3b1e7e6508532de34bd selects
+    L3-06/G3. Runtime independently checks TASK and main currentness, exact source,
+    provenance, reservation and CAS.'
+  - Default legacy `parse_task`, `authoring_ingress`, V1/V2 verification, review/publication
+    transport, frozen Kernel and published directly callable native K_i/F_i codecs
+    remain semantically and behaviorally identical. Controlled distinct prospective
+    decoder/admission must not turn semantic TASK into a V2 command list. `tests/test_intra_run_proof_contract.py`
+    AST/import restrictions and inspect-only `src/aios_renew/publication.py` may NOT
+    be edited; an essential out-of-scope edit is a blocker, not a waiver.
+  - The existing Runtime must remain the ONLY canonical identity, resource, checkpoint,
+    verification/EVIDENCE and terminal owner. Keep exactly one existing proof scheduler
+    for checkpoints and finalization, authenticated source-to-target full dependency
+    footprints and all BR-1..BR-6 before any base materialization. ERROR/UNKNOWN/unstable
+    observation is never actionable native candidate FAIL.
+  - PRIMARY original TASK and semantic mapping proof; REPAIR exact current failed
+    predecessor + AUTHOR_REPAIR strategy/action/scope + original/affected verification;
+    REMEDIATION exact CHANGES_REQUIRED REVIEW, selected outstanding finding(s), original
+    affected proof and independent DELTA continuation. Neither a caller label nor
+    another RUN's permission can substitute; unauthorized findings and changes STOP.
+  - Same genuinely live selected current RUN Executor and native lease identity/generation/profile/model/effort
+    under one existing Dispatcher and ExecutorBoundary, no new router/selection or
+    fake session. Callback is factual only; it cannot choose code strategy. Missing
+    supported native capability remains hard STOP; at least one real supported native
+    path must pass focused preactivation test.
+  - 'C.8 default fill/override and current RUN finite Human consent must be source-authenticated,
+    bound immutably and charged monotonically for all three operations: max 2 corrections,
+    3 K, 240m wall including max 180m verification, optional tokens null. Missing
+    applicable usage, exhaustion, withdrawal, crash/duplicate/reservation ambiguity
+    cannot renew permission or charge zero. Limit cannot waive mandatory proof.'
+  - Tests shall establish actual native receipt/proof and negative counterexamples
+    with controlled Git/self-contained lawful offline fixtures; not pretend production
+    review, G6 consent or executed proof through synthetic metadata. Retain historical
+    L1 schema, L2 applicability, L3 positive and negative tests. Before changing old
+    tests, distinguish historical preactivation negativity from newly lawful explicit
+    G3 opt-in; never globally relax old denials.
+  - "Real G3 completion later requires exact Runtime RESULT and independent semantic\
+    \ Reviewer PASS plus Publisher publication, which are not acceptance claims by\
+    \ Executor. G6 exact prospective Human activation is separate; L4 VP-01/VP-06\
+    \ and full real VP-07 AC01\u2013AC36 remain unproved postactivation; `.ai/roadmap-state.yaml`\
+    \ and Human planning state are read-only."
+  - Minimum-sufficient-v1 exactly required focused native test commands; do not alter
+    pyproject/conftest xdist guard, rerun unchanged proof for ceremony or add a hidden
+    full suite. If an API/test/scope incompatibility cannot be lawfully resolved inside
+    scope.modify, report the exact blocker with unmatched AC instead of inventing
+    PASS.
+acceptance:
+- id: AC1
+  condition: Implement exact independently bound prospective v1.3 semantic TASK/contract/mapping
+    source intake with full reviewed acceptance and distinguishing proof coverage
+    under separately authenticated Human selection; no legacy parse_task/ingress or
+    V1/V2 command-policy reinterpretation. Reject stale, false, conflicting, omitted,
+    cross-source, unapproved or synthetic proof declarations.
+- id: AC2
+  condition: One controlled preactivation G3 admission authenticates the original
+    current ACTIVE RUN and immutable operation-specific PRIMARY, AUTHOR_REPAIR and
+    CHANGES_REQUIRED REMEDIATION authorizations; original failed predecessor/action/scope/origin
+    affected verification and selected outstanding findings/affected proof/DELTA review
+    cannot be forged or inherited from another RUN.
+- id: AC3
+  condition: Existing Dispatcher/ExecutorBoundary/RuntimeCompletion integrates current-RUN
+    real sticky live native invocation/lease/profile/model/effort for PRIMARY, REPAIR
+    and REMEDIATION under real admitted operation context, with no second Executor
+    dispatch; positive supported native path works offline and wrong/lost/reconstructed/unsupported
+    native frame stops.
+- id: AC4
+  condition: Exactly one Runtime-owned proof scheduler binds the complete semantic
+    obligation population and real native checkpoint/terminal evidence, preserves
+    distinct integration/concurrency/order/repetition conditions, reuses genuinely
+    VALID original L2-03 source proof with original outcome/subject, and denies UNKNOWN/INVALIDATED
+    fake PASS or base replay absent all BR-1..BR-6.
+- id: AC5
+  condition: "Actual committed K1 \u2192 decisive F1 \u2192 same current-RUN scoped\
+    \ Executor correction \u2192 distinct causally progressing committed K2 and terminal\
+    \ reuse operates where authorized for each operation. Enforce exact predecessor/ordinal/digest/one-time\
+    \ consumption, bounded factual feedback without fix strategy, untouched original\
+    \ action/findings, and never rerun equivalent final proof."
+- id: AC6
+  condition: Versioned C.8 immutable original per-RUN limits and authenticated independent
+    overrides, defaults corrections=2/checkpoints=3/wall=240m/Runtime verification=180m
+    within wall/max_tokens=null, resource debit/reservation/settlement, withdrawal
+    and STOP enforce through every operation/effect/crash/cleanup. Unknown accounting,
+    prior consent, changed limits or duplicate charge cannot mint capacity.
+- id: AC7
+  condition: Crash/parallel/replayed carrier, checkpoint, feedback and terminal paths
+    preserve immutable records; cross-RUN, changed currentness, stale lease, callback
+    after invocation, conflicting ordinal, ACK-as-live, double terminal or terminal
+    reopening fail closed and cannot produce extra native work.
+- id: AC8
+  condition: Production run_task/run_repair/run_remediation and KA-01 remain NOT_ACTIVATED
+    without separately authenticated future Human G6 version/operation/policy/profile
+    and each future RUN's own consent. G3 real offline tests use existing lawful engineering
+    TASK Runtime; no preview fixture or defaults grant live activation.
+- id: AC9
+  condition: New actual G3 integrated positive and adversarial tests exercise supported
+    live native source and all three operation authorities, preserve legacy L1/L2/L3
+    API, AST/import and negative correction tests, and retain focused Runtime-owned
+    12-worker native verification; no full suite, synthetic PASS, weakened tests or
+    omitted obligations.
+- id: AC10
+  condition: "Committed result changes only scope.modify and includes bounded integrated\
+    \ G3 implementation/coverage document stating supported and blocked/UNKNOWN surfaces.\
+    \ Executor gives honest full AC1\u2013AC10 claims; neither RESULT nor tests auto-decide\
+    \ Reviewer verdict, Publisher publication, roadmap NEXT, G6 or L4."
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_lean_vp_l3_g3_integrated_core.py tests/test_lean_vp_l3_admission_budget.py
+    tests/test_lean_vp_l3_same_executor_continuation.py
+  - python -m pytest -q tests/test_lean_vp_l1_versioned_task.py tests/test_lean_vp_l1_integrated_readiness.py
+    tests/test_lean_vp_l2_reuse_conformance.py tests/test_lean_vp_l3_proof_scheduler.py
+    tests/test_lean_vp_l3_checkpoint_terminal_reuse.py tests/test_lean_vp_l3_factual_feedback.py
+  - python -m pytest -q tests/test_task.py tests/test_authoring_ingress.py tests/test_runtime.py
+    tests/test_dispatcher.py tests/test_operator.py tests/test_intra_run_proof_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
