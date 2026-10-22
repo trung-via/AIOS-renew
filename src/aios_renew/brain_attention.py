@@ -882,6 +882,30 @@ def _review_patterns(run_id):
             ("artifacts", "failure-artifacts", "review", "failure", "review-decision")]
 
 
+def _failure_terminal_head(run_id, run_document, terminal, *, candidate_available):
+    """Bind canonical FAILURE facts; absent refs need a full EXECUTION source.
+
+    The caller still proves the exact artifact ref, TASK/base/head ancestry and
+    return affinity. These Runtime facts convey no repair eligibility.
+    """
+    from .review_transport import _bind_performance_terminal_identity, failure_document
+
+    # Preserve historical candidate-bound readers. This partial format can
+    # never authorize absence of a candidate ref or bypass declared facts.
+    if (candidate_available
+            and not set(terminal) & {"candidate", "phase", "public_projection", "executor", "base_sha", "error"}):
+        return terminal.get("failed_head_sha")
+    failure = failure_document(canonical(terminal))
+    head = _bind_performance_terminal_identity(
+        canonical(run_document), canonical(failure),
+        ref="refs/heads/aios/failure-artifacts/" + run_id, run_id=run_id,
+        task_id=failure["task"]["id"], terminal_kind="FAILURE", _validated_failure=failure)[3]
+    if not candidate_available and (failure.get("phase") != "EXECUTION"
+                                    or failure["candidate"]["transportable"] is not False):
+        raise AttentionError("AFFINITY_MISSING_CANDIDATE_UNAUTHORIZED")
+    return head
+
+
 def resolve_return_affinity(event_id, sources, artifacts=None):
     """Read-only exact-lineage proof; uncertainty yields no routable selector.
 
@@ -930,12 +954,23 @@ def resolve_return_affinity(event_id, sources, artifacts=None):
             raise AttentionError("AFFINITY_TERMINAL_UNPROVEN")
         sha = success or failure
         _value(sha, "sha")
-        head = current.get(root + ("review/" if success else "failure/") + run_id)
+        candidate_ref = root + ("review/" if success else "failure/") + run_id
+        head = current.get(candidate_ref)
+        document = sources.document(sha, ".ai/transport/run.json")
+        terminal = sources.document(sha, ".ai/transport/" + ("result.json" if success else "failure.json"))
+        if failure:
+            candidate_available = candidate_ref in current
+            if ((not candidate_available or "candidate" in terminal)
+                    and any(root + namespace + "/" + run_id in current for namespace in ("review", "review-decision"))):
+                raise AttentionError("AFFINITY_TERMINAL_UNPROVEN")
+            failed_head = _failure_terminal_head(run_id, document, terminal, candidate_available=candidate_available)
+            if candidate_available and head != failed_head:
+                raise AttentionError("AFFINITY_SOURCE_SUBSTITUTION")
+            head = failed_head
         _value(head, "sha")
         if (artifact_sha is not None and artifact_sha != sha
                 or candidate_sha is not None and candidate_sha != head):
             raise AttentionError("AFFINITY_SOURCE_SUBSTITUTION")
-        document = sources.document(sha, ".ai/transport/run.json")
         if document.get("kind") == "REMEDIATION":
             execution = document["execution"]
             value = execution["run"]
@@ -955,7 +990,6 @@ def resolve_return_affinity(event_id, sources, artifacts=None):
                   status=value["status"], return_affinity=document_affinity(value))
         if run.run_id != run_id or run.status != "ACTIVE" or run.head_sha not in (None, head):
             raise AttentionError("AFFINITY_RUN_MISMATCH")
-        terminal = sources.document(sha, ".ai/transport/" + ("result.json" if success else "failure.json"))
         if success:
             if terminal["result"]["head_sha"] != head:
                 raise AttentionError("AFFINITY_RESULT_MISMATCH")

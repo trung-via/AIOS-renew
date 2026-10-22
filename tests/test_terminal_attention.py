@@ -63,6 +63,41 @@ def test_terminal_attention_resolves_safe_source_context_and_distinguishes_block
         assert "synthetic-secret" not in json.dumps(context)
 
 
+@pytest.mark.parametrize("candidate_present", [False, True])
+def test_task402_admission_and_local_wake_share_immutable_failure_selectors(monkeypatch, candidate_present):
+    import json
+    from fnmatch import fnmatchcase
+    from aios_renew import terminal_attention as terminal, review_transport as transport
+    from aios_renew.return_affinity import LEGACY
+    from tests.test_local_chat_wake import artifact_only_fixture
+
+    fixture = artifact_only_fixture(monkeypatch, candidate_present=candidate_present)
+    item = selector(fixture.run_id, "FAILURE", fixture.artifact)
+    policy = load_policy(POLICY_PATH)
+    fixture.refs[item.signal_ref] = fixture.main_sha
+    monkeypatch.setattr(terminal, "_remote_refs", lambda _repo, _remote, *patterns:
+        {ref: sha for ref, sha in fixture.refs.items() if any(fnmatchcase(ref, pattern) for pattern in patterns)})
+    monkeypatch.setattr(terminal, "_ensure_remote_main_object", lambda *args, **kwargs: None)
+    monkeypatch.setattr(terminal, "_reviewed_surface_available", lambda *args: True)
+    monkeypatch.setattr(terminal, "_require_main_ancestor", lambda *args: None)
+    monkeypatch.setattr(transport, "_read_remote_blob", lambda _repo, _remote, sha, name:
+        json.dumps(fixture.blobs[sha, name]).encode() if (sha, name) in fixture.blobs else None)
+    admitted, ref, push_sha, _ = admit_event(event_name="workflow_dispatch",
+        event=dict(ref="main", repository=dict(full_name=policy.repository),
+                   inputs=dict(run_id=item.run_id, terminal_kind=item.terminal_kind, artifact_sha=item.artifact_sha)),
+        repository=policy.repository, event_sha=fixture.main_sha, policy=policy)
+    admission = validate_remote_admission(Path("synthetic"), remote="origin", item=admitted,
+        signal_ref=ref, push_signal_sha=push_sha, event_sha=fixture.main_sha, policy=policy)
+    context = admission.failure_context(Path("synthetic"))
+    assert context["source"]["artifact_sha"] == fixture.artifact
+    assert context["candidate_availability"] == ("AVAILABLE" if candidate_present else "UNAVAILABLE")
+    assert admission.selector == item
+    assert fixture.projection.affinity(fixture.event) == LEGACY
+    assert fixture.projection.observe(fixture.event) == "UNRESOLVED"
+    assert set(fixture.refs) == {fixture.terminal, fixture.main, item.signal_ref} | ({fixture.candidate} if candidate_present else set())
+    assert "synthetic-secret" not in admission.github_outputs() + json.dumps(context)
+
+
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(
         ("git", "-C", str(repo), *args),
