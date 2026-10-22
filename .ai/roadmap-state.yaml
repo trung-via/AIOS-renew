@@ -3887,7 +3887,6 @@ sequence:
     ka01_document_version: "1.3"
     ka01_activation: NOT_ACTIVATED
     historical_next_effect: SOLE_NEXT_BY_EXPLICIT_HUMAN_20261021_NO_AUTOMATIC_LATER_ADVANCEMENT
-    current_next_effect: SOLE_L3_06_G3_NEXT_BY_EXPLICIT_HUMAN_BRAIN_RETURN_20261022_NOT_LIFECYCLE_ADVANCEMENT
     next_transition_authority: EXPLICIT_SUBSEQUENT_HUMAN_BRAIN_RECONCILIATION_NOT_RESULT_REVIEW_OR_PUBLISH
     goal: >-
       Continue the original 16 Lean VP slots after separately published TASK-396
