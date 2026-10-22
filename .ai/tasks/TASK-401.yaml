@@ -1,39 +1,56 @@
 task_id: TASK-401
-revision: 1
-goal: Implement and independently Runtime-verify Lean VP Intra-RUN v1.3 L3-06/G3 actual
-  eligible core for separately authorized PRIMARY, REPAIR, REMEDIATION, integrating
-  prospective versioned L1 semantic proof, L2 authenticated provenance/reuse, L3 single
-  scheduler, real current native Executor continuity/checkpoints/factual feedback,
-  per-RUN C.8 limits and hard STOP. Keep production G6 NOT_ACTIVATED and L4 future.
-problem: 'Published TASK-391 L3-04 and TASK-397 L3-05 are preactivation foundations,
-  not actual operation-specific G3 proof. Current direct APIs show a gap: `task.parse_semantic_task`
-  is read-only future decoder while normal authoring uses legacy `parse_task`; `RuntimeCompletion._checkpoint_binding`
-  and `consume_same_executor_feedback` require PRIMARY; `Dispatcher._require_native_continuity`
-  rejects opted REPAIR and REMEDIATION; `preactivate_ka01_v13` reports corrections
-  native continuity BLOCKED. Existing L1/L2/L3 isolated and synthetic tests cannot
-  certify original live operation-specific G3 integration, and production G6 must
-  not be silently enabled.'
+revision: 2
+goal: "Complete the original TASK-401 Lean VP v1.3 L3-06/G3 eligible core by resolving\
+  \ RUN-401-001's evidenced AC4/AC9 cross-candidate L2-03 EVIDENCE reuse gap, with\
+  \ narrowly versioned canonical evidence validation and adversarial tests while preserving\
+  \ its other AC1\u2013AC10 and legacy/V1/V2 semantics; keep G6 NOT_ACTIVATED."
+problem: RUN-401-001 TERMINAL FAILURE at COMPLETION_GATE (failed head f6c269cd07b2e031f3f2e0ddf531754bf57b8fc7,
+  private failure artifacts b864f33a461cde780edc7866d23184e16d676cc1) shows one truthful
+  unresolved implementation item anchored to AC4 and AC9, no missing AC claims and
+  no Runtime verification started. Candidate docs/AIOS-LEAN-VP-L3-INTEGRATED-G3.md
+  explicitly identifies changed-tree source-to-target L2-03 EVIDENCE reuse as unimplemented
+  and blocked by src/aios_renew/artifacts.py's V2-only verification reuse binding
+  and same-current-RUN/subject gate and verification_contract.attributed_task_passes
+  exact-binding rule. Original r1 scope.modify forbids artifacts.py. Repeating an
+  r1 REPAIR or asserting unresolved PASS is unsatisfiable; this prospective r2 expands
+  only the necessary EVIDENCE schema/guard regression authority, retains r1 source
+  as unreviewed implementation seed, not a reviewed or published candidate.
 assumptions:
-- Canonical main bc0d4fd84405ebbb1a40f3b1e7e6508532de34bd is the separately published
-  TASK-400 r1 reviewed candidate. The canonical roadmap's unique NEXT is lean-vp-intra-v13-budget-defaults-successor,
-  first slice L3-06/G3; KA-01 v1.3 is HUMAN_RATIFIED_PROSPECTIVE_SPEC / NOT_ACTIVATED.
-  Source observation is not Runtime authority.
-- TASK-396 r1 v1.3 normative, TASK-391 r2 L3-04 and TASK-397 r1 L3-05 published foundations
-  are separately bound. G3 before G6; full production measurements and VP-07 AC-01..AC-36
-  remain postactivation L4. No automatic roadmap advancement from TASK result or review.
-- Canonical TCA-2 v2 TASK_AUTHORING profile digest 75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d
-  is active. Brain applied CONSTRUCT five checks, ADVERSARIAL_AUDIT_AND_RECONCILE
-  six checks and falsifying closure on main's KA-01 D.1, L1/L2/L3 direct APIs, legacy
-  AST/import and modify authority. Only current-implementation acceptance remains;
-  verification, review and publication are later distinct proof gates.
-- Current sources show Dispatcher blocked correction native continuity, primary-only
-  Runtime checkpoint binding and local callback, but a separate controlled offline
-  G3 native test path is permitted under a lawfully admitted engineering TASK without
-  G6 activation. Positive support requires current real native Executor, not a fake
-  invocation/approval witness.
-- Human authorizes continued L3-06 engineering scope now. Human has NOT explicitly
-  selected a coding Executor/model/effort for this new TASK-401; AUTHOR_TASK is not
-  dispatch or independent G6 activation.
+- Human's 2026-10-22 'Fix task' authorizes a prospective TASK-401 revision to reconcile
+  the exact known scope blocker; canonical main e061b7f54dbf65aabdcaaff0e418db6809ce9cf2
+  remains the source-authored r1 TASK, not a successful TASK-401 engineering publication.
+  Original r1 failed immutable RUN-401-001 has failed head f6c269cd07b2e031f3f2e0ddf531754bf57b8fc7,
+  artifact ref b864f33a461cde780edc7866d23184e16d676cc1, public safe-detail V4 cause
+  UNRESOLVED_ITEMS count=1 with anchors AC4 and AC9; Executor's committed G3 document
+  admits incomplete cross-tree L2-03 reuse. These establish incomplete implementation,
+  not successful proof of any AC.
+- 'ROA-1 R3 active REPAIR_AUTHORING audit evaluated exact failed source, cause and
+  legal levers: CONTINUE_IMPLEMENTATION within old scope cannot repair the EVIDENCE
+  validator outside it; CODE_FIX under r1 cannot; FINALIZE_CANDIDATE or NO_CHANGE
+  cannot truthfully clear unresolved. Revision r2 is a separate prospective TASK_AUTHORING
+  decision, audited under canonical TCA-2 v2. Runtime and Human/Brain authority remain
+  distinct.'
+- "TCA-2 CONSTRUCT examined original goal/AC1\u2013AC10 and bound APIs in src/aios_renew/artifacts.py,\
+  \ verification_contract.py, runtime.py, publication.py, original G3 test and tests/test_artifacts.py.\
+  \ ADVERSARIAL_AUDIT_AND_RECONCILE found changed-tree source-to-target cross-RUN\
+  \ evidence cannot be authorized by simply changing V2 binding equality, replacing\
+  \ original subject_sha/run, or claiming tests pass. r2 adds a distinct, strongly\
+  \ versioned G3 evidence witness validation; publisher and direct-call V1/V2 are\
+  \ retained. Scope includes required new canonical validator test updates and no\
+  \ inspect-only production modification."
+- Candidate f6c269cd07b2e031f3f2e0ddf531754bf57b8fc7 has 12 changed files, all inside
+  original r1 modify, clean committed. It is unreviewed and unverified engineering
+  input only. Executor may lawfully inspect/port its minimal relevant delta into the
+  separately admitted r2 RUN's own new base/HEAD, with Git continuity and real tests,
+  but must never relabel, publish, override or import r1 RUN/FAILURE as an r2 success.
+- Human has prospectively selected Codex gpt-6.1-sol effort max for all following
+  Lean VP tasks until changed; that is Executor delegation, NOT separate KA-01 G6/operation
+  consent or authorization to bypass candidate verification. Authoring does not itself
+  dispatch.
+- KA-01 v1.3 D.1, C.5 and C.8 still require actual G3 eligible source-to-target proof
+  and exactly original source outcome/subject/raw/provenance, independent strict applicability,
+  current RUN coverage, final one terminal, original operation authorization and finite
+  budgets. G6 production remains NOT_ACTIVATED and L4 unchanged.
 scope:
   inspect:
   - src/aios_renew/task.py
@@ -92,6 +109,9 @@ scope:
   - tests/test_correction_dispatch.py
   - tests/test_correction_integration.py
   - tests/test_publication.py
+  - src/aios_renew/artifacts.py
+  - tests/test_artifacts.py
+  - tests/test_verification_contract.py
   modify:
   - src/aios_renew/task.py
   - src/aios_renew/authoring_ingress.py
@@ -121,6 +141,10 @@ scope:
   - tests/test_operator.py
   - tests/test_dispatcher.py
   - docs/AIOS-LEAN-VP-L3-INTEGRATED-G3.md
+  - src/aios_renew/artifacts.py
+  - tests/test_artifacts.py
+  - tests/test_verification_contract.py
+  - tests/test_publication.py
 non_goals:
 - No G6 production activation, generic v1.3 opt-in, account/model/provider authorization,
   predecessor RUN consent migration, full production G4/G5/L4 measurement or VP-07
@@ -182,6 +206,39 @@ constraints:
     full suite. If an API/test/scope incompatibility cannot be lawfully resolved inside
     scope.modify, report the exact blocker with unmatched AC instead of inventing
     PASS.
+  - "New r2 modify authority adds ONLY artifacts.py, tests/test_artifacts.py, tests/test_verification_contract.py\
+    \ and tests/test_publication.py to the original r1 permitted paths. Preserve original\
+    \ all AC1\u2013AC10, exact historical V1/V2 data/parsing/attribution and tests;\
+    \ publication.py, frozen Kernel, Constitution, KA-01 normative text and roadmap\
+    \ remain inspect-only. If an additional code owner must change, STOP and report\
+    \ exact source/test blocker rather than silently edit."
+  - Implement explicitly separate authenticated G3-only canonical EVIDENCE applicability
+    representation when source RUN/subject/tree differs from target RUN/subject/tree;
+    retain original source observation's immutable RUN, subject_sha, actual outcome,
+    raw/digest and complete typed conditions. Target EVIDENCE wrapper must bind exact
+    current RUN/candidate/obligations and independently attested source-to-target
+    validity. No relabelled original execution, synthetic pass, source-borne trust
+    label, weakening of V2 key equality, or existing V1/V2 fallback. Reconcile Runtime
+    finalization and the existing Publisher/Reviewer decoding by shared approved source
+    validation, not by creating a second verifier or bypassing artifacts.py.
+  - Negative G3 tests must explicitly falsify missing/stale or competing source Git
+    refs, forged VALID and digest, changed tree/test/fixture/helper/toolchain/workers/order/repetition/integration
+    conditions, invalid source FAIL/ERROR/UNKNOWN, mismatch current RUN/candidate/action/finding/proof
+    population, omitted mandatory conditions, raw pin tampering, writer/terminal race
+    and base replay without all six BR gates. Reused valid proof may discharge only
+    its independently reviewed equivalent obligation; independent changed proofs still
+    execute under the single Runtime scheduler.
+  - Include positive true changed-tree source-to-target L2-03 reuse across committed
+    K1/F1/K2 and terminal EVIDENCE for each eligible operation, keeping mandatory
+    comparison/integration/parallel/ordering/repetition coverage independently checked;
+    assert source record is preserved byte-for-byte and equivalent proof not reexecuted.
+    The original candidate's test showing 2x required native proof calls without cross-candidate
+    reuse is insufficient for AC4/AC9.
+  - Carry forward r1 native continuity and original 12-file delta as unreviewed input
+    only, not proof or additional authority. Do not rerun first-party discovery or
+    same test unchanged without causally needed bound invalidation; preserve original
+    archived failed RUN and human-selected Executor. If implementation truth still
+    incomplete, return factual unresolved and stop rather than force PASS.
 acceptance:
 - id: AC1
   condition: Implement exact independently bound prospective v1.3 semantic TASK/contract/mapping
@@ -206,7 +263,12 @@ acceptance:
     obligation population and real native checkpoint/terminal evidence, preserves
     distinct integration/concurrency/order/repetition conditions, reuses genuinely
     VALID original L2-03 source proof with original outcome/subject, and denies UNKNOWN/INVALIDATED
-    fake PASS or base replay absent all BR-1..BR-6.
+    fake PASS or base replay absent all BR-1..BR-6. G3 exact versioned source-to-target
+    reuse must be accepted by original canonical EVIDENCE validators across changed
+    Git tree without relaxing V1/V2 equal-binding requirements, preserving original
+    source run/subject/outcome/raw digests; Runtime/Publisher accept only authenticated
+    current target witness under closed schema. Positive and explicit stale/changed-source
+    counterexamples are required.
 - id: AC5
   condition: "Actual committed K1 \u2192 decisive F1 \u2192 same current-RUN scoped\
     \ Executor correction \u2192 distinct causally progressing committed K2 and terminal\
@@ -234,7 +296,11 @@ acceptance:
     live native source and all three operation authorities, preserve legacy L1/L2/L3
     API, AST/import and negative correction tests, and retain focused Runtime-owned
     12-worker native verification; no full suite, synthetic PASS, weakened tests or
-    omitted obligations.
+    omitted obligations. In particular include positive changed-tree L2-03 proof reuse
+    and adversarial V1/V2 and G3 canonical artifact/attribution/publication parsing
+    compatibility tests in tests/test_artifacts.py, tests/test_verification_contract.py
+    and tests/test_publication.py; target RUN proof identity must remain authentic
+    and no synthetic target PASS.
 - id: AC10
   condition: "Committed result changes only scope.modify and includes bounded integrated\
     \ G3 implementation/coverage document stating supported and blocked/UNKNOWN surfaces.\
@@ -250,5 +316,7 @@ verification:
     tests/test_lean_vp_l3_checkpoint_terminal_reuse.py tests/test_lean_vp_l3_factual_feedback.py
   - python -m pytest -q tests/test_task.py tests/test_authoring_ingress.py tests/test_runtime.py
     tests/test_dispatcher.py tests/test_operator.py tests/test_intra_run_proof_contract.py
+  - python -m pytest -q tests/test_artifacts.py tests/test_verification_contract.py
+    tests/test_publication.py
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
