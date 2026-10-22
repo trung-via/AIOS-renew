@@ -1,0 +1,232 @@
+task_id: TASK-404
+revision: 1
+goal: 'PTE-03: implement Human-approved AOA-1 minimum existing-reader extension for
+  source-authenticated, sufficiently discriminating FAILURE diagnostic handoff, with
+  field-level selective redaction and an executable script-free Brain consumer for
+  EXECUTION, VERIFICATION and COMPLETION_GATE.'
+problem: On reviewed/published TASK-403 PTE-02 base, canonical RUN-403-001 verification
+  exit 1 retained MALFORMED_SUMMARY with no failed nodes, while RUN-403-002 retained
+  a test node but UNKNOWN error_types/no actionable traceback; Human ran three versions
+  of a private Python diagnostic. RUN-401-002 native apply_patch context mismatch
+  with dirty worktree exposed the original PTE-03 EXECUTION gap. Existing verification.py
+  writes original stdout/stderr and Evidence, review_transport safe_failure_detail
+  and pagination reduce it to strict structural subsets, operator.observe_runtime_failure_detail
+  only reads a narrow self-host protected failure view, and brain_attention/brain_context
+  consume limited safe projections. The Human explicitly approved AOA-1 design and
+  canonical PTE-03 roadmap amendment at main 43e7c5a34ce79f553240f03c5e724e3ca58de6bd.
+  Need discriminating bounded safe evidence, not raw mass export, new truth or automatic
+  correction.
+assumptions:
+- 'Canonical Human planning amendment PR #2410 merged at main 43e7c5a34ce79f553240f03c5e724e3ca58de6bd;
+  PTE-02 TASK-403 r1 RUN-403-004 REVIEW-403-001 PASS, exact reviewed/published source
+  7b7a830f3d66268775e6c91a5cf5e7bac69965b9, reviewer decision 5a0de7feacba0d3c6069be1ad41781b03ecad95d,
+  RESULT artifact 6cc890b5c3e3ebf5977e097d720e628cab773cb6. PTE-04/05/06/TASK-401
+  r3 are not activated. Roadmap is planning truth only.'
+- "AOA-1 v1 two-stage architecture closure selected minimum-delta B (reuse existing\
+  \ verification, review_transport, operator, attention, context), rejecting no-build\
+  \ and new DB/service/router. Full original TASK-404 acceptance AC1\u2013AC12 is\
+  \ required. The approved architecture classifies A safe structural, B safely filtered\
+  \ technical excerpts, C protected raw, D denied/credential/forged source. No User\
+  \ approval to make raw logs public."
+- 'Verified entrypoints: verification.execute_verification writes per RUN evidence_id
+  *.raw framed STDOUT/STDERR and Evidence.summary; review_transport.safe_failure_detail/_safe_failure_detail/_pytest_summary_nodes/read_failure_detail_projection
+  have existing safe detail V1-V4 validation and paging; operator.observe_runtime_failure_detail
+  and read_executor_private_diagnostic have self-host/origin authorization; brain_attention.terminal_failure_context
+  uses authenticated refs, brain_sync.observe_brain_sync and brain_context.compose_brain_work_context
+  are portable read-only consumers. Tests/test_review_transport.py, test_failure_detail_pagination.py,
+  test_brain_attention.py, test_verification.py, test_operator.py and test_brain_sync.py
+  contain historical direct and negative APIs. Extend compatibly; no alternate router.'
+- Source-bound counterexample RUN-403-001 FAILURE artifacts 448907ff64dd6a1c3b2d62c7e9c1800dbde8b741
+  (MALFORMED_SUMMARY); RUN-403-002 artifacts 916adc89614a69696e3652ec7951dac69f963494
+  (node test_operator.py::test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root,
+  error_types UNKNOWN); RUN-401-002 artifact cd92896f6d4f11bcf3777ba37cfa014072b3daee.
+  Where original private raw retention is unproved, emulate exact observed public
+  state in faithful fixture and return a typed honest blocker, not a fabricated private
+  traceback.
+- "TCA-2 v2 active profile digest 75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d;\
+  \ two-stage CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE closed CANDIDATE against\
+  \ current source excerpts, legacy tests, modify/inspect permissions and AC1\u2013\
+  AC12. This TASK is not Executor delegation, RUN admission, REVIEW or publication."
+- Use Human-approved LEGACY_REPOSITORY_DEFAULT_ROUTE for authoring ingress; select
+  coding Executor/model/effort separately through authenticated PRIMARY wakeup. Never
+  infer delegation from AOA/roadmap or previous PTE TASK.
+scope:
+  inspect:
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/terminal_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-terminal-attention.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_pte03_diagnostic_access.py
+  - tests/test_review_transport.py
+  - tests/test_failure_detail_pagination.py
+  - tests/test_verification.py
+  - tests/test_brain_attention.py
+  - tests/test_brain_context.py
+  - tests/test_brain_sync.py
+  - tests/test_operator.py
+  - tests/test_terminal_attention.py
+  - tests/test_terminal_attention_workflow.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_unresolved_failure_handoff.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/correction_preflight.py
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - docs/AIOS-PTE-POST-TASK-DIRTY-RECOVERY-ROADMAP-v1.md
+  - docs/AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - tests/test_operator_unified_state.py
+  - tests/test_brain_wake_bridge_workflow.py
+  - tests/test_parallel_verification_export_boundary.py
+  modify:
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/terminal_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-terminal-attention.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_pte03_diagnostic_access.py
+  - tests/test_review_transport.py
+  - tests/test_failure_detail_pagination.py
+  - tests/test_verification.py
+  - tests/test_brain_attention.py
+  - tests/test_brain_context.py
+  - tests/test_brain_sync.py
+  - tests/test_operator.py
+  - tests/test_terminal_attention.py
+  - tests/test_terminal_attention_workflow.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_unresolved_failure_handoff.py
+non_goals:
+- No additional lifecycle truth DB/log store, memory/router, generic polling, scheduler,
+  auto-REPAIR authoring/strategy, Runtime verifier replacement, Executor change, Reviewer/Publisher
+  merge, autonomous retry or Human permission inference.
+- No PTE-04 dirty snapshot/preservation, PTE-05 prospective kernel amendment, PTE-06
+  dirty recovery or TASK-401 r3 activation; no altering original failed runs, or any
+  immutable RESULT/FAILURE.
+- No public raw stdout/stderr, environment dump, credential/secret exfiltration, unrestricted
+  external log fetch, unbound URL/path or provider-visible raw output.
+- No loosening existing safe detail V1-V4/parser negative/AST import/API invariants,
+  bypassed tests, xfail/skips, full suite for ceremony, or edits to inspect-only files.
+constraints:
+  hard:
+  - Exactly 12 original ACs claimable as implementation properties; Runtime later
+    evaluates required verification/EVIDENCE; Reviewer judges semantics and Publisher
+    exact reviewed source. Never fabricate claim or runtime PASS. Use exact TASK contract,
+    not assistant paraphrase.
+  - Maintain existing verification profile, source digest/identity currentness and
+    private capture ownership. Do not re-run old verification merely to retrieve diagnostic
+    text. Legacy frozen Kernel and Constitution retain authority; do not amend by
+    implication.
+  - Keep all changes to scope.modify. Source workflows are permitted only for the
+    smallest necessary supported caller bridge; if an inspect-only source must be
+    changed, report blocker for prospective Human/Brain authorization rather than
+    touch it.
+  - Technical snippets are source-validated and bounded with conservative allowlisting
+    and field-level removal/typing; regex alone is not proof of no secret, redact
+    unknown/unsafe spans while keeping separate safe A fields. Do not blindly echo
+    model/tool/user log content into Brain instructions.
+  - Where source missing/corrupt/wrong SHA/unauthorized return honest typed blocker
+    and next safe source, not a semantic cause. Always distinguish original immutable
+    RUN observation from post-hoc diagnostic inference or local fixture.
+  - Preserve public V1-V4 document readers and negative imports/AST guards; add a
+    versioned safe detail extension when necessary. Plain result vs reviewed/published
+    must remain distinct, and all canonical refs reread for currentness.
+  - "Minimum-sufficient-v1 verification only using three exact authored commands;\
+    \ Executor may perform narrower local checks but Runtime exact commands may not\
+    \ be weakened or skipped. 12 workers current repo profile, no full suite. Produce\
+    \ clean committed candidate, full truthful AC1\u2013AC12 claim set and exact ResultPackage."
+acceptance:
+- id: AC1
+  condition: Given a real authenticated canonical FAILURE, the maintained source-bound
+    diagnostic read covers admitted EXECUTION, VERIFICATION and COMPLETION_GATE, and
+    pre-RUN ingress/transport remains an operational-only cause without a fabricated
+    RUN or changed lifecycle authority.
+- id: AC2
+  condition: Every diagnostic is bound to exact TASK/revision, RUN, failed candidate/base
+    SHA, terminal artifact SHA, private capture/FAILURE digest and current reader
+    authority, or reports a stable typed SOURCE_UNPROVEN blocker; stale/moved/cross-RUN/wrong
+    origin/replay are rejected before exposing content.
+- id: AC3
+  condition: When ordinary pytest safe detail has MALFORMED_SUMMARY, SUMMARY_ABSENT,
+    unsupported ANSI/truncated closing section or zero nodes despite failed exit,
+    the existing authorized read ladder attempts the exact original protected evidence
+    without rerunning verification. Report bounded verified discriminator or typed
+    missing/invalid/permission/limit blocker, never invented failed node.
+- id: AC4
+  condition: When safe detail contains a failed test but error_types UNKNOWN (RUN-403-002
+    pattern), the reader returns available safe test node, exception type, repository-relative
+    file/line and bounded traceback/assertion actual/expected needed to distinguish
+    cause; if unavailable it explicitly says which source is missing or withheld rather
+    than treating the test identity as sufficient.
+- id: AC5
+  condition: Safe non-sensitive structural fields are preserved even when adjacent
+    captured material contains private data; technical spans are released only after
+    field/segment-level filtering with typed redaction decisions. Unknown/high-risk
+    text is withheld as that span, not reclassified as an unqualified safe fact.
+- id: AC6
+  condition: Credential, API key, private key, cookie, auth header, tokenized URL,
+    test parameters, local absolute path, customer/person identifiers, encoded/nested/ANSI
+    payload and prompt-injection cases never appear unfiltered in portable Brain/public
+    projections; redactions do not allow instruction execution, path traversal or
+    source substitution.
+- id: AC7
+  condition: The implementation reuses the existing self-host Runtime control-plane
+    protected reader, canonical public/safe/detail/page contract and GitHub Actions
+    read-only source attribution; raw captures remain protected and only a bounded
+    safe projection crosses to Brain. No independent DB/log service/alt verifier/reducer
+    or new mutation authority.
+- id: AC8
+  condition: There are finite reader byte/time/call/field/page bounds and stable typed
+    availability/cause/provenance/limitations. Legacy public FAILURE safe detail V1-V4,
+    paged reader validation, source-currentness and direct-call import/AST/public
+    APIs remain compatible; historical FAILED RUNs are never overwritten/backfilled.
+- id: AC9
+  condition: A real maintained operator/Brain Sync or attention/work-context consumer
+    traverses the source-authenticated diagnostic path using real Git fixtures and
+    subprocess/entrypoint where appropriate, without requiring Human to run a diagnostic
+    script or paste private logs when a lawful source exists; unavailable protected
+    source returns an actionable typed blocker.
+- id: AC10
+  condition: Source-bound regressions reproduce distinct observed RUN-401-002 EXECUTION
+    native patch-context symptom, RUN-403-001 MALFORMED_SUMMARY, and RUN-403-002 PARSED
+    node with UNKNOWN exception using original canonical fact boundaries or faithful
+    labeled isolated fixtures; distinguish production failure from a diagnostic fixture's
+    missing Git history or pytest/xdist profile.
+- id: AC11
+  condition: Positive/negative tests cover admitted exec timeout/auth/quota/invocation/dirty;
+    verification assert/fixture/import/config/worker/crash/history/encoding/summary;
+    completion missing AC/unresolved/invalid ResultPackage/EVIDENCE/out-of-scope;
+    pre-RUN transport and REVIEW/PUBLISH reader-owned cases; future OTHER/UNKNOWN
+    keeps exact phase and source witness.
+- id: AC12
+  condition: All changes remain observational for Brain, keep Runtime verification
+    and EVIDENCE, Brain strategy selection, Executor HOW, Reviewer verdict and Publisher
+    exact-source inclusion separate; maintain at most one source-bound next diagnostic
+    read where necessary and no automatic repair, retry, task/run creation, roadmap
+    advancement, full-suite default, or public raw-log leak.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_pte03_diagnostic_access.py tests/test_review_transport.py
+    tests/test_failure_detail_pagination.py
+  - python -m pytest -q tests/test_brain_attention.py tests/test_brain_context.py
+    tests/test_brain_sync.py tests/test_operator.py
+  - python -m pytest -q tests/test_verification.py tests/test_unresolved_failure_handoff.py
+    tests/test_terminal_attention.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
