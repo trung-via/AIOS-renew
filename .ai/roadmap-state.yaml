@@ -1,4 +1,45 @@
 version: 1
+human_pte03_diagnostic_access_approval_20261023:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
+  approved_on: "2026-10-23"
+  planning_only: true
+  source_main_sha_at_authoring: 7b7a830f3d66268775e6c91a5cf5e7bac69965b9
+  human_decision: APPROVE_AOA1_MINIMUM_DIAGNOSTIC_ACCESS_AND_EXECUTE_PTE03
+  architecture_profile: aoa-1
+  architecture_profile_version: 1
+  architecture_profile_digest: 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b
+  architecture_closure: CANDIDATE_MINIMUM_EXISTING_READER_PROJECTION_EXTENSION
+  supersedes_prospective_slice_record: human_pte01_06_then_task401_r3_priority_20261022
+  sole_high_level_next: post-task-dirty-recovery-pte-20261022
+  selected_slice: PTE_03_SOURCE_BOUND_DIAGNOSTIC_ACCESS
+  planning_document: docs/AIOS-PTE-POST-TASK-DIRTY-RECOVERY-ROADMAP-v1.md
+  diagnostics_scope: EXECUTION_VERIFICATION_COMPLETION_GATE_WITH_PRE_RUN_OPERATIONAL_BOUNDARY
+  required_regressions: [RUN-401-002, RUN-403-001, RUN-403-002]
+  pte01_reviewed_published:
+    task: TASK-402
+    revision: 2
+    run: RUN-402-003
+    candidate_sha: 03b1a493d75051681563ef5bc19eb702da36aaa9
+  pte02_reviewed_published:
+    task: TASK-403
+    revision: 1
+    run: RUN-403-004
+    review: REVIEW-403-001
+    result_artifact_sha: 6cc890b5c3e3ebf5977e097d720e628cab773cb6
+    review_decision_sha: 5a0de7feacba0d3c6069be1ad41781b03ecad95d
+    candidate_sha: 7b7a830f3d66268775e6c91a5cf5e7bac69965b9
+  task_authoring_status: HIGH_LEVEL_SELECTED_TASK_ID_NOT_YET_CANONICAL
+  executor_selection: NOT_GRANTED_BY_ROADMAP_AMENDMENT
+  planned_order: [PTE-01, PTE-02, PTE-03, PTE-04, PTE-05, PTE-06]
+  preservation:
+    - EXACTLY_ONE_NEXT_PLANNING_OWNER
+    - SOURCE_BOUND_TECHNICAL_DIAGNOSTIC_WITH_FIELD_LEVEL_REDACTION
+    - NO_UNAUTHORIZED_RAW_OR_TOKEN_EXPOSURE
+    - NO_AUTOMATIC_REPAIR_STRATEGY_OR_PUBLIC_RAW_LOG_TRANSFER
+    - NO_HISTORICAL_FAILURE_REWRITE
+    - NO_PTE04_PTE05_PTE06_OR_TASK401_R3_AUTOMATIC_ACTIVATION
+    - NO_KERNEL_CONSTITUTION_OR_KA01_G6_CUTOVER
+
 human_pte01_06_then_task401_r3_priority_20261022:
   authority: EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
   approved_on: "2026-10-22"
@@ -2508,7 +2549,7 @@ sequence:
 
   - id: post-task-dirty-recovery-pte-20261022
     status: NEXT
-    phase: PTE_01_TERMINAL_DIRTY_FAILURE_WAKE
+    phase: PTE_03_SOURCE_BOUND_DIAGNOSTIC_ACCESS
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-22"
     planning_document: docs/AIOS-PTE-POST-TASK-DIRTY-RECOVERY-ROADMAP-v1.md
@@ -2518,7 +2559,7 @@ sequence:
     planned_order: [PTE-01, PTE-02, PTE-03, PTE-04, PTE-05, PTE-06]
     planned_pte07_live_subject: TASK-401-r3
     planned_pte07_new_task: false
-    current_slice: PTE_01_ONLY
+    current_slice: PTE_03_SOURCE_BOUND_DIAGNOSTIC_ACCESS
     gate_before_pte06: PTE_05_LAWFUL_AUTHORITY_AND_KERNEL_COMPATIBILITY
     exit_gate: EXACT_RUNTIME_RESULT_EVIDENCE_REVIEWER_PASS_AND_PUBLISHER_INCLUSION
     lean_vp_l3_06_g3: PAUSED_RESUMABLE_UNPROVEN
