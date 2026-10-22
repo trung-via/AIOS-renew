@@ -1321,7 +1321,7 @@ def _validate_persisted_remediation_result(
     )
 
 
-def _ka01_operation_source(owner, operation, policy):
+def _ka01_operation_source(owner, operation, policy, *, native_work=False):
     """Reauthenticate the original admitted operation; never select a strategy.
 
     Correction selectors use the same current first-party lineage resolvers as
@@ -1346,7 +1346,16 @@ def _ka01_operation_source(owner, operation, policy):
     # TASK, scope, constraints and original proof population cannot drift in a
     # clean committed candidate, even if a caller retains the old Python object.
     if _original_git(owner.repo, "status", "--porcelain"):
-        _deny("CLEAN_COMMITTED_SOURCE_REQUIRED")
+        if not native_work or getattr(owner, "_ka01_g3_request", None) is None:
+            _deny("CLEAN_COMMITTED_SOURCE_REQUIRED")
+        # A live peer may be editing its already authorized scope between
+        # protocol boundaries. Consent/lease/wall checks remain operative;
+        # every checkpoint/effect still requires a clean committed candidate.
+        scope = policy.mutation_scope if operation == "REPAIR" else policy.result_scope
+        pending = set(filter(None, _original_git(owner.repo, "diff", "--name-only", "--no-renames", "-z", "HEAD").decode("utf-8").split("\0")))
+        pending.update(filter(None, _original_git(owner.repo, "ls-files", "--others", "--exclude-standard", "-z").decode("utf-8").split("\0")))
+        if not pending or pending - set(scope):
+            _deny("LIVE_NATIVE_MUTATION_OUTSIDE_ORIGINAL_SCOPE")
     current_task = parse_task(_original_git(owner.repo, "show", "HEAD:.ai/tasks/" + task.task_id + ".yaml").decode("utf-8"))
     base_task = parse_task(_original_git(owner.repo, "show", run.base_sha + ":.ai/tasks/" + task.task_id + ".yaml").decode("utf-8"))
     if current_task != task or base_task != task:
@@ -1361,6 +1370,10 @@ def _ka01_operation_source(owner, operation, policy):
                 or policy != primary_completion_policy(task, base_sha=run.base_sha)
                 or os.path.lexists(owner.state.repairs / (run.run_id + ".json"))):
             _deny("PRIMARY_SOURCE_MISMATCH")
+        if getattr(owner, "_ka01_g3_request", None) is not None:
+            from .ka01_admission import _g3_run_admission
+            facts["admission_artifacts_sha"] = _g3_run_admission(owner)["artifacts_sha"]
+            return facts
         from .verification import _original_remote, _app_target_refs, _app_target, _ApplicabilityReader
         from .verification_contract import ApplicabilityTargetRequest
         url = _original_remote(owner.repo)
@@ -1459,6 +1472,11 @@ def _ka01_operation_source(owner, operation, policy):
                      review_sha256=_digest(asdict(replace(review, acceptance=dict(review.acceptance)))),
                      finding_id=remediation.finding_id,
                      affected_verification_sha256=_digest(list(remediation.affected_verification)))
+        if getattr(owner, "_ka01_g3_request", None) is not None:
+            facts.update(original_result_sha256=_digest(asdict(prior_result)),
+                selected_finding_sha256=_digest(asdict(execution.finding)),
+                delta_continuity_sha256=_digest(None if prior_review is None else
+                    asdict(replace(prior_review, acceptance=dict(prior_review.acceptance)))))
         return facts
     _deny("OPERATION_NOT_ADMITTED")
 
@@ -1470,11 +1488,13 @@ def preactivate_ka01_v13(*, runtime, request, operation, execution_profile, poli
     use the original Dispatcher and Runtime checkpoint/feedback/terminal APIs.
     Production run_task/run_repair/run_remediation remain NOT_ACTIVATED.
     """
-    from .ka01_admission import _AdmissionBudget, _deny
+    from .ka01_admission import _AdmissionBudget, _deny, G3AdmissionRequest
     from .runtime import _checkpoint_mutation
     if type(runtime) is not RuntimeCompletion or runtime._ka01_opted:
         _deny("ORIGINAL_RUNTIME_ALREADY_SELECTED")
     runtime._ka01_opted = True  # Sticky even when authentication fails.
+    if type(request) is G3AdmissionRequest:
+        runtime._ka01_g3_request = request
     try:
         directory = runtime._checkpoint_directory()
         if os.path.lexists(directory) or os.path.lexists(directory.parent / "local-invocation.json"):
@@ -1485,7 +1505,8 @@ def preactivate_ka01_v13(*, runtime, request, operation, execution_profile, poli
             runtime._ka01_budget = _AdmissionBudget(runtime, request, operation, execution_profile, policy, leases, lease)
         authority = json.loads(runtime._ka01_budget.authority)
         return dict(version=1, status="ADMITTED_PREACTIVATION", authority=authority,
-            native_continuity="LOCAL_PRIMARY_ONLY" if operation == "PRIMARY" else "BLOCKED",
+            native_continuity=("PINNED_DUPLEX_NATIVE_PROCESS" if type(request) is G3AdmissionRequest else
+                               "LOCAL_PRIMARY_ONLY" if operation == "PRIMARY" else "BLOCKED"),
             production_activation="NOT_ACTIVATED", continuation="NOT_AUTHORIZED")
     except BaseException:
         runtime._local_feedback_stopped = True

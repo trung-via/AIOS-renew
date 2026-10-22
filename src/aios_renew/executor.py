@@ -38,6 +38,8 @@ class _LiveInvocation:
     profile: object
     callback: object
     owner: object
+    operation: str = "PRIMARY"
+    execution: object = None
     executing: bool = False
     consuming: bool = False
     stopped: bool = False
@@ -60,6 +62,8 @@ class ExecutorBoundary:
         run: Run,
         lease: RunLease,
         adapter: ExecutorAdapter,
+        operation: str = "PRIMARY",
+        execution=None,
     ) -> ResultPackage:
         """Invoke the selected adapter after deterministic boundary checks."""
 
@@ -78,15 +82,18 @@ class ExecutorBoundary:
             raise ExecutorBoundaryError("RUN does not hold the active task lease")
 
         if self._prospective_runtime is None:
+            if operation != "PRIMARY" or execution is not None:
+                raise ExecutorBoundaryError("correction requires its original admitted boundary")
             package = adapter.execute(task=task, run=run)
         else:
             budget = getattr(self._prospective_runtime, "_ka01_budget", None)
             if getattr(self._prospective_runtime, "_ka01_opted", False) and budget is None:
                 raise ExecutorBoundaryError("KA01_V13_OPTED_RUN_STOP_LATCHED")
-            if budget is not None and budget.operation != "PRIMARY":
+            if budget is not None and (budget.operation != operation or operation != "PRIMARY" and not budget.g3):
                 budget.stop()
                 raise ExecutorBoundaryError("KA01_V13_CROSS_OPERATION_INVOCATION_BLOCKED")
-            package = self._invoke_prospective(task=task, run=run, lease=lease, adapter=adapter)
+            package = self._invoke_prospective(task=task, run=run, lease=lease, adapter=adapter,
+                                               operation=operation, execution=execution)
         if not isinstance(package, ResultPackage):
             raise ExecutorBoundaryError(
                 "adapter must return a structural ResultPackage"
@@ -98,7 +105,7 @@ class ExecutorBoundary:
             evidence=package.evidence,
         )
 
-    def _invoke_prospective(self, *, task, run, lease, adapter):
+    def _invoke_prospective(self, *, task, run, lease, adapter, operation="PRIMARY", execution=None):
         # Only this original execute() stack can establish current liveness.
         # A durable invocation intent is exclusively a negative crash guard.
         with self._invocation_lock:
@@ -107,12 +114,23 @@ class ExecutorBoundary:
                 raise ExecutorBoundaryError("native invocation reentry is forbidden")
             frame = _LiveInvocation(task, run, lease, adapter, get_ident(), uuid4().hex,
                 getattr(adapter, "execution_profile", None),
-                getattr(adapter, "confirm_local_feedback", None), self._prospective_runtime)
+                getattr(adapter, "confirm_local_feedback", None), self._prospective_runtime,
+                operation=operation, execution=execution)
             self._live = frame
         try:
             self._prospective_runtime._begin_local_feedback_invocation(boundary=self, frame=frame)
             frame.executing = True
-            package = adapter.execute(task=task, run=run)
+            budget = getattr(self._prospective_runtime, "_ka01_budget", None)
+            if budget is not None and budget.g3:
+                package = adapter.execute_g3(task=task, run=run, runtime=self._prospective_runtime,
+                    boundary=self, lease=lease, operation=operation, execution=execution)
+            else:
+                package = adapter.execute(task=task, run=run)
+        except BaseException:
+            budget = getattr(self._prospective_runtime, "_ka01_budget", None)
+            if budget is not None:
+                budget.stop()
+            raise
         finally:
             with self._invocation_lock:
                 frame.stopped = True

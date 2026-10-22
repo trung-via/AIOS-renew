@@ -783,11 +783,11 @@ def parse_runtime_checkpoint(content: bytes) -> RuntimeCheckpoint:
     )
     data = _app_exact(_reuse_decode(content), ("format", "version", "request", "plan", "population_identity", "execution_identity",
         "evidence", "proofs", "outstanding", "affected", "resources_before", "resources_after"))
-    if data["format"] != RUNTIME_CHECKPOINT_FORMAT or type(data["version"]) is not int or data["version"] != 1:
+    if data["format"] != RUNTIME_CHECKPOINT_FORMAT or type(data["version"]) is not int or data["version"] not in (1, 2):
         raise VerificationContractError("invalid runtime checkpoint format")
     request = parse_checkpoint_request(_original_json(data["request"]).encode("ascii"))
     plan = parse_scheduler_plan(_original_json(data["plan"]).encode("ascii"))
-    if plan.request != request.scheduler or plan.authentication != "AUTHENTICATED":
+    if plan.request != request.scheduler or plan.authentication != "AUTHENTICATED" or request.version != data["version"]:
         raise VerificationContractError("checkpoint plan substitution")
     _original_hash(data["population_identity"])
     _original_hash(data["execution_identity"])
@@ -1021,7 +1021,7 @@ def _checkpoint_factual_feedback(record: RuntimeCheckpoint, executor: str) -> Ru
             provenance_sha256=verification_digest(obligation["provenance"]), acceptance_ids=sorted(obligation["acceptance_ids"]),
             proof_id=proof["proof_id"], unit_id=proof["unit_id"], outcome=proof["outcome"],
             complete=proof["complete"], stable=proof["stable"]))
-    result = dict(format=RUNTIME_FEEDBACK_FORMAT, version=1, feedback_id=verification_digest(binding), binding=binding,
+    result = dict(format=RUNTIME_FEEDBACK_FORMAT, version=data["version"], feedback_id=verification_digest(binding), binding=binding,
         proofs=proofs, obligations=obligations, resources=data["resources_after"], authority=dict(FEEDBACK_AUTHORITY),
         **_feedback_summary(proofs, obligations))
     return parse_runtime_feedback(_original_json(result).encode("ascii"))
@@ -1043,7 +1043,7 @@ def parse_runtime_feedback(content: bytes) -> RuntimeFactualFeedback:
         for value in values:
             identity(value)
         require(values == sorted(set(values)))
-    require(data["format"] == RUNTIME_FEEDBACK_FORMAT and type(data["version"]) is int and data["version"] == 1)
+    require(data["format"] == RUNTIME_FEEDBACK_FORMAT and type(data["version"]) is int and data["version"] in (1, 2))
     require(type(data["status"]) is str and data["status"] in _FEEDBACK_REASONS
             and type(data["reason"]) is str and data["reason"] in _FEEDBACK_REASONS[data["status"]])
     authority = _app_exact(data["authority"], FEEDBACK_AUTHORITY)
@@ -1067,7 +1067,8 @@ def parse_runtime_feedback(content: bytes) -> RuntimeFactualFeedback:
     identity(binding["run_id"])
     require(type(binding["task_revision"]) is int and 1 <= binding["task_revision"] <= 2_147_483_647
             and type(binding["checkpoint_ordinal"]) is int and 1 <= binding["checkpoint_ordinal"] <= 17
-            and binding["operation"] == "PRIMARY" and binding["admitted_executor"] in ("codex", "antigravity", "antigravity-minimax")
+            and binding["operation"] in (("PRIMARY",) if data["version"] == 1 else ("PRIMARY", "REPAIR", "REMEDIATION"))
+            and binding["admitted_executor"] in ("codex", "antigravity", "antigravity-minimax")
             and binding["currentness"] == "EXACT_LATEST_AT_PREPARATION")
     for key in ("base_sha", "candidate_sha", "candidate_tree_sha"):
         _original_hash(binding[key], 40)
@@ -1236,7 +1237,7 @@ def parse_feedback_consumption(content: bytes) -> RuntimeFeedbackConsumption:
         if not condition:
             raise VerificationContractError("invalid bounded local consumption")
 
-    require(data["format"] == CONSUMPTION_FORMAT and type(data["version"]) is int and data["version"] == 1)
+    require(data["format"] == CONSUMPTION_FORMAT and type(data["version"]) is int and data["version"] in (1, 2))
     require(_app_exact(data["authority"], FEEDBACK_AUTHORITY) == FEEDBACK_AUTHORITY)
     stop = _app_exact(data["stop"], ("status", "reason", "c2_admission", "human_opt_in", "token_budget"))
     require(stop["status"] == "STOP" and type(stop["reason"]) is str and stop["reason"] in _CONTINUATION_STOPS
@@ -1258,7 +1259,7 @@ def parse_feedback_consumption(content: bytes) -> RuntimeFeedbackConsumption:
             and re.fullmatch(re.escape("RUN-" + binding["task_id"][5:] + "-") + r"[0-9]{3,}", binding["run_id"]) is not None)
     require(type(binding["task_revision"]) is int and 1 <= binding["task_revision"] <= 2_147_483_647
             and type(binding["checkpoint_ordinal"]) is int and 1 <= binding["checkpoint_ordinal"] <= 17
-            and binding["operation"] == "PRIMARY"
+            and binding["operation"] in (("PRIMARY",) if data["version"] == 1 else ("PRIMARY", "REPAIR", "REMEDIATION"))
             and binding["admitted_executor"] in ("codex", "antigravity", "antigravity-minimax"))
     for key in ("base_sha", "candidate_sha", "candidate_tree_sha"):
         _original_hash(binding[key], 40)
@@ -1281,7 +1282,7 @@ def parse_feedback_consumption(content: bytes) -> RuntimeFeedbackConsumption:
     return RuntimeFeedbackConsumption(content.decode("ascii"))
 
 
-def _consumption_result(*, reason=None, binding=None, resources=None, progress="NOT_ESTABLISHED"):
+def _consumption_result(*, reason=None, binding=None, resources=None, progress="NOT_ESTABLISHED", version=1):
     from .verification_contract import _original_json, verification_digest
     acknowledged = binding is not None
     exhausted = resources is not None and any(resources[k] >= v for k, v in CHECKPOINT_RESOURCE_LIMITS.items())
@@ -1289,7 +1290,7 @@ def _consumption_result(*, reason=None, binding=None, resources=None, progress="
         "CHECKPOINT_RESOURCE_LIMIT_REACHED" if exhausted else
         "NO_VERIFIED_COMMITTED_PROGRESS" if progress == "NOT_ESTABLISHED" else
         "FINITE_HUMAN_OPT_IN_AND_TOKEN_BUDGET_NOT_ESTABLISHED")
-    return parse_feedback_consumption(_original_json(dict(format=CONSUMPTION_FORMAT, version=1,
+    return parse_feedback_consumption(_original_json(dict(format=CONSUMPTION_FORMAT, version=version,
         status="LOCAL_ACKNOWLEDGED" if acknowledged else "BLOCKED",
         reason="SAME_INVOCATION_ADAPTER_CONFIRMED" if acknowledged else reason,
         receipt_id=verification_digest(binding) if acknowledged else None, binding=binding,

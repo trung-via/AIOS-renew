@@ -24,6 +24,7 @@ from .verification_contract import VerificationContractError
 
 
 IMPLEMENTATION = "KA01-L3-05-v1"
+G3_IMPLEMENTATION = "KA01-L3-06-G3-v1"
 VERSION = "1.3"
 PROFILE = "KA01-v1.3-default-resource-profile"
 NORMATIVE_PATH = "docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md"
@@ -127,13 +128,168 @@ class AdmissionRequest:
             _hash(digest)
 
 
+@dataclass(frozen=True)
+class G3SemanticSources:
+    """Original prospective sources, separate from the engineering TASK host.
+
+    The host remains an ordinarily admitted TASK/RUN. No semantic document is
+    converted into a legacy TASK or registered as a command policy.
+    """
+
+    main_sha: str
+    candidate_sha: str
+    task: object
+    contract: object
+    mapping: object
+
+    def __post_init__(self):
+        from .review_transport import GitSemanticSource, _l1_locator, _l1_sha
+        for sha in (self.main_sha, self.candidate_sha):
+            _l1_sha(sha)
+        for value in (self.task, self.contract, self.mapping):
+            if type(value) is not GitSemanticSource:
+                _deny("EXACT_G3_SOURCE_LOCATOR_REQUIRED")
+            _l1_locator(value)
+
+
+@dataclass(frozen=True)
+class G3NativeSource:
+    """Pinned executable peer supporting the bounded, duplex G3 protocol."""
+
+    path: str
+    sha256: str
+    interpreter_sha256: str
+
+    def __post_init__(self):
+        from .verification_contract import _app_path
+        _app_path(self.path)
+        for digest in (self.sha256, self.interpreter_sha256):
+            _hash(digest)
+
+
+@dataclass(frozen=True)
+class G3AdmissionRequest:
+    version: int
+    selection_issue: int
+    selection_sha256: str
+    consent_issue: int
+    consent_sha256: str
+    semantic: G3SemanticSources
+    native: G3NativeSource
+
+    def __post_init__(self):
+        AdmissionRequest(self.version, self.selection_issue, self.selection_sha256,
+                         self.consent_issue, self.consent_sha256)
+        if type(self.semantic) is not G3SemanticSources or type(self.native) is not G3NativeSource:
+            _deny("EXACT_G3_LOCATORS_REQUIRED")
+        self.semantic.__post_init__()
+        self.native.__post_init__()
+
+
+def _g3_semantic(owner, request):
+    """Reopen sources and independent original Human/mapping review authority."""
+    from .review_transport import read_semantic_task_readiness
+    from .verification import _ApplicabilityReader, _original_remote, _original_decode
+    from .proof_coverage_contract import validate_proof_contract, proof_mapping_digest
+
+    pins = request.semantic
+    reader = _ApplicabilityReader(owner.repo)
+    content = {name: reader.object(getattr(pins, name).blob_sha, "blob")
+               for name in ("task", "contract", "mapping")}
+    from .task import parse_semantic_task
+    semantic = parse_semantic_task(content["task"])
+    # The independently admitted engineering host supplies execution authority;
+    # every WHAT/WHY/scope/acceptance field must match the prospective source.
+    for field in ("task_id", "revision", "goal", "problem", "assumptions", "scope",
+                  "non_goals", "constraints", "acceptance"):
+        left, right = getattr(semantic, field), getattr(owner.task, field)
+        if field == "acceptance":
+            left, right = sorted(left, key=lambda a: a.id), sorted(right, key=lambda a: a.id)
+        if left != right:
+            _deny("SEMANTIC_TASK_HOST_CONFLICT")
+    task_pin = dict(task_id=semantic.task_id, revision=semantic.revision,
+                    envelope_digest=_digest(content["task"]),
+                    acceptance_ids=[a.id for a in semantic.acceptance])
+    contract, mapping = _original_decode(content["contract"]), _original_decode(content["mapping"])
+    parsed = validate_proof_contract(contract, expected_task=task_pin)
+    declaration = dict(schema="task-semantic-proof-intake-v1", task=task_pin,
+        candidate_sha=pins.candidate_sha,
+        sources={name: dict(source_sha=getattr(pins, name).source_sha,
+                            blob_sha=getattr(pins, name).blob_sha) for name in content},
+        contract=contract, mapping=mapping)
+    readiness = read_semantic_task_readiness(owner.repo, _bytes(declaration),
+        expected_remote_url=_original_remote(owner.repo), expected_main_sha=pins.main_sha,
+        expected_candidate_sha=pins.candidate_sha,
+        sources={name: getattr(pins, name) for name in content})
+    authority = readiness.authority
+    if (readiness.task != semantic or authority.lineage is None or authority.human_selection is None
+            or authority.reason != "EXACT_MAPPING_REVIEW_LINEAGE"):
+        _deny("INDEPENDENT_FULL_SEMANTIC_REVIEW_REQUIRED")
+    return readiness, dict(contract_id=parsed.id, contract_revision=parsed.revision,
+        contract_sha256=parsed.digest, mapping_sha256=proof_mapping_digest(mapping),
+        source_sha256=_digest(asdict(readiness)))
+
+
+def _g3_native_source(owner, source):
+    import sys
+    from .verification import _original_git, _original_local
+    from .verification_contract import _app_path
+    _app_path(source.path)
+    if source.path in owner.task.scope.modify:
+        _deny("NATIVE_SOURCE_CANNOT_BE_CORRECTION_SCOPE")
+    path = owner.repo / source.path
+    if (path.absolute().resolve(strict=True) != path.absolute()
+            or _digest(_original_local(path.absolute(), 262144)) != source.sha256
+            or _digest(_original_git(owner.repo, "show", owner.run.base_sha + ":" + source.path)) != source.sha256
+            or _digest(_original_git(owner.repo, "show", "HEAD:" + source.path)) != source.sha256
+            or _digest(_original_local(Path(sys.executable).resolve(), 64 * 1024 * 1024)) != source.interpreter_sha256):
+        _deny("ORIGINAL_NATIVE_SOURCE_CHANGED")
+
+
+def _g3_run_admission(owner, profile=None):
+    from .verification import (_ApplicabilityReader, _original_remote, _app_target_refs,
+                               _original_local, _original_decode, _scheduler_namespace)
+    from .review_transport import public_run
+    from .verification_contract import ApplicabilityTargetRequest
+    reader, run = _ApplicabilityReader(owner.repo), owner.run
+    raw = _original_local(owner.run_path.absolute(), 2 * 1024 * 1024)
+    refs = dict(_app_target_refs(owner.repo, _original_remote(owner.repo), run.run_id))
+    review_ref, artifacts_ref = ("refs/heads/aios/" + kind + "/" + run.run_id for kind in ("review", "artifacts"))
+    if set(refs) != {review_ref, artifacts_ref}:
+        _deny("ORIGINAL_G3_RUN_TRANSPORT_REQUIRED")
+    tree, parents = reader.commit(refs[artifacts_ref])
+    transport = tree
+    for part in (".ai", "transport"):
+        mode, transport = reader.tree(transport).get(part, (None, None))
+        if mode != b"40000":
+            _deny("G3_ORIGINAL_ADMISSION_TRANSPORT_SCHEMA")
+    names = set(reader.tree(transport))
+    if "run.json" not in names or names - {"run.json", "execution-profile.json"}:
+        _deny("G3_TERMINAL_OR_CORRECTION_CANNOT_IMPERSONATE_ADMISSION")
+    canonical = reader.blob(tree, ".ai/transport/run.json")
+    if parents or _original_decode(canonical) not in (_original_decode(raw), _original_decode(public_run(raw))):
+        _deny("G3_CURRENT_RUN_ARTIFACT_CONFLICT")
+    profile_sha256 = None
+    if "execution-profile.json" in names:
+        profile_raw = reader.blob(tree, ".ai/transport/execution-profile.json")
+        if profile is not None and _bytes(_original_decode(profile_raw)) != _bytes(profile.as_dict()):
+            _deny("G3_ORIGINAL_TRANSPORT_PROFILE_CONFLICT")
+        profile_sha256 = _digest(profile_raw)
+    reader.anchors(refs[review_ref], {run.base_sha})
+    target = ApplicabilityTargetRequest(run.task.id, run.task.revision, run.run_id, run.base_sha,
+        refs[review_ref], reader.commit(refs[review_ref])[0], refs[artifacts_ref], _digest(raw))
+    namespace = _scheduler_namespace(owner.repo, _original_remote(owner.repo), target)
+    return dict(refs=refs, namespace=namespace, canonical_run_sha256=_digest(canonical),
+                artifacts_sha=refs[artifacts_ref], admitted_head=refs[review_ref], execution_profile_sha256=profile_sha256)
+
+
 def production_gate(request):
     """No G3/G6 activation reader exists in this prospective implementation."""
     if request is not None:
         _deny("NOT_ACTIVATED")
 
 
-def _authority(owner, request, operation, profile, policy):
+def _authority(owner, request, operation, profile, policy, *, native_work=False):
     from .github_issue_ingress import _decode_policy, _authenticate_selection_issue, _github_selection_json
     from .verification import _ApplicabilityReader, _original_remote, _original_git, _original_local, _app_refs
     from .operator import _ka01_operation_source
@@ -198,12 +354,15 @@ def _authority(owner, request, operation, profile, policy):
             _deny("HUMAN_SOURCE_WITHDRAWN")
         return _decode(raw), dict(issue=number, sha256=digest, provenance=provenance)
 
+    g3 = type(request) is G3AdmissionRequest
+    implementation = G3_IMPLEMENTATION if g3 else IMPLEMENTATION
     selection, selected_source = human(request.selection_issue, request.selection_sha256)
-    _exact(selection, ("format", "version", "implementation", "ka01_version", "profile", "policy",
-                       "task", "operations", "normative", "overrides", "remote_url"))
+    fields = ("format", "version", "implementation", "ka01_version", "profile", "policy",
+              "task", "operations", "normative", "overrides", "remote_url")
+    _exact(selection, (*fields, "g3") if g3 else fields)
     task = dict(id=owner.task.task_id, revision=owner.task.revision)
     if (selection["format"] != "AIOS_KA01_V13_SELECTION" or type(selection["version"]) is not int
-            or selection["version"] != 1 or selection["implementation"] != IMPLEMENTATION
+            or selection["version"] != 1 or selection["implementation"] != implementation
             or selection["ka01_version"] != VERSION or selection["profile"] != PROFILE
             or selection["policy"] not in {"minimum-sufficient-v1", "minimum-sufficient-v2"}
             or owner.task.verification.policy != selection["policy"] or _bytes(selection["task"]) != _bytes(task)
@@ -236,10 +395,20 @@ def _authority(owner, request, operation, profile, policy):
         overrides.append(override["values"])
         override_sources.append(provenance)
     limits = resolve_limits(overrides)
-    source = _ka01_operation_source(owner, operation, policy)
+    source = _ka01_operation_source(owner, operation, policy, native_work=native_work)
+    if g3:
+        if (profile.model_source != "EXPLICIT" or profile.effort_source != "EXPLICIT"
+                or profile.executor != "codex" or profile.model != "offline-native/" + request.native.sha256
+                or profile.reasoning_effort != "none"
+                or _bytes(selection["g3"]) != _bytes(dict(semantic=asdict(request.semantic), native=asdict(request.native)))):
+            _deny("EXPLICIT_G3_SOURCE_AND_PROFILE_SELECTION_REQUIRED")
+        readiness, semantic_facts = _g3_semantic(owner, request)
+        _g3_native_source(owner, request.native)
+        source = {**source, "g3": dict(semantic=semantic_facts, admission=_g3_run_admission(owner, profile),
+                                      native=asdict(request.native))}
     consent, consent_source = human(request.consent_issue, request.consent_sha256)
     expected = dict(format="AIOS_KA01_V13_RUN_CONSENT", version=1,
-        mode="CONTROLLED_PREACTIVATION", implementation=IMPLEMENTATION, ka01_version=VERSION,
+        mode="CONTROLLED_PREACTIVATION", implementation=implementation, ka01_version=VERSION,
         selection_sha256=request.selection_sha256, task=task, run_id=owner.run.run_id,
         admitted_run_sha256=source["admitted_run_sha256"], operation=operation,
         executor=owner.run.executor, execution_profile_sha256=_digest(profile.as_dict()),
@@ -248,7 +417,7 @@ def _authority(owner, request, operation, profile, policy):
         _deny("EXACT_FRESH_RUN_CONSENT_REQUIRED")
     if selected_refs() != refs:
         _deny("SOURCE_MOVED_DURING_ADMISSION")
-    return dict(implementation=IMPLEMENTATION, ka01_version=VERSION, profile=PROFILE,
+    return dict(implementation=implementation, ka01_version=VERSION, profile=PROFILE,
         policy=selection["policy"], normative=normative, ingress_policy_sha256=_digest(ingress_bytes),
         selection=selected_source, overrides=override_sources, consent=consent_source,
         original_selector=dict(ref=selected_ref, sha=refs[selected_ref]),
@@ -264,7 +433,7 @@ class _AdmissionBudget:
         from .run import RunLease, RunLeaseRegistry
         from .run_observation import RunObservationTracker
         from .runtime import _checkpoint_write_once, _checkpoint_make_directory
-        if type(request) is not AdmissionRequest:
+        if type(request) not in (AdmissionRequest, G3AdmissionRequest):
             _deny("TYPED_REQUEST_REQUIRED")
         request.__post_init__()
         tracker = owner._ka01_original_tracker
@@ -279,8 +448,10 @@ class _AdmissionBudget:
                 or leases.holder(owner.task.task_id) is not lease or not _lease_matches_run(lease, owner.run)):
             _deny("ORIGINAL_LIVE_LEASE_REQUIRED")
         self.owner, self.request, self.operation = owner, request, operation
+        self.g3 = type(request) is G3AdmissionRequest
         self.profile, self.policy, self.leases, self.lease = profile, policy, leases, lease
         self.thread, self.boundary, self.frame = get_ident(), None, None
+        self.native_process = None
         self.started_ns, self.started_real_ns = owner._ka01_started_ns, owner._ka01_started_real_ns
         self.last_ns, self.stopped, self.pending = self.started_ns, False, None
         self.records, self.effects = [], {}
@@ -336,9 +507,13 @@ class _AdmissionBudget:
             _deny("RUN_WALL_EXHAUSTED")
         return now
 
-    def guard(self, *, live=True):
+    def guard(self, *, live=True, native_work=False):
         from .runtime import _checkpoint_safe_directory
         from .verification import _original_local, MAX_ORIGINAL_PROOF_BYTES
+        # Duplex waits also perform Runtime source authentication. Charge that
+        # known work even outside a checkpoint method, without charging native
+        # code/idle time as verification or double charging an active effect.
+        auth_started = time.monotonic_ns() if self.g3 and self.work_started is None else None
         try:
             if (self.stopped or self.owner._local_feedback_stopped
                     or self.thread != get_ident() or self.owner._ka01_budget is not self):
@@ -373,7 +548,10 @@ class _AdmissionBudget:
             for index, raw in enumerate(self.records, 1):
                 if _original_local(self.directory / f"e{index:03d}.json", MAX_ORIGINAL_PROOF_BYTES) != raw:
                     _deny("ORIGINAL_ACCOUNTING_CHANGED")
-            if _bytes(_authority(self.owner, self.request, self.operation, self.profile, self.policy)) != self.authority:
+            if native_work and not self.g3:
+                _deny("G3_NATIVE_WORK_NOT_SELECTED")
+            if _bytes(_authority(self.owner, self.request, self.operation, self.profile, self.policy,
+                                  native_work=native_work)) != self.authority:
                 _deny("ORIGINAL_AUTHORITY_WITHDRAWN_OR_CHANGED")
             if live:
                 frame, boundary = self.frame, self.boundary
@@ -384,10 +562,27 @@ class _AdmissionBudget:
                         or getattr(frame.adapter, "execution_profile", None) != frame.profile
                         or getattr(frame.adapter, "confirm_local_feedback", None) != frame.callback):
                     _deny("ORIGINAL_INVOCATION_LOST")
+                if self.g3 and (self.native_process is None or self.native_process.poll() is not None
+                        or frame.adapter._g3_process is not self.native_process):
+                    _deny("ORIGINAL_NATIVE_PROCESS_LOST")
             self._clock()
         except BaseException:
             self.stop()
             raise
+        finally:
+            if auth_started is not None:
+                try:
+                    now = self._clock()
+                    if now < auth_started:
+                        _deny("AUTHENTICATION_ACCOUNTING_UNKNOWN")
+                    self.verification_spent_ns += now - auth_started
+                    self.accounted_until_ns = now
+                    self._facts_seal = _bytes(self._facts())
+                    if self.verification_spent_ns >= self.verification_limit_ns:
+                        _deny("RUNTIME_VERIFICATION_EXHAUSTED")
+                except BaseException:
+                    self.stop()
+                    raise
 
     def bind(self, boundary, frame):
         self.guard(live=False)
@@ -395,10 +590,115 @@ class _AdmissionBudget:
                 or frame.profile != self.profile or boundary._execution_profile != self.profile):
             self.stop()
             _deny("REPLACEMENT_INVOCATION")
-        if self.operation != "PRIMARY":
+        if self.operation != "PRIMARY" and not self.g3:
             self.stop()
             _deny("CORRECTION_NATIVE_CONTINUITY_BLOCKED")
+        if self.g3:
+            from .codex_adapter import CodexAdapter
+            if (type(frame.adapter) is not CodexAdapter or frame.adapter.g3_native_source != self.request.native
+                    or frame.operation != self.operation or not callable(frame.callback)):
+                self.stop()
+                _deny("SUPPORTED_G3_NATIVE_TRANSPORT_REQUIRED")
         self.boundary, self.frame = boundary, frame
+
+    def bind_native(self, process):
+        if (not self.g3 or self.native_process is not None or self.frame is None
+                or self.frame.adapter._g3_process is not process or process.poll() is not None):
+            self.stop()
+            _deny("ORIGINAL_NATIVE_PROCESS_REQUIRED")
+        self.native_process = process
+        self.guard()
+
+    def native_cleanup(self, started):
+        """Known cleanup cost is monotonic even on STOP or interrupted effects."""
+        try:
+            now = self._clock()
+            spent = now - started
+            if spent < 0:
+                _deny("NATIVE_CLEANUP_ACCOUNTING_UNKNOWN")
+            self.cleanup_spent_ns += spent
+            self.verification_spent_ns += spent
+            self.accounted_until_ns = now
+            self._facts_seal = _bytes(self._facts())
+            if self.verification_spent_ns >= self.verification_limit_ns:
+                _deny("RUNTIME_VERIFICATION_EXHAUSTED")
+        finally:
+            self.stop()
+
+    def g3_population(self, expected=None):
+        """Authenticate and project the one original reviewed population.
+
+        Only candidate_sha is relative to the current committed descendant.
+        Commands, manifests, claims and every distinguishing condition remain
+        exactly as independently reviewed. This is not another scheduler.
+        """
+        from .verification import (_ApplicabilityReader, _original_git, _reuse_scope,
+                                   _original_local, _original_remote)
+        from .verification_contract import (ApplicabilityTargetRequest, ApplicabilityDeclarationPin,
+            ProofSchedulerRequest, _original_json, _scheduler_coverage)
+        from .proof_coverage_contract import validate_proof_mapping, validate_proof_contract, proof_mapping_digest
+        if not self.g3:
+            _deny("G3_NOT_SELECTED")
+        self.guard()
+        owner = self.owner
+        readiness, semantic = _g3_semantic(owner, self.request)
+        original = json.loads(self.authority)["source"]["g3"]
+        if semantic != original["semantic"] or _bytes(_g3_run_admission(owner, self.profile)) != _bytes(original["admission"]):
+            _deny("ORIGINAL_G3_AUTHORITY_CHANGED")
+        reader = _ApplicabilityReader(owner.repo)
+        head = _original_git(owner.repo, "rev-parse", "HEAD").decode("ascii").strip()
+        tree, _ = reader.commit(head)
+        lineage = reader.anchors(head, {owner.run.base_sha, original["admission"]["admitted_head"]})
+        scope = self.policy.mutation_scope if self.operation == "REPAIR" else self.policy.result_scope
+        mutation_base = self.policy.mutation_base_sha if self.operation == "REPAIR" else self.policy.result_base_sha
+        _reuse_scope(reader, reader.commit(mutation_base)[0], tree, tuple(scope))
+        _reuse_scope(reader, lineage[owner.run.base_sha], tree, owner.task.scope.modify)
+        # A no-change action cannot acquire mutation permission from this seam.
+        action = self.policy.mutation_action
+        if self.operation != "PRIMARY" and action not in ("CODE_FIX", "CONTINUE_IMPLEMENTATION"):
+            _deny("G3_MUTATING_CORRECTION_ACTION_NOT_AUTHORIZED")
+        coverage_data = _scheduler_coverage(readiness.authority.source_binding.intake.coverage)
+        contract, mapping = coverage_data["contract"], coverage_data["mapping"]
+        for value in (*contract["obligations"], *mapping["proofs"]):
+            value["conditions"]["candidate_sha"] = head
+        parsed = validate_proof_contract(contract, expected_task=contract["task"])
+        mapping["contract_digest"] = parsed.digest
+        obligations = {o.id: o for o in parsed.obligations}
+        for entry in mapping["entries"]:
+            entry["obligation_digest"] = obligations[entry["obligation_id"]].digest
+        contract_pin = ApplicabilityDeclarationPin(parsed.id, parsed.revision, parsed.digest)
+        mapping_pin = ApplicabilityDeclarationPin(mapping["id"], mapping["revision"], proof_mapping_digest(mapping))
+        coverage = validate_proof_mapping(contract, mapping, expected_task=contract["task"],
+                                          expected_mapping=asdict(mapping_pin))
+        target = ApplicabilityTargetRequest(owner.task.task_id, owner.task.revision, owner.run.run_id,
+            owner.run.base_sha, head, tree, original["admission"]["artifacts_sha"],
+            _digest(_original_local(owner.run_path.absolute(), 2 * 1024 * 1024)))
+        request = ProofSchedulerRequest(2, target, self.request.semantic.main_sha, contract_pin, mapping_pin,
+            self.operation, head, () if expected is None else expected.sources)
+        if expected is not None and request != expected:
+            _deny("EXACT_ORIGINAL_G3_POPULATION_REQUEST_REQUIRED")
+        authority = readiness.authority
+        reviewed = authority.lineage
+        sources = {s.role: {**asdict(s.locator), "sha256": s.content_sha256}
+                   for s in (*authority.source_binding.sources, reviewed.review_task_source)}
+        sources["review_task"] = sources.pop("mapping_review_task")
+        pins = self.request.semantic
+        binding = dict(upstream_sha256=_digest(_original_remote(owner.repo).encode("utf-8")),
+            human_event_identity=authority.human_selection.event_identity, review_id=reviewed.review_id,
+            review_run_id=reviewed.run_id, run_sha256=reviewed.run_sha256,
+            result_sha256=reviewed.result_sha256, review_sha256=reviewed.review_sha256,
+            scope_sha256=_digest(asdict(reviewed.scope)), sources=sources)
+        result_authority = dict(main_sha=pins.main_sha, selection_sha=authority.human_selection.selection_sha,
+            review_candidate_sha=reviewed.reviewed_sha, artifacts_sha=reviewed.artifacts_sha,
+            decision_sha=reviewed.decision_sha, binding=binding,
+            target=dict(task_blob_sha=pins.task.blob_sha, task_sha256=sources["task"]["sha256"],
+                canonical_run_sha256=original["admission"]["canonical_run_sha256"],
+                lineage_sha256=_digest([[sha, *reader.commit(sha)] for sha in sorted(lineage)]),
+                condition_proof_sha256=None),
+            g3=dict(operation=self.operation, original_source_sha256=_digest(json.loads(self.authority)["source"]),
+                    admission_sha256=_digest(self.admission), semantic_sha256=semantic["source_sha256"]))
+        self.guard()
+        return request, coverage, _original_json(result_authority)
 
     def _append(self, data):
         from .runtime import _checkpoint_write_once, _checkpoint_fence

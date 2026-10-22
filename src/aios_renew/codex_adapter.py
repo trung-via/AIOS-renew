@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+import queue
 import subprocess
+import sys
+import threading
+import time
+from uuid import uuid4
 from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from pathlib import Path
@@ -115,6 +121,7 @@ class CodexAdapter:
         schema_path: str | Path = RESULT_PACKAGE_SCHEMA_PATH,
         execution_policy: ExecutionPolicy | None = None,
         execution_profile: ResolvedExecutionProfile | None = None,
+        g3_native_source=None,
     ) -> None:
         self._runner = runner
         self._schema_path = Path(schema_path)
@@ -124,6 +131,238 @@ class CodexAdapter:
             else resolve_native_execution_policy(authorizes_mutation=False)
         )
         self._execution_profile = execution_profile
+        self.g3_native_source = g3_native_source
+        self._g3_process = None
+        self._g3_exchange = None
+        self._g3_owner = None
+        self._g3_feedback_pending = False
+
+    def execute_g3(self, *, task, run, runtime, boundary, lease, operation, execution=None):
+        """One pinned controlled offline native process, within the sole frame.
+
+        This explicit transport is not a CLI resume/retry or a production model
+        provider. The selected program owns code strategy. Runtime owns all
+        checkpoint scheduling, factual feedback and terminal proof consumption.
+        """
+        from .ka01_admission import G3NativeSource, _g3_native_source, _g3_semantic, _bytes, _deny
+        from .intra_run_proof_contract import FactualFeedbackRequest, FeedbackConsumptionRequest
+        budget = runtime._ka01_budget
+        if (budget is None or not budget.g3 or type(self.g3_native_source) is not G3NativeSource
+                or self.g3_native_source != budget.request.native or self._g3_process is not None
+                or not self._execution_policy.authorizes_mutation):
+            if budget is not None:
+                budget.stop()
+            _deny("SUPPORTED_G3_NATIVE_TRANSPORT_REQUIRED")
+        budget.guard(live=False)
+        frame = budget.frame
+        if (boundary is not budget.boundary or frame is None or boundary._live is not frame
+                or not frame.executing or frame.stopped or frame.adapter is not self
+                or frame.thread != threading.get_ident() or frame.owner is not runtime
+                or lease is not budget.lease or operation != budget.operation
+                or operation == "PRIMARY" and execution is not None or frame.execution != execution):
+            budget.stop()
+            _deny("ORIGINAL_G3_INVOCATION_REQUIRED")
+        _g3_native_source(runtime, self.g3_native_source)
+        self._g3_owner = runtime
+        # No injectable affirmative runner or session reconstruction exists here.
+        process = None
+        creation_started = time.monotonic_ns()
+        try:
+            process = subprocess.Popen((sys.executable, "-I", "-u", str(runtime.repo / self.g3_native_source.path)),
+                cwd=runtime.repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            self._g3_process = process
+            budget.bind_native(process)
+        except BaseException:
+            if process is not None:
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=5)
+            budget.native_cleanup(creation_started)
+            self._g3_owner = None
+            raise
+        messages = queue.Queue(maxsize=1)
+        errors = queue.Queue(maxsize=1)
+        session, sequence = uuid4().hex, 0
+        stderr_bytes = [0]
+        stop_reading = threading.Event()
+
+        def publish(channel, value):
+            while not stop_reading.is_set():
+                try:
+                    channel.put(value, timeout=0.05)
+                    return
+                except queue.Full:
+                    pass
+
+        def stdout_reader():
+            try:
+                while not stop_reading.is_set():
+                    line = process.stdout.readline(2 * 1024 * 1024 + 2)
+                    if not line or len(line) > 2 * 1024 * 1024 + 1 or not line.endswith(b"\n"):
+                        publish(messages, None)
+                        return
+                    publish(messages, line[:-1])
+            except (OSError, ValueError):
+                publish(messages, None)
+
+        def stderr_reader():
+            try:
+                while not stop_reading.is_set():
+                    data = process.stderr.read(4096)
+                    if not data:
+                        return
+                    stderr_bytes[0] += len(data)
+                    if stderr_bytes[0] > 65536:
+                        publish(errors, "NATIVE_STDERR_BOUND")
+                        return
+            except (OSError, ValueError):
+                publish(errors, "NATIVE_STDERR_UNKNOWN")
+
+        readers = [threading.Thread(target=target, daemon=True) for target in (stdout_reader, stderr_reader)]
+        for reader in readers:
+            reader.start()
+
+        def send(kind, **fields):
+            if kind != "TERMINAL":
+                budget.guard(native_work=True)
+            content = _bytes(dict(kind=kind, session=session, **fields)) + b"\n"
+            if len(content) > 2 * 1024 * 1024 + 1 or process.poll() is not None:
+                _deny("G3_NATIVE_CHANNEL_LOST")
+            failures = []
+            def write():
+                try:
+                    process.stdin.write(content)
+                    process.stdin.flush()
+                except (OSError, ValueError) as exc:
+                    failures.append(exc)
+            writer = threading.Thread(target=write, daemon=True)
+            writer.start()
+            while writer.is_alive():
+                writer.join(timeout=min(0.05, budget.remaining_seconds()))
+                if kind != "TERMINAL":
+                    budget.guard(native_work=True)
+            if failures:
+                _deny("G3_NATIVE_CHANNEL_LOST")
+
+        def receive(kind=None):
+            nonlocal sequence
+            from .verification_contract import _reuse_decode
+            while True:
+                budget.guard(native_work=True)
+                if not errors.empty():
+                    _deny(errors.get_nowait())
+                try:
+                    raw = messages.get(timeout=min(0.05, budget.remaining_seconds()))
+                    break
+                except queue.Empty:
+                    pass
+            if raw is None:
+                _deny("G3_NATIVE_CHANNEL_LOST")
+            data = _reuse_decode(raw)
+            if (type(data) is not dict or data.get("session") != session
+                    or type(data.get("sequence")) is not int or data["sequence"] != sequence + 1
+                    or type(data.get("kind")) is not str or kind is not None and data["kind"] != kind):
+                _deny("G3_NATIVE_FRAME_REPLAY_OR_CONFLICT")
+            sequence += 1
+            return data
+
+        self._g3_exchange = (send, receive)
+        last = None
+        try:
+            native_execution = (asdict(execution) if operation == "REMEDIATION" else
+                                {**execution, "run": asdict(run)} if operation == "REPAIR" else None)
+            semantic, _ = _g3_semantic(runtime, budget.request)
+            send("BEGIN", version=1, operation=operation, run=asdict(run), task=asdict(task),
+                execution=native_execution, profile=self.execution_profile.as_dict(),
+                semantic_task=asdict(semantic.task), native_source_sha256=self.g3_native_source.sha256)
+            ready = receive("READY")
+            if ready != dict(kind="READY", session=session, sequence=1, run_id=run.run_id,
+                             profile=self.execution_profile.as_dict()):
+                _deny("G3_NATIVE_PROFILE_OR_RUN_MISMATCH")
+            send("READY_ACCEPTED")
+            for _ in range(2 * budget.limits["max_checkpoints"] + 2):
+                data = receive()
+                if data["kind"] == "CHECKPOINT":
+                    from .verification import _original_git
+                    if (set(data) != {"kind", "session", "sequence", "head_sha"}
+                            or data["head_sha"] != _original_git(runtime.repo, "rev-parse", "HEAD").decode("ascii").strip()):
+                        _deny("G3_NATIVE_CANDIDATE_SUBSTITUTION")
+                    request = runtime.g3_checkpoint_request()
+                    record = runtime.seal_checkpoint(request)
+                    last = request, record
+                    source = FactualFeedbackRequest(1, request, record.digest)
+                    feedback = runtime.prepare_feedback(source)
+                    if feedback.data["status"] == "PREPARED":
+                        consumed = runtime.consume_same_executor_feedback(FeedbackConsumptionRequest(1, source, feedback.digest),
+                            boundary=boundary, lease=lease, adapter=self)
+                        if consumed.data["status"] != "LOCAL_ACKNOWLEDGED":
+                            _deny("G3_NATIVE_FEEDBACK_NOT_CONSUMED")
+                        send("CONSUMED", receipt_id=consumed.data["receipt_id"], feedback_digest=feedback.digest)
+                    elif feedback.data["status"] == "NO_FAILED_PROOF":
+                        send("CHECKPOINT_SEALED", checkpoint_digest=record.digest, candidate_sha=request.scheduler.subject_sha,
+                             ordinal=request.ordinal)
+                    else:
+                        _deny("G3_NATIVE_PROOF_UNRESOLVED")
+                elif data["kind"] == "RESULT":
+                    if set(data) != {"kind", "session", "sequence", "package"} or last is None:
+                        _deny("G3_NATIVE_RESULT_WITHOUT_CHECKPOINT")
+                    package = self._normalize(_bytes(data["package"]).decode("ascii"), stderr="")
+                    runtime.complete(package, budget.policy, checkpoint=last[0], checkpoint_digest=last[1].digest)
+                    send("TERMINAL", head_sha=package.result.head_sha)
+                    # The original process must terminate once; no next process
+                    # or native work can be minted by this acknowledgment.
+                    process.wait(timeout=min(5, budget.remaining_seconds()))
+                    if process.returncode != 0 or not errors.empty():
+                        _deny("G3_NATIVE_TERMINATION_UNKNOWN")
+                    for reader in readers:
+                        reader.join(timeout=1)
+                    if not messages.empty() and messages.get_nowait() is not None:
+                        _deny("G3_NATIVE_DOUBLE_TERMINAL")
+                    return package
+                else:
+                    _deny("G3_NATIVE_UNSUPPORTED_FRAME")
+            _deny("G3_NATIVE_MESSAGE_BOUND")
+        except BaseException:
+            budget.stop()
+            raise
+        finally:
+            cleanup_started = time.monotonic_ns()
+            self._g3_exchange = None
+            self._g3_owner = None
+            stop_reading.set()
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
+            for stream in (process.stdin, process.stdout, process.stderr):
+                stream.close()
+            for reader in readers:
+                reader.join(timeout=1)
+            budget.native_cleanup(cleanup_started)
+
+    def confirm_local_feedback(self, *, feedback, receipt_id):
+        """Factual-only duplex receipt from the original still-live peer."""
+        from .intra_run_proof_contract import LocalFeedbackConfirmation
+        from .ka01_admission import _deny
+        owner = self._g3_owner
+        budget = None if owner is None else owner._ka01_budget
+        if (self._g3_exchange is None or self._g3_feedback_pending or budget is None
+                or budget.frame is None or not budget.frame.consuming or budget.frame.adapter is not self):
+            if budget is not None:
+                budget.stop()
+            _deny("G3_NATIVE_CALLBACK_OUTSIDE_INVOCATION")
+        budget.guard()
+        send, receive = self._g3_exchange
+        self._g3_feedback_pending = True
+        try:
+            send("FEEDBACK", receipt_id=receipt_id, feedback=feedback.data)
+            reply = receive("ACK")
+            if (set(reply) != {"kind", "session", "sequence", "receipt_id", "feedback_digest"}
+                    or reply["receipt_id"] != receipt_id or reply["feedback_digest"] != feedback.digest):
+                _deny("G3_NATIVE_FEEDBACK_ACK_CONFLICT")
+            return LocalFeedbackConfirmation(receipt_id, feedback.digest)
+        finally:
+            self._g3_feedback_pending = False
 
     @property
     def execution_profile(self) -> ResolvedExecutionProfile | None:

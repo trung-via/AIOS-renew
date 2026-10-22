@@ -123,6 +123,13 @@ class CompletionOutcome:
     observation_path: Path | None
 
 
+def _checkpoint_policy_data(policy):
+    data = asdict(policy)
+    if data["lineage_path"] is not None:
+        data["lineage_path"] = str(data["lineage_path"])
+    return data
+
+
 def primary_completion_policy(task: Task, *, base_sha: str) -> CompletionPolicy:
     return CompletionPolicy(
         kind="PRIMARY",
@@ -223,6 +230,7 @@ class RuntimeCompletion:
             self._ka01_started_ns = admitted_ns
         self._ka01_opted = False
         self._ka01_budget = None
+        self._ka01_g3_request = None
         self.repo = repo
         self.state = state
         self.task = task
@@ -299,8 +307,14 @@ class RuntimeCompletion:
         format_checkpoint_request(request)
         target = request.scheduler.target
         from .publication import _run_from_data
-        admitted = _run_from_data(json.loads(_original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES)), "L3-02 admitted RUN")
-        if (admitted != self.run or self.run.status != "ACTIVE" or request.scheduler.operation != "PRIMARY"
+        document = json.loads(_original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES))
+        g3 = self._ka01_budget is not None and self._ka01_budget.g3
+        if g3 and self._ka01_budget.operation == "REMEDIATION":
+            document = document["execution"]["run"]
+        admitted = _run_from_data(document, "L3-02 admitted RUN")
+        operation = self._ka01_budget.operation if g3 else "PRIMARY"
+        if (admitted != self.run or self.run.status != "ACTIVE" or request.scheduler.operation != operation
+                or request.version != (2 if g3 else 1)
                 or (target.task_id, target.task_revision, target.run_id, target.base_sha) != (
                     self.task.task_id, self.task.revision, self.run.run_id, self.run.base_sha)
                 or self.run.task.id != self.task.task_id or self.run.task.revision != self.task.revision):
@@ -335,7 +349,9 @@ class RuntimeCompletion:
             target = request.scheduler.target
             if ((target.task_id, target.task_revision, target.run_id, target.base_sha, target.run_sha256) != (
                     self.task.task_id, self.task.revision, self.run.run_id, self.run.base_sha, run_digest)
-                    or request.scheduler.operation != "PRIMARY"):
+                    or request.scheduler.operation != (self._ka01_budget.operation if self._ka01_budget is not None
+                                                        and self._ka01_budget.g3 else "PRIMARY")
+                    or request.version != (2 if self._ka01_budget is not None and self._ka01_budget.g3 else 1)):
                 raise VerificationContractError("CHECKPOINT_HISTORY_ADMISSION_OR_OPERATION_CONFLICT")
             if (name != f"k{len(history) + 1:03d}.json" or request.ordinal != len(history) + 1
                     or request.predecessor_digest != (None if previous is None else previous.digest)
@@ -396,6 +412,20 @@ class RuntimeCompletion:
                 raise VerificationContractError("CONSUMPTION_IMMUTABLE_SOURCE_CONFLICT")
         return history
 
+    @_ka01_guarded
+    def g3_checkpoint_request(self) -> ProofCheckpointRequest:
+        """Runtime derives locators from its original admission and Git truth.
+
+        Native input cannot select a proof population, operation, predecessor,
+        ordinal, command or result. The only scheduler remains the existing one.
+        """
+        budget = self._ka01_budget
+        if budget is None or not budget.g3:
+            raise VerificationContractError("EXPLICIT_G3_ADMISSION_REQUIRED")
+        scheduler, _, _ = budget.g3_population()
+        history = self._checkpoint_history(self._checkpoint_directory())
+        return ProofCheckpointRequest(2, scheduler, len(history) + 1, history[-1].digest if history else None)
+
     def _authenticate_checkpoint(self, request, digest, *, terminal=False):
         directory = self._checkpoint_binding(request, terminal=terminal)
         history = self._checkpoint_history(directory)
@@ -404,19 +434,19 @@ class RuntimeCompletion:
         record = history[-1]
         data = record.data
         plan, task, manifests = _checkpoint_reviewed_execution(self.repo, request,
-            expected_plan=_original_json(data["plan"]).encode("ascii"))
+            expected_plan=_original_json(data["plan"]).encode("ascii"), _runtime=self)
         if task != self.task:
             raise VerificationContractError("CHECKPOINT_TASK_OBJECT_SUBSTITUTION")
         evidence = tuple(validate_evidence(item) for item in data["evidence"])
         _checkpoint_capture_inventory(directory / f"k{request.ordinal:03d}", evidence)
         facts = _checkpoint_native_facts(self.repo, request=request, manifests=manifests,
-            evidence=evidence, raw_directory=directory / f"k{request.ordinal:03d}")
+            evidence=evidence, raw_directory=directory / f"k{request.ordinal:03d}", _runtime=self)
         if facts != data["proofs"]:
             raise VerificationContractError("CHECKPOINT_NATIVE_PROOF_CHANGED")
         # Recheck all roots and all raw observations after the last proof read.
-        _, _, current = _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan))
+        _, _, current = _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan), _runtime=self)
         if _checkpoint_native_facts(self.repo, request=request, manifests=current, evidence=evidence,
-                raw_directory=directory / f"k{request.ordinal:03d}") != facts:
+                raw_directory=directory / f"k{request.ordinal:03d}", _runtime=self) != facts:
             raise VerificationContractError("CHECKPOINT_PROOF_CHANGED_AT_FINAL_BOUNDARY")
         self._checkpoint_binding(request, terminal=terminal)
         if self._checkpoint_history(directory) != history:
@@ -457,16 +487,16 @@ class RuntimeCompletion:
                 return self._authenticate_checkpoint(request, record.digest)
         if request.ordinal != len(history) + 1 or request.predecessor_digest != (history[-1].digest if history else None):
             raise VerificationContractError("CHECKPOINT_GAP_OR_PREDECESSOR_CONFLICT")
-        plan, task, manifests = _checkpoint_reviewed_execution(self.repo, request)
+        plan, task, manifests = _checkpoint_reviewed_execution(self.repo, request, _runtime=self)
         if task != self.task or request.scheduler.subject_sha == self.run.base_sha:
             raise VerificationContractError("CHECKPOINT_CURRENT_TASK_OR_CANDIDATE_CONFLICT")
         execution_identity = verification_digest([dict(proof_id=proof_id,
-            command=task.verification.required[manifest["command_index"]], profile=manifest["profile"],
+            command=self._checkpoint_commands()[manifest["command_index"]], profile=manifest["profile"],
             toolchain=manifest["toolchain"], collection=manifest["collection"])
             for proof_id, (_, manifest, _) in sorted(manifests.items())])
         before = history[-1].data["resources_after"] if history else {k: 0 for k in CHECKPOINT_RESOURCE_LIMITS}
         if (any(before[k] >= limit for k, limit in CHECKPOINT_RESOURCE_LIMITS.items())
-                or before["executions"] + len(task.verification.required) > CHECKPOINT_RESOURCE_LIMITS["executions"]):
+                or before["executions"] + len(self._checkpoint_commands()) > CHECKPOINT_RESOURCE_LIMITS["executions"]):
             raise VerificationContractError("CHECKPOINT_EXHAUSTED_RESOURCE_ACCOUNTING")
         if history:
             prior = history[-1].data
@@ -484,7 +514,7 @@ class RuntimeCompletion:
             self._checkpoint_binding(request)
             if self._checkpoint_history(directory) != history:
                 raise VerificationContractError("CHECKPOINT_COMPETING_MUTATION")
-            _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan))
+            _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan), _runtime=self)
             raw_directory = directory / f"k{request.ordinal:03d}"
             raw_directory.mkdir()  # Exclusive. Never erase an interrupted proof.
             try:
@@ -492,7 +522,8 @@ class RuntimeCompletion:
                     raw_directory=raw_directory, start_order=before["executions"],
                     runner=self.verification_runner if self._ka01_budget is None else self._ka01_verification_runner,
                     timeout_seconds=(CHECKPOINT_RESOURCE_LIMITS["elapsed_ms"] - before["elapsed_ms"]) / 1000,
-                    capture_bytes_remaining=CHECKPOINT_RESOURCE_LIMITS["raw_bytes"] - before["raw_bytes"])
+                    capture_bytes_remaining=CHECKPOINT_RESOURCE_LIMITS["raw_bytes"] - before["raw_bytes"],
+                    commands=self._checkpoint_commands(), modification_scope=self._checkpoint_scope())
             except OSError as exc:
                 # Missing/unreadable native captures cannot establish a seal.
                 # Keep the reserved fence and original partial capture intact.
@@ -503,8 +534,8 @@ class RuntimeCompletion:
                     os.fsync(stream.fileno())
             _checkpoint_sync_directory(raw_directory)
             facts = _checkpoint_native_facts(self.repo, request=request, manifests=manifests,
-                evidence=evidence, raw_directory=raw_directory)
-            _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan))
+                evidence=evidence, raw_directory=raw_directory, _runtime=self)
+            _checkpoint_reviewed_execution(self.repo, request, expected_plan=format_scheduler_plan(plan), _runtime=self)
             self._checkpoint_binding(request)
             after = dict(checkpoints=request.ordinal, executions=before["executions"] + len(evidence),
                 raw_bytes=before["raw_bytes"] + sum(p["raw_size"] + p["native_size"] for p in facts),
@@ -512,7 +543,7 @@ class RuntimeCompletion:
             checkpoint_resource_facts(after)
             outstanding = sorted({oid for fact in facts if not fact["satisfactory"]
                 for oid in manifests[fact["proof_id"]][0]["obligation_ids"]})
-            content = _checkpoint_json(dict(format=RUNTIME_CHECKPOINT_FORMAT, version=1,
+            content = _checkpoint_json(dict(format=RUNTIME_CHECKPOINT_FORMAT, version=request.version,
                 request=checkpoint_request_data(request), plan=scheduler_plan_data(plan),
                 population_identity=checkpoint_population_identity(plan), execution_identity=execution_identity,
                 evidence=[evidence_data(e) for e in evidence],
@@ -521,6 +552,16 @@ class RuntimeCompletion:
             _checkpoint_write_once(directory / f"k{request.ordinal:03d}.json", content)
             self._authenticate_checkpoint(request, record.digest)
             return record
+
+    def _checkpoint_commands(self):
+        budget = self._ka01_budget
+        return budget.policy.verification_commands if budget is not None and budget.g3 else self.task.verification.required
+
+    def _checkpoint_scope(self):
+        budget = self._ka01_budget
+        if budget is not None and budget.g3:
+            return budget.policy.mutation_scope if budget.operation == "REPAIR" else budget.policy.result_scope
+        return self.task.scope.modify
 
     @_ka01_guarded
     def prepare_feedback(self, request: FactualFeedbackRequest) -> RuntimeFactualFeedback:
@@ -536,11 +577,12 @@ class RuntimeCompletion:
         format_factual_feedback_request(request)
         checkpoint = request.checkpoint
         operation = checkpoint.scheduler.operation
-        if operation in ("REPAIR", "REMEDIATION"):
+        g3 = self._ka01_budget is not None and self._ka01_budget.g3 and checkpoint.version == 2
+        if operation in ("REPAIR", "REMEDIATION") and not g3:
             if self._local_feedback_invocation is not None:
                 self._local_feedback_stopped = True
             return _blocked_runtime_feedback("CORRECTION_NATIVE_AUTHORITY_NOT_ESTABLISHED")
-        if operation != "PRIMARY":
+        if operation != "PRIMARY" and not g3:
             if self._local_feedback_invocation is not None:
                 self._local_feedback_stopped = True
             return _blocked_runtime_feedback("OPERATION_NOT_SUPPORTED")
@@ -620,8 +662,11 @@ class RuntimeCompletion:
             admitted = _original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES)
 
             def current():
+                document = json.loads(admitted)
+                if self._ka01_budget is not None and self._ka01_budget.g3 and self._ka01_budget.operation == "REMEDIATION":
+                    document = document["execution"]["run"]
                 if (self._local_feedback_stopped
-                        or _run_from_data(json.loads(admitted), "L3-04 original RUN") != self.run
+                        or _run_from_data(document, "L3-04 original RUN") != self.run
                         or self.run.status != "ACTIVE"
                         or _original_local(self.run_path.absolute(), MAX_ORIGINAL_PROOF_BYTES) != admitted
                         or os.path.lexists(path)
@@ -663,7 +708,9 @@ class RuntimeCompletion:
             raise
         if self._local_feedback_stopped:
             return _consumption_result(reason="STOP_LATCHED")
-        if request.source.checkpoint.scheduler.operation != "PRIMARY":
+        if (request.source.checkpoint.scheduler.operation != "PRIMARY"
+                and not (self._ka01_budget is not None and self._ka01_budget.g3
+                         and request.source.checkpoint.version == 2)):
             self._local_feedback_stopped = True
             return _consumption_result(reason="CORRECTION_NATIVE_AUTHORITY_NOT_ESTABLISHED")
         reason = "LIVE_INVOCATION_NOT_ESTABLISHED"
@@ -736,7 +783,8 @@ class RuntimeCompletion:
                         invocation_identity=intent["invocation_identity"],
                         profile_sha256=None if frame.profile is None else verification_digest(frame.profile.as_dict()))
                     progress = self._local_feedback_progress(directory, record, feedback)
-                    expected = _consumption_result(binding=binding, resources=resources, progress=progress)
+                    expected = _consumption_result(binding=binding, resources=resources, progress=progress,
+                                                   version=checkpoint.version)
                     content = format_feedback_consumption(expected)
                     path = directory / f"k{checkpoint.ordinal:03d}.consumption.json"
                     if os.path.lexists(path):
@@ -840,7 +888,8 @@ class RuntimeCompletion:
                 if os.path.lexists(path):
                     raise VerificationContractError("CHECKPOINT_EXPLICIT_TERMINAL_CONSUMPTION_REQUIRED")
                 return self._complete(package, policy)
-        if policy != primary_completion_policy(self.task, base_sha=self.run.base_sha):
+        if policy != (self._ka01_budget.policy if self._ka01_budget is not None and self._ka01_budget.g3 else
+                      primary_completion_policy(self.task, base_sha=self.run.base_sha)):
             raise VerificationContractError("CHECKPOINT_CORRECTION_OR_ALTERED_COMPLETION_POLICY_BLOCKED")
         from .verification_contract import _original_hash
         _original_hash(checkpoint_digest)
@@ -865,7 +914,8 @@ class RuntimeCompletion:
                     raise VerificationContractError("CHECKPOINT_REVIEWED_CLAIM_CONFLICT")
                 value[1].update(obligation["acceptance_ids"])
             actual = {c.id: (c.claim, set(c.satisfies)) for c in package.result.claims}
-            if len(actual) != len(package.result.claims) or actual != reviewed:
+            if (len(actual) != len(package.result.claims)
+                    or actual != ({} if policy.kind == "REMEDIATION" else reviewed)):
                 raise VerificationContractError("CHECKPOINT_EXACT_REVIEWED_RESULT_CLAIMS_REQUIRED")
             return self._complete(package, policy, checkpoint_record=record)
 
@@ -877,7 +927,7 @@ class RuntimeCompletion:
         if (type(receipt["version"]) is not int or receipt["version"] != 1 or receipt["checkpoint_digest"] != digest
                 or receipt["request"] != checkpoint_request_data(request)
                 or receipt["package_sha256"] != _checkpoint_digest(_checkpoint_json(result_package_data(package)))
-                or receipt["policy_sha256"] != _checkpoint_digest(_checkpoint_json(asdict(policy)))
+                or receipt["policy_sha256"] != _checkpoint_digest(_checkpoint_json(_checkpoint_policy_data(policy)))
                 or _checkpoint_digest(_original_local(result_path, MAX_ORIGINAL_PROOF_BYTES)) != receipt["result_sha256"]):
             raise VerificationContractError("CHECKPOINT_CONFLICTING_OR_AMBIGUOUS_TERMINAL")
         history = self._checkpoint_history(directory, check_captures=False)
@@ -1024,7 +1074,7 @@ class RuntimeCompletion:
             content = _checkpoint_json(result_package_data(canonical_package))
             intent = dict(version=1, checkpoint_digest=checkpoint_record.digest,
                 request=checkpoint_record.data["request"], package_sha256=_checkpoint_digest(_checkpoint_json(result_package_data(package))),
-                policy_sha256=_checkpoint_digest(_checkpoint_json(asdict(policy))), result_sha256=_checkpoint_digest(content))
+                policy_sha256=_checkpoint_digest(_checkpoint_json(_checkpoint_policy_data(policy))), result_sha256=_checkpoint_digest(content))
             directory = self._checkpoint_directory()
             if self._ka01_budget is not None:
                 self._ka01_budget.guard()

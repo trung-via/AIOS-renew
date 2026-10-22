@@ -2218,7 +2218,7 @@ class ProofSchedulerRequest:
     correction: ReuseCorrectionLocator | None = None
 
     def __post_init__(self):
-        if type(self.version) is not int or self.version != SCHEDULER_VERSION:
+        if type(self.version) is not int or self.version not in (SCHEDULER_VERSION, 2):
             raise VerificationContractError("unsupported scheduler version")
         for value, cls in ((self.target, ApplicabilityTargetRequest),
                            (self.contract, ApplicabilityDeclarationPin), (self.mapping, ApplicabilityDeclarationPin)):
@@ -2352,7 +2352,8 @@ class ProofSchedulerPlan:
 
     def __post_init__(self):
         from .proof_coverage_contract import CoverageDeclaration
-        if type(self.version) is not int or self.version != SCHEDULER_VERSION or type(self.request) is not ProofSchedulerRequest:
+        if (type(self.version) is not int or type(self.request) is not ProofSchedulerRequest
+                or self.version != self.request.version):
             raise VerificationContractError("invalid typed scheduler plan")
         self.request.__post_init__()
         _original_text(self.reason, 256)
@@ -2364,9 +2365,17 @@ class ProofSchedulerPlan:
             if _scheduler_validate_coverage(_scheduler_coverage(self.coverage), self.request) != self.coverage:
                 raise VerificationContractError("noncanonical scheduler coverage")
         if self.authority_json is not None:
-            authority = _app_exact(_reuse_decode(self.authority_json.encode("ascii")), (
+            authority_fields = (
                 "main_sha", "selection_sha", "review_candidate_sha", "artifacts_sha", "decision_sha",
-                "binding", "target"))
+                "binding", "target")
+            authority = _app_exact(_reuse_decode(self.authority_json.encode("ascii")),
+                (*authority_fields, "g3") if self.version == 2 else authority_fields)
+            if self.version == 2:
+                g3 = _app_exact(authority["g3"], ("operation", "original_source_sha256", "admission_sha256", "semantic_sha256"))
+                if g3["operation"] != self.request.operation or g3["operation"] not in {"PRIMARY", "REPAIR", "REMEDIATION"}:
+                    raise VerificationContractError("G3 operation source substitution")
+                for key in ("original_source_sha256", "admission_sha256", "semantic_sha256"):
+                    _original_hash(g3[key])
             for key in ("main_sha", "selection_sha", "review_candidate_sha", "artifacts_sha", "decision_sha"):
                 _original_hash(authority[key], 40)
             if authority["main_sha"] != self.request.expected_main_sha:
@@ -2396,7 +2405,8 @@ class ProofSchedulerPlan:
                     or source_pins["task"]["sha256"] != target["task_sha256"]):
                 raise VerificationContractError("scheduler TASK authority conflict")
         if self.authentication == "AUTHENTICATED" and (
-                self.request.operation != "PRIMARY" or self.coverage is None or self.authority_json is None):
+                (self.request.operation != "PRIMARY" and self.version != 2)
+                or self.coverage is None or self.authority_json is None):
             raise VerificationContractError("scheduler operation or review authority promotion")
         if type(self.sources) is not tuple or len(self.sources) > MAX_SCHEDULER_SOURCES:
             raise VerificationContractError("bounded immutable scheduler decisions required")
@@ -2513,7 +2523,8 @@ class ProofCheckpointRequest:
     predecessor_digest: str | None
 
     def __post_init__(self):
-        if type(self.version) is not int or self.version != 1 or type(self.scheduler) is not ProofSchedulerRequest:
+        if (type(self.version) is not int or type(self.scheduler) is not ProofSchedulerRequest
+                or self.version != self.scheduler.version):
             raise VerificationContractError("invalid checkpoint request version or scheduler")
         self.scheduler.__post_init__()
         if type(self.ordinal) is not int or not 1 <= self.ordinal <= MAX_RUNTIME_CHECKPOINTS:

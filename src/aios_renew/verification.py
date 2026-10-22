@@ -2655,7 +2655,7 @@ def _scheduler_source_assignments(coverage, expected):
             raise VerificationContractError("SCHEDULER_UNREVIEWED_SOURCE_PROOF")
 
 
-def plan_candidate_proofs(repository: Path, *, expected: ProofSchedulerRequest) -> ProofSchedulerPlan:
+def plan_candidate_proofs(repository: Path, *, expected: ProofSchedulerRequest, _runtime=None) -> ProofSchedulerPlan:
     """Single explicit Runtime-owned L3-01 core. Reads only; never proof authority.
 
     No plan/witness/provider/caller mapping is an input. A first candidate needs
@@ -2671,39 +2671,53 @@ def plan_candidate_proofs(repository: Path, *, expected: ProofSchedulerRequest) 
     format_scheduler_request(expected)  # Enforce aggregate bounds before I/O.
     coverage, authority, decisions = None, None, ()
     try:
-        if expected.operation != "PRIMARY":
+        g3 = expected.version == 2
+        if expected.operation != "PRIMARY" and not g3:
             reason = (expected.operation + "_NATIVE_CORRECTION_LINEAGE_NOT_ESTABLISHED"
                       if expected.operation in {"REPAIR", "REMEDIATION"} else "SCHEDULER_UNSUPPORTED_OPERATION")
             raise VerificationContractError(reason)
         repository = Path(repository).absolute()
         if repository.resolve(strict=True) != repository:
             raise VerificationContractError("UNSAFE_SCHEDULER_REPOSITORY")
-        coverage, authority, roots = _scheduler_read_population(repository, expected)
+        def population():
+            if not g3:
+                return _scheduler_read_population(repository, expected)
+            from .runtime import RuntimeCompletion
+            if (type(_runtime) is not RuntimeCompletion or _runtime.repo.absolute() != repository
+                    or _runtime._ka01_budget is None or not _runtime._ka01_budget.g3):
+                raise VerificationContractError("G3_ORIGINAL_LIVE_RUNTIME_REQUIRED")
+            _, selected, binding = _runtime._ka01_budget.g3_population(expected)
+            return selected, binding, None
+        coverage, authority, roots = population()
         _scheduler_source_assignments(coverage, expected)
         witnesses = tuple(observe_proof_reuse(repository, expected=s) for s in expected.sources)
         decisions = tuple(SchedulerSourceDecision(s.applicability.obligation_id, w.outcome, w.reason,
             w.source_snapshot, hashlib.sha256(format_reuse(w)).hexdigest()) for s, w in zip(expected.sources, witnesses))
         # L3 owns its own final reads after source decisions, even though L2
         # already authenticated each one. No externally parsed witness is used.
-        current_coverage, current_authority, current_roots = _scheduler_read_population(repository, expected)
+        current_coverage, current_authority, current_roots = population()
         if (current_coverage, current_authority, current_roots) != (coverage, authority, roots):
             raise VerificationContractError("SCHEDULER_SOURCE_TARGET_OR_REVIEW_CHANGED_AT_BOUNDARY")
         refreshed = tuple(observe_proof_reuse(repository, expected=s) for s in expected.sources)
         if refreshed != witnesses:
             raise VerificationContractError("SCHEDULER_SOURCE_TARGET_OR_REVIEW_CHANGED_AT_BOUNDARY")
-        _scheduler_final_roots(repository, expected, current_roots, refreshed)
-        plan = ProofSchedulerPlan(1, expected, "AUTHENTICATED", "EXACT_CURRENT_PRIMARY_AND_COMPLETE_REVIEWED_POPULATION",
+        if g3:
+            if population() != (coverage, authority, roots):
+                raise VerificationContractError("G3_AUTHORITY_MOVED_AT_FINAL_BOUNDARY")
+        else:
+            _scheduler_final_roots(repository, expected, current_roots, refreshed)
+        plan = ProofSchedulerPlan(expected.version, expected, "AUTHENTICATED", "EXACT_CURRENT_PRIMARY_AND_COMPLETE_REVIEWED_POPULATION",
                                   coverage, authority, decisions)
         format_scheduler_plan(plan)
         return plan
     except (OSError, ValueError, TypeError, KeyError, AttributeError, StopIteration, UnicodeError,
             RuntimeError, RecursionError, yaml.YAMLError) as exc:
         reason = str(exc)[:256] if type(exc) is VerificationContractError else "SCHEDULER_NATIVE_AUTHORITY_OR_INPUT_UNAVAILABLE"
-        plan = ProofSchedulerPlan(1, expected, "NOT_ESTABLISHED", reason, coverage, authority, decisions)
+        plan = ProofSchedulerPlan(expected.version, expected, "NOT_ESTABLISHED", reason, coverage, authority, decisions)
         try:
             format_scheduler_plan(plan)
         except (VerificationContractError, ValueError, TypeError):
-            plan = ProofSchedulerPlan(1, expected, "NOT_ESTABLISHED", "SCHEDULER_PROJECTION_BOUND", None, None, ())
+            plan = ProofSchedulerPlan(expected.version, expected, "NOT_ESTABLISHED", "SCHEDULER_PROJECTION_BOUND", None, None, ())
         return plan
 
 # L3-02: native proof capture/observation helpers, subordinate to RuntimeCompletion.
@@ -2734,13 +2748,13 @@ def _checkpoint_pytest_coverage(command: str):
     return coverage
 
 
-def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=None):
+def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=None, _runtime=None):
     from .verification_contract import (
         CHECKPOINT_EXECUTION_FORMAT, format_checkpoint_request, format_scheduler_plan,
         scheduler_plan_data,
     )
     format_checkpoint_request(request)
-    plan = plan_candidate_proofs(repository, expected=request.scheduler)
+    plan = plan_candidate_proofs(repository, expected=request.scheduler, _runtime=_runtime)
     if plan.authentication != "AUTHENTICATED":
         raise VerificationContractError("CHECKPOINT_" + plan.reason)
     if expected_plan is not None and format_scheduler_plan(plan) != expected_plan:
@@ -2748,7 +2762,10 @@ def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=N
     if _original_git(repository, "status", "--porcelain"):
         raise VerificationContractError("CHECKPOINT_REQUIRES_CLEAN_COMMITTED_CANDIDATE")
     reader = _ApplicabilityReader(repository)
-    target, task, _ = _app_target(repository, request.scheduler.target, reader)
+    if request.version == 2:
+        task = _runtime.task
+    else:
+        target, task, _ = _app_target(repository, request.scheduler.target, reader)
     if request.scheduler.sources:
         # L2 locators remain inspection facts. They cannot select a fresh
         # execution or impersonate a current-RUN native execution receipt.
@@ -2765,7 +2782,8 @@ def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=N
     from .publication import _run_from_data
     review_run = _run_from_data(_original_decode(reader.blob(artifacts_tree, ".ai/transport/run.json")), "L3-02 review")
     base_tree, _ = reader.commit(review_run.base_sha)
-    commands = task.verification.required
+    commands = (_runtime._ka01_budget.policy.verification_commands if request.version == 2
+                else task.verification.required)
     if not commands or len(commands) > 256 or len(set(commands)) != len(commands):
         raise VerificationContractError("CHECKPOINT_EXACT_AUTHORED_COMMAND_POPULATION_REQUIRED")
     manifests, indices = {}, []
@@ -2787,11 +2805,16 @@ def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=N
         manifest = _app_exact(_original_decode(raw), ("format", "version", "proof_id", "claims", "conditions",
             "command_index", "profile", "toolchain", "collection"))
         conditions = {k: v for k, v in proof["conditions"].items() if k != "test_ref"}
+        reviewed_conditions = dict(manifest["conditions"])
+        if request.version == 2:
+            # Original independently reviewed execution template, applied only
+            # to the current scoped candidate by the admitted G3 implementation.
+            reviewed_conditions["candidate_sha"] = request.scheduler.subject_sha
         index = manifest["command_index"]
         if (raw != _original_json(manifest).encode("ascii") or manifest["format"] != CHECKPOINT_EXECUTION_FORMAT
                 or type(manifest["version"]) is not int or manifest["version"] != 1
                 or manifest["proof_id"] != proof["id"] or manifest["claims"] != proof["claims"]
-                or manifest["conditions"] != conditions or type(index) is not int or not 0 <= index < len(commands)
+                or reviewed_conditions != conditions or type(index) is not int or not 0 <= index < len(commands)
                 or conditions["evidence_kind"] != "VERIFICATION" or conditions["evidence_schema"] != "V2"):
             raise VerificationContractError("CHECKPOINT_REVIEWED_FULL_PROOF_BINDING_CONFLICT")
         coverage = _checkpoint_pytest_coverage(commands[index])
@@ -2813,7 +2836,7 @@ def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=N
 
 def _execute_checkpoint_verification(repository: Path, *, request, task, manifests,
                                      raw_directory: Path, start_order: int, runner, timeout_seconds: float,
-                                     capture_bytes_remaining: int):
+                                     capture_bytes_remaining: int, commands=None, modification_scope=None):
     """The existing verifier executes only the exact already-authored commands.
 
     This is observation instrumentation, not V2 derivation: no early probes,
@@ -2822,9 +2845,11 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
     """
     env = dict(os.environ)
     evidence = []
+    commands = task.verification.required if commands is None else commands
+    modification_scope = task.scope.modify if modification_scope is None else modification_scope
     with materialize_verification_subject(repository, run_id=request.scheduler.target.run_id,
             subject_sha=request.scheduler.subject_sha) as subject:
-        for index, command in enumerate(task.verification.required):
+        for index, command in enumerate(commands):
             _, manifest, _ = next(v for v in manifests.values() if v[1]["command_index"] == index)
             profile, toolchain = manifest["profile"], manifest["toolchain"]
             order = start_order + index + 1
@@ -2853,8 +2878,8 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                 raise RuntimeVerificationError("checkpoint time accounting exhausted", evidence=(*evidence, item))
             binding = dict(subject_sha=item.subject_sha, base_sha=request.scheduler.target.base_sha,
                 tree_sha=request.scheduler.target.tree_sha, command=command, profile=profile, toolchain=toolchain,
-                envelope_digest=verification_digest(dict(authored=list(task.verification.required), operation="PRIMARY",
-                                                        modification_scope=sorted(task.scope.modify))),
+                envelope_digest=verification_digest(dict(authored=list(commands), operation=request.scheduler.operation,
+                                                        modification_scope=sorted(modification_scope))),
                 changed_files_digest=verification_digest(sorted(filter(None, _git(repository, "diff", "--name-only",
                     "--no-renames", "-z", request.scheduler.target.base_sha, item.subject_sha).split("\0")))),
                 failure_set_digest=verification_digest([]))
@@ -2873,7 +2898,7 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
     return tuple(evidence)
 
 
-def _checkpoint_native_facts(repository: Path, *, request, manifests, evidence, raw_directory: Path):
+def _checkpoint_native_facts(repository: Path, *, request, manifests, evidence, raw_directory: Path, _runtime=None):
     """Reobserve immutable raw and actual full native proof; never accept flags."""
     from .runtime import evidence_data
     from .artifacts import validate_evidence
@@ -2885,7 +2910,7 @@ def _checkpoint_native_facts(repository: Path, *, request, manifests, evidence, 
         # The reviewed command index was independently bound against TASK above.
         matches = [item for item in evidence if item.verification is not None
             and item.verification.get("binding", {}).get("profile") == manifest["profile"]
-            and item.source.command == _checkpoint_task_command(repository, request, manifest["command_index"])]
+            and item.source.command == _checkpoint_task_command(repository, request, manifest["command_index"], _runtime=_runtime)]
         if len(matches) != 1:
             raise VerificationContractError("CHECKPOINT_REVIEWED_EXECUTION_MISSING")
         item = matches[0]
@@ -2931,7 +2956,11 @@ def _checkpoint_native_facts(repository: Path, *, request, manifests, evidence, 
     return facts
 
 
-def _checkpoint_task_command(repository, request, index):
+def _checkpoint_task_command(repository, request, index, *, _runtime=None):
+    if request.version == 2:
+        if _runtime is None or _runtime._ka01_budget is None or not _runtime._ka01_budget.g3:
+            raise VerificationContractError("G3_ORIGINAL_RUNTIME_COMMAND_BINDING_REQUIRED")
+        return _runtime._ka01_budget.policy.verification_commands[index]
     from .task import parse_task
     _, content = _original_blob(repository, request.scheduler.target.tree_sha, f".ai/tasks/{request.scheduler.target.task_id}.yaml")
     return parse_task(content.decode("utf-8")).verification.required[index]

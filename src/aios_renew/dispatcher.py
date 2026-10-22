@@ -119,6 +119,8 @@ class Dispatcher:
         """Invoke the selected adapter for one admitted REMEDIATION."""
 
         self._require_native_continuity()
+        if self._prospective_runtime is not None and getattr(self._prospective_runtime, "_ka01_g3_request", None) is not None:
+            return self._dispatch_g3_correction(operation="REMEDIATION", execution=execution, run=execution.run)
 
         adapter = self._claim_adapter(
             run=execution.run, operation="REMEDIATION"
@@ -137,15 +139,53 @@ class Dispatcher:
         run = execution.get("run")
         if not isinstance(run, Run):
             raise DispatcherError("REPAIR execution has no bound RUN")
+        if self._prospective_runtime is not None and getattr(self._prospective_runtime, "_ka01_g3_request", None) is not None:
+            return self._dispatch_g3_correction(operation="REPAIR", execution=execution, run=run)
         adapter = self._claim_adapter(run=run, operation="REPAIR")
         return self._require_package(adapter.execute_repair(execution=execution))
 
     def _require_native_continuity(self):
         if self._prospective_runtime is not None and getattr(self._prospective_runtime, "_ka01_opted", False):
             budget = self._prospective_runtime._ka01_budget
+            if budget is not None and budget.g3:
+                budget.guard(live=False)
+                return
             if budget is not None:
                 budget.stop()
             raise DispatcherError("KA01_V13_CORRECTION_NATIVE_CONTINUITY_BLOCKED")
+
+    def _dispatch_g3_correction(self, *, operation, execution, run):
+        """Same original lease/boundary, with the untouched admitted payload."""
+        from dataclasses import asdict
+        from .ka01_admission import _bytes
+        from .verification import _original_local, _original_decode
+        owner = self._prospective_runtime
+        budget = owner._ka01_budget
+        try:
+            budget.guard(live=False)
+            if (budget.operation != operation or run != owner.run or self._execution_profile != budget.profile):
+                raise DispatcherError("G3_ORIGINAL_OPERATION_DISPATCH_REQUIRED")
+            if operation == "REMEDIATION":
+                if execution != budget.policy.remediation_execution:
+                    raise DispatcherError("G3_REMEDIATION_PAYLOAD_CHANGED")
+            else:
+                original = _original_decode(_original_local(budget.policy.lineage_path.absolute(), 2 * 1024 * 1024))
+                supplied = dict(execution)
+                supplied["run"] = asdict(run)
+                if _bytes(original) != _bytes(supplied):
+                    raise DispatcherError("G3_AUTHOR_REPAIR_PAYLOAD_CHANGED")
+                execution = {**original, "run": run}
+            adapter = self._claim_adapter(run=run, operation=operation)
+            boundary = ExecutorBoundary(budget.leases, execution_profile=self._execution_profile, prospective_runtime=owner)
+            self._active_boundary = boundary
+            try:
+                return boundary.invoke(task=owner.task, run=run, lease=budget.lease, adapter=adapter,
+                                       operation=operation, execution=execution)
+            finally:
+                self._active_boundary = None
+        except BaseException:
+            budget.stop()
+            raise
 
     def _claim_adapter(
         self, *, run: Run, operation: Operation

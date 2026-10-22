@@ -39,8 +39,8 @@ class BudgetFixture(FeedbackFixture):
                 Path(__file__).resolve().parents[1] / ka01.NORMATIVE_PATH).read_bytes()}
         return super().worktree_commit(files, message)
 
-    def __init__(self, root, monkeypatch, *, mode="fail"):
-        super().__init__(root, monkeypatch, mode=mode)
+    def __init__(self, root, monkeypatch, *, mode="fail", multi=False):
+        super().__init__(root, monkeypatch, mode=mode, multi=multi)
         tracker = RunObservationTracker("PRIMARY")
         tracker.admit(self.run)
         self.owner = RuntimeCompletion(repo=self.repo, state=self.state, task=self.task, run=self.run,
