@@ -1,33 +1,46 @@
 # Lean VP Intra-RUN v1.3 — Resource Defaults and Remaining Delivery Roadmap
 
-**Human decision:** 2026-10-21; prospective priority amended 2026-10-22.
-**Planning status:** **PAUSED, RESUMABLE, NOT COMPLETED, NOT RETIRED**.
-`lean-vp-intra-v13-budget-defaults-successor` retains every unfinished obligation.
-The sole current NEXT and planning owner is `git-decision-guard-priority-20261022`,
-under [Git Decision Guard and Conditional Publisher Priority v1](AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md).
+**Human decision:** 2026-10-21; explicit prospective return on 2026-10-22 after
+separately reviewed/published TASK-397 L3-05.
+**Planning status:** **ACTIVE; single NEXT is L3-06/G3; not production activated**.
+The sole current high-level NEXT and planning owner is
+`lean-vp-intra-v13-budget-defaults-successor`, with first remaining slice
+**L3-06 — integrated core G3 proof**.
 **KA-01:** prospective document version **1.3**,
 **HUMAN_RATIFIED_PROSPECTIVE_SPEC**, **NOT_ACTIVATED**.
 
-This remains the paused successor planning pointer to the
+This remains the successor planning pointer to the
 [retired Lean VP planning source](AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md).
 The October 21 Human/Brain record is
 `.ai/roadmap-state.yaml:human_lean_vp_intra_v13_budget_defaults_successor_20261021`.
-That dated record preserves the October 21 selection as history. Current root
-`next_items`, the sole sequence `status: NEXT`, `active_track` and root
-`planning_document` must agree on the October 22 Git guard priority and its new
-document. This entry points here for paused obligations and has no current NEXT.
-A stale selector or dual NEXT is a fail-closed conflict. The new controlling
-record is `human_git_guard_publish_priority_20261022`; the older retired Lean VP
-competitor stays retired.
+That record, `human_git_guard_publish_priority_20261022` and
+`human_bounded_unresolved_handoff_priority_20261022` remain exact dated history.
+The controlling prospective Human/Brain record is now
+`.ai/roadmap-state.yaml:human_lean_vp_l3_06_g3_return_reconciliation_20261022`.
+Root `next_items`, the sole sequence `status: NEXT`, `active_track` with status
+`ACTIVE`, root and selected-entry `planning_document`, planning owner and approved
+slice all select this plan and L3-06/G3. A stale selector or dual NEXT is a
+fail-closed conflict. The older retired Lean VP competitor stays retired.
 
-Human has prioritized **one G1 TASK (TASK-398 r1)**, then **zero or one separate
-conditional residual Publisher G2 TASK** only for demonstrated non-overlapping
-cost after G1. Explicit Human/Brain reconciliation must check TASK-397 canonical
-state before returning to **L3-05 -> L3-06/G3 -> separate G6 -> L4**. The stalled,
-cancelled TASK-397 Issue #2345 transport does not establish a canonical TASK/RUN
-or engineering completion. Runtime, Reviewer and Publisher outcomes never resume
-this plan or advance NEXT automatically. See the new plan for current scope and
-measurement boundaries; this pause discharges none of the original 16 slots.
+The original October 22 G1/TASK-398 priority in
+[Git Guard](AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md) was superseded by the dated
+TASK-399 priority in the
+[bounded unresolved handoff](AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md).
+Both priorities are historical. Human explicitly directs continuation of the
+Lean VP roadmap after TASK-397 publication, so this new decision returns to
+**L3-06/G3 -> separate G6 -> L4**. It does not derive a new NEXT from TASK-399
+publication, a RESULT, REVIEW or other lifecycle outcome. The old stalled
+TASK-397 Issue #2345 transport retains its original meaning and does not replace
+the later exact published RUN-397-002 lineage below.
+
+Publisher residual G2 remains **NOT_STARTED / CONDITIONAL**, zero or one separate
+future TASK, subordinate to this current Human priority. No distinct material
+non-overlapping residual cost evidence or G2 implementation authorization is
+established here. A separate measured Human/Brain decision is required; G2 is
+neither skipped nor DONE, part of G3, nor a Lean VP slot. This planning
+reconciliation itself is outside the original 16 delivery slots and changes no
+historical engineering outcome. Runtime independently authenticates engineering
+truth and current main; this document records planning authority only.
 
 The older `lean-vp-intelligent-intra-primary-after-r21` entry remains
 **superseded, not completed**. Its dated planning
@@ -47,6 +60,7 @@ do not replace that authentication.
 | Published lineage | Exact reviewed/published source | Bounded meaning |
 | --- | --- | --- |
 | TASK-391 r2 / RUN-391-015 / REVIEW-391-003 PASS 12/12 | `50dc508e7c2660c40319fb32b43ec5072ca59ce3` | **L3-04 complete**: prospective same-current-RUN/live-Executor feedback consumption and continuation/STOP foundation. No L3-05, L3-06/G3 or G6 completion. |
+| TASK-397 r1 / RUN-397-002 / REVIEW-397-001 PRIMARY PASS AC1–AC12 | `60d47926448c1a537f3e9fcbf077c1aec75082f1` | **L3-05 only**: bounded versioned admission, consent, resource budget and withdrawal lineage. No L3-06/G3, G6 or L4 completion. |
 | TASK-393 r3 / RUN-393-009 / REVIEW-393-002 PASS 6/6 | `c417f3986a06da8f4fd170e57661ac6aa27c1d98` | Separately published **P0 Failure Diagnostic Completeness** side track; no Lean VP slot advancement. |
 | TASK-394 r1 / RUN-394-001 / REVIEW-394-001 PASS 7/7 | `b537bebbb1c35bb178e2a6e4e436b30f69966482` | Separately published **P1 Scalable Evidence Retrieval** side track; no L3-05/G3/G6 proof. |
 
@@ -56,12 +70,20 @@ candidate or Runtime RESULT alone. TASK-393 and TASK-394 remain distinct work,
 with their own publication histories, rather than substitutes for remaining
 Lean VP safety gates.
 
+The exact main source observed for the October 22 return is
+`60d47926448c1a537f3e9fcbf077c1aec75082f1`, the published TASK-397 r1 candidate
+RUN-397-002. REVIEW-397-001's canonical review-decision ref is
+`1f1ee2d1c51197b5e24514a94a75905872ad744e`. These supplied exact anchors distinguish
+published L3-05 engineering lineage from the new Human planning choice; they do
+not authenticate Runtime provenance/currentness, admission or main CAS by prose.
+
 The original **16 Lean VP L1–L4 delivery slots** from the Human-approved plan
-(Issue #2168 context) are preserved without renumbering, replacement or new
-completion claims. L1 baseline/readiness is not full VP-01 measurement exit;
+(Issue #2168 context) are preserved without renumbering, replacement or
+planning-derived completion claims. L1 baseline/readiness is not full VP-01 measurement exit;
 L2's applicability work and the published L3-01/02/03 foundations retain their
 bounded TASK-387/388/389/390 lineage. L3-04 is the reviewed TASK-391 completion
-above; **L3-05 and L3-06 remain outstanding**, as do L4's commitments.
+above; **L3-05 is the separately published TASK-397 anchor**, while **L3-06/G3**,
+separate Human G6 and L4's commitments remain outstanding.
 
 Historical TASK-386 r1, the published KA-01 **v1.2** normative task approved
 after TASK-385, remains **outside those 16 slots**. TASK-396 r1 is a
@@ -70,7 +92,7 @@ authorized by Human on 2026-10-21. It is not another L3-05 slot. Separate G6
 is an exact later Human activation/opt-in decision, not an extra delivery slot
 or preapproved permission.
 
-## Preserved order and remaining gates after explicit Human/Brain return
+## Published foundations and remaining gates under the explicit Human/Brain return
 
 1. **KA-01 v1.3 normative lineage — TASK-396 r1.** The October 21 decision was to amend the
    [exact KA-01 specification](AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md),
@@ -81,21 +103,20 @@ or preapproved permission.
    `030c1acb582f71f0fdd0342d790aa54d0d9bdd7f`; Runtime independently authenticates
    currentness. This specification/planning task
    implements no production admission or budget enforcement.
-2. **L3-05 — actual versioned admission, consent, budget and withdrawal.**
-   A separately authored/admitted implementation must enforce v1.3's exact
-   per-operation profile selection, authenticated TASK/revision per-field
-   operational overrides, default-fill, immutable effective limits per RUN,
-   current G6 per-RUN consent and same selected live Executor lease. Implement
-   all required invalid/stale/UNKNOWN/exhaustion/duplicate guards without
-   changing PRIMARY, AUTHOR_REPAIR or REMEDIATION authority.
-3. **L3-06 — integrated G3 proof of the actual eligible core.** Independently
+2. **L3-05 — published bounded TASK-397 r1 foundation.** Its exact lineage above
+   covers versioned admission, operation-specific consent/withdrawal and finite
+   resource budgets, alongside the published L3-04 foundation. It does not
+   establish integrated G3 success, authorize production continuation or supply
+   fresh G6 per-RUN consent or a selected live Executor lease.
+3. **Current first remaining slice: L3-06 — integrated G3 proof of the actual eligible core.** Independently
    Runtime-verify positive and adversarial cases through the existing core for
    PRIMARY, REPAIR and REMEDIATION, with complete mandatory verification,
    provenance/applicability, one scheduler, resource/progress/lease STOP and one
    terminal authority. Require exact semantic review and publication. Published
-   L3-04 and this normative document alone do not establish G3.
+   L3-04, published L3-05 and this normative document do not establish G3.
 4. **Separate G6 — exact Human prospective activation and each RUN's opt-in.**
-   Only after eligible G1/G2/G3, authenticate the exact published implementation,
+   Only after eligible KA-01 G1/G2/G3 (distinct from Publisher residual G2),
+   authenticate the exact published implementation,
    version, operation, policy/profile, current Human per-RUN finite delegation,
    effective limits and live selected Executor lease at each admission.
    Normative defaults, overrides and publication grant none of those permissions.
@@ -140,7 +161,8 @@ invalid merged limits and unverifiable accounting; enforce cumulative wall and
 verification time, applicable token caps, monotone spent/reserved accounting,
 at-most-once debit/consumption and safe STOP. Exhaustion cannot suppress
 mandatory proof or create PASS, restart counters or reopen a terminal RUN.
-The implementation and its actual G3 proof remain future L3-05/L3-06 work.
+The bounded L3-05 lineage is published; its actual integrated G3 proof remains
+future L3-06 work.
 
 ## Preserved history and current policy boundaries
 

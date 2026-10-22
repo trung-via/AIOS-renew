@@ -1,16 +1,53 @@
 # Bounded unresolved FAILURE handoff v1
 
-Human's 2026-10-22 immediate priority is TASK-399 revision 1, planning ID
-`bounded-unresolved-diagnostic-handoff-20261022`. This is the sole current NEXT
-in `.ai/roadmap-state.yaml`, its active track and its planning-document pointer.
+## Current prospective Human/Brain reconciliation — 2026-10-22
+
+The original TASK-399 priority below and the earlier G1/TASK-398 priority are
+**HISTORICAL_ONLY**; their dated Human records and exact engineering history
+remain intact. Human explicitly returns to Lean VP after separately
+reviewed/published **TASK-397 r1 / RUN-397-002 / REVIEW-397-001 PRIMARY PASS
+AC1–AC12**, exact observed main/published source
+`60d47926448c1a537f3e9fcbf077c1aec75082f1`, canonical review-decision ref
+`1f1ee2d1c51197b5e24514a94a75905872ad744e`.
+The controlling record is
+`.ai/roadmap-state.yaml:human_lean_vp_l3_06_g3_return_reconciliation_20261022`.
+The single current high-level NEXT, active track and planning owner are
+`lean-vp-intra-v13-budget-defaults-successor`, first remaining slice **L3-06/G3**;
+root and selected-entry planning pointers select the
+[Lean VP v1.3 roadmap](AIOS-LEAN-VP-INTRA-V13-ROADMAP.md).
+
+Published L3-04 TASK-391 r2 and bounded L3-05 TASK-397 r1 remain separate anchors
+within the original 16 slots. Integrated core G3 proof, separate Human G6
+activation/opt-in and subsequent L4 production measurements and conformance
+remain outstanding. KA-01 v1.3 remains
+**HUMAN_RATIFIED_PROSPECTIVE_SPEC / NOT_ACTIVATED**. This reconciliation is
+planning only, outside the 16 slots, with no executable G3 TASK or Executor
+binding. Runtime independently authenticates current main, engineering lineage,
+provenance and CAS. TASK-399 publication, RESULT, REVIEW and other lifecycle
+outcomes never select or advance NEXT automatically.
+
+Publisher residual G2 remains **NOT_STARTED / CONDITIONAL**, zero or one separate
+future TASK, subordinate to the current Lean VP priority. No distinct material
+non-overlapping cost evidence or G2 implementation authorization is established
+here. A separate measured Human/Brain decision is required; G2 is neither skipped
+nor DONE, included in G3, nor a Lean VP slot. Retired old Lean VP competitors
+stay inactive. The implementation description below retains TASK-399's original
+engineering meaning and supplies no new completion or publication assertion.
+
+## Original TASK-399 priority — historical decision of 2026-10-22
+
+Human's original 2026-10-22 immediate priority was TASK-399 revision 1, planning ID
+`bounded-unresolved-diagnostic-handoff-20261022`. This was the sole NEXT at that
+decision in `.ai/roadmap-state.yaml`, its active track and planning pointer.
 The prior G1/TASK-398 planning record remains historical. Its reviewed/published
 status may be used only with independently authenticated engineering lineage;
 this planning amendment supplies no new completion or publication proof.
-Conditional Publisher residual G2 is **not started**. After this handoff,
-Human/Brain explicitly reconcile G2 eligibility and the paused, resumable Lean VP
-v1.3 plan. L3-05, L3-06, G3, separate G6 and L4 remain unfinished; the original
-16 slots and all earlier identities remain intact. RESULT, REVIEW and publication
-never automatically advance this planning NEXT.
+Conditional Publisher residual G2 was **not started**. The original order required
+Human/Brain reconciliation after this handoff of G2 eligibility and the paused,
+resumable Lean VP v1.3 plan. At that decision L3-05, L3-06, G3, separate G6 and L4
+remained unfinished; the original 16 slots and all earlier identities remain
+intact. The current decision above recognizes published L3-05 without rewriting
+that record. RESULT, REVIEW and publication never automatically advance NEXT.
 
 ## Original terminal binding
 

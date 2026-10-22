@@ -1,4 +1,54 @@
 version: 1
+human_lean_vp_l3_06_g3_return_reconciliation_20261022:
+  authority: EXPLICIT_HUMAN_CONTINUATION_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
+  approved_on: "2026-10-22"
+  planning_only: true
+  source_main_sha_at_authoring: 60d47926448c1a537f3e9fcbf077c1aec75082f1
+  source_authentication: RUNTIME_INDEPENDENT_IDENTITY_CURRENTNESS_PROVENANCE_RESERVATION_AND_MAIN_CAS_REQUIRED
+  decision: EXPLICIT_HUMAN_RETURN_TO_LEAN_VP_AFTER_SEPARATELY_PUBLISHED_TASK397_L3_05
+  superseded_priority_record: human_bounded_unresolved_handoff_priority_20261022
+  sole_high_level_next: lean-vp-intra-v13-budget-defaults-successor
+  planning_owner: lean-vp-intra-v13-budget-defaults-successor
+  planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  selected_slice: L3_06_INTEGRATED_CORE_G3_PROOF
+  task_authoring_status: HIGH_LEVEL_PLAN_NO_EXECUTABLE_TASK_BINDING
+  human_executor_delegation: NOT_SELECTED_FOR_FUTURE_L3_06_G3_TASK
+  reviewed_published_l3_04:
+    task: TASK-391
+    revision: 2
+    run: RUN-391-015
+    review: REVIEW-391-003
+    reviewed_published_source_sha: 50dc508e7c2660c40319fb32b43ec5072ca59ce3
+    completion_scope: L3_04_ONLY
+  reviewed_published_l3_05:
+    task: TASK-397
+    revision: 1
+    run: RUN-397-002
+    review: REVIEW-397-001
+    verdict: PASS
+    acceptance: 12_OF_12_PASS
+    review_decision_sha: 1f1ee2d1c51197b5e24514a94a75905872ad744e
+    reviewed_published_source_sha: 60d47926448c1a537f3e9fcbf077c1aec75082f1
+    completion_scope: L3_05_ONLY_NO_L3_06_G3_G6_OR_L4_COMPLETION
+  original_lean_vp_slot_count: 16
+  reconciliation_allocation: PLANNING_ONLY_OUTSIDE_ORIGINAL_16_NO_NEW_DELIVERY_SLOT
+  remaining_obligations: [L3-06, G3, G6, L4]
+  engineering_truth: EXACT_TASK_RUN_REVIEW_PUBLICATION_LINEAGE_NOT_PLANNING_SELECTION
+  ka01_document_version: "1.3"
+  ka01_source_status: HUMAN_RATIFIED_PROSPECTIVE_SPEC
+  ka01_activation: NOT_ACTIVATED
+  g1_and_task399: HISTORICAL_PRIORITIES_AND_EXACT_ENGINEERING_LINEAGE_PRESERVED_NO_NEW_COMPLETION_INFERENCE
+  g2:
+    queue_id: publisher-residual-after-git-guard-20261022
+    status: NOT_STARTED_CONDITIONAL
+    future_task_count: ZERO_OR_ONE
+    material_non_overlapping_cost_evidence: NOT_ESTABLISHED
+    implementation_authorization: NONE_FROM_THIS_RECONCILIATION
+    disposition: DEFERRED_SUBORDINATE_NOT_SKIPPED_NOT_DONE_NOT_A_LEAN_VP_SLOT
+    reconsideration: DISTINCT_MATERIAL_NON_OVERLAPPING_COST_MEASUREMENT_AND_SEPARATE_HUMAN_BRAIN_DECISION
+  next_transition_authority: EXPLICIT_SUBSEQUENT_HUMAN_BRAIN_RECONCILIATION_NOT_RESULT_REVIEW_OR_PUBLISH
+  historical_snapshot_rule: ALL_OLDER_DATED_HUMAN_RECORDS_RETAIN_EXACT_HISTORY_NOT_AN_ADDITIONAL_CURRENT_NEXT
+
 human_bounded_unresolved_handoff_priority_20261022:
   authority: EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
   approved_on: "2026-10-22"
@@ -226,9 +276,9 @@ human_lean_vp_l3_03_reconciliation_20261020:
     - NO_TASK_RUN_REVIEW_PUBLICATION_OR_DOWNSTREAM_LINEAGE_REWRITE
     - UNRESOLVED_INGRESS_PRODUCER_CONCURRENCY_REMAINS_SEPARATE_DIAGNOSTIC
 
-active_track: bounded-unresolved-diagnostic-handoff-20261022
+active_track: lean-vp-intra-v13-budget-defaults-successor
 active_track_status: ACTIVE
-planning_document: docs/AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md
+planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
 human_lean_vp_legacy_plan_retirement_and_task389_authoring_reconciliation_20261019:
   authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_RECONCILIATION
   approved_on: "2026-10-19"
@@ -2411,7 +2461,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - bounded-unresolved-diagnostic-handoff-20261022
+  - lean-vp-intra-v13-budget-defaults-successor
 sequence:
 
   - id: TASK-309
@@ -3724,45 +3774,65 @@ sequence:
     legacy_vp03_resume: RECONCILE_AFTER_R21_NO_AUTOMATIC_RESUME
     measured_performance: UNKNOWN_REQUIRES_PAIRED_WHOLE_EPISODE_EVIDENCE
   - id: lean-vp-intra-v13-budget-defaults-successor
-    status: PAUSED_BY_HUMAN_PRIORITY_20261022
-    historical_status: NEXT
-    paused_on: "2026-10-22"
-    paused_for: git-decision-guard-priority-20261022
-    planning_resume: EXPLICIT_HUMAN_BRAIN_RETURN_TO_L3_05_AFTER_G1_CONDITIONAL_G2_AND_TASK397_RECONCILIATION
-    remaining_obligations: [L3-05, L3-06, G3, G6, L4]
-    disposition: PAUSED_RESUMABLE_NOT_COMPLETED_NOT_RETIRED
-    phase: KA01_V1_3_NORMATIVE_DEFAULT_BUDGETS_BEFORE_REMAINING_LEAN_VP_ENGINEERING
+    status: NEXT
+    historical_status: PAUSED_BY_HUMAN_PRIORITY_20261022
+    historical_paused_on: "2026-10-22"
+    historical_paused_for: git-decision-guard-priority-20261022
+    historical_planning_resume: EXPLICIT_HUMAN_BRAIN_RETURN_TO_L3_05_AFTER_G1_CONDITIONAL_G2_AND_TASK397_RECONCILIATION
+    planning_resume: EXPLICIT_HUMAN_BRAIN_RETURN_20261022_TO_L3_06_G3
+    reconciled_on: "2026-10-22"
+    reconciliation_record: human_lean_vp_l3_06_g3_return_reconciliation_20261022
+    remaining_obligations: [L3-06, G3, G6, L4]
+    remaining_gate_duties:
+      G3: ACTUAL_INTEGRATED_CORE_PRIMARY_REPAIR_REMEDIATION_RUNTIME_PROOF_INDEPENDENT_REVIEW_AND_PUBLICATION
+      G6: SEPARATE_AUTHENTICATED_HUMAN_ACTIVATION_AND_FRESH_PER_RUN_OPERATION_SPECIFIC_OPT_IN
+      L4: POSTACTIVATION_WHOLE_EPISODE_VP01_VP06_MEASUREMENTS_AND_FULL_REAL_VP07_AC01_TO_AC36_CONFORMANCE
+    disposition: ACTIVE_PLANNING_ONLY_NOT_COMPLETED_NOT_PRODUCTION_ACTIVATED
+    phase: L3_06_INTEGRATED_CORE_G3_BEFORE_SEPARATE_G6_AND_L4
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-21"
     planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+    planning_owner: lean-vp-intra-v13-budget-defaults-successor
     predecessor: lean-vp-intelligent-intra-primary-after-r21
     task_authoring_status: HIGH_LEVEL_PLAN_NO_EXECUTABLE_TASK_BINDING
     normative_task_id: TASK-396
     normative_task_revision: 1
     normative_publication_gate: REQUIRES_OWN_RUNTIME_REVIEWER_PASS_AND_PUBLISHER
-    next_approved_slice: KA01_V1_3_RESOURCE_PROFILE_NORMATIVE_OUTSIDE_ORIGINAL_16
-    successor_slices: L3_05_THEN_L3_06_G3_THEN_G6_SEPARATE_THEN_L4
+    normative_publication_status: TASK396_R1_SEPARATELY_REVIEWED_PUBLISHED_SPEC_ONLY
+    next_approved_slice: L3_06_INTEGRATED_CORE_G3_PROOF
+    successor_slices: G6_SEPARATE_THEN_L4
     original_lean_vp_slot_count: 16
     historical_separate_normative_task: TASK-386_KA01_V1_2_PUBLISHED
     new_separate_normative_task: TASK-396_KA01_V1_3_OUTSIDE_16
-    last_completed_lean_vp_slice: L3_04
-    last_published_task_id: TASK-391
-    last_published_task_revision: 2
-    last_published_run_id: RUN-391-015
-    last_published_review_id: REVIEW-391-003
-    last_published_source_sha: 50dc508e7c2660c40319fb32b43ec5072ca59ce3
+    reviewed_published_l3_04:
+      task: TASK-391
+      revision: 2
+      run: RUN-391-015
+      review: REVIEW-391-003
+      reviewed_published_source_sha: 50dc508e7c2660c40319fb32b43ec5072ca59ce3
+      completion_scope: L3_04_ONLY
+    last_completed_lean_vp_slice: L3_05
+    last_published_task_id: TASK-397
+    last_published_task_revision: 1
+    last_published_run_id: RUN-397-002
+    last_published_review_id: REVIEW-397-001
+    last_published_review_decision_sha: 1f1ee2d1c51197b5e24514a94a75905872ad744e
+    last_published_source_sha: 60d47926448c1a537f3e9fcbf077c1aec75082f1
+    last_published_completion_scope: L3_05_ONLY_NO_L3_06_G3_G6_OR_L4_COMPLETION
     separately_published_side_tracks: [TASK-393_R3, TASK-394_R1]
     implementation_authorization: SEPARATE_EXACT_TASK_AND_HUMAN_EXECUTOR_DELEGATION_REQUIRED
     ka01_document_version: "1.3"
     ka01_activation: NOT_ACTIVATED
     historical_next_effect: SOLE_NEXT_BY_EXPLICIT_HUMAN_20261021_NO_AUTOMATIC_LATER_ADVANCEMENT
-    current_next_effect: PAUSED_RESUMABLE_BY_EXPLICIT_HUMAN_20261022_NO_AUTOMATIC_RETURN
+    current_next_effect: SOLE_L3_06_G3_NEXT_BY_EXPLICIT_HUMAN_BRAIN_RETURN_20261022_NOT_LIFECYCLE_ADVANCEMENT
+    next_transition_authority: EXPLICIT_SUBSEQUENT_HUMAN_BRAIN_RECONCILIATION_NOT_RESULT_REVIEW_OR_PUBLISH
     goal: >-
-      Publish the separately identifiable prospective KA-01 v1.3 resource profile
-      first, preserving v1.0-v1.2 and all original 16 Lean VP slots. Continue only
-      through separately admitted L3-05 admission/consent/budget/withdrawal,
-      L3-06 integrated G3 proof, exact separate Human G6 and subsequent L4.
-      Defaults never grant consent, an Executor lease or production activation.
+      Continue the original 16 Lean VP slots after separately published TASK-396
+      normative v1.3 and TASK-397 L3-05, preserving the TASK-391 r2 L3-04 anchor.
+      First author the separate L3-06 integrated core G3 TASK under its own Human
+      delegation and Runtime gates; then require exact separate Human G6 and L4.
+      This high-level planning selection supplies no executable TASK, consent,
+      Executor lease, integrated G3 success or production activation.
   - id: git-decision-guard-priority-20261022
     status: HISTORICAL_ONLY
     historical_status: NEXT
@@ -3789,7 +3859,9 @@ sequence:
       CAS. Runtime verification, independent review and publication remain gates;
       their outcomes alone never advance the roadmap or complete Lean VP work.
   - id: bounded-unresolved-diagnostic-handoff-20261022
-    status: NEXT
+    status: HISTORICAL_ONLY
+    historical_status: NEXT
+    prospective_priority_owner: lean-vp-intra-v13-budget-defaults-successor
     phase: TASK399_BOUNDED_UNRESOLVED_FAILURE_HANDOFF
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-22"
@@ -3813,7 +3885,11 @@ sequence:
   - id: publisher-residual-after-git-guard-20261022
     status: CONDITIONAL_QUEUE
     implementation_status: NOT_STARTED
-    reconsider_after: EXPLICIT_HUMAN_BRAIN_RECONCILIATION_AFTER_TASK399
+    historical_reconsider_after: EXPLICIT_HUMAN_BRAIN_RECONCILIATION_AFTER_TASK399
+    reconsider_after: DISTINCT_MATERIAL_NON_OVERLAPPING_COST_MEASUREMENT_AND_SEPARATE_HUMAN_BRAIN_DECISION
+    material_non_overlapping_cost_evidence: NOT_ESTABLISHED
+    implementation_authorization: NONE_FROM_THIS_RECONCILIATION
+    current_priority_disposition: DEFERRED_SUBORDINATE_TO_LEAN_VP_NOT_SKIPPED_OR_DONE
     phase: G2_RESIDUAL_PUBLISHER_PERFORMANCE_ONLY
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-22"
@@ -3825,7 +3901,7 @@ sequence:
     task_authoring_status: NO_TASK_AUTHORED_NO_G2_IMPLEMENTATION_AUTHORIZED_IN_G1
     shared_guard_gain: MUST_NOT_BE_DOUBLE_COUNTED
     next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY
-    later_return: RECONCILE_TASK397_THEN_L3_05_L3_06_G3_SEPARATE_G6_L4
+    historical_later_return: RECONCILE_TASK397_THEN_L3_05_L3_06_G3_SEPARATE_G6_L4
 
   - id: adaptive-brain-audit-v1-retire-v3-prospective-consumers
     status: SUPERSEDED_PROSPECTIVE_PRIORITY
