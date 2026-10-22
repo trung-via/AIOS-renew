@@ -382,11 +382,19 @@ def test_task396_v13_source_selector_conflict_never_resumes_retired_plan(
 _TASK398_NEXT = "git-decision-guard-priority-20261022"
 _TASK398_RESIDUAL = "publisher-residual-after-git-guard-20261022"
 _TASK398_PLAN = "docs/AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md"
+_TASK398_PLANNING_SOURCE_SHA = "8fc9ef2784b7781c287d760ec4597ab203052768"
+_TASK399_NEXT = "bounded-unresolved-diagnostic-handoff-20261022"
+_TASK399_PLAN = "docs/AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md"
 
 
 def _task398_source_planning_roadmap() -> dict:
+    """Keep G1 regressions bound to canonical main observed at TASK-399 authoring.
+
+    TASK-399 changes the current priority prospectively; the historical G1
+    selectors and their negative regressions retain their original meaning.
+    """
     root = Path(__file__).resolve().parents[1]
-    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_text(encoding="utf-8"))
+    source = yaml.safe_load(git(root, "show", f"{_TASK398_PLANNING_SOURCE_SHA}:.ai/roadmap-state.yaml"))
     by_id = {item["id"]: item for item in source["sequence"]}
     assert source["next_items"] == [_TASK398_NEXT]
     assert source["active_track"] == _TASK398_NEXT
@@ -487,6 +495,102 @@ def test_task398_planning_documents_and_dated_records_are_coherent():
     for item in original["sequence"]:
         if item["id"] != _TASK396_V13_NEXT:
             assert untouched[item["id"]] == item
+
+
+def test_task399_current_priority_preserves_historical_g1_and_paused_plan():
+    root = Path(__file__).resolve().parents[1]
+    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_text(encoding="utf-8"))
+    historical = yaml.safe_load(git(root, "show", f"{_TASK398_PLANNING_SOURCE_SHA}:.ai/roadmap-state.yaml"))
+    by_id = {item["id"]: item for item in source["sequence"]}
+    assert len(by_id) == len(source["sequence"])
+    assert source["next_items"] == [source["active_track"]] == [_TASK399_NEXT]
+    assert source["active_track_status"] == "ACTIVE"
+    assert [item["id"] for item in source["sequence"] if item["status"] == "NEXT"] == [_TASK399_NEXT]
+    selected = by_id[_TASK399_NEXT]
+    assert source["planning_document"] == selected["planning_document"] == _TASK399_PLAN
+    assert selected["planning_owner"] == _TASK399_NEXT
+    assert selected["implementation_task_id"] == "TASK-399"
+    assert selected["implementation_task_revision"] == selected["implementation_task_count"] == 1
+    assert "task_id" not in selected and "task_revision" not in selected
+    assert selected["predecessor"] == _TASK398_NEXT
+    assert selected["conditional_successor"] == _TASK398_RESIDUAL
+    assert selected["next_transition_authority"] == "EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_LIFECYCLE_ADVANCEMENT"
+    record = source["human_bounded_unresolved_handoff_priority_20261022"]
+    assert record["planning_only"] is True
+    assert record["source_main_sha_at_authoring"] == _TASK398_PLANNING_SOURCE_SHA
+    assert record["sole_high_level_next"] == record["planning_owner"] == _TASK399_NEXT
+    assert record["planning_document"] == _TASK399_PLAN
+    assert record["next_transition_authority"] == "EXPLICIT_SUBSEQUENT_HUMAN_BRAIN_RECONCILIATION_NOT_RESULT_REVIEW_OR_PUBLISH"
+    assert record["g2"]["status"] == "NOT_STARTED_CONDITIONAL"
+    assert record["g2"]["implementation_authorization"] == "NONE_FROM_TASK399"
+    assert record["g2"]["reconsideration"] == "EXPLICIT_SUBSEQUENT_HUMAN_BRAIN_RECONCILIATION"
+    assert record["paused_plan"]["id"] == _TASK396_V13_NEXT
+    assert record["paused_plan"]["disposition"] == "PAUSED_RESUMABLE_NOT_COMPLETED_NOT_RETIRED"
+    assert record["paused_plan"]["remaining"] == ["L3-05", "L3-06", "G3", "G6", "L4"]
+    assert record["historical_failure"] == {
+        "run_id": "RUN-398-004", "task_id": "TASK-398", "task_revision": 1,
+        "artifact_sha": "70fec2ab3f681f51c3bdfa40f51bcba50fa33852",
+        "failed_head_sha": "2e97623c2ac283e151ffdc41485a90b8df14b19d",
+        "private_failure_digest": "b2e60c61f1d6885802e68c81612355445b290c936754f7eda6faba77b17b0455",
+        "staged_byte_digest": "UNKNOWN_NOT_BACKFILLED",
+        "disposition": "IMMUTABLE_HISTORICAL_NON_PASS",
+    }
+    # Every older Human record and sequence entry retains its exact history;
+    # only G1's prospective disposition and G2's explicit deferral are added.
+    for key, value in historical.items():
+        if key.startswith("human_"):
+            assert source[key] == value
+    assert [item["id"] for item in source["sequence"] if item["id"] != _TASK399_NEXT] == [
+        item["id"] for item in historical["sequence"]
+    ]
+    for item in historical["sequence"]:
+        expected = dict(item)
+        if item["id"] == _TASK398_NEXT:
+            expected.update(status="HISTORICAL_ONLY", historical_status="NEXT",
+                            prospective_priority_owner=_TASK399_NEXT)
+        elif item["id"] == _TASK398_RESIDUAL:
+            expected.update(implementation_status="NOT_STARTED",
+                            reconsider_after="EXPLICIT_HUMAN_BRAIN_RECONCILIATION_AFTER_TASK399")
+        assert by_id[item["id"]] == expected
+
+
+@pytest.mark.parametrize("fault", [None, "stale_g1_next_items", _TASK398_NEXT,
+                                   _TASK398_RESIDUAL, _TASK396_V13_NEXT])
+def test_task399_current_priority_observation_never_dispatches_or_advances(tmp_path, fault):
+    repo = make_repo(tmp_path)
+    root = Path(__file__).resolve().parents[1]
+    roadmap = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_text(encoding="utf-8"))
+    # As with the G1 fixture, exercise only the relevant planning selectors;
+    # unrelated DONE entries name publication commits absent from this temp repo.
+    planning_ids = {_TASK399_NEXT, _TASK398_NEXT, _TASK398_RESIDUAL,
+                    _TASK396_V13_NEXT, _TASK396_RETIRED_NEXT}
+    roadmap["sequence"] = [item for item in roadmap["sequence"] if item["id"] in planning_ids]
+    other = _TASK398_NEXT if fault == "stale_g1_next_items" else fault
+    if fault == "stale_g1_next_items":
+        roadmap["next_items"] = [other]
+    elif fault is not None:
+        next(item for item in roadmap["sequence"] if item["id"] == other)["status"] = "NEXT"
+    path = repo / ".ai/roadmap-state.yaml"
+    path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+    before, refs = path.read_bytes(), git(repo, "show-ref")
+
+    snapshot = observe_brain_sync(repo=repo)
+
+    if fault is None:
+        assert snapshot.roadmap["next_items"] == [_TASK399_NEXT]
+        assert snapshot.selection_status == "UNAUTHORED_TASK"
+        assert snapshot.blocker == {"code": "UNAUTHORED_TASK", "item_id": _TASK399_NEXT,
+                                    "message": "NEXT item has no associated task_id"}
+    else:
+        assert snapshot.selection_status == "AMBIGUOUS_NEXT"
+        assert snapshot.blocker["code"] == "AMBIGUOUS_NEXT"
+        assert set(snapshot.blocker["candidates"]) == {_TASK399_NEXT, other}
+    assert snapshot.selected_task is None and snapshot.unified_state is None
+    assert snapshot.lifecycle_state == "BLOCKED"
+    assert snapshot.next_action == snapshot.authority == "NONE"
+    assert not any((snapshot.run_created, snapshot.executor_invoked,
+                    snapshot.verification_invoked, snapshot.state_mutated))
+    assert path.read_bytes() == before and git(repo, "show-ref") == refs
 
 
 def test_brain_sync_unauthored_next(tmp_path: Path) -> None:
