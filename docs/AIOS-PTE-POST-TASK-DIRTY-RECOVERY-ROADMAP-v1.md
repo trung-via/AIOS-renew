@@ -21,9 +21,37 @@ Resolve observed `RUN-401-002` terminal attention admission PASS followed by loc
 
 Reuse `brain_sync.observe_brain_sync`, `unified_state.observe_unified_state` and exact terminal/review/publication locators. Given an authenticated TASK or wake selector, return one bounded state: TASK revision; attributed RUN; ACTIVE/RESULT/FAILURE; next_action/authority/blocker; candidate/artifact SHA; reviewer/publication inclusion when established; next exact data source only if required. Do not crawl raw logs on ordinary RESULT, create a second state reducer or claim RESULT means REVIEW PASS. Include real caller portability beyond local-only unit tests. **If existing code already satisfies the outcome, do not manufacture new implementation.**
 
-### PTE-03 — Source-bound native EXECUTION FAILURE diagnosis
+### PTE-03 — Source-bound diagnostic access across FAILURE phases
 
-Use canonical FAILURE public/safe detail first, pinned GitHub Actions workflow/job logs when attributable, then existing origin-safe protected self-host diagnostics only when necessary. Brain must not require Human PowerShell/Python merely to extract native error. Test observed `RUN-401-002` native `apply_patch verification failed` context mismatch; distinguish observed symptom from unproved sole CLI exit cause. Bound diagnostic privacy, identities, size, currentness, unavailable sources and reason categories; preserve uncertainty as UNKNOWN, never automatically choose CODE_FIX. Reuse TASK-393/394/399 functionality rather than duplicate retrieval infrastructure.
+**Human-approved 2026-10-23 architecture audit (AOA-1 v1):** Extend the original native EXECUTION FAILURE objective to admitted VERIFICATION and COMPLETION_GATE failures; keep pre-RUN ingress/transport failures in their existing operational-receipt readers. This remains ONE PTE-03 implementation package. Reuse existing `verification.py`, `review_transport.py`, `operator.py`, `brain_attention.py` and portable `brain_context.py` seams. No independent log store, DB, extra lifecycle reducer, generic router, retry authority or automatic REPAIR choice.
+
+**Observed motivating sources:** RUN-401-002 native patch-context failure must retain exact origin and dirty-worktree distinction without inventing the sole CLI cause. RUN-403-001 verification exit 1 exposed `MALFORMED_SUMMARY`, empty failed nodes and unknown cause while Runtime had captured stdout/stderr. RUN-403-002 produced a failed test identity but `error_types: [UNKNOWN]`, lacking discriminating traceback/assertion content. Immutable original RUN/FAILURE identities are unchanged; testing may use authenticated original sources or faithful fixtures and must distinguish those.
+
+**Field-level diagnostic release policy:**
+- Class A — validated structural identity: source-bound TASK/RUN/revision/phase/SHA/digest, verification command, exit code, safe test identity, exception class, repo-relative line, failed count, authority, worker/job status and typed blocker should be delivered without blanket withholding.
+- Class B — technical source spans: assertion actual/expected, relevant traceback frames, patch context and diff, bounded test parameter excerpts, selected stdout/stderr lines may be delivered only with explicit field-level secret/PII inspection, redaction markers, source authenticity and byte/line budgets. A secret in one span must not suppress independent safe facts.
+- Class C — protected raw: complete stdout/stderr, local environment and executor transcript remain inside authorized self-host origin; only a derived bounded safe projection crosses the boundary.
+- Class D — denied/removed: credentials, tokens, cookies, private keys, unnecessary personal/customer identifiers, unsafe paths, unknown-origin or forged/stale/cross-RUN/ref sources, oversize captures and unauthorized access. Redact affected spans or block only the affected source, returning precise availability, redaction and blocker codes. Parser failure is NOT confidentiality classification.
+
+**Source ladder:** Check canonical public/safe failure detail and existing paged observation first; check separately authenticated GitHub Actions/job/step evidence when correctly attributable; then request the existing protected self-host reader for the exact RUN/source if necessary. Use actual SHA/digest/currentness and bounded origin authorization. If parsing a pytest summary fails or a parsed node lacks assertion evidence, continue to the next available lawful source; if no source remains, return precise SOURCE_MISSING / PARSER_UNSUPPORTED / INTEGRITY_MISMATCH / ACCESS_DENIED / LIMIT_EXHAUSTED and honest UNKNOWN. No need to rerun original verification merely to extract diagnostic text. Do not disclose whole raw logs, silently replace a source, reconstruct historical facts, or call diagnostic output a Runtime PASS.
+
+**Failure-family matrix:** admitted EXECUTION (CLI invocation, patch mismatch, output format, timeout/interruption, network/auth/quota, dirty candidate); VERIFICATION (assertion/fixture/import, pytest/xdist setup, worker crash, missing Git historical object, unstable test, malformed/ANSI/partial summary, timeout and exit categories); COMPLETION_GATE (missing AC claims, unresolved, ResultPackage/schema, EVIDENCE, scope/dirty). Pre-RUN ingress, wake, carrier transport and REVIEW/PUBLISH retain their own reader and authority, supplying bounded operational causes without fabricated RUNs. Unknown future failures report OTHER/UNKNOWN with exact phase, witness, limitation and next lawful evidence source.
+
+**PTE-03 acceptance gates (mandatory for TCA-2 TASK authoring):**
+1. Exact phase coverage and pre-RUN boundary (no fake RUN).
+2. Bound TASK/RUN/revision/terminal/failed SHA, private source digest, source currentness and channel authorization.
+3. Malformed/unsupported/ANSI/truncated pytest parsing does not terminate while a lawful raw or structured source exists; otherwise precise typed blocker.
+4. Safe failed node, exception, file:line, expected/actual/assertion/traceback where evidence exists; do not claim semantic cause from an exit code alone.
+5. Selective span/field redaction with explicit `redacted` reason; no whole-output suppression of independent safe fields.
+6. Reject stale/forged/opposite/cross-task/cross-run/wrong-origin/competing refs and payload-instruction attempts.
+7. Protected self-host-only raw, no public token/cookie/private key/PII exposure, path traversal, symlink/reparse, URL spoofing or accidental credential echo.
+8. Bounded bytes, time, read count, node paging, source fallback and positive/negative observability; no full-suite default.
+9. Real authenticated Brain consumer automatically receives diagnostic when an allowed source exists, without asking Human to run diagnostic Python/PowerShell.
+10. Regression examples RUN-401-002, RUN-403-001 and RUN-403-002 plus synthetic benign/malicious sources; test parser success AND failure.
+11. Legacy safe detail V1–V4 and pages, direct-call APIs, authenticated readers and current tests remain valid.
+12. No mutation by a reader, no altered historical FAILURES, no self-selected repair, no second state authority; Runtime verifies, Brain diagnoses, Executor edits, Reviewer and Publisher keep distinct authority.
+
+**Closure:** PTE-03 is incomplete until both a source-bound technical error and an authenticated Brain read across the actual supported transport succeed, or an exact unavailable-source blocker is demonstrated. PTE-04/05/06 and TASK-401 r3 remain separately gated and are not automatically activated.
 
 ### PTE-04 — Origin-affine dirty worktree preservation
 
