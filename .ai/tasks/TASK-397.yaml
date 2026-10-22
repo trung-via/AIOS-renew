@@ -1,0 +1,258 @@
+task_id: TASK-397
+revision: 1
+goal: Implement Lean VP Intra v1.3 L3-05 as the actual prospective Runtime-owned versioned
+  admission, operation-specific consent/withdrawal and finite resource-budget enforcement
+  boundary for PRIMARY, REPAIR and REMEDIATION. Reuse the published L3-01..04 scheduler/lease/feedback
+  foundation and exactly one canonical Runtime execution/verification owner; preserve
+  legacy admissions and keep production intra-RUN continuation NOT_ACTIVATED until
+  separately reviewed L3-06/G3 and authenticated Human G6.
+problem: TASK-396 r1 published the v1.3 KA-01 normative defaults and retired competing
+  old Lean VP NEXT, but current L3-04 code has only PRIMARY-positive local receipt,
+  explicitly marks finite Human budget/consent NOT_ESTABLISHED, and blocks repair/remediation
+  feedback. The current operator invokes existing PRIMARY/REPAIR/REMEDIATION paths
+  without authenticated v1.3 per-RUN budget admission or monotone resource-enforcement
+  across checkpoints. Defaults in a document alone must not be mistaken for executable
+  authority. L3-05 closes admission/consent/resource/withdrawal mechanics before separate
+  L3-06 integrated G3 and G6 activation.
+assumptions:
+- Canonical main is observed as d52af044d7e4f14d8daf7b42d83bf5836a8ccaf7 at this renewed
+  authoring request after TASK-398 and TASK-399 source publication. TASK-396 r1 /
+  RUN-396-001 / REVIEW-396-001 remains the historical normative KA-01 v1.3 foundation,
+  not current NEXT. Runtime independently authenticates main, exact TASK identity,
+  provenance, clean state, reservation and CAS; this observation is not an authorization
+  bypass.
+- "The source is KA-01 prospective v1.3 HUMAN_RATIFIED_PROSPECTIVE_SPEC and Runtime\
+  \ NOT_ACTIVATED. Its C.1\u2013C.8/D.1 G3/G6 gates define this slice; TASK-396 was\
+  \ normative/planning only. Exact default resource profile: max_corrections 2, max_checkpoints\
+  \ 3, RUN wall 240 min, cumulative Runtime verification 180 min included within wall,\
+  \ max_tokens null optional."
+- Human may supply separately authenticated per-field operational overrides for exact
+  TASK id/revision and explicitly named PRIMARY, REPAIR, REMEDIATION operations; absence
+  uses published defaults. An override, TASK preference or old RUN never establishes
+  fresh G6 consent, Executor choice or authorization.
+- Published TASK-391 r2 / RUN-391-015 / REVIEW-391-003 PASS is L3-04 preactivation
+  same-live-Executor local-consumption foundation, not actual resource consent or
+  production continuation. L3-04 native positive callback is currently PRIMARY-only;
+  REPAIR and REMEDIATION dispatch are separate first-party paths and must retain their
+  own current RUN authorization and lease, not inherit a PRIMARY receipt.
+- Current operator.run_task, run_repair and run_remediation are first-party admission
+  callers; Dispatcher.dispatch_primary/remediation/repair own exactly one native invocation;
+  RuntimeCompletion holds the existing one proof/fence/terminal authority. RunLeaseRegistry
+  is process-local; an ACK/file/caller assertion cannot prove a live Executor after
+  crash.
+- On 2026-10-22 Human explicitly selected return to TASK-397 / L3-05 after TASK-399
+  publication. This prospective Human priority supersedes the prior paused planning
+  bookmark for the present request, but does not falsely mark the separately published
+  TASK-398/399 or G2 as Lean VP completion. Current roadmap still records the prior
+  NEXT and its durable reconciliation remains a separate authorized planning mutation,
+  not an Executor side effect. TASK-397 must not assert that publication alone advanced
+  the roadmap; later L3-06/G3, separately authorized G6 and L4 remain outstanding.
+- TCA-2 v2 is active by reviewed/published TASK-395; Brain applies CONSTRUCT and ADVERSARIAL_AUDIT_AND_RECONCILE,
+  source/test/scope satisfiability and only implementation-claimable acceptance. Runtime
+  owns verification, Reviewer semantic verdict, Publisher publication.
+- 'The prior exact TASK-397 AUTHOR_TASK Issue #2345 stalled and was cancelled at a
+  ten-minute transport limit; `.ai/tasks/TASK-397.yaml` is absent from the observed
+  canonical main. Treat this as pre-RUN transport history, not a failed TASK/RUN and
+  not REPAIR authority. This request is an explicit Human-directed renewed revision-1
+  admission with current expected main, not a replay assertion.'
+- TASK-398 and TASK-399 changed the active src/aios_renew/operator.py and src/aios_renew/runtime.py
+  foundations after the original TASK-397 authoring proposal. TASK-397 must integrate
+  against those now-published interfaces and preserve Git decision-guard and source-bound
+  unresolved-FAILURE handoff behavior; source/test contradictions fail closed.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - docs/AIOS-LEAN-VP-L3-SAME-EXECUTOR-CONTINUATION.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-391.yaml
+  - .ai/tasks/TASK-396.yaml
+  - src/aios_renew/run.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/run_observation.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/executor.py
+  - tests/test_lean_vp_l3_same_executor_continuation.py
+  - tests/test_intra_run_proof_contract.py
+  - tests/test_runtime.py
+  - tests/test_operator.py
+  - docs/AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md
+  - docs/AIOS-BOUNDED-UNRESOLVED-DIAGNOSTIC-HANDOFF-v1.md
+  - .ai/tasks/TASK-398.yaml
+  - .ai/tasks/TASK-399.yaml
+  - src/aios_renew/review_transport.py
+  - tests/test_decision_guard_optimization.py
+  - tests/test_unresolved_failure_handoff.py
+  modify:
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/executor.py
+  - tests/test_lean_vp_l3_admission_budget.py
+  - tests/test_lean_vp_l3_same_executor_continuation.py
+  - tests/test_runtime.py
+  - tests/test_operator.py
+  - docs/AIOS-LEAN-VP-L3-ADMISSION-BUDGET.md
+non_goals:
+- No G6 production activation, no real production intra-RUN automatic correction,
+  no L3-06 integrated G3 closure, no L4 real-episode measurement/full VP-07 PASS,
+  and no claim of actual Human consent from test fixtures.
+- No editing frozen Kernel or normative KA-01 v1.3, changing Human-owned roadmap state
+  or retiring the new NEXT, rewriting previously admitted RUNs, correction authorizations,
+  reviews, findings or published history, or retargeting downstream adoption.
+- No new scheduler/Reviewer/Publisher, duplicate runtime proof path, new autonomous
+  correction strategist, retry/repair router, Executor auto-selection/failover, new
+  secrets/identity root, memory DB, durable cross-process lease inferred from local
+  ACK, or unconditional hot-path enablement.
+- No weakening original complete mandatory semantic proof, unmodified direct K_i/F_i
+  codecs, historical V1/V2 policies or test expectations; no full suite/V2 gate required.
+- No reimplementation, replacement, reattribution or retrospective editing of TASK-398
+  shared Git decision guard, TASK-399 bounded unresolved FAILURE handoff, their historical
+  sources or reviews. No publisher G2 work or automatic roadmap transition.
+constraints:
+  hard:
+  - Implement only a nondefault prospective v1.3 admission/enforcement branch using
+    the existing first-party Runtime/Operator/Dispatcher/Executor boundaries. Production
+    entry must remain fail-closed and NOT_ACTIVATED absent later separately authenticated
+    G6 decision and fresh consent for the individual RUN; offline controlled tests
+    may demonstrate eligible mechanics without granting that permission in actual
+    production.
+  - Authenticate an exact eligible v1.3 version/policy/profile/immutable source, Human-rooted
+    operational override provenance and currentness/withdrawal, exact TASK id/revision,
+    explicitly permitted operation and its original admitted source. No client-provided
+    boolean/hash/consent label, old TASK/revision or carrier receipt may bootstrap
+    authorization; missing first-party authentication blocks rather than creating
+    a new trust root.
+  - 'Support independently authorized PRIMARY, REPAIR and REMEDIATION: PRIMARY retains
+    TASK/base/proof; REPAIR binds admitted predecessor FAILURE and current exact AUTHOR_REPAIR
+    action/scope and affected proof; REMEDIATION binds CHANGES_REQUIRED review/current
+    authorized finding(s)/source/scope and affected/delta proof. DIRECT_CANDIDATE
+    and preadmission or terminal RUNs are excluded. Never promote correction authoring
+    into a Runtime strategy selector.'
+  - Resolve every v1.3 effective limit from published defaults or a separately authenticated
+    applicable per-field Human override; freeze complete merged values and provenance
+    exactly once to the current RUN's protected original admission. Human may override
+    each independent field; default-fill is not fallback past malformed, stale, ambiguous
+    or revoked input. Valid zero corrections permits K1; checkpoints >=1; wall/verification
+    positive finite, verification <= wall; null or positive integer token cap.
+  - Keep max_corrections=2, max_checkpoints=3, max_run_wall_minutes=240, max_runtime_verification_minutes=180
+    (subset of wall), max_tokens=null as defaults. Require transition count <= min(max_corrections,max_checkpoints-1),
+    cumulative wall/verification elapsed including relevant overhead/interruption,
+    and complete authenticated applicable token cost if token cap non-null. Existing
+    stricter native safety ceilings may still STOP earlier; never silently raise prior
+    hard resource safety limits.
+  - Original RUN admission/lease, sticky actual selected Executor/profile/model/effort
+    and existing Runtime checkpoint, feedback and terminal writer retain sole ownership.
+    New per-RUN accounting must reuse current protected Runtime mutation fencing;
+    immutable reservations, consumption, settlement, interrupted/replayed work and
+    original monotonic spent/reserved facts cannot reset, double debit, refund proven
+    spent cost or mint capacity from unknown effects.
+  - Enforce STOP before new checkpoint/feedback/continuation on invalid/unknown/expired/withdrawn
+    consent, changed profile/operation/scope/authorization, lost live Executor/lease,
+    absent current Human authority, exhausted wall/verification/applicable tokens,
+    invalid causal progress, duplicate consumption, terminal state or unverifiable
+    accounting. Once stopped or withdrawn no silent v1.2/V1/V2 fallback for that opted-in
+    RUN, no second terminal or new REPAIR/REMEDIATION without their own lawful authoring.
+  - 'Admission and guards must be first-party source-bound, not inert pure declarations:
+    exercise actual operator entrypoints and existing RuntimeCompletion/Dispatcher
+    native boundary on controlled offline fixtures. Existing default unopted PRIMARY/REPAIR/REMEDIATION
+    keep unchanged exact behavior and strict original tests. Do not silently wire
+    a new production adapter callback; unsupported native correction-mode continuity
+    must report BLOCKED/NOT_ESTABLISHED pending integrated L3-06, never pretend positive
+    cross-operation live authority.'
+  - Retain the existing direct native codec/cold import API and historical tests,
+    including published L3-04 local same-holder source/AST restrictions. Any required
+    implementation or test change must be confined to the exact ten scope.modify paths;
+    inspect-only cannot be mutated. A source/test contradiction outside scope is a
+    BLOCKER for new lawful authoring, not a silent test bypass.
+  - Use minimum-sufficient-v1 for exact focused real-Git/native tests, negative drift/clock/withdrawal/concurrency/replay/three-operation
+    tests, direct consumer preservation; allow existing verified proof reuse. Independent
+    Runtime verification, semantic Review and Publisher gates remain downstream; this
+    TASK neither requires nor fabricates their result.
+  - Reconcile current TASK-398/399 source changes in operator.py/runtime.py before
+    implementation. Preserve their exact security/currentness/diagnostic behavior
+    and tests while using only existing authorized scope.modify files; no duplicate
+    Runtime protection/measurement/diagnostic authority and no unsafe bypass to satisfy
+    a Lean VP positive test.
+acceptance:
+- id: AC1
+  condition: A first-party prospective Runtime admission consumes only exact authenticated
+    v1.3 policy/Human authority and an already admitted active RUN, binding the original
+    task/revision, operation, selected Executor/profile/lease and source; missing/forged/stale/withdrawn
+    or unactivated G6 blocks without enabling the production continuation path.
+- id: AC2
+  condition: Default-fill yields exactly 2 corrections, 3 checkpoints, 240 cumulative
+    RUN-wall minutes, 180 cumulative Runtime-verification minutes included within
+    wall and nullable token cap for authorized v1.3 selection, without attaching operational
+    budgets to the semantic TASK or affecting legacy/v1.2 admissions.
+- id: AC3
+  condition: An authenticated Human override independently replaces only named fields
+    for an exact TASK/revision and explicit operations; wrong revision/operation,
+    conflicting overlap, changed/revoked source, invalid/missing fields and malformed
+    merged limits reject rather than silently default or reuse another RUN's consent.
+- id: AC4
+  condition: The resolved effective profile including source/version/Human override
+    provenance, exact authorized operation and per-RUN G6 consent binding is immutable
+    through the original protected RUN authority; later defaults, restart, feedback
+    or override cannot renew, retarget or enlarge an active RUN.
+- id: AC5
+  condition: The original single Runtime-owned checkpoint/feedback/terminal boundary
+    tracks verified correction/checkpoint reservations, monotonic spent/reserved counters
+    and cumulative wall/verification costs with duplicate/crash-safe settlement; exhausted
+    or UNKNOWN capacity blocks a new effect without recounting/recharging a replay.
+- id: AC6
+  condition: A non-null token cap enforces authenticated cumulative applicable usage
+    or STOP on unknown; null requires no token-input guess and no KA-01-specific finite
+    token ceiling, while other finite limits and external provider constraints still
+    apply.
+- id: AC7
+  condition: Exact PRIMARY, REPAIR and REMEDIATION admission sources maintain independent
+    predecessor/action/finding/scope/affected-proof checks; wrong predecessor/closed
+    finding/cross-operation or inherited PRIMARY receipt, and DIRECT_CANDIDATE/pre-RUN/terminal
+    work cannot obtain v1.3 authority.
+- id: AC8
+  condition: Withdrawal, lost original live lease/invocation, changed profile/scope/risk,
+    terminal result, stop-latched state or uncertain interrupted effect deny any further
+    correction/verification work, preserve source/evidence/cost facts and cannot reroute
+    to a replacement Executor, RUN or second terminal.
+- id: AC9
+  condition: A versioned nondefault preactivation interface exercises positive bounded
+    admission/resource steps on first-party controlled offline sources while production
+    remains NOT_ACTIVATED until separately published L3-06/G3 and Human G6; missing
+    native correction-mode continuity explicitly returns BLOCKED rather than a simulated
+    LIVE success.
+- id: AC10
+  condition: Ordinary unopted-in PRIMARY/REPAIR/REMEDIATION execution and existing
+    direct native checkpoint/feedback APIs preserve their published public behavior,
+    including cold codec imports, original same-holder callback identity and strict
+    fail-closed legacy source guards. The current TASK-398 Git decision guard and
+    TASK-399 bounded unresolved-FAILURE handoff retain their published behavior across
+    these overlapping first-party paths.
+- id: AC11
+  condition: Focused first-party real-Git/native regression covers per-field overrides,
+    count/time/token thresholds, overlapping/nonexistent consent, repair/remediation
+    source spoof, duplicate/concurrent reservation or crash, withdrawal and default
+    legacy noninterference with deterministic bounded negative outcomes. Include focused
+    no-regression verification of the published shared Git decision guard and unresolved-FAILURE
+    handoff at their already existing tests, without modifying those tests.
+- id: AC12
+  condition: Only the ten authorized source/test/document paths differ; changes introduce
+    no new generic router/trust root/scheduler, G6 production activation, roadmap
+    advance, retrospective lineage mutation or unsupported claim that G3/L4 is complete.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_lean_vp_l3_admission_budget.py tests/test_lean_vp_l3_same_executor_continuation.py
+    tests/test_runtime.py
+  - python -m pytest -q tests/test_unresolved_failure_handoff.py tests/test_decision_guard_optimization.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
