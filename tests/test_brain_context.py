@@ -18,6 +18,51 @@ from aios_renew.brain_context import (
 from aios_renew.brain_sync import BrainSyncSnapshot
 
 
+def test_post_task_work_context_consumes_fresh_git_projection_and_rejects_stale_context(tmp_path):
+    from tests.test_brain_sync import PostTaskGit
+    from aios_renew.brain_sync import observe_brain_sync
+    fixture = PostTaskGit(tmp_path).result()
+    selector = dict(wake_selector=fixture.wake)
+    context = compose_brain_work_context(repo=fixture.repo, post_task_selector=selector)
+    portable = json.loads(context.render())
+    observed = portable["canonical_observation"]
+    assert observed["post_task"]["selection"] == selector
+    assert observed["post_task"]["task"] == fixture.run["task"]
+    assert observed["next_action"] == observed["post_task"]["next_action"] == "SEMANTIC_REVIEW"
+    assert observed["unified_state"]["run_id"] == observed["post_task"]["run_id"] == fixture.run_id
+    assert observed["unified_state"]["outstanding_findings"] == []
+    assert "execution_base" in observed["unified_state"]
+    assert observed["repository"]["root"] == "protected-repository-root"
+    assert "post_task_sha256" in context.invalidation_basis
+    assert len(context.render().encode()) <= 8192
+    assert all(s not in context.render() for s in (str(fixture.repo), "synthetic-secret", "remote_url"))
+    snapshot = observe_brain_sync(repo=fixture.repo, post_task_selector=selector)
+    with pytest.raises(BrainContextError, match="fresh selector"):
+        compose_brain_work_context(snapshot)
+    fixture.review()
+    with pytest.raises(BrainContextError, match="POST_TASK_SOURCE_MOVED"):
+        context.render()
+    fresh = compose_brain_work_context(repo=fixture.repo, post_task_selector=selector)
+    assert fresh.canonical_observation["post_task"]["review"]["status"] == "PASS"
+    assert fresh.invalidation_fingerprint != context.invalidation_fingerprint
+    fresh.canonical_observation["post_task"]["review"]["status"] = "forged"
+    with pytest.raises(BrainContextError, match="altered Post-TASK"):
+        fresh.render()
+
+
+def test_post_task_work_context_codec_enforces_portable_bound_and_selector_exclusivity(tmp_path):
+    from tests.test_brain_sync import PostTaskGit
+    fixture = PostTaskGit(tmp_path)
+    selector = dict(task_id=fixture.task_id)
+    context = compose_brain_work_context(repo=fixture.repo, post_task_selector=selector,
+                                         current_request=dict(human_input="x" * 9000))
+    with pytest.raises(BrainContextError, match="POST_TASK_LIMIT_EXHAUSTED"):
+        context.render()
+    with pytest.raises(BrainContextError, match="fresh selector"):
+        compose_brain_work_context(repo=fixture.repo, post_task_selector=selector,
+                                   diagnostic_selector=dict(run_id=fixture.run_id))
+
+
 def test_task394_work_context_carries_one_safe_page_and_invalidates_on_page_change(tmp_path, monkeypatch):
     from aios_renew import brain_sync, brain_context
     from tests.test_failure_detail_pagination import GitFailure, summary_failure

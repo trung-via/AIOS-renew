@@ -7,11 +7,13 @@ creating RUNs, invoking Executors, running verification, or mutating runtime sta
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import hashlib
 import json
 from pathlib import Path
 import re
 from typing import Any, Mapping
+import uuid
 
 import yaml
 
@@ -64,7 +66,7 @@ class BrainSyncSnapshot:
     """Versioned, bounded, and mutation-free Brain Sync observation snapshot."""
 
     repository: Mapping[str, Any]
-    main_sha: str
+    main_sha: str | None
     roadmap: Mapping[str, Any]
     selection_status: str
     lifecycle_state: str
@@ -84,8 +86,25 @@ class BrainSyncSnapshot:
     correction_subject: Mapping[str, Any] | None = None
     diagnostics: Mapping[str, Any] | None = None
     failure_page: Mapping[str, Any] | None = None
+    post_task: Mapping[str, Any] | None = None
+    _post_task_digest: str | None = field(default=None, repr=False, compare=False)
+    _post_task_current: Any = field(default=None, repr=False, compare=False)
 
     def as_dict(self) -> dict[str, Any]:
+        if self.post_task is not None:
+            if (_post_digest(dict(view=self.post_task, unified=self.unified_state, repository=self.repository)) != self._post_task_digest
+                    or self.selected_task != self.post_task["task"]
+                    or self.main_sha != self.post_task["main_sha"]
+                    or self.roadmap != {"selection": "EXACT_POST_TASK"}
+                    or any((self.run_created, self.executor_invoked, self.verification_invoked, self.state_mutated))
+                    or any(x is not None for x in (self.diagnostics, self.failure_page, self.correction_subject))
+                    or any(getattr(self, key) != self.post_task[key] for key in
+                           ("lifecycle_state", "next_action", "authority", "blocker"))):
+                raise BrainSyncError("POST_TASK_SUBSTITUTION")
+            if self._post_task_current is not None:
+                code = self._post_task_current()
+                if code is not None:
+                    return _post_unknown(code).as_dict()
         if self.failure_page is not None:
             from .review_transport import validate_failure_detail_view
             try:
@@ -143,6 +162,11 @@ class BrainSyncSnapshot:
             body["diagnostics"] = dict(self.diagnostics)
         if self.failure_page is not None:
             body["failure_page"] = dict(self.failure_page)
+        if self.post_task is not None:
+            body["post_task"] = json.loads(_post_encode(self.post_task))
+            body["repository"] = dict(self.repository, root="protected-repository-root")
+            if len(_post_encode(body).encode("utf-8")) > 8192:
+                return _post_unknown("POST_TASK_LIMIT_EXHAUSTED").as_dict()
         if _has_failure_pages(body) or _has_unresolved_diagnostic(body):
             body["repository"]["root"] = "protected-repository-root"
         if _has_unresolved_diagnostic(body):
@@ -156,6 +180,11 @@ class BrainSyncSnapshot:
 
     def checkpoint(self) -> str:
         """Render the compact human-readable SYNC CHECKPOINT."""
+        if self.post_task is not None:
+            view = self.as_dict()["post_task"]
+            task = view["task"]
+            return (f"TASK: {task['id'] if task else 'UNKNOWN'}\nMAIN: {view['main_sha'] or 'UNKNOWN'}\n"
+                    f"RUN: {view['run_id'] or 'none'}\nSTATE: {view['lifecycle_state']}\nNEXT: {view['next_action']}")
         repo_name = self.repository.get("name") or "AIOS-renew"
         task_id = self.selected_task.get("id") if self.selected_task else "none"
         run_id = "none"
@@ -337,12 +366,21 @@ def observe_brain_sync(repo: str | Path | None = None, *, task_id: str | None = 
                        run_id: str | None = None, delivery_id: str | None = None,
                        issue_number: int | None = None, workflow_run_id: int | None = None,
                        run_attempt: int | None = None, operational_sources=None, canonical_sources=None,
-                       failure_page_selector: Mapping[str, Any] | None = None) -> BrainSyncSnapshot:
+                       failure_page_selector: Mapping[str, Any] | None = None,
+                       post_task_selector: Mapping[str, Any] | None = None) -> BrainSyncSnapshot:
     """Existing planning Sync, or an explicitly selected read-only diagnostic.
 
     Exact diagnostic selectors do not select work or change a planning bookmark.
     Neither user URLs/blocks nor filesystem locators are accepted.
+    post_task_selector is exclusively {task_id: current canonical TASK} or
+    {wake_selector: exact terminal event ID / attention envelope}. It joins the
+    existing TASK reduction and never changes the legacy diagnostic RUN API.
     """
+    if post_task_selector is not None:
+        if any(x is not None for x in (task_id, run_id, delivery_id, issue_number, workflow_run_id,
+                                      run_attempt, operational_sources, canonical_sources, failure_page_selector)):
+            return _post_unknown("POST_TASK_SELECTOR_INVALID")
+        return _observe_post_task(repo, post_task_selector)
     if failure_page_selector is not None:
         if any(x is not None for x in (task_id, run_id, delivery_id, issue_number, workflow_run_id, run_attempt, operational_sources)):
             raise BrainSyncError("FAILURE_SUBJECT_MISMATCH")
@@ -736,6 +774,345 @@ def _observe_brain_sync(
         unified_state=unified_obs.as_dict(),
         blocker=unified_obs.blocker,
     )
+
+
+def _post_encode(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+
+
+def _post_digest(value):
+    return hashlib.sha256(_post_encode(value).encode("ascii")).hexdigest()
+
+
+def _post_snapshot(body, *, unified=None, current=None, root="protected-repository-root"):
+    """Adapt a presentation of the existing reduction to existing consumers."""
+    body = json.loads(_post_encode(body))
+    repository = dict(root=root, name=body["repository_name"] or "git:UNKNOWN",
+                      main_sha=body["main_sha"], remote=None)
+    return BrainSyncSnapshot(
+        repository=repository,
+        main_sha=body["main_sha"], roadmap={"selection": "EXACT_POST_TASK"},
+        selection_status="EXACT_POST_TASK", selected_task=body["task"], unified_state=unified,
+        lifecycle_state=body["lifecycle_state"], next_action=body["next_action"],
+        authority=body["authority"], blocker=body["blocker"], post_task=body,
+        _post_task_digest=_post_digest(dict(view=body, unified=unified, repository=repository)), _post_task_current=current,
+    )
+
+
+def _post_body(code=None):
+    return dict(
+        format="AIOS_POST_TASK_STATE", version=1, kind="POST_TASK_STATE",
+        selection=None, repository_name=None, task=None, main_sha=None, run_id=None,
+        lifecycle_state="BLOCKED", next_action="NONE", authority="NONE",
+        blocker=dict(code=code) if code else None,
+        terminal=dict(status="UNKNOWN", reason=code or "TERMINAL_UNPROVEN", head_sha=None,
+                      candidate_sha=None, artifact_sha=None, artifact_ref=None),
+        review=dict(status="UNKNOWN", reason="REVIEW_UNPROVEN", review_id=None,
+                    decision_sha=None, reviewed_sha=None),
+        publication=dict(status="UNKNOWN", reason="PUBLICATION_UNPROVEN", published_source_sha=None),
+        next_source=None,
+        witness=dict(request_id=uuid.uuid4().hex, currentness="UNAVAILABLE", repository_id=None, source_digest=None),
+        run_created=False, executor_invoked=False, verification_invoked=False, state_mutated=False,
+    )
+
+
+def _post_unknown(code):
+    return _post_snapshot(_post_body(code))
+
+
+def _post_patterns(task_id):
+    from .review_transport import task_run_prefix
+    prefix = task_run_prefix(task_id)
+    return ("refs/heads/main", *(f"refs/heads/aios/{name}/{prefix}*" for name in (
+        "failure", "failure-artifacts", "artifacts", "review", "review-decision",
+        "publication-recovery", "remediation", "repair")),
+        f"refs/heads/aios/repair-supersession/{prefix}*/*")
+
+
+def _post_transport(root):
+    code, _, _ = _git_cmd(root, "symbolic-ref", "--quiet", "HEAD", allow_fail=True)
+    remote = resolve_transport_remote(root) if code == 0 else resolve_detached_observation_remote(root)
+    url = str(root) if remote == "." else op._git(root, "remote", "get-url", remote)
+    return remote, url
+
+
+def _post_repository_name(url):
+    """Retain canonical network repository identity without URL credentials.
+
+    Local Git transports have an opaque identity; no local folder is portable.
+    """
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    path = parsed.path if parsed.scheme in {"https", "http", "ssh", "git"} and parsed.hostname else None
+    if path is None:
+        scp = re.fullmatch(r"[A-Za-z0-9_-]+@[A-Za-z0-9.-]+:(.+)", url)
+        path = scp[1] if scp else ""
+    match = re.fullmatch(r"/?([A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,96}?)(?:\.git)?/?", path)
+    return match[1] if match and not parsed.query and not parsed.fragment else "git:" + _post_digest(url)
+
+
+def _post_sources(path, remote, frozen=None):
+    from .brain_attention import GitSources, AttentionError
+    from .terminal_attention import _load_yaml
+    from .review_transport import PUBLIC_ARTIFACT_MAX_BYTES, PUBLIC_FAILURE_MAX_BYTES
+
+    class Sources(GitSources):
+        def refs(self, *patterns):
+            from fnmatch import fnmatchcase
+            values = (super().refs(*patterns) if frozen is None else
+                      {ref: sha for ref, sha in frozen.items() if any(fnmatchcase(ref, p) for p in patterns)})
+            if (len(values) > 64 or any(len(ref) > 256 or re.fullmatch(
+                    r"refs/heads/(?:main|aios/[A-Za-z0-9_./-]+)", ref) is None for ref in values)):
+                raise BrainSyncError("POST_TASK_LIMIT_EXHAUSTED")
+            return values
+
+        def fetch(self, sha):
+            if frozen is None:
+                return super().fetch(sha)
+            # Only snapshot tips are acquired. TASK/base ancestors must already
+            # exist in that exact Git ancestry, never at a caller-selected URL.
+            self.git(self.path, "cat-file", "-e", sha + "^{commit}")
+
+        def document(self, sha, name):
+            limits = {".ai/transport/run.json": PUBLIC_ARTIFACT_MAX_BYTES,
+                      ".ai/transport/result.json": PUBLIC_ARTIFACT_MAX_BYTES,
+                      ".ai/transport/failure.json": PUBLIC_FAILURE_MAX_BYTES,
+                      ".ai/transport/repair.json": PUBLIC_ARTIFACT_MAX_BYTES}
+            limit = limits.get(name)
+            if re.fullmatch(r"\.ai/(?:tasks/TASK-[A-Za-z0-9_-]{1,90}|reviews/REVIEW-[A-Za-z0-9._-]{1,96})\.ya?ml", name):
+                limit = 262144
+            if limit is None:
+                raise AttentionError("UNPROVEN_SOURCE_DOCUMENT")
+            self.fetch(sha)
+            entry = self.git(self.path, "ls-tree", "-l", sha, "--", name)
+            match = re.fullmatch(r"100644 blob [0-9a-f]{40}\s+(\d+)\t" + re.escape(name), entry)
+            if match is None:
+                raise BrainSyncError("POST_TASK_SOURCE_INVALID")
+            if not 0 < int(match[1]) <= limit:
+                raise BrainSyncError("POST_TASK_LIMIT_EXHAUSTED")
+            return _load_yaml(self.git(self.path, "show", sha + ":" + name), "Post-TASK identity")
+
+    source = Sources(path, op._git, remote)
+    if frozen is not None:
+        source.acquire(*frozen.values())
+    return source
+
+
+def _post_local_mark(root, task_id):
+    """Currentness guard only; Runtime/Unified State still authenticate RUNs.
+
+    Capture bounded RUN bytes and terminal metadata, never private log bytes.
+    Nothing from these local filenames or stat records is exported.
+    """
+    from .review_transport import task_run_prefix
+    state = op._runtime_paths_readonly(root)
+    rows = []
+    for directory in (state.runs, state.results, state.failures, state.repairs, state.preverification):
+        for path in directory.glob(task_run_prefix(task_id) + "*"):
+            if len(rows) >= 64:
+                raise BrainSyncError("POST_TASK_LIMIT_EXHAUSTED")
+            if path.is_symlink() or not path.is_file():
+                raise BrainSyncError("POST_TASK_LOCAL_SOURCE_INVALID")
+            info = path.stat()
+            digest = None
+            if directory == state.runs:
+                if info.st_size > 65536:
+                    raise BrainSyncError("POST_TASK_LIMIT_EXHAUSTED")
+                with path.open("rb") as stream:
+                    raw = stream.read(65537)
+                if len(raw) > 65536:
+                    raise BrainSyncError("POST_TASK_LIMIT_EXHAUSTED")
+                digest = hashlib.sha256(raw).hexdigest()
+            rows.append((directory.name, path.name, info.st_size, info.st_mtime_ns, digest))
+    return _post_digest(sorted(rows))
+
+
+def _observe_post_task(repo, selector):
+    """One bounded ref-guarded view, never another lifecycle reduction.
+
+    TASK selectors choose current canonical main. Terminal wake SHA values are
+    assertions to authenticate against exact refs, never source authority.
+    Legacy planning and diagnostic selectors retain their original semantics.
+    """
+    from .brain_attention import (AttentionError, parse_event_id, parse_body, resolve_return_affinity,
+                                  RESULT, FAILURE, _review_patterns)
+    from .task import validate_task
+
+    try:
+        if (not isinstance(selector, Mapping) or set(selector) not in ({"task_id"}, {"wake_selector"})
+                or len(_post_encode(dict(selector)).encode("ascii")) > 8192):
+            return _post_unknown("POST_TASK_SELECTOR_INVALID")
+        item = None
+        if "task_id" in selector:
+            task_id = selector["task_id"]
+            if not isinstance(task_id, str) or re.fullmatch(r"TASK-[A-Za-z0-9_-]{1,90}", task_id) is None:
+                return _post_unknown("POST_TASK_SELECTOR_INVALID")
+        else:
+            wake = selector["wake_selector"]
+            try:
+                item = parse_event_id(wake) if isinstance(wake, str) else parse_body(_post_encode(wake))
+            except (AttentionError, TypeError, ValueError, RecursionError):
+                return _post_unknown("POST_TASK_SELECTOR_INVALID")
+            if item.family not in {RESULT, FAILURE}:
+                return _post_unknown("POST_TASK_WAKE_UNSUPPORTED")
+            task_id = None
+        root = resolve_repository(repo)
+        transport = _post_transport(root)
+        with op._remote_observation_repository(root) as observer:
+            remote = resolve_transport_remote(observer)
+            live = _post_sources(observer, remote)
+            wake_refs = None
+            if item is not None:
+                wake_refs = live.refs("refs/heads/main", *_review_patterns(item.selectors["run_id"]))
+                proof = _post_sources(observer, remote, wake_refs)
+                if resolve_return_affinity(item.event_id, proof) is None:
+                    return _post_unknown("POST_TASK_TERMINAL_UNPROVEN")
+                run_doc = proof.document(item.selectors["artifact_sha"], ".ai/transport/run.json")
+                run_doc = run_doc["execution"]["run"] if run_doc.get("kind") == "REMEDIATION" else run_doc
+                task_id = run_doc["task"]["id"]
+                if re.fullmatch(r"TASK-[A-Za-z0-9_-]{1,90}", task_id) is None:
+                    return _post_unknown("POST_TASK_SOURCE_INVALID")
+            patterns = _post_patterns(task_id)
+            before = live.refs(*patterns)
+            if wake_refs is not None and any(before.get(ref) != sha for ref, sha in wake_refs.items()):
+                return _post_unknown("POST_TASK_SOURCE_MOVED")
+            for ref in before:
+                namespace, _, run = ref.removeprefix("refs/heads/aios/").partition("/")
+                required = {"review": "artifacts", "review-decision": "artifacts", "failure": "failure-artifacts"}.get(namespace)
+                if required and f"refs/heads/aios/{required}/{run}" not in before:
+                    return _post_unknown("POST_TASK_SOURCE_INCOMPLETE")
+            main = before.get("refs/heads/main")
+            if main is None:
+                return _post_unknown("POST_TASK_MAIN_UNAVAILABLE")
+            proof = _post_sources(observer, remote, before)
+            task = validate_task(proof.document(main, f".ai/tasks/{task_id}.yaml"))
+            identity = dict(id=task.task_id, revision=task.revision)
+            if task.task_id != task_id or load_task(root, task_id) != task:
+                return _post_unknown("POST_TASK_TASK_SOURCE_MISMATCH")
+            if item is not None and run_doc["task"] != identity:
+                return _post_unknown("POST_TASK_TASK_REVISION_MISMATCH")
+            local = _post_local_mark(root, task_id)
+            # This is the existing public observation and the only lifecycle
+            # owner. No status or next action is reconstructed from wake/carrier.
+            sync = observe_brain_sync(repo=root, task_id=task_id)
+            unified = sync.as_dict()["unified_state"]
+            if sync.main_sha != main or sync.selected_task != identity or unified["task"] != identity:
+                return _post_unknown("POST_TASK_SOURCE_MOVED")
+            for key in ("run_id", "source_run_id", "failed_run_id", "review_id", "finding_id"):
+                value = unified.get(key)
+                if value is not None and (not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", value) is None):
+                    return _post_unknown("POST_TASK_SOURCE_INVALID")
+            for key in ("candidate_sha", "reviewed_sha", "failed_head_sha", "correction_sha"):
+                value = unified.get(key)
+                if value is not None and (not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None):
+                    return _post_unknown("POST_TASK_SOURCE_INVALID")
+            run_id = unified["run_id"]
+            if item is not None and run_id != item.selectors["run_id"]:
+                return _post_unknown("POST_TASK_WAKE_STALE")
+            body = _post_body()
+            body.update(selection=dict(wake_selector=item.event_id) if item else dict(task_id=task_id),
+                        task=identity, main_sha=main, run_id=run_id,
+                        lifecycle_state=sync.lifecycle_state, next_action=sync.next_action, authority=sync.authority)
+            blocker = unified["blocker"]
+            if blocker is not None:
+                code = blocker.get("code")
+                body["blocker"] = dict(code=code if isinstance(code, str) and re.fullmatch(
+                    r"[A-Z][A-Z0-9_]{0,95}", code) else "POST_TASK_STATE_BLOCKED")
+            if run_id is None:
+                if unified["next_action"] == "EXECUTE_PRIMARY":
+                    body["terminal"].update(status="FRESH_TASK", reason="NO_ADMITTED_RUN")
+            else:
+                from .brain_attention import attention
+                success = before.get("refs/heads/aios/artifacts/" + run_id)
+                failure = before.get("refs/heads/aios/failure-artifacts/" + run_id)
+                if (success and (failure or "refs/heads/aios/failure/" + run_id in before)
+                        or failure and any("refs/heads/aios/" + name + "/" + run_id in before
+                                           for name in ("artifacts", "review", "review-decision"))):
+                    return _post_unknown("POST_TASK_TERMINAL_CONFLICT")
+                artifact = success or failure
+                if artifact:
+                    terminal_item = attention(RESULT if success else FAILURE, dict(run_id=run_id, artifact_sha=artifact))
+                    affinity = resolve_return_affinity(terminal_item.event_id, proof)
+                    if affinity is None or affinity != task.return_affinity:
+                        return _post_unknown("POST_TASK_TERMINAL_UNPROVEN")
+                    terminal_run = proof.document(artifact, ".ai/transport/run.json")
+                    terminal_run = terminal_run["execution"]["run"] if terminal_run.get("kind") == "REMEDIATION" else terminal_run
+                    if terminal_run["task"] != identity:
+                        return _post_unknown("POST_TASK_TASK_REVISION_MISMATCH")
+                    if item is not None and terminal_item.event_id != item.event_id:
+                        return _post_unknown("POST_TASK_WAKE_STALE")
+                    candidate = before.get("refs/heads/aios/" + ("review/" if success else "failure/") + run_id)
+                    head = unified["candidate_sha"] if success else unified["failed_head_sha"]
+                    if head is None or candidate is not None and candidate != head:
+                        return _post_unknown("POST_TASK_HEAD_MISMATCH")
+                    ref = "refs/heads/aios/" + ("artifacts/" if success else "failure-artifacts/") + run_id
+                    body["terminal"].update(status="RESULT" if success else "FAILURE", head_sha=head,
+                        candidate_sha=candidate, artifact_sha=artifact, artifact_ref=ref,
+                        reason=None if candidate else "CANDIDATE_REF_ABSENT")
+                    if failure:
+                        body["review"].update(status="NOT_APPLICABLE", reason="FAILURE_HAS_NO_REVIEW")
+                        body["next_source"] = dict(reader="terminal_failure_context", event_id=terminal_item.event_id,
+                            task=identity, run_id=run_id, head_sha=head, ref=ref, sha=artifact,
+                            reason="FAILURE_DIAGNOSIS_REQUIRED")
+                    else:
+                        decision = before.get("refs/heads/aios/review-decision/" + run_id)
+                        if decision:
+                            review_identity, review = proof.review(run_id, decision)
+                            if review_identity["reviewed_sha"] != head or unified["reviewed_sha"] != head:
+                                return _post_unknown("POST_TASK_REVIEW_MISMATCH")
+                            body["review"].update(status=review["verdict"], reason=None,
+                                review_id=review["review_id"], decision_sha=decision, reviewed_sha=head)
+                            if review["verdict"] == "PASS":
+                                included = proof.included(head, main)
+                                if included != (unified["lifecycle_state"] == "DONE"):
+                                    return _post_unknown("POST_TASK_PUBLICATION_MISMATCH")
+                                body["publication"].update(status="INCLUDED" if included else "NOT_INCLUDED",
+                                    reason=None if included else "REVIEWED_SOURCE_NOT_IN_MAIN",
+                                    published_source_sha=head if included else None)
+                        elif unified["next_action"] == "SEMANTIC_REVIEW":
+                            body["review"].update(status="PENDING", reason="INDEPENDENT_REVIEW_ABSENT")
+                elif unified["next_action"] == "WAIT":
+                    body["terminal"].update(status="ACTIVE", reason="ADMITTED_RUN_WITHOUT_TERMINAL")
+            repository_id = _post_digest(transport[1])
+            body["repository_name"] = _post_repository_name(transport[1])
+            body["witness"].update(currentness="CHECKED_DURING_REQUEST", repository_id=repository_id,
+                source_digest=_post_digest(dict(refs=before, task=identity, local=local)))
+
+            def current():
+                try:
+                    if (_post_transport(root) != transport
+                            or _post_sources(root, transport[0]).refs(*patterns) != before
+                            or _post_local_mark(root, task_id) != local or load_task(root, task_id) != task):
+                        return "POST_TASK_SOURCE_MOVED"
+                except Exception:
+                    return "POST_TASK_SOURCE_UNAVAILABLE"
+                return None
+
+            code = current()
+            if code:
+                return _post_unknown(code)
+            # Keep the existing consumer seam, but only copy bounded structural
+            # facts. No diagnostic prose, private paths, raw captures or URLs.
+            portable = {key: unified[key] for key in (
+                "format", "version", "kind", "task", "lifecycle_state", "next_action", "authority",
+                "run_id", "source_run_id", "failed_run_id", "review_id", "finding_id", "candidate_sha",
+                "reviewed_sha", "failed_head_sha", "correction_sha", "execution_base", "outstanding_findings",
+                "run_created", "executor_invoked",
+                "verification_invoked", "state_mutated")}
+            portable["blocker"] = body["blocker"]
+            for key in ("batch_id", "batch_selection"):
+                if key in unified:
+                    portable[key] = unified[key]
+            return _post_snapshot(body, unified=portable, current=current, root=str(root))
+    except BrainSyncError as exc:
+        code = str(exc)
+        return _post_unknown(code if code in {
+            "POST_TASK_LIMIT_EXHAUSTED", "POST_TASK_SOURCE_INVALID", "POST_TASK_LOCAL_SOURCE_INVALID"
+        } else "POST_TASK_SOURCE_UNAVAILABLE")
+    except Exception:
+        # Source/codec errors are typed and closed; Git stderr, paths and user
+        # selectors never become portable blocker messages or fallback truth.
+        return _post_unknown("POST_TASK_SOURCE_UNAVAILABLE")
 
 
 build_brain_sync_snapshot = observe_brain_sync

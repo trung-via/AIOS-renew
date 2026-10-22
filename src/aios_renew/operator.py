@@ -9584,6 +9584,14 @@ def _parser() -> argparse.ArgumentParser:
     state_parser.add_argument("task_id")
     state_parser.add_argument("--repo")
 
+    post_task_parser = commands.add_parser(
+        "post-task", help="Read bounded authenticated Post-TASK state without mutation"
+    )
+    post_task_selection = post_task_parser.add_mutually_exclusive_group(required=True)
+    post_task_selection.add_argument("task_id", nargs="?")
+    post_task_selection.add_argument("--wake", dest="wake_selector", help="Exact RESULT or FAILURE attention event ID")
+    post_task_parser.add_argument("--repo")
+
     continue_parser = commands.add_parser(
         "continue", help="Delegate the exact Unified State next action once"
     )
@@ -9935,6 +9943,12 @@ def main(
             print(describe_task(args.task_id, repo=args.repo).render())
         elif args.command == "state":
             print(observe_unified_state(args.task_id, repo=args.repo).render())
+        elif args.command == "post-task":
+            from .brain_sync import observe_brain_sync
+            selector = (dict(wake_selector=args.wake_selector) if args.wake_selector is not None
+                        else dict(task_id=args.task_id))
+            view = observe_brain_sync(repo=args.repo, post_task_selector=selector).as_dict()["post_task"]
+            print(json.dumps(view, sort_keys=True, separators=(",", ":")))
         elif args.command == "continue":
             outcome, exit_code = continue_task(
                 args.task_id,

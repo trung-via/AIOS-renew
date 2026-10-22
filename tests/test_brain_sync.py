@@ -1279,3 +1279,253 @@ def test_brain_sync_live_repository_smoke() -> None:
     assert git(repo, "status", "--porcelain=v1") == before_status
     assert git(repo, "rev-parse", "HEAD") == before_head
     assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+
+
+class PostTaskGit:
+    """Offline canonical refs with independent TASK/RUN/artifact/REVIEW commits.
+
+    Reproduces the TASK-402 publication shape and RUN-401-002 dirty FAILURE
+    shape without executing Runtime or changing historical canonical data.
+    """
+
+    def __init__(self, temporary, *, task_id="TASK-402", run_id="RUN-402-003"):
+        import subprocess
+        self.process = subprocess.run
+        self.repo = make_repo(temporary)
+        self.remote = Path(git(self.repo, "remote", "get-url", "origin"))
+        original = self.repo / ".ai/tasks/TASK-101.yaml"
+        raw = original.read_text(encoding="utf-8").replace("TASK-101", task_id)
+        original.unlink()
+        target = self.repo / f".ai/tasks/{task_id}.yaml"
+        target.write_text(raw, encoding="utf-8")
+        self.task = yaml.safe_load(raw)
+        self.task_id, self.run_id = task_id, run_id
+        self.base = commit_fixture_state(self.repo, paths=[".ai/tasks/TASK-101.yaml", f".ai/tasks/{task_id}.yaml"],
+                                         message="synthetic authored TASK", user_name="Fixture", user_email="fixture@example.invalid")
+        git(self.repo, "push", "origin", "HEAD:refs/heads/main")
+        self.run = dict(run_id=run_id, task=dict(id=task_id, revision=1), executor="codex",
+                        base_sha=self.base, head_sha=None, status="ACTIVE", workspace="protected-runtime-workspace",
+                        return_affinity=dict(kind="LEGACY_REPOSITORY_DEFAULT_ROUTE"))
+
+    def command(self, *args, raw=None):
+        return self.process(("git", "-C", str(self.repo), *args), input=raw,
+                            capture_output=True, check=True).stdout.decode("utf-8").strip()
+
+    def artifact(self, documents, namespace="artifacts", *, run_id=None):
+        entries = []
+        for name, document in sorted(documents.items()):
+            sha = self.command("hash-object", "-w", "--stdin", raw=json.dumps(document).encode())
+            entries.append(f"100644 blob {sha}\t{name}\n")
+        tree = self.command("mktree", raw="".join(entries).encode())
+        tree = self.command("mktree", raw=f"040000 tree {tree}\ttransport\n".encode())
+        tree = self.command("mktree", raw=f"040000 tree {tree}\t.ai\n".encode())
+        sha = self.command("commit-tree", tree, "-m", "synthetic " + namespace + " fixture")
+        ref = f"refs/heads/aios/{namespace}/{run_id or self.run_id}"
+        git(self.repo, "push", "--force", "origin", sha + ":" + ref)
+        return sha
+
+    def result(self):
+        self.terminal_kind = "RESULT"
+        (self.repo / "OUTPUT.txt").write_text("synthetic candidate\n", encoding="utf-8")
+        self.candidate = commit_fixture_state(self.repo, paths=["OUTPUT.txt"], message="synthetic candidate",
+                                              user_name="Fixture", user_email="fixture@example.invalid")
+        evidence_id = "SYNTHETIC-V001"
+        self.package = dict(result=dict(head_sha=self.candidate, changed_files=["OUTPUT.txt"], unresolved=[],
+            claims=[dict(id="C1", satisfies=[a["id"] for a in self.task["acceptance"]],
+                         claim="Synthetic implementation fixture", evidence=[evidence_id])]),
+            evidence=[dict(evidence_id=evidence_id + str(i), run_id=self.run_id, subject_sha=self.candidate,
+                           type="VERIFICATION", source=dict(command=command),
+                           result=dict(exit_code=0, summary="Synthetic fixture only"),
+                           raw=dict(path="protected-runtime-raw/synthetic-secret"))
+                      for i, command in enumerate(self.task["verification"]["required"])])
+        self.package["result"]["claims"][0]["evidence"] = [e["evidence_id"] for e in self.package["evidence"]]
+        self.artifact_sha = self.artifact({"run.json": self.run, "result.json": self.package})
+        git(self.repo, "push", "origin", self.candidate + ":refs/heads/aios/review/" + self.run_id)
+        return self
+
+    def dirty_failure(self):
+        from tests.test_review_transport import _native_failure_fixture
+        from aios_renew.review_transport import public_failure
+        _, private = _native_failure_fixture(dirty=True)
+        private.update(run_id=self.run_id, task=self.run["task"], base_sha=self.base, failed_head_sha=self.base)
+        public = json.loads(public_failure(json.dumps(private).encode()))
+        self.artifact_sha = self.artifact({"run.json": self.run, "failure.json": public}, "failure-artifacts")
+        self.terminal_kind = "FAILURE"
+        return self
+
+    def review(self, *, incomplete=False):
+        git(self.repo, "checkout", "--detach", self.candidate)
+        review_id = "REVIEW-" + self.run_id[4:]
+        path = self.repo / f".ai/reviews/{review_id}.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        review = dict(review_id=review_id, reviewed_sha=self.candidate, mode="PRIMARY", verdict="PASS", findings=[],
+                      acceptance={} if incomplete else {a["id"]: "PASS" for a in self.task["acceptance"]})
+        path.write_text(yaml.safe_dump(review), encoding="utf-8")
+        self.decision = commit_fixture_state(self.repo, paths=[str(path.relative_to(self.repo))], message="synthetic REVIEW",
+                                             user_name="Fixture", user_email="fixture@example.invalid")
+        git(self.repo, "push", "origin", self.decision + ":refs/heads/aios/review-decision/" + self.run_id)
+        git(self.repo, "checkout", "main")
+        return self
+
+    def publish(self):
+        git(self.repo, "push", "origin", self.candidate + ":refs/heads/main")
+
+    @property
+    def wake(self):
+        return f"terminal:{self.terminal_kind}:{self.run_id}:{self.artifact_sha}"
+
+    def read(self, *, wake=False):
+        selector = dict(wake_selector=self.wake) if wake else dict(task_id=self.task_id)
+        return observe_brain_sync(repo=self.repo, post_task_selector=selector).as_dict()["post_task"]
+
+
+def test_post_task_real_git_result_review_publication(tmp_path, monkeypatch):
+    from aios_renew import operator as op
+    fixture = PostTaskGit(tmp_path).result()
+    def forbidden(*args, **kwargs):
+        pytest.fail("ordinary RESULT requested protected diagnostics")
+    monkeypatch.setattr(op, "observe_runtime_failure_detail", forbidden)
+    for wake in (False, True):
+        view = fixture.read(wake=wake)
+        assert (view["terminal"]["status"], view["lifecycle_state"], view["next_action"]) == ("RESULT", "REVIEW", "SEMANTIC_REVIEW")
+        assert view["review"]["status"] == "PENDING" and view["review"]["decision_sha"] is None
+        assert view["terminal"]["artifact_sha"] == fixture.artifact_sha
+        assert view["terminal"]["candidate_sha"] == view["terminal"]["head_sha"] == fixture.candidate
+        assert view["publication"]["status"] == "UNKNOWN" and view["next_source"] is None
+    fixture.review()
+    view = fixture.read(wake=True)
+    assert (view["next_action"], view["review"]["status"], view["publication"]["status"]) == ("PUBLICATION", "PASS", "NOT_INCLUDED")
+    assert view["review"]["decision_sha"] == fixture.decision
+    assert view["publication"]["published_source_sha"] is None
+    fixture.publish()
+    view = fixture.read(wake=True)
+    assert (view["lifecycle_state"], view["next_action"], view["publication"]["status"]) == ("DONE", "DONE", "INCLUDED")
+    assert view["publication"]["published_source_sha"] == fixture.candidate
+    assert view["review"]["reviewed_sha"] == fixture.candidate
+    assert view["witness"]["currentness"] == "CHECKED_DURING_REQUEST"
+    encoded = json.dumps(view)
+    assert len(encoded.encode()) <= 8192 and "synthetic-secret" not in encoded and str(fixture.repo) not in encoded
+    assert all(view[k] is False for k in ("run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+
+
+def test_post_task_fresh_task_and_admitted_active_are_distinct(tmp_path):
+    from aios_renew.operator import runtime_paths
+    fixture = PostTaskGit(tmp_path)
+    assert fixture.read()["terminal"]["status"] == "FRESH_TASK"
+    state = runtime_paths(fixture.repo)
+    (state.runs / (fixture.run_id + ".json")).write_text(json.dumps(fixture.run), encoding="utf-8")
+    view = fixture.read()
+    assert view["terminal"]["status"] == "ACTIVE" and view["next_action"] == "WAIT"
+    assert view["run_id"] == fixture.run_id and view["terminal"]["artifact_sha"] is None
+
+
+def test_post_task_artifact_only_dirty_failure_keeps_exact_safe_handoff(tmp_path):
+    fixture = PostTaskGit(tmp_path, task_id="TASK-401", run_id="RUN-401-002").dirty_failure()
+    artifact, wake = fixture.artifact_sha, fixture.wake
+    view = observe_brain_sync(repo=fixture.repo, post_task_selector=dict(wake_selector=wake)).as_dict()["post_task"]
+    assert view["task"] == fixture.run["task"] and view["run_id"] == fixture.run_id
+    assert (view["lifecycle_state"], view["next_action"]) == ("BLOCKED", "NONE")
+    assert view["blocker"]["code"] == "NON_REPAIRABLE_FAILURE"
+    assert view["terminal"]["status"] == "FAILURE" and view["terminal"]["candidate_sha"] is None
+    assert view["terminal"]["head_sha"] == fixture.base and view["terminal"]["artifact_sha"] == artifact
+    assert view["next_source"]["event_id"] == wake and view["next_source"]["sha"] == artifact
+    assert view["next_source"]["reader"] == "terminal_failure_context"
+    assert all(s not in json.dumps(view) for s in ("synthetic-secret", "C:/private", "stdout", "stderr", str(fixture.repo)))
+
+
+@pytest.mark.parametrize("fault", ["task", "run", "head", "affinity", "opposite", "missing-candidate", "stale-wake", "incomplete-review", "competing"])
+def test_post_task_forged_conflicting_or_stale_git_sources_fail_closed(tmp_path, fault):
+    fixture = PostTaskGit(tmp_path).result()
+    wake = fixture.wake
+    if fault in {"task", "run", "head", "affinity", "stale-wake"}:
+        if fault == "task": fixture.run["task"] = dict(id="TASK-foreign", revision=1)
+        if fault == "run": fixture.run["run_id"] = "RUN-foreign-001"
+        if fault == "head": fixture.package["result"]["head_sha"] = fixture.base
+        if fault == "affinity": fixture.run["return_affinity"] = dict(kind="ORIGIN_AFFINE", route_handle="page-origin-v1:" + "a" * 64, generation=1)
+        if fault == "stale-wake": fixture.run["workspace"] = "another-protected-workspace"
+        fixture.artifact({"run.json": fixture.run, "result.json": fixture.package})
+    elif fault == "opposite":
+        fixture.artifact({"run.json": fixture.run, "failure.json": {}}, "failure-artifacts")
+    elif fault == "missing-candidate":
+        git(fixture.remote, "update-ref", "-d", "refs/heads/aios/review/" + fixture.run_id)
+    elif fault == "incomplete-review":
+        fixture.review(incomplete=True)
+    else:
+        other = "RUN-402-004"
+        run = dict(fixture.run, run_id=other)
+        package = json.loads(json.dumps(fixture.package).replace(fixture.run_id, other))
+        fixture.artifact({"run.json": run, "result.json": package}, run_id=other)
+        git(fixture.repo, "push", "origin", fixture.candidate + ":refs/heads/aios/review/" + other)
+    view = observe_brain_sync(repo=fixture.repo, post_task_selector=dict(wake_selector=wake)).as_dict()["post_task"]
+    assert view["lifecycle_state"] == "BLOCKED" and view["next_action"] == "NONE"
+    assert view["terminal"]["status"] == "UNKNOWN" and view["run_id"] is None
+    assert view["review"]["status"] != "PASS" and view["publication"]["status"] != "INCLUDED"
+    assert view["blocker"]["code"].startswith("POST_TASK_")
+
+
+@pytest.mark.parametrize("selector", [dict(task_id="../../private"), dict(wake_selector="https://attacker.invalid/secret"),
+    dict(task_id="TASK-402", wake_selector="x"), dict(source_sha="a" * 40), dict(wake_selector="x" * 9000),
+    dict(wake_selector={"format": "AIOS_BRAIN_ATTENTION", "version": 1, "family": "PRE_AIOS_OPERATIONAL_FAILURE_REQUIRING_DIAGNOSIS", "selectors": {"carrier": "success"}})])
+def test_post_task_invalid_selectors_never_become_authority(tmp_path, selector):
+    view = observe_brain_sync(repo=tmp_path, post_task_selector=selector).as_dict()["post_task"]
+    assert view["lifecycle_state"] == "BLOCKED" and view["task"] is None and view["run_id"] is None
+    assert view["terminal"]["artifact_sha"] is None and view["next_source"] is None
+    assert "attacker" not in json.dumps(view) and "private" not in json.dumps(view)
+
+
+def test_post_task_snapshot_rechecks_moved_refs_and_rejects_substitution(tmp_path):
+    from dataclasses import replace
+    fixture = PostTaskGit(tmp_path).result()
+    snapshot = observe_brain_sync(repo=fixture.repo, post_task_selector=dict(task_id=fixture.task_id))
+    with pytest.raises(BrainSyncError, match="POST_TASK_SUBSTITUTION"):
+        replace(snapshot, unified_state=dict(snapshot.unified_state, run_id="RUN-foreign-001")).as_dict()
+    git(fixture.remote, "update-ref", "refs/heads/aios/review/" + fixture.run_id, fixture.base)
+    view = snapshot.as_dict()["post_task"]
+    assert view["blocker"]["code"] == "POST_TASK_SOURCE_MOVED" and view["run_id"] is None
+
+
+def test_post_task_canonical_main_and_task_currentness_have_no_local_fallback(tmp_path):
+    fixture = PostTaskGit(tmp_path)
+    path = fixture.repo / f".ai/tasks/{fixture.task_id}.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace("revision: 1", "revision: 2"), encoding="utf-8")
+    assert fixture.read()["blocker"]["code"] == "POST_TASK_TASK_SOURCE_MISMATCH"
+    git(fixture.repo, "remote", "set-url", "origin", str(tmp_path / "missing-remote"))
+    view = fixture.read()
+    assert view["main_sha"] is None and view["witness"]["currentness"] == "UNAVAILABLE"
+
+
+def test_post_task_source_and_response_budgets_and_misleading_carrier_are_closed(tmp_path):
+    from aios_renew.brain_attention import attention, DISPATCH
+    fixture = PostTaskGit(tmp_path).result()
+    carrier = attention(DISPATCH, dict(workflow_run_id=1, run_attempt=1, artifact_id=1, source_digest="a" * 64,
+        operation="PRIMARY", delivery_id="accepted-carrier", run_created=False, source_boundary="DISPATCH_REJECTED",
+        subject_id=fixture.task_id, subject_sha=fixture.base, finding_id="NONE"))
+    view = observe_brain_sync(repo=fixture.repo, post_task_selector=dict(wake_selector=carrier.event_id)).as_dict()["post_task"]
+    assert view["blocker"]["code"] == "POST_TASK_WAKE_UNSUPPORTED" and view["run_id"] is None
+    fixture.package["result"]["claims"][0]["claim"] = "synthetic-secret" * 200000
+    fixture.artifact_sha = fixture.artifact({"run.json": fixture.run, "result.json": fixture.package})
+    view = fixture.read(wake=True)
+    assert view["terminal"]["status"] == "UNKNOWN" and view["blocker"] is not None
+    assert len(json.dumps(view).encode()) <= 8192 and "synthetic-secret" not in json.dumps(view)
+
+
+def test_post_task_stale_revision_wake_and_duplicate_remote_ref_never_attribute_a_run(tmp_path, monkeypatch):
+    from aios_renew import brain_sync
+    fixture = PostTaskGit(tmp_path).result()
+    original_git = brain_sync.op._git
+    def duplicate_ref(repo, *args, **kwargs):
+        result = original_git(repo, *args, **kwargs)
+        if args[:2] == ("ls-remote", "--refs") and result:
+            return result + "\n" + result.splitlines()[0]
+        return result
+    with monkeypatch.context() as patch:
+        patch.setattr(brain_sync.op, "_git", duplicate_ref)
+        view = fixture.read(wake=True)
+    assert view["terminal"]["status"] == "UNKNOWN" and view["run_id"] is None
+    path = fixture.repo / f".ai/tasks/{fixture.task_id}.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace("revision: 1", "revision: 2"), encoding="utf-8")
+    commit_fixture_state(fixture.repo, paths=[str(path.relative_to(fixture.repo))], message="synthetic TASK revision 2",
+                         user_name="Fixture", user_email="fixture@example.invalid")
+    git(fixture.repo, "push", "origin", "HEAD:refs/heads/main")
+    view = fixture.read(wake=True)
+    assert view["blocker"]["code"] == "POST_TASK_TASK_REVISION_MISMATCH" and view["run_id"] is None

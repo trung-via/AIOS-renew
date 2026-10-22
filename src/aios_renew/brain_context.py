@@ -169,6 +169,10 @@ def _invalidation_basis(observed: Mapping[str, Any], request: Mapping[str, str] 
         basis["diagnostics_sha256"] = _digest(observed["diagnostics"])
     if "failure_page" in observed:
         basis["failure_page_sha256"] = _digest(observed["failure_page"])
+    if "post_task" in observed:
+        basis["post_task_sha256"] = _digest({**observed, "repository": {
+            "name": observed["repository"]["name"], "main_sha": observed["main_sha"],
+        }})
     return basis
 
 
@@ -192,10 +196,19 @@ class BrainWorkContext:
     operational_repository_root: str
     # Private compiler input; raw FAILURE diagnostics never become Brain facts.
     repair_supersession_material: Mapping[str, Any] | None = field(default=None, repr=False)
+    _post_task_current: Any = field(default=None, repr=False, compare=False)
 
     def as_dict(self) -> dict[str, Any]:
         from .brain_sync import validate_diagnostic_context
         from .review_transport import validate_failure_context, validate_failure_detail_view, ReviewTransportError
+        if self._post_task_current is not None:
+            code = self._post_task_current()
+            if code is not None:
+                raise BrainContextError(code)
+        if "post_task" in self.canonical_observation and (
+                _invalidation_basis(self.canonical_observation, self.current_request) != self.invalidation_basis
+                or _digest(self.invalidation_basis) != self.invalidation_fingerprint):
+            raise BrainContextError("stale or altered Post-TASK Work Context")
         if "failure_page" in self.canonical_observation:
             view = self.canonical_observation["failure_page"]
             try:
@@ -215,7 +228,7 @@ class BrainWorkContext:
                     or unified["failure_context"]["task"] != unified.get("task")):
                 raise BrainContextError("FAILURE_CONTEXT_SUBSTITUTION")
         portable = _stable_copy(self.canonical_observation)
-        if _has_failure_pages(portable) or _has_unresolved_diagnostic(portable):
+        if "post_task" in portable or _has_failure_pages(portable) or _has_unresolved_diagnostic(portable):
             portable["repository"]["root"] = "protected-repository-root"
         value = {
             "format": "AIOS_BRAIN_WORK_CONTEXT", "version": 1,
@@ -230,6 +243,8 @@ class BrainWorkContext:
         if _has_unresolved_diagnostic(portable) and (_unresolved_portable_exhausted(portable)
                 or len(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 8192):
             raise BrainContextError("LIMIT_EXHAUSTED")
+        if "post_task" in portable and len(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 8192:
+            raise BrainContextError("POST_TASK_LIMIT_EXHAUSTED")
         return value
 
     def render(self) -> str:
@@ -242,18 +257,24 @@ def compose_brain_work_context(
     *,
     repo: str | Path | None = None,
     diagnostic_selector: Mapping[str, Any] | None = None,
+    post_task_selector: Mapping[str, Any] | None = None,
 ) -> BrainWorkContext:
     """Compose one request-scoped view from current Brain Sync observation."""
+    if post_task_selector is not None and (snapshot is not None or diagnostic_selector is not None):
+        raise BrainContextError("Post-TASK requires one fresh selector")
+    if snapshot is not None and isinstance(snapshot, BrainSyncSnapshot) and snapshot.post_task is not None:
+        raise BrainContextError("Post-TASK requires one fresh selector")
     if diagnostic_selector is not None and (not isinstance(diagnostic_selector, Mapping) or not diagnostic_selector
             or set(diagnostic_selector) - {"task_id", "run_id", "delivery_id", "issue_number", "workflow_run_id", "run_attempt", "failure_page_selector"}):
         raise BrainContextError("invalid diagnostic selector")
     if snapshot is None:
-        snapshot = observe_brain_sync(repo=repo, **dict(diagnostic_selector or {}))
+        snapshot = (observe_brain_sync(repo=repo, post_task_selector=post_task_selector)
+                    if post_task_selector is not None else observe_brain_sync(repo=repo, **dict(diagnostic_selector or {})))
     elif repo is not None or diagnostic_selector is not None or not isinstance(snapshot, BrainSyncSnapshot):
         raise BrainContextError("supply either a Brain Sync snapshot or repository")
     request = _request(current_request)
     observed = snapshot.as_dict()
-    if _has_failure_pages(observed) or _has_unresolved_diagnostic(observed):
+    if "post_task" in observed or _has_failure_pages(observed) or _has_unresolved_diagnostic(observed):
         # Keep the operational root private for local Flow Card integrity checks.
         # Both portable serializers redact it before a provider sees this view.
         observed["repository"]["root"] = snapshot.repository["root"]
@@ -282,7 +303,8 @@ def compose_brain_work_context(
             raise BrainContextError(f"explicit REPAIR supersession rejected: {exc}") from exc
     basis = _invalidation_basis(observed, request)
     fingerprint = _digest(basis)
-    return BrainWorkContext(observed, request, basis, fingerprint, observed["repository"]["root"], supersession)
+    return BrainWorkContext(observed, request, basis, fingerprint, observed["repository"]["root"], supersession,
+                            snapshot._post_task_current if post_task_selector is not None else None)
 
 
 def _tokens(value: Any, *, allowed: frozenset[str], nonempty: bool = True) -> list[str]:
@@ -392,6 +414,10 @@ def resolve_flow(context: BrainWorkContext, *, cards_path: str | Path | None = N
     """Classify only semantic reasoning; never reduce or advance lifecycle state."""
     if not isinstance(context, BrainWorkContext):
         raise BrainContextError("expected Brain Work Context")
+    if context._post_task_current is not None:
+        code = context._post_task_current()
+        if code is not None:
+            raise BrainContextError(code)
     if _invalidation_basis(context.canonical_observation, context.current_request) != \
             context.invalidation_basis or _digest(context.invalidation_basis) != \
             context.invalidation_fingerprint:

@@ -71,6 +71,48 @@ from aios_renew.execution_profile import (
 )
 
 
+@pytest.mark.parametrize("terminal", ["RESULT", "FAILURE"])
+def test_post_task_cli_subprocess_exact_task_and_wake_in_detached_read_only_repository(tmp_path, terminal):
+    import stat
+    from tests.test_brain_sync import PostTaskGit
+    if terminal == "RESULT":
+        fixture = PostTaskGit(tmp_path).result().review()
+        fixture.publish()
+    else:
+        fixture = PostTaskGit(tmp_path, task_id="TASK-401", run_id="RUN-401-002").dirty_failure()
+    git(fixture.repo, "checkout", "--detach", fixture.candidate if terminal == "RESULT" else fixture.base)
+    protected = [fixture.repo / ".git" / name for name in ("config", "index", "HEAD")]
+    protected.append(fixture.repo / f".ai/tasks/{fixture.task_id}.yaml")
+    before = {path: path.read_bytes() for path in protected}
+    refs = git(fixture.repo, "show-ref"), git(fixture.remote, "show-ref")
+    modes = {path: path.stat().st_mode for path in protected}
+    source = Path(__file__).resolve().parents[1]
+    environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    try:
+        for path in protected:
+            path.chmod(stat.S_IREAD)
+        for selection in ([fixture.task_id], ["--wake", fixture.wake]):
+            completed = subprocess.run((sys.executable, str(source / "scripts/aios_control_entry.py"),
+                str(source), "post-task", *selection, "--repo", str(fixture.repo)),
+                cwd=fixture.repo, env=environment, capture_output=True, text=True, check=True)
+            view = json.loads(completed.stdout)
+            assert view["format"] == "AIOS_POST_TASK_STATE" and view["version"] == 1
+            assert view["task"] == fixture.run["task"] and view["run_id"] == fixture.run_id
+            assert view["next_action"] == ("DONE" if terminal == "RESULT" else "NONE")
+            assert view["terminal"]["status"] == terminal
+            assert view["publication"]["status"] == ("INCLUDED" if terminal == "RESULT" else "UNKNOWN")
+            assert view["terminal"]["artifact_sha"] == fixture.artifact_sha
+            assert view["review"]["decision_sha"] == (fixture.decision if terminal == "RESULT" else None)
+            assert len(completed.stdout.encode()) <= 8192 and "synthetic-secret" not in completed.stdout
+        assert before == {path: path.read_bytes() for path in protected}
+        assert refs == (git(fixture.repo, "show-ref"), git(fixture.remote, "show-ref"))
+        assert not operator_module._runtime_paths_readonly(fixture.repo).root.exists()
+        assert git(fixture.repo, "branch", "--show-current") == ""
+    finally:
+        for path, mode in modes.items():
+            path.chmod(mode)
+
+
 def hold_repository_lock(lock_path: str, ready, release) -> None:
     with RepositoryLock(Path(lock_path)):
         ready.set()

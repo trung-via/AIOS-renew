@@ -27,6 +27,26 @@ from tests.operator_test_support import (
     publish_upstream,
 )
 
+def test_post_task_read_only_cli_preserves_state_output_and_never_delegates(tmp_path, monkeypatch, capsys):
+    from tests.test_brain_sync import PostTaskGit
+    fixture = PostTaskGit(tmp_path).result()
+    def forbidden(*args, **kwargs):
+        pytest.fail("Post-TASK observation acquired execution or mutation authority")
+    for name in ("run_task", "run_repair", "run_remediation", "retry_transport", "recover_primary",
+                 "continue_task", "runtime_paths"):
+        monkeypatch.setattr(operator_module, name, forbidden)
+    legacy = operator_module.observe_unified_state(fixture.task_id, repo=fixture.repo).render()
+    assert operator_module.main(["state", fixture.task_id, "--repo", str(fixture.repo)]) == 0
+    assert capsys.readouterr().out.strip() == legacy
+    assert operator_module.main(["post-task", "--wake", fixture.wake, "--repo", str(fixture.repo)]) == 0
+    view = json.loads(capsys.readouterr().out)
+    assert view["terminal"]["status"] == "RESULT" and view["next_action"] == "SEMANTIC_REVIEW"
+    assert view["review"]["status"] == "PENDING" and view["next_source"] is None
+    assert all(view[k] is False for k in ("run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert operator_module.observe_unified_state(fixture.task_id, repo=fixture.repo).render() == legacy
+    assert not operator_module._runtime_paths_readonly(fixture.repo).root.exists()
+
+
 def _human_observation(
     action: str, **facts,
 ) -> operator_module.UnifiedStateObservation:
