@@ -1,0 +1,188 @@
+# Brain-owned semantic TASK proposal; NOT an admitted AIOS TASK.
+# Runtime must allocate/bind real task_id and authenticate AUTHOR_TASK ingress.
+# Source at research time: main 749cd197e55eadb36e8876db104c333a021f4915
+# Last authoritative source check must be repeated before any canonical mutation.
+task_id: TASK-412
+revision: 1
+goal: >-
+  Implement CAA-03 as exactly one optional, bounded and provider-neutral evidence
+  advisory integration for existing Brain-owned ARCHITECTURE, TASK_AUTHORING,
+  REPAIR_AUTHORING and REMEDIATION_AUTHORING flows. Reuse source-bound CAA-01/CAA-02
+  advice, prove subject/currentness/citation/opt-out/failure containment, and
+  preserve direct authoring, independent lifecycle authorities and provider portability.
+problem: >-
+  Accepted CAA-02 (TASK-410 r1, RUN-410-002, independent REVIEW-410-002 DELTA PASS
+  on reviewed SHA 8327f421df0c3e477e9a405b69bf7e5910cddca5, included on main)
+  exposes a standalone transient consultation API but no flow-bound optional
+  integration. A wrapper that guesses flow or promotes model advice into an
+  authoring gate would create a second Planner or alter TASK-408 direct-authoring
+  policy. Human on 2026-10-24 selected minimal optional four-flow integration;
+  this TASK provides the bounded consult contract and negative portability proof
+  without production default activation or CAA-04 evaluation/rollout.
+assumptions:
+- Human explicitly approves CAA-03 B minimal optional advisor on 2026-10-24,
+  not C new generic agent/orchestrator, default gate or production rollout.
+- Canonical source as observed at authoring candidate is 749cd197e55eadb36e8876db104c333a021f4915;
+  Runtime reauthenticates planning and source currentness before mutation.
+- CAA-01/TASK-409 and CAA-02/TASK-410 have exact accepted lineage described
+  in the accompanying architecture handoff; do not infer from branch existence.
+- TASK-411 r2 Publisher root-cause correction is separate and all its historical
+  and prospective lineage is untouched. This task may not claim that repair completed.
+- Existing Flow Resolver, Flow Cards, DecisionPacket, CAA-01 sealed cut,
+  CAA-02 consult and MappingBrainProvider/JsonBrainProvider are reused;
+  no new autonomous orchestration or direct canonical source authority is issued.
+- Human-selected Executor preferences, if applicable, do not equal Runtime
+  admission; no Executor is admitted by this TASK payload alone.
+- Runtime owns verification and evidence; Reviewer owns semantic review;
+  Publisher owns publication; Brain owns advice acceptance and final WHAT/WHY.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/flow-cards.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-409.yaml
+  - .ai/tasks/TASK-410.yaml
+  - .ai/tasks/TASK-411.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CAA-02-INTELLIGENT-REASONER.md
+  - docs/AIOS-BRAIN-PORTABILITY.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - src/aios_renew/caa_experience.py
+  - src/aios_renew/caa_reasoner.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_return_contract.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_caa_reasoner.py
+  - tests/test_brain_context.py
+  - tests/test_brain_provider.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CAA-03-INTEGRATION-PORTABILITY.md
+  - src/aios_renew/caa_integration.py
+  - tests/test_caa_integration.py
+non_goals:
+- No default/automatic CAA or audit invocation, caller-side lifecycle routing,
+  secondary Planner/Reviewer/Publisher, database, persistent memory or index.
+- No TASK, REPAIR, REMEDIATION or REVIEW decision generated/admitted by advice;
+  no automatic CODE_FIX, executor, dispatch, RUN, evidence, publication or NEXT advance.
+- No changes to Flow Cards, Unified State, Runtime verification, original
+  AUTHOR_TASK/REPAIR/REMEDIATION contracts, audit profile/selection semantics,
+  origin-affine transport, git CAS or frozen Kernel.
+- No CAA-04 live shadow/holdout evaluation, production activation, rollout or
+  CAA-05 training/fine-tuning. No claimed live GPT/Claude/Gemini equivalence.
+- No private logs/credentials/traces, arbitrary Git prose export, unbounded
+  history scanning or implicit provider selection/retry/failover.
+- No rewrite of TASK-408/409/410/411 or prior failure/review/correction lineage,
+  no resumption of paused PTE/Lean VP/KA-01 or downstream pin modification.
+constraints:
+  hard:
+  - One optional flow-neutral consultation interface accepts only the four
+    caller-resolved Brain-owned flow identities and one exact bound subject;
+    CAA cannot resolve or select flow, create a new Flow Card or become mandatory.
+  - Preserve exact authenticated canonical repository/main, current Human/Brain
+    flow selection, candidate fingerprint and sealed ExperienceCut origin.
+    For REPAIR bind failed RUN/head/FAILURE; for REMEDIATION bind reviewed RUN,
+    CHANGES_REQUIRED REVIEW, selected outstanding finding/action and reviewed SHA.
+    Missing or swapped decisive subject must not receive trusted advice.
+  - Integrate by reusing the existing CAA-02 `consult` and its evidence/citation,
+    causal-transfer, counterexample and 0-3 advice validation; do not create a
+    second reasoner, independent Git authenticator or substitute validator
+    that upgrades a hypothesis to OBSERVED fact.
+  - Portable request/response has a bounded versioned strict JSON-compatible
+    shape, exact flow/source/subject/candidate binding, source validity and
+    explicit ADVICE, NO_MATERIAL_ADVICE, INSUFFICIENT_GROUNDED_EVIDENCE,
+    UNAVAILABLE states. No standalone advice field grants mutation authority.
+  - Existing mapping and JSON provider transports receive equivalent trusted
+    request semantics and undergo the same local independent strict validation;
+    invalid/malformed/over-limit/substituted/attribution-mismatched response is
+    contained, never retried or auto-routed to a different provider.
+  - Consultation off, Human opt-out, no material evidence, timeout or unavailable
+    optional provider must preserve existing lawful direct authoring without
+    a substitute audit gate. Invalid original canonical authority/currentness
+    remains fail-closed independent of CAA availability.
+  - No arbitrary retrieved text is model instruction; no secrets, private logs,
+    provider traces, sensitive local paths or assistant chain-of-thought is
+    serialized as advisory context. Historical as-of cuts cannot see later events.
+  - The four flow adapters return advice only. Brain independently constructs
+    and revalidates final family candidate. CAA cannot change scope, original
+    verification obligations, repair action, remediation finding/action or
+    Human risk without separate existing lawful authoring authority.
+  - Deterministic positive and adversarial contract fixtures cover each flow,
+    subject collision, stale cut, moved main, cross-flow/subject citation swap,
+    non-applicable historical policy, prompt injection, opt-out, blocked
+    original authority, missing optional provider and malformed outputs.
+    Cross-provider simulation is labeled simulation, not live product proof.
+  - Canonical roadmap must prospectively record this explicit Human selection
+    of CAA-03 as sole package NEXT, preserve previous CAA-02 selection plus its
+    exact independent PASS/published-source lineage as history, and leave
+    CAA-04/conditional CAA-05 unselected; unrelated TASK-411 and paused
+    bookmarks remain untouched. Never infer completion from this planning step.
+  - Keep source edits within enumerated scope.modify. Executor makes truthful
+    implementation-only claims; Runtime alone runs authored minimum-sufficient-v1
+    checks; independent Reviewer/Publisher handle subsequent decisions.
+acceptance:
+- id: AC1
+  condition: >-
+    A single bounded, callable, read-only optional CAA-03 integration contract
+    supports exactly ARCHITECTURE, TASK_AUTHORING, REPAIR_AUTHORING and
+    REMEDIATION_AUTHORING, with valid direct opt-out and no automatic flow selector.
+- id: AC2
+  condition: >-
+    Each four-flow request binds exact caller-resolved flow, canonical source,
+    episode cut, subject and transient candidate; positive and negative examples
+    reject wrong run, finding, review, revision, source or candidate substitution.
+- id: AC3
+  condition: >-
+    The CAA-03 output wraps 0-3 existing source-checked CAA-02 recommendations,
+    retains citation, causal/epistemic limits and falsifiers, and exposes finite
+    abstention/unavailability without inventing sources or new causal claims.
+- id: AC4
+  condition: >-
+    Matching mapping and JSON adapter fixtures produce semantically equivalent
+    bounded requests and validation results across all four flows, with malformed,
+    overbudget, wrong-attribution and injection tests that never grant authority.
+- id: AC5
+  condition: >-
+    Architecture handling preserves Human priority/risk, optional AOA policy and
+    Brain final semantic judgment; TASK handling preserves exact TASK scope,
+    acceptance and verification boundaries, direct final-family admission.
+- id: AC6
+  condition: >-
+    REPAIR handling cannot choose an action or borrow another FAILURE/Executor;
+    REMEDIATION handling cannot switch an outstanding finding, reviewed SHA,
+    required action or extend original scope from a similar historical case.
+- id: AC7
+  condition: >-
+    Consultation opt-out, no advice, missing optional history, absent provider,
+    provider failure and bounded timeout do not add authoring/audit gates,
+    mutation or retries; truly missing mandatory canonical subject remains
+    independently blocking under existing source guards.
+- id: AC8
+  condition: >-
+    Historical task-only/as-of source cuts exclude future RESULT/FAILURE/REVIEW;
+    source mismatch and cut invalidation cannot silently borrow evidence from
+    later episodes or stale policy, including when transport fails mid-consult.
+- id: AC9
+  condition: >-
+    Canonical CAA planning reflects explicit new Human CAA-03 selection, preserves
+    prior CAA-01/02 and TASK-411 history, CAA-04/05 nonselection, and provides
+    bounded CAA-03 contract documentation with no default production activation.
+- id: AC10
+  condition: >-
+    Only the five expressly permitted source/doc/test paths change; existing
+    Brain/context, direct-authoring, CAA-01/02, audit-policy and lifecycle
+    public API behaviors remain compatible without new Reviewer/Publisher/Runtime
+    authority or unsupported cross-provider superiority claim.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_caa_integration.py tests/test_caa_reasoner.py tests/test_brain_provider.py tests/test_brain_context.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
