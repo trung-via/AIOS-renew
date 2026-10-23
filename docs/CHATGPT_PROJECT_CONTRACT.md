@@ -515,3 +515,33 @@ selection never switches in flight. No live correctness, verification, publicati
 or performance is inferred from these profiles or their deterministic regressions.
 The exact digests, bounded source contract and source-authentication requirements are in
 [Brain semantic audit protocol section 24](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#24-bounded-tcaroa-successors-prepared-by-task-392).
+
+## 16. 2026-10-23 Human priority: TCA-3 v3 retrospective successor and two-step cutover
+
+On 2026-10-23 (`human_tca3_retrospective_priority_20261023` in `.ai/roadmap-state.yaml`),
+Human selected the bounded `tca-3` version 3 successor from the `TASK-370..403`
+retrospective as the sole active planning slice (`TASK-405`), prospectively superseding
+the previously selected PTE slice while keeping `post-task-dirty-recovery-pte-20261022`
+paused and resumable (`PTE-01..PTE-03` reviewed/published, `PTE-04..PTE-06` and
+`TASK-401-r3` retained for explicit subsequent Human/Brain reconciliation).
+
+Cutover is strictly two-step:
+
+1. **Step 1 (`TASK-405` implementation and publication)**: `tca-3` version 3 is
+   registered in `.ai/brain-audit-profiles.yaml` with two focused passes (`CONSTRUCT`,
+   `ADVERSARIAL_AUDIT_AND_RECONCILE`), five construct checks, six adversarial challenges,
+   one closure, source/API/transitive-consumer/AST-guard checks, per-command verification
+   baseline status (`PASS`/`FAIL`/`NOT_RUN`/`UNKNOWN`), and ten retrospective
+   adversarial/conformance classes. `tca-2` version 2 remains the live normative default
+   for `TASK_AUTHORING`; neither registry presence nor the planning priority record
+   activates `tca-3` or retires `tca-2`.
+2. **Step 2 (Separate post-publication activation task)**: Only after Runtime
+   verification, independent Reviewer `PASS` and exact Publisher inclusion of `TASK-405`
+   on canonical `main`, a separate authorized activation task authenticates the reviewed
+   `TASK-405` source and pins exact `tca-3` `id`, `version` (`3`) and normalized `digest`
+   in `human_r21_tca3_successor_activation` (superseding
+   `human_r21_tca_roa_successor_activation` with unchanged `aoa-1`, `moa-1`, `roa-1-r3`
+   and Human Adaptive V1 option) before `tca-3` becomes default for new `TASK_AUTHORING`
+   and `tca-2` is prospectively retired for new authoring while retaining `tca-1`/`tca-2`
+   historical replay. See
+   [Brain semantic audit protocol section 25](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#25-bounded-tca-3-version-3-successor-prepared-by-task-405).

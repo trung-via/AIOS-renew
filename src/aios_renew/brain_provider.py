@@ -239,9 +239,11 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             human_choice_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None) -> AttemptResult:
     """Invoke one normative procedure, or explicit isolated compatibility support.
 
-    Ordinary new production authenticates canonical FOUR_SPECIALIZED policy.
-    Explicit R5 callers and isolated/historical requests keep their existing
-    bindings. No attempt grants canonical mutation authority.
+    Ordinary new production authenticates canonical FOUR_SPECIALIZED policy
+    (retaining tca-2 for TASK_AUTHORING until a separately reviewed and
+    published tca-3 activation cutover). Explicit R5 callers and isolated or
+    historical requests keep their existing bindings. No attempt grants
+    canonical mutation authority.
     """
     count = 0
     phase = "INPUT"

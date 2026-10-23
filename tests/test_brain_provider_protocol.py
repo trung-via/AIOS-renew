@@ -591,6 +591,11 @@ def tca_request(registry, package, *, unknown=False):
 
 def tca_response(req):
     profile, context, subject = req["audit_profile_package"]["profile"], req["task_source_context"], req["tca_subject"]
+    if profile["id"] == "tca-3":
+        from tests.test_brain_audit import tca3_first, tca3_final
+        material = (tca3_first(context, profile, subject) if req["request_mode"] == "TCA_CONSTRUCT" else
+                    tca3_final(context, profile, subject, req["stage1_lineage"]["construct"]))
+        return {"request_fingerprint": req["request_fingerprint"], **material}
     material = (tca_first(context, profile, subject) if req["request_mode"] == "TCA_CONSTRUCT" else
                 tca_final(context, profile, subject, req["stage1_lineage"]["construct"]))
     return {"request_fingerprint": req["request_fingerprint"], **material}
@@ -1640,3 +1645,58 @@ def test_task392_successor_protocol_requires_complete_exact_pair_and_independent
     final = validate_response(second, r5_response(second))
     assert revalidate_decision(final, second) == final
     assert final["audit_profile_ref"] == package["audit_profile_ref"]
+
+
+@pytest.mark.parametrize("fault", (None, "partial", "mixed_tca2", "old_digest", "missing_authenticator", "stale", "forged", "v1_verification_checks"))
+def test_task405_tca3_protocol_round_trip_and_prospective_policy_bindings(registry, fault):
+    from aios_renew.brain_audit import _specialized_profiles, _TCA_V3_DIGEST
+    from tests.test_brain_audit import task405_tca3_context
+    body, context = task405_tca3_context()
+    supplied = DecisionPacket(body)
+    contract = select_return_contract(registry, supplied)
+    bindings = {"task_id": "TASK-002", "revision": 1}
+    policy = audit_policy_example(supplied.as_dict())
+    policy["profiles"] = _specialized_profiles(tca3=True)
+    profile = next(p for p in parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+                   if p["id"] == "tca-3")
+    package = {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+    assert package["audit_profile_ref"] == {"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}
+    sources = {"task_source_context": context}
+    authority = R5Authority(policy, supplied, contract, bindings, package, sources)
+    if fault == "partial":
+        del policy["profiles"]["TASK_AUTHORING"]
+    elif fault == "mixed_tca2":
+        policy["profiles"]["TASK_AUTHORING"] = _specialized_profiles(successors=True)["TASK_AUTHORING"]
+    elif fault == "old_digest":
+        package["audit_profile_ref"]["digest"] = _specialized_profiles(successors=True)["TASK_AUTHORING"]["digest"]
+    elif fault == "stale":
+        policy["main_sha"] = "f" * 40
+    elif fault == "forged":
+        policy["human_authority_digest"] = "f" * 64
+    elif fault == "v1_verification_checks":
+        tca1_req = tca_request(registry, {"profile": next(p for p in parse_profile_registry(
+            (ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"] if p["id"] == "tca-1"),
+            "audit_profile_ref": _specialized_profiles()["TASK_AUTHORING"]})
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(tca1_req, {**tca_response(tca1_req), "verification_checks": []})
+        return
+    if fault is not None:
+        with pytest.raises(BrainProviderProtocolError):
+            construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE", audit_policy=policy,
+                              selection_authenticator=None if fault == "missing_authenticator" else authority, **sources)
+        return
+    req = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE", audit_policy=policy,
+                            selection_authenticator=authority, **sources)
+    assert req["request_mode"] == "TCA_CONSTRUCT" and revalidate_request(req) == req
+    assert req["tca_subject"]["source_material_summary"]["count"] == 2
+    first = validate_response(req, r5_response(req))
+    assert "verification_checks" in first["semantic_value"]
+    assert revalidate_decision(first, req) == first
+    second = r5_second(req, first, authority)
+    assert second["audit_selection"] == req["audit_selection"]
+    assert revalidate_request(second) == second
+    final = validate_response(second, r5_response(second))
+    assert "verification_checks" in final["semantic_value"]
+    assert revalidate_decision(final, second) == final
+    assert final["audit_profile_ref"] == package["audit_profile_ref"]
+

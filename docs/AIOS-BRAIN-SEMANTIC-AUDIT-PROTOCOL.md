@@ -1747,3 +1747,71 @@ no profile or test self-authenticates approval. Serialized audits never become a
 AUTHOR_TASK or REPAIR admission gate. Later approval, review and publication are
 separate role-owned decisions; no activation or live semantic/performance result
 is asserted here.
+
+## 25. Bounded TCA-3 Version 3 Successor Prepared by TASK-405
+
+TASK-405 registers `tca-3` version 3 (`applicable_flows: [TASK_AUTHORING]`) from the
+TASK-370..403 retrospective while keeping `tca-2` version 2 as the active default
+until a separately reviewed and published activation cutover. All existing historical
+profiles (`brain-high-value-v3`, `brain-high-value-v2`, `aios-adaptive-brain-audit-v1`,
+`roa-1-r2`, `moa-1`, `aoa-1`, `tca-1`, `tca-2`, `roa-1-r3`) retain their exact bytes,
+identities and normalized SHA-256 digests under a finite ten-profile / 65,536-byte
+registry bound.
+
+### 25.1. Two focused passes, five construct checks, six challenges and one closure
+
+`tca-3` preserves the exact `TASK_CONTRACT_AUDIT` procedure (`CONSTRUCT` followed by
+`ADVERSARIAL_AUDIT_AND_RECONCILE`), the five construct checks (`HUMAN_INTENT_FIDELITY`,
+`TASK_OBJECTIVE_OUTCOME`, `ACCEPTANCE_SATISFIABILITY`, `SCOPE_AND_AUTHORITY`,
+`REQUIRED_CONSUMERS`), the six adversarial challenges (`FALSE_COMPLETION_CHALLENGE`,
+`MATERIAL_CONSUMER_CHALLENGE`, `SCOPE_AND_HIDDEN_INTENT_CHALLENGE`,
+`AUTHORITY_AND_PROOF_ORDER_CHALLENGE`, `FALSIFYING_COUNTEREXAMPLE_CHALLENGE`,
+`SOURCE_CURRENTNESS_AND_PORTABILITY_CHALLENGE`) and one final closure without adding a
+third audit stage, database, router or Runtime mutation gate.
+
+### 25.2. Retrospective source/API scope, verification baseline and counterexample coverage
+
+1. **Transitive direct-call consumers, Git framing/object-fetch and legacy AST/test guards**:
+   `tca-3` requires packet-bound `source_material` and checks `scope.modify` versus
+   `scope.inspect` across direct and one-hop transitive callers, Git `rev-parse` /
+   `cat-file` framing and object-fetch helpers, and legacy test doubles or AST/signature
+   guards. An inspect-only AST/test guard requiring edits (such as TASK-391 r1) or
+   missing decisive source excerpt must block (`BLOCKER` / `UNKNOWN` and final
+   `NO_DECISION`). Distinct failure causes in source material (such as TASK-403
+   pre-existing newline drift versus new Git object-fetch failure) must be
+   distinguished rather than conflated under one pytest node ID.
+2. **Per-acceptance `CLAIM_NOW` vs `PROOF_LATER` and per-command verification baseline**:
+   Every acceptance criterion distinguishes Executor-establishable `CLAIM_NOW`
+   properties from post-implementation `PROOF_LATER` Runtime/Reviewer/Publisher gates.
+   When `verification_checks` or `baseline_observations` are supplied, every
+   `verification.required` command is checked in order with `baseline_status` in
+   `PASS`, `FAIL`, `NOT_RUN` or `UNKNOWN`, rejecting invented observed `PASS` results,
+   skipped verification commands, mixed verification mismatches (TASK-372/TASK-399)
+   and unauthored implicit full-suite assumptions.
+3. **Completion-gate and boundary counterexamples**:
+   `tca-3` challenges missing final acceptance claims (TASK-391 r2/TASK-383),
+   non-empty `result.unresolved` obligations (TASK-384), wrong `ResultPackage`/API
+   contract assumptions (TASK-398), missing `scope.modify` authority (TASK-391 r1),
+   and pre-RUN dirty-worktree quarantine vs native runner boundaries (TASK-393/TASK-401)
+   while leaving actual completion/verification gates with Runtime and never inventing
+   pre-execution `executor_claims` or reviewer verdicts.
+
+### 25.3. Prospective two-step activation contract
+
+1. **Step 1 (Implementation and publication in TASK-405)**:
+   `TASK-405` implements `tca-3` version 3, its validator and ten-class retrospective
+   conformance suite, and records the 2026-10-23 Human priority in
+   `human_tca3_retrospective_priority_20261023` (`planning_only: true`,
+   `status: CANDIDATE_PREPARED_NOT_ACTIVE`). During and after `TASK-405` publication,
+   `tca-2` version 2 remains the active normative default for `TASK_AUTHORING`.
+2. **Step 2 (Separate post-publication authenticated activation task)**:
+   Only after Runtime verification, independent Reviewer `PASS` and exact Publisher
+   inclusion of `TASK-405` on canonical `main`, a separate authorized activation task
+   may add `human_r21_tca3_successor_activation` superseding
+   `human_r21_tca_roa_successor_activation` with its exact `superseded_approval_digest`,
+   authenticating the reviewed `TASK-405` PRIMARY RUN/RESULT/REVIEW lineage and pinning
+   the exact `tca-3` `id`, `version` (`3`) and normalized `digest` alongside unchanged
+   `aoa-1`, `moa-1`, `roa-1-r3` and the individually authenticated Human Adaptive V1
+   option. Only then does `tca-3` become the live default for new `TASK_AUTHORING` and
+   `tca-2` become prospectively retired for new authoring while preserving `tca-1` and
+   `tca-2` for historical replay.
