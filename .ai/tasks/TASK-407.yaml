@@ -1,0 +1,247 @@
+task_id: TASK-407
+revision: 1
+goal: 'Prepare one prospective ROA-1 R4 REPAIR_AUTHORING semantic audit successor
+  from the Human-approved TASK-370..403 retrospective, with five existing focused
+  checks, bounded evidence-supported all-known-blocker coverage, baseline/candidate
+  and verification-coverage reconciliation, precise completion-lever readiness, adversarial
+  falsification and isolated native conformance. Canonicalize the Human prospective
+  priority without activating R4: retain R3 as the live default until a separate authenticated
+  implementation-publication and cutover decision.'
+problem: TASK-370..403 retrospective observed 53 exact FAILURE artifacts after RUN-403-003
+  (28 VERIFICATION, 18 COMPLETION_GATE, 7 EXECUTION) and 43 REPAIR authorizations
+  at snapshot; these are incident/ref counts, not independent bugs. Cases RUN-372-001/002
+  and RUN-403-001/002 show unobserved verification commands; RUN-383-002, RUN-391-013,
+  RUN-398-002/003 reveal completion missing-claim/no-delta episodes; RUN-398-004 has
+  genuinely unresolved doc/test mismatch; RUN-391 r1 AC12 exposes baseline AST/API/modify-scope
+  conflict; RUN-401-002 and RUN-393-001 show native/dirty non-repairable situations;
+  RUN-403-002 baseline test fixture newline mismatch, while RUN-403-003 still fails
+  in same node after a newline-only correction so the second exact root cause remains
+  UNKNOWN. Existing ROA-1 R3 identifies the exact failing boundary and one lever but
+  does not obligate a complete ordered verification-status ledger, independently supported
+  known-blocker frontier, baseline/candidate discrimination or falsification of a
+  correction against additional implicated consumers. A narrowly prepared successor,
+  not a second lifecycle authority, is the approved minimum correction.
+assumptions:
+- 'Explicit current Human intent 2026-10-23: canonically prioritize implementing the
+  ROA retrospective TASK-370..403 recommendations now. This is a new prospective priority
+  that pauses the existing TCA-3/PTE planning bookmarks for execution sequencing but
+  preserves their historical state; do not infer engineering completion or executor
+  delegation from planning. The first TASK must create the Human/Brain prospective
+  roadmap record (planning only) with ROA R4 preparation as unique selected slice,
+  preserving the already approved TCA-3 activation and PTE-04..06/Lean VP resumability.'
+- Immutable authoring source main d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f. TASK-406
+  r2 / RUN-406-003 has Runtime RESULT artifacts cc9ce9806f7d1606bde24237ebdd064908d16bbf,
+  independent REVIEW-406-001 PRIMARY PASS decision d0ec2d8fdacf515cd80b19cd013399b441503ec0
+  and eligible published exact candidate at main d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f;
+  Publisher job 39911827390 publish succeeded, while overall workflow was failed due
+  to separate local-chat-wake delivery. Thus the prospective TCA-3 default is eligible
+  on canonical main; a transport failure is not a failed Publisher verdict. Runtime/Brain
+  must reauthenticate current source at authoring/dispatch.
+- 'Selected current Brain semantic profiles by canonical candidate/effective main:
+  ARCHITECTURE aoa-1 v1 digest 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b;
+  TASK_AUTHORING tca-3 v3 digest cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e.
+  REPAIR_AUTHORING currently roa-1-r3 v3 digest cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a.
+  Keep exact existing approved THREE_SPECIALIZED mapping, no REMEDIATION normative
+  audit, and Human V1 option restrictions.'
+- 'AOA-1 CONSTRUCT five checks and ADVERSARIAL six checks closure CANDIDATE on minimum
+  lawful successor: A no-build ad-hoc checklist helps but is not durable/portable;
+  B add one ROA R4 profile inside existing five-check schema with isolated conformance
+  and no live cutover is sufficient; C new persistent agent/router/verification owner
+  adds unsupported overhead and authority risk. Episode-cost/ROI unmeasured; falsification
+  must use real bounded retrospective counterexamples and future paired episodes.
+  No extra architecture mechanism or implicit Human risk acceptance.'
+- 'TCA-3 CONSTRUCT (intent, outcome, each AC/verification, modify authority, one-hop
+  consumers) and ADVERSARIAL (false completion, hidden tests/AST/codec, scope, proof-order,
+  counterexamples, currentness) reconcile to one CANDIDATE: all AC1..AC11 are implementation
+  properties claimable before canonical verification; publication and prospective
+  activation remain explicit post-TASK gates, not acceptance PASS claims. Test surfaces
+  and registry byte cap are source-bound to current main; code HOW belongs to admitted
+  Executor.'
+- Current .ai/brain-audit-profiles.yaml is about 57187 bytes under the existing strict
+  65536 UTF-8 byte registry ceiling. Reuse existing bounds if added R4 fits; do not
+  silently raise budget, loosen parser cap or remint earlier profile digests to fit.
+  If the explicit finite count allowlist needs update, do it narrowly without allowing
+  arbitrary profile identities.
+- The retrospective's 53 FAILURE artifacts include RUN-403-003, which had V001 PASS/V002
+  FAIL same node despite one-line fixture change. Its exact traceback remains UNKNOWN,
+  so conformance must NOT encode an invented second root cause. One repeated test
+  node cannot prove same cause, baseline equality or PASS.
+- Plan deliberately separates STEP 1 profile preparation/conformance within TASK-407
+  and STEP 2 future authenticated R4 default activation (prospective TASK after TASK-407
+  Runtime RESULT, Reviewer PASS and Publisher inclusion). Do not create, dispatch,
+  publish or activate that future step automatically; no automatic roadmap advance.
+- All mutable source and tests are in exact scope.modify; inspect-only files are read-only.
+  Return affinity is the existing legacy repository default; no new origin proof or
+  separate persistence. AUTHOR_TASK ingress creates a TASK, not a RUN/Executor delegation.
+  Codex or other Executor selection remains a separate Human-owned operational choice.
+scope:
+  inspect:
+  - .ai/brain-audit-profiles.yaml
+  - .ai/roadmap-state.yaml
+  - .ai/brain-return-contracts.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_return_contract.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/task.py
+  - src/aios_renew/review.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_context.py
+  - tests/test_brain_return_contract.py
+  - tests/test_brain_sync.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - .ai/tasks/TASK-405.yaml
+  - .ai/tasks/TASK-406.yaml
+  modify:
+  - .ai/brain-audit-profiles.yaml
+  - .ai/roadmap-state.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_context.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+non_goals:
+- No rewriting, deleting, renaming or rehashing existing ROA-1 R2/R3, AOA-1, TCA-1/2/3,
+  historical MOA/V1 profiles, audit requests or immutable TASK/RUN/FAILURE/REVIEW/RESULT
+  lineage.
+- No ROA R4 live policy cutover in TASK-407, implicit registry-order selection, provider
+  self-promotion, MOA reinstatement, remediation audit replacement, second semantic
+  reviewer, new database, semantic repair classifier authority, generic lifecycle
+  router, retry/failover or Runtime verification ownership.
+- No universal pre-REPAIR pytest/full-suite pass and no baseline-equivalent nonzero
+  waiver. Bounded diagnostic probes are advisory/noncanonical and require lawful source
+  access; Runtime alone verifies the final candidate.
+- No lowering canonical privacy, Git/ref integrity, legal modification scope, audit
+  return schema, any frozen Kernel contract or Human executor/strategy authority.
+- No automatic PTE/Lean VP advancement, downstream adoption, Runtime RUN dispatch,
+  Reviewer PASS, Publisher success, profile activation or automatic TASK-408 creation.
+constraints:
+  hard:
+  - Prepare a separate unique versioned ROA successor identity (tentatively roa-1-r4
+    v4) in the existing exact portable profile registry; preserve original five ordered
+    checks EXACT_FAILURE_BOUNDARY, EVIDENCE_DISCRIMINATING_CAUSE, MATERIAL_REPAIR_LEVER,
+    FALSIFYING_CHALLENGE, LAWFUL_READINESS and one REPAIR_OUTCOME_AUDIT closure. One
+    CANDIDATE/NO_DECISION, no extra stage or dual audit.
+  - First check binds exact RUN/HEAD/TASK revision/FAILURE and reconstructs every
+    authored verification.required command into ordered PASS/FAIL/NOT_RUN/UNKNOWN,
+    distinguishing original Runtime evidence from private diagnostic. Execution, completion,
+    worktree, pre-RUN transport and verification categories must remain distinct,
+    never guessed.
+  - Cause check binds baseline vs failed candidate vs prospective changed paths, authentic
+    current source, bounded test/fixture/API/AST/consumer excerpts where material.
+    Differentiate missing claims, unresolved items, native exit, code regression,
+    historical fixture drift and unknown; status UNKNOWN blocks unsupported correction.
+    Same test node after a fix requires fresh exact cause, not stale traceback.
+  - Lever check chooses one minimum lawful semantic strategy CODE_FIX, NO_CHANGE,
+    CONTINUE_IMPLEMENTATION, FINALIZE_CANDIDATE, covering all *currently evidenced*
+    blockers in the exact authorized TASK scope and distinguishing implementation
+    obligations from completion-shape obligations. Do not choose or schedule repairs
+    automatically or infer scope from inspection authority.
+  - Falsifying check must articulate a counterexample for each evidenced blocker,
+    expected correction effect, next unobserved required verification command, baseline
+    recheck when decision-relevant and whether additional exposed failure would invalidate
+    the candidate. Minimum sufficient probes only where informative, authorized and
+    not redundant with valid evidence.
+  - Readiness check reconciles original AC1..ACn with truthful ResultPackage claims,
+    evidence and unresolved, exact failed/head/candidate source and correction lineage,
+    clean/dirty currentness, sticky admitted Executor and original verification policy,
+    then returns one bounded closure. Missing decisive evidence/authority => UNKNOWN/BLOCKER/NO_DECISION,
+    not unsupported CODE_FIX or fabricated PASS.
+  - Registry and provider/protocol conformance must recognize the exact unique ROA
+    R4 identity/digest only for isolated ROA_CONFORMANCE/support until later authorized
+    cutover; maintain R3 default without fallback or mixing; preserve closed shapes,
+    digest binding, currentness between calls, both native response modes and historical
+    replay.
+  - Record this Human-approved planning priority prospectively at the top of .ai/roadmap-state.yaml
+    with unique planning owner ROA_R4_RETROSPECTIVE_SUCCESSOR, exact source main,
+    selected STEP1 TASK407 and STEP2 conditional authenticated activation. Preserve
+    previous TCA3, PTE and Lean VP records intact as historical; do not make plan
+    engineering truth.
+  - Preserve current profile registry cap 65536 UTF-8 bytes and current finite profile
+    identity policy unless a strictly necessary bounded compatibility change is independently
+    evidenced and within original Human risk authority; if this cap makes support
+    impossible, report a bounded blocker, not bypass.
+  - Executor reports clean committed descendant, exact truthful complete AC1..AC11
+    ResultPackage and evidence, unresolved only if truthful. Runtime alone verifies
+    original minimum-sufficient-v1 commands, Reviewer owns semantic PASS, Publisher
+    exact source inclusion; any future R4 activation still requires distinct authenticated
+    canonical authorization.
+acceptance:
+- id: AC1
+  condition: A separate exact recognized ROA-1 R4 v4 REPAIR_AUTHORING profile candidate
+    is expressible in the bounded registry, with unique normalized digest, original
+    five check IDs and one closure, preserving all historical profile bytes and versions.
+- id: AC2
+  condition: The prospective R4 failure-boundary check tracks exact immutable RUN/TASK/HEAD/FAILURE
+    and ordered verification.required outcomes PASS/FAIL/NOT_RUN/UNKNOWN without mistaking
+    pre-RUN transport, Runtime proof, private probes, worktree dirt or missing evidence
+    for verified PASS.
+- id: AC3
+  condition: The candidate discriminating-cause check distinguishes code/test regression,
+    baseline/fixture incompatibility, native exit, completion missing claims, completion
+    unresolved, final response/ResultPackage errors and unknown using bounded source-backed
+    evidence, with no inference of a new root from a repeated node.
+- id: AC4
+  condition: The repair lever check can present one lawful evidence-supported known-blocker
+    frontier, select the smallest eligible existing lever, map modification_scope
+    to original TASK scope and preserve all unresolved/unknown material blockers instead
+    of forced CODE_FIX or a generic automatic correction selector.
+- id: AC5
+  condition: The falsification and readiness checks require a concrete correction
+    counterexample, identified unobserved verification commands, preserved AC1..ACn
+    and truthful complete claims/evidence/unresolved/identity, while retaining Runtime,
+    Reviewer, Publisher and Executor authority separation.
+- id: AC6
+  condition: ROA-1 R4 supports bounded isolated semantic construct/validate/provider
+    response conformance with exact identity/content, one closure, appropriate source
+    fingerprints and provider mapping/JSON transports; nonconforming or missing evidence
+    rejects without silent profile downgrade or rehash.
+- id: AC7
+  condition: All currently active production policy selection remains AOA-1/TCA-3/ROA-1
+    R3 with no remediation audit, and prospective R4 presence cannot activate itself,
+    alter direct final AUTHOR_TASK/REPAIR/REMEDIATION ingress, or break exact historical
+    audit replay.
+- id: AC8
+  condition: Focused positive and negative conformance tests encode canonical retrospective
+    discriminators RUN-372, 383, 384, 391, 393, 398, 401 and 403, including RUN-403-003
+    same node but new cause UNKNOWN, first-V001-fail/V002-NOT_RUN, missing-claims-only
+    versus genuinely unresolved code, stale and forbidden-scope fixtures.
+- id: AC9
+  condition: The Human-approved prospective priority is transcribed as one planning-only
+    record in canonical roadmap state naming TASK-407 implementation and conditional
+    separate activation step, preserving the TCA-3 published result and older PTE/Lean
+    VP plans as historical without automatic NEXT transitions.
+- id: AC10
+  condition: Documentation and existing Brain/provider public consumers consistently
+    distinguish R4 prepared from R3 live, preserve five-check ROA closure, registry
+    capacity, bounded privacy and exact Human V1 option without adding an independent
+    lifecycle truth store or verifier.
+- id: AC11
+  condition: The completed implementation preserves existing exact source/API/AST
+    and historical regressions within authorized scope, satisfies original verification
+    contract/12-worker policy without mandatory full suite or claim-first PASS, and
+    enables complete truthful ResultPackage AC1..AC11 claims before Runtime verification.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_context.py tests/test_brain_provider.py
+    tests/test_brain_provider_protocol.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
