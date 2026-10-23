@@ -3113,15 +3113,20 @@ def test_task405_class4_task391_r1_inspect_only_ast_guard_conflict_blocks_withou
     context["consumers"] = [
         {"id": "inspect-only-ast-guard", "authority": "EXECUTOR",
          "requirement": "Historical AST guard in inspect-only test forbids verification_contract import.",
-         "kind": "AST_GUARD", "path": legacy, "symbol": "test_module_imports"}
+         "kind": "AST_GUARD", "path": legacy, "symbol": "test_module_imports",
+         "required_modify_paths": [legacy]}
     ]
     subject = tca_subject(body, profile, context)
     first_mat = tca3_first(context, profile, subject)
+    with pytest.raises(BrainAuditError, match="inspect-only or unauthorized edit"):
+        construct_tca(body, profile, subject, first_mat, context)
     conflict = "TASK-391 r1 cannot satisfy direct codec import and inspect-only AST import guard simultaneously."
     first_mat["checks"][2].update(outcome="BLOCKER", knowledge="UNKNOWN", basis=conflict)
+    first_mat["checks"][4].update(outcome="BLOCKER", knowledge="UNKNOWN", basis=conflict)
     first_mat["consumer_checks"][0].update(outcome="BLOCKER", knowledge="UNKNOWN", basis=conflict)
     first = construct_tca(body, profile, subject, first_mat, context)
     final_mat = tca3_final(context, profile, subject, first)
+    final_mat["consumer_checks"][0].update(outcome="BLOCKER", knowledge="UNKNOWN", basis=conflict)
     final_mat["challenges"][4].update(outcome="BLOCKER", knowledge="UNKNOWN", disposition="BLOCKER",
                                       basis=conflict, counterexample=conflict)
     res = validate_tca(body, profile, subject, first, final_mat, context)
