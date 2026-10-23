@@ -1,0 +1,268 @@
+task_id: TASK-406
+revision: 1
+goal: 'Implement and activate in one independently reviewed/published prospective
+  cutover the exact 2026-10-23 Human decision: make existing TCA-3 v3 the default
+  normative TASK_AUTHORING audit, retire MOA-1 completely from every new/current REMEDIATION_AUTHORING
+  default path without selecting any substitute audit, preserve AOA-1 and ROA-1 R3,
+  and continue direct Brain-authored REMEDIATION under unchanged deterministic Runtime
+  admission and Reviewer/Publisher authorities.'
+problem: Canonical main f445626011d0664149011c8f57eb16a7014e6cd7 contains byte-exact
+  TASK-405 r1 repaired TCA-3 candidate cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05 in
+  12 paths via a Human-operated exceptional two-parent Git integration whose tree
+  is 315d6914f7cac46ed30418e522e33b74fe33af4d. RUN-405-004 Runtime verified both required
+  commands exit 0, but REVIEW-405-001 is CHANGES_REQUIRED F1 because immutable C2
+  claim falsely states 98304 instead of actual 65536 UTF-8 registry cap; EVIDENCE_ONLY
+  RUN-405-005 delivered empty claims and REVIEW-405-002 BLOCKED. Original TASK-405
+  r2 on main was never executed. The old prospective policy demands an impossible
+  retroactive REVIEW/PUBLISH PASS for TASK-405 and pins MOA-1 in all four flows; current
+  brain_audit.normalize_audit_policy, brain_context.canonical_audit_inputs and brain_provider.attempt
+  cannot select a three-flow default/no-remediation-audit policy. Human now explicitly
+  accepts the bounded TASK-405 publication exception risk, approves TCA-3 activation
+  and fully retires MOA from new remediation without replacing it with any default
+  audit. A fresh lawful activation TASK must implement the new policy and validate
+  the exceptional source as exception, not forge historical PASS.
+assumptions:
+- Canonical decision subject is latest main f445626011d0664149011c8f57eb16a7014e6cd7;
+  Runtime CAS may reject concurrent movement. This single TASK represents an explicit
+  new Human prospective priority overriding older TASK-405 non-goal 'no TASK-406'
+  and older planning requirement to keep MOA; it does not amend historical TASK-405
+  contract.
+- The approved exceptional source is exactly two-parent merge f445626011d0664149011c8f57eb16a7014e6cd7
+  with parents ccc369868e51b36fec2dce042fb6de24fae1e2a6 and cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05;
+  tree 315d6914f7cac46ed30418e522e33b74fe33af4d. Its 12 implementation blobs match
+  the second parent exactly; main TASK-405 YAML remains r2. Treat this as the only
+  source exception, not Runtime Publisher PASS.
+- 'Exact immutable proof: RUN-405-004 ResultPackage at artifacts commit 8be451dd918510de220ff310d1adb88021e22061,
+  reviewed candidate cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05; two EVIDENCE items
+  RUN-405-004-V001 and V002 both exit 0. Original REVIEW-405-001 CHANGES_REQUIRED
+  commit 2b5c5d4c18d273213559ea964aa96c2a925dc337 with F1 AC10, and RUN-405-005 DELTA
+  REVIEW-405-002 BLOCKED commit 1b9b11a175a08be0c29f11a675af35d854502659. These statuses
+  remain non-PASS and must be displayed as such.'
+- The observed reviewed TCA-3 implementation registry has ten profiles / 65536 UTF-8
+  byte hard parser bound; original C2 says 98304 and is false. Exact current normalized
+  tca-3 profile reference must be computed from canonical .ai/brain-audit-profiles.yaml,
+  not trusted solely from Executor C1 text. The active source currently pins tca-2
+  version 2 digest 75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d.
+- Canonical active predecessor is the Human R2.1 successor record human_r21_tca_roa_successor_activation
+  (2026-10-21), preserving earlier 2026-10-17 approval. A new uniquely named prospective
+  activation approval records exact supersedes and normalized digest of predecessor;
+  historical approvals remain immutable and readable.
+- 'Selected normative Brain authoring-audit profiles for this decision from current
+  canonical main: ARCHITECTURE aoa-1 v1 digest 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b
+  and TASK_AUTHORING tca-2 v2 digest 75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d.
+  The selected profiles do not themselves grant implementation/Reviewer/Publisher
+  authority.'
+- 'Removing MOA from prospective current policy does not delete immutable MOA profile
+  bytes or break exact historical audit packet replay. MOA is retired from new work:
+  not a default, not a fallback, not a normatively available automatic optional path
+  or new remediation prerequisite. No other normative/remediation audit replaces it.'
+- Preserve existing Human-only Adaptive V1 substitution for ARCHITECTURE/TASK_AUTHORING
+  and historical exact replay; ROA-1 R3 remains normative REPAIR_AUTHORING. Read-only
+  Human V1 support remains applicable to ROA if independently authenticated, not to
+  new unaudited REMEDIATION.
+- Implementation remains one admitted Executor; technical HOW, worktree synchronization
+  and final completion evidence belong to Executor/Runtime. Authenticated publication
+  and prospective policy cutover require this TASK-406 own independent Runtime RESULT,
+  Reviewer PASS and Publisher exact source inclusion, not merely AUTHOR_TASK ingress
+  or wake receipt.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/brain-return-contracts.yaml
+  - .ai/tasks/TASK-405.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_return_contract.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/review.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/task.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_context.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_return_contract.py
+  - tests/test_brain_sync.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  modify:
+  - .ai/roadmap-state.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_return_contract.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_context.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_return_contract.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+non_goals:
+- Do not rerun, revise, repair, remediate or forge PASS on TASK-405 r1/r2 or historical
+  RUN-405-001..005; do not rewrite any existing RESULT, REVIEW, evidence, review-decision
+  or Git ref, and do not call the one-time Git merge a Runtime Publisher PASS.
+- Do not silently promote an arbitrary Human label, merged commit, SHA digest or GitHub
+  receipt into general REVIEW, Publisher, Runtime or audit-policy authority. No generic
+  Human override or unrestricted review bypass.
+- Do not remove MOA historical bytes, alter old profile IDs/digests, invalidate in-flight
+  old exact selections/decisions or historical archived replay; retiring operational
+  selection is not erasing canonical past.
+- Do not substitute MOA with V1, TCA, ROA, an 'audit-lite', implicit two-stage Brain
+  conformance, a synthetic null profile or new default semantic audit for REMEDIATION.
+  No hidden provider audit call or new review gateway.
+- Do not remove Runtime validation of direct AUTHOR_REMEDIATION, exact finding/source/SHA,
+  hard constraints, allowed scopes, evidence, independent semantic REVIEW or Publisher
+  gates. Brain still chooses bounded remediation WHAT/WHY; Runtime still verifies.
+- Do not change AOA-1/ROA-1 R3 normative defaults, Human individually authenticated
+  V1 options on architecture/task, TCA-1/TCA-2 historical replay, or per-attempt policy
+  currentness/in-flight binding.
+- No new Planner, generic lifecycle router, second Reviewer/Publisher/Runtime, DB,
+  policy-memory store, generic retry/failover or automatic remediation selector.
+- No publication from AUTHOR_TASK ingress, Executor self-report, workflow receipt,
+  or unreviewed activation candidate. Do not advance unrelated PTE/Lean-VP roadmap
+  work or require a full-suite run.
+constraints:
+  hard:
+  - One atomic prospective cutover selected ONLY after independently reviewed/published
+    TASK-406 candidate is on canonical main and its original approved source plus
+    one-time Human TASK-405 exception have exact authenticated lineage. If not all
+    conditions hold, fail closed and report blocker; never fallback to tca-2 or moa-1
+    for a stale/current moved activation attempt.
+  - 'Define a complete active policy mapping with exactly THREE normative flows: ARCHITECTURE=aoa-1
+    v1, TASK_AUTHORING=tca-3 v3, REPAIR_AUTHORING=roa-1-r3 v3. REMEDIATION_AUTHORING
+    is ABSENT, not null-profile, MOA, V1 or a substitute audit. Use explicit closed
+    policy discriminator (e.g. a three-flow state) and closed shape validation; historical
+    FOUR_SPECIALIZED and ADAPTIVE_V1 exact replay remain compatible. No flow inferred
+    from registry order.'
+  - For new REMEDIATION_AUTHORING current first-party interactions, bypass any normative
+    audit and model audit request; permit Brain to author the existing final REMEDIATION
+    contract directly for current exact source/finding through existing AUTHOR_REMEDIATION
+    ingress. Never block remediation solely for lack of audit material, TCA-style
+    source context, selection_authenticator, V1 support or MOA stage. A legacy explicit
+    MOA historical replay remains exact and must not leak into new default routing.
+  - Any current first-party 'attempt' explicitly requesting an audited REMEDIATION
+    path under the new three-flow policy must terminate deterministically before invoking
+    a provider or select a dedicated existing non-audited direct semantic path only
+    where already legitimately supported. Do NOT invent a new generalized execution
+    router or silently use V1/MOA; direct Brain-authoring ingress must remain usable.
+  - Add a one-time exact-TASK-405 Human-risk-acceptance provenance record and source
+    authenticator. Verify the merge sha/parents/tree, original RUN-405-004 artifact
+    and 2 pass EVIDENCE, SHA-bound review ref and both non-PASS review decisions,
+    same twelve exact Git blob contents in published integrated main, TASK-405 r1
+    reviewed source versus main r2 identity distinction, original claim C2 mismatch
+    (98304 vs true 65536), and explicit Human acceptance. Do not re-label old review/publish
+    outcomes. Reject wrong SHA, tree, parent, blobs, evidence, decision, foreign main
+    or missing approval.
+  - New activation record should explicitly supersede human_r21_tca_roa_successor_activation
+    with exact normalized predecessor approval digest and preserve older approvals
+    unchanged; its profile mapping excludes REMEDIATION and records MOA retirement
+    for new attempts. The record is not activated by authorship or registry membership;
+    authenticate TASK-406 own PASS reviewed source and published-on-main as the activation
+    boundary.
+  - Keep old historically valid four-profile approvals/policies and exact serialized
+    request/decision replay. A current attempt admitted before activation remains
+    pinned, cannot silently switch profile during continuation; stale currentness
+    fails closed. Neither historical MOA conformance helpers nor MOA registry bytes
+    count as current/default permission.
+  - Existing TASK_AUTHORING and ARCHITECTURE calls keep exact source-context, two-stage
+    audit selection and Human V1 authentication. TCA-3 default must resolve its exact
+    canonical id/version/content digest from the ten-profile 65536-byte registry;
+    no secondary auditor or artificial stage.
+  - REPAIR_AUTHORING keeps ROA-1 R3 and canonical repair contract and execution/verification,
+    not merged with unaudited remediation. Read-only V1 support continues only where
+    independently Human-authorized and currently normatively applicable, never auto-opted
+    into REMEDIATION.
+  - Perform focused regression including first-party direct native callers, pure policy
+    normalization and request/decision codecs, canonical Git-based permission/authenticator,
+    historical V1/four-profile replay, zero provider invocations for retired MOA current
+    default, genuine direct AUTHOR_REMEDIATION compatibility, false success/forged
+    Human exception negatives, and fail-closed in-flight policy movement. Preserve
+    published API and legacy AST/import tests; scope includes the actual affected
+    tests.
+  - Implement with minimum sufficient verification; no full suite or unrelated tests.
+    Preserve one Executor HOW and Runtime/Reviewer/Publisher roles, with truthful
+    complete per-AC RESULT claims, original source SHA, no unresolved acceptance.
+acceptance:
+- id: AC1
+  condition: Current independent policy normalizer recognizes exactly one authenticated
+    complete prospective three-flow policy, AOA-1/TCA-3/ROA-1 R3, with REMEDIATION_AUTHORING
+    absent and no default/implicit substitution. Reject incomplete, mixed, extra,
+    null-profile, stale, rehashed or forged policy and preserve historical FOUR_SPECIALIZED/ADAPTIVE_V1
+    exact decode.
+- id: AC2
+  condition: New/current Brain first-party TASK_AUTHORING selects exact tca-3 v3 normalized
+    digest with two focused stages, while ARCHITECTURE remains aoa-1 and REPAIR_AUTHORING
+    remains roa-1-r3. No registry-membership-only activation or silent model/V1 substitution,
+    no extra audits; unchanged historical profiles and replay remain valid.
+- id: AC3
+  condition: New/current REMEDIATION_AUTHORING does not select, require, execute or
+    fall back to MOA-1 or ANY automatic normative/default audit, produces zero MOA/provider
+    audit-stage calls, does not require audit-source material, and direct Brain-authored
+    final AUTHOR_REMEDIATION admission still works with unchanged canonical finding/SHA/scope
+    and Runtime/Reviewer gate. Historical archived MOA artifacts remain decipherable
+    but never auto-selected.
+- id: AC4
+  condition: Canonical approved three-flow activation is uniquely selected only after
+    exact independent TASK-406 REVIEW PASS and Publisher inclusion, with a separately
+    authenticated current Human approval superseding 2026-10-21 predecessor. Reject
+    absent/conflicting/duplicate approval, false PASS, forged 'active' label, and
+    source not on main without fallback.
+- id: AC5
+  condition: The only permitted TASK-405 original-source exception is exact Human-authorized
+    direct Git merge f445626011d0664149011c8f57eb16a7014e6cd7, parents ccc369868e51b36fec2dce042fb6de24fae1e2a6
+    / cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05 and tree 315d6914f7cac46ed30418e522e33b74fe33af4d,
+    original Runtime 2/2 verification EVIDENCE and both immutable non-PASS REVIEW
+    decisions; verify twelve byte-exact implementation blobs and C2=65536 actual source
+    against false C2=98304 old claim, without modifying/relabelling original artifacts.
+- id: AC6
+  condition: No current or historical caller mistakes a Human Git merge or accepted
+    risk for Runtime Publisher PASS on TASK-405. Only a fresh TASK-406 PASS/PUBLISH
+    can activate three-flow policy. Negative tests reject mismatched exception source,
+    source SHA, parent, tree, blob, two evidence results, F1 disposition, and duplicate/conflicting
+    approval; old result/review refs remain unchanged.
+- id: AC7
+  condition: Currentness is reauthenticated at initial ADMIT and CONTINUE; in-flight
+    old-policy selected attempts retain their pinned identities or stop with stale
+    binding, and no current post-cutover request silently returns to TCA-2/MOA, even
+    with missing source or unavailable Git. Test policy/repository/ref moves and authenticated
+    Human V1 option for AOA/TCA only.
+- id: AC8
+  condition: The existing roadmap stores a singular explicit prospective Human activation
+    and MOA retirement record, keeping original approvals and prior TCA-3 priority/PTE
+    bookmark for provenance but not competing active policy. Exact status reflects
+    ready candidate versus actually reviewed/published main as authenticated, not
+    automatic execution/roadmap advancement.
+- id: AC9
+  condition: Implementation and protocol docs truthfully distinguish three-flow prospective
+    active policy, MOA historical retention without any current default, direct remediation
+    ingress/Runtime safeguards, unchanged AOA/ROA, exact one-time exception versus
+    PASS, and activation ordering; no misleading four-profile requirement remains
+    normative after cutover.
+- id: AC10
+  condition: Targeted tests exercise all declared consumers and retain unchanged historical
+    conformance, no out-of-scope source changes, no new lifecycle authority/router/DB,
+    no skipped/xfail guards, no full suite. Final RESULT makes ten truthful complete
+    claims with the exact new review/activation obligations clearly separated from
+    implementation proof; Runtime verifies, Reviewer independently judges, Publisher
+    alone applies reviewed source.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_context.py tests/test_brain_provider.py
+    tests/test_brain_provider_protocol.py tests/test_brain_return_contract.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
