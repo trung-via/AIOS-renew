@@ -871,8 +871,12 @@ def test_task405_priority_record_preserves_tca2_live_default_and_prepares_two_st
     from aios_renew.brain_return_contract import parse_return_contract_registry
     from test_brain_provider_protocol import production_inputs
     root = Path(__file__).resolve().parents[1]
-    roadmap_doc = yaml.load((root / ".ai/roadmap-state.yaml").read_bytes(), Loader=_UniqueKeyLoader)
-    priority = roadmap_doc[_TCA3_PRIORITY_RECORD]
+    roadmap = yaml.compose((root / ".ai/roadmap-state.yaml").read_bytes())
+    keys = [key.value for key, _ in roadmap.value]
+    assert len(keys) == len(set(keys))
+    nodes = {key.value: node for key, node in roadmap.value}
+    priority = yaml.load(yaml.serialize(nodes[_TCA3_PRIORITY_RECORD]), Loader=_UniqueKeyLoader)
+    r21_successor = yaml.load(yaml.serialize(nodes[_R21_SUCCESSOR_APPROVAL]), Loader=_UniqueKeyLoader)
     assert priority["authority"] == "EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION"
     assert priority["approved_on"] == "2026-10-23"
     assert priority["planning_only"] is True
@@ -887,7 +891,7 @@ def test_task405_priority_record_preserves_tca2_live_default_and_prepares_two_st
     }
     assert priority["paused_pte"]["id"] == "post-task-dirty-recovery-pte-20261022"
     assert priority["paused_pte"]["state"] == "PAUSED_RESUMABLE_NOT_COMPLETED_OR_RETIRED"
-    assert roadmap_doc[_R21_SUCCESSOR_APPROVAL]["target_profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
+    assert r21_successor["target_profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
 
     # Installing the priority record on canonical main keeps tca-2 as the live default.
     canonical = task395_canonical_audit_repo
