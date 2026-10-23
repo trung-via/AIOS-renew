@@ -1,43 +1,60 @@
 task_id: TASK-405
-revision: 1
-goal: Implement the Human-approved TCA-3 v3 bounded successor from the TASK-370..403
-  retrospective, prepare its independently authenticated prospective activation and
-  canonicalize the exact Human priority; preserve TCA-2 as the live default until
-  a separately reviewed and published activation cutover.
-problem: The 34-TASK retrospective records 53 canonical FAILURE artifacts but does
-  not attribute every failure to TCA. TCA-2 v2 already addresses TASK-391 AC12 direct
-  API/AST/scope conflict; remaining material authoring risks include transitive consumer/mock/Git
-  framing/object-fetch compatibility (TASK-403), exact ordered verification command
-  visibility (TASK-372/399/403), truthful completion claimability (TASK-383/384/391/398),
-  bounded baseline-vs-candidate and scope sufficiency. Canonical registry contains
-  9 profiles with a 9-profile hard bound; a new successor must preserve exact historical
-  profile decoding and cannot falsely activate from registry membership or Human planning
-  alone. The Human on 2026-10-23 explicitly prioritizes immediate implementation and
-  eventual activation/retirement using Antigravity Argon Medium.
+revision: 2
+goal: "Complete the Human-authorized TASK-405 TCA-3 v3 retrospective successor as\
+  \ a fresh independently verified PRIMARY revision after the exact r1 BLOCKED semantic-review\
+  \ correction chain. Restore the exact required implemented behaviors from the successful\
+  \ but unpublished candidate as source reference, produce truthful complete AC1\u2013\
+  AC10 claims (especially registry bound 10 recognized profiles / 65,536 UTF-8 bytes),\
+  \ prepare but do not activate the later separate TCA-3 cutover, and preserve TCA-2\
+  \ as the live normative default."
+problem: TASK-405 revision 1 code candidate cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05
+  passed both authored Runtime verification commands in RUN-405-004, but Reviewer
+  REVIEW-405-001 CHANGES_REQUIRED F1 AC10 because immutable ResultPackage claim C2
+  asserted a false registry bound of 98,304 UTF-8 bytes; candidate's actual parser
+  and protocol both specify 65,536. Human-approved EVIDENCE_ONLY REMEDIATION RUN-405-005
+  produced valid verification proof, zero source changes and required empty claims;
+  reviewer REVIEW-405-002 BLOCKED because the original F1 demanded changing an immutable
+  prior claim, which the remediation contract does not permit. Unified State at the
+  r1 latest terminal review is SEMANTIC_REVIEW_BLOCKED; do not overwrite historical
+  artifact, replay a dispatch or fake a DELTA PASS. Human approves a lawful same-ID
+  revision-2 fresh PRIMARY to finish the implementation without creating TASK-406
+  or widening lifecycle authorities.
 assumptions:
-- 'Canonical main observed immediately before ingress: 98c5b539d53dbe19a65dbb591273cdae15a7983b;
-  the authenticated currentness/CAS at ingress is authoritative and may reject movement.'
-- 'Human explicitly approved the 2026-10-23 TCA retrospective architecture: TCA-3
-  v3 prospective default after lawful activation; TCA-2 retired for new authoring
-  only after cutover, retaining TCA-1/TCA-2 historical replay; AOA-1, MOA-1, ROA-1
-  R3 and individually authenticated Human Adaptive V1 option unchanged.'
-- Current TASK_AUTHORING profile is tca-2 version 2 digest 75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d;
-  the Human's prospective priority supersedes the PTE-03 planning bookmark without
-  claiming PTE completion, RUN, REVIEW, or PUBLISH.
-- 'Retrospective evidence basis: TASK-370..403 contracts and exact historical FAILURE/RESULT
-  refs; RUN-403-002 fixture newline issue differs from RUN-403-003 noncanonical reproduced
-  Git object-fetch problem, which is not Runtime verification; no per-TASK authoring-stage
-  counterfactual or measured causal failure savings established.'
-- TCA-3 retains the existing two passes, five CONSTRUCT checks, six ADVERSARIAL checks,
-  one closure and bounded source_material. New source obligations extend existing
-  checks, never add a third audit, generic diagnostic router, persistent case database
-  or secondary verifier.
-- Antigravity gemini-4-argon-medium with medium effort is separately authorized as
-  the implementation Executor by current Human intent; do not embed that model into
-  the semantic TASK or let the roadmap select it. Use the existing authenticated PRIMARY
-  wakeup after AUTHOR_TASK ingress succeeds.
-- New revision-1 ingress retains the active Human-approved LEGACY_REPOSITORY_DEFAULT_ROUTE
-  authoring lane; do not self-certify ORIGIN_AFFINE provenance.
+- Canonical main observed immediately before new revision AUTHOR_TASK is 0d1efff53bef0f03bdd539ceba3ccb27ea334303,
+  containing TASK-405 r1. The Runtime's authoritative currentness/CAS at ingress may
+  reject movement.
+- 'Exact r1 lineage: primary/repair historical failures RUN-405-001..003; successful
+  repaired source RUN-405-004 immutable artifacts SHA 8be451dd918510de220ff310d1adb88021e22061,
+  candidate SHA cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05, Runtime V001/V002 exit 0
+  and ten AC claims (C2 incorrectly said 98,304 bytes), reviewer REVIEW-405-001 CHANGES_REQUIRED
+  decision SHA 2b5c5d4c18d273213559ea964aa96c2a925dc337.'
+- Authorized EVIDENCE_ONLY RUN-405-005 immutable artifacts SHA e23e9bdb7bf9783dcc8f15ba0749a93c84377732,
+  same source SHA cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05, V001 exit 0, claims [],
+  changed_files [], unresolved []; REVIEW-405-002 DELTA BLOCKED SHA 1b9b11a175a08be0c29f11a675af35d854502659.
+  BLOCKED preserves original F1 and is not PASS or publication.
+- Existing Runtime/publication remediation contract requires empty result.claims for
+  remediation and immutable previous RESULT, making literal modification of RUN-405-004
+  C2 impossible. Fresh independently admitted revision-2 PRIMARY is the bounded lawful
+  restart; reviewed r1 candidate is a source reference, not a published branch or
+  verified revision-2 result.
+- Human explicitly approved 2026-10-23 TCA-3 retrospective priority and activation/retirement
+  after lawful separate cutover; this approval also selects correction strategy for
+  the blocked task without new TASK ID. Preserve current TCA-2 default exact digest
+  75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d and all historical
+  replay, AOA-1, MOA-1, ROA-1 R3 and Human V1 option.
+- Exact desired implementation behaviors are still the ten original TASK-405 r1 acceptances,
+  2 ordered focused stages, five construct/six adversarial checks/one closure, ten
+  retrospective challenge classes, transitive caller/Git framing/AST guards, truthful
+  complete claims and source-bound provider policy. The r1 successful candidate is
+  *not on canonical main*; admitted Executor independently transports/adapts authorized
+  in-scope content to this r2 base and Runtime verifies from scratch.
+- Keep post-TASK-404 paused PTE roadmap slice resumable; current main's existing R2.1
+  approval keeps TCA-2 default. Revision-2 candidate may only add the Human-authorized
+  prospective TCA-3 planning record, never active approval or self-publish.
+- Admitted implementation Executor selection remains Antigravity gemini-4-argon-medium
+  effort medium under earlier Human delegation; this is transport/execution selector
+  external to TASK. Keep existing LEGACY_REPOSITORY_DEFAULT_ROUTE affinity, without
+  origin-affine self-assertion.
 scope:
   inspect:
   - .ai/brain-audit-profiles.yaml
@@ -91,6 +108,15 @@ non_goals:
   TASK-401 r3, G6 or Lean VP progression.
 - No outside-scope edits, tests skipped/xfail/weakened, full-suite ceremony, speculative
   baseline PASS, or publication inferred from GitHub workflow receipts.
+- Do not rewrite RUN-405-004 original claim, alter REVIEW-405-001/002 decisions or
+  RESULT/EVIDENCE, re-run successful r1 REMEDIATION as if it could update historical
+  C2, bypass BLOCKED state by retroactive override, or replay r1 primary/repair/approved
+  remediation.
+- Do not invent task identity TASK-406, auto-activate/retire policy, or publish/review
+  on behalf of independent owners.
+- Do not accept clean test exit 0 as license for false Executor claims; a fresh r2
+  RESULT must assert the *implemented* 65,536 UTF-8 registry limit, not 98,304 or
+  unverified measurements.
 constraints:
   hard:
   - Preserve exact Brain/Executor/Runtime/Reviewer/Publisher/Human authority; final
@@ -128,6 +154,23 @@ constraints:
   - Minimum-sufficient-v1 exact ordered two-command verification only, with no implicit
     full suite. Implementation Executor must not perform Runtime-owned verification
     or choose a different model; Runtime alone owns the authored commands.
+  - 'Use independent fresh PRIMARY revision-2 source/RESULT/verification and Reviewer
+    authority: old r1 RUNs are immutable provenance, not replaceable proof. A successful
+    r2 completion requires its own new full truthful acceptance claims C1..C10, each
+    bound to its own source-specific Runtime evidence and authored commands. Do not
+    infer PASS from old candidate tests.'
+  - AC2 truth is precisely 10 recognized profile identities with 65,536 UTF-8 byte
+    hard parser bound; historical nine profile texts/digests unchanged and order/forgery/overflow
+    rejected. Ensure this same numeric fact in authored documentation, validator and
+    final ResultPackage claim. Do not increase working cap just to match a false old
+    assertion.
+  - Keep r2 scope.modify exactly the original 12 files including affected tests and
+    documentation; direct API, test doubles, Git-framing and AST guards are accounted
+    for. Stop on out-of-scope required changes rather than modifying inspect-only
+    paths.
+  - Do not implement a semantic-review retry/override or runtime claim-editor; correct
+    the implementation completion through existing fresh PRIMARY lineage only. No
+    transport receipt or old evidence establishes r2 completion.
 acceptance:
 - id: AC1
   condition: A distinct profile tca-3 version 3 is present with its own correct normalized
@@ -138,7 +181,9 @@ acceptance:
   condition: All existing TCA-1/TCA-2 and other registered historical profiles remain
     recognized, byte-exact and replay-compatible; the tenth profile is accepted under
     a finite explicit safe count/byte bound while unknown, duplicate, rehashed, reordered
-    and out-of-bound material still fails closed.
+    and out-of-bound material still fails closed. The explicit parser bound is exactly
+    65,536 UTF-8 bytes with up to ten recognized profiles; final Executor claim must
+    agree byte-for-byte in numeric value.
 - id: AC3
   condition: The TCA-3 source/API scope checks cover bounded transitive direct-call
     consumers, Git framing/object-fetch and legacy test doubles/AST guards; the TASK-391
@@ -181,7 +226,10 @@ acceptance:
   condition: All modifications remain within scope.modify, existing policy and public
     API negative tests preserve fail-closed behavior, no new mutation gate/DB/router/third
     audit is introduced, and the Executor can truthfully claim all ten concrete outcomes
-    before Runtime verification.
+    before Runtime verification. For this r2 fresh PRIMARY, all ten truthful claims
+    and Runtime evidence are required; claim C2 must report exactly ten profiles /
+    65,536 UTF-8 bytes, not 98,304, with no unresolved obligations; no previous immutable
+    RESULT is rewritten.
 verification:
   policy: minimum-sufficient-v1
   required:
