@@ -1,0 +1,136 @@
+task_id: TASK-411
+revision: 1
+goal: Eliminate the false STALE_REVIEW_BINDING publication failure for multi-finding
+  REMEDIATION by making Publisher's initial and pre-mutation canonical lifecycle ref-set
+  observations semantically identical and excluding non-authoritative operational
+  terminal-attention refs. Preserve full fail-closed change detection for genuinely
+  relevant canonical refs and all existing Reviewer/Runtime/Publisher authority, reservation
+  and main CAS gates.
+problem: 'On 2026-10-23 TASK-410 r1 / RUN-410-002 was independently DELTA REVIEW PASS
+  (review-decision bf7b3baf65fa45e056caac5e634543d387f5087e, reviewed candidate 8327f421df0c3e477e9a405b69bf7e5910cddca5,
+  RESULT artifacts 149ca05de386bd929d2e432e9a24561c55cba9f4) but the standard Publisher
+  workflow 39989010670 failed with STALE_REVIEW_BINDING: ''batch correction frontier/ref
+  set moved before publication''. At canonical main 8327f421df0c3e477e9a405b69bf7e5910cddca5,
+  publication.py publish_review_decision gathers refs using refs/heads/aios/*/RUN-410-*
+  while _recheck_binding compares that collection with binding filtered by the final
+  slash-separated segment. The wildcard also matches nested terminal-attention/RESULT/RUN-410-002/<artifact
+  SHA> operational refs, which the final-segment comparison drops, producing a deterministic
+  false-positive even when lifecycle refs are unchanged. Human-approved exceptional
+  recovery subsequently placed the exact reviewed source on main and released the
+  reservation. This operational exception is not a reusable solution and did not change
+  canonical Publisher implementation. The Human now explicitly prioritizes fixing
+  the published root cause, prospectively before further comparable batch publication;
+  do not infer CAA-03 selection or alter historical lineage.'
+assumptions:
+- The exact source of the observed failure is Workflow 39989010670 and published main's
+  _recheck_binding wildcard/ref filtering, not the CAA-02 source, Runtime verification
+  or DELTA REVIEW; any new evidence invalidating this diagnosis must be surfaced rather
+  than bypassed.
+- Current main at TASK authoring is 8327f421df0c3e477e9a405b69bf7e5910cddca5; reauthenticate
+  currentness on ingress and execution. TASK-410 recovery is already complete; no
+  repeat recovery, rollback, REVIEW mutation or source SHA rewrite is authorized.
+- Current HUMAN_ON_DEMAND direct TASK_AUTHORING governs. Architecture soft-default
+  AOA-1 compared A no-build/replay, B minimum-sufficient typed lifecycle ref selection/check,
+  C replacement coordinator or state store; A cannot remove deterministic false-positive,
+  B is bounded and selected, C lacks necessity. No independent verified performance
+  uplift is claimed.
+- New explicit Human priority on 2026-10-24 is to repair this Publisher defect. Preserve
+  existing CAA-01/02 published lineage and CAA-03/04 conditional roadmap status; this
+  TASK does not automatically advance or edit roadmap semantics.
+- Executor owns internal HOW and must inspect direct and transitive ref observation
+  consumers before making bounded implementation changes. Runtime, Reviewer, Publisher
+  and Human retain their separate authorities.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-MANIFESTO.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .github/workflows/aios-auto-publish.yml
+  - src/aios_renew/publication.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/unified_state.py
+  - tests/test_batch_remediation.py
+  - tests/test_publication.py
+  modify:
+  - src/aios_renew/publication.py
+  - tests/test_batch_remediation.py
+  - tests/test_publication.py
+non_goals:
+- No change to TASK-410, RUN-410-002, its ResultPackage, REVIEW-410-002, recovery
+  source, CAA feature implementation, or published historical lineage.
+- No force-push, blind reservation deletion/takeover, automatic Publisher bypass,
+  blanket retry, fail-open ref filtering, reduction of canonical scope/lineage verification,
+  or relaxation of pending competing PASS, review, Runtime or main CAS checks.
+- No new lifecycle coordinator, generic router, database, ref-index store, Reader
+  authority, Reviewer/Publisher, policy/audit default, or dispatch workflow.
+- No modification to .ai/roadmap-state.yaml, CAA roadmap, GitHub workflow definitions,
+  branch protection, remote policy, or downstream repository state.
+- No full pytest suite, unrelated Git optimization, publication performance rearchitecture,
+  or speculation that one case establishes complete production conformance.
+constraints:
+  hard:
+  - Publisher must use one explicit, bounded definition of relevant canonical lifecycle
+    refs for the target TASK/RUN batch across initial snapshot and every recheck,
+    with exact ref names and SHA values; preserve detection of added, removed and
+    moved relevant refs, including same-task competing correction authorities.
+  - Operational terminal-attention, chat-wake and other unrelated transport refs must
+    not be conflated with lifecycle/ref-set mutation authority merely because Git
+    wildcard matches nested names. Unknown or malformed refs within a claimed lifecycle
+    namespace cannot silently gain authority or bypass existing validators.
+  - Existing exact REVIEW/RESULT/EVIDENCE, original source and batch REMEDIATION lineage,
+    frontier closure, competing PASS, publication reservation owner/TTL/CAS, current
+    main ancestry and atomic compare-and-swap checks remain mandatory and unchanged
+    in meaning.
+  - A scoped regression reproduces TASK-410's false-positive with genuine nested terminal-attention
+    RESULT refs and proves ordinary Publisher succeeds only when the original canonical
+    review lineage and reservation are eligible. Do not bind fixtures to a mutable
+    external GitHub timestamp or rely on historical artifact text as new authority.
+  - Negative tests independently exercise a newly added, removed, or SHA-moved protected
+    canonical ref between initial and final observations, and distinct competing correction/decision
+    changes. Such changes must stop publication with accurately classifiable outcomes;
+    changes to operational attention refs alone must not.
+  - Preserve legacy single-finding REMEDIATION, multi-finding DELTA, PRIMARY publishing,
+    already-included idempotence, and rejected/blocked publication behavior. Preserve
+    full tests' existing privacy/provenance and no-mutation controls.
+  - Mutation is restricted to three enumerated files; scope.inspect grants no write
+    permission. Executor commits a clean candidate and returns truthful AC1..AC6 claims;
+    only Runtime runs the authored minimum-sufficient-v1 checks and produces EVIDENCE,
+    independent Reviewer judges semantics, Publisher publishes exact reviewed candidate.
+acceptance:
+- id: AC1
+  condition: Initial and repeated canonical batch lifecycle ref observations use a
+    single consistent, bounded selection and equality contract so that unchanged eligible
+    refs cannot yield STALE_REVIEW_BINDING solely due to slash depth or wildcard/final-segment
+    mismatch.
+- id: AC2
+  condition: Nested terminal-attention/RESULT/RUN-410-* operational refs, whether
+    already present or newly created during Publisher's observation window, do not
+    themselves block an otherwise eligible publication or enter canonical correction
+    authorization.
+- id: AC3
+  condition: Changes to real relevant lifecycle refs (add, delete, SHA substitution,
+    competing correction and review/decision movement) remain detectable before publication;
+    negative tests demonstrate a fail-closed result without mutating main.
+- id: AC4
+  condition: Existing source/ResultPackage/EVIDENCE/DELTA lineage validation, correction
+    frontier, competing PASS, reservation owner/CAS and main fast-forward CAS retain
+    their enforcement; regression checks a protected-ref change during a pending reservation.
+- id: AC5
+  condition: A realistic batch REMEDIATION-to-DELTA-PASS publication fixture with
+    nested operational refs reproduces the previous failure pre-fix and succeeds post-fix
+    at the exact reviewed source; the same fixture with stale or competing evidence
+    cannot publish.
+- id: AC6
+  condition: The fix changes only three authorized files and retains compatibility
+    with ordinary PRIMARY, historical single-finding and multi-finding publication
+    and idempotent exact-source inclusion, without new authorities, stores, workflow
+    hooks or changes to CAA/roadmap.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_batch_remediation.py tests/test_publication.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
