@@ -48,6 +48,7 @@ _ENVELOPE_KEYS = frozenset({
     "closure", "handoff_candidate", "stage1", "stage2", "audit_envelope",
     "acceptance_phase_ledger",
     "audit_selection", "audit_policy", "human_v1_deep_support", "selection_authenticator",
+    "human_audit_choice", "human_choice_authenticator",
 })
 _RESERVED_SEMANTIC_KEYS = _ENVELOPE_KEYS | _PRIVATE_KEYS
 _RESERVED_COMPACT_KEYS = frozenset(key.replace("_", "") for key in _RESERVED_SEMANTIC_KEYS)
@@ -430,6 +431,7 @@ def _normal(value: Any, *, depth: int, max_depth: int, private: bool = False,
         if private and value.get("format") in (
             "AIOS_DECISION_PACKET", "AIOS_BRAIN_AUDIT_PROFILES", "AIOS_BRAIN_SEMANTIC_AUDIT",
             "AIOS_BRAIN_AUDIT_POLICY", "AIOS_BRAIN_AUDIT_SELECTION",
+            "AIOS_HUMAN_AUDIT_CHOICE",
         ):
             raise BrainAuditError("nested protocol envelope")
         result = {}
@@ -726,9 +728,15 @@ def _specialized_profiles(*, successors: bool = False, tca3: bool = False) -> di
 
 
 def _three_flow_profiles() -> dict[str, dict[str, Any]]:
-    """The sole prospective three-flow mapping; remediation has no audit entry."""
+    """The exact archived three-flow mapping; remediation has no audit entry."""
     return {flow: ref for flow, ref in _specialized_profiles(tca3=True).items()
             if flow != "REMEDIATION_AUTHORING"}
+
+
+def _direct_authoring_profiles() -> dict[str, Any]:
+    """V2 defaults are explicit absences; AOA is a Human-overridable default."""
+    return {flow: ref if flow == "ARCHITECTURE" else None
+            for flow, ref in _specialized_profiles(tca3=True).items()}
 
 
 def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -738,13 +746,17 @@ def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
     authority. The caller must independently authenticate canonical Human/Brain
     policy and its currentness at admission and continuation.
     """
-    policy = _fields(_normal(value, depth=0, max_depth=8), {
+    normalized = _normal(value, depth=0, max_depth=8)
+    direct = type(normalized) is dict and normalized.get("version") == 2
+    policy = _fields(normalized, {
         "format", "version", "state", "main_sha", "work_context_fingerprint",
         "human_authority_digest", "brain_authority_digest", "r5_publication_sha", "profiles",
-    }, "prospective audit policy")
+    } | ({"on_demand_profiles", "architecture_default"} if direct else set()), "prospective audit policy")
     _bounded(policy, 4096, "prospective audit policy")
     if (policy["format"] != "AIOS_BRAIN_AUDIT_POLICY" or type(policy["version"]) is not int
-            or policy["version"] != 1 or policy["state"] not in ("ADAPTIVE_V1", "FOUR_SPECIALIZED", "THREE_SPECIALIZED")):
+            or (policy["version"], policy["state"]) not in (
+                (1, "ADAPTIVE_V1"), (1, "FOUR_SPECIALIZED"), (1, "THREE_SPECIALIZED"),
+                (2, "HUMAN_ON_DEMAND"))):
         raise BrainAuditError("unsupported prospective audit policy")
     _git_sha(policy["main_sha"], "policy canonical main")
     for key in ("work_context_fingerprint", "human_authority_digest", "brain_authority_digest"):
@@ -753,6 +765,12 @@ def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
         _git_sha(policy["r5_publication_sha"], "reviewed R5 publication")
     if policy["state"] != "ADAPTIVE_V1" and policy["r5_publication_sha"] is None:
         raise BrainAuditError("future cutover requires separately authenticated reviewed R5 publication")
+    if direct:
+        if (_json(policy["profiles"]) != _json(_direct_authoring_profiles())
+                or _json(policy["on_demand_profiles"]) != _json(_specialized_profiles(tca3=True))
+                or policy["architecture_default"] != "SOFT_HUMAN_OPT_OUT"):
+            raise BrainAuditError("direct policy requires exact defaults, on-demand profiles and soft AOA")
+        return policy
     expected = _specialized_profiles()
     successor = _specialized_profiles(successors=True)
     tca3 = _specialized_profiles(tca3=True)

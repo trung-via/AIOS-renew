@@ -59,10 +59,9 @@ in the operational ingress envelope, outside the TASK payload.
 Human approved retirement on 2026-10-06 of the requirement that AUTHOR_TASK ingress must
 serialize and deterministically revalidate the complete two-stage Brain audit handoff
 (`AIOS_AUDITED_AUTHORING_HANDOFF`, Decision Packet fingerprint, Stage-1/Stage-2 audit
-envelope, and TASK acceptance-phase ledger) as a mutation prerequisite. The two-stage
-Brain audit itself remains a semantic authoring obligation: Brain must still audit the
-TASK design before handoff, but cognitive-support/audit plumbing is not canonical
-engineering truth and must not be required as a second mutation authority.
+envelope, and TASK acceptance-phase ledger) as a mutation prerequisite. That decision retained a default two-stage semantic audit at the time. The newer
+TASK-408 policy below prospectively makes authoring direct and audits Human-selected.
+Cognitive support remains separate from canonical engineering truth and mutation authority.
 
 This retirement is prospective. Until a reviewed implementation removes the old ingress
 gate, the currently published Runtime may continue to require the legacy audited handoff
@@ -72,8 +71,8 @@ post-BO-1 production path rejects any supplied `audited_handoff`, including a nu
 field; it does not accept a legacy alternative path or silently ignore that material.
 Runtime does not reconstruct, validate, fingerprint or freshness-recheck Decision Packets,
 Stage-1/Stage-2 material, `acceptance_phase_ledger` or TASK_AUTHORING audit-support sections
-to authorize AUTHOR_TASK mutation. Brain still performs `CONSTRUCT` then
-`ADVERSARIAL_AUDIT_AND_RECONCILE` as mandatory semantic authoring discipline.
+to authorize AUTHOR_TASK mutation. Under TASK-408, those semantic stages apply
+only to an exact Human-selected audit, without a mandatory substitute checklist.
 
 Direct admission preserves final TASK schema and identity/revision continuity,
 the explicit current verification policy for new identities/revisions, authored return-affinity rules,
@@ -109,40 +108,45 @@ checkout, unauthenticated checkout ancestry, malformed canonical content, unavai
 refs or insufficient fetch fail closed. An older clean checkout with absent unrelated
 TASK files does not require Human restoration.
 
-The 2026-10-23 Human decision in TASK-406 defines one prospective
-`THREE_SPECIALIZED` policy: AOA-1 v1 for ARCHITECTURE, TCA-3 v3 for
-TASK_AUTHORING, and ROA-1 R3 v3 for REPAIR_AUTHORING. REMEDIATION_AUTHORING
-is absent from the mapping. New remediation has no normative, default, fallback
-or automatically optional audit. Brain authors the final existing REMEDIATION
-contract directly through AUTHOR_REMEDIATION, preserving exact finding/source/SHA,
-scope, verification, independent Reviewer and Publisher safeguards. No audit
-source material, selection authenticator, MOA stage or V1 support is a prerequisite.
-An audited current remediation provider attempt stops deterministically with zero
-provider calls. Historical MOA bytes and exact request/decision replay remain readable.
+The newer Human decision of 2026-10-23 in TASK-408 supersedes future default-audit
+plans after the exact reviewed implementation is published. The complete version-2
+`HUMAN_ON_DEMAND` policy has null audit defaults for TASK_AUTHORING,
+REPAIR_AUTHORING and REMEDIATION_AUTHORING. Brain directly constructs the final
+existing family candidate, with zero audit stages, fabricated CANDIDATE/PASS or
+ledgers, mandatory source-excerpt collection or substitute audit. Final ingress
+retains its original authentication, SHA/CAS, exact correction authorization and
+scope checks. Ordinary direct authoring needs no individual audit-selection credential.
 
-The candidate record `human_tca3_three_flow_activation_20261023` supersedes the
-2026-10-21 approval by its exact normalized digest. It becomes effective only when
-the admitted TASK-406 r2 / RUN-406-003 repaired RESULT with its exact failed
-RUN-406-002 / REPAIR-406-002-001 lineage, independent first PRIMARY REVIEW PASS
-and Publisher inclusion of that exact reviewed source on canonical main authenticate.
-The record's stored status is READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION;
-the authenticator projects actual active status only after those gates. Authorship,
-registry membership, an ACTIVE label, a wake receipt or Executor RESULT cannot activate it.
-Missing/conflicting approval, source, refs or Git stops the activation attempt without
-falling back to TCA-2, MOA or V1. The earlier approvals and TCA-3/PTE planning bookmark
-remain historical provenance; the newer record is the sole prospective selection.
+AOA-1 remains a soft architecture default. An independently authenticated exact
+Human `NO_AOA` choice yields direct architecture reasoning without fallback. An
+explicit Human request to audit an exact canonical TASK/revision/source selects
+TCA-3; an exact failed REPAIR subject selects ROA-1 R3; an exact REMEDIATION/finding
+subject selects MOA-1. These produce bounded transient reports with no automatic
+re-authoring, repair, remediation mutation, dispatch, review or publication.
 
-Adaptive V1 remains an individually authenticated exact-subject Human option:
-V1_ONLY replaces AOA/TCA alone for Architecture/Task, while V1_READ_ONLY provides
-optional read-only support inside normative ROA without another call or verdict.
-It never supplies a new remediation audit.
-The ordinary caller supplies `human_choice_authenticator` from its trusted Human
-input channel for either choice; a label, hash or model preference is insufficient.
-Historical V1/V2/V3 requests and admitted stage/profile/return lineage remain exact.
-The first-party caller rejects canonical movement during continuation rather than
-reselecting an admitted subject. The historical policy and successor digests are in
-[Brain semantic audit protocol section 23](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#23-r21r5-policy-binding-and-approved-first-party-activation)
-and [section 24](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#24-bounded-tcaroa-successors-prepared-by-task-392).
+The trusted caller binds `human_audit_choice` to one Human request, exact flow,
+main, packet/work context, canonical facts, subject, source context, return contract,
+external identities and profile. `human_choice_authenticator` independently checks
+Human origin at ADMIT/CONTINUE and consumes a request once. Model text, packet
+labels, registry order and hashes alone grant no authority. Stale, partial,
+conflicting, unauthenticated or mixed old/new selections fail closed for that choice.
+Omitting an audit request permits direct authoring without audit sources.
+
+`human_on_demand_audit_policy_20261023` preserves the exact former
+`human_tca3_three_flow_activation_20261023` approval by digest. Activation requires
+TASK-408 r1 / RUN-408-001 Runtime RESULT/EVIDENCE, independent PRIMARY REVIEW PASS
+and Publisher inclusion of the exact source on canonical main. The stored candidate
+status cannot activate itself. Missing approval/publication or changed canonical
+identity stops selection without fallback. Every former approval and exact historical
+profile/stage/return binding remains immutable; an in-flight audit cannot be reselected.
+
+The separate planning-only `human_on_demand_audit_priority_20261023` selects TASK-408
+alone, suspends prospective ROA R4 default activation and preserves TASK-407 r1 and
+its existing lineage. PTE and Lean VP remain paused/resumable; no automatic roadmap
+or downstream progression follows. Existing exact Human V1_ONLY for Architecture/
+Task and bounded read-only correction support remain under their supported constraints;
+neither V1 nor another audit becomes an implicit authoring default.
+See [semantic audit protocol section 27](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#27-task-408-direct-authoring-and-exact-human-on-demand-audits).
 
 Runtime owns verification and EVIDENCE; Reviewer and Publisher retain
 their independent authority. Audit support creates no direct-final AUTHOR_TASK,
@@ -152,7 +156,7 @@ A3 / REMEDIATION INTENT and self-host delegation remain separate, with no Execut
 model or reasoning-effort selection in AUTHOR_REMEDIATION.
 This rule supersedes the historical H1/H3 AUTHOR_TASK mutation prerequisites in the
 [semantic-handoff hardening baseline](AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md),
-without changing their history or the applicable Brain semantic audit obligation.
+without changing their history or the bounds of an explicitly selected Brain audit.
 
 Copying a selector, an old TASK, another chat's proof,
 a rendezvous marker by itself, or an assistant/transcript assertion does not
@@ -385,7 +389,7 @@ upstream governance. After reviewed publication of an upstream portability-polic
 change, perform a fresh downstream BRAIN SYNC and follow that repository's then-current
 canonical roadmap and adoption state.
 
-## 11. Task Design Audit
+## 11. Task design and authority checks
 
 Before authoring a new TASK:
 
@@ -401,7 +405,8 @@ Before authoring a new TASK:
    - or duplicate authority.
 6. Reject duplicate or overlapping responsibility before authoring.
 
-Do not audit the entire repository indiscriminately.
+These are ordinary authoring responsibilities. They do not require a semantic
+audit invocation, staged closure or ledger. Do not audit the entire repository indiscriminately.
 
 ### End-to-end improvement delivery
 
@@ -533,7 +538,7 @@ that record and the prior approvals unchanged. PTE-01..PTE-03 remain recorded as
 reviewed/published; PTE-04..PTE-06 and TASK-401-r3 stay paused and resumable only
 through subsequent explicit Human/Brain reconciliation. No cutover advances them.
 
-## 17. TASK-406 three-flow cutover and exact TASK-405 source exception
+## 17. Historical TASK-406 three-flow cutover and exact TASK-405 source exception
 
 TCA-3 v3 is pinned from the normalized canonical registry to digest
 `cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e`.
@@ -567,3 +572,13 @@ review is PRIMARY; repair admission does not assert review or publication succes
 Currentness is reauthenticated at ADMIT and CONTINUE. Previously admitted
 profiles stay pinned or stop on stale binding; archived V1/four-flow/MOA requests
 still decode exactly. See [protocol section 26](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#26-task-406-prospective-three-flow-policy-and-moa-retirement).
+
+
+## 18. TASK-408 prospective policy precedence
+
+The TASK-408 rule in section 3 takes precedence over earlier default TCA/ROA/MOA
+and mandatory-audit instructions for future authoring after eligible publication.
+Section 17 and all immutable TASK-405/TASK-406 outcomes keep their exact meanings.
+This change preserves the one admitted Executor, Runtime verification/EVIDENCE,
+independent Reviewer and Publisher, final ingress authentication/CAS, original
+TASK.scope.modify and current minimum-sufficient-v1 verification contract.

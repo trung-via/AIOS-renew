@@ -1,7 +1,7 @@
-"""Pure, bounded projection of repository-owned Brain candidate guidance.
+"""Pure, bounded Brain candidate guidance and direct final-family shape checks.
 
 The caller supplies the registry and exact Decision Packet. This module does
-not validate candidate artifacts, discover files, or perform lifecycle work.
+not admit canonical artifacts, discover files, or perform lifecycle work.
 """
 
 from __future__ import annotations
@@ -223,7 +223,98 @@ def select_return_contract(registry: Mapping[str, Any], packet: Any) -> dict[str
         raise BrainReturnContractError("invalid Decision Packet material") from exc
 
 
+def validate_direct_candidate(packet: Any, value: Any) -> dict[str, Any]:
+    """Check a final proposal's family and subject, with no semantic audit.
+
+    This pure transport check grants no admission, Human correction permission,
+    verification or review authority. Final ingress and the independent lifecycle
+    owners retain their original boundaries.
+    """
+    from .brain_audit import _normal
+    from .task import validate_task
+    from .review import parse_remediation
+
+    try:
+        body = _packet(packet)
+        candidate = _normal(value, depth=0, max_depth=32, private=True, v3=True, adaptive=True)
+        if type(candidate) is not dict or len(_json_bytes(candidate)) > 131072:
+            raise BrainReturnContractError("direct candidate must be a bounded mapping")
+        if body["authority_owner"] != "BRAIN" or body["canonical_blocker"] is not None:
+            raise BrainReturnContractError("direct candidate requires an unblocked Brain subject")
+        flow = body["selected_flow"]
+        if flow == "ARCHITECTURE":
+            facts = body["canonical_facts"]
+            if (not candidate or body["subject"] != {"kind": "ARCHITECTURE"}
+                    or body["selection_basis"] != "EXPLICIT_SELECTOR"
+                    or body["requires_fresh_context_for_continuation"] is not True
+                    or body["pending_canonical_obligation"] is not None
+                    or body["pending_canonical_authority_owner"] is not None
+                    or type(facts) is not dict or type(facts.get("roadmap")) is not dict
+                    or type(facts.get("repository")) is not str or not facts["repository"].strip()
+                    or type(facts.get("main_sha")) is not str or re.fullmatch(r"[0-9a-f]{40}", facts["main_sha"]) is None):
+                raise BrainReturnContractError("direct architecture requires its original governance/currentness boundary")
+            _text(body["human_input"], "direct architecture Human intent", 16384)
+            return candidate
+        if flow == "TASK_AUTHORING":
+            validate_task(candidate)
+            if (body["subject"] != {"kind": "TASK_AUTHORING"}
+                    or candidate["verification"].get("policy") != "minimum-sufficient-v1"):
+                raise BrainReturnContractError("direct TASK requires its exact subject and current verification policy")
+            return candidate
+        facts, target = body["canonical_facts"], body["subject"]
+        original = facts["task_contract"]
+        if flow == "REPAIR_AUTHORING":
+            _exact_mapping(candidate, {"repair_id", "failed_run_id", "failed_head_sha", "task", "action",
+                                       "modification_scope", "instructions", "constraints"}, "direct REPAIR")
+            if (body["selection_basis"] not in {"UNIFIED_STATE_AUTHOR_REPAIR", "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION"}
+                    or facts.get("canonical_next_action") not in {"AUTHOR_REPAIR", "EXECUTE_REPAIR"}
+                    or any(candidate[k] != target[k] for k in ("failed_run_id", "failed_head_sha"))
+                    or _json_bytes(candidate["task"]) != _json_bytes(facts["selected_task"])
+                    or candidate["action"] not in {"CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"}):
+                raise BrainReturnContractError("direct REPAIR changed its failed subject or strategy family")
+            if not re.fullmatch(r"REPAIR-[A-Za-z0-9_-]+-\d{3,}", candidate["repair_id"]):
+                raise BrainReturnContractError("invalid direct REPAIR identity")
+            instructions = candidate["instructions"]
+            if type(instructions) is not list or not 1 <= len(instructions) <= 256:
+                raise BrainReturnContractError("direct REPAIR instructions required")
+            for item in instructions:
+                _text(item, "direct REPAIR instruction", 2048)
+            constraints = candidate["constraints"]
+            if (type(constraints) is not list or len(constraints) > 256
+                    or any(type(c) is not str or not c.strip() for c in constraints)
+                    or not set(original["constraints"]["hard"]) <= set(constraints)):
+                raise BrainReturnContractError("direct REPAIR dropped original constraints")
+        elif flow == "REMEDIATION_AUTHORING":
+            _exact_mapping(candidate, {"finding_id", "action", "reviewed_sha", "modification_scope",
+                                       "verification", "constraints"}, "direct REMEDIATION")
+            if (target.get("kind") != "UNIQUE_FINDING"
+                    or any(candidate[k] != target[k] for k in ("finding_id", "action", "reviewed_sha"))
+                    or candidate["constraints"] != original["constraints"]):
+                raise BrainReturnContractError("direct REMEDIATION requires its exact reviewed finding and constraints")
+            parse_remediation(_json_bytes(candidate).decode("utf-8"))
+            verification, authorized = candidate["verification"], original["verification"]
+            _exact_mapping(verification, {"policy", "affected"} | (
+                {"full_suite_reason"} if "full_suite_reason" in verification else set()), "direct affected verification")
+            affected = verification["affected"]
+            if (verification["policy"] != authorized["policy"] or not affected
+                    or len(affected) != len(set(affected)) or not set(affected) <= set(authorized["required"])
+                    or verification.get("full_suite_reason") != authorized.get("full_suite_reason")):
+                raise BrainReturnContractError("direct REMEDIATION changed verification authority")
+        else:
+            raise BrainReturnContractError("flow has no direct authoring candidate")
+        scope = candidate["modification_scope"]
+        if (type(scope) is not list or any(type(p) is not str for p in scope)
+                or len(scope) != len(set(scope)) or not set(scope) <= set(original["scope"]["modify"])
+                or flow == "REMEDIATION_AUTHORING" and (
+                    candidate["action"] == "EVIDENCE_ONLY" and scope
+                    or candidate["action"] == "CODE_FIX" and not scope)):
+            raise BrainReturnContractError("direct correction exceeds original TASK/action scope")
+        return candidate
+    except (BrainAuditError, ValueError, KeyError, TypeError, RecursionError) as exc:
+        raise BrainReturnContractError("invalid direct final candidate") from exc
+
+
 __all__ = [
     "BrainReturnContractError", "normalize_return_contract_registry",
-    "parse_return_contract_registry", "select_return_contract", "return_contract_ref",
+    "parse_return_contract_registry", "select_return_contract", "return_contract_ref", "validate_direct_candidate",
 ]

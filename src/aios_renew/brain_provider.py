@@ -235,14 +235,14 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             audit_policy: Mapping[str, Any] | None = None,
             selection_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None,
             human_v1_deep_support: Mapping[str, Any] | None = None,
+            human_audit_choice: Mapping[str, Any] | None = None,
             repo: str | Path | None = None,
             human_choice_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None) -> AttemptResult:
     """Invoke one normative procedure, or explicit isolated compatibility support.
 
-    Current audited production authenticates the complete canonical policy.
-    Remediation is authored directly through AUTHOR_REMEDIATION; it has no
-    current provider audit. Explicit isolated historical conformance remains
-    decodable and cannot confer current selection or mutation authority.
+    Canonical policy selects direct authoring, soft AOA, or a trusted Human's
+    exact on-demand audit. Explicit isolated historical conformance remains
+    decodable. No provider result admits or mutates a canonical artifact.
     """
     count = 0
     phase = "INPUT"
@@ -251,9 +251,6 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             raise ValueError("DecisionPacket required")
         if type(conformance_only) is not bool:
             raise ValueError("conformance_only must be explicit boolean")
-        if (not conformance_only and packet.as_dict()["selected_flow"] == "REMEDIATION_AUTHORING"
-                and (audit_policy is None or audit_policy.get("state") == "THREE_SPECIALIZED")):
-            raise ValueError("remediation has no current audit; use direct AUTHOR_REMEDIATION")
         configured = (provider.provider, provider.model)
         _identity(*configured)
         if not callable(provider.invoke):
@@ -274,6 +271,7 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
                 moa_source_context=moa_source_context, task_source_context=task_source_context,
                 architecture_source_context=architecture_source_context, human_v1_option=human_v1_option,
                 human_v1_deep_support=human_v1_deep_support,
+                human_audit_choice=human_audit_choice,
                 human_choice_authenticator=human_choice_authenticator)
         elif human_choice_authenticator is not None:
             raise ValueError("individual Human authentication requires the canonical first-party policy path")
@@ -302,12 +300,14 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
                                           architecture_source_context=architecture_source_context,
                                           human_v1_option=human_v1_option, audit_policy=audit_policy,
                                           selection_authenticator=selection_authenticator,
-                                          human_v1_deep_support=human_v1_deep_support)
+                                          human_v1_deep_support=human_v1_deep_support,
+                                          human_audit_choice=human_audit_choice)
         mode = first_request["request_mode"]
         selected = first_request.get("audit_selection")
         continuation = {} if selected is None else {
             "audit_policy": selected["policy"], "selection_authenticator": selection_authenticator,
             "selection_phase": "CONTINUE", "human_v1_deep_support": selected["human_v1_deep_support"],
+            "human_audit_choice": selected.get("human_audit_choice"),
         }
     except (BrainProviderProtocolError, ProviderResponseError, AttributeError, KeyError, TypeError, ValueError):
         invalid_input = True
@@ -361,6 +361,18 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
     phase = mode
     first, attribution1 = invoke(first_request, phase)
     if mode == "DIRECT":
+        if continuation:
+            # Direct work gets the same subject/CAS currentness protection,
+            # without invoking an audit or fabricating a stage result.
+            try:
+                final_packet = fresh_packet_supplier()
+                final_request = construct_request(
+                    final_packet, first_request["return_contract_package"], first_request["external_bindings"],
+                    request_mode="DIRECT", **continuation)
+                if final_request["request_fingerprint"] != first_request["request_fingerprint"]:
+                    raise ValueError("changed direct authoring subject")
+            except Exception:
+                raise BrainAttemptError("STALE_BEFORE_DIRECT_RETURN", "FRESH_PACKET", count) from None
         return AttemptResult(first, (attribution1,))
     phase = "FRESH_PACKET"
     try:

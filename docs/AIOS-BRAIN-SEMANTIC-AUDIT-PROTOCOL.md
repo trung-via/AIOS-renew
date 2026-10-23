@@ -12,9 +12,10 @@ profile is `aios-adaptive-brain-audit-v1`, version 1, normalized digest
 the explicit Human/Brain cutover in section 18.6. V2/V3 remain historical and
 exact in-flight compatibility material; registry order does not select a profile.
 Section 23 describes the authenticated historical FOUR_SPECIALIZED mapping;
-section 24 records the earlier successors. Section 26 is the current prospective
-TASK-406 three-flow decision and supersedes earlier default-selection requirements.
-All earlier MOA/four-flow selection instructions are historical after that cutover.
+section 24 records the earlier successors. Section 26 preserves the TASK-406
+three-flow decision. Section 27 governs the newer TASK-408 prospective direct
+authoring/on-demand policy after its exact review and publication gates. Earlier
+default-selection instructions then apply only to their archived bindings.
 
 ## 1. Purpose
 
@@ -1829,6 +1830,10 @@ independent PASS/publication gate; it also retires MOA from new work.
 
 ## 26. TASK-406 prospective three-flow policy and MOA retirement
 
+This is the exact former policy. Section 27 supersedes its prospective default
+selection and MOA retirement after TASK-408's eligible publication; archived
+TASK-406 approvals, source exceptions and bound outcomes retain this meaning.
+
 The explicit Human 2026-10-23 decision is singular and prospective. It supersedes
 `human_r21_tca_roa_successor_activation` with its exact normalized approval digest
 `c1725256df1fd42e7b435ca3fd88618031db0606014fbbc5e7387a8c6f59a92e` and the
@@ -1933,3 +1938,161 @@ Old admitted selections stay pinned or stop stale; they never silently become a
 new policy. The committed implementation and Executor claims establish these
 mechanisms only. Runtime owns verification, Reviewer independently judges this
 TASK-406, and Publisher alone publishes its approved source.
+
+
+## 27. TASK-408 direct authoring and exact Human on-demand audits
+
+The later Human decision of 2026-10-23 supersedes prospective default TCA/ROA/MOA
+plans through one implementation and publication-gated cutover. Section 26 remains
+the immutable TASK-406 predecessor, including its exact TASK-405 source exception.
+No TASK-407 completion, ROA R4 activation, PTE/Lean VP continuation, downstream pin
+or roadmap advancement is inferred.
+
+### 27.1. Complete version-2 policy and activation
+
+`AIOS_BRAIN_AUDIT_POLICY` version 2, state `HUMAN_ON_DEMAND`, retains the exact
+version-1 fields: `format`, `version`, `state`, `main_sha`,
+`work_context_fingerprint`, `human_authority_digest`, `brain_authority_digest`,
+`r5_publication_sha`, `profiles`. It additionally requires exactly
+`on_demand_profiles` and `architecture_default: SOFT_HUMAN_OPT_OUT`.
+
+| Flow | `profiles` default | `on_demand_profiles` exact Human audit |
+| --- | --- | --- |
+| TASK_AUTHORING | null (DIRECT) | tca-3 v3 |
+| REPAIR_AUTHORING | null (DIRECT) | roa-1-r3 v3 |
+| REMEDIATION_AUTHORING | null (DIRECT) | moa-1 v1 |
+| ARCHITECTURE | aoa-1 v1, soft | aoa-1 v1 |
+
+Each non-null reference contains exactly its existing registry id, integer version
+and normalized digest. The pins are TCA-3
+`cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e`, ROA-1 R3
+`cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a`, MOA-1
+`49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903`, and AOA-1
+`7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b`.
+The 4096-byte policy bound and exact complete mapping checks remain. Partial/mixed
+profiles, boolean versions, unknown states, a missing publication, or replacement
+of a null default by V1/specialized content fail closed. Version-1 ADAPTIVE_V1,
+FOUR_SPECIALIZED and THREE_SPECIALIZED are still decoded exactly as archived.
+
+`human_on_demand_audit_policy_20261023` is the exact prospective Human approval.
+Its predecessor digest authenticates the unchanged TASK-406 approval. Its stored
+status is READY_CANDIDATE_REQUIRES_TASK408_PASS_AND_PUBLICATION. Canonical selection
+reads trusted Git, never working-tree policy, and requires TASK-408 r1 /
+RUN-408-001's structurally valid Runtime ResultPackage and successful exact-command
+EVIDENCE, complete AC1..AC12 implementation claim coverage, independent PRIMARY
+REVIEW PASS for the exact result head, metadata ancestry and Publisher inclusion
+of that reviewed source on canonical main. The exact approval and predecessor
+records must also occur in that source. Only then is effective status projected as
+TASK408_REVIEWED_PUBLISHED_HUMAN_ON_DEMAND_ACTIVE. The same TASK implements and
+activates the policy at eligible publication; no later activation TASK is needed.
+No Executor claim, authored record, carrier admission, registry ordering or wake
+receipt can manufacture these lifecycle facts. Missing/conflicting authority,
+partial publication or changed canonical transport/refs rejects without fallback.
+
+### 27.2. Ordinary direct authoring
+
+The ordinary supported `brain_provider.attempt` still reads the authenticated
+canonical policy. Under version 2 it selects DIRECT for TASK/REPAIR/REMEDIATION
+without caller-supplied audit credentials, profile bodies or source contexts.
+Exactly one provider invocation returns `{request_fingerprint, candidate}`. The
+Brain decision's `semantic_value` is the final existing family candidate itself;
+`audit_profile_ref`, audit-profile package and Stage-1 lineage are null. There is
+no audit CANDIDATE/PASS result, construct/reconcile call, ledger or required hidden
+checklist. Stage-specific audit instructions in the unchanged return-contract
+registry apply only when that audit stage is explicitly selected, never to DIRECT.
+
+Existing return-contract shape, external identity bindings and text/JSON transports
+remain. Pure `construct_request(..., request_mode="DIRECT")` needs no selection
+credential: it is a transport constructor with no policy or mutation authority.
+The first-party production caller independently authenticates the current policy,
+fresh packet/subject and exact canonical return contract at admission and before
+return. It stops on movement without rerunning a provider or switching an audit.
+
+Structural direct candidate checks reuse TASK validation and check correction
+identity, original scope/constraints and exact verification family. They neither
+classify acceptance prose nor select a correction strategy. Brain owns the final
+WHAT/WHY and Human retains intent/strategy authorization. Direct final AUTHOR_TASK,
+AUTHOR_REPAIR and AUTHOR_REMEDIATION ingress remain unchanged: their original actor/
+origin authentication, expected-main SHA/CAS, failed-RUN or reviewed-finding binding,
+TASK.scope.modify, exact Human repair/A3 remediation authorization and independent
+Runtime/Reviewer/Publisher boundaries continue to govern admission. Audit material
+never grants ingress permission and its absence adds no Runtime audit gate.
+
+### 27.3. Trusted exact Human requests and reports
+
+A trusted Human request such as `audit TASK-ABC` is resolved by the caller to its
+exact canonical TASK id/revision/main source, TASK_AUTHORING packet and current
+TCA-3 reference. The first-party path additionally compares the supplied TASK body
+to the exact canonical Git TASK bytes at that main. Failed REPAIR and REMEDIATION
+requests bind the existing packet's exact failed RUN/head or source RUN/review/
+finding/reviewed SHA, original TASK revision and canonical correction sources.
+No wording parser or model self-assertion infers authentication.
+
+The caller supplies `human_audit_choice`, a closed mapping with exactly:
+
+- `format: AIOS_HUMAN_AUDIT_CHOICE`, integer `version: 1`, `selected_by: HUMAN`;
+- `option: AUDIT_ONLY` or (architecture only) `NO_AOA`;
+- `request_digest`: SHA-256 identity of one trusted Human request;
+- `selected_flow`, exact `main_sha`, `packet_fingerprint`, `work_context_fingerprint`;
+- `canonical_facts_fingerprint`, `subject_fingerprint`;
+- `return_contract_ref`, `external_bindings`, `source_context_fingerprint`;
+- `audit_profile_ref`: the exact on-demand profile, or null for NO_AOA.
+
+The source fingerprint covers the normalized mapping containing exactly
+`moa_source_context`, `task_source_context`, `architecture_source_context`, including
+null unused entries. Together these bindings cover the exact flow, identities,
+revision, source, request and return. A digest is content identity, never a Human
+credential. `human_choice_authenticator` is an independent trusted-channel callback,
+not a serialized field or a callable supplied by the model. It authenticates actual
+Human origin and these exact bindings at ADMIT and CONTINUE, consumes the request
+once at ADMIT across attempts, and permits only that admitted attempt's continuation.
+The canonical closure itself also rejects a second version-2 ADMIT. There is no new
+persistent selection database; trusted-channel replay control remains caller-owned.
+
+The version-2 `AIOS_BRAIN_AUDIT_SELECTION` retains the original binding fields and
+adds exactly `human_audit_choice` (null when absent). Its source/profile/request
+bindings contribute to the request fingerprint. Selected audits reuse the original
+TCA_CONSTRUCT/TCA_RECONCILE, single ROA_CONFORMANCE, MOA_CONSTRUCT/MOA_RECONCILE or
+AOA pair. The bounded semantic audit envelope is the report; its provisional
+candidate is audit advice, not permission or an automatic final-ingress handoff.
+No report creates a canonical finding, evidence, verdict, authoring mutation,
+repair/remediation execution, dispatch, publication or roadmap change.
+
+Omitting the choice returns to direct authoring on the next request, including
+another request for the same TASK. Another TASK/revision/source never inherits it.
+Forged/partial/stale/mixed choices, conflicting explicit V1/specialized options or
+changed canonical main/subject reject the affected choice without an audit fallback.
+A model-generated `human_input` string cannot opt in. Direct authoring remains
+available when no audit is requested and needs none of the audit-source inputs.
+
+### 27.4. Soft architecture and supported V1
+
+Without an opt-out, architecture uses the existing exact AOA-1 procedure. A trusted
+NO_AOA request instead selects DIRECT with no profile, audit source context,
+substitute audit or fallback. Normal governance, subject/currentness and authority
+checks still apply. A conflicting V1 or extra audit package is rejected.
+
+The original individually authenticated V1_ONLY option remains exact for
+ARCHITECTURE/TASK_AUTHORING and uses only V1_OPTION_CONSTRUCT then
+V1_OPTION_RECONCILE. It never substitutes silently. Correction V1 is read-only
+support under the existing supported constraints, alongside an explicitly selected
+ROA/MOA report; it cannot create a default audit or replace a correction procedure.
+
+### 27.5. History and planning
+
+Historical profiles and serialized requests/decisions keep their original versions,
+digests, stage lineage, return contracts and interpretation. An admitted legacy audit
+retains its captured selection or stops when canonical policy moves; new admission
+cannot overwrite it or retroactively retitle its outcome. Pure replay performs no
+Git refresh or lifecycle work. Exact isolated historical conformance remains bounded
+and supplies no new selection/mutation authority.
+
+`human_on_demand_audit_priority_20261023` is planning-only. It selects TASK-408 as the
+sole implementation slice, suspends competing future default-ROA R4 activation,
+preserves TASK-407 and all former approvals/bookmarks, and leaves PTE/Lean VP
+resumability with subsequent explicit Human/Brain reconciliation. Runtime owns all
+canonical verification/EVIDENCE, Reviewer semantic judgment and Publisher eligible
+source inclusion. No policy change alters the single admitted Executor, final
+ingress authentication/CAS, original TASK scope or minimum-sufficient-v1 contract.
+Focused regressions express positive and negative examples; they do not themselves
+assert that Runtime has run them or produced PASS.

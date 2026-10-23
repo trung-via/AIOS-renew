@@ -26,7 +26,7 @@ from .brain_audit import (
 )
 from .brain_return_contract import (
     BrainReturnContractError, _BOUNDS, _CANDIDATE_FIELDS, _CONTRACT_FIELDS,
-    _BINDING_FIELDS, _METADATA, _PATH, _SOURCES, return_contract_ref,
+    _BINDING_FIELDS, _METADATA, _PATH, _SOURCES, return_contract_ref, validate_direct_candidate,
 )
 from .decision_packet import DecisionPacket
 
@@ -68,6 +68,7 @@ _NESTED_FORMATS = frozenset({
     "AIOS_BRAIN_REQUEST", "AIOS_BRAIN_DECISION", "AIOS_DECISION_PACKET",
     "AIOS_BRAIN_SEMANTIC_AUDIT", "AIOS_ROA_SUBJECT", "AIOS_BRAIN_REPAIR_OUTCOME_AUDIT",
     "AIOS_BRAIN_AUDIT_POLICY", "AIOS_BRAIN_AUDIT_SELECTION",
+    "AIOS_HUMAN_AUDIT_CHOICE",
 })
 
 
@@ -188,6 +189,8 @@ def _profile_package(value: Any, flow: str) -> dict[str, Any] | None:
         if value is not None:
             raise BrainProviderProtocolError("DIRECT cannot carry audit profile")
         return None
+    if value is None:
+        return None
     package = _exact(_normal(value), {"profile", "audit_profile_ref"}, "audit-profile package")
     profile = normalize_profile(package["profile"])
     if flow not in profile["applicable_flows"] or _bytes(package["audit_profile_ref"]) != _bytes(profile_ref(profile)):
@@ -195,8 +198,45 @@ def _profile_package(value: Any, flow: str) -> dict[str, Any] | None:
     return package
 
 
-def _audit_selection(packet: dict, contract: dict, bindings: dict, profile: dict,
-                     policy_value: Any, sources: dict, option: Any, support: Any) -> dict:
+def _selected_profile_ref(policy: dict, flow: str, choice: Any, option: Any) -> Any:
+    """Choose only exact policy entries; neither text nor registry order selects."""
+    if choice is not None:
+        if policy["state"] != "HUMAN_ON_DEMAND" or option is not None or type(choice) is not dict:
+            raise BrainProviderProtocolError("conflicting or unsupported explicit audit choices")
+        if choice.get("option") == "NO_AOA" and flow == "ARCHITECTURE":
+            return None
+        if choice.get("option") == "AUDIT_ONLY":
+            return policy["on_demand_profiles"][flow]
+        raise BrainProviderProtocolError("unsupported Human audit choice")
+    if option is not None:
+        return {"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
+    return policy["profiles"][flow]
+
+
+def _human_audit_choice(packet: dict, contract: dict, bindings: dict, sources: dict,
+                        reference: Any, value: Any) -> dict:
+    """Subject binding only. A separate trusted Human channel authenticates it."""
+    selected = _normal(value)
+    expected = {
+        "format": "AIOS_HUMAN_AUDIT_CHOICE", "version": 1, "selected_by": "HUMAN",
+        "option": selected.get("option"), "request_digest": selected.get("request_digest"),
+        "selected_flow": packet["selected_flow"], "main_sha": packet["canonical_facts"]["main_sha"],
+        "packet_fingerprint": packet["packet_fingerprint"],
+        "work_context_fingerprint": packet["work_context_fingerprint"],
+        "canonical_facts_fingerprint": _digest(packet["canonical_facts"]),
+        "subject_fingerprint": _digest(packet["subject"]),
+        "return_contract_ref": contract["return_contract_ref"], "external_bindings": bindings,
+        "source_context_fingerprint": _digest(sources), "audit_profile_ref": reference,
+    }
+    _fingerprint(expected["request_digest"], "trusted Human request digest")
+    if _bytes(selected) != _bytes(expected):
+        raise BrainProviderProtocolError("Human audit choice has stale, partial or conflicting subject bindings")
+    return selected
+
+
+def _audit_selection(packet: dict, contract: dict, bindings: dict, profile: dict | None,
+                     policy_value: Any, sources: dict, option: Any, support: Any,
+                     human_audit_choice: Any = None) -> dict:
     """Bind one complete canonical policy; serialized bindings are not credentials."""
     policy = normalize_audit_policy(policy_value)
     flow = packet["selected_flow"]
@@ -209,24 +249,31 @@ def _audit_selection(packet: dict, contract: dict, bindings: dict, profile: dict
         raise BrainProviderProtocolError("prospective policy/flow/canonical currentness mismatch")
     v1_ref = {"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
     sources = deepcopy(sources)
-    if policy["state"] in {"FOUR_SPECIALIZED", "THREE_SPECIALIZED"} or option is not None:
+    direct_policy = policy["state"] == "HUMAN_ON_DEMAND"
+    expected_ref = _selected_profile_ref(policy, flow, human_audit_choice, option)
+    if expected_ref is None:
+        if profile is not None or any(v is not None for v in sources.values()) or support is not None:
+            raise BrainProviderProtocolError("direct authoring carries no audit profile, sources or support")
+    elif policy["state"] in {"FOUR_SPECIALIZED", "THREE_SPECIALIZED", "HUMAN_ON_DEMAND"} or option is not None:
         if flow == "ARCHITECTURE":
             sources["architecture_source_context"] = _aoa_source_context(sources["architecture_source_context"])
         elif flow == "TASK_AUTHORING":
             sources["task_source_context"] = _tca_source_context(sources["task_source_context"])
         elif flow == "REMEDIATION_AUTHORING":
             sources["moa_source_context"] = _moa_source_context(sources["moa_source_context"])
-    expected_ref = policy["profiles"][flow]
     if option is not None:
         if flow not in {"ARCHITECTURE", "TASK_AUTHORING"}:
             raise BrainProviderProtocolError("correction V1 cannot substitute for its normative procedure")
         expected_ref = v1_ref
         context = sources["architecture_source_context" if flow == "ARCHITECTURE" else "task_source_context"]
         option = _human_v1_option(packet, contract, bindings, profile, context, option)
-    if _bytes(profile["audit_profile_ref"]) != _bytes(expected_ref):
+    if _bytes(None if profile is None else profile["audit_profile_ref"]) != _bytes(expected_ref):
         raise BrainProviderProtocolError("selected prospective profile is missing or mismatched; no fallback")
+    choice = None
+    if human_audit_choice is not None:
+        choice = _human_audit_choice(packet, contract, bindings, sources, expected_ref, human_audit_choice)
     if support is not None:
-        if (policy["state"] not in {"FOUR_SPECIALIZED", "THREE_SPECIALIZED"}
+        if (policy["state"] not in {"FOUR_SPECIALIZED", "THREE_SPECIALIZED", "HUMAN_ON_DEMAND"}
                 or flow not in {"REMEDIATION_AUTHORING", "REPAIR_AUTHORING"}):
             raise BrainProviderProtocolError("read-only V1 support requires normative MOA/ROA")
         expected_support = {
@@ -240,21 +287,25 @@ def _audit_selection(packet: dict, contract: dict, bindings: dict, profile: dict
             raise BrainProviderProtocolError("read-only Human V1 support binding mismatch")
         support = expected_support
     selection = {
-        "format": "AIOS_BRAIN_AUDIT_SELECTION", "version": 1, "policy": policy,
+        "format": "AIOS_BRAIN_AUDIT_SELECTION", "version": 2 if direct_policy else 1, "policy": policy,
         "selected_flow": flow, "packet_fingerprint": packet["packet_fingerprint"],
         "work_context_fingerprint": packet["work_context_fingerprint"],
         "canonical_facts_fingerprint": _digest(packet["canonical_facts"]),
         "subject_fingerprint": _digest(packet["subject"]),
         "return_contract_ref": contract["return_contract_ref"], "external_bindings": bindings,
-        "audit_profile_ref": profile["audit_profile_ref"], "source_context_fingerprint": _digest(sources),
+        "audit_profile_ref": expected_ref, "source_context_fingerprint": _digest(sources),
         "human_v1_option": option, "human_v1_deep_support": support,
     }
+    if direct_policy:
+        selection["human_audit_choice"] = choice
     _bound(selection, 16384, "prospective audit selection")
     return selection
 
 
 def _selected_mode(selection: dict) -> str:
     """The existing selected_flow and exact policy determine one existing mode."""
+    if selection["audit_profile_ref"] is None:
+        return "DIRECT"
     if selection["human_v1_option"] is not None:
         return "V1_OPTION_CONSTRUCT"
     if selection["policy"]["state"] == "ADAPTIVE_V1":
@@ -383,6 +434,13 @@ def _mode(packet: dict[str, Any], profile: dict[str, Any] | None, mode: Any) -> 
     if type(mode) is not str or packet["authority_owner"] != "BRAIN":
         raise BrainProviderProtocolError("flow and request mode do not apply")
     flow = packet["selected_flow"]
+    if mode == "DIRECT" and profile is None and flow in _AUDITED | {"DIAGNOSTIC"}:
+        if flow != "DIAGNOSTIC" and (packet["canonical_blocker"] is not None
+                or packet["requires_fresh_context_for_continuation"] is not True
+                or flow in {"ARCHITECTURE", "TASK_AUTHORING"} and packet["subject"] != {"kind": flow}
+                or flow == "ARCHITECTURE" and packet["selection_basis"] != "EXPLICIT_SELECTOR"):
+            raise BrainProviderProtocolError("DIRECT requires the exact unblocked authoring/planning subject")
+        return
     if profile is not None and profile["profile"]["id"] in _ROA_IDS:
         if flow != "REPAIR_AUTHORING" or mode != "ROA_CONFORMANCE":
             raise BrainProviderProtocolError("ROA requires its exact single procedure; no mixed stages")
@@ -398,7 +456,7 @@ def _mode(packet: dict[str, Any], profile: dict[str, Any] | None, mode: Any) -> 
     elif mode in {"V1_OPTION_CONSTRUCT", "V1_OPTION_RECONCILE"}:
         if flow not in {"TASK_AUTHORING", "ARCHITECTURE"} or profile is None or profile["profile"]["id"] != _ADAPTIVE_ID:
             raise BrainProviderProtocolError("Human V1-only option requires exact TASK_AUTHORING/ARCHITECTURE and Adaptive V1")
-    elif not ((flow in _AUDITED and mode in {"AUDIT_CONSTRUCT", "AUDIT_RECONCILE"}) or
+    elif not ((flow in _AUDITED and profile is not None and mode in {"AUDIT_CONSTRUCT", "AUDIT_RECONCILE"}) or
               (flow == "DIAGNOSTIC" and mode == "DIRECT")):
         raise BrainProviderProtocolError("flow and request mode do not apply")
 
@@ -504,7 +562,8 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
                       audit_policy: Mapping[str, Any] | None = None,
                       selection_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None,
                       selection_phase: str = "ADMIT",
-                      human_v1_deep_support: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                      human_v1_deep_support: Mapping[str, Any] | None = None,
+                      human_audit_choice: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Construct an exact historical/isolated or externally authenticated request.
 
     PROSPECTIVE requires a complete policy and an out-of-band trusted caller
@@ -526,7 +585,7 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
             sources = _normal({"moa_source_context": moa_source_context, "task_source_context": task_source_context,
                                "architecture_source_context": architecture_source_context})
             selection = _audit_selection(body, contract, bindings, profile, audit_policy, sources,
-                                         human_v1_option, human_v1_deep_support)
+                                         human_v1_option, human_v1_deep_support, human_audit_choice)
             request_mode = _policy_mode(selection, request_mode)
             if selection_phase not in {"ADMIT", "CONTINUE"} or not callable(selection_authenticator):
                 raise BrainProviderProtocolError("external canonical policy authenticator required")
@@ -537,7 +596,7 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
             if not authenticated:
                 raise BrainProviderProtocolError("canonical policy/subject authority is absent, stale or ambiguous")
         elif (request_mode == "PROSPECTIVE" or selection_authenticator is not None
-              or human_v1_deep_support is not None or selection_phase != "ADMIT"):
+              or human_v1_deep_support is not None or human_audit_choice is not None or selection_phase != "ADMIT"):
             raise BrainProviderProtocolError("complete prospective canonical policy required; no fallback")
         _mode(body, profile, request_mode)
         architecture = request_mode in {"AOA_CONSTRUCT", "AOA_RECONCILE"} or (
@@ -589,8 +648,8 @@ def construct_request(packet: DecisionPacket, return_contract_package: Mapping[s
         if moa_source_context is not None:
             raise BrainProviderProtocolError("MOA source context requires its exact focused procedure")
         if request_mode == "DIRECT":
-            if bindings or stage1_decision is not None:
-                raise BrainProviderProtocolError("DIRECT has no bindings or lineage")
+            if stage1_decision is not None:
+                raise BrainProviderProtocolError("DIRECT has no audit lineage")
             lineage = None
         elif request_mode == "AUDIT_CONSTRUCT":
             if stage1_decision is not None:
@@ -657,7 +716,8 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
             sources = {key: request.get(key) for key in (
                 "moa_source_context", "task_source_context", "architecture_source_context")}
             selection = _audit_selection(packet, contract, bindings, profile, supplied_selection["policy"], sources,
-                                         request.get("human_v1_option"), supplied_selection["human_v1_deep_support"])
+                                         request.get("human_v1_option"), supplied_selection["human_v1_deep_support"],
+                                         supplied_selection.get("human_audit_choice"))
             if _bytes(selection) != _bytes(supplied_selection) or _policy_mode(selection, mode) != mode:
                 raise BrainProviderProtocolError("prospective selection binding mismatch")
         _mode(packet, profile, mode)
@@ -671,8 +731,8 @@ def revalidate_request(value: Mapping[str, Any]) -> dict[str, Any]:
             _moa_lineage(packet, contract, bindings, profile, request["moa_source_context"], request["stage1_lineage"], selection)
         elif mode == "AUDIT_RECONCILE":
             _lineage(packet, contract, bindings, profile, request["stage1_lineage"], selection)
-        elif request["stage1_lineage"] is not None or mode == "DIRECT" and bindings:
-            raise BrainProviderProtocolError("forbidden lineage or DIRECT bindings")
+        elif request["stage1_lineage"] is not None:
+            raise BrainProviderProtocolError("forbidden audit lineage")
         if roa:
             expected_subject = construct_roa_subject(packet, profile["profile"],
                                                       contract["return_contract_ref"], bindings)
@@ -764,7 +824,9 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
         if "human_v1_option" in req and packet["selected_flow"] == "ARCHITECTURE":
             _aoa_private(response["candidate"] if mode == "AUDIT_CONSTRUCT" else response["reconciled_candidate"])
         if mode == "DIRECT":
-            semantic = _diagnostic(response["candidate"])
+            _enforce_bindings(response["candidate"], req["external_bindings"])
+            semantic = (_diagnostic(response["candidate"]) if packet["selected_flow"] == "DIAGNOSTIC"
+                        else validate_direct_candidate(packet, response["candidate"]))
         elif mode in {"AOA_CONSTRUCT", "AOA_RECONCILE"}:
             material = {k: v for k, v in response.items() if k != "request_fingerprint"}
             args = (packet, req["audit_profile_package"]["profile"], req["aoa_subject"])
@@ -824,7 +886,9 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
         mode = req["request_mode"]
         mode = {"V1_OPTION_CONSTRUCT": "AUDIT_CONSTRUCT", "V1_OPTION_RECONCILE": "AUDIT_RECONCILE"}.get(mode, mode)
         if mode == "DIRECT":
-            validated = _diagnostic(semantic)
+            _enforce_bindings(semantic, req["external_bindings"])
+            validated = (_diagnostic(semantic) if req["decision_packet"]["selected_flow"] == "DIAGNOSTIC"
+                         else validate_direct_candidate(req["decision_packet"], semantic))
         elif mode == "AOA_CONSTRUCT":
             validated = _aoa_construct(req["decision_packet"], req["audit_profile_package"]["profile"],
                                        req["aoa_subject"], semantic, req["architecture_source_context"])

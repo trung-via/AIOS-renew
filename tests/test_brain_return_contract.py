@@ -318,3 +318,71 @@ def test_task_v3_return_contract_exposes_transient_closed_conformance():
     for contract in data["contracts"]:
         if contract["selected_flow"] != "TASK_AUTHORING":
             assert "terminal_lifecycle" not in json.dumps(contract)
+
+
+@pytest.mark.parametrize("flow", ("TASK_AUTHORING", "REPAIR_AUTHORING", "REMEDIATION_AUTHORING", "ARCHITECTURE"))
+def test_task408_direct_candidate_preserves_return_shape_without_audit_material(flow):
+    from aios_renew.brain_return_contract import validate_direct_candidate
+    from tests.test_brain_provider_protocol import task408_inputs
+    supplied, contract, _, _, candidate = task408_inputs(registry(), flow)
+    before = deepcopy(contract)
+    assert validate_direct_candidate(supplied, candidate) == candidate
+    assert contract == before
+    assert return_contract_ref(contract["contract"], contract["bounds"]) == contract["return_contract_ref"]
+    for key in ("audit_profile_ref", "acceptance_phase_ledger", "closure", "human_audit_choice"):
+        with pytest.raises(BrainReturnContractError):
+            validate_direct_candidate(supplied, {**candidate, key: "PASS"})
+
+
+@pytest.mark.parametrize("flow,fault", [
+    ("TASK_AUTHORING", "policy"), ("TASK_AUTHORING", "phase"),
+    ("REPAIR_AUTHORING", "failed_head"), ("REPAIR_AUTHORING", "task_revision"),
+    ("REPAIR_AUTHORING", "scope"), ("REPAIR_AUTHORING", "constraints"),
+    ("REMEDIATION_AUTHORING", "finding"), ("REMEDIATION_AUTHORING", "reviewed_sha"),
+    ("REMEDIATION_AUTHORING", "scope"), ("REMEDIATION_AUTHORING", "verification"),
+    ("REMEDIATION_AUTHORING", "constraints"),
+])
+def test_task408_direct_final_contracts_cannot_change_original_authority(flow, fault):
+    from aios_renew.brain_return_contract import validate_direct_candidate
+    from tests.test_brain_provider_protocol import task408_inputs
+    supplied, _, _, _, candidate = task408_inputs(registry(), flow)
+    if fault == "policy":
+        candidate["verification"]["policy"] = "minimum-sufficient-v2"
+    elif fault == "phase":
+        candidate["acceptance"][0]["phase"] = "CLAIM_NOW"
+    elif fault == "failed_head":
+        candidate["failed_head_sha"] = "f" * 40
+    elif fault == "task_revision":
+        candidate["task"]["revision"] += 1
+    elif fault == "scope":
+        candidate["modification_scope"].append("src/unauthorized.py")
+    elif fault == "constraints":
+        candidate["constraints"] = [] if flow == "REPAIR_AUTHORING" else {"hard": ["Invented intent"]}
+    elif fault == "finding":
+        candidate["finding_id"] = "F2"
+    elif fault == "reviewed_sha":
+        candidate["reviewed_sha"] = "f" * 40
+    else:
+        candidate["verification"]["affected"] = ["python -m unrelated"]
+    with pytest.raises(BrainReturnContractError):
+        validate_direct_candidate(supplied, candidate)
+
+
+@pytest.mark.parametrize("fault", ("intent", "main", "pending_review", "foreign_subject"))
+def test_task408_direct_architecture_preserves_normal_governance(fault):
+    from aios_renew.brain_return_contract import validate_direct_candidate
+    from tests.test_brain_provider_protocol import task408_inputs, digest
+    supplied, _, _, _, candidate = task408_inputs(registry(), "ARCHITECTURE")
+    body = supplied.as_dict()
+    if fault == "intent":
+        body["human_input"] = None
+    elif fault == "main":
+        body["canonical_facts"]["main_sha"] = "stale"
+    elif fault == "pending_review":
+        body["pending_canonical_obligation"] = "SEMANTIC_REVIEW"
+        body["pending_canonical_authority_owner"] = "REVIEWER"
+    else:
+        body["subject"] = {"kind": "TASK_AUTHORING"}
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    with pytest.raises(BrainReturnContractError):
+        validate_direct_candidate(DecisionPacket(body), candidate)

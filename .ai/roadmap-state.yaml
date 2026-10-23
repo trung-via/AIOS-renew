@@ -1,4 +1,82 @@
 version: 1
+human_on_demand_audit_policy_20261023:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL
+  approved_on: '2026-10-23'
+  status: READY_CANDIDATE_REQUIRES_TASK408_PASS_AND_PUBLICATION
+  human_decision: DIRECT_AUTHORING_ON_DEMAND_TCA_ROA_MOA_SOFT_AOA_WITH_EXPLICIT_OPT_OUT
+  supersedes: human_tca3_three_flow_activation_20261023
+  superseded_approval_digest: 8a67b893d4047e72f2b43737c827aa9a62094e31163c7c621ac8c5894dc5652e
+  implementation_task: TASK-408
+  implementation_revision: 1
+  implementation_run: RUN-408-001
+  required_review_mode: PRIMARY
+  required_review_verdict: PASS
+  activation_boundary: EXACT_TASK408_RUNTIME_RESULT_INDEPENDENT_REVIEW_PASS_PUBLISHER_SOURCE_ON_MAIN
+  target_policy_format: AIOS_BRAIN_AUDIT_POLICY
+  target_policy_version: 2
+  target_policy_state: HUMAN_ON_DEMAND
+  target_profiles:
+    ARCHITECTURE:
+      id: aoa-1
+      version: 1
+      digest: 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b
+    TASK_AUTHORING: null
+    REMEDIATION_AUTHORING: null
+    REPAIR_AUTHORING: null
+  target_on_demand_profiles:
+    ARCHITECTURE:
+      id: aoa-1
+      version: 1
+      digest: 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b
+    TASK_AUTHORING:
+      id: tca-3
+      version: 3
+      digest: cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e
+    REMEDIATION_AUTHORING:
+      id: moa-1
+      version: 1
+      digest: 49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903
+    REPAIR_AUTHORING:
+      id: roa-1-r3
+      version: 3
+      digest: cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a
+  architecture_default: SOFT_HUMAN_OPT_OUT
+  human_choice: TRUSTED_EXACT_SUBJECT_SOURCE_ONE_REQUEST_AUDIT_ONLY_OR_NO_AOA
+  v1_option: EXISTING_EXACT_HUMAN_V1_ONLY_AND_READ_ONLY_CORRECTION_SUPPORT_CONSTRAINTS
+  historical_lineage: IMMUTABLE_EXACT_REPLAY_NO_IN_FLIGHT_RESELECTION
+  task407_roa_r4: PROSPECTIVE_DEFAULT_ACTIVATION_SUSPENDED_EXISTING_TASK_LINEAGE_UNCHANGED
+  downstream: NO_AUTOMATIC_PTE_LEAN_VP_R4_OR_ROADMAP_ADVANCEMENT
+human_on_demand_audit_priority_20261023:
+  authority: EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
+  approved_on: '2026-10-23'
+  planning_only: true
+  source_main_sha_at_authoring: d2a0dfc49e823670446bd2975c3b7c904a6a48e9
+  human_decision: DIRECT_AUTHORING_WITH_EXACT_ON_DEMAND_AUDITS_AND_SOFT_AOA
+  supersedes_prospective_priority_records:
+  - human_tca3_retrospective_priority_20261023
+  - TASK-407-r1-prospective-ROA-R4-default-plan
+  sole_high_level_next: human-audit-policy-direct-authoring-20261023
+  planning_owner: human-audit-policy-direct-authoring-20261023
+  planning_document: docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  selected_slice: TASK_408_DIRECT_AUTHORING_AND_EXACT_HUMAN_AUDIT_POLICY_CUTOVER
+  implementation_task: TASK-408
+  implementation_revision: 1
+  policy_record: human_on_demand_audit_policy_20261023
+  activation: ONLY_EXACT_TASK408_RUNTIME_RESULT_INDEPENDENT_PRIMARY_REVIEW_PASS_AND_PUBLISHER_SOURCE_ON_MAIN
+  task407:
+    task: TASK-407
+    revision: 1
+    disposition: PRESERVE_AUTHORED_TASK_AND_ALL_EXISTING_LINEAGE
+    prospective_roa_r4_default_activation: SUSPENDED_BY_NEWER_HUMAN_PRIORITY
+    implementation_or_completion: NOT_INFERRED
+  paused_bookmarks:
+    pte: PAUSED_RESUMABLE_PTE04_PTE05_PTE06_AND_TASK401_R3
+    lean_vp: PAUSED_RESUMABLE_L3_06_G3_G6_L4
+    resume_authority: EXPLICIT_SUBSEQUENT_HUMAN_BRAIN_RECONCILIATION_ONLY
+  engineering_truth: IMMUTABLE_CANONICAL_TASK_RUN_RESULT_FAILURE_REVIEW_AND_PUBLICATION_LINEAGE
+  executor_delegation: SEPARATE_HUMAN_AUTHORITY_NOT_GRANTED_BY_PLANNING
+  next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
+
 human_tca3_three_flow_activation_20261023:
   authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL
   approved_on: '2026-10-23'
@@ -501,9 +579,9 @@ human_lean_vp_l3_03_reconciliation_20261020:
     - NO_TASK_RUN_REVIEW_PUBLICATION_OR_DOWNSTREAM_LINEAGE_REWRITE
     - UNRESOLVED_INGRESS_PRODUCER_CONCURRENCY_REMAINS_SEPARATE_DIAGNOSTIC
 
-active_track: post-task-dirty-recovery-pte-20261022
+active_track: human-audit-policy-direct-authoring-20261023
 active_track_status: ACTIVE
-planning_document: docs/AIOS-PTE-POST-TASK-DIRTY-RECOVERY-ROADMAP-v1.md
+planning_document: docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
 human_lean_vp_legacy_plan_retirement_and_task389_authoring_reconciliation_20261019:
   authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_RECONCILIATION
   approved_on: "2026-10-19"
@@ -2686,11 +2764,24 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - post-task-dirty-recovery-pte-20261022
+  - human-audit-policy-direct-authoring-20261023
 sequence:
+  - id: human-audit-policy-direct-authoring-20261023
+    status: NEXT
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    planning_only: true
+    planning_owner: human-audit-policy-direct-authoring-20261023
+    planning_document: docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+    task_id: TASK-408
+    task_revision: 1
+    selected_slice: TASK_408_DIRECT_AUTHORING_AND_EXACT_HUMAN_AUDIT_POLICY_CUTOVER
+    priority_record: human_on_demand_audit_priority_20261023
+    next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
 
   - id: post-task-dirty-recovery-pte-20261022
-    status: NEXT
+    status: PAUSED
+    historical_status: NEXT
+    prospective_priority_owner: human-audit-policy-direct-authoring-20261023
     phase: PTE_03_SOURCE_BOUND_DIAGNOSTIC_ACCESS
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-22"

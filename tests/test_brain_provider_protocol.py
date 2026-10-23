@@ -174,7 +174,8 @@ def r5_second(req, first, authority):
         req["external_bindings"], req["audit_profile_package"], request_mode=second_mode, stage1_decision=first,
         **{key: req.get(key) for key in ("moa_source_context", "task_source_context", "architecture_source_context", "human_v1_option")},
         audit_policy=req["audit_selection"]["policy"], selection_authenticator=authority, selection_phase="CONTINUE",
-        human_v1_deep_support=req["audit_selection"]["human_v1_deep_support"])
+        human_v1_deep_support=req["audit_selection"]["human_v1_deep_support"],
+        human_audit_choice=req["audit_selection"].get("human_audit_choice"))
 
 
 @pytest.mark.parametrize("flow", R5_FLOWS)
@@ -1750,3 +1751,196 @@ def test_task405_tca3_protocol_round_trip_and_prospective_policy_bindings(regist
     assert revalidate_decision(final, second) == final
     assert final["audit_profile_ref"] == package["audit_profile_ref"]
 
+
+
+# TASK-408 examples use existing family contracts and exact archived profiles.
+def task408_policy(body):
+    from aios_renew.brain_audit import _direct_authoring_profiles, _specialized_profiles
+    return {**audit_policy_example(body), "version": 2, "state": "HUMAN_ON_DEMAND",
+            "profiles": _direct_authoring_profiles(), "on_demand_profiles": _specialized_profiles(tca3=True),
+            "architecture_default": "SOFT_HUMAN_OPT_OUT"}
+
+
+def task408_inputs(registry, flow, canonical=None):
+    from tests.test_brain_audit import task405_tca3_context, moa_candidate
+    if flow == "TASK_AUTHORING":
+        body, context = task405_tca3_context()
+        supplied = DecisionPacket(body)
+        contract = select_return_contract(registry, supplied)
+        bindings = {"task_id": context["task"]["task_id"], "revision": context["task"]["revision"]}
+        sources, candidate = {"task_source_context": context}, deepcopy(context["task"])
+    elif flow == "REMEDIATION_AUTHORING":
+        supplied, contract, bindings, context = moa_inputs(registry)
+        sources, candidate = {"moa_source_context": context}, moa_candidate(supplied.as_dict())
+    elif flow == "REPAIR_AUTHORING":
+        supplied, contract, bindings = roa_inputs(registry)
+        body = supplied.as_dict()
+        body["canonical_facts"]["task_contract"]["acceptance"] = [{"id": "AC1", "condition": "Preserve context"}]
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        supplied = DecisionPacket(body)
+        sources = {}
+        candidate = {**bindings, **{k: body["subject"][k] for k in ("failed_run_id", "failed_head_sha")},
+                     "task": deepcopy(body["canonical_facts"]["selected_task"]), "action": "CONTINUE_IMPLEMENTATION",
+                     "modification_scope": list(body["canonical_facts"]["task_contract"]["scope"]["modify"]),
+                     "instructions": ["Finish the exact authorized candidate."],
+                     "constraints": list(body["canonical_facts"]["task_contract"]["constraints"]["hard"])}
+    else:
+        supplied, contract, bindings, context = aoa_inputs(registry)
+        sources, candidate = {"architecture_source_context": context}, {"proposal": "Retain the minimum existing mechanism."}
+    if canonical is not None:
+        from aios_renew.brain_sync import _resolve_repository_name
+        body = supplied.as_dict()
+        body["canonical_facts"].update(repository=_resolve_repository_name(canonical.repo), main_sha=canonical.main_sha)
+        if flow == "ARCHITECTURE":
+            context["provenance"].update(repository=_resolve_repository_name(canonical.repo), main_sha=canonical.main_sha)
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        supplied = DecisionPacket(body)
+    return supplied, contract, bindings, sources, candidate
+
+
+def task408_choice(supplied, contract, bindings, sources, reference, option="AUDIT_ONLY"):
+    body = supplied.as_dict()
+    return {"format": "AIOS_HUMAN_AUDIT_CHOICE", "version": 1, "selected_by": "HUMAN", "option": option,
+            "request_digest": digest({"trusted_human_request": option, "packet": body["packet_fingerprint"]}),
+            "selected_flow": body["selected_flow"], "main_sha": body["canonical_facts"]["main_sha"],
+            "packet_fingerprint": body["packet_fingerprint"], "work_context_fingerprint": body["work_context_fingerprint"],
+            "canonical_facts_fingerprint": digest(body["canonical_facts"]), "subject_fingerprint": digest(body["subject"]),
+            "return_contract_ref": deepcopy(contract["return_contract_ref"]), "external_bindings": deepcopy(bindings),
+            "source_context_fingerprint": digest({key: sources.get(key) for key in (
+                "moa_source_context", "task_source_context", "architecture_source_context")}),
+            "audit_profile_ref": deepcopy(reference)}
+
+
+class ExactHumanChoice:
+    """Trusted test channel consumes one explicit Human request, not model text."""
+    def __init__(self, choice):
+        self.choice, self.admitted, self.phases = deepcopy(choice), False, []
+
+    def __call__(self, selection, phase):
+        self.phases.append(phase)
+        if selection.get("human_audit_choice") != self.choice:
+            return False
+        if phase == "ADMIT":
+            if self.admitted:
+                return False
+            self.admitted = True
+            return True
+        return phase == "CONTINUE" and self.admitted
+
+
+def task408_case(registry, flow, *, option=None, v1=False):
+    supplied, contract, bindings, sources, candidate = task408_inputs(registry, flow)
+    policy = task408_policy(supplied.as_dict())
+    reference = policy["on_demand_profiles"][flow] if option == "AUDIT_ONLY" else policy["profiles"][flow]
+    if option == "NO_AOA":
+        reference = None
+    if v1:
+        reference = audit_policy_example(supplied.as_dict(), active=False)["profiles"][flow]
+    package = None
+    if reference is not None:
+        profile = next(p for p in parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+                       if profile_ref(p) == reference)
+        package = {"profile": profile, "audit_profile_ref": reference}
+    else:
+        sources = {}
+    choice = None if option is None else task408_choice(supplied, contract, bindings, sources, reference, option)
+    v1_option = None
+    if v1:
+        context = sources["architecture_source_context" if flow == "ARCHITECTURE" else "task_source_context"]
+        v1_option = human_v1_selection(supplied, contract, bindings, context, package)
+    authority = R5Authority(policy, supplied, contract, bindings, package or {"audit_profile_ref": None}, sources, v1_option)
+    authority.expected.update(version=2, human_audit_choice=choice)
+    kwargs = {**sources, "audit_policy": policy, "selection_authenticator": authority,
+              "human_audit_choice": choice, "human_v1_option": v1_option}
+    return supplied, contract, bindings, package, kwargs, authority, candidate
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+def test_task408_direct_final_candidates_need_no_selection_credential_or_audit_sources(registry, flow):
+    supplied, contract, bindings, _, candidate = task408_inputs(registry, flow)
+    req = construct_request(supplied, contract, bindings, request_mode="DIRECT")
+    assert revalidate_request(json.loads(json.dumps(req))) == req
+    assert req["audit_profile_package"] is req["stage1_lineage"] is None
+    assert "audit_selection" not in req
+    decision = validate_response(req, response(req, candidate))
+    assert decision["semantic_value"] == candidate and decision["audit_profile_ref"] is None
+    assert revalidate_decision(json.loads(json.dumps(decision)), req) == decision
+    for extra in ("construct_audit", "closure", "acceptance_phase_ledger", "outcome"):
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(req, {**response(req, candidate), extra: "PASS"})
+
+
+@pytest.mark.parametrize("flow,option,mode", [
+    ("TASK_AUTHORING", None, "DIRECT"), ("REPAIR_AUTHORING", None, "DIRECT"),
+    ("REMEDIATION_AUTHORING", None, "DIRECT"), ("ARCHITECTURE", None, "AOA_CONSTRUCT"),
+    ("ARCHITECTURE", "NO_AOA", "DIRECT"), ("TASK_AUTHORING", "AUDIT_ONLY", "TCA_CONSTRUCT"),
+    ("REPAIR_AUTHORING", "AUDIT_ONLY", "ROA_CONFORMANCE"), ("REMEDIATION_AUTHORING", "AUDIT_ONLY", "MOA_CONSTRUCT"),
+])
+def test_task408_explicit_modes_preserve_exact_report_procedures(registry, flow, option, mode):
+    supplied, contract, bindings, package, kwargs, authority, candidate = task408_case(registry, flow, option=option)
+    req = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE", **kwargs)
+    assert req["request_mode"] == mode and revalidate_request(req) == req
+    first = validate_response(req, response(req, candidate) if mode == "DIRECT" else r5_response(req))
+    if mode not in {"DIRECT", "ROA_CONFORMANCE"}:
+        req = r5_second(req, first, authority)
+        first = validate_response(req, r5_response(req))
+    assert revalidate_decision(first, req) == first
+    if mode != "DIRECT":
+        assert first["semantic_value"]["closure"]["outcome"] in {"CANDIDATE", "NO_DECISION"}
+        assert "PASS" != first["semantic_value"]["closure"]["outcome"]
+    assert all(req["decision_packet"][k] is False for k in ("state_mutated", "executor_invoked", "verification_invoked", "run_created"))
+
+
+@pytest.mark.parametrize("flow", ("TASK_AUTHORING", "ARCHITECTURE"))
+def test_task408_v1_stays_explicit_and_never_runs_a_specialized_stage(registry, flow):
+    supplied, contract, bindings, package, kwargs, authority, _ = task408_case(registry, flow, v1=True)
+    req = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE", **kwargs)
+    assert req["request_mode"] == "V1_OPTION_CONSTRUCT"
+    first = validate_response(req, r5_response(req))
+    second = r5_second(req, first, authority)
+    assert second["request_mode"] == "V1_OPTION_RECONCILE"
+    assert not {"tca_subject", "aoa_subject"} & set(second)
+    final = validate_response(second, r5_response(second))
+    assert revalidate_decision(final, second) == final
+
+
+@pytest.mark.parametrize("fault", ["missing_auth", "self_declared", "stale_main", "stale_subject", "stale_source",
+                                  "partial", "conflict_v1", "wrong_flow", "wrong_profile", "no_aoa_for_repair",
+                                  "mixed_stage", "mixed_policy", "legacy_version", "fake_pass"])
+def test_task408_forged_partial_stale_and_mixed_choices_fail_closed(registry, fault):
+    supplied, contract, bindings, package, kwargs, authority, candidate = task408_case(registry, "TASK_AUTHORING", option="AUDIT_ONLY")
+    choice = kwargs["human_audit_choice"]
+    mode = "PROSPECTIVE"
+    if fault == "missing_auth":
+        kwargs["selection_authenticator"] = None
+    elif fault == "self_declared":
+        kwargs["selection_authenticator"] = lambda *_: False
+    elif fault == "stale_main":
+        choice["main_sha"] = "f" * 40
+    elif fault == "stale_subject":
+        choice["subject_fingerprint"] = "f" * 64
+    elif fault == "stale_source":
+        kwargs["task_source_context"]["task"]["goal"] += " changed"
+    elif fault == "partial":
+        del choice["request_digest"]
+    elif fault == "conflict_v1":
+        kwargs["human_v1_option"] = {}
+    elif fault == "wrong_flow":
+        choice["selected_flow"] = "REPAIR_AUTHORING"
+    elif fault == "wrong_profile":
+        choice["audit_profile_ref"] = kwargs["audit_policy"]["on_demand_profiles"]["REPAIR_AUTHORING"]
+    elif fault == "no_aoa_for_repair":
+        choice["option"] = "NO_AOA"
+    elif fault == "mixed_stage":
+        mode = "AUDIT_CONSTRUCT"
+    elif fault == "mixed_policy":
+        kwargs["audit_policy"]["profiles"]["TASK_AUTHORING"] = package["audit_profile_ref"]
+    elif fault == "legacy_version":
+        kwargs["audit_policy"]["version"] = 1
+    else:
+        req = construct_request(supplied, contract, bindings, package, request_mode=mode, **kwargs)
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(req, {"request_fingerprint": req["request_fingerprint"], "outcome": "PASS", "candidate": candidate})
+        return
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, package, request_mode=mode, **kwargs)

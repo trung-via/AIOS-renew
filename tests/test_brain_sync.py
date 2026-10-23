@@ -1535,3 +1535,59 @@ def test_post_task_stale_revision_wake_and_duplicate_remote_ref_never_attribute_
     git(fixture.repo, "push", "origin", "HEAD:refs/heads/main")
     view = fixture.read(wake=True)
     assert view["blocker"]["code"] == "POST_TASK_TASK_REVISION_MISMATCH" and view["run_id"] is None
+
+
+
+def test_task408_one_planning_slice_preserves_former_approvals_and_task407():
+    from aios_renew.brain_context import _ON_DEMAND_APPROVAL, _ON_DEMAND_PRIORITY, _THREE_FLOW_APPROVAL, _on_demand_approval, _digest
+    root = Path(__file__).resolve().parents[1]
+    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    historical = yaml.safe_load(git(root, "show", "3f31b1ca87e980d94b1f8e28ef1e4d3b6c578fc6:.ai/roadmap-state.yaml"))
+    record = source[_ON_DEMAND_PRIORITY]
+    selected = "human-audit-policy-direct-authoring-20261023"
+    assert record["planning_only"] is True
+    assert source["next_items"] == [source["active_track"]] == [selected]
+    next_entries = [i for i in source["sequence"] if i["status"] == "NEXT"]
+    assert len(next_entries) == 1 and next_entries[0]["id"] == selected
+    assert (next_entries[0]["task_id"], next_entries[0]["task_revision"]) == ("TASK-408", 1)
+    assert record["task407"]["prospective_roa_r4_default_activation"] == "SUSPENDED_BY_NEWER_HUMAN_PRIORITY"
+    assert record["task407"]["implementation_or_completion"] == "NOT_INFERRED"
+    assert source[_ON_DEMAND_APPROVAL] == _on_demand_approval(_digest(source[_THREE_FLOW_APPROVAL]))
+    for key, value in historical.items():
+        if key.startswith("human_"):
+            assert source[key] == value
+    historical_by_id = {i["id"]: i for i in historical["sequence"]}
+    for entry in source["sequence"]:
+        if entry["id"] not in {selected, "post-task-dirty-recovery-pte-20261022"}:
+            assert entry == historical_by_id[entry["id"]]
+    assert (root / ".ai/tasks/TASK-407.yaml").read_text(encoding="utf-8").strip() == git(
+        root, "show", "3f31b1ca87e980d94b1f8e28ef1e4d3b6c578fc6:.ai/tasks/TASK-407.yaml")
+
+
+@pytest.mark.parametrize("fault", (None, "competing_next", "stale_pointer"))
+def test_task408_brain_sync_observes_planning_without_activation_or_dispatch(tmp_path, fault):
+    root = Path(__file__).resolve().parents[1]
+    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    ids = {"human-audit-policy-direct-authoring-20261023", "post-task-dirty-recovery-pte-20261022"}
+    source["sequence"] = [item for item in source["sequence"] if item["id"] in ids]
+    if fault == "competing_next":
+        source["sequence"][1]["status"] = "NEXT"
+    elif fault == "stale_pointer":
+        source["next_items"] = ["post-task-dirty-recovery-pte-20261022"]
+    repo = make_repo(tmp_path)
+    path = repo / ".ai/roadmap-state.yaml"
+    path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    (repo / ".ai/tasks/TASK-408.yaml").write_bytes((root / ".ai/tasks/TASK-408.yaml").read_bytes())
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "planning-only TASK-408 fixture")
+    git(repo, "push", "origin", "main")
+    before, refs = path.read_bytes(), git(repo, "show-ref")
+    observed = observe_brain_sync(repo=repo)
+    if fault is None:
+        assert observed.selected_task == {"id": "TASK-408", "revision": 1}
+        assert observed.selection_status == "SELECTED"
+    else:
+        assert observed.selection_status == "AMBIGUOUS_NEXT"
+        assert observed.selected_task is None
+    assert not any((observed.state_mutated, observed.run_created, observed.executor_invoked, observed.verification_invoked))
+    assert path.read_bytes() == before and git(repo, "show-ref") == refs

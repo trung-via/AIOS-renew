@@ -2,6 +2,30 @@
 
 This is the compact authoring boundary for canonical AIOS-renew TASKs. It supplements, and does not replace or revise, the frozen v0.1 specification.
 
+## Human policy of 2026-10-23 (TASK-408)
+
+After exact TASK-408 Runtime proof, independent PRIMARY REVIEW PASS and Publisher
+inclusion of that reviewed source on canonical main, ordinary TASK_AUTHORING,
+REPAIR_AUTHORING and REMEDIATION_AUTHORING use direct Brain construction. There is
+no mandatory TCA, ROA, MOA, V1, substitute audit, two-stage checklist, source-excerpt
+collection or acceptance-phase ledger. Brain still authors WHAT/WHY, exact scope,
+independently claimable acceptance and minimum-sufficient-v1 verification.
+
+An authenticated explicit Human request to audit one exact canonical TASK/revision/
+source selects current TCA-3; an exact failed REPAIR subject selects ROA-1 R3; an
+exact REMEDIATION/finding subject selects MOA-1. Each request is bounded read-only
+decision support. It neither reauthors a contract nor authorizes mutation, execution,
+review or publication, and it cannot persist into another attempt or subject.
+Architecture retains AOA-1 as a soft default. A trusted exact Human `NO_AOA` choice
+uses direct architecture reasoning with no fallback audit. Existing exact Human
+V1_ONLY choices for Architecture/Task remain supported under their original bounds.
+
+The version-2 HUMAN_ON_DEMAND policy and trusted-channel bindings are specified in
+[semantic audit protocol section 27](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#27-task-408-direct-authoring-and-exact-human-on-demand-audits).
+Until eligible publication, the authenticated predecessor governs new provider
+attempts. Archived approvals, profiles, in-flight stage/return packets and engineering
+lineage retain their original meanings. No authoring result activates the policy.
+
 ## Navigation classification
 
 Current generic self-host operational navigation: [AIOS Self-Host End-to-End Flow v1](AIOS-SELF-HOST-END-TO-END-FLOW-v1.md).
@@ -54,9 +78,10 @@ attempt, TASK id, expected main, route/generation and envelope digest, with exis
 freshness, replay and same-attempt idempotence protections. Legacy authoring and revisions
 cannot consume a new origin proof; revisions preserve canonical affinity.
 
-Brain must still perform `CONSTRUCT` then `ADVERSARIAL_AUDIT_AND_RECONCILE`. Its support
-material is semantic discipline, not canonical engineering truth or Runtime mutation
-authority. These TASK changes apply upon publication of BO-1; the bounded transition
+The historical BO-1 default required `CONSTRUCT` then
+`ADVERSARIAL_AUDIT_AND_RECONCILE`. Under TASK-408 those stages apply only when
+an exact Human audit is selected. Support remains semantic material, not canonical
+engineering truth or Runtime mutation authority. The BO-1 ingress changes apply upon publication of BO-1; the bounded transition
 TASK may use the previously published gate. The published TASK-348 AUTHOR_REPAIR
 boundary independently admits its final contract without serialized audit support.
 
@@ -94,16 +119,18 @@ authenticated canonical source. Missing or forged consumed local files, local Ru
 substitution, dirty executable checkout, unauthenticated checkout ancestry, malformed
 canonical objects and missing exact remote/fetched source remain blocking.
 
-Brain's V1 `CONSTRUCT` and `ADVERSARIAL_AUDIT_AND_RECONCILE` remain mandatory semantic
-discipline. Their support is independent of Runtime's deterministic contract checks,
+The former default V1 stages remain archived semantic discipline; TASK-408 makes
+remediation authoring direct and MOA an explicit exact-subject Human audit only.
+Audit support is independent of Runtime's deterministic contract checks,
 verification and EVIDENCE. Authoring creates no RUN, execution, approval, publication
 or roadmap advancement. Existing carrier checks and separate Human A3 / REMEDIATION
 INTENT, followed by explicit self-host delegation, retain their existing owners.
 
-## Declare acceptance proof phase in Stage 2 as Brain semantic discipline
+## Acceptance proof phase inside an explicitly selected TASK audit
 
-For prospective `TASK_AUTHORING`, Brain alone classifies acceptance proof phase
-during the existing adversarial audit and reconciliation:
+When an explicitly selected TASK audit uses this Stage-2 procedure, Brain alone
+classifies acceptance proof phase during that audit and reconciliation. Direct
+authoring emits the final TASK body without a stage, closure or ledger:
 
 - `CLAIM_NOW`: a concrete implementation property the Executor can truthfully
   claim at completion, before Runtime verification.

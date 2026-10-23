@@ -1,8 +1,14 @@
 # AIOS Brain Provider Protocol — Planning Baseline
 
-Status: HUMAN/BRAIN PLANNING BASELINE
+Status: Versioned provider protocol; historical BP-5 baseline retained below
 Canonical evidence cut: main 6901e29540bd98d1d5c4df0477b76594e5bcb4b7
 Scope: BP-5 provider-neutral Brain request/decision architecture; no implementation authority
+
+Current prospective selection is defined by TASK-408 in section 21 and
+[semantic audit protocol section 27](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#27-task-408-direct-authoring-and-exact-human-on-demand-audits).
+After its eligible publication, ordinary TASK/REPAIR/REMEDIATION calls are DIRECT;
+AOA-1 is a soft architecture default with trusted exact Human opt-out. Historical
+BP-5 mode tables and completion claims below retain their original interpretation.
 
 ## 1. Purpose
 
@@ -146,7 +152,7 @@ Return-contract bindings whose source is `DECISION_PACKET` remain provider-facin
 
 ## 6. Closed request modes
 
-BP-5 v1 has exactly three Brain request modes:
+The historical BP-5 baseline had three Brain request modes (current selection is in section 21):
 
 ```text
 AUDIT_CONSTRUCT
@@ -154,7 +160,7 @@ AUDIT_RECONCILE
 DIRECT
 ```
 
-Applicability is deterministic:
+Historical baseline applicability was:
 
 ```text
 ARCHITECTURE          -> AUDIT_CONSTRUCT then AUDIT_RECONCILE
@@ -535,4 +541,60 @@ BP5-P3 is engineering-complete through TASK-183 r1, RUN-183-001 Runtime verifica
 
 The BP-5 exit gate is satisfied by the reviewed/published P1/P2A/P2B/P3 evidence above. No BP5-P4 successor hardening is justified by current canonical evidence. The next implementation milestone is BP-6 Reviewer Provider Protocol, which must remain a separate Reviewer authority and must not reuse the Brain protocol as Reviewer semantics merely because both may share transport primitives.
 
-No production mutation is authorized by this document. BP-6 requires a fresh Brain Sync and a separately audited executor-neutral TASK before implementation.
+No production mutation is authorized by this document. The historical BP-5 plan
+required a fresh Brain Sync and separately audited executor-neutral BP-6 TASK.
+Future authoring uses the applicable current policy in section 21.
+
+
+## 21. TASK-408 direct authoring and authenticated on-demand audit selection
+
+After exact TASK-408 Runtime proof, independent PRIMARY REVIEW PASS and Publisher
+inclusion of its reviewed source on canonical main, the supported ordinary provider
+path uses version-2 HUMAN_ON_DEMAND policy. TASK_AUTHORING, REPAIR_AUTHORING and
+REMEDIATION_AUTHORING each use one DIRECT invocation. ARCHITECTURE uses AOA-1 by
+soft default; a trusted exact Human NO_AOA request uses DIRECT without fallback.
+
+DIRECT preserves `AIOS_BRAIN_REQUEST v1`, `AIOS_BRAIN_DECISION v1` and the exact
+return-contract package/shape. It accepts the normal external TASK id/revision or
+REPAIR id bindings, with null audit-profile package and Stage-1 lineage. The only
+response fields are `request_fingerprint` and `candidate`; the validated final
+family candidate itself becomes `semantic_value`. There is no audit stage,
+CANDIDATE/PASS fiction, required ledger, audit-source collection or substitute
+checklist. Stage-specific registry requirements are conditional on actually
+selecting those stages. DIAGNOSTIC keeps its existing bounded proposal grammar.
+
+MappingBrainProvider and JsonBrainProvider keep the same native extraction and
+attribution checks. The first-party path supplies canonical policy authentication
+internally, so ordinary direct authoring needs no individual audit-selection
+credential. Fresh subject/policy binding is checked before admission and again
+before returning the direct result. Stale source/subject rejects with no second
+provider invocation. The pure DIRECT codec needs no policy credential and confers
+no final contract admission authority.
+
+An exact Human `AUDIT_ONLY` request selects TCA-3 for a canonical TASK/revision/
+source, ROA-1 R3 for an exact failed REPAIR subject, or MOA-1 for an exact reviewed
+REMEDIATION/finding subject. The closed `human_audit_choice` and version-2 selection
+fields, bounds and trust rules are specified in
+[semantic audit protocol section 27](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#27-task-408-direct-authoring-and-exact-human-on-demand-audits).
+`human_choice_authenticator` independently verifies trusted Human origin at ADMIT/
+CONTINUE and consumes one request. It never derives Human authority from packet
+text, profile ordering, content hashes or the provider's own assertions.
+
+The existing exact TCA/AOA/MOA two-pass and ROA single-procedure response grammars
+remain. Their transient semantic envelopes are bounded audit reports; any candidate
+inside is advice without automatic authoring, correction mutation, dispatch, review
+or publication. No audit persists into another attempt or TASK. No choice means
+DIRECT authoring (or soft AOA for architecture), without missing-audit-input errors.
+Explicit V1_ONLY remains supported solely for its exact Architecture/Task subject;
+read-only correction support stays bounded and cannot enable an audit default.
+Conflicting/partial/forged/stale choices, changed canonical main/subject and mixed
+old/new profile or stage packets fail closed for the affected choice.
+
+All archived profiles and request/decision/return bindings still revalidate exactly.
+Canonical movement stops an in-flight old audit instead of replacing its selection.
+Final AUTHOR_TASK/REPAIR/REMEDIATION schema, direct-ingress authentication and SHA/
+CAS guards, original scope and Human correction authorization, one admitted Executor,
+Runtime deterministic verification/EVIDENCE, independent Reviewer and Publisher
+remain unchanged. No new router, service, selection agent or Runtime audit gate is
+introduced. The planning-only priority record selects TASK-408 and suspends future
+R4 default activation while preserving TASK-407 and paused PTE/Lean VP history.

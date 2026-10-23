@@ -1052,6 +1052,8 @@ def task406_canonical_audit_repo(canonical_audit_repo, monkeypatch):
     c.write(".ai/tasks/TASK-406.yaml", yaml.safe_dump(task).encode())
     root_base = c.commit("TASK-406 authored base fixture")
     context_raw = (root / "src/aios_renew/brain_context.py").read_bytes()
+    # This fixture is the archived TASK-406 publication, before TASK-408 code.
+    context_raw = context_raw.replace(context._ON_DEMAND_APPROVAL.encode(), b"archived-on-demand-marker")
     c.write("src/aios_renew/brain_context.py", context_raw + b"\n# failed candidate fixture\n")
     failed = c.commit("TASK-406 failed PRIMARY candidate fixture")
     c.git(c.canonical, "update-ref", "refs/heads/aios/failure/RUN-406-002", failed)
@@ -1106,6 +1108,92 @@ def task406_canonical_audit_repo(canonical_audit_repo, monkeypatch):
     for key, value in saved.items():
         setattr(c, key, value)
     return c
+
+
+@pytest.fixture
+def task408_canonical_audit_repo(task406_canonical_audit_repo):
+    """Synthetic lifecycle objects in isolated Git, never verification proof."""
+    import aios_renew.brain_context as context
+    c = task406_canonical_audit_repo
+    root = Path(__file__).resolve().parents[1]
+    task = yaml.safe_load((root / ".ai/tasks/TASK-408.yaml").read_bytes())
+    c.write(".ai/tasks/TASK-408.yaml", yaml.safe_dump(task).encode())
+    from tests.test_brain_audit import task405_tca3_context
+    audited_task = task405_tca3_context()[1]["task"]
+    c.write(f".ai/tasks/{audited_task['task_id']}.yaml", yaml.safe_dump(audited_task).encode())
+    c.on_demand_base_sha = c.commit("TASK-408 exact authored fixture")
+    c.roadmap[context._ON_DEMAND_APPROVAL] = context._on_demand_approval(
+        context._digest(c.roadmap[context._THREE_FLOW_APPROVAL]))
+    c.write(".ai/roadmap-state.yaml", yaml.safe_dump(c.roadmap).encode())
+    c.write("src/aios_renew/brain_context.py", (root / "src/aios_renew/brain_context.py").read_bytes())
+    c.source_sha = c.commit("TASK-408 prospective implementation fixture")
+    c.main_sha = c.on_demand_source_sha = c.source_sha
+    c.git(c.canonical, "update-ref", context._ON_DEMAND_REFS[0], c.source_sha)
+    c.run = {**c.three_flow_run, "run_id": context._ON_DEMAND_RUN, "base_sha": c.on_demand_base_sha,
+             "task": {"id": "TASK-408", "revision": 1}}
+    c.result_package = c.synthetic_package(task, context._ON_DEMAND_RUN, c.source_sha,
+                                          ["src/aios_renew/brain_context.py", ".ai/roadmap-state.yaml"])
+    c.save_artifacts(run_id=context._ON_DEMAND_RUN)
+    c.on_demand_artifact_sha = c.artifact_sha
+    c.review = {"review_id": "REVIEW-408-001", "reviewed_sha": c.source_sha,
+                "mode": "PRIMARY", "verdict": "PASS", "findings": [],
+                "acceptance": {ac["id"]: "PASS" for ac in task["acceptance"]}}
+    c.save_review(run_id=context._ON_DEMAND_RUN)
+    c.on_demand_review_sha = c.review_sha
+    return c
+
+
+def test_task408_exact_publication_authenticates_a_distinct_versioned_policy(task408_canonical_audit_repo):
+    from aios_renew.brain_context import _canonical_audit_source, _ON_DEMAND_APPROVAL, _THREE_FLOW_APPROVAL
+    c = task408_canonical_audit_repo
+    record, registry, authority = _canonical_audit_source(c.repo)
+    assert record == c.roadmap[_ON_DEMAND_APPROVAL]
+    assert record["target_policy_version"] == 2 and record["target_policy_state"] == "HUMAN_ON_DEMAND"
+    assert all(record["target_profiles"][flow] is None for flow in (
+        "TASK_AUTHORING", "REPAIR_AUTHORING", "REMEDIATION_AUTHORING"))
+    assert c.roadmap[_THREE_FLOW_APPROVAL]["target_policy_state"] == "THREE_SPECIALIZED"
+    assert authority["reviewed_source_sha"] == c.on_demand_source_sha
+    assert authority["effective_status"] == "TASK408_REVIEWED_PUBLISHED_HUMAN_ON_DEMAND_ACTIVE"
+    assert len(registry["profiles"]) == 10
+
+
+@pytest.mark.parametrize("fault", ["missing", "duplicate", "partial", "mixed", "predecessor", "self_active",
+                                  "unpublished", "review_source", "review_verdict", "evidence", "run", "claims"])
+def test_task408_policy_cannot_self_activate_or_fall_back(task408_canonical_audit_repo, fault):
+    from aios_renew.brain_context import _canonical_audit_source, _ON_DEMAND_APPROVAL, _ON_DEMAND_REFS, _ON_DEMAND_RUN
+    c = task408_canonical_audit_repo
+    record = c.roadmap[_ON_DEMAND_APPROVAL]
+    if fault == "missing":
+        del c.roadmap[_ON_DEMAND_APPROVAL]
+    elif fault == "duplicate":
+        c.roadmap[_ON_DEMAND_APPROVAL + "_duplicate"] = deepcopy(record)
+    elif fault == "partial":
+        del record["target_profiles"]["REPAIR_AUTHORING"]
+    elif fault == "mixed":
+        record["target_profiles"]["TASK_AUTHORING"] = record["target_on_demand_profiles"]["TASK_AUTHORING"]
+    elif fault == "predecessor":
+        record["superseded_approval_digest"] = "f" * 64
+    elif fault == "self_active":
+        record["status"] = "ACTIVE"
+    elif fault == "unpublished":
+        c.git(c.canonical, "update-ref", "refs/heads/main", c.on_demand_base_sha)
+    elif fault == "review_source":
+        c.git(c.canonical, "update-ref", _ON_DEMAND_REFS[1], c.three_flow_review_sha)
+    elif fault == "review_verdict":
+        c.review.update(verdict="BLOCKED")
+        c.save_review(run_id=_ON_DEMAND_RUN)
+    elif fault in {"evidence", "run", "claims"}:
+        if fault == "evidence":
+            c.result_package["evidence"][0]["result"]["exit_code"] = 1
+        elif fault == "run":
+            c.run["task"]["revision"] = 2
+        else:
+            c.result_package["result"]["claims"].pop()
+        c.save_artifacts(run_id=_ON_DEMAND_RUN)
+    if fault in {"missing", "duplicate", "partial", "mixed", "predecessor", "self_active"}:
+        c.save_roadmap()
+    with pytest.raises(BrainContextError):
+        _canonical_audit_source(c.repo)
 
 
 def test_task406_roadmap_is_one_prospective_decision_and_exact_exception():
@@ -1338,3 +1426,39 @@ def test_task406_old_admission_stays_decodable_but_cannot_switch_during_cutover(
     assert revalidate_request(request) == request
     assert old_policy["profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
 
+
+
+
+def test_task408_cutover_never_reselects_an_admitted_legacy_audit(task408_canonical_audit_repo):
+    from aios_renew.brain_context import canonical_audit_inputs, _ON_DEMAND_REFS
+    from aios_renew.brain_provider_protocol import (
+        construct_request, revalidate_request, validate_response, revalidate_decision, BrainProviderProtocolError,
+    )
+    from tests.test_brain_provider_protocol import task408_inputs, r5_response
+    from aios_renew.brain_return_contract import parse_return_contract_registry
+    c = task408_canonical_audit_repo
+    refs = {ref: c.git(c.canonical, "rev-parse", ref) for ref in _ON_DEMAND_REFS}
+    for ref in refs:
+        c.git(c.canonical, "update-ref", "-d", ref)
+    c.git(c.canonical, "update-ref", "refs/heads/main", c.three_flow_source_sha)
+    c.main_sha = c.three_flow_source_sha
+    registry = parse_return_contract_registry((Path(__file__).resolve().parents[1] / ".ai/brain-return-contracts.yaml").read_bytes())
+    admitted = []
+    for flow, mode in (("REPAIR_AUTHORING", "ROA_CONFORMANCE"), ("TASK_AUTHORING", "TCA_CONSTRUCT")):
+        supplied, contract, bindings, sources, _ = task408_inputs(registry, flow, c)
+        policy, package, authenticate = canonical_audit_inputs(supplied, contract, bindings, repo=c.repo, **sources)
+        old = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE",
+                                audit_policy=policy, selection_authenticator=authenticate, **sources)
+        assert old["request_mode"] == mode and policy["state"] == "THREE_SPECIALIZED"
+        decision = validate_response(old, r5_response(old))
+        admitted.append((supplied, contract, bindings, sources, policy, package, authenticate, old, decision))
+    c.git(c.canonical, "update-ref", "refs/heads/main", c.on_demand_source_sha)
+    for ref, sha in refs.items():
+        c.git(c.canonical, "update-ref", ref, sha)
+    for supplied, contract, bindings, sources, policy, package, authenticate, old, decision in admitted:
+        with pytest.raises(BrainProviderProtocolError):
+            construct_request(supplied, contract, bindings, package, request_mode=old["request_mode"],
+                              audit_policy=policy, selection_authenticator=authenticate, selection_phase="CONTINUE", **sources)
+        assert revalidate_request(old) == old
+        assert revalidate_decision(decision, old) == decision
+        assert old["audit_selection"]["policy"]["state"] == "THREE_SPECIALIZED"

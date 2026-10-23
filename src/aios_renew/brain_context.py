@@ -504,6 +504,11 @@ _THREE_FLOW_REPAIR = {
 _THREE_FLOW_PREDECESSOR_DIGEST = "c1725256df1fd42e7b435ca3fd88618031db0606014fbbc5e7387a8c6f59a92e"
 _THREE_FLOW_REFS = tuple(f"refs/heads/aios/{kind}/{_THREE_FLOW_RUN}"
                          for kind in ("review", "review-decision", "artifacts"))
+_ON_DEMAND_APPROVAL = "human_on_demand_audit_policy_20261023"
+_ON_DEMAND_PRIORITY = "human_on_demand_audit_priority_20261023"
+_ON_DEMAND_RUN = "RUN-408-001"
+_ON_DEMAND_REFS = tuple(f"refs/heads/aios/{kind}/{_ON_DEMAND_RUN}"
+                        for kind in ("review", "review-decision", "artifacts"))
 _TASK405_EXCEPTION = {
     "authority": "EXPLICIT_HUMAN_ONE_TIME_TASK405_SOURCE_RISK_ACCEPTANCE",
     "approved_on": "2026-10-23",
@@ -565,6 +570,28 @@ def _three_flow_approval(predecessor_digest: str) -> dict:
         "correction_v1_option": "HUMAN_EXPLICIT_READ_ONLY_ROA_SUPPORT_ONLY_NO_REMEDIATION_AUDIT",
         "task405_source_exception": _stable_copy(_TASK405_EXCEPTION),
         "prior_priority_and_pte": "HISTORICAL_PROVENANCE_PTE_PAUSED_RESUMABLE_NO_AUTOMATIC_ADVANCEMENT",
+    }
+
+
+def _on_demand_approval(predecessor_digest: str) -> dict:
+    """One prospective Human decision; no execution claim can activate it."""
+    from .brain_audit import _direct_authoring_profiles, _specialized_profiles
+    return {
+        "authority": "EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL",
+        "approved_on": "2026-10-23", "status": "READY_CANDIDATE_REQUIRES_TASK408_PASS_AND_PUBLICATION",
+        "human_decision": "DIRECT_AUTHORING_ON_DEMAND_TCA_ROA_MOA_SOFT_AOA_WITH_EXPLICIT_OPT_OUT",
+        "supersedes": _THREE_FLOW_APPROVAL, "superseded_approval_digest": predecessor_digest,
+        "implementation_task": "TASK-408", "implementation_revision": 1, "implementation_run": _ON_DEMAND_RUN,
+        "required_review_mode": "PRIMARY", "required_review_verdict": "PASS",
+        "activation_boundary": "EXACT_TASK408_RUNTIME_RESULT_INDEPENDENT_REVIEW_PASS_PUBLISHER_SOURCE_ON_MAIN",
+        "target_policy_format": "AIOS_BRAIN_AUDIT_POLICY", "target_policy_version": 2,
+        "target_policy_state": "HUMAN_ON_DEMAND", "target_profiles": _direct_authoring_profiles(),
+        "target_on_demand_profiles": _specialized_profiles(tca3=True), "architecture_default": "SOFT_HUMAN_OPT_OUT",
+        "human_choice": "TRUSTED_EXACT_SUBJECT_SOURCE_ONE_REQUEST_AUDIT_ONLY_OR_NO_AOA",
+        "v1_option": "EXISTING_EXACT_HUMAN_V1_ONLY_AND_READ_ONLY_CORRECTION_SUPPORT_CONSTRAINTS",
+        "historical_lineage": "IMMUTABLE_EXACT_REPLAY_NO_IN_FLIGHT_RESELECTION",
+        "task407_roa_r4": "PROSPECTIVE_DEFAULT_ACTIVATION_SUSPENDED_EXISTING_TASK_LINEAGE_UNCHANGED",
+        "downstream": "NO_AUTOMATIC_PTE_LEAN_VP_R4_OR_ROADMAP_ADVANCEMENT",
     }
 
 
@@ -744,6 +771,11 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
             if (labels.get("target_policy_state") == "THREE_SPECIALIZED"
                     or labels.get("human_decision") == "ACTIVATE_TCA3_RETIRE_MOA_WITH_UNCHANGED_AOA_ROA1R3"):
                 raise BrainContextError("duplicate or conflicting three-flow Human approval")
+        if key != _ON_DEMAND_APPROVAL and isinstance(node, yaml.MappingNode):
+            labels = {k.value: v.value for k, v in node.value
+                      if isinstance(k, yaml.ScalarNode) and isinstance(v, yaml.ScalarNode)}
+            if (key.startswith(_ON_DEMAND_APPROVAL) or labels.get("target_policy_state") == "HUMAN_ON_DEMAND"):
+                raise BrainContextError("duplicate or conflicting on-demand Human approval")
     if _TCA3_PRIORITY_RECORD in nodes:
         priority_encoded = yaml.serialize(nodes[_TCA3_PRIORITY_RECORD])
         if len(priority_encoded.encode("utf-8")) > 8192:
@@ -880,6 +912,22 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         exception = _authenticate_task405_exception(repo, main, three_flow["task405_source_exception"], refs, blob)
         selected = three_flow
 
+    on_demand_refs = _query_matching_refs(repo, remote, *_ON_DEMAND_REFS)
+    on_demand = None
+    if (_ON_DEMAND_APPROVAL in nodes or _ON_DEMAND_PRIORITY in nodes or on_demand_refs
+            or current_code is not None and _ON_DEMAND_APPROVAL.encode("ascii") in current_code):
+        if three_flow is None or _ON_DEMAND_APPROVAL not in nodes or set(on_demand_refs) != set(_ON_DEMAND_REFS):
+            raise BrainContextError("TASK-408 exact approval/review/publication is unavailable; no fallback")
+        encoded = yaml.serialize(nodes[_ON_DEMAND_APPROVAL])
+        if len(encoded.encode("utf-8")) > 8192:
+            raise BrainContextError("TASK-408 approval exceeds bound")
+        on_demand = yaml.load(encoded, Loader=_UniqueKeyLoader)
+        if _digest(on_demand) != _digest(_on_demand_approval(_digest(three_flow))):
+            raise BrainContextError("on-demand policy conflicts with the exact Human decision or predecessor")
+        refs.update(on_demand_refs)
+        patterns = (*patterns, *_ON_DEMAND_REFS)
+        selected = on_demand
+
     def publication(record: dict, candidate_ref: str, review_ref: str, artifact_ref: str) -> str:
         # Historical approvals require their original RUN. The current approval
         # requires the exact admitted repair and its independent first review.
@@ -895,9 +943,10 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         evidence = tuple(validate_evidence(item) for item in result_data["evidence"])
         source = result.head_sha
         current = three_flow is not None and record is three_flow
+        prospective = on_demand is not None and record is on_demand
         if (not isinstance(source, str) or re.fullmatch(r"[0-9a-f]{40}", source) is None
                 or refs[candidate_ref] != source
-                or not current and (record.get("reviewed_published_source_sha") != source
+                or not current and not prospective and (record.get("reviewed_published_source_sha") != source
                                     or record.get("approved_against_main_sha") != source
                                     or record.get("review_decision_sha") != refs[review_ref])):
             raise BrainContextError("canonical R5 publication identity is invalid")
@@ -915,6 +964,22 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         validate_result_package(task=published_task, run=run, result=result, evidence=evidence)
         if result.unresolved:
             raise BrainContextError("canonical R5 RESULT contains unresolved items")
+        if prospective:
+            reviewed = yaml.compose(blob(source, ".ai/roadmap-state.yaml").decode("utf-8"), Loader=yaml.SafeLoader)
+            if not isinstance(reviewed, yaml.MappingNode):
+                raise BrainContextError("TASK-408 reviewed policy is absent")
+            entries = [(k.value, v) for k, v in reviewed.value if isinstance(k, yaml.ScalarNode)]
+            approvals = [v for k, v in entries if k == _ON_DEMAND_APPROVAL]
+            archived = {k: v for k, v in entries}
+            predecessors = {key: old for key, old in (
+                (_R21_APPROVAL, original), (_R21_SUCCESSOR_APPROVAL, successor),
+                (_THREE_FLOW_APPROVAL, three_flow)) if old is not None}
+            if (len(approvals) != 1 or len({k for k, _ in entries}) != len(entries)
+                    or _digest(yaml.load(yaml.serialize(approvals[0]), Loader=_UniqueKeyLoader)) != _digest(record)
+                    or any(key not in archived or _digest(yaml.load(yaml.serialize(archived[key]), Loader=_UniqueKeyLoader))
+                           != _digest(old) for key, old in predecessors.items())
+                    or {ac for claim in result.claims for ac in claim.satisfies} != {f"AC{i}" for i in range(1, 13)}):
+                raise BrainContextError("TASK-408 exact reviewed policy or implementation claim coverage conflicts")
         if current:
             from .publication import _repair_review_lineage
             lineage_raw = blob(artifact_sha, ".ai/transport/repair.json")
@@ -955,17 +1020,20 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         _validate_metadata_commit(repo, review_sha, expected_parent_sha=source,
                                   metadata_path=paths[0], metadata_bytes=review_raw, operation="R5 REVIEW")
         validate_review(task=published_task, result=result, review=review)
-        if ((not current and review.review_id != record["review_id"])
+        if ((not current and not prospective and review.review_id != record["review_id"])
                 or current and re.fullmatch(r"REVIEW-406-[0-9]{3,}", review.review_id) is None
+                or prospective and re.fullmatch(r"REVIEW-408-[0-9]{3,}", review.review_id) is None
                 or review.reviewed_sha != source
                 or review.mode != "PRIMARY" or review.verdict != "PASS"
                 or set(review.acceptance) != {item.id for item in published_task.acceptance}
                 or any(value != "PASS" for value in review.acceptance.values())):
             raise BrainContextError("canonical R5 REVIEW does not approve the published source")
-        if current or record in (successor, tca3_approval):
+        if current or prospective or record in (successor, tca3_approval):
             published_profiles = parse_profile_registry(blob(source, ".ai/brain-audit-profiles.yaml"))
             published_refs = [profile_ref(p) for p in published_profiles["profiles"]]
-            if any(ref not in published_refs for ref in record["target_profiles"].values()):
+            required_profiles = [ref for ref in record["target_profiles"].values() if ref is not None]
+            required_profiles.extend(record.get("target_on_demand_profiles", {}).values())
+            if any(ref not in published_refs for ref in required_profiles):
                 raise BrainContextError("successor mapping was not present in its reviewed publication")
         return hashlib.sha256(review_raw).hexdigest()
 
@@ -977,6 +1045,8 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         review_digest = publication(tca3_approval, *tca3_patterns)
     if three_flow is not None:
         review_digest = publication(three_flow, *_THREE_FLOW_REFS)
+    if on_demand is not None:
+        review_digest = publication(on_demand, *_ON_DEMAND_REFS)
     profiles = parse_profile_registry(blob(main, ".ai/brain-audit-profiles.yaml"))
     returns = parse_return_contract_registry(blob(main, ".ai/brain-return-contracts.yaml"))
     if _query_matching_refs(repo, remote, *patterns) != refs or transport() != (remote, remote_url):
@@ -988,6 +1058,9 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         authority.update(task405_source_exception=exception,
                          effective_status="TASK406_REVIEWED_PUBLISHED_THREE_FLOW_ACTIVE",
                          reviewed_source_sha=refs[_THREE_FLOW_REFS[0]], review_decision_sha=refs[_THREE_FLOW_REFS[1]])
+    if on_demand is not None:
+        authority.update(effective_status="TASK408_REVIEWED_PUBLISHED_HUMAN_ON_DEMAND_ACTIVE",
+                         reviewed_source_sha=refs[_ON_DEMAND_REFS[0]], review_decision_sha=refs[_ON_DEMAND_REFS[1]])
     return selected, profiles, authority
 
 
@@ -999,24 +1072,25 @@ def canonical_audit_inputs(
     architecture_source_context: Mapping[str, Any] | None = None,
     human_v1_option: Mapping[str, Any] | None = None,
     human_v1_deep_support: Mapping[str, Any] | None = None,
+    human_audit_choice: Mapping[str, Any] | None = None,
     human_choice_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None,
-) -> tuple[dict, dict, Callable[[Mapping[str, Any], str], bool]]:
+) -> tuple[dict, dict | None, Callable[[Mapping[str, Any], str], bool]]:
     """Supply the existing R5 boundary for one ordinary first-party attempt.
 
     Canonical policy authority comes from Git; individual Human choices come
     from a separate trusted, caller-owned input channel. Neither is inferred
     from packet text, a provenance label, or model-provided authority digests.
     """
-    from .brain_audit import _packet, normalize_audit_policy, profile_ref, _ADAPTIVE_ID, _ADAPTIVE_DIGEST
-    from .brain_provider_protocol import _AUDITED, _audit_selection, _contract_package, _bindings, _normal
+    from .brain_audit import _packet, normalize_audit_policy, profile_ref
+    from .brain_provider_protocol import (
+        _AUDITED, _audit_selection, _contract_package, _bindings, _normal, _selected_profile_ref,
+    )
     from .brain_sync import _resolve_repository_name
     from .brain_return_contract import select_return_contract
     from .operator import resolve_repository
 
     try:
         body = _packet(packet)
-        if body["selected_flow"] == "REMEDIATION_AUTHORING":
-            raise BrainContextError("remediation has no current audit; use direct AUTHOR_REMEDIATION")
         root = resolve_repository(repo)
         facts = body["canonical_facts"]
         if (body["selected_flow"] not in _AUDITED or not isinstance(facts, dict)
@@ -1027,7 +1101,7 @@ def canonical_audit_inputs(
         approval, registry, authority = _canonical_audit_source(root)
         if facts["main_sha"] != authority["refs"]["refs/heads/main"]:
             raise BrainContextError("Brain packet is unrelated to current canonical audit source")
-        policy = normalize_audit_policy({
+        policy_data = {
             "format": approval["target_policy_format"], "version": approval["target_policy_version"],
             "state": approval["target_policy_state"], "main_sha": facts["main_sha"],
             "work_context_fingerprint": body["work_context_fingerprint"],
@@ -1037,18 +1111,27 @@ def canonical_audit_inputs(
                                                "published_source_sha": authority.get("reviewed_source_sha", approval.get("reviewed_published_source_sha"))}),
             "r5_publication_sha": authority.get("reviewed_source_sha", approval.get("reviewed_published_source_sha")),
             "profiles": approval["target_profiles"],
-        })
-        chosen = ({"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
-                  if human_v1_option is not None else policy["profiles"][body["selected_flow"]])
+        }
+        if approval["target_policy_version"] == 2:
+            policy_data.update(on_demand_profiles=approval["target_on_demand_profiles"],
+                               architecture_default=approval["architecture_default"])
+        policy = normalize_audit_policy(policy_data)
+        if body["selected_flow"] == "REMEDIATION_AUTHORING" and policy["state"] != "HUMAN_ON_DEMAND":
+            raise BrainContextError("remediation has no current audit; use direct AUTHOR_REMEDIATION")
+        if body["selected_flow"] not in policy["profiles"]:
+            raise BrainContextError("remediation has no current audit; use direct AUTHOR_REMEDIATION")
+        chosen = _selected_profile_ref(policy, body["selected_flow"], human_audit_choice, human_v1_option)
         # Resolve every pinned body, even when the current subject uses only one.
         packages = {p["id"]: {"profile": p, "audit_profile_ref": profile_ref(p)} for p in registry["profiles"]}
-        for reference in [*policy["profiles"].values(), chosen]:
+        for reference in [*policy["profiles"].values(), *policy.get("on_demand_profiles", {}).values(), chosen]:
+            if reference is None:
+                continue
             if packages.get(reference["id"], {}).get("audit_profile_ref") != reference:
                 raise BrainContextError("canonical audit mapping lacks exact published content")
-        package = packages[chosen["id"]]
+        package = None if chosen is None else packages[chosen["id"]]
         if audit_profile_package is not None and _normal(audit_profile_package) != package:
             raise BrainContextError("explicit package conflicts with canonical audit selection")
-        human = human_v1_option is not None or human_v1_deep_support is not None
+        human = human_v1_option is not None or human_v1_deep_support is not None or human_audit_choice is not None
         if human and not callable(human_choice_authenticator):
             raise BrainContextError("individual Human audit choice requires independent authentication")
         if not human and human_choice_authenticator is not None:
@@ -1060,7 +1143,19 @@ def canonical_audit_inputs(
         sources = _normal({"moa_source_context": moa_source_context, "task_source_context": task_source_context,
                            "architecture_source_context": architecture_source_context})
         expected = _audit_selection(body, contract, bindings, package, policy, sources,
-                                    human_v1_option, human_v1_deep_support)
+                                    human_v1_option, human_v1_deep_support, human_audit_choice)
+        if human_audit_choice is not None and body["selected_flow"] == "TASK_AUTHORING":
+            # An on-demand TASK audit names an existing exact canonical TASK,
+            # not a model-written draft relabeled as a Human source.
+            from .authoring_ingress import _read_commit_blob
+            from .task import validate_task
+            raw_task = _read_commit_blob(root, facts["main_sha"], f".ai/tasks/{bindings['task_id']}.yaml")
+            if raw_task is None or len(raw_task) > 131072:
+                raise BrainContextError("on-demand TASK source is unavailable")
+            canonical_task = yaml.load(raw_task.decode("utf-8"), Loader=_UniqueKeyLoader)
+            validate_task(canonical_task)
+            if _digest(canonical_task) != _digest(sources["task_source_context"]["task"]):
+                raise BrainContextError("on-demand TASK differs from the exact canonical revision/source")
         expected_identity = _digest(expected)
         source_identity = _digest(authority)
     except Exception as exc:
@@ -1071,7 +1166,8 @@ def canonical_audit_inputs(
     def authenticate(selection: Mapping[str, Any], phase: str) -> bool:
         nonlocal admitted
         if (phase not in {"ADMIT", "CONTINUE"} or _digest(selection) != expected_identity
-                or phase == "CONTINUE" and admitted != expected_identity):
+                or phase == "CONTINUE" and admitted != expected_identity
+                or policy["version"] == 2 and phase == "ADMIT" and admitted is not None):
             return False
         # Re-read canonical refs and content at both ADMIT and CONTINUE. This
         # deliberately stops on movement rather than reselecting an in-flight audit.

@@ -3291,3 +3291,43 @@ def test_task406_three_flow_policy_has_one_closed_mapping(fault):
         assert normalize_audit_policy(policy) == policy
         assert set(policy["profiles"]) == {"ARCHITECTURE", "TASK_AUTHORING", "REPAIR_AUTHORING"}
 
+
+
+@pytest.mark.parametrize("fault", [None, "partial_defaults", "partial_on_demand", "mixed_old_default", "wrong_tca",
+                                  "no_soft_optout", "legacy_version", "no_publication", "extra_default", "bool_version"])
+def test_task408_version_two_policy_is_complete_exact_and_distinct_from_archived_approvals(fault):
+    from aios_renew.brain_audit import _direct_authoring_profiles, _specialized_profiles, _three_flow_profiles
+    body, _ = task405_tca3_context()
+    policy = {**audit_policy_example(body), "version": 2, "state": "HUMAN_ON_DEMAND",
+              "profiles": _direct_authoring_profiles(), "on_demand_profiles": _specialized_profiles(tca3=True),
+              "architecture_default": "SOFT_HUMAN_OPT_OUT"}
+    if fault == "partial_defaults":
+        del policy["profiles"]["REPAIR_AUTHORING"]
+    elif fault == "partial_on_demand":
+        del policy["on_demand_profiles"]["REMEDIATION_AUTHORING"]
+    elif fault == "mixed_old_default":
+        policy["profiles"]["TASK_AUTHORING"] = policy["on_demand_profiles"]["TASK_AUTHORING"]
+    elif fault == "wrong_tca":
+        policy["on_demand_profiles"]["TASK_AUTHORING"] = _specialized_profiles()["TASK_AUTHORING"]
+    elif fault == "no_soft_optout":
+        policy["architecture_default"] = "MANDATORY"
+    elif fault == "legacy_version":
+        policy["version"] = 1
+    elif fault == "no_publication":
+        policy["r5_publication_sha"] = None
+    elif fault == "extra_default":
+        policy["default_audit"] = "V1"
+    elif fault == "bool_version":
+        policy["version"] = True
+    if fault:
+        with pytest.raises(BrainAuditError):
+            normalize_audit_policy(policy)
+    else:
+        assert normalize_audit_policy(policy) == policy
+        for archived_state, profiles in (("FOUR_SPECIALIZED", _specialized_profiles()),
+                                         ("THREE_SPECIALIZED", _three_flow_profiles())):
+            old = {**audit_policy_example(body), "state": archived_state, "profiles": profiles}
+            assert normalize_audit_policy(old) == old
+        assert policy["on_demand_profiles"]["TASK_AUTHORING"]["id"] == "tca-3"
+        assert policy["on_demand_profiles"]["REPAIR_AUTHORING"]["id"] == "roa-1-r3"
+        assert policy["on_demand_profiles"]["REMEDIATION_AUTHORING"]["id"] == "moa-1"

@@ -17,6 +17,7 @@ from aios_renew.decision_packet import DecisionPacket
 from tests.test_brain_context import (
     CanonicalAuditRepository, task395_activation_record, task395_canonical_audit_repo,
     task406_canonical_audit_repo,
+    task408_canonical_audit_repo,
 )
 from test_brain_provider_protocol import (
     digest, inputs, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
@@ -25,6 +26,7 @@ from test_brain_provider_protocol import (
     aoa_inputs, aoa_package, aoa_response, aoa_candidate,
     R5_FLOWS, r5_case, r5_response, audit_policy_example,
     canonical_audit_repo, production_inputs,
+    task408_inputs, task408_policy, task408_choice, ExactHumanChoice,
 )
 
 
@@ -1827,3 +1829,129 @@ def test_task406_currentness_stops_before_another_provider_call(
                 fresh_packet_supplier=lambda: supplied, repo=c.repo, **sources)
     assert error.value.invocation_count == len(calls) == 1
     assert calls[0]["audit_profile_package"]["audit_profile_ref"]["id"] == "tca-3"
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+def test_task408_ordinary_provider_direct_defaults_and_soft_architecture(registry, task408_canonical_audit_repo, kind):
+    c = task408_canonical_audit_repo
+    before = c.git(c.canonical, "show-ref")
+    for flow in ("TASK_AUTHORING", "REPAIR_AUTHORING", "REMEDIATION_AUTHORING", "ARCHITECTURE"):
+        supplied, contract, bindings, sources, candidate = task408_inputs(registry, flow, c)
+        calls = []
+        def callback(req):
+            calls.append(deepcopy(req))
+            semantic = response(req, candidate) if req["request_mode"] == "DIRECT" else r5_response(req)
+            return wrapper(req, provider=kind, model=kind, semantic=semantic)
+        result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
+                         fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()), repo=c.repo,
+                         **(sources if flow == "ARCHITECTURE" else {}))
+        modes = ["AOA_CONSTRUCT", "AOA_RECONCILE"] if flow == "ARCHITECTURE" else ["DIRECT"]
+        assert [req["request_mode"] for req in calls] == modes
+        assert revalidate_decision(result.decision, calls[-1]) == result.decision
+        if flow != "ARCHITECTURE":
+            assert result.decision["semantic_value"] == candidate
+            assert result.decision["audit_profile_ref"] is None
+            assert calls[0]["audit_profile_package"] is calls[0]["stage1_lineage"] is None
+            assert not {"task_source_context", "moa_source_context", "architecture_source_context"} & set(calls[0])
+            assert calls[0]["audit_selection"]["human_audit_choice"] is None
+    assert c.git(c.canonical, "show-ref") == before
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+def test_task408_trusted_on_demand_is_one_request_and_never_becomes_a_default(registry, task408_canonical_audit_repo, kind):
+    c = task408_canonical_audit_repo
+    before = c.git(c.canonical, "show-ref")
+    for flow, modes in (("TASK_AUTHORING", ["TCA_CONSTRUCT", "TCA_RECONCILE"]),
+                        ("REPAIR_AUTHORING", ["ROA_CONFORMANCE"]),
+                        ("REMEDIATION_AUTHORING", ["MOA_CONSTRUCT", "MOA_RECONCILE"])):
+        supplied, contract, bindings, sources, candidate = task408_inputs(registry, flow, c)
+        reference = task408_policy(supplied.as_dict())["on_demand_profiles"][flow]
+        choice = task408_choice(supplied, contract, bindings, sources, reference)
+        trusted = ExactHumanChoice(choice)
+        calls = []
+        def callback(req):
+            calls.append(deepcopy(req))
+            return wrapper(req, provider=kind, model=kind, semantic=(
+                response(req, candidate) if req["request_mode"] == "DIRECT" else r5_response(req)))
+        provider = adapter(kind, native(kind, callback), kind, kind)
+        result = attempt(provider, supplied, contract, bindings, repo=c.repo,
+                         fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()),
+                         human_audit_choice=choice, human_choice_authenticator=trusted, **sources)
+        assert [req["request_mode"] for req in calls] == modes
+        assert result.decision["audit_profile_ref"] == reference
+        assert result.decision["semantic_value"]["closure"]["outcome"] in {"CANDIDATE", "NO_DECISION"}
+        assert revalidate_decision(result.decision, calls[-1]) == result.decision
+        assert trusted.phases[0] == "ADMIT" and "CONTINUE" in trusted.phases
+        with pytest.raises(BrainAttemptError) as replay:
+            attempt(provider, supplied, contract, bindings, repo=c.repo,
+                    fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()),
+                    human_audit_choice=choice, human_choice_authenticator=trusted, **sources)
+        assert replay.value.invocation_count == 0
+        calls.clear()
+        direct = attempt(provider, supplied, contract, bindings, repo=c.repo,
+                         fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()))
+        assert [req["request_mode"] for req in calls] == ["DIRECT"]
+        assert direct.decision["semantic_value"] == candidate
+    assert c.git(c.canonical, "show-ref") == before
+
+
+def test_task408_no_aoa_is_authenticated_exact_and_has_no_fallback(registry, task408_canonical_audit_repo):
+    c = task408_canonical_audit_repo
+    supplied, contract, bindings, _, candidate = task408_inputs(registry, "ARCHITECTURE", c)
+    choice = task408_choice(supplied, contract, bindings, {}, None, "NO_AOA")
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return {"semantic_response": response(req, candidate), "attribution": {"provider": "mapping", "model": "one", "session_id": None}}
+    provider = MappingBrainProvider("mapping", "one", callback)
+    for trusted in (None, lambda *_: False):
+        with pytest.raises(BrainAttemptError) as error:
+            attempt(provider, supplied, contract, bindings, repo=c.repo,
+                    fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()),
+                    human_audit_choice=choice, human_choice_authenticator=trusted)
+        assert error.value.invocation_count == 0
+    result = attempt(provider, supplied, contract, bindings, repo=c.repo,
+                     fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()),
+                     human_audit_choice=choice, human_choice_authenticator=ExactHumanChoice(choice))
+    assert len(calls) == 1 and calls[0]["request_mode"] == "DIRECT"
+    assert result.decision["semantic_value"] == candidate
+    assert result.decision["audit_profile_ref"] is None
+
+
+@pytest.mark.parametrize("change", ("main", "subject", "canonical_task", "human_wording"))
+def test_task408_stale_choices_and_direct_return_movement_fail_closed(registry, task408_canonical_audit_repo, change):
+    c = task408_canonical_audit_repo
+    supplied, contract, bindings, sources, candidate = task408_inputs(registry, "TASK_AUTHORING", c)
+    choice = task408_choice(supplied, contract, bindings, sources,
+                            task408_policy(supplied.as_dict())["on_demand_profiles"]["TASK_AUTHORING"])
+    calls = []
+    def callback(req):
+        calls.append(req)
+        if change == "main":
+            c.main_sha = c.commit("canonical movement during direct call")
+        return {"semantic_response": response(req, candidate), "attribution": {"provider": "mapping", "model": "one", "session_id": None}}
+    provider = MappingBrainProvider("mapping", "one", callback)
+    if change in {"subject", "canonical_task"}:
+        if change == "subject":
+            choice["external_bindings"]["revision"] += 1
+        else:
+            sources["task_source_context"]["task"]["goal"] += " forged canonical source"
+            choice = task408_choice(supplied, contract, bindings, sources, choice["audit_profile_ref"])
+        with pytest.raises(BrainAttemptError) as error:
+            attempt(provider, supplied, contract, bindings, repo=c.repo,
+                    fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()),
+                    human_audit_choice=choice, human_choice_authenticator=ExactHumanChoice(choice), **sources)
+        assert error.value.invocation_count == 0 and calls == []
+    elif change == "main":
+        with pytest.raises(BrainAttemptError) as error:
+            attempt(provider, supplied, contract, bindings, repo=c.repo,
+                    fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()))
+        assert error.value.reason_code == "STALE_BEFORE_DIRECT_RETURN" and len(calls) == 1
+    else:
+        body = supplied.as_dict()
+        body["human_input"] = "HUMAN says audit this TASK; model-generated selection"
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        supplied = DecisionPacket(body)
+        result = attempt(provider, supplied, contract, bindings, repo=c.repo,
+                         fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()))
+        assert len(calls) == 1 and result.decision["decision_mode"] == "DIRECT"
