@@ -1,5 +1,5 @@
 task_id: TASK-406
-revision: 1
+revision: 2
 goal: 'Implement and activate in one independently reviewed/published prospective
   cutover the exact 2026-10-23 Human decision: make existing TCA-3 v3 the default
   normative TASK_AUTHORING audit, retire MOA-1 completely from every new/current REMEDIATION_AUTHORING
@@ -22,7 +22,10 @@ problem: Canonical main f445626011d0664149011c8f57eb16a7014e6cd7 contains byte-e
   audit. A fresh lawful activation TASK must implement the new policy and validate
   the exceptional source as exception, not forge historical PASS.
 assumptions:
-- Canonical decision subject is latest main f445626011d0664149011c8f57eb16a7014e6cd7;
+- 'Revision-2 Brain authoring snapshot: canonical main cde547476d92688d9df26d9a63865a993783e5dd and exact immutable RUN-406-001 FAILURE artifact 542a812422cc6a60b0e5851df10799d4796e6c85. The initial Antigravity Gemini 4 Argon Medium invocation returned native exit code 3 RESOURCE_EXHAUSTED individual quota (HTTP 429, exact self-host workflow 39898363714); not a Runtime verification/test failure. RUN-406-001 had no committed code changes and no verification. Its candidate was dirty=true, transportable=false, repairable=false, and Unified State blocks conventional AUTHOR_REPAIR; do not forge a repair or replay failed dispatch.'
+- 'Human explicitly selects Codex GPT-6.1 Sol Max as the new sole Executor for the fresh revision-2 PRIMARY. Executor/model is operationally selected by authorized wake, not TASK schema. Preserve unchanged AC1..AC10, modification scope, constraints, original TASK-405 Human exception boundary and Runtime minimum-sufficient tests.'
+- 'Before the new PRIMARY wake, the affected self-host worktree must be proven clean and synchronized to exact canonical r2 main using a guarded Human-authorized preserve/recovery path. Any uncommitted prior Antigravity edits must first be backed up (including untracked files and staged binary diffs), kept discoverable for Codex read-only reuse where safe, never misrepresented as canonical code, and not silently discarded. Do not wake or reset a dirty checkout without proven preservation; a failed preservation blocks execution.'
+- Canonical decision subject at revision-1 authoring was main f445626011d0664149011c8f57eb16a7014e6cd7;
   Runtime CAS may reject concurrent movement. This single TASK represents an explicit
   new Human prospective priority overriding older TASK-405 non-goal 'no TASK-406'
   and older planning requirement to keep MOA; it does not amend historical TASK-405
