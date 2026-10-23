@@ -1,0 +1,33 @@
+format: AIOS_MULTI_FINDING_DELTA_REVIEW
+version: 1
+review_id: REVIEW-410-002
+reviewed_sha: 8327f421df0c3e477e9a405b69bf7e5910cddca5
+mode: DELTA
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings: []
+batch_id: BATCH-760f076f3727d1349c7c33b029d2eb0b2988daa3e593975e33c2402af8f5fa39
+selection:
+  source_run_id: RUN-410-001
+  review_id: REVIEW-410-001
+  task_id: TASK-410
+  task_revision: 1
+  reviewed_sha: 44176343d11bcca39eee5bc4e06cfdc0adbfd853
+  review_decision_sha: 387b30efff077c6a09e8a76bcfe741ee5e7dc759
+  source_artifacts_sha: 68153b2771665ba4c491acb03a4bbbdf7b553466
+  finding_ids:
+  - F1
+  - F2
+finding_outcomes:
+  F1: PASS
+  F2: PASS
