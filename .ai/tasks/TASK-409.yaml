@@ -1,0 +1,173 @@
+task_id: TASK-409
+revision: 1
+goal: 'Implement only CAA v1 package 01: one bounded read-only, provenance-bound canonical
+  Engineering Episode reconstruction capability for AIOS Brain advisory use, while
+  canonicalizing the Human-approved finite four-package CAA roadmap as prospective
+  planning state. Do not activate CAA, alter any existing audit policy, or author/execute
+  future CAA tasks.'
+problem: Human approved CAA v1 (portable evidence-grounded intelligent advisor for
+  Architecture, TASK, REPAIR and REMEDIATION) and explicitly approved a bounded four-TASK
+  plan with optional fifth learned-model task. Canonical main eaa1363681bade65aaed33d9af6211728fb55992
+  is the published reviewed TASK-408 source enabling direct ordinary Brain authoring
+  and Human-on-demand TCA/ROA/MOA. Existing Brain Sync/Unified State and canonical
+  TASK/RUN/RESULT/FAILURE/REVIEW readers supply engineering truth but do not expose
+  a reusable, leakage-safe cross-episode learning view. Without that input CAA would
+  become a provider-dependent checklist or chat memory. First deliver the minimum
+  read-only evidence foundation and a planning-only finite roadmap; later semantic
+  reasoning, four-flow integration and controlled evaluation are distinct unimplemented
+  packages.
+assumptions:
+- 'Explicit current Human approval on 2026-10-23: prioritize CAA v1 now with four
+  finite packages CAA-01 canonical experience, CAA-02 intelligent evidence retrieval/advice,
+  CAA-03 four-flow advisory integration/portability, CAA-04 independent evaluation/shadow
+  and controlled Human-authorized rollout; CAA-05 learned reranker/fine-tune only
+  if measured evidence justifies it. No independent authority, DB, generic lifecycle
+  router or always-on agent.'
+- Canonical source at authoring main eaa1363681bade65aaed33d9af6211728fb55992 is exact
+  repaired reviewed/published RUN-408-002 candidate; Human-on-demand auditing is prospective
+  policy after authenticated inclusion, while prior TASK-407/408/RUN/FAILURE/REVIEW
+  lineage is immutable. Reauthenticate source and selected policy on execution.
+- CAA-01 is strictly a data/experience reconstruction foundation, not a retrieval
+  model, trained weights, semantic verdict or callable live authoring provider. No
+  CAA recommendation quality or production uplift can be claimed by completing CAA-01.
+- Original source readers already used by Brain Sync, Unified State, Runtime artifact/review
+  transport and Git should be reused where lawful. The admitted Executor determines
+  HOW and tests; Brain owns four-package roadmap semantics and current TASK outcome.
+- The canonical roadmap is Human/Brain planning state, not engineering lifecycle truth.
+  This TASK may transcribe the explicit CAA approval and select only CAA-01 as new
+  planning NEXT. It must not predeclare other CAA TASK IDs, mark future work DONE,
+  or automatically advance after RUN/REVIEW/PUBLISH.
+- Before implementation, keep the new TASK binding, local checkout, expected Git and
+  policy currentness authentic; if a conflicting recent Human roadmap priority has
+  appeared, report the conflict rather than silently overwrite.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/flow-cards.yaml
+  - .ai/tasks/TASK-408.yaml
+  - .ai/tasks/TASK-407.yaml
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-MANIFESTO.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/artifacts.py
+  - src/aios_renew/task.py
+  - src/aios_renew/run.py
+  - src/aios_renew/review.py
+  - tests/test_operator_unified_state.py
+  - tests/test_brain_context.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_attention.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - src/aios_renew/caa_experience.py
+  - tests/test_caa_experience.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  - tests/test_brain_attention.py
+non_goals:
+- No CAA-02 intelligent retrieval, semantic reasoning/model calls, prompt template
+  masquerading as intelligence, CAA-03 workflow hook/provider selection, CAA-04 shadow
+  or production activation, or CAA-05 learned model/training in TASK-409.
+- No new lifecycle truth database, vector DB, background trainer, always-on agent,
+  memory authority, generic selector/router, second Planner/Reviewer/Publisher, automatic
+  TASK selection, REPAIR selection, dispatch or audit gate.
+- No change to direct AUTHOR_TASK/AUTHOR_REPAIR/AUTHOR_REMEDIATION contracts, existing
+  Human-on-demand AOA/TCA/ROA/MOA/V1 policy, current admission/CAS/origin rules, Runtime
+  verification/EVIDENCE, Reviewer/PUBLISHER or frozen Kernel.
+- No rewriting or retirement of TASK-407/408, prior source records, historical engineering
+  lineage, or old roadmap bookmarks; no automatic PTE/Lean VP/KA-01/downstream advancement.
+- No full repository-wide discovery or full suite, no raw provider trace/credentials/private
+  local path export or unaudited model-created engineering facts.
+constraints:
+  hard:
+  - Preserve one unique prospective active Human/Brain planning NEXT as CAA-01, backed
+    by the current explicit Human approval; add an architecture-level CAA v1 roadmap
+    document with exactly four sequential finite slices and a distinct conditional
+    fifth learned-model option, objective, scope, non-goals, dependency and exit/stop
+    criteria for each. Preserve previous planning/approval records as history; mark
+    them paused/superseded prospectively only, not executed/completed. Do not mint
+    TASK IDs for CAA-02..04.
+  - Read-only experience reconstruction MUST bind every factual episode to exact authenticated
+    TASK revision, RUN/RESULT/FAILURE/EVIDENCE, authorized correction and REVIEW/PUBLISH
+    state when observed; present source SHA/provenance and distinguish RUN, RESULT,
+    REVIEW PASS and Publisher inclusion. No stage assumes the next stage happened.
+  - Provide bounded subject/scoped-range and historical as-of source-cut reads using
+    existing authenticated canonical readers, with explicit OBSERVED/INFERRED/UNKNOWN
+    separation and no future FAILURE/REPAIR leakage into a historical authoring snapshot.
+    Fail contained on missing/stale/forged source; do not invent root cause from test
+    node or PASS from receipt.
+  - Cover both successful and failing episodes, and distinguish completion-only missing
+    claims, unresolved ResultPackage, mixed V001/V002 verification and malformed pytest
+    summary without treating patterns as certain root causes. Expose enough portable
+    facts for future Claude/Gemini/GPT readers but no credentials, raw logs, chain-of-thought
+    or private protected information.
+  - Keep the source view finite in episode count/bytes/depth, deterministic under
+    identical canonical snapshot, no mutation or semantic verdict, and safe against
+    textual instructions in retrieved source. The exact limits and read mechanism
+    are HOW chosen by admitted Executor subject to demonstrable boundedness.
+  - Do not edit existing Flow Cards, canonical lifecycle reducer, Runtime verification,
+    audit policy profiles or provider routing. A prospective roadmap update must not
+    make CAA a default gate or claim that a future task/review/publication/ML uplift
+    occurred.
+  - Final clean committed candidate and truthful complete AC1..AC8 ResultPackage within
+    exact authorized paths; Runtime alone runs unchanged authored minimum-sufficient-v1
+    verification; independent semantic Reviewer and Publisher retain separate verdict/publication
+    authority.
+acceptance:
+- id: AC1
+  condition: 'The new prospective CAA planning record and one concise canonical CAA
+    v1 roadmap document faithfully preserve Human intent: four finite sequential CAA-01..04
+    packages, optional conditional CAA-05, one selected CAA-01 next, explicit exit/stop
+    gates, prior TASK-408 and TASK-407 history preserved, and no automatically completed
+    later slices or duplicate live NEXT.'
+- id: AC2
+  condition: One maintained read-only, provider-neutral episode-reconstruction interface
+    can project bounded authenticated canonical TASK/revision, RUN/RESULT/FAILURE
+    and correction/review/publication facts into a portable data structure; observable
+    facts carry their exact applicable source binding and do not claim unavailable
+    lifecycle stages.
+- id: AC3
+  condition: The interface can reconstruct selected representative success and failed
+    episode shapes, distinguishing RUN-391-013 missing acceptance claims, RUN-398-004
+    unresolved ResultPackage, RUN-403-003 V001 success/V002 failure and RUN-407-001
+    missing test-node summary, without fabricating technical root causes or Reviewer/Publisher
+    PASS; a successful RESULT example is also covered.
+- id: AC4
+  condition: 'An explicit canonical as-of source cut prevents hindsight leakage: no
+    later FAILURE/REPAIR/REVIEW fact appears when reconstructing a TASK as it was
+    available before execution, and a future artifact or swapped/stale source fails
+    safely.'
+- id: AC5
+  condition: Positive and adversarial tests cover canonical source identity, versioned/immutable
+    lineage, equivalent repeated read stability, absent/synthetic/moved refs, cross-TASK
+    SHA confusion, private source redaction and injected text that must not become
+    instructions.
+- id: AC6
+  condition: Episode and range selection, output size/depth and query resource use
+    are demonstrably finite; missing evidence is represented as UNKNOWN or a bounded
+    reader error, not empty synthetic success, hidden retry loop, alternate database
+    or system-wide fetch.
+- id: AC7
+  condition: Only the seven enumerated permitted source/docs/test paths are changed,
+    and targeted Brain Sync/Work Context regressions preserve existing caller shapes
+    and the published HUMAN_ON_DEMAND direct authoring policy; no new Flow Card, Runtime
+    admission step, semantic audit invocation or provider selection appears.
+- id: AC8
+  condition: The code/documentation/result truthfully establish only the CAA-01 foundation
+    and pending conditional CAA-02..04 plan; no training, production CAA quality benefit,
+    automatic default, future completion, REVIEW PASS or publication is asserted by
+    the Executor; exact focused verification is retained.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_caa_experience.py tests/test_brain_sync.py tests/test_brain_context.py
+    tests/test_brain_attention.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
