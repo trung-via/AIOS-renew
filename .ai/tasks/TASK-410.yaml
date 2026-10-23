@@ -1,0 +1,205 @@
+task_id: TASK-410
+revision: 1
+goal: "Implement only CAA v1 package 02, Intelligent Evidence Retrieval & Advisory\
+  \ Reasoner: one transient read-only, provider-neutral, grounded and falsifiable\
+  \ advisory capability over CAA-01 canonical episodes. Deliver bounded historical/semantic\
+  \ retrieval, transferable mechanism hypotheses, strong counterexamples and 0\u2013\
+  3 useful recommendations or legitimate abstention. Canonicalize current Human selection\
+  \ of CAA-02 without activating CAA-03/04 or changing authoring, audit or lifecycle\
+  \ authority."
+problem: Human approved deep CAA-02 architecture research on 2026-10-23 and explicitly
+  requests immediate implementation. At canonical main 4c5a961e17315aa6bdbea810e0fed803ef460e05,
+  TASK-409 r1 / RUN-409-002 has an authenticated independent PRIMARY REVIEW-409-001
+  PASS, canonical RESULT/EVIDENCE, and exact reviewed source included on main. Existing
+  CAA-01 capture_experience_cut/reconstruct_episodes yields source-bound bounded structural/lineage
+  observations, but deliberately omits most free-form goal, acceptance, scope and
+  consumer semantics; naive model reasoning on only failure names or IDs would invent
+  causality. Deliver the smallest lawful source-grounded semantic signal/reasoning
+  extension; maintain CAA-01 provenance, privacy, temporal sealing and authority boundaries.
+  CAA-03 integration and CAA-04 evaluation/shadow are not delivered by this task.
+assumptions:
+- 'Explicit Human decision 2026-10-23: approve and implement CAA-02 deep research
+  now as one finite package, preserving four-package CAA-01..04 roadmap and conditional
+  unselected CAA-05. This newer Human priority prospectively supersedes the previous
+  CAA-01 planning bookmark only for selection of CAA-02; existing TASK-409/RUN/RESULT/REVIEW/PUBLISH
+  lineage is unchanged.'
+- Source main at authoring is 4c5a961e17315aa6bdbea810e0fed803ef460e05; exact RUN-409-002
+  canonical result source and REVIEW-409-001 PASS on reviewed SHA 4c5a961e17315aa6bdbea810e0fed803ef460e05
+  are independently observed; the same source is main HEAD. Reauthenticate it at implementation/currentness;
+  do not infer other package completion or future CAA recommendation quality.
+- 'Existing published TASK-408 HUMAN_ON_DEMAND direct-authoring policy remains in
+  effect. AOA-1 v1 architecture profile is used for this Brain-owned architectural
+  decision: compare A no-build/current Brain reads, B minimal transient CAA-02 grounded
+  reasoning, C persistent DB/multi-agent/trained model; B is a bounded implementation
+  candidate with unmeasured cost/uplift, not a claim of superiority.'
+- CAA-01 currently exports bounded structural facts but withholds source free text.
+  CAA-02 may require an additional safe, minimal, source-bound semantic-signal projection
+  under the exact captured cut. Authenticated source and field-level exclusion take
+  precedence over model inference, and unprovable semantic detail remains UNKNOWN.
+  Executor owns HOW for safe excerpt extraction or feature shaping.
+- One admitted Executor chooses module/API/internal implementation and targeted tests.
+  Brain sets outcomes and constraints only; no Executor/model selection, dispatch
+  identity or Human risk acceptance is embedded in the TASK.
+- The finite CAA roadmap remains Human/Brain planning, not engineering truth. Only
+  this selected CAA-02 slice may be recorded as current NEXT. No planning completion
+  or CAA-03 advancement follows automatically from RESULT/REVIEW/PUBLISH.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/flow-cards.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-409.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-MANIFESTO.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - src/aios_renew/caa_experience.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/task.py
+  - tests/test_caa_experience.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_context.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CAA-02-INTELLIGENT-REASONER.md
+  - src/aios_renew/caa_experience.py
+  - src/aios_renew/caa_reasoner.py
+  - tests/test_caa_experience.py
+  - tests/test_caa_reasoner.py
+non_goals:
+- No production CAA-03 four-flow hooks, existing Brain Flow Card edits, generic provider
+  router, automatically triggered advisor, default CAA requirement or normative audit
+  substitute.
+- No CAA-04 independent shadow/rollout system, live provider integrations outside
+  the existing BrainProvider boundary, trained weights, fine-tune/learned reranker,
+  vector DB, memory DB, persistent agent fleet or cross-provider chat-memory state.
+- No semantic verdict, independent Planner/Reviewer/Publisher, Runtime verification/canonical
+  evidence authority, automatic author/repair/remediation decision, execution dispatch,
+  source mutation or changed final AUTHOR_TASK/REPAIR/REMEDIATION contracts.
+- No rewriting TASK-409/408/407 or any RUN/FAILURE/RESULT/REVIEW; no inferred uplift,
+  audit pass, production activation, CAA-03/04 task identity, PTE/Lean VP/KA-01 or
+  downstream-pinning progress.
+- No blanket raw logs or arbitrary private source export, no unbounded repository
+  scan/retrieval, no web-driven source authority, no full pytest suite or duplicated
+  unchanged verification.
+constraints:
+  hard:
+  - Extend the one active CAA v1 planning record to select only CAA-02 / TASK-410
+    as a new explicit Human/Brain NEXT and record exact CAA-01 reviewed-published
+    predecessor as an observed engineering fact, not an automatic roadmap transition.
+    Preserve historical priority records, paused bookmarks, four sequential packages,
+    CAA-05 conditional state and no automatic next.
+  - Reuse CAA-01 authenticated sealed ExperienceCut, canonical source/ref/revision
+    identity, existing provider-neutral MappingBrainProvider/JsonBrainProvider or
+    equivalent lawful callable boundary; exported dictionaries, model output, summaries,
+    issuer labels and free-form Git text never authenticate themselves. No second
+    lifecycle reader/truth store or independent Git authority.
+  - Offer sufficient *safe semantic context* for useful mechanism-level reasoning
+    (goal/invariant/acceptance/scope/affected consumers/verification only to the extent
+    authenticated and permitted). Derive directly from eligible canonical TASK/source,
+    bind citations to exact source pointer/SHA and snapshot. Do not leak credentials,
+    protected diagnostic raw text, private paths or arbitrary user-provided instructions;
+    unsupported feature remains UNKNOWN instead of guessed.
+  - Reproduce an as-of-bound/retrospective input without future FAILURE, REPAIR, REVIEW
+    or publication leakage; history used as an analogy cannot become current normative
+    policy. Preserve non-exportability of sealed cuts, fail contained on moved, forged,
+    unavailable or inconsistent source. Use bounded source/episode/byte/depth/time
+    and provider call/response budgets, no hidden loops/retries/failover.
+  - Retrieve and compare exact/structured and lexical signals against a model-assisted
+    semantic analogy option, selecting relevant positive, negative and disanalogous
+    cases where present. Never equate shared test name, success after correction or
+    lexical similarity with proven cause. Keep model invocation minimal and optional
+    for comparative measurement; no required five-model-call pipeline.
+  - Each recommended improvement (max 3) has exact evidence pointers supporting source
+    facts, explanation of shared mechanism, decisive dissimilarity/applicability,
+    testable expected effect, falsifier and calibrated OBSERVED/INFERRED/UNKNOWN distinction.
+    Novel advice is hypothetical, not canonical engineering truth. Model citations
+    must be validated independently of the model; mere well-formed citations do not
+    prove semantic support.
+  - Support NO_MATERIAL_ADVICE, INSUFFICIENT_GROUNDED_EVIDENCE and UNAVAILABLE as
+    truthful bounded non-blocking consultation outcomes, including inaccessible/contradictory/low-value
+    sources. Existing genuine canonical auth/currentness/admission requirements remain
+    enforceable and cannot be bypassed by advisory degradation.
+  - Treat malicious instructions embedded in TASK descriptions, source episodes and
+    provider responses strictly as untrusted data; CAA output cannot invoke tools,
+    alter task scope, select CODE_FIX, choose Executor, perform review/publish, approve
+    Human risk or authorize Runtime actions.
+  - Provide a deterministic read-only evaluation fixture and blind pre-author source-cut
+    comparative tests for A1 structured/lexical-only vs B1 causal advisory under controlled
+    inputs, with positive/failure/disanalogy/counterexample/abstain/false-source/prompt-injection/stale-policy/future-leakage
+    cases. Report observable source grounding and cost/availability when measured,
+    with unmeasured outcomes UNKNOWN. No retrospective hindsight or self-rated uplift
+    claim.
+  - Ensure output is JSON-compatible, bounded and provider-neutral across existing
+    mapping/JSON adapters with negative malformed-response cases; do not claim live
+    GPT/Claude/Gemini equivalence from simulation. Existing direct authoring, AOA
+    soft default and exact Human-on-demand TCA/ROA/MOA policy and CAA-01 protections
+    remain unchanged.
+  - Only seven enumerated scope.modify paths may change. A committed clean Executor
+    candidate must return truthful claimable AC1..AC10 evidence, while Runtime alone
+    performs authored minimum-sufficient-v1 verification and independent Reviewer/Publisher
+    own their stages. No full suite or source mutation outside approved paths.
+acceptance:
+- id: AC1
+  condition: Canonical planning and CAA roadmap select one current prospective CAA-02
+    / TASK-410 based on this explicit Human decision and the exact reviewed-published
+    TASK-409 source; earlier CAA-01 and audit-policy lineage are preserved and CAA-03/04/05
+    remain unselected.
+- id: AC2
+  condition: One bounded, provider-neutral, read-only CAA-02 consultation API consumes
+    authenticated CAA-01 source cuts plus a transient exact Brain candidate context
+    and returns a finite JSON-compatible advisory result; it creates no canonical
+    lifecycle mutation, task selection, audit gate or execution action.
+- id: AC3
+  condition: Minimal semantic context and source citations reflect only authenticated
+    cut-eligible canonical content; source SHA/pointer and as-of are bound, sensitive/raw
+    content and malicious instructions cannot become authority, and unavailable meaning
+    stays UNKNOWN. Original CAA-01 seal/private handling remains valid.
+- id: AC4
+  condition: Structured/lexical retrieval and model-assisted cross-module mechanism
+    comparison can surface positive, negative and non-applicable precedents where
+    eligible; explicit mismatch/counterexample evidence prevents lexical/test-name
+    similarity from being treated as root-cause proof.
+- id: AC5
+  condition: A response gives zero to three material, nonduplicated suggestions; each
+    suggestion expresses evidence support, transfer/applicability and decisive difference,
+    falsifier, prospective effect and epistemic uncertainty. Invalid/missing/irrelevant
+    citation, unsupported cause and false certainty are rejected or abstained from,
+    not relabeled OBSERVED.
+- id: AC6
+  condition: Read-only negative tests demonstrate isolation from future events in
+    pre-author historical snapshots, rejection/UNKNOWN on forged/stale/moved refs
+    and subject substitution, prompt-injection protection and prevention of caller/model
+    promotion of retrieved data into instructions or authorization.
+- id: AC7
+  condition: A bounded comparable fixture evaluates structured-only A1 vs pretrained-model
+    advisory B1 without hindsight; measures grounded relevance, strong counterexamples,
+    correct abstention and resource overhead as observed, while unknown/cross-provider-live
+    superiority is not claimed.
+- id: AC8
+  condition: Consultation failure, missing useful history or unavailable model produces
+    bounded NO_MATERIAL_ADVICE, INSUFFICIENT_GROUNDED_EVIDENCE or UNAVAILABLE without
+    blocking otherwise lawful direct Brain authoring; genuine existing authentication/Runtime
+    admission failures are not hidden.
+- id: AC9
+  condition: Mapping and JSON provider adapter tests validate equivalent source-bound
+    request and portable advisory response shape, finite provider invocation/bytes;
+    invalid response, attribution mismatch, malicious source text and over-budget
+    inputs fail contained without model rerouting or retry authority.
+- id: AC10
+  condition: Documentation and modified-source tests preserve TASK-408 HUMAN_ON_DEMAND
+    default and all Brain/Executor/Runtime/Reviewer/Publisher boundaries, CAA-01 backwards
+    compatibility, exact authorized seven-path delta and minimum-sufficient-v1 verification,
+    without CAA-03 workflow hooks or production-uplift assertions.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_caa_reasoner.py tests/test_caa_experience.py tests/test_brain_provider.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
