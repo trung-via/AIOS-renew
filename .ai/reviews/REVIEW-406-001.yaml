@@ -1,0 +1,60 @@
+review_id: REVIEW-406-001
+reviewed_sha: d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings: []
+notes:
+- Independent first PRIMARY semantic review for TASK-406 revision 2, admitted repair
+  continuation RUN-406-003. The review candidate is d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f,
+  original canonical task/main base b3344968cef482615244a77ded439330c50a2dc7. Canonical
+  RUN-406-003 ResultPackage at artifacts SHA cc9ce9806f7d1606bde24237ebdd064908d16bbf
+  contains 10 distinct truthful AC1..AC10 claims, unresolved=[], evidence RUN-406-003-V001
+  with exact authored command 'python -m pytest -q tests/test_brain_audit.py tests/test_brain_context.py
+  tests/test_brain_provider.py tests/test_brain_provider_protocol.py tests/test_brain_return_contract.py'
+  exit 0. Runtime proof is not itself Reviewer PASS or publication.
+- 'AC1-AC3: candidate implements a closed THREE_SPECIALIZED policy mapping with ARCHITECTURE
+  aoa-1 v1, TASK_AUTHORING tca-3 v3 exact normalized digest cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e,
+  and REPAIR_AUTHORING roa-1-r3 v3. REMEDIATION_AUTHORING is absent, not null/default/fallback;
+  direct AUTHOR_REMEDIATION continues through unchanged deterministic final-contract
+  validation. Canonical and local focused tests cover valid Git admission, malformed
+  affected verification, non-audit provider invocation boundary, historical four-flow/V1
+  replay and two-native-transport TCA-3 procedures.'
+- 'AC4, AC7, AC8: approval human_tca3_three_flow_activation_20261023 remains READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION.
+  The repaired candidate binds actual admitted RUN-406-003 and exact REPAIR-406-002-001
+  authorization SHA 2b1ef613755e15a1795ccf4e2fefffd95bfcdf31, failed RUN-406-002 candidate
+  cee20fb76df8fb93c05784135c508e1d5f678efa, failure artifacts a20f9c799666556e02dc1e58de4f7698e65e5388
+  and original TASK root b3344968cef482615244a77ded439330c50a2dc7. Actual persisted
+  repair.json confirms root_base=result_base=that TASK root and the admitted child
+  RUN. Activation authenticator verifies the immutable repair chain, independent first
+  PRIMARY PASS review source, and exact Publisher inclusion on canonical main. This
+  REVIEW does not activate TCA-3 or advance planning before eligible publication.'
+- 'AC5-AC6: source exception is exactly one Human-approved TASK-405 Git integration,
+  not a retroactive Runtime Publisher PASS. It checks merge/parents/tree, twelve blob
+  identities, r1 reviewed vs r2 integrated TASK, two exit-zero original evidence items,
+  immutable REVIEW-405-001 CHANGES_REQUIRED F1 and REVIEW-405-002 BLOCKED, and actual
+  registry 65,536 UTF-8 byte cap versus false historical C2 98,304 claim. Negative
+  tests challenge wrong refs, altered evidence, false decisions and source substitution;
+  no historical FAILURE/REVIEW/ref is rewritten.'
+- 'AC9-AC10: docs preserve independent Human/Brain/Executor/Runtime/Reviewer/Publisher
+  boundaries and historical compatibility. Comparison against canonical TASK-406 r2
+  shows all 12 changed paths within scope.modify; seven paths changed by the repair
+  continuation relative to failed candidate. There is no new task, DB, router, no
+  full-suite requirement, and no demonstrated skip/xfail relaxation. The Executor''s
+  local worker-consistency observation is not substituted for canonical V001 exit-zero
+  evidence. Positive and adversarial checks are minimum-sufficient; this verdict does
+  not assert future production measurements, downstream adoption, or successful publication.'
+- 'Independent closure: no unresolved material semantic contradiction found within
+  the exact TASK-406 r2 scope and reviewed source. PASS authorizes only this exact
+  candidate for a separate Publisher eligibility decision; GitHub carrier/Review ingress
+  success and this semantic judgment do not themselves prove Publisher main integration.'
