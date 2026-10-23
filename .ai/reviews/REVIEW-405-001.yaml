@@ -1,0 +1,35 @@
+review_id: REVIEW-405-001
+reviewed_sha: cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: FAIL
+findings:
+- id: F1
+  basis: AC10
+  action: EVIDENCE_ONLY
+  location: .ai/transport/result.json:result.claims[C2] (RUN-405-004) vs src/aios_renew/brain_audit.py:parse_profile_registry
+    and docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md section 25
+  issue: Immutable Runtime-accepted Executor claim C2 states registry is bounded to
+    10 profiles and 98,304 UTF-8 bytes, whereas the exact reviewed candidate parse_profile_registry
+    rejects len(encoded)>65,536 and section 25 documents 65,536. The count of 10 is
+    correct, but the precise numeric byte-limit assertion is false. Two PASS Runtime
+    verification commands do not semantically authenticate a contradictory claim,
+    and TASK-405 hard constraints require truthful complete AC1..AC10 claims.
+  expected: Use an authorized bounded correction of the final ResultPackage claim
+    C2 so the asserted cap is exactly 65,536 UTF-8 bytes (10 recognized profiles)
+    and stays consistent with candidate implementation and canonical documentation;
+    preserve source SHA, source bounds and all original evidence/acceptance, and let
+    Runtime accept/verify a new truthful completion through existing correction lineage.
+    Do not raise validator cap to 98,304 to conform to the false claim, rewrite the
+    immutable RUN-405-004 RESULT, disable checks, fabricate evidence, or publish this
+    CHANGES_REQUIRED candidate.
