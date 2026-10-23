@@ -969,3 +969,262 @@ def test_task405_tca3_prospective_activation_rejects_unauthenticated_or_forged_c
     with pytest.raises(BrainContextError):
         canonical_audit_inputs(supplied, contract, bindings, repo=canonical.repo, **sources)
 
+
+@pytest.fixture
+def task406_canonical_audit_repo(canonical_audit_repo, monkeypatch):
+    """Real offline Git proof chain. Only fixed production object IDs are rebased
+    to this isolated repository; all parsing, metadata, ancestry and ref checks run.
+    These synthetic Runtime/Reviewer fixtures are never verification EVIDENCE.
+    """
+    import aios_renew.brain_context as context
+    c = canonical_audit_repo
+    c.publish_successor()
+    root = Path(__file__).resolve().parents[1]
+    saved = {key: deepcopy(getattr(c, key)) for key in (
+        "base_sha", "source_sha", "review_sha", "artifact_sha", "run", "result_package", "review")}
+    task2 = yaml.safe_load((root / ".ai/tasks/TASK-405.yaml").read_bytes())
+    c.write(".ai/tasks/TASK-405.yaml", yaml.safe_dump(task2).encode())
+    first = c.commit("TASK-405 r2 first parent fixture")
+    task1 = {**task2, "revision": 1}
+    c.git(c.canonical, "switch", "--detach", first)
+    for path in context._TASK405_EXCEPTION["implementation_blobs"]:
+        c.write(path, yaml.safe_dump(c.roadmap).encode() if path == ".ai/roadmap-state.yaml" else (root / path).read_bytes())
+    c.write(".ai/tasks/TASK-405.yaml", yaml.safe_dump(task1).encode())
+    source = c.commit("TASK-405 original r1 source fixture")
+    c.git(c.canonical, "update-ref", "refs/heads/aios/review/RUN-405-004", source)
+    c.source_sha = source
+    c.base_sha = first
+    c.run = {**saved["run"], "run_id": "RUN-405-004", "base_sha": first, "task": {"id": "TASK-405", "revision": 1}}
+
+    def package(task, run_id, sha, paths):
+        ids = [f"{run_id}-V{i:03}" for i in range(1, len(task["verification"]["required"]) + 1)]
+        return {"result": {"head_sha": sha, "changed_files": sorted(paths), "unresolved": [],
+                    "claims": [{"id": f"C{i}", "satisfies": [ac["id"]], "claim": ac["condition"], "evidence": ids}
+                               for i, ac in enumerate(task["acceptance"], 1)]},
+                "evidence": [{"evidence_id": eid, "run_id": run_id, "subject_sha": sha, "type": "VERIFICATION",
+                    "source": {"command": command}, "result": {"exit_code": 0, "summary": "Synthetic Runtime fixture"},
+                    "raw": {"path": f"fixture-only/{eid}"}}
+                    for eid, command in zip(ids, task["verification"]["required"])]}
+
+    c.result_package = package(task1, "RUN-405-004", source, context._TASK405_EXCEPTION["implementation_blobs"])
+    c.result_package["result"]["claims"][1]["claim"] = "Original false 98304-byte registry bound."
+    c.save_artifacts(run_id="RUN-405-004")
+    artifact = c.artifact_sha
+    c.review = {"review_id": "REVIEW-405-001", "reviewed_sha": source, "mode": "PRIMARY", "verdict": "CHANGES_REQUIRED",
+                "acceptance": {f"AC{i}": "FAIL" if i == 10 else "PASS" for i in range(1, 11)},
+                "findings": [{"id": "F1", "basis": "AC10", "action": "EVIDENCE_ONLY", "location": "C2",
+                              "issue": "False immutable claim", "expected": "Truthful claim without rewriting history"}]}
+    c.save_review(run_id="RUN-405-004")
+    original_review = c.review_sha
+    c.review = {"review_id": "REVIEW-405-002", "reviewed_sha": source, "mode": "DELTA", "verdict": "BLOCKED",
+                "prior_finding_id": "F1", "acceptance": {"AC10": "FAIL"}, "findings": []}
+    c.save_review(run_id="RUN-405-005")
+    delta = c.review_sha
+    # Integrate all twelve exact implementation blobs, retaining main's TASK r2.
+    for path in context._TASK405_EXCEPTION["implementation_blobs"]:
+        c.write(path, subprocess.check_output(("git", "-C", str(c.canonical), "show", f"{source}:{path}")))
+    c.git(c.canonical, "add", "-A")
+    tree = c.git(c.canonical, "write-tree")
+    merge = c.git(c.canonical, "commit-tree", tree, "-p", first, "-p", source, "-m", "Human Git exception fixture")
+    c.git(c.canonical, "update-ref", "refs/heads/main", merge)
+    c.git(c.canonical, "reset", "--hard", merge)
+    exception = deepcopy(context._TASK405_EXCEPTION)
+    exception.update(merge_sha=merge, parents=[first, source], tree=tree, source_sha=source,
+                     original_artifacts_sha=artifact, original_review_sha=original_review, delta_review_sha=delta,
+                     implementation_blobs={p: c.git(c.canonical, "rev-parse", f"{source}:{p}")
+                                           for p in exception["implementation_blobs"]})
+    monkeypatch.setattr(context, "_TASK405_EXCEPTION", exception)
+    predecessor = context._digest(c.roadmap[context._R21_SUCCESSOR_APPROVAL])
+    monkeypatch.setattr(context, "_THREE_FLOW_PREDECESSOR_DIGEST", predecessor)
+    approval = context._three_flow_approval(predecessor)
+    c.roadmap[context._THREE_FLOW_APPROVAL] = approval
+    c.write(".ai/roadmap-state.yaml", yaml.safe_dump(c.roadmap).encode())
+    task = yaml.safe_load((root / ".ai/tasks/TASK-406.yaml").read_bytes())
+    c.write(".ai/tasks/TASK-406.yaml", yaml.safe_dump(task).encode())
+    c.source_sha = c.commit("TASK-406 reviewed implementation fixture")
+    c.three_flow_source_sha = c.source_sha
+    c.main_sha = c.source_sha
+    c.git(c.canonical, "update-ref", context._THREE_FLOW_REFS[0], c.source_sha)
+    c.run = {**saved["run"], "run_id": context._THREE_FLOW_RUN, "base_sha": merge, "task": {"id": "TASK-406", "revision": 2}}
+    c.result_package = package(task, context._THREE_FLOW_RUN, c.source_sha, ["src/aios_renew/brain_context.py"])
+    c.save_artifacts(run_id=context._THREE_FLOW_RUN)
+    c.three_flow_artifact_sha = c.artifact_sha
+    c.review = {"review_id": "REVIEW-406-001", "reviewed_sha": c.source_sha, "mode": "PRIMARY", "verdict": "PASS",
+                "acceptance": {ac["id"]: "PASS" for ac in task["acceptance"]}, "findings": []}
+    c.save_review(run_id=context._THREE_FLOW_RUN)
+    c.three_flow_review_sha = c.review_sha
+    c.three_flow_review = deepcopy(c.review)
+    c.three_flow_package = deepcopy(c.result_package)
+    c.three_flow_run = deepcopy(c.run)
+    c.exception = exception
+    c.synthetic_package = package
+    for key, value in saved.items():
+        setattr(c, key, value)
+    return c
+
+
+def test_task406_roadmap_is_one_prospective_decision_and_exact_exception():
+    from aios_renew.brain_context import (_THREE_FLOW_APPROVAL, _three_flow_approval, _R21_SUCCESSOR_APPROVAL,
+        _THREE_FLOW_PREDECESSOR_DIGEST, _TASK405_EXCEPTION, _digest, _UniqueKeyLoader)
+    root = Path(__file__).resolve().parents[1]
+    raw = (root / ".ai/roadmap-state.yaml").read_text(encoding="utf-8")
+    nodes = {k.value: v for k, v in yaml.compose(raw).value}
+    record = yaml.load(yaml.serialize(nodes[_THREE_FLOW_APPROVAL]), Loader=_UniqueKeyLoader)
+    predecessor = yaml.load(yaml.serialize(nodes[_R21_SUCCESSOR_APPROVAL]), Loader=_UniqueKeyLoader)
+    assert _digest(predecessor) == _THREE_FLOW_PREDECESSOR_DIGEST
+    assert record == _three_flow_approval(_digest(predecessor))
+    assert record["status"] == "READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION"
+    assert "REMEDIATION_AUTHORING" not in record["target_profiles"]
+    assert _TASK405_EXCEPTION["merge_sha"] == "f445626011d0664149011c8f57eb16a7014e6cd7"
+    assert _TASK405_EXCEPTION["original_review_verdict"] == "CHANGES_REQUIRED"
+    assert _TASK405_EXCEPTION["delta_review_verdict"] == "BLOCKED"
+    assert len(_TASK405_EXCEPTION["implementation_blobs"]) == 12
+    assert (_TASK405_EXCEPTION["false_c2_byte_bound"], _TASK405_EXCEPTION["actual_byte_bound"]) == (98304, 65536)
+
+
+def test_task406_git_authenticates_new_pass_separately_from_nonpass_exception(task406_canonical_audit_repo):
+    from aios_renew.brain_context import _canonical_audit_source, _THREE_FLOW_APPROVAL
+    c = task406_canonical_audit_repo
+    record, registry, authority = _canonical_audit_source(c.repo)
+    assert record == c.roadmap[_THREE_FLOW_APPROVAL]
+    assert authority["effective_status"] == "TASK406_REVIEWED_PUBLISHED_THREE_FLOW_ACTIVE"
+    assert authority["reviewed_source_sha"] == c.three_flow_source_sha
+    assert authority["task405_source_exception"]["review_verdicts"] == ["CHANGES_REQUIRED", "BLOCKED"]
+    assert authority["task405_source_exception"]["kind"] == "HUMAN_GIT_SOURCE_EXCEPTION_NOT_PUBLISHER_PASS"
+    assert len(registry["profiles"]) == 10
+
+
+@pytest.mark.parametrize("fault", ("absent", "duplicate", "alias", "duplicate_key", "active_label", "old_digest", "moa", "conflict",
+    "exception_source", "exception_sha", "parent", "tree", "blob", "evidence", "f1", "missing_review", "false_pass", "not_main",
+    "old_review_ref", "old_artifact_ref", "old_candidate_ref", "delta_ref"))
+def test_task406_activation_never_falls_back_on_approval_or_source_conflicts(task406_canonical_audit_repo, fault):
+    from aios_renew.brain_context import _canonical_audit_source, _THREE_FLOW_APPROVAL, _R21_TCA3_APPROVAL, _THREE_FLOW_REFS
+    c = task406_canonical_audit_repo
+    record = c.roadmap[_THREE_FLOW_APPROVAL]
+    if fault == "absent":
+        del c.roadmap[_THREE_FLOW_APPROVAL]
+    elif fault == "duplicate":
+        c.roadmap[_THREE_FLOW_APPROVAL + "_other"] = deepcopy(record)
+    elif fault == "alias":
+        c.roadmap["unrelated_name_cannot_hide_another_approval"] = deepcopy(record)
+    elif fault == "active_label":
+        record["status"] = "ACTIVE"
+    elif fault == "old_digest":
+        record["superseded_approval_digest"] = "f" * 64
+    elif fault == "moa":
+        record["target_profiles"]["REMEDIATION_AUTHORING"] = None
+    elif fault == "conflict":
+        c.roadmap[_R21_TCA3_APPROVAL] = deepcopy(record)
+    elif fault in {"exception_source", "exception_sha", "parent", "tree", "blob", "evidence", "f1"}:
+        e = record["task405_source_exception"] = deepcopy(record["task405_source_exception"])
+        if fault == "parent":
+            e["parents"][0] = "f" * 40
+        elif fault == "blob":
+            e["implementation_blobs"]["src/aios_renew/brain_audit.py"] = "f" * 40
+        elif fault == "evidence":
+            e["evidence_exit_codes"] = [0, 1]
+        elif fault == "f1":
+            e["disposition"] = "RESOLVED_PASS"
+        else:
+            e[{"exception_source": "merge_sha", "exception_sha": "source_sha", "tree": "tree"}[fault]] = "f" * 40
+    elif fault == "missing_review":
+        c.git(c.canonical, "update-ref", "-d", _THREE_FLOW_REFS[1])
+    elif fault in {"old_review_ref", "old_artifact_ref", "old_candidate_ref", "delta_ref"}:
+        ref = {"old_review_ref": "review-decision/RUN-405-004", "old_artifact_ref": "artifacts/RUN-405-004",
+               "old_candidate_ref": "review/RUN-405-004", "delta_ref": "review-decision/RUN-405-005"}[fault]
+        c.git(c.canonical, "update-ref", f"refs/heads/aios/{ref}", c.three_flow_source_sha)
+    elif fault == "false_pass":
+        c.source_sha = c.three_flow_source_sha
+        c.review = deepcopy(c.three_flow_review)
+        c.review["acceptance"]["AC10"] = "FAIL"
+        c.save_review(run_id="RUN-406-002")
+    if fault == "not_main":
+        # Preserve the approval/code but remove its reviewed source from ancestry.
+        c.git(c.canonical, "switch", "--detach", c.exception["merge_sha"])
+        c.write(".ai/roadmap-state.yaml", yaml.safe_dump(c.roadmap).encode())
+        foreign = c.commit("unpublished TASK-406 sibling fixture")
+        c.git(c.canonical, "update-ref", "refs/heads/main", foreign)
+    else:
+        c.save_roadmap()
+    if fault == "duplicate_key":
+        c.save_roadmap(raw=yaml.safe_dump(c.roadmap).encode() + f"\n{_THREE_FLOW_APPROVAL}: {{}}\n".encode())
+    with pytest.raises((BrainContextError, ValueError)):
+        _canonical_audit_source(c.repo)
+
+
+@pytest.mark.parametrize("fault", ("first_evidence", "second_evidence", "claim", "decision", "blob", "source_revision"))
+def test_task406_exact_exception_payload_cannot_forge_success(task406_canonical_audit_repo, monkeypatch, fault):
+    from aios_renew import authoring_ingress
+    from aios_renew.brain_context import _canonical_audit_source
+    c = task406_canonical_audit_repo
+    read = authoring_ingress._read_commit_blob
+    def changed(repo, sha, path):
+        raw = read(repo, sha, path)
+        if sha == c.exception["original_artifacts_sha"] and path == ".ai/transport/result.json":
+            data = json.loads(raw)
+            if fault in {"first_evidence", "second_evidence"}:
+                data["evidence"][fault == "second_evidence"]["result"]["exit_code"] = 1
+            elif fault == "claim":
+                data["result"]["claims"][1]["claim"] = "Corrected 65536-byte claim"
+            raw = json.dumps(data).encode()
+        if sha == c.exception["delta_review_sha"] and path.endswith("REVIEW-405-002.yaml") and fault == "decision":
+            raw = raw.replace(b"BLOCKED", b"PASS")
+        if sha == c.exception["merge_sha"] and path == "src/aios_renew/brain_audit.py" and fault == "blob":
+            raw += b"\n# changed integration\n"
+        if sha == c.exception["source_sha"] and path == ".ai/tasks/TASK-405.yaml" and fault == "source_revision":
+            data = yaml.safe_load(raw)
+            data["revision"] = 2
+            raw = yaml.safe_dump(data).encode()
+        return raw
+    monkeypatch.setattr(authoring_ingress, "_read_commit_blob", changed)
+    with pytest.raises((BrainContextError, ValueError)):
+        _canonical_audit_source(c.repo)
+
+
+@pytest.mark.parametrize("phase", ("ADMIT", "CONTINUE"))
+def test_task406_policy_currentness_is_reauthenticated_at_both_boundaries(task406_canonical_audit_repo, phase):
+    from aios_renew.brain_context import canonical_audit_inputs
+    from aios_renew.brain_provider_protocol import construct_request
+    from aios_renew.brain_return_contract import parse_return_contract_registry
+    from test_brain_provider_protocol import production_inputs
+    c = task406_canonical_audit_repo
+    root = Path(__file__).resolve().parents[1]
+    returns = parse_return_contract_registry((root / ".ai/brain-return-contracts.yaml").read_bytes())
+    supplied, contract, bindings, sources = production_inputs(returns, "ARCHITECTURE", c)
+    policy, profile, authenticate = canonical_audit_inputs(supplied, contract, bindings, repo=c.repo, **sources)
+    if phase == "CONTINUE":
+        construct_request(supplied, contract, bindings, profile, request_mode="PROSPECTIVE",
+                          audit_policy=policy, selection_authenticator=authenticate, **sources)
+    c.commit("canonical source moved before boundary authentication")
+    with pytest.raises(ValueError):
+        construct_request(supplied, contract, bindings, profile, request_mode="PROSPECTIVE",
+                          audit_policy=policy, selection_authenticator=authenticate, selection_phase=phase, **sources)
+
+
+def test_task406_old_admission_stays_decodable_but_cannot_switch_during_cutover(task406_canonical_audit_repo):
+    from aios_renew.brain_context import canonical_audit_inputs, _THREE_FLOW_REFS
+    from aios_renew.brain_provider_protocol import construct_request, revalidate_request
+    from aios_renew.brain_return_contract import parse_return_contract_registry
+    from test_brain_provider_protocol import production_inputs
+    c = task406_canonical_audit_repo
+    root = Path(__file__).resolve().parents[1]
+    returns = parse_return_contract_registry((root / ".ai/brain-return-contracts.yaml").read_bytes())
+    refs = dict(zip(_THREE_FLOW_REFS, (c.three_flow_source_sha, c.three_flow_review_sha, c.three_flow_artifact_sha)))
+    for ref in refs:
+        c.git(c.canonical, "update-ref", "-d", ref)
+    c.main_sha = c.exception["parents"][0]
+    c.git(c.canonical, "update-ref", "refs/heads/main", c.main_sha)
+    supplied, contract, bindings, sources = production_inputs(returns, "TASK_AUTHORING", c)
+    context = sources["task_source_context"]
+    context["source_material"] = [{"path": context["authorization"]["scope"]["modify"][0], "content": "def bounded(): pass"}]
+    old_policy, old_profile, authenticate = canonical_audit_inputs(supplied, contract, bindings, repo=c.repo, **sources)
+    request = construct_request(supplied, contract, bindings, old_profile, request_mode="PROSPECTIVE",
+                                audit_policy=old_policy, selection_authenticator=authenticate, **sources)
+    assert request["audit_profile_package"]["audit_profile_ref"]["id"] == "tca-2"
+    for ref, sha in refs.items():
+        c.git(c.canonical, "update-ref", ref, sha)
+    c.git(c.canonical, "update-ref", "refs/heads/main", c.three_flow_source_sha)
+    assert authenticate(request["audit_selection"], "CONTINUE") is False
+    assert revalidate_request(request) == request
+    assert old_policy["profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
+

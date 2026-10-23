@@ -16,6 +16,7 @@ from aios_renew.brain_provider_protocol import (
 from aios_renew.decision_packet import DecisionPacket
 from tests.test_brain_context import (
     CanonicalAuditRepository, task395_activation_record, task395_canonical_audit_repo,
+    task406_canonical_audit_repo,
 )
 from test_brain_provider_protocol import (
     digest, inputs, registry, response, roa_inputs, roa_package, roa_response, stage2_response,
@@ -63,6 +64,13 @@ def test_first_party_ordinary_attempt_reads_canonical_policy_and_runs_exact_defa
     def callback(req):
         calls.append(deepcopy(req))
         return wrapper(req, provider=kind, model=kind, semantic=r5_response(req))
+    if flow == "REMEDIATION_AUTHORING":
+        with pytest.raises(BrainAttemptError) as retired:
+            attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
+                                 fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()), **sources)
+        assert retired.value.reason_code == "PROTOCOL_INPUT_INVALID"
+        assert retired.value.invocation_count == 0 and calls == []
+        return
     result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
                      fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()), **sources)
     modes = {"ARCHITECTURE": ["AOA_CONSTRUCT", "AOA_RECONCILE"],
@@ -264,6 +272,12 @@ def test_first_party_continuation_stops_when_r5_artifacts_move_without_main_move
         canonical.result_package["evidence"][0]["result"]["summary"] = "Replaced canonical artifact"
         canonical.save_artifacts()
         return wrapper(req, semantic=r5_response(req))
+    if flow == "REMEDIATION_AUTHORING":
+        with pytest.raises(BrainAttemptError) as retired:
+            attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                            fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
+        assert retired.value.invocation_count == 0 and calls == []
+        return
     with pytest.raises(BrainAttemptError) as error:
         attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
                 fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
@@ -284,6 +298,12 @@ def test_first_party_continuation_stops_on_canonical_movement_and_keeps_original
             canonical_audit_repo.commit("canonical main moved after admission")
         return wrapper(req, semantic=r5_response(req))
     provider = MappingBrainProvider("mapping", "one", callback)
+    if flow == "REMEDIATION_AUTHORING":
+        with pytest.raises(BrainAttemptError) as retired:
+            attempt(provider, supplied, contract, bindings, fresh_packet_supplier=lambda: supplied,
+                                   repo=canonical_audit_repo.repo, **sources)
+        assert retired.value.invocation_count == 0 and calls == []
+        return
     if flow == "REPAIR_AUTHORING" and after == 2:
         assert attempt(provider, supplied, contract, bindings, fresh_packet_supplier=lambda: supplied,
                        repo=canonical_audit_repo.repo, **sources)
@@ -326,6 +346,14 @@ def test_first_party_individual_human_choice_is_bound_without_dual_audit(
     def callback(req):
         calls.append(deepcopy(req))
         return wrapper(req, semantic=r5_response(req))
+    if flow == "REMEDIATION_AUTHORING":
+        with pytest.raises(BrainAttemptError) as retired:
+            attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                                 fresh_packet_supplier=lambda: supplied, repo=canonical_audit_repo.repo,
+                                 human_choice_authenticator=authenticate_human, **choices, **sources)
+        assert retired.value.reason_code == "PROTOCOL_INPUT_INVALID"
+        assert retired.value.invocation_count == 0 and calls == []
+        return
     result = attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
                      fresh_packet_supplier=lambda: supplied, repo=canonical_audit_repo.repo,
                      human_choice_authenticator=authenticate_human, **choices, **sources)
@@ -368,7 +396,7 @@ def test_first_party_human_labels_need_available_current_individual_authority(
         attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
                 fresh_packet_supplier=lambda: supplied, repo=canonical_audit_repo.repo,
                 human_choice_authenticator=authority, **choices, **sources)
-    assert error.value.invocation_count == len(calls) == (1 if fault == "revoked" else 0)
+    assert error.value.invocation_count == len(calls) == (1 if fault == "revoked" and flow != "REMEDIATION_AUTHORING" else 0)
 
 
 @pytest.mark.parametrize("flow", R5_FLOWS)
@@ -1409,6 +1437,13 @@ def test_task392_first_party_default_caller_uses_separately_published_mapping(re
         calls.append(deepcopy(req))
         return wrapper(req, semantic=r5_response(req))
     # No policy, authenticator, explicit package or isolated conformance cutover.
+    if flow == "REMEDIATION_AUTHORING":
+        with pytest.raises(BrainAttemptError) as retired:
+            attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                                 fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()), repo=canonical.repo, **sources)
+        assert retired.value.reason_code == "PROTOCOL_INPUT_INVALID"
+        assert retired.value.invocation_count == 0 and calls == []
+        return
     result = attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
                      fresh_packet_supplier=lambda: DecisionPacket(supplied.as_dict()), repo=canonical.repo, **sources)
     expected = approval["target_profiles"][flow]
@@ -1464,6 +1499,13 @@ def test_task395_approved_record_drives_first_party_production_selection(
         return wrapper(req, provider=kind, model=kind, semantic=r5_response(req))
     # The ordinary caller authenticates canonical Git. No supplied policy,
     # explicit profile, selection authenticator or conformance-only path.
+    if flow == "REMEDIATION_AUTHORING":
+        with pytest.raises(BrainAttemptError) as retired:
+            attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
+                                 fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
+        assert retired.value.reason_code == "PROTOCOL_INPUT_INVALID"
+        assert retired.value.invocation_count == 0 and calls == []
+        return
     result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
                      fresh_packet_supplier=lambda: supplied, repo=canonical.repo, **sources)
     policy = calls[0]["audit_selection"]["policy"]
@@ -1638,6 +1680,7 @@ def test_task405_tca3_two_pass_provider_and_prospective_cutover_preserve_tca2_un
     # Step 2: After separately reviewed and published tca-3 activation cutover, first-party caller uses tca-3.
     tca3_approval = canonical.publish_tca3_successor()
     assert revalidate_decision(res2.decision, historical_tca2_req) == res2.decision
+
     supplied3, contract3, bindings3, sources3 = task395_production_inputs(registry, "TASK_AUTHORING", canonical)
     context3 = sources3["task_source_context"]
     context3["baseline_observations"] = [
@@ -1660,3 +1703,122 @@ def test_task405_tca3_two_pass_provider_and_prospective_cutover_preserve_tca2_un
     # Historical tca-2 decision still revalidates against its original request without reinterpretation.
     assert revalidate_decision(res2.decision, historical_tca2_req) == res2.decision
 
+
+def task406_production_inputs(registry, flow, canonical):
+    supplied, contract, bindings, sources = task395_production_inputs(registry, flow, canonical)
+    if flow == "TASK_AUTHORING":
+        context = sources["task_source_context"]
+        context["baseline_observations"] = [
+            {"id": f"V{i}", "command": command, "status": "NOT_RUN", "summary": "Runtime owns verification."}
+            for i, command in enumerate(context["task"]["verification"]["required"], 1)]
+    return supplied, contract, bindings, sources
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING", "REPAIR_AUTHORING"))
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+def test_task406_current_native_caller_uses_exact_three_flow_default(
+        registry, task406_canonical_audit_repo, flow, kind):
+    from aios_renew.brain_audit import _three_flow_profiles
+    c = task406_canonical_audit_repo
+    supplied, contract, bindings, sources = task406_production_inputs(registry, flow, c)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, provider=kind, model=kind, semantic=r5_response(req))
+    result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings,
+                     fresh_packet_supplier=lambda: supplied, repo=c.repo, **sources)
+    assert result.decision["audit_profile_ref"] == _three_flow_profiles()[flow]
+    assert [r["request_mode"] for r in calls] == {
+        "ARCHITECTURE": ["AOA_CONSTRUCT", "AOA_RECONCILE"], "TASK_AUTHORING": ["TCA_CONSTRUCT", "TCA_RECONCILE"],
+        "REPAIR_AUTHORING": ["ROA_CONFORMANCE"]}[flow]
+    assert all(r["audit_selection"]["policy"]["profiles"] == _three_flow_profiles() for r in calls)
+    assert all(r["audit_selection"] == calls[0]["audit_selection"] for r in calls)
+    assert revalidate_decision(result.decision, calls[-1]) == result.decision
+
+
+@pytest.mark.parametrize("material", ("absent", "moa", "v1", "three_flow", "unavailable_git"))
+def test_task406_remediation_current_default_never_invokes_a_provider_or_requires_audit_material(
+        registry, moa_package, v1_only_package, monkeypatch, material):
+    from aios_renew.brain_audit import _three_flow_profiles
+    supplied, contract, bindings, _ = moa_inputs(registry)
+    calls = []
+    def forbidden(*args, **kwargs):
+        raise AssertionError("retired remediation must not read audit authority or invoke a provider")
+    monkeypatch.setattr("aios_renew.brain_context.canonical_audit_inputs", forbidden)
+    if material == "unavailable_git":
+        monkeypatch.setattr("subprocess.run", forbidden)
+    kwargs = {}
+    package = moa_package if material == "moa" else v1_only_package if material == "v1" else None
+    if material == "three_flow":
+        policy = audit_policy_example(supplied.as_dict())
+        policy.update(state="THREE_SPECIALIZED", profiles=_three_flow_profiles())
+        kwargs.update(audit_policy=policy, selection_authenticator=forbidden, human_v1_deep_support={})
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(MappingBrainProvider("mapping", "one", lambda req: calls.append(req)), supplied, contract, bindings,
+                package, **kwargs)
+    assert error.value.reason_code == "PROTOCOL_INPUT_INVALID"
+    assert error.value.invocation_count == 0 and calls == []
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING", "REPAIR_AUTHORING"))
+def test_task406_individually_authenticated_human_v1_keeps_exact_applicability(
+        registry, task406_canonical_audit_repo, v1_only_package, flow):
+    c = task406_canonical_audit_repo
+    supplied, contract, bindings, sources = task406_production_inputs(registry, flow, c)
+    if flow in {"ARCHITECTURE", "TASK_AUTHORING"}:
+        context = sources["architecture_source_context" if flow == "ARCHITECTURE" else "task_source_context"]
+        choices = {"human_v1_option": human_v1_selection(supplied, contract, bindings, context, v1_only_package)}
+    else:
+        choices = {"human_v1_deep_support": {
+            "selected_by": "HUMAN", "option": "V1_READ_ONLY", "packet_fingerprint": supplied.packet_fingerprint,
+            "work_context_fingerprint": supplied.as_dict()["work_context_fingerprint"], "return_contract_ref": contract["return_contract_ref"],
+            "external_bindings": bindings, "source_context_fingerprint": digest({key: sources.get(key) for key in (
+                "moa_source_context", "task_source_context", "architecture_source_context")}),
+            "audit_profile_ref": v1_only_package["audit_profile_ref"]}}
+    calls, phases = [], []
+    def human(selection, phase):
+        phases.append(phase)
+        return all(selection[key] == value for key, value in choices.items())
+    def callback(req):
+        calls.append(deepcopy(req))
+        return wrapper(req, semantic=r5_response(req))
+    provider = MappingBrainProvider("mapping", "one", callback)
+    # A serialized Human label alone cannot select V1.
+    with pytest.raises(BrainAttemptError):
+        attempt(provider, supplied, contract, bindings, fresh_packet_supplier=lambda: supplied, repo=c.repo, **sources, **choices)
+    assert calls == []
+    result = attempt(provider, supplied, contract, bindings, fresh_packet_supplier=lambda: supplied, repo=c.repo,
+                     human_choice_authenticator=human, **sources, **choices)
+    assert phases[0] == "ADMIT" and "CONTINUE" in phases
+    if flow == "REPAIR_AUTHORING":
+        assert len(calls) == 1 and result.decision["audit_profile_ref"]["id"] == "roa-1-r3"
+    else:
+        assert [r["request_mode"] for r in calls] == ["V1_OPTION_CONSTRUCT", "V1_OPTION_RECONCILE"]
+        assert result.decision["audit_profile_ref"] == v1_only_package["audit_profile_ref"]
+
+
+@pytest.mark.parametrize("movement", ("main", "review", "artifact", "repository", "git"))
+def test_task406_currentness_stops_before_another_provider_call(
+        registry, task406_canonical_audit_repo, monkeypatch, movement):
+    c = task406_canonical_audit_repo
+    supplied, contract, bindings, sources = task406_production_inputs(registry, "TASK_AUTHORING", c)
+    calls = []
+    def callback(req):
+        calls.append(deepcopy(req))
+        if movement == "main":
+            c.commit("canonical main moved during TASK-406 audit")
+        elif movement in {"review", "artifact"}:
+            kind = "review-decision" if movement == "review" else "artifacts"
+            c.git(c.canonical, "update-ref", f"refs/heads/aios/{kind}/RUN-406-002", c.source_sha)
+        elif movement == "repository":
+            c.git(c.repo, "config", "remote.origin.url", str(c.canonical) + "/.")
+        else:
+            def unavailable(*args, **kwargs):
+                raise OSError("Git unavailable")
+            monkeypatch.setattr("aios_renew.authoring_ingress._query_matching_refs", unavailable)
+        return wrapper(req, semantic=r5_response(req))
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(MappingBrainProvider("mapping", "one", callback), supplied, contract, bindings,
+                fresh_packet_supplier=lambda: supplied, repo=c.repo, **sources)
+    assert error.value.invocation_count == len(calls) == 1
+    assert calls[0]["audit_profile_package"]["audit_profile_ref"]["id"] == "tca-3"

@@ -230,6 +230,7 @@ def test_family_candidates_use_only_existing_canonical_validators():
         "constraints": {"hard": ["Keep scope bounded."]},
     }))
     assert validate_remediation(review=review, remediation=remediation, task=task) is remediation
+
     repair = {
         "repair_id": "REPAIR-181-001", "failed_run_id": "RUN-181-001",
         "failed_head_sha": "a" * 40, "task": {"id": task.task_id, "revision": task.revision},
@@ -245,6 +246,47 @@ def test_family_candidates_use_only_existing_canonical_validators():
         "EXTERNAL_REQUEST_BINDING_REQUIRED", "DECISION_PACKET", "DECISION_PACKET",
         "DECISION_PACKET", "DECISION_PACKET",
     ]
+
+
+@pytest.mark.parametrize("fault", (None, "finding", "source", "expected_sha", "scope"))
+def test_task406_direct_author_remediation_keeps_real_git_admission_without_audit(tmp_path, monkeypatch, fault):
+    from tests.test_brain_context import CanonicalAuditRepository
+    from aios_renew.authoring_ingress import AuthoringIngressError, execute_ingress, parse_envelope
+    c = CanonicalAuditRepository(tmp_path)
+    c.review.update(verdict="CHANGES_REQUIRED", findings=[{
+        "id": "F1", "basis": next(iter(c.review["acceptance"])), "action": "EVIDENCE_ONLY",
+        "location": "result", "issue": "Bounded finding", "expected": "Bounded correction"}])
+    c.review["acceptance"][next(iter(c.review["acceptance"]))] = "FAIL"
+    c.save_review()
+    task = yaml.safe_load((ROOT / ".ai/tasks/TASK-368.yaml").read_bytes())
+    payload = {"finding_id": "F1", "action": "EVIDENCE_ONLY", "reviewed_sha": c.source_sha,
+               "modification_scope": [], "affected_verification": task["verification"]["required"][:1],
+               "constraints": [], "verification": {"policy": task["verification"]["policy"]}}
+    envelope = {"format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_REMEDIATION",
+                "identity": {"source_run_id": "RUN-368-001", "finding_id": "F1"},
+                "expected_state": {"expected_reviewed_sha": c.source_sha, "expected_review_decision_sha": c.review_sha},
+                "payload": payload}
+    if fault == "finding":
+        payload["finding_id"] = "F2"
+    elif fault == "source":
+        payload["reviewed_sha"] = "f" * 40
+    elif fault == "expected_sha":
+        envelope["expected_state"]["expected_reviewed_sha"] = "f" * 40
+    elif fault == "scope":
+        payload["modification_scope"] = ["outside-authorized-scope.py"]
+    def forbidden(*args, **kwargs):
+        raise AssertionError("direct final remediation cannot depend on an audit/provider")
+    monkeypatch.setattr("aios_renew.brain_context.canonical_audit_inputs", forbidden)
+    monkeypatch.setattr("aios_renew.brain_provider.attempt", forbidden)
+    if fault is not None:
+        with pytest.raises(AuthoringIngressError):
+            execute_ingress(parse_envelope(envelope), repo=c.repo)
+        return
+    result = execute_ingress(parse_envelope(envelope), repo=c.repo)
+    assert result.status == "CANONICALIZED" and result.operation == "AUTHOR_REMEDIATION"
+    assert result.canonical_destination == "refs/heads/aios/remediation/RUN-368-001-F1"
+    assert c.git(c.canonical, "rev-parse", "main") == c.main_sha
+    assert execute_ingress(parse_envelope(envelope), repo=c.repo).status == "IDEMPOTENT"
 
 
 def test_task_v3_return_contract_exposes_transient_closed_conformance():

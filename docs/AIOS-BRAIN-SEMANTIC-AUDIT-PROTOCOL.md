@@ -12,7 +12,9 @@ profile is `aios-adaptive-brain-audit-v1`, version 1, normalized digest
 the explicit Human/Brain cutover in section 18.6. V2/V3 remain historical and
 exact in-flight compatibility material; registry order does not select a profile.
 Section 23 describes the authenticated historical FOUR_SPECIALIZED mapping;
-section 24 prepares two successors without activating them.
+section 24 records the earlier successors. Section 26 is the current prospective
+TASK-406 three-flow decision and supersedes earlier default-selection requirements.
+All earlier MOA/four-flow selection instructions are historical after that cutover.
 
 ## 1. Purpose
 
@@ -799,7 +801,10 @@ no fallback, both native transports and unchanged historical replay. Runtime own
 the focused canonical verification and EVIDENCE. Conformance support and one-call
 structure establish no measured quality, token, latency or episode-cost gain.
 
-## 20. R2.1 / R2: isolated MOA-1 remediation conformance
+## 20. Historical R2.1 / R2: isolated MOA-1 remediation conformance
+
+TASK-406 retires MOA from all new remediation work. This section preserves exact
+archived conformance and replay; it grants no current/default/optional audit permission.
 
 MOA-1 adds bounded semantic support for the existing `REMEDIATION_AUTHORING` flow.
 It does not activate the R2.1 successor policy. Sections 18.6 and 18.8 still govern
@@ -1529,7 +1534,8 @@ the authenticated selection establishes its prospective use. The attempt does
 not invoke or require an unsolicited V1 pass. Missing specialized content stops
 the attempt without V1/V3 fallback.
 
-The ordinary new production call without policy uses canonical FOUR_SPECIALIZED.
+At this historical activation, the ordinary production call used canonical FOUR_SPECIALIZED.
+After the TASK-406 cutover, section 26 governs current calls and remediation has no audit.
 Omitting the optional profile package lets the caller resolve the selected pinned
 body; an explicitly supplied conflicting V1/V2/V3 or specialized package rejects.
 Missing canonical policy or authentication cannot turn into implicit legacy V1.
@@ -1796,7 +1802,12 @@ third audit stage, database, router or Runtime mutation gate.
    while leaving actual completion/verification gates with Runtime and never inventing
    pre-execution `executor_claims` or reviewer verdicts.
 
-### 25.3. Prospective two-step activation contract
+### 25.3. Historical two-step plan, superseded prospectively by TASK-406
+
+The following original plan is retained as provenance. TASK-405 did not obtain
+REVIEW PASS or Runtime Publisher PASS. Section 26 replaces that impossible
+retroactive prerequisite with one exact Human source exception and TASK-406 own
+independent PASS/publication gate; it also retires MOA from new work.
 
 1. **Step 1 (Implementation and publication in TASK-405)**:
    `TASK-405` implements `tca-3` version 3, its validator and ten-class retrospective
@@ -1815,3 +1826,99 @@ third audit stage, database, router or Runtime mutation gate.
    option. Only then does `tca-3` become the live default for new `TASK_AUTHORING` and
    `tca-2` become prospectively retired for new authoring while preserving `tca-1` and
    `tca-2` for historical replay.
+
+## 26. TASK-406 prospective three-flow policy and MOA retirement
+
+The explicit Human 2026-10-23 decision is singular and prospective. It supersedes
+`human_r21_tca_roa_successor_activation` with its exact normalized approval digest
+`c1725256df1fd42e7b435ca3fd88618031db0606014fbbc5e7387a8c6f59a92e` and the
+old TCA-3 priority record's future policy instructions. Older approvals, original
+TCA-3 planning and paused PTE bookmark remain immutable provenance, with no
+competing active policy and no automatic roadmap/execution advancement.
+
+### 26.1. Complete policy, exact content, no remediation entry
+
+`AIOS_BRAIN_AUDIT_POLICY` version 1 adds the closed discriminator
+`THREE_SPECIALIZED` and accepts exactly this complete mapping:
+
+| Flow | Exact profile | Normalized SHA-256 digest |
+| --- | --- | --- |
+| ARCHITECTURE | aoa-1 v1 | 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b |
+| TASK_AUTHORING | tca-3 v3 | cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e |
+| REPAIR_AUTHORING | roa-1-r3 v3 | cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a |
+
+REMEDIATION_AUTHORING is absent, never a null profile. Extra, partial, mixed,
+rehashed or substituted mappings reject. The pure normalizer checks shape/content;
+independent canonical Git authentication supplies authority and currentness.
+Historical FOUR_SPECIALIZED and ADAPTIVE_V1 serialized requests/decisions retain
+exact decoding. The registry still recognizes ten identities and caps input at
+65,536 UTF-8 bytes. Its order/membership cannot select a policy. TCA-3 digest is
+computed from canonical normalized profile content, never old Executor C1 prose.
+TCA-3 keeps exactly CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE, five construct
+checks, six challenges and one closure. AOA and ROA procedures remain unchanged.
+
+### 26.2. Direct remediation and historical MOA
+
+For new/current REMEDIATION_AUTHORING there is no automatic normative/default,
+fallback or optional audit, including MOA, V1, TCA, ROA or any substitute. A current
+provider `attempt` requesting that audited path stops before provider invocation;
+no MOA/provider audit stage is called. It needs no audit-source excerpts,
+selection_authenticator, task-style source context or Human V1 support.
+Brain authors the final existing REMEDIATION family contract directly through
+AUTHOR_REMEDIATION. Runtime still authenticates exact finding/REVIEW/ref, source
+RUN, reviewed SHA, hard constraints, authorized modification scope and affected
+verification before admission. Independent semantic Reviewer and Publisher gates
+and Human remediation authorization remain unchanged. No audit dependency can
+block that direct ingress. Historical explicit MOA conformance/request/decision
+replay is retained only for archived exact subjects and never auto-selects a new
+MOA audit. Individually authenticated V1_ONLY remains available for AOA/TCA;
+read-only V1 support remains applicable to normative ROA, never new remediation.
+
+### 26.3. One-time TASK-405 source exception, never PASS
+
+The sole approved Human Git integration is merge
+`f445626011d0664149011c8f57eb16a7014e6cd7`, ordered parents
+`ccc369868e51b36fec2dce042fb6de24fae1e2a6` and
+`cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05`, tree
+`315d6914f7cac46ed30418e522e33b74fe33af4d`. The source authenticator checks
+that merge is on canonical main's ancestry, its twelve exact Git implementation
+blobs equal the reviewed second parent, and TASK-405 r1 reviewed source remains
+distinct from the retained r2 TASK on integrated main. TASK-406's authorized
+changes may evolve those paths after this authenticated integrated ancestor.
+
+Original RUN-405-004 ResultPackage at `8be451dd918510de220ff310d1adb88021e22061`
+remains immutable with EVIDENCE RUN-405-004-V001 and V002 both exit 0 for the
+original two authored commands. REVIEW-405-001 at
+`2b5c5d4c18d273213559ea964aa96c2a925dc337` stays PRIMARY CHANGES_REQUIRED,
+F1 / AC10 / EVIDENCE_ONLY. REVIEW-405-002 at
+`1b9b11a175a08be0c29f11a675af35d854502659` stays DELTA BLOCKED with prior F1
+and AC10 FAIL. Original C2's 98304-byte assertion is false; exact original parser
+source enforces 65536 bytes. Human accepts only this exact source risk with F1
+historically unresolved. A Human Git merge/risk acceptance is never Runtime
+Publisher PASS or semantic REVIEW PASS. No original RESULT, REVIEW, EVIDENCE,
+claim, TASK revision or Git ref is amended or relabelled. Wrong merge/source,
+parent, tree, blob, evidence result, decision, F1 disposition or approval rejects.
+
+### 26.4. Own activation proof and in-flight currentness
+
+`human_tca3_three_flow_activation_20261023` stores a ready candidate and exact
+Human decision. Its status READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION
+truthfully describes the authored record; no fabricated future source/review SHA
+or ACTIVE label is required. After actual proof, the authenticator projects
+TASK406_REVIEWED_PUBLISHED_THREE_FLOW_ACTIVE. It resolves the exact source from
+original TASK-406 r2 / RUN-406-002 artifacts and its SHA-bound independent PRIMARY
+REVIEW PASS, validates TASK/RUN/RESULT/EVIDENCE/acceptance, proves that exact
+reviewed source is on canonical main, and proves the reviewed source contains the
+same approved record. Publisher alone includes reviewed source on main.
+
+Authorship, registry membership, old TASK-405 success evidence or the one-time
+exception cannot activate it. Missing/duplicate/conflicting approval, forged
+PASS/ACTIVE, absent Git or source not on main fails closed without predecessor,
+MOA or V1 fallback. Authenticated older pre-cutover sources remain historical;
+once TASK-406 refs or code are present, missing approval fails closed. At both
+ADMIT and CONTINUE, the same canonical repository/transport/refs and complete
+policy, exact packet/subject/source/profile/return bindings are reauthenticated.
+Old admitted selections stay pinned or stop stale; they never silently become a
+new policy. The committed implementation and Executor claims establish these
+mechanisms only. Runtime owns verification, Reviewer independently judges this
+TASK-406, and Publisher alone publishes its approved source.

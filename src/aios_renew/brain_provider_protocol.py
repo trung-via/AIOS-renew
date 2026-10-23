@@ -200,6 +200,8 @@ def _audit_selection(packet: dict, contract: dict, bindings: dict, profile: dict
     """Bind one complete canonical policy; serialized bindings are not credentials."""
     policy = normalize_audit_policy(policy_value)
     flow = packet["selected_flow"]
+    if flow not in policy["profiles"]:
+        raise BrainProviderProtocolError("remediation has no current audit; use direct AUTHOR_REMEDIATION")
     if (flow not in _AUDITED or packet["canonical_blocker"] is not None
             or type(packet["canonical_facts"]) is not dict
             or policy["main_sha"] != packet["canonical_facts"].get("main_sha")
@@ -207,7 +209,7 @@ def _audit_selection(packet: dict, contract: dict, bindings: dict, profile: dict
         raise BrainProviderProtocolError("prospective policy/flow/canonical currentness mismatch")
     v1_ref = {"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
     sources = deepcopy(sources)
-    if policy["state"] == "FOUR_SPECIALIZED" or option is not None:
+    if policy["state"] in {"FOUR_SPECIALIZED", "THREE_SPECIALIZED"} or option is not None:
         if flow == "ARCHITECTURE":
             sources["architecture_source_context"] = _aoa_source_context(sources["architecture_source_context"])
         elif flow == "TASK_AUTHORING":
@@ -224,7 +226,8 @@ def _audit_selection(packet: dict, contract: dict, bindings: dict, profile: dict
     if _bytes(profile["audit_profile_ref"]) != _bytes(expected_ref):
         raise BrainProviderProtocolError("selected prospective profile is missing or mismatched; no fallback")
     if support is not None:
-        if policy["state"] != "FOUR_SPECIALIZED" or flow not in {"REMEDIATION_AUTHORING", "REPAIR_AUTHORING"}:
+        if (policy["state"] not in {"FOUR_SPECIALIZED", "THREE_SPECIALIZED"}
+                or flow not in {"REMEDIATION_AUTHORING", "REPAIR_AUTHORING"}):
             raise BrainProviderProtocolError("read-only V1 support requires normative MOA/ROA")
         expected_support = {
             "selected_by": "HUMAN", "option": "V1_READ_ONLY",

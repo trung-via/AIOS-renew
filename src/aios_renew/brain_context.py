@@ -7,6 +7,7 @@ only projects their observation and identifies a bounded reasoning contract.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -490,6 +491,171 @@ _TCA3_PRIORITY_RECORD = "human_tca3_retrospective_priority_20261023"
 _R5_CANDIDATE_REF = "refs/heads/aios/review/RUN-368-001"
 _R5_REVIEW_REF = "refs/heads/aios/review-decision/RUN-368-001"
 _R5_ARTIFACT_REF = "refs/heads/aios/artifacts/RUN-368-001"
+_THREE_FLOW_APPROVAL = "human_tca3_three_flow_activation_20261023"
+_THREE_FLOW_RUN = "RUN-406-002"
+_THREE_FLOW_PREDECESSOR_DIGEST = "c1725256df1fd42e7b435ca3fd88618031db0606014fbbc5e7387a8c6f59a92e"
+_THREE_FLOW_REFS = tuple(f"refs/heads/aios/{kind}/{_THREE_FLOW_RUN}"
+                         for kind in ("review", "review-decision", "artifacts"))
+_TASK405_EXCEPTION = {
+    "authority": "EXPLICIT_HUMAN_ONE_TIME_TASK405_SOURCE_RISK_ACCEPTANCE",
+    "approved_on": "2026-10-23",
+    "disposition": "ACCEPT_EXACT_SOURCE_RISK_WITH_F1_UNRESOLVED_NOT_REVIEW_OR_PUBLISHER_PASS",
+    "merge_sha": "f445626011d0664149011c8f57eb16a7014e6cd7",
+    "parents": ["ccc369868e51b36fec2dce042fb6de24fae1e2a6", "cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05"],
+    "tree": "315d6914f7cac46ed30418e522e33b74fe33af4d",
+    "source_sha": "cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05",
+    "reviewed_task_revision": 1, "integrated_main_task_revision": 2,
+    "original_artifacts_sha": "8be451dd918510de220ff310d1adb88021e22061",
+    "original_run": "RUN-405-004",
+    "original_review_sha": "2b5c5d4c18d273213559ea964aa96c2a925dc337",
+    "original_review_verdict": "CHANGES_REQUIRED",
+    "delta_review_sha": "1b9b11a175a08be0c29f11a675af35d854502659",
+    "delta_review_verdict": "BLOCKED",
+    "finding_id": "F1", "finding_basis": "AC10", "finding_action": "EVIDENCE_ONLY",
+    "evidence_ids": ["RUN-405-004-V001", "RUN-405-004-V002"],
+    "evidence_exit_codes": [0, 0], "false_c2_byte_bound": 98304, "actual_byte_bound": 65536,
+    "implementation_blobs": {
+        ".ai/brain-audit-profiles.yaml": "b65e01a6a62a37ceb8d116874d5fe7f404df5fe2",
+        ".ai/roadmap-state.yaml": "f3c9e1d2c89939b6e879a1cc50499a41d367870e",
+        "docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md": "591faea4d054b6478d6ea3ecad4d4555e8494890",
+        "docs/CHATGPT_PROJECT_CONTRACT.md": "5f2150ae0e7ccf9288e9663578e409822b379486",
+        "src/aios_renew/brain_audit.py": "b32f055d5acf9eabbc1f2be1846e42eec2896005",
+        "src/aios_renew/brain_context.py": "9ab23252a4bd7a077d53e44c448b24de5671727f",
+        "src/aios_renew/brain_provider.py": "4931e929db389564cc28f1e71e5c4b8d9d12822e",
+        "src/aios_renew/brain_provider_protocol.py": "875d9a702903d1a15d36a25c4597734497d234c6",
+        "tests/test_brain_audit.py": "47dbb96037408680292c256b9e2a49c1c262c6df",
+        "tests/test_brain_context.py": "462fc5d0044f407a37080dc741142d3ee4e54bc6",
+        "tests/test_brain_provider.py": "bdcd4f6390c1a4f9932ac44fe10a86a18e439bec",
+        "tests/test_brain_provider_protocol.py": "3fcaac9b915a9330e49b1f18dfca5d26a1fde68e",
+    },
+}
+
+
+def _three_flow_approval(predecessor_digest: str) -> dict:
+    """Exact Human decision, independent of the not-yet-created review/result.
+
+    Future source identities are resolved from the original RUN's immutable
+    artifacts and SHA-bound independent review, avoiding a self-referential SHA
+    or a candidate record that falsely asserts publication already happened.
+    """
+    from .brain_audit import _three_flow_profiles
+    return {
+        "authority": "EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL",
+        "approved_on": "2026-10-23", "status": "READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION",
+        "human_decision": "ACTIVATE_TCA3_RETIRE_MOA_WITH_UNCHANGED_AOA_ROA1R3",
+        "supersedes": _R21_SUCCESSOR_APPROVAL, "superseded_approval_digest": predecessor_digest,
+        "supersedes_planning_record": _TCA3_PRIORITY_RECORD,
+        "implementation_task": "TASK-406", "implementation_revision": 2,
+        "implementation_run": _THREE_FLOW_RUN, "required_review_mode": "PRIMARY", "required_review_verdict": "PASS",
+        "activation_boundary": "EXACT_TASK406_RUNTIME_RESULT_INDEPENDENT_REVIEW_PASS_PUBLISHER_SOURCE_ON_MAIN",
+        "target_policy_format": "AIOS_BRAIN_AUDIT_POLICY", "target_policy_version": 1,
+        "target_policy_state": "THREE_SPECIALIZED", "target_profiles": _three_flow_profiles(),
+        "remediation_authoring": "DIRECT_AUTHOR_REMEDIATION_NO_AUTOMATIC_NORMATIVE_DEFAULT_OR_OPTIONAL_AUDIT",
+        "moa_retirement": "RETIRED_FROM_NEW_ATTEMPTS_HISTORICAL_EXACT_REPLAY_ONLY",
+        "architecture_and_task_v1_option": "HUMAN_EXPLICIT_EXACT_SUBJECT_V1_ONLY_ONE_NORMATIVE_AUDIT",
+        "correction_v1_option": "HUMAN_EXPLICIT_READ_ONLY_ROA_SUPPORT_ONLY_NO_REMEDIATION_AUDIT",
+        "task405_source_exception": _stable_copy(_TASK405_EXCEPTION),
+        "prior_priority_and_pte": "HISTORICAL_PROVENANCE_PTE_PAUSED_RESUMABLE_NO_AUTOMATIC_ADVANCEMENT",
+    }
+
+
+def _authenticate_task405_exception(repo: Path, main: str, record: dict, refs: dict,
+                                    blob: Callable[[str, str], bytes]) -> dict:
+    """Authenticate exactly one Human Git integration; never return PASS authority."""
+    from .artifacts import validate_result, validate_evidence, validate_result_package
+    from .authoring_ingress import _json_no_dups, _run_from_data, _validate_metadata_commit
+    from .brain_audit import parse_profile_registry, profile_ref, _TCA_V3_DIGEST
+    from .operator import _git_is_ancestor
+    from .return_affinity import require_same_affinity
+    from .review import parse_review, validate_review
+    from .review_transport import _git_cmd
+    from .task import parse_task
+
+    if _digest(record) != _digest(_TASK405_EXCEPTION):
+        raise BrainContextError("missing or conflicting exact TASK-405 Human risk acceptance")
+    merge, source = record["merge_sha"], record["source_sha"]
+    # Ensure objects are available through the same authenticated transport.
+    source_task_raw = blob(source, ".ai/tasks/TASK-405.yaml")
+    integrated_task_raw = blob(merge, ".ai/tasks/TASK-405.yaml")
+    _, identity, _ = _git_cmd(repo, "show", "-s", "--format=%H %T %P", merge)
+    if (identity.split() != [merge, record["tree"], *record["parents"]]
+            or source != record["parents"][1] or not _git_is_ancestor(repo, merge, main)):
+        raise BrainContextError("TASK-405 exception merge/parents/tree/main lineage mismatch")
+    for path, expected in record["implementation_blobs"].items():
+        original = blob(source, path)
+        integrated = blob(merge, path)
+        actual = hashlib.sha1(b"blob " + str(len(original)).encode("ascii") + b"\0" + original).hexdigest()
+        if original != integrated or actual != expected:
+            raise BrainContextError("TASK-405 exception implementation blob mismatch")
+    reviewed_task = parse_task(source_task_raw.decode("utf-8"))
+    integrated_task = parse_task(integrated_task_raw.decode("utf-8"))
+    if (reviewed_task.task_id != "TASK-405" or reviewed_task.revision != 1
+            or integrated_task.task_id != "TASK-405" or integrated_task.revision != 2):
+        raise BrainContextError("TASK-405 reviewed r1 and integrated r2 identities conflict")
+    expected_refs = {
+        "refs/heads/aios/review/RUN-405-004": source,
+        "refs/heads/aios/artifacts/RUN-405-004": record["original_artifacts_sha"],
+        "refs/heads/aios/review-decision/RUN-405-004": record["original_review_sha"],
+        "refs/heads/aios/review-decision/RUN-405-005": record["delta_review_sha"],
+    }
+    if any(refs.get(key) != value for key, value in expected_refs.items()):
+        raise BrainContextError("TASK-405 immutable original refs conflict")
+    artifact = record["original_artifacts_sha"]
+    run_data = _json_no_dups(blob(artifact, ".ai/transport/run.json"), "TASK-405 original RUN")
+    run = _run_from_data(run_data, "TASK-405 original RUN")
+    package = _json_no_dups(blob(artifact, ".ai/transport/result.json"), "TASK-405 original ResultPackage")
+    if set(package) != {"result", "evidence"} or "kind" in run_data:
+        raise BrainContextError("TASK-405 exception requires original PRIMARY ResultPackage")
+    result = validate_result(package["result"])
+    evidence = tuple(validate_evidence(item) for item in package["evidence"])
+    validate_result_package(task=reviewed_task, run=run, result=result, evidence=evidence)
+    require_same_affinity(reviewed_task, run)
+    if (run.run_id != "RUN-405-004" or run.status != "ACTIVE" or result.head_sha != source
+            or result.unresolved or list(result.changed_files) != sorted(record["implementation_blobs"])
+            or not _git_is_ancestor(repo, run.base_sha, source)
+            or [e.evidence_id for e in evidence] != record["evidence_ids"]
+            or [e.result.exit_code for e in evidence] != [0, 0]
+            or any(e.type != "VERIFICATION" for e in evidence)
+            or [e.source.command for e in evidence] != list(reviewed_task.verification.required)):
+        raise BrainContextError("TASK-405 original Runtime 2/2 proof conflicts")
+    c2 = [claim for claim in result.claims if claim.id == "C2"]
+    if len(c2) != 1 or "98304-byte" not in c2[0].claim:
+        raise BrainContextError("TASK-405 immutable false C2 claim must remain unchanged")
+    parser = ast.parse(blob(source, "src/aios_renew/brain_audit.py").decode("utf-8"))
+    parser_function = next(node for node in parser.body
+                           if isinstance(node, ast.FunctionDef) and node.name == "parse_profile_registry")
+    bound_check = ast.parse("len(encoded) > 65536", mode="eval").body
+    if not any(isinstance(node, ast.Compare) and ast.dump(node) == ast.dump(bound_check)
+               for node in ast.walk(parser_function)):
+        raise BrainContextError("TASK-405 actual source parser cap is not 65536")
+    registry = parse_profile_registry(blob(source, ".ai/brain-audit-profiles.yaml"))
+    tca3 = [profile_ref(p) for p in registry["profiles"] if p["id"] == "tca-3"]
+    if len(registry["profiles"]) != 10 or tca3 != [{"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}]:
+        raise BrainContextError("TASK-405 exact ten-profile registry conflicts")
+    reviews = []
+    for sha, review_id in ((record["original_review_sha"], "REVIEW-405-001"),
+                           (record["delta_review_sha"], "REVIEW-405-002")):
+        path = f".ai/reviews/{review_id}.yaml"
+        raw = blob(sha, path)
+        review = parse_review(raw.decode("utf-8"))
+        _validate_metadata_commit(repo, sha, expected_parent_sha=source, metadata_path=path,
+                                  metadata_bytes=raw, operation="TASK-405 immutable non-PASS REVIEW")
+        validate_review(task=reviewed_task, result=result, review=review,
+                        prior_review=reviews[0] if reviews else None)
+        if review.review_id != review_id or review.reviewed_sha != source:
+            raise BrainContextError("TASK-405 REVIEW identity conflicts")
+        reviews.append(review)
+    original, delta = reviews
+    if (original.mode != "PRIMARY" or original.verdict != "CHANGES_REQUIRED"
+            or dict(original.acceptance) != {f"AC{i}": "FAIL" if i == 10 else "PASS" for i in range(1, 11)}
+            or len(original.findings) != 1
+            or (original.findings[0].id, original.findings[0].basis, original.findings[0].action) != ("F1", "AC10", "EVIDENCE_ONLY")
+            or delta.mode != "DELTA" or delta.verdict != "BLOCKED" or delta.prior_finding_id != "F1"
+            or dict(delta.acceptance) != {"AC10": "FAIL"} or delta.findings):
+        raise BrainContextError("TASK-405 non-PASS decisions/F1 disposition must remain immutable")
+    return {"kind": "HUMAN_GIT_SOURCE_EXCEPTION_NOT_PUBLISHER_PASS", "merge_sha": merge,
+            "source_sha": source, "review_verdicts": [original.verdict, delta.verdict],
+            "false_c2_byte_bound": 98304, "actual_byte_bound": 65536, "implementation_blob_count": 12}
 
 
 def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
@@ -559,8 +725,16 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
     for key in nodes:
         if ((key.startswith("human_r21_four_specialized_activation_") and key != _R21_APPROVAL)
                 or (key.startswith(_R21_SUCCESSOR_APPROVAL) and key != _R21_SUCCESSOR_APPROVAL)
-                or (key.startswith(_R21_TCA3_APPROVAL) and key != _R21_TCA3_APPROVAL)):
+                or (key.startswith(_R21_TCA3_APPROVAL) and key != _R21_TCA3_APPROVAL)
+                or (key.startswith("human_tca3_three_flow_activation") and key != _THREE_FLOW_APPROVAL)):
             raise BrainContextError("conflicting canonical Human R2.1 approvals")
+        node = nodes[key]
+        if key != _THREE_FLOW_APPROVAL and isinstance(node, yaml.MappingNode):
+            labels = {k.value: v.value for k, v in node.value
+                      if isinstance(k, yaml.ScalarNode) and isinstance(v, yaml.ScalarNode)}
+            if (labels.get("target_policy_state") == "THREE_SPECIALIZED"
+                    or labels.get("human_decision") == "ACTIVATE_TCA3_RETIRE_MOA_WITH_UNCHANGED_AOA_ROA1R3"):
+                raise BrainContextError("duplicate or conflicting three-flow Human approval")
     if _TCA3_PRIORITY_RECORD in nodes:
         priority_encoded = yaml.serialize(nodes[_TCA3_PRIORITY_RECORD])
         if len(priority_encoded.encode("utf-8")) > 8192:
@@ -653,6 +827,40 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         patterns = (*patterns, *tca3_patterns)
         selected = tca3_approval
 
+    # Query even when the approval is absent: deleting it after publication must
+    # fail closed rather than selecting the predecessor. Historical Git sources
+    # without TASK-406 code/refs retain their authenticated pre-cutover mapping.
+    current_refs = _query_matching_refs(repo, remote, *_THREE_FLOW_REFS)
+    current_code = _read_commit_blob(repo, main, "src/aios_renew/brain_context.py")
+    cutover = (_THREE_FLOW_APPROVAL in nodes or bool(current_refs)
+               or current_code is not None and _THREE_FLOW_APPROVAL.encode("ascii") in current_code)
+    three_flow = None
+    exception = None
+    if cutover:
+        if (_THREE_FLOW_APPROVAL not in nodes or successor is None or tca3_approval is not None
+                or set(current_refs) != set(_THREE_FLOW_REFS)):
+            raise BrainContextError("TASK-406 approval/review/publication is missing or conflicting; no fallback")
+        encoded = yaml.serialize(nodes[_THREE_FLOW_APPROVAL])
+        if len(encoded.encode("utf-8")) > 16384:
+            raise BrainContextError("TASK-406 approval exceeds bound")
+        three_flow = yaml.load(encoded, Loader=_UniqueKeyLoader)
+        if (_digest(successor) != _THREE_FLOW_PREDECESSOR_DIGEST
+                or _digest(three_flow) != _digest(_three_flow_approval(_digest(successor)))):
+            raise BrainContextError("current Human three-flow approval conflicts with exact decision")
+        refs.update(current_refs)
+        patterns = (*patterns, *_THREE_FLOW_REFS)
+        exception_patterns = (
+            "refs/heads/aios/review/RUN-405-004", "refs/heads/aios/artifacts/RUN-405-004",
+            "refs/heads/aios/review-decision/RUN-405-004", "refs/heads/aios/review-decision/RUN-405-005",
+        )
+        exception_refs = _query_matching_refs(repo, remote, *exception_patterns)
+        if set(exception_refs) != set(exception_patterns):
+            raise BrainContextError("exact TASK-405 exception provenance is unavailable")
+        refs.update(exception_refs)
+        patterns = (*patterns, *exception_patterns)
+        exception = _authenticate_task405_exception(repo, main, three_flow["task405_source_exception"], refs, blob)
+        selected = three_flow
+
     def publication(record: dict, candidate_ref: str, review_ref: str, artifact_ref: str) -> str:
         # All approvals use the same original PRIMARY RUN/RESULT/REVIEW trust
         # path. Registry presence and selected digests cannot authenticate policy.
@@ -667,10 +875,12 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         result = validate_result(result_data["result"])
         evidence = tuple(validate_evidence(item) for item in result_data["evidence"])
         source = result.head_sha
+        current = three_flow is not None and record is three_flow
         if (not isinstance(source, str) or re.fullmatch(r"[0-9a-f]{40}", source) is None
-                or record.get("reviewed_published_source_sha") != source
-                or record.get("approved_against_main_sha") != source
-                or refs[candidate_ref] != source or record.get("review_decision_sha") != refs[review_ref]):
+                or refs[candidate_ref] != source
+                or not current and (record.get("reviewed_published_source_sha") != source
+                                    or record.get("approved_against_main_sha") != source
+                                    or record.get("review_decision_sha") != refs[review_ref])):
             raise BrainContextError("canonical R5 publication identity is invalid")
         task_id = record["implementation_task"]
         published_task = parse_task(blob(source, f".ai/tasks/{task_id}.yaml").decode("utf-8"))
@@ -686,6 +896,18 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         validate_result_package(task=published_task, run=run, result=result, evidence=evidence)
         if result.unresolved:
             raise BrainContextError("canonical R5 RESULT contains unresolved items")
+        if current:
+            reviewed_roadmap = yaml.compose(blob(source, ".ai/roadmap-state.yaml").decode("utf-8"), Loader=yaml.SafeLoader)
+            if not isinstance(reviewed_roadmap, yaml.MappingNode):
+                raise BrainContextError("TASK-406 reviewed approval is missing")
+            entries = [(k.value, v) for k, v in reviewed_roadmap.value if isinstance(k, yaml.ScalarNode)]
+            approvals = [v for k, v in entries if k == _THREE_FLOW_APPROVAL]
+            if (len(approvals) != 1 or len({k for k, _ in entries}) != len(entries)
+                    or _digest(yaml.load(yaml.serialize(approvals[0]), Loader=_UniqueKeyLoader)) != _digest(record)
+                    or len(result.claims) != 10
+                    or {ac for claim in result.claims for ac in claim.satisfies} != {f"AC{i}" for i in range(1, 11)}
+                    or not _git_is_ancestor(repo, record["task405_source_exception"]["merge_sha"], run.base_sha)):
+                raise BrainContextError("TASK-406 original reviewed source/approval/claims/exception lineage conflicts")
         review_sha = refs[review_ref]
         if not _ls_tree(repo, review_sha, ".ai/reviews"):
             _fetch_if_remote(repo, remote, review_sha)
@@ -697,12 +919,14 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         _validate_metadata_commit(repo, review_sha, expected_parent_sha=source,
                                   metadata_path=paths[0], metadata_bytes=review_raw, operation="R5 REVIEW")
         validate_review(task=published_task, result=result, review=review)
-        if (review.review_id != record["review_id"] or review.reviewed_sha != source
+        if ((not current and review.review_id != record["review_id"])
+                or current and re.fullmatch(r"REVIEW-406-[0-9]{3,}", review.review_id) is None
+                or review.reviewed_sha != source
                 or review.mode != "PRIMARY" or review.verdict != "PASS"
                 or set(review.acceptance) != {item.id for item in published_task.acceptance}
                 or any(value != "PASS" for value in review.acceptance.values())):
             raise BrainContextError("canonical R5 REVIEW does not approve the published source")
-        if record in (successor, tca3_approval):
+        if current or record in (successor, tca3_approval):
             published_profiles = parse_profile_registry(blob(source, ".ai/brain-audit-profiles.yaml"))
             published_refs = [profile_ref(p) for p in published_profiles["profiles"]]
             if any(ref not in published_refs for ref in record["target_profiles"].values()):
@@ -715,6 +939,8 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         review_digest = publication(successor, *successor_patterns)
     if tca3_approval is not None:
         review_digest = publication(tca3_approval, *tca3_patterns)
+    if three_flow is not None:
+        review_digest = publication(three_flow, *_THREE_FLOW_REFS)
     profiles = parse_profile_registry(blob(main, ".ai/brain-audit-profiles.yaml"))
     returns = parse_return_contract_registry(blob(main, ".ai/brain-return-contracts.yaml"))
     if _query_matching_refs(repo, remote, *patterns) != refs or transport() != (remote, remote_url):
@@ -722,6 +948,10 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
     authority = {"remote": remote, "remote_url": remote_url, "refs": refs, "approval": selected,
                  "historical_approval": original, "historical_review_digest": original_review_digest,
                  "review_digest": review_digest, "registry": profiles, "return_contracts": returns}
+    if three_flow is not None:
+        authority.update(task405_source_exception=exception,
+                         effective_status="TASK406_REVIEWED_PUBLISHED_THREE_FLOW_ACTIVE",
+                         reviewed_source_sha=refs[_THREE_FLOW_REFS[0]], review_decision_sha=refs[_THREE_FLOW_REFS[1]])
     return selected, profiles, authority
 
 
@@ -748,8 +978,10 @@ def canonical_audit_inputs(
     from .operator import resolve_repository
 
     try:
-        root = resolve_repository(repo)
         body = _packet(packet)
+        if body["selected_flow"] == "REMEDIATION_AUTHORING":
+            raise BrainContextError("remediation has no current audit; use direct AUTHOR_REMEDIATION")
+        root = resolve_repository(repo)
         facts = body["canonical_facts"]
         if (body["selected_flow"] not in _AUDITED or not isinstance(facts, dict)
                 or not isinstance(facts.get("main_sha"), str)
@@ -765,9 +997,10 @@ def canonical_audit_inputs(
             "work_context_fingerprint": body["work_context_fingerprint"],
             "human_authority_digest": _digest(approval),
             "brain_authority_digest": _digest({"review_digest": authority["review_digest"],
-                                               "review_decision_sha": approval["review_decision_sha"],
-                                               "published_source_sha": approval["reviewed_published_source_sha"]}),
-            "r5_publication_sha": approval["reviewed_published_source_sha"], "profiles": approval["target_profiles"],
+                                               "review_decision_sha": authority.get("review_decision_sha", approval.get("review_decision_sha")),
+                                               "published_source_sha": authority.get("reviewed_source_sha", approval.get("reviewed_published_source_sha"))}),
+            "r5_publication_sha": authority.get("reviewed_source_sha", approval.get("reviewed_published_source_sha")),
+            "profiles": approval["target_profiles"],
         })
         chosen = ({"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
                   if human_v1_option is not None else policy["profiles"][body["selected_flow"]])

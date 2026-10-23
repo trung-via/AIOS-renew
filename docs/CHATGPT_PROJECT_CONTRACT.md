@@ -109,26 +109,32 @@ checkout, unauthenticated checkout ancestry, malformed canonical content, unavai
 refs or insufficient fetch fail closed. An older clean checkout with absent unrelated
 TASK files does not require Human restoration.
 
-For new production Brain attempts, the approved R2.1 policy selects AOA-1 for
-ARCHITECTURE, TCA-2 version 2 for TASK_AUTHORING, MOA-1 for REMEDIATION_AUTHORING
-and ROA-1 R3 version 3 for REPAIR_AUTHORING. AOA/TCA/MOA use their published two focused passes and one
-closure; ROA uses its single focused procedure. `aios_renew.brain_provider.attempt`
-obtains the complete canonical policy, exact profile and independent R5 selection
-authenticator through `brain_context.canonical_audit_inputs` without caller-supplied
-policy or `conformance_only`. It authenticates the canonical Human activation record,
-TASK-368 historical reviewed publication and the separately approved TASK-392
-reviewed publication, all four pinned identities and the current bound
-main/work context, subject, sources and return at ADMIT and CONTINUE. Missing,
-conflicting, unavailable or stale authority fails closed before a new provider call,
-without V1/V3 fallback. The 2026-10-21 Human-approved successor record takes effect
-only after Publisher publishes the exact eligible TASK-395 activation candidate
-to canonical main. An Issue receipt, Executor RESULT or local candidate cannot
-activate it. The original 2026-10-17 approval remains unchanged for exact historical
-replay; no additional activation TASK or renewed Human approval is required.
+The 2026-10-23 Human decision in TASK-406 defines one prospective
+`THREE_SPECIALIZED` policy: AOA-1 v1 for ARCHITECTURE, TCA-3 v3 for
+TASK_AUTHORING, and ROA-1 R3 v3 for REPAIR_AUTHORING. REMEDIATION_AUTHORING
+is absent from the mapping. New remediation has no normative, default, fallback
+or automatically optional audit. Brain authors the final existing REMEDIATION
+contract directly through AUTHOR_REMEDIATION, preserving exact finding/source/SHA,
+scope, verification, independent Reviewer and Publisher safeguards. No audit
+source material, selection authenticator, MOA stage or V1 support is a prerequisite.
+An audited current remediation provider attempt stops deterministically with zero
+provider calls. Historical MOA bytes and exact request/decision replay remain readable.
+
+The candidate record `human_tca3_three_flow_activation_20261023` supersedes the
+2026-10-21 approval by its exact normalized digest. It becomes effective only when
+the original TASK-406 r2 / RUN-406-002 RESULT, independent PRIMARY REVIEW PASS
+and Publisher inclusion of that exact reviewed source on canonical main authenticate.
+The record's stored status is READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION;
+the authenticator projects actual active status only after those gates. Authorship,
+registry membership, an ACTIVE label, a wake receipt or Executor RESULT cannot activate it.
+Missing/conflicting approval, source, refs or Git stops the activation attempt without
+falling back to TCA-2, MOA or V1. The earlier approvals and TCA-3/PTE planning bookmark
+remain historical provenance; the newer record is the sole prospective selection.
 
 Adaptive V1 remains an individually authenticated exact-subject Human option:
 V1_ONLY replaces AOA/TCA alone for Architecture/Task, while V1_READ_ONLY provides
-optional cognitive support inside normative MOA/ROA without another call or verdict.
+optional read-only support inside normative ROA without another call or verdict.
+It never supplies a new remediation audit.
 The ordinary caller supplies `human_choice_authenticator` from its trusted Human
 input channel for either choice; a label, hash or model preference is insufficient.
 Historical V1/V2/V3 requests and admitted stage/profile/return lineage remain exact.
@@ -484,14 +490,15 @@ Interruption and resume semantics preserve Human and Brain roadmap authority:
 4. **Fail-Closed Selection**: Completed tracks with zero NEXT items, missing roadmap state, ambiguous/multiple NEXT items, unauthored NEXT tasks, and roadmap/lineage contradictions fail closed for automatic continuation selection. The snapshot reports explicit blockers rather than silently choosing through them.
 
 
-## 15. Human-approved TCA/ROA successor activation
+## 15. Historical 2026-10-21 TCA/ROA successor activation
 
 TASK-392 published `tca-2` version 2 and `roa-1-r3` version 3 without activating
 them. Human approved their joint production activation on 2026-10-21, delivered
 within TASK-395 through the canonical `human_r21_tca_roa_successor_activation`
 record. Historical `tca-1` version 1 and `roa-1-r2` version 2 retain exact content
 and digests under the original 2026-10-17 approval / reviewed TASK-368 publication.
-AOA-1, MOA-1 and the explicit Human Adaptive V1 option remain unchanged.
+That historical decision left AOA-1, MOA-1 and the Human Adaptive V1 option unchanged.
+TASK-406 section 17 supersedes its prospective selection and retires MOA for new work.
 
 TCA-2 keeps two focused passes and one closure, challenging every material AC
 against bounded source API behavior, legacy tests and inspect/modify authority.
@@ -516,32 +523,40 @@ or performance is inferred from these profiles or their deterministic regression
 The exact digests, bounded source contract and source-authentication requirements are in
 [Brain semantic audit protocol section 24](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#24-bounded-tcaroa-successors-prepared-by-task-392).
 
-## 16. 2026-10-23 Human priority: TCA-3 v3 retrospective successor and two-step cutover
+## 16. Historical TCA-3 retrospective priority and paused PTE bookmark
 
-On 2026-10-23 (`human_tca3_retrospective_priority_20261023` in `.ai/roadmap-state.yaml`),
-Human selected the bounded `tca-3` version 3 successor from the `TASK-370..403`
-retrospective as the sole active planning slice (`TASK-405`), prospectively superseding
-the previously selected PTE slice while keeping `post-task-dirty-recovery-pte-20261022`
-paused and resumable (`PTE-01..PTE-03` reviewed/published, `PTE-04..PTE-06` and
-`TASK-401-r3` retained for explicit subsequent Human/Brain reconciliation).
+`human_tca3_retrospective_priority_20261023` records the original TASK-405
+implementation-then-activation plan. Its TCA-2 default and MOA preservation were
+historical planning instructions, superseded prospectively by section 17. Preserve
+that record and the prior approvals unchanged. PTE-01..PTE-03 remain recorded as
+reviewed/published; PTE-04..PTE-06 and TASK-401-r3 stay paused and resumable only
+through subsequent explicit Human/Brain reconciliation. No cutover advances them.
 
-Cutover is strictly two-step:
+## 17. TASK-406 three-flow cutover and exact TASK-405 source exception
 
-1. **Step 1 (`TASK-405` implementation and publication)**: `tca-3` version 3 is
-   registered in `.ai/brain-audit-profiles.yaml` with two focused passes (`CONSTRUCT`,
-   `ADVERSARIAL_AUDIT_AND_RECONCILE`), five construct checks, six adversarial challenges,
-   one closure, source/API/transitive-consumer/AST-guard checks, per-command verification
-   baseline status (`PASS`/`FAIL`/`NOT_RUN`/`UNKNOWN`), and ten retrospective
-   adversarial/conformance classes. `tca-2` version 2 remains the live normative default
-   for `TASK_AUTHORING`; neither registry presence nor the planning priority record
-   activates `tca-3` or retires `tca-2`.
-2. **Step 2 (Separate post-publication activation task)**: Only after Runtime
-   verification, independent Reviewer `PASS` and exact Publisher inclusion of `TASK-405`
-   on canonical `main`, a separate authorized activation task authenticates the reviewed
-   `TASK-405` source and pins exact `tca-3` `id`, `version` (`3`) and normalized `digest`
-   in `human_r21_tca3_successor_activation` (superseding
-   `human_r21_tca_roa_successor_activation` with unchanged `aoa-1`, `moa-1`, `roa-1-r3`
-   and Human Adaptive V1 option) before `tca-3` becomes default for new `TASK_AUTHORING`
-   and `tca-2` is prospectively retired for new authoring while retaining `tca-1`/`tca-2`
-   historical replay. See
-   [Brain semantic audit protocol section 25](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#25-bounded-tca-3-version-3-successor-prepared-by-task-405).
+TCA-3 v3 is pinned from the normalized canonical registry to digest
+`cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e`.
+Its two focused passes, five construct checks, six adversarial challenges and one
+closure remain exact. AOA-1 v1 and ROA-1 R3 v3 are unchanged. The registry retains
+ten recognized historical profile identities under the actual 65,536 UTF-8 byte cap.
+
+The only TASK-405 exception is the Human-operated Git merge
+`f445626011d0664149011c8f57eb16a7014e6cd7`, parents
+`ccc369868e51b36fec2dce042fb6de24fae1e2a6` /
+`cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05`, tree
+`315d6914f7cac46ed30418e522e33b74fe33af4d`. The authenticator checks all twelve
+byte-exact implementation blobs at that integrated ancestor of current main,
+original RUN-405-004 artifacts `8be451dd918510de220ff310d1adb88021e22061`,
+both successful original Runtime EVIDENCE results and both SHA-bound reviews:
+REVIEW-405-001 CHANGES_REQUIRED at `2b5c5d4c18d273213559ea964aa96c2a925dc337`,
+REVIEW-405-002 DELTA BLOCKED at `1b9b11a175a08be0c29f11a675af35d854502659`.
+Reviewed TASK-405 r1 and integrated main TASK-405 r2 remain distinct. Original C2
+falsely claims 98304 bytes; the actual parser cap is 65536 bytes. F1/AC10 remains
+unresolved in that immutable historical lineage. Explicit bounded Human acceptance
+permits this source provenance only; it grants neither REVIEW PASS nor Runtime
+Publisher PASS, and no original artifact or ref is rewritten.
+
+Only TASK-406's own fresh independent review/publication can activate the new
+policy. Currentness is reauthenticated at ADMIT and CONTINUE. Previously admitted
+profiles stay pinned or stop on stale binding; archived V1/four-flow/MOA requests
+still decode exactly. See [protocol section 26](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#26-task-406-prospective-three-flow-policy-and-moa-retirement).

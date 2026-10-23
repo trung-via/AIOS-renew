@@ -3262,3 +3262,32 @@ def test_task405_class9_forged_acceptance_accounting_or_dropped_construct_blocke
     with pytest.raises(BrainAuditError, match="account"):
         validate_tca(body, profile, subject, first, forged, context)
 
+
+@pytest.mark.parametrize("fault", (None, "incomplete", "extra", "null", "moa", "tca2", "v1", "digest", "rehash", "publication"))
+def test_task406_three_flow_policy_has_one_closed_mapping(fault):
+    from aios_renew.brain_audit import normalize_audit_policy, _three_flow_profiles, profile_ref
+    body, _ = task405_tca3_context()
+    policy = audit_policy_example(body)
+    policy.update(state="THREE_SPECIALIZED", profiles=_three_flow_profiles())
+    assert policy["profiles"]["TASK_AUTHORING"] == profile_ref(successor_profile("tca-3"))
+    if fault == "incomplete":
+        del policy["profiles"]["REPAIR_AUTHORING"]
+    elif fault in {"extra", "null", "moa"}:
+        policy["profiles"]["DIAGNOSTIC" if fault == "extra" else "REMEDIATION_AUTHORING"] = (
+            None if fault == "null" else profile_ref(successor_profile("moa-1")))
+    elif fault in {"tca2", "v1"}:
+        policy["profiles"]["TASK_AUTHORING"] = profile_ref(successor_profile(
+            "tca-2" if fault == "tca2" else "aios-adaptive-brain-audit-v1"))
+    elif fault == "digest":
+        policy["profiles"]["TASK_AUTHORING"]["digest"] = "f" * 64
+    elif fault == "rehash":
+        policy["profiles"]["TASK_AUTHORING"]["version"] = True
+    elif fault == "publication":
+        policy["r5_publication_sha"] = None
+    if fault is not None:
+        with pytest.raises(BrainAuditError):
+            normalize_audit_policy(policy)
+    else:
+        assert normalize_audit_policy(policy) == policy
+        assert set(policy["profiles"]) == {"ARCHITECTURE", "TASK_AUTHORING", "REPAIR_AUTHORING"}
+

@@ -239,11 +239,10 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             human_choice_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None) -> AttemptResult:
     """Invoke one normative procedure, or explicit isolated compatibility support.
 
-    Ordinary new production authenticates canonical FOUR_SPECIALIZED policy
-    (retaining tca-2 for TASK_AUTHORING until a separately reviewed and
-    published tca-3 activation cutover). Explicit R5 callers and isolated or
-    historical requests keep their existing bindings. No attempt grants
-    canonical mutation authority.
+    Current audited production authenticates the complete canonical policy.
+    Remediation is authored directly through AUTHOR_REMEDIATION; it has no
+    current provider audit. Explicit isolated historical conformance remains
+    decodable and cannot confer current selection or mutation authority.
     """
     count = 0
     phase = "INPUT"
@@ -252,6 +251,9 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             raise ValueError("DecisionPacket required")
         if type(conformance_only) is not bool:
             raise ValueError("conformance_only must be explicit boolean")
+        if (not conformance_only and packet.as_dict()["selected_flow"] == "REMEDIATION_AUTHORING"
+                and (audit_policy is None or audit_policy.get("state") == "THREE_SPECIALIZED")):
+            raise ValueError("remediation has no current audit; use direct AUTHOR_REMEDIATION")
         configured = (provider.provider, provider.model)
         _identity(*configured)
         if not callable(provider.invoke):

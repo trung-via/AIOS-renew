@@ -57,9 +57,13 @@ def production_inputs(registry, flow, canonical):
 
 @pytest.mark.parametrize("flow", R5_FLOWS)
 def test_first_party_policy_supplier_binds_the_existing_pure_protocol(registry, canonical_audit_repo, flow):
-    from aios_renew.brain_context import canonical_audit_inputs
+    from aios_renew.brain_context import BrainContextError, canonical_audit_inputs
 
     supplied, contract, bindings, sources = production_inputs(registry, flow, canonical_audit_repo)
+    if flow == "REMEDIATION_AUTHORING":
+        with pytest.raises(BrainContextError):
+            canonical_audit_inputs(supplied, contract, bindings, repo=canonical_audit_repo.repo)
+        return
     policy, package, authenticate = canonical_audit_inputs(supplied, contract, bindings,
                                                          repo=canonical_audit_repo.repo, **sources)
     req = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE",
@@ -342,9 +346,55 @@ def test_r5_historical_in_flight_subject_keeps_exact_original_profile_and_serial
     second = construct_request(supplied, contract, {}, package, request_mode="AUDIT_RECONCILE", stage1_decision=first)
     final = validate_response(second, stage2_response(second, aoa_candidate()))
     assert final["audit_profile_ref"] == package["audit_profile_ref"]
+
     assert revalidate_decision(final, second) == final
     with pytest.raises(BrainProviderProtocolError):
         construct_request(current, future_contract, bindings, future_package, request_mode="AOA_RECONCILE", stage1_decision=first, **kwargs)
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING", "REPAIR_AUTHORING"))
+def test_task406_three_flow_request_decision_codecs_and_authenticated_selection(registry, flow):
+    from aios_renew.brain_audit import _three_flow_profiles
+    supplied, contract, bindings, _, kwargs, _ = r5_case(registry, flow)
+    sources = {key: kwargs[key] for key in ("task_source_context", "architecture_source_context") if kwargs.get(key) is not None}
+    if flow == "TASK_AUTHORING":
+        context = sources["task_source_context"]
+        context["source_material"] = [{"path": context["authorization"]["scope"]["modify"][0], "content": "def bounded(): pass"}]
+    policy = audit_policy_example(supplied.as_dict())
+    policy.update(state="THREE_SPECIALIZED", profiles=_three_flow_profiles())
+    profiles = parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+    profile = next(p for p in profiles if profile_ref(p) == policy["profiles"][flow])
+    package = {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+    authority = R5Authority(policy, supplied, contract, bindings, package, sources)
+    first = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE",
+                              audit_policy=policy, selection_authenticator=authority, **sources)
+    assert revalidate_request(first) == first
+    decision = validate_response(first, r5_response(first))
+    assert revalidate_decision(decision, first) == decision
+    if flow != "REPAIR_AUTHORING":
+        second = r5_second(first, decision, authority)
+        assert revalidate_request(second) == second
+        final = validate_response(second, r5_response(second))
+        assert revalidate_decision(final, second) == final
+    # Rehashing serialized currentness cannot authenticate a different source.
+    stale = deepcopy(policy)
+    stale["main_sha"] = "f" * 40
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE",
+                          audit_policy=stale, selection_authenticator=authority, **sources)
+
+
+@pytest.mark.parametrize("mode", ("PROSPECTIVE", "MOA_CONSTRUCT", "AUDIT_CONSTRUCT", "V1_OPTION_CONSTRUCT"))
+def test_task406_current_three_flow_remediation_has_no_audited_request(registry, moa_package, mode):
+    from aios_renew.brain_audit import _three_flow_profiles
+    supplied, contract, bindings, _ = moa_inputs(registry)
+    policy = audit_policy_example(supplied.as_dict())
+    policy.update(state="THREE_SPECIALIZED", profiles=_three_flow_profiles())
+    calls = []
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, moa_package, request_mode=mode,
+                          audit_policy=policy, selection_authenticator=lambda *args: calls.append(args))
+    assert calls == []
 
 
 @pytest.mark.parametrize("operation", ("AUTHOR_TASK", "AUTHOR_REPAIR", "AUTHOR_REMEDIATION"))

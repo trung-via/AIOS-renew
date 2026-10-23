@@ -1,4 +1,82 @@
 version: 1
+human_tca3_three_flow_activation_20261023:
+  authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL
+  approved_on: '2026-10-23'
+  status: READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION
+  human_decision: ACTIVATE_TCA3_RETIRE_MOA_WITH_UNCHANGED_AOA_ROA1R3
+  supersedes: human_r21_tca_roa_successor_activation
+  superseded_approval_digest: c1725256df1fd42e7b435ca3fd88618031db0606014fbbc5e7387a8c6f59a92e
+  supersedes_planning_record: human_tca3_retrospective_priority_20261023
+  implementation_task: TASK-406
+  implementation_revision: 2
+  implementation_run: RUN-406-002
+  required_review_mode: PRIMARY
+  required_review_verdict: PASS
+  activation_boundary: EXACT_TASK406_RUNTIME_RESULT_INDEPENDENT_REVIEW_PASS_PUBLISHER_SOURCE_ON_MAIN
+  target_policy_format: AIOS_BRAIN_AUDIT_POLICY
+  target_policy_version: 1
+  target_policy_state: THREE_SPECIALIZED
+  target_profiles:
+    ARCHITECTURE:
+      id: aoa-1
+      version: 1
+      digest: 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b
+    TASK_AUTHORING:
+      id: tca-3
+      version: 3
+      digest: cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e
+    REPAIR_AUTHORING:
+      id: roa-1-r3
+      version: 3
+      digest: cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a
+  remediation_authoring: DIRECT_AUTHOR_REMEDIATION_NO_AUTOMATIC_NORMATIVE_DEFAULT_OR_OPTIONAL_AUDIT
+  moa_retirement: RETIRED_FROM_NEW_ATTEMPTS_HISTORICAL_EXACT_REPLAY_ONLY
+  architecture_and_task_v1_option: HUMAN_EXPLICIT_EXACT_SUBJECT_V1_ONLY_ONE_NORMATIVE_AUDIT
+  correction_v1_option: HUMAN_EXPLICIT_READ_ONLY_ROA_SUPPORT_ONLY_NO_REMEDIATION_AUDIT
+  task405_source_exception:
+    actual_byte_bound: 65536
+    approved_on: '2026-10-23'
+    authority: EXPLICIT_HUMAN_ONE_TIME_TASK405_SOURCE_RISK_ACCEPTANCE
+    delta_review_sha: 1b9b11a175a08be0c29f11a675af35d854502659
+    delta_review_verdict: BLOCKED
+    disposition: ACCEPT_EXACT_SOURCE_RISK_WITH_F1_UNRESOLVED_NOT_REVIEW_OR_PUBLISHER_PASS
+    evidence_exit_codes:
+    - 0
+    - 0
+    evidence_ids:
+    - RUN-405-004-V001
+    - RUN-405-004-V002
+    false_c2_byte_bound: 98304
+    finding_action: EVIDENCE_ONLY
+    finding_basis: AC10
+    finding_id: F1
+    implementation_blobs:
+      .ai/brain-audit-profiles.yaml: b65e01a6a62a37ceb8d116874d5fe7f404df5fe2
+      .ai/roadmap-state.yaml: f3c9e1d2c89939b6e879a1cc50499a41d367870e
+      docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md: 591faea4d054b6478d6ea3ecad4d4555e8494890
+      docs/CHATGPT_PROJECT_CONTRACT.md: 5f2150ae0e7ccf9288e9663578e409822b379486
+      src/aios_renew/brain_audit.py: b32f055d5acf9eabbc1f2be1846e42eec2896005
+      src/aios_renew/brain_context.py: 9ab23252a4bd7a077d53e44c448b24de5671727f
+      src/aios_renew/brain_provider.py: 4931e929db389564cc28f1e71e5c4b8d9d12822e
+      src/aios_renew/brain_provider_protocol.py: 875d9a702903d1a15d36a25c4597734497d234c6
+      tests/test_brain_audit.py: 47dbb96037408680292c256b9e2a49c1c262c6df
+      tests/test_brain_context.py: 462fc5d0044f407a37080dc741142d3ee4e54bc6
+      tests/test_brain_provider.py: bdcd4f6390c1a4f9932ac44fe10a86a18e439bec
+      tests/test_brain_provider_protocol.py: 3fcaac9b915a9330e49b1f18dfca5d26a1fde68e
+    integrated_main_task_revision: 2
+    merge_sha: f445626011d0664149011c8f57eb16a7014e6cd7
+    original_artifacts_sha: 8be451dd918510de220ff310d1adb88021e22061
+    original_review_sha: 2b5c5d4c18d273213559ea964aa96c2a925dc337
+    original_review_verdict: CHANGES_REQUIRED
+    original_run: RUN-405-004
+    parents:
+    - ccc369868e51b36fec2dce042fb6de24fae1e2a6
+    - cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05
+    reviewed_task_revision: 1
+    source_sha: cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05
+    tree: 315d6914f7cac46ed30418e522e33b74fe33af4d
+  prior_priority_and_pte: HISTORICAL_PROVENANCE_PTE_PAUSED_RESUMABLE_NO_AUTOMATIC_ADVANCEMENT
+
 human_tca3_retrospective_priority_20261023:
   authority: EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
   approved_on: "2026-10-23"

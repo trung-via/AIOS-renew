@@ -725,6 +725,12 @@ def _specialized_profiles(*, successors: bool = False, tca3: bool = False) -> di
             for flow, (identity, version, digest) in identities.items()}
 
 
+def _three_flow_profiles() -> dict[str, dict[str, Any]]:
+    """The sole prospective three-flow mapping; remediation has no audit entry."""
+    return {flow: ref for flow, ref in _specialized_profiles(tca3=True).items()
+            if flow != "REMEDIATION_AUTHORING"}
+
+
 def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
     """Check a complete prospective policy's shape/identities, never its authority.
 
@@ -738,14 +744,14 @@ def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
     }, "prospective audit policy")
     _bounded(policy, 4096, "prospective audit policy")
     if (policy["format"] != "AIOS_BRAIN_AUDIT_POLICY" or type(policy["version"]) is not int
-            or policy["version"] != 1 or policy["state"] not in ("ADAPTIVE_V1", "FOUR_SPECIALIZED")):
+            or policy["version"] != 1 or policy["state"] not in ("ADAPTIVE_V1", "FOUR_SPECIALIZED", "THREE_SPECIALIZED")):
         raise BrainAuditError("unsupported prospective audit policy")
     _git_sha(policy["main_sha"], "policy canonical main")
     for key in ("work_context_fingerprint", "human_authority_digest", "brain_authority_digest"):
         _sha(policy[key], key)
     if policy["r5_publication_sha"] is not None:
         _git_sha(policy["r5_publication_sha"], "reviewed R5 publication")
-    if policy["state"] == "FOUR_SPECIALIZED" and policy["r5_publication_sha"] is None:
+    if policy["state"] != "ADAPTIVE_V1" and policy["r5_publication_sha"] is None:
         raise BrainAuditError("future cutover requires separately authenticated reviewed R5 publication")
     expected = _specialized_profiles()
     successor = _specialized_profiles(successors=True)
@@ -753,11 +759,13 @@ def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
     if policy["state"] == "ADAPTIVE_V1":
         expected = {flow: {"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
                     for flow in expected}
+    elif policy["state"] == "THREE_SPECIALIZED":
+        expected = _three_flow_profiles()
     # Strict JSON comparison rejects bool-as-version and partial/mixed activation.
     if (_json(policy["profiles"]) != _json(expected)
             and (policy["state"] != "FOUR_SPECIALIZED"
                  or _json(policy["profiles"]) not in (_json(successor), _json(tca3)))):
-        raise BrainAuditError("prospective policy must pin all four exact profile identities")
+        raise BrainAuditError("prospective policy must pin its complete exact flow/profile mapping")
     return policy
 
 
