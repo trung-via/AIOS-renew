@@ -492,7 +492,15 @@ _R5_CANDIDATE_REF = "refs/heads/aios/review/RUN-368-001"
 _R5_REVIEW_REF = "refs/heads/aios/review-decision/RUN-368-001"
 _R5_ARTIFACT_REF = "refs/heads/aios/artifacts/RUN-368-001"
 _THREE_FLOW_APPROVAL = "human_tca3_three_flow_activation_20261023"
-_THREE_FLOW_RUN = "RUN-406-002"
+_THREE_FLOW_RUN = "RUN-406-003"
+_THREE_FLOW_REPAIR = {
+    "failed_run_id": "RUN-406-002",
+    "failed_head_sha": "cee20fb76df8fb93c05784135c508e1d5f678efa",
+    "failure_artifacts_sha": "a20f9c799666556e02dc1e58de4f7698e65e5388",
+    "repair_id": "REPAIR-406-002-001", "action": "CODE_FIX",
+    "repair_authorization_sha": "2b1ef613755e15a1795ccf4e2fefffd95bfcdf31",
+    "root_base_sha": "b3344968cef482615244a77ded439330c50a2dc7",
+}
 _THREE_FLOW_PREDECESSOR_DIGEST = "c1725256df1fd42e7b435ca3fd88618031db0606014fbbc5e7387a8c6f59a92e"
 _THREE_FLOW_REFS = tuple(f"refs/heads/aios/{kind}/{_THREE_FLOW_RUN}"
                          for kind in ("review", "review-decision", "artifacts"))
@@ -534,9 +542,9 @@ _TASK405_EXCEPTION = {
 def _three_flow_approval(predecessor_digest: str) -> dict:
     """Exact Human decision, independent of the not-yet-created review/result.
 
-    Future source identities are resolved from the original RUN's immutable
-    artifacts and SHA-bound independent review, avoiding a self-referential SHA
-    or a candidate record that falsely asserts publication already happened.
+    The supplied admitted continuation fixes the RUN identity, not its outcome.
+    Future source identities come from its immutable repaired RESULT and first
+    independent PRIMARY review, with the exact failed lineage authenticated.
     """
     from .brain_audit import _three_flow_profiles
     return {
@@ -547,6 +555,7 @@ def _three_flow_approval(predecessor_digest: str) -> dict:
         "supersedes_planning_record": _TCA3_PRIORITY_RECORD,
         "implementation_task": "TASK-406", "implementation_revision": 2,
         "implementation_run": _THREE_FLOW_RUN, "required_review_mode": "PRIMARY", "required_review_verdict": "PASS",
+        "implementation_repair": _stable_copy(_THREE_FLOW_REPAIR),
         "activation_boundary": "EXACT_TASK406_RUNTIME_RESULT_INDEPENDENT_REVIEW_PASS_PUBLISHER_SOURCE_ON_MAIN",
         "target_policy_format": "AIOS_BRAIN_AUDIT_POLICY", "target_policy_version": 1,
         "target_policy_state": "THREE_SPECIALIZED", "target_profiles": _three_flow_profiles(),
@@ -849,6 +858,16 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
             raise BrainContextError("current Human three-flow approval conflicts with exact decision")
         refs.update(current_refs)
         patterns = (*patterns, *_THREE_FLOW_REFS)
+        repair = three_flow["implementation_repair"]
+        repair_refs = {
+            f"refs/heads/aios/failure/{repair['failed_run_id']}": repair["failed_head_sha"],
+            f"refs/heads/aios/failure-artifacts/{repair['failed_run_id']}": repair["failure_artifacts_sha"],
+            f"refs/heads/aios/repair/{repair['failed_run_id']}": repair["repair_authorization_sha"],
+        }
+        if _query_matching_refs(repo, remote, *repair_refs) != repair_refs:
+            raise BrainContextError("TASK-406 admitted repair provenance is missing or conflicting")
+        refs.update(repair_refs)
+        patterns = (*patterns, *repair_refs)
         exception_patterns = (
             "refs/heads/aios/review/RUN-405-004", "refs/heads/aios/artifacts/RUN-405-004",
             "refs/heads/aios/review-decision/RUN-405-004", "refs/heads/aios/review-decision/RUN-405-005",
@@ -862,8 +881,8 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         selected = three_flow
 
     def publication(record: dict, candidate_ref: str, review_ref: str, artifact_ref: str) -> str:
-        # All approvals use the same original PRIMARY RUN/RESULT/REVIEW trust
-        # path. Registry presence and selected digests cannot authenticate policy.
+        # Historical approvals require their original RUN. The current approval
+        # requires the exact admitted repair and its independent first review.
         artifact_sha = refs[artifact_ref]
         run_data = _json_no_dups(blob(artifact_sha, ".ai/transport/run.json"), "R5 RUN")
         if "kind" in run_data:
@@ -897,6 +916,23 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         if result.unresolved:
             raise BrainContextError("canonical R5 RESULT contains unresolved items")
         if current:
+            from .publication import _repair_review_lineage
+            lineage_raw = blob(artifact_sha, ".ai/transport/repair.json")
+            lineage = _json_no_dups(lineage_raw, "TASK-406 REPAIR execution")
+            binding = record["implementation_repair"]
+            authorization = lineage.get("repair")
+            if (any(lineage.get(k) != binding[k] for k in (
+                    "failed_run_id", "failed_head_sha", "repair_authorization_sha", "root_base_sha"))
+                    or not isinstance(authorization, dict)
+                    or any(authorization.get(k) != binding[k] for k in ("repair_id", "action"))):
+                raise BrainContextError("TASK-406 RESULT is not from the admitted repair lineage")
+            root_base, result_base, prior_review, finding = _repair_review_lineage(
+                repo, remote=remote, publication_run_id=run.run_id,
+                child_run_data=run_data, child_run=run, child_head_sha=source,
+                lineage_bytes=lineage_raw, task=published_task)
+            if (root_base != binding["root_base_sha"] or result_base != root_base
+                    or prior_review is not None or finding is not None):
+                raise BrainContextError("TASK-406 repaired first review must retain its original TASK root")
             reviewed_roadmap = yaml.compose(blob(source, ".ai/roadmap-state.yaml").decode("utf-8"), Loader=yaml.SafeLoader)
             if not isinstance(reviewed_roadmap, yaml.MappingNode):
                 raise BrainContextError("TASK-406 reviewed approval is missing")

@@ -122,7 +122,8 @@ provider calls. Historical MOA bytes and exact request/decision replay remain re
 
 The candidate record `human_tca3_three_flow_activation_20261023` supersedes the
 2026-10-21 approval by its exact normalized digest. It becomes effective only when
-the original TASK-406 r2 / RUN-406-002 RESULT, independent PRIMARY REVIEW PASS
+the admitted TASK-406 r2 / RUN-406-003 repaired RESULT with its exact failed
+RUN-406-002 / REPAIR-406-002-001 lineage, independent first PRIMARY REVIEW PASS
 and Publisher inclusion of that exact reviewed source on canonical main authenticate.
 The record's stored status is READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION;
 the authenticator projects actual active status only after those gates. Authorship,
@@ -557,6 +558,12 @@ permits this source provenance only; it grants neither REVIEW PASS nor Runtime
 Publisher PASS, and no original artifact or ref is rewritten.
 
 Only TASK-406's own fresh independent review/publication can activate the new
-policy. Currentness is reauthenticated at ADMIT and CONTINUE. Previously admitted
+policy. The ready candidate pins the actually admitted RUN-406-003 and
+REPAIR-406-002-001 authorization, failed RUN-406-002 candidate and immutable
+FAILURE artifacts. Its eventual repaired RESULT must authenticate that persisted
+lineage through the existing Runtime reader. The failed RUN cannot activate the
+policy. Because no semantic finding preceded this repair, its independent first
+review is PRIMARY; repair admission does not assert review or publication success.
+Currentness is reauthenticated at ADMIT and CONTINUE. Previously admitted
 profiles stay pinned or stop on stale binding; archived V1/four-flow/MOA requests
 still decode exactly. See [protocol section 26](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#26-task-406-prospective-three-flow-policy-and-moa-retirement).

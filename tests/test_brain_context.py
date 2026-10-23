@@ -169,7 +169,8 @@ class CanonicalAuditRepository:
                         approved_against_main_sha=self.source_sha)
         self.roadmap = {self.approval_key: approval}
         self.save_roadmap()
-        self.git(temporary, "clone", str(self.canonical), str(self.repo))
+        # Real ingress compares local TASK bytes with canonical Git bytes.
+        self.git(temporary, "clone", "--config", "core.autocrlf=false", str(self.canonical), str(self.repo))
 
     @staticmethod
     def git(repo, *args, input=None):
@@ -200,18 +201,23 @@ class CanonicalAuditRepository:
         self.git(self.canonical, "update-ref", f"refs/heads/aios/review-decision/{run_id}", self.review_sha)
         self.git(self.canonical, "switch", "main")
 
-    def save_artifacts(self, *, run_id="RUN-368-001"):
+    def save_artifacts(self, *, run_id="RUN-368-001", repair=None, failure=None):
         # Runtime artifacts are an independent immutable snapshot, not a commit
         # on the candidate or review branch. Keep that separation in the fixture.
         entries = []
-        for name, document in (("result.json", self.result_package), ("run.json", self.run)):
+        documents = [("run.json", self.run), ("failure.json", failure) if failure is not None
+                     else ("result.json", self.result_package)]
+        if repair is not None:
+            documents.append(("repair.json", repair))
+        for name, document in documents:
             sha = self.git(self.canonical, "hash-object", "-w", "--stdin", input=json.dumps(document))
             entries.append(f"100644 blob {sha}\t{name}\n")
         tree = self.git(self.canonical, "mktree", input="".join(entries))
         tree = self.git(self.canonical, "mktree", input=f"040000 tree {tree}\ttransport\n")
         tree = self.git(self.canonical, "mktree", input=f"040000 tree {tree}\t.ai\n")
         self.artifact_sha = self.git(self.canonical, "commit-tree", tree, "-m", "canonical R5 artifacts fixture")
-        self.git(self.canonical, "update-ref", f"refs/heads/aios/artifacts/{run_id}", self.artifact_sha)
+        kind = "failure-artifacts" if failure is not None else "artifacts"
+        self.git(self.canonical, "update-ref", f"refs/heads/aios/{kind}/{run_id}", self.artifact_sha)
 
     def publish_successor(self, *, omit_reviewed_body=False, activation_record=None):
         """Offline independently reviewed successor publication and later Human approval.
@@ -275,7 +281,7 @@ class CanonicalAuditRepository:
         return approval
 
     def publish_tca3_successor(self, *, omit_reviewed_body=False):
-        """Offline independently reviewed TASK-405 publication and later Human approval for tca-3."""
+        """Isolated historical four-flow scenario, not the real TASK-405 outcome."""
         from aios_renew.brain_audit import _specialized_profiles
         from aios_renew.brain_context import (
             _digest, _R21_SUCCESSOR_APPROVAL, _R21_TCA3_APPROVAL, _TCA3_PRIORITY_RECORD,
@@ -285,8 +291,10 @@ class CanonicalAuditRepository:
             self.publish_successor()
         original = {key: deepcopy(getattr(self, key)) for key in (
             "base_sha", "source_sha", "review_sha", "artifact_sha", "run", "result_package", "review")}
-        task_raw = (root / ".ai/tasks/TASK-405.yaml").read_bytes()
-        task = yaml.safe_load(task_raw)
+        # This historical approval and RUN bind r1; the repository TASK is now
+        # r2. Keep the synthetic reviewed candidate consistent with that identity.
+        task = {**yaml.safe_load((root / ".ai/tasks/TASK-405.yaml").read_bytes()), "revision": 1}
+        task_raw = yaml.safe_dump(task).encode()
         self.base_sha = self.main_sha
         registry_raw = (root / ".ai/brain-audit-profiles.yaml").read_bytes()
         if omit_reviewed_body:
@@ -924,6 +932,10 @@ def test_task405_priority_record_preserves_tca2_live_default_and_prepares_two_st
     canonical.roadmap[_TCA3_PRIORITY_RECORD] = deepcopy(priority)
     canonical.save_roadmap()
     tca3_approval = canonical.publish_tca3_successor()
+    reviewed_task = yaml.safe_load(canonical.git(canonical.canonical, "show",
+        f"{canonical.tca3_source_sha}:.ai/tasks/TASK-405.yaml"))
+    assert reviewed_task["revision"] == tca3_approval["implementation_revision"] == 1
+    canonical.git(canonical.canonical, "merge-base", "--is-ancestor", canonical.tca3_source_sha, "main")
     # In-flight tca-2 request stops rather than silently switching to tca-3.
     assert authenticate(req_tca2["audit_selection"], "CONTINUE") is False
     supplied3, contract3, bindings3, sources3 = production_inputs(registry, "TASK_AUTHORING", canonical)
@@ -1036,18 +1048,51 @@ def task406_canonical_audit_repo(canonical_audit_repo, monkeypatch):
     monkeypatch.setattr(context, "_TASK405_EXCEPTION", exception)
     predecessor = context._digest(c.roadmap[context._R21_SUCCESSOR_APPROVAL])
     monkeypatch.setattr(context, "_THREE_FLOW_PREDECESSOR_DIGEST", predecessor)
+    task = yaml.safe_load((root / ".ai/tasks/TASK-406.yaml").read_bytes())
+    c.write(".ai/tasks/TASK-406.yaml", yaml.safe_dump(task).encode())
+    root_base = c.commit("TASK-406 authored base fixture")
+    context_raw = (root / "src/aios_renew/brain_context.py").read_bytes()
+    c.write("src/aios_renew/brain_context.py", context_raw + b"\n# failed candidate fixture\n")
+    failed = c.commit("TASK-406 failed PRIMARY candidate fixture")
+    c.git(c.canonical, "update-ref", "refs/heads/aios/failure/RUN-406-002", failed)
+    c.run = {**saved["run"], "run_id": "RUN-406-002", "base_sha": root_base,
+             "task": {"id": "TASK-406", "revision": 2}}
+    failure = {"kind": "FAILURE", "run_id": c.run["run_id"], "task": c.run["task"],
+               "executor": "codex", "base_sha": root_base, "failed_head_sha": failed,
+               "phase": "VERIFICATION", "error": {"type": "RuntimeVerificationError", "message": "Synthetic failure"},
+               "candidate": {"changed_files": ["src/aios_renew/brain_context.py"], "dirty": False,
+                             "descends_from_base": True, "transportable": True, "repairable": True,
+                             "outside_task_scope": []}}
+    from aios_renew.review_transport import _public_metadata_value
+    failure = _public_metadata_value(failure)
+    c.save_artifacts(run_id="RUN-406-002", failure=failure)
+    failure_artifacts = c.artifact_sha
+    authorization = {"repair_id": "REPAIR-406-002-001", "failed_run_id": "RUN-406-002", "failed_head_sha": failed,
+                     "task": c.run["task"], "action": "CODE_FIX", "modification_scope": task["scope"]["modify"],
+                     "instructions": ["Correct the bounded failed candidate fixture"], "constraints": []}
+    c.git(c.canonical, "switch", "--detach", failed)
+    c.write(".ai/transport/repair.json", json.dumps(authorization).encode())
+    authorization_sha = c.commit("canonical repair authorization fixture")
+    c.git(c.canonical, "update-ref", "refs/heads/aios/repair/RUN-406-002", authorization_sha)
+    c.git(c.canonical, "switch", "main")
+    monkeypatch.setattr(context, "_THREE_FLOW_REPAIR", {
+        "failed_run_id": "RUN-406-002", "failed_head_sha": failed, "failure_artifacts_sha": failure_artifacts,
+        "repair_id": authorization["repair_id"], "action": "CODE_FIX",
+        "repair_authorization_sha": authorization_sha, "root_base_sha": root_base})
     approval = context._three_flow_approval(predecessor)
     c.roadmap[context._THREE_FLOW_APPROVAL] = approval
     c.write(".ai/roadmap-state.yaml", yaml.safe_dump(c.roadmap).encode())
-    task = yaml.safe_load((root / ".ai/tasks/TASK-406.yaml").read_bytes())
-    c.write(".ai/tasks/TASK-406.yaml", yaml.safe_dump(task).encode())
+    c.write("src/aios_renew/brain_context.py", context_raw)
     c.source_sha = c.commit("TASK-406 reviewed implementation fixture")
     c.three_flow_source_sha = c.source_sha
     c.main_sha = c.source_sha
     c.git(c.canonical, "update-ref", context._THREE_FLOW_REFS[0], c.source_sha)
-    c.run = {**saved["run"], "run_id": context._THREE_FLOW_RUN, "base_sha": merge, "task": {"id": "TASK-406", "revision": 2}}
+    c.run = {**saved["run"], "run_id": context._THREE_FLOW_RUN, "base_sha": failed, "task": {"id": "TASK-406", "revision": 2}}
+    c.three_flow_lineage = {"failed_run_id": "RUN-406-002", "failed_head_sha": failed,
+        "root_base_sha": root_base, "result_base_sha": root_base, "repair_authorization_sha": authorization_sha,
+        "task": task, "failure": failure, "repair": authorization, "run": deepcopy(c.run)}
     c.result_package = package(task, context._THREE_FLOW_RUN, c.source_sha, ["src/aios_renew/brain_context.py"])
-    c.save_artifacts(run_id=context._THREE_FLOW_RUN)
+    c.save_artifacts(run_id=context._THREE_FLOW_RUN, repair=c.three_flow_lineage)
     c.three_flow_artifact_sha = c.artifact_sha
     c.review = {"review_id": "REVIEW-406-001", "reviewed_sha": c.source_sha, "mode": "PRIMARY", "verdict": "PASS",
                 "acceptance": {ac["id"]: "PASS" for ac in task["acceptance"]}, "findings": []}
@@ -1065,7 +1110,7 @@ def task406_canonical_audit_repo(canonical_audit_repo, monkeypatch):
 
 def test_task406_roadmap_is_one_prospective_decision_and_exact_exception():
     from aios_renew.brain_context import (_THREE_FLOW_APPROVAL, _three_flow_approval, _R21_SUCCESSOR_APPROVAL,
-        _THREE_FLOW_PREDECESSOR_DIGEST, _TASK405_EXCEPTION, _digest, _UniqueKeyLoader)
+        _THREE_FLOW_PREDECESSOR_DIGEST, _THREE_FLOW_REPAIR, _TASK405_EXCEPTION, _digest, _UniqueKeyLoader)
     root = Path(__file__).resolve().parents[1]
     raw = (root / ".ai/roadmap-state.yaml").read_text(encoding="utf-8")
     nodes = {k.value: v for k, v in yaml.compose(raw).value}
@@ -1074,6 +1119,10 @@ def test_task406_roadmap_is_one_prospective_decision_and_exact_exception():
     assert _digest(predecessor) == _THREE_FLOW_PREDECESSOR_DIGEST
     assert record == _three_flow_approval(_digest(predecessor))
     assert record["status"] == "READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION"
+    assert record["implementation_run"] == "RUN-406-003"
+    assert record["implementation_repair"] == _THREE_FLOW_REPAIR
+    assert record["implementation_repair"]["failed_run_id"] == "RUN-406-002"
+    assert record["required_review_mode"] == "PRIMARY"
     assert "REMEDIATION_AUTHORING" not in record["target_profiles"]
     assert _TASK405_EXCEPTION["merge_sha"] == "f445626011d0664149011c8f57eb16a7014e6cd7"
     assert _TASK405_EXCEPTION["original_review_verdict"] == "CHANGES_REQUIRED"
@@ -1083,10 +1132,12 @@ def test_task406_roadmap_is_one_prospective_decision_and_exact_exception():
 
 
 def test_task406_git_authenticates_new_pass_separately_from_nonpass_exception(task406_canonical_audit_repo):
-    from aios_renew.brain_context import _canonical_audit_source, _THREE_FLOW_APPROVAL
+    from aios_renew.brain_context import _canonical_audit_source, _THREE_FLOW_APPROVAL, _THREE_FLOW_RUN
     c = task406_canonical_audit_repo
     record, registry, authority = _canonical_audit_source(c.repo)
     assert record == c.roadmap[_THREE_FLOW_APPROVAL]
+    assert record["implementation_run"] == c.three_flow_run["run_id"] == _THREE_FLOW_RUN
+    assert c.three_flow_run["base_sha"] == record["implementation_repair"]["failed_head_sha"]
     assert authority["effective_status"] == "TASK406_REVIEWED_PUBLISHED_THREE_FLOW_ACTIVE"
     assert authority["reviewed_source_sha"] == c.three_flow_source_sha
     assert authority["task405_source_exception"]["review_verdicts"] == ["CHANGES_REQUIRED", "BLOCKED"]
@@ -1096,9 +1147,11 @@ def test_task406_git_authenticates_new_pass_separately_from_nonpass_exception(ta
 
 @pytest.mark.parametrize("fault", ("absent", "duplicate", "alias", "duplicate_key", "active_label", "old_digest", "moa", "conflict",
     "exception_source", "exception_sha", "parent", "tree", "blob", "evidence", "f1", "missing_review", "false_pass", "not_main",
-    "old_review_ref", "old_artifact_ref", "old_candidate_ref", "delta_ref"))
+    "old_review_ref", "old_artifact_ref", "old_candidate_ref", "delta_ref", "failed_implementation_run",
+    "missing_failure", "failure_artifacts", "authorization_ref"))
 def test_task406_activation_never_falls_back_on_approval_or_source_conflicts(task406_canonical_audit_repo, fault):
-    from aios_renew.brain_context import _canonical_audit_source, _THREE_FLOW_APPROVAL, _R21_TCA3_APPROVAL, _THREE_FLOW_REFS
+    from aios_renew.brain_context import (_canonical_audit_source, _THREE_FLOW_APPROVAL,
+        _R21_TCA3_APPROVAL, _THREE_FLOW_REFS, _THREE_FLOW_RUN)
     c = task406_canonical_audit_repo
     record = c.roadmap[_THREE_FLOW_APPROVAL]
     if fault == "absent":
@@ -1129,6 +1182,13 @@ def test_task406_activation_never_falls_back_on_approval_or_source_conflicts(tas
             e[{"exception_source": "merge_sha", "exception_sha": "source_sha", "tree": "tree"}[fault]] = "f" * 40
     elif fault == "missing_review":
         c.git(c.canonical, "update-ref", "-d", _THREE_FLOW_REFS[1])
+    elif fault == "failed_implementation_run":
+        record["implementation_run"] = "RUN-406-002"
+    elif fault == "missing_failure":
+        c.git(c.canonical, "update-ref", "-d", "refs/heads/aios/failure/RUN-406-002")
+    elif fault in {"failure_artifacts", "authorization_ref"}:
+        kind = "failure-artifacts" if fault == "failure_artifacts" else "repair"
+        c.git(c.canonical, "update-ref", f"refs/heads/aios/{kind}/RUN-406-002", c.three_flow_source_sha)
     elif fault in {"old_review_ref", "old_artifact_ref", "old_candidate_ref", "delta_ref"}:
         ref = {"old_review_ref": "review-decision/RUN-405-004", "old_artifact_ref": "artifacts/RUN-405-004",
                "old_candidate_ref": "review/RUN-405-004", "delta_ref": "review-decision/RUN-405-005"}[fault]
@@ -1137,7 +1197,7 @@ def test_task406_activation_never_falls_back_on_approval_or_source_conflicts(tas
         c.source_sha = c.three_flow_source_sha
         c.review = deepcopy(c.three_flow_review)
         c.review["acceptance"]["AC10"] = "FAIL"
-        c.save_review(run_id="RUN-406-002")
+        c.save_review(run_id=_THREE_FLOW_RUN)
     if fault == "not_main":
         # Preserve the approval/code but remove its reviewed source from ancestry.
         c.git(c.canonical, "switch", "--detach", c.exception["merge_sha"])
@@ -1152,14 +1212,61 @@ def test_task406_activation_never_falls_back_on_approval_or_source_conflicts(tas
         _canonical_audit_source(c.repo)
 
 
+@pytest.mark.parametrize("fault", ("absent", "failed_run", "failed_head", "authorization_sha", "repair_id", "action",
+    "root_base", "result_base", "embedded_run", "embedded_task", "embedded_failure", "authorization_scope", "delta_review"))
+def test_task406_activation_requires_the_actual_repaired_result_lineage(task406_canonical_audit_repo, fault):
+    from aios_renew.brain_context import _canonical_audit_source, _THREE_FLOW_RUN
+    c = task406_canonical_audit_repo
+    # Establish a usable chain before applying the one fault under test.
+    _canonical_audit_source(c.repo)
+    lineage = deepcopy(c.three_flow_lineage)
+    if fault == "failed_run":
+        lineage["failed_run_id"] = "RUN-406-001"
+    elif fault in {"failed_head", "authorization_sha", "root_base", "result_base"}:
+        key = {"failed_head": "failed_head_sha", "authorization_sha": "repair_authorization_sha",
+               "root_base": "root_base_sha", "result_base": "result_base_sha"}[fault]
+        lineage[key] = "f" * 40
+    elif fault == "repair_id":
+        lineage["repair"]["repair_id"] = "REPAIR-406-001-001"
+    elif fault == "action":
+        lineage["repair"]["action"] = "NO_CHANGE"
+    elif fault == "embedded_run":
+        lineage["run"]["run_id"] = "RUN-406-002"
+    elif fault == "embedded_task":
+        lineage["task"]["revision"] = 1
+    elif fault == "embedded_failure":
+        lineage["failure"]["phase"] = "COMPLETION_GATE"
+    elif fault == "authorization_scope":
+        lineage["repair"]["modification_scope"] = []
+    elif fault == "delta_review":
+        c.source_sha = c.three_flow_source_sha
+        c.review = {**deepcopy(c.three_flow_review), "mode": "DELTA", "prior_finding_id": "F1"}
+        c.save_review(run_id=_THREE_FLOW_RUN)
+    c.run = deepcopy(c.three_flow_run)
+    c.result_package = deepcopy(c.three_flow_package)
+    c.save_artifacts(run_id=_THREE_FLOW_RUN, repair=None if fault == "absent" else lineage)
+    with pytest.raises((BrainContextError, ValueError)):
+        _canonical_audit_source(c.repo)
+
+
 @pytest.mark.parametrize("fault", ("first_evidence", "second_evidence", "claim", "decision", "blob", "source_revision"))
 def test_task406_exact_exception_payload_cannot_forge_success(task406_canonical_audit_repo, monkeypatch, fault):
     from aios_renew import authoring_ingress
     from aios_renew.brain_context import _canonical_audit_source
     c = task406_canonical_audit_repo
     read = authoring_ingress._read_commit_blob
+    review_path = ".ai/reviews/REVIEW-405-002.yaml"
+    historical = yaml.safe_load(c.git(c.canonical, "show", f"{c.exception['delta_review_sha']}:{review_path}"))
+    assert (historical["review_id"], historical["reviewed_sha"], historical["verdict"]) == (
+        "REVIEW-405-002", c.exception["source_sha"], "BLOCKED")
+    tampered = []
     def changed(repo, sha, path):
         raw = read(repo, sha, path)
+        # The canonical blob reader fetches objects missing from the clone and
+        # retries. Tamper only actual bytes, never the pre-fetch missing result.
+        if raw is None:
+            return None
+        original = raw
         if sha == c.exception["original_artifacts_sha"] and path == ".ai/transport/result.json":
             data = json.loads(raw)
             if fault in {"first_evidence", "second_evidence"}:
@@ -1167,7 +1274,7 @@ def test_task406_exact_exception_payload_cannot_forge_success(task406_canonical_
             elif fault == "claim":
                 data["result"]["claims"][1]["claim"] = "Corrected 65536-byte claim"
             raw = json.dumps(data).encode()
-        if sha == c.exception["delta_review_sha"] and path.endswith("REVIEW-405-002.yaml") and fault == "decision":
+        if sha == c.exception["delta_review_sha"] and path == review_path and fault == "decision":
             raw = raw.replace(b"BLOCKED", b"PASS")
         if sha == c.exception["merge_sha"] and path == "src/aios_renew/brain_audit.py" and fault == "blob":
             raw += b"\n# changed integration\n"
@@ -1175,10 +1282,13 @@ def test_task406_exact_exception_payload_cannot_forge_success(task406_canonical_
             data = yaml.safe_load(raw)
             data["revision"] = 2
             raw = yaml.safe_dump(data).encode()
+        if raw != original:
+            tampered.append((sha, path))
         return raw
     monkeypatch.setattr(authoring_ingress, "_read_commit_blob", changed)
     with pytest.raises((BrainContextError, ValueError)):
         _canonical_audit_source(c.repo)
+    assert tampered, "negative proof must reach the actual immutable payload"
 
 
 @pytest.mark.parametrize("phase", ("ADMIT", "CONTINUE"))

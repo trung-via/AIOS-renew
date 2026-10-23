@@ -1905,9 +1905,20 @@ parent, tree, blob, evidence result, decision, F1 disposition or approval reject
 Human decision. Its status READY_CANDIDATE_REQUIRES_TASK406_PASS_AND_PUBLICATION
 truthfully describes the authored record; no fabricated future source/review SHA
 or ACTIVE label is required. After actual proof, the authenticator projects
-TASK406_REVIEWED_PUBLISHED_THREE_FLOW_ACTIVE. It resolves the exact source from
-original TASK-406 r2 / RUN-406-002 artifacts and its SHA-bound independent PRIMARY
-REVIEW PASS, validates TASK/RUN/RESULT/EVIDENCE/acceptance, proves that exact
+TASK406_REVIEWED_PUBLISHED_THREE_FLOW_ACTIVE. The supplied admitted repair is
+TASK-406 r2 / RUN-406-003, not the terminally failed RUN-406-002. Its identity is
+pinned from admission, never guessed from the next RUN number. The authenticator
+requires its eventual RESULT and persisted REPAIR lineage: REPAIR-406-002-001,
+authorization `2b1ef613755e15a1795ccf4e2fefffd95bfcdf31`, failed candidate
+`cee20fb76df8fb93c05784135c508e1d5f678efa`, and immutable FAILURE artifacts
+`a20f9c799666556e02dc1e58de4f7698e65e5388`. It uses the existing Runtime lineage
+reader to bind canonical authorization, predecessor FAILURE, TASK root, child RUN
+and permitted repair delta. This repair precedes any semantic finding, so its
+first independent review must be PRIMARY, as required by canonical review
+semantics. No repair admission or failed predecessor supplies a PASS.
+
+It resolves the exact source from that repaired RESULT and its SHA-bound
+independent PRIMARY REVIEW PASS, validates TASK/RUN/RESULT/EVIDENCE/acceptance, proves that exact
 reviewed source is on canonical main, and proves the reviewed source contains the
 same approved record. Publisher alone includes reviewed source on main.
 

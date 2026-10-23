@@ -248,11 +248,16 @@ def test_family_candidates_use_only_existing_canonical_validators():
     ]
 
 
-@pytest.mark.parametrize("fault", (None, "finding", "source", "expected_sha", "scope"))
+@pytest.mark.parametrize("fault", (None, "finding", "source", "expected_sha", "scope", "missing_affected", "conflicting_verification"))
 def test_task406_direct_author_remediation_keeps_real_git_admission_without_audit(tmp_path, monkeypatch, fault):
     from tests.test_brain_context import CanonicalAuditRepository
     from aios_renew.authoring_ingress import AuthoringIngressError, execute_ingress, parse_envelope
     c = CanonicalAuditRepository(tmp_path)
+    # Correction precedes publication. The audit fixture's later planning main
+    # would require an unrelated integration before any remediation admission.
+    c.main_sha = c.base_sha
+    c.git(c.canonical, "reset", "--hard", c.main_sha)
+    c.git(c.repo, "reset", "--hard", c.main_sha)
     c.review.update(verdict="CHANGES_REQUIRED", findings=[{
         "id": "F1", "basis": next(iter(c.review["acceptance"])), "action": "EVIDENCE_ONLY",
         "location": "result", "issue": "Bounded finding", "expected": "Bounded correction"}])
@@ -260,8 +265,9 @@ def test_task406_direct_author_remediation_keeps_real_git_admission_without_audi
     c.save_review()
     task = yaml.safe_load((ROOT / ".ai/tasks/TASK-368.yaml").read_bytes())
     payload = {"finding_id": "F1", "action": "EVIDENCE_ONLY", "reviewed_sha": c.source_sha,
-               "modification_scope": [], "affected_verification": task["verification"]["required"][:1],
-               "constraints": [], "verification": {"policy": task["verification"]["policy"]}}
+               "modification_scope": [], "constraints": [],
+               "verification": {"policy": task["verification"]["policy"],
+                                "affected": task["verification"]["required"][:1]}}
     envelope = {"format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_REMEDIATION",
                 "identity": {"source_run_id": "RUN-368-001", "finding_id": "F1"},
                 "expected_state": {"expected_reviewed_sha": c.source_sha, "expected_review_decision_sha": c.review_sha},
@@ -274,6 +280,10 @@ def test_task406_direct_author_remediation_keeps_real_git_admission_without_audi
         envelope["expected_state"]["expected_reviewed_sha"] = "f" * 40
     elif fault == "scope":
         payload["modification_scope"] = ["outside-authorized-scope.py"]
+    elif fault == "missing_affected":
+        payload["affected_verification"] = payload["verification"].pop("affected")
+    elif fault == "conflicting_verification":
+        payload["affected_verification"] = ["unrelated verification"]
     def forbidden(*args, **kwargs):
         raise AssertionError("direct final remediation cannot depend on an audit/provider")
     monkeypatch.setattr("aios_renew.brain_context.canonical_audit_inputs", forbidden)

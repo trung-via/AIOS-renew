@@ -1797,9 +1797,10 @@ def test_task406_individually_authenticated_human_v1_keeps_exact_applicability(
         assert result.decision["audit_profile_ref"] == v1_only_package["audit_profile_ref"]
 
 
-@pytest.mark.parametrize("movement", ("main", "review", "artifact", "repository", "git"))
+@pytest.mark.parametrize("movement", ("main", "review", "artifact", "failure", "failure_artifacts", "authorization", "repository", "git"))
 def test_task406_currentness_stops_before_another_provider_call(
         registry, task406_canonical_audit_repo, monkeypatch, movement):
+    from aios_renew.brain_context import _THREE_FLOW_RUN
     c = task406_canonical_audit_repo
     supplied, contract, bindings, sources = task406_production_inputs(registry, "TASK_AUTHORING", c)
     calls = []
@@ -1809,7 +1810,11 @@ def test_task406_currentness_stops_before_another_provider_call(
             c.commit("canonical main moved during TASK-406 audit")
         elif movement in {"review", "artifact"}:
             kind = "review-decision" if movement == "review" else "artifacts"
-            c.git(c.canonical, "update-ref", f"refs/heads/aios/{kind}/RUN-406-002", c.source_sha)
+            c.git(c.canonical, "update-ref", f"refs/heads/aios/{kind}/{_THREE_FLOW_RUN}", c.source_sha)
+        elif movement in {"failure", "failure_artifacts", "authorization"}:
+            kind = {"failure": "failure", "failure_artifacts": "failure-artifacts", "authorization": "repair"}[movement]
+            failed_run = c.three_flow_lineage["failed_run_id"]
+            c.git(c.canonical, "update-ref", f"refs/heads/aios/{kind}/{failed_run}", c.source_sha)
         elif movement == "repository":
             c.git(c.repo, "config", "remote.origin.url", str(c.canonical) + "/.")
         else:

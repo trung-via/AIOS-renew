@@ -9,9 +9,17 @@ human_tca3_three_flow_activation_20261023:
   supersedes_planning_record: human_tca3_retrospective_priority_20261023
   implementation_task: TASK-406
   implementation_revision: 2
-  implementation_run: RUN-406-002
+  implementation_run: RUN-406-003
   required_review_mode: PRIMARY
   required_review_verdict: PASS
+  implementation_repair:
+    failed_run_id: RUN-406-002
+    failed_head_sha: cee20fb76df8fb93c05784135c508e1d5f678efa
+    failure_artifacts_sha: a20f9c799666556e02dc1e58de4f7698e65e5388
+    repair_id: REPAIR-406-002-001
+    action: CODE_FIX
+    repair_authorization_sha: 2b1ef613755e15a1795ccf4e2fefffd95bfcdf31
+    root_base_sha: b3344968cef482615244a77ded439330c50a2dc7
   activation_boundary: EXACT_TASK406_RUNTIME_RESULT_INDEPENDENT_REVIEW_PASS_PUBLISHER_SOURCE_ON_MAIN
   target_policy_format: AIOS_BRAIN_AUDIT_POLICY
   target_policy_version: 1
