@@ -118,14 +118,16 @@ _TCA_SUCCESSOR_DIGEST = "75f7644caf478f39b50279475b81583df6f894e519951199575873d
 _TCA_V3_ID = "tca-3"
 _ROA_SUCCESSOR_ID = "roa-1-r3"
 _ROA_SUCCESSOR_DIGEST = "cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a"
+_ROA_R4_ID = "roa-1-r4"
+_ROA_R4_DIGEST = "c1ac99d1997daf54db1d7ccf32073c50a10fba9aa46f9180b6d921a1cefec8b3"
 _TCA_SUCCESSOR_IDS = frozenset({_TCA_SUCCESSOR_ID, _TCA_V3_ID})
 _TCA_IDS = frozenset({_TCA_ID, _TCA_SUCCESSOR_ID, _TCA_V3_ID})
-_ROA_IDS = frozenset({_ROA_ID, _ROA_SUCCESSOR_ID})
+_ROA_IDS = frozenset({_ROA_ID, _ROA_SUCCESSOR_ID, _ROA_R4_ID})
 _AOA_ID = "aoa-1"
 _AOA_DIGEST = "7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b"
 _PROFILE_VERSIONS = {"brain-high-value-v2": 2, "brain-high-value-v3": 3,
                      _ADAPTIVE_ID: 1, _ROA_ID: 2, _MOA_ID: 1, _TCA_ID: 1, _AOA_ID: 1,
-                     _TCA_SUCCESSOR_ID: 2, _TCA_V3_ID: 3, _ROA_SUCCESSOR_ID: 3}
+                     _TCA_SUCCESSOR_ID: 2, _TCA_V3_ID: 3, _ROA_SUCCESSOR_ID: 3, _ROA_R4_ID: 4}
 _AOA_CONSTRUCT_IDS = (
     "HUMAN_OUTCOME_AND_NECESSITY", "COUNTERFACTUAL_ALTERNATIVES", "EPISODE_COST_AND_EXTERNALITIES",
     "DISCRIMINATING_INFORMATION", "THREATS_AUTHORITY_AND_REVERSIBILITY",
@@ -579,7 +581,8 @@ def _roa_profile(value: dict[str, Any]) -> dict[str, Any]:
             raise BrainAuditError("unknown, duplicate or out-of-order ROA check")
         _text(check["check"], _ROA_BOUNDS["check_bytes"], "ROA check instruction")
     _bounded(profile, 8192, "ROA profile")
-    if _digest(profile) != {_ROA_ID: _ROA_DIGEST, _ROA_SUCCESSOR_ID: _ROA_SUCCESSOR_DIGEST}[profile["id"]]:
+    if _digest(profile) != {_ROA_ID: _ROA_DIGEST, _ROA_SUCCESSOR_ID: _ROA_SUCCESSOR_DIGEST,
+                            _ROA_R4_ID: _ROA_R4_DIGEST}[profile["id"]]:
         raise BrainAuditError("unsupported ROA profile content")
     return profile
 
@@ -686,8 +689,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     if registry["format"] != "AIOS_BRAIN_AUDIT_PROFILES" or type(registry["version"]) is not int or registry["version"] != 1:
         raise BrainAuditError("unknown audit-profile registry")
     profiles = registry["profiles"]
-    if type(profiles) is not list or not 1 <= len(profiles) <= 10:
-        raise BrainAuditError("registry requires one to ten recognized profiles")
+    if type(profiles) is not list or not 1 <= len(profiles) <= 11:
+        raise BrainAuditError("registry requires one to eleven recognized profiles")
     normalized = [_profile(profile) for profile in profiles]
     if len({profile["id"] for profile in normalized}) != len(normalized):
         raise BrainAuditError("duplicate profile identity")
@@ -1034,6 +1037,152 @@ def _roa_source(path: str, value: Any) -> dict[str, str]:
     return {"path": path, "digest": _digest(value)}
 
 
+def _roa_r4_sources(body: dict[str, Any], sources: dict[str, Any]) -> None:
+    """Bind isolated, caller-authenticated projections, never discover or verify.
+
+    This checks transport conformance, not the truth of source assertions or a
+    repair strategy. Brain must still discriminate causes and falsify its lever.
+    Missing sections remain explicit UNKNOWN sources; providers cannot fill them.
+    """
+    sources.update(verification=None, comparison=None, readiness=None)
+    observation = body["bounded_observations"]
+    context = observation.get("repair_context") if type(observation) is dict else None
+    if context is None:
+        return
+    _normal(context, depth=0, max_depth=32, private=True, v3=True, adaptive=True)
+    _bounded(context, 65536, "R4 source context")
+    _fields(context, {"run", "verification", "comparison", "completion"}, "R4 source context")
+    run = context["run"]
+    if run is None:
+        return
+    _fields(run, {"run_id", "task", "base_sha", "head_sha", "failure_artifacts_sha",
+                  "executor", "verification_policy"}, "R4 immutable RUN projection")
+    facts, target = body["canonical_facts"], body["subject"]
+    contract = facts.get("task_contract") or {}
+    correction = facts.get("correction_subject") or {}
+    if (run["run_id"] != target["failed_run_id"] or run["head_sha"] != target["failed_head_sha"]
+            or _json(run["task"]) != _json(facts["selected_task"])
+            or run["failure_artifacts_sha"] != correction.get("artifacts_sha", target.get("failure_artifacts_sha"))):
+        raise BrainAuditError("R4 RUN/TASK/HEAD/FAILURE binding mismatch")
+    for key in ("base_sha", "head_sha", "failure_artifacts_sha"):
+        _git_sha(run[key], f"R4 {key}")
+    _text(run["executor"], 128, "R4 admitted Executor")
+    if _json(run["verification_policy"]) != _json(contract.get("verification")):
+        raise BrainAuditError("R4 original verification policy mismatch")
+    policy = run["verification_policy"]
+    required = policy.get("required") if type(policy) is dict else None
+    ledger = context["verification"]
+    if ledger is not None and required is not None:
+        if (type(required) is not list or not 1 <= len(required) <= 256
+                or type(ledger) is not list or len(ledger) != len(required)):
+            raise BrainAuditError("R4 requires every ordered verification command")
+        stopped = False
+        for index, (command, entry) in enumerate(zip(required, ledger), 1):
+            _text(command, 4096, "R4 required command")
+            _fields(entry, {"command", "status", "evidence"}, "R4 verification entry")
+            status, evidence = entry["status"], entry["evidence"]
+            if entry["command"] != command or status not in ("PASS", "FAIL", "NOT_RUN", "UNKNOWN"):
+                raise BrainAuditError("R4 verification order or status mismatch")
+            if status in ("PASS", "FAIL"):
+                if stopped or observation.get("phase") != "VERIFICATION":
+                    raise BrainAuditError("R4 cannot invent verification past the failure boundary")
+                _fields(evidence, {"evidence_id", "owner", "run_id", "subject_sha", "artifacts_sha",
+                                   "command", "exit_code"}, "R4 original Runtime evidence")
+                if (evidence["owner"] != "RUNTIME" or evidence["run_id"] != run["run_id"]
+                        or evidence["subject_sha"] != run["head_sha"]
+                        or evidence["artifacts_sha"] != run["failure_artifacts_sha"]
+                        or evidence["evidence_id"] != f"{run['run_id']}-V{index:03d}"
+                        or evidence["command"] != command or type(evidence["exit_code"]) is not int
+                        or (evidence["exit_code"] == 0) != (status == "PASS")):
+                    raise BrainAuditError("R4 PASS/FAIL requires exact original Runtime evidence")
+                stopped = status == "FAIL"
+            elif evidence is not None:
+                raise BrainAuditError("R4 unobserved verification cannot carry proof")
+            if status == "NOT_RUN":
+                stopped = True
+        sources["verification"] = _roa_source("bounded_observations.repair_context.verification", {
+            "run": run, "verification": ledger})
+    comparison = context["comparison"]
+    if comparison is not None:
+        _fields(comparison, {"base_sha", "failed_head_sha", "current_head_sha", "main_sha", "worktree_status",
+                             "failed_changed_paths", "prospective_changed_paths", "source_material"}, "R4 comparison")
+        if (comparison["base_sha"] != run["base_sha"] or comparison["failed_head_sha"] != run["head_sha"]
+                or comparison["main_sha"] != facts["main_sha"]
+                or comparison["worktree_status"] not in ("CLEAN_COMMITTED", "DIRTY", "UNKNOWN")
+                or comparison["failed_changed_paths"] != target.get("failed_changed_files")):
+            raise BrainAuditError("R4 baseline/failed/current source binding mismatch")
+        _git_sha(comparison["current_head_sha"], "R4 current candidate")
+        scope = contract.get("scope") or {}
+        for key in ("inspect", "modify"):
+            _tca_texts(scope.get(key, []), 256, f"R4 authorized {key} paths")
+        readable = set(scope.get("inspect", [])) | set(scope.get("modify", []))
+        for key in ("failed_changed_paths", "prospective_changed_paths"):
+            _tca_texts(comparison[key], 256, f"R4 {key}")
+        if not set(comparison["prospective_changed_paths"]) <= set(scope.get("modify", [])):
+            raise BrainAuditError("R4 prospective changes exceed original modify authority")
+        material = comparison["source_material"]
+        if type(material) is not list or len(material) > 16:
+            raise BrainAuditError("R4 source excerpts exceed bound")
+        seen, roles = set(), set()
+        revisions = {"BASELINE": run["base_sha"], "FAILED": run["head_sha"],
+                     "CURRENT": comparison["current_head_sha"], "CONSUMER": comparison["current_head_sha"]}
+        for excerpt in material:
+            _fields(excerpt, {"role", "source_sha", "path", "content", "sha256"}, "R4 source excerpt")
+            _text(excerpt["path"], 2048, "R4 source path")
+            if (type(excerpt["role"]) is not str or excerpt["role"] not in revisions or excerpt["source_sha"] != revisions[excerpt["role"]]
+                    or excerpt["path"] not in readable):
+                raise BrainAuditError("R4 source revision or inspection authority mismatch")
+            _text(excerpt["content"], 2048, "R4 source excerpt")
+            if excerpt["sha256"] != hashlib.sha256(excerpt["content"].encode("utf-8")).hexdigest():
+                raise BrainAuditError("R4 source excerpt fingerprint mismatch")
+            identity = (excerpt["role"], excerpt["path"])
+            if identity in seen:
+                raise BrainAuditError("duplicate R4 source excerpt")
+            seen.add(identity)
+            roles.add(excerpt["role"])
+        # A complete comparison needs both candidates and baseline/consumer
+        # context. These excerpts are not a baseline PASS or full test coverage.
+        if roles == set(revisions):
+            sources["comparison"] = _roa_source("bounded_observations.repair_context.comparison", comparison)
+    completion = context["completion"]
+    if completion is not None:
+        _fields(completion, {"head_sha", "acceptance_ids", "claimed_acceptance_ids", "claims", "evidence", "unresolved",
+                             "result_package_status"}, "R4 completion projection")
+        if (comparison is None or completion["head_sha"] != comparison["current_head_sha"]
+                or completion["acceptance_ids"] != [c["id"] for c in contract.get("acceptance", [])]
+                or completion["result_package_status"] not in ("PRESENT", "ABSENT", "MALFORMED")):
+            raise BrainAuditError("R4 completion identity or original acceptance mismatch")
+        _tca_texts(completion["claimed_acceptance_ids"], 256, "R4 claimed acceptance")
+        _tca_texts(completion["unresolved"], 256, "R4 unresolved work")
+        if not set(completion["claimed_acceptance_ids"]) <= set(completion["acceptance_ids"]):
+            raise BrainAuditError("R4 completion invents acceptance")
+        claims, evidence = completion["claims"], completion["evidence"]
+        if type(claims) is not list or len(claims) > 256 or type(evidence) is not list or len(evidence) > 256:
+            raise BrainAuditError("R4 completion claims/evidence exceed bound")
+        evidence_ids, claim_ids, coverage = set(), set(), set()
+        for item in evidence:
+            _fields(item, {"evidence_id", "subject_sha"}, "R4 completion evidence reference")
+            _text(item["evidence_id"], 256, "R4 completion evidence identity")
+            if item["subject_sha"] != completion["head_sha"] or item["evidence_id"] in evidence_ids:
+                raise BrainAuditError("R4 completion evidence identity mismatch")
+            evidence_ids.add(item["evidence_id"])
+        for claim in claims:
+            _fields(claim, {"id", "satisfies", "claim", "evidence"}, "R4 completion claim")
+            _text(claim["id"], 256, "R4 claim identity")
+            _text(claim["claim"], 2048, "R4 implementation claim")
+            _tca_texts(claim["satisfies"], 256, "R4 claim acceptance")
+            _tca_texts(claim["evidence"], 16, "R4 claim evidence")
+            if (claim["id"] in claim_ids or not set(claim["satisfies"]) <= set(completion["acceptance_ids"])
+                    or not set(claim["evidence"]) <= evidence_ids):
+                raise BrainAuditError("R4 completion claim identity/coverage/evidence mismatch")
+            claim_ids.add(claim["id"])
+            coverage.update(claim["satisfies"])
+        if coverage != set(completion["claimed_acceptance_ids"]):
+            raise BrainAuditError("R4 completion coverage contradicts actual claims")
+        sources["readiness"] = _roa_source("bounded_observations.repair_context.completion", {
+            "run": run, "comparison": comparison, "completion": completion})
+
+
 def construct_roa_subject(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[str, Any],
                           return_contract_ref: Mapping[str, Any],
                           external_bindings: Mapping[str, Any]) -> dict[str, Any]:
@@ -1108,7 +1257,7 @@ def construct_roa_subject(packet: DecisionPacket | Mapping[str, Any], profile: M
                 and facts.get("canonical_next_action") in ("AUTHOR_REPAIR", "EXECUTE_REPAIR")
                 and body["canonical_blocker"] is None):
             sources["authorization"] = _roa_source("canonical_facts.task_contract", contract)
-    if policy["id"] == _ROA_SUCCESSOR_ID and sources["authorization"] is not None:
+    if policy["id"] in {_ROA_SUCCESSOR_ID, _ROA_R4_ID} and sources["authorization"] is not None:
         acceptance = contract.get("acceptance")
         # A completion strategy needs the entire original acceptance, not just
         # the subset the failed ResultPackage happened to claim.
@@ -1137,6 +1286,8 @@ def construct_roa_subject(packet: DecisionPacket | Mapping[str, Any], profile: M
     elif (prior is not None or facts.get("canonical_next_action") != "AUTHOR_REPAIR"
           or body["selection_basis"] != "UNIFIED_STATE_AUTHOR_REPAIR"):
         sources["authorization"] = None
+    if policy["id"] == _ROA_R4_ID:
+        _roa_r4_sources(body, sources)
     result = {
         "format": "AIOS_ROA_SUBJECT", "version": 1,
         "packet_fingerprint": body["packet_fingerprint"],
@@ -1162,6 +1313,9 @@ def _roa_candidate(value: Any, policy: dict[str, Any], body: dict[str, Any],
             raise BrainAuditError(f"ROA final candidate {key} binding mismatch")
     if candidate["action"] not in ("CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"):
         raise BrainAuditError("unknown ROA repair action")
+    if (policy["id"] == _ROA_R4_ID and candidate["action"] in {"NO_CHANGE", "FINALIZE_CANDIDATE"}
+            and candidate["modification_scope"] != []):
+        raise BrainAuditError("R4 completion/no-change lever cannot authorize source edits")
     contract = body["canonical_facts"]["task_contract"]
     scope = candidate["modification_scope"]
     if (type(scope) is not list or any(type(p) is not str for p in scope)
@@ -1203,7 +1357,9 @@ def validate_roa(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[st
         raise BrainAuditError("ROA requires exactly five check results")
     sources = bound["sources"]
     required_roles = ("failure", "evidence", "evidence", "evidence", "authorization")
-    for identity, role, check in zip(_ROA_CHECK_IDS, required_roles, checks):
+    r4_roles = (("verification",), ("comparison",), ("comparison", "authorization"),
+                ("comparison", "verification"), ("readiness",))
+    for index, (identity, role, check) in enumerate(zip(_ROA_CHECK_IDS, required_roles, checks)):
         _fields(check, {"id", "outcome", "knowledge", "basis", "evidence_refs"}, "ROA check result")
         _normal(check, depth=0, max_depth=32, private=True, v3=True, adaptive=True)
         if (check["id"] != identity or check["outcome"] not in ("CLEAR", "BLOCKER")
@@ -1216,13 +1372,18 @@ def validate_roa(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[st
         if (len({_json(ref) for ref in refs}) != len(refs)
                 or any(ref not in [s for s in sources.values() if s is not None] for ref in refs)):
             raise BrainAuditError("forged or duplicate ROA evidence reference")
-        if sources[role] is None and (check["knowledge"] != "UNKNOWN" or check["outcome"] != "BLOCKER"):
+        roles = (role,) + (r4_roles[index] if policy["id"] == _ROA_R4_ID else ())
+        if any(sources[r] is None for r in roles) and (check["knowledge"] != "UNKNOWN" or check["outcome"] != "BLOCKER"):
             raise BrainAuditError("missing decisive ROA source requires UNKNOWN blocker")
         if check["knowledge"] == "UNKNOWN":
             if check["outcome"] != "BLOCKER":
                 raise BrainAuditError("UNKNOWN cannot discharge a ROA check")
-        elif sources[role] not in refs:
+        elif any(sources[r] not in refs for r in roles):
             raise BrainAuditError("ROA judgment lacks its discriminating source")
+    if policy["id"] == _ROA_R4_ID and sources["comparison"] is not None:
+        comparison = body["bounded_observations"]["repair_context"]["comparison"]
+        if comparison["worktree_status"] != "CLEAN_COMMITTED" and checks[4]["outcome"] != "BLOCKER":
+            raise BrainAuditError("R4 dirty or unknown currentness cannot discharge readiness")
     closure = _fields(material["closure"], {"outcome", "knowledge", "summary", "candidate_fingerprint"}, "ROA final closure")
     _text(closure["summary"], policy["bounds"]["closure_summary_bytes"], "ROA closure summary")
     _normal(closure["summary"], depth=0, max_depth=32, private=True)

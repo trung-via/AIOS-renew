@@ -1007,7 +1007,7 @@ def canonical_audit_inputs(
     from a separate trusted, caller-owned input channel. Neither is inferred
     from packet text, a provenance label, or model-provided authority digests.
     """
-    from .brain_audit import _packet, normalize_audit_policy, profile_ref, _ADAPTIVE_ID, _ADAPTIVE_DIGEST
+    from .brain_audit import _packet, normalize_audit_policy, profile_ref, _ADAPTIVE_ID, _ADAPTIVE_DIGEST, _ROA_R4_ID
     from .brain_provider_protocol import _AUDITED, _audit_selection, _contract_package, _bindings, _normal
     from .brain_sync import _resolve_repository_name
     from .brain_return_contract import select_return_contract
@@ -1015,6 +1015,9 @@ def canonical_audit_inputs(
 
     try:
         body = _packet(packet)
+        if (audit_profile_package is not None
+                and audit_profile_package.get("audit_profile_ref", {}).get("id") == _ROA_R4_ID):
+            raise BrainContextError("prepared ROA R4 cannot replace the live R3 selection")
         if body["selected_flow"] == "REMEDIATION_AUTHORING":
             raise BrainContextError("remediation has no current audit; use direct AUTHOR_REMEDIATION")
         root = resolve_repository(repo)

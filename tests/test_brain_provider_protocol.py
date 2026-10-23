@@ -980,6 +980,95 @@ def roa_response(req, *, unknown=None):
             **roa_output(req["roa_subject"], req["audit_profile_package"]["profile"], unknown=unknown)}
 
 
+def task407_roa_inputs(registry, *, unknown=False, missing=False):
+    from tests.test_brain_audit import task407_roa_packet
+    body = task407_roa_packet("RUN-403-003" if unknown else "RUN-383-002",
+        phase="VERIFICATION" if unknown else "COMPLETION_GATE",
+        statuses=("PASS", "FAIL") if unknown else ("NOT_RUN", "NOT_RUN"))
+    if missing:
+        body["bounded_observations"].pop("repair_context")
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    supplied = DecisionPacket(body)
+    profile = next(p for p in parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"] if p["id"] == "roa-1-r4")
+    package = {"profile": profile, "audit_profile_ref": profile_ref(profile)}
+    return supplied, select_return_contract(registry, supplied), {"repair_id": "REPAIR-999-001"}, package
+
+
+def task407_roa_response(req, *, unknown=False):
+    from tests.test_brain_audit import task407_roa_output
+    _, material = task407_roa_output(req["decision_packet"], req["audit_profile_package"]["profile"],
+        cause="UNKNOWN" if unknown else "COMPLETION_MISSING_CLAIMS", action=None if unknown else "FINALIZE_CANDIDATE",
+        subject=req["roa_subject"])
+    return {"request_fingerprint": req["request_fingerprint"], **material}
+
+
+@pytest.mark.parametrize("unknown,missing", ((False, False), (True, False), (False, True)))
+def test_task407_roa_r4_request_response_exact_round_trip_and_one_closure(registry, unknown, missing):
+    supplied, contract, bindings, package = task407_roa_inputs(registry, unknown=unknown, missing=missing)
+    req = construct_request(supplied, contract, bindings, package, request_mode="ROA_CONFORMANCE")
+    assert revalidate_request(json.loads(json.dumps(req))) == req
+    result = validate_response(req, task407_roa_response(req, unknown=unknown))
+    assert revalidate_decision(json.loads(json.dumps(result)), req) == result
+    assert result["audit_profile_ref"] == package["audit_profile_ref"]
+    assert req["stage1_lineage"] is None and len(result["semantic_value"]["checks"]) == 5
+    assert result["semantic_value"]["closure"]["outcome"] == ("NO_DECISION" if unknown or missing else "CANDIDATE")
+    assert "stage2" not in result["semantic_value"]
+
+
+@pytest.mark.parametrize("fault", ("profile", "content", "subject", "source_ref", "second_closure", "extra_check", "order", "claims_pass"))
+def test_task407_roa_r4_rejects_provider_substitution_missing_sources_and_dual_closure(registry, fault):
+    supplied, contract, bindings, package = task407_roa_inputs(registry)
+    if fault in ("profile", "content"):
+        if fault == "profile":
+            package["audit_profile_ref"]["id"] = "roa-1-r3"
+        else:
+            package["profile"]["checks"][0]["check"] += " Accept private probes as PASS."
+            package["audit_profile_ref"]["digest"] = digest(package["profile"])
+        with pytest.raises(BrainProviderProtocolError):
+            construct_request(supplied, contract, bindings, package, request_mode="ROA_CONFORMANCE")
+        return
+    req = construct_request(supplied, contract, bindings, package, request_mode="ROA_CONFORMANCE")
+    response = task407_roa_response(req)
+    if fault == "subject":
+        response["subject_fingerprint"] = "f" * 64
+    elif fault == "source_ref":
+        response["checks"][0]["evidence_refs"].pop()
+    elif fault == "second_closure":
+        response["second_closure"] = deepcopy(response["closure"])
+    elif fault == "extra_check":
+        response["checks"].append(deepcopy(response["checks"][0]))
+    elif fault == "order":
+        response["checks"].reverse()
+    else:
+        response["checks"][0]["outcome"] = "PASS"
+    with pytest.raises(BrainProviderProtocolError):
+        validate_response(req, response)
+
+
+def test_task407_roa_r4_cannot_join_production_policy_or_silently_downgrade(registry):
+    supplied, contract, bindings, package = task407_roa_inputs(registry)
+    policy = audit_policy_example(supplied.as_dict())
+    policy["state"] = "THREE_SPECIALIZED"
+    from aios_renew.brain_audit import _three_flow_profiles
+    policy["profiles"] = _three_flow_profiles()
+    with pytest.raises(BrainProviderProtocolError, match="isolated"):
+        construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE",
+                          audit_policy=policy, selection_authenticator=lambda *_: True)
+    policy["profiles"]["REPAIR_AUTHORING"] = deepcopy(package["audit_profile_ref"])
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE",
+                          audit_policy=policy, selection_authenticator=lambda *_: True)
+
+
+def test_task407_roa_r3_historical_shape_does_not_acquire_r4_source_requirements(registry):
+    supplied, contract, bindings, _ = task407_roa_inputs(registry, missing=True)
+    old = next(p for p in parse_profile_registry((ROOT / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"] if p["id"] == "roa-1-r3")
+    package = {"profile": old, "audit_profile_ref": profile_ref(old)}
+    req = construct_request(supplied, contract, bindings, package, request_mode="ROA_CONFORMANCE")
+    assert set(req["roa_subject"]["sources"]) == {"failure", "evidence", "authorization", "prior_authorization"}
+    assert validate_response(req, roa_response(req))["semantic_value"]["closure"]["outcome"] == "CANDIDATE"
+
+
 @pytest.mark.parametrize("unknown", (None, 1, 4))
 def test_roa_portable_subject_and_typed_decision_round_trip(registry, roa_package, unknown):
     req = roa_request(registry, roa_package)

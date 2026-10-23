@@ -874,3 +874,73 @@ profiles:
       outcome_bytes: 262144
       source_context_bytes: 65536
       max_depth: 32
+
+  - id: roa-1-r4
+    version: 4
+    applicable_flows:
+    - REPAIR_AUTHORING
+    checks:
+    - id: EXACT_FAILURE_BOUNDARY
+      check: Bind exact immutable failed RUN, TASK revision, failed HEAD and FAILURE artifact, original
+        baseline and current candidate. Reconstruct EVERY authored verification.required command in original
+        order as PASS/FAIL/NOT_RUN/UNKNOWN with exact Runtime evidence identity and exit status; first V001
+        FAIL leaves V002 NOT_RUN, never PASS. Distinguish EXECUTION, COMPLETION_GATE, VERIFICATION, worktree
+        state and pre-RUN transport. Private diagnostic probes, Runtime proof still pending, missing evidence,
+        dirty source and repeated test nodes establish no verified PASS. Missing decisive identity or coverage
+        is UNKNOWN/BLOCKER.
+    - id: EVIDENCE_DISCRIMINATING_CAUSE
+      check: 'Discriminate each currently evidenced cause with bounded authentic failure, baseline, failed-candidate,
+        current source, test/fixture/API/AST and one-hop consumer excerpts where material. Separate CODE_TEST_REGRESSION,
+        BASELINE_FIXTURE_INCOMPATIBILITY, NATIVE_EXIT, COMPLETION_MISSING_CLAIMS, COMPLETION_UNRESOLVED,
+        FINAL_RESPONSE_RESULT_PACKAGE and UNKNOWN; do not infer a code defect from an absent claim. RUN-403-002
+        newline fixture drift does not explain RUN-403-003 merely because the node repeats: that second
+        exact traceback remains UNKNOWN. Bind fresh cause to exact HEAD/FAILURE; missing or stale evidence
+        cannot discharge it.'
+    - id: MATERIAL_REPAIR_LEVER
+      check: Present one evidence-supported frontier of ALL currently known material blockers, including
+        unknown/unresolved obligations; never claim exhaustive unseen failures. Explain the smallest eligible
+        existing lever CODE_FIX, NO_CHANGE, CONTINUE_IMPLEMENTATION or FINALIZE_CANDIDATE that covers that
+        frontier, separating implementation obligations from completion shape. Missing-claims-only with
+        established implementation may support FINALIZE_CANDIDATE; genuinely unresolved code cannot. Map
+        every modification_scope entry to original TASK scope.modify, never inspect permission. Preserve
+        out-of-scope AST/API/test conflicts and unknown causes as blockers, not forced CODE_FIX or a generic
+        automatic correction selector. Brain proposes; Human/Runtime authorize separately.
+    - id: FALSIFYING_CHALLENGE
+      check: 'For EACH evidenced blocker articulate a concrete correction counterexample, expected effect,
+        decision-relevant baseline recheck and the next unobserved required verification command by exact
+        text. Challenge the proposed delta against additional implicated tests, fixtures, API/AST and bounded
+        consumers: would another exposed failure invalidate it? First-command failure cannot imply later-command
+        success; repeated node cannot reuse a stale traceback. Use minimum sufficient informative authorized
+        probes only; private results are advisory, no automatic full suite, baseline-equivalent nonzero
+        waiver, repair scheduling or Runtime verification. Unsupported counterexample/effect is UNKNOWN/BLOCKER.'
+    - id: LAWFUL_READINESS
+      check: Reconcile original AC1..ACn, complete truthful ResultPackage claims/evidence/unresolved and
+        identity with exact failed HEAD, baseline, current committed candidate, clean/dirty currentness
+        and correction lineage. Preserve sticky admitted Executor and original verification policy including
+        worker policy; implementation claims must be establishable before Runtime verification, never claim-first
+        PASS or invented proof. Missing claims alone differ from genuinely unresolved work; preserve every
+        material unknown/unresolved blocker. Runtime owns verification/EVIDENCE and completion gate, Reviewer
+        semantic PASS, Publisher exact inclusion. Return exactly five checks and one REPAIR_OUTCOME_AUDIT
+        CANDIDATE/NO_DECISION closure; missing decisive evidence/authority means UNKNOWN/BLOCKER/NO_DECISION.
+        R4 is prepared isolated support only, never self-activation.
+    procedure:
+      name: REPAIR_OUTCOME_AUDIT
+      check_outcomes:
+      - CLEAR
+      - BLOCKER
+      knowledge_states:
+      - OBSERVED
+      - INFERRED
+      - UNKNOWN
+      final_outcomes:
+      - CANDIDATE
+      - NO_DECISION
+      final_closure: true
+    bounds:
+      check_bytes: 2048
+      candidate_bytes: 131072
+      basis_bytes: 4096
+      evidence_refs_per_check: 4
+      closure_summary_bytes: 4096
+      outcome_bytes: 196608
+      max_depth: 32

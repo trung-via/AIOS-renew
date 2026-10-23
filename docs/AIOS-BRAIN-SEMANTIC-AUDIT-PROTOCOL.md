@@ -1,6 +1,6 @@
 # AIOS Brain Semantic Audit Protocol — Planning Evidence
 
-Status: HISTORICAL BP-4A HUMAN/BRAIN PLANNING BASELINE; prospective V1 in section 18, isolated ROA support in section 19
+Status: HISTORICAL BP-4A planning baseline; current three-flow policy in section 26; prepared isolated ROA R4 in section 27
 Canonical evidence cut: main 63dce92adb271ea78d04bcd151df91a8ed260ff7
 Scope: read-only retrospective plus BP-4A architecture intent; no implementation authority
 
@@ -15,6 +15,7 @@ Section 23 describes the authenticated historical FOUR_SPECIALIZED mapping;
 section 24 records the earlier successors. Section 26 is the current prospective
 TASK-406 three-flow decision and supersedes earlier default-selection requirements.
 All earlier MOA/four-flow selection instructions are historical after that cutover.
+Section 27 prepares ROA-1 R4 without changing the live ROA-1 R3 selection.
 
 ## 1. Purpose
 
@@ -1933,3 +1934,145 @@ Old admitted selections stay pinned or stop stale; they never silently become a
 new policy. The committed implementation and Executor claims establish these
 mechanisms only. Runtime owns verification, Reviewer independently judges this
 TASK-406, and Publisher alone publishes its approved source.
+
+
+## 27. TASK-407 prepared ROA-1 R4; R3 remains live
+
+The Human-approved TASK-370..403 retrospective prepares a separate
+`roa-1-r4` version 4, digest
+`c1ac99d1997daf54db1d7ccf32073c50a10fba9aa46f9180b6d921a1cefec8b3`,
+applicable only to `REPAIR_AUTHORING`. It preserves the five ordered checks
+`EXACT_FAILURE_BOUNDARY`, `EVIDENCE_DISCRIMINATING_CAUSE`,
+`MATERIAL_REPAIR_LEVER`, `FALSIFYING_CHALLENGE`, `LAWFUL_READINESS`, and one
+`REPAIR_OUTCOME_AUDIT` closure with `CANDIDATE`/`NO_DECISION`. There is no second
+stage, normative audit, semantic reviewer or automatic repair selector.
+
+The eleven recognized identities fit the unchanged strict 65,536 UTF-8 registry
+byte ceiling. Only the finite count allowlist grows from ten to eleven. All ten
+previous profile bodies, versions, digests and historical registry bytes remain
+intact; modified content cannot be accepted by rehashing or renaming a profile.
+R4 retains the existing ROA bounds: 2,048 instruction bytes, 4,096 basis/closure
+bytes, four evidence references per check, 131,072 candidate bytes, 196,608 outcome
+bytes and depth 32. Existing packet/request/native transport ceilings still apply.
+
+### 27.1. Exact bounded source projections
+
+Isolated callers supply authenticated bounded source material inside the existing
+Decision Packet's `bounded_observations.repair_context`. No production packet
+composer, direct authoring ingress or canonical artifact schema changes. This
+transient context is a projection of source facts, not another lifecycle store,
+verifier or authenticity issuer. Hashes bind supplied content; the trusted caller
+must independently authenticate reads and currentness before constructing a packet.
+The provider cannot add, replace or complete these sources in its response.
+
+The closed context has four sections, each nullable when unavailable:
+
+| Section | Bound source content |
+| --- | --- |
+| `run` | `run_id`, exact `task` id/revision, `base_sha`, `head_sha`, `failure_artifacts_sha`, admitted `executor`, entire original `verification_policy`. Bind failed RUN/TASK/HEAD/FAILURE and original TASK verification exactly. |
+| `verification` | Every original `verification.required` command in order, each with `command`, `status` (`PASS`, `FAIL`, `NOT_RUN`, `UNKNOWN`) and `evidence`. PASS/FAIL requires original Runtime owner, exact RUN/HEAD/artifact/command, `RUN-...-V001` identity and integer exit code consistent with status. NOT_RUN/UNKNOWN has null evidence. No observed command follows a known failure or NOT_RUN boundary; UNKNOWN alone does not prove execution stopped. |
+| `comparison` | Exact `base_sha`, `failed_head_sha`, `current_head_sha`, `main_sha`, `worktree_status` (`CLEAN_COMMITTED`, `DIRTY`, `UNKNOWN`), failed/prospective changed paths, bounded `source_material`. Prospective changes must be in original `scope.modify`. |
+| `completion` | Exact current `head_sha`, all original ordered `acceptance_ids`, `claimed_acceptance_ids`, bounded actual `claims`, compact `evidence` references, `unresolved`, and `result_package_status` (`PRESENT`, `ABSENT`, `MALFORMED`). Each claim has `id`, `satisfies`, concrete `claim` and evidence IDs. Coverage must equal the actual claims, without invented IDs. Evidence references contain only `evidence_id` and the exact `subject_sha`. Empty evidence remains valid and implies no verified PASS. |
+
+Context is capped at 65,536 JSON bytes. Verification, acceptance, claims and
+completion evidence have at most 256 entries; claim evidence references have at
+most sixteen entries. Comparison has at most sixteen excerpts, each with `role`
+(`BASELINE`, `FAILED`, `CURRENT`, `CONSUMER`), immutable `source_sha`, authorized
+repository-relative `path`, at most 2,048 UTF-8 bytes of `content`, and exact
+SHA-256 of those excerpt bytes. All four source roles are required to discharge
+comparison, binding baseline and failed/current candidate plus a bounded consumer.
+Inspection authority permits only reading; an inspect-only AST/test guard never
+becomes modification authority. Raw logs, credentials, local paths, private probes
+and nested audits retain the existing privacy exclusions. Private diagnostic
+results are advisory and cannot become original Runtime PASS/FAIL evidence.
+
+Subject source references fingerprint verification together with the immutable RUN,
+comparison excerpts, and completion together with RUN/currentness. Checks require
+these additional references respectively: verification; comparison; comparison and
+authorization; comparison and verification; readiness. Missing decisive context or
+source roles requires UNKNOWN/BLOCKER. Dirty/unknown currentness cannot discharge
+readiness. Source identity/order/digest violations reject. The same existing closed
+five judgment fields and one closure remain the semantic response contract; the
+validator does not infer a cause, choose a repair or certify semantic truth.
+
+### 27.2. Known blockers, correction falsifiers and truthful completion
+
+The first check reconstructs the complete ordered coverage, distinguishing Runtime
+VERIFICATION, EXECUTION, COMPLETION_GATE, worktree state and pre-RUN transport.
+V001 FAIL does not establish V002 PASS: the latter remains NOT_RUN or UNKNOWN.
+A pre-RUN event cannot mint an admitted failed RUN or canonical verification proof.
+The cause check distinguishes code/test regression, baseline/fixture incompatibility,
+native exit, missing claims, genuinely unresolved implementation, malformed final
+response/ResultPackage, and unknown. Bind each cause to fresh exact sources, including
+baseline, tests/fixtures/API/AST and bounded consumers when material.
+
+The lever check presents one frontier of all currently evidenced material blockers;
+it does not claim knowledge of unobserved failures. It proposes the smallest
+supported existing `CODE_FIX`, `NO_CHANGE`, `CONTINUE_IMPLEMENTATION` or
+`FINALIZE_CANDIDATE`, preserving unknown/unresolved blockers and original modify
+scope. Completion/no-change levers have empty modification scope. Missing claims
+alone can support finalization only where every implementation assertion can be
+truthfully established. A doc/test mismatch or unestablished AC is not repaired by
+adding claims. Out-of-scope necessary edits remain blockers.
+
+For each evidenced blocker, state a concrete correction counterexample and expected
+effect, identify each next unobserved required command by its exact text, and state
+whether a newly exposed failure would invalidate the candidate. Recheck baseline
+only when decision-relevant; use minimum sufficient authorized probes, with no
+mandatory full suite, redundant baseline replay or baseline-equivalent nonzero
+waiver. The readiness check preserves every original AC, exact correction lineage,
+truthful complete claims/evidence/unresolved/identity, sticky admitted Executor and
+original verification/worker policy. Implementation assertions are establishable
+before Runtime verification; no claim-first PASS is required or manufactured.
+Runtime owns canonical verification/EVIDENCE and completion gate, Reviewer semantic
+PASS, Publisher exact source inclusion, Executor authorized implementation.
+
+Conformance fixtures use synthetic source projections of the supplied retrospective,
+not reconstructed raw Runtime artifacts. They distinguish RUN-372-001/002 and
+RUN-403-001/002 coverage gaps; RUN-383-002, RUN-391-013, RUN-398-002/003 missing
+claims/no delta; RUN-384 unresolved completion; RUN-398-004 genuinely unfinished
+doc/test work; TASK-391 r1 AC12 AST/API/modify conflict; RUN-401-002 native and
+RUN-393 pre-RUN dirty/transport boundaries. RUN-403-002's newline fixture mismatch
+does not establish RUN-403-003's root: V001 PASS/V002 FAIL at the same node after a
+newline-only change still leaves the second exact cause UNKNOWN. Historical TCA-3
+illustrative multi-cause examples are not new evidence of that missing traceback.
+The 53 FAILURE artifacts (28 VERIFICATION, 18 COMPLETION_GATE, 7 EXECUTION) and
+43 repair authorizations are snapshot/ref counts, not independent bugs or an ROI
+measurement. Future paired episodes, separately authorized, must test benefit.
+
+### 27.3. Isolated protocol, unchanged live selection and planning authority
+
+`construct_roa_subject` / `validate_roa`, existing request/response revalidation,
+and `attempt(..., conformance_only=True)` support exact R4 in `ROA_CONFORMANCE`.
+Mapping and JSON native transports share one response, one closure and one provider
+call. Fresh packet reconstruction must match before return; moved source, policy,
+Executor, failure or identity stops the call without retry, fallback or downgrade.
+Malformed/duplicate/extra judgments, forged source references, missing evidence
+claimed as CLEAR, extra closures and reminted profiles reject. An honest missing
+source response returns only UNKNOWN/BLOCKER/NO_DECISION with no speculative candidate.
+
+Production remains the section 26 `THREE_SPECIALIZED` mapping: AOA-1 v1, TCA-3 v3,
+ROA-1 R3 v3; remediation has no normative, default, optional or support audit.
+R4 cannot enter that policy even with a supplied authenticator or registry ordering.
+Direct final AUTHOR_TASK/REPAIR/REMEDIATION ingress remains unchanged; AUTHOR_TASK
+creates a TASK, never a RUN or Executor delegation. All historical exact requests
+and R2/R3 five-check replay remain supported. The individually authenticated Human
+V1-only option for architecture/task and read-only V1 support for normative R3
+remain exact; neither selects R4 nor restores any remediation audit.
+
+At the supplied authoring cut `d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f`,
+TASK-406 r2 / RUN-406-003 has Runtime RESULT artifacts
+`cc9ce9806f7d1606bde24237ebdd064908d16bbf`, independent PRIMARY PASS decision
+`d0ec2d8fdacf515cd80b19cd013399b441503ec0` and successful Publisher job
+`39911827390`. Separate local-chat-wake delivery failure does not reverse that
+Publisher verdict. Existing canonical authentication, not these planning references,
+resolves current source at admission/continuation.
+
+The top roadmap record `human_roa_r4_retrospective_priority_20261023` is planning
+only, owned by `ROA_R4_RETROSPECTIVE_SUCCESSOR`: STEP1 is TASK-407 preparation;
+STEP2 is a conditional separate authenticated activation TASK after TASK-407's
+Runtime RESULT, independent Reviewer PASS and Publisher inclusion, with distinct
+canonical cutover authorization. No future TASK is created, admitted, dispatched,
+published or activated here. Earlier TCA-3/PTE/Lean VP plans and the approved
+TASK-406 result remain intact as historical/resumable records. No automatic NEXT
+transition, engineering completion, Executor selection or extra truth store follows.

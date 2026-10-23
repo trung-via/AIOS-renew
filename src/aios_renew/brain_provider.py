@@ -16,7 +16,7 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping, Protocol
 
 from .brain_provider_protocol import BrainProviderProtocolError, construct_request, validate_response
-from .brain_audit import _ADAPTIVE_ID, _ADAPTIVE_DIGEST, _packet
+from .brain_audit import _ADAPTIVE_ID, _ADAPTIVE_DIGEST, _ROA_R4_ID, _packet
 from .decision_packet import DecisionPacket
 
 
@@ -251,6 +251,9 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             raise ValueError("DecisionPacket required")
         if type(conformance_only) is not bool:
             raise ValueError("conformance_only must be explicit boolean")
+        if (not conformance_only and audit_profile_package is not None
+                and audit_profile_package.get("audit_profile_ref", {}).get("id") == _ROA_R4_ID):
+            raise ValueError("ROA R4 is prepared for isolated conformance only")
         if (not conformance_only and packet.as_dict()["selected_flow"] == "REMEDIATION_AUTHORING"
                 and (audit_policy is None or audit_policy.get("state") == "THREE_SPECIALIZED")):
             raise ValueError("remediation has no current audit; use direct AUTHOR_REMEDIATION")

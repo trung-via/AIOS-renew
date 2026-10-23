@@ -1131,6 +1131,42 @@ def test_task406_roadmap_is_one_prospective_decision_and_exact_exception():
     assert (_TASK405_EXCEPTION["false_c2_byte_bound"], _TASK405_EXCEPTION["actual_byte_bound"]) == (98304, 65536)
 
 
+def test_task407_priority_is_top_level_planning_only_and_preserves_live_cutover():
+    from aios_renew.brain_context import _THREE_FLOW_APPROVAL, _three_flow_approval, _THREE_FLOW_PREDECESSOR_DIGEST
+    from aios_renew.brain_audit import _ROA_R4_DIGEST
+    raw = (Path(__file__).resolve().parents[1] / ".ai/roadmap-state.yaml").read_bytes()
+    nodes = {k.value: v for k, v in yaml.compose(raw).value}
+    key = "human_roa_r4_retrospective_priority_20261023"
+    assert list(nodes)[:2] == ["version", key]
+    record = yaml.safe_load(yaml.serialize(nodes[key]))
+    assert record["planning_only"] is True and record["planning_owner"] == "ROA_R4_RETROSPECTIVE_SUCCESSOR"
+    assert record["source_main_sha_at_authoring"] == "d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f"
+    assert record["implementation_task"] == "TASK-407" and record["implementation_revision"] == 1
+    assert record["current_live_default_profile"]["id"] == "roa-1-r3"
+    assert record["prospective_successor_profile"]["digest"] == _ROA_R4_DIGEST
+    assert record["prospective_successor_profile"]["status"] == "CANDIDATE_PREPARED_NOT_ACTIVE"
+    assert record["steps"][1]["task_id"] is None
+    assert record["steps"][1]["automatic_creation_dispatch_publication_activation"] is False
+    assert record["automatic_next_transition"] is False and record["engineering_completion_or_executor_delegation"] is False
+    assert yaml.safe_load(yaml.serialize(nodes[_THREE_FLOW_APPROVAL])) == _three_flow_approval(_THREE_FLOW_PREDECESSOR_DIGEST)
+    assert "human_tca3_retrospective_priority_20261023" in nodes
+    assert "human_pte03_diagnostic_access_approval_20261023" in nodes
+    assert record["preserved_task406_publication"]["publisher_outcome"] == "SUCCEEDED_SEPARATE_LOCAL_CHAT_WAKE_TRANSPORT_FAILED"
+
+
+def test_task407_canonical_consumer_rejects_prepared_r4_before_policy_or_git_reads(monkeypatch):
+    from aios_renew.brain_context import canonical_audit_inputs, BrainContextError
+    from tests.test_brain_audit import task407_roa_packet, successor_profile, profile_ref
+    from aios_renew.decision_packet import DecisionPacket
+    def forbidden(*args):
+        pytest.fail("prepared R4 must not invoke canonical policy discovery")
+    monkeypatch.setattr("aios_renew.brain_context._canonical_audit_source", forbidden)
+    profile = successor_profile("roa-1-r4")
+    with pytest.raises(BrainContextError):
+        canonical_audit_inputs(DecisionPacket(task407_roa_packet()), {}, {},
+            {"profile": profile, "audit_profile_ref": profile_ref(profile)})
+
+
 def test_task406_git_authenticates_new_pass_separately_from_nonpass_exception(task406_canonical_audit_repo):
     from aios_renew.brain_context import _canonical_audit_source, _THREE_FLOW_APPROVAL, _THREE_FLOW_RUN
     c = task406_canonical_audit_repo
@@ -1142,7 +1178,7 @@ def test_task406_git_authenticates_new_pass_separately_from_nonpass_exception(ta
     assert authority["reviewed_source_sha"] == c.three_flow_source_sha
     assert authority["task405_source_exception"]["review_verdicts"] == ["CHANGES_REQUIRED", "BLOCKED"]
     assert authority["task405_source_exception"]["kind"] == "HUMAN_GIT_SOURCE_EXCEPTION_NOT_PUBLISHER_PASS"
-    assert len(registry["profiles"]) == 10
+    assert len(registry["profiles"]) == 11
 
 
 @pytest.mark.parametrize("fault", ("absent", "duplicate", "alias", "duplicate_key", "active_label", "old_digest", "moa", "conflict",

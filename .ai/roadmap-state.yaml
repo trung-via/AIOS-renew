@@ -1,4 +1,51 @@
 version: 1
+human_roa_r4_retrospective_priority_20261023:
+  authority: EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
+  approved_on: '2026-10-23'
+  planning_only: true
+  source_main_sha_at_authoring: d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f
+  human_decision: PRIORITIZE_ROA_R4_RETROSPECTIVE_SUCCESSOR_PREPARATION
+  supersedes_prospective_slice_record: human_tca3_retrospective_priority_20261023
+  planning_owner: ROA_R4_RETROSPECTIVE_SUCCESSOR
+  sole_high_level_next: ROA_R4_RETROSPECTIVE_SUCCESSOR
+  selected_slice: STEP1_ROA_R4_PREPARATION_AND_ISOLATED_CONFORMANCE
+  implementation_task: TASK-407
+  implementation_revision: 1
+  retrospective_horizon: TASK-370..TASK-403
+  current_live_default_profile:
+    id: roa-1-r3
+    version: 3
+    digest: cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a
+    status: ACTIVE_DEFAULT_UNTIL_SEPARATE_AUTHENTICATED_CUTOVER
+  prospective_successor_profile:
+    id: roa-1-r4
+    version: 4
+    digest: c1ac99d1997daf54db1d7ccf32073c50a10fba9aa46f9180b6d921a1cefec8b3
+    status: CANDIDATE_PREPARED_NOT_ACTIVE
+  steps:
+  - id: STEP1
+    task_id: TASK-407
+    outcome: PREPARE_PROFILE_AND_CONFORMANCE_WITHOUT_ACTIVATION
+  - id: STEP2
+    task_id: null
+    outcome: CONDITIONAL_SEPARATE_AUTHENTICATED_ACTIVATION
+    requires:
+    - TASK407_EXACT_RUNTIME_RESULT
+    - INDEPENDENT_REVIEWER_PASS
+    - PUBLISHER_EXACT_SOURCE_INCLUSION_ON_CANONICAL_MAIN
+    - DISTINCT_AUTHENTICATED_HUMAN_BRAIN_CUTOVER_AUTHORIZATION
+    automatic_creation_dispatch_publication_activation: false
+  preserved_production_policy: AOA1_TCA3_ROA1R3_THREE_SPECIALIZED_NO_REMEDIATION_AUDIT
+  preserved_task406_publication:
+    source_main_sha: d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f
+    runtime_result_artifacts_sha: cc9ce9806f7d1606bde24237ebdd064908d16bbf
+    review_decision_sha: d0ec2d8fdacf515cd80b19cd013399b441503ec0
+    publisher_job: '39911827390'
+    publisher_outcome: SUCCEEDED_SEPARATE_LOCAL_CHAT_WAKE_TRANSPORT_FAILED
+  older_tca3_pte_lean_vp_plans: HISTORICAL_INTACT_PAUSED_RESUMABLE_BY_EXPLICIT_RECONCILIATION
+  automatic_next_transition: false
+  engineering_completion_or_executor_delegation: false
+
 human_tca3_three_flow_activation_20261023:
   authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL
   approved_on: '2026-10-23'

@@ -14,7 +14,7 @@ from copy import deepcopy
 from typing import Any, Callable, Mapping
 
 from .brain_audit import (
-    BrainAuditError, _CONFORMANCE_LENSES, _ROA_IDS, _MOA_ID, _MOA_FINAL_FIELDS,
+    BrainAuditError, _CONFORMANCE_LENSES, _ROA_IDS, _ROA_R4_ID, _MOA_ID, _MOA_FINAL_FIELDS,
     _TCA_IDS, _ADAPTIVE_ID, _TCA_FINAL_FIELDS, _tca_source_context, _tca_construct,
     _has_conformance, _ordered_lenses, _packet, _moa_construct, _moa_source_context,
     _stage1, construct_roa_subject, construct_stage1, construct_moa_subject, construct_moa,
@@ -198,6 +198,8 @@ def _profile_package(value: Any, flow: str) -> dict[str, Any] | None:
 def _audit_selection(packet: dict, contract: dict, bindings: dict, profile: dict,
                      policy_value: Any, sources: dict, option: Any, support: Any) -> dict:
     """Bind one complete canonical policy; serialized bindings are not credentials."""
+    if profile is not None and profile["profile"]["id"] == _ROA_R4_ID:
+        raise BrainProviderProtocolError("ROA R4 is prepared isolated conformance only; no production cutover")
     policy = normalize_audit_policy(policy_value)
     flow = packet["selected_flow"]
     if flow not in policy["profiles"]:

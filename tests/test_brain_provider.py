@@ -990,6 +990,77 @@ def test_roa_one_call_fresh_closure_is_portable_across_native_transports(registr
     assert decisions[0] == decisions[1]
 
 
+@pytest.mark.parametrize("unknown,missing", ((False, False), (True, False), (False, True)))
+def test_task407_r4_one_call_mapping_json_transports_have_identical_bounded_closure(registry, unknown, missing):
+    from test_brain_provider_protocol import task407_roa_inputs, task407_roa_response
+    supplied, contract, bindings, package = task407_roa_inputs(registry, unknown=unknown, missing=missing)
+    decisions = []
+    for kind in ("mapping", "json"):
+        calls = []
+        def callback(req):
+            calls.append(deepcopy(req))
+            return wrapper(req, provider=kind, model=kind, semantic=task407_roa_response(req, unknown=unknown))
+        result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings, package,
+                         lambda: DecisionPacket(supplied.as_dict()), conformance_only=True)
+        assert len(calls) == len(result.attributions) == 1
+        assert calls[0]["audit_profile_package"] == package and calls[0]["stage1_lineage"] is None
+        assert revalidate_decision(result.decision, calls[0]) == result.decision
+        assert result.decision["semantic_value"]["closure"]["outcome"] == ("NO_DECISION" if unknown or missing else "CANDIDATE")
+        decisions.append(result.decision)
+    assert decisions[0] == decisions[1]
+
+
+@pytest.mark.parametrize("fault", ("main", "source", "executor", "policy", "failure", "current_head"))
+def test_task407_r4_currentness_moves_stop_after_one_call_without_fallback(registry, fault):
+    from test_brain_provider_protocol import task407_roa_inputs, task407_roa_response
+    supplied, contract, bindings, package = task407_roa_inputs(registry)
+    calls = []
+    def callback(req):
+        calls.append(req)
+        return wrapper(req, semantic=task407_roa_response(req))
+    def fresh():
+        body = supplied.as_dict()
+        context = body["bounded_observations"]["repair_context"]
+        if fault == "main":
+            body["canonical_facts"]["main_sha"] = "f" * 40
+        elif fault == "source":
+            context["comparison"]["source_material"][0]["content"] += "# moved"
+        elif fault == "executor":
+            context["run"]["executor"] = "different-native-executor"
+        elif fault == "policy":
+            context["run"]["verification_policy"]["policy"] = "implicit-full-suite"
+        elif fault == "failure":
+            context["run"]["failure_artifacts_sha"] = "f" * 40
+        else:
+            context["comparison"]["current_head_sha"] = "f" * 40
+        body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        return DecisionPacket(body)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(adapter("mapping", callback), supplied, contract, bindings, package, fresh, conformance_only=True)
+    assert caught.value.reason_code in {"FRESH_PACKET_INVALID", "STALE_BEFORE_ROA_RETURN"}
+    assert caught.value.invocation_count == len(calls) == 1
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+def test_task407_r4_nonconforming_response_rejects_once_and_prepared_profile_never_enters_production(registry, kind):
+    from test_brain_provider_protocol import task407_roa_inputs, task407_roa_response
+    supplied, contract, bindings, package = task407_roa_inputs(registry)
+    calls = []
+    def callback(req):
+        calls.append(req)
+        semantic = task407_roa_response(req)
+        semantic["checks"][0]["evidence_refs"] = []
+        return wrapper(req, provider=kind, model=kind, semantic=semantic)
+    provider = adapter(kind, native(kind, callback), kind, kind)
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(provider, supplied, contract, bindings, package, lambda: supplied, conformance_only=True)
+    assert caught.value.reason_code == "PROVIDER_RESPONSE_INVALID" and len(calls) == 1
+    calls.clear()
+    with pytest.raises(BrainAttemptError) as caught:
+        attempt(provider, supplied, contract, bindings, package, lambda: supplied)
+    assert caught.value.reason_code == "PROTOCOL_INPUT_INVALID" and calls == []
+
+
 @pytest.mark.parametrize("flag,supplier", ((False, True), ("true", True), (True, False)))
 def test_roa_never_activates_in_an_ordinary_production_attempt(registry, roa_package, flag, supplier):
     supplied, contract, bindings = roa_inputs(registry)

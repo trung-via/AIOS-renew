@@ -539,7 +539,8 @@ TCA-3 v3 is pinned from the normalized canonical registry to digest
 `cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e`.
 Its two focused passes, five construct checks, six adversarial challenges and one
 closure remain exact. AOA-1 v1 and ROA-1 R3 v3 are unchanged. The registry retains
-ten recognized historical profile identities under the actual 65,536 UTF-8 byte cap.
+the ten pre-R4 profile identities under the actual 65,536 UTF-8 byte cap; section 18
+adds one exact prepared R4 identity within that same cap.
 
 The only TASK-405 exception is the Human-operated Git merge
 `f445626011d0664149011c8f57eb16a7014e6cd7`, parents
@@ -567,3 +568,45 @@ review is PRIMARY; repair admission does not assert review or publication succes
 Currentness is reauthenticated at ADMIT and CONTINUE. Previously admitted
 profiles stay pinned or stop on stale binding; archived V1/four-flow/MOA requests
 still decode exactly. See [protocol section 26](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#26-task-406-prospective-three-flow-policy-and-moa-retirement).
+
+
+## 18. Prospective ROA R4 preparation priority; R3 live
+
+`human_roa_r4_retrospective_priority_20261023` transcribes the 2026-10-23 Human
+priority as planning only under `ROA_R4_RETROSPECTIVE_SUCCESSOR`, source main
+`d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f`. STEP1 is TASK-407 preparation and
+isolated conformance of `roa-1-r4` v4, normalized digest
+`c1ac99d1997daf54db1d7ccf32073c50a10fba9aa46f9180b6d921a1cefec8b3`.
+STEP2 requires a separate authenticated activation TASK after TASK-407 Runtime
+RESULT, independent Reviewer PASS and Publisher inclusion. It has no TASK number
+or automatic creation, dispatch, activation or NEXT transition. Older TCA-3, PTE
+and Lean VP plans remain historical, paused and explicitly resumable.
+
+The approved TASK-406 TCA-3 publication remains eligible on the supplied canonical
+main: RUN-406-003 RESULT artifacts `cc9ce9806f7d1606bde24237ebdd064908d16bbf`,
+PRIMARY PASS decision `d0ec2d8fdacf515cd80b19cd013399b441503ec0`, Publisher job
+`39911827390` succeeded. Its separate local-chat-wake transport failure is not a
+failed Publisher verdict. Reauthenticate current canonical source through the
+existing consumer; this planning record is neither an independent status store
+nor a new verifier. Live selection remains AOA-1/TCA-3/ROA-1 R3, with no remediation
+audit, exact authenticated Human V1 option and unchanged direct final ingress.
+
+R4 retains five ordered ROA checks and one closure. It requires exact failed
+RUN/TASK/HEAD/FAILURE, ordered verification PASS/FAIL/NOT_RUN/UNKNOWN, baseline and
+failed/current source comparison, all-known-blocker frontier, smallest lawful
+existing lever, concrete correction falsifiers and truthful full completion.
+Missing claims differ from unfinished code; V001 failure leaves later commands
+unobserved. RUN-403-003's repeated node after a newline-only change supplies no new
+root cause: its exact traceback remains UNKNOWN. Missing decisive evidence,
+currentness or modify authority blocks, never fabricates PASS or forced CODE_FIX.
+Runtime alone verifies and emits EVIDENCE; Reviewer, Publisher and sticky admitted
+Executor keep their original responsibilities and verification/12-worker policy.
+
+The registry recognizes exactly eleven supported identities within 65,536 UTF-8
+bytes, preserving all ten older profile bytes/versions/digests. R4 is isolated
+`ROA_CONFORMANCE` support, never a live policy selection or a second audit. Both
+native transports preserve exact identity/content and freshness; no rehash,
+downgrade, fallback or private-probe PASS is allowed. Bounded packet projections
+exclude protected logs, credentials and local paths. AUTHOR_TASK creates a TASK,
+not a RUN or Executor delegation. See [protocol section 27](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#27-task-407-prepared-roa-1-r4-r3-remains-live)
+for source fields, privacy bounds and conformance semantics.

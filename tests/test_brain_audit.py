@@ -1318,7 +1318,7 @@ def test_roa_profile_cannot_be_reminted_or_disguised_as_v1(roa_profile, fault):
 def test_registry_remains_finite_and_historical_profile_bytes_are_unchanged(roa_profile):
     import yaml
     registry = parse_profile_registry(REGISTRY.read_bytes())
-    assert len(registry["profiles"]) == 10 and len(REGISTRY.read_bytes()) < 57344
+    assert len(registry["profiles"]) == 11 and len(REGISTRY.read_bytes()) < 65536
     registry["profiles"].append(deepcopy(roa_profile))
     with pytest.raises(BrainAuditError):
         parse_profile_registry(yaml.safe_dump(registry))
@@ -2682,6 +2682,350 @@ def successor_profile(identity):
     return next(p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"] if p["id"] == identity)
 
 
+# TASK-407 source projections are synthetic conformance inputs, not recovered
+# Runtime artifacts. Episode discriminators come from the supplied retrospective;
+# commands, SHAs and excerpts exercise binding without inventing missing raw logs.
+TASK407_EPISODES = (
+    ("RUN-372-001", "VERIFICATION", ("FAIL", "NOT_RUN"), "UNKNOWN", None),
+    ("RUN-372-002", "VERIFICATION", ("FAIL", "NOT_RUN"), "UNKNOWN", None),
+    ("RUN-383-002", "COMPLETION_GATE", ("NOT_RUN", "NOT_RUN"), "COMPLETION_MISSING_CLAIMS", "FINALIZE_CANDIDATE"),
+    ("RUN-384-001", "COMPLETION_GATE", ("NOT_RUN", "NOT_RUN"), "COMPLETION_UNRESOLVED", None),
+    ("RUN-391-013", "COMPLETION_GATE", ("NOT_RUN", "NOT_RUN"), "COMPLETION_MISSING_CLAIMS", "FINALIZE_CANDIDATE"),
+    ("RUN-393-001", "PRE_RUN_TRANSPORT", ("NOT_RUN", "NOT_RUN"), "UNKNOWN", None),
+    ("RUN-398-002", "COMPLETION_GATE", ("NOT_RUN", "NOT_RUN"), "COMPLETION_MISSING_CLAIMS", "FINALIZE_CANDIDATE"),
+    ("RUN-398-003", "COMPLETION_GATE", ("NOT_RUN", "NOT_RUN"), "COMPLETION_MISSING_CLAIMS", "FINALIZE_CANDIDATE"),
+    ("RUN-398-004", "COMPLETION_GATE", ("NOT_RUN", "NOT_RUN"), "COMPLETION_UNRESOLVED", "CONTINUE_IMPLEMENTATION"),
+    ("RUN-401-002", "EXECUTION", ("NOT_RUN", "NOT_RUN"), "NATIVE_EXIT", None),
+    ("RUN-403-001", "VERIFICATION", ("FAIL", "NOT_RUN"), "UNKNOWN", None),
+    ("RUN-403-002", "VERIFICATION", ("PASS", "FAIL"), "BASELINE_FIXTURE_INCOMPATIBILITY", "CODE_FIX"),
+    ("RUN-403-003", "VERIFICATION", ("PASS", "FAIL"), "UNKNOWN", None),
+)
+
+
+def task407_roa_packet(run_id="RUN-383-002", *, phase="COMPLETION_GATE", statuses=("NOT_RUN", "NOT_RUN")):
+    body = task392_roa_episode(run_id)
+    contract = body["canonical_facts"]["task_contract"]
+    commands = ["python -m pytest -q tests/test_brain_context.py -n 12",
+                "python -m pytest -q tests/test_brain_audit.py -n 12"]
+    contract["verification"] = {"policy": "minimum-sufficient-v1", "required": commands}
+    observation = body["bounded_observations"]
+    observation.update(phase=phase, error={"type": "NativeInvocationError" if phase == "EXECUTION" else "ArtifactValidationError"})
+    observation["strategy_facts"].update(verification_invoked=phase == "VERIFICATION",
+        missing_complete_acceptance_claims=phase == "COMPLETION_GATE",
+        structural_result_package="PRESENT" if phase == "VERIFICATION" else "PRESENT_INCOMPLETE_CLAIMS",
+        acceptance_coverage="COMPLETE" if phase == "VERIFICATION" else "INCOMPLETE")
+    run = {"run_id": run_id, "task": deepcopy(body["canonical_facts"]["selected_task"]),
+           "base_sha": "e" * 40, "head_sha": body["subject"]["failed_head_sha"],
+           "failure_artifacts_sha": body["canonical_facts"]["correction_subject"]["artifacts_sha"],
+           "executor": "codex", "verification_policy": deepcopy(contract["verification"])}
+    ledger = []
+    for index, (command, status) in enumerate(zip(commands, statuses), 1):
+        evidence = None if status in ("NOT_RUN", "UNKNOWN") else {
+            "evidence_id": f"{run_id}-V{index:03d}", "owner": "RUNTIME", "run_id": run_id,
+            "subject_sha": run["head_sha"], "artifacts_sha": run["failure_artifacts_sha"],
+            "command": command, "exit_code": 0 if status == "PASS" else 1}
+        ledger.append({"command": command, "status": status, "evidence": evidence})
+    comparison = {"base_sha": run["base_sha"], "failed_head_sha": run["head_sha"],
+                  "current_head_sha": run["head_sha"], "main_sha": body["canonical_facts"]["main_sha"],
+                  "worktree_status": "CLEAN_COMMITTED", "failed_changed_paths": [],
+                  "prospective_changed_paths": [], "source_material": []}
+    for role, sha in (("BASELINE", run["base_sha"]), ("FAILED", run["head_sha"]),
+                      ("CURRENT", run["head_sha"]), ("CONSUMER", run["head_sha"])):
+        content = "def bounded_contract(): return 'retained'\n"
+        comparison["source_material"].append({"role": role, "source_sha": sha, "path": "src/example.py",
+            "content": content, "sha256": hashlib.sha256(content.encode()).hexdigest()})
+    observation["repair_context"] = {"run": run, "verification": ledger, "comparison": comparison,
+        "completion": {"head_sha": comparison["current_head_sha"],
+                       "acceptance_ids": [a["id"] for a in contract["acceptance"]],
+                       "claimed_acceptance_ids": ["AC1"], "claims": [{"id": "C1", "satisfies": ["AC1"],
+                           "claim": "Synthetic source retains the bounded contract.", "evidence": []}],
+                       "evidence": [], "unresolved": [], "result_package_status": "PRESENT"}}
+    if phase == "VERIFICATION":
+        completion = observation["repair_context"]["completion"]
+        completion["claimed_acceptance_ids"] = deepcopy(completion["acceptance_ids"])
+        completion["claims"][0]["satisfies"] = deepcopy(completion["acceptance_ids"])
+    elif phase in ("EXECUTION", "PRE_RUN_TRANSPORT"):
+        observation["repair_context"]["completion"].update(
+            result_package_status="ABSENT", claims=[], claimed_acceptance_ids=[])
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    return body
+
+
+def task407_roa_output(body, profile, *, cause="COMPLETION_MISSING_CLAIMS", action="FINALIZE_CANDIDATE", subject=None):
+    subject = roa_subject(body, profile) if subject is None else subject
+    material = roa_output(subject, profile)
+    roles = (("failure", "verification"), ("evidence", "comparison"),
+             ("evidence", "comparison", "authorization"), ("evidence", "comparison", "verification"),
+             ("authorization", "readiness"))
+    context = body["bounded_observations"].get("repair_context")
+    ledger = context["verification"] if context is not None else None
+    coverage = "; ".join(f"{v['command']} = {v['status']}" for v in ledger or [])
+    unobserved = [v["command"] for v in ledger or [] if v["status"] in ("NOT_RUN", "UNKNOWN")]
+    counterexample = {
+        "COMPLETION_MISSING_CLAIMS": "A complete truthful claim set already present would falsify this completion-only lever.",
+        "COMPLETION_UNRESOLVED": "A remaining doc/test mismatch after completion would falsify finalization; finish that authorized implementation first.",
+        "BASELINE_FIXTURE_INCOMPATIBILITY": "A fresh failure after newline-only fixture correction invalidates that correction and requires a new exact cause.",
+        "CODE_TEST_REGRESSION": "The bounded consumer still returning the wrong value after the proposed change falsifies the correction.",
+        "FINAL_RESPONSE_RESULT_PACKAGE": "A well-formed complete original ResultPackage would falsify the malformed-response diagnosis.",
+        "NATIVE_EXIT": "A native exit alone supplies no source defect or eligible code correction.",
+        "UNKNOWN": "Same node after the prior fix cannot supply a fresh traceback; the new exact cause remains UNKNOWN.",
+    }[cause]
+    bases = [f"Exact failed RUN/TASK/HEAD/FAILURE and ordered Runtime coverage: {coverage}.",
+             f"Known blocker frontier: {cause}. Bind baseline, failed/current source and bounded consumer; no unseen-root inference.",
+             f"Smallest proposed eligible lever {action}; retain every known/unknown blocker and original modification authority.",
+             counterexample + " Expected effect must close each evidenced blocker; recheck baseline only when decision-relevant. "
+             + ("Next unobserved required commands: " + "; ".join(unobserved) if unobserved else
+                "No unobserved required command; prior failures are not future PASS.")
+             + " An additional exposed consumer failure invalidates this candidate.",
+             "Preserve every original AC, truthful full claims/evidence/unresolved, exact correction lineage and sticky codex. "
+             "Runtime alone owns original minimum-sufficient-v1/12-worker verification and EVIDENCE; Reviewer PASS and Publisher inclusion stay separate."]
+    for index, (check, required) in enumerate(zip(material["checks"], roles)):
+        missing = any(subject["sources"][r] is None for r in required)
+        unknown = missing or cause == "UNKNOWN" and index in (1, 2, 3)
+        check.update(outcome="BLOCKER" if unknown or action is None and index == 2 else "CLEAR",
+                     knowledge="UNKNOWN" if unknown else "INFERRED", basis=bases[index],
+                     evidence_refs=[deepcopy(subject["sources"][r]) for r in required if subject["sources"][r] is not None])
+    blocked = any(c["outcome"] == "BLOCKER" for c in material["checks"])
+    if not blocked:
+        candidate = material["candidate"]
+        candidate.update(action=action, modification_scope=[] if action in ("FINALIZE_CANDIDATE", "NO_CHANGE") else ["src/example.py"],
+                         instructions=[bases[2], bases[3], bases[4]])
+        candidate["instructions"].extend(f"Retain {a['id']}: {a['condition']}" for a in body["canonical_facts"]["task_contract"]["acceptance"])
+    else:
+        material["candidate"] = None
+    material["closure"].update(outcome="NO_DECISION" if blocked else "CANDIDATE",
+        knowledge="UNKNOWN" if any(c["knowledge"] == "UNKNOWN" for c in material["checks"]) else "INFERRED",
+        candidate_fingerprint=None if blocked else digest(material["candidate"]))
+    return subject, material
+
+
+def test_task407_r4_exact_identity_capacity_and_historical_prefix():
+    from aios_renew.brain_audit import _ROA_R4_DIGEST, _three_flow_profiles
+    profile = successor_profile("roa-1-r4")
+    assert profile_ref(profile) == {"id": "roa-1-r4", "version": 4, "digest": _ROA_R4_DIGEST}
+    assert [x["id"] for x in profile["checks"]] == [x["id"] for x in successor_profile("roa-1-r3")["checks"]]
+    assert profile["procedure"] == successor_profile("roa-1-r3")["procedure"]
+    assert len(REGISTRY.read_bytes()) <= 65536
+    assert hashlib.sha256(REGISTRY.read_bytes()[:57187]).hexdigest() == "8851235aa4d57aa459aeb43b03741a11449f3cc9e6fc3459bdae771d5a702ab1"
+    assert len(parse_profile_registry(REGISTRY.read_bytes())["profiles"]) == 11
+    assert len({profile_ref(p)["digest"] for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"]}) == 11
+    assert _three_flow_profiles()["REPAIR_AUTHORING"] == profile_ref(successor_profile("roa-1-r3"))
+    for key, value in (("id", "roa-1-r5"), ("version", 3), ("version", True)):
+        changed = deepcopy(profile)
+        changed[key] = value
+        with pytest.raises(BrainAuditError):
+            normalize_profile(changed)
+    changed = deepcopy(profile)
+    changed["checks"][1]["check"] += " Same node proves a new cause."
+    with pytest.raises(BrainAuditError, match="content"):
+        normalize_profile(changed)
+
+
+@pytest.mark.parametrize("run_id,phase,statuses,cause,action", TASK407_EPISODES)
+def test_task407_retrospective_discriminators_preserve_unknown_and_completion_frontier(run_id, phase, statuses, cause, action):
+    profile = successor_profile("roa-1-r4")
+    body = task407_roa_packet(run_id, phase=phase, statuses=statuses)
+    if run_id == "RUN-393-001":
+        # A transport label cannot mint a canonical post-RUN FAILURE or proof.
+        body["canonical_facts"]["correction_subject"].pop("artifacts_sha")
+        body["bounded_observations"].pop("repair_context")
+    if cause == "COMPLETION_UNRESOLVED":
+        body["bounded_observations"]["repair_context"]["completion"]["unresolved"] = ["Implementation still has a doc/test mismatch."]
+    if run_id == "RUN-403-003":
+        body["bounded_observations"]["strategy_facts"].update(
+            repeated_test_node=True, prior_newline_only_fix=True, exact_new_traceback="UNKNOWN")
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    before = deepcopy(body)
+    subject, material = task407_roa_output(body, profile, cause=cause, action=action)
+    result = validate_roa(body, profile, subject, material)
+    assert result["closure"]["outcome"] == ("NO_DECISION" if action is None else "CANDIDATE")
+    if action is None:
+        assert result["handoff_candidate"] is None
+    else:
+        assert result["handoff_candidate"]["action"] == action
+    assert body == before and len(result["checks"]) == 5
+    assert cause in result["checks"][1]["basis"]
+    for status in statuses:
+        if run_id != "RUN-393-001":
+            assert status in result["checks"][0]["basis"]
+    if run_id == "RUN-403-003":
+        assert result["closure"]["knowledge"] == "UNKNOWN" and material["candidate"] is None
+        assert "fresh traceback" in material["checks"][3]["basis"]
+        # Keeping the old correction on a blocked frontier is forbidden.
+        material["candidate"] = {"action": "CODE_FIX"}
+        with pytest.raises(BrainAuditError, match="blocker"):
+            validate_roa(body, profile, subject, material)
+
+
+@pytest.mark.parametrize("action,cause", (("CODE_FIX", "CODE_TEST_REGRESSION"),
+    ("CONTINUE_IMPLEMENTATION", "COMPLETION_UNRESOLVED"), ("FINALIZE_CANDIDATE", "FINAL_RESPONSE_RESULT_PACKAGE"),
+    ("NO_CHANGE", "FINAL_RESPONSE_RESULT_PACKAGE")))
+def test_task407_each_existing_lever_is_a_brain_proposal_with_falsifier_not_an_automatic_selector(action, cause):
+    profile = successor_profile("roa-1-r4")
+    body = (task407_roa_packet("RUN-SYNTHETIC-001", phase="VERIFICATION", statuses=("FAIL", "NOT_RUN"))
+            if cause == "CODE_TEST_REGRESSION" else task407_roa_packet())
+    context = body["bounded_observations"]["repair_context"]
+    if cause == "CODE_TEST_REGRESSION":
+        for excerpt in context["comparison"]["source_material"]:
+            if excerpt["role"] in ("FAILED", "CURRENT"):
+                excerpt["content"] = "def bounded_contract(): return 'lost'\n"
+                excerpt["sha256"] = hashlib.sha256(excerpt["content"].encode()).hexdigest()
+    elif cause == "COMPLETION_UNRESOLVED":
+        context["completion"]["unresolved"] = ["Original doc/test implementation obligation remains incomplete."]
+    elif action == "FINALIZE_CANDIDATE":
+        context["completion"]["result_package_status"] = "MALFORMED"
+        body["bounded_observations"]["strategy_facts"]["structural_result_package"] = "MALFORMED"
+    else:
+        context["completion"]["claimed_acceptance_ids"] = deepcopy(context["completion"]["acceptance_ids"])
+        context["completion"]["claims"] = [{"id": "C1", "satisfies": deepcopy(context["completion"]["acceptance_ids"]),
+            "claim": "Every original synthetic implementation property is established from the bounded source.", "evidence": []}]
+        body["bounded_observations"]["strategy_facts"].update(
+            structural_result_package="PRESENT", acceptance_coverage="COMPLETE", missing_complete_acceptance_claims=False)
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    subject, material = task407_roa_output(body, profile, cause=cause, action=action)
+    result = validate_roa(body, profile, subject, material)
+    candidate = result["handoff_candidate"]
+    assert candidate["action"] == action
+    for ac in body["canonical_facts"]["task_contract"]["acceptance"]:
+        assert f"Retain {ac['id']}: {ac['condition']}" in candidate["instructions"]
+    assert all(v["command"] in result["checks"][3]["basis"] for v in body["bounded_observations"]["repair_context"]["verification"])
+    assert "Reviewer PASS and Publisher inclusion stay separate" in result["checks"][4]["basis"]
+
+
+def test_task407_unknown_verification_is_not_pass_and_each_known_blocker_gets_a_falsifier():
+    profile = successor_profile("roa-1-r4")
+    body = task407_roa_packet("RUN-398-004", statuses=("UNKNOWN", "NOT_RUN"))
+    body["bounded_observations"]["repair_context"]["completion"]["unresolved"] = ["Doc/test mismatch remains."]
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    subject, material = task407_roa_output(body, profile, cause="COMPLETION_UNRESOLVED", action="CONTINUE_IMPLEMENTATION")
+    material["checks"][1]["basis"] = "Known frontier B1: unresolved doc/test implementation mismatch; B2: missing final acceptance claims. Unknown future verification failures remain unobserved."
+    material["checks"][2]["basis"] = "CONTINUE_IMPLEMENTATION must finish B1 within scope, then establish truthful full claims for B2; FINALIZE_CANDIDATE alone cannot finish B1."
+    material["checks"][3]["basis"] += " B1 falsifier: test/document still disagree after the delta. B2 falsifier: a complete truthful claim set still omits an original AC."
+    result = validate_roa(body, profile, subject, material)
+    assert "UNKNOWN" in result["checks"][0]["basis"] and result["handoff_candidate"]["action"] == "CONTINUE_IMPLEMENTATION"
+    assert "B1 falsifier" in result["checks"][3]["basis"] and "B2 falsifier" in result["checks"][3]["basis"]
+    # An additional unexplained cause blocks the whole frontier, never disappears
+    # merely because the previously known B1/B2 have a plausible correction.
+    material["checks"][1].update(outcome="BLOCKER", knowledge="UNKNOWN", basis="B1/B2 remain evidenced; B3 has no fresh discriminating cause. Preserve B3 as UNKNOWN.")
+    material["closure"].update(outcome="NO_DECISION", knowledge="UNKNOWN", candidate_fingerprint=None)
+    material["candidate"] = None
+    assert validate_roa(body, profile, subject, material)["handoff_candidate"] is None
+
+
+def test_task407_unknown_earlier_evidence_does_not_erase_a_later_observed_runtime_failure():
+    profile = successor_profile("roa-1-r4")
+    body = task407_roa_packet("RUN-SYNTHETIC-002", phase="VERIFICATION", statuses=("UNKNOWN", "FAIL"))
+    subject, material = task407_roa_output(body, profile, cause="UNKNOWN", action=None)
+    assert subject["sources"]["verification"] is not None
+    result = validate_roa(body, profile, subject, material)
+    assert result["closure"]["outcome"] == "NO_DECISION"
+    assert "UNKNOWN" in result["checks"][0]["basis"] and "FAIL" in result["checks"][0]["basis"]
+
+
+@pytest.mark.parametrize("action", ("NO_CHANGE", "FINALIZE_CANDIDATE"))
+def test_task407_completion_lever_cannot_smuggle_source_modification_scope(action):
+    profile = successor_profile("roa-1-r4")
+    body = task407_roa_packet()
+    subject, material = task407_roa_output(body, profile, action=action)
+    material["candidate"]["modification_scope"] = ["src/example.py"]
+    material["closure"]["candidate_fingerprint"] = digest(material["candidate"])
+    with pytest.raises(BrainAuditError, match="source edits"):
+        validate_roa(body, profile, subject, material)
+
+
+@pytest.mark.parametrize("fault", ("reordered", "omitted", "pass_without_evidence", "private_pass", "exit_code",
+    "wrong_run", "wrong_head", "wrong_failure", "wrong_task", "wrong_command", "later_pass", "bool_exit", "wrong_policy",
+    "source_sha", "source_digest", "forbidden_read", "forbidden_modify", "completion_head", "dropped_ac",
+    "claim_coverage", "claim_evidence", "private", "oversized"))
+def test_task407_nonconforming_sources_reject_without_rehash_or_profile_downgrade(fault):
+    profile = successor_profile("roa-1-r4")
+    body = task407_roa_packet("RUN-372-001", phase="VERIFICATION", statuses=("FAIL", "NOT_RUN"))
+    context = body["bounded_observations"]["repair_context"]
+    ledger, comparison = context["verification"], context["comparison"]
+    if fault == "reordered":
+        ledger.reverse()
+    elif fault == "omitted":
+        ledger.pop()
+    elif fault == "pass_without_evidence":
+        ledger[0].update(status="PASS", evidence=None)
+    elif fault == "private_pass":
+        ledger[0]["evidence"].update(owner="PRIVATE_PROBE", exit_code=0)
+        ledger[0]["status"] = "PASS"
+    elif fault in ("exit_code", "bool_exit"):
+        ledger[0]["evidence"]["exit_code"] = 0 if fault == "exit_code" else True
+    elif fault in ("wrong_run", "wrong_head", "wrong_failure", "wrong_command"):
+        field = {"wrong_run": "run_id", "wrong_head": "subject_sha", "wrong_failure": "artifacts_sha", "wrong_command": "command"}[fault]
+        ledger[0]["evidence"][field] = "different"
+    elif fault == "wrong_task":
+        context["run"]["task"]["revision"] += 1
+    elif fault == "later_pass":
+        ledger[1].update(status="PASS", evidence={})
+    elif fault == "wrong_policy":
+        context["run"]["verification_policy"]["policy"] = "implicit-full-suite"
+    elif fault in ("source_sha", "source_digest", "forbidden_read"):
+        field = {"source_sha": "source_sha", "source_digest": "sha256", "forbidden_read": "path"}[fault]
+        comparison["source_material"][0][field] = "src/forbidden.py" if fault == "forbidden_read" else "0" * (40 if fault == "source_sha" else 64)
+    elif fault == "forbidden_modify":
+        body["canonical_facts"]["task_contract"]["scope"]["inspect"].append("tests/ast_guard.py")
+        comparison["prospective_changed_paths"] = ["tests/ast_guard.py"]
+    elif fault == "completion_head":
+        context["completion"]["head_sha"] = "f" * 40
+    elif fault == "dropped_ac":
+        context["completion"]["acceptance_ids"].pop()
+    elif fault == "claim_coverage":
+        context["completion"]["claims"][0]["satisfies"].append("AC2")
+    elif fault == "claim_evidence":
+        context["completion"]["claims"][0]["evidence"] = ["forged-proof"]
+    elif fault == "private":
+        context["raw_log"] = "protected raw data"
+    else:
+        comparison["source_material"][0]["content"] = "x" * 2049
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    with pytest.raises(BrainAuditError):
+        roa_subject(body, profile)
+
+
+@pytest.mark.parametrize("missing", ("repair_context", "run", "verification", "comparison", "completion", "baseline", "consumer"))
+def test_task407_missing_decisive_source_forces_unknown_not_claim_first_pass(missing):
+    profile = successor_profile("roa-1-r4")
+    body = task407_roa_packet()
+    context = body["bounded_observations"]["repair_context"]
+    if missing == "repair_context":
+        body["bounded_observations"].pop(missing)
+    elif missing in ("baseline", "consumer"):
+        context["comparison"]["source_material"] = [x for x in context["comparison"]["source_material"] if x["role"] != missing.upper()]
+    else:
+        context[missing] = None
+        if missing == "comparison":
+            context["completion"] = None
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    subject, material = task407_roa_output(body, profile)
+    result = validate_roa(body, profile, subject, material)
+    assert result["closure"]["outcome"] == "NO_DECISION" and result["closure"]["knowledge"] == "UNKNOWN"
+    # Merely changing the model's judgment cannot fill a packet-owned source.
+    for check in material["checks"]:
+        check.update(outcome="CLEAR", knowledge="OBSERVED")
+    with pytest.raises(BrainAuditError, match="UNKNOWN"):
+        validate_roa(body, profile, subject, material)
+
+
+def test_task407_stale_subject_dirty_tree_and_inspect_only_ast_conflict_preserve_blockers():
+    profile = successor_profile("roa-1-r4")
+    body = task407_roa_packet("RUN-391-001")
+    subject, material = task407_roa_output(body, profile)
+    body["bounded_observations"]["repair_context"]["comparison"]["worktree_status"] = "DIRTY"
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    with pytest.raises(BrainAuditError, match="binding"):
+        validate_roa(body, profile, subject, material)
+    subject, material = task407_roa_output(body, profile)
+    with pytest.raises(BrainAuditError, match="currentness"):
+        validate_roa(body, profile, subject, material)
+    material["checks"][4].update(outcome="BLOCKER", basis="Dirty current candidate and TASK-391 r1 AC12 inspect-only AST/API conflict prevent readiness.")
+    material["candidate"] = None
+    material["closure"].update(outcome="NO_DECISION", candidate_fingerprint=None)
+    assert validate_roa(body, profile, subject, material)["handoff_candidate"] is None
+
+
 @pytest.mark.parametrize("identity,version,pin", (
     ("tca-2", 2, "75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d"),
     ("roa-1-r3", 3, "cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a"),
@@ -2717,7 +3061,7 @@ def test_task392_registry_limits_reject_extra_duplicate_and_oversized_material()
     import yaml
     raw = REGISTRY.read_bytes()
     registry = parse_profile_registry(raw)
-    assert len(registry["profiles"]) == 10
+    assert len(registry["profiles"]) == 11
     with pytest.raises(BrainAuditError, match="65536"):
         parse_profile_registry(raw + b" " * (65537 - len(raw)))
     for extra in (deepcopy(registry["profiles"][0]), {"id": "tca-99", "version": 99}):
