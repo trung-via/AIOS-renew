@@ -1,0 +1,65 @@
+review_id: REVIEW-409-001
+reviewed_sha: 4c5a961e17315aa6bdbea810e0fed803ef460e05
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- Independent first PRIMARY semantic review of TASK-409 revision 1, corrected RUN-409-002.
+  Reviewed source is exactly 4c5a961e17315aa6bdbea810e0fed803ef460e05 on refs/heads/aios/review/RUN-409-002;
+  original canonical main/task base c65ddf556eb9511f2ae253a8efbc1b9363550581. The
+  failed admitted RUN-409-001 and immutable FAILURE are preserved, not reclassified
+  as success. This verdict applies only to the repaired candidate.
+- 'Runtime RESULT package on refs/heads/aios/artifacts/RUN-409-002, commit 33b5be48bc465558155caf84a9e72f43be51914d:
+  no unresolved items; nine claims C1..C8,R1 cover AC1..AC8; exact evidence RUN-409-002-V001
+  subject sha 4c5a961e17315aa6bdbea810e0fed803ef460e05 verifies the unchanged authored
+  minimum-sufficient-v1 command ''python -m pytest -q tests/test_caa_experience.py
+  tests/test_brain_sync.py tests/test_brain_context.py tests/test_brain_attention.py''
+  with exit_code 0. Executor''s earlier failed local observer exit-1 checks are not
+  substituted for canonical verification.'
+- 'AC1: source roadmap record human_caa_v1_priority_20261023 selects one prospective
+  CAA-01/TASK-409 r1, preserves prior approvals and existing Task-408 Human-on-demand
+  policy and prior history; docs/AIOS-CAA-V1-ROADMAP.md specifies the four separately
+  governed finite CAA-01..04 packages, exit/stop conditions, and conditional nonselected
+  CAA-05 without later TASK IDs or package completion.'
+- 'AC2-AC3: caa_experience.py implements provider-neutral read-only capture_experience_cut
+  and reconstruct_episodes; exact task revision, RUN/RESULT/FAILURE, verification,
+  correction authorization, REVIEW and main inclusion are separate source-bound observations.
+  Positive/failure-pattern fixtures exercise RUN-391-013, RUN-398-004, RUN-403-003,
+  RUN-407-001 shapes plus success, without inferring root causes or downstream verdicts.'
+- 'AC4-AC6: sealed in-process immutable source cuts and pinned canonical refs separate
+  historical TASK-only snapshot from full episode observations. Missing, swapped,
+  stale or forged sources reject; negative tests cover Git identity, source movement,
+  cross-task SHA, private-data injection and bounded SOURCE_UNAVAILABLE. Source/read
+  budget and output/selection limits are finite. The single CODE_FIX changes only
+  tests/test_caa_experience.py: makes disposable Git loose object writable before
+  unlink on Windows, preserving the no fetch/push and exactly-one cat-file checks.'
+- 'AC7: Runtime RESULT changed_files contains exactly the seven original TASK.scope.modify
+  paths, no out-of-scope files; existing Brain Sync/Work Context, attention and policy
+  regressions preserve the reviewed/published TASK-408 HUMAN_ON_DEMAND direct authoring
+  behavior without CAA hook, new Flow Card, audit gate, Runtime verifier, publisher
+  or provider selection.'
+- 'AC8: docs and source present CAA-01 as data-only foundation; CAA-02 intelligent
+  advice, CAA-03 four-flow integration and CAA-04 holdout/shadow rollout remain separately
+  authorized future work; no training, CAA default activation, measured commercial
+  benefit or future task completion is claimed. Executor claim written before canonical
+  verification did not self-certify Reviewer PASS or publication.'
+- 'Exact REPAIR lineage: failed RUN-409-001 failed candidate 5a8c865444710f194078b0e47ccd3bff2cd5a60b;
+  failure-artifacts ad1f784d4b12732c44fdaf1c8e4ed2dab197f521; REPAIR-409-001-001 CODE_FIX
+  authorization 1d0a2fa3ded327b761ce80a3cb0efc4bf653858f; corrected RUN-409-002 persisted
+  repair.json links same failed RUN/head and original root/result base c65ddf556eb9511f2ae253a8efbc1b9363550581.
+  No prior semantic REVIEW for this TASK is superseded.'
+- 'Reviewer semantic closure: exact original TASK goals, hard constraints, scope,
+  non-goals, candidate implementation and Runtime-owned evidence inspected. No outstanding
+  material acceptance or authority violation found within CAA-01 authorized boundary.
+  PRIMARY PASS has no findings. Separate Publisher must verify eligibility and include
+  the exact reviewed source; ingress carrier/Review PASS does not itself prove publication
+  or activate later CAA packages.'
