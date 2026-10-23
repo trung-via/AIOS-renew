@@ -1,0 +1,10 @@
+{
+  "effort_source": "EXPLICIT",
+  "executor": "antigravity",
+  "format": "AIOS_EXECUTION_PROFILE",
+  "model": "gemini-4-argon-medium",
+  "model_source": "EXPLICIT",
+  "reasoning_effort": "medium",
+  "run_id": "RUN-406-001",
+  "version": 1
+}
