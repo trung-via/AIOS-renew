@@ -1,0 +1,34 @@
+review_id: REVIEW-405-002
+reviewed_sha: cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05
+mode: DELTA
+prior_finding_id: F1
+verdict: BLOCKED
+acceptance:
+  AC10: FAIL
+findings: []
+notes:
+- "Independent DELTA review of TASK-405 r1 REMEDIATION RUN-405-005, exact predecessor\
+  \ RUN-405-004 / REVIEW-405-001 CHANGES_REQUIRED F1 AC10, canonical review-decision\
+  \ 2b5c5d4c18d273213559ea964aa96c2a925dc337, remediation authorization fcb5195852b78a9f8ef3411119527e504412367d.\
+  \ Candidate source remains cce2bca5f1dbbee591c7b47aaa1888d6b1d2fc05. Preserve AC1\u2013\
+  AC9 prior PASS; only AC10 and prior F1 are judged."
+- Runtime verified affected authored command python -m pytest -q tests/test_brain_audit.py
+  tests/test_brain_provider_protocol.py with EVIDENCE RUN-405-005-V001 exit_code 0;
+  RESULT changed_files=[], claims=[], unresolved=[]. No source modification. These
+  establish a successful no-delta EVIDENCE_ONLY execution but not correction of immutable
+  prior Executor claim C2.
+- Finding F1 requested correction of RUN-405-004 ResultPackage claim C2 numeric registry
+  cap from 98,304 to 65,536 UTF-8 bytes. The canonical RUN-405-004 claim remains 98,304,
+  while exact source src/aios_renew/brain_audit.py::parse_profile_registry checks
+  65,536 and docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md section 25 documents 65,536.
+  The committed implementation limit is correct; the authoring/result claim is inaccurate.
+  Runtime remediation contract _validate_remediation_package expressly requires remediation
+  RESULT claims to be empty, and immutable original RESULT cannot be rewritten, so
+  this EVIDENCE_ONLY procedure cannot fulfill the literal finding expected outcome.
+  Re-running the same command does not amend a claim.
+- Semantic closure BLOCKED (not PASS, no new remediation finding). The present authorized
+  correction lever cannot satisfy F1. Human/Brain must prospectively reconcile claim-correction
+  expectations with existing Runtime/Reviewer/Publisher roles, or authorize a different
+  lawful completion path; do not mutate immutable RUN-405-004, weaken Runtime schema,
+  alter code to match a false claim, forge PASS or publish. This review does not select
+  a new task, repair, operation, or architecture and does not activate TCA-3.
