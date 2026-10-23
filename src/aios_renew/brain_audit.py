@@ -115,15 +115,17 @@ _TCA_ID = "tca-1"
 _TCA_DIGEST = "1fa1d5fd098494eeb5cb97665f40e7556969555aed552dfc7fa28871555884a2"
 _TCA_SUCCESSOR_ID = "tca-2"
 _TCA_SUCCESSOR_DIGEST = "75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d"
+_TCA_V3_ID = "tca-3"
 _ROA_SUCCESSOR_ID = "roa-1-r3"
 _ROA_SUCCESSOR_DIGEST = "cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a"
-_TCA_IDS = frozenset({_TCA_ID, _TCA_SUCCESSOR_ID})
+_TCA_SUCCESSOR_IDS = frozenset({_TCA_SUCCESSOR_ID, _TCA_V3_ID})
+_TCA_IDS = frozenset({_TCA_ID, _TCA_SUCCESSOR_ID, _TCA_V3_ID})
 _ROA_IDS = frozenset({_ROA_ID, _ROA_SUCCESSOR_ID})
 _AOA_ID = "aoa-1"
 _AOA_DIGEST = "7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b"
 _PROFILE_VERSIONS = {"brain-high-value-v2": 2, "brain-high-value-v3": 3,
                      _ADAPTIVE_ID: 1, _ROA_ID: 2, _MOA_ID: 1, _TCA_ID: 1, _AOA_ID: 1,
-                     _TCA_SUCCESSOR_ID: 2, _ROA_SUCCESSOR_ID: 3}
+                     _TCA_SUCCESSOR_ID: 2, _TCA_V3_ID: 3, _ROA_SUCCESSOR_ID: 3}
 _AOA_CONSTRUCT_IDS = (
     "HUMAN_OUTCOME_AND_NECESSITY", "COUNTERFACTUAL_ALTERNATIVES", "EPISODE_COST_AND_EXTERNALITIES",
     "DISCRIMINATING_INFORMATION", "THREATS_AUTHORITY_AND_REVERSIBILITY",
@@ -196,6 +198,137 @@ _TCA_FINAL_FIELDS = {
     "acceptance_checks", "consumer_checks", "acceptance_accounting", "reconciliation",
     "closure", "handoff_candidate", "audit_fingerprint",
 }
+_TCA_V3_PROFILE_SPEC = {
+    "id": _TCA_V3_ID,
+    "version": 3,
+    "applicable_flows": ["TASK_AUTHORING"],
+    "passes": [
+        {
+            "id": "CONSTRUCT",
+            "checks": [
+                {
+                    "id": "HUMAN_INTENT_FIDELITY",
+                    "check": (
+                        "Extract the exact Human-requested outcome, priority, constraints and non-goals from the packet-bound "
+                        "request, canonical main and authorized source excerpts. Preserve sticky admitted Executor and profile "
+                        "identity, pre-RUN dirty-worktree quarantine vs post-RUN workspace boundaries (TASK-393/TASK-401), "
+                        "and prospective two-step activation separation where implementation and live cutover are distinct. "
+                        "Missing decisive request or canonical main context is UNKNOWN and BLOCKER."
+                    ),
+                },
+                {
+                    "id": "TASK_OBJECTIVE_OUTCOME",
+                    "check": (
+                        "State the concrete repository change and why it achieves the Human outcome without unrequested "
+                        "architecture, silent policy activation, implicit full-suite verification or role drift. Distinguish "
+                        "prospective planning/candidate preparation from live activation cutover and separate baseline failure "
+                        "causes (such as TASK-403 pre-existing newline drift vs new git object-fetch defect) rather than "
+                        "conflating them under one label."
+                    ),
+                },
+                {
+                    "id": "ACCEPTANCE_SATISFIABILITY",
+                    "check": (
+                        "Examine every acceptance criterion and verification.required command against current packet-bound "
+                        "implementation and test sources. Separate implementation properties establishable at Executor completion "
+                        "(CLAIM_NOW) from post-implementation Runtime verification/Reviewer/Publisher gates (PROOF_LATER), "
+                        "and record per-command baseline observations (PASS, FAIL, NOT_RUN, UNKNOWN) without inventing verified "
+                        "outcomes, skipped verification or an implicit full suite (TASK-372/TASK-399). Ensure all acceptance "
+                        "IDs can be truthfully claimed in final ResultPackage.result.claims without missing-claim or unresolved-item "
+                        "completion-gate deadlocks (TASK-391/TASK-383/TASK-384)."
+                    ),
+                },
+                {
+                    "id": "SCOPE_AND_AUTHORITY",
+                    "check": (
+                        "Check scope.modify, scope.create, scope.delete and scope.inspect against current implementation, "
+                        "transitive direct-call helper/API consumers, Git rev-parse/cat-file framing and object-fetch paths, "
+                        "and legacy test doubles or AST/signature guards. Any file requiring an edit to satisfy acceptance "
+                        "or keep existing tests/guards compatible (including TASK-391 r1 AST guard tests) must be in scope.modify "
+                        "rather than inspect-only; inspect-only covers read-only context and cannot authorize edits."
+                    ),
+                },
+                {
+                    "id": "REQUIRED_CONSUMERS",
+                    "check": (
+                        "Identify every direct and bounded one-hop transitive caller, CLI/subcommand parser, provider/protocol "
+                        "codec, Git object-fetch/framing helper, documentation contract and existing test double or AST "
+                        "guard touched by the change. Account for how each material consumer and mixed targeted verification "
+                        "command in verification.required remains coherent within authorized scope."
+                    ),
+                },
+            ],
+        },
+        {
+            "id": "ADVERSARIAL_AUDIT_AND_RECONCILE",
+            "checks": [
+                {
+                    "id": "FALSE_COMPLETION_CHALLENGE",
+                    "check": (
+                        "Attempt to satisfy literal TASK wording while leaving the Human outcome broken, incomplete "
+                        "or deadlocked at Runtime completion gate. Challenge missing final acceptance claims (TASK-391 r2/TASK-383), "
+                        "leftover result.unresolved entries (TASK-384), malformed ResultPackage/API shape (TASK-398), or "
+                        "conflated failure causes where a single pytest node is treated as a complete root cause (TASK-403). "
+                        "Reconcile the TASK or block."
+                    ),
+                },
+                {
+                    "id": "MATERIAL_CONSUMER_CHALLENGE",
+                    "check": (
+                        "Challenge whether any direct or bounded transitive caller, provider/protocol adapter, Git "
+                        "framing/object-fetch helper, legacy test double, AST/signature guard or mixed verification command "
+                        "in verification.required breaks or is omitted from scope.modify (TASK-391 r1, TASK-372, TASK-399, "
+                        "TASK-403). If a consumer requires edits outside scope.modify or decisive source is absent, record "
+                        "BLOCKER."
+                    ),
+                },
+                {
+                    "id": "SCOPE_AND_HIDDEN_INTENT_CHALLENGE",
+                    "check": (
+                        "Challenge scope.modify, scope.create, scope.delete and scope.inspect for missing modify authority "
+                        "on AST/test guards, overbroad edits, hidden scope creep, unapproved profile self-activation or "
+                        "premature retirement of the active default profile. Verify pre-RUN dirty-tree quarantine and native "
+                        "runner boundaries (TASK-393/TASK-401) are not confused with post-RUN execution defects."
+                    ),
+                },
+                {
+                    "id": "AUTHORITY_AND_PROOF_ORDER_CHALLENGE",
+                    "check": (
+                        "Challenge any step that confuses Brain authoring with Runtime verification/completion gate, "
+                        "Reviewer judgment, Publisher publication or live profile activation, or that conflates Executor "
+                        "CLAIM_NOW implementation assertions with PROOF_LATER Runtime verification evidence or PASS/FAIL/NOT_RUN/UNKNOWN "
+                        "baseline observations. Never invent verified outcomes, Executor claims, skipped verification or "
+                        "implicit full-suite execution."
+                    ),
+                },
+                {
+                    "id": "FALSIFYING_COUNTEREXAMPLE_CHALLENGE",
+                    "check": (
+                        "Construct concrete counterexamples from packet-bound source: an inspect-only AST/test guard "
+                        "requiring edits (TASK-391 r1), a committed diff with omitted AC claims or non-empty unresolved "
+                        "at completion gate (TASK-391 r2/TASK-383/TASK-384), a wrong ResultPackage/API contract assumption "
+                        "(TASK-398), a conflated newline vs git object-fetch failure (TASK-403), or mixed verification command "
+                        "mismatch (TASK-372/TASK-399). Verify reconciled TASK text closes each or return NO_DECISION."
+                    ),
+                },
+                {
+                    "id": "SOURCE_CURRENTNESS_AND_PORTABILITY_CHALLENGE",
+                    "check": (
+                        "Verify canonical main identity, authorization binding, profile id/version/digest and packet-bound "
+                        "implementation/test source excerpts are current, authentic and non-swapped. Missing, truncated, "
+                        "stale or mismatched source excerpts must remain UNKNOWN/BLOCKER and terminate in NO_DECISION rather "
+                        "than guessed CANDIDATE readiness."
+                    ),
+                },
+            ],
+        },
+    ],
+    "procedure": _TCA_PROCEDURE,
+    "bounds": _TCA_BOUNDS,
+}
+_TCA_V3_DIGEST = hashlib.sha256(
+    json.dumps(_TCA_V3_PROFILE_SPEC, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+).hexdigest()
 _MOA_CONSTRUCT_IDS = ("EXACT_REVIEW_FINDING", "FINDING_CAUSE_AND_MINIMUM_DELTA", "ORIGINAL_TASK_AUTHORITY")
 _MOA_CHALLENGE_IDS = (
     "SOURCE_AND_CURRENTNESS_CHALLENGE", "FINDING_CLOSURE_CHALLENGE",
@@ -498,7 +631,11 @@ def _tca_profile(value: dict[str, Any]) -> dict[str, Any]:
                 raise BrainAuditError("unknown, duplicate or out-of-order TCA instruction")
             _text(check["check"], _TCA_BOUNDS["check_bytes"], "TCA instruction")
     _bounded(profile, 12288, "TCA profile")
-    if _digest(profile) != {_TCA_ID: _TCA_DIGEST, _TCA_SUCCESSOR_ID: _TCA_SUCCESSOR_DIGEST}[profile["id"]]:
+    if _digest(profile) != {
+        _TCA_ID: _TCA_DIGEST,
+        _TCA_SUCCESSOR_ID: _TCA_SUCCESSOR_DIGEST,
+        _TCA_V3_ID: _TCA_V3_DIGEST,
+    }[profile["id"]]:
         raise BrainAuditError("unsupported TCA profile content")
     return profile
 
@@ -539,8 +676,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
         encoded = raw
     else:
         raise BrainAuditError("registry must be UTF-8 YAML")
-    if len(encoded) > 57344:
-        raise BrainAuditError("registry exceeds 57344 UTF-8 bytes")
+    if len(encoded) > 65536:
+        raise BrainAuditError("registry exceeds 65536 UTF-8 bytes")
     try:
         loaded = yaml.load(encoded.decode("utf-8", errors="strict"), Loader=_UniqueLoader)
     except (UnicodeError, yaml.YAMLError, ValueError, TypeError) as exc:
@@ -549,8 +686,8 @@ def parse_profile_registry(raw: bytes | str) -> dict[str, Any]:
     if registry["format"] != "AIOS_BRAIN_AUDIT_PROFILES" or type(registry["version"]) is not int or registry["version"] != 1:
         raise BrainAuditError("unknown audit-profile registry")
     profiles = registry["profiles"]
-    if type(profiles) is not list or not 1 <= len(profiles) <= 9:
-        raise BrainAuditError("registry requires one to nine recognized profiles")
+    if type(profiles) is not list or not 1 <= len(profiles) <= 10:
+        raise BrainAuditError("registry requires one to ten recognized profiles")
     normalized = [_profile(profile) for profile in profiles]
     if len({profile["id"] for profile in normalized}) != len(normalized):
         raise BrainAuditError("duplicate profile identity")
@@ -567,15 +704,22 @@ def profile_ref(profile: Mapping[str, Any]) -> dict[str, Any]:
     return {"id": body["id"], "version": body["version"], "digest": _digest(body)}
 
 
-def _specialized_profiles(*, successors: bool = False) -> dict[str, dict[str, Any]]:
-    """Two complete finite mappings; registry order never selects a default."""
+def _specialized_profiles(*, successors: bool = False, tca3: bool = False) -> dict[str, dict[str, Any]]:
+    """Finite complete mappings; registry order never selects a default."""
+    if tca3:
+        task_profile = (_TCA_V3_ID, 3, _TCA_V3_DIGEST)
+        repair_profile = (_ROA_SUCCESSOR_ID, 3, _ROA_SUCCESSOR_DIGEST)
+    elif successors:
+        task_profile = (_TCA_SUCCESSOR_ID, 2, _TCA_SUCCESSOR_DIGEST)
+        repair_profile = (_ROA_SUCCESSOR_ID, 3, _ROA_SUCCESSOR_DIGEST)
+    else:
+        task_profile = (_TCA_ID, 1, _TCA_DIGEST)
+        repair_profile = (_ROA_ID, 2, _ROA_DIGEST)
     identities = {
         "ARCHITECTURE": (_AOA_ID, 1, _AOA_DIGEST),
-        "TASK_AUTHORING": ((_TCA_SUCCESSOR_ID, 2, _TCA_SUCCESSOR_DIGEST) if successors
-                           else (_TCA_ID, 1, _TCA_DIGEST)),
+        "TASK_AUTHORING": task_profile,
         "REMEDIATION_AUTHORING": (_MOA_ID, 1, _MOA_DIGEST),
-        "REPAIR_AUTHORING": ((_ROA_SUCCESSOR_ID, 3, _ROA_SUCCESSOR_DIGEST) if successors
-                             else (_ROA_ID, 2, _ROA_DIGEST)),
+        "REPAIR_AUTHORING": repair_profile,
     }
     return {flow: {"id": identity, "version": version, "digest": digest}
             for flow, (identity, version, digest) in identities.items()}
@@ -605,12 +749,14 @@ def normalize_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
         raise BrainAuditError("future cutover requires separately authenticated reviewed R5 publication")
     expected = _specialized_profiles()
     successor = _specialized_profiles(successors=True)
+    tca3 = _specialized_profiles(tca3=True)
     if policy["state"] == "ADAPTIVE_V1":
         expected = {flow: {"id": _ADAPTIVE_ID, "version": 1, "digest": _ADAPTIVE_DIGEST}
                     for flow in expected}
     # Strict JSON comparison rejects bool-as-version and partial/mixed activation.
     if (_json(policy["profiles"]) != _json(expected)
-            and (policy["state"] != "FOUR_SPECIALIZED" or _json(policy["profiles"]) != _json(successor))):
+            and (policy["state"] != "FOUR_SPECIALIZED"
+                 or _json(policy["profiles"]) not in (_json(successor), _json(tca3)))):
         raise BrainAuditError("prospective policy must pin all four exact profile identities")
     return policy
 
@@ -1559,13 +1705,37 @@ def _tca_task(value: Any) -> dict[str, Any]:
     return task
 
 
+_TCA_CONSUMER_CATEGORIES = (
+    "DIRECT_CALLER",
+    "TRANSITIVE_DIRECT_CALL",
+    "GIT_FRAMING_OBJECT_FETCH",
+    "LEGACY_TEST_DOUBLE_AST_GUARD",
+    "MIXED_VERIFICATION_SURFACE",
+)
+_TCA_SOURCE_ROLES = (
+    "IMPLEMENTATION",
+    "TRANSITIVE_CONSUMER",
+    "GIT_FRAMING_OBJECT_FETCH",
+    "LEGACY_TEST_AST_GUARD",
+)
+_TCA_COUNTEREXAMPLE_KINDS = (
+    "MISSING_FINAL_ACCEPTANCE_CLAIM",
+    "NON_EMPTY_UNRESOLVED_OBLIGATION",
+    "BAD_RESULT_PACKAGE_OR_API_ASSUMPTION",
+    "MISSING_MODIFY_AUTHORITY",
+    "CONFLATED_FAILURE_CAUSE",
+    "MIXED_VERIFICATION_MISMATCH",
+    "PRE_RUN_DIRTY_OR_NATIVE_BOUNDARY",
+)
+
+
 def _tca_source_context(value: Any) -> dict[str, Any]:
     # Caller supplies authenticated canonical projections before invocation.
     # These hashes bind content; they do not authenticate Human authorization.
     context = {"task": None, "authorization": None, "consumers": []} if value is None else _normal(
         value, depth=0, max_depth=32)
-    _fields(context, {"task", "authorization", "consumers"} | (
-        {"source_material"} if "source_material" in context else set()), "TCA source context")
+    optional_context_keys = {"source_material", "baseline_observations"} & set(context) if type(context) is dict else set()
+    _fields(context, {"task", "authorization", "consumers"} | optional_context_keys, "TCA source context")
     _bounded(context, _TCA_BOUNDS["source_context_bytes"], "TCA source context")
     _tca_private(context)
     if context["task"] is not None:
@@ -1591,30 +1761,64 @@ def _tca_source_context(value: Any) -> dict[str, Any]:
         raise BrainAuditError("unbounded TCA consumers")
     seen = set()
     for consumer in consumers:
-        _fields(consumer, {"id", "authority", "requirement"}, "TCA declared consumer")
+        from .task import TaskValidationError, _exact_repo_path
+        extra_consumer_keys = (
+            {"category", "required_modify_paths", "required_source_paths"} & set(consumer)
+            if type(consumer) is dict else set()
+        )
+        _fields(consumer, {"id", "authority", "requirement"} | extra_consumer_keys, "TCA declared consumer")
         identity = _text(consumer["id"], 256, "TCA consumer id")
         _text(consumer["requirement"], 2048, "TCA consumer requirement")
         if identity in seen or consumer["authority"] not in (
                 "HUMAN", "BRAIN", "EXECUTOR", "RUNTIME", "REVIEWER", "PUBLISHER", "TRANSPORT"):
             raise BrainAuditError("duplicate consumer or invalid consumer authority")
+        if "category" in consumer and consumer["category"] not in _TCA_CONSUMER_CATEGORIES:
+            raise BrainAuditError("invalid TCA consumer category")
+        for path_key in ("required_modify_paths", "required_source_paths"):
+            if path_key in consumer:
+                req_paths = _tca_texts(consumer[path_key], 64, f"TCA consumer {path_key}")
+                try:
+                    for req_path in req_paths:
+                        _exact_repo_path(req_path, f"TCA consumer {path_key}")
+                except TaskValidationError as exc:
+                    raise BrainAuditError(f"invalid TCA consumer {path_key}") from exc
         seen.add(identity)
-    # Optional for historical replay; mandatory decisive source for tca-2.
+    # Optional for historical replay; mandatory decisive source for tca-2 and tca-3.
     material = context.get("source_material", [])
     if type(material) is not list or len(material) > 16:
         raise BrainAuditError("unbounded TCA source material")
     paths = set()
     for source in material:
         from .task import TaskValidationError, _exact_repo_path
-        _fields(source, {"path", "content"}, "TCA source excerpt")
+        extra_source_keys = {"role", "failure_causes"} & set(source) if type(source) is dict else set()
+        _fields(source, {"path", "content"} | extra_source_keys, "TCA source excerpt")
         try:
             _exact_repo_path(source["path"], "TCA source path")
         except TaskValidationError as exc:
             raise BrainAuditError("invalid TCA source path") from exc
         _text(source["content"], 16384, "TCA source content")
+        if "role" in source and source["role"] not in _TCA_SOURCE_ROLES:
+            raise BrainAuditError("invalid TCA source role")
+        if "failure_causes" in source:
+            causes = _tca_texts(source["failure_causes"], 16, "TCA source failure causes")
+            if not causes or any("::" in cause for cause in causes):
+                raise BrainAuditError("TCA source failure causes cannot be empty or treat a pytest node as a complete cause")
         if (source["path"] in paths or auth is None
                 or source["path"] not in auth["scope"]["inspect"] + auth["scope"]["modify"]):
             raise BrainAuditError("TCA source path is duplicate or outside inspect/modify authority")
         paths.add(source["path"])
+    if "baseline_observations" in context:
+        observations = context["baseline_observations"]
+        if type(observations) is not list or len(observations) > 32:
+            raise BrainAuditError("unbounded TCA baseline observations")
+        seen_commands = set()
+        for obs in observations:
+            _fields(obs, {"command", "status", "basis"}, "TCA baseline observation")
+            command = _text(obs["command"], 512, "TCA baseline command")
+            _text(obs["basis"], 2048, "TCA baseline basis")
+            if command in seen_commands or obs["status"] not in ("PASS", "FAIL", "NOT_RUN", "UNKNOWN"):
+                raise BrainAuditError("duplicate or invalid TCA baseline observation")
+            seen_commands.add(command)
     return context
 
 
@@ -1630,6 +1834,8 @@ def construct_tca_subject(packet: DecisionPacket | Mapping[str, Any], profile: M
             or body["handoff_target"] != "AUTHORING_INGRESS"
             or body["expected_return_shape"] != "TASK_AUTHORING_PROPOSAL"):
         raise BrainAuditError("TCA applies only to the exact TASK_AUTHORING subject")
+    if policy["id"] == _TCA_V3_ID and body["executor_claims"] is not None:
+        raise BrainAuditError("TCA-3 TASK_AUTHORING cannot invent pre-execution Executor claims")
     _sha(body["work_context_fingerprint"], "TCA work-context fingerprint")
     ref = _fields(_normal(return_ref, depth=0, max_depth=32),
                   {"selected_flow", "version", "digest"}, "TCA return reference")
@@ -1667,7 +1873,7 @@ def construct_tca_subject(packet: DecisionPacket | Mapping[str, Any], profile: M
         "consumers": None if not context["consumers"] else _roa_source("task_source_context.consumers", context["consumers"]),
         "canonical": _roa_source("canonical_facts", facts) if canonical_available else None,
     }
-    if policy["id"] == _TCA_SUCCESSOR_ID:
+    if policy["id"] in _TCA_SUCCESSOR_IDS:
         sources["implementation"] = (_roa_source("task_source_context.source_material", context["source_material"])
                                      if context.get("source_material") else None)
     result = {"format": "AIOS_TCA_SUBJECT", "version": 1, "selected_flow": "TASK_AUTHORING",
@@ -1699,7 +1905,7 @@ def _tca_judgment(check: dict[str, Any], bound: dict[str, Any], roles: tuple[str
         raise BrainAuditError("invalid TCA judgment")
     _text(check["basis"], 2048, "TCA judgment basis")
     refs, sources = check["evidence_refs"], bound["sources"]
-    if bound["audit_profile_ref"]["id"] == _TCA_SUCCESSOR_ID:
+    if bound["audit_profile_ref"]["id"] in _TCA_SUCCESSOR_IDS:
         roles = tuple(dict.fromkeys((*roles, "implementation", "authorization")))
     if (type(refs) is not list or len(refs) > _TCA_BOUNDS["evidence_refs_per_check"]
             or len({_json(r) for r in refs}) != len(refs)
@@ -1724,12 +1930,17 @@ def _tca_checks(value: Any, bound: dict[str, Any], *, challenge: bool) -> list[d
     if type(value) is not list or len(value) != len(identities):
         raise BrainAuditError("TCA requires exact focused check coverage")
     for identity, required, check in zip(identities, roles, value):
-        _fields(check, _TCA_JUDGMENT_FIELDS | ({"counterexample", "disposition"} if challenge else set()), "TCA check")
+        extra = ({"counterexample", "disposition"} | (
+            {"counterexample_kind"} if type(check) is dict and "counterexample_kind" in check else set()
+        )) if challenge else set()
+        _fields(check, _TCA_JUDGMENT_FIELDS | extra, "TCA check")
         if check["id"] != identity:
             raise BrainAuditError("unknown, duplicate or out-of-order TCA check")
         _tca_judgment(check, bound, required)
         if challenge:
             _text(check["counterexample"], 2048, "TCA falsifying counterexample")
+            if "counterexample_kind" in check and check["counterexample_kind"] not in _TCA_COUNTEREXAMPLE_KINDS:
+                raise BrainAuditError("invalid TCA counterexample kind")
             if (check["disposition"] not in _TCA_PROCEDURE["challenge_dispositions"]
                     or (check["outcome"] == "BLOCKER") != (check["disposition"] == "BLOCKER")):
                 raise BrainAuditError("TCA challenge disposition contradicts judgment")
@@ -1741,13 +1952,16 @@ def _tca_acceptance(value: Any, task: dict[str, Any] | None, bound: dict[str, An
     if type(value) is not list or len(value) != len(criteria):
         raise BrainAuditError("TCA requires every acceptance id exactly once")
     for criterion, check in zip(criteria, value):
-        _fields(check, _TCA_JUDGMENT_FIELDS | {"condition", "phase", "implementation_property", "falsifying_counterexample"},
+        extra = {"counterexample_kind"} if type(check) is dict and "counterexample_kind" in check else set()
+        _fields(check, _TCA_JUDGMENT_FIELDS | {"condition", "phase", "implementation_property", "falsifying_counterexample"} | extra,
                 "TCA acceptance check")
         if any(check[k] != criterion[k] for k in ("id", "condition")):
             raise BrainAuditError("missing, duplicate or substituted TCA acceptance")
         _tca_judgment(check, bound, ("task",))
         for key in ("implementation_property", "falsifying_counterexample"):
             _text(check[key], 2048, f"TCA {key}")
+        if "counterexample_kind" in check and check["counterexample_kind"] not in _TCA_COUNTEREXAMPLE_KINDS:
+            raise BrainAuditError("invalid TCA acceptance counterexample kind")
         if (check["phase"] not in ("CLAIM_NOW", "PROOF_LATER")
                 or check["phase"] == "PROOF_LATER" and check["outcome"] != "BLOCKER"):
             raise BrainAuditError("PROOF_LATER cannot be sufficient TCA acceptance")
@@ -1759,6 +1973,11 @@ def _tca_consumers(value: Any, task: dict[str, Any] | None, context: dict[str, A
     if type(value) is not list or len(value) != len(consumers):
         raise BrainAuditError("TCA requires every declared consumer exactly once")
     ids = set() if task is None else {c["id"] for c in task["acceptance"]}
+    is_tca3 = bound["audit_profile_ref"]["id"] == _TCA_V3_ID
+    source_paths = {s["path"] for s in context.get("source_material", [])}
+    modify_paths = set() if task is None else set(task["scope"]["modify"])
+    auth = context.get("authorization")
+    inspect_only = (set(auth["scope"]["inspect"]) - set(auth["scope"]["modify"])) if auth is not None else set()
     for consumer, check in zip(consumers, value):
         _fields(check, _TCA_JUDGMENT_FIELDS | {"acceptance_ids"}, "TCA consumer check")
         if check["id"] != consumer["id"]:
@@ -1767,35 +1986,97 @@ def _tca_consumers(value: Any, task: dict[str, Any] | None, context: dict[str, A
         covered = _tca_texts(check["acceptance_ids"], 256, "TCA consumer acceptance ids")
         if not set(covered) <= ids or check["outcome"] == "CLEAR" and not covered:
             raise BrainAuditError("material TCA consumer lacks acceptance coverage")
+        if is_tca3:
+            req_sources = consumer.get("required_source_paths", [])
+            if req_sources and not set(req_sources) <= source_paths:
+                if check["outcome"] != "BLOCKER" or check["knowledge"] != "UNKNOWN":
+                    raise BrainAuditError("TCA-3 consumer missing required source excerpt requires UNKNOWN/BLOCKER")
+            req_modify = consumer.get("required_modify_paths", [])
+            if req_modify and any(p in inspect_only or p not in modify_paths for p in req_modify):
+                if check["outcome"] != "BLOCKER":
+                    raise BrainAuditError("TCA-3 consumer requiring inspect-only or unauthorized edit must be BLOCKER")
+    return value
+
+
+def _tca_verification_checks(value: Any, task: dict[str, Any] | None, context: dict[str, Any],
+                             bound: dict[str, Any]) -> list[dict[str, Any]]:
+    commands = [] if task is None else task["verification"]["required"]
+    if type(value) is not list or len(value) != len(commands):
+        raise BrainAuditError("TCA-3 requires every verification.required command in order")
+    observed = {o["command"]: o["status"] for o in context.get("baseline_observations", [])}
+    has_full_reason = bool(task and task["verification"].get("full_suite_reason"))
+    seen_ids = set()
+    for cmd, check in zip(commands, value):
+        _fields(check, _TCA_JUDGMENT_FIELDS | {"command", "phase", "baseline_status"}, "TCA-3 verification check")
+        identity = _text(check["id"], 256, "TCA-3 verification check id")
+        if identity in seen_ids or check["command"] != cmd:
+            raise BrainAuditError("missing, duplicate, skipped or substituted TCA-3 verification command")
+        seen_ids.add(identity)
+        _tca_judgment(check, bound, ("task",))
+        if (check["phase"] not in ("CLAIM_NOW", "PROOF_LATER")
+                or check["phase"] == "PROOF_LATER" and check["outcome"] != "BLOCKER"):
+            raise BrainAuditError("PROOF_LATER verification cannot be sufficient CLAIM_NOW")
+        status = check["baseline_status"]
+        if status not in ("PASS", "FAIL", "NOT_RUN", "UNKNOWN"):
+            raise BrainAuditError("invalid TCA-3 verification baseline_status")
+        if ("aios_parallel_full_suite" in cmd or cmd.strip() in ("pytest", "pytest -q")) and not has_full_reason:
+            if check["outcome"] != "BLOCKER":
+                raise BrainAuditError("TCA-3 rejects implicit full-suite verification without full_suite_reason")
+        if cmd in observed and status != observed[cmd]:
+            raise BrainAuditError("TCA-3 verification baseline_status contradicts baseline_observations")
+        if cmd not in observed and status == "PASS" and check["knowledge"] == "OBSERVED":
+            raise BrainAuditError("TCA-3 cannot invent observed baseline PASS without baseline_observations")
+        if status == "UNKNOWN" and (check["outcome"] != "BLOCKER" or check["knowledge"] != "UNKNOWN"):
+            raise BrainAuditError("TCA-3 UNKNOWN baseline status requires UNKNOWN/BLOCKER")
+        if status == "FAIL" and check["outcome"] != "BLOCKER":
+            basis_lower = check["basis"].lower()
+            if "pre-existing" not in basis_lower and "prior" not in basis_lower and "baseline" not in basis_lower:
+                raise BrainAuditError("TCA-3 failing baseline command requires BLOCKER or explicit prior-baseline distinction")
     return value
 
 
 def construct_tca(packet: Any, profile: Any, subject: Any, semantic_output: Any,
                   source_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """First pass binds the supplied proposal and independently reviewable obligations."""
-    _, _, bound, context = _tca_bound(packet, profile, subject, source_context)
-    material = _fields(_normal(semantic_output, depth=0, max_depth=32),
-                       {"subject_fingerprint", "checks", "acceptance_checks", "consumer_checks"}, "TCA construct")
+    _, policy, bound, context = _tca_bound(packet, profile, subject, source_context)
+    raw = _normal(semantic_output, depth=0, max_depth=32)
+    has_verif = policy["id"] == _TCA_V3_ID and (
+        (type(raw) is dict and "verification_checks" in raw) or "baseline_observations" in context
+    )
+    allowed = {"subject_fingerprint", "checks", "acceptance_checks", "consumer_checks"} | (
+        {"verification_checks"} if has_verif else set()
+    )
+    material = _fields(raw, allowed, "TCA construct")
     _bounded(material, _TCA_BOUNDS["outcome_bytes"], "TCA construct")
     if material["subject_fingerprint"] != bound["subject_fingerprint"]:
         raise BrainAuditError("stale TCA construct subject")
     checks = _tca_checks(material["checks"], bound, challenge=False)
     acceptance = _tca_acceptance(material["acceptance_checks"], context["task"], bound)
     consumers = _tca_consumers(material["consumer_checks"], context["task"], context, bound)
+    verification = _tca_verification_checks(material["verification_checks"], context["task"], context, bound) if has_verif else None
     for index, judgments in ((2, acceptance), (4, consumers)):
         if any(c["outcome"] == "BLOCKER" for c in judgments) and checks[index]["outcome"] != "BLOCKER":
             raise BrainAuditError("TCA construct gives false sufficient aggregate coverage")
+    if verification is not None and any(c["outcome"] == "BLOCKER" for c in verification):
+        if checks[2]["outcome"] != "BLOCKER" and checks[4]["outcome"] != "BLOCKER":
+            raise BrainAuditError("TCA construct gives false sufficient verification coverage")
     result = {"format": "AIOS_BRAIN_TASK_CONTRACT_AUDIT", "version": 1, "stage": "CONSTRUCT",
               "subject_fingerprint": bound["subject_fingerprint"], "checks": checks,
               "acceptance_checks": acceptance, "consumer_checks": consumers, "draft_candidate": context["task"]}
+    if verification is not None:
+        result["verification_checks"] = verification
     result["construct_fingerprint"] = _digest(result)
     return result
 
 
 def _tca_construct(packet: Any, profile: Any, subject: Any, value: Any, source_context: Any) -> dict[str, Any]:
-    first = _fields(_normal(value, depth=0, max_depth=32), _TCA_CONSTRUCT_FIELDS, "TCA first pass")
-    expected = construct_tca(packet, profile, subject, {k: first[k] for k in (
-        "subject_fingerprint", "checks", "acceptance_checks", "consumer_checks")}, source_context)
+    raw = _normal(value, depth=0, max_depth=32)
+    has_verif = type(raw) is dict and "verification_checks" in raw
+    first = _fields(raw, _TCA_CONSTRUCT_FIELDS | ({"verification_checks"} if has_verif else set()), "TCA first pass")
+    keys = ("subject_fingerprint", "checks", "acceptance_checks", "consumer_checks") + (
+        ("verification_checks",) if has_verif else ()
+    )
+    expected = construct_tca(packet, profile, subject, {k: first[k] for k in keys}, source_context)
     if _json(first) != _json(expected):
         raise BrainAuditError("TCA construct lineage mismatch")
     return expected
@@ -1869,7 +2150,7 @@ def _tca_accounting(value: Any, original: Any, candidate: Any, bound: dict[str, 
         if record["id"] != criterion["id"]:
             raise BrainAuditError("TCA acceptance accounting dropped, duplicated or replaced an id")
         roles = ("task", "canonical") + (("implementation", "authorization")
-                 if bound["audit_profile_ref"]["id"] == _TCA_SUCCESSOR_ID else ())
+                 if bound["audit_profile_ref"]["id"] in _TCA_SUCCESSOR_IDS else ())
         missing = any(bound["sources"][role] is None for role in roles)
         _tca_judgment({**record, "outcome": "BLOCKER" if missing else "CLEAR",
                        "knowledge": "UNKNOWN" if missing else "INFERRED"}, bound, ("task",))
@@ -1899,10 +2180,12 @@ def _tca_accounting(value: Any, original: Any, candidate: Any, bound: dict[str, 
 
 
 def _tca_reconcile(value: Any, first: dict, candidate: Any, bound: dict) -> list[dict]:
+    verif_checks = first.get("verification_checks", [])
     blockers = {(kind, c["id"]): (c, roles) for kind, checks, required in (
         ("CHECK", first["checks"], _TCA_CONSTRUCT_ROLES),
         ("ACCEPTANCE", first["acceptance_checks"], [("task",)] * len(first["acceptance_checks"])),
         ("CONSUMER", first["consumer_checks"], [("task", "consumers")] * len(first["consumer_checks"])),
+        ("VERIFICATION", verif_checks, [("task",)] * len(verif_checks)),
     ) for c, roles in zip(checks, required) if c["outcome"] == "BLOCKER"}
     if type(value) is not list or len(value) != len(blockers):
         raise BrainAuditError("TCA must retain or explicitly resolve every first-pass blocker")
@@ -1928,6 +2211,7 @@ def _tca_reconcile(value: Any, first: dict, candidate: Any, bound: dict) -> list
     # CLEAR first-pass obligations still contribute their knowledge to closure.
     effective.extend(c for field in ("checks", "acceptance_checks", "consumer_checks")
                      for c in first[field] if c["outcome"] == "CLEAR")
+    effective.extend(c for c in verif_checks if c["outcome"] == "CLEAR")
     return effective
 
 
@@ -1936,10 +2220,17 @@ def validate_tca(packet: Any, profile: Any, subject: Any, stage1: Any, semantic_
     """Independently challenge, reconcile exact blockers and expose one final closure."""
     body, policy, bound, context = _tca_bound(packet, profile, subject, source_context)
     first = _tca_construct(body, policy, bound, stage1, context)
-    material = _fields(_normal(semantic_output, depth=0, max_depth=32), {
+    raw = _normal(semantic_output, depth=0, max_depth=32)
+    has_verif = policy["id"] == _TCA_V3_ID and (
+        "verification_checks" in first
+        or "baseline_observations" in context
+        or (type(raw) is dict and "verification_checks" in raw)
+    )
+    allowed = {
         "subject_fingerprint", "construct_fingerprint", "challenges", "acceptance_checks", "consumer_checks",
         "acceptance_accounting", "reconciliation", "closure", "reconciled_candidate",
-    }, "TCA second pass")
+    } | ({"verification_checks"} if has_verif else set())
+    material = _fields(raw, allowed, "TCA second pass")
     _bounded(material, _TCA_BOUNDS["outcome_bytes"], "TCA second pass")
     if (material["subject_fingerprint"] != bound["subject_fingerprint"]
             or material["construct_fingerprint"] != first["construct_fingerprint"]):
@@ -1951,6 +2242,10 @@ def validate_tca(packet: Any, profile: Any, subject: Any, stage1: Any, semantic_
     challenges = _tca_checks(material["challenges"], bound, challenge=True)
     acceptance = _tca_acceptance(material["acceptance_checks"], reviewed_task, bound)
     consumers = _tca_consumers(material["consumer_checks"], reviewed_task, context, bound)
+    verification = (
+        _tca_verification_checks(material["verification_checks"], reviewed_task, context, bound)
+        if has_verif else []
+    )
     if candidate is not None:
         later_conditions = {c["condition"] for c in first["acceptance_checks"] if c["phase"] == "PROOF_LATER"}
         if any(c["condition"] in later_conditions for c in candidate["acceptance"]):
@@ -1962,7 +2257,7 @@ def validate_tca(packet: Any, profile: Any, subject: Any, stage1: Any, semantic_
     else:
         _tca_accounting(material["acceptance_accounting"], context["task"], reviewed_task, bound)
     effective = _tca_reconcile(material["reconciliation"], first, candidate, bound)
-    judgments = [*effective, *challenges, *acceptance, *consumers]
+    judgments = [*effective, *challenges, *acceptance, *consumers, *verification]
     blocked = bool(bound["blockers"]) or any(c["outcome"] == "BLOCKER" for c in judgments)
     outcome = "NO_DECISION" if blocked else "CANDIDATE"
     knowledge = ("UNKNOWN" if any(c["knowledge"] == "UNKNOWN" for c in judgments) else
@@ -1978,6 +2273,18 @@ def validate_tca(packet: Any, profile: Any, subject: Any, stage1: Any, semantic_
     else:
         if candidate is None or closure["candidate_fingerprint"] != _digest(candidate):
             raise BrainAuditError("TCA closure does not bind the final TASK")
+        if policy["id"] == _TCA_V3_ID:
+            distinct_causes = [
+                cause
+                for src in context.get("source_material", [])
+                for cause in src.get("failure_causes", [])
+            ]
+            if len(set(distinct_causes)) >= 2:
+                combined_text = " ".join(
+                    [closure["summary"], *(c["basis"] for c in challenges), *(c["basis"] for c in acceptance)]
+                ).lower()
+                if any(cause.lower() not in combined_text for cause in set(distinct_causes)):
+                    raise BrainAuditError("TCA-3 CANDIDATE must distinguish all bound source failure causes")
         changed = _json(candidate) != _json(first["draft_candidate"])
         addressed = any(c["disposition"] == "ADDRESSED_BY_RECONCILIATION" for c in challenges)
         if changed != addressed:
@@ -1986,6 +2293,8 @@ def validate_tca(packet: Any, profile: Any, subject: Any, stage1: Any, semantic_
               "subject_fingerprint": bound["subject_fingerprint"], "construct_fingerprint": first["construct_fingerprint"],
               **{k: material[k] for k in ("challenges", "acceptance_checks", "consumer_checks", "acceptance_accounting",
                                           "reconciliation", "closure")}, "handoff_candidate": candidate}
+    if has_verif:
+        result["verification_checks"] = verification
     result["audit_fingerprint"] = _digest(result)
     return result
 

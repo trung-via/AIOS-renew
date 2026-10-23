@@ -274,6 +274,74 @@ class CanonicalAuditRepository:
             setattr(self, key, value)
         return approval
 
+    def publish_tca3_successor(self, *, omit_reviewed_body=False):
+        """Offline independently reviewed TASK-405 publication and later Human approval for tca-3."""
+        from aios_renew.brain_audit import _specialized_profiles
+        from aios_renew.brain_context import (
+            _digest, _R21_SUCCESSOR_APPROVAL, _R21_TCA3_APPROVAL, _TCA3_PRIORITY_RECORD,
+        )
+        root = Path(__file__).resolve().parents[1]
+        if _R21_SUCCESSOR_APPROVAL not in self.roadmap:
+            self.publish_successor()
+        original = {key: deepcopy(getattr(self, key)) for key in (
+            "base_sha", "source_sha", "review_sha", "artifact_sha", "run", "result_package", "review")}
+        task_raw = (root / ".ai/tasks/TASK-405.yaml").read_bytes()
+        task = yaml.safe_load(task_raw)
+        self.base_sha = self.main_sha
+        registry_raw = (root / ".ai/brain-audit-profiles.yaml").read_bytes()
+        if omit_reviewed_body:
+            registry = yaml.safe_load(registry_raw)
+            registry["profiles"] = [p for p in registry["profiles"] if p["id"] != "tca-3"]
+            self.write(".ai/brain-audit-profiles.yaml", yaml.safe_dump(registry).encode())
+        else:
+            self.write(".ai/brain-audit-profiles.yaml", registry_raw)
+        self.write(".ai/tasks/TASK-405.yaml", task_raw)
+        priority = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())[_TCA3_PRIORITY_RECORD]
+        self.roadmap[_TCA3_PRIORITY_RECORD] = deepcopy(priority)
+        self.write(".ai/roadmap-state.yaml", yaml.safe_dump(self.roadmap).encode())
+        self.source_sha = self.commit("tca-3 successor implementation fixture")
+        self.tca3_source_sha = self.source_sha
+        self.git(self.canonical, "update-ref", "refs/heads/aios/review/RUN-405-001", self.source_sha)
+        self.run = {**deepcopy(original["run"]), "run_id": "RUN-405-001", "task": {"id": "TASK-405", "revision": 1},
+                    "base_sha": self.base_sha}
+        evidence_id = "RUN-405-001-V001"
+        self.result_package = {
+            "result": {"head_sha": self.source_sha,
+                "claims": [{"id": f"C{i}", "satisfies": [c["id"]], "claim": c["condition"], "evidence": [evidence_id]}
+                           for i, c in enumerate(task["acceptance"], 1)],
+                "changed_files": [".ai/brain-audit-profiles.yaml"], "unresolved": []},
+            "evidence": [{"evidence_id": evidence_id, "run_id": self.run["run_id"], "subject_sha": self.source_sha,
+                "type": "VERIFICATION", "source": {"command": task["verification"]["required"][0]},
+                "result": {"exit_code": 0, "summary": "Synthetic Runtime fixture"},
+                "raw": {"path": "protected-runtime-raw/tca3-successor"}}]}
+        self.save_artifacts(run_id="RUN-405-001")
+        self.tca3_artifact_sha = self.artifact_sha
+        self.review = {"review_id": "REVIEW-405-001", "reviewed_sha": self.source_sha, "mode": "PRIMARY",
+                       "verdict": "PASS", "findings": [], "acceptance": {c["id"]: "PASS" for c in task["acceptance"]}}
+        self.save_review(run_id="RUN-405-001")
+        self.tca3_review_sha = self.review_sha
+        if omit_reviewed_body:
+            self.write(".ai/brain-audit-profiles.yaml", registry_raw)
+            self.commit("tca-3 registry added after reviewed publication")
+        approval = deepcopy(self.roadmap[_R21_SUCCESSOR_APPROVAL])
+        approval.update(
+            approved_on="2026-10-23", status="ACTIVE",
+            implementation_task="TASK-405", implementation_revision=1,
+            implementation_run="RUN-405-001", review_id="REVIEW-405-001", review_verdict="PASS",
+            human_decision="ACTIVATE_R21_TCA3_WITH_UNCHANGED_AOA_MOA_ROA1R3_AND_HUMAN_V1_OPTION",
+            target_profiles=_specialized_profiles(tca3=True),
+            supersedes=_R21_SUCCESSOR_APPROVAL,
+            superseded_approval_digest=_digest(self.roadmap[_R21_SUCCESSOR_APPROVAL]),
+            review_decision_sha=self.review_sha,
+            reviewed_published_source_sha=self.source_sha,
+            approved_against_main_sha=self.source_sha,
+        )
+        self.roadmap[_R21_TCA3_APPROVAL] = approval
+        self.save_roadmap()
+        for key, value in original.items():
+            setattr(self, key, value)
+        return approval
+
 
 @pytest.fixture
 def canonical_audit_repo(tmp_path):
@@ -790,3 +858,107 @@ def test_task392_canonical_successor_cannot_replace_authority_with_a_digest(cano
     supplied, contract, bindings, sources = production_inputs(registry, "TASK_AUTHORING", canonical)
     with pytest.raises(BrainContextError):
         canonical_audit_inputs(supplied, contract, bindings, repo=canonical.repo, **sources)
+
+
+def test_task405_priority_record_preserves_tca2_live_default_and_prepares_two_step_tca3_cutover(
+        task395_canonical_audit_repo):
+    from aios_renew.brain_audit import _TCA_V3_DIGEST, _TCA_SUCCESSOR_DIGEST
+    from aios_renew.brain_context import (
+        canonical_audit_inputs, _TCA3_PRIORITY_RECORD, _R21_SUCCESSOR_APPROVAL, _UniqueKeyLoader,
+    )
+    from aios_renew.brain_provider_protocol import construct_request
+    from aios_renew.brain_return_contract import parse_return_contract_registry
+    from test_brain_provider_protocol import production_inputs
+    root = Path(__file__).resolve().parents[1]
+    roadmap_doc = yaml.load((root / ".ai/roadmap-state.yaml").read_bytes(), Loader=_UniqueKeyLoader)
+    priority = roadmap_doc[_TCA3_PRIORITY_RECORD]
+    assert priority["authority"] == "HUMAN_BRAIN_DECISION_RECORD"
+    assert priority["decided_on"] == "2026-10-23"
+    assert priority["planning_only"] is True
+    assert priority["status"] == "CANDIDATE_PREPARED_NOT_ACTIVE"
+    assert priority["current_live_default_profile"] == {
+        "id": "tca-2", "version": 2, "digest": _TCA_SUCCESSOR_DIGEST, "status": "ACTIVE",
+    }
+    assert priority["candidate_successor_profile"] == {
+        "id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST, "status": "CANDIDATE_PREPARED_NOT_ACTIVE",
+    }
+    assert priority["paused_recovery_frontier"]["frontier_id"] == "post-task-dirty-recovery-pte-20261022"
+    assert priority["paused_recovery_frontier"]["status"] == "PAUSED_RESUMABLE"
+    assert roadmap_doc[_R21_SUCCESSOR_APPROVAL]["target_profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
+
+    # Installing the priority record on canonical main keeps tca-2 as the live default.
+    canonical = task395_canonical_audit_repo
+    canonical.roadmap[_TCA3_PRIORITY_RECORD] = deepcopy(priority)
+    canonical.save_roadmap()
+    registry = parse_return_contract_registry((root / ".ai/brain-return-contracts.yaml").read_bytes())
+    supplied, contract, bindings, sources = production_inputs(registry, "TASK_AUTHORING", canonical)
+    policy, package, authenticate = canonical_audit_inputs(
+        supplied, contract, bindings, repo=canonical.repo, **sources)
+    assert package["audit_profile_ref"]["id"] == "tca-2"
+    req_tca2 = construct_request(supplied, contract, bindings, package, request_mode="PROSPECTIVE",
+                                 audit_policy=policy, selection_authenticator=authenticate, **sources)
+    assert req_tca2["audit_profile_package"]["audit_profile_ref"]["id"] == "tca-2"
+
+    # Attempting to self-activate tca-3 via the planning priority record fails closed.
+    for bad_field, bad_val in (
+        ("planning_only", False),
+        ("status", "ACTIVE"),
+        ("current_live_default_profile", {"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}),
+    ):
+        tampered = deepcopy(priority)
+        tampered[bad_field] = bad_val
+        canonical.roadmap[_TCA3_PRIORITY_RECORD] = tampered
+        canonical.save_roadmap()
+        supplied_bad, contract_bad, bindings_bad, sources_bad = production_inputs(registry, "TASK_AUTHORING", canonical)
+        with pytest.raises(BrainContextError):
+            canonical_audit_inputs(supplied_bad, contract_bad, bindings_bad, repo=canonical.repo, **sources_bad)
+
+    # Restore valid priority record and publish separate tca-3 activation cutover.
+    canonical.roadmap[_TCA3_PRIORITY_RECORD] = deepcopy(priority)
+    canonical.save_roadmap()
+    tca3_approval = canonical.publish_tca3_successor()
+    # In-flight tca-2 request stops rather than silently switching to tca-3.
+    assert authenticate(req_tca2["audit_selection"], "CONTINUE") is False
+    supplied3, contract3, bindings3, sources3 = production_inputs(registry, "TASK_AUTHORING", canonical)
+    policy3, package3, authenticate3 = canonical_audit_inputs(
+        supplied3, contract3, bindings3, repo=canonical.repo, **sources3)
+    assert package3["audit_profile_ref"] == {"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}
+    assert policy3["profiles"] == tca3_approval["target_profiles"]
+    assert policy3["profiles"]["ARCHITECTURE"]["id"] == "aoa-1"
+    assert policy3["profiles"]["REMEDIATION_AUTHORING"]["id"] == "moa-1"
+    assert policy3["profiles"]["REPAIR_AUTHORING"]["id"] == "roa-1-r3"
+
+
+@pytest.mark.parametrize("fault", (
+    "partial", "mixed_tca2", "digest", "supersedes_digest", "missing_review",
+    "missing_artifact", "wrong_task", "unreviewed_body",
+))
+def test_task405_tca3_prospective_activation_rejects_unauthenticated_or_forged_cutover(
+        canonical_audit_repo, fault):
+    from aios_renew.brain_context import canonical_audit_inputs
+    from aios_renew.brain_return_contract import parse_return_contract_registry
+    from test_brain_provider_protocol import production_inputs
+    root = Path(__file__).resolve().parents[1]
+    canonical = canonical_audit_repo
+    approval = canonical.publish_tca3_successor(omit_reviewed_body=fault == "unreviewed_body")
+    if fault == "partial":
+        del approval["target_profiles"]["TASK_AUTHORING"]
+    elif fault == "mixed_tca2":
+        approval["target_profiles"]["TASK_AUTHORING"] = canonical.roadmap[
+            "human_r21_tca_roa_successor_activation"]["target_profiles"]["TASK_AUTHORING"]
+    elif fault == "digest":
+        approval["target_profiles"]["TASK_AUTHORING"]["digest"] = "0" * 64
+    elif fault == "supersedes_digest":
+        approval["superseded_approval_digest"] = "0" * 64
+    elif fault == "missing_review":
+        canonical.git(canonical.canonical, "update-ref", "-d", "refs/heads/aios/review-decision/RUN-405-001")
+    elif fault == "missing_artifact":
+        canonical.git(canonical.canonical, "update-ref", "-d", "refs/heads/aios/artifacts/RUN-405-001")
+    elif fault == "wrong_task":
+        approval["implementation_task"] = "TASK-392"
+    canonical.save_roadmap()
+    registry = parse_return_contract_registry((root / ".ai/brain-return-contracts.yaml").read_bytes())
+    supplied, contract, bindings, sources = production_inputs(registry, "TASK_AUTHORING", canonical)
+    with pytest.raises(BrainContextError):
+        canonical_audit_inputs(supplied, contract, bindings, repo=canonical.repo, **sources)
+

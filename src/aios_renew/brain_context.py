@@ -485,6 +485,8 @@ _R21_APPROVAL_STATES = frozenset({
     "HUMAN_APPROVED_CANONICALIZED_LIVE_PRODUCTION_CONFORMANCE_OUTSTANDING", "ACTIVE",
 })
 _R21_SUCCESSOR_APPROVAL = "human_r21_tca_roa_successor_activation"
+_R21_TCA3_APPROVAL = "human_r21_tca3_successor_activation"
+_TCA3_PRIORITY_RECORD = "human_tca3_retrospective_priority_20261023"
 _R5_CANDIDATE_REF = "refs/heads/aios/review/RUN-368-001"
 _R5_REVIEW_REF = "refs/heads/aios/review-decision/RUN-368-001"
 _R5_ARTIFACT_REF = "refs/heads/aios/artifacts/RUN-368-001"
@@ -556,26 +558,50 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         raise BrainContextError("canonical Human R2.1 approval is missing")
     for key in nodes:
         if ((key.startswith("human_r21_four_specialized_activation_") and key != _R21_APPROVAL)
-                or (key.startswith(_R21_SUCCESSOR_APPROVAL) and key != _R21_SUCCESSOR_APPROVAL)):
+                or (key.startswith(_R21_SUCCESSOR_APPROVAL) and key != _R21_SUCCESSOR_APPROVAL)
+                or (key.startswith(_R21_TCA3_APPROVAL) and key != _R21_TCA3_APPROVAL)):
             raise BrainContextError("conflicting canonical Human R2.1 approvals")
+    if _TCA3_PRIORITY_RECORD in nodes:
+        priority_encoded = yaml.serialize(nodes[_TCA3_PRIORITY_RECORD])
+        if len(priority_encoded.encode("utf-8")) > 8192:
+            raise BrainContextError("canonical TCA-3 priority record exceeds bound")
+        priority_record = yaml.load(priority_encoded, Loader=_UniqueKeyLoader)
+        if (not isinstance(priority_record, dict)
+                or priority_record.get("planning_only") is not True
+                or not isinstance(priority_record.get("prospective_successor_profile"), dict)
+                or priority_record["prospective_successor_profile"].get("status") != "CANDIDATE_PREPARED_NOT_ACTIVE"
+                or not isinstance(priority_record.get("current_live_default_profile"), dict)
+                or priority_record["current_live_default_profile"].get("id") != "tca-2"):
+            raise BrainContextError("planning priority record cannot self-activate TCA-3 or retire TCA-2")
 
-    def approval_record(key: str, *, successor: bool) -> dict:
+    def approval_record(key: str, *, successor: bool = False, tca3: bool = False) -> dict:
         encoded = yaml.serialize(nodes[key])
         if len(encoded.encode("utf-8")) > 8192:
             raise BrainContextError("canonical audit approval exceeds bound")
         record = yaml.load(encoded, Loader=_UniqueKeyLoader)
+        if tca3:
+            decision = "ACTIVATE_R21_TCA3_WITH_UNCHANGED_AOA_MOA_ROA1R3_AND_HUMAN_V1_OPTION"
+            task_id = "TASK-405"
+            target_profiles = _specialized_profiles(tca3=True)
+        elif successor:
+            decision = "ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION"
+            task_id = "TASK-392"
+            target_profiles = _specialized_profiles(successors=True)
+        else:
+            decision = "ACTIVATE_R21_FOUR_SPECIALIZED_DEFAULT_WITH_ADAPTIVE_V1_AS_HUMAN_OPTION"
+            task_id = "TASK-368"
+            target_profiles = _specialized_profiles()
         required = {
             "authority": "EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL",
-            "human_decision": ("ACTIVATE_R21_TCA2_ROA1R3_WITH_UNCHANGED_AOA_MOA_AND_HUMAN_V1_OPTION"
-                               if successor else "ACTIVATE_R21_FOUR_SPECIALIZED_DEFAULT_WITH_ADAPTIVE_V1_AS_HUMAN_OPTION"),
-            "implementation_task": "TASK-392" if successor else "TASK-368", "implementation_revision": 1,
+            "human_decision": decision,
+            "implementation_task": task_id, "implementation_revision": 1,
             "review_verdict": "PASS", "target_policy_format": "AIOS_BRAIN_AUDIT_POLICY",
             "target_policy_version": 1, "target_policy_state": "FOUR_SPECIALIZED",
-            "target_profiles": _specialized_profiles(successors=successor),
+            "target_profiles": target_profiles,
             "architecture_and_task_v1_option": "HUMAN_EXPLICIT_EXACT_SUBJECT_V1_ONLY_ONE_NORMATIVE_AUDIT",
             "correction_v1_option": "HUMAN_EXPLICIT_READ_ONLY_SUPPORT_NO_SECOND_NORMATIVE_AUDIT",
         }
-        if not successor:
+        if not successor and not tca3:
             required.update(approved_on="2026-10-17", implementation_run="RUN-368-001", review_id="REVIEW-368-001")
         if (not isinstance(record, dict)
                 or any(_digest(record.get(k)) != _digest(v) for k, v in required.items())
@@ -583,17 +609,19 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
                 or type(record.get("target_policy_version")) is not int
                 or record.get("status") not in _R21_APPROVAL_STATES):
             raise BrainContextError("canonical Human R2.1 approval conflicts with activation")
-        if successor and (
+        task_num = "405" if tca3 else "392"
+        if (successor or tca3) and (
                 not isinstance(record.get("approved_on"), str)
                 or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", record["approved_on"]) is None
-                or re.fullmatch(r"RUN-392-[0-9]{3,}", str(record.get("implementation_run"))) is None
-                or re.fullmatch(r"REVIEW-392-[0-9]{3,}", str(record.get("review_id"))) is None):
+                or re.fullmatch(rf"RUN-{task_num}-[0-9]{{3,}}", str(record.get("implementation_run"))) is None
+                or re.fullmatch(rf"REVIEW-{task_num}-[0-9]{{3,}}", str(record.get("review_id"))) is None):
             raise BrainContextError("invalid separately approved successor identity")
         return record
 
     original = approval_record(_R21_APPROVAL, successor=False)
     selected = original
     successor = None
+    tca3_approval = None
     if _R21_SUCCESSOR_APPROVAL in nodes:
         successor = approval_record(_R21_SUCCESSOR_APPROVAL, successor=True)
         if (successor.get("supersedes") != _R21_APPROVAL
@@ -608,9 +636,25 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         refs.update(additional)
         patterns = (*patterns, *successor_patterns)
         selected = successor
+    if _R21_TCA3_APPROVAL in nodes:
+        if successor is None:
+            raise BrainContextError("TCA-3 activation requires prior R2.1 successor approval")
+        tca3_approval = approval_record(_R21_TCA3_APPROVAL, successor=True, tca3=True)
+        if (tca3_approval.get("supersedes") != _R21_SUCCESSOR_APPROVAL
+                or tca3_approval.get("superseded_approval_digest") != _digest(successor)):
+            raise BrainContextError("TCA-3 activation does not preserve the exact R2.1 successor approval")
+        tca3_run_id = tca3_approval["implementation_run"]
+        tca3_patterns = tuple(f"refs/heads/aios/{kind}/{tca3_run_id}"
+                              for kind in ("review", "review-decision", "artifacts"))
+        tca3_additional = _query_matching_refs(repo, remote, *tca3_patterns)
+        if set(tca3_additional) != set(tca3_patterns):
+            raise BrainContextError("TCA-3 reviewed publication is unavailable")
+        refs.update(tca3_additional)
+        patterns = (*patterns, *tca3_patterns)
+        selected = tca3_approval
 
     def publication(record: dict, candidate_ref: str, review_ref: str, artifact_ref: str) -> str:
-        # Both approvals use the same original PRIMARY RUN/RESULT/REVIEW trust
+        # All approvals use the same original PRIMARY RUN/RESULT/REVIEW trust
         # path. Registry presence and selected digests cannot authenticate policy.
         artifact_sha = refs[artifact_ref]
         run_data = _json_no_dups(blob(artifact_sha, ".ai/transport/run.json"), "R5 RUN")
@@ -658,7 +702,7 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
                 or set(review.acceptance) != {item.id for item in published_task.acceptance}
                 or any(value != "PASS" for value in review.acceptance.values())):
             raise BrainContextError("canonical R5 REVIEW does not approve the published source")
-        if record is successor:
+        if record in (successor, tca3_approval):
             published_profiles = parse_profile_registry(blob(source, ".ai/brain-audit-profiles.yaml"))
             published_refs = [profile_ref(p) for p in published_profiles["profiles"]]
             if any(ref not in published_refs for ref in record["target_profiles"].values()):
@@ -666,7 +710,11 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         return hashlib.sha256(review_raw).hexdigest()
 
     original_review_digest = publication(original, _R5_CANDIDATE_REF, _R5_REVIEW_REF, _R5_ARTIFACT_REF)
-    review_digest = publication(successor, *successor_patterns) if successor is not None else original_review_digest
+    review_digest = original_review_digest
+    if successor is not None:
+        review_digest = publication(successor, *successor_patterns)
+    if tca3_approval is not None:
+        review_digest = publication(tca3_approval, *tca3_patterns)
     profiles = parse_profile_registry(blob(main, ".ai/brain-audit-profiles.yaml"))
     returns = parse_return_contract_registry(blob(main, ".ai/brain-return-contracts.yaml"))
     if _query_matching_refs(repo, remote, *patterns) != refs or transport() != (remote, remote_url):

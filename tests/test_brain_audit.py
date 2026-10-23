@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 from aios_renew.brain_audit import (
-    BrainAuditError, construct_roa_subject, construct_stage1, normalize_profile, parse_profile_registry,
+    BrainAuditError, _TCA_V3_ID, _TCA_V3_DIGEST, construct_roa_subject, construct_stage1,
+    normalize_profile, parse_profile_registry,
     profile_applies, profile_ref, validate_roa, validate_stage2, normalize_audit_policy,
     construct_moa_subject, construct_moa, validate_moa,
     construct_tca_subject, construct_tca, validate_tca,
@@ -459,7 +460,7 @@ def tca_subject(body, profile, context):
 
 
 def tca_judgment(identity, subject, roles):
-    if subject["audit_profile_ref"]["id"] == "tca-2":
+    if subject["audit_profile_ref"]["id"] in ("tca-2", "tca-3"):
         roles = tuple(dict.fromkeys((*roles, "implementation", "authorization")))
     missing = subject["sources"]["canonical"] is None or any(subject["sources"][r] is None for r in roles)
     return {"id": identity, "outcome": "BLOCKER" if missing else "CLEAR",
@@ -2716,9 +2717,9 @@ def test_task392_registry_limits_reject_extra_duplicate_and_oversized_material()
     import yaml
     raw = REGISTRY.read_bytes()
     registry = parse_profile_registry(raw)
-    assert len(registry["profiles"]) == 9
-    with pytest.raises(BrainAuditError, match="57344"):
-        parse_profile_registry(raw + b" " * (57345 - len(raw)))
+    assert len(registry["profiles"]) == 10
+    with pytest.raises(BrainAuditError, match="65536"):
+        parse_profile_registry(raw + b" " * (65537 - len(raw)))
     for extra in (deepcopy(registry["profiles"][0]), {"id": "tca-99", "version": 99}):
         bad = deepcopy(registry)
         bad["profiles"].append(extra)
@@ -2912,3 +2913,335 @@ def test_task392_roa_unsupported_code_fix_cannot_escape_a_completion_blocker():
     material["closure"]["candidate_fingerprint"] = digest(code_fix)
     with pytest.raises(BrainAuditError, match="blocker"):
         validate_roa(body, profile, subject, material)
+
+
+def task405_tca3_context():
+    body, context = task392_tca_context()
+    path = context["authorization"]["scope"]["modify"][0]
+    test_path = "tests/test_context.py"
+    context["task"]["scope"]["inspect"] = [test_path]
+    context["authorization"]["scope"]["inspect"] = [test_path]
+    context["source_material"] = [
+        {"path": path, "content": "def retain(context): return context\n",
+         "kind": "IMPLEMENTATION", "symbols": ["retain"], "call_sites": ["retain(context)"]},
+        {"path": test_path, "content": "def test_retain(): assert retain('ctx') == 'ctx'\n",
+         "kind": "TEST_DOUBLE", "symbols": ["test_retain"], "call_sites": ["retain('ctx')"]},
+    ]
+    context["consumers"] = [
+        {"id": "direct-caller", "authority": "RUNTIME", "requirement": "Caller passes explicit context to retain(context).",
+         "kind": "TRANSITIVE_CALLER", "path": path, "symbol": "retain"},
+        {"id": "legacy-test-double", "authority": "EXECUTOR", "requirement": "Inspect-only test double calls retain('ctx').",
+         "kind": "TEST_DOUBLE", "path": test_path, "symbol": "test_retain"},
+    ]
+    context["baseline_observations"] = [
+        {"id": "V1", "command": context["task"]["verification"][0], "status": "NOT_RUN",
+         "summary": "Pre-execution authoring audit; Runtime owns post-execution canonical verification."}
+    ]
+    return body, context
+
+
+def tca3_first(context, profile, subject):
+    material = tca_first(context, profile, subject)
+    for item, src in zip(material["consumer_checks"], context["consumers"]):
+        if "kind" in src:
+            item["kind"] = src["kind"]
+        if "path" in src:
+            item["path"] = src["path"]
+        if "symbol" in src:
+            item["symbol"] = src["symbol"]
+    if context.get("baseline_observations"):
+        material["verification_checks"] = [
+            {**tca_judgment(obs["id"], subject, ("task", "implementation", "consumers")),
+             "command": obs["command"], "baseline_status": obs["status"], "phase": "PROOF_LATER",
+             "distinct_causes": ["Runtime executes canonical verification after Executor commits the candidate."]}
+            for obs in context["baseline_observations"]
+        ]
+    return material
+
+
+def tca3_final(context, profile, subject, first):
+    material = tca_final(context, profile, subject, first)
+    kinds = ("VACUOUS_CRITERION", "TRANSITIVE_CALLER", "SCOPE_CREEP",
+             "AUTHORITY_INVERSION", "TEST_DOUBLE_DRIFT", "STALE_SOURCE_PACKET")
+    for ch, kind in zip(material["challenges"], kinds):
+        ch["counterexample_kind"] = kind
+    for item, src in zip(material["consumer_checks"], context["consumers"]):
+        if "kind" in src:
+            item["kind"] = src["kind"]
+        if "path" in src:
+            item["path"] = src["path"]
+        if "symbol" in src:
+            item["symbol"] = src["symbol"]
+    if "verification_checks" in first:
+        material["verification_checks"] = deepcopy(first["verification_checks"])
+    return material
+
+
+def test_task405_tca3_profile_registration_digest_and_tamper_rejection():
+    profile = successor_profile("tca-3")
+    assert profile["id"] == _TCA_V3_ID == "tca-3"
+    assert profile["version"] == 3
+    assert profile_ref(profile) == {"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}
+    assert profile["applicable_flows"] == ["TASK_AUTHORING"]
+    assert [p["id"] for p in profile["passes"]] == ["CONSTRUCT", "ADVERSARIAL_AUDIT_AND_RECONCILE"]
+    assert [len(p["checks"]) for p in profile["passes"]] == [5, 6]
+    # Live default policy remains tca-2 until separate cutover; tca3=True pins tca-3.
+    live_policy = normalize_audit_policy(_specialized_profiles(successors=True), load_profile_registry(REGISTRY))
+    assert live_policy["flow_profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
+    tca3_policy = normalize_audit_policy(_specialized_profiles(tca3=True), load_profile_registry(REGISTRY))
+    assert tca3_policy["flow_profiles"]["TASK_AUTHORING"] == {"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}
+    assert tca3_policy["flow_profiles"]["RECOVERY_REMEDIATION"]["id"] == "roa-1-r3"
+    # Class 10: tampering with tca-3 identity, version, check order, check text, or bounds fails closed.
+    for fault in ("version", "order", "text", "bounds", "old_tca2_body"):
+        bad = deepcopy(profile)
+        if fault == "version":
+            bad["version"] = 2
+        elif fault == "order":
+            bad["passes"][0]["checks"] = list(reversed(bad["passes"][0]["checks"]))
+        elif fault == "text":
+            bad["passes"][1]["checks"][4]["check"] += " Assume green baseline."
+        elif fault == "bounds":
+            bad["bounds"]["max_checks"] = 99
+        else:
+            bad = {**deepcopy(successor_profile("tca-2")), "id": "tca-3", "version": 3}
+        with pytest.raises(BrainAuditError):
+            normalize_profile(bad)
+
+
+def test_task405_class1_task376_transitive_direct_call_consumer_edge():
+    profile = successor_profile("tca-3")
+    body, context = task405_tca3_context()
+    cli = "src/aios_renew/cli.py"
+    gate = "src/aios_renew/l3_gate.py"
+    context["task"]["scope"] = {"inspect": [cli], "modify": [gate]}
+    context["authorization"]["scope"] = deepcopy(context["task"]["scope"])
+    context["source_material"] = [
+        {"path": gate, "content": "def evaluate_gate(state, *, strict): return strict\n",
+         "kind": "IMPLEMENTATION", "symbols": ["evaluate_gate"], "call_sites": ["evaluate_gate(state, strict=True)"]},
+        {"path": cli, "content": "def enforce_l3_gate_decision(state): return evaluate_gate(state)\n",
+         "kind": "TRANSITIVE_CALLER", "symbols": ["enforce_l3_gate_decision"], "call_sites": ["evaluate_gate(state)"]},
+    ]
+    context["consumers"] = [
+        {"id": "cli-enforce-l3-gate", "authority": "RUNTIME",
+         "requirement": "enforce_l3_gate_decision(state) calls evaluate_gate(state) without strict keyword while cli.py is inspect-only.",
+         "kind": "TRANSITIVE_CALLER", "path": cli, "symbol": "enforce_l3_gate_decision"}
+    ]
+    subject = tca_subject(body, profile, context)
+    assert subject["source_material_summary"]["kinds"]["TRANSITIVE_CALLER"] == 1
+    first_mat = tca3_first(context, profile, subject)
+    conflict = "TASK-376 transitive caller enforce_l3_gate_decision(state) breaks if evaluate_gate requires keyword-only strict while cli.py is inspect-only."
+    first_mat["checks"][4].update(outcome="BLOCKER", knowledge="INFERRED", basis=conflict)
+    first_mat["consumer_checks"][0].update(outcome="BLOCKER", knowledge="INFERRED", basis=conflict)
+    first = construct_tca(body, profile, subject, first_mat, context)
+    final_mat = tca3_final(context, profile, subject, first)
+    final_mat["challenges"][1].update(outcome="BLOCKER", disposition="BLOCKER", basis=conflict, counterexample=conflict)
+    result = validate_tca(body, profile, subject, first, final_mat, context)
+    assert result["closure"]["outcome"] == "NO_DECISION" and result["handoff_candidate"] is None
+
+
+def test_task405_class2_task377_git_framing_and_object_fetch_consumer():
+    profile = successor_profile("tca-3")
+    body, context = task405_tca3_context()
+    git_ops = "src/aios_renew/git_ops.py"
+    context["task"]["scope"] = {"inspect": [], "modify": [git_ops]}
+    context["authorization"]["scope"] = deepcopy(context["task"]["scope"])
+    context["source_material"] = [
+        {"path": git_ops,
+         "content": "cmd = ['git', 'status', '--porcelain=v1', '-z', '-uall', '--', '.ai']\ncat = ['git', 'cat-file', '-e', sha]\n",
+         "kind": "GIT_SUBPROCESS", "symbols": ["status_check", "verify_commit"],
+         "call_sites": ["git status --porcelain=v1 -z -uall -- .ai", "git cat-file -e <sha>"]},
+    ]
+    context["consumers"] = [
+        {"id": "git-porcelain-and-fetch", "authority": "RUNTIME",
+         "requirement": "Full-tree status requires '-- .' and uncached commit objects require 'git fetch --depth=1 origin <sha>' before cat-file.",
+         "kind": "GIT_SUBPROCESS", "path": git_ops, "symbol": "verify_commit"}
+    ]
+    subject = tca_subject(body, profile, context)
+    assert subject["source_material_summary"]["kinds"]["GIT_SUBPROCESS"] == 1
+    first = construct_tca(body, profile, subject, tca3_first(context, profile, subject), context)
+    final = tca3_final(context, profile, subject, first)
+    validated = validate_tca(body, profile, subject, first, final, context)
+    assert validated["closure"]["outcome"] == "CANDIDATE"
+    assert validated["consumer_checks"][0]["kind"] == "GIT_SUBPROCESS"
+
+
+def test_task405_class3_task384_386_388_396_legacy_test_doubles_and_ast_guards():
+    profile = successor_profile("tca-3")
+    body, context = task405_tca3_context()
+    code = "src/aios_renew/runtime.py"
+    test_file = "tests/test_runtime_legacy.py"
+    context["task"]["scope"] = {"inspect": [test_file], "modify": [code]}
+    context["authorization"]["scope"] = deepcopy(context["task"]["scope"])
+    context["source_material"] = [
+        {"path": code, "content": "def _run_git(args, *, timeout=30): pass\n",
+         "kind": "IMPLEMENTATION", "symbols": ["_run_git"], "call_sites": ["_run_git(args, timeout=30)"]},
+        {"path": test_file, "content": "monkeypatch.setattr(runtime, '_run_git', lambda args: 'ok')\nassert call_count == 2\n",
+         "kind": "AST_GUARD", "symbols": ["test_legacy_monkeypatch"], "call_sites": ["lambda args: 'ok'"]},
+    ]
+    context["consumers"] = [
+        {"id": "legacy-monkeypatch-and-call-count", "authority": "EXECUTOR",
+         "requirement": "Inspect-only test monkeypatches _run_git(args) positional signature and asserts exact call_count == 2.",
+         "kind": "AST_GUARD", "path": test_file, "symbol": "test_legacy_monkeypatch"}
+    ]
+    subject = tca_subject(body, profile, context)
+    first = construct_tca(body, profile, subject, tca3_first(context, profile, subject), context)
+    final = tca3_final(context, profile, subject, first)
+    assert validate_tca(body, profile, subject, first, final, context)["closure"]["outcome"] == "CANDIDATE"
+
+
+def test_task405_class4_task391_r1_inspect_only_ast_guard_conflict_blocks_without_widening_scope():
+    profile = successor_profile("tca-3")
+    body, context = task405_tca3_context()
+    code = "src/aios_renew/intra_run_proof_contract.py"
+    legacy = "tests/test_intra_run_proof_contract.py"
+    context["task"]["scope"] = {"inspect": [code, legacy], "modify": [code]}
+    context["authorization"]["scope"] = deepcopy(context["task"]["scope"])
+    context["source_material"] = [
+        {"path": code, "content": "from .verification_contract import parse_checkpoint_request\n",
+         "kind": "IMPLEMENTATION", "symbols": ["parse_runtime_checkpoint"]},
+        {"path": legacy, "content": "assert imports == {'__future__', 'hashlib', 'json', 're', 'dataclasses', 'proof_coverage_contract'}\n",
+         "kind": "AST_GUARD", "symbols": ["test_module_imports"]},
+    ]
+    context["consumers"] = [
+        {"id": "inspect-only-ast-guard", "authority": "EXECUTOR",
+         "requirement": "Historical AST guard in inspect-only test forbids verification_contract import.",
+         "kind": "AST_GUARD", "path": legacy, "symbol": "test_module_imports"}
+    ]
+    subject = tca_subject(body, profile, context)
+    first_mat = tca3_first(context, profile, subject)
+    conflict = "TASK-391 r1 cannot satisfy direct codec import and inspect-only AST import guard simultaneously."
+    first_mat["checks"][2].update(outcome="BLOCKER", knowledge="UNKNOWN", basis=conflict)
+    first_mat["consumer_checks"][0].update(outcome="BLOCKER", knowledge="UNKNOWN", basis=conflict)
+    first = construct_tca(body, profile, subject, first_mat, context)
+    final_mat = tca3_final(context, profile, subject, first)
+    final_mat["challenges"][4].update(outcome="BLOCKER", knowledge="UNKNOWN", disposition="BLOCKER",
+                                      basis=conflict, counterexample=conflict)
+    res = validate_tca(body, profile, subject, first, final_mat, context)
+    assert res["closure"]["outcome"] == "NO_DECISION" and res["handoff_candidate"] is None
+    # Attempting to edit inspect-only AST test in reconciled_candidate fails closed.
+    widened = deepcopy(final_mat)
+    widened["reconciled_candidate"] = deepcopy(context["task"])
+    widened["reconciled_candidate"]["scope"]["modify"].append(legacy)
+    with pytest.raises(BrainAuditError):
+        validate_tca(body, profile, subject, first, widened, context)
+
+
+def test_task405_class5_task403_multi_cause_baseline_failure_rejects_bare_pytest_node_id():
+    profile = successor_profile("tca-3")
+    body, context = task405_tca3_context()
+    cmd = context["task"]["verification"][0]
+    context["baseline_observations"] = [
+        {"id": "V1", "command": cmd, "status": "FAIL",
+         "summary": "Two distinct failures: CRLF vs LF newline normalization and missing uncached git commit object before cat-file."}
+    ]
+    subject = tca_subject(body, profile, context)
+    first_mat = tca3_first(context, profile, subject)
+    first_mat["verification_checks"][0]["distinct_causes"] = [
+        "Windows CRLF line endings in raw output must be normalized to LF before digest comparison.",
+        "Uncached commit SHA requires git fetch --depth=1 origin <sha> before git cat-file -e.",
+    ]
+    first = construct_tca(body, profile, subject, first_mat, context)
+    final_mat = tca3_final(context, profile, subject, first)
+    validated = validate_tca(body, profile, subject, first, final_mat, context)
+    assert len(validated["verification_checks"][0]["distinct_causes"]) == 2
+    # A bare pytest node ID as a cause is rejected by _tca_verification_checks!
+    bad_first = deepcopy(first_mat)
+    bad_first["verification_checks"][0]["distinct_causes"] = ["tests/test_git.py::test_newline_and_fetch"]
+    with pytest.raises(BrainAuditError, match="pytest node ID"):
+        construct_tca(body, profile, subject, bad_first, context)
+    # Failing baseline observation with empty distinct_causes is rejected!
+    empty_causes = deepcopy(first_mat)
+    empty_causes["verification_checks"][0]["distinct_causes"] = []
+    with pytest.raises(BrainAuditError, match="distinct_causes"):
+        construct_tca(body, profile, subject, empty_causes, context)
+
+
+def test_task405_class6_claim_now_vs_proof_later_authority_separation():
+    profile = successor_profile("tca-3")
+    body, context = task405_tca3_context()
+    # Pre-execution authoring context must reject executor_claims if injected.
+    contaminated = deepcopy(context)
+    contaminated["executor_claims"] = [{"id": "C1", "claim": "Already verified PASS"}]
+    with pytest.raises(BrainAuditError, match="executor_claims"):
+        tca_subject(body, profile, contaminated)
+    subject = tca_subject(body, profile, context)
+    first_mat = tca3_first(context, profile, subject)
+    # Verification check cannot be CLAIM_NOW unless CLEAR with non-FAIL baseline.
+    bad_ver = deepcopy(first_mat)
+    bad_ver["verification_checks"][0]["baseline_status"] = "FAIL"
+    bad_ver["verification_checks"][0]["phase"] = "CLAIM_NOW"
+    with pytest.raises(BrainAuditError, match="distinct_causes|PROOF_LATER"):
+        construct_tca(body, profile, subject, bad_ver, context)
+    # Acceptance check with PROOF_LATER is allowed when properly bounded, and CLAIM_NOW is preserved for implementation properties.
+    first_mat["acceptance_checks"][0]["phase"] = "PROOF_LATER"
+    first = construct_tca(body, profile, subject, first_mat, context)
+    final_mat = tca3_final(context, profile, subject, first)
+    final_mat["acceptance_checks"][0]["phase"] = "PROOF_LATER"
+    assert validate_tca(body, profile, subject, first, final_mat, context)["closure"]["outcome"] == "CANDIDATE"
+
+
+def test_task405_class7_missing_decisive_source_material_forces_unknown_blocker_no_decision():
+    profile = successor_profile("tca-3")
+    body, context = tca_example()
+    subject = tca_subject(body, profile, context)
+    assert subject["sources"]["implementation"] is None
+    assert subject["source_material_summary"] is None
+    first = construct_tca(body, profile, subject, tca3_first(context, profile, subject), context)
+    final = tca3_final(context, profile, subject, first)
+    result = validate_tca(body, profile, subject, first, final, context)
+    assert result["closure"]["outcome"] == "NO_DECISION"
+    assert result["closure"]["knowledge"] == "UNKNOWN"
+    assert result["handoff_candidate"] is None
+
+
+def test_task405_class8_stale_or_mismatched_source_material_and_fingerprints_rejected():
+    profile = successor_profile("tca-3")
+    body, context = task405_tca3_context()
+    subject = tca_subject(body, profile, context)
+    first = construct_tca(body, profile, subject, tca3_first(context, profile, subject), context)
+    final = tca3_final(context, profile, subject, first)
+    # Stale source material content
+    stale_ctx = deepcopy(context)
+    stale_ctx["source_material"][0]["content"] += "# mutated\n"
+    with pytest.raises(BrainAuditError, match="binding"):
+        validate_tca(body, profile, subject, first, final, stale_ctx)
+    # Mismatched packet_fingerprint
+    bad_body = deepcopy(body)
+    bad_body["human_input"] = "Different human intent"
+    with pytest.raises(BrainAuditError):
+        validate_tca(bad_body, profile, subject, first, final, context)
+    # Mismatched subject_fingerprint
+    bad_final = deepcopy(final)
+    bad_final["subject_fingerprint"] = "0" * 64
+    with pytest.raises(BrainAuditError, match="subject"):
+        validate_tca(body, profile, subject, first, bad_final, context)
+    # Mismatched construct_fingerprint
+    bad_final2 = deepcopy(final)
+    bad_final2["construct_fingerprint"] = "f" * 64
+    with pytest.raises(BrainAuditError, match="CONSTRUCT"):
+        validate_tca(body, profile, subject, first, bad_final2, context)
+    # Mismatched audit_profile_ref
+    tca2 = successor_profile("tca-2")
+    with pytest.raises(BrainAuditError):
+        validate_tca(body, tca2, subject, first, final, context)
+
+
+def test_task405_class9_forged_acceptance_accounting_or_dropped_construct_blocker_rejected():
+    profile = successor_profile("tca-3")
+    body, context = task405_tca3_context()
+    subject = tca_subject(body, profile, context)
+    first_mat = tca3_first(context, profile, subject)
+    first_mat["checks"][0].update(outcome="BLOCKER", knowledge="INFERRED", basis="Contradictory task goal.")
+    first = construct_tca(body, profile, subject, first_mat, context)
+    final = tca3_final(context, profile, subject, first)
+    # Silently dropping CONSTRUCT blocker from reconciliation
+    dropped = deepcopy(final)
+    dropped["reconciliation"] = []
+    with pytest.raises(BrainAuditError, match="reconcile"):
+        validate_tca(body, profile, subject, first, dropped, context)
+    # Forged / incomplete acceptance_accounting
+    forged = deepcopy(final)
+    forged["acceptance_accounting"] = []
+    with pytest.raises(BrainAuditError, match="account"):
+        validate_tca(body, profile, subject, first, forged, context)
+

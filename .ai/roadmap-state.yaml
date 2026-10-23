@@ -1,4 +1,60 @@
 version: 1
+human_tca3_retrospective_priority_20261023:
+  authority: EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
+  approved_on: "2026-10-23"
+  planning_only: true
+  source_main_sha_at_authoring: 98c5b539d53dbe19a65dbb591273cdae15a7983b
+  human_decision: PRIORITIZE_TCA3_V3_RETROSPECTIVE_SUCCESSOR_AND_FUTURE_TWO_STEP_CUTOVER
+  supersedes_prospective_slice_record: human_pte03_diagnostic_access_approval_20261023
+  sole_high_level_next: tca-3-v3-retrospective-successor-20261023
+  planning_owner: tca-3-v3-retrospective-successor-20261023
+  selected_slice: TCA_3_V3_IMPLEMENTATION_AND_CONFORMANCE
+  implementation_task: TASK-405
+  implementation_revision: 1
+  retrospective_horizon: TASK-370..TASK-403
+  current_live_default_profile:
+    id: tca-2
+    version: 2
+    digest: 75f7644caf478f39b50279475b81583df6f894e519951199575873de9dd6a17d
+    status: ACTIVE_DEFAULT_UNTIL_SEPARATE_AUTHENTICATED_CUTOVER
+  prospective_successor_profile:
+    id: tca-3
+    version: 3
+    registry_path: .ai/brain-audit-profiles.yaml
+    status: CANDIDATE_PREPARED_NOT_ACTIVE
+    digest_pinning: SEPARATE_POST_PUBLICATION_ACTIVATION_TASK_PINS_EXACT_REVIEWED_DIGEST
+  two_step_cutover_contract:
+    step_1_implementation: TASK_405_RUNTIME_VERIFIED_REVIEWER_PASS_PUBLISHER_PUBLISHED_WITH_TCA2_REMAINING_DEFAULT
+    step_2_activation: SEPARATE_AUTHORIZED_ACTIVATION_TASK_AUTHENTICATES_REVIEWED_SOURCE_AND_PINS_EXACT_ID_VERSION_DIGEST_IN_HUMAN_R21_TCA3_SUCCESSOR_ACTIVATION
+    post_cutover_state: TCA3_DEFAULT_TCA2_PROSPECTIVELY_RETIRED_FOR_NEW_AUTHORING_WITH_TCA1_TCA2_HISTORICAL_REPLAY_RETAINED
+  unchanged_profiles:
+    architecture: {id: aoa-1, version: 1, digest: 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b}
+    remediation_authoring: {id: moa-1, version: 1, digest: 49d1c4c3edefe3d3cefcd66e186b7d7b89738516129957c18415d55760ffe903}
+    repair_authoring: {id: roa-1-r3, version: 3, digest: cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a}
+    human_v1_option: {id: aios-adaptive-brain-audit-v1, version: 1, digest: 982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718}
+  paused_pte:
+    id: post-task-dirty-recovery-pte-20261022
+    state: PAUSED_RESUMABLE_NOT_COMPLETED_OR_RETIRED
+    completed_slices: [PTE-01, PTE-02, PTE-03]
+    remaining_slices: [PTE-04, PTE-05, PTE-06]
+    pte07_subject: TASK-401-r3
+    pte03_reviewed_published:
+      task: TASK-404
+      revision: 1
+      run: RUN-404-001
+      review: REVIEW-404-001
+      candidate_sha: 98c5b539d53dbe19a65dbb591273cdae15a7983b
+    resume_authority: EXPLICIT_SUBSEQUENT_HUMAN_BRAIN_RECONCILIATION_ONLY
+  lifecycle_authority: RUNTIME_REVIEWER_PUBLISHER_INDEPENDENT
+  executor_selection: NOT_GRANTED_BY_ROADMAP_AMENDMENT
+  preservation:
+    - EXACTLY_ONE_NEXT_PLANNING_OWNER
+    - TCA2_REMAINS_NORMATIVE_DEFAULT_UNTIL_SEPARATE_AUTHENTICATED_TCA3_CUTOVER
+    - NO_SELF_ACTIVATION_FROM_REGISTRY_OR_ROADMAP_PRIORITY_RECORD
+    - NO_PREMATURE_TCA2_RETIREMENT_OR_HISTORICAL_REPLAY_LOSS
+    - PTE_PAUSED_AND_RESUMABLE_WITHOUT_ERASURE
+    - NO_AUTOMATIC_ROADMAP_ADVANCEMENT_OR_LIFECYCLE_MUTATION
+
 human_pte03_diagnostic_access_approval_20261023:
   authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
   approved_on: "2026-10-23"

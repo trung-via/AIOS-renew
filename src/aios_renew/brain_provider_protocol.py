@@ -747,6 +747,14 @@ def validate_response(request: Mapping[str, Any], semantic_response: Mapping[str
                     if mode == "AUDIT_RECONCILE" else {"request_fingerprint", "candidate"})
         if mode == "AUDIT_RECONCILE" and packet["selected_flow"] == "TASK_AUTHORING":
             expected = expected | {"acceptance_phase_ledger"} | _stage2_conformance_fields(req)
+        if mode == "TCA_CONSTRUCT" and req["audit_profile_package"]["profile"]["id"] == "tca-3":
+            if (type(response) is dict and "verification_checks" in response) or "baseline_observations" in req["task_source_context"]:
+                expected = expected | {"verification_checks"}
+        if mode == "TCA_RECONCILE" and req["audit_profile_package"]["profile"]["id"] == "tca-3":
+            if ((type(response) is dict and "verification_checks" in response)
+                    or "verification_checks" in req["stage1_lineage"]["construct"]
+                    or "baseline_observations" in req["task_source_context"]):
+                expected = expected | {"verification_checks"}
         _exact(response, expected, "provider semantic response")
         if response["request_fingerprint"] != req["request_fingerprint"]:
             raise BrainProviderProtocolError("request echo mismatch")
@@ -830,10 +838,17 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
             validated = _tca_construct(req["decision_packet"], req["audit_profile_package"]["profile"],
                                        req["tca_subject"], semantic, req["task_source_context"])
         elif mode == "TCA_RECONCILE":
-            _exact(semantic, _TCA_FINAL_FIELDS, "TCA final semantic result")
+            has_verif = req["audit_profile_package"]["profile"]["id"] == "tca-3" and (
+                "verification_checks" in semantic
+                or "verification_checks" in req["stage1_lineage"]["construct"]
+                or "baseline_observations" in req["task_source_context"]
+            )
+            _exact(semantic, _TCA_FINAL_FIELDS | ({"verification_checks"} if has_verif else set()), "TCA final semantic result")
             material = {k: semantic[k] for k in ("subject_fingerprint", "construct_fingerprint", "challenges",
                                                 "acceptance_checks", "consumer_checks", "acceptance_accounting",
                                                 "reconciliation", "closure")}
+            if has_verif:
+                material["verification_checks"] = semantic["verification_checks"]
             material["reconciled_candidate"] = semantic["handoff_candidate"]
             validated = validate_tca(req["decision_packet"], req["audit_profile_package"]["profile"], req["tca_subject"],
                                       req["stage1_lineage"]["construct"], material, req["task_source_context"])

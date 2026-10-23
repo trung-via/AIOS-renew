@@ -1609,3 +1609,54 @@ def test_task395_admitted_successor_stops_on_movement_without_reselection(
     assert error.value.invocation_count == len(calls) == 1
     assert calls[0]["audit_profile_package"]["audit_profile_ref"]["id"] == (
         "tca-2" if flow == "TASK_AUTHORING" else "roa-1-r3")
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+def test_task405_tca3_two_pass_provider_and_prospective_cutover_preserve_tca2_until_published(
+        registry, task395_canonical_audit_repo, kind):
+    from aios_renew.brain_audit import _TCA_V3_DIGEST, _TCA_SUCCESSOR_DIGEST
+    from aios_renew.brain_context import _R21_TCA3_APPROVAL, _TCA3_PRIORITY_RECORD
+    import yaml
+    from test_brain_provider_protocol import ROOT
+    canonical = task395_canonical_audit_repo
+    priority = yaml.safe_load((ROOT / ".ai/roadmap-state.yaml").read_bytes())[_TCA3_PRIORITY_RECORD]
+    canonical.roadmap[_TCA3_PRIORITY_RECORD] = deepcopy(priority)
+    canonical.save_roadmap()
+
+    # Step 1: With human_tca3_retrospective_priority_20261023 published, tca-2 remains the live default.
+    supplied2, contract2, bindings2, sources2 = task395_production_inputs(registry, "TASK_AUTHORING", canonical)
+    calls2 = []
+    def callback2(req):
+        calls2.append(deepcopy(req))
+        return wrapper(req, provider=kind, model=kind, semantic=r5_response(req))
+    res2 = attempt(adapter(kind, native(kind, callback2), kind, kind), supplied2, contract2, bindings2,
+                   fresh_packet_supplier=lambda: DecisionPacket(supplied2.as_dict()), repo=canonical.repo, **sources2)
+    assert len(calls2) == 2
+    assert res2.decision["audit_profile_ref"] == {"id": "tca-2", "version": 2, "digest": _TCA_SUCCESSOR_DIGEST}
+    historical_tca2_req = deepcopy(calls2[-1])
+
+    # Step 2: After separately reviewed and published tca-3 activation cutover, first-party caller uses tca-3.
+    tca3_approval = canonical.publish_tca3_successor()
+    assert revalidate_decision(res2.decision, historical_tca2_req) == res2.decision
+    supplied3, contract3, bindings3, sources3 = task395_production_inputs(registry, "TASK_AUTHORING", canonical)
+    context3 = sources3["task_source_context"]
+    context3["baseline_observations"] = [
+        {"id": "V1", "command": context3["task"]["verification"][0], "status": "NOT_RUN",
+         "summary": "Pre-execution authoring audit; Runtime owns canonical verification."}
+    ]
+    calls3 = []
+    def callback3(req):
+        calls3.append(deepcopy(req))
+        return wrapper(req, provider=kind, model=kind, semantic=r5_response(req))
+    res3 = attempt(adapter(kind, native(kind, callback3), kind, kind), supplied3, contract3, bindings3,
+                   fresh_packet_supplier=lambda: DecisionPacket(supplied3.as_dict()), repo=canonical.repo, **sources3)
+    assert len(calls3) == 2
+    assert [r["request_mode"] for r in calls3] == ["TCA_CONSTRUCT", "TCA_RECONCILE"]
+    assert res3.decision["audit_profile_ref"] == {"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}
+    assert calls3[0]["audit_selection"]["policy"]["profiles"] == tca3_approval["target_profiles"]
+    assert calls3[0]["audit_selection"]["policy"]["r5_publication_sha"] == canonical.tca3_source_sha
+    assert "verification_checks" in res3.decision["semantic_value"]
+    assert revalidate_decision(res3.decision, calls3[-1]) == res3.decision
+    # Historical tca-2 decision still revalidates against its original request without reinterpretation.
+    assert revalidate_decision(res2.decision, historical_tca2_req) == res2.decision
+
