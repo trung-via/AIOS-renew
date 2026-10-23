@@ -1,0 +1,86 @@
+review_id: REVIEW-410-001
+reviewed_sha: 44176343d11bcca39eee5bc4e06cfdc0adbfd853
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: FAIL
+  AC5: FAIL
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings:
+- id: F1
+  basis: AC4
+  action: CODE_FIX
+  location: src/aios_renew/caa_reasoner.py:40-89, 240-313; tests/test_caa_reasoner.py:333-373
+  issue: The B1 provider can select only one of eight prewritten mechanism names and
+    citation IDs; every hypothesis, experiment, falsifier and expected effect is inserted
+    by fixed _MECHANISMS code rather than being inferred from the selected subject
+    and episode evidence. The independent response validator checks lexical feature-family
+    overlap and observed RESULT/FAILURE, not a source-specific causal relationship
+    or a new conditional hypothesis. The paired fixture preselects those same mechanism
+    names with synthetic answers. This supports bounded template selection, but does
+    not establish the TASK-required intelligent cross-module causal comparison beyond
+    a checklist-like mechanism catalog; a 'pretrained-model' semantic response is
+    not substantively evaluated.
+  expected: Within TASK-410's original permitted files and source/privacy constraints,
+    demonstrate at least one genuinely context-dependent, source-grounded cross-module
+    causal analogy or discriminating alternative that cannot be produced merely by
+    choosing a hard-coded advice card. Preserve independently validated exact citations,
+    falsifier, uncertainty, bounded output, optional zero/one provider call and no
+    autonomous action; add a negative case where the same lexical concept has an inapplicable
+    causal relationship. Executor owns the HOW; do not expand to live CAA-03 hooks,
+    training or new store.
+- id: F2
+  basis: AC5
+  action: CODE_FIX
+  location: src/aios_renew/caa_reasoner.py:289-308; src/aios_renew/caa_experience.py:108-120;
+    tests/test_caa_reasoner.py
+  issue: The rendered 'decisive_differences' asserts DIFFERENT_SCOPED_CONSUMERS whenever
+    the historical TASK scope_digest is unequal to candidate scope_digest. These digests
+    bind inspect/modify path collections, not authenticated consumer identities or
+    dependency relationships. Two different path lists can affect the same consumer
+    and identical path lists can hide distinct consumption semantics, so the alleged
+    decisive consumer difference is not entailed by the cited source. Marking it INFERRED
+    does not supply a discriminating basis. This violates evidence-grounded applicability/decisive-difference
+    requirements.
+  expected: Derive consumer-difference statements only from authenticated consumer/dependency
+    evidence; otherwise use truthful 'scope differs; consumer relationship UNKNOWN'
+    with corresponding uncertainty. Prove with an adversarial test where scopes differ
+    but consumers are the same, and with a case of distinct consumers that share path
+    scope. Keep exact source-bound evidence, omission/abstention behavior, and original
+    authority boundaries.
+notes:
+- Independent PRIMARY semantic review of TASK-410 r1 / RUN-410-001 at exact source
+  44176343d11bcca39eee5bc4e06cfdc0adbfd853, base cb16cdc191c123e62730ea7be4d2d25c792b16e9;
+  canonical artifacts ref aios/artifacts/RUN-410-001 commit 68153b2771665ba4c491acb03a4bbbdf7b553466.
+  No earlier REVIEW decision ref observed.
+- Runtime evidence RUN-410-001-V001 binds the exact authored minimum-sufficient-v1
+  command 'python -m pytest -q tests/test_caa_reasoner.py tests/test_caa_experience.py
+  tests/test_brain_provider.py' to candidate with exit_code 0. All AC1..AC10 are claimed
+  and unresolved is empty; verification PASS does not establish semantic adequacy
+  of advice.
+- Reviewed exact seven changed paths correspond to TASK.scope.modify, including CAA
+  docs/roadmap, caa_experience.py/caa_reasoner.py and two test files. Current Human
+  CAA-02 priority and CAA-01 predecessor review/publication are preserved. No CAA-03/04/05,
+  provider auto-router, default audit, Runtime/Reviewer/Publisher override or public
+  raw information introduced.
+- AC1..3,AC6..10 assessed PASS within TASK-410 bounded standalone CAA-02 scope, not
+  a claim of production quality uplift or live provider results. AC4 and AC5 fail
+  semantic quality/grounding for two concrete findings in the same reviewed source;
+  one lawful scoped remediation strategy may address both if separately Human-authorized.
+- 'F1 is a semantic adequacy gap, not a deterministic test failure: B1 can make safe
+  abstract analogies but its complete material advice meaning is precomputed by code,
+  while B1''s test responses are deliberately fixed and not independent causal evaluations.
+  Original CAA-02 goal rejects mere checklist claims of intelligence.'
+- 'F2 is a source-grounding defect: scope digest inequality only shows different scope
+  metadata, not a proven consumer mismatch. The correction must not convert unsupported
+  semantic difference to a canonical fact. Keep status UNKNOWN when missing evidence.'
+- REVIEW is CHANGES_REQUIRED, not RUN FAILURE. No automatic remediation, repair, Executor
+  delegation or publication is requested by this review; Runtime and Publisher retain
+  their authority.
