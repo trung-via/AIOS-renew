@@ -53,8 +53,9 @@ _TASK = re.compile(r"TASK-[A-Za-z0-9_-]{1,90}")
 _RUN = re.compile(r"RUN-[A-Za-z0-9_-]{1,90}-\d{3,8}")
 _SHA = re.compile(r"[0-9a-f]{40}")
 
-# A feature is an observed lexical mention, never proof of implementation or
-# causality. Only these code-owned names leave the reader; no source prose does.
+# A lexical feature is a mention, never implementation or cause. Relational
+# projection below separately preserves explicit dependency declarations using
+# code-owned words; arbitrary source prose never leaves the reader.
 SEMANTIC_TERMS = {
     "SOURCE_IDENTITY": ("authenticated", "provenance", "source bound", "identity", "forged", "seal", "attribution"),
     "TEMPORAL_ISOLATION": ("snapshot", "as of", "historical", "future", "hindsight", "temporal"),
@@ -76,6 +77,62 @@ _UNSAFE_SEMANTIC = re.compile(
     r"\bsk-[A-Za-z0-9]|[A-Za-z]:[/\\]|\\\\|/(?:home|Users|private|tmp)/|"
     r"https?://|[A-Za-z0-9+/=_-]{48,}", re.IGNORECASE,
 )
+
+# A deliberately small compositional language, not an advice catalog. Whole
+# canonical fields must declare a dependency explicitly; a shared word never
+# supplies an edge. Only these ordinary words can leave the reader. In
+# particular, arbitrary identifiers, paths, source prose and instructions cannot.
+_CAUSAL_WORDS = frozenset("""
+artifact reader writer replay revision snapshot identity match acceptance
+decision adapter advice request candidate source seal cache key entry response
+event consumer producer message delivery ownership validity schema parser
+preview renderer display color availability result completion evidence coverage
+resource budget failure isolation temporal consistency binding input output
+session tenant account policy current historical optional dependency verification
+report summary document version content digest equality integrity worker queue
+packet transport payload record authorization provenance authenticated exact
+""".split())
+_CAUSAL_ROLES = frozenset("acceptance match identity seal availability completion coverage budget "
+                          "isolation consistency ownership delivery validity integrity equality".split())
+_DEPENDENCY = re.compile(r"For ([a-z ]+), ([a-z ]+) (requires|is independent of) ([a-z ]+)\.", re.I)
+_CONSUMER = re.compile(r"Consumer: ([a-z ]+)\.", re.I)
+
+
+def _safe_phrase(text):
+    words = text.casefold().split()
+    return " ".join(words) if 1 <= len(words) <= 6 and set(words) <= _CAUSAL_WORDS else None
+
+
+def _causal_features(fields, binding):
+    """Observe declared relations, never infer implementation or actual cause.
+
+    Unsupported syntax, negation, or vocabulary stays UNKNOWN. A dependency and
+    its explicit independence alternative retain different polarity/direction.
+    """
+    relations, consumers = [], []
+    for category, pointer, text in fields:
+        if category not in {"goal", "acceptance", "invariant", "consumers"}:
+            continue
+        if type(text) is not str or _UNSAFE_SEMANTIC.search(text):
+            continue
+        source = dict(binding, pointer=pointer)
+        declaration = _CONSUMER.fullmatch(text)
+        if declaration and (name := _safe_phrase(declaration[1])):
+            consumers.append(dict(name=name, source=source, status="OBSERVED", meaning="DECLARED_CONSUMER"))
+        match = _DEPENDENCY.fullmatch(text)
+        if not match:
+            continue
+        consumer, effect, condition = (_safe_phrase(match[i]) for i in (1, 2, 4))
+        if not all((consumer, effect, condition)) or effect == condition:
+            continue
+        if any(atom.split()[-1] not in _CAUSAL_ROLES for atom in (effect, condition)):
+            continue
+        relations.append(dict(consumer=consumer, effect=effect, condition=condition,
+            relation="REQUIRES" if match[3].casefold() == "requires" else "INDEPENDENT_OF",
+            effect_role=effect.split()[-1], condition_role=condition.split()[-1],
+            status="OBSERVED", meaning="DECLARED_DEPENDENCY_ONLY", source=source))
+        consumers.append(dict(name=consumer, source=source, status="OBSERVED", meaning="DECLARED_CONSUMER"))
+    return dict(relations=relations, consumers=consumers)
 
 
 def _semantic_features(fields, binding):
@@ -99,7 +156,7 @@ def _semantic_features(fields, binding):
                     concept=concept, category=category, status="OBSERVED",
                     meaning="LEXICAL_MENTION_ONLY", polarity="UNKNOWN",
                     source=dict(binding, pointer=pointer)))
-    return dict(signals=[witnesses[key] for key in sorted(witnesses)],
+    return dict(_causal_features(fields, binding), signals=[witnesses[key] for key in sorted(witnesses)],
                 field_coverage=coverage, excluded_field_count=excluded,
                 free_text="WITHHELD", technical_root_cause="UNKNOWN",
                 implementation="UNKNOWN", normative_policy="UNKNOWN")
@@ -114,11 +171,20 @@ def _task_semantics(task, source, cut):
                for i, text in enumerate(task.constraints.hard)]
     fields += [("goal", "/goal", task.goal)]
     fields += [("scope", f"/scope/modify/{i}", text) for i, text in enumerate(task.scope.modify)]
-    fields += [("consumers", f"/scope/inspect/{i}", text) for i, text in enumerate(task.scope.inspect)]
+    fields += [("scope", f"/scope/inspect/{i}", text) for i, text in enumerate(task.scope.inspect)]
     fields += [("verification", f"/verification/required/{i}", text)
                for i, text in enumerate(task.verification.required)]
-    return dict(_semantic_features(fields, source), task_id=task.task_id, revision=task.revision,
+    semantics = _semantic_features(fields, source)
+    # An exact match to this complete projection can authenticate declarations
+    # for a canonical candidate. A draft fingerprint alone cannot do so.
+    context = dict(goal=task.goal, invariants=list(task.constraints.hard),
+        acceptance=[a.condition for a in task.acceptance],
+        scope=dict(inspect=list(task.scope.inspect), modify=list(task.scope.modify)),
+        consumers=sorted({c["name"] for c in semantics["consumers"]}),
+        verification=list(task.verification.required))
+    return dict(semantics, task_id=task.task_id, revision=task.revision, context_digest=_digest(context),
                 as_of_sha=cut.as_of_sha, cut_digest=cut._integrity,
+                scope_source=dict(source, pointer="/scope"),
                 scope_digest=_digest(dict(inspect=task.scope.inspect, modify=task.scope.modify)))
 
 
@@ -733,7 +799,10 @@ def reconstruct_episodes(repo: str | Path, *, cut: ExperienceCut,
             source = sources.binding(cut.as_of_sha, name, ref=_MAIN)
             _observed(facts, "task", dict(id=task.task_id, revision=task.revision), source)
             _observed(facts, "acceptance_ids", _ids([a.id for a in task.acceptance], r"AC[A-Za-z0-9_-]{1,64}"), source)
-            task_facts.append(dict(task_id=task_id, observed=facts, inferred=[], unknown=[]))
+            item = dict(task_id=task_id, observed=facts, inferred=[], unknown=[])
+            if include_semantics:
+                item["semantic_context"] = _task_semantics(task, source, cut)
+            task_facts.append(item)
         episodes = [_episode(sources, cut, task_id, run_id, tasks[task_id], include_semantics)
                     for task_id, run_id in _episode_selections(cut.task_ids, cut.run_ids, sources.pins, cut.task_only)]
         _require(_refs(live, patterns) == before and _transport(root, git) == cut._transport, "SOURCE_MOVED")

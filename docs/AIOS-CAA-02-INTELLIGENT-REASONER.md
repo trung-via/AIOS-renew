@@ -16,12 +16,13 @@ The AOA-1 v1 alternatives for this Brain-owned architectural decision are:
 | B: transient grounded CAA-02 | Reuses the sealed reader, adds safe semantic features and at most one model-assisted mechanism comparison. Fixed budgets and independent citation checks constrain uncertainty. Cost and useful production effect are unmeasured. | Selected bounded implementation candidate, without a superiority claim. |
 | C: persistent DB, multi-agent or trained model | Additional ingestion, privacy, lineage and operating cost; no measured residual problem establishes the need. | Outside this TASK. CAA-05 remains conditional and unselected. |
 
-This is a finite mechanism vocabulary with model-assisted evidence selection,
-cross-module comparison and falsifiable experiments. It does not purport to
-understand arbitrary source prose or discover technical causes from test names.
-The model can compare related features even when exact lexical overlap is absent.
-It can select zero to three hypotheses or abstain; it cannot supply engineering
-facts, free-form commands or a semantic/lifecycle verdict.
+B1 composes conditional dependency hypotheses from source-specific relations;
+the eight fixed advice cards belong only to the A1 lexical comparator. B1 has
+no mechanism-name selection or inherited card prose. Its variable alignment,
+proposed missing dependency, expected effect and falsifier depend on the exact
+source and candidate declarations. It can propose zero to three hypotheses or
+abstain. Arbitrary prose understanding and actual technical causes remain
+UNKNOWN; model output cannot supply engineering facts or a lifecycle verdict.
 
 ## Callable boundary
 
@@ -68,19 +69,35 @@ the identical source-bound request and portable response grammar.
 `reconstruct_episodes(..., include_semantics=True)` is opt-in. The default CAA-01
 shape, seal, private handling, selection and budgets remain compatible. The new
 projection derives directly from authenticated TASK acceptance, hard constraints,
-goal, declared scope/consumers and verification. The RUN's original immutable
+goal, declared scope, explicit consumer/dependency declarations and verification. The RUN's original immutable
 TASK revision supplies its semantics, even if main has a later revision.
 Non-goals, assumptions, claims, correction instructions, diagnostic raw text and
 provider traces are excluded as semantic witnesses.
 
-Only twelve code-owned concept names leave the reader: source identity,
+The lexical projection exports twelve code-owned concept names: source identity,
 temporal isolation, bounded work, data/authority separation, privacy, schema
 validation, failure containment, acceptance coverage, verification isolation,
 consumer compatibility, direct authoring and correction lineage. Each concept
 is an **OBSERVED lexical mention only**, with its exact document commit/blob,
 path, JSON pointer, snapshot SHA and cut digest. Negation, implementation,
-technical cause and normative policy stay UNKNOWN. A fixed feature vocabulary
-does not export arbitrary source words, credentials or private paths. Suspicious
+technical cause and normative policy stay UNKNOWN. These lexical mentions alone
+cannot support a B1 causal proposal. The separate relational projection accepts
+only whole-field declarations in this deliberately limited language:
+
+```text
+For <consumer>, <effect> requires <condition>.
+For <consumer>, <effect> is independent of <condition>.
+Consumer: <consumer>.
+```
+
+Each phrase contains at most six words from the code-owned ordinary-word
+allowlist. Dependency atoms have explicit roles (for example acceptance, match,
+identity or validity). Direction and independence are retained, with exact
+TASK commit/blob/pointer, snapshot and cut bindings. Only a declared requirement
+or independence is OBSERVED; implementation and actual cause are UNKNOWN.
+Unrecognized wording, negation, identifiers and concepts are not translated or
+guessed. Scope paths never identify consumers. Neither projection exports
+arbitrary source words, credentials or private paths. Suspicious
 fields are excluded whole; they are not cleaned into authoritative statements.
 Unsupported meaning and field coverage are explicitly UNKNOWN. The projection
 is deliberately lossy; absence of a feature does not prove absence of a concept.
@@ -99,42 +116,66 @@ new content.
 ## Retrieval, counterexamples and independent support checks
 
 Every selected episode remains in the bounded retrieval view. Exact/shared
-concept overlap supplies lexical ranking, observed terminal presence supplies a
-separate structured signal, and related feature families permit cross-module
-model analogy. The view includes positive-outcome analogies, negative-outcome
-analogies, unknown outcomes and non-applicable cases. RESULT is not a proof that
+concept overlap supplies A1 lexical ranking and terminal presence supplies a
+separate structured signal. B1 independently checks declared relational paths,
+including cross-module paths with different atoms and consumer names. The view
+retains positive and negative outcomes, independence disanalogies, and unknown
+outcomes. The lexical relation label is only a retrieval hint. RESULT is not a proof that
 a mechanism worked; FAILURE is not a proven technical cause.
 
-The request supplies an exact citation catalog and a closed grammar:
+The version-2 request supplies exact source and candidate citation catalogs and
+a closed B1 grammar:
 
 ```text
 response: request_fingerprint, candidate_digest, cut_digest, outcome, suggestions
-suggestion: mechanism, support, counterexamples, applicability, status, caution
+suggestion: source_path, candidate_path, candidate_probe, counterexamples,
+            applicability, status, caution
+candidate_probe: citation, side (effect | condition)
 status: INFERRED
 caution: NO_CAUSE_ESTABLISHED
-applicability: POSSIBLE | LIMITED
+applicability: LIMITED
 ```
 
-The provider chooses a mechanism hypothesis, source feature witnesses, opposing
-cases and transfer limits. The independent validator resolves citation IDs
-against the authenticated request, checks the mechanism's related source and
-candidate features, requires an observed eligible outcome, and rejects citations
-to unrelated features or terminal records offered as mechanism support. A
-well-formed ID alone is insufficient. When opposing-outcome precedents exist,
-their counterexample roles must be represented. A failure despite the same
-requirement mention is a strong counterexample to treating that mention as
-successful enforcement. A related-feature analogy without an exact shared
-concept must be LIMITED. Duplicate hypotheses/support, missing citations,
-unsupported OBSERVED causes, certainty claims and additional action fields are
-rejected into abstention, never relabeled OBSERVED.
+The provider proposes a 2..4-edge source REQUIRES path, a candidate prefix one
+edge shorter, and a separately declared candidate endpoint. The validator
+resolves every citation itself, checks edge polarity, connected direction,
+consumer continuity, acyclicity and role-preserving node alignment, and requires
+an eligible observed source outcome. It rejects a terminal/lexical citation as
+dependency support, a fabricated atom, a reversed/disconnected chain, an
+already-declared edge or an explicit independence that contradicts the proposed
+edge or its upstream consequence. Independently selected opposing-outcome and
+independence witnesses must all be cited. Valid citation syntax or lexical
+overlap cannot pass these relational checks. Duplicate proposals, unsupported
+OBSERVED causes, certainty, model prose and action fields cause abstention.
 
-Each rendered suggestion includes observed mention/outcome citations, an INFERRED
-shared-mechanism hypothesis, applicability and decisive differences (including
-different scoped consumers when observed), a prospective experiment/effect,
-falsifier, counterexamples and UNKNOWN technical cause/actual transfer/efficacy.
-The safe explanation/experiment vocabulary is code-owned. Model prose cannot
-smuggle new facts, certainty, instructions, authority or private text into it.
-Test-name similarity and success after correction never establish root cause.
+For example, an artifact reader may declare `replay acceptance -> revision
+match -> snapshot identity`. A decision adapter draft declares `advice acceptance
+-> request match` and separately `candidate identity -> source seal`. B1 can
+align these declarations and hypothesize the missing `request match -> candidate
+identity` edge. The resulting conditional predicts advice unavailability when
+candidate identity is absent, through request match; advice remaining available
+under that controlled absence falsifies it. The names and dependencies come
+from the selected context, not a card. An explicit statement that request match
+is independent of candidate identity defeats that analogy despite identical
+lexical identity mentions. This is a testable transfer hypothesis, not a claim
+that any declared dependency is implemented or caused an observed outcome.
+
+Each B1 suggestion renders this checked expression, source chain, alignment,
+draft references, conditional experiment/effect and falsifier. Arbitrary model
+prose never reaches the output. Source facts remain OBSERVED declarations;
+transfer is INFERRED and LIMITED, with technical cause, efficacy and actual
+transfer UNKNOWN. A1 retains its explicitly lexical card-based output.
+
+Consumer comparisons require canonical declarations for both subjects. A
+candidate's declarations become source-bound only when its **entire** goal,
+invariants, acceptance, scope, consumer names and verification projection matches
+an authenticated TASK at this cut; a draft label or fingerprint cannot
+authenticate itself. Comparisons report only agreement/difference of those
+declarations, with exact sources and actual runtime relationships UNKNOWN. When
+either side lacks that support, different scope digests yield `scope differs;
+consumer relationship UNKNOWN`. Identical scope digests also cannot establish
+consumer agreement. Authenticated distinct consumers sharing the same paths
+remain distinguishable by declarations rather than by scope.
 
 ## Failure containment and finite budgets
 
@@ -173,14 +214,22 @@ package makes no superiority or cross-provider-live equivalence claim.
 ## Bounded comparative fixture and unchanged policy
 
 `tests/test_caa_reasoner.py` contains a read-only deterministic comparative
-fixture with predeclared external relevance oracles, fixed candidate drafts and
+fixture with predeclared dependency/abstention oracles, fixed candidate drafts and
 pre-author source cuts. A1 and B1 receive identical candidate/cut inputs. It
-measures selected-grounded relevance, opposing-outcome counterexamples, correct
+records conditional proposals, opposing-outcome counterexamples, correct
 abstention and observed resource overhead. Positive, failure, cross-module,
 disanalogy and abstention cases accompany separate false-source, injection,
 stale-policy, future-event, attribution, malformed and budget adversaries.
-Fixture B1 answers simulate a pretrained-model response; they do not measure
-actual pretrained-model quality. Live quality, hindsight-free generalization,
+The polarity twin keeps the same lexical concepts while changing a required
+dependency to independence: A1 selects the same cards while B1 rejects the
+transfer. Candidate-endpoint variation changes B1's hypothesis and falsifier;
+malformed role/direction/citation variants abstain. Consumer adversaries cover
+different paths with the same consumers, distinct consumers with identical
+paths, and unauthenticated draft labels. These are authored fixtures for Runtime
+verification, not an Executor verification report.
+
+Fixture B1 responses simulate compositional model output; they do not measure
+actual pretrained-model reasoning quality. Live quality, hindsight-free generalization,
 cross-provider superiority and production improvement remain UNKNOWN. CAA-04's
 independent holdout/shadow/rollout remains separate, conditional and unselected.
 
