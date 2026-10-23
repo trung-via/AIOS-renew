@@ -1,0 +1,61 @@
+review_id: REVIEW-408-001
+reviewed_sha: eaa1363681bade65aaed33d9af6211728fb55992
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+  AC11: PASS
+  AC12: PASS
+findings: []
+notes:
+- Independent first PRIMARY semantic review of TASK-408 revision 1, repaired admitted
+  RUN-408-002. Exact reviewed source eaa1363681bade65aaed33d9af6211728fb55992; original
+  canonical authored base 3f31b1ca87e980d94b1f8e28ef1e4d3b6c578fc6. The first admitted
+  RUN-408-001 failed Runtime verification and remains immutable; this PASS applies
+  only to repaired successful RUN-408-002, not the earlier failed source.
+- Runtime canonical RESULT artifact SHA 4ccee82fe6d47ec28e58d313bfa7928e06abfaee has
+  complete 12 truthful AC1..AC12 claims, unresolved=[], exact EVIDENCE RUN-408-002-V001
+  bound to candidate eaa1363681bade65aaed33d9af6211728fb55992 and the authored six-file
+  pytest command 'python -m pytest -q tests/test_brain_audit.py tests/test_brain_context.py
+  tests/test_brain_provider.py tests/test_brain_provider_protocol.py tests/test_brain_return_contract.py
+  tests/test_brain_sync.py' exit code 0. Runtime owns verification; Executor claim
+  of 156 local selected cases is not separate Runtime proof.
+- 'AC1-AC4: exact version-2 HUMAN_ON_DEMAND policy implements DIRECT Brain TASK/REPAIR/REMEDIATION
+  defaults without normative TCA/ROA/MOA/V1 audit procedures or fallback. Direct candidate
+  final-family return shapes and canonical ingress contract guards remain distinct;
+  approval is prospective, not live merely because committed in candidate.'
+- 'AC5-AC8: exact Human-authenticated one-request on-demand TCA-3/ROA-1 R3/MOA-1 profile
+  selection is subject/source/policy-bound, not inferred from provider text. Architecture
+  retains soft default AOA-1 and explicit trusted NO_AOA direct path. Invalid, unauthenticated,
+  mixed, stale or conflicting choices fail closed at admission and continuation; negative
+  tests cover forged/partial choices and direct source movement.'
+- 'AC9-AC10: historical three-flow approval, prior profile identities, immutable TASK/RUN/FAILURE/REVIEW
+  lineage and TASK-407 authored history are preserved. Candidate planning record binds
+  prospective Human-on-demand activation to the actual successful RUN-408-002 and
+  preserves old failed RUN-408-001 only as immutable CODE_FIX predecessor. This review
+  does not activate R4, Lean VP, PTE or downstream adoption.'
+- 'AC11-AC12: source comparison against original canonical TASK-408 base shows exactly
+  16 changed paths, all within original scope.modify, no modification to Kernel, Runtime
+  verifier, direct Git ingress, Reviewer or Publisher. Repaired source differs from
+  failed candidate in eight scoped paths. Bound targeted regression covers direct,
+  optional audit, AOA/V1, legacy replay and correct publication/repair activation
+  identity; Runtime''s exact authored test command independently exits 0.'
+- REPAIR lineage in canonical artifacts names failed RUN-408-001, failed head 7e95961949ddc115dc443d54b0bde6ed34bb5c07,
+  immutable failure-artifacts SHA 37edd5d281d2baa5557a7ac58996bf2dbdf8dd8f, authorization
+  REPAIR-408-001-001 CODE_FIX SHA b4131dde44802ca005573e2a3acf3903e8c18cc0, root/result
+  base 3f31b1ca87e980d94b1f8e28ef1e4d3b6c578fc6. No prior semantic review or finding
+  is being replaced.
+- 'Independent semantic closure: no unresolved material TASK intent, acceptance, scope,
+  historical replay or authority-order contradiction found in the reviewed source
+  and canonical evidence. PASS is limited to this candidate and permits a separate
+  Publisher eligibility determination; SUBMIT_REVIEW ingress receipt alone is not
+  Publisher publication or effective policy activation.'
