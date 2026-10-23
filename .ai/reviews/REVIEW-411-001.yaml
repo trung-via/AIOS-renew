@@ -1,0 +1,61 @@
+review_id: REVIEW-411-001
+reviewed_sha: 749cd197e55eadb36e8876db104c333a021f4915
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+- Independent PRIMARY semantic review for TASK-411 revision 2, repaired successful
+  RUN-411-003 only. Exact candidate 749cd197e55eadb36e8876db104c333a021f4915 is the
+  current aios/review/RUN-411-003 SHA; original current main/task root f90bf0f56799ad1fa7200cdf4e237c9f93d5b80d.
+  No previously failed source is retroactively accepted.
+- Runtime-owned canonical RESULT/EVIDENCE at refs/heads/aios/artifacts/RUN-411-003,
+  SHA ddfc655fca15c10e83172ab6c75a6604f698b874, binds verification RUN-411-003-V001
+  subject 749cd197e55eadb36e8876db104c333a021f4915, exact authored command 'python
+  -m pytest -q tests/test_batch_remediation.py tests/test_publication.py tests/test_authoring_ingress.py',
+  exit_code 0. All AC1..AC7 are claimed with evidence; unresolved is empty. This is
+  verified evidence, not an Executor self-certification of semantics.
+- 'AC1 and AC2: src/aios_renew/publication.py _lifecycle_snapshot observes bounded
+  typed lifecycle namespaces by exact ref name and SHA instead of matching nested
+  transport wildcard refs to final basename. _recheck_binding compares the same bounded
+  set and current main. src/aios_renew/authoring_ingress.py reuses that observation
+  in the transitive batch REMEDIATION source read and its freshness recheck; terminal-attention
+  arrivals no longer fabricate STALE_REVIEW_BINDING.'
+- 'AC3 and AC4: regression cases independently add/delete/move protected refs before
+  or after reservation, exercise source review/decision and competing historical PASS;
+  failed cases preserve main and CAS reservation expectations. Existing RESULT/EVIDENCE,
+  DELTA provenance, correction-frontier, reservation owner and compare-and-swap guards
+  remain in place.'
+- 'AC5 and AC7: realistic batch REMEDIATION to DELTA PASS fixtures exercise publication
+  of the exact reviewed head with genuine nested attention refs. Positive tests cover
+  operational arrivals at four source-authentication observation positions, while
+  negative tests mutate source remediation, repair, failure, review and decision refs
+  and demonstrate no unauthorized main push. Malformed evidence and ineligible DELTA
+  decisions remain blocked.'
+- 'AC6: committed source delta from task root f90bf0f56799ad1fa7200cdf4e237c9f93d5b80d
+  to reviewed 749cd197e55eadb36e8876db104c333a021f4915 changes exactly src/aios_renew/authoring_ingress.py,
+  src/aios_renew/publication.py and tests/test_publication.py, all within revision-2
+  modify scope; no roadmap, workflow, CAA or extra owner/store changes. Legacy PRIMARY,
+  single-finding, batch and already-included paths are exercised by exact authorized
+  Runtime tests.'
+- Repair-only change since failed RUN-411-002 corrects synthetic historical source/fixture
+  setup and expected malformed projection classification in tests/test_publication.py
+  after legitimate transport, without modifying production implementation again or
+  skipping negative gates. It leaves the test of rejected corrupt historical artifacts
+  effective.
+- 'Immutable lineage: RUN-411-001 failed COMPLETION_GATE, RUN-411-002 failed VERIFICATION
+  at e677c27c612c7c4ef2bc713d8cb2e677cec2620d with FAILURE artifacts c6f5f88a0ef0f5dcc949e3f0e897eeb1299d08d6;
+  REPAIR-411-002-001 CODE_FIX authorization aba93c9c3e74ccad8ffd9eb68ec6ce3cf544a023
+  binds successful RUN-411-003''s repair.json and original root f90bf0f56799ad1fa7200cdf4e237c9f93d5b80d.
+  These immutable failures are not a PASS.'
+- 'Reviewer closure: no material unresolved semantic finding or scope/authority violation
+  evidenced within TASK-411 r2 AC1..AC7. PASS grants no publication authority by itself.
+  Publisher alone must verify eligible source and binding and publish exact reviewed
+  SHA; no CAA roadmap advancement inferred.'
