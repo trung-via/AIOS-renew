@@ -1,0 +1,204 @@
+task_id: TASK-408
+revision: 1
+goal: 'Deliver and activate in one independently Runtime-verified, Reviewer-PASS and
+  Publisher-published prospective cutover the Human''s 2026-10-23 decision: remove
+  default TCA, ROA and MOA auditing from all ordinary AIOS Brain workflows; retain
+  them only for exact Human-selected on-demand audit; keep AOA-1 available as a soft
+  architecture default that an explicit Human choice can bypass without a hard gate.
+  Maintain direct semantic authoring and all existing deterministic Runtime, Reviewer,
+  Publisher and Human authority boundaries.'
+problem: 'Canonical main at d2a0dfc49e823670446bd2975c3b7c904a6a48e9 carries the published
+  TASK-406 THREE_SPECIALIZED policy: ARCHITECTURE AOA-1, TASK_AUTHORING TCA-3, REPAIR_AUTHORING
+  ROA-1 R3, with no remediation audit. brain_context.canonical_audit_inputs and brain_audit.normalize_audit_policy
+  force complete default mapping; brain_provider.attempt and brain_provider_protocol
+  require authenticated production auditing for non-diagnostic flows, with DIRECT
+  effectively reserved for DIAGNOSTIC. Ordinary TASK/REPAIR cannot use direct Brain
+  authoring through this provider interface, while the archived MOA procedure cannot
+  be selected on demand. TASK-407 r1 on main prepares ROA R4, but no RUN/REVIEW/PUBLISH
+  or activation for R4 may be inferred from its authoring. Human prospectively overrides
+  its future default-ROA direction. Preserve all lineage and activation gates.'
+assumptions:
+- Human explicitly decided on 2026-10-23 to retire ROA/TCA/MOA as defaults across
+  all workflows; a user-initiated on-demand audit of a specified TASK, REPAIR or REMEDIATION
+  remains supported. AOA-1 remains a soft default for an architectural decision, but
+  Human explicit opt-out authorizes direct architecture reasoning without an AOA invocation.
+  Human may also explicitly request Audit V1 subject to its existing bounded supported
+  options.
+- Canonical authoring base is d2a0dfc49e823670446bd2975c3b7c904a6a48e9. TASK-406 r2
+  / RUN-406-003 independently reviewed PRIMARY PASS source d0f44e589a0ff9856ae6e62e5fe7da282d3ce97f
+  is published ancestor, while TASK-407 r1 is only a new authored TASK on main; neither
+  a future ROA R4 cutover nor completion of TASK-407 may be presumed. Do not modify,
+  retire or replay its existing canonical TASK/RUN lineage.
+- 'Current Brain audit profile identities resolved from canonical registry: ARCHITECTURE
+  aoa-1 v1 digest 7789fcc53bd6593c8d190e867d14d9fe80060395ae20a0706981d16fec7e617b;
+  TASK_AUTHORING tca-3 v3 digest cdcc15dfa8f876f686c7316e38855b97cf0278d62084e4cded8fe5d20b3e221e;
+  REPAIR_AUTHORING roa-1-r3 v3 digest cee2404daa670ff90314cc7cce938766b2eaf4a59ebaf3c7fca3d6ed41886c5a.
+  MOA-1 and Adaptive V1 retain exact historical profile identity. Registry order never
+  confers authority.'
+- AOA-1 CONSTRUCT counterfactual compares A no change (fails Human outcome), B minimum
+  change to current policy/selection/provider/contract consumers (meets Human outcome),
+  C new router/agent/service (unnecessary duplicate authority); adversarial reconciliation
+  favors B. TCA-3 two-pass review reconciles direct authoring, exact opt-in/opt-out
+  authentication, scope on code/tests/docs and all claimable AC1..AC12. Existing test
+  baselines are UNKNOWN until Runner/Runtime executes them; no preclaimed PASS.
+- One bounded policy switch is requested rather than separate preparation and later
+  activation tasks. Any profile policy activation occurs only after actual Runtime
+  RESULT, independent semantic REVIEW PASS and Publisher inclusion of that exact source
+  on canonical main; no authoring, carrier admission, wake, or Executor claim can
+  activate it.
+- New revision-1 TASK uses LEGACY_REPOSITORY_DEFAULT_ROUTE, does not self-certify
+  ORIGIN_AFFINE provenance, and does not carry an Executor model or dispatch identity.
+  Human Executor delegation remains separate. Implementation details/HOW belong solely
+  to the admitted Executor.
+scope:
+  inspect:
+  - .ai/brain-audit-profiles.yaml
+  - .ai/brain-return-contracts.yaml
+  - .ai/tasks/TASK-406.yaml
+  - .ai/tasks/TASK-407.yaml
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-FOUR-SPECIALIZED-AUDITS-R2.1.md
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/task.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/review.py
+  - tests/test_authoring_ingress.py
+  - tests/test_task.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/brain_return_contract.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_context.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_return_contract.py
+  - tests/test_brain_sync.py
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+non_goals:
+- No frozen Kernel/Constitution amendment, new DB, orchestration router, selection-agent,
+  semantic reviewer, lifecycle owner, automatic correction/repair selector, or self-authorizing
+  model/transport Human choice.
+- No change to final AUTHOR_TASK, AUTHOR_REPAIR or AUTHOR_REMEDIATION schema, Git
+  ingress mutation provenance, SHA/CAS admission, Runtime verification/evidence, Reviewer
+  verdict, Publisher or exact Human Executor/REMEDIATION authorizations.
+- No removal or rehashing of historical AOA/TCA/ROA/MOA/Adaptive V1 profile bodies
+  or irreversible deletion of exact prior packets, decisions, TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR
+  lineage.
+- No forced reclassification of currently admitted audits or silent ROA R4 activation,
+  no automatic conclusion for TASK-407, PTE, Lean VP, KA-01, or downstream pins.
+- No default replacement of disabled TCA/ROA/MOA with V1, AOA, a hidden equivalent
+  checklist with forced two-stage closure, or another audit by fallback.
+constraints:
+  hard:
+  - One source-authenticated prospective policy decision supersedes the currently
+    authenticated THREE_SPECIALIZED default only after eligible publication of exact
+    reviewed source; preserve immutable older approval records, authenticated legacy
+    replay and in-flight binding/currentness. Historical profiles stay selectable
+    only as explicitly authorized bounded on-demand audit, not default or mutation
+    authority.
+  - For normal TASK_AUTHORING, REPAIR_AUTHORING and REMEDIATION_AUTHORING, direct
+    Brain-owned semantic contract construction must be a legal supported path with
+    zero mandatory semantic audit stages or fabricated audit CANDIDATE/PASS/ledger.
+    Keep all direct final ingress guards and no new Runtime audit admission gate.
+  - Human explicit on-demand intent 'audit TASK-ABC' selects the supported TCA profile
+    for the exact canonical TASK/revision/SHA; analogously exact REPAIR selects ROA
+    and exact REMEDIATION selects MOA. Selection must be authenticated by trusted
+    Human-origin input, strictly bound to exact subject, flow, revision/source and
+    one request; it cannot persist as a default or automatically mutate/re-author/repair/dispatch/review/publish.
+  - AOA-1 remains a soft architecture decision default when no Human opt-out exists.
+    Human explicit 'no AOA' yields direct architecture decision path, without AOA,
+    without substitute audit, and without weakening the normal governance/currentness/authority
+    checks. Audit V1 only on exact explicit Human request and under supported constraints.
+  - Preserve native provider text/JSON transports, Return Contract shape, source/subject
+    currentness and restart rejection at ADMIT/CONTINUE, strong negative validation
+    of unauthenticated Human choices, forged selection, mixed profile/stage, stale
+    Git and out-of-scope subjects. No implicit selection based solely on agent-generated
+    wording, packet fields, registry ordering or model self-assertion.
+  - Do not silently extend ROA R4 to a default or conflict with unfinished TASK-407.
+    Record this newer Human priority as planning-only in .ai/roadmap-state.yaml with
+    one selected implementation slice TASK-408, suspend competing prospective ROA
+    R4 default activation, preserve earlier roadmap bookmarks/lineage, and avoid automatic
+    roadmap progression.
+  - Run focused regressions only for changed Brain audit/profile/provider/context/return
+    and the adjacent Brain Sync consumer, including no-audit direct default, all three
+    explicit opt-ins, AOA soft-default and opt-out, V1 explicit, old in-flight/historical
+    replay, authorized origin/context and negative forged/stale/partial input cases.
+    Executor must return truthful complete AC claims and no fabricated verification
+    proof.
+acceptance:
+- id: AC1
+  condition: A complete, versioned and exact prospective Human policy can express
+    TASK_AUTHORING, REPAIR_AUTHORING and REMEDIATION_AUTHORING with no normative default
+    audit, retain AOA-1 as soft architecture default with explicit opt-out, and distinguish
+    this choice from all immutable former THREE_SPECIALIZED approvals.
+- id: AC2
+  condition: The ordinary supported Brain authoring provider path produces a direct
+    final TASK authoring candidate without TCA or V1 stage invocations, hidden equivalent
+    required audits, fake stage artifacts, or mandatory audit-source collection; existing
+    final AUTHOR_TASK ingress admits subject by its original safeguards.
+- id: AC3
+  condition: The ordinary REPAIR_AUTHORING path can directly produce an exact repair
+    authorization proposal with no ROA/default audit stages or selection credential
+    prerequisite, while retaining failed-RUN identity, exact authorization scope,
+    Human strategy and Runtime admission boundaries.
+- id: AC4
+  condition: The ordinary REMEDIATION_AUTHORING path continues to produce the exact
+    direct authorized remediation contract without MOA or any substitute audit, preserving
+    reviewed finding/source/SHA and A3/Human authorization.
+- id: AC5
+  condition: An explicit authenticated Human on-demand audit request of TASK-ABC can
+    select current supported TCA for only its exact TASK/revision/source and produce
+    a bounded audit report; no audit is silently enabled for another TASK or any later
+    author attempt.
+- id: AC6
+  condition: Explicit authenticated Human on-demand ROA for an exact failed REPAIR
+    subject and MOA for an exact REMEDIATION/finding subject are selectable without
+    default activation, without changing final contract admission, and without conferring
+    repair/remediation mutation or review authority.
+- id: AC7
+  condition: Architecture decisions use existing AOA-1 as soft default, but a trusted
+    exact Human opt-out proceeds through a valid direct non-audited architecture decision
+    with no fallback; Human opt-in to V1 remains exact-subject only and never substitutes
+    silently.
+- id: AC8
+  condition: Untrusted self-declared Human selection, forged/partial/stale/mixed profile
+    policy, changed canonical main/subject and conflicting explicit options fail closed
+    for their affected audit choice; permitted direct authoring remains available
+    when no audit is requested rather than failing for missing audit inputs.
+- id: AC9
+  condition: Historical exact TCA/ROA/MOA/AOA/V1 audit profiles, old bound stage/return
+    packets and immutable engineering lineage remain valid for exact archived interpretation;
+    newly admitted selection cannot overwrite an in-flight legacy audit or retroactively
+    retitle historical outcomes.
+- id: AC10
+  condition: The new planning-only Human priority record supersedes future default-audit
+    plans without rewriting TASK-407 or its existing lineage, and current contracts/protocol
+    documentation consistently describe direct default authoring and explicit subject-bounded
+    audit selection; no automatic R4, PTE, Lean VP or downstream activation occurs.
+- id: AC11
+  condition: Focused positive/negative regressions cover TASK/REPAIR/REMEDIATION direct
+    paths, TCA/ROA/MOA on-demand only, AOA on/explicit off, V1 opt-in, stale/conflicting
+    source, provider response modes, historical compatibility and mixed old/new profile
+    ambiguity without accepting a fake PASS.
+- id: AC12
+  condition: The new policy does not change the single admitted Executor, Runtime
+    deterministic verification/EVIDENCE, independent Reviewer/PUBLISHER, direct ingress
+    authentication/CAS, original TASK.scope.modify, or current minimum-sufficient-v1
+    verification contract, and all AC1..AC12 are truthfully claimable implementation
+    properties before later lifecycle proof.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_context.py tests/test_brain_provider.py
+    tests/test_brain_provider_protocol.py tests/test_brain_return_contract.py tests/test_brain_sync.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
