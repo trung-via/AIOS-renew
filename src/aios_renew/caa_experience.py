@@ -40,6 +40,7 @@ MAX_REFS = 128
 MAX_DOCUMENT_BYTES = 262144
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
 MAX_OUTPUT_BYTES = 65536
+MAX_SEMANTIC_OUTPUT_BYTES = 131072
 MAX_DEPTH = 24
 MAX_NODES = 32768
 MAX_GIT_CALLS = 512
@@ -51,6 +52,74 @@ _SEAL = object()
 _TASK = re.compile(r"TASK-[A-Za-z0-9_-]{1,90}")
 _RUN = re.compile(r"RUN-[A-Za-z0-9_-]{1,90}-\d{3,8}")
 _SHA = re.compile(r"[0-9a-f]{40}")
+
+# A feature is an observed lexical mention, never proof of implementation or
+# causality. Only these code-owned names leave the reader; no source prose does.
+SEMANTIC_TERMS = {
+    "SOURCE_IDENTITY": ("authenticated", "provenance", "source bound", "identity", "forged", "seal", "attribution"),
+    "TEMPORAL_ISOLATION": ("snapshot", "as of", "historical", "future", "hindsight", "temporal"),
+    "BOUNDED_WORK": ("bounded", "finite", "budget", "timeout", "retry", "resource"),
+    "DATA_AUTHORITY": ("read only", "untrusted", "prompt injection", "authority", "data only"),
+    "PRIVACY": ("private", "redact", "credential", "sensitive", "raw logs"),
+    "SCHEMA_VALIDATION": ("schema", "malformed", "parser", "json", "validation"),
+    "FAILURE_CONTAINMENT": ("non blocking", "containment", "unavailable", "abstain", "degrade"),
+    "ACCEPTANCE_COVERAGE": ("acceptance", "completion gate", "claimed", "coverage"),
+    "VERIFICATION_ISOLATION": ("verification", "evidence", "test summary", "pytest"),
+    "CONSUMER_COMPATIBILITY": ("consumer", "compatibility", "interface", "adapter", "provider"),
+    "DIRECT_AUTHORING": ("human on demand", "direct authoring", "audit policy"),
+    "CORRECTION_LINEAGE": ("correction", "supersession", "repair", "remediation"),
+}
+_UNSAFE_SEMANTIC = re.compile(
+    r"ignore\b|override\b|system\s*:|developer\s*:|<\|.*?\|>|"
+    r"\b(?:invoke|dispatch|authorize|sudo)\b|aios\s+(?:run|repair|remediate)|"
+    r"(?:password|secret|token|credential|api[_ -]?key)\s*[=:]|"
+    r"\bsk-[A-Za-z0-9]|[A-Za-z]:[/\\]|\\\\|/(?:home|Users|private|tmp)/|"
+    r"https?://|[A-Za-z0-9+/=_-]{48,}", re.IGNORECASE,
+)
+
+
+def _semantic_features(fields, binding):
+    """Lossy, closed-vocabulary feature shaping; unsupported meaning is UNKNOWN.
+
+    A witness points to the entire exact field. Matching a term establishes only
+    its mention (negation and implementation remain unknown). Suspicious fields
+    are excluded, not cleaned into seemingly trustworthy evidence.
+    """
+    witnesses, excluded, coverage = {}, 0, {}
+    for category, pointer, text in fields:
+        coverage.setdefault(category, "UNKNOWN")
+        if not isinstance(text, str) or _UNSAFE_SEMANTIC.search(text):
+            excluded += 1
+            continue
+        normalized = re.sub(r"[_-]+", " ", text.casefold())
+        for concept, terms in SEMANTIC_TERMS.items():
+            if any(re.search(r"\b" + re.escape(term) + r"\w*\b", normalized) for term in terms):
+                coverage[category] = "FEATURES_ONLY"
+                witnesses.setdefault(concept, dict(
+                    concept=concept, category=category, status="OBSERVED",
+                    meaning="LEXICAL_MENTION_ONLY", polarity="UNKNOWN",
+                    source=dict(binding, pointer=pointer)))
+    return dict(signals=[witnesses[key] for key in sorted(witnesses)],
+                field_coverage=coverage, excluded_field_count=excluded,
+                free_text="WITHHELD", technical_root_cause="UNKNOWN",
+                implementation="UNKNOWN", normative_policy="UNKNOWN")
+
+
+def _task_semantics(task, source, cut):
+    # Prefer explicit acceptance/invariant witnesses. Non-goals, assumptions,
+    # diagnostic prose, claim text and repair instructions are never witnesses.
+    fields = [("acceptance", f"/acceptance/{i}/condition", a.condition)
+              for i, a in enumerate(task.acceptance)]
+    fields += [("invariant", f"/constraints/hard/{i}", text)
+               for i, text in enumerate(task.constraints.hard)]
+    fields += [("goal", "/goal", task.goal)]
+    fields += [("scope", f"/scope/modify/{i}", text) for i, text in enumerate(task.scope.modify)]
+    fields += [("consumers", f"/scope/inspect/{i}", text) for i, text in enumerate(task.scope.inspect)]
+    fields += [("verification", f"/verification/required/{i}", text)
+               for i, text in enumerate(task.verification.required)]
+    return dict(_semantic_features(fields, source), task_id=task.task_id, revision=task.revision,
+                as_of_sha=cut.as_of_sha, cut_digest=cut._integrity,
+                scope_digest=_digest(dict(inspect=task.scope.inspect, modify=task.scope.modify)))
 
 
 class ExperienceError(ValueError):
@@ -479,8 +548,11 @@ def _execution_correction_facts(sources, sha, ref, run_document, run, task, fact
     return False
 
 
-def _episode(sources, cut, task_id, run_id, canonical_task):
+def _episode(sources, cut, task_id, run_id, canonical_task, include_semantics=False):
     episode = dict(selection=dict(task_id=task_id, run_id=run_id), observed=[], inferred=[], unknown=[])
+    if include_semantics:
+        episode["semantic_context"] = _task_semantics(canonical_task, sources.binding(
+            cut.as_of_sha, f".ai/tasks/{task_id}.yaml", ref=_MAIN), cut)
     facts = episode["observed"]
     _unknown(episode, "technical_root_cause", "NO_SEMANTIC_CAUSE_INFERENCE")
     if run_id is None:
@@ -521,6 +593,9 @@ def _episode(sources, cut, task_id, run_id, canonical_task):
     run = Run(run_id, RunTaskReference(task_id, revision), executor, base, run_data["workspace"],
               run_data.get("head_sha"), run_data["status"], document_affinity(run_data))
     task_source = sources.binding(base, base_task_path)
+    if include_semantics:
+        # The RUN's immutable revision, not a newer TASK on current main.
+        episode["semantic_context"] = _task_semantics(task, task_source, cut)
     run_source = sources.binding(sha, ".ai/transport/run.json", ref=ref)
     terminal_source = sources.binding(sha, path, ref=ref)
     _observed(facts, "task", dict(id=task_id, revision=revision), task_source, run_source)
@@ -626,7 +701,8 @@ def _episode(sources, cut, task_id, run_id, canonical_task):
     return episode
 
 
-def reconstruct_episodes(repo: str | Path, *, cut: ExperienceCut) -> dict[str, Any]:
+def reconstruct_episodes(repo: str | Path, *, cut: ExperienceCut,
+                         include_semantics: bool = False) -> dict[str, Any]:
     """Return finite provider-neutral facts, or a contained reader error.
 
     No verifier, reducer, provider, audit, admission, correction or publication is
@@ -634,6 +710,7 @@ def reconstruct_episodes(repo: str | Path, *, cut: ExperienceCut) -> dict[str, A
     its new facts. Pins removed/moved since capture fail instead of falling back.
     """
     try:
+        _require(type(include_semantics) is bool, "SELECTION_INVALID")
         _require(type(cut) is ExperienceCut, "CUT_INVALID")
         portable_cut = cut.as_dict()
         root, git = Path(repo).resolve(), _GitBudget()
@@ -657,14 +734,15 @@ def reconstruct_episodes(repo: str | Path, *, cut: ExperienceCut) -> dict[str, A
             _observed(facts, "task", dict(id=task.task_id, revision=task.revision), source)
             _observed(facts, "acceptance_ids", _ids([a.id for a in task.acceptance], r"AC[A-Za-z0-9_-]{1,64}"), source)
             task_facts.append(dict(task_id=task_id, observed=facts, inferred=[], unknown=[]))
-        episodes = [_episode(sources, cut, task_id, run_id, tasks[task_id])
+        episodes = [_episode(sources, cut, task_id, run_id, tasks[task_id], include_semantics)
                     for task_id, run_id in _episode_selections(cut.task_ids, cut.run_ids, sources.pins, cut.task_only)]
         _require(_refs(live, patterns) == before and _transport(root, git) == cut._transport, "SOURCE_MOVED")
         body = dict(format="AIOS_CAA_EXPERIENCE", version=1, source_cut=portable_cut,
                     tasks=task_facts, episodes=episodes, authority="NONE", source_text_is_instructions=False,
                     run_created=False, executor_invoked=False, verification_invoked=False, state_mutated=False)
         _shape(body, max_depth=16)
-        _require(len(_encode(body).encode("ascii")) <= MAX_OUTPUT_BYTES, "LIMIT_EXHAUSTED")
+        limit = MAX_SEMANTIC_OUTPUT_BYTES if include_semantics else MAX_OUTPUT_BYTES
+        _require(len(_encode(body).encode("ascii")) <= limit, "LIMIT_EXHAUSTED")
         _require(time.monotonic() < git.deadline, "LIMIT_EXHAUSTED")
         return body
     except ExperienceError:

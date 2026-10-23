@@ -1,11 +1,26 @@
 # CAA v1: finite advisory roadmap
 
-The Human approval of 2026-10-23 selects **CAA-01 / TASK-409 r1** as the sole
-prospective NEXT in `.ai/roadmap-state.yaml`. This document is the canonical CAA
-planning reference. The four sequential packages below are finite, separately
-authorized work; CAA-02 through CAA-04 are pending and conditional, with no TASK
-IDs assigned. A RUN, RESULT, REVIEW or publication cannot advance this plan.
-Only an explicit subsequent Human/Brain decision can select another package.
+The newer explicit Human decision of 2026-10-23 selects **CAA-02 / TASK-410 r1**
+as the sole prospective NEXT in `.ai/roadmap-state.yaml`: implement CAA-02 deep
+research now as one finite package. It supersedes only the earlier CAA-01
+selection bookmark. That earlier approval is preserved under `previous_selection`.
+The four sequential packages below remain finite, separately authorized work;
+CAA-03 and CAA-04 are unselected, with no TASK IDs assigned. CAA-05 remains a
+conditional unselected option. A RUN, RESULT, REVIEW or publication cannot
+advance this plan. Only an explicit Human/Brain decision can select a package.
+
+The existing CAA-01 canonical reader reauthenticated TASK-409 r1 / RUN-409-002:
+RESULT artifacts `33b5be48bc465558155caf84a9e72f43be51914d`, independent PRIMARY
+REVIEW-409-001 PASS at decision `3b22fbccd05120959aa5f1d646203bcf131de40f`, on exact
+reviewed source `4c5a961e17315aa6bdbea810e0fed803ef460e05`. That reviewed source is
+included on observed main `cb16cdc191c123e62730ea7be4d2d25c792b16e9`. These are
+engineering observations, not an automatic planning transition or a verdict on
+TASK-410. TASK-409 and every existing lifecycle record remain unchanged.
+
+The selected implementation contract is
+[CAA-02 intelligent reasoner](AIOS-CAA-02-INTELLIGENT-REASONER.md). It supplies
+transient consultation only; CAA-03 hooks and CAA-04 shadow/rollout are not part
+of TASK-410.
 
 The objective is a portable, evidence-grounded intelligent advisor for
 Architecture, TASK, REPAIR and REMEDIATION. The foundation alone supplies data,
@@ -43,14 +58,16 @@ source with effective `HUMAN_ON_DEMAND` policy. CAA does not change that policy:
 ordinary AUTHOR_TASK / AUTHOR_REPAIR / AUTHOR_REMEDIATION stay direct;
 TCA/ROA/MOA remain Human-on-demand, soft AOA retains explicit opt-out, and exact
 Human V1 support keeps its existing constraints. This historical observation
-does not assert any TASK-409 REVIEW or publication outcome.
+did not itself assert any TASK-409 REVIEW or publication outcome. The separate
+TASK-409 observation above was reauthenticated for the new Human selection.
 
 The TASK-408 priority entry is paused prospectively, not marked executed or
 completed by this planning update. Its approval records, TASK-407 r1, the
 suspended prospective ROA R4 default plan and all prior RUN/FAILURE/REVIEW
 lineage remain history. PTE, Lean VP, KA-01 and downstream bookmarks do not
-advance. CAA has no admission step, Flow Card, audit invocation or provider
-selection in this package.
+advance. CAA adds no admission step, Flow Card, audit invocation or provider
+selection authority. CAA-02 can use one explicitly caller-supplied provider
+callable; it is not connected to ordinary authoring flows.
 
 ## CAA-01 read contract
 
@@ -87,12 +104,21 @@ Fixed ceilings are 8 TASKs, 8 episodes, 128 scoped refs, 256 KiB per document,
 success or retrying. Scope ranges contain at most 8 numeric TASKs; broad/system
 queries are unavailable. Equivalent reads of an unchanged cut are deterministic.
 
+CAA-02 adds opt-in `include_semantics=True` to this same authenticated reader.
+Its default output and 64 KiB bound remain unchanged. The opt-in view permits
+128 KiB and adds only closed-vocabulary mentions from eligible TASK fields,
+bound to exact field pointers, immutable RUN revision and original cut. Source
+prose stays withheld; a mention is not an invariant proved or a cause observed.
+See the CAA-02 contract for the finite advisory and comparative fixture grammar.
+
 Runtime alone retains the unchanged authored minimum-sufficient-v1 command:
 
 ```text
 python -m pytest -q tests/test_caa_experience.py tests/test_brain_sync.py tests/test_brain_context.py tests/test_brain_attention.py
 ```
 
-Executor implementation-local syntax/read sanity is not canonical verification
-or EVIDENCE. This roadmap records no CAA training, evaluation result, default
+The command above remains the historical TASK-409 verification contract.
+Runtime alone executes TASK-410's authored minimum-sufficient-v1 verification;
+its exact commands remain in immutable TASK-410. Executor implementation-local
+syntax/read sanity is not canonical verification or EVIDENCE. This roadmap records no CAA training, evaluation result, default
 activation, later package completion or production quality improvement.
