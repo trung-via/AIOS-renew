@@ -356,7 +356,15 @@ def make_integrated_remediation_repair_lineage(
     state.mkdir()
     failed_run_path = state / "failed-run.json"
     failure_path = state / "failure.json"
-    failed_run_path.write_text(json.dumps(remediation_run), encoding="utf-8")
+    # This reader fixture covers historical integrated single-finding wrappers.
+    # The prospective FAILURE writer admits the older two-field execution base;
+    # install the historical wrapper on the synthetic remote after lawful transport.
+    transport_run = json.loads(json.dumps(remediation_run))
+    transport_run["execution_base"] = {
+        "run_id": remediation_run["predecessor"]["source_run_id"],
+        "candidate_sha": remediation_run["execution"]["run"]["base_sha"],
+    }
+    failed_run_path.write_text(json.dumps(transport_run), encoding="utf-8")
     failure_path.write_text(json.dumps(failure), encoding="utf-8")
     transport_failure(
         repo,
@@ -365,6 +373,12 @@ def make_integrated_remediation_repair_lineage(
         run_path=failed_run_path,
         failure_path=failure_path,
     )
+    _rewrite_publication_fixture_document(
+        lineage, f"refs/heads/aios/failure-artifacts/{failed_run_id}",
+        ".ai/transport/run.json",
+        lambda document: document.update(execution_base=execution_base),
+    )
+    git(repo, "checkout", "--quiet", "main")
 
     authorization = {
         "repair_id": "REPAIR-063-002",
@@ -717,8 +731,6 @@ def make_repair_lineage(
         "changed_files": list(failed_changed_files),
         "outside_task_scope": [],
     }
-    if candidate_overrides:
-        failure_candidate.update(candidate_overrides)
     failure = {
         "kind": "FAILURE",
         "run_id": failed_run_id,
@@ -738,8 +750,6 @@ def make_repair_lineage(
         "error": {"type": "RuntimeVerificationError", "message": "failed"},
         "candidate": failure_candidate,
     }
-    if failure_overrides:
-        failure.update(failure_overrides)
     failed_run_path = state / "failed-run.json"
     failure_path = state / "failure.json"
     failed_run_path.write_text(json.dumps(predecessor_payload), encoding="utf-8")
@@ -936,6 +946,43 @@ def make_repair_lineage(
         lineage_path=lineage_path,
     )
 
+    if failure_overrides or candidate_overrides:
+        # Exercise Publisher's historical/malformed-source read gates, without
+        # asking the prospective transport writer to admit the invalid fixture.
+        # Construct the real transported lineage first, then corrupt only these
+        # synthetic source documents. Keep RUN and FAILURE in their historical
+        # private representation to reach the intended identity/candidate gate.
+        failure_candidate.update(candidate_overrides or {})
+        failure.update(failure_overrides or {})
+        persisted_failure.update(failure_overrides or {})
+        if lineage_mutation == "conflicting_failure":
+            persisted_failure["run_id"] = "RUN-063-999"
+        transported_lineage = json.loads(git(
+            remote, "show", f"refs/heads/aios/artifacts/{run_id}:.ai/transport/repair.json",
+        ))
+        transported_lineage["failure"] = persisted_failure
+        documents = [
+            (f"refs/heads/aios/failure-artifacts/{failed_run_id}",
+             ".ai/transport/run.json", predecessor_payload),
+            (f"refs/heads/aios/failure-artifacts/{failed_run_id}",
+             ".ai/transport/failure.json", failure),
+            (f"refs/heads/aios/artifacts/{run_id}",
+             ".ai/transport/repair.json", transported_lineage),
+        ]
+        if prior_lineage is not None:
+            documents.append((f"refs/heads/aios/failure-artifacts/{failed_run_id}",
+                              ".ai/transport/repair.json", prior_lineage))
+        for ref, path, document in documents:
+            def replace_document(existing):
+                existing.clear()
+                existing.update(document)
+
+            _rewrite_publication_fixture_document(
+                {"repo": repo, "remote": remote}, ref, path,
+                replace_document,
+            )
+        git(repo, "checkout", "--quiet", "--detach", candidate_sha)
+
     review_dir = repo / ".ai" / "reviews"
     review_dir.mkdir(parents=True, exist_ok=True)
     (review_dir / "REVIEW-063-002.yaml").write_text(
@@ -1045,8 +1092,9 @@ def test_repair_publication_requires_exact_canonical_public_failure(
 
     monkeypatch.setattr(publication_module, "_read_blob", canonical_failure)
     if forged_public:
-        with pytest.raises(PublicationError, match="FAILURE identity mismatch"):
+        with pytest.raises(PublicationError, match="invalid public FAILURE projection identity") as rejected:
             publish(lineage)
+        assert rejected.value.report.cause == "MALFORMED_LINEAGE"
         assert remote_main(lineage) == lineage["base_sha"]
     else:
         assert publish(lineage).outcome == "PUBLISHED"
@@ -4097,7 +4145,7 @@ def test_durable_pass_reserves_through_publisher_and_blocks_task_main_writer(tmp
     monkeypatch.setattr(ingress, "_publish_ingress_ref", paused_decision)
     task = yaml.safe_load(TASK_SOURCE)
     task["revision"] = 3
-    task["verification"]["policy"] = "minimum-sufficient-v2"
+    task["verification"]["policy"] = ingress.CURRENT_VERIFICATION_POLICY
     task["return_affinity"] = {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}
     authoring = ingress.IngressEnvelope(
         format="AIOS_INGRESS_ENVELOPE", version=1, operation="AUTHOR_TASK",
