@@ -1538,10 +1538,16 @@ def test_post_task_stale_revision_wake_and_duplicate_remote_ref_never_attribute_
 
 
 
+def _task408_source_planning_roadmap():
+    """Keep TASK-408's exact pre-CAA selectors as immutable historical policy."""
+    root = Path(__file__).resolve().parents[1]
+    return yaml.safe_load(git(root, "show", "eaa1363681bade65aaed33d9af6211728fb55992:.ai/roadmap-state.yaml"))
+
+
 def test_task408_one_planning_slice_preserves_former_approvals_and_task407():
     from aios_renew.brain_context import _ON_DEMAND_APPROVAL, _ON_DEMAND_PRIORITY, _THREE_FLOW_APPROVAL, _on_demand_approval, _digest
     root = Path(__file__).resolve().parents[1]
-    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    source = _task408_source_planning_roadmap()
     historical = yaml.safe_load(git(root, "show", "3f31b1ca87e980d94b1f8e28ef1e4d3b6c578fc6:.ai/roadmap-state.yaml"))
     record = source[_ON_DEMAND_PRIORITY]
     selected = "human-audit-policy-direct-authoring-20261023"
@@ -1567,7 +1573,7 @@ def test_task408_one_planning_slice_preserves_former_approvals_and_task407():
 @pytest.mark.parametrize("fault", (None, "competing_next", "stale_pointer"))
 def test_task408_brain_sync_observes_planning_without_activation_or_dispatch(tmp_path, fault):
     root = Path(__file__).resolve().parents[1]
-    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    source = _task408_source_planning_roadmap()
     ids = {"human-audit-policy-direct-authoring-20261023", "post-task-dirty-recovery-pte-20261022"}
     source["sequence"] = [item for item in source["sequence"] if item["id"] in ids]
     if fault == "competing_next":
@@ -1590,4 +1596,73 @@ def test_task408_brain_sync_observes_planning_without_activation_or_dispatch(tmp
         assert observed.selection_status == "AMBIGUOUS_NEXT"
         assert observed.selected_task is None
     assert not any((observed.state_mutated, observed.run_created, observed.executor_invoked, observed.verification_invoked))
+    assert path.read_bytes() == before and git(repo, "show-ref") == refs
+
+
+def test_task409_caa_plan_has_one_next_and_preserves_prior_approvals_and_bookmarks():
+    root = Path(__file__).resolve().parents[1]
+    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    historical = _task408_source_planning_roadmap()
+    record = source["human_caa_v1_priority_20261023"]
+    assert record["planning_only"] is True and record["selected_slice"] == "CAA-01"
+    assert record["ordered_packages"] == ["CAA-01", "CAA-02", "CAA-03", "CAA-04"]
+    assert record["optional_package"]["id"] == "CAA-05"
+    assert record["optional_package"]["status"] == "CONDITIONAL_NOT_SELECTED"
+    selected = [item for item in source["sequence"] if item["status"] == "NEXT"]
+    assert [item["id"] for item in selected] == source["next_items"] == [source["active_track"]] == ["caa-v1-20261023"]
+    assert selected[0]["selected_slice"] == "CAA-01"
+    assert (selected[0]["task_id"], selected[0]["task_revision"]) == ("TASK-409", 1)
+    assert source["planning_document"] == record["planning_document"] == "docs/AIOS-CAA-V1-ROADMAP.md"
+    for key, value in historical.items():
+        if key.startswith("human_"):
+            assert source[key] == value
+    by_id = {item["id"]: item for item in source["sequence"]}
+    for item in historical["sequence"]:
+        if item["id"] == "human-audit-policy-direct-authoring-20261023":
+            assert by_id[item["id"]] == dict(item, status="PAUSED", historical_status="NEXT",
+                                            prospective_priority_owner="caa-v1-20261023")
+        else:
+            assert by_id[item["id"]] == item
+    for task_id in ("TASK-407", "TASK-408"):
+        assert (root / f".ai/tasks/{task_id}.yaml").read_text(encoding="utf-8").strip() == git(
+            root, "show", f"eaa1363681bade65aaed33d9af6211728fb55992:.ai/tasks/{task_id}.yaml")
+    document = (root / record["planning_document"]).read_text(encoding="utf-8")
+    assert document.count("| CAA-0") == 4
+    assert "Exit gate" in document and "Stop gate" in document and "Dependency" in document
+    assert "CAA-05" in document and "pending and conditional" in document
+    assert "no TASK" in document
+    assert "python -m pytest -q tests/test_caa_experience.py tests/test_brain_sync.py tests/test_brain_context.py tests/test_brain_attention.py" in document
+
+
+@pytest.mark.parametrize("fault", (None, "competing_next", "stale_pointer"))
+def test_task409_brain_sync_keeps_existing_shapes_and_never_activates_caa(tmp_path, monkeypatch, fault):
+    root = Path(__file__).resolve().parents[1]
+    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    source["sequence"] = [item for item in source["sequence"] if item["id"] in {
+        "caa-v1-20261023", "human-audit-policy-direct-authoring-20261023"}]
+    if fault == "competing_next":
+        source["sequence"][1]["status"] = "NEXT"
+    elif fault == "stale_pointer":
+        source["next_items"] = ["human-audit-policy-direct-authoring-20261023"]
+    repo = make_repo(tmp_path)
+    path = repo / ".ai/roadmap-state.yaml"
+    path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    (repo / ".ai/tasks/TASK-409.yaml").write_bytes((root / ".ai/tasks/TASK-409.yaml").read_bytes())
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "prospective CAA planning fixture")
+    git(repo, "push", "origin", "main")
+    from aios_renew import caa_experience
+    def forbidden(*args, **kwargs):
+        pytest.fail("Brain Sync activated a CAA reader")
+    monkeypatch.setattr(caa_experience, "capture_experience_cut", forbidden)
+    monkeypatch.setattr(caa_experience, "reconstruct_episodes", forbidden)
+    before, refs = path.read_bytes(), git(repo, "show-ref")
+    observed = observe_brain_sync(repo=repo)
+    if fault is None:
+        assert observed.selected_task == dict(id="TASK-409", revision=1)
+        assert observed.selection_status == "SELECTED"
+    else:
+        assert observed.selection_status == "AMBIGUOUS_NEXT" and observed.selected_task is None
+    assert not any((observed.state_mutated, observed.run_created, observed.executor_invoked, observed.verification_invoked))
+    assert "caa_experience" not in observed.as_dict()
     assert path.read_bytes() == before and git(repo, "show-ref") == refs

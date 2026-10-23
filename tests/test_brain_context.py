@@ -1191,6 +1191,50 @@ def test_task408_exact_publication_authenticates_a_distinct_versioned_policy(tas
     assert len(registry["profiles"]) == 10
 
 
+def test_task409_caa_planning_descendant_preserves_published_human_on_demand_policy(task408_canonical_audit_repo, monkeypatch):
+    from aios_renew import brain_context as context, caa_experience
+    c = task408_canonical_audit_repo
+    before_record, before_registry, before_authority = context._canonical_audit_source(c.repo)
+    root = Path(__file__).resolve().parents[1]
+    planned = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    c.roadmap["human_caa_v1_priority_20261023"] = planned["human_caa_v1_priority_20261023"]
+    for key in ("active_track", "active_track_status", "next_items", "planning_document"):
+        c.roadmap[key] = planned[key]
+    c.roadmap["sequence"] = planned["sequence"]
+    c.write(".ai/roadmap-state.yaml", yaml.safe_dump(c.roadmap).encode())
+    c.main_sha = c.commit("prospective CAA plan fixture only")
+    def forbidden(*args, **kwargs):
+        pytest.fail("ordinary canonical policy selection activated CAA")
+    monkeypatch.setattr(caa_experience, "capture_experience_cut", forbidden)
+    monkeypatch.setattr(caa_experience, "reconstruct_episodes", forbidden)
+    record, registry, authority = context._canonical_audit_source(c.repo)
+    assert record == before_record and registry == before_registry
+    assert authority["effective_status"] == before_authority["effective_status"] == "TASK408_REVIEWED_PUBLISHED_HUMAN_ON_DEMAND_ACTIVE"
+    assert authority["reviewed_source_sha"] == c.on_demand_source_sha
+    assert record["target_policy_state"] == "HUMAN_ON_DEMAND"
+    assert all(record["target_profiles"][flow] is None for flow in (
+        "TASK_AUTHORING", "REPAIR_AUTHORING", "REMEDIATION_AUTHORING"))
+    assert record["architecture_default"] == "SOFT_HUMAN_OPT_OUT"
+
+
+def test_task409_work_context_keeps_existing_post_task_shape_without_caa_hook(tmp_path, monkeypatch):
+    from aios_renew import caa_experience
+    from tests.test_brain_sync import PostTaskGit
+    fixture = PostTaskGit(tmp_path).result()
+    def forbidden(*args, **kwargs):
+        pytest.fail("Work Context activated CAA")
+    monkeypatch.setattr(caa_experience, "capture_experience_cut", forbidden)
+    monkeypatch.setattr(caa_experience, "reconstruct_episodes", forbidden)
+    context = compose_brain_work_context(repo=fixture.repo,
+        post_task_selector=dict(task_id=fixture.task_id))
+    view = json.loads(context.render())["canonical_observation"]
+    assert view["format"] == "AIOS_BRAIN_SYNC_SNAPSHOT" and view["version"] == 1
+    assert view["post_task"]["terminal"]["status"] == "RESULT"
+    assert view["post_task"]["review"]["status"] == "PENDING"
+    assert view["post_task"]["publication"]["status"] == "UNKNOWN"
+    assert "caa_experience" not in view and view["verification_invoked"] is False
+
+
 def test_task408_roadmap_binds_only_the_admitted_repair_without_claiming_activation():
     from aios_renew.brain_context import (
         _ON_DEMAND_APPROVAL, _ON_DEMAND_REPAIR, _THREE_FLOW_APPROVAL, _on_demand_approval, _digest,

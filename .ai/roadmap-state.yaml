@@ -1,4 +1,31 @@
 version: 1
+human_caa_v1_priority_20261023:
+  authority: EXPLICIT_HUMAN_APPROVAL_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
+  approved_on: '2026-10-23'
+  planning_only: true
+  source_main_sha_at_authoring: eaa1363681bade65aaed33d9af6211728fb55992
+  human_decision: PRIORITIZE_FINITE_FOUR_PACKAGE_CAA_V1_WITH_CONDITIONAL_LEARNED_OPTION
+  supersedes_prospective_priority_record: human_on_demand_audit_priority_20261023
+  sole_high_level_next: caa-v1-20261023
+  planning_owner: caa-v1-20261023
+  planning_document: docs/AIOS-CAA-V1-ROADMAP.md
+  ordered_packages: [CAA-01, CAA-02, CAA-03, CAA-04]
+  selected_slice: CAA-01
+  implementation_task: TASK-409
+  implementation_revision: 1
+  later_packages: PENDING_CONDITIONAL_SEPARATE_HUMAN_BRAIN_AUTHORING_NO_TASK_IDS
+  optional_package:
+    id: CAA-05
+    status: CONDITIONAL_NOT_SELECTED
+    gate: MEASURED_ERROR_OR_COST_JUSTIFIES_LEARNED_RERANKER_OR_FINE_TUNE_AND_SEPARATE_HUMAN_APPROVAL
+  task408: PRESERVE_EXACT_DIRECT_AUTHORING_HUMAN_ON_DEMAND_POLICY_AND_ALL_LINEAGE
+  task407: PRESERVE_AUTHORED_TASK_AND_ALL_LINEAGE_NO_ROA_R4_DEFAULT_ACTIVATION
+  paused_bookmarks: PTE_LEAN_VP_KA01_AND_DOWNSTREAM_UNCHANGED_NO_AUTOMATIC_ADVANCEMENT
+  engineering_truth: IMMUTABLE_CANONICAL_TASK_RUN_RESULT_FAILURE_REVIEW_AND_PUBLICATION_LINEAGE
+  completion: NO_CAA_PACKAGE_COMPLETION_OR_QUALITY_UPLIFT_INFERRED_FROM_THIS_PLAN
+  executor_delegation: NOT_GRANTED_BY_PLANNING
+  next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_RUN_REVIEW_PUBLISH_AUTO_ADVANCEMENT
+
 human_on_demand_audit_policy_20261023:
   authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_POLICY_APPROVAL
   approved_on: '2026-10-23'
@@ -587,9 +614,9 @@ human_lean_vp_l3_03_reconciliation_20261020:
     - NO_TASK_RUN_REVIEW_PUBLICATION_OR_DOWNSTREAM_LINEAGE_REWRITE
     - UNRESOLVED_INGRESS_PRODUCER_CONCURRENCY_REMAINS_SEPARATE_DIAGNOSTIC
 
-active_track: human-audit-policy-direct-authoring-20261023
+active_track: caa-v1-20261023
 active_track_status: ACTIVE
-planning_document: docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+planning_document: docs/AIOS-CAA-V1-ROADMAP.md
 human_lean_vp_legacy_plan_retirement_and_task389_authoring_reconciliation_20261019:
   authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_RECONCILIATION
   approved_on: "2026-10-19"
@@ -2772,10 +2799,23 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - human-audit-policy-direct-authoring-20261023
+  - caa-v1-20261023
 sequence:
-  - id: human-audit-policy-direct-authoring-20261023
+  - id: caa-v1-20261023
     status: NEXT
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    planning_only: true
+    planning_owner: caa-v1-20261023
+    planning_document: docs/AIOS-CAA-V1-ROADMAP.md
+    task_id: TASK-409
+    task_revision: 1
+    selected_slice: CAA-01
+    priority_record: human_caa_v1_priority_20261023
+    next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
+  - id: human-audit-policy-direct-authoring-20261023
+    status: PAUSED
+    historical_status: NEXT
+    prospective_priority_owner: caa-v1-20261023
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     planning_only: true
     planning_owner: human-audit-policy-direct-authoring-20261023

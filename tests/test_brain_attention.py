@@ -1127,6 +1127,26 @@ def test_independent_review_id_publication_rejects_ref_drift(independent_review_
     assert len(reads) > snapshot and not fixture.source_path.exists()
 
 
+def test_task409_explicit_experience_read_preserves_attention_review_and_affinity(tmp_path):
+    from tests.test_caa_experience import EpisodeGit, values
+    from tests.operator_test_support import git
+    from aios_renew.caa_experience import reconstruct_episodes
+    fixture = EpisodeGit(tmp_path).result().review()
+    sources = brain.GitSources(fixture.repo, git, "origin")
+    identity, review = sources.review(fixture.run_id)
+    event = brain.attention(brain.RESULT, dict(run_id=fixture.run_id, artifact_sha=fixture.artifact_sha))
+    affinity = brain.resolve_return_affinity(event.event_id, sources)
+    refs = git(fixture.repo, "show-ref")
+    view = reconstruct_episodes(fixture.repo, cut=fixture.cut())
+    assert values(view, "review")[0]["reviewed_sha"] == identity["reviewed_sha"]
+    assert values(view, "review")[0]["verdict"] == review["verdict"]
+    assert sources.review(fixture.run_id) == (identity, review)
+    assert brain.resolve_return_affinity(event.event_id, sources) == affinity
+    assert git(fixture.repo, "show-ref") == refs
+    assert view["authority"] == "NONE" and "next_action" not in view
+    assert "CAA" not in brain.SCHEMAS
+
+
 def test_shared_projector_has_no_generic_semantic_router_or_downstream_activation():
     source = Path(brain.__file__).read_text(encoding="utf-8")
     for forbidden in ("observe_unified_state", "brain_sync", "createWorkflowDispatch",
