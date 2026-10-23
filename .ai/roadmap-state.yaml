@@ -10,22 +10,36 @@ human_caa_v1_priority_20261023:
   planning_owner: caa-v1-20261023
   planning_document: docs/AIOS-CAA-V1-ROADMAP.md
   ordered_packages: [CAA-01, CAA-02, CAA-03, CAA-04]
-  selected_slice: CAA-02
-  implementation_task: TASK-410
+  selected_slice: CAA-03
+  implementation_task: TASK-412
   implementation_revision: 1
+  source_main_sha_at_selection: 749cd197e55eadb36e8876db104c333a021f4915
   current_selection_decision:
+    approved_on: '2026-10-24'
+    authority: EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION
+    decision: IMPLEMENT_CAA03_B_MINIMAL_OPTIONAL_FOUR_FLOW_ADVISOR
+    supersession: CAA02_PLANNING_BOOKMARK_ONLY_NO_ENGINEERING_LINEAGE_CHANGE
+    implementation_observation_main_sha: 749cd197e55eadb36e8876db104c333a021f4915
+    contract: docs/AIOS-CAA-03-INTEGRATION-PORTABILITY.md
+    activation: NO_DEFAULT_PRODUCTION_ACTIVATION
+  previous_selection:
+    selected_slice: CAA-02
+    implementation_task: TASK-410
+    implementation_revision: 1
+    source_main_sha_at_authoring: 4c5a961e17315aa6bdbea810e0fed803ef460e05
     approved_on: '2026-10-23'
     authority: EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION
     decision: IMPLEMENT_CAA02_DEEP_RESEARCH_NOW_AS_ONE_FINITE_PACKAGE
     supersession: CAA01_PLANNING_BOOKMARK_ONLY_NO_ENGINEERING_LINEAGE_CHANGE
     implementation_observation_main_sha: cb16cdc191c123e62730ea7be4d2d25c792b16e9
-  previous_selection:
-    selected_slice: CAA-01
-    implementation_task: TASK-409
-    implementation_revision: 1
-    source_main_sha_at_authoring: eaa1363681bade65aaed33d9af6211728fb55992
-    decision: PRIORITIZE_FINITE_FOUR_PACKAGE_CAA_V1_WITH_CONDITIONAL_LEARNED_OPTION
     disposition: HISTORICAL_PRIORITY_SUPERSEDED_PROSPECTIVELY_FOR_SELECTION_ONLY
+    previous_selection:
+      selected_slice: CAA-01
+      implementation_task: TASK-409
+      implementation_revision: 1
+      source_main_sha_at_authoring: eaa1363681bade65aaed33d9af6211728fb55992
+      decision: PRIORITIZE_FINITE_FOUR_PACKAGE_CAA_V1_WITH_CONDITIONAL_LEARNED_OPTION
+      disposition: HISTORICAL_PRIORITY_SUPERSEDED_PROSPECTIVELY_FOR_SELECTION_ONLY
   observed_predecessor:
     task: TASK-409
     revision: 1
@@ -39,7 +53,21 @@ human_caa_v1_priority_20261023:
     inclusion: MAIN_INCLUSION
     as_of_main_sha: cb16cdc191c123e62730ea7be4d2d25c792b16e9
     basis: REAUTHENTICATED_CAA01_CANONICAL_READER_OBSERVATION_NOT_ROADMAP_TRANSITION
-  unselected_packages: [CAA-03, CAA-04]
+  observed_caa02_predecessor:
+    task: TASK-410
+    revision: 1
+    run: RUN-410-002
+    result_artifacts_sha: 149ca05de386bd929d2e432e9a24561c55cba9f4
+    review_id: REVIEW-410-002
+    review_decision_sha: bf7b3baf65fa45e056caac5e634543d387f5087e
+    review_mode: DELTA
+    review_verdict: PASS
+    reviewed_source_sha: 8327f421df0c3e477e9a405b69bf7e5910cddca5
+    inclusion: MAIN_INCLUSION
+    as_of_main_sha: 749cd197e55eadb36e8876db104c333a021f4915
+    basis: EXACT_ACCEPTED_LINEAGE_SUPPLIED_BY_TASK412_HANDOFF_NOT_AUTOMATIC_ROADMAP_TRANSITION
+    publication_context: TASK411_R2_PUBLISHER_CORRECTION_REMAINS_SEPARATE_NO_COMPLETION_CLAIM
+  unselected_packages: [CAA-04]
   later_packages: PENDING_CONDITIONAL_SEPARATE_HUMAN_BRAIN_AUTHORING_NO_TASK_IDS
   optional_package:
     id: CAA-05
@@ -47,6 +75,7 @@ human_caa_v1_priority_20261023:
     gate: MEASURED_ERROR_OR_COST_JUSTIFIES_LEARNED_RERANKER_OR_FINE_TUNE_AND_SEPARATE_HUMAN_APPROVAL
   task408: PRESERVE_EXACT_DIRECT_AUTHORING_HUMAN_ON_DEMAND_POLICY_AND_ALL_LINEAGE
   task407: PRESERVE_AUTHORED_TASK_AND_ALL_LINEAGE_NO_ROA_R4_DEFAULT_ACTIVATION
+  task411: PRESERVE_R1_FAILURE_AND_R2_PROSPECTIVE_PUBLISHER_CORRECTION_ALL_LINEAGE_UNTOUCHED
   paused_bookmarks: PTE_LEAN_VP_KA01_AND_DOWNSTREAM_UNCHANGED_NO_AUTOMATIC_ADVANCEMENT
   engineering_truth: IMMUTABLE_CANONICAL_TASK_RUN_RESULT_FAILURE_REVIEW_AND_PUBLICATION_LINEAGE
   completion: NO_CURRENT_PACKAGE_COMPLETION_OR_QUALITY_UPLIFT_INFERRED_FROM_THIS_PLAN
@@ -2834,9 +2863,9 @@ sequence:
     planning_only: true
     planning_owner: caa-v1-20261023
     planning_document: docs/AIOS-CAA-V1-ROADMAP.md
-    task_id: TASK-410
+    task_id: TASK-412
     task_revision: 1
-    selected_slice: CAA-02
+    selected_slice: CAA-03
     priority_record: human_caa_v1_priority_20261023
     next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
   - id: human-audit-policy-direct-authoring-20261023

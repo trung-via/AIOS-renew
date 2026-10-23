@@ -1,13 +1,14 @@
 # CAA v1: finite advisory roadmap
 
-The newer explicit Human decision of 2026-10-23 selects **CAA-02 / TASK-410 r1**
-as the sole prospective NEXT in `.ai/roadmap-state.yaml`: implement CAA-02 deep
-research now as one finite package. It supersedes only the earlier CAA-01
-selection bookmark. That earlier approval is preserved under `previous_selection`.
-The four sequential packages below remain finite, separately authorized work;
-CAA-03 and CAA-04 are unselected, with no TASK IDs assigned. CAA-05 remains a
-conditional unselected option. A RUN, RESULT, REVIEW or publication cannot
-advance this plan. Only an explicit Human/Brain decision can select a package.
+The explicit Human decision of 2026-10-24 selects **CAA-03 / TASK-412 r1**
+as the sole prospective package NEXT in `.ai/roadmap-state.yaml`: option B,
+one minimal optional advisor for four existing Brain-owned flows. It supersedes
+only the CAA-02 selection bookmark. The 2026-10-23 CAA-02 / TASK-410 r1 decision
+and its earlier CAA-01 selection remain nested under `previous_selection`.
+CAA-04 and conditional CAA-05 remain unselected. This planning transcription
+does not mark CAA-03 complete or activate a production default. A RUN, RESULT,
+REVIEW or publication cannot advance this plan. Only an explicit Human/Brain
+decision can select a package.
 
 The existing CAA-01 canonical reader reauthenticated TASK-409 r1 / RUN-409-002:
 RESULT artifacts `33b5be48bc465558155caf84a9e72f43be51914d`, independent PRIMARY
@@ -17,10 +18,20 @@ included on observed main `cb16cdc191c123e62730ea7be4d2d25c792b16e9`. These are
 engineering observations, not an automatic planning transition or a verdict on
 TASK-410. TASK-409 and every existing lifecycle record remain unchanged.
 
+The TASK-412 handoff separately records accepted CAA-02 lineage: TASK-410 r1 /
+RUN-410-002, RESULT artifacts `149ca05de386bd929d2e432e9a24561c55cba9f4`,
+independent DELTA REVIEW-410-002 PASS at decision
+`bf7b3baf65fa45e056caac5e634543d387f5087e`, on exact reviewed source
+`8327f421df0c3e477e9a405b69bf7e5910cddca5`, included on main. The supplied
+selection source is `749cd197e55eadb36e8876db104c333a021f4915`; Runtime owns
+currentness reauthentication. TASK-411 r1 FAILURE and the separate r2 Publisher
+root-cause correction remain untouched; this plan claims no TASK-411 completion.
+
 The selected implementation contract is
-[CAA-02 intelligent reasoner](AIOS-CAA-02-INTELLIGENT-REASONER.md). It supplies
-transient consultation only; CAA-03 hooks and CAA-04 shadow/rollout are not part
-of TASK-410.
+[CAA-03 integration and portability](AIOS-CAA-03-INTEGRATION-PORTABILITY.md).
+It wraps the existing [CAA-02 intelligent reasoner](AIOS-CAA-02-INTELLIGENT-REASONER.md)
+through explicit callable adapters only. TASK-410 did not deliver those adapters;
+CAA-04 evaluation/shadow/rollout remains separate and unselected.
 
 The objective is a portable, evidence-grounded intelligent advisor for
 Architecture, TASK, REPAIR and REMEDIATION. The foundation alone supplies data,
@@ -67,7 +78,8 @@ suspended prospective ROA R4 default plan and all prior RUN/FAILURE/REVIEW
 lineage remain history. PTE, Lean VP, KA-01 and downstream bookmarks do not
 advance. CAA adds no admission step, Flow Card, audit invocation or provider
 selection authority. CAA-02 can use one explicitly caller-supplied provider
-callable; it is not connected to ordinary authoring flows.
+callable. CAA-03 adds an optional callable for an already resolved exact subject;
+ordinary authoring has no automatic CAA invocation or substitute audit gate.
 
 ## CAA-01 read contract
 
