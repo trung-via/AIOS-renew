@@ -1111,7 +1111,7 @@ def task406_canonical_audit_repo(canonical_audit_repo, monkeypatch):
 
 
 @pytest.fixture
-def task408_canonical_audit_repo(task406_canonical_audit_repo):
+def task408_canonical_audit_repo(task406_canonical_audit_repo, monkeypatch):
     """Synthetic lifecycle objects in isolated Git, never verification proof."""
     import aios_renew.brain_context as context
     c = task406_canonical_audit_repo
@@ -1122,6 +1122,33 @@ def task408_canonical_audit_repo(task406_canonical_audit_repo):
     audited_task = task405_tca3_context()[1]["task"]
     c.write(f".ai/tasks/{audited_task['task_id']}.yaml", yaml.safe_dump(audited_task).encode())
     c.on_demand_base_sha = c.commit("TASK-408 exact authored fixture")
+    c.write("src/aios_renew/brain_context.py", b"# TASK-408 failed candidate fixture\n")
+    failed = c.commit("TASK-408 failed PRIMARY fixture")
+    c.git(c.canonical, "update-ref", "refs/heads/aios/failure/RUN-408-001", failed)
+    c.run = {**c.three_flow_run, "run_id": "RUN-408-001", "base_sha": c.on_demand_base_sha,
+             "task": {"id": "TASK-408", "revision": 1}}
+    failure = {"kind": "FAILURE", "run_id": c.run["run_id"], "task": c.run["task"],
+               "executor": "codex", "base_sha": c.on_demand_base_sha, "failed_head_sha": failed,
+               "phase": "VERIFICATION", "error": {"type": "RuntimeVerificationError", "message": "Synthetic failure"},
+               "candidate": {"changed_files": ["src/aios_renew/brain_context.py"], "dirty": False,
+                             "descends_from_base": True, "transportable": True, "repairable": True,
+                             "outside_task_scope": []}}
+    from aios_renew.review_transport import _public_metadata_value
+    failure = _public_metadata_value(failure)
+    c.save_artifacts(run_id="RUN-408-001", failure=failure)
+    failure_artifacts = c.artifact_sha
+    authorization = {"repair_id": "REPAIR-408-001-001", "failed_run_id": "RUN-408-001", "failed_head_sha": failed,
+                     "task": c.run["task"], "action": "CODE_FIX", "modification_scope": task["scope"]["modify"],
+                     "instructions": ["Correct the exact failed TASK-408 fixture"], "constraints": []}
+    c.git(c.canonical, "switch", "--detach", failed)
+    c.write(".ai/transport/repair.json", json.dumps(authorization).encode())
+    authorization_sha = c.commit("TASK-408 admitted repair authorization fixture")
+    c.git(c.canonical, "update-ref", "refs/heads/aios/repair/RUN-408-001", authorization_sha)
+    c.git(c.canonical, "switch", "main")
+    monkeypatch.setattr(context, "_ON_DEMAND_REPAIR", {
+        "failed_run_id": "RUN-408-001", "failed_head_sha": failed, "failure_artifacts_sha": failure_artifacts,
+        "repair_id": authorization["repair_id"], "action": "CODE_FIX", "repair_authorization_sha": authorization_sha,
+        "root_base_sha": c.on_demand_base_sha})
     c.roadmap[context._ON_DEMAND_APPROVAL] = context._on_demand_approval(
         context._digest(c.roadmap[context._THREE_FLOW_APPROVAL]))
     c.write(".ai/roadmap-state.yaml", yaml.safe_dump(c.roadmap).encode())
@@ -1129,11 +1156,15 @@ def task408_canonical_audit_repo(task406_canonical_audit_repo):
     c.source_sha = c.commit("TASK-408 prospective implementation fixture")
     c.main_sha = c.on_demand_source_sha = c.source_sha
     c.git(c.canonical, "update-ref", context._ON_DEMAND_REFS[0], c.source_sha)
-    c.run = {**c.three_flow_run, "run_id": context._ON_DEMAND_RUN, "base_sha": c.on_demand_base_sha,
+    c.run = {**c.three_flow_run, "run_id": context._ON_DEMAND_RUN, "base_sha": failed,
              "task": {"id": "TASK-408", "revision": 1}}
+    c.on_demand_lineage = {"failed_run_id": "RUN-408-001", "failed_head_sha": failed,
+        "root_base_sha": c.on_demand_base_sha, "result_base_sha": c.on_demand_base_sha,
+        "repair_authorization_sha": authorization_sha, "task": task, "failure": failure,
+        "repair": authorization, "run": deepcopy(c.run)}
     c.result_package = c.synthetic_package(task, context._ON_DEMAND_RUN, c.source_sha,
                                           ["src/aios_renew/brain_context.py", ".ai/roadmap-state.yaml"])
-    c.save_artifacts(run_id=context._ON_DEMAND_RUN)
+    c.save_artifacts(run_id=context._ON_DEMAND_RUN, repair=c.on_demand_lineage)
     c.on_demand_artifact_sha = c.artifact_sha
     c.review = {"review_id": "REVIEW-408-001", "reviewed_sha": c.source_sha,
                 "mode": "PRIMARY", "verdict": "PASS", "findings": [],
@@ -1149,12 +1180,51 @@ def test_task408_exact_publication_authenticates_a_distinct_versioned_policy(tas
     record, registry, authority = _canonical_audit_source(c.repo)
     assert record == c.roadmap[_ON_DEMAND_APPROVAL]
     assert record["target_policy_version"] == 2 and record["target_policy_state"] == "HUMAN_ON_DEMAND"
+    assert record["implementation_run"] == "RUN-408-002"
+    assert record["implementation_repair"]["failed_run_id"] == "RUN-408-001"
+    assert c.run["base_sha"] == record["implementation_repair"]["failed_head_sha"]
     assert all(record["target_profiles"][flow] is None for flow in (
         "TASK_AUTHORING", "REPAIR_AUTHORING", "REMEDIATION_AUTHORING"))
     assert c.roadmap[_THREE_FLOW_APPROVAL]["target_policy_state"] == "THREE_SPECIALIZED"
     assert authority["reviewed_source_sha"] == c.on_demand_source_sha
     assert authority["effective_status"] == "TASK408_REVIEWED_PUBLISHED_HUMAN_ON_DEMAND_ACTIVE"
     assert len(registry["profiles"]) == 10
+
+
+def test_task408_roadmap_binds_only_the_admitted_repair_without_claiming_activation():
+    from aios_renew.brain_context import (
+        _ON_DEMAND_APPROVAL, _ON_DEMAND_REPAIR, _THREE_FLOW_APPROVAL, _on_demand_approval, _digest,
+    )
+    root = Path(__file__).resolve().parents[1]
+    roadmap = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    record = roadmap[_ON_DEMAND_APPROVAL]
+    assert record == _on_demand_approval(_digest(roadmap[_THREE_FLOW_APPROVAL]))
+    assert record["implementation_run"] == "RUN-408-002"
+    assert record["implementation_repair"] == _ON_DEMAND_REPAIR
+    assert _ON_DEMAND_REPAIR["failed_run_id"] == "RUN-408-001"
+    assert _ON_DEMAND_REPAIR["failed_head_sha"] == "7e95961949ddc115dc443d54b0bde6ed34bb5c07"
+    assert _ON_DEMAND_REPAIR["repair_authorization_sha"] == "b4131dde44802ca005573e2a3acf3903e8c18cc0"
+    assert record["status"] == "READY_CANDIDATE_REQUIRES_TASK408_PASS_AND_PUBLICATION"
+
+
+@pytest.mark.parametrize("fault", ("missing_lineage", "failed_run", "authorization", "root", "failure_artifacts", "candidate"))
+def test_task408_publication_requires_the_exact_repaired_run(task408_canonical_audit_repo, fault):
+    from aios_renew.brain_context import _canonical_audit_source, _ON_DEMAND_REFS, _ON_DEMAND_RUN
+    c = task408_canonical_audit_repo
+    if fault == "failure_artifacts":
+        c.git(c.canonical, "update-ref", "refs/heads/aios/failure-artifacts/RUN-408-001", c.three_flow_artifact_sha)
+    elif fault == "candidate":
+        c.git(c.canonical, "update-ref", _ON_DEMAND_REFS[0], c.on_demand_lineage["failed_head_sha"])
+    else:
+        if fault == "failed_run":
+            c.run["run_id"] = "RUN-408-001"
+        elif fault == "authorization":
+            c.on_demand_lineage["repair_authorization_sha"] = "f" * 40
+        elif fault == "root":
+            c.on_demand_lineage["root_base_sha"] = "f" * 40
+        c.save_artifacts(run_id=_ON_DEMAND_RUN, repair=None if fault == "missing_lineage" else c.on_demand_lineage)
+    with pytest.raises(BrainContextError):
+        _canonical_audit_source(c.repo)
 
 
 @pytest.mark.parametrize("fault", ["missing", "duplicate", "partial", "mixed", "predecessor", "self_active",
@@ -1189,7 +1259,7 @@ def test_task408_policy_cannot_self_activate_or_fall_back(task408_canonical_audi
             c.run["task"]["revision"] = 2
         else:
             c.result_package["result"]["claims"].pop()
-        c.save_artifacts(run_id=_ON_DEMAND_RUN)
+        c.save_artifacts(run_id=_ON_DEMAND_RUN, repair=c.on_demand_lineage)
     if fault in {"missing", "duplicate", "partial", "mixed", "predecessor", "self_active"}:
         c.save_roadmap()
     with pytest.raises(BrainContextError):

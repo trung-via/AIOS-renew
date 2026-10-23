@@ -134,8 +134,11 @@ Omitting an audit request permits direct authoring without audit sources.
 
 `human_on_demand_audit_policy_20261023` preserves the exact former
 `human_tca3_three_flow_activation_20261023` approval by digest. Activation requires
-TASK-408 r1 / RUN-408-001 Runtime RESULT/EVIDENCE, independent PRIMARY REVIEW PASS
-and Publisher inclusion of the exact source on canonical main. The stored candidate
+TASK-408 r1 / RUN-408-002 Runtime RESULT/EVIDENCE, independent PRIMARY REVIEW PASS
+and Publisher inclusion of the exact source on canonical main. The admitted
+REPAIR-408-001-001 CODE_FIX must retain failed RUN-408-001's exact source, immutable
+failure artifacts, authorization and original TASK root; the failed PRIMARY cannot
+activate the policy. The stored candidate
 status cannot activate itself. Missing approval/publication or changed canonical
 identity stops selection without fallback. Every former approval and exact historical
 profile/stage/return binding remains immutable; an in-flight audit cannot be reselected.

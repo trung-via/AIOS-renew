@@ -1870,6 +1870,29 @@ def test_task408_direct_final_candidates_need_no_selection_credential_or_audit_s
             validate_response(req, {**response(req, candidate), extra: "PASS"})
 
 
+@pytest.mark.parametrize("flow", ("REPAIR_AUTHORING", "REMEDIATION_AUTHORING"))
+def test_task408_direct_correction_accepts_canonical_selection_without_an_explicit_selector(registry, flow):
+    supplied, contract, bindings, _, candidate = task408_inputs(registry, flow)
+    body = supplied.as_dict()
+    body["requires_fresh_context_for_continuation"] = False
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    req = construct_request(DecisionPacket(body), contract, bindings, request_mode="DIRECT")
+    assert revalidate_request(req) == req
+    decision = validate_response(req, response(req, candidate))
+    assert decision["semantic_value"] == candidate and decision["audit_profile_ref"] is None
+
+
+@pytest.mark.parametrize("flow", R5_FLOWS)
+@pytest.mark.parametrize("flag", (None, 0, 1, "false"))
+def test_task408_direct_requires_a_typed_continuation_flag(registry, flow, flag):
+    supplied, contract, bindings, _, _ = task408_inputs(registry, flow)
+    body = supplied.as_dict()
+    body["requires_fresh_context_for_continuation"] = flag
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        construct_request(DecisionPacket(body), contract, bindings, request_mode="DIRECT")
+
+
 @pytest.mark.parametrize("flow,option,mode", [
     ("TASK_AUTHORING", None, "DIRECT"), ("REPAIR_AUTHORING", None, "DIRECT"),
     ("REMEDIATION_AUTHORING", None, "DIRECT"), ("ARCHITECTURE", None, "AOA_CONSTRUCT"),

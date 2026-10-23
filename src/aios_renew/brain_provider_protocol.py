@@ -435,9 +435,13 @@ def _mode(packet: dict[str, Any], profile: dict[str, Any] | None, mode: Any) -> 
         raise BrainProviderProtocolError("flow and request mode do not apply")
     flow = packet["selected_flow"]
     if mode == "DIRECT" and profile is None and flow in _AUDITED | {"DIAGNOSTIC"}:
+        # Correction flows can be selected by the pending canonical obligation;
+        # this explicit-selector flag is not their freshness authority.
         if flow != "DIAGNOSTIC" and (packet["canonical_blocker"] is not None
-                or packet["requires_fresh_context_for_continuation"] is not True
-                or flow in {"ARCHITECTURE", "TASK_AUTHORING"} and packet["subject"] != {"kind": flow}
+                or type(packet["requires_fresh_context_for_continuation"]) is not bool
+                or flow in {"ARCHITECTURE", "TASK_AUTHORING"} and (
+                    packet["requires_fresh_context_for_continuation"] is not True
+                    or packet["subject"] != {"kind": flow})
                 or flow == "ARCHITECTURE" and packet["selection_basis"] != "EXPLICIT_SELECTOR"):
             raise BrainProviderProtocolError("DIRECT requires the exact unblocked authoring/planning subject")
         return

@@ -1978,10 +1978,13 @@ FOUR_SPECIALIZED and THREE_SPECIALIZED are still decoded exactly as archived.
 Its predecessor digest authenticates the unchanged TASK-406 approval. Its stored
 status is READY_CANDIDATE_REQUIRES_TASK408_PASS_AND_PUBLICATION. Canonical selection
 reads trusted Git, never working-tree policy, and requires TASK-408 r1 /
-RUN-408-001's structurally valid Runtime ResultPackage and successful exact-command
+RUN-408-002's structurally valid Runtime ResultPackage and successful exact-command
 EVIDENCE, complete AC1..AC12 implementation claim coverage, independent PRIMARY
 REVIEW PASS for the exact result head, metadata ancestry and Publisher inclusion
-of that reviewed source on canonical main. The exact approval and predecessor
+of that reviewed source on canonical main. This admitted CODE_FIX must authenticate
+REPAIR-408-001-001, failed RUN-408-001 and its immutable failure artifacts,
+authorization commit and original TASK root. The failed PRIMARY is ineligible for
+activation. The exact approval and predecessor
 records must also occur in that source. Only then is effective status projected as
 TASK408_REVIEWED_PUBLISHED_HUMAN_ON_DEMAND_ACTIVE. The same TASK implements and
 activates the policy at eligible publication; no later activation TASK is needed.

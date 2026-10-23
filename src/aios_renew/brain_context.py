@@ -506,7 +506,15 @@ _THREE_FLOW_REFS = tuple(f"refs/heads/aios/{kind}/{_THREE_FLOW_RUN}"
                          for kind in ("review", "review-decision", "artifacts"))
 _ON_DEMAND_APPROVAL = "human_on_demand_audit_policy_20261023"
 _ON_DEMAND_PRIORITY = "human_on_demand_audit_priority_20261023"
-_ON_DEMAND_RUN = "RUN-408-001"
+_ON_DEMAND_RUN = "RUN-408-002"
+_ON_DEMAND_REPAIR = {
+    "failed_run_id": "RUN-408-001",
+    "failed_head_sha": "7e95961949ddc115dc443d54b0bde6ed34bb5c07",
+    "failure_artifacts_sha": "37edd5d281d2baa5557a7ac58996bf2dbdf8dd8f",
+    "repair_id": "REPAIR-408-001-001", "action": "CODE_FIX",
+    "repair_authorization_sha": "b4131dde44802ca005573e2a3acf3903e8c18cc0",
+    "root_base_sha": "3f31b1ca87e980d94b1f8e28ef1e4d3b6c578fc6",
+}
 _ON_DEMAND_REFS = tuple(f"refs/heads/aios/{kind}/{_ON_DEMAND_RUN}"
                         for kind in ("review", "review-decision", "artifacts"))
 _TASK405_EXCEPTION = {
@@ -582,6 +590,7 @@ def _on_demand_approval(predecessor_digest: str) -> dict:
         "human_decision": "DIRECT_AUTHORING_ON_DEMAND_TCA_ROA_MOA_SOFT_AOA_WITH_EXPLICIT_OPT_OUT",
         "supersedes": _THREE_FLOW_APPROVAL, "superseded_approval_digest": predecessor_digest,
         "implementation_task": "TASK-408", "implementation_revision": 1, "implementation_run": _ON_DEMAND_RUN,
+        "implementation_repair": _stable_copy(_ON_DEMAND_REPAIR),
         "required_review_mode": "PRIMARY", "required_review_verdict": "PASS",
         "activation_boundary": "EXACT_TASK408_RUNTIME_RESULT_INDEPENDENT_REVIEW_PASS_PUBLISHER_SOURCE_ON_MAIN",
         "target_policy_format": "AIOS_BRAIN_AUDIT_POLICY", "target_policy_version": 2,
@@ -710,6 +719,7 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
     from .operator import _git_is_ancestor
     from .return_affinity import require_same_affinity
     from .review import parse_review, validate_review
+    from .publication import PublicationError, _repair_review_lineage
     from .review_transport import (
         ReviewTransportError, resolve_transport_remote, resolve_detached_observation_remote,
         _git_cmd,
@@ -929,6 +939,14 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
         selected = on_demand
 
     def publication(record: dict, candidate_ref: str, review_ref: str, artifact_ref: str) -> str:
+        try:
+            return validated_publication(record, candidate_ref, review_ref, artifact_ref)
+        except BrainContextError:
+            raise
+        except (ValueError, PublicationError) as exc:
+            raise BrainContextError("canonical R5 publication validation failed") from exc
+
+    def validated_publication(record: dict, candidate_ref: str, review_ref: str, artifact_ref: str) -> str:
         # Historical approvals require their original RUN. The current approval
         # requires the exact admitted repair and its independent first review.
         artifact_sha = refs[artifact_ref]
@@ -980,24 +998,27 @@ def _canonical_audit_source(repo: Path) -> tuple[dict, dict, dict]:
                            != _digest(old) for key, old in predecessors.items())
                     or {ac for claim in result.claims for ac in claim.satisfies} != {f"AC{i}" for i in range(1, 13)}):
                 raise BrainContextError("TASK-408 exact reviewed policy or implementation claim coverage conflicts")
-        if current:
-            from .publication import _repair_review_lineage
+        if current or prospective:
             lineage_raw = blob(artifact_sha, ".ai/transport/repair.json")
-            lineage = _json_no_dups(lineage_raw, "TASK-406 REPAIR execution")
+            lineage = _json_no_dups(lineage_raw, f"{task_id} REPAIR execution")
             binding = record["implementation_repair"]
+            failure_ref = f"refs/heads/aios/failure-artifacts/{binding['failed_run_id']}"
+            if _query_matching_refs(repo, remote, failure_ref) != {failure_ref: binding["failure_artifacts_sha"]}:
+                raise BrainContextError(f"{task_id} immutable failure artifacts conflict")
             authorization = lineage.get("repair")
             if (any(lineage.get(k) != binding[k] for k in (
                     "failed_run_id", "failed_head_sha", "repair_authorization_sha", "root_base_sha"))
                     or not isinstance(authorization, dict)
                     or any(authorization.get(k) != binding[k] for k in ("repair_id", "action"))):
-                raise BrainContextError("TASK-406 RESULT is not from the admitted repair lineage")
+                raise BrainContextError(f"{task_id} RESULT is not from the admitted repair lineage")
             root_base, result_base, prior_review, finding = _repair_review_lineage(
                 repo, remote=remote, publication_run_id=run.run_id,
                 child_run_data=run_data, child_run=run, child_head_sha=source,
                 lineage_bytes=lineage_raw, task=published_task)
             if (root_base != binding["root_base_sha"] or result_base != root_base
                     or prior_review is not None or finding is not None):
-                raise BrainContextError("TASK-406 repaired first review must retain its original TASK root")
+                raise BrainContextError(f"{task_id} repaired first review must retain its original TASK root")
+        if current:
             reviewed_roadmap = yaml.compose(blob(source, ".ai/roadmap-state.yaml").decode("utf-8"), Loader=yaml.SafeLoader)
             if not isinstance(reviewed_roadmap, yaml.MappingNode):
                 raise BrainContextError("TASK-406 reviewed approval is missing")

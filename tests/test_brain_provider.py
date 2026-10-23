@@ -1352,7 +1352,7 @@ def test_caller_input_invalid_before_invocation(registry):
 
 
 @pytest.mark.parametrize("kind", ["mapping", "json"])
-@pytest.mark.parametrize("malformation", ["extra", "attribution_extra", "attribution_long", "native_long", "semantic"])
+@pytest.mark.parametrize("malformation", ["extra", "attribution_extra", "attribution_missing", "attribution_long", "native_long", "semantic"])
 def test_closed_wrappers_and_bounds(registry, kind, malformation):
     packet, package, bindings = setup(registry, "DIAGNOSTIC")
     calls = []
@@ -1363,6 +1363,8 @@ def test_closed_wrappers_and_bounds(registry, kind, malformation):
             value["extra"] = 1
         elif malformation == "attribution_extra":
             value["attribution"]["endpoint"] = "hidden"
+        elif malformation == "attribution_missing":
+            del value["attribution"]["invocation_id"]
         elif malformation == "attribution_long":
             value["attribution"]["session_id"] = "x" * 2049
         elif malformation == "native_long":
@@ -1902,7 +1904,7 @@ def test_task408_no_aoa_is_authenticated_exact_and_has_no_fallback(registry, tas
     calls = []
     def callback(req):
         calls.append(deepcopy(req))
-        return {"semantic_response": response(req, candidate), "attribution": {"provider": "mapping", "model": "one", "session_id": None}}
+        return wrapper(req, semantic=response(req, candidate))
     provider = MappingBrainProvider("mapping", "one", callback)
     for trusted in (None, lambda *_: False):
         with pytest.raises(BrainAttemptError) as error:
@@ -1929,7 +1931,7 @@ def test_task408_stale_choices_and_direct_return_movement_fail_closed(registry, 
         calls.append(req)
         if change == "main":
             c.main_sha = c.commit("canonical movement during direct call")
-        return {"semantic_response": response(req, candidate), "attribution": {"provider": "mapping", "model": "one", "session_id": None}}
+        return wrapper(req, semantic=response(req, candidate))
     provider = MappingBrainProvider("mapping", "one", callback)
     if change in {"subject", "canonical_task"}:
         if change == "subject":

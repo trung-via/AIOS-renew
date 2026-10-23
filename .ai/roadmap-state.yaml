@@ -8,7 +8,15 @@ human_on_demand_audit_policy_20261023:
   superseded_approval_digest: 8a67b893d4047e72f2b43737c827aa9a62094e31163c7c621ac8c5894dc5652e
   implementation_task: TASK-408
   implementation_revision: 1
-  implementation_run: RUN-408-001
+  implementation_run: RUN-408-002
+  implementation_repair:
+    failed_run_id: RUN-408-001
+    failed_head_sha: 7e95961949ddc115dc443d54b0bde6ed34bb5c07
+    failure_artifacts_sha: 37edd5d281d2baa5557a7ac58996bf2dbdf8dd8f
+    repair_id: REPAIR-408-001-001
+    action: CODE_FIX
+    repair_authorization_sha: b4131dde44802ca005573e2a3acf3903e8c18cc0
+    root_base_sha: 3f31b1ca87e980d94b1f8e28ef1e4d3b6c578fc6
   required_review_mode: PRIMARY
   required_review_verdict: PASS
   activation_boundary: EXACT_TASK408_RUNTIME_RESULT_INDEPENDENT_REVIEW_PASS_PUBLISHER_SOURCE_ON_MAIN
