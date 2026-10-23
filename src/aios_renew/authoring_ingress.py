@@ -35,6 +35,7 @@ from .publication import (
     finish_main_publication_reservation,
     _pending_review_guard,
     _recheck_binding,
+    _lifecycle_snapshot,
     _parse_remediation_run,
     _repair_review_lineage,
     _validate_remediation_package,
@@ -1190,8 +1191,9 @@ def _read_direct_remediation_binding(envelope: IngressEnvelope, repo: Path,
                      else _remediation_read_transport(repo, observation_remote))
         remote = transport[0]
         prefix = source_id.rsplit("-", 1)[0] + "-"
-        patterns = ("refs/heads/main", f"refs/heads/aios/*/{prefix}*")
-        refs = _query_matching_refs(repo, remote, *patterns)
+        # Authenticate the same typed TASK lifecycle map used by Publisher.
+        # Operational attention/transport arrivals cannot change this witness.
+        refs = _lifecycle_snapshot(repo, remote, run_id=source_id)
         main_sha = refs.get("refs/heads/main")
         artifacts_sha = refs.get(f"refs/heads/aios/artifacts/{source_id}")
         decision_sha = refs.get(f"refs/heads/aios/review-decision/{source_id}")
@@ -1294,7 +1296,7 @@ def _read_direct_remediation_binding(envelope: IngressEnvelope, repo: Path,
                 raise AuthoringIngressError("executable checkout moved during reconstruction")
         current_transport = (_remediation_transport(repo) if observation_remote is None
                              else _remediation_read_transport(repo, observation_remote))
-        if current_transport != transport or _query_matching_refs(repo, remote, *patterns) != refs:
+        if current_transport != transport or _lifecycle_snapshot(repo, remote, run_id=source_id) != refs:
             raise AuthoringIngressError("canonical REMEDIATION inputs moved during reconstruction")
         return _RemediationBinding(transport, {ref: sha for ref, sha in refs.items() if ref != "refs/heads/main"},
             task, run, package, review, refs.get(f"refs/heads/aios/remediation/{source_id}-{finding_id}"), state, checkout, prior)

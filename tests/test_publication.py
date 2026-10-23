@@ -2,6 +2,7 @@ import json
 import re
 import subprocess
 from dataclasses import asdict
+from fnmatch import fnmatchcase
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,8 @@ from aios_renew import brain_attention as brain
 import aios_renew.publication as publication_module
 from aios_renew.publication import PublicationError, publish_review_decision
 from aios_renew.review_transport import transport_failure, transport_post_pass
+from aios_renew.run import Run
+from aios_renew.terminal_attention import parse_signal_ref, selector as attention_selector
 from tests.git_fixture_support import (
     commit_fixture_state,
     materialize_git_baseline,
@@ -2317,10 +2320,11 @@ def test_review_321_003_never_authorizes_reset_or_a_different_sha(tmp_path, monk
     def bounded_git(repo, *args, **kwargs):
         commands.append(args)
         if args[0] == "ls-remote":
-            # Exact refs may now share one native observation. Keep this
-            # synthetic metadata fixture's original binding and assertions.
-            return 0, "".join(refs[ref] + "\t" + ref + "\n"
-                               for ref in args[3:] if refs[ref] is not None), ""
+            # Keep the synthetic fixture's binding for typed lifecycle patterns
+            # as well as exact queries; all mutation assertions remain intact.
+            return 0, "".join(sha + "\t" + ref + "\n"
+                               for ref, sha in refs.items() if sha is not None
+                               and any(fnmatchcase(ref, pattern) for pattern in args[3:])), ""
         if args[0] == "fetch":
             return 0, "", ""
         if args == ("show", f"{artifact}:{publication_module.PUBLICATION_RECOVERY_PATH}"):
@@ -4627,3 +4631,496 @@ def test_batch_pass_does_not_close_unselected_frontier_findings(tmp_path):
     with pytest.raises(PublicationError):
         publish_review_decision(fixture['repo'], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
     assert git(fixture['remote'], 'rev-parse', 'refs/heads/main') == before
+
+
+def test_lifecycle_snapshot_distinguishes_nested_authorities_and_transport(tmp_path):
+    from aios_renew.terminal_attention import selector
+
+    lineage = make_lineage(tmp_path)
+    run_id = lineage["run_id"]
+    artifact_ref = f"refs/heads/aios/artifacts/{run_id}"
+    artifact = git(lineage["remote"], "rev-parse", artifact_ref)
+    protected = {
+        "refs/heads/main": lineage["base_sha"],
+        artifact_ref: artifact,
+        f"refs/heads/aios/review/{run_id}": lineage["candidate_sha"],
+        f"refs/heads/aios/review-decision/{run_id}": lineage["decision_sha"],
+        "refs/heads/aios/remediation/RUN-063-001-R1": lineage["decision_sha"],
+        "refs/heads/aios/repair-supersession/RUN-063-002/2": lineage["base_sha"],
+    }
+    excluded = {
+        selector(run_id, "RESULT", artifact).signal_ref: lineage["base_sha"],
+        "refs/heads/aios/chat-wake/RESULT/RUN-063-001/transport": lineage["base_sha"],
+        "refs/heads/aios/unrelated/RUN-063-001": lineage["base_sha"],
+        "refs/heads/aios/artifacts/RUN-064-001": lineage["base_sha"],
+    }
+    for ref, sha in {**protected, **excluded}.items():
+        git(lineage["remote"], "update-ref", ref, sha)
+    before = git(lineage["remote"], "show-ref")
+    assert publication_module._lifecycle_snapshot(lineage["repo"], "origin", run_id=run_id) == protected
+    assert publication_module._lifecycle_snapshot(lineage["repo"], "origin", run_id=run_id) == protected
+    assert git(lineage["remote"], "show-ref") == before
+
+
+@pytest.mark.parametrize("fault", [
+    "query-failed", "truncated", "bad-sha", "duplicate", "missing-main",
+    "nested-review", "bad-revision", "deep-revision", "unknown-namespace",
+    "wrong-task", "long-ref", "over-count", "over-bytes",
+])
+def test_lifecycle_snapshot_rejects_partial_malformed_or_over_capacity_observations(tmp_path, monkeypatch, fault):
+    sha = "a" * 40
+    main = f"{sha}\trefs/heads/main\n"
+    valid = f"{sha}\trefs/heads/aios/artifacts/RUN-063-001\n"
+    output = {
+        "query-failed": main,
+        "truncated": main.rstrip("\n"),
+        "bad-sha": "not-a-sha\trefs/heads/main\n",
+        "duplicate": main + main,
+        "missing-main": valid,
+        "nested-review": main + f"{sha}\trefs/heads/aios/review/RUN-063-001/extra\n",
+        "bad-revision": main + f"{sha}\trefs/heads/aios/repair-supersession/RUN-063-001/unknown\n",
+        "deep-revision": main + f"{sha}\trefs/heads/aios/repair-supersession/RUN-063-001/2/extra\n",
+        "unknown-namespace": main + f"{sha}\trefs/heads/aios/unknown/RUN-063-001\n",
+        "wrong-task": main + f"{sha}\trefs/heads/aios/review/RUN-064-001\n",
+        "long-ref": main + f"{sha}\trefs/heads/aios/review/RUN-063-" + "1" * 1024 + "\n",
+        "over-count": main + valid,
+        "over-bytes": main + valid,
+    }[fault]
+    if fault == "over-count":
+        monkeypatch.setattr(publication_module, "_MAX_LIFECYCLE_REFS", 1)
+    if fault == "over-bytes":
+        monkeypatch.setattr(publication_module, "_MAX_REMOTE_BYTES", len(main.encode()))
+    commands = []
+
+    def remote_only(_repo, *args, **_kwargs):
+        commands.append(args)
+        assert args[:3] == ("ls-remote", "--refs", "origin")
+        return (128 if fault == "query-failed" else 0), output, ""
+
+    monkeypatch.setattr(publication_module, "_git", remote_only)
+    with pytest.raises(PublicationError):
+        publication_module._lifecycle_snapshot(tmp_path, "origin", run_id="RUN-063-001")
+    assert len(commands) == 1
+
+
+def batch_publication_source_fixture(tmp_path, *, foreign=False, mixed=False, authorize=True, task_number=410):
+    from aios_renew.authoring_ingress import IngressEnvelope, execute_ingress
+    from aios_renew.review import parse_batch_selection, parse_review
+    from aios_renew.task import parse_task
+    from tests.test_batch_remediation import TASK_SOURCE as batch_task_source, batch_payload, selection_data
+
+    task_source = batch_task_source.replace("379", str(task_number))
+    task = parse_task(task_source)
+    profiles = Path(__file__).resolve().parents[1] / ".ai/executor-profiles.yaml"
+    repo, remote, main = materialize_git_baseline(tmp_path, files={
+        "README.md": "synthetic batch fixture\n", ".gitattributes": ".ai/** -text\n",
+        f".ai/tasks/{task.task_id}.yaml": task_source, ".ai/executor-profiles.yaml": profiles.read_bytes()},
+        user_name="Batch Test", user_email="batch@example.invalid", commit_message="batch baseline", remote_head_main=True)
+    path = repo / "src/product.py"
+    path.parent.mkdir(parents=True)
+    path.write_text("first = False\nsecond = False\n", encoding="utf-8")
+    candidate = commit_fixture_state(repo, paths=("src/product.py",), message="source candidate",
+                                     user_name="Batch Test", user_email="batch@example.invalid")
+    source = Run.from_task(run_id=f"RUN-{task_number}-001", task=task, executor="codex", base_sha=main, workspace=str(repo))
+    state = tmp_path / "source-artifacts"
+    state.mkdir()
+    run_path, result_path = state / "run.json", state / "result.json"
+    run_path.write_text(json.dumps(asdict(source)), encoding="utf-8")
+    evidence = dict(evidence_id=source.run_id + "-V001", run_id=source.run_id, subject_sha=candidate,
+        type="VERIFICATION", source=dict(command="git diff --check"), result=dict(exit_code=0, summary="synthetic"), raw=dict(path="synthetic.raw"))
+    result_path.write_text(json.dumps(dict(result=dict(head_sha=candidate,
+        claims=[dict(id="C1", satisfies=["AC1", "AC2", "AC3"], claim="Synthetic source.", evidence=[evidence["evidence_id"]])],
+        changed_files=["src/product.py"], unresolved=[]), evidence=[evidence])), encoding="utf-8")
+    transport_post_pass(repo, run_id=source.run_id, head_sha=candidate, run_path=run_path, result_path=result_path)
+    findings = [dict(id=i, basis=b, action="CODE_FIX", location="src/product.py", issue="Defect " + i, expected="Correct " + i)
+                for i, b in (("F1", "AC1"), ("F2", "AC2"))]
+    if mixed:
+        findings[1]["action"] = "EVIDENCE_ONLY"
+    if foreign:
+        findings.append(dict(id="F3", basis="AC3", action="CODE_FIX", location="src/product.py", issue="Other defect", expected="Correct it"))
+    review_data = dict(review_id=f"REVIEW-{task_number}-001", reviewed_sha=candidate, mode="PRIMARY", verdict="CHANGES_REQUIRED",
+        acceptance={"AC1": "FAIL", "AC2": "FAIL", "AC3": "FAIL" if foreign else "PASS"}, findings=findings)
+    decision = execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW", {"run_id": source.run_id},
+        {"expected_candidate_sha": candidate}, review_data), repo=repo)
+    git(repo, "reset", "--hard", main)
+    selection = parse_batch_selection(selection_data(source_run_id=source.run_id, task_id=task.task_id,
+        review_id=review_data["review_id"], reviewed_sha=candidate, review_decision_sha=decision.canonical_sha,
+        source_artifacts_sha=git(remote, "rev-parse", "refs/heads/aios/artifacts/" + source.run_id)))
+    payload = batch_payload(selection, findings[:2])
+    envelope = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REMEDIATION",
+        {"source_run_id": source.run_id, "batch_id": selection.batch_id, "finding_ids": list(selection.finding_ids)},
+        {"expected_reviewed_sha": candidate, "expected_review_decision_sha": decision.canonical_sha}, payload)
+    authorized = execute_ingress(envelope, repo=repo) if authorize else None
+    return dict(repo=repo, remote=remote, main=main, task=task, selection=selection, payload=payload,
+        source_review=parse_review(yaml.safe_dump(review_data)), envelope=envelope, authorized=authorized)
+
+
+def batch_publication_fixture(tmp_path, **verdict):
+    from aios_renew.authoring_ingress import IngressEnvelope, execute_ingress
+    from tests.test_batch_remediation import delta_payload, execute_batch
+    from aios_renew import operator as op
+
+    # Use prospective local TASK-410 commits and genuine batch source authority.
+    # No historical artifacts, hosted workflow timestamps or provider are used.
+    fixture = batch_publication_source_fixture(tmp_path)
+    outcome, _, _ = execute_batch(fixture)
+    result_path = op.runtime_paths(fixture["repo"]).results / (outcome.run_id + ".json")
+    head = json.loads(result_path.read_text(encoding="utf-8"))["result"]["head_sha"]
+    payload = delta_payload(fixture, head, **verdict)
+    payload["review_id"] = "REVIEW-410-002"
+    decision = execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW",
+        {"run_id": outcome.run_id}, {"expected_candidate_sha": head}, payload), repo=fixture["repo"])
+    return fixture, outcome, decision, head
+
+
+def result_attention_ref(fixture, run_id):
+    artifact = git(fixture["remote"], "rev-parse", f"refs/heads/aios/artifacts/{run_id}")
+    item = attention_selector(run_id, "RESULT", artifact)
+    assert parse_signal_ref(item.signal_ref) == item
+    # Operational refs point to carrier main; the actual terminal identity is
+    # in the nested name. This is the production terminal-attention grammar.
+    git(fixture["remote"], "update-ref", item.signal_ref, fixture["main"])
+    return item.signal_ref
+
+
+@pytest.mark.parametrize("attention_change", ["existing", "add", "delete", "move"])
+def test_batch_nested_result_attention_publishes_exact_reviewed_source(tmp_path, monkeypatch, attention_change):
+    fixture, outcome, decision, head = batch_publication_fixture(tmp_path)
+    result_attention_ref(fixture, fixture["selection"].source_run_id)
+    attention = attention_selector(outcome.run_id, "RESULT", git(
+        fixture["remote"], "rev-parse", f"refs/heads/aios/artifacts/{outcome.run_id}")).signal_ref
+    if attention_change != "add":
+        result_attention_ref(fixture, outcome.run_id)
+
+    # The old broad Git wildcard really matches these nested refs. Its unchanged
+    # result differs from the old final-segment filter, reproducing the false
+    # stale predicate. Normal Publisher below fails pre-fix on this same fixture.
+    legacy = dict((row.split()[1], row.split()[0]) for row in git(
+        fixture["repo"], "ls-remote", "--refs", "origin", "refs/heads/main",
+        "refs/heads/aios/*/RUN-410-*").splitlines())
+    legacy_expected = {ref: sha for ref, sha in legacy.items()
+                       if ref == "refs/heads/main" or ref.rsplit("/", 1)[-1].startswith("RUN-410-")}
+    assert legacy != legacy_expected
+
+    actual_reserve, actual_snapshot = publication_module.reserve_publication, publication_module._lifecycle_snapshot
+    actual_git = publication_module._git
+    snapshots, main_pushes, changed = [], [], []
+    token = git(fixture["remote"], "rev-parse", publication_module.PUBLICATION_RESERVATION_REF)
+
+    def snapshot(*args, **kwargs):
+        observed = actual_snapshot(*args, **kwargs)
+        snapshots.append(dict(observed))
+        return observed
+
+    def reserve(*args, **kwargs):
+        reservation = actual_reserve(*args, **kwargs)
+        assert reservation.token_sha == token
+        if not changed:
+            if attention_change == "add":
+                result_attention_ref(fixture, outcome.run_id)
+            elif attention_change == "delete":
+                git(fixture["remote"], "update-ref", "-d", attention)
+            elif attention_change == "move":
+                git(fixture["remote"], "update-ref", attention, head)
+            changed.append(True)
+        return reservation
+
+    def record(path, *args, **kwargs):
+        if args[0] == "push" and args[-1].endswith(":refs/heads/main"):
+            main_pushes.append(args)
+        return actual_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(publication_module, "_lifecycle_snapshot", snapshot)
+    monkeypatch.setattr(publication_module, "reserve_publication", reserve)
+    monkeypatch.setattr(publication_module, "_git", record)
+    report = publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    assert report.outcome == "PUBLISHED" and report.cause == "NONE"
+    assert report.reviewed_sha == head == git(fixture["remote"], "rev-parse", "refs/heads/main")
+    assert report.lineage.decision_sha == decision.canonical_sha
+    assert report.lineage.reservation_sha == token
+    assert len(snapshots) >= 3 and all(item == snapshots[0] for item in snapshots)
+    assert not any("/terminal-attention/" in ref for item in snapshots for ref in item)
+    assert len(main_pushes) == 1
+    assert f"--force-with-lease=refs/heads/main:{fixture['main']}" in main_pushes[0]
+    before = git(fixture["remote"], "show-ref")
+    replay = publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    assert replay.outcome == "ALREADY_PUBLISHED" and replay.reviewed_sha == head
+    assert git(fixture["remote"], "show-ref") == before and len(main_pushes) == 1
+
+
+@pytest.mark.parametrize("change,cause", [
+    ("add-terminal", "STALE_REVIEW_BINDING"),
+    ("delete-artifacts", "STALE_REVIEW_BINDING"),
+    ("move-artifacts", "STALE_REVIEW_BINDING"),
+    ("single-authority", "STALE_REVIEW_BINDING"),
+    ("batch-authority", "STALE_REVIEW_BINDING"),
+    ("repair-revision", "STALE_REVIEW_BINDING"),
+    ("source-review", "STALE_REVIEW_BINDING"),
+    ("delta-review", "STALE_REVIEW_BINDING"),
+    ("source-decision", "STALE_REVIEW_BINDING"),
+    ("delta-decision", "STALE_REVIEW_BINDING"),
+    ("foreign-decision", "DECISION_SET_CHANGED"),
+    ("reservation-owner", "RESERVATION_CAS_FAILED"),
+])
+def test_batch_protected_ref_races_during_pending_reservation_stop_main(tmp_path, monkeypatch, change, cause):
+    fixture, outcome, decision, head = batch_publication_fixture(tmp_path)
+    result_attention_ref(fixture, outcome.run_id)
+    remote = fixture["remote"]
+    token = git(remote, "rev-parse", publication_module.PUBLICATION_RESERVATION_REF)
+    actual_reserve, actual_git = publication_module.reserve_publication, publication_module._git
+    reservations, main_pushes = [], []
+
+    def reserve_then_race(*args, **kwargs):
+        reservation = actual_reserve(*args, **kwargs)
+        assert reservation.token_sha == token
+        reservations.append(reservation)
+        # First resume the existing PASS owner, then change a protected ref
+        # after the final reservation check and before the final binding read.
+        if len(reservations) == 2:
+            if change == "delete-artifacts":
+                git(remote, "update-ref", "-d", f"refs/heads/aios/artifacts/{outcome.run_id}")
+            else:
+                refs = {
+                    "add-terminal": "refs/heads/aios/failure/RUN-410-003",
+                    "move-artifacts": f"refs/heads/aios/artifacts/{outcome.run_id}",
+                    "single-authority": "refs/heads/aios/remediation/RUN-410-001-F1",
+                    "batch-authority": "refs/heads/aios/remediation/RUN-410-001-BATCH-" + "f" * 64,
+                    "repair-revision": "refs/heads/aios/repair-supersession/RUN-410-001/2",
+                    "source-review": "refs/heads/aios/review/RUN-410-001",
+                    "delta-review": f"refs/heads/aios/review/{outcome.run_id}",
+                    "source-decision": "refs/heads/aios/review-decision/RUN-410-001",
+                    "delta-decision": f"refs/heads/aios/review-decision/{outcome.run_id}",
+                    "foreign-decision": "refs/heads/aios/review-decision/RUN-999-001",
+                    "reservation-owner": publication_module.PUBLICATION_RESERVATION_REF,
+                }
+                git(remote, "update-ref", refs[change], fixture["main"])
+        return reservation
+
+    def record(path, *args, **kwargs):
+        if args[0] == "push" and args[-1].endswith(":refs/heads/main"):
+            main_pushes.append(args)
+        return actual_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(publication_module, "reserve_publication", reserve_then_race)
+    monkeypatch.setattr(publication_module, "_git", record)
+    with pytest.raises(PublicationError) as raised:
+        publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    report = raised.value.report
+    assert len(reservations) == 2 and main_pushes == []
+    assert report.cause == cause and report.classification == "STALE_BINDING"
+    assert report.reviewed_sha == head and report.prior_main_sha == fixture["main"]
+    assert git(remote, "rev-parse", "refs/heads/main") == fixture["main"]
+    expected_token = fixture["main"] if change == "reservation-owner" else token
+    assert git(remote, "rev-parse", publication_module.PUBLICATION_RESERVATION_REF) == expected_token
+
+
+@pytest.mark.parametrize("fault", ["subject-sha", "run-id", "failed-evidence"])
+def test_batch_nested_attention_does_not_authorize_stale_evidence(tmp_path, fault):
+    fixture, outcome, decision, _ = batch_publication_fixture(tmp_path)
+    result_attention_ref(fixture, outcome.run_id)
+    ref = f"refs/heads/aios/artifacts/{outcome.run_id}"
+    original = git(fixture["remote"], "rev-parse", ref)
+    git(fixture["repo"], "checkout", "--quiet", "--detach", original)
+    path = fixture["repo"] / ".ai/transport/result.json"
+    package = json.loads(path.read_text(encoding="utf-8"))
+    if fault == "subject-sha":
+        package["evidence"][0]["subject_sha"] = fixture["main"]
+    elif fault == "run-id":
+        package["evidence"][0]["run_id"] = "RUN-410-999"
+    else:
+        package["evidence"][0]["result"]["exit_code"] = 1
+    path.write_text(json.dumps(package), encoding="utf-8")
+    replacement = commit_fixture_state(fixture["repo"], paths=(".ai/transport/result.json",),
+        message="stale synthetic evidence", user_name="Batch Test", user_email="batch@example.invalid")
+    git(fixture["repo"], "push", "--quiet", f"--force-with-lease={ref}:{original}", "origin", f"{replacement}:{ref}")
+    before = git(fixture["remote"], "show-ref")
+    with pytest.raises(PublicationError) as raised:
+        publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    assert raised.value.report.cause == "MALFORMED_LINEAGE"
+    assert git(fixture["remote"], "show-ref") == before
+    assert git(fixture["remote"], "rev-parse", "refs/heads/main") == fixture["main"]
+
+
+def test_batch_nested_attention_does_not_select_over_competing_pass(tmp_path):
+    fixture, outcome, decision, head = batch_publication_fixture(tmp_path)
+    result_attention_ref(fixture, outcome.run_id)
+    repo = fixture["repo"]
+    # A valid historical PASS writer on a distinct source remains a blocker,
+    # even though operational attention refs have been excluded from the set.
+    git(repo, "checkout", "--quiet", "-b", "fixture/competing-pass", fixture["main"])
+    git(repo, "config", "branch.fixture/competing-pass.remote", "origin")
+    git(repo, "config", "branch.fixture/competing-pass.merge", "refs/heads/main")
+    path = repo / "src/product.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("first = True\nsecond = True\n# distinct candidate\n", encoding="utf-8")
+    competing_head = commit_fixture_state(repo, paths=("src/product.py",), message="competing source",
+        user_name="Batch Test", user_email="batch@example.invalid")
+    run = Run.from_task(run_id="RUN-410-003", task=fixture["task"], executor="codex",
+                        base_sha=fixture["main"], workspace=str(repo))
+    state = tmp_path / "competing-artifacts"
+    state.mkdir()
+    run_path, result_path = state / "run.json", state / "result.json"
+    run_path.write_text(json.dumps(asdict(run)), encoding="utf-8")
+    evidence = dict(evidence_id=run.run_id + "-V001", run_id=run.run_id, subject_sha=competing_head,
+        type="VERIFICATION", source=dict(command="git diff --check"),
+        result=dict(exit_code=0, summary="synthetic"), raw=dict(path="synthetic.raw"))
+    result_path.write_text(json.dumps(dict(result=dict(head_sha=competing_head,
+        claims=[dict(id="C1", satisfies=["AC1", "AC2", "AC3"], claim="Synthetic competing source.",
+                     evidence=[evidence["evidence_id"]])],
+        changed_files=["src/product.py"], unresolved=[]), evidence=[evidence])), encoding="utf-8")
+    transport_post_pass(repo, run_id=run.run_id, head_sha=competing_head, run_path=run_path, result_path=result_path)
+    review_path = repo / ".ai/reviews/REVIEW-410-003.yaml"
+    review_path.parent.mkdir(parents=True, exist_ok=True)
+    review_path.write_text(yaml.safe_dump(dict(review_id="REVIEW-410-003", reviewed_sha=competing_head,
+        mode="PRIMARY", verdict="PASS", acceptance={"AC1": "PASS", "AC2": "PASS", "AC3": "PASS"}, findings=[])),
+        encoding="utf-8")
+    competing_decision = commit_fixture_state(repo, paths=(".ai/reviews/REVIEW-410-003.yaml",),
+        message="historical competing PASS", user_name="Batch Test", user_email="batch@example.invalid",
+        remote=fixture["remote"], remote_ref=f"refs/heads/aios/review-decision/{run.run_id}")
+    before = git(fixture["remote"], "show-ref")
+    with pytest.raises(PublicationError) as raised:
+        publish_review_decision(repo, run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    report = raised.value.report
+    assert report.cause == "COMPETING_REVIEWED_SOURCE" and report.classification == "COMPETING_SOURCE"
+    assert report.reviewed_sha == head and report.blocker.source_run == run.run_id
+    assert report.blocker.reviewed_sha == competing_head and report.blocker.decision_sha == competing_decision
+    assert git(fixture["remote"], "show-ref") == before
+    assert git(fixture["remote"], "rev-parse", "refs/heads/main") == fixture["main"]
+
+
+@pytest.mark.parametrize("namespace", ["review", "review-decision", "artifacts"])
+def test_batch_initial_snapshot_cannot_replace_event_lineage(tmp_path, monkeypatch, namespace):
+    fixture, outcome, decision, head = batch_publication_fixture(tmp_path)
+    actual_snapshot = publication_module._lifecycle_snapshot
+    changed = []
+
+    def snapshot(*args, **kwargs):
+        if not changed:
+            git(fixture["remote"], "update-ref", f"refs/heads/aios/{namespace}/{outcome.run_id}", fixture["main"])
+            changed.append(True)
+        return actual_snapshot(*args, **kwargs)
+
+    monkeypatch.setattr(publication_module, "_lifecycle_snapshot", snapshot)
+    with pytest.raises(PublicationError) as raised:
+        publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    assert raised.value.report.cause == "STALE_REVIEW_BINDING"
+    assert raised.value.report.reviewed_sha == head
+    assert git(fixture["remote"], "rev-parse", "refs/heads/main") == fixture["main"]
+
+
+def test_batch_nested_attention_already_included_source_is_idempotent(tmp_path):
+    fixture, outcome, decision, head = batch_publication_fixture(tmp_path)
+    result_attention_ref(fixture, outcome.run_id)
+    report = publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    assert report.outcome == "PUBLISHED"
+    tree = git(fixture["repo"], "rev-parse", head + "^{tree}")
+    descendant = git(fixture["repo"], "-c", "user.name=Batch Test", "-c", "user.email=batch@example.invalid",
+        "commit-tree", tree, "-p", head, "-m", "later main includes exact reviewed source")
+    git(fixture["remote"], "fetch", "--no-tags", str(fixture["repo"]), descendant)
+    git(fixture["remote"], "update-ref", "refs/heads/main", descendant, head)
+    before = git(fixture["remote"], "show-ref")
+    replay = publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    assert replay.outcome == "ALREADY_INCLUDED" and replay.reviewed_sha == head
+    assert replay.prior_main_sha == descendant and replay.lineage.decision_sha == decision.canonical_sha
+    assert git(fixture["remote"], "show-ref") == before
+
+
+@pytest.mark.parametrize("arrival_read", [0, 1, 2, 3])
+def test_batch_attention_arriving_during_source_authentication_allows_publication(tmp_path, monkeypatch, arrival_read):
+    from aios_renew import authoring_ingress
+
+    fixture, outcome, decision, head = batch_publication_fixture(tmp_path)
+    actual_snapshot = authoring_ingress._lifecycle_snapshot
+    source_reads = []
+    if arrival_read == 0:
+        result_attention_ref(fixture, outcome.run_id)
+
+    def observe(repo, remote, *, run_id):
+        observed = actual_snapshot(repo, remote, run_id=run_id)
+        if run_id == fixture["selection"].source_run_id:
+            source_reads.append(dict(observed))
+            if len(source_reads) == arrival_read:
+                result_attention_ref(fixture, outcome.run_id)
+        return observed
+
+    # Delegate every real read and validator. Arrivals after reads 1, 2 and 3
+    # cover reconstruction, the gap before repeat authentication, and its own
+    # reconstruction. No authentication gate is replaced or skipped.
+    monkeypatch.setattr(authoring_ingress, "_lifecycle_snapshot", observe)
+    report = publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    assert len(source_reads) >= 4 and all(item == source_reads[0] for item in source_reads)
+    assert not any("/terminal-attention/" in ref for item in source_reads for ref in item)
+    assert report.outcome == "PUBLISHED" and report.reviewed_sha == head
+    assert git(fixture["remote"], "rev-parse", "refs/heads/main") == head
+
+
+@pytest.mark.parametrize("change,arrival_read", [
+    ("add-remediation", 1), ("delete-remediation", 1), ("move-remediation", 1),
+    ("add-repair", 1), ("add-failure", 1), ("move-review", 1), ("move-decision", 1),
+    ("add-remediation", 3),
+])
+def test_batch_protected_source_ref_race_fails_authentication_before_publication(tmp_path, monkeypatch, change, arrival_read):
+    from aios_renew import authoring_ingress
+
+    fixture, outcome, decision, head = batch_publication_fixture(tmp_path)
+    result_attention_ref(fixture, outcome.run_id)
+    source = fixture["selection"].source_run_id
+    actual_snapshot, actual_git = authoring_ingress._lifecycle_snapshot, publication_module._git
+    source_reads, changed, main_pushes = [], [], []
+    token = git(fixture["remote"], "rev-parse", publication_module.PUBLICATION_RESERVATION_REF)
+
+    def observe(repo, remote, *, run_id):
+        observed = actual_snapshot(repo, remote, run_id=run_id)
+        if run_id == source:
+            source_reads.append(dict(observed))
+            if len(source_reads) == arrival_read:
+                own_ref = fixture["authorized"].canonical_destination
+                if change == "delete-remediation":
+                    git(fixture["remote"], "update-ref", "-d", own_ref)
+                else:
+                    protected = {
+                        "add-remediation": f"refs/heads/aios/remediation/{source}-F1",
+                        "move-remediation": own_ref,
+                        "add-repair": f"refs/heads/aios/repair/{source}",
+                        "add-failure": f"refs/heads/aios/failure/{source}",
+                        "move-review": f"refs/heads/aios/review/{source}",
+                        "move-decision": f"refs/heads/aios/review-decision/{source}",
+                    }
+                    git(fixture["remote"], "update-ref", protected[change], fixture["main"])
+                changed.append(True)
+        return observed
+
+    def record(repo, *args, **kwargs):
+        if args[0] == "push" and args[-1].endswith(":refs/heads/main"):
+            main_pushes.append(args)
+        return actual_git(repo, *args, **kwargs)
+
+    monkeypatch.setattr(authoring_ingress, "_lifecycle_snapshot", observe)
+    monkeypatch.setattr(publication_module, "_git", record)
+    with pytest.raises(PublicationError) as raised:
+        publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    report = raised.value.report
+    assert changed and main_pushes == []
+    assert report.cause == "MALFORMED_LINEAGE"
+    # A newly exposed failed base is rejected by the existing REPAIR-source
+    # validator before the final snapshot comparison; preserve that gate too.
+    reason = ("successful REPAIR source is missing REPAIR lineage" if change == "add-failure"
+              else "canonical REMEDIATION inputs moved during reconstruction")
+    assert reason in str(raised.value)
+    assert report.reviewed_sha == head and report.prior_main_sha == fixture["main"]
+    assert git(fixture["remote"], "rev-parse", "refs/heads/main") == fixture["main"]
+    assert git(fixture["remote"], "rev-parse", publication_module.PUBLICATION_RESERVATION_REF) == token
+
+
+@pytest.mark.parametrize("verdict", [{"partial": True}, {"blocked": True}, {"new_defect": True}])
+def test_batch_nested_attention_cannot_publish_an_ineligible_delta(tmp_path, verdict):
+    fixture, outcome, decision, _ = batch_publication_fixture(tmp_path, **verdict)
+    result_attention_ref(fixture, outcome.run_id)
+    before = git(fixture["remote"], "show-ref")
+    with pytest.raises(PublicationError) as raised:
+        publish_review_decision(fixture["repo"], run_id=outcome.run_id, decision_sha=decision.canonical_sha)
+    assert raised.value.report.cause == "MALFORMED_LINEAGE"
+    assert git(fixture["remote"], "show-ref") == before
+    assert git(fixture["remote"], "rev-parse", "refs/heads/main") == fixture["main"]
+
+

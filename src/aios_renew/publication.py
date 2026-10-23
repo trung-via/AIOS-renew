@@ -49,6 +49,13 @@ _RUN_ID = re.compile(r"RUN-[A-Za-z0-9][A-Za-z0-9._-]*")
 _SHA = re.compile(r"[0-9a-f]{40}")
 _DECISION_PREFIX = "refs/heads/aios/review-decision/"
 _MAX_DECISIONS = 1024
+# Match the authorities consumed by resolve_remote_task_lifecycle, including
+# nested REPAIR revisions. Operational attention/transport namespaces are absent.
+_LIFECYCLE_NAMESPACES = (
+    "failure", "failure-artifacts", "artifacts", "review", "review-decision",
+    "publication-recovery", "remediation", "repair", "repair-supersession",
+)
+_MAX_LIFECYCLE_REFS = 1024
 # These ceilings bound both native Windows command lines and captured responses.
 # Capacity is a rejection boundary, never permission to return a partial set.
 _MAX_REF_BYTES = 1024
@@ -2285,6 +2292,47 @@ def _decision_snapshot(repo: Path, remote: str, *, run_id: str) -> dict[str, str
     return refs
 
 
+def _lifecycle_snapshot(repo: Path, remote: str, *, run_id: str) -> dict[str, str]:
+    """Observe exact TASK lifecycle ref names and SHAs under one bounded contract.
+
+    Git wildcards cross slashes. Query only named authority namespaces, then
+    reject malformed descendants rather than dropping them by their final segment.
+    Content/lineage validation remains with the existing canonical consumers.
+    """
+    if _RUN_ID.fullmatch(run_id) is None:
+        raise _failed(run_id, "invalid canonical lifecycle RUN identity", cause="MALFORMED_LINEAGE")
+    prefix = run_id.rsplit("-", 1)[0] + "-"
+    stems = tuple(f"refs/heads/aios/{name}/{prefix}" for name in _LIFECYCLE_NAMESPACES)
+    patterns = ("refs/heads/main", *(stem + "*" for stem in stems))
+    if (not prefix.isascii() or any(len(stem) > _MAX_REF_BYTES for stem in stems)
+            or sum(len(pattern) + 1 for pattern in patterns) > _MAX_REMOTE_ARG_CHARS):
+        raise _failed(run_id, "canonical lifecycle ref request exceeds bound")
+    code, output, _ = _git(repo, "ls-remote", "--refs", remote, *patterns, allow_fail=True)
+    if code or len(output.splitlines()) > _MAX_LIFECYCLE_REFS:
+        raise _failed(run_id, "canonical lifecycle snapshot unavailable or over capacity")
+    refs: dict[str, str] = {}
+    for ref, sha in _remote_rows(output, run_id=run_id):
+        valid = ref == "refs/heads/main"
+        for namespace, stem in zip(_LIFECYCLE_NAMESPACES, stems):
+            if not ref.startswith(stem):
+                continue
+            suffix = ref.removeprefix(f"refs/heads/aios/{namespace}/")
+            if namespace == "repair-supersession":
+                parts = suffix.split("/")
+                valid = (len(parts) == 2 and _RUN_ID.fullmatch(parts[0]) is not None
+                         and re.fullmatch(r"[0-9]+", parts[1]) is not None)
+            else:
+                valid = _RUN_ID.fullmatch(suffix) is not None
+            break
+        if not valid or ref in refs:
+            raise _failed(run_id, "canonical lifecycle snapshot is malformed or ambiguous",
+                          cause="MALFORMED_LINEAGE")
+        refs[ref] = sha
+    if "refs/heads/main" not in refs:
+        raise _failed(run_id, "canonical lifecycle snapshot is missing main")
+    return refs
+
+
 def _ancestor(repo: Path, ancestor: str, descendant: str, *, run_id: str,
               reviewed_sha: str, main_sha: str) -> bool:
     code, _, _ = _git(
@@ -2298,16 +2346,16 @@ def _ancestor(repo: Path, ancestor: str, descendant: str, *, run_id: str,
 
 def _recheck_binding(repo: Path, remote: str, binding: Mapping[str, str], *,
                      run_id: str, reviewed_sha: str, main_sha: str,
-                     decisions: Mapping[str, str] | None = None) -> None:
+                     decisions: Mapping[str, str] | None = None,
+                     lifecycle: Mapping[str, str] | None = None) -> None:
     """Re-read immutable lineage, then main immediately before a terminal gate."""
     try:
-        if any("/aios/remediation/" in ref and re.search(r"-BATCH-[0-9a-f]{64}$", ref) for ref in binding):
-            from .review_transport import _exact_remote_refs
-            prefix = run_id.rsplit("-", 1)[0] + "-"
-            snapshot = _exact_remote_refs(repo, remote, "refs/heads/main", f"refs/heads/aios/*/{prefix}*")
-            expected = {ref: sha for ref, sha in binding.items()
-                        if ref == "refs/heads/main" or ref.startswith("refs/heads/aios/") and ref.rsplit("/", 1)[-1].startswith(prefix)}
-            if snapshot != expected:
+        if lifecycle is not None:
+            snapshot = _lifecycle_snapshot(repo, remote, run_id=run_id)
+            if snapshot["refs/heads/main"] != main_sha:
+                raise _failed(run_id, "canonical main moved during publication",
+                              cause="CONCURRENT_MAIN_MOVEMENT")
+            if snapshot != lifecycle:
                 raise _failed(run_id, "batch correction frontier/ref set moved before publication", cause="STALE_REVIEW_BINDING")
         fresh_binding = _remote_shas(repo, remote, tuple(binding), run_id=run_id)
         for ref, sha in binding.items():
@@ -2320,8 +2368,6 @@ def _recheck_binding(repo: Path, remote: str, binding: Mapping[str, str], *,
         if _single_remote_sha(repo, remote, "refs/heads/main", run_id=run_id) != main_sha:
             raise _failed(run_id, "canonical main moved during publication",
                           cause="CONCURRENT_MAIN_MOVEMENT")
-    except ReviewTransportError as exc:
-        raise _failed(run_id, "batch correction frontier snapshot unavailable", cause="STALE_REVIEW_BINDING") from exc
     except PublicationError as exc:
         raise _failed(run_id, str(exc), reviewed_sha=reviewed_sha, prior_main_sha=main_sha,
                       cause=exc.report.cause) from exc
@@ -2824,6 +2870,7 @@ def publish_review_decision(
             str(exc),
         ) from exc
     expected_reviewed_sha = "UNKNOWN"
+    lifecycle = None
     try:
         expected_reviewed_sha = _single_remote_sha(
             root,
@@ -2853,10 +2900,16 @@ def publish_review_decision(
             artifacts_ref: _single_remote_sha(root, remote, artifacts_ref, run_id=run_id),
         }
         _fetch_object(root, remote, decision_sha, run_id=run_id)
-        from .review_transport import _exact_remote_refs
-        prefix = run_id.rsplit("-", 1)[0] + "-"
-        correction_refs = _exact_remote_refs(root, remote, "refs/heads/main", f"refs/heads/aios/*/{prefix}*")
-        if any("/aios/remediation/" in ref and re.search(r"-BATCH-[0-9a-f]{64}$", ref) for ref in correction_refs):
+        correction_refs = _lifecycle_snapshot(root, remote, run_id=run_id)
+        if any(ref.startswith("refs/heads/aios/remediation/")
+               and re.search(r"-BATCH-[0-9a-f]{64}$", ref) for ref in correction_refs):
+            if correction_refs[main_ref] != prior_main_sha:
+                raise _failed(run_id, "canonical main moved during publication",
+                              cause="CONCURRENT_MAIN_MOVEMENT")
+            if any(correction_refs.get(ref) != sha for ref, sha in binding.items()):
+                raise _failed(run_id, "canonical review binding changed during publication",
+                              cause="STALE_REVIEW_BINDING")
+            lifecycle = correction_refs
             binding.update(correction_refs)
         reviewed_sha, _, modification_scope = _load_success_lineage(
             root,
@@ -2889,7 +2942,7 @@ def publish_review_decision(
             binding.update({_DECISION_PREFIX + blocker.source_run: blocker.decision_sha,
                             f"refs/heads/aios/review/{blocker.source_run}": blocker.reviewed_sha})
             _recheck_binding(root, remote, binding, run_id=run_id,
-                reviewed_sha=exc.report.reviewed_sha, main_sha=prior_main_sha)
+                reviewed_sha=exc.report.reviewed_sha, main_sha=prior_main_sha, lifecycle=lifecycle)
             raise
         reviewed = exc.report.reviewed_sha
         if reviewed == "UNKNOWN":
@@ -2912,7 +2965,7 @@ def publish_review_decision(
         ) from exc
 
     _recheck_binding(root, remote, binding, run_id=run_id,
-                     reviewed_sha=reviewed_sha, main_sha=prior_main_sha)
+                     reviewed_sha=reviewed_sha, main_sha=prior_main_sha, lifecycle=lifecycle)
 
     if prior_main_sha == reviewed_sha:
         _finish_review_reservation(root, remote, run_id=run_id, reviewed_sha=reviewed_sha,
@@ -2954,7 +3007,7 @@ def publish_review_decision(
         )
         if included_code == 0:
             _recheck_binding(root, remote, binding, run_id=run_id,
-                             reviewed_sha=reviewed_sha, main_sha=prior_main_sha)
+                             reviewed_sha=reviewed_sha, main_sha=prior_main_sha, lifecycle=lifecycle)
             _finish_review_reservation(root, remote, run_id=run_id, reviewed_sha=reviewed_sha,
                                        decision_sha=decision_sha, artifacts_sha=binding[artifacts_ref],
                                        main_sha=prior_main_sha, contained=True)
@@ -2982,7 +3035,7 @@ def publish_review_decision(
         recovery.report = replace(recovery.report,
             lineage=PublicationLineage(decision_sha, binding[artifacts_ref], _reservation_tip(root, remote, run_id)))
         _recheck_binding(root, remote, binding, run_id=run_id,
-                         reviewed_sha=reviewed_sha, main_sha=prior_main_sha)
+                         reviewed_sha=reviewed_sha, main_sha=prior_main_sha, lifecycle=lifecycle)
         _finish_review_reservation(root, remote, run_id=run_id, reviewed_sha=reviewed_sha,
                                    decision_sha=decision_sha, artifacts_sha=binding[artifacts_ref],
                                    main_sha=prior_main_sha)
@@ -3009,12 +3062,13 @@ def publish_review_decision(
                 binding[f"{_DECISION_PREFIX}{blocker.source_run}"] = blocker.decision_sha
                 binding[f"refs/heads/aios/review/{blocker.source_run}"] = blocker.reviewed_sha
             _recheck_binding(root, remote, binding, run_id=run_id,
-                             reviewed_sha=reviewed_sha, main_sha=prior_main_sha)
+                             reviewed_sha=reviewed_sha, main_sha=prior_main_sha, lifecycle=lifecycle)
             raise
         raise _failed(run_id, str(exc), reviewed_sha=reviewed_sha,
                       prior_main_sha=prior_main_sha, cause=exc.report.cause) from exc
     _recheck_binding(root, remote, binding, run_id=run_id,
-                     reviewed_sha=reviewed_sha, main_sha=prior_main_sha, decisions=decisions)
+                     reviewed_sha=reviewed_sha, main_sha=prior_main_sha,
+                     decisions=decisions, lifecycle=lifecycle)
 
     try:
         reservation = reserve_publication(
@@ -3023,7 +3077,8 @@ def publish_review_decision(
             artifacts_sha=binding[artifacts_ref],
         )
         _recheck_binding(root, remote, binding, run_id=run_id,
-                         reviewed_sha=reviewed_sha, main_sha=prior_main_sha, decisions=decisions)
+                         reviewed_sha=reviewed_sha, main_sha=prior_main_sha,
+                         decisions=decisions, lifecycle=lifecycle)
         check_publication_reservation(root, remote, reservation)
     except PublicationError as exc:
         raise _failed(run_id, str(exc), reviewed_sha=reviewed_sha,
