@@ -304,16 +304,17 @@ class CanonicalAuditRepository:
         self.git(self.canonical, "update-ref", "refs/heads/aios/review/RUN-405-001", self.source_sha)
         self.run = {**deepcopy(original["run"]), "run_id": "RUN-405-001", "task": {"id": "TASK-405", "revision": 1},
                     "base_sha": self.base_sha}
-        evidence_id = "RUN-405-001-V001"
+        evidence_ids = [f"RUN-405-001-V{index:03}" for index in range(1, len(task["verification"]["required"]) + 1)]
         self.result_package = {
             "result": {"head_sha": self.source_sha,
-                "claims": [{"id": f"C{i}", "satisfies": [c["id"]], "claim": c["condition"], "evidence": [evidence_id]}
+                "claims": [{"id": f"C{i}", "satisfies": [c["id"]], "claim": c["condition"], "evidence": list(evidence_ids)}
                            for i, c in enumerate(task["acceptance"], 1)],
                 "changed_files": [".ai/brain-audit-profiles.yaml"], "unresolved": []},
             "evidence": [{"evidence_id": evidence_id, "run_id": self.run["run_id"], "subject_sha": self.source_sha,
-                "type": "VERIFICATION", "source": {"command": task["verification"]["required"][0]},
+                "type": "VERIFICATION", "source": {"command": command},
                 "result": {"exit_code": 0, "summary": "Synthetic Runtime fixture"},
-                "raw": {"path": "protected-runtime-raw/tca3-successor"}}]}
+                "raw": {"path": f"protected-runtime-raw/{evidence_id}"}}
+                for evidence_id, command in zip(evidence_ids, task["verification"]["required"])]}
         self.save_artifacts(run_id="RUN-405-001")
         self.tca3_artifact_sha = self.artifact_sha
         self.review = {"review_id": "REVIEW-405-001", "reviewed_sha": self.source_sha, "mode": "PRIMARY",
@@ -872,18 +873,20 @@ def test_task405_priority_record_preserves_tca2_live_default_and_prepares_two_st
     root = Path(__file__).resolve().parents[1]
     roadmap_doc = yaml.load((root / ".ai/roadmap-state.yaml").read_bytes(), Loader=_UniqueKeyLoader)
     priority = roadmap_doc[_TCA3_PRIORITY_RECORD]
-    assert priority["authority"] == "HUMAN_BRAIN_DECISION_RECORD"
-    assert priority["decided_on"] == "2026-10-23"
+    assert priority["authority"] == "EXPLICIT_HUMAN_PRIORITY_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION"
+    assert priority["approved_on"] == "2026-10-23"
     assert priority["planning_only"] is True
-    assert priority["status"] == "CANDIDATE_PREPARED_NOT_ACTIVE"
     assert priority["current_live_default_profile"] == {
-        "id": "tca-2", "version": 2, "digest": _TCA_SUCCESSOR_DIGEST, "status": "ACTIVE",
+        "id": "tca-2", "version": 2, "digest": _TCA_SUCCESSOR_DIGEST,
+        "status": "ACTIVE_DEFAULT_UNTIL_SEPARATE_AUTHENTICATED_CUTOVER",
     }
-    assert priority["candidate_successor_profile"] == {
-        "id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST, "status": "CANDIDATE_PREPARED_NOT_ACTIVE",
+    assert priority["prospective_successor_profile"] == {
+        "id": "tca-3", "version": 3, "registry_path": ".ai/brain-audit-profiles.yaml",
+        "status": "CANDIDATE_PREPARED_NOT_ACTIVE",
+        "digest_pinning": "SEPARATE_POST_PUBLICATION_ACTIVATION_TASK_PINS_EXACT_REVIEWED_DIGEST",
     }
-    assert priority["paused_recovery_frontier"]["frontier_id"] == "post-task-dirty-recovery-pte-20261022"
-    assert priority["paused_recovery_frontier"]["status"] == "PAUSED_RESUMABLE"
+    assert priority["paused_pte"]["id"] == "post-task-dirty-recovery-pte-20261022"
+    assert priority["paused_pte"]["state"] == "PAUSED_RESUMABLE_NOT_COMPLETED_OR_RETIRED"
     assert roadmap_doc[_R21_SUCCESSOR_APPROVAL]["target_profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
 
     # Installing the priority record on canonical main keeps tca-2 as the live default.
@@ -902,7 +905,7 @@ def test_task405_priority_record_preserves_tca2_live_default_and_prepares_two_st
     # Attempting to self-activate tca-3 via the planning priority record fails closed.
     for bad_field, bad_val in (
         ("planning_only", False),
-        ("status", "ACTIVE"),
+        ("prospective_successor_profile", {**priority["prospective_successor_profile"], "status": "ACTIVE"}),
         ("current_live_default_profile", {"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}),
     ):
         tampered = deepcopy(priority)

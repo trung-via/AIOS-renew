@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from aios_renew.brain_audit import (
-    BrainAuditError, _TCA_V3_ID, _TCA_V3_DIGEST, construct_roa_subject, construct_stage1,
+    BrainAuditError, _TCA_V3_ID, _TCA_V3_DIGEST, _specialized_profiles, construct_roa_subject, construct_stage1,
     normalize_profile, parse_profile_registry,
     profile_applies, profile_ref, validate_roa, validate_stage2, normalize_audit_policy,
     construct_moa_subject, construct_moa, validate_moa,
@@ -1318,7 +1318,7 @@ def test_roa_profile_cannot_be_reminted_or_disguised_as_v1(roa_profile, fault):
 def test_registry_remains_finite_and_historical_profile_bytes_are_unchanged(roa_profile):
     import yaml
     registry = parse_profile_registry(REGISTRY.read_bytes())
-    assert len(registry["profiles"]) == 9 and len(REGISTRY.read_bytes()) < 57344
+    assert len(registry["profiles"]) == 10 and len(REGISTRY.read_bytes()) < 57344
     registry["profiles"].append(deepcopy(roa_profile))
     with pytest.raises(BrainAuditError):
         parse_profile_registry(yaml.safe_dump(registry))
@@ -2934,7 +2934,7 @@ def task405_tca3_context():
          "kind": "TEST_DOUBLE", "path": test_path, "symbol": "test_retain"},
     ]
     context["baseline_observations"] = [
-        {"id": "V1", "command": context["task"]["verification"][0], "status": "NOT_RUN",
+        {"id": "V1", "command": context["task"]["verification"]["required"][0], "status": "NOT_RUN",
          "summary": "Pre-execution authoring audit; Runtime owns post-execution canonical verification."}
     ]
     return body, context
@@ -2974,6 +2974,13 @@ def tca3_final(context, profile, subject, first):
             item["symbol"] = src["symbol"]
     if "verification_checks" in first:
         material["verification_checks"] = deepcopy(first["verification_checks"])
+        for c in first["verification_checks"]:
+            if c["outcome"] == "BLOCKER":
+                material["reconciliation"].append({
+                    "kind": "VERIFICATION", "id": c["id"], "disposition": "UNRESOLVED",
+                    "knowledge": c["knowledge"], "basis": c["basis"],
+                    "evidence_refs": c["evidence_refs"], "candidate_anchors": [],
+                })
     return material
 
 
@@ -2986,11 +2993,12 @@ def test_task405_tca3_profile_registration_digest_and_tamper_rejection():
     assert [p["id"] for p in profile["passes"]] == ["CONSTRUCT", "ADVERSARIAL_AUDIT_AND_RECONCILE"]
     assert [len(p["checks"]) for p in profile["passes"]] == [5, 6]
     # Live default policy remains tca-2 until separate cutover; tca3=True pins tca-3.
-    live_policy = normalize_audit_policy(_specialized_profiles(successors=True), load_profile_registry(REGISTRY))
-    assert live_policy["flow_profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
-    tca3_policy = normalize_audit_policy(_specialized_profiles(tca3=True), load_profile_registry(REGISTRY))
-    assert tca3_policy["flow_profiles"]["TASK_AUTHORING"] == {"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}
-    assert tca3_policy["flow_profiles"]["RECOVERY_REMEDIATION"]["id"] == "roa-1-r3"
+    body, _ = aoa_example()
+    live_policy = normalize_audit_policy({**audit_policy_example(body), "profiles": _specialized_profiles(successors=True)})
+    assert live_policy["profiles"]["TASK_AUTHORING"]["id"] == "tca-2"
+    tca3_policy = normalize_audit_policy({**audit_policy_example(body), "profiles": _specialized_profiles(tca3=True)})
+    assert tca3_policy["profiles"]["TASK_AUTHORING"] == {"id": "tca-3", "version": 3, "digest": _TCA_V3_DIGEST}
+    assert tca3_policy["profiles"]["REPAIR_AUTHORING"]["id"] == "roa-1-r3"
     # Class 10: tampering with tca-3 identity, version, check order, check text, or bounds fails closed.
     for fault in ("version", "order", "text", "bounds", "old_tca2_body"):
         bad = deepcopy(profile)
@@ -3129,7 +3137,7 @@ def test_task405_class4_task391_r1_inspect_only_ast_guard_conflict_blocks_withou
 def test_task405_class5_task403_multi_cause_baseline_failure_rejects_bare_pytest_node_id():
     profile = successor_profile("tca-3")
     body, context = task405_tca3_context()
-    cmd = context["task"]["verification"][0]
+    cmd = context["task"]["verification"]["required"][0]
     context["baseline_observations"] = [
         {"id": "V1", "command": cmd, "status": "FAIL",
          "summary": "Two distinct failures: CRLF vs LF newline normalization and missing uncached git commit object before cat-file."}
@@ -3172,11 +3180,15 @@ def test_task405_class6_claim_now_vs_proof_later_authority_separation():
     bad_ver["verification_checks"][0]["phase"] = "CLAIM_NOW"
     with pytest.raises(BrainAuditError, match="distinct_causes|PROOF_LATER"):
         construct_tca(body, profile, subject, bad_ver, context)
-    # Acceptance check with PROOF_LATER is allowed when properly bounded, and CLAIM_NOW is preserved for implementation properties.
-    first_mat["acceptance_checks"][0]["phase"] = "PROOF_LATER"
+    # Unreconciled PROOF_LATER in acceptance_checks cannot be CLEAR, while CLAIM_NOW acceptance with PROOF_LATER verification is CANDIDATE.
+    bad_acc = deepcopy(first_mat)
+    bad_acc["acceptance_checks"][0]["phase"] = "PROOF_LATER"
+    with pytest.raises(BrainAuditError, match="PROOF_LATER"):
+        construct_tca(body, profile, subject, bad_acc, context)
     first = construct_tca(body, profile, subject, first_mat, context)
     final_mat = tca3_final(context, profile, subject, first)
-    final_mat["acceptance_checks"][0]["phase"] = "PROOF_LATER"
+    assert all(c["phase"] == "CLAIM_NOW" for c in final_mat["acceptance_checks"])
+    assert all(c["phase"] == "PROOF_LATER" for c in final_mat["verification_checks"])
     assert validate_tca(body, profile, subject, first, final_mat, context)["closure"]["outcome"] == "CANDIDATE"
 
 

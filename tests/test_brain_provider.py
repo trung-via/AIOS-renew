@@ -1641,7 +1641,7 @@ def test_task405_tca3_two_pass_provider_and_prospective_cutover_preserve_tca2_un
     supplied3, contract3, bindings3, sources3 = task395_production_inputs(registry, "TASK_AUTHORING", canonical)
     context3 = sources3["task_source_context"]
     context3["baseline_observations"] = [
-        {"id": "V1", "command": context3["task"]["verification"][0], "status": "NOT_RUN",
+        {"id": "V1", "command": context3["task"]["verification"]["required"][0], "status": "NOT_RUN",
          "summary": "Pre-execution authoring audit; Runtime owns canonical verification."}
     ]
     calls3 = []

@@ -1707,18 +1707,33 @@ def _tca_task(value: Any) -> dict[str, Any]:
 
 _TCA_CONSUMER_CATEGORIES = (
     "DIRECT_CALLER",
+    "DIRECT_CALL_API",
+    "TRANSITIVE_CALLER",
     "TRANSITIVE_DIRECT_CALL",
+    "GIT_SUBPROCESS",
     "GIT_FRAMING_OBJECT_FETCH",
+    "TEST_DOUBLE",
+    "AST_GUARD",
     "LEGACY_TEST_DOUBLE_AST_GUARD",
     "MIXED_VERIFICATION_SURFACE",
 )
 _TCA_SOURCE_ROLES = (
     "IMPLEMENTATION",
+    "TRANSITIVE_CALLER",
     "TRANSITIVE_CONSUMER",
+    "GIT_SUBPROCESS",
     "GIT_FRAMING_OBJECT_FETCH",
+    "TEST_DOUBLE",
+    "AST_GUARD",
     "LEGACY_TEST_AST_GUARD",
 )
 _TCA_COUNTEREXAMPLE_KINDS = (
+    "VACUOUS_CRITERION",
+    "TRANSITIVE_CALLER",
+    "SCOPE_CREEP",
+    "AUTHORITY_INVERSION",
+    "TEST_DOUBLE_DRIFT",
+    "STALE_SOURCE_PACKET",
     "MISSING_FINAL_ACCEPTANCE_CLAIM",
     "NON_EMPTY_UNRESOLVED_OBLIGATION",
     "BAD_RESULT_PACKAGE_OR_API_ASSUMPTION",
@@ -1734,6 +1749,8 @@ def _tca_source_context(value: Any) -> dict[str, Any]:
     # These hashes bind content; they do not authenticate Human authorization.
     context = {"task": None, "authorization": None, "consumers": []} if value is None else _normal(
         value, depth=0, max_depth=32)
+    if type(context) is dict and "executor_claims" in context:
+        raise BrainAuditError("TCA source context cannot include pre-execution executor_claims")
     optional_context_keys = {"source_material", "baseline_observations"} & set(context) if type(context) is dict else set()
     _fields(context, {"task", "authorization", "consumers"} | optional_context_keys, "TCA source context")
     _bounded(context, _TCA_BOUNDS["source_context_bytes"], "TCA source context")
@@ -1763,7 +1780,7 @@ def _tca_source_context(value: Any) -> dict[str, Any]:
     for consumer in consumers:
         from .task import TaskValidationError, _exact_repo_path
         extra_consumer_keys = (
-            {"category", "required_modify_paths", "required_source_paths"} & set(consumer)
+            {"kind", "path", "symbol", "category", "required_modify_paths", "required_source_paths"} & set(consumer)
             if type(consumer) is dict else set()
         )
         _fields(consumer, {"id", "authority", "requirement"} | extra_consumer_keys, "TCA declared consumer")
@@ -1772,8 +1789,17 @@ def _tca_source_context(value: Any) -> dict[str, Any]:
         if identity in seen or consumer["authority"] not in (
                 "HUMAN", "BRAIN", "EXECUTOR", "RUNTIME", "REVIEWER", "PUBLISHER", "TRANSPORT"):
             raise BrainAuditError("duplicate consumer or invalid consumer authority")
+        if "kind" in consumer and consumer["kind"] not in _TCA_CONSUMER_CATEGORIES:
+            raise BrainAuditError("invalid TCA consumer kind")
         if "category" in consumer and consumer["category"] not in _TCA_CONSUMER_CATEGORIES:
             raise BrainAuditError("invalid TCA consumer category")
+        if "path" in consumer:
+            try:
+                _exact_repo_path(consumer["path"], "TCA consumer path")
+            except TaskValidationError as exc:
+                raise BrainAuditError("invalid TCA consumer path") from exc
+        if "symbol" in consumer:
+            _text(consumer["symbol"], 256, "TCA consumer symbol")
         for path_key in ("required_modify_paths", "required_source_paths"):
             if path_key in consumer:
                 req_paths = _tca_texts(consumer[path_key], 64, f"TCA consumer {path_key}")
@@ -1790,15 +1816,24 @@ def _tca_source_context(value: Any) -> dict[str, Any]:
     paths = set()
     for source in material:
         from .task import TaskValidationError, _exact_repo_path
-        extra_source_keys = {"role", "failure_causes"} & set(source) if type(source) is dict else set()
+        extra_source_keys = (
+            {"kind", "role", "symbols", "call_sites", "failure_causes"} & set(source)
+            if type(source) is dict else set()
+        )
         _fields(source, {"path", "content"} | extra_source_keys, "TCA source excerpt")
         try:
             _exact_repo_path(source["path"], "TCA source path")
         except TaskValidationError as exc:
             raise BrainAuditError("invalid TCA source path") from exc
         _text(source["content"], 16384, "TCA source content")
+        if "kind" in source and source["kind"] not in _TCA_SOURCE_ROLES:
+            raise BrainAuditError("invalid TCA source kind")
         if "role" in source and source["role"] not in _TCA_SOURCE_ROLES:
             raise BrainAuditError("invalid TCA source role")
+        if "symbols" in source:
+            _tca_texts(source["symbols"], 64, "TCA source symbols")
+        if "call_sites" in source:
+            _tca_texts(source["call_sites"], 64, "TCA source call_sites")
         if "failure_causes" in source:
             causes = _tca_texts(source["failure_causes"], 16, "TCA source failure causes")
             if not causes or any("::" in cause for cause in causes):
@@ -1812,10 +1847,22 @@ def _tca_source_context(value: Any) -> dict[str, Any]:
         if type(observations) is not list or len(observations) > 32:
             raise BrainAuditError("unbounded TCA baseline observations")
         seen_commands = set()
+        seen_ids = set()
         for obs in observations:
-            _fields(obs, {"command", "status", "basis"}, "TCA baseline observation")
+            extra_obs_keys = {"id", "summary", "basis"} & set(obs) if type(obs) is dict else set()
+            _fields(obs, {"command", "status"} | extra_obs_keys, "TCA baseline observation")
+            if "summary" not in obs and "basis" not in obs:
+                raise BrainAuditError("TCA baseline observation requires summary or basis")
+            if "id" in obs:
+                obs_id = _text(obs["id"], 256, "TCA baseline observation id")
+                if obs_id in seen_ids:
+                    raise BrainAuditError("duplicate TCA baseline observation id")
+                seen_ids.add(obs_id)
             command = _text(obs["command"], 512, "TCA baseline command")
-            _text(obs["basis"], 2048, "TCA baseline basis")
+            if "summary" in obs:
+                _text(obs["summary"], 2048, "TCA baseline summary")
+            if "basis" in obs:
+                _text(obs["basis"], 2048, "TCA baseline basis")
             if command in seen_commands or obs["status"] not in ("PASS", "FAIL", "NOT_RUN", "UNKNOWN"):
                 raise BrainAuditError("duplicate or invalid TCA baseline observation")
             seen_commands.add(command)
@@ -1881,6 +1928,15 @@ def construct_tca_subject(packet: DecisionPacket | Mapping[str, Any], profile: M
               "audit_profile_ref": profile_ref(policy), "return_contract_ref": ref, "external_bindings": bindings,
               "human_intent": intent, "sources": sources,
               "blockers": {role: "MISSING_DECISIVE_SOURCE" for role, source in sources.items() if source is None}}
+    if policy["id"] == _TCA_V3_ID:
+        if context.get("source_material"):
+            kinds: dict[str, int] = {}
+            for src in context["source_material"]:
+                kind = src.get("kind") or src.get("role") or "IMPLEMENTATION"
+                kinds[kind] = kinds.get(kind, 0) + 1
+            result["source_material_summary"] = {"count": len(context["source_material"]), "kinds": kinds}
+        else:
+            result["source_material_summary"] = None
     result["subject_fingerprint"] = _digest(result)
     return result
 
@@ -1979,9 +2035,25 @@ def _tca_consumers(value: Any, task: dict[str, Any] | None, context: dict[str, A
     auth = context.get("authorization")
     inspect_only = (set(auth["scope"]["inspect"]) - set(auth["scope"]["modify"])) if auth is not None else set()
     for consumer, check in zip(consumers, value):
-        _fields(check, _TCA_JUDGMENT_FIELDS | {"acceptance_ids"}, "TCA consumer check")
+        from .task import TaskValidationError, _exact_repo_path
+        extra_check_keys = {"kind", "path", "symbol"} & set(check) if type(check) is dict else set()
+        _fields(check, _TCA_JUDGMENT_FIELDS | {"acceptance_ids"} | extra_check_keys, "TCA consumer check")
         if check["id"] != consumer["id"]:
             raise BrainAuditError("missing, duplicate or substituted TCA consumer")
+        if "kind" in check and (check["kind"] not in _TCA_CONSUMER_CATEGORIES
+                                or ("kind" in consumer and check["kind"] != consumer["kind"])):
+            raise BrainAuditError("invalid or mismatched TCA consumer check kind")
+        if "path" in check:
+            try:
+                _exact_repo_path(check["path"], "TCA consumer check path")
+            except TaskValidationError as exc:
+                raise BrainAuditError("invalid TCA consumer check path") from exc
+            if "path" in consumer and check["path"] != consumer["path"]:
+                raise BrainAuditError("mismatched TCA consumer check path")
+        if "symbol" in check:
+            _text(check["symbol"], 256, "TCA consumer check symbol")
+            if "symbol" in consumer and check["symbol"] != consumer["symbol"]:
+                raise BrainAuditError("mismatched TCA consumer check symbol")
         _tca_judgment(check, bound, ("consumers", "task"))
         covered = _tca_texts(check["acceptance_ids"], 256, "TCA consumer acceptance ids")
         if not set(covered) <= ids or check["outcome"] == "CLEAR" and not covered:
@@ -2007,18 +2079,28 @@ def _tca_verification_checks(value: Any, task: dict[str, Any] | None, context: d
     has_full_reason = bool(task and task["verification"].get("full_suite_reason"))
     seen_ids = set()
     for cmd, check in zip(commands, value):
-        _fields(check, _TCA_JUDGMENT_FIELDS | {"command", "phase", "baseline_status"}, "TCA-3 verification check")
+        extra = {"distinct_causes"} if type(check) is dict and "distinct_causes" in check else set()
+        _fields(check, _TCA_JUDGMENT_FIELDS | {"command", "phase", "baseline_status"} | extra, "TCA-3 verification check")
         identity = _text(check["id"], 256, "TCA-3 verification check id")
         if identity in seen_ids or check["command"] != cmd:
             raise BrainAuditError("missing, duplicate, skipped or substituted TCA-3 verification command")
         seen_ids.add(identity)
         _tca_judgment(check, bound, ("task",))
-        if (check["phase"] not in ("CLAIM_NOW", "PROOF_LATER")
-                or check["phase"] == "PROOF_LATER" and check["outcome"] != "BLOCKER"):
-            raise BrainAuditError("PROOF_LATER verification cannot be sufficient CLAIM_NOW")
         status = check["baseline_status"]
         if status not in ("PASS", "FAIL", "NOT_RUN", "UNKNOWN"):
             raise BrainAuditError("invalid TCA-3 verification baseline_status")
+        if check["phase"] not in ("CLAIM_NOW", "PROOF_LATER"):
+            raise BrainAuditError("invalid TCA-3 verification phase")
+        if check["phase"] == "CLAIM_NOW" and (status in ("FAIL", "NOT_RUN", "UNKNOWN") or check["outcome"] == "CLEAR"):
+            raise BrainAuditError("TCA-3 verification check is post-implementation PROOF_LATER, not pre-execution CLAIM_NOW")
+        if "distinct_causes" in check:
+            causes = _tca_texts(check["distinct_causes"], 16, "TCA-3 verification distinct_causes")
+            if not causes:
+                raise BrainAuditError("TCA-3 verification distinct_causes cannot be empty")
+            if any("::" in cause for cause in causes):
+                raise BrainAuditError("TCA-3 distinct_causes cannot treat a bare pytest node ID as a complete cause")
+        else:
+            causes = []
         if ("aios_parallel_full_suite" in cmd or cmd.strip() in ("pytest", "pytest -q")) and not has_full_reason:
             if check["outcome"] != "BLOCKER":
                 raise BrainAuditError("TCA-3 rejects implicit full-suite verification without full_suite_reason")
@@ -2030,8 +2112,8 @@ def _tca_verification_checks(value: Any, task: dict[str, Any] | None, context: d
             raise BrainAuditError("TCA-3 UNKNOWN baseline status requires UNKNOWN/BLOCKER")
         if status == "FAIL" and check["outcome"] != "BLOCKER":
             basis_lower = check["basis"].lower()
-            if "pre-existing" not in basis_lower and "prior" not in basis_lower and "baseline" not in basis_lower:
-                raise BrainAuditError("TCA-3 failing baseline command requires BLOCKER or explicit prior-baseline distinction")
+            if not causes and "pre-existing" not in basis_lower and "prior" not in basis_lower and "baseline" not in basis_lower:
+                raise BrainAuditError("TCA-3 failing baseline command requires distinct_causes, BLOCKER, or explicit prior-baseline distinction")
     return value
 
 
@@ -2188,7 +2270,7 @@ def _tca_reconcile(value: Any, first: dict, candidate: Any, bound: dict) -> list
         ("VERIFICATION", verif_checks, [("task",)] * len(verif_checks)),
     ) for c, roles in zip(checks, required) if c["outcome"] == "BLOCKER"}
     if type(value) is not list or len(value) != len(blockers):
-        raise BrainAuditError("TCA must retain or explicitly resolve every first-pass blocker")
+        raise BrainAuditError("TCA must retain, reconcile or explicitly resolve every first-pass blocker")
     seen, effective = set(), []
     for record in value:
         _fields(record, {"kind", "id", "disposition", "knowledge", "basis", "evidence_refs", "candidate_anchors"},
@@ -2234,7 +2316,7 @@ def validate_tca(packet: Any, profile: Any, subject: Any, stage1: Any, semantic_
     _bounded(material, _TCA_BOUNDS["outcome_bytes"], "TCA second pass")
     if (material["subject_fingerprint"] != bound["subject_fingerprint"]
             or material["construct_fingerprint"] != first["construct_fingerprint"]):
-        raise BrainAuditError("TCA second-pass subject/construct mismatch")
+        raise BrainAuditError("TCA second-pass subject/CONSTRUCT mismatch")
     candidate = material["reconciled_candidate"]
     if candidate is not None:
         candidate = _tca_candidate(candidate, context, bound)
