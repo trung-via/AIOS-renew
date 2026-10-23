@@ -3,6 +3,7 @@ import re
 import subprocess
 from dataclasses import asdict
 from concurrent.futures import ThreadPoolExecutor
+from fnmatch import fnmatchcase
 from pathlib import Path
 from types import SimpleNamespace
 from threading import Event
@@ -471,6 +472,76 @@ def publish(lineage: dict[str, object]):
 
 def remote_main(lineage: dict[str, object]) -> str:
     return git(lineage["remote"], "rev-parse", "refs/heads/main")
+
+
+def test_lifecycle_snapshot_distinguishes_nested_authorities_and_transport(tmp_path):
+    from aios_renew.terminal_attention import selector
+
+    lineage = make_lineage(tmp_path)
+    run_id = lineage["run_id"]
+    artifact_ref = f"refs/heads/aios/artifacts/{run_id}"
+    artifact = git(lineage["remote"], "rev-parse", artifact_ref)
+    protected = {
+        "refs/heads/main": lineage["base_sha"],
+        artifact_ref: artifact,
+        f"refs/heads/aios/review/{run_id}": lineage["candidate_sha"],
+        f"refs/heads/aios/review-decision/{run_id}": lineage["decision_sha"],
+        "refs/heads/aios/remediation/RUN-063-001-R1": lineage["decision_sha"],
+        "refs/heads/aios/repair-supersession/RUN-063-002/2": lineage["base_sha"],
+    }
+    excluded = {
+        selector(run_id, "RESULT", artifact).signal_ref: lineage["base_sha"],
+        "refs/heads/aios/chat-wake/RESULT/RUN-063-001/transport": lineage["base_sha"],
+        "refs/heads/aios/unrelated/RUN-063-001": lineage["base_sha"],
+        "refs/heads/aios/artifacts/RUN-064-001": lineage["base_sha"],
+    }
+    for ref, sha in {**protected, **excluded}.items():
+        git(lineage["remote"], "update-ref", ref, sha)
+    before = git(lineage["remote"], "show-ref")
+    assert publication_module._lifecycle_snapshot(lineage["repo"], "origin", run_id=run_id) == protected
+    assert publication_module._lifecycle_snapshot(lineage["repo"], "origin", run_id=run_id) == protected
+    assert git(lineage["remote"], "show-ref") == before
+
+
+@pytest.mark.parametrize("fault", [
+    "query-failed", "truncated", "bad-sha", "duplicate", "missing-main",
+    "nested-review", "bad-revision", "deep-revision", "unknown-namespace",
+    "wrong-task", "long-ref", "over-count", "over-bytes",
+])
+def test_lifecycle_snapshot_rejects_partial_malformed_or_over_capacity_observations(tmp_path, monkeypatch, fault):
+    sha = "a" * 40
+    main = f"{sha}\trefs/heads/main\n"
+    valid = f"{sha}\trefs/heads/aios/artifacts/RUN-063-001\n"
+    output = {
+        "query-failed": main,
+        "truncated": main.rstrip("\n"),
+        "bad-sha": "not-a-sha\trefs/heads/main\n",
+        "duplicate": main + main,
+        "missing-main": valid,
+        "nested-review": main + f"{sha}\trefs/heads/aios/review/RUN-063-001/extra\n",
+        "bad-revision": main + f"{sha}\trefs/heads/aios/repair-supersession/RUN-063-001/unknown\n",
+        "deep-revision": main + f"{sha}\trefs/heads/aios/repair-supersession/RUN-063-001/2/extra\n",
+        "unknown-namespace": main + f"{sha}\trefs/heads/aios/unknown/RUN-063-001\n",
+        "wrong-task": main + f"{sha}\trefs/heads/aios/review/RUN-064-001\n",
+        "long-ref": main + f"{sha}\trefs/heads/aios/review/RUN-063-" + "1" * 1024 + "\n",
+        "over-count": main + valid,
+        "over-bytes": main + valid,
+    }[fault]
+    if fault == "over-count":
+        monkeypatch.setattr(publication_module, "_MAX_LIFECYCLE_REFS", 1)
+    if fault == "over-bytes":
+        monkeypatch.setattr(publication_module, "_MAX_REMOTE_BYTES", len(main.encode()))
+    commands = []
+
+    def remote_only(_repo, *args, **_kwargs):
+        commands.append(args)
+        assert args[:3] == ("ls-remote", "--refs", "origin")
+        return (128 if fault == "query-failed" else 0), output, ""
+
+    monkeypatch.setattr(publication_module, "_git", remote_only)
+    with pytest.raises(PublicationError):
+        publication_module._lifecycle_snapshot(tmp_path, "origin", run_id="RUN-063-001")
+    assert len(commands) == 1
 
 
 def _push_repair_authorization(
@@ -2318,9 +2389,10 @@ def test_review_321_003_never_authorizes_reset_or_a_different_sha(tmp_path, monk
         commands.append(args)
         if args[0] == "ls-remote":
             # Exact refs may now share one native observation. Keep this
-            # synthetic metadata fixture's original binding and assertions.
-            return 0, "".join(refs[ref] + "\t" + ref + "\n"
-                               for ref in args[3:] if refs[ref] is not None), ""
+            # fixture's original binding for typed lifecycle patterns as well.
+            return 0, "".join(sha + "\t" + ref + "\n"
+                               for ref, sha in refs.items() if sha is not None
+                               and any(fnmatchcase(ref, pattern) for pattern in args[3:])), ""
         if args[0] == "fetch":
             return 0, "", ""
         if args == ("show", f"{artifact}:{publication_module.PUBLICATION_RECOVERY_PATH}"):
