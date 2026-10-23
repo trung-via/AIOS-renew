@@ -283,7 +283,11 @@ def compose_brain_work_context(
     elif repo is not None or diagnostic_selector is not None or not isinstance(snapshot, BrainSyncSnapshot):
         raise BrainContextError("supply either a Brain Sync snapshot or repository")
     request = _request(current_request)
-    observed = snapshot.as_dict()
+    try:
+        observed = snapshot.as_dict()
+    except BrainSyncError as exc:
+        # Keep snapshot rejection fail-closed within this ValueError-based API.
+        raise BrainContextError(str(exc)) from exc
     if "post_task" in observed or _has_failure_pages(observed) or _has_unresolved_diagnostic(observed) or _has_source_diagnostic(observed):
         # Keep the operational root private for local Flow Card integrity checks.
         # Both portable serializers redact it before a provider sees this view.

@@ -15,7 +15,9 @@ import pytest
 
 from aios_renew import brain_attention, brain_context, brain_sync, operator
 from aios_renew import review_transport as rt
-from aios_renew.verification import _diagnostic_capture_summary
+from aios_renew.verification import (
+    RuntimeVerificationError, _diagnostic_capture_summary, execute_verification,
+)
 from tests.test_failure_detail_pagination import GitFailure
 from tests.test_review_transport import _native_failure_fixture, _task393_summary
 
@@ -107,6 +109,38 @@ def assert_safe(value):
     for denied in ("synthetic-secret", "synthetic-person", "credential=", "person_id=", "C:/private",
                    "BEGIN PRIVATE KEY", "Bearer abc", "ignore previous instructions", "alice@example.invalid"):
         assert denied not in raw
+
+
+@pytest.mark.parametrize("command,pinned", [
+    ("first-command", False),
+    ("python -m pytest -q tests/test_operator.py", True),
+    ("python3 -m pytest -q tests/test_operator.py", True),
+    ("pytest -q tests/test_operator.py", True),
+    ("python scripts/aios_parallel_full_suite.py", True),
+])
+def test_failing_summary_preserves_legacy_commands_and_pins_pytest_capture(tmp_path, command, pinned):
+    calls = []
+    def runner(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, returncode=9, stdout=b"", stderr=b"failed\n")
+
+    with pytest.raises(RuntimeVerificationError, match="exit code 9") as caught:
+        execute_verification((command, "never-command"), run_id="RUN-404-UNIT", subject_sha="b" * 40,
+            repository=tmp_path, raw_directory=tmp_path / "raw", runner=runner, environment={})
+    assert len(calls) == 1
+    item, = caught.value.evidence
+    captured = Path(item.raw_path).read_bytes()
+    assert captured == b"STDOUT\n\nSTDERR\nfailed\n"
+    if pinned:
+        prefix, _, summary = item.result.summary.partition("\n")
+        marker, _, encoded = prefix.partition(" ")
+        assert marker == "AIOS_DIAGNOSTIC_CAPTURE_V1"
+        assert summary == "failed"
+        assert json.loads(encoded) == dict(run_id=item.run_id, subject_sha=item.subject_sha,
+            evidence_id=item.evidence_id, command_digest=hashlib.sha256(command.encode()).hexdigest(),
+            raw_digest=hashlib.sha256(captured).hexdigest(), raw_bytes=len(captured))
+    else:
+        assert item.result.summary == "failed"
 
 
 def test_capture_pin_and_script_free_consumer_selective_fields(tmp_path, monkeypatch):
@@ -543,6 +577,9 @@ def test_brain_snapshots_reject_altered_diagnostic_projection(tmp_path, monkeypa
     snapshot.diagnostics["failure_context"]["diagnostic_read"]["assertions"][0]["actual"] = 99
     with pytest.raises(brain_sync.BrainSyncError, match="DIAGNOSTIC_CONTEXT_INVALID"):
         snapshot.as_dict()
+    with pytest.raises(brain_context.BrainContextError, match="DIAGNOSTIC_CONTEXT_INVALID") as caught:
+        brain_context.compose_brain_work_context(snapshot)
+    assert isinstance(caught.value.__cause__, brain_sync.BrainSyncError)
     work.canonical_observation["diagnostics"]["failure_context"]["diagnostic_read"]["assertions"][0]["actual"] = 99
     with pytest.raises(brain_context.BrainContextError, match="stale or altered source-bound"):
         work.as_dict()
@@ -560,6 +597,8 @@ def test_portable_serialization_reauthenticates_current_reader_source(tmp_path, 
     if fault == "authority": monkeypatch.setenv("RUNNER_ENVIRONMENT", "github-hosted")
     with pytest.raises(brain_sync.BrainSyncError, match="FAILURE_(DETAIL_UNAVAILABLE|SOURCE_MOVED)"):
         snapshot.as_dict()
+    with pytest.raises(brain_context.BrainContextError, match="FAILURE_(DETAIL_UNAVAILABLE|SOURCE_MOVED)"):
+        brain_context.compose_brain_work_context(snapshot)
     with pytest.raises(brain_context.BrainContextError, match="FAILURE_(DETAIL_UNAVAILABLE|SOURCE_MOVED)"):
         work.as_dict()
 

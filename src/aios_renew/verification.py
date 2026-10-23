@@ -273,7 +273,8 @@ def execute_verification(
                 tokens = shlex.split(exact_command)
             except ValueError:
                 tokens = []  # The unchanged shell command retains its raw syntax failure.
-            if tokens[:3] == ["python", "-m", "pytest"] or tokens[:1] == ["pytest"]:
+            is_pytest_command = tokens[:3] == ["python", "-m", "pytest"] or tokens[:1] == ["pytest"]
+            if is_pytest_command:
                 arguments = tokens[3:] if tokens[:3] == ["python", "-m", "pytest"] else tokens[1:]
                 try:
                     effective_pytest_profile(arguments, environment=command_env)
@@ -313,6 +314,10 @@ def execute_verification(
                     evidence=evidence,
                 ) from exc
 
+            # Preserve pins on the existing pytest reader paths, including its
+            # maintained wrapper, without changing other commands' summaries.
+            pin_pytest_capture = (is_pytest_command or tokens[:3] == ["python3", "-m", "pytest"]
+                                  or exact_command == SELECTED_FULL_SUITE_COMMAND)
             item = Evidence(
                 evidence_id=evidence_id,
                 run_id=run_id,
@@ -325,7 +330,7 @@ def execute_verification(
                         _summary(completed.returncode, stdout=decoded_stdout, stderr=decoded_stderr),
                         captured=captured, run_id=run_id, subject_sha=subject_sha,
                         evidence_id=evidence_id, command=command,
-                    ) if completed.returncode else _summary(
+                    ) if completed.returncode and pin_pytest_capture else _summary(
                         completed.returncode, stdout=decoded_stdout, stderr=decoded_stderr),
                 ),
                 raw_path=str(raw_path),
