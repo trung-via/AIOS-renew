@@ -8,6 +8,7 @@ from copy import deepcopy
 from dataclasses import replace
 import json
 from pathlib import Path
+import stat
 
 import pytest
 import yaml
@@ -337,6 +338,8 @@ def test_missing_local_object_does_not_fetch_retry_or_consult_runtime(tmp_path, 
     fixture = EpisodeGit(tmp_path).result()
     cut = fixture.cut()
     obj = fixture.repo / ".git/objects" / fixture.artifact_sha[:2] / fixture.artifact_sha[2:]
+    # Git loose objects are read-only; Windows requires write permission to unlink.
+    obj.chmod(obj.stat().st_mode | stat.S_IWRITE)
     obj.unlink()
     calls = []
     real = caa._GitBudget.__call__
