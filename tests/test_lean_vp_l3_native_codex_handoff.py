@@ -238,7 +238,8 @@ def test_native_codex_feedback_with_authentic_probe_delivers_source_correlated_r
     assert receipt.receipt_id == consumption.data["receipt_id"]
     assert receipt.feedback_digest == feedback.digest
     assert receipt.run_id == f.run.run_id
-    assert receipt.checkpoint_ordinal == checkpoint.ordinal
+    assert receipt.checkpoint_ordinal == consumption.data["binding"]["checkpoint_ordinal"]
+    assert receipt.checkpoint_ordinal == request.source.checkpoint.ordinal
     assert receipt.executor == "codex"
     assert receipt.delivery_mode == "AUTHENTIC_NATIVE_RECIPIENT"
     assert len(receipt.correlation_digest) == 64
@@ -545,7 +546,7 @@ def test_native_codex_feedback_rejected_lease_loss(tmp_path: Path, monkeypatch: 
     observed_results: list[Any] = []
 
     def runner(command: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
-        lease.release()
+        leases.release(lease)
         res = adapter.consume_same_executor_feedback(
             request, boundary=dispatcher.active_boundary, lease=lease, runtime=f.owner
         )
