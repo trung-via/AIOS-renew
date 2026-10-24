@@ -470,7 +470,9 @@ def _consult_pilot(repo, *, flow, packet, subject, candidate, expected_candidate
                 material = dict(pilot_id=CAA_PILOT_ID, repository_id=context["repository_id"],
                     approval_source=context["approval_source"], publication_boundary_sha=context["publication_boundary_sha"],
                     task=body["canonical_facts"]["selected_task"], binding=result["binding"],
-                    observed_at=observed_at, observation_cut=task_cut.as_dict(),
+                    # Normalize only this authenticated cut's tuple fields;
+                    # provider/native mapping validation stays strict JSON.
+                    observed_at=observed_at, observation_cut=json.loads(_encode(task_cut.as_dict())),
                     outcome=result["outcome"], reason=result["reason"],
                     grounding=dict(status="VALIDATED_CAA02_CITATION_GRAMMAR" if result["outcome"] == "ADVICE" else "NO_ADVICE_PRODUCED",
                         suggestion_count=len((result.get("consultation") or {}).get("suggestions", [])),
@@ -550,7 +552,7 @@ def pilot_report(repo: str | Path, *, expected_main_sha: str,
         try:
             cut = capture_experience_cut(repo, expected_main_sha=expected_main_sha, task_ids=(task_id,))
             view = reconstruct_episodes(repo, cut=cut)
-            item["source_cut"] = cut.as_dict()
+            item["source_cut"] = json.loads(_encode(cut.as_dict()))
             item["canonical_task"] = view["tasks"][0]
             allowed = {"task", "run", "terminal", "result", "evidence", "failure_shape", "verification", "review", "publication",
                        "repair_authorization", "repair_execution", "remediation_execution", "remediation_authorization"}

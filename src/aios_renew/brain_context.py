@@ -1404,7 +1404,8 @@ def canonical_caa_pilot_context(repo: str | Path, *, expected_main_sha: str) -> 
         return dict(status="AVAILABLE", reason="SOURCE_AUTHENTICATED_OPTIONAL_PERMISSION", pilot_id=CAA_PILOT_ID,
                     repository_id=cut.as_dict()["repository_id"], main_sha=expected_main_sha,
                     source=source, approval_source=approved_source, publication_boundary_sha=boundary,
-                    activation=dict(reviewed_sha=reviewed, episode=episode, source_cut=cut.as_dict()),
+                    # Project the sealed reader's tuple fields as JSON arrays.
+                    activation=dict(reviewed_sha=reviewed, episode=episode, source_cut=_stable_copy(cut.as_dict())),
                     members=members, inclusion_closed=len(members) == 10, authority="NONE")
     except BrainContextError as exc:
         if str(exc) in {"CAA_PILOT_CANONICAL_MAIN_INVALID", "CAA_PILOT_CANONICAL_MAIN_CHANGED"}:
