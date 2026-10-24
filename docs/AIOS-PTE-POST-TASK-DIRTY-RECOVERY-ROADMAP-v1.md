@@ -1,5 +1,18 @@
 # PTE — Dirty EXECUTION FAILURE recovery and Post-TASK end-to-end
 
+> **SUPERSEDED PROSPECTIVELY — Human decision 2026-10-24 / TASK-416 r1.**
+> Current PTE scope is [PTE Information-Only v2](AIOS-PTE-INFORMATION-ONLY-v2.md),
+> recorded in `.ai/roadmap-state.yaml:human_pte_information_only_planning_20261024`.
+> The original narrative below, including its Identity, approvals and rationale,
+> is retained as history. Its future package order, snapshot/preservation PTE-04,
+> PTE-05/06 recovery/REPAIR sequence, mandatory TASK-401 r3 PTE-07 chain and
+> mandatory TCA-2 / ROA-1 R3 / MOA-1 instructions are historical superseded text,
+> not active instructions or resumable dependencies under this plan. PTE-04 is
+> now conditional source-bound read-only observation; PTE-05/06 leave PTE scope;
+> PTE-07 becomes bounded information-only conformance. Published PTE-01..03 and
+> all exact TASK/RUN/REVIEW/publication history keep their original meanings.
+> The historical NEXT statements below do not compete with current canonical NEXT.
+
 **Identity:** `post-task-dirty-recovery-pte-20261022`  
 **Approved:** Human, 2026-10-22 (Asia/Ho_Chi_Minh)  
 **Status:** Approved planning only; six future implementation TASKs, not yet authored or admitted.  

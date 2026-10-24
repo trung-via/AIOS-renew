@@ -467,6 +467,37 @@ Snapshot selection fails closed for missing, ambiguous, unauthored, or contradic
 
 The existing publication-success attention and local Chat wake are prompts to take a fresh ordinary Brain Sync snapshot. Its effective NEXT observation is read-only and source-bound; an event receipt, repeated wake or missed wake cannot advance roadmap semantics. No separate activation TASK, scheduler, autonomous dispatch or CAA-05 selection follows from publication.
 
+### PTE information-only boundary (TASK-416)
+
+The current Human-approved [PTE Information-Only v2](AIOS-PTE-INFORMATION-ONLY-v2.md)
+and `human_pte_information_only_planning_20261024` planning record supersede only
+prospective PTE workflow/recovery and mandatory-audit requirements. PTE supplies
+bounded authenticated terminal information, canonical state/evidence and safe
+source-bound diagnostics. PTE-04 is conditional read-only worktree observation
+from an existing lawful authenticated source, otherwise UNKNOWN/unavailable; it
+creates no snapshot or storage/worktree mutation and promises no preservation.
+PTE-05/06 recovery authority/implementation leave PTE scope; actual recovery needs
+independent Human/Brain intent, authority and TASK. PTE-07's mandatory TASK-401 r3
+chain is retired in favor of bounded read-only/source-integrity/privacy conformance.
+
+Projected Unified State `next_action` / `authority` are contextual Runtime
+observations, never PTE imperatives or Brain instructions. PTE owns no workflow,
+audit, retry, dispatch, correction selection or semantic verdict. Missing, stale,
+forged, private or unavailable source facts remain marked and never become truth.
+Human/Brain, Executor, Runtime, independent Reviewer and Publisher retain their
+existing distinct authorities. CAA is optional advice; its absence or opt-out
+cannot block PTE observational readers or Brain judgment. TASK-408 direct authoring,
+exact Human-on-demand TCA/ROA/MOA and soft AOA opt-out retain their existing rules,
+without substitute audits, fallback or legacy default reactivation.
+
+This scope amendment preserves the single TASK-415 r1 roadmap NEXT and its existing
+exact-lineage effective-NEXT checks; it infers no TASK-415 completion and preapproves
+no successor. Published PTE-01..03, historical approvals and all immutable lifecycle
+artifacts remain exact. The old PTE plan and paused PTE bookmark are historical
+where superseded, not authority to resume retired recovery/audit dependencies.
+CAA-05 remains conditional/unselected; Lean VP, KA-01, downstream and the standing
+Human `LEGACY_REPOSITORY_DEFAULT_ROUTE` decision do not advance.
+
 When AIOS-renew Control-plane Closure is complete and hands work back downstream,
 do not reuse a previously observed Python Agent priority. Perform a fresh downstream
 BRAIN SYNC of `trung-via/python_complete_agent` current main, exact AIOS pin,
@@ -535,6 +566,10 @@ The exact digests, bounded source contract and source-authentication requirement
 [Brain semantic audit protocol section 24](AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md#24-bounded-tcaroa-successors-prepared-by-task-392).
 
 ## 16. Historical TCA-3 retrospective priority and paused PTE bookmark
+
+TASK-416's [PTE Information-Only v2](AIOS-PTE-INFORMATION-ONLY-v2.md) supersedes the
+prospective PTE-04..07 resumability described below; the original record remains
+historical provenance, without reactivating retired recovery or audit requirements.
 
 `human_tca3_retrospective_priority_20261023` records the original TASK-405
 implementation-then-activation plan. Its TCA-2 default and MOA preservation were
