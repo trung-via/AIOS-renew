@@ -1,8 +1,9 @@
 """Lean VP Intra v1.3 L3-06: native Codex feedback delivery and receipt capability.
 
-Focused verification of the authentic native Codex recipient path, source-correlated
-receipt generation, explicit native-probe absence reporting, negative authority/continuity
-guards, and legacy one-shot behavior.
+The current one-shot CLI has no authenticated live feedback channel. Exercise
+that production path's explicit unavailability, rejection of synthetic receipt
+claims, Runtime authority/continuity guards and legacy one-shot behavior. Local
+fixtures and simulated callback failures never prove live Codex deployment.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import json
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -30,11 +31,12 @@ from aios_renew.execution_profile import ResolvedExecutionProfile
 from aios_renew.intra_run_proof_contract import (
     FEEDBACK_AUTHORITY,
     FeedbackConsumptionRequest,
+    LocalFeedbackConfirmation,
     format_feedback_consumption,
     parse_feedback_consumption,
 )
 from aios_renew.run import RunLeaseRegistry
-from tests.test_lean_vp_l3_factual_feedback import FeedbackFixture
+from tests.test_lean_vp_l3_factual_feedback import FeedbackFixture, PRIVATE_LOG
 
 
 def prepared(f: FeedbackFixture) -> tuple[FeedbackConsumptionRequest, Any, Any]:
@@ -180,13 +182,30 @@ def test_native_codex_feedback_injected_synthetic_callback_rejected_blocks_close
     assert synthetic_calls == []
 
 
-def test_native_codex_feedback_with_authentic_probe_delivers_source_correlated_receipt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("probe_kind", ["legacy-fixture", "local-echo", "typed-ack", "forged-receipt", "runner-attribute"])
+def test_native_codex_feedback_fixture_cannot_establish_authentic_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, probe_kind: str
 ) -> None:
     f = FeedbackFixture(tmp_path / "probe-success", monkeypatch)
     request, checkpoint, feedback = prepared(f)
 
-    probe = AuthenticCodexProbe()
+    probe_calls: list[Any] = []
+
+    class MethodNamedProbe:
+        def confirm_authentic_native_delivery(self, **kwargs: Any) -> Any:
+            probe_calls.append(kwargs)
+            return {
+                "local-echo": LocalFeedbackConfirmation("1" * 64, feedback.digest),
+                "typed-ack": CodexRecipientAcknowledgment("1" * 64, feedback.digest),
+                "forged-receipt": CodexNativeReceipt(
+                    "1" * 64, feedback.digest, f.run.run_id, request.source.checkpoint.ordinal,
+                    delivery_mode="AUTHENTIC_NATIVE_RECIPIENT", correlation_digest="2" * 64,
+                ),
+            }.get(probe_kind, True)
+
+        confirm_native_delivery = confirm_authentic_native_delivery
+
+    probe = AuthenticCodexProbe() if probe_kind == "legacy-fixture" else MethodNamedProbe()
     observed_results: list[Any] = []
     leases = RunLeaseRegistry()
     lease = leases.acquire(f.run)
@@ -203,8 +222,14 @@ def test_native_codex_feedback_with_authentic_probe_delivers_source_correlated_r
             stderr=b"",
         )
 
-    adapter = CodexAdapter(runner=runner, native_probe=probe)
-    assert adapter.has_native_probe is True
+    if probe_kind == "runner-attribute":
+        runner.native_probe = probe
+        adapter = CodexAdapter(runner=runner)
+    else:
+        adapter = CodexAdapter(runner=runner, native_probe=probe)
+    assert adapter.native_probe is probe
+    assert adapter.has_native_probe is False
+    assert adapter.native_feedback_unavailable_reason == "ONE_SHOT_CODEX_CLI_HAS_NO_AUTHENTICATED_LIVE_FEEDBACK_CHANNEL"
 
     dispatcher = Dispatcher(
         selected_executor=f.run.executor,
@@ -218,33 +243,25 @@ def test_native_codex_feedback_with_authentic_probe_delivers_source_correlated_r
     assert len(observed_results) == 1
     consumption = observed_results[0]
 
-    # Successful native delivery yields LOCAL_ACKNOWLEDGED and bounded STOP (no production C2)
-    assert consumption.data["status"] == "LOCAL_ACKNOWLEDGED"
-    assert consumption.data["binding"]["feedback_digest"] == feedback.digest
-    assert consumption.data["binding"]["checkpoint_digest"] == checkpoint.digest
-    assert consumption.data["binding"]["admitted_executor"] == "codex"
+    # Method names, local typed echoes and generated digests authenticate no recipient.
+    assert consumption.data["status"] == "BLOCKED"
+    assert consumption.data["reason"] == "CALLBACK_CONFIRMATION_NOT_ESTABLISHED"
+    assert consumption.data["binding"] is None
+    assert consumption.data["receipt_id"] is None
     assert consumption.data["stop"]["status"] == "STOP"
     assert consumption.data["stop"]["c2_admission"] == "NOT_AUTHORIZED"
 
-    # Authentic probe was invoked exactly once with matching source feedback and receipt_id
-    assert len(probe.acknowledged_deliveries) == 1
-    assert probe.acknowledged_deliveries[0][0] == feedback
-    assert probe.acknowledged_deliveries[0][1] == consumption.data["receipt_id"]
+    assert probe_calls == []
+    if isinstance(probe, AuthenticCodexProbe):
+        assert probe.acknowledged_deliveries == []
+    assert adapter.last_native_receipt is None
+    assert adapter.receipt_history == ()
+    # Use the authoritative request ordinal, never RuntimeCheckpoint.ordinal.
+    assert feedback.data["binding"]["checkpoint_ordinal"] == request.source.checkpoint.ordinal
+    assert feedback.data["binding"]["checkpoint_digest"] == checkpoint.digest
+    assert len(f.calls) == 1
 
-    # Source-correlated receipt is produced on the adapter
-    receipt = adapter.last_native_receipt
-    assert receipt is not None
-    assert isinstance(receipt, CodexNativeReceipt)
-    assert receipt.receipt_id == consumption.data["receipt_id"]
-    assert receipt.feedback_digest == feedback.digest
-    assert receipt.run_id == f.run.run_id
-    assert receipt.checkpoint_ordinal == consumption.data["binding"]["checkpoint_ordinal"]
-    assert receipt.checkpoint_ordinal == request.source.checkpoint.ordinal
-    assert receipt.executor == "codex"
-    assert receipt.delivery_mode == "AUTHENTIC_NATIVE_RECIPIENT"
-    assert len(receipt.correlation_digest) == 64
-
-    # Receipt round-trips through format/parse
+    # Only the bounded unavailable observation round-trips, with no receipt.
     assert parse_feedback_consumption(format_feedback_consumption(consumption)) == consumption
 
 
@@ -505,17 +522,13 @@ def test_native_codex_feedback_rejected_replay(tmp_path: Path, monkeypatch: pyte
     probe = AuthenticCodexProbe()
     leases = RunLeaseRegistry()
     lease = leases.acquire(f.run)
-    replay_errors: list[Exception] = []
+    observed_results: list[Any] = []
 
     def runner(command: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
-        res1 = adapter.consume_same_executor_feedback(
-            request, boundary=dispatcher.active_boundary, lease=lease, runtime=f.owner
-        )
-        assert res1.data["status"] == "LOCAL_ACKNOWLEDGED"
-        try:
-            adapter.confirm_local_feedback(feedback=feedback, receipt_id=res1.data["receipt_id"])
-        except Exception as exc:
-            replay_errors.append(exc)
+        for _ in range(2):
+            observed_results.append(adapter.consume_same_executor_feedback(
+                request, boundary=dispatcher.active_boundary, lease=lease, runtime=f.owner
+            ))
         return subprocess.CompletedProcess(
             command,
             returncode=0,
@@ -532,9 +545,14 @@ def test_native_codex_feedback_rejected_replay(tmp_path: Path, monkeypatch: pyte
     )
     dispatcher.dispatch_primary(task=f.task, run=f.run, lease=lease, leases=leases)
 
-    assert len(replay_errors) == 1
-    assert isinstance(replay_errors[0], CodexNativeDeliveryError)
-    assert "replay rejected" in str(replay_errors[0])
+    assert [r.data["status"] for r in observed_results] == ["BLOCKED", "BLOCKED"]
+    assert observed_results[0].data["reason"] == "CALLBACK_CONFIRMATION_NOT_ESTABLISHED"
+    assert observed_results[1].data["reason"] == "STOP_LATCHED"
+    assert all(r.data["receipt_id"] is None for r in observed_results)
+    assert probe.acknowledged_deliveries == []
+    assert adapter.last_native_receipt is None
+    assert adapter.receipt_history == ()
+    assert len(f.calls) == 1
 
 
 def test_native_codex_feedback_rejected_lease_loss(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -570,6 +588,65 @@ def test_native_codex_feedback_rejected_lease_loss(tmp_path: Path, monkeypatch: 
     assert len(observed_results) == 1
     assert observed_results[0].data["status"] == "BLOCKED"
     assert adapter.last_native_receipt is None
+
+
+@pytest.mark.parametrize("defect", ["feedback-digest", "checkpoint-digest", "profile", "lease-holder"])
+def test_native_codex_runtime_rejects_changed_source_before_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, defect: str
+) -> None:
+    f = FeedbackFixture(tmp_path / "changed-native-source", monkeypatch)
+    request, _, _ = prepared(f)
+    profile = ResolvedExecutionProfile(
+        f.run.run_id, "codex", "explicit-test-model", "high", "EXPLICIT", "EXPLICIT"
+    )
+    probe = AuthenticCodexProbe()
+    leases = RunLeaseRegistry()
+    lease = leases.acquire(f.run)
+    observed_results: list[Any] = []
+
+    def runner(command: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        current_request = request
+        current_lease = lease
+        if defect == "feedback-digest":
+            current_request = replace(request, feedback_digest="1" * 64)
+        elif defect == "checkpoint-digest":
+            current_request = replace(request, source=replace(request.source, checkpoint_digest="1" * 64))
+        elif defect == "profile":
+            adapter._execution_profile = replace(profile, model="substituted-model")
+        else:
+            leases.release(lease)
+            current_lease = leases.acquire(f.run)
+        observed_results.append(adapter.consume_same_executor_feedback(
+            current_request, boundary=dispatcher.active_boundary, lease=current_lease, runtime=f.owner
+        ))
+        observed_results.append(adapter.consume_same_executor_feedback(
+            request, boundary=dispatcher.active_boundary, lease=lease, runtime=f.owner
+        ))
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=successful_output(f.run.run_id).encode("utf-8"), stderr=b""
+        )
+
+    adapter = CodexAdapter(runner=runner, native_probe=probe, execution_profile=profile)
+    dispatcher = Dispatcher(
+        selected_executor=f.run.executor, operation="PRIMARY",
+        adapter_factories={f.run.executor: lambda: adapter},
+        execution_profile=profile, prospective_runtime=f.owner,
+    )
+    dispatcher.dispatch_primary(task=f.task, run=f.run, lease=lease, leases=leases)
+
+    first, repeated = observed_results
+    assert first.data["status"] == "BLOCKED"
+    assert first.data["reason"] == (
+        "NATIVE_SOURCE_OR_EFFECT_NOT_ESTABLISHED"
+        if defect.endswith("digest") else "LIVE_INVOCATION_NOT_ESTABLISHED"
+    )
+    assert repeated.data["status"] == "BLOCKED"
+    assert repeated.data["reason"] == "STOP_LATCHED"
+    assert all(r.data["receipt_id"] is None for r in observed_results)
+    assert probe.acknowledged_deliveries == []
+    assert adapter.last_native_receipt is None
+    assert adapter.receipt_history == ()
+    assert len(f.calls) == 1
 
 
 def test_native_codex_probe_rejection_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -613,7 +690,15 @@ def test_native_codex_probe_interruption_fails_closed(tmp_path: Path, monkeypatc
     f = FeedbackFixture(tmp_path / "probe-interrupt", monkeypatch)
     request, checkpoint, feedback = prepared(f)
 
-    probe = AuthenticCodexProbe(interrupt=True)
+    callback_calls: list[Any] = []
+
+    class InterruptedCallbackAdapter(CodexAdapter):
+        """Simulate callback failure only; this supplies no native success proof."""
+
+        def confirm_local_feedback(self, *, feedback: Any, receipt_id: str) -> Any:
+            callback_calls.append((feedback, receipt_id))
+            raise KeyboardInterrupt("simulated contract callback interruption")
+
     leases = RunLeaseRegistry()
     lease = leases.acquire(f.run)
 
@@ -626,6 +711,8 @@ def test_native_codex_probe_interruption_fails_closed(tmp_path: Path, monkeypatc
             request, boundary=dispatcher.active_boundary, lease=lease, runtime=f.owner
         )
         assert second.data["status"] == "BLOCKED"
+        assert second.data["reason"] == "STOP_LATCHED"
+        assert second.data["receipt_id"] is None
         return subprocess.CompletedProcess(
             command,
             returncode=0,
@@ -633,7 +720,7 @@ def test_native_codex_probe_interruption_fails_closed(tmp_path: Path, monkeypatc
             stderr=b"",
         )
 
-    adapter = CodexAdapter(runner=runner, native_probe=probe)
+    adapter = InterruptedCallbackAdapter(runner=runner)
     dispatcher = Dispatcher(
         selected_executor=f.run.executor,
         operation="PRIMARY",
@@ -641,12 +728,18 @@ def test_native_codex_probe_interruption_fails_closed(tmp_path: Path, monkeypatc
         prospective_runtime=f.owner,
     )
     dispatcher.dispatch_primary(task=f.task, run=f.run, lease=lease, leases=leases)
+    assert len(callback_calls) == 1
+    assert callback_calls[0][0] == feedback
+    assert len(f.calls) == 1
     assert adapter.last_native_receipt is None
+    assert adapter.receipt_history == ()
 
 
 def test_native_codex_feedback_secret_and_raw_log_exclusion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     f = FeedbackFixture(tmp_path / "secret-exclusion", monkeypatch)
     request, checkpoint, feedback = prepared(f)
+    original_feedback = feedback.content_json
+    original_checkpoint = checkpoint.content_json
     probe = AuthenticCodexProbe()
     leases = RunLeaseRegistry()
     lease = leases.acquire(f.run)
@@ -672,17 +765,17 @@ def test_native_codex_feedback_secret_and_raw_log_exclusion(tmp_path: Path, monk
         prospective_runtime=f.owner,
     )
     dispatcher.dispatch_primary(task=f.task, run=f.run, lease=lease, leases=leases)
-    receipt = adapter.last_native_receipt
-    assert receipt is not None
-
-    receipt_dict = asdict(receipt)
-    receipt_str = json.dumps(receipt_dict)
-    assert "secret" not in receipt_str.lower()
-    assert "token" not in receipt_str.lower()
-    assert "traceback" not in receipt_str.lower()
-    assert "/" not in receipt.correlation_digest
-    assert "\\" not in receipt.correlation_digest
-    assert len(receipt.correlation_digest) == 64
+    consumption = observed_results[0]
+    assert consumption.data["status"] == "BLOCKED"
+    assert consumption.data["receipt_id"] is None
+    assert adapter.last_native_receipt is None
+    assert adapter.receipt_history == ()
+    assert probe.acknowledged_deliveries == []
+    assert feedback.content_json == original_feedback
+    assert checkpoint.content_json == original_checkpoint
+    for portable_record in (feedback.content_json, format_feedback_consumption(consumption).decode("ascii")):
+        for excluded in (PRIVATE_LOG, "Traceback", str(tmp_path), tmp_path.as_posix()):
+            assert excluded not in portable_record
 
 
 def test_native_codex_ka01_c2_remains_not_activated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

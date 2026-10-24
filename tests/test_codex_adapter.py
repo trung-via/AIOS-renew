@@ -1461,6 +1461,7 @@ def test_codex_adapter_native_probe_absence_reported_explicitly() -> None:
     assert adapter.has_native_probe is False
     assert adapter.native_probe is None
     assert adapter.last_native_receipt is None
+    assert adapter.native_feedback_unavailable_reason == "ONE_SHOT_CODEX_CLI_HAS_NO_AUTHENTICATED_LIVE_FEEDBACK_CHANNEL"
 
     class FakeFeedback:
         digest = "a" * 64
@@ -1476,14 +1477,13 @@ def test_codex_adapter_native_probe_absence_reported_explicitly() -> None:
         adapter.confirm_local_feedback(feedback=FakeFeedback(), receipt_id="1" * 64)
 
 
-def test_codex_adapter_native_receipt_dataclass() -> None:
+def test_codex_adapter_native_receipt_data_defaults_to_unavailable() -> None:
     receipt = CodexNativeReceipt(
         receipt_id="1" * 64,
         feedback_digest="2" * 64,
         run_id="RUN-007-001",
         checkpoint_ordinal=1,
         executor="codex",
-        delivery_mode="AUTHENTIC_NATIVE_RECIPIENT",
         correlation_digest="3" * 64,
     )
     assert receipt.receipt_id == "1" * 64
@@ -1491,7 +1491,7 @@ def test_codex_adapter_native_receipt_dataclass() -> None:
     assert receipt.run_id == "RUN-007-001"
     assert receipt.checkpoint_ordinal == 1
     assert receipt.executor == "codex"
-    assert receipt.delivery_mode == "AUTHENTIC_NATIVE_RECIPIENT"
+    assert receipt.delivery_mode == "UNAVAILABLE"
     assert receipt.correlation_digest == "3" * 64
 
 
@@ -1506,13 +1506,51 @@ def test_codex_adapter_recipient_acknowledgment_dataclass() -> None:
     assert ack.feedback_digest == "2" * 64
     assert ack.acknowledged is True
     assert ack.recipient_identity == "codex-test-recipient"
+    assert ack.delivery_mode == "SIMULATED_CONTRACT"
 
 
-def test_codex_adapter_rejects_injected_synthetic_callback() -> None:
-    synthetic = lambda fb, rid: True
-    adapter = CodexAdapter(native_probe=synthetic)
+def test_codex_adapter_legacy_named_probe_is_only_a_simulated_contract() -> None:
+    task, run, _, _ = make_execution()
+
+    class FakeFeedback:
+        digest = "a" * 64
+        data = {"binding": {"run_id": run.run_id, "task_id": task.task_id, "checkpoint_ordinal": 1}}
+
+    probe = AuthenticCodexProbe()
+    echo = probe.confirm_authentic_native_delivery(
+        feedback=FakeFeedback(), receipt_id="1" * 64, run=run, task=task,
+        lease=None, profile=None, checkpoint_ordinal=1, checkpoint_digest="b" * 64,
+    )
+    assert echo.acknowledged is True
+    assert echo.delivery_mode == "SIMULATED_CONTRACT"
+    assert echo.recipient_identity.startswith("simulated-codex-recipient:")
+    adapter = CodexAdapter(native_probe=probe)
     assert adapter.has_native_probe is False
-    assert adapter.native_probe is synthetic
+    assert adapter.last_native_receipt is None
+    assert adapter.receipt_history == ()
+
+
+@pytest.mark.parametrize("probe_kind", ["callable", "method-named", "legacy-fixture", "runner-attribute"])
+def test_codex_adapter_rejects_injected_synthetic_callback(probe_kind: str) -> None:
+    task, run, _, _ = make_execution()
+    probe_calls = []
+    process_calls = []
+
+    class MethodNamedProbe:
+        def confirm_authentic_native_delivery(self, **kwargs):
+            probe_calls.append(kwargs)
+            return CodexRecipientAcknowledgment(kwargs["receipt_id"], kwargs["feedback"].digest)
+
+        confirm_native_delivery = confirm_authentic_native_delivery
+
+    def synthetic_callback(*args, **kwargs):
+        probe_calls.append((args, kwargs))
+        return True
+
+    synthetic = (
+        synthetic_callback if probe_kind == "callable" else
+        AuthenticCodexProbe() if probe_kind == "legacy-fixture" else MethodNamedProbe()
+    )
 
     class FakeFeedback:
         digest = "a" * 64
@@ -1525,7 +1563,33 @@ def test_codex_adapter_rejects_injected_synthetic_callback() -> None:
             }
         }
 
-    # Calling outside execution thread raises outside-thread error
+    def runner(command, **kwargs):
+        process_calls.append(command)
+        with pytest.raises(CodexNativeProbeAbsentError, match="source-bound native-probe absent: ONE_SHOT_CODEX_CLI_HAS_NO_AUTHENTICATED_LIVE_FEEDBACK_CHANNEL") as exc_info:
+            adapter.confirm_local_feedback(feedback=FakeFeedback(), receipt_id="1" * 64)
+        assert exc_info.value.exit_code is None
+        assert exc_info.value.stdout is None
+        assert exc_info.value.stderr is None
+        return subprocess.CompletedProcess(command, returncode=0, stdout=successful_output(run.run_id), stderr="")
+
+    if probe_kind == "runner-attribute":
+        runner.native_probe = synthetic
+        adapter = CodexAdapter(runner=runner)
+    else:
+        adapter = CodexAdapter(runner=runner, native_probe=synthetic)
+    assert adapter.has_native_probe is False
+    assert adapter.native_probe is synthetic
+
+    # The guard applies inside the original execute() stack as well as outside it.
+    with pytest.raises(CodexNativeDeliveryError, match="outside native execution thread"):
+        adapter.confirm_local_feedback(feedback=FakeFeedback(), receipt_id="1" * 64)
+    assert adapter.execute(task=task, run=run).result.head_sha == "def456"
+    assert len(process_calls) == 1
+    assert probe_calls == []
+    if isinstance(synthetic, AuthenticCodexProbe):
+        assert synthetic.acknowledged_deliveries == []
+    assert adapter.last_native_receipt is None
+    assert adapter.receipt_history == ()
     with pytest.raises(CodexNativeDeliveryError, match="outside native execution thread"):
         adapter.confirm_local_feedback(feedback=FakeFeedback(), receipt_id="1" * 64)
 

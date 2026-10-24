@@ -132,12 +132,13 @@ class CodexNativeDeliveryError(CodexExecutionError):
 
 @dataclass(frozen=True, slots=True)
 class CodexRecipientAcknowledgment:
-    """Explicit recipient acknowledgment from the authentic live native recipient."""
+    """Local contract echo; its fields do not authenticate a native recipient."""
 
     receipt_id: str
     feedback_digest: str
     acknowledged: bool = True
     recipient_identity: str = ""
+    delivery_mode: str = "SIMULATED_CONTRACT"
 
     def __post_init__(self) -> None:
         from .verification_contract import _original_hash
@@ -148,14 +149,14 @@ class CodexRecipientAcknowledgment:
 
 @dataclass(frozen=True, slots=True)
 class CodexNativeReceipt:
-    """Source-correlated receipt proving authentic native recipient delivery."""
+    """Receipt-shaped data, never independent evidence of native delivery."""
 
     receipt_id: str
     feedback_digest: str
     run_id: str
     checkpoint_ordinal: int
     executor: str = "codex"
-    delivery_mode: str = "AUTHENTIC_NATIVE_RECIPIENT"
+    delivery_mode: str = "UNAVAILABLE"
     correlation_digest: str = ""
 
     def __post_init__(self) -> None:
@@ -168,7 +169,12 @@ class CodexNativeReceipt:
 
 
 class AuthenticCodexProbe:
-    """Source-authenticated native recipient probe for live Codex execution."""
+    """Legacy-named synthetic contract probe, without a live Codex channel.
+
+    Retained for compatibility with local fixtures. Neither this object nor
+    its method names, echo or generated identity authenticate native delivery.
+    CodexAdapter never invokes an injected probe as a provider transport.
+    """
 
     def __init__(
         self,
@@ -232,7 +238,7 @@ class AuthenticCodexProbe:
             receipt_id=receipt_id,
             feedback_digest=feedback.digest,
             acknowledged=True,
-            recipient_identity=f"codex-recipient:{run.run_id}:{checkpoint_ordinal}",
+            recipient_identity=f"simulated-codex-recipient:{run.run_id}:{checkpoint_ordinal}",
         )
 
     confirm_native_delivery = confirm_authentic_native_delivery
@@ -277,29 +283,34 @@ class CodexAdapter:
 
     @property
     def native_probe(self) -> Any:
-        """Return the bound native probe, if any."""
+        """Return an untrusted compatibility fixture, never delivery authority."""
         if self._native_probe is not None:
             return self._native_probe
         return getattr(self._runner, "native_probe", None)
 
     @property
     def has_native_probe(self) -> bool:
-        """Return whether an authentic native recipient probe is established."""
-        probe = self.native_probe
-        if probe is None:
-            return False
-        return hasattr(probe, "confirm_authentic_native_delivery") or hasattr(
-            probe, "confirm_native_delivery"
-        )
+        """The one-shot CLI has no independently authenticated feedback channel.
+
+        Python callbacks and runner attributes cannot establish delivery to the
+        original live Codex recipient. A future supported transport must prove
+        that independently before this capability can become available.
+        """
+        return False
+
+    @property
+    def native_feedback_unavailable_reason(self) -> str:
+        """Bounded source-bound explanation, without provider or local raw data."""
+        return "ONE_SHOT_CODEX_CLI_HAS_NO_AUTHENTICATED_LIVE_FEEDBACK_CHANNEL"
 
     @property
     def last_native_receipt(self) -> CodexNativeReceipt | None:
-        """Return the latest source-correlated native delivery receipt, if any."""
+        """No native receipt is available without an authenticated channel."""
         return self._last_receipt
 
     @property
     def receipt_history(self) -> tuple[CodexNativeReceipt, ...]:
-        """Return all source-correlated native receipts recorded during execution."""
+        """Return native receipts only; synthetic probe echoes are never recorded."""
         return tuple(self._receipt_history)
 
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
@@ -373,10 +384,13 @@ class CodexAdapter:
         feedback: Any,
         receipt_id: str,
     ) -> Any:
-        """Confirm feedback delivery to the live native Codex recipient."""
-        import hashlib
+        """Reject native confirmation until original live delivery is provable.
+
+        Runtime owns source/profile/checkpoint authentication and its replay
+        fence. Keep local binding guards, but never promote a fixture echo or
+        subprocess completion to LocalFeedbackConfirmation or a native receipt.
+        """
         import threading
-        from .intra_run_proof_contract import LocalFeedbackConfirmation
 
         current_thread = threading.get_ident()
         if self._execution_thread is None or current_thread != self._execution_thread:
@@ -384,17 +398,6 @@ class CodexAdapter:
 
         if self._active_run is None or self._active_task is None:
             raise CodexNativeDeliveryError("no active live native invocation established")
-
-        probe = self.native_probe
-        if probe is None:
-            raise CodexNativeProbeAbsentError(
-                "source-bound native-probe absent: live Codex delivery cannot be proven"
-            )
-
-        if not self.has_native_probe:
-            raise CodexNativeDeliveryError(
-                "injected synthetic callback cannot prove authentic native recipient delivery"
-            )
 
         fb_data = getattr(feedback, "data", None)
         if not isinstance(fb_data, Mapping):
@@ -414,19 +417,12 @@ class CodexAdapter:
             )
 
         checkpoint_ordinal = binding.get("checkpoint_ordinal")
-        if not isinstance(checkpoint_ordinal, int) or checkpoint_ordinal < 1:
+        if type(checkpoint_ordinal) is not int or checkpoint_ordinal < 1:
             raise CodexNativeDeliveryError("malformed feedback: invalid checkpoint ordinal")
 
         checkpoint_digest = binding.get("checkpoint_digest")
         if not checkpoint_digest or not isinstance(checkpoint_digest, str):
             raise CodexNativeDeliveryError("malformed feedback: missing checkpoint digest")
-
-        feedback_digest = getattr(feedback, "digest", None)
-        if any(
-            r.receipt_id == receipt_id or r.feedback_digest == feedback_digest
-            for r in self._receipt_history
-        ):
-            raise CodexNativeDeliveryError("feedback replay rejected: receipt or feedback already confirmed")
 
         if self._active_lease is not None:
             if getattr(self._active_lease, "run_id", None) != self._active_run.run_id:
@@ -439,59 +435,9 @@ class CodexAdapter:
             ):
                 raise CodexNativeDeliveryError("lease loss: lease holder changed or lost")
 
-        if hasattr(probe, "confirm_authentic_native_delivery"):
-            probe_result = probe.confirm_authentic_native_delivery(
-                feedback=feedback,
-                receipt_id=receipt_id,
-                run=self._active_run,
-                task=self._active_task,
-                lease=self._active_lease,
-                profile=self._execution_profile,
-                checkpoint_ordinal=checkpoint_ordinal,
-                checkpoint_digest=checkpoint_digest,
-            )
-        elif hasattr(probe, "confirm_native_delivery"):
-            try:
-                probe_result = probe.confirm_native_delivery(
-                    feedback=feedback,
-                    receipt_id=receipt_id,
-                    run=self._active_run,
-                    task=self._active_task,
-                    lease=self._active_lease,
-                    profile=self._execution_profile,
-                    checkpoint_ordinal=checkpoint_ordinal,
-                    checkpoint_digest=checkpoint_digest,
-                )
-            except TypeError:
-                probe_result = probe.confirm_native_delivery(
-                    feedback=feedback, receipt_id=receipt_id
-                )
-        else:
-            raise CodexNativeDeliveryError(
-                "injected synthetic callback cannot prove authentic native recipient delivery"
-            )
-
-        if probe_result is False or probe_result is None:
-            raise CodexNativeDeliveryError("native probe rejected delivery")
-        if isinstance(probe_result, CodexRecipientAcknowledgment) and not probe_result.acknowledged:
-            raise CodexNativeDeliveryError("native probe rejected delivery")
-
-        correlation_input = f"{self._active_run.run_id}:{checkpoint_ordinal}:{receipt_id}:{feedback.digest}"
-        correlation_digest = hashlib.sha256(correlation_input.encode("ascii")).hexdigest()
-
-        receipt = CodexNativeReceipt(
-            receipt_id=receipt_id,
-            feedback_digest=feedback.digest,
-            run_id=self._active_run.run_id,
-            checkpoint_ordinal=checkpoint_ordinal,
-            executor=self.executor,
-            delivery_mode="AUTHENTIC_NATIVE_RECIPIENT",
-            correlation_digest=correlation_digest,
+        raise CodexNativeProbeAbsentError(
+            "source-bound native-probe absent: " + self.native_feedback_unavailable_reason
         )
-        self._last_receipt = receipt
-        self._receipt_history.append(receipt)
-
-        return LocalFeedbackConfirmation(receipt_id, feedback.digest)
 
     confirm_native_feedback = confirm_local_feedback
 
