@@ -1,12 +1,14 @@
 # CAA v1: finite advisory roadmap
 
-The explicit Human decision of 2026-10-24 selects **CAA-03 / TASK-412 r2**
-as the sole prospective NEXT in `.ai/roadmap-state.yaml`: option B, one minimal
-optional four-flow advisor. The new `human_caa03_optional_integration_20261024`
-record supersedes only the prospective CAA-02 selection. The original
+The explicit Human decision of 2026-10-24 selects **CAA-04 / TASK-414 r2**
+as the sole prospective NEXT in `.ai/roadmap-state.yaml`: option B, one finite
+independent evaluation, opt-in shadow observer and Human rollout report. The new
+`human_caa04_evaluation_shadow_20261024` record supersedes only the prospective
+CAA-03 selection. The `human_caa03_optional_integration_20261024` record
+preserves that selection and its accepted CAA-03 engineering lineage. The original
 `human_caa_v1_priority_20261023` record preserves the 2026-10-23 CAA-02 / TASK-410 r1
-selection and its earlier CAA-01 approval unchanged as history. CAA-04 remains
-unselected without a TASK ID; CAA-05 remains conditional and unselected. The
+selection and its earlier CAA-01 approval unchanged as history. CAA-04 is the
+only newly selected package; CAA-05 remains conditional and unselected. The
 four packages remain finite, separately authorized work. A RUN, RESULT, REVIEW or publication cannot
 advance this plan. Only an explicit Human/Brain decision can select a package.
 
@@ -23,12 +25,18 @@ The exact accepted CAA-02 lineage is TASK-410 r1 / RUN-410-002, RESULT artifacts
 at decision `bf7b3baf65fa45e056caac5e634543d387f5087e`, on reviewed source
 `8327f421df0c3e477e9a405b69bf7e5910cddca5`, included on main. The supplied
 architecture handoff observes main `749cd197e55eadb36e8876db104c333a021f4915`;
-Runtime reauthenticates source currentness. This records accepted predecessor
-lineage, without declaring TASK-412 complete or enabling production use.
+Runtime reauthenticates source currentness. That earlier selection recorded
+CAA-02 lineage without then declaring TASK-412 complete or enabling production use.
 
-The selected contract is [CAA-03 integration and portability](AIOS-CAA-03-INTEGRATION-PORTABILITY.md).
-It wraps the existing [CAA-02 reasoner](AIOS-CAA-02-INTELLIGENT-REASONER.md), whose
-original TASK-410 scope still excludes flow integration and shadow/rollout.
+The selected contract is [CAA-04 evaluation, shadow and rollout](AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md).
+It consumes the existing [CAA-03 integration](AIOS-CAA-03-INTEGRATION-PORTABILITY.md)
+and [CAA-02 reasoner](AIOS-CAA-02-INTELLIGENT-REASONER.md) without changing either.
+The supplied predecessor is TASK-412 r2 / RUN-412-009, independent PRIMARY
+REVIEW-412-009 PASS on exact source `7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9`,
+with decision commit `6c6490fe41333842b5030e6f011cf07f11bf82b3`, included on main.
+Runtime independently reauthenticates that lineage. This selection neither
+authorizes a decisive holdout/shadow collection nor activates production advice;
+those require separately authenticated exact Human decisions.
 TASK-411 r2 Publisher root-cause work and all its historical/prospective lineage
 remain separate and unchanged; this plan makes no TASK-411 completion claim.
 TASK-412 r2 only adds permission for the exact-source historical CAA-02 fixture
@@ -137,6 +145,7 @@ Runtime alone executes TASK-410's authored minimum-sufficient-v1 verification;
 its exact commands remain in immutable TASK-410. TASK-412's canonical checks
 also belong solely to Runtime. Its deterministic mapping/JSON fixtures are
 simulations, without live GPT/Claude/Gemini equivalence or superiority claims.
-CAA-04 holdout/shadow and CAA-05 training remain unselected. Executor implementation-local
+Decisive CAA-04 evaluation is callable only under its separate plan and opt-in gates;
+CAA-05 training remains unselected. Executor implementation-local
 syntax/read sanity is not canonical verification or EVIDENCE. This roadmap records no CAA training, evaluation result, default
 activation, later package completion or production quality improvement.
