@@ -114,6 +114,10 @@ def test_preregistered_case_swap_stops_before_provider(tmp_path, field):
     plan = plan_for(subject)
     item = plan["cohorts"]["SHADOW"][subject.case_id]
     item[field] = "ARCHITECTURE" if field == "flow" else "0" * (40 if field == "as_of_sha" else 64)
+    if field == "cut_digest":
+        # Keep the alternate cut valid for this plan so the exact subject
+        # binding, rather than the plan allowlist, rejects the swap.
+        plan["source"]["allowed_cut_digests"].append(item[field])
     observer = session(case, subject, plan)
     with pytest.raises(evaluation.EvaluationError, match="SUBJECT_NOT_PREREGISTERED"):
         observer.evaluate(subject, opt_in=True)
