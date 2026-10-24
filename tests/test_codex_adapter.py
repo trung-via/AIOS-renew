@@ -23,9 +23,11 @@ from aios_renew import (
 from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.review import RemediationExecution
 from aios_renew.codex_adapter import (
+    AuthenticCodexProbe,
     CodexNativeDeliveryError,
     CodexNativeProbeAbsentError,
     CodexNativeReceipt,
+    CodexRecipientAcknowledgment,
     FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH,
     REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
     REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
@@ -1491,5 +1493,41 @@ def test_codex_adapter_native_receipt_dataclass() -> None:
     assert receipt.executor == "codex"
     assert receipt.delivery_mode == "AUTHENTIC_NATIVE_RECIPIENT"
     assert receipt.correlation_digest == "3" * 64
+
+
+def test_codex_adapter_recipient_acknowledgment_dataclass() -> None:
+    ack = CodexRecipientAcknowledgment(
+        receipt_id="1" * 64,
+        feedback_digest="2" * 64,
+        acknowledged=True,
+        recipient_identity="codex-test-recipient",
+    )
+    assert ack.receipt_id == "1" * 64
+    assert ack.feedback_digest == "2" * 64
+    assert ack.acknowledged is True
+    assert ack.recipient_identity == "codex-test-recipient"
+
+
+def test_codex_adapter_rejects_injected_synthetic_callback() -> None:
+    synthetic = lambda fb, rid: True
+    adapter = CodexAdapter(native_probe=synthetic)
+    assert adapter.has_native_probe is False
+    assert adapter.native_probe is synthetic
+
+    class FakeFeedback:
+        digest = "a" * 64
+        data = {
+            "binding": {
+                "run_id": "RUN-007-001",
+                "task_id": "TASK-007",
+                "checkpoint_ordinal": 1,
+                "checkpoint_digest": "b" * 64,
+            }
+        }
+
+    # Calling outside execution thread raises outside-thread error
+    with pytest.raises(CodexNativeDeliveryError, match="outside native execution thread"):
+        adapter.confirm_local_feedback(feedback=FakeFeedback(), receipt_id="1" * 64)
+
 
 

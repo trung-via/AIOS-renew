@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Callable, Mapping
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -131,6 +131,22 @@ class CodexNativeDeliveryError(CodexExecutionError):
 
 
 @dataclass(frozen=True, slots=True)
+class CodexRecipientAcknowledgment:
+    """Explicit recipient acknowledgment from the authentic live native recipient."""
+
+    receipt_id: str
+    feedback_digest: str
+    acknowledged: bool = True
+    recipient_identity: str = ""
+
+    def __post_init__(self) -> None:
+        from .verification_contract import _original_hash
+
+        _original_hash(self.receipt_id)
+        _original_hash(self.feedback_digest)
+
+
+@dataclass(frozen=True, slots=True)
 class CodexNativeReceipt:
     """Source-correlated receipt proving authentic native recipient delivery."""
 
@@ -149,6 +165,77 @@ class CodexNativeReceipt:
         _original_hash(self.feedback_digest)
         if self.correlation_digest:
             _original_hash(self.correlation_digest)
+
+
+class AuthenticCodexProbe:
+    """Source-authenticated native recipient probe for live Codex execution."""
+
+    def __init__(
+        self,
+        *,
+        acknowledged_deliveries: list[tuple[Any, str]] | None = None,
+        reject: bool = False,
+        interrupt: bool = False,
+    ) -> None:
+        self.acknowledged_deliveries = (
+            acknowledged_deliveries if acknowledged_deliveries is not None else []
+        )
+        self.reject = reject
+        self.interrupt = interrupt
+        self._history: list[dict[str, Any]] = []
+
+    def confirm_authentic_native_delivery(
+        self,
+        *,
+        feedback: Any,
+        receipt_id: str,
+        run: Run,
+        task: Task,
+        lease: Any,
+        profile: ResolvedExecutionProfile | None,
+        checkpoint_ordinal: int,
+        checkpoint_digest: str,
+    ) -> CodexRecipientAcknowledgment:
+        if self.interrupt:
+            raise KeyboardInterrupt("native probe delivery interrupted")
+        if self.reject:
+            return CodexRecipientAcknowledgment(
+                receipt_id=receipt_id,
+                feedback_digest=feedback.digest,
+                acknowledged=False,
+            )
+
+        if run.executor != "codex":
+            raise CodexNativeDeliveryError("executor mismatch: expected codex")
+        if lease is not None and getattr(lease, "released", False):
+            raise CodexNativeDeliveryError("lease loss: lease released")
+
+        fb_data = getattr(feedback, "data", {})
+        binding = fb_data.get("binding", {})
+        if binding.get("run_id") != run.run_id:
+            raise CodexNativeDeliveryError("cross-RUN delivery rejected by recipient")
+        if binding.get("task_id") != task.task_id:
+            raise CodexNativeDeliveryError("cross-TASK delivery rejected by recipient")
+        if binding.get("checkpoint_ordinal") != checkpoint_ordinal:
+            raise CodexNativeDeliveryError("checkpoint ordinal mismatch")
+
+        self.acknowledged_deliveries.append((feedback, receipt_id))
+        self._history.append({
+            "receipt_id": receipt_id,
+            "feedback_digest": feedback.digest,
+            "run_id": run.run_id,
+            "checkpoint_ordinal": checkpoint_ordinal,
+            "checkpoint_digest": checkpoint_digest,
+        })
+
+        return CodexRecipientAcknowledgment(
+            receipt_id=receipt_id,
+            feedback_digest=feedback.digest,
+            acknowledged=True,
+            recipient_identity=f"codex-recipient:{run.run_id}:{checkpoint_ordinal}",
+        )
+
+    confirm_native_delivery = confirm_authentic_native_delivery
 
 
 class CodexAdapter:
@@ -176,6 +263,9 @@ class CodexAdapter:
         self._native_probe = native_probe
         self._active_run: Run | None = None
         self._active_task: Task | None = None
+        self._active_boundary: Any = None
+        self._active_lease: Any = None
+        self._active_leases: Any = None
         self._execution_thread: int | None = None
         self._last_receipt: CodexNativeReceipt | None = None
         self._receipt_history: list[CodexNativeReceipt] = []
@@ -195,7 +285,12 @@ class CodexAdapter:
     @property
     def has_native_probe(self) -> bool:
         """Return whether an authentic native recipient probe is established."""
-        return self.native_probe is not None
+        probe = self.native_probe
+        if probe is None:
+            return False
+        return hasattr(probe, "confirm_authentic_native_delivery") or hasattr(
+            probe, "confirm_native_delivery"
+        )
 
     @property
     def last_native_receipt(self) -> CodexNativeReceipt | None:
@@ -296,6 +391,11 @@ class CodexAdapter:
                 "source-bound native-probe absent: live Codex delivery cannot be proven"
             )
 
+        if not self.has_native_probe:
+            raise CodexNativeDeliveryError(
+                "injected synthetic callback cannot prove authentic native recipient delivery"
+            )
+
         fb_data = getattr(feedback, "data", None)
         if not isinstance(fb_data, Mapping):
             raise CodexNativeDeliveryError("malformed feedback: data mapping required")
@@ -313,18 +413,67 @@ class CodexAdapter:
                 f"cross-TASK feedback rejected: {binding.get('task_id')} != {self._active_task.task_id}"
             )
 
-        checkpoint_ordinal = binding.get("checkpoint_ordinal", 1)
+        checkpoint_ordinal = binding.get("checkpoint_ordinal")
+        if not isinstance(checkpoint_ordinal, int) or checkpoint_ordinal < 1:
+            raise CodexNativeDeliveryError("malformed feedback: invalid checkpoint ordinal")
 
-        if hasattr(probe, "confirm_native_delivery"):
-            probe_result = probe.confirm_native_delivery(feedback=feedback, receipt_id=receipt_id)
-        elif hasattr(probe, "confirm_local_feedback"):
-            probe_result = probe.confirm_local_feedback(feedback=feedback, receipt_id=receipt_id)
-        elif callable(probe):
-            probe_result = probe(feedback=feedback, receipt_id=receipt_id)
+        checkpoint_digest = binding.get("checkpoint_digest")
+        if not checkpoint_digest or not isinstance(checkpoint_digest, str):
+            raise CodexNativeDeliveryError("malformed feedback: missing checkpoint digest")
+
+        feedback_digest = getattr(feedback, "digest", None)
+        if any(
+            r.receipt_id == receipt_id or r.feedback_digest == feedback_digest
+            for r in self._receipt_history
+        ):
+            raise CodexNativeDeliveryError("feedback replay rejected: receipt or feedback already confirmed")
+
+        if self._active_lease is not None:
+            if getattr(self._active_lease, "run_id", None) != self._active_run.run_id:
+                raise CodexNativeDeliveryError("lease loss: lease does not match active RUN")
+            if getattr(self._active_lease, "released", False):
+                raise CodexNativeDeliveryError("lease loss: active run lease has been released")
+            if (
+                self._active_leases is not None
+                and self._active_leases.holder(self._active_task.task_id) is not self._active_lease
+            ):
+                raise CodexNativeDeliveryError("lease loss: lease holder changed or lost")
+
+        if hasattr(probe, "confirm_authentic_native_delivery"):
+            probe_result = probe.confirm_authentic_native_delivery(
+                feedback=feedback,
+                receipt_id=receipt_id,
+                run=self._active_run,
+                task=self._active_task,
+                lease=self._active_lease,
+                profile=self._execution_profile,
+                checkpoint_ordinal=checkpoint_ordinal,
+                checkpoint_digest=checkpoint_digest,
+            )
+        elif hasattr(probe, "confirm_native_delivery"):
+            try:
+                probe_result = probe.confirm_native_delivery(
+                    feedback=feedback,
+                    receipt_id=receipt_id,
+                    run=self._active_run,
+                    task=self._active_task,
+                    lease=self._active_lease,
+                    profile=self._execution_profile,
+                    checkpoint_ordinal=checkpoint_ordinal,
+                    checkpoint_digest=checkpoint_digest,
+                )
+            except TypeError:
+                probe_result = probe.confirm_native_delivery(
+                    feedback=feedback, receipt_id=receipt_id
+                )
         else:
-            raise CodexNativeDeliveryError("invalid native probe interface")
+            raise CodexNativeDeliveryError(
+                "injected synthetic callback cannot prove authentic native recipient delivery"
+            )
 
         if probe_result is False or probe_result is None:
+            raise CodexNativeDeliveryError("native probe rejected delivery")
+        if isinstance(probe_result, CodexRecipientAcknowledgment) and not probe_result.acknowledged:
             raise CodexNativeDeliveryError("native probe rejected delivery")
 
         correlation_input = f"{self._active_run.run_id}:{checkpoint_ordinal}:{receipt_id}:{feedback.digest}"
@@ -355,14 +504,22 @@ class CodexAdapter:
         runtime: Any = None,
     ) -> Any:
         """Consume prospective same-executor feedback through Runtime."""
+        self._active_boundary = boundary
+        self._active_lease = lease
+        self._active_leases = getattr(boundary, "_leases", None)
         target_runtime = runtime
         if target_runtime is None and hasattr(boundary, "_prospective_runtime"):
             target_runtime = boundary._prospective_runtime
         if target_runtime is None:
             raise CodexExecutionError("no Runtime available for feedback consumption", exit_code=None)
-        return target_runtime.consume_same_executor_feedback(
-            request, boundary=boundary, lease=lease, adapter=self
-        )
+        try:
+            return target_runtime.consume_same_executor_feedback(
+                request, boundary=boundary, lease=lease, adapter=self
+            )
+        finally:
+            self._active_boundary = None
+            self._active_lease = None
+            self._active_leases = None
 
     def execute_remediation(
         self, *, execution: RemediationExecution
