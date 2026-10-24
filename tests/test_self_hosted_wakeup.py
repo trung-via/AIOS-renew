@@ -638,9 +638,10 @@ def _capture_nonpass_workflow_delivery(tmp_path, fixture, monkeypatch, dispatch_
     return args[2:], receipt_path, blob, profile, control_source
 
 
-@pytest.mark.parametrize("qualified", [True, False], ids=["reviewed-changes-required", "deficient-reviewed-result"])
+@pytest.mark.parametrize("qualified", [True, False], ids=["qualified", "invalid-proof"])
+@pytest.mark.parametrize("preservation", ["reviewed-result", "six-failures"])
 def test_nonpass_primary_workflow_bindings_runtime_admission_and_terminal_redelivery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qualified: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qualified: bool, preservation: str,
 ) -> None:
     """Synthetic real Git and real admission with simulated native/verification I/O.
 
@@ -648,19 +649,32 @@ def test_nonpass_primary_workflow_bindings_runtime_admission_and_terminal_redeli
     """
     from aios_renew.dispatch_reconciliation import DispatchError, inspect_dispatch
     from tests.test_operator import (
-        FakeCodexRunner, _nonpass_primary_divergence, _replace_nonpass_proof, git,
+        FakeCodexRunner, _multiple_failure_primary_divergence, _nonpass_primary_divergence,
+        _replace_multiple_failure_proof, _replace_nonpass_proof, git,
     )
 
     monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
-    fixture = _nonpass_primary_divergence(tmp_path)
-    dispatch_id = "synthetic-361-positive" if qualified else "synthetic-361-negative"
+    fixture = (_nonpass_primary_divergence(tmp_path) if preservation == "reviewed-result"
+               else _multiple_failure_primary_divergence(tmp_path))
+    dispatch_id = f"synthetic-413-{preservation}-{'positive' if qualified else 'negative'}"
     if not qualified:
         # Private error text may be captured locally, never in the public receipt.
-        fixture.review["findings"][0]["basis"] = "credential=synthetic-secret C:/private/no-share"
-        _replace_nonpass_proof(fixture, review=True)
-    source_refs = git(fixture.remote, "for-each-ref", "--format=%(refname) %(objectname)",
-                      "refs/heads/aios/review/RUN-359-002", "refs/heads/aios/artifacts/RUN-359-002",
-                      "refs/heads/aios/review-decision/RUN-359-002", "refs/heads/main")
+        if preservation == "reviewed-result":
+            fixture.review["findings"][0]["basis"] = "credential=synthetic-secret C:/private/no-share"
+            _replace_nonpass_proof(fixture, review=True)
+        else:
+            member = fixture.members[-1]
+            failure = json.loads(git(fixture.repo, "show", f"{member.artifact}:.ai/transport/failure.json"))
+            failure["error"]["message"] = "credential=synthetic-secret C:/private/no-share"
+            _replace_multiple_failure_proof(fixture, failure=failure)
+    source_ids = ([member.run_id for member in fixture.members] if preservation == "six-failures"
+                  else ["RUN-359-002"])
+    source_patterns = tuple(f"refs/heads/aios/{family}/{run_id}" for family in (
+        "failure", "failure-artifacts", "review", "artifacts", "review-decision",
+    ) for run_id in source_ids) + ("refs/heads/main",)
+    source_refs = git(fixture.remote, "for-each-ref", "--format=%(refname) %(objectname)", *source_patterns)
+    history = {directory: {path.name: path.read_bytes() for path in (fixture.state.root / directory).glob("*.json")}
+               for directory in ("runs", "failures", "repairs", "remediations")}
     argv, receipt_path, blob, profile, control_source = _capture_nonpass_workflow_delivery(
         tmp_path, fixture, monkeypatch, dispatch_id,
     )
@@ -686,9 +700,7 @@ def test_nonpass_primary_workflow_bindings_runtime_admission_and_terminal_redeli
 
     code = operator.main(argv, native_runner=runner, verification_runner=verify)
     assert code == (0 if qualified else 1)
-    assert git(fixture.remote, "for-each-ref", "--format=%(refname) %(objectname)",
-               "refs/heads/aios/review/RUN-359-002", "refs/heads/aios/artifacts/RUN-359-002",
-               "refs/heads/aios/review-decision/RUN-359-002", "refs/heads/main") == source_refs
+    assert git(fixture.remote, "for-each-ref", "--format=%(refname) %(objectname)", *source_patterns) == source_refs
     journal_path = next((fixture.state.root / "dispatches").glob("*.json"))
     journal_bytes = journal_path.read_bytes()
     journal = json.loads(journal_bytes)
@@ -723,11 +735,18 @@ def test_nonpass_primary_workflow_bindings_runtime_admission_and_terminal_redeli
         assert len(public_receipt) < 4096
         for private in ("synthetic-secret", "C:/private", str(fixture.repo)):
             assert private not in public_receipt
-        for directory in ("failures", "repairs", "remediations"):
-            assert not list((fixture.state.root / directory).glob("*.json"))
+        for directory, originals in history.items():
+            assert {path.name: path.read_bytes() for path in (fixture.state.root / directory).glob("*.json")} == originals
+        if preservation == "six-failures":
+            diagnostics = [json.loads(path.read_bytes()) for path in fixture.state.admission_failures.glob("*.json")]
+            assert len(diagnostics) == 1
+            assert diagnostics[0]["error"]["message"] == "FAILURE_PUBLIC_INTEGRITY_INVALID"
         # Even after proof is repaired, this delivery remains terminal without RUN.
-        fixture.review["findings"][0]["basis"] = "AC4"
-        _replace_nonpass_proof(fixture, review=True)
+        if preservation == "reviewed-result":
+            fixture.review["findings"][0]["basis"] = "AC4"
+            _replace_nonpass_proof(fixture, review=True)
+        else:
+            git(fixture.remote, "update-ref", f"refs/heads/aios/failure-artifacts/{member.run_id}", member.artifact)
 
     # A new clean checkout is observable, but cannot replace the configured journal.
     clean = tmp_path / "independent-clean"

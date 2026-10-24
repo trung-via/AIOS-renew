@@ -80,7 +80,7 @@ does not prove RUN creation or Executor invocation; inspect canonical RUN separa
 Runtime's existing H1R reconciliation runs only under the PRIMARY pre-RUN repository
 mutation lock. Equal main and clean stale-behind fast-forward retain their existing
 behavior. A clean diverged local main can synchronize automatically only when one
-unique exact canonical candidate preserves its complete local-only ancestry and
+exact proven preservation identity preserves its complete local-only ancestry and
 the current canonical main is independently reproved. Existing canonical FAILURE
 and reviewed-PASS preservation remain eligible. A reviewed CHANGES_REQUIRED or
 BLOCKED RESULT is also eligible **solely as history-preservation proof**: Runtime
@@ -90,7 +90,16 @@ predecessor lineage. CHANGES_REQUIRED requires acceptance FAIL and precise valid
 findings. BLOCKED alone supplies no proof; a deficient or unreviewed candidate
 remains ineligible. The original verdict, findings and remote refs remain unchanged.
 
-At the mutation edge Runtime rechecks immutable proof refs, current remote main,
+Multiple canonical FAILURE refs at exactly the same local HEAD may form that one
+identity. Runtime sorts the candidate refs and independently validates **every**
+RUN/FAILURE artifact, including TASK/revision, base/head, public source digest and
+distinct immutable artifacts. The group must agree on exact TASK source bytes,
+base/candidate and execution/correction provenance. A shared SHA, copied artifact,
+arbitrary alias or a mixture of FAILURE and reviewed RESULT cannot supply this
+proof. Reviewed RESULT retains its single exact canonical candidate contract.
+
+At the mutation edge Runtime rechecks every member and the complete membership
+and values of the preservation refs, current remote main,
 full ancestry, local HEAD, attached main/upstream binding and worktree safety.
 Tracked/untracked edits, hidden assume-unchanged or sparse content, ignored-path
 collisions, submodules, ambiguous upstream, remote unavailability, ahead-only
@@ -107,6 +116,34 @@ transient control source acquire no Git recovery or RUN-admission authority.
 | Missing, malformed, stale, conflicting or moved proof; unsafe local state; lock or generation conflict | Fail closed before RUN/Executor. Inspect the existing admission boundary and canonical source facts; never infer repair authority or perform a transport-side retry/reset. |
 | Pre-RUN synchronization refusal | Existing admission failure uses `phase=PRIMARY_SYNCHRONIZATION`, `reason_code=PRIMARY_SYNCHRONIZATION_REJECTED`; the bounded public operational receipt reports `run_created=false`, `executor_invoked=false`. Raw/private Git or host diagnostics stay local. |
 | Terminal dispatch or absent local continuity | Observe the original configured repository's durable dispatch record. A clean independent checkout cannot establish its terminal status or substitute its journal. |
+
+The bounded historical H1R case matrix is:
+
+| Historical family | Positive recovery | Blocked recovery |
+| --- | --- | --- |
+| Equal main / clean stale-behind | Existing no-op or exact fast-forward under PRIMARY. | Detached/non-main, dirty, ahead-only or ambiguous/unavailable upstream does not authorize destructive recovery. |
+| TASK-254 failure, closed by TASK-257 | One exact canonical FAILURE preserves all local-only history. | Missing, substituted, malformed or stale artifacts; wrong identity/SHA; extra unpreserved local commits. |
+| TASK-262 reviewed PASS, closed by TASK-264 | Complete bound RUN/RESULT/EVIDENCE and original canonical REVIEW preserve the candidate. | Unreviewed or conflicting candidate, forged/missing evidence, ambiguous refs or correction lineage. |
+| TASK-268 REVIEW bytes, closed by TASK-270 | Exact canonical REVIEW bytes retain LF, CRLF and trailing whitespace through validation. | Unequal metadata bytes remain unequal; normalization cannot repair a substitution. |
+| RUN-359-002 / TASK-360, closed by TASK-361 | Structurally complete CHANGES_REQUIRED or BLOCKED preserves history and original verdict/findings. | Deficient BLOCKED, invalid findings, changed decision, incomplete RESULT/EVIDENCE or lost journal continuity. |
+| TASK-412 six-FAILURE shape, addressed by TASK-413 | RUN-412-002 through RUN-412-007 independently prove the same candidate `9e589e74fe1bd714c6f4c41531372434284cfbf0`, with distinct artifacts and compatible source/base/lineage. | One invalid member, alias, differing source/revision/base/lineage, mixed proof families or added/removed/moved preservation refs blocks the entire group. |
+
+All rows retain tracked/untracked/hidden-edit, ignored-collision, submodule, lock,
+target-drift and safe-generation gates. A blocked pre-RUN case exposes the bounded
+admission reason (for example missing/conflicting FAILURE transport, TASK source
+drift or conflicting preservation identity) and the operational receipt's typed
+PRIMARY_SYNCHRONIZATION_REJECTED boundary with `run_created=false` and
+`executor_invoked=false`. It does not create synthetic canonical FAILURE lineage.
+
+Workflow `40064678027` refused synchronization before RUN/Executor; its refusal
+does not authenticate the six historical proofs. The Human-supplied one-off
+guarded script output `LOCAL_MAIN_RECOVERED` at
+`b9c0cd212baf3e2f7d669ba8966b4d623f960cbf` is operational history, not Runtime H1R
+verification or authority for another recovery route. Automatic recovery belongs
+only to the locked PRIMARY path described here. Synthetic regressions construct
+their own six typed proofs; the exact-SHA reproduction imports historical Git
+content from the supplied repository, without importing production refs or journal.
+These fixtures establish no live production proof or self-host success.
 
 Dispatch idempotency is local to the original `.git/aios` journal. Existing terminal
 FAILED-without-RUN and SUCCEEDED-with-RUN deliveries are non-executing replays on

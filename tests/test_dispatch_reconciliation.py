@@ -583,6 +583,52 @@ def test_terminal_h1r_delivery_preserves_original_journal_and_missing_journal_is
     assert path.read_bytes() == original_bytes
 
 
+def test_task413_valid_multiple_proofs_cannot_rearm_rejected_dispatch(tmp_path: Path, monkeypatch) -> None:
+    from tests.test_operator import _multiple_failure_primary_divergence, _reconciliation_snapshot, git
+
+    fixture = _multiple_failure_primary_divergence(tmp_path)
+    member = fixture.members[-1]
+    artifact_ref = f"refs/heads/aios/failure-artifacts/{member.run_id}"
+    git(fixture.remote, "update-ref", "-d", artifact_ref)
+    request = dict(repo=fixture.repo, state_root=fixture.state.root, dispatch_id="synthetic-413-terminal",
+        task_id="TASK-360", task_revision=1, executor="codex", task_commit_sha=fixture.target,
+        task_blob_sha=git(fixture.remote, "rev-parse", f"{fixture.target}:.ai/tasks/TASK-360.yaml"),
+        execution_profile=default_execution_profile("codex", "AUTHORIZATION", fixture.repo))
+    calls = []
+
+    def reject_before_run():
+        calls.append(True)
+        with pytest.raises(operator_module.OperatorError, match="missing or conflicting canonical FAILURE"):
+            operator_module._preflight_primary_sync(fixture.repo)
+        return DispatchInvocation(1)
+
+    first = execute_dispatch(**request, invoke_primary=reject_before_run)
+    journal = next((fixture.state.root / "dispatches").glob("*.json"))
+    original = journal.read_bytes()
+    assert first.status == "FAILED" and first.run_id is None
+    binding = json.loads(original)
+    for field in ("dispatch_id", "task_id", "task_revision", "task_blob_sha", "task_commit_sha", "executor"):
+        assert binding[field] == request[field]
+    for field in ("model", "reasoning_effort", "model_source", "effort_source"):
+        assert binding[field] == getattr(request["execution_profile"], field)
+    git(fixture.remote, "update-ref", artifact_ref, member.artifact)
+    before, refs = _reconciliation_snapshot(fixture.repo), git(fixture.remote, "show-ref")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("valid preservation cannot rearm an old terminal dispatch")
+
+    monkeypatch.setattr(operator_module, "_preflight_primary_sync", forbidden)
+    replay = execute_dispatch(**request, invoke_primary=forbidden)
+    assert replay.replayed and replay.status == "FAILED" and replay.run_id is None and replay.exit_code == 1
+    assert len(calls) == 1 and journal.read_bytes() == original
+    assert _reconciliation_snapshot(fixture.repo) == before and git(fixture.remote, "show-ref") == refs
+    clean = tmp_path / "independent-clean"
+    subprocess.run(["git", "clone", "--quiet", str(fixture.remote), str(clean)], check=True)
+    with pytest.raises(DispatchError, match="dispatch record does not exist"):
+        dispatch.inspect_dispatch(repo=clean, state_root=clean / ".git/aios", dispatch_id=request["dispatch_id"])
+    assert not (clean / ".git/aios").exists() and journal.read_bytes() == original
+
+
 def test_duplicate_while_original_invocation_is_active_reports_in_progress(
     tmp_path: Path,
 ) -> None:

@@ -13772,6 +13772,335 @@ def test_reconciliation_rechecks_proofs_before_any_reset(
     assert git(repo, "rev-parse", "HEAD") == (failure["base_sha"] if drift == "head" else failed)
 
 
+# TASK-413: all artifacts below are synthetic, including those using the exact
+# historical Git candidate. They do not authenticate the production RUNs.
+TASK_412_FAILED_HEAD = "9e589e74fe1bd714c6f4c41531372434284cfbf0"
+
+
+def _multiple_failure_primary_divergence(root: Path, *, historical: bool = False) -> SimpleNamespace:
+    repo = make_repo(root)
+    remote = root / "upstream.git"
+    if historical:
+        # Import immutable Git content only, never the original refs or journal.
+        # This bounded historical reproduction requires the supplied repository's
+        # TASK-412 object; it must not silently skip or substitute another SHA.
+        source = Path(__file__).resolve().parents[1]
+        git(repo, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=",
+            str(source), TASK_412_FAILED_HEAD)
+        base = git(repo, "rev-parse", f"{TASK_412_FAILED_HEAD}^")
+        git(repo, "reset", "--hard", base)
+    else:
+        task_path = ".ai/tasks/TASK-412.yaml"
+        (repo / task_path).write_text(TASK_SOURCE.replace("TASK-101", "TASK-412"), encoding="utf-8")
+        policy_path = ".ai/executor-profiles.yaml"
+        (repo / policy_path).write_bytes((Path(__file__).resolve().parents[1] / policy_path).read_bytes())
+        base = commit_setup_state(repo, task_path, policy_path, message="synthetic TASK-412 source")
+    git(repo, "push", "--quiet", "--force", "origin", f"{base}:refs/heads/main")
+    target = publish_upstream(repo, {
+        ".ai/tasks/TASK-360.yaml": TASK_SOURCE.replace("TASK-101", "TASK-360"),
+        "NEW_MAIN.txt": "synthetic main after six TASK-412 FAILURES\n",
+    })
+    if historical:
+        git(repo, "reset", "--hard", TASK_412_FAILED_HEAD)
+        candidate = TASK_412_FAILED_HEAD
+    else:
+        (repo / "OUTPUT.txt").write_text("earlier preserved work\n", encoding="utf-8")
+        commit_setup_state(repo, "OUTPUT.txt", message="synthetic earlier candidate ancestry")
+        (repo / "OUTPUT.txt").write_text("same failed candidate for six RUNs\n", encoding="utf-8")
+        candidate = commit_setup_state(repo, "OUTPUT.txt", message="synthetic shared TASK-412 candidate")
+    changed_files = git(repo, "diff", "--name-only", base, candidate).splitlines()
+    state = runtime_paths(repo)
+    members = []
+    for index in range(2, 8):
+        run_id = f"RUN-412-{index:03d}"
+        run = {
+            "run_id": run_id, "task": {"id": "TASK-412", "revision": 1}, "executor": "codex",
+            "base_sha": base, "workspace": str(repo), "head_sha": None, "status": "ACTIVE",
+        }
+        if index % 2 == 0:
+            # Historical omission and explicit legacy affinity are equivalent
+            # under the existing canonical selector parser.
+            run["return_affinity"] = {"kind": "LEGACY_REPOSITORY_DEFAULT_ROUTE"}
+        failure = {
+            "kind": "FAILURE", "run_id": run_id, "task": dict(run["task"]), "executor": "codex",
+            "base_sha": base, "failed_head_sha": candidate, "phase": "EXECUTION",
+            "candidate": {"transportable": True, "repairable": True, "dirty": False,
+                          "descends_from_base": True, "changed_files": changed_files, "outside_task_scope": []},
+            "error": {"type": "CodexExecutionError", "message": f"synthetic native failure {run_id}",
+                      "exit_code": 1, "verification": []},
+        }
+        member = SimpleNamespace(run_id=run_id, run=run, failure=failure,
+            run_path=state.runs / f"{run_id}.json", failure_path=state.failures / f"{run_id}.json")
+        member.run_path.write_bytes(json.dumps(run).encode())
+        member.failure_path.write_bytes(json.dumps(failure).encode())
+        artifact = transport_module._create_named_artifacts_commit(
+            repo, run_path=member.run_path, artifact_path=member.failure_path,
+            artifact_name="failure.json", run_id=run_id,
+        )
+        git(repo, "push", "--quiet", "origin", f"{candidate}:refs/heads/aios/failure/{run_id}",
+            f"{artifact}:refs/heads/aios/failure-artifacts/{run_id}")
+        member.artifact = artifact
+        members.append(member)
+    with RepositoryLock(state.lock):
+        pass
+    return SimpleNamespace(repo=repo, remote=remote, base=base, candidate=candidate,
+                           target=target, state=state, members=members)
+
+
+def _replace_multiple_failure_proof(fixture, index=-1, *, run=None, failure=None, private_original=False):
+    member = fixture.members[index]
+    if private_original:
+        member.run_path.write_bytes(json.dumps(run if run is not None else member.run).encode())
+        member.failure_path.write_bytes(json.dumps(failure if failure is not None else member.failure).encode())
+        replacement = transport_module._create_named_artifacts_commit(
+            fixture.repo, run_path=member.run_path, artifact_path=member.failure_path,
+            artifact_name="failure.json", run_id=member.run_id,
+        )
+    else:
+        replacement = member.artifact
+        for path, document in (("run", run), ("failure", failure)):
+            if document is not None:
+                replacement = _corrupt_preservation_artifact(
+                    fixture.repo, replacement, f".ai/transport/{path}.json", json.dumps(document).encode(),
+                )
+    git(fixture.remote, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=",
+        str(fixture.repo), replacement)
+    git(fixture.remote, "update-ref", f"refs/heads/aios/failure-artifacts/{member.run_id}", replacement)
+    return replacement
+
+
+@pytest.mark.parametrize("message", [
+    "Git command failed: credential=synthetic-secret C:/private/no-share remote@example.invalid",
+    "invalid canonical RUN JSON: duplicate key: C:/private/no-share",
+    "invalid canonical reviewed RESULT preservation: private REVIEW content C:/private/no-share",
+    "upstream fetch failed: https://private@example.invalid/repository C:/private/no-share",
+])
+def test_primary_reconciliation_public_rejection_withholds_raw_source_and_git_diagnostics(message):
+    public = operator_module._bounded_admission_message(OperatorError(message), phase="PRIMARY_SYNCHRONIZATION")
+    assert 0 < len(public) < 512
+    assert "inspect" in public or "restore canonical remote access" in public
+    for private in ("synthetic-secret", "C:/private", "example.invalid", "private REVIEW content"):
+        assert private not in public
+
+
+@pytest.mark.parametrize("historical", [False, True], ids=["portable-synthetic", "exact-9e589e7-history"])
+@pytest.mark.parametrize("reverse", [False, True], ids=["source-order", "reversed-source-order"])
+def test_primary_reconciliation_six_independent_task412_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, historical: bool, reverse: bool,
+) -> None:
+    fixture = _multiple_failure_primary_divergence(tmp_path, historical=historical)
+    repo, remote = fixture.repo, fixture.remote
+    before = _reconciliation_snapshot(repo)
+    refs = git(remote, "show-ref")
+    real_query, real_git = operator_module._exact_remote_refs, operator_module._git
+    calls, restarts, proven = [], [], []
+    real_prove = operator_module.prove_remote_failed_candidate
+
+    def query(*args, **kwargs):
+        items = list(real_query(*args, **kwargs).items())
+        return dict(reversed(items) if reverse else items)
+
+    def prove(*args, **kwargs):
+        proven.append(kwargs["failed_run_id"])
+        return real_prove(*args, **kwargs)
+
+    def record(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    def restart(root, *, argv, runner):
+        restarts.append(argv)
+        assert git(root, "rev-parse", "HEAD") == fixture.target
+        return 0
+
+    monkeypatch.setattr(operator_module, "_exact_remote_refs", query)
+    monkeypatch.setattr(operator_module, "prove_remote_failed_candidate", prove)
+    monkeypatch.setattr(operator_module, "_git", record)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", restart)
+    argv = ["wakeup", "synthetic-413", "TASK-360", "--executor", "codex"]
+    outcome = operator_module._preflight_primary_sync(repo, argv=argv)
+    assert outcome.restart_code == 0 and restarts == [argv]
+    assert proven == [member.run_id for member in fixture.members] * 2
+    after = _reconciliation_snapshot(repo)
+    assert after[:2] == ("refs/heads/main", fixture.target) and after[3] == ""
+    assert after[5] == before[5] and after[-1] == before[-1]
+    assert git(remote, "show-ref") == refs
+    assert len({member.artifact for member in fixture.members}) == 6
+    source_digests = set()
+    for member in fixture.members:
+        assert git(remote, "rev-parse", f"refs/heads/aios/failure/{member.run_id}") == fixture.candidate
+        document = json.loads(git(remote, "show", f"{member.artifact}:.ai/transport/failure.json"))
+        assert document["public_projection"]["private_failure_digest"] == transport_module._failure_digest(member.failure)
+        source_digests.add(document["public_projection"]["private_failure_digest"])
+        for sha in git(remote, "rev-list", fixture.candidate, "--not", fixture.target).splitlines():
+            assert operator_module._git_is_ancestor(remote, sha, fixture.candidate)
+    assert len(source_digests) == 6
+    mutations = [args for root, args in calls if root == repo and args[0] in {
+        "reset", "merge", "rebase", "cherry-pick", "stash", "clean", "commit", "push", "update-ref",
+    }]
+    assert mutations == [("reset", "--hard", fixture.target)]
+    if historical:
+        assert fixture.candidate == TASK_412_FAILED_HEAD
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("invalid", [
+    "missing", "malformed", "substituted-run", "wrong-task", "wrong-revision", "wrong-head",
+    "forged-digest", "aliased-artifact", "aliased-source", "malicious-alias", "mixed-review", "contradictory-decision",
+    "conflicting-base", "conflicting-lineage", "wrong-affinity", "extra-local-commit", "source-drift", "parented-artifact",
+])
+def test_primary_reconciliation_multiple_failures_rejects_any_invalid_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid: str, reverse: bool,
+) -> None:
+    fixture = _multiple_failure_primary_divergence(tmp_path)
+    repo, remote = fixture.repo, fixture.remote
+    member = fixture.members[-1]
+    artifact_ref = f"refs/heads/aios/failure-artifacts/{member.run_id}"
+    run = json.loads(json.dumps(member.run))
+    failure = json.loads(json.dumps(member.failure))
+    if invalid == "missing":
+        git(remote, "update-ref", "-d", artifact_ref)
+    elif invalid in {"malformed", "parented-artifact"}:
+        if invalid == "malformed":
+            replacement = _corrupt_preservation_artifact(repo, member.artifact, ".ai/transport/failure.json", b"{")
+        else:
+            replacement = git(repo, "commit-tree", git(repo, "rev-parse", f"{member.artifact}^{{tree}}"),
+                              "-p", fixture.candidate, "-m", "substituted parented artifact")
+        git(remote, "fetch", "--quiet", str(repo), replacement)
+        git(remote, "update-ref", artifact_ref, replacement)
+    elif invalid == "aliased-artifact":
+        git(remote, "update-ref", artifact_ref, fixture.members[0].artifact)
+    elif invalid == "malicious-alias":
+        git(remote, "update-ref", "refs/heads/aios/failure/nested/RUN-412-008", fixture.candidate)
+    elif invalid in {"mixed-review", "contradictory-decision"}:
+        family = "review" if invalid == "mixed-review" else "review-decision"
+        git(remote, "update-ref", f"refs/heads/aios/{family}/{member.run_id}", fixture.candidate)
+    elif invalid == "extra-local-commit":
+        (repo / "UNPRESERVED.txt").write_text("preserve this local commit\n", encoding="utf-8")
+        commit_setup_state(repo, "UNPRESERVED.txt", message="unpreserved work")
+    elif invalid == "source-drift":
+        task_path = ".ai/tasks/TASK-412.yaml"
+        (repo / task_path).write_text(TASK_SOURCE.replace("TASK-101", "TASK-412") + "\n# drift\n", encoding="utf-8")
+        candidate = commit_setup_state(repo, task_path, message="substituted TASK source")
+        for item in fixture.members:
+            document = json.loads(json.dumps(item.failure))
+            document["failed_head_sha"] = candidate
+            document["candidate"]["changed_files"] = git(repo, "diff", "--name-only", fixture.base, candidate).splitlines()
+            # Canonical writer rebuilds independently valid subject/source digests;
+            # source inequality must be the reason this group is ineligible.
+            _replace_multiple_failure_proof(fixture, fixture.members.index(item), failure=document, private_original=True)
+            git(remote, "fetch", "--quiet", str(repo), candidate)
+            git(remote, "update-ref", f"refs/heads/aios/failure/{item.run_id}", candidate)
+    else:
+        if invalid == "substituted-run":
+            run["run_id"] = fixture.members[0].run_id
+        elif invalid == "wrong-task":
+            run["task"]["id"] = failure["task"]["id"] = "TASK-999"
+        elif invalid == "wrong-revision":
+            run["task"]["revision"] = failure["task"]["revision"] = 2
+        elif invalid == "wrong-head":
+            failure["failed_head_sha"] = fixture.base
+        elif invalid == "conflicting-base":
+            run["base_sha"] = failure["base_sha"] = git(repo, "rev-parse", f"{fixture.candidate}^")
+        elif invalid == "conflicting-lineage":
+            failure["continuation_of"] = "RUN-412-001"
+        elif invalid == "wrong-affinity":
+            run["return_affinity"] = {"kind": "ORIGIN_AFFINE", "route_handle": "page-origin-v1:" + "a" * 64,
+                                      "generation": 1}
+        if invalid in {"forged-digest", "aliased-source"}:
+            failure = json.loads(git(repo, "show", f"{member.artifact}:.ai/transport/failure.json"))
+        if invalid == "aliased-source":
+            original = json.loads(git(repo, "show", f"{fixture.members[0].artifact}:.ai/transport/failure.json"))
+            failure["public_projection"]["private_failure_digest"] = original["public_projection"]["private_failure_digest"]
+        elif invalid == "forged-digest":
+            failure["public_projection"]["projection_digest"] = "0" * 64
+        _replace_multiple_failure_proof(fixture, run=run, failure=failure,
+                                        private_original=invalid not in {"forged-digest", "aliased-source"})
+    real_query, real_git = operator_module._exact_remote_refs, operator_module._git
+    mutations = []
+
+    def query(*args, **kwargs):
+        items = list(real_query(*args, **kwargs).items())
+        return dict(reversed(items) if reverse else items)
+
+    def record(root, *args, **kwargs):
+        if Path(root) == repo and args[0] in {"reset", "merge", "push", "update-ref", "stash", "clean"}:
+            mutations.append(args)
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid group cannot restart, admit a RUN or invoke Executor")
+
+    monkeypatch.setattr(operator_module, "_exact_remote_refs", query)
+    monkeypatch.setattr(operator_module, "_git", record)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
+    before, refs = _reconciliation_snapshot(repo), git(remote, "show-ref")
+    reason = {"wrong-revision": "TASK revision mismatch", "wrong-affinity": "TASK affinity mismatch", "source-drift": "TASK source drift",
+              "conflicting-base": "conflicting identity or lineage", "conflicting-lineage": "conflicting identity or lineage"}.get(invalid)
+    with pytest.raises(OperatorError, match=reason):
+        operator_module._preflight_primary_sync(repo, runner=forbidden)
+    assert _reconciliation_snapshot(repo) == before and not mutations
+    assert git(remote, "show-ref") == refs
+
+
+@pytest.mark.parametrize("stage", ["import", "final-worktree-check"])
+@pytest.mark.parametrize("drift", ["add-valid-member", "remove-member", "move-member", "artifact", "target", "unrelated-failure"])
+def test_primary_reconciliation_multiple_failures_rechecks_complete_membership_at_reset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str, drift: str,
+) -> None:
+    fixture = _multiple_failure_primary_divergence(tmp_path)
+    repo, remote = fixture.repo, fixture.remote
+    real_git = operator_module._git
+    real_worktree = operator_module._require_primary_reconciliation_worktree
+    edge = None
+    checks, resets = [], []
+
+    def mutate():
+        nonlocal edge
+        if edge is not None:
+            return
+        member = fixture.members[-1]
+        if drift == "add-valid-member":
+            run, failure = dict(member.run), dict(member.failure)
+            run["run_id"] = failure["run_id"] = "RUN-412-008"
+            run_path, failure_path = fixture.state.runs / "RUN-412-008.json", fixture.state.failures / "RUN-412-008.json"
+            run_path.write_bytes(json.dumps(run).encode())
+            failure_path.write_bytes(json.dumps(failure).encode())
+            artifact = transport_module._create_named_artifacts_commit(repo, run_path=run_path,
+                artifact_path=failure_path, artifact_name="failure.json", run_id=run["run_id"])
+            git(remote, "fetch", "--quiet", str(repo), artifact)
+            git(remote, "update-ref", "refs/heads/aios/failure/RUN-412-008", fixture.candidate)
+            git(remote, "update-ref", "refs/heads/aios/failure-artifacts/RUN-412-008", artifact)
+        elif drift == "remove-member":
+            git(remote, "update-ref", "-d", f"refs/heads/aios/failure/{member.run_id}")
+        else:
+            ref = {"move-member": f"refs/heads/aios/failure/{member.run_id}",
+                   "artifact": f"refs/heads/aios/failure-artifacts/{member.run_id}",
+                   "target": "refs/heads/main", "unrelated-failure": "refs/heads/aios/failure/RUN-999-001"}[drift]
+            git(remote, "update-ref", ref, fixture.base)
+        edge = _reconciliation_snapshot(repo), git(remote, "show-ref")
+
+    def record(root, *args, **kwargs):
+        if Path(root) == repo and args[0] == "reset":
+            resets.append(args)
+        result = real_git(root, *args, **kwargs)
+        if stage == "import" and Path(root) == repo and args[0] == "fetch":
+            mutate()
+        return result
+
+    def worktree(*args):
+        real_worktree(*args)
+        checks.append(True)
+        if stage == "final-worktree-check" and len(checks) == 2:
+            mutate()
+
+    monkeypatch.setattr(operator_module, "_git", record)
+    monkeypatch.setattr(operator_module, "_require_primary_reconciliation_worktree", worktree)
+    with pytest.raises(OperatorError):
+        operator_module._preflight_primary_sync(repo)
+    assert edge == (_reconciliation_snapshot(repo), git(remote, "show-ref")) and not resets
+
+
 # TASK-257: automatic authority exists only at the locked PRIMARY pre-RUN edge.
 def test_primary_reconciles_exact_canonical_failure_and_all_local_only_ancestry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
@@ -14758,10 +15087,12 @@ def test_primary_nonpass_rechecks_proof_after_final_worktree_check(
     assert not any(root == repo and args[0] == "reset" for root, args in calls)
 
 
+@pytest.mark.parametrize("preservation", ["reviewed-result", "six-failures"])
 def test_primary_nonpass_lock_and_unsafe_generation_remain_pre_reset_blockers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, preservation: str,
 ) -> None:
-    fixture = _nonpass_primary_divergence(tmp_path)
+    fixture = (_nonpass_primary_divergence(tmp_path) if preservation == "reviewed-result"
+               else _multiple_failure_primary_divergence(tmp_path))
     before = _reconciliation_snapshot(fixture.repo)
     with RepositoryLock(fixture.state.lock):
         with pytest.raises(OperatorError, match="active"):
@@ -14773,14 +15104,16 @@ def test_primary_nonpass_lock_and_unsafe_generation_remain_pre_reset_blockers(
     assert _reconciliation_snapshot(fixture.repo) == before
 
 
+@pytest.mark.parametrize("preservation", ["reviewed-result", "six-failures"])
 @pytest.mark.parametrize("unsafe", [
     "tracked", "untracked", "assume-unchanged", "ignored-collision", "submodule",
     "detached", "wrong-branch", "ahead-only", "missing-upstream", "ambiguous-upstream", "remote-unavailable",
 ])
 def test_primary_nonpass_preservation_never_overrides_repository_safety(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unsafe: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unsafe: str, preservation: str,
 ) -> None:
-    fixture = _nonpass_primary_divergence(tmp_path)
+    fixture = (_nonpass_primary_divergence(tmp_path) if preservation == "reviewed-result"
+               else _multiple_failure_primary_divergence(tmp_path))
     repo = fixture.repo
     if unsafe in {"tracked", "assume-unchanged"}:
         if unsafe == "assume-unchanged":
