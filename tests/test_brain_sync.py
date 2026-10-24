@@ -1,5 +1,6 @@
 """Deterministic tests for AIOS Brain Sync observation snapshot."""
 
+from copy import deepcopy
 import json
 import os
 from pathlib import Path
@@ -962,7 +963,7 @@ def test_brain_sync_roadmap_ancestry_observation_error_fails_closed(
     assert isinstance(error.value.__cause__, OperatorError)
 
 
-def test_brain_sync_roadmap_lifecycle_conflict_next_already_done(
+def test_brain_sync_completed_bookmark_requires_human_brain_successor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = make_repo(tmp_path)
@@ -996,13 +997,13 @@ def test_brain_sync_roadmap_lifecycle_conflict_next_already_done(
 
     snapshot = observe_brain_sync(repo=repo)
 
-    assert snapshot.selection_status == "ROADMAP_LIFECYCLE_CONFLICT"
+    assert snapshot.selection_status == "HUMAN_BRAIN_NEXT_REQUIRED"
     assert snapshot.selected_task is None
     assert snapshot.lifecycle_state == "BLOCKED"
     assert snapshot.next_action == "NONE"
-    assert snapshot.authority == "NONE"
+    assert snapshot.authority == "HUMAN_BRAIN"
     assert snapshot.blocker is not None
-    assert snapshot.blocker["code"] == "ROADMAP_LIFECYCLE_CONFLICT"
+    assert snapshot.blocker["code"] == "HUMAN_BRAIN_NEXT_REQUIRED"
 
 
 def test_brain_sync_observation_is_strictly_read_only(tmp_path: Path) -> None:
@@ -1271,13 +1272,19 @@ def test_brain_sync_live_repository_smoke() -> None:
         task = load_task(repo, task_id)
         if task_revision is not None:
             assert task.revision == task_revision, "NEXT TASK revision conflicts with canonical TASK"
-        assert snapshot.selection_status == "SELECTED"
-        assert snapshot.selected_task == {"id": task.task_id, "revision": task.revision}
         assert snapshot.unified_state is not None
-        assert snapshot.unified_state["task"] == snapshot.selected_task
-        assert snapshot.lifecycle_state == snapshot.unified_state["lifecycle_state"]
-        assert snapshot.next_action == snapshot.unified_state["next_action"]
-        assert snapshot.authority == snapshot.unified_state["authority"]
+        if snapshot.unified_state["lifecycle_state"] == "DONE":
+            assert snapshot.selection_status == "HUMAN_BRAIN_NEXT_REQUIRED"
+            assert snapshot.selected_task is None
+            assert snapshot.roadmap["effective_next"] is None
+            assert snapshot.next_action == "NONE"
+        else:
+            assert snapshot.selection_status == "SELECTED"
+            assert snapshot.selected_task == {"id": task.task_id, "revision": task.revision}
+            assert snapshot.unified_state["task"] == snapshot.selected_task
+            assert snapshot.lifecycle_state == snapshot.unified_state["lifecycle_state"]
+            assert snapshot.next_action == snapshot.unified_state["next_action"]
+            assert snapshot.authority == snapshot.unified_state["authority"]
     assert snapshot.run_created is False
     assert snapshot.executor_invoked is False
     assert snapshot.verification_invoked is False
@@ -1601,7 +1608,8 @@ def test_task408_brain_sync_observes_planning_without_activation_or_dispatch(tmp
 
 def test_task409_caa_plan_has_one_next_and_preserves_prior_approvals_and_bookmarks():
     root = Path(__file__).resolve().parents[1]
-    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    source_sha = "5a8c865444710f194078b0e47ccd3bff2cd5a60b"
+    source = yaml.safe_load(git(root, "show", source_sha + ":.ai/roadmap-state.yaml"))
     historical = _task408_source_planning_roadmap()
     record = source["human_caa_v1_priority_20261023"]
     assert record["planning_only"] is True and record["selected_slice"] == "CAA-01"
@@ -1626,7 +1634,7 @@ def test_task409_caa_plan_has_one_next_and_preserves_prior_approvals_and_bookmar
     for task_id in ("TASK-407", "TASK-408"):
         assert (root / f".ai/tasks/{task_id}.yaml").read_text(encoding="utf-8").strip() == git(
             root, "show", f"eaa1363681bade65aaed33d9af6211728fb55992:.ai/tasks/{task_id}.yaml")
-    document = (root / record["planning_document"]).read_text(encoding="utf-8")
+    document = git(root, "show", source_sha + ":" + record["planning_document"])
     assert document.count("| CAA-0") == 4
     assert "Exit gate" in document and "Stop gate" in document and "Dependency" in document
     assert "CAA-05" in document and "pending and conditional" in document
@@ -1637,7 +1645,7 @@ def test_task409_caa_plan_has_one_next_and_preserves_prior_approvals_and_bookmar
 @pytest.mark.parametrize("fault", (None, "competing_next", "stale_pointer"))
 def test_task409_brain_sync_keeps_existing_shapes_and_never_activates_caa(tmp_path, monkeypatch, fault):
     root = Path(__file__).resolve().parents[1]
-    source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    source = yaml.safe_load(git(root, "show", "5a8c865444710f194078b0e47ccd3bff2cd5a60b:.ai/roadmap-state.yaml"))
     source["sequence"] = [item for item in source["sequence"] if item["id"] in {
         "caa-v1-20261023", "human-audit-policy-direct-authoring-20261023"}]
     if fault == "competing_next":
@@ -1666,3 +1674,53 @@ def test_task409_brain_sync_keeps_existing_shapes_and_never_activates_caa(tmp_pa
     assert not any((observed.state_mutated, observed.run_created, observed.executor_invoked, observed.verification_invoked))
     assert "caa_experience" not in observed.as_dict()
     assert path.read_bytes() == before and git(repo, "show-ref") == refs
+
+
+def test_task415_real_caa04_publication_projects_only_human_selected_successor():
+    from aios_renew import brain_sync
+    root = Path(__file__).resolve().parents[1]
+    roadmap = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    main = brain_sync._resolve_main_sha(root)
+    source = roadmap["human_auto_next_priority_20261024"]["preapproved_predecessor"]
+    assert brain_sync._transition_completion(root, main, source)
+    candidate = brain_sync._extract_next_candidates(roadmap)[0]
+    effective, blocker = brain_sync._effective_next(root, main, roadmap, candidate)
+    assert blocker is None
+    assert (effective["task_id"], effective["task_revision"], effective["selected_slice"]) == (
+        "TASK-415", 1, "AUTO_NEXT_FIX")
+    assert roadmap["human_auto_next_priority_20261024"]["optional_package"]["status"] == "CONDITIONAL_NOT_SELECTED"
+    assert all(item["from"]["task_id"] != "TASK-413" for item in roadmap["effective_next_transitions"])
+
+
+@pytest.mark.parametrize("fault", ["wrong_revision", "wrong_artifact", "wrong_review", "wrong_source", "moved_main"])
+def test_task415_real_predecessor_rejects_mismatched_completion(fault):
+    from aios_renew import brain_sync
+    root = Path(__file__).resolve().parents[1]
+    roadmap = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    source = dict(roadmap["human_auto_next_priority_20261024"]["preapproved_predecessor"])
+    main = brain_sync._resolve_main_sha(root)
+    if fault == "wrong_revision":
+        source["task_revision"] = 1
+    elif fault == "wrong_artifact":
+        source["artifacts_sha"] = "0" * 40
+    elif fault == "wrong_review":
+        source["review_decision_sha"] = "0" * 40
+    elif fault == "wrong_source":
+        source["reviewed_sha"] = "0" * 40
+    else:
+        main = "0" * 40
+    assert not brain_sync._transition_completion(root, main, source)
+
+
+def test_task415_missing_or_mixed_human_successor_never_projects_next():
+    from aios_renew import brain_sync
+    root = Path(__file__).resolve().parents[1]
+    roadmap = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+    candidate = brain_sync._extract_next_candidates(roadmap)[0]
+    main = brain_sync._resolve_main_sha(root)
+    missing = deepcopy(roadmap)
+    missing["effective_next_transitions"] = []
+    assert brain_sync._effective_next(root, main, missing, candidate)[1] == "HUMAN_BRAIN_NEXT_REQUIRED"
+    mixed = deepcopy(roadmap)
+    mixed["effective_next_transitions"].append(deepcopy(mixed["effective_next_transitions"][0]))
+    assert brain_sync._effective_next(root, main, mixed, candidate)[1] == "HUMAN_BRAIN_NEXT_REQUIRED"

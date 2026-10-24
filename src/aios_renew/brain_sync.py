@@ -36,6 +36,7 @@ from aios_renew.unified_state import (
     UnifiedStateObservation,
     observe_unified_state,
 )
+from aios_renew.terminal_attention import TerminalAttentionError, _load_yaml
 
 
 class BrainSyncError(OperatorError):
@@ -322,6 +323,120 @@ def _extract_next_candidates(
     return [dict(item) for item in seq_next]
 
 
+def _transition_completion(root: Path, main_sha: str, source: Mapping[str, Any]) -> bool:
+    """Reauthenticate one Human-named predecessor with the existing publication gate."""
+    from aios_renew import publication
+
+    keys = {"task_id", "task_revision", "run_id", "artifacts_sha", "review_id",
+            "review_decision_sha", "reviewed_sha"}
+    if (set(source) != keys or not re.fullmatch(r"TASK-[A-Za-z0-9_-]+", str(source["task_id"]))
+            or type(source["task_revision"]) is not int or source["task_revision"] < 1
+            or not re.fullmatch(r"RUN-[A-Za-z0-9][A-Za-z0-9._-]{0,95}", str(source["run_id"]))
+            or not re.fullmatch(r"REVIEW-[A-Za-z0-9][A-Za-z0-9._-]{0,95}", str(source["review_id"]))
+            or any(not isinstance(source[key], str) or not re.fullmatch(r"[0-9a-f]{40}", source[key])
+                   for key in ("artifacts_sha", "review_decision_sha", "reviewed_sha"))):
+        return False
+    try:
+        task = load_task(root, source["task_id"])
+        if task.revision != source["task_revision"]:
+            return False
+        observed = observe_unified_state(source["task_id"], repo=root)
+        if (observed.lifecycle_state != "DONE" or observed.next_action != "DONE"
+                or (observed.task_id, observed.task_revision, observed.run_id, observed.review_id,
+                    observed.candidate_sha, observed.reviewed_sha) !=
+                   (source["task_id"], source["task_revision"], source["run_id"], source["review_id"],
+                    source["reviewed_sha"], source["reviewed_sha"])):
+            return False
+        with op._remote_observation_repository(root) as observer:
+            remote = resolve_transport_remote(observer)
+            refs = ("refs/heads/main", f"refs/heads/aios/artifacts/{source['run_id']}",
+                    f"refs/heads/aios/review/{source['run_id']}",
+                    f"refs/heads/aios/review-decision/{source['run_id']}")
+            before = _exact_remote_refs(observer, remote, *refs)
+            if before != dict(zip(refs, (main_sha, source["artifacts_sha"],
+                                         source["reviewed_sha"], source["review_decision_sha"]))):
+                return False
+            publication._fetch_object(observer, remote, source["review_decision_sha"], run_id=source["run_id"])
+            publication._fetch_object(observer, remote, main_sha, run_id=source["run_id"])
+            reviewed, _package, _scope = publication._load_success_lineage(
+                observer, remote=remote, run_id=source["run_id"],
+                decision_sha=source["review_decision_sha"], publication_main_sha=main_sha)
+            if (reviewed != source["reviewed_sha"]
+                    or not _git_is_ancestor(observer, reviewed, main_sha)
+                    or _exact_remote_refs(observer, remote, *refs) != before):
+                return False
+        return _resolve_main_sha(root) == main_sha
+    except (OperatorError, ReviewTransportError, RemoteQueryError, publication.PublicationError,
+            OSError, KeyError, TypeError, ValueError):
+        return False
+
+
+def _effective_next(root: Path, main_sha: str, roadmap: Mapping[str, Any],
+                    candidate: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+    """Project only explicitly authorized transitions; keep roadmap bytes untouched."""
+    transitions = roadmap.get("effective_next_transitions", [])
+    if not isinstance(transitions, list) or len(transitions) > 1:
+        return None, "HUMAN_BRAIN_NEXT_REQUIRED"
+    selected_record = roadmap.get(candidate.get("priority_record"))
+    if (isinstance(selected_record, Mapping) and "preapproved_predecessor" in selected_record
+            and not any(isinstance(item, Mapping) and item.get("priority_record") == candidate.get("priority_record")
+                        for item in transitions)):
+        return None, "HUMAN_BRAIN_NEXT_REQUIRED"
+    if transitions:
+        # The planning source must be a committed current descendant of the
+        # sampled main, including during a candidate's prepublication review.
+        raw = (root / ".ai/roadmap-state.yaml").read_bytes()
+        blob = hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
+        code, committed, _ = _git_cmd(root, "rev-parse", "HEAD:.ai/roadmap-state.yaml", allow_fail=True)
+        code_head, head, _ = _git_cmd(root, "rev-parse", "HEAD", allow_fail=True)
+        if (code or code_head or committed.strip() != blob
+                or not _git_is_ancestor(root, main_sha, head.strip())):
+            return None, "HUMAN_BRAIN_NEXT_REQUIRED"
+    current = dict(candidate)
+    matched_successor = False
+    for transition in transitions:
+        if not isinstance(transition, Mapping) or set(transition) != {"from", "to", "priority_record"}:
+            return None, "HUMAN_BRAIN_NEXT_REQUIRED"
+        source, target, record_name = transition["from"], transition["to"], transition["priority_record"]
+        if (not isinstance(source, Mapping) or not isinstance(target, Mapping)
+                or set(target) != {"item_id", "task_id", "task_revision"}
+                or not isinstance(target["item_id"], str)
+                or not re.fullmatch(r"TASK-[A-Za-z0-9_-]+", str(target["task_id"]))
+                or type(target["task_revision"]) is not int or target["task_revision"] < 1
+                or not isinstance(record_name, str) or not re.fullmatch(r"human_[a-z0-9_]+", record_name)):
+            return None, "HUMAN_BRAIN_NEXT_REQUIRED"
+        record = roadmap.get(record_name)
+        prior_name = record.get("supersedes_prospective_selection_record") if isinstance(record, Mapping) else None
+        prior = roadmap.get(prior_name) if isinstance(prior_name, str) else None
+        authored_main = record.get("source_main_sha_at_authoring") if isinstance(record, Mapping) else None
+        entries = [item for item in (roadmap.get("sequence") or []) if isinstance(item, Mapping)
+                   and item.get("id") == target["item_id"]]
+        if (not isinstance(record, Mapping) or record.get("authority") != "EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION"
+                or record.get("implementation_task") != target["task_id"]
+                or record.get("implementation_revision") != target["task_revision"]
+                or record.get("preapproved_predecessor") != dict(source)
+                or not isinstance(prior, Mapping) or prior.get("implementation_task") != source.get("task_id")
+                or prior.get("implementation_revision") != source.get("task_revision")
+                or not isinstance(authored_main, str) or not re.fullmatch(r"[0-9a-f]{40}", authored_main)
+                or not _git_is_ancestor(root, authored_main, main_sha)
+                or len(entries) != 1 or entries[0].get("task_id") != target["task_id"]
+                or entries[0].get("task_revision") != target["task_revision"]
+                or entries[0].get("priority_record") != record_name):
+            return None, "HUMAN_BRAIN_NEXT_REQUIRED"
+        if not _transition_completion(root, main_sha, source):
+            return None, "HUMAN_BRAIN_NEXT_REQUIRED"
+        if (current.get("task_id"), current.get("task_revision")) == (source["task_id"], source["task_revision"]):
+            current = dict(entries[0])
+            matched_successor = True
+        elif (current.get("task_id"), current.get("task_revision")) == (target["task_id"], target["task_revision"]):
+            matched_successor = True
+        else:
+            return None, "HUMAN_BRAIN_NEXT_REQUIRED"
+    if transitions and not matched_successor:
+        return None, "HUMAN_BRAIN_NEXT_REQUIRED"
+    return current, None
+
+
 def validate_diagnostic_context(value, task=None):
     from .review_transport import validate_failure_context
     from .operational_receipt import validate_repair_delivery_context
@@ -555,8 +670,8 @@ def _observe_brain_sync(
 
     try:
         raw_text = roadmap_path.read_text(encoding="utf-8")
-        roadmap_data = yaml.safe_load(raw_text)
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        roadmap_data = _load_yaml(raw_text, "roadmap")
+    except (OSError, UnicodeError, yaml.YAMLError, TerminalAttentionError) as exc:
         roadmap_summary = {"present": True, "valid": False}
         return BrainSyncSnapshot(
             repository=repo_info,
@@ -698,7 +813,25 @@ def _observe_brain_sync(
             },
         )
 
-    candidate = candidates[0]
+    try:
+        candidate, transition_blocker = _effective_next(root, main_sha, roadmap_data, candidates[0])
+    except (OSError, OperatorError, ReviewTransportError, RemoteQueryError, KeyError, TypeError, ValueError):
+        candidate, transition_blocker = None, "HUMAN_BRAIN_NEXT_REQUIRED"
+    if transition_blocker is not None or candidate is None:
+        roadmap_summary["effective_next"] = None
+        return BrainSyncSnapshot(
+            repository=repo_info, main_sha=main_sha, roadmap=roadmap_summary,
+            selection_status="HUMAN_BRAIN_NEXT_REQUIRED", lifecycle_state="BLOCKED",
+            next_action="NONE", authority="HUMAN_BRAIN", selected_task=None,
+            unified_state=None, blocker={"code": "HUMAN_BRAIN_NEXT_REQUIRED",
+                                         "message": "no unique source-verified Human/Brain successor"})
+    roadmap_summary["effective_next"] = {
+        "item_id": candidate.get("id"), "task_id": candidate.get("task_id"),
+        "task_revision": candidate.get("task_revision"),
+    }
+    transitions = roadmap_data.get("effective_next_transitions") or []
+    if transitions:
+        roadmap_summary["last_published_task"] = transitions[-1]["from"]["task_id"]
     task_id = candidate.get("task_id")
     if not task_id and isinstance(candidate.get("id"), str) and candidate["id"].startswith("TASK-"):
         task_id = candidate["id"]
@@ -791,21 +924,30 @@ def _observe_brain_sync(
             blocker={"code": "UNIFIED_STATE_ERROR", "message": str(exc)},
         )
 
+    if _resolve_main_sha(root) != main_sha:
+        return BrainSyncSnapshot(
+            repository=repo_info, main_sha=main_sha, roadmap=dict(roadmap_summary, effective_next=None),
+            selection_status="HUMAN_BRAIN_NEXT_REQUIRED", lifecycle_state="BLOCKED",
+            next_action="NONE", authority="HUMAN_BRAIN", selected_task=None,
+            unified_state=None, blocker={"code": "HUMAN_BRAIN_NEXT_REQUIRED",
+                                         "message": "canonical main moved during NEXT observation"})
+
     if unified_obs.lifecycle_state == "DONE":
+        roadmap_summary["last_published_task"] = task_id
         return BrainSyncSnapshot(
             repository=repo_info,
             main_sha=main_sha,
-            roadmap=roadmap_summary,
-            selection_status="ROADMAP_LIFECYCLE_CONFLICT",
+            roadmap=dict(roadmap_summary, effective_next=None),
+            selection_status="HUMAN_BRAIN_NEXT_REQUIRED",
             lifecycle_state="BLOCKED",
             next_action="NONE",
-            authority="NONE",
+            authority="HUMAN_BRAIN",
             selected_task=None,
             unified_state=unified_obs.as_dict(),
             blocker={
-                "code": "ROADMAP_LIFECYCLE_CONFLICT",
+                "code": "HUMAN_BRAIN_NEXT_REQUIRED",
                 "task_id": task_id,
-                "message": f"roadmap lists {task_id} as NEXT, but canonical lifecycle is already DONE",
+                "message": f"{task_id} is published; no unique Human/Brain successor is preapproved",
             },
         )
 

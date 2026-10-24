@@ -100,11 +100,18 @@ jobs:
           AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-publication/source.json
         # The shared projector emits only terminal/actionable outcomes;
         # historical INTEGRATION_REQUIRED progress produces no doorbell.
-        run: >-
-          python -m aios_renew.brain_attention publication
-          --run-id "$AIOS_RUN_ID" --decision-sha "$AIOS_DECISION_SHA"
-          --report "$AIOS_PUBLICATION_REPORT" --source "$AIOS_ATTENTION_SOURCE_PATH"
-          --output "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Observe the just-published main with its own Brain Sync reader.
+          # This read-only annotation is subordinate to the exact publication
+          # event; local Chat still requires a fresh Sync on wake.
+          git fetch --no-tags origin refs/heads/main
+          git checkout --detach FETCH_HEAD
+          python -m aios_renew.brain_attention publication \
+            --run-id "$AIOS_RUN_ID" --decision-sha "$AIOS_DECISION_SHA" \
+            --report "$AIOS_PUBLICATION_REPORT" --source "$AIOS_ATTENTION_SOURCE_PATH" \
+            --observe-next --output "$GITHUB_OUTPUT"
 
       - name: Export bounded publication attention observations
         id: attention-artifact

@@ -456,7 +456,7 @@ At the beginning of a fresh ChatGPT work context:
    REPLACE_WITH_POINTER; this section retains Brain Sync protocol authority.
 5. Check relevant success/failure/review/remediation/repair refs and immutable lineage.
 6. When `.ai/roadmap-state.yaml` is present, read it before selecting roadmap work and reconcile its bookmark against explicit current Human intent and the exact engineering lineage.
-7. Select roadmap work only after that reconciliation. For generic "continue roadmap" intent, use the unique `NEXT` item in the active track; parallel or separately gated work must not compete with it.
+7. Select roadmap work only after that reconciliation. For generic "continue roadmap" intent, use Brain Sync's unique source-verified effective NEXT in the active track; parallel or separately gated work must not compete with it. A historical static `next_items` bookmark for an exact published TASK is not actionable. If its unique Human/Brain-preapproved successor is absent or cannot be reauthenticated against exact TASK revision, Runtime RESULT/EVIDENCE, independent REVIEW PASS and current main inclusion, report `HUMAN_BRAIN_NEXT_REQUIRED` without selecting work.
 8. Produce a short SYNC CHECKPOINT.
 
 Never probe write capability by creating, modifying or deleting canonical files,
@@ -464,6 +464,8 @@ branches, commits, refs or Issues. Capability discovery remains read-only or bas
 on explicit permissions; this independent safety obligation is RETAIN_NORMATIVE.
 
 Snapshot selection fails closed for missing, ambiguous, unauthored, or contradictory planning/lineage state and never fabricates completion, TASK/RUN identity, Human priority, Executor choice, transport success, review verdict, or publication outcome. Snapshot generation is strictly observation-only: `run_created=false`, `executor_invoked=false`, `verification_invoked=false`, `state_mutated=false`.
+
+The existing publication-success attention and local Chat wake are prompts to take a fresh ordinary Brain Sync snapshot. Its effective NEXT observation is read-only and source-bound; an event receipt, repeated wake or missed wake cannot advance roadmap semantics. No separate activation TASK, scheduler, autonomous dispatch or CAA-05 selection follows from publication.
 
 When AIOS-renew Control-plane Closure is complete and hands work back downstream,
 do not reuse a previously observed Python Agent priority. Perform a fresh downstream

@@ -980,6 +980,49 @@ def test_independent_review_id_publication_uses_inclusion_and_bounded_selectors(
     assert fixture.git("for-each-ref", "--format=%(refname) %(objectname)") == before
 
 
+def test_publication_attention_carries_fresh_read_only_next_without_changing_wake_identity(
+        independent_review_repo, monkeypatch):
+    from aios_renew import brain_sync
+    fixture = independent_review_repo
+    planning = fixture.repo / ".ai/roadmap-state.yaml"
+    planning.parent.mkdir(parents=True, exist_ok=True)
+    planning.write_text("version: 1\nsequence:\n  - {status: NEXT, task_id: TASK-361, task_revision: 1}\n",
+                        encoding="utf-8")
+    main = fixture.identity["reviewed_sha"]
+    monkeypatch.setattr(brain_sync, "observe_brain_sync", lambda repo: SimpleNamespace(
+        main_sha=main, selection_status="SELECTED", selected_task=dict(id="TASK-415", revision=1)))
+    fixture.report["outcome"] = "PUBLISHED"
+    fixture.capture()
+    plain = brain.load_json(fixture.source_path.read_bytes(), brain.MAX_SOURCE_BYTES)
+    annotated = brain.capture_publication(
+        fixture.source_path.parent / "report.json", fixture.source_path,
+        fixture.identity["run_id"], fixture.identity["decision_sha"],
+        repo=fixture.repo, observe_next=True)
+    assert annotated["observations"][0]["effective_next"] == dict(
+        main_sha=main, selection_status="SELECTED", task_id="TASK-415", task_revision=1)
+    pointer = dict(workflow_run_id=100, run_attempt=1, artifact_id=200, source_digest=brain.digest(annotated))
+    earlier = dict(pointer, source_digest=brain.digest(plain))
+    event = brain.project_source(annotated, pointer)[0]
+    assert event.event_id == brain.project_source(plain, earlier)[0].event_id
+    assert "effective_next" not in event.selectors
+    assert "fresh_brain_sync_required: true" in wake.doorbell(event.event_id, wake.REPOSITORY)
+    monkeypatch.setattr(brain_sync, "observe_brain_sync", lambda repo: SimpleNamespace(
+        main_sha=main, selection_status="HUMAN_BRAIN_NEXT_REQUIRED", selected_task=None))
+    awaiting_human = brain.capture_publication(
+        fixture.source_path.parent / "report.json", fixture.source_path,
+        fixture.identity["run_id"], fixture.identity["decision_sha"],
+        repo=fixture.repo, observe_next=True)
+    assert awaiting_human["observations"][0]["effective_next"] == dict(
+        main_sha=main, selection_status="HUMAN_BRAIN_NEXT_REQUIRED", task_id=None, task_revision=None)
+    planning.write_text("version: 1\nsequence:\n  - {status: NEXT, task_id: TASK-413, task_revision: 2}\n",
+                        encoding="utf-8")
+    unrelated = brain.capture_publication(
+        fixture.source_path.parent / "report.json", fixture.source_path,
+        fixture.identity["run_id"], fixture.identity["decision_sha"],
+        repo=fixture.repo, observe_next=True)
+    assert "effective_next" not in unrelated["observations"][0]
+
+
 @pytest.mark.parametrize("verdict", ["PASS", "CHANGES_REQUIRED", "BLOCKED"])
 def test_independent_review_id_ingress_uses_same_canonical_reader(independent_review_repo, monkeypatch, verdict):
     fixture = independent_review_repo

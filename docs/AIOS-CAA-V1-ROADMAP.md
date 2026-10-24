@@ -1,16 +1,30 @@
 # CAA v1: finite advisory roadmap
 
-The explicit Human decision of 2026-10-24 selects **CAA-04 / TASK-414 r2**
-as the sole prospective NEXT in `.ai/roadmap-state.yaml`: option B, one finite
-independent evaluation, opt-in shadow observer and Human rollout report. The new
-`human_caa04_evaluation_shadow_20261024` record supersedes only the prospective
-CAA-03 selection. The `human_caa03_optional_integration_20261024` record
+The latest explicit Human decision of 2026-10-24 selects **Auto-NEXT / TASK-415 r1**
+as the sole prospective implementation NEXT in `.ai/roadmap-state.yaml`. The
+`human_auto_next_priority_20261024` record supersedes only the prospective
+CAA-04 selection. TASK-414 r2 / RUN-414-007 / REVIEW-414-007 PRIMARY PASS
+on reviewed source `6a3438a5a379c2bbc638a9f23bfee9b30e81b7fa` is its
+observed predecessor; the current canonical reader must reauthenticate exact
+RESULT/EVIDENCE, independent REVIEW and inclusion before exposing TASK-415.
+The earlier CAA-04 Human decision selected option B, one finite independent
+evaluation, opt-in shadow observer and Human rollout report. Its
+`human_caa04_evaluation_shadow_20261024` record remains history and superseded
+only the prospective CAA-03 selection. The `human_caa03_optional_integration_20261024` record
 preserves that selection and its accepted CAA-03 engineering lineage. The original
 `human_caa_v1_priority_20261023` record preserves the 2026-10-23 CAA-02 / TASK-410 r1
 selection and its earlier CAA-01 approval unchanged as history. CAA-04 is the
-only newly selected package; CAA-05 remains conditional and unselected. The
+last selected CAA package; CAA-05 remains conditional and unselected. The
 four packages remain finite, separately authorized work. A RUN, RESULT, REVIEW or publication cannot
 advance this plan. Only an explicit Human/Brain decision can select a package.
+
+Brain Sync projects one effective NEXT from the explicit Human transition and
+the current canonical lifecycle. It never edits the roadmap during publication.
+The existing publication-success attention and local Chat wake prompt a fresh
+Brain Sync, so missed or duplicate wake events do not become lifecycle truth.
+Once TASK-415 is exactly reviewed and included on current main, no successor is
+preapproved: Brain Sync returns `HUMAN_BRAIN_NEXT_REQUIRED`. This does not
+select CAA-05 or activate CAA/shadow production use.
 
 The existing CAA-01 canonical reader reauthenticated TASK-409 r1 / RUN-409-002:
 RESULT artifacts `33b5be48bc465558155caf84a9e72f43be51914d`, independent PRIMARY

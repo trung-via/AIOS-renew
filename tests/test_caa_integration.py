@@ -563,7 +563,8 @@ def test_advice_does_not_replace_existing_direct_final_family_validation(tmp_pat
 
 
 def test_caa03_selection_preserves_exact_historical_plan_and_only_six_paths():
-    roadmap = yaml.safe_load((ROOT / ".ai/roadmap-state.yaml").read_text(encoding="utf-8"))
+    source_sha = "7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9"
+    roadmap = yaml.safe_load(git(ROOT, "show", source_sha + ":.ai/roadmap-state.yaml"))
     prior = yaml.safe_load(git(ROOT, "show", BASE_SHA + ":.ai/roadmap-state.yaml"))
     current = roadmap["human_caa03_optional_integration_20261024"]
     live = [item for item in roadmap["sequence"] if item["status"] == "NEXT"]
@@ -583,9 +584,32 @@ def test_caa03_selection_preserves_exact_historical_plan_and_only_six_paths():
     assert stripped == prior
     allowed = {".ai/roadmap-state.yaml", "docs/AIOS-CAA-V1-ROADMAP.md", "docs/AIOS-CAA-03-INTEGRATION-PORTABILITY.md",
                "src/aios_renew/caa_integration.py", "tests/test_caa_integration.py", "tests/test_caa_reasoner.py"}
-    assert set(git(ROOT, "diff", "--name-only", BASE_SHA, "HEAD").splitlines()) == allowed
+    assert set(git(ROOT, "diff", "--name-only", BASE_SHA, source_sha).splitlines()) == allowed
     for path in (".ai/tasks/TASK-409.yaml", ".ai/tasks/TASK-410.yaml", ".ai/tasks/TASK-411.yaml",
                  ".ai/flow-cards.yaml", ".ai/brain-audit-profiles.yaml", "src/aios_renew/caa_experience.py",
                  "src/aios_renew/caa_reasoner.py", "src/aios_renew/brain_context.py", "src/aios_renew/brain_provider.py",
                  "src/aios_renew/brain_provider_protocol.py", "src/aios_renew/authoring_ingress.py"):
-        assert git(ROOT, "rev-parse", "HEAD:" + path) == git(ROOT, "rev-parse", BASE_SHA + ":" + path)
+        assert git(ROOT, "rev-parse", source_sha + ":" + path) == git(ROOT, "rev-parse", BASE_SHA + ":" + path)
+
+
+def test_caa04_is_historical_and_task415_is_only_prospective_next():
+    roadmap = yaml.safe_load((ROOT / ".ai/roadmap-state.yaml").read_text(encoding="utf-8"))
+    caa04 = yaml.safe_load(git(ROOT, "show", "6a3438a5a379c2bbc638a9f23bfee9b30e81b7fa:.ai/roadmap-state.yaml"))
+    assert roadmap["human_caa04_evaluation_shadow_20261024"] == caa04["human_caa04_evaluation_shadow_20261024"]
+    assert roadmap["human_caa03_optional_integration_20261024"] == caa04["human_caa03_optional_integration_20261024"]
+    assert roadmap["human_caa_v1_priority_20261023"] == caa04["human_caa_v1_priority_20261023"]
+    assert roadmap["active_track"] == "caa-v1-20261023"
+    assert roadmap["next_items"] == ["caa-v1-20261023"]
+    live = [item for item in roadmap["sequence"] if item["status"] == "NEXT"]
+    assert len(live) == 1
+    assert (live[0]["task_id"], live[0]["task_revision"], live[0]["selected_slice"]) == (
+        "TASK-415", 1, "AUTO_NEXT_FIX")
+    record = roadmap["human_auto_next_priority_20261024"]
+    assert record["preapproved_predecessor"] == roadmap["effective_next_transitions"][0]["from"]
+    assert record["preapproved_predecessor"] == dict(
+        task_id="TASK-414", task_revision=2, run_id="RUN-414-007",
+        artifacts_sha="71ea75e5329bffd7141fd44049e6ad8daa97bd96",
+        review_id="REVIEW-414-007",
+        review_decision_sha="488ecd6c946a9d8a39f309a543af3e984fcd0a80",
+        reviewed_sha="6a3438a5a379c2bbc638a9f23bfee9b30e81b7fa")
+    assert record["optional_package"] == dict(id="CAA-05", status="CONDITIONAL_NOT_SELECTED")

@@ -310,6 +310,21 @@ def project_observation(observation, pointer):
         raise AttentionError("INVALID_OBSERVATION")
     boundary = observation["boundary"]
     fields = {k: v for k, v in observation.items() if k != "boundary"}
+    if "effective_next" in fields:
+        view = fields.pop("effective_next")
+        if (boundary != "PUBLICATION_PROVEN" or not isinstance(view, dict)
+                or set(view) != {"main_sha", "selection_status", "task_id", "task_revision"}
+                or not isinstance(view["main_sha"], str)
+                or re.fullmatch(_PATTERNS["sha"], view["main_sha"]) is None
+                or not isinstance(view["selection_status"], str)
+                or view["selection_status"] not in {"SELECTED", "HUMAN_BRAIN_NEXT_REQUIRED"}
+                or (view["selection_status"] == "SELECTED") != (view["task_id"] is not None)
+                or (view["task_id"] is not None and
+                    (not isinstance(view["task_id"], str)
+                     or re.fullmatch(r"TASK-[A-Za-z0-9_-]+", view["task_id"]) is None
+                     or type(view["task_revision"]) is not int or view["task_revision"] < 1))
+                or (view["task_id"] is None and view["task_revision"] is not None)):
+            raise AttentionError("INVALID_EFFECTIVE_NEXT_OBSERVATION")
     if "operational_cause" in fields:
         _operational_cause(fields.pop("operational_cause"), boundary)
     # Optional bounded source context is digest-bound in the existing conflict
@@ -1762,7 +1777,42 @@ def _git(path, *args):
     return process.stdout.decode("utf-8", errors="strict").strip()
 
 
-def capture_publication(report_path, source_path, run_id, decision_sha, repo="."):
+def _publication_effective_next(repo, sources, main, identity):
+    """Optional bounded Brain Sync observation in the existing attention source.
+
+    This annotation is never a selector or wake authority. A receiving Chat
+    context still takes a fresh Brain Sync because main may have moved.
+    """
+    try:
+        from .brain_sync import observe_brain_sync
+        roadmap = _load_yaml((Path(repo) / ".ai/roadmap-state.yaml").read_bytes(), "publication roadmap")
+        run = sources.document(identity["artifact_sha"], ".ai/transport/run.json")
+        task = run.get("execution", {}).get("run", {}).get("task") if run.get("kind") == "REMEDIATION" else run.get("task")
+        if not isinstance(task, dict) or set(task) != {"id", "revision"}:
+            return None
+        selected = [item for item in roadmap.get("sequence", []) if isinstance(item, dict) and item.get("status") == "NEXT"]
+        transitions = roadmap.get("effective_next_transitions", [])
+        relevant = (any((item.get("task_id"), item.get("task_revision")) == (task["id"], task["revision"])
+                        for item in selected)
+                    or any((item.get("from", {}).get("task_id"), item.get("from", {}).get("task_revision")) ==
+                           (task["id"], task["revision"]) for item in transitions))
+        if not relevant:
+            return None
+        snapshot = observe_brain_sync(repo)
+        if snapshot.main_sha != main or sources.refs("refs/heads/main").get("refs/heads/main") != main:
+            return None
+        if snapshot.selection_status == "SELECTED" and snapshot.selected_task is not None:
+            return dict(main_sha=main, selection_status="SELECTED",
+                        task_id=snapshot.selected_task["id"], task_revision=snapshot.selected_task["revision"])
+        if snapshot.selection_status == "HUMAN_BRAIN_NEXT_REQUIRED":
+            return dict(main_sha=main, selection_status="HUMAN_BRAIN_NEXT_REQUIRED",
+                        task_id=None, task_revision=None)
+    except Exception:
+        pass
+    return None
+
+
+def capture_publication(report_path, source_path, run_id, decision_sha, repo=".", *, observe_next=False):
     """Read the exact publisher report and canonical lineage, not workflow conclusion."""
     sources = GitSources(Path(repo), _git, "origin")
     identity, review = sources.review(run_id, decision_sha)
@@ -1833,6 +1883,10 @@ def capture_publication(report_path, source_path, run_id, decision_sha, repo="."
         if sources.refs(*patterns) != before:
             raise AttentionError("UNPROVEN_PUBLICATION")
         observation = dict(boundary="PUBLICATION_PROVEN", **identity, published_sha=identity["reviewed_sha"])
+        if observe_next:
+            projected_next = _publication_effective_next(repo, sources, main, identity)
+            if projected_next is not None:
+                observation["effective_next"] = projected_next
     elif outcome == "AWAITING_REVIEW":
         # Review wake is the standard canonical RESULT lane. The original
         # publication attempt must not impersonate publication or fresh PASS.
@@ -1963,6 +2017,7 @@ def main(argv=None):
     publication.add_argument("--source", required=True)
     publication.add_argument("--run-id", required=True)
     publication.add_argument("--decision-sha", required=True)
+    publication.add_argument("--observe-next", action="store_true")
     publication.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
     publication_identity = sub.add_parser("publication-event")
     publication_identity.add_argument("--source", required=True)
@@ -1992,7 +2047,8 @@ def main(argv=None):
             receipt = load_json(Path(args.receipt).read_bytes(), MAX_SOURCE_BYTES)
             write_source(args.source, [operational_observation(receipt)])
         elif args.command == "publication":
-            source = capture_publication(args.report, args.source, args.run_id, args.decision_sha)
+            source = capture_publication(args.report, args.source, args.run_id, args.decision_sha,
+                                         observe_next=args.observe_next)
             if args.output:
                 with Path(args.output).open("a", encoding="utf-8") as stream:
                     stream.write("source_digest=" + digest(source) + "\n")
