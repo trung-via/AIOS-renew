@@ -1,0 +1,61 @@
+review_id: REVIEW-415-002
+reviewed_sha: b13fbef2d5af49787f6e7fffdaf179d799bb4957
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings: []
+notes:
+- Independent PRIMARY semantic review of TASK-415 r1, REPAIR-415-001-001, and RUN-415-002
+  only. Exact reviewed candidate b13fbef2d5af49787f6e7fffdaf179d799bb4957 descends
+  from failed RUN-415-001 source 786417ee58dc71b33523c0adda505ed58be64b71; original
+  task/base 88d7d092828c09c98bdf39216b88856d7993c40c. Historical RUN-415-001 VERIFICATION
+  FAILURE and artifact a72a843fb7bd7caa0dbd27fb905b174ae2a68524 remain immutable.
+- Runtime-owned canonical RESULT/EVIDENCE ref refs/heads/aios/artifacts/RUN-415-002
+  at bccb735982d713f42b07aaa1eefd40338001fd10 binds RUN-415-002-V001 to exact reviewed
+  head b13fbef2d5af49787f6e7fffdaf179d799bb4957. The one authored minimum-sufficient-v1
+  command python -m pytest -q tests/test_brain_sync.py tests/test_brain_attention.py
+  tests/test_caa_integration.py has exit 0; ResultPackage claims C1-C5 cover AC1..AC10,
+  unresolved empty. No full-suite, production activation, or post-publication proof
+  is inferred.
+- 'AC1,AC8: candidate records the explicit Human AUTO_NEXT_FIX TASK-415 r1 prospective
+  selection, predecessor TASK-414 r2/RUN-414-007/REVIEW-414-007 source-bound publication
+  selectors and CAA historical Human records without silently selecting CAA-05 or
+  resuming paused tracks. The planning record does not itself create execution truth.'
+- 'AC2,AC3,AC4: source review of brain_sync.py confirms a read-only effective-NEXT
+  projection using unique Human-named predecessor, exact task revision, Unified State
+  DONE, independent PASS decision, artifacts and reviewed-source refs, Publisher inclusion,
+  sampled main currentness and mismatch failure to HUMAN_BRAIN_NEXT_REQUIRED. A completed
+  current selected task is not presented as actionable work; there is no auto TASK
+  authoring or roadmap semantic mutation.'
+- 'AC5,AC6,AC10: bounded optional effective_next source observation is added to the
+  established post-publication attention path, not to event routing selectors; local
+  Chat wake still requires new Brain Sync, missed/duplicated wake creates no alternate
+  lifecycle truth. The same reviewed candidate includes the ordinary publish workflow
+  wiring, with no additional activation TASK.'
+- 'AC7: the predecessor CAA-03 six-file, live-NEXT and historical source checks are
+  bound to the actual immutable TASK-412 reviewed source 7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9
+  and its original diff base, instead of mutable HEAD. The assertions remain strict.'
+- 'AC9 and correction scope: the only incremental RUN-415-002 source delta changes
+  tests/test_brain_attention.py. The old source-wide prohibition on brain_sync was
+  contradicted by the authorized publication-only observation. The new test isolates
+  the permitted function body and preserves the prohibition everywhere else plus bans
+  on generic semantic router, workflow dispatch and downstream activation. This independently
+  corroborates the reported AssertionError category without inventing hidden Runtime
+  traceback or PTE-03 output. All nine cumulative changed paths stay within TASK-415
+  scope.modify.'
+- 'Reviewer closure: no material semantic defect established in this exact source
+  against AC1..AC10 under the current minimum-sufficient Runtime proof. PASS binds
+  only to RUN-415-002 and its reviewed SHA. This verdict does not assert publication,
+  automatic CAA-05 selection, provider quality improvement, or final post-publication
+  runtime observation. Independent Publisher must reauthenticate exact review, ResultPackage
+  and current main/reservation before source inclusion.'
