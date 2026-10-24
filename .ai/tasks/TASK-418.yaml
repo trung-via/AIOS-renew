@@ -1,0 +1,159 @@
+task_id: TASK-418
+revision: 1
+goal: 'Establish the smallest preactivation, Runtime-bound native Codex feedback delivery
+  and receipt capability for Lean VP Intra v1.3 L3-06: the exact admitted live Codex
+  Executor can receive an authenticated F_i from the current checkpoint inside its
+  existing native invocation without reselecting, respawning or claiming authorization
+  to perform production C2. Preserve separate G3 integrated proof and G6 Human activation.'
+problem: Runtime already seals K_i and derives bounded immutable F_i, but CodexAdapter.execute
+  is currently a blocking one-shot subprocess with no production same-invocation feedback
+  callback; existing positive continuation tests use a local cooperative test adapter.
+  Consequently F_i preparation is not evidence of real native Executor receipt, and
+  no G3 proof or reliable correction loop can be claimed. Establish the native transport
+  boundary first; separately address actionable checkpoint diagnostics and full C2
+  correction after this bounded foundation.
+assumptions:
+- The latest inspected canonical main source is cc531fd1e5bcc7034aabdddf41dfe2268da888a6
+  on 2026-10-25; Runtime/ingress independently reauthenticate canonical expected-main
+  SHA, TASK identity and source.
+- Current explicit Human instruction resumes Lean VP Intra as new prospective work
+  priority, superseding only the active CAA TASK-417 planning bookmark for NEXT. TASK-417's
+  existing ten-future-TASK optional CAA pilot, TASK-415/416, PTE information-only
+  policy and immutable lineage remain unchanged; a new TASK can be a pilot cohort
+  member under its existing exact policy when eligible.
+- KA-01 v1.3 is HUMAN_RATIFIED_PROSPECTIVE_SPEC and NOT_ACTIVATED. Published L3-04
+  and L3-05 provide guarded local feedback/budget foundations; L3-06/G3 and separately
+  authenticated G6 remain outstanding.
+- Codex adapter currently dispatches a single blocking CLI subprocess via _runner(input=...),
+  not a proven session-aware native recipient; tests/test_lean_vp_l3_same_executor_continuation.py
+  uses LocalAdapter.confirm_local_feedback, not production Codex.
+- Only an admitted live Executor owns HOW. Brain authors this executor-neutral TASK;
+  no executor/model/effort or per-RUN G6 authorization is established by this authoring
+  or by a workflow Issue.
+- The earlier AOA-1 architecture comparison favored minimum lawful reuse of F_i/checkpoint
+  evidence and existing Runtime boundaries over a new diagnosis agent/router/database.
+  Technical feasibility of native Codex interactive transport is still unproved; a
+  source-bound inability result is better than a simulated live success.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - docs/AIOS-LEAN-VP-L3-SAME-EXECUTOR-CONTINUATION.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-391.yaml
+  - .ai/tasks/TASK-396.yaml
+  - .ai/tasks/TASK-397.yaml
+  - .ai/tasks/TASK-417.yaml
+  - src/aios_renew/codex_adapter.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/executor.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/review_transport.py
+  - tests/test_codex_adapter.py
+  - tests/test_lean_vp_l3_same_executor_continuation.py
+  - tests/test_lean_vp_l3_admission_budget.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - src/aios_renew/codex_adapter.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/executor.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/operator.py
+  - tests/test_codex_adapter.py
+  - tests/test_lean_vp_l3_same_executor_continuation.py
+  - tests/test_lean_vp_l3_admission_budget.py
+  - tests/test_lean_vp_l3_native_codex_handoff.py
+non_goals:
+- No G3 PASS or G6 production activation, no automatic C2 implementation, dispatch/retry/failover,
+  review or publication; no implicit new native Executor, model, session or lease
+  after an interruption.
+- No full actionable checkpoint diagnostic implementation in this first bounded slice
+  and no reuse of terminal-only PTE-03 as if it could read ACTIVE-RUN checkpoint without
+  an authenticated reader. PTE remains information-only for Brain.
+- No new database, planner, diagnosis agent, lifecycle router, generic event bus,
+  semantic verdict or duplicate Runtime verification; no untrusted raw log/prompt/secret
+  forwarding to the provider.
+- No alteration of frozen Kernel, immutable existing F_i proof identity/digest or
+  TASK-417 CAA pilot contract, no changes to downstream pins, and no full test suite.
+- No widening correction support to REPAIR/REMEDIATION production in this first slice;
+  those operations remain explicit later G3 conformance duties.
+constraints:
+  hard:
+  - 'Canonicalize exact new Human Lean VP priority prospectively in the existing roadmap:
+    one NEXT Lean VP L3-06 native feedback foundation TASK-418 r1, keep former CAA
+    NEXT as historical/preserved planning, preserve optional CAA ten-task cohort and
+    exact lineage without pretending previously published artifacts are undone. Do
+    not auto-advance roadmap on execution, verification or publication.'
+  - Provide a bounded, versioned, source-bound native Codex feedback receipt path,
+    using an admitted original live invocation and matching Runtime RUN/lease/executor/profile/checkpoint/feedback
+    digest. A late, stale, duplicate, forged, wrong-thread, wrong-checkpoint or moved-source
+    receipt must be rejected or STOP, not be counted as success.
+  - The production adapter must not claim that a LocalAdapter fixture, subprocess
+    success, file acknowledgement, detached process or newly spawned Codex session
+    proves same-live-native Executor delivery. If supported live Codex transport cannot
+    be lawfully established, return an explicit bounded unavailability result without
+    unsafe mutation or false completion.
+  - Keep immutable factual feedback F_i, authenticated current checkpoint and sealed
+    original raw/native evidence under existing Runtime ownership; no raw text, traceback,
+    paths or instructions may be smuggled into F_i. The later diagnostic sufficiency
+    slice must read exactly this source, not create a second truth store.
+  - Keep production C2 disabled under KA-01 NOT_ACTIVATED and distinct G6 Human consent.
+    Local native receipt or a preactivation probe grants no C2/G3/G6 right. No change
+    to the existing one Runtime canonical verifier, effect fence, ledger/lease, correction
+    resource budget or terminal authority.
+  - Preserve existing one-shot Codex, Antigravity and correction operations as original
+    safe fallback/STOP where the native continuation capability is unavailable. No
+    cross-provider/session fallback and no automatic retries.
+  - Use minimum-sufficient focused verification of adapter receipt, authentic bindings,
+    stop/replay/crash/incorrect subjects and legacy no-op behavior; no full suite,
+    no changes that weaken proof or acceptance semantics.
+acceptance:
+- id: AC1
+  condition: A source-bound Human/Brain planning record selects Lean VP L3-06 TASK-418
+    r1 as the sole prospective NEXT, preserving CAA pilot eligibility/history, PTE
+    information-only policy, former TASK-417 and historical immutable lineage, without
+    a second NEXT or automatic roadmap advancement.
+- id: AC2
+  condition: The Codex native adapter exposes a bounded feedback-consumption capability
+    that the existing Runtime can bind to a single live admitted original invocation
+    for authenticated F_i, with exact current RUN, checkpoint, feedback identity,
+    Executor profile and lease checks, and no new Executor selection.
+- id: AC3
+  condition: A successful native feedback delivery produces a source-correlated receipt
+    that is distinguishable from fixture acknowledgement, detached-file markers and
+    mere subprocess completion; inability to prove original live native delivery yields
+    a bounded unavailable/STOP outcome.
+- id: AC4
+  condition: Malformed, stale, substituted, replayed, repeated, cross-RUN, cross-checkpoint,
+    wrong-thread, moved-lease and interrupted-native feedback attempts fail closed
+    without a new proof execution, implicit retry or mutation authority.
+- id: AC5
+  condition: Existing Runtime sealed checkpoint and immutable F_i schema/evidence
+    remain unchanged; no raw logs, traceback, machine-local paths, secrets or implementation
+    directives are added to F_i or untrusted portable native inputs.
+- id: AC6
+  condition: KA-01 production continuation remains NOT_ACTIVATED, with C2 and correction-operation
+    admission not authorized by this native receipt. Legacy one-shot Codex and other
+    existing native/correction paths preserve their prior safe behavior.
+- id: AC7
+  condition: Focused adapter/Runtime tests exercise the authentic native-recipient
+    path and negative authority/continuity cases without equating mocked LocalAdapter
+    success to proven live Codex deployment; source-bound native-probe absence is
+    reported explicitly.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_lean_vp_l3_native_codex_handoff.py tests/test_lean_vp_l3_same_executor_continuation.py
+    tests/test_lean_vp_l3_admission_budget.py tests/test_codex_adapter.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
