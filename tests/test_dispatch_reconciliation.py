@@ -356,10 +356,16 @@ def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
 
     sync_calls = 0
 
-    def synchronize(_repo: Path, *, allow_restart: bool = False) -> bool:
+    def synchronize(
+        _repo: Path,
+        *,
+        allow_restart: bool = False,
+        diagnostic: list[str] | None = None,
+    ) -> bool:
         nonlocal sync_calls
         sync_calls += 1
         assert allow_restart is True
+        assert diagnostic == []
         records = list((state_root / "dispatches").glob("*.json"))
         assert len(records) == 1
         record = json.loads(records[0].read_text(encoding="utf-8"))
