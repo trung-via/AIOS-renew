@@ -3,6 +3,7 @@
 from fnmatch import fnmatchcase
 import copy
 import hashlib
+import inspect
 import io
 import json
 from pathlib import Path
@@ -1192,9 +1193,12 @@ def test_task409_explicit_experience_read_preserves_attention_review_and_affinit
 
 def test_shared_projector_has_no_generic_semantic_router_or_downstream_activation():
     source = Path(brain.__file__).read_text(encoding="utf-8")
-    for forbidden in ("observe_unified_state", "brain_sync", "createWorkflowDispatch",
+    for forbidden in ("observe_unified_state", "createWorkflowDispatch",
                       "aios run", "aios remediate", "aios repair", "Python Agent"):
         assert forbidden not in source
+    publication_observer = inspect.getsource(brain._publication_effective_next)
+    assert "from .brain_sync import observe_brain_sync" in publication_observer
+    assert "brain_sync" not in source.replace(publication_observer, "", 1)
     assert '.get("next_action")' not in source and '["next_action"]' not in source
     assert "parse_envelope" in source  # Structural source selectors, not a flow reducer.
 
