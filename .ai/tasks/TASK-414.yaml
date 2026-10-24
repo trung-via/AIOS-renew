@@ -1,0 +1,156 @@
+task_id: TASK-414
+revision: 1
+goal: Implement CAA-04 as a finite independent source-grounded offline holdout evaluator,
+  opt-in bounded shadow observer and Human rollout decision report over accepted CAA-03
+  four-flow advice. Make optional read-only evaluation callable on exact reviewed
+  publication, with no default advisor activation, auto rollout or additional lifecycle
+  authority.
+problem: Human selected immediate CAA-04 on 2026-10-24. Current canonical main 7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9
+  carries CAA-03 TASK-412 r2/RUN-412-009 with Runtime evidence exit 0, unresolved
+  empty, independent PRIMARY REVIEW-412-009 PASS covering AC1..AC10, decision commit
+  6c6490fe41333842b5030e6f011cf07f11bf82b3, on that exact included source. CAA-03
+  currently lacks independent holdout, a finite shadow evaluation, and evidence sufficient
+  for Human rollout selection. CAA-04 must not convert its own evaluation into Runtime/Reviewer/Publisher
+  truth.
+assumptions:
+- Explicit Human approval selects CAA-04 architecture B and implementation now, not
+  unbounded spending, automatic shadow start, fixed quality gate or controlled production
+  rollout. Decisive measurements require separately authenticated preregistered Human
+  evaluation limits and thresholds before collection.
+- Runtime independently reauthenticates the current main and exact accepted TASK-412/RUN-412-009/EVIDENCE/REVIEW-412-009/PUBLISHER
+  inclusion; a text claim or hash alone is not authority.
+- CAA-01 sealed authenticated cuts, CAA-02 causal consultation and CAA-03 optional
+  four-flow consult are existing reusable sources and mechanisms. CAA-04 creates no
+  second lifecycle reader, semantic brain, generic router or truth DB.
+- Planning changes prospectively select CAA-04 only; CAA-01/02/03, TASK-411/413, all
+  RUN/FAILURE/REVIEW/PUBLISH, PTE/Lean VP/KA-01/downstream history is preserved. CAA-05
+  stays conditional.
+- Canonical prospective Human default LEGACY_REPOSITORY_DEFAULT_ROUTE remains applicable.
+  TASK itself neither delegates an Executor nor grants dispatch permission.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CAA-03-INTEGRATION-PORTABILITY.md
+  - docs/AIOS-CAA-02-INTELLIGENT-REASONER.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/tasks/TASK-412.yaml
+  - src/aios_renew/caa_experience.py
+  - src/aios_renew/caa_reasoner.py
+  - src/aios_renew/caa_integration.py
+  - tests/test_caa_integration.py
+  - tests/test_caa_reasoner.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md
+  - src/aios_renew/caa_evaluation.py
+  - tests/test_caa_evaluation.py
+non_goals:
+- No always-on agent, new database, trained model, provider router, mandatory audit,
+  default CAA invocation or new Planner/Runtime/Reviewer/Publisher role.
+- No source mutations to existing CAA-01/02/03, Flow Cards, direct-authoring/repair/remediation
+  admission, Kernel, remote wakeup, Unified State or other task lifecycle code.
+- No automatic Human risk acceptance, provider selection, TASK creation, dispatch,
+  correction, publication, Git rollback or production rollout from evaluation output.
+- No model self-grading as proof, future-event hindsight leakage, reference-label
+  exposure, private raw logs, credentials, provider traces, chain-of-thought or inferred
+  production uplift.
+- No CAA-05 training, downstream pin changes, PTE or Lean VP continuation, historical
+  lineage rewrite or unrelated feature.
+constraints:
+  hard:
+  - Use exact authenticated sealed CAA-01 ExperienceCut/source/as-of and existing
+    CAA-02/03 interfaces. The evaluation surface only consumes caller-authorized four-flow
+    input; hashes and JSON reports never authenticate their own sources.
+  - Keep development fixtures, sealed holdout and shadow subjects distinct; independent
+    labels and rubric cannot be passed into advisor input. Reject stale/swapped source,
+    subject, policy, candidate, later RUN/REVIEW exposure and changed main.
+  - Grade with deterministic source/citation validation plus independent Human-labelled
+    semantic rubric; a model judge may only be secondary and calibrated, never the
+    issuer of its own accepted quality verdict. Unsupported claims and missing decisive
+    data remain UNKNOWN.
+  - "Measure source support, causal applicability, strong disanalogies/counterexamples,\
+    \ appropriate abstention, safety, cost, latency and \u2014 only when independently\
+    \ available \u2014 Human time and full episode outcomes; distinguish observed,\
+    \ measured, estimated and UNKNOWN, and report sampling/confounding rather than\
+    \ claim causal uplift."
+  - Before decisive offline holdout or live shadow, require a trusted pre-registered
+    EvaluationPlan with exact population/source, metrics and thresholds, independent
+    grader provenance, permissions, allowed provider/effort, cost/time/call ceilings
+    and rollback/disable plan; unapproved/missing plan must stop evaluation, not ordinary
+    lawful Brain work.
+  - 'Implementation safety limits: shadow at most 50 eligible subjects or 7 days,
+    whichever first; maximum one selected advisor call per subject; existing CAA-03
+    time/source/provider caps also apply. These are ceilings only and grant no automatic
+    Human approval to run or spend.'
+  - Shadow must be read-only, caller-invoked, explicitly opt-in and finite. Unavailable
+    advisor, opt-out, invalid evaluation-only data or exhausted budget cannot block
+    otherwise lawful direct TASK/REPAIR/REMEDIATION/ARCHITECTURE work; genuine existing
+    canonical auth errors remain blocking.
+  - Reports may recommend PROPOSE_ROLLOUT, REEVALUATE, DEFER or STOP, identifying
+    evidence and unknowns. Only a separate exact Human authorization can expose advice
+    in controlled use. Disabling optional evaluation may not mutate RUN, review, publication
+    or Git state.
+  - Provide bounded positive and adversarial fixtures for four flows, unsupported
+    cause, false citation, future-data/label leak, prompt injection, subject swap,
+    corrupt grader, overbudget, timeout, false confidence, provider unavailability
+    and opt-out.
+  - Record explicit Human CAA-04 selection as only current CAA planning NEXT; preserve
+    accepted CAA-03 predecessor, TASK-408 direct authoring and soft AOA, other bookmarks
+    and historical lineage. No planning automatic advance from Result, Review or Publish.
+  - Only listed five scope.modify paths may change. Executor claims only implementation
+    properties; Runtime runs minimum-sufficient-v1 authored verification, independent
+    Reviewer judges and Publisher publishes. No full-suite or repeated unchanged verification.
+acceptance:
+- id: AC1
+  condition: Canonical planning records only prospective Human CAA-04 selection with
+    accepted CAA-03 exact lineage and unchanged historical CAA selections, unrelated
+    TASKs and conditional CAA-05.
+- id: AC2
+  condition: One finite provider-neutral read-only evaluation API accepts exact four-flow
+    advisor context with authenticated source/subject/candidate/as-of cut and strictly
+    bounded JSON outputs, without workflow or lifecycle mutation.
+- id: AC3
+  condition: Development, sealed holdout and shadow cases keep rubric/labels separate,
+    enforce as-of and source isolation and reject hindsight, stale, forged, missing
+    or swapped source.
+- id: AC4
+  condition: Independent grading differentiates actual material source support, causal
+    mechanism transfer, counterexample, abstention and harmful confidence from merely
+    syntactically correct citation and rejects CAA self-score authority.
+- id: AC5
+  condition: A bounded caller-invoked, disabled-by-default shadow evaluator collects
+    no workflow-control actions; absent provider, failed optional consultation, Human
+    opt-out or budget exhaustion leaves original direct Brain flow unchanged.
+- id: AC6
+  condition: An exact authenticated pre-registered Human EvaluationPlan binds sampling,
+    rubric, thresholds, privacy, provider, max spend/calls/duration and stop conditions
+    before decisive holdout/live shadow; hard ceilings 50 subjects, 7 days and one
+    advisor call per subject are enforced without implying authorization.
+- id: AC7
+  condition: Evaluation report separates baseline/advisor and measured/estimated/UNKNOWN
+    results, quality/safety/cost/p50-p95 latency/full-episode fields when known, sample
+    limitations, missingness and confounders without attributing unsupported production
+    uplift.
+- id: AC8
+  condition: Four-flow adversarial fixtures reject label contamination, source/citation
+    swap, future events, injection, causal false analogy, incorrect judge provenance,
+    budget violations and unauthenticated Human rollout.
+- id: AC9
+  condition: Human-facing rollout packet has independent evaluator provenance, threshold
+    observations, uncertainties, alternatives, disable/stop gates and no action authority;
+    production rollout remains a separate explicit Human decision.
+- id: AC10
+  condition: Only five authorized source paths change; existing CAA-01/02/03, direct
+    authoring, Human-on-demand audit, optional AOA and independent Runtime/Reviewer/Publisher
+    contracts remain unmodified.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_caa_evaluation.py tests/test_caa_integration.py
+    tests/test_caa_reasoner.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
