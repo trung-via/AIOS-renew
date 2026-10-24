@@ -1,0 +1,203 @@
+task_id: TASK-417
+revision: 1
+goal: Activate the already-published CAA-03 four-flow advisory immediately as a Human-authorized,
+  bounded, optional non-decisive pilot for the next ten distinct future canonical
+  TASK identities, preserving Brain's independent semantic verdict and all existing
+  Human/Executor/Runtime/Reviewer/Publisher boundaries. Observe those ten prospective
+  tasks before any independent threshold/holdout decision and before any consideration
+  of CAA-05.
+problem: CAA-01..04 are source-published capabilities but consult_flow defaults disabled,
+  CAA-04 EvaluationSession defaults disabled and enforces exact preregistration for
+  decisive evaluation/shadow. The Human now authorizes CAA advisory use immediately
+  and explicitly postpones threshold evaluation and any CAA-05 consideration until
+  observing ten following TASKs. Merely changing roadmap words or claiming that CAA-04
+  quality gates are met would falsely activate an unproven production consumer, self-scoring
+  or extra workflow authority. An optional bounded caller/Brain-facing activation
+  and factual non-decisive observation boundary is needed without imposing audits,
+  replacing final direct authoring or bypassing provider-cost/source authorization.
+assumptions:
+- Current explicit Human priority 2026-10-24 authorizes prospective controlled CAA
+  advisory activation and ten-TASK exploratory observation, not training, automatic
+  provider selection, unrestricted paid calls, or declaration that quality thresholds
+  have been reached.
+- Canonical main at source capture is 5117cb2943e993132909dc1368f483e019674809, including
+  published TASK-416 PTE Information-Only v2; exact CAA-01..04 published lineages
+  remain source-authenticated by the existing reader.
+- Human's prior explicit CAA-program Executor preference was Codex GPT-6.1 Sol Max;
+  this TASK's authoring does not itself create/delegate RUN or independently select
+  an Executor.
+- CAA-03 consult_flow is an existing optional provider-neutral one-call advisory with
+  enabled=False default and explicit enabled=True per eligible caller subject. CAA-04
+  decisive evaluation requires a separate exact Human preregistration and trusted
+  plan/provider cost cap; this plan does not implicitly create those.
+- After TASK-415 published and TASK-416 published, no unrelated CAA-05 or other successor
+  is preapproved by older roadmap. This current Human activation may prospectively
+  select this bounded program action but cannot rewrite TASK-415/416 prior selection
+  or immutable lineages.
+- Provider and spending permission must be established independently at actual invocation;
+  no hardcoded paid provider/model, invented spend authorization or caller echo can
+  establish it.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/brain-audit-profiles.yaml
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-414.yaml
+  - .ai/tasks/TASK-415.yaml
+  - .ai/tasks/TASK-416.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CAA-03-INTEGRATION-PORTABILITY.md
+  - docs/AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md
+  - docs/AIOS-PTE-INFORMATION-ONLY-v2.md
+  - src/aios_renew/caa_experience.py
+  - src/aios_renew/caa_reasoner.py
+  - src/aios_renew/caa_integration.py
+  - src/aios_renew/caa_evaluation.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_sync.py
+  - tests/test_caa_integration.py
+  - tests/test_caa_evaluation.py
+  - tests/test_brain_context.py
+  - tests/test_brain_sync.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CAA-10-TASK-ADVISORY-ACTIVATION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - src/aios_renew/caa_integration.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider.py
+  - tests/test_caa_integration.py
+  - tests/test_caa_evaluation.py
+  - tests/test_brain_context.py
+  - tests/test_brain_sync.py
+non_goals:
+- No retraining/fine-tune, CAA-05 activation, independent holdout or decisive quality
+  PASS now; no retroactive grading of pilot cases as pre-registered holdout, automatic
+  production superiority claim, provider live-equivalence claim or mandatory CAA consumer.
+- No generic Agent/Planner/Reviewer/Publisher/lifecycle router, new DB, persistent
+  semantic memory, autonomous task creation, task selection, review, dispatch, retry/failover
+  or provider/model selector.
+- No bypass of CAA-04 exact preregistration for decisive evaluation, provider invocation/cost
+  authorization, independent labels, privacy, source currentness, final direct authoring
+  or TASK-408 Human-on-demand audit policy.
+- No change to frozen Kernel, PTE Information-Only v2, historical CAA/TASK-401/TASK-414/415/416
+  lineage, downstream pins or unrelated roadmap packages.
+- No full test suite, changing tests to accept weaker source/evidence semantics, or
+  treating GitHub carrier, wake, trial observation or CAA output as Runtime verification.
+constraints:
+  hard:
+  - Canonicalize a new current explicit Human/Brain planning record for 10-TASK CAA
+    advisory pilot, superseding older prospective static CAA AUTO-NEXT bookmark only
+    for new planning selection. Preserve history and exact source-bound TASK-415/TASK-416
+    outcomes. Reconcile one effective NEXT; no automatic CAA-05 or second NEXT.
+  - Enable the existing CAA-03 optional advice for selected Brain-owned ARCHITECTURE/TASK/REPAIR/REMEDIATION
+    flows through an actual supported trusted caller boundary where possible, without
+    setting unconditional global enabled=True, adding a new lifecycle router or requiring
+    advice to author a final TASK. If a live trusted caller is unavailable, report
+    distinct activation limitation and avoid a false active-production assertion.
+  - The pilot cohort is exactly the next ten distinct NEW canonical TASK identities
+    admitted after the exact reviewed/published activation source, in canonical first-authoring
+    sequence; TASK-417 itself is excluded. Count one TASK identity once; corrections,
+    revisions and multiple RUNs belong to that TASK's episode but do not create another
+    cohort member. A paused/failed TASK retains its identity and may be observed with
+    explicit incomplete/UNKNOWN result, not invented PASS.
+  - Bind every optional consult to original Human intent, exact TASK/revision/subject/candidate/fresh
+    Decision Packet and sealed CAA-01 cut. CAA advice may inform Brain; Brain independently
+    accepts/rejects/defers its content. Invalid/unavailable optional advice must not
+    block ordinary direct authoring; genuine canonical caller source failures retain
+    original fail-closed handling.
+  - 'No unapproved billable provider call: per-consultation model/provider must be
+    an already lawfully selected trusted caller profile with explicit charge limits;
+    absent provider or authorization returns UNAVAILABLE/NO_MATERIAL_ADVICE, not fabricated
+    live advice. Preserve current CAA per-call and finite source/time/byte limits,
+    no retry and no attribution substitution.'
+  - 'Collect a bounded non-decisive observation of each cohort TASK using existing
+    canonical Engineering Episode reader and exact sources: pre-outcome advice availability/grounding
+    when actually produced, task/revision/RUN terminal and review/publication state
+    when established, failure/ref blockers, human choices and known/UNKNOWN latency/time/token/cost.
+    Avoid raw logs, chain of thought, secret data, historical cut leakage and new
+    independent lifecycle truth.'
+  - 'Preserve longitudinal provenance: evidence of pre-outcome advice must have an
+    authenticated observation time/cut/subject binding before outcome. Do not retroactively
+    reconstruct advice from later outcomes or promote unavailable advice to a successful
+    consultation. Reuse existing safe observation/report means rather than adding
+    a DB, generic memory service or new Runtime artifact family.'
+  - Stop pilot inclusion at exactly ten distinct eligible new TASK identities; do
+    not automatically broaden the cohort or activate CAA-05. The ten-task exploratory
+    observations cannot be used as a decisive preregistered HOLDOUT. After ten, output
+    a bounded evidence-gap report for Human/Brain decision whether to preregister
+    independent CAA-04 threshold/holdout/shadow and separately whether CAA-05 research
+    is justified; no automated verdict or action.
+  - Do not activate CAA-04 EvaluationSession decisive HOLDOUT/SHADOW now or loosen
+    its required exact registered plan, independent labels/thresholds/cohorts, trusted
+    reservation/provider/spending, seven-day and fifty-case ceilings. A later Human
+    action and lawful exact plan must precede any such decisive calls.
+  - Preserve Human explicit opt-out and ordinary direct flows. CAA cannot become mandatory
+    TCA/ROA/MOA/AOA, Runtime permission, Reviewer or Publisher source, correction
+    selector, or work planner. If a selected case is blocked or no provider is allowed,
+    Brain remains free to reason directly under normal constraints.
+  - Keep modifications within scope.modify and explain any evidence that the existing
+    first-party production consumer cannot be safely activated within this bounded
+    scope. Reuse source-bound observation before inventing state/persistence or transport.
+    No retrospective program success from these authored statements.
+acceptance:
+- id: AC1
+  condition: Current prospective Human decision and pilot identity are recorded with
+    TASK-417 r1 and original PTE/CAA/Auto-NEXT history preserved; no duplicate roadmap
+    NEXT or CAA-05 selection.
+- id: AC2
+  condition: One bounded first-party CAA-03 advice activation path accepts Human-enabled
+    pilot and independently source-authenticated Brain flow/subject, preserving default
+    disabled/opt-out for other traffic and CAA-03 unchanged advisory authority.
+- id: AC3
+  condition: Genuine provider-unavailable, no-trusted-profile/no-billable-authorization
+    and malformed/unsafe-advice cases yield bounded nonblocking optional advice outcome,
+    while preexisting canonical subject/currentness errors retain fail-closed direct-authoring
+    guards.
+- id: AC4
+  condition: Cohort selection and de-duplication contract covers exactly the first
+    ten future distinct canonical TASK identities after activation publication, excludes
+    TASK-417 and repeated revision/RUN/correction, and stops further pilot inclusion.
+- id: AC5
+  condition: Observed diagnostic material is independently source-bound and privacy-bounded
+    with exact missing/UNKNOWN status; no unsafe retrospective advisory/causal/quality
+    proof is manufactured.
+- id: AC6
+  condition: Any pre-outcome advice observation is tied to the then-authenticated
+    subject/cut before outcome and not retrospectively enriched; failed/stale/forged/cross-task,
+    private and malicious evidence is contained.
+- id: AC7
+  condition: After ten tasks, a finite read-only report/decision handoff is defined;
+    CAA-04 decisive thresholds/holdout and CAA-05 decision remain separately Human-selected
+    future decisions, not preapproved, executed, scored or auto-triggered by the pilot.
+- id: AC8
+  condition: CAA-04 existing preregistration, independent grading, provider/charge
+    gate and evaluation bounds remain effective and are not repurposed as a free 10-task
+    quality PASS.
+- id: AC9
+  condition: Human/Brain/Executor/Runtime/Reviewer/Publisher and TASK-408 HUMAN_ON_DEMAND
+    auditing retain their original authority; no workflow router, training, generic
+    persistence, autonomous repair/review/dispatch or new lifecycle truth.
+- id: AC10
+  condition: Targeted production-shaped CAA integration and Brain context/source regressions
+    prove controlled use, unavailable/opt-out, ten-task boundary, privacy, stale/currentness
+    and no secondary effects; no full suite or invented rollout efficiency claim.
+- id: AC11
+  condition: An actual authenticated supported Brain caller can explicitly reach the
+    existing CAA-03 consultation path in the authorized pilot, or a precisely scoped
+    source-bound unavailability blocker is returned rather than claiming live activation
+    without a caller/provider.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_caa_integration.py tests/test_caa_evaluation.py
+    tests/test_brain_context.py tests/test_brain_sync.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
