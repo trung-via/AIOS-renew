@@ -3,7 +3,7 @@
 # Source at research time: main 749cd197e55eadb36e8876db104c333a021f4915
 # Last authoritative source check must be repeated before any canonical mutation.
 task_id: TASK-412
-revision: 1
+revision: 2
 goal: >-
   Implement CAA-03 as exactly one optional, bounded and provider-neutral evidence
   advisory integration for existing Brain-owned ARCHITECTURE, TASK_AUTHORING,
@@ -31,6 +31,10 @@ assumptions:
 - Existing Flow Resolver, Flow Cards, DecisionPacket, CAA-01 sealed cut,
   CAA-02 consult and MappingBrainProvider/JsonBrainProvider are reused;
   no new autonomous orchestration or direct canonical source authority is issued.
+- Human on 2026-10-24 explicitly approved TASK-412 revision 2 only to widen
+  scope.modify with tests/test_caa_reasoner.py for a source-bound historical
+  CAA-02 fixture correction; original RUN-412-001 through RUN-412-007 FAILURE
+  lineage is immutable. The native Codex exit-1 root cause remains UNKNOWN.
 - Human-selected Executor preferences, if applicable, do not equal Runtime
   admission; no Executor is admitted by this TASK payload alone.
 - Runtime owns verification and evidence; Reviewer owns semantic review;
@@ -67,6 +71,7 @@ scope:
   - docs/AIOS-CAA-03-INTEGRATION-PORTABILITY.md
   - src/aios_renew/caa_integration.py
   - tests/test_caa_integration.py
+  - tests/test_caa_reasoner.py
 non_goals:
 - No default/automatic CAA or audit invocation, caller-side lifecycle routing,
   secondary Planner/Reviewer/Publisher, database, persistent memory or index.
@@ -124,6 +129,11 @@ constraints:
     exact independent PASS/published-source lineage as history, and leave
     CAA-04/conditional CAA-05 unselected; unrelated TASK-411 and paused
     bookmarks remain untouched. Never infer completion from this planning step.
+  - The newly permitted test_caa_reasoner.py change must preserve strict CAA-02
+    assertions under the exact historical CAA-02 source/snapshot and separately
+    distinguish current CAA-03 roadmap semantics. No skipping, xfail, weaker
+    assertions, fabricated historical state, altered Runtime verification or
+    rewrite of TASK-410/other historical TASK source is permitted.
   - Keep source edits within enumerated scope.modify. Executor makes truthful
     implementation-only claims; Runtime alone runs authored minimum-sufficient-v1
     checks; independent Reviewer/Publisher handle subsequent decisions.
@@ -176,7 +186,9 @@ acceptance:
     bounded CAA-03 contract documentation with no default production activation.
 - id: AC10
   condition: >-
-    Only the five expressly permitted source/doc/test paths change; existing
+    Only the six expressly permitted source/doc/test paths change; the legacy
+    CAA-02 historical assertions remain valid for their original source and
+    must not falsely reject the prospective CAA-03 selection. Existing
     Brain/context, direct-authoring, CAA-01/02, audit-policy and lifecycle
     public API behaviors remain compatible without new Reviewer/Publisher/Runtime
     authority or unsupported cross-provider superiority claim.
