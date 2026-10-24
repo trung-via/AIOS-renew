@@ -1,5 +1,5 @@
 task_id: TASK-414
-revision: 1
+revision: 2
 goal: Implement CAA-04 as a finite independent source-grounded offline holdout evaluator,
   opt-in bounded shadow observer and Human rollout decision report over accepted CAA-03
   four-flow advice. Make optional read-only evaluation callable on exact reviewed
@@ -11,7 +11,18 @@ problem: Human selected immediate CAA-04 on 2026-10-24. Current canonical main 7
   6c6490fe41333842b5030e6f011cf07f11bf82b3, on that exact included source. CAA-03
   currently lacks independent holdout, a finite shadow evaluation, and evidence sufficient
   for Human rollout selection. CAA-04 must not convert its own evaluation into Runtime/Reviewer/Publisher
-  truth.
+  truth. TASK-414 r1 failed through RUN-414-006. A source-bound, noncanonical exact-head
+  diagnostic supplied by Human on candidate e08bfec8d683ec6f4ec6c6d39209eb949662513f
+  reproduced one AssertionError in tests/test_caa_integration.py::test_caa03_selection_preserves_exact_historical_plan_and_only_six_paths
+  when running the three-file authored command. This inherited TASK-412-era historical
+  test asserts that the current HEAD still has CAA-03/TASK-412 r2 as sole NEXT and
+  exactly the CAA-03 six-file diff since BASE_SHA 74d9a21099f4068645545aca1c53ba317d86bcf0,
+  while CAA-04 selection on current candidate legitimately makes CAA-04/TASK-414 r1
+  sole NEXT and adds five authorized source files. Isolated CAA-04 tests PASS; CAA-04
+  source code has not been proved faulty. Historical source-locked fixture cannot
+  truthfully be run as an assertion on later CAA-04 HEAD. Version 2 corrects the verification
+  selection defect without modifying CAA-03 source or changing its frozen lineage.
+  The prior RUN/FAILURE/REPAIR lineage remains immutable and has no PASS.
 assumptions:
 - Explicit Human approval selects CAA-04 architecture B and implementation now, not
   unbounded spending, automatic shadow start, fixed quality gate or controlled production
@@ -27,6 +38,17 @@ assumptions:
   stays conditional.
 - Canonical prospective Human default LEGACY_REPOSITORY_DEFAULT_ROUTE remains applicable.
   TASK itself neither delegates an Executor nor grants dispatch permission.
+- The exact Human-supplied local reproduction (format AIOS_TASK414_NONCANONICAL_TARGETED_DIAGNOSTIC,
+  observed SHA e08bfec8d683ec6f4ec6c6d39209eb949662513f, three-file authored pytest
+  exit 1 with one matched AssertionError in a CAA-03 source-locked historical test)
+  is bounded diagnostic evidence only, not canonical Runtime verification or a conclusive
+  claim about any other test. Runtime remains sole canonical verifier.
+- CAA-03 historical fixture asserts a six-path diff and active CAA-03 selection only
+  at its original TASK-412 source; those expectations are not invariants of a later
+  CAA-04 source. Revision 2 does not revise TASK-412, its tests or any historical
+  PASS. Reuse current failed candidate implementation e08bfec8d683ec6f4ec6c6d39209eb949662513f
+  as read-only inspectable draft input, not as a preauthorized RESULT/PASS; Executor
+  must revalidate and produce an independent current-task-revision source-bound candidate.
 scope:
   inspect:
   - .ai/roadmap-state.yaml
@@ -104,11 +126,35 @@ constraints:
   - Only listed five scope.modify paths may change. Executor claims only implementation
     properties; Runtime runs minimum-sufficient-v1 authored verification, independent
     Reviewer judges and Publisher publishes. No full-suite or repeated unchanged verification.
+  - 'Verification selection correction: preserve every TASK-414 r1 selected test except
+    the single predecessor-source-locked test tests/test_caa_integration.py::test_caa03_selection_preserves_exact_historical_plan_and_only_six_paths,
+    excluded using the exact -k ''not test_caa03_selection_preserves_exact_historical_plan_and_only_six_paths''
+    filter on the existing three-file command. This historical test remains untouched,
+    and it can only be asserted against the authentic TASK-412 source. No blanket
+    skip of tests/test_caa_integration.py or tests/test_caa_reasoner.py, no change
+    to pytest fixed-worker configuration, no full suite.'
+  - 'Inside already-authorized tests/test_caa_evaluation.py, add a successor-safe
+    positive and negative regression: CAA-04 is current sole NEXT; immutable CAA-03
+    Human selection record and accepted TASK-412/RUN-412-009 lineage retain original
+    values and cannot be forged or silently rewritten; other Human selection/bookmark
+    records remain unchanged by the prospective selection; five file scope remains
+    exact. The regression must not rewrite tests/test_caa_integration.py or perform
+    real Human/production activation. Conformance here is source-bound to the original
+    CAA-03 published immutable baseline and must not assert CAA-03 is still live NEXT.'
+  - Preserve all RUN-414-001 through RUN-414-006 FAILUREs and REPAIR authorizations
+    as historical, never relabel or transport a stale pre-verification package into
+    a new TASK revision. Use source e08bfec8d683ec6f4ec6c6d39209eb949662513f only
+    as an inspected candidate draft if admitted by canonical Runtime; new Executor
+    output must bind TASK-414 revision 2 and new admitted RUN/HEAD. No fabricated
+    review/PASS/publication. No repeated error-driven repair without a concrete source-bound
+    failure.
 acceptance:
 - id: AC1
   condition: Canonical planning records only prospective Human CAA-04 selection with
     accepted CAA-03 exact lineage and unchanged historical CAA selections, unrelated
-    TASKs and conditional CAA-05.
+    TASKs and conditional CAA-05. Verify CAA-03 remains an immutable historical predecessor
+    while CAA-04 is the current sole NEXT, without relying on predecessor-only live
+    NEXT assertions.
 - id: AC2
   condition: One finite provider-neutral read-only evaluation API accepts exact four-flow
     advisor context with authenticated source/subject/candidate/as-of cut and strictly
@@ -138,7 +184,10 @@ acceptance:
 - id: AC8
   condition: Four-flow adversarial fixtures reject label contamination, source/citation
     swap, future events, injection, causal false analogy, incorrect judge provenance,
-    budget violations and unauthenticated Human rollout.
+    budget violations and unauthenticated Human rollout. A successor-safe historical-record
+    preservation regression in tests/test_caa_evaluation.py must prove CAA-03 selected-history
+    and accepted lineage are retained exactly; a forged/tampered predecessor identity
+    must fail.
 - id: AC9
   condition: Human-facing rollout packet has independent evaluator provenance, threshold
     observations, uncertainties, alternatives, disable/stop gates and no action authority;
@@ -146,11 +195,14 @@ acceptance:
 - id: AC10
   condition: Only five authorized source paths change; existing CAA-01/02/03, direct
     authoring, Human-on-demand audit, optional AOA and independent Runtime/Reviewer/Publisher
-    contracts remain unmodified.
+    contracts remain unmodified. An inherited CAA-03 source-locked fixture must remain
+    unmodified and is not retargeted to a newer HEAD. The authored verification runs
+    the remaining CAA-03/integration/reasoner tests and excludes exactly that one
+    obsolete historical source-cut assertion; no tests are globally skipped.
 verification:
   policy: minimum-sufficient-v1
   required:
   - python -m pytest -q tests/test_caa_evaluation.py tests/test_caa_integration.py
-    tests/test_caa_reasoner.py
+    tests/test_caa_reasoner.py -k 'not test_caa03_selection_preserves_exact_historical_plan_and_only_six_paths'
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
