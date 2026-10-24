@@ -1,0 +1,163 @@
+task_id: TASK-415
+revision: 1
+goal: Fix root-cause stale roadmap NEXT after exact PASS-reviewed Publisher publication.
+  Automatically expose the unique Human/Brain-preapproved successor as effective NEXT
+  in ordinary Brain Sync and existing post-publication attention/wake, without Human
+  manual roadmap sync and without giving publication/lifecycle machinery semantic
+  roadmap authority. Reconcile published CAA-04 TASK-414 r2 and implement the current
+  Human-approved Auto-NEXT fix as the sole new prospective priority.
+problem: Canonical main 6a3438a5a379c2bbc638a9f23bfee9b30e81b7fa is TASK-414 r2/RUN-414-007
+  exact reviewed source, independently REVIEW-414-007 PRIMARY PASS at 488ecd6c946a9d8a39f309a543af3e984fcd0a80,
+  with Runtime artifacts ref refs/heads/aios/artifacts/RUN-414-007 at 71ea75e5329bffd7141fd44049e6ad8daa97bd96;
+  reviewed source is on main. Yet .ai/roadmap-state.yaml sequence still says NEXT
+  CAA-04/TASK-414 r2 and Brain Sync's _extract_next_candidates selects static next_items,
+  raising ROADMAP_LIFECYCLE_CONFLICT for DONE tasks. A stale historical CAA-03 test
+  also wrongly asserts mutable HEAD must retain CAA-03 as current NEXT with its old
+  six-file diff. Existing post-publication attention does not surface a corrected
+  effective-NEXT observation. Simply replacing text cannot solve verified published
+  successor projection, missed wake or false future history assertions.
+assumptions:
+- Human explicitly approved immediate Auto-NEXT fix on 2026-10-24 and directs execution.
+  It supersedes CAA-04 live selection prospectively, but cannot rewrite historical
+  roadmap decisions or TASK-412/413/414 lineage.
+- Existing Human CAA sequence through CAA-04 has separately reviewed/published lineage;
+  CAA-05 remains CONDITIONAL_NOT_SELECTED; paused PTE, Lean VP, KA-01 and downstream
+  remain unchanged. TASK-413 H1R is unrelated.
+- Brain owns new planning semantics, Human owns priority/risk. Executor owns implementation
+  HOW. Runtime verifies/creates EVIDENCE, Reviewer judges, Publisher publishes; GitHub
+  event is subordinate transport.
+- Source/review/RESULT identities in problem are observational and must be reauthenticated
+  by the current canonical reader; names, model claims, GitHub carrier acceptance
+  or a SHA label alone are insufficient.
+- Reuse the existing exact-authority Brain Sync, Unified State, publication attention
+  and local-chat wake path; no separate planner/router/database/automatic dispatcher
+  is authorized.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/AIOS-PUBLICATION-END-TO-END-FLOW-v1.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-412.yaml
+  - .ai/tasks/TASK-413.yaml
+  - .ai/tasks/TASK-414.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/brain_attention.py
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_brain_sync.py
+  - tests/test_brain_attention.py
+  - tests/test_publication.py
+  - tests/test_caa_integration.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_attention.py
+  - .github/workflows/aios-auto-publish.yml
+  - tests/test_brain_sync.py
+  - tests/test_brain_attention.py
+  - tests/test_caa_integration.py
+non_goals:
+- No automatic Human semantic successor selection, TASK authoring/allocation, Executor/model
+  choice, dispatch, retry/failover, lifecycle router, DB, autonomous planning, second
+  Reviewer or Publisher, or roadmap mutation by Runtime/Publisher/workflows.
+- No CAA-05 automatic selection, production CAA/shadow activation, training, downstream
+  pin change, unrelated PTE/Lean VP/KA-01 reactivation, private logs or provider-memory
+  authority.
+- Do not alter frozen Kernel, original TASK-412/413/414 or historical RESULT/FAILURE/REVIEW,
+  direct-authoring ingress, Runtime verification, origin proof or existing publication
+  gates.
+- No full suite, skipping/xfail of original historical fixture, fabricated Runtime
+  PASS, or GitHub wake receipt standing in for published source.
+constraints:
+  hard:
+  - Prospectively record this explicit current Human priority as TASK-415 r1 sole
+    active NEXT under the existing planning state, while preserving all previous CAA
+    dates/decisions and paused bookmarks. CAA-05 must remain conditional. New priority
+    is planning, not completion.
+  - Recognize source-grounded completion only when exact canonical task revision,
+    Runtime RESULT and EVIDENCE, independent matching REVIEW PASS and Publisher inclusion
+    of the reviewed SHA in current main hold. Do not accept transport receipt, merged
+    unrelated source or executor PASS claim.
+  - For a verified-completed selected item, derive effective NEXT only from one Human/Brain-preauthorized
+    successor or return bounded HUMAN_BRAIN_NEXT_REQUIRED. No automatic successor
+    package choice, new authority, stored lifecycle truth or mutation of roadmap by
+    publication.
+  - Fresh normal Brain Sync must report effective NEXT in a single unambiguous snapshot
+    and not keep a DONE task actionable or fail merely because the historical static
+    bookmark reflects the previous selection. Preserve existing legacy active_track/sequence
+    and Unified State semantics.
+  - Wire the same bounded read-only effective-NEXT observation into the existing post-publication
+    attention / local Chat wake, following exact eligible publication or inclusion;
+    no extra standalone dispatcher or future activation TASK. Missed/duplicate attention
+    remains recoverable by fresh Brain Sync.
+  - Recheck current canonical source/main, review/RESULT binds and Human priority.
+    Missing, forged, conflicting, stale or moved currentness, wrong task revision,
+    competing review, review-only, FAILURE/REPAIR and unrelated TASK-413 publish never
+    advance effective NEXT.
+  - Bind historical CAA-03 six-file and CAA-03 selected-slice assertions to its exact
+    reviewed source 7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9 and its historical diff
+    base, not mutable current HEAD. Preserve strict historical checks without xfail/skip;
+    test real CAA-04 successor separately.
+  - Ensure CAA-04 verified publication is recognized and current Human-approved TASK-415
+    is the only prospective implementation NEXT; after TASK-415 eligible publication
+    with no further preapproved successor return HUMAN_BRAIN_NEXT_REQUIRED, never
+    fabricate CAA-05.
+  - Keep production edits within scope.modify. Retain Runtime/Reviewer/Publisher independent
+    authority, single existing publisher workflow and complete same-TASK normal production
+    exposure.
+acceptance:
+- id: AC1
+  condition: Existing canonical roadmap selects Human-prioritized Auto-NEXT TASK-415
+    r1 as one prospective NEXT and preserves all previous CAA, H1R and paused-track
+    historical planning records.
+- id: AC2
+  condition: Brain Sync exposes unique source-verified effective successor or bounded
+    HUMAN_BRAIN_NEXT_REQUIRED without reading chat memory or allowing a completed
+    task to remain the actionable NEXT.
+- id: AC3
+  condition: Exact task/revision, Runtime RESULT/EVIDENCE, independent REVIEW PASS,
+    reviewed SHA and main inclusion are validated as immutable prerequisites to classifying
+    completion.
+- id: AC4
+  condition: Missing preapproved successor, mixed Human decisions, moved main, mismatched
+    review/result, review-only and unfinished/failed/correction states cannot produce
+    speculative NEXT.
+- id: AC5
+  condition: The existing post-publication attention/wake path exposes a read-only
+    newly effective NEXT after eligible publication, with fresh currentness and no
+    separate activation TASK or new scheduler.
+- id: AC6
+  condition: Duplicate/missed publication events remain idempotent and fresh Brain
+    Sync reconstructs effective state; unrelated TASK-413/H1R publication does not
+    change CAA NEXT.
+- id: AC7
+  condition: Historical CAA-03 source-locked test verifies its real six-file source
+    and selection, without wrongly imposing that historical NEXT and diff on all later
+    current HEADs.
+- id: AC8
+  condition: Real-source positive/negative regression includes TASK-414 r2 RUN-414-007
+    REVIEW-414-007 published and Human-selected TASK-415; CAA-05 remains unselected.
+- id: AC9
+  condition: Existing Brain Sync, Unified State, Publisher, attention and direct TASK
+    authoring semantics remain compatible with no added roadmap mutation authority
+    or autonomous Executor action.
+- id: AC10
+  condition: Source-bound bounded current effective-NEXT is visible to ordinary production
+    callers after this same eligible reviewed/published implementation, without a
+    follow-on task or default audit gate.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_sync.py tests/test_brain_attention.py tests/test_caa_integration.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
