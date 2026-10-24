@@ -1,0 +1,173 @@
+task_id: TASK-413
+revision: 1
+goal: Close the historically observed preventable H1R PRIMARY pre-RUN synchronization
+  failures through one Runtime-owned unattended recovery path. In particular accept
+  multiple independently proven canonical FAILURE refs bound to the same exact candidate
+  SHA, without letting Human run a script, while keeping unsafe states fail-closed.
+problem: On TASK-412 r2 primary workflow 40064678027, a local main at 9e589e74fe1bd714c6f4c41531372434284cfbf0
+  had six valid-looking canonical FAILURE candidate refs aios/failure/RUN-412-002
+  through -007 pointing to that exact HEAD, each with distinct immutable artifacts;
+  Runtime _reconcile_primary_divergence rejects len(preservation_candidates)!=1 before
+  verifying multiple valid proofs, yielding PRIMARY_SYNCHRONIZATION_REJECTED before
+  RUN/Executor. Human subsequently ran a guarded manual recovery tool. Prior TASK-257/264/270/361
+  closed narrower single-FAILURE, reviewed PASS, byte-exact REVIEW, CHANGES_REQUIRED/BLOCKED
+  paths; test and harden them together as one bounded historical H1R case matrix.
+  Do not infer all same-SHA aliases are safe or conflate manual recovery with automatic
+  Runtime proof.
+assumptions:
+- Human explicitly prioritizes authoring this focused H1R TASK on 2026-10-24, prospectively;
+  canonical source at authoring is b9c0cd212baf3e2f7d669ba8966b4d623f960cbf containing
+  TASK-412 r2. Authoring does not automatically change CAA roadmap NEXT or reactivate
+  any prior dispatch.
+- Workflow 40064678027 reported PRIMARY_SYNCHRONIZATION_REJECTED with run_created=false,
+  executor_invoked=false; it fabricated neither a canonical RUN nor a FAILURE. Historical
+  FAILED TASK-412 RUNs and their refs remain immutable.
+- Human-supplied local guarded recovery output says LOCAL_MAIN_RECOVERED at b9c0cd212baf3e2f7d669ba8966b4d623f960cbf
+  with rescue ref, but screenshot is only operational evidence, not Runtime's verification.
+- Source TASK-257 covers FAILURE candidate; TASK-264 reviewed PASS; TASK-270 REVIEW
+  metadata byte equality; TASK-361 reviewed CHANGES_REQUIRED/BLOCKED and self-host/journal.
+  Reuse these exact H1R contracts.
+- User's 'all historical cases' means close known recoverable failure families and
+  preserve typed blockers for unsafe dirty, ahead-only, ambiguous origin, unpreserved
+  or forged sources; never wipe Human work to achieve a green test.
+- Human selects Executor/profile separately. Runtime retains admission, verification
+  and evidence; Reviewer semantic verdict; Publisher publication; no inferred pre-authorization
+  from TASK-412.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/tasks/TASK-257.yaml
+  - .ai/tasks/TASK-264.yaml
+  - .ai/tasks/TASK-270.yaml
+  - .ai/tasks/TASK-361.yaml
+  - .ai/tasks/TASK-395.yaml
+  - .ai/tasks/TASK-412.yaml
+  - src/aios_renew/operator.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/dispatch_reconciliation.py
+  - src/aios_renew/operational_receipt.py
+  - src/aios_renew/github_issue_wakeup.py
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - tests/test_operator.py
+  - tests/test_dispatch_reconciliation.py
+  - tests/test_self_hosted_wakeup.py
+  modify:
+  - src/aios_renew/operator.py
+  - tests/test_operator.py
+  - tests/test_dispatch_reconciliation.py
+  - tests/test_self_hosted_wakeup.py
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+non_goals:
+- No secondary recovery daemon, standalone service/DB, planner, lifecycle router,
+  auto-retry/failover or correction strategy selector.
+- No GitHub/workflow-side reset; no automation for REPAIR, REMEDIATION, CONTINUE,
+  Reviewer or Publisher; no arbitrary switching checkout or AIOS_REPO_ROOT.
+- No remote push, changing/deleting/forging old FAILURE/RESULT/REVIEW refs, no Git
+  rebase/cherry-pick/stash/clean or laundering local unpreserved commits.
+- No automatic replay of previously terminal refused dispatch, migration/reset of
+  .git/aios journal, or fabricated RUN/FAILURE/verdict/publication.
+- No frozen Kernel/Constitution, roadmap, audit profile, verification policy or downstream
+  pin changes. No full test suite.
+constraints:
+  hard:
+  - Reuse existing _reconcile_primary_divergence and its RepositoryLock as the only
+    PRIMARY pre-RUN mutation authority. Use existing canonical Git/ref, FAILURE and
+    reviewed-RESULT validators and safe generation-restart mechanism; do not create
+    a second recovery control plane.
+  - Change the erroneous uniqueness criterion from number of refs to a deterministic
+    exact proven preservation identity. Validate every candidate ref whose head equals
+    local HEAD independently against canonical transport artifact, task/revision/base/head,
+    source digest and complete ancestry. Multiple authentic compatible FAILURES at
+    identical candidate SHA are eligible; arbitrary aliases, source-inconsistent or
+    mixed-family candidates remain blocked.
+  - Positive real-Git regression must reproduce six separate FAILURES RUN-412-002
+    through -007 all pointing to local candidate 9e589e74fe1bd714c6f4c41531372434284cfbf0
+    with independently typed distinct proofs, then reconcile clean main without Human
+    Git commands. The fixtures are synthetic, not a claim of live production proof.
+  - 'Preserve existing historical positive H1R families: equal/behind, TASK-254 single
+    FAILURE, TASK-262 reviewed PASS, TASK-268/270 byte-exact REVIEW, RUN-359-002 CHANGES_REQUIRED
+    and structurally complete BLOCKED. Preserve independent canonical source and original
+    verdict lineage.'
+  - Retain or strengthen rejection of missing/substituted/malformed/forged/colliding
+    ref or artifacts, mixed FAILURE/REVIEW classes, conflicting base or lineage, extra
+    unpreserved local commits, wrong TASK/RUN/revision, altered REVIEW bytes, replay,
+    candidate or target drift. Negative cases may not be fixed by skipping tests or
+    weakening proof gates.
+  - Recheck exact remote main, full set and value of preservation refs, SHA/ancestry,
+    local HEAD, upstream/branch, clean tracked/untracked/hidden state, ignored collision,
+    submodule and lock immediately before the one allowed reset. Ensure clean attached
+    main at exact target after reset, with all remote refs and journal unchanged.
+  - Clean stale-behind fast forward and genuinely equal HEAD continue as before. Unsafe
+    detached, dirty, ahead-only, ambiguous upstream, missing proof, submodule and
+    untracked-collision cases are STOP not automatic data loss.
+  - Preserve admitted PRIMARY dispatch_id, TASK id/revision/blob, sticky Human-selected
+    Executor/profile and safe-generation restart; no second execution, no retry routing,
+    no RUN before reconciliation postconditions. Previously terminal FAILED delivery
+    cannot be rearmed with same id after fix.
+  - Safe blocked paths report bounded privacy-safe actionable pre-RUN admission/operational
+    reason and run_created=false/executor_invoked=false without raw private Git data
+    or synthetic lifecycle FAILURE.
+  - Include mutation-edge race/ref-membership changes, multiple proof mismatch, malicious
+    alias, mixed provenance, documented historical positive/negative paths, journal
+    continuity and self-host workflow transport contract in targeted real-Git tests.
+  - Only five scope.modify paths may change. Runtime alone runs required authored
+    minimum-sufficient-v1 verification; independent Reviewer and Publisher are unchanged.
+acceptance:
+- id: AC1
+  condition: PRIMARY accepts exactly proven multiple canonical FAILURE refs that share
+    one HEAD, distinct bound artifacts and full preserved ancestry; TASK-412 six-ref
+    real-Git reproduction automatically recovers local main.
+- id: AC2
+  condition: Proof-group algorithm deterministically separates equivalent valid same-head
+    candidate preservation from competing, aliased, stale, missing or conflicting
+    evidence; source order cannot change decision.
+- id: AC3
+  condition: Existing equal/stale-behind, single FAILURE TASK-254, reviewed PASS TASK-262,
+    byte-exact REVIEW TASK-268/270 and CHANGES_REQUIRED/BLOCKED RUN-359-002 behavior
+    remains valid.
+- id: AC4
+  condition: Missing/malformed/substituted/forged/moved proof, wrong identity/revision/SHA,
+    mixed candidate classes, extra local commits, contradictory review/failure or
+    source drift fail closed without mutation, RUN or Executor.
+- id: AC5
+  condition: Dirty tracked/untracked/hidden, ignored collision, submodule, detached/non-main,
+    ahead-only, upstream ambiguity and remote unavailability do not wipe local work;
+    negative safety regressions remain strict.
+- id: AC6
+  condition: Within existing lock, before mutation Runtime re-proves exact main and
+    complete membership/value of all preservation refs, HEAD/upstream, ancestry and
+    worktree; only one reset to exact main is permitted with clean attached-main postconditions.
+- id: AC7
+  condition: Existing pre-RUN PRIMARY transport preserves exact admitted TASK/blob/Executor/model/effort/dispatch
+    and generation restart; no duplicate dispatch, new authority or journal corruption.
+- id: AC8
+  condition: Rejected pre-RUN cases expose precise bounded public reason with run_created=false/executor_invoked=false
+    and do not create synthetic canonical FAILURE.
+- id: AC9
+  condition: Previously terminal rejected/finished delivery remains idempotently non-executing;
+    independent clean checkout cannot substitute journal continuity or rearm an old
+    dispatch.
+- id: AC10
+  condition: Normative self-host flow documents historical case matrix, positive vs
+    blocked recovery, and distinction between Runtime H1R and one-off Human script
+    without creating another authoritative recovery runbook.
+- id: AC11
+  condition: Exactly five permitted files change, preserving frozen Kernel, roadmap,
+    audit policy, independent review/publisher and verification ownership; truthful
+    implementation claims do not assert Runtime PASS.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_operator.py -k "primary_reconciliation or primary_reviewed_result
+    or primary_nonpass or primary_failure_reconciliation or primary_fast_forwards
+    or synchronization_failure"
+  - python -m pytest -q tests/test_dispatch_reconciliation.py tests/test_self_hosted_wakeup.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
