@@ -19,6 +19,31 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHED_CAA03_SHA = "7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9"
 
 
+@pytest.mark.parametrize("phase", ("HOLDOUT", "SHADOW"))
+def test_ten_task_pilot_permission_and_receipt_cannot_preregister_decisive_evaluation(tmp_path, phase):
+    from tests.test_caa_integration import pilot_case, ask_pilot
+    from aios_renew.brain_context import CAA_PILOT_RECORD
+
+    _, case = pilot_case(tmp_path)
+    receipt = ask_pilot(case).observation
+    calls = []
+    observer = evaluation.EvaluationSession(case.fixture.repo, provider=provider("mapping", calls=calls), enabled=True)
+    subject = advisor_case(case, phase=phase)
+    # Neither optional pilot permission nor an actual pre-outcome receipt has
+    # the exact CAA-04 plan/registration/independent-label authority.
+    with pytest.raises(evaluation.EvaluationError):
+        observer.evaluate(subject, opt_in=True)
+    planning = yaml.safe_load((ROOT / ".ai/roadmap-state.yaml").read_bytes())[CAA_PILOT_RECORD]
+    for forged in (planning, receipt.as_dict()):
+        observer.plan = forged
+        observer.plan_supplier = lambda value=forged: value
+        with pytest.raises(evaluation.EvaluationError):
+            observer.evaluate(subject, opt_in=True)
+    assert not calls and observer.calls == 0 and not observer.records
+    assert evaluation.MAX_SUBJECTS == 50
+    assert evaluation.MAX_SECONDS == 7 * 24 * 60 * 60
+
+
 def _assert_caa04_preserves_published_history(current, published):
     """Compare historical records with the actual published CAA-03 source cut."""
     historical = {key: value for key, value in current.items()
@@ -57,7 +82,9 @@ def _assert_caa04_preserves_published_history(current, published):
 
 def test_caa04_current_next_preserves_exact_published_caa03_history_and_rejects_forgery():
     published = yaml.safe_load(git(ROOT, "show", PUBLISHED_CAA03_SHA + ":.ai/roadmap-state.yaml"))
-    current = yaml.safe_load((ROOT / ".ai/roadmap-state.yaml").read_text(encoding="utf-8"))
+    # CAA-04's own published source remains the exact historical assertion cut.
+    # The separate pilot regression below checks the prospective current record.
+    current = yaml.safe_load(git(ROOT, "show", "6a3438a5a379c2bbc638a9f23bfee9b30e81b7fa:.ai/roadmap-state.yaml"))
     _assert_caa04_preserves_published_history(current, published)
 
     forged_lineage = deepcopy(current)

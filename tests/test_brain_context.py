@@ -18,6 +18,165 @@ from aios_renew.brain_context import (
 from aios_renew.brain_sync import BrainSyncSnapshot
 
 
+class PilotGit:
+    """Disposable actual CAA-01 publication/cohort sources, never a live pilot."""
+
+    def __init__(self, tmp_path, *, publish=True):
+        from tests.test_caa_experience import EpisodeGit
+        from tests.test_caa_reasoner import SOURCE_RELATIONS
+        from tests.git_fixture_support import commit_fixture_state
+        from tests.operator_test_support import git
+        from aios_renew.brain_context import CAA_PILOT_RECORD
+
+        self.fixture = f = EpisodeGit(tmp_path, task_id="TASK-417", run_id="RUN-417-001")
+        self.repo, self.remote = f.repo, f.remote
+        root = Path(__file__).resolve().parents[1]
+        current = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+        self.planning = {key: deepcopy(current[key]) for key in (
+            CAA_PILOT_RECORD, "next_items", "effective_next_transitions")}
+        self.planning["sequence"] = [deepcopy(current["sequence"][0])]
+        self.planning["padding"] = "x" * 270000  # Real planning is larger than a CAA-01 document.
+        f.task["goal"] = "Authenticated source identity is required."
+        f.task["constraints"]["hard"] = list(SOURCE_RELATIONS)
+        self.template = deepcopy(f.task)
+        task_path = self.repo / ".ai/tasks/TASK-417.yaml"
+        task_path.write_text(yaml.safe_dump(f.task), encoding="utf-8")
+        path = self.repo / ".ai/roadmap-state.yaml"
+        path.write_text(yaml.safe_dump(self.planning, sort_keys=False), encoding="utf-8")
+        f.base = commit_fixture_state(self.repo, paths=[str(task_path.relative_to(self.repo)), str(path.relative_to(self.repo))],
+            message="synthetic Human pilot selection", user_name="Fixture", user_email="fixture@example.invalid")
+        f.run["base_sha"] = f.base
+        git(self.repo, "push", "origin", "HEAD:refs/heads/main")
+        f.result().review()
+        self.activation = f.candidate
+        if publish:
+            f.publish()
+
+    def add_task(self, task_id, *, revision=1, prepare_run=False):
+        from tests.git_fixture_support import commit_fixture_state
+        from tests.operator_test_support import git
+
+        task = deepcopy(self.template)
+        task.update(task_id=task_id, revision=revision)
+        path = self.repo / f".ai/tasks/{task_id}.yaml"
+        path.write_text(yaml.safe_dump(task), encoding="utf-8")
+        paths = [str(path.relative_to(self.repo))]
+        if prepare_run and (self.repo / "OUTPUT.txt").exists():
+            (self.repo / "OUTPUT.txt").unlink()
+            paths.append("OUTPUT.txt")
+        sha = commit_fixture_state(self.repo, paths=paths, message="synthetic canonical TASK authoring",
+                                   user_name="Fixture", user_email="fixture@example.invalid")
+        git(self.repo, "push", "origin", "HEAD:refs/heads/main")
+        if prepare_run:
+            f = self.fixture
+            f.task, f.task_id, f.base = task, task_id, sha
+            f.run_id = "RUN-" + task_id[5:] + "-001"
+            f.run = dict(f.run, run_id=f.run_id, task=dict(id=task_id, revision=revision), base_sha=sha, head_sha=None)
+        return sha
+
+
+def test_pilot_authenticates_real_publication_and_first_ten_distinct_canonical_tasks(tmp_path):
+    from aios_renew.brain_context import canonical_caa_pilot_context
+    from tests.operator_test_support import git
+
+    pilot = PilotGit(tmp_path)
+    order = ["TASK-" + str(n) for n in (900, 418, 800, 419, 700, 420, 600, 421, 500, 422, 423)]
+    for i, task_id in enumerate(order):
+        pilot.add_task(task_id)
+        if i == 1:
+            pilot.add_task(task_id, revision=2)
+    main = git(pilot.remote, "rev-parse", "refs/heads/main")
+    before = git(pilot.repo, "show-ref"), git(pilot.repo, "status", "--porcelain")
+    context = canonical_caa_pilot_context(pilot.repo, expected_main_sha=main)
+    assert context["status"] == "AVAILABLE"
+    assert context["publication_boundary_sha"] == pilot.activation
+    assert [m["task_id"] for m in context["members"]] == order[:10]
+    assert [m["ordinal"] for m in context["members"]] == list(range(1, 11))
+    assert context["inclusion_closed"] is True
+    assert all(m["first_revision"] == 1 for m in context["members"])
+    assert context["source"]["blob_sha"] and context["approval_source"]["commit_sha"] == pilot.activation
+    assert before == (git(pilot.repo, "show-ref"), git(pilot.repo, "status", "--porcelain"))
+
+
+@pytest.mark.parametrize("fault", ("unpublished", "review", "forged_worktree", "wrong_main", "duplicate_policy"))
+def test_pilot_source_cannot_self_activate_or_borrow_a_wrong_publication(tmp_path, fault):
+    from aios_renew.brain_context import canonical_caa_pilot_context, CAA_PILOT_RECORD
+    from tests.operator_test_support import git
+    from tests.git_fixture_support import commit_fixture_state
+
+    pilot = PilotGit(tmp_path, publish=fault != "unpublished")
+    if fault == "review":
+        git(pilot.remote, "update-ref", "refs/heads/aios/review-decision/RUN-417-001", pilot.activation)
+    elif fault == "forged_worktree":
+        (pilot.repo / ".ai/roadmap-state.yaml").write_text("forged: true\n", encoding="utf-8")
+    elif fault == "duplicate_policy":
+        path = pilot.repo / ".ai/roadmap-state.yaml"
+        raw = path.read_text(encoding="utf-8")
+        raw += CAA_PILOT_RECORD + ": {}\n"
+        path.write_text(raw, encoding="utf-8")
+        commit_fixture_state(pilot.repo, paths=[".ai/roadmap-state.yaml"], message="ambiguous policy fixture",
+                             user_name="Fixture", user_email="fixture@example.invalid")
+        git(pilot.repo, "push", "origin", "HEAD:refs/heads/main")
+    main = git(pilot.remote, "rev-parse", "refs/heads/main")
+    if fault == "wrong_main":
+        with pytest.raises(BrainContextError, match="CANONICAL_MAIN_CHANGED"):
+            canonical_caa_pilot_context(pilot.repo, expected_main_sha="0" * 40)
+    else:
+        context = canonical_caa_pilot_context(pilot.repo, expected_main_sha=main)
+        assert context["status"] == ("AVAILABLE" if fault == "forged_worktree" else "UNAVAILABLE")
+        assert "forged" not in json.dumps(context)
+
+
+def test_pilot_merge_publication_excludes_tasks_authored_before_main_inclusion(tmp_path):
+    from aios_renew.brain_context import canonical_caa_pilot_context
+    from tests.operator_test_support import git
+
+    pilot = PilotGit(tmp_path, publish=False)
+    # The reviewed source is on the candidate branch, not first-parent main.
+    git(pilot.repo, "checkout", "-B", "publication-main", pilot.fixture.base)
+    git(pilot.repo, "config", "branch.publication-main.remote", "origin")
+    pilot.add_task("TASK-418")
+    git(pilot.repo, "merge", "--no-ff", pilot.activation, "-m", "synthetic main inclusion")
+    boundary = git(pilot.repo, "rev-parse", "HEAD")
+    git(pilot.repo, "push", "origin", "HEAD:refs/heads/main")
+    main = pilot.add_task("TASK-419")
+    context = canonical_caa_pilot_context(pilot.repo, expected_main_sha=main)
+    assert context["status"] == "AVAILABLE"
+    assert context["publication_boundary_sha"] == boundary
+    assert [m["task_id"] for m in context["members"]] == ["TASK-419"]
+
+
+def test_pilot_same_commit_identity_order_is_unavailable_instead_of_invented(tmp_path):
+    from aios_renew.brain_context import canonical_caa_pilot_context
+    from tests.operator_test_support import git
+    from tests.git_fixture_support import commit_fixture_state
+
+    pilot = PilotGit(tmp_path)
+    paths = []
+    for task_id in ("TASK-418", "TASK-419"):
+        path = pilot.repo / f".ai/tasks/{task_id}.yaml"
+        path.write_text(yaml.safe_dump(dict(pilot.template, task_id=task_id)), encoding="utf-8")
+        paths.append(str(path.relative_to(pilot.repo)))
+    main = commit_fixture_state(pilot.repo, paths=paths, message="ambiguous simultaneous authoring",
+                                user_name="Fixture", user_email="fixture@example.invalid")
+    git(pilot.repo, "push", "origin", "HEAD:refs/heads/main")
+    context = canonical_caa_pilot_context(pilot.repo, expected_main_sha=main)
+    assert context["status"] == "UNAVAILABLE"
+    assert context["reason"] == "PILOT_FIRST_AUTHORING_ORDER_AMBIGUOUS"
+
+
+def test_pilot_readded_identity_deleted_before_activation_is_not_new(tmp_path):
+    from aios_renew.brain_context import canonical_caa_pilot_context
+
+    pilot = PilotGit(tmp_path)
+    # PostTaskGit's initial canonical TASK-101 was removed before TASK-417.
+    pilot.add_task("TASK-101")
+    main = pilot.add_task("TASK-418")
+    context = canonical_caa_pilot_context(pilot.repo, expected_main_sha=main)
+    assert context["status"] == "AVAILABLE"
+    assert [m["task_id"] for m in context["members"]] == ["TASK-418"]
+
+
 def test_post_task_work_context_consumes_fresh_git_projection_and_rejects_stale_context(tmp_path):
     from tests.test_brain_sync import PostTaskGit
     from aios_renew.brain_sync import observe_brain_sync

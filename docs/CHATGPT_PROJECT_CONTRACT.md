@@ -490,7 +490,7 @@ cannot block PTE observational readers or Brain judgment. TASK-408 direct author
 exact Human-on-demand TCA/ROA/MOA and soft AOA opt-out retain their existing rules,
 without substitute audits, fallback or legacy default reactivation.
 
-This scope amendment preserves the single TASK-415 r1 roadmap NEXT and its existing
+At its source cut, this scope amendment preserved the single TASK-415 r1 roadmap NEXT and its existing
 exact-lineage effective-NEXT checks; it infers no TASK-415 completion and preapproves
 no successor. Published PTE-01..03, historical approvals and all immutable lifecycle
 artifacts remain exact. The old PTE plan and paused PTE bookmark are historical
@@ -622,3 +622,31 @@ Section 17 and all immutable TASK-405/TASK-406 outcomes keep their exact meaning
 This change preserves the one admitted Executor, Runtime verification/EVIDENCE,
 independent Reviewer and Publisher, final ingress authentication/CAS, original
 TASK.scope.modify and current minimum-sufficient-v1 verification contract.
+
+## 19. TASK-417 prospective optional CAA pilot
+
+The current explicit Human decision and `human_caa_ten_task_advisory_20261024`
+select TASK-417 r1 as the sole prospective NEXT, superseding the old Auto-NEXT
+bookmark for new planning only. Original PTE/CAA/Auto-NEXT approvals, TASK-415/416
+outcomes and PTE Information-Only v2 remain unchanged. See the exact
+[ten-TASK activation contract](AIOS-CAA-10-TASK-ADVISORY-ACTIVATION.md).
+
+Brain may explicitly call `brain_provider.consult_advisory` for an authenticated
+eligible Architecture/TASK/REPAIR/REMEDIATION subject, with Human opt-in, original
+intent, exact current packet/candidate/correction binding, sealed history cut and
+independently authenticated provider profile plus atomic per-call charge gate.
+No configured lawful provider/authorization means source-bound unavailability.
+The default remains disabled and Human opt-out remains immediate. Optional advice
+never replaces Brain's independent judgment or direct final authoring; genuine
+canonical source/currentness guards still fail closed.
+
+The cohort is the first ten distinct new canonical TASK identities after exact
+reviewed activation-source publication in first-authoring order. TASK-417,
+preexisting identities, revisions and repeated RUN/correction episodes add no
+slots. Source-bound contemporaneous observations and later canonical episode
+facts remain separate, privacy-bounded and UNKNOWN where missing. At ten, a finite
+read-only evidence-gap report returns the decision to Human/Brain. There is no
+decisive quality score, retrospective holdout, automatic CAA-04/05 action, training,
+new memory store, router or lifecycle authority. CAA-04 preregistration/independent
+grading/provider/spending/time/population gates and TASK-408 HUMAN_ON_DEMAND remain
+effective. Human, Brain, Executor, Runtime, Reviewer and Publisher keep their roles.

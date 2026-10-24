@@ -453,6 +453,34 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
     return AttemptResult(second, (attribution1, attribution2))
 
 
+def consult_advisory(repo: str | Path, *, flow: str, packet: DecisionPacket, subject: dict[str, Any],
+                     candidate: dict[str, Any], expected_candidate_fingerprint: str,
+                     fresh_packet_supplier: Callable[[], DecisionPacket], cut=None,
+                     enabled: bool = False, human_opt_out: bool = False,
+                     provider: MappingBrainProvider | JsonBrainProvider | None = None,
+                     profile_supplier: Callable | None = None, reserve_call: Callable | None = None):
+    """Explicit supported Brain caller for the TASK-417 optional advisory pilot.
+
+    Call after ordinary flow/subject composition and before Brain independently
+    finalizes its candidate. The fresh supplier must compose from the caller's
+    canonical sources, including original Human intent and correction lineage.
+    profile_supplier(binding) independently authenticates the already selected
+    lawful provider profile; reserve_call(profile, binding, charge) must atomically
+    authorize/enforce that exact per-call charge. An echo or model callback cannot
+    supply either authority. No configured profile means bounded unavailability.
+
+    This caller does not invoke attempt(), auditing, final authoring ingress or
+    any lifecycle operation. Ordinary attempts remain unchanged and opt-out is
+    explicit. Portable receipt dictionaries cannot be imported as observations.
+    """
+    from .caa_integration import _consult_pilot
+
+    return _consult_pilot(repo, flow=flow, packet=packet, subject=subject, candidate=candidate,
+        expected_candidate_fingerprint=expected_candidate_fingerprint, fresh_packet_supplier=fresh_packet_supplier,
+        cut=cut, enabled=enabled, human_opt_out=human_opt_out, provider=provider,
+        profile_supplier=profile_supplier, reserve_call=reserve_call)
+
+
 __all__ = ["BrainProvider", "ProviderInvocation", "AttemptResult", "BrainAttemptError",
            "ProviderTransportError", "ProviderResponseError", "ProviderAttributionMismatch",
-           "MappingBrainProvider", "JsonBrainProvider", "attempt"]
+           "MappingBrainProvider", "JsonBrainProvider", "attempt", "consult_advisory"]

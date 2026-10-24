@@ -1,4 +1,48 @@
 version: 1
+human_caa_ten_task_advisory_20261024:
+  authority: EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION
+  approved_on: '2026-10-24'
+  planning_only: true
+  human_decision: ENABLE_OPTIONAL_CAA_NOW_OBSERVE_TEN_FUTURE_TASKS_BEFORE_EVALUATION_OR_CAA05
+  enabled: true
+  sole_high_level_next: caa-v1-20261023
+  planning_owner: caa-v1-20261023
+  planning_document: docs/AIOS-CAA-V1-ROADMAP.md
+  contract_document: docs/AIOS-CAA-10-TASK-ADVISORY-ACTIVATION.md
+  implementation_task: TASK-417
+  implementation_revision: 1
+  selected_slice: CAA_TEN_TASK_OPTIONAL_ADVISORY_PILOT
+  source_main_sha_at_authoring: 5117cb2943e993132909dc1368f483e019674809
+  source_basis: SUPPLIED_PUBLISHED_TASK415_TASK416_OBSERVATION_REAUTHENTICATE_EXACT_SOURCES
+  supersedes_prospective_selection_record: human_auto_next_priority_20261024
+  supersession: NEW_PROSPECTIVE_SELECTION_ONLY_PTE_CAA_AUTO_NEXT_AND_IMMUTABLE_LINEAGE_UNCHANGED
+  prior_selection: {task_id: TASK-415, task_revision: 1, selected_slice: AUTO_NEXT_FIX}
+  task416: PTE_INFORMATION_ONLY_POLICY_RETAINED_NOT_A_SECOND_NEXT
+  pilot:
+    pilot_id: CAA-10-TASK-20261024-TASK-417-r1
+    mode: OPTIONAL_NON_DECISIVE
+    flows: [ARCHITECTURE, TASK_AUTHORING, REPAIR_AUTHORING, REMEDIATION_AUTHORING]
+    task_limit: 10
+    excluded_task_ids: [TASK-417]
+    other_traffic_enabled: false
+    decisive_evaluation_enabled: false
+    caa05_selected: false
+  activation_source: EXACT_TASK417_R1_RUNTIME_RESULT_INDEPENDENT_REVIEW_PASS_MAIN_INCLUSION_READER_ONLY
+  cohort: FIRST_TEN_DISTINCT_NEW_CANONICAL_TASK_IDENTITIES_AFTER_ACTIVATION_PUBLICATION_IN_FIRST_AUTHORING_ORDER
+  deduplication: TASK_ID_ONLY_REVISIONS_RUNS_REPAIR_REMEDIATION_AND_PAUSED_FAILED_TASKS_RETAIN_ONE_SLOT
+  provider: INDEPENDENT_TRUSTED_SELECTED_PROFILE_AND_EXACT_ATOMIC_CHARGE_RESERVATION_OR_UNAVAILABLE
+  observation: EXISTING_CAA01_EPISODES_AND_CONTEMPORANEOUS_IN_PROCESS_RECEIPTS_MISSING_IS_UNKNOWN
+  stop: TEN_IDENTITIES_NO_BROADENING_NO_AUTOMATIC_SUCCESSOR_OR_ACTION
+  handoff: FINITE_READ_ONLY_EVIDENCE_GAP_REPORT_TO_HUMAN_BRAIN
+  future_caa04: SEPARATE_EXACT_HUMAN_PREREGISTRATION_INDEPENDENT_LABELS_THRESHOLDS_HOLDOUT_SHADOW_PROVIDER_BUDGET_REQUIRED
+  optional_package: {id: CAA-05, status: CONDITIONAL_NOT_SELECTED}
+  authoring_policy: PRESERVE_TASK408_HUMAN_ON_DEMAND_DIRECT_AUTHORING_SOFT_AOA_AND_EXPLICIT_OPT_OUT
+  authority_boundary: HUMAN_BRAIN_EXECUTOR_RUNTIME_REVIEWER_PUBLISHER_UNCHANGED_NO_TRAINING_ROUTER_OR_PERSISTENCE
+  activation_limitations: NO_LIVE_PROVIDER_OR_SPEND_AUTHORIZATION_INFERRED_FROM_PLANNING_OR_FIXTURES
+  completion: NO_RUNTIME_VERIFICATION_REVIEW_PUBLICATION_QUALITY_OR_EFFICIENCY_CLAIM
+  executor_delegation: NOT_GRANTED_BY_PLANNING
+  next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTO_CAA05_OR_DECISIVE_EVALUATION
+
 human_pte_information_only_planning_20261024:
   authority: EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_PLANNING_TRANSCRIPTION
   approved_on: '2026-10-24'
@@ -2995,7 +3039,8 @@ human_priority_sequence:
 
 next_items:
   - caa-v1-20261023
-effective_next_transitions:
+effective_next_transitions: []
+historical_effective_next_transitions_task415:
   - from:
       task_id: TASK-414
       task_revision: 2
@@ -3013,10 +3058,10 @@ sequence:
     planning_only: true
     planning_owner: caa-v1-20261023
     planning_document: docs/AIOS-CAA-V1-ROADMAP.md
-    task_id: TASK-415
+    task_id: TASK-417
     task_revision: 1
-    selected_slice: AUTO_NEXT_FIX
-    priority_record: human_auto_next_priority_20261024
+    selected_slice: CAA_TEN_TASK_OPTIONAL_ADVISORY_PILOT
+    priority_record: human_caa_ten_task_advisory_20261024
     next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
   - id: human-audit-policy-direct-authoring-20261023
     status: PAUSED

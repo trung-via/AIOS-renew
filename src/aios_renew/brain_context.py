@@ -1204,7 +1204,232 @@ def canonical_audit_inputs(
     return _stable_copy(policy), _stable_copy(package), authenticate
 
 
+CAA_PILOT_RECORD = "human_caa_ten_task_advisory_20261024"
+CAA_PILOT_ID = "CAA-10-TASK-20261024-TASK-417-r1"
+CAA_PILOT_FLOWS = ("ARCHITECTURE", "TASK_AUTHORING", "REPAIR_AUTHORING", "REMEDIATION_AUTHORING")
+_CAA_PILOT_CONTRACT = dict(
+    pilot_id=CAA_PILOT_ID, mode="OPTIONAL_NON_DECISIVE", flows=list(CAA_PILOT_FLOWS),
+    task_limit=10, excluded_task_ids=["TASK-417"], other_traffic_enabled=False,
+    decisive_evaluation_enabled=False, caa05_selected=False,
+)
+
+
+def _caa_pilot_planning(root, git, sha):
+    """Read only selected planning nodes from a bounded canonical Git blob."""
+    import os
+    import subprocess
+    import time
+    from .caa_experience import ExperienceError, _shape
+
+    path = ".ai/roadmap-state.yaml"
+    entry = git(root, "ls-tree", "-l", sha, "--", path)
+    match = re.fullmatch(r"100644 blob ([0-9a-f]{40})\s+(\d+)\t" + re.escape(path), entry)
+    if match is None or not 0 < int(match[2]) <= 1048576:
+        raise ExperienceError("PILOT_PLANNING_SOURCE_UNAVAILABLE")
+    # The existing canonical planning file exceeds CAA-01's historical-document
+    # cap. Keep its existing 1 MiB planning cap without changing CAA-01 at all.
+    # cat-file reads the size-checked immutable blob, not a filter or worktree.
+    size = int(match[2])
+    git.calls += 1
+    remaining = git.deadline - time.monotonic()
+    if git.calls > 512 or remaining <= 0 or git.bytes + size > 4 * 1024 * 1024:
+        raise ExperienceError("LIMIT_EXHAUSTED")
+    result = subprocess.run(["git", "--no-pager", "-C", str(root), "cat-file", "blob", match[1]],
+                            stdin=subprocess.DEVNULL, capture_output=True, timeout=min(10, remaining),
+                            env=dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0"))
+    git.bytes += len(result.stdout) + len(result.stderr)
+    if (result.returncode or len(result.stdout) != size or git.bytes > 4 * 1024 * 1024
+            or time.monotonic() >= git.deadline):
+        raise ExperienceError("PILOT_PLANNING_SOURCE_UNAVAILABLE")
+    raw = result.stdout.decode("utf-8", errors="strict")
+    # Reject aliases before constructing YAML; unrelated historical numeric keys
+    # are not loaded as current pilot policy.
+    depth = node_count = 0
+    for event in yaml.parse(raw, Loader=yaml.SafeLoader):
+        node_count += 1
+        if isinstance(event, (yaml.MappingStartEvent, yaml.SequenceStartEvent)):
+            depth += 1
+        elif isinstance(event, (yaml.MappingEndEvent, yaml.SequenceEndEvent)):
+            depth -= 1
+        if isinstance(event, yaml.AliasEvent) or depth > 32 or node_count > 131072:
+            raise ExperienceError("PILOT_PLANNING_INVALID")
+    tree = yaml.compose(raw, Loader=yaml.SafeLoader)
+    if not isinstance(tree, yaml.MappingNode):
+        raise ExperienceError("PILOT_PLANNING_INVALID")
+    nodes = {}
+    for key, value in tree.value:
+        if (not isinstance(key, yaml.ScalarNode) or key.tag != "tag:yaml.org,2002:str"
+                or key.value in nodes):
+            raise ExperienceError("PILOT_PLANNING_INVALID")
+        nodes[key.value] = value
+    for name, node in nodes.items():
+        if name != CAA_PILOT_RECORD and isinstance(node, yaml.MappingNode):
+            labels = {k.value: v.value for k, v in node.value
+                      if isinstance(k, yaml.ScalarNode) and isinstance(v, yaml.ScalarNode)}
+            if (name.startswith(CAA_PILOT_RECORD) or labels.get("human_decision") ==
+                    "ENABLE_OPTIONAL_CAA_NOW_OBSERVE_TEN_FUTURE_TASKS_BEFORE_EVALUATION_OR_CAA05"):
+                raise ExperienceError("PILOT_PLANNING_INVALID")
+    selected = {}
+    # A later Human planning selection need not withdraw this optional pilot.
+    # Read only this permission; the ordinary Brain Sync owns NEXT semantics.
+    for key in (CAA_PILOT_RECORD,):
+        if key not in nodes:
+            raise ExperienceError("PILOT_PLANNING_UNAVAILABLE")
+        selected[key] = yaml.load(yaml.serialize(nodes[key]), Loader=_UniqueKeyLoader)
+        _shape(selected[key])
+    record = selected[CAA_PILOT_RECORD]
+    if (type(record) is not dict or record.get("authority") != "EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION"
+            or record.get("implementation_task") != "TASK-417"
+            or type(record.get("implementation_revision")) is not int or record["implementation_revision"] != 1
+            or record.get("human_decision") != "ENABLE_OPTIONAL_CAA_NOW_OBSERVE_TEN_FUTURE_TASKS_BEFORE_EVALUATION_OR_CAA05"
+            or _digest(record.get("pilot")) != _digest(_CAA_PILOT_CONTRACT)
+            or type(record.get("enabled")) is not bool):
+        raise ExperienceError("PILOT_PLANNING_INVALID")
+    return selected, dict(commit_sha=sha, blob_sha=match[1], path=path, ref="refs/heads/main",
+                          pointer="/" + CAA_PILOT_RECORD)
+
+
+def _caa_pilot_members(root, git, sources, reviewed, main):
+    """First canonical authoring, not numeric TASK order or terminal arrival order.
+
+    A merge's first main inclusion is the publication boundary. Multiple new
+    identities in one commit have no authenticated ordering and fail contained.
+    No local draft, RUN/revision, deletion/re-addition, or activation TASK counts.
+    """
+    from .caa_experience import ExperienceError
+    from .task import validate_task
+
+    chain = git(root, "rev-list", "--first-parent", "--max-count=257", main).splitlines()
+    boundary = None
+    for commit in chain:
+        if commit == reviewed:
+            boundary = commit
+            break
+        if not sources.included(reviewed, commit):
+            break
+        boundary = commit
+    else:
+        if len(chain) >= 257:
+            raise ExperienceError("PILOT_SEQUENCE_LIMIT_EXHAUSTED")
+    if boundary is None:
+        raise ExperienceError("PILOT_PUBLICATION_BOUNDARY_UNAVAILABLE")
+    commits = git(root, "rev-list", "--first-parent", "--reverse", "--max-count=257",
+                  boundary + ".." + main).splitlines()
+    if len(commits) >= 257:
+        raise ExperienceError("PILOT_SEQUENCE_LIMIT_EXHAUSTED")
+    pattern = r"\.ai/tasks/(TASK-[A-Za-z0-9_-]{1,90})\.yaml"
+    initial = git(root, "ls-tree", "-r", "--name-only", boundary, "--", ".ai/tasks").splitlines()
+    seen = {m[1] for path in initial if (m := re.fullmatch(pattern, path))}
+    seen.add("TASK-417")
+    members = []
+    for commit in commits:
+        additions = git(root, "diff-tree", "--no-commit-id", "--name-status", "-r", "--diff-filter=A",
+                        commit + "^1", commit, "--", ".ai/tasks").splitlines()
+        new = []
+        for row in additions:
+            if row.startswith("A\t") and (match := re.fullmatch(pattern, row[2:])):
+                if match[1] not in seen:
+                    # A TASK deleted before activation is still an old identity.
+                    # Query only this candidate path, with a single result cap.
+                    prior = git(root, "rev-list", "--first-parent", "--max-count=1", boundary, "--", row[2:])
+                    if prior:
+                        seen.add(match[1])
+                    else:
+                        new.append((match[1], row[2:]))
+        if len(new) > 1:
+            raise ExperienceError("PILOT_FIRST_AUTHORING_ORDER_AMBIGUOUS")
+        for task_id, path in new:
+            task = validate_task(sources.document(commit, path))
+            if task.task_id != task_id:
+                raise ExperienceError("TASK_SOURCE_MISMATCH")
+            seen.add(task_id)
+            members.append(dict(task_id=task_id, first_revision=task.revision, ordinal=len(members) + 1,
+                                first_authoring_source=sources.binding(commit, path, ref="refs/heads/main")))
+        if len(members) == 10:
+            break
+    return boundary, members
+
+
+def canonical_caa_pilot_context(repo: str | Path, *, expected_main_sha: str) -> dict[str, Any]:
+    """Authenticate optional pilot permission and its cohort, without activation claims.
+
+    This is a read-only consumer of CAA-01's terminal/review/publication reader.
+    It neither verifies TASK-417 nor makes a new lifecycle decision. No object
+    fetch, working-tree policy fallback, caller-supplied plan, or RUN is used.
+    """
+    from .brain_attention import GitSources
+    from .caa_experience import (
+        ExperienceError, _GitBudget, _Sources, _transport, _refs, capture_experience_cut,
+        reconstruct_episodes,
+    )
+
+    root, git = Path(repo).resolve(), _GitBudget()
+    source = None
+    try:
+        if type(expected_main_sha) is not str or re.fullmatch(r"[0-9a-f]{40}", expected_main_sha) is None:
+            raise BrainContextError("CAA_PILOT_CANONICAL_MAIN_INVALID")
+        transport = _transport(root, git)
+        live = GitSources(root, git, transport[0])
+        pins = _refs(live, ("refs/heads/main",))
+        if pins.get("refs/heads/main") != expected_main_sha:
+            raise BrainContextError("CAA_PILOT_CANONICAL_MAIN_CHANGED")
+        planning, source = _caa_pilot_planning(root, git, expected_main_sha)
+        record = planning[CAA_PILOT_RECORD]
+        if not record["enabled"]:
+            return dict(status="UNAVAILABLE", reason="HUMAN_DISABLED_PILOT", pilot_id=CAA_PILOT_ID, source=source)
+        cut = capture_experience_cut(root, expected_main_sha=expected_main_sha, task_ids=("TASK-417",))
+        view = reconstruct_episodes(root, cut=cut)
+        published = {}
+        for episode in view["episodes"]:
+            facts = {fact["name"]: fact["value"] for fact in episode["observed"]}
+            if (facts.get("task") == {"id": "TASK-417", "revision": 1}
+                    and facts.get("terminal", {}).get("kind") == "RESULT"
+                    and facts.get("review", {}).get("verdict") == "PASS"
+                    and facts.get("publication", {}).get("state") == "MAIN_INCLUSION"):
+                reviewed = facts["publication"]["reviewed_source_sha"]
+                published[reviewed] = episode
+        if len(published) != 1:
+            raise ExperienceError("PILOT_EXACT_PUBLICATION_UNAVAILABLE")
+        reviewed, episode = next(iter(published.items()))
+        approved, approved_source = _caa_pilot_planning(root, git, reviewed)
+        if approved[CAA_PILOT_RECORD] != record:
+            raise ExperienceError("PILOT_APPROVAL_SOURCE_CHANGED")
+        sources = _Sources(root, git, transport[0], pins)
+        boundary, members = _caa_pilot_members(root, git, sources, reviewed, expected_main_sha)
+        if _refs(live, ("refs/heads/main",)) != pins or _transport(root, git) != transport:
+            raise BrainContextError("CAA_PILOT_CANONICAL_MAIN_CHANGED")
+        # Recheck activation pins too; a moved review cannot authorize a pilot.
+        if reconstruct_episodes(root, cut=cut) != view:
+            raise ExperienceError("PILOT_ACTIVATION_SOURCE_CHANGED")
+        return dict(status="AVAILABLE", reason="SOURCE_AUTHENTICATED_OPTIONAL_PERMISSION", pilot_id=CAA_PILOT_ID,
+                    repository_id=cut.as_dict()["repository_id"], main_sha=expected_main_sha,
+                    source=source, approval_source=approved_source, publication_boundary_sha=boundary,
+                    activation=dict(reviewed_sha=reviewed, episode=episode, source_cut=cut.as_dict()),
+                    members=members, inclusion_closed=len(members) == 10, authority="NONE")
+    except BrainContextError as exc:
+        if str(exc) in {"CAA_PILOT_CANONICAL_MAIN_INVALID", "CAA_PILOT_CANONICAL_MAIN_CHANGED"}:
+            raise
+        return dict(status="UNAVAILABLE", reason="PILOT_PLANNING_INVALID", pilot_id=CAA_PILOT_ID, source=source)
+    except ExperienceError as exc:
+        code = str(exc)
+        allowed = {"PILOT_PLANNING_SOURCE_UNAVAILABLE", "PILOT_PLANNING_INVALID", "PILOT_PLANNING_UNAVAILABLE",
+                   "PILOT_SEQUENCE_LIMIT_EXHAUSTED", "PILOT_PUBLICATION_BOUNDARY_UNAVAILABLE",
+                   "PILOT_FIRST_AUTHORING_ORDER_AMBIGUOUS", "PILOT_EXACT_PUBLICATION_UNAVAILABLE",
+                   "PILOT_APPROVAL_SOURCE_CHANGED", "PILOT_ACTIVATION_SOURCE_CHANGED", "LIMIT_EXHAUSTED",
+                   "SOURCE_UNAVAILABLE", "SOURCE_UNAVAILABLE_OR_INVALID", "SOURCE_MOVED", "CUT_INVALID",
+                   "MAIN_REWRITTEN", "REPOSITORY_MISMATCH", "MAIN_MOVED", "TERMINAL_CONFLICT",
+                   "TERMINAL_INCOMPLETE", "REVIEW_MISMATCH"}
+        return dict(status="UNAVAILABLE", reason=code if code in allowed else "PILOT_SOURCE_UNAVAILABLE_OR_INVALID",
+                    pilot_id=CAA_PILOT_ID, source=source)
+    except Exception:
+        # Optional activation/history failure is not an authoring verdict. Never
+        # export Git stderr, provider errors, paths or arbitrary source text.
+        return dict(status="UNAVAILABLE", reason="PILOT_SOURCE_UNAVAILABLE_OR_INVALID",
+                    pilot_id=CAA_PILOT_ID, source=source)
+
+
 __all__ = [
     "BrainContextError", "BrainWorkContext", "FlowResolution",
     "compose_brain_work_context", "load_flow_cards", "resolve_flow", "canonical_audit_inputs",
+    "canonical_caa_pilot_context",
 ]

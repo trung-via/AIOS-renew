@@ -8,9 +8,13 @@ provider callback. This module neither resolves a flow nor admits a candidate.
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 import re
+from threading import Event
 from typing import Any, Callable
 
 from .brain_audit import _packet
@@ -221,7 +225,8 @@ def consult_flow(repo: str | Path, *, flow: str, packet: DecisionPacket, subject
     repo, including current Human choice and exact correction lineage. A packet
     digest or an exported cut is not authentication. The supplier must be bounded
     and read-only, just as in the existing Brain provider contract. No authoring
-    path is wired to this helper; final family validation/admission stays separate.
+    path requires this helper; the explicit TASK-417 Brain caller can opt in,
+    while final family validation/admission stays separate.
     """
     _require(type(flow) is str and flow in FLOWS, "CALLER_FLOW_REQUIRED")
     _require(type(enabled) is bool and type(human_opt_out) is bool, "CONSULTATION_CHOICE_INVALID")
@@ -278,4 +283,296 @@ def consult_flow(repo: str | Path, *, flow: str, packet: DecisionPacket, subject
         return _json(result, MAX_OUTPUT_BYTES)
 
 
-__all__ = ["FLOWS", "IntegrationContextError", "consult_flow"]
+_PILOT_OBSERVATION_SEAL = object()
+MAX_PILOT_OBSERVATIONS = 40
+MAX_PILOT_REPORT_BYTES = 131072
+
+
+@dataclass(frozen=True)
+class PilotAdviceObservation:
+    """Transient receipt issued only at consultation time, never imported JSON.
+
+    Like ExperienceCut, this is an in-process capability for trusted callers,
+    not a signature or a persistent lifecycle artifact. It contains no advice
+    prose, Human text, labels, provider response, secret, or candidate content.
+    """
+
+    _body: str = field(repr=False)
+    _cut: ExperienceCut = field(repr=False)
+    _integrity: str = field(repr=False)
+    _seal: object = field(repr=False, compare=False)
+
+    def as_dict(self):
+        _require(self._seal is _PILOT_OBSERVATION_SEAL and _digest(self._body) == self._integrity,
+                 "PILOT_OBSERVATION_INVALID")
+        return _json(json.loads(self._body), 12288)
+
+
+@dataclass(frozen=True)
+class PilotConsultation:
+    advisory: dict[str, Any]
+    observation: PilotAdviceObservation | None = None
+
+
+def _pilot_profile(value, provider):
+    """Validate data obtained from the independent trusted profile supplier.
+
+    These fields/digests do not authenticate themselves. The caller owns source
+    authentication and atomic charge reservation, as in CAA-04; neither a model
+    reply nor a callback echoing request data is a permitted supplier.
+    """
+    value = _json(value, 8192)
+    _require(type(value) is dict and set(value) == {
+        "profile_id", "provider", "model", "source_digest", "max_charge_usd_per_call", "expires_at"})
+    _identity(value["profile_id"])
+    _require((value["provider"], value["model"]) == (provider.provider, provider.model))
+    _require(type(value["source_digest"]) is str and _DIGEST.fullmatch(value["source_digest"]) is not None)
+    charge = value["max_charge_usd_per_call"]
+    _require(type(charge) in (int, float) and math.isfinite(charge) and charge >= 0)
+    _require(type(value["expires_at"]) is str and re.fullmatch(
+        r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", value["expires_at"]) is not None)
+    _require(datetime.fromisoformat(value["expires_at"].replace("Z", "+00:00")) > datetime.now(timezone.utc))
+    return value
+
+
+def _consult_pilot(repo, *, flow, packet, subject, candidate, expected_candidate_fingerprint,
+                   fresh_packet_supplier, cut=None, enabled=False, human_opt_out=False,
+                   provider=None, profile_supplier=None, reserve_call=None):
+    """Implementation of the explicit first-party brain_provider caller boundary."""
+    from .brain_context import canonical_caa_pilot_context, CAA_PILOT_ID
+    from .caa_experience import capture_experience_cut, reconstruct_episodes
+
+    common = dict(flow=flow, packet=packet, subject=subject, candidate=candidate,
+                  expected_candidate_fingerprint=expected_candidate_fingerprint,
+                  fresh_packet_supplier=fresh_packet_supplier, cut=cut)
+    _require(type(enabled) is bool and type(human_opt_out) is bool, "CONSULTATION_CHOICE_INVALID")
+    # Reuse all mandatory subject/candidate/currentness guards even when advice
+    # is unavailable. Disabled traffic reads no optional source or profile.
+    result = consult_flow(repo, **common, enabled=False, human_opt_out=human_opt_out)
+    if not enabled or human_opt_out:
+        return PilotConsultation(result)
+    body = _body(packet, flow)
+    main = body["canonical_facts"]["main_sha"]
+    context, task_cut, task_view = None, None, None
+    closed = Event()
+    actual_calls = []
+    gate_reason = []
+    observation = None
+
+    def unavailable(reason, *, outcome="UNAVAILABLE"):
+        result.update(outcome=outcome, reason=reason, consultation=None)
+
+    try:
+        context = canonical_caa_pilot_context(repo, expected_main_sha=main)
+        if context["status"] != "AVAILABLE":
+            unavailable(context["reason"])
+            result["pilot"] = context
+        else:
+            task = body["canonical_facts"].get("selected_task")
+            member = next((m for m in context["members"] if task is not None and m["task_id"] == task.get("id")), None)
+            result["pilot"] = dict(pilot_id=CAA_PILOT_ID, source=context["source"],
+                approval_source=context["approval_source"], publication_boundary_sha=context["publication_boundary_sha"],
+                task=task, ordinal=member["ordinal"] if member else None, inclusion_closed=context["inclusion_closed"],
+                mode="OPTIONAL_NON_DECISIVE", authority="NONE")
+            if task is None:
+                unavailable("CANONICAL_PILOT_TASK_REQUIRED", outcome="NO_MATERIAL_ADVICE")
+            elif member is None:
+                unavailable("TASK_OUTSIDE_TEN_TASK_PILOT", outcome="NO_MATERIAL_ADVICE")
+            else:
+                _task(task)
+                # Authenticate this TASK/revision separately from history used
+                # for advice. Existing terminal facts must never be relabelled
+                # as a pre-outcome consultation of this TASK.
+                try:
+                    task_cut = capture_experience_cut(repo, expected_main_sha=main, task_ids=(task["id"],))
+                    task_view = reconstruct_episodes(repo, cut=task_cut)
+                except ExperienceError:
+                    unavailable("PILOT_TASK_OBSERVATION_UNAVAILABLE")
+                else:
+                    observed_task = task_view["tasks"][0]["observed"][0]["value"]
+                    _require(observed_task == task, "CANONICAL_PILOT_TASK_REVISION_CHANGED")
+                    if type(provider) not in (MappingBrainProvider, JsonBrainProvider):
+                        unavailable("PROVIDER_UNAVAILABLE")
+                    elif not callable(profile_supplier):
+                        unavailable("NO_TRUSTED_PROVIDER_PROFILE")
+                    elif not callable(reserve_call):
+                        unavailable("BILLABLE_AUTHORIZATION_UNAVAILABLE")
+                    else:
+                        binding = deepcopy(result["binding"])
+                        if cut is not None:
+                            _require(type(cut) is ExperienceCut, "SEALED_EXPERIENCE_CUT_REQUIRED")
+                            origin = cut.as_dict()
+                            binding["source_cut"] = {k: origin[k] for k in (
+                                "digest", "repository_id", "main_sha", "as_of_sha", "mode")}
+                        try:
+                            profile = _pilot_profile(profile_supplier(deepcopy(binding)), provider)
+                        except Exception:
+                            profile = None
+                        if profile is None:
+                            unavailable("NO_TRUSTED_PROVIDER_PROFILE")
+                        else:
+                            def transport(request):
+                                # Runs inside the existing CAA-02 single-call
+                                # slot/deadline. No retry or late fallback call.
+                                try:
+                                    _require(not closed.is_set())
+                                    _require(request["binding"] == binding)
+                                    fresh_profile = _pilot_profile(profile_supplier(deepcopy(binding)), provider)
+                                    if fresh_profile != profile:
+                                        gate_reason.append("TRUSTED_PROVIDER_PROFILE_CHANGED")
+                                        raise ValueError
+                                    if reserve_call(deepcopy(profile), deepcopy(binding),
+                                                    profile["max_charge_usd_per_call"]) is not True:
+                                        gate_reason.append("BILLABLE_AUTHORIZATION_REFUSED")
+                                        raise ValueError
+                                    _current(fresh_packet_supplier, body, flow)
+                                    _require(not closed.is_set())
+                                except Exception:
+                                    if not gate_reason:
+                                        gate_reason.append("BILLABLE_AUTHORIZATION_UNAVAILABLE")
+                                    raise ValueError("OPTIONAL_PILOT_PROVIDER_UNAVAILABLE") from None
+                                actual_calls.append(1)
+                                invocation = provider.invoke(request)
+                                return dict(semantic_response=dict(invocation.semantic_response),
+                                            attribution=dict(invocation.attribution))
+
+                            guarded = MappingBrainProvider(provider.provider, provider.model, transport)
+                            result = consult_flow(repo, **common, enabled=True, provider=guarded)
+                            result["pilot"] = dict(pilot_id=CAA_PILOT_ID, source=context["source"],
+                                approval_source=context["approval_source"], task=task, ordinal=member["ordinal"],
+                                publication_boundary_sha=context["publication_boundary_sha"],
+                                inclusion_closed=context["inclusion_closed"], mode="OPTIONAL_NON_DECISIVE", authority="NONE")
+                            if gate_reason:
+                                unavailable(gate_reason[0])
+    finally:
+        closed.set()
+        # Optional provider/profile/history problems cannot bypass mandatory
+        # current Human intent, flow, subject, candidate, or correction guards.
+        _current(fresh_packet_supplier, body, flow)
+        _require(_body(packet, flow) == body and _subject(body, subject) == result["binding"]["subject"],
+                 "CALLER_CONTEXT_CHANGED")
+        _require(caa_reasoner.candidate_fingerprint(candidate) == expected_candidate_fingerprint,
+                 "CANDIDATE_SUBSTITUTED")
+    # Timestamp the completed observation before its post-consultation source
+    # check, rather than after a possible later terminal arrival.
+    observed_at = datetime.now(timezone.utc).isoformat()
+    if context and context["status"] == "AVAILABLE":
+        fresh_context = canonical_caa_pilot_context(repo, expected_main_sha=main)
+        if fresh_context != context:
+            unavailable("PILOT_ACTIVATION_SOURCE_CHANGED")
+            task_cut = None
+        if task_cut is not None and task_view is not None:
+            try:
+                after = capture_experience_cut(repo, expected_main_sha=main, task_ids=task_cut.task_ids)
+                # A newly arriving terminal is not added to the earlier receipt.
+                unchanged = after.as_dict() == task_cut.as_dict()
+                has_terminal = any(f["name"] == "terminal" for e in task_view["episodes"] for f in e["observed"])
+                material = dict(pilot_id=CAA_PILOT_ID, repository_id=context["repository_id"],
+                    approval_source=context["approval_source"], publication_boundary_sha=context["publication_boundary_sha"],
+                    task=body["canonical_facts"]["selected_task"], binding=result["binding"],
+                    observed_at=observed_at, observation_cut=task_cut.as_dict(),
+                    outcome=result["outcome"], reason=result["reason"],
+                    grounding=dict(status="VALIDATED_CAA02_CITATION_GRAMMAR" if result["outcome"] == "ADVICE" else "NO_ADVICE_PRODUCED",
+                        suggestion_count=len((result.get("consultation") or {}).get("suggestions", [])),
+                        request_fingerprint=(result.get("consultation") or {}).get("request_fingerprint")),
+                    pre_outcome_status="OBSERVED_BEFORE_ANY_TASK_TERMINAL" if unchanged and not has_terminal else "UNKNOWN",
+                    pre_outcome_missing_reason=None if unchanged and not has_terminal else
+                        "PRIOR_TERMINAL_OR_CHANGED_OBSERVATION_CUT",
+                    provider_calls=len(actual_calls), tokens="UNKNOWN", cost_usd="UNKNOWN",
+                    human_choice="EXPLICIT_CALLER_OPT_IN", brain_disposition="UNKNOWN",
+                    consultation_elapsed_ms=(result.get("consultation") or {}).get("metrics", {}).get("elapsed_ms", "UNKNOWN"),
+                    advice_quality="UNKNOWN", causal_uplift="UNKNOWN", authority="NONE")
+                encoded = _encode(_json(material, 12288))
+                observation = PilotAdviceObservation(encoded, task_cut, _digest(encoded), _PILOT_OBSERVATION_SEAL)
+            except (ExperienceError, ValueError, TypeError, RecursionError):
+                # Advice can still inform Brain; unavailable diagnostics cannot
+                # be reconstructed later into a successful pre-outcome receipt.
+                observation = None
+    _current(fresh_packet_supplier, body, flow)
+    _require(_body(packet, flow) == body and _subject(body, subject) == result["binding"]["subject"],
+             "CALLER_CONTEXT_CHANGED")
+    _require(caa_reasoner.candidate_fingerprint(candidate) == expected_candidate_fingerprint,
+             "CANDIDATE_SUBSTITUTED")
+    try:
+        output = _json(result, MAX_OUTPUT_BYTES)
+    except (ExperienceError, ValueError, TypeError, RecursionError):
+        unavailable("PILOT_OUTPUT_OVER_BUDGET")
+        output = _json(result, MAX_OUTPUT_BYTES)
+        observation = None
+    return PilotConsultation(output, observation)
+
+
+def pilot_report(repo: str | Path, *, expected_main_sha: str,
+                 observations: tuple[PilotAdviceObservation, ...] = ()) -> dict[str, Any]:
+    """Finite read-only evidence-gap handoff; never grade or re-consult a case."""
+    from .brain_context import canonical_caa_pilot_context
+    from .caa_experience import capture_experience_cut, reconstruct_episodes
+
+    _require(type(observations) in (tuple, list) and len(observations) <= MAX_PILOT_OBSERVATIONS,
+             "PILOT_REPORT_OVER_BUDGET")
+    context = canonical_caa_pilot_context(repo, expected_main_sha=expected_main_sha)
+    report = dict(format="AIOS_CAA_PILOT_REPORT", version=1, authority="NONE", pilot=context,
+        tasks=[], rejected_observations=0, mode="EXPLORATORY_NON_DECISIVE", advice_quality="UNKNOWN",
+        production_causal_uplift="UNKNOWN", decisive_sample_count=0,
+        handoff="HUMAN_BRAIN_DECISION_REQUIRED" if context.get("inclusion_closed") else "COHORT_INCOMPLETE",
+        future_decisions=["SEPARATE_HUMAN_CAA04_EXACT_PREREGISTRATION", "SEPARATE_HUMAN_CAA05_RESEARCH_SELECTION"],
+        run_created=False, executor_invoked=False, verification_invoked=False, state_mutated=False)
+    if context["status"] != "AVAILABLE":
+        report["handoff"] = "SOURCE_UNAVAILABLE"
+        return _json(report, MAX_PILOT_REPORT_BYTES)
+    accepted = {}
+    seen = set()
+    for observation in observations:
+        try:
+            _require(type(observation) is PilotAdviceObservation, "PILOT_OBSERVATION_INVALID")
+            item = observation.as_dict()
+            _require(item["repository_id"] == context["repository_id"]
+                     and item["pilot_id"] == context["pilot_id"]
+                     and item["approval_source"] == context["approval_source"]
+                     and item["publication_boundary_sha"] == context["publication_boundary_sha"]
+                     and item["task"]["id"] in {m["task_id"] for m in context["members"]}
+                     and _encode(item["observation_cut"]) == _encode(observation._cut.as_dict()),
+                     "PILOT_OBSERVATION_INVALID")
+            # Recheck original pins, never enrich this receipt with a later cut.
+            reconstruct_episodes(repo, cut=observation._cut)
+            _require(observation._integrity not in seen, "PILOT_OBSERVATION_DUPLICATED")
+            seen.add(observation._integrity)
+            accepted.setdefault(item["task"]["id"], []).append(item)
+        except (ExperienceError, IntegrationContextError, ValueError, TypeError, KeyError):
+            report["rejected_observations"] += 1
+    for member in context["members"]:
+        task_id = member["task_id"]
+        item = dict(member=member, advice_observations=accepted.get(task_id, []), episodes=[],
+                    missing=[], human_minutes="UNKNOWN", tokens="UNKNOWN", cost_usd="UNKNOWN", latency_ms="UNKNOWN")
+        if not item["advice_observations"]:
+            item["missing"].append(dict(name="pre_outcome_advice", status="UNKNOWN",
+                                       reason="NO_AUTHENTICATED_CONTEMPORANEOUS_RECEIPT"))
+        try:
+            cut = capture_experience_cut(repo, expected_main_sha=expected_main_sha, task_ids=(task_id,))
+            view = reconstruct_episodes(repo, cut=cut)
+            item["source_cut"] = cut.as_dict()
+            item["canonical_task"] = view["tasks"][0]
+            allowed = {"task", "run", "terminal", "result", "evidence", "failure_shape", "verification", "review", "publication",
+                       "repair_authorization", "repair_execution", "remediation_execution", "remediation_authorization"}
+            item["episodes"] = [dict(selection=e["selection"],
+                observed=[f for f in e["observed"] if f["name"] in allowed], unknown=e["unknown"])
+                for e in view["episodes"]]
+        except ExperienceError as exc:
+            known = {"SOURCE_UNAVAILABLE", "SOURCE_UNAVAILABLE_OR_INVALID", "SOURCE_MOVED", "CUT_INVALID",
+                     "MAIN_REWRITTEN", "REPOSITORY_MISMATCH", "MAIN_MOVED", "TERMINAL_CONFLICT",
+                     "TERMINAL_INCOMPLETE", "REVIEW_MISMATCH", "LIMIT_EXHAUSTED"}
+            reason = str(exc) if str(exc) in known else "SOURCE_UNAVAILABLE_OR_INVALID"
+            item["missing"].append(dict(name="episode", status="UNKNOWN", reason=reason))
+        report["tasks"].append(item)
+    # The report is an observation, not a new state store or an action token.
+    if canonical_caa_pilot_context(repo, expected_main_sha=expected_main_sha) != context:
+        report.update(tasks=[], handoff="SOURCE_CHANGED", pilot=dict(status="UNAVAILABLE"))
+    try:
+        return _json(report, MAX_PILOT_REPORT_BYTES)
+    except (ValueError, TypeError, ExperienceError, RecursionError):
+        report.update(tasks=[], handoff="REPORT_OVER_BUDGET")
+        return _json(report, MAX_PILOT_REPORT_BYTES)
+
+
+__all__ = ["FLOWS", "IntegrationContextError", "consult_flow", "PilotConsultation",
+           "PilotAdviceObservation", "pilot_report"]

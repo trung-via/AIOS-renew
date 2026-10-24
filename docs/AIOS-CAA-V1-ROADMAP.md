@@ -1,6 +1,22 @@
 # CAA v1: finite advisory roadmap
 
-The latest explicit Human decision of 2026-10-24 selects **Auto-NEXT / TASK-415 r1**
+The current explicit Human decision of 2026-10-24 selects **TASK-417 r1**, the
+[ten-TASK optional advisory pilot](AIOS-CAA-10-TASK-ADVISORY-ACTIVATION.md), as the
+sole prospective implementation NEXT. `human_caa_ten_task_advisory_20261024`
+supersedes only the prospective Auto-NEXT bookmark. It authorizes optional CAA-03
+use for the next ten distinct new canonical TASK identities after exact reviewed
+activation-source publication. It does not activate decisive CAA-04 evaluation,
+select CAA-05, approve a provider or billable call, or assert production benefit.
+TASK-415/416 outcomes, PTE Information-Only v2, prior Human approvals and exact
+immutable lineages retain their meanings. The old effective transition is retained
+as `historical_effective_next_transitions_task415`, without a second effective NEXT.
+No successor follows automatically from this pilot or its report.
+
+The following Auto-NEXT and CAA-package selections are historical. Statements
+about the then-current NEXT or lack of production activation describe those cuts;
+the current pilot amends prospective selection and optional controlled use only.
+
+The earlier explicit Human decision of 2026-10-24 selected **Auto-NEXT / TASK-415 r1**
 as the sole prospective implementation NEXT in `.ai/roadmap-state.yaml`. The
 `human_auto_next_priority_20261024` record supersedes only the prospective
 CAA-04 selection. TASK-414 r2 / RUN-414-007 / REVIEW-414-007 PRIMARY PASS
@@ -18,7 +34,7 @@ last selected CAA package; CAA-05 remains conditional and unselected. The
 four packages remain finite, separately authorized work. A RUN, RESULT, REVIEW or publication cannot
 advance this plan. Only an explicit Human/Brain decision can select a package.
 
-Brain Sync projects one effective NEXT from the explicit Human transition and
+At that selection, Brain Sync projected one effective NEXT from the explicit Human transition and
 the current canonical lifecycle. It never edits the roadmap during publication.
 The existing publication-success attention and local Chat wake prompt a fresh
 Brain Sync, so missed or duplicate wake events do not become lifecycle truth.
@@ -42,7 +58,7 @@ architecture handoff observes main `749cd197e55eadb36e8876db104c333a021f4915`;
 Runtime reauthenticates source currentness. That earlier selection recorded
 CAA-02 lineage without then declaring TASK-412 complete or enabling production use.
 
-The selected contract is [CAA-04 evaluation, shadow and rollout](AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md).
+The earlier selected contract was [CAA-04 evaluation, shadow and rollout](AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md).
 It consumes the existing [CAA-03 integration](AIOS-CAA-03-INTEGRATION-PORTABILITY.md)
 and [CAA-02 reasoner](AIOS-CAA-02-INTELLIGENT-REASONER.md) without changing either.
 The supplied predecessor is TASK-412 r2 / RUN-412-009, independent PRIMARY
@@ -103,7 +119,10 @@ lineage remain history. PTE, Lean VP, KA-01 and downstream bookmarks do not
 advance. CAA adds no admission step, Flow Card, audit invocation or provider
 selection authority. CAA-02 can use one explicitly caller-supplied provider
 callable. CAA-03 supplies an explicitly called optional binding for the four
-existing Brain flows; no ordinary authoring flow invokes it by default. Human
+existing Brain flows; no ordinary authoring flow invokes it by default. The
+TASK-417 supported explicit Brain caller can now request the bounded pilot under
+its independent source/profile/charge guards; `consult_flow` itself stays disabled
+by default. Human
 priority/risk, soft AOA opt-out and Brain's final semantic judgment remain intact.
 
 ## CAA-01 read contract
