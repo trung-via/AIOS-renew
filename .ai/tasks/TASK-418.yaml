@@ -1,21 +1,36 @@
 task_id: TASK-418
-revision: 1
+revision: 2
 goal: 'Establish the smallest preactivation, Runtime-bound native Codex feedback delivery
   and receipt capability for Lean VP Intra v1.3 L3-06: the exact admitted live Codex
   Executor can receive an authenticated F_i from the current checkpoint inside its
   existing native invocation without reselecting, respawning or claiming authorization
   to perform production C2. Preserve separate G3 integrated proof and G6 Human activation.'
-problem: Runtime already seals K_i and derives bounded immutable F_i, but CodexAdapter.execute
-  is currently a blocking one-shot subprocess with no production same-invocation feedback
-  callback; existing positive continuation tests use a local cooperative test adapter.
-  Consequently F_i preparation is not evidence of real native Executor receipt, and
-  no G3 proof or reliable correction loop can be claimed. Establish the native transport
-  boundary first; separately address actionable checkpoint diagnostics and full C2
-  correction after this bounded foundation.
+problem: TASK-418 r1 was canonically authored on main c96a2977d1009c553900f4cec9cb975a39fc49c3
+  and admitted as RUN-418-001 (Codex GPT-6.1 Sol Max), but the exact immutable FAILURE
+  artifacts at 133a137673a5d1c9f0de1714e514094012cd2581 record EXECUTION-phase CodexExecutionError
+  NATIVE_EXIT 1 (900.8449524 s). Verification was not invoked. failed_head_sha equals
+  the TASK-418 r1 main base c96a2977d1009c553900f4cec9cb975a39fc49c3; changed_files=[],
+  dirty=true, repairable=false and transportable=false, with private output withheld.
+  There is no valid committed implementation candidate to CODE_FIX REPAIR or carry
+  over. Human explicitly directs completing the same original TASK with a newly selected
+  Antigravity Gemini 3.8 Flash High Executor. Revision 2 makes a fresh exact-TASK
+  PRIMARY admission possible without fabricating REPAIR lineage, retaining all existing
+  semantic goal, inspect/modify scope, acceptance criteria and focused verification,
+  and preserving the failed RUN as immutable history.
 assumptions:
-- The latest inspected canonical main source is cc531fd1e5bcc7034aabdddf41dfe2268da888a6
-  on 2026-10-25; Runtime/ingress independently reauthenticate canonical expected-main
-  SHA, TASK identity and source.
+- The exact source on canonical main at revision-2 authoring is c96a2977d1009c553900f4cec9cb975a39fc49c3
+  (TASK-418 r1), with original task blob 5075a24d0c183feef5340a98ea61e3c398a5417a.
+  Before mutation Runtime must independently authenticate current main, source TASK
+  and revision affinity.
+- The original admitted failure RUN-418-001 is bound to failure artifacts 133a137673a5d1c9f0de1714e514094012cd2581
+  on refs/heads/aios/failure-artifacts/RUN-418-001. Error type CodexExecutionError;
+  cause NATIVE_EXIT exit 1; Runtime verification not started; candidate.changed_files=[];
+  dirty=true; repairable=false; transportable=false; failed_head_sha=base_sha=c96a2977d1009c553900f4cec9cb975a39fc49c3.
+  No candidate or private root cause is inferred from withheld output.
+- The Human authorizes the prospective same-TASK continuation as revision 2 with a
+  freshly selected Antigravity Gemini 3.8 Flash High profile. Authoring this semantic
+  TASK must not serialize a model-specific Executor command or self-authorize RUN;
+  the separate PRIMARY wakeup is bound to exact admitted r2 blob and this Human delegation.
 - Current explicit Human instruction resumes Lean VP Intra as new prospective work
   priority, superseding only the active CAA TASK-417 planning bookmark for NEXT. TASK-417's
   existing ten-future-TASK optional CAA pilot, TASK-415/416, PTE information-only
@@ -27,13 +42,17 @@ assumptions:
 - Codex adapter currently dispatches a single blocking CLI subprocess via _runner(input=...),
   not a proven session-aware native recipient; tests/test_lean_vp_l3_same_executor_continuation.py
   uses LocalAdapter.confirm_local_feedback, not production Codex.
-- Only an admitted live Executor owns HOW. Brain authors this executor-neutral TASK;
-  no executor/model/effort or per-RUN G6 authorization is established by this authoring
-  or by a workflow Issue.
 - The earlier AOA-1 architecture comparison favored minimum lawful reuse of F_i/checkpoint
   evidence and existing Runtime boundaries over a new diagnosis agent/router/database.
   Technical feasibility of native Codex interactive transport is still unproved; a
   source-bound inability result is better than a simulated live success.
+- Current local self-host worktree may still contain dirty uncommitted material from
+  the nontransportable failed RUN; the existing locked primary H1R/admission boundary
+  must independently reconcile or stop. Do not assume a clean checkout, invoke destructive
+  cleanup, or copy failed Codex state into a new Antigravity RUN.
+- The prior TASK-418 r1 received no G3 or G6 activation, no Runtime verification and
+  no review/publication claim; TASK-418 r2 does not add previously missing authorities
+  or advance Lean VP on its own.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -87,6 +106,9 @@ non_goals:
   TASK-417 CAA pilot contract, no changes to downstream pins, and no full test suite.
 - No widening correction support to REPAIR/REMEDIATION production in this first slice;
   those operations remain explicit later G3 conformance duties.
+- No CODE_FIX or CONTINUE_IMPLEMENTATION REPAIR on the untransportable RUN-418-001
+  candidate, no invented failure diagnostics from withheld raw output, and no attempt
+  to promote uncommitted work to canonical source.
 constraints:
   hard:
   - 'Canonicalize exact new Human Lean VP priority prospectively in the existing roadmap:
@@ -117,6 +139,15 @@ constraints:
   - Use minimum-sufficient focused verification of adapter receipt, authentic bindings,
     stop/replay/crash/incorrect subjects and legacy no-op behavior; no full suite,
     no changes that weaken proof or acceptance semantics.
+  - "Preserve TASK-418 r1 exact inspect/modify file allowlist, original goal and AC1\u2013\
+    AC7 while prospectively revising TASK semantics. When executing r2, use fresh\
+    \ ordinary PRIMARY admission rather than repairing RUN-418-001; reprove canonical\
+    \ main and local workspace safety, and STOP on dirty/unreconciled worktree without\
+    \ destructive force-reset/clean or hiding pre-RUN failures."
+  - The original failed RUN-418-001 and its immutable NATIVE_EXIT FAILURE remain unchanged;
+    a fresh admitted primary RUN and its authentic independent Executor/profile lineage
+    must be established through the existing Runtime/transport authority, not by reinterpretation
+    of the old Codex RUN.
 acceptance:
 - id: AC1
   condition: A source-bound Human/Brain planning record selects Lean VP L3-06 TASK-418
