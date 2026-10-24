@@ -574,7 +574,9 @@ def test_consistent_but_noncanonical_material_cannot_authenticate_itself(tmp_pat
     context, resolution, material = case.inputs
     material, subject = deepcopy(material), deepcopy(case.subject)
     if flow == "REPAIR_AUTHORING":
-        material["failed_run"]["executor"] = material["failure"]["executor"] = subject["executor"] = "claude"
+        # A supported alternate must reach source authentication, rather than
+        # being rejected earlier by the canonical RUN schema validator.
+        material["failed_run"]["executor"] = material["failure"]["executor"] = subject["executor"] = "antigravity"
     else:
         material["findings"][0]["finding"]["action"] = subject["action"] = "EVIDENCE_ONLY"
     # Even an internally consistent compiler packet is not a canonical reader.
