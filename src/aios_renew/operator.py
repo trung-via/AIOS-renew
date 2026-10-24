@@ -5166,25 +5166,30 @@ def _prove_primary_reviewed_result(
 
 def _prove_primary_failure_group(
     observer: Path, *, remote: str, candidates: tuple[str, ...], local_sha: str,
-) -> tuple[str, dict[str, str], tuple[str, ...]]:
-    """Prove each member, then compare preservation identity, never ref count.
-
-    RUN and FAILURE digests remain distinct member identities. Compatibility is
-    exact TASK/source/base/candidate and original execution/correction provenance;
-    a common Git tip alone cannot authenticate an alias or combine lineages.
-    """
+    target_sha: str, discovery: Mapping[str, str],
+) -> tuple[str, dict[str, str], tuple[str, ...], str]:
+    """Select an exact same-identity group or one closed REPAIR continuation."""
     from .authoring_ingress import _read_commit_blob
-    from .review_transport import _decode_run_task_identity, _performance_json_mapping
+    from .review_transport import (
+        REPAIR_SUPERSESSION_PREFIX, _decode_run_task_identity,
+        _performance_json_mapping,
+    )
+    from . import publication as pub
 
     refs: dict[str, str] = {}
-    identities: list[str] = []
+    members: dict[str, dict[str, Any]] = {}
     artifacts: set[str] = set()
     sources: set[str] = set()
     patterns: list[str] = []
-    for ref in sorted(candidates):
+    def read_member(ref: str) -> dict[str, Any]:
         run_id = ref.removeprefix("refs/heads/aios/failure/")
+        if ref != f"refs/heads/aios/failure/{run_id}" or run_id in members:
+            raise OperatorError("canonical REPAIR chain proof conflicting")
+        head_sha = discovery.get(ref)
+        if not isinstance(head_sha, str):
+            raise OperatorError("canonical REPAIR chain source unavailable")
         base, member_refs = prove_remote_failed_candidate(
-            observer, failed_run_id=run_id, failed_head_sha=local_sha,
+            observer, failed_run_id=run_id, failed_head_sha=head_sha,
         )
         artifact_ref = f"refs/heads/aios/failure-artifacts/{run_id}"
         artifact_sha = member_refs[artifact_ref]
@@ -5221,8 +5226,15 @@ def _prove_primary_failure_group(
         if source_digest in sources:
             raise OperatorError("canonical FAILURE preservation has aliased source proof")
         sources.add(source_digest)
+        repair = _read_commit_blob(observer, artifact_sha, ".ai/transport/repair.json")
+        # Historical single-FAILURE H1R did not require a TASK blob at its
+        # execution base. Preserve that family; every group/chain member must
+        # authenticate the original source bytes and affinity independently.
+        source_required = (len(candidates) > 1 or head_sha != local_sha
+                           or failure.get("continuation_of") is not None or repair is not None)
         source = None
-        if len(candidates) > 1:
+        task = None
+        if source_required:
             task_path = f".ai/tasks/{task_id}.yaml"
             task_bytes = _read_commit_blob(observer, base, task_path)
             if task_bytes is None or task_bytes != _read_commit_blob(observer, local_sha, task_path):
@@ -5242,30 +5254,155 @@ def _prove_primary_failure_group(
                 key: value for key, value in run_document["execution"].items() if key != "run"
             }}
         affinity = document_affinity(run)
-        if len(candidates) > 1 and affinity != task.return_affinity:
+        if source_required and affinity != task.return_affinity:
             raise OperatorError("canonical FAILURE TASK affinity mismatch")
-        repair = _read_commit_blob(observer, artifact_sha, ".ai/transport/repair.json")
-        identities.append(json.dumps({
+        identity = json.dumps({
             "task": {"id": task_id, "revision": revision}, "source": source,
-            "base": base, "head": local_sha, "executor": run["executor"],
+            "base": base, "head": head_sha, "executor": run["executor"],
             "affinity": asdict(affinity), "provenance": provenance,
             "continuation_of": failure.get("continuation_of"),
             "repair": hashlib.sha256(repair).hexdigest() if repair is not None else None,
-        }, sort_keys=True, separators=(",", ":")))
+        }, sort_keys=True, separators=(",", ":"))
         refs.update(member_refs)
         # Absence of contradictory RESULT/REVIEW evidence is part of each proof.
         patterns.extend(f"refs/heads/aios/{family}/{run_id}" for family in (
             "failure", "failure-artifacts", "review", "artifacts", "review-decision",
         ))
-    if len(set(identities)) != 1:
-        raise OperatorError("canonical FAILURE preservation has conflicting identity or lineage")
+        member = dict(run_id=run_id, task_id=task_id, revision=revision,
+                      source=source, base=base, head=head_sha, executor=run["executor"],
+                      affinity=affinity, provenance=provenance, run=run_document,
+                      failure=failure, repair=repair, task=task, identity=identity)
+        members[run_id] = member
+        return member
+
+    for ref in sorted(candidates):
+        read_member(ref)
+    tip_members = tuple(members.values())
+    if (len({item["identity"] for item in tip_members}) == 1
+            and all(item["failure"].get("continuation_of") is None
+                    and item["repair"] is None for item in tip_members)):
+        base = tip_members[0]["base"]
+        proof_kind = "PROVEN_FAILURE_GROUP_RECOVERABLE"
+    else:
+        proof_kind = "PROVEN_REPAIR_CHAIN_RECOVERABLE"
+        # Follow authenticated continuation pointers. Run numbering and a shared
+        # candidate SHA are never predecessor authority.
+        pending = list(members.values())
+        while pending:
+            member = pending.pop()
+            predecessor = member["failure"].get("continuation_of")
+            if predecessor is None:
+                continue
+            if (not isinstance(predecessor, str)
+                    or re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", predecessor) is None):
+                raise OperatorError("canonical REPAIR chain proof conflicting")
+            if predecessor not in members:
+                predecessor_ref = f"refs/heads/aios/failure/{predecessor}"
+                if predecessor_ref not in discovery:
+                    raise OperatorError("canonical REPAIR chain source unavailable")
+                if len(members) >= 128:
+                    raise OperatorError("canonical REPAIR chain proof conflicting")
+                pending.append(read_member(predecessor_ref))
+
+        roots = [item for item in members.values()
+                 if item["failure"].get("continuation_of") is None]
+        children: dict[str, list[str]] = {}
+        for item in members.values():
+            predecessor = item["failure"].get("continuation_of")
+            if predecessor is not None:
+                children.setdefault(predecessor, []).append(item["run_id"])
+        terminals = [item for item in members.values() if item["run_id"] not in children]
+        if (len(roots) != 1 or len(terminals) != 1
+                or terminals[0]["head"] != local_sha
+                or len(children) != len(members) - 1
+                or any(len(successors) != 1 for successors in children.values())):
+            raise OperatorError("canonical REPAIR chain proof conflicting")
+        root = roots[0]
+        base = root["base"]
+        if root["repair"] is not None or root["provenance"] is not None:
+            raise OperatorError("canonical REPAIR chain proof conflicting")
+        for item in members.values():
+            if (item["task_id"], item["revision"], item["source"],
+                    item["executor"], item["affinity"]) != (
+                    root["task_id"], root["revision"], root["source"],
+                    root["executor"], root["affinity"]):
+                raise OperatorError("canonical REPAIR chain proof conflicting")
+            if item["provenance"] is not None or not _git_is_ancestor(
+                observer, item["base"], item["head"]
+            ) or not _git_is_ancestor(observer, item["head"], local_sha):
+                raise OperatorError("canonical REPAIR chain proof conflicting")
+            actual_paths = set(_git(
+                observer, "diff", "--name-only", "--no-renames", "-z",
+                item["base"], item["head"], strip_stdout=False,
+            ).split("\0")) - {""}
+            try:
+                validate_runtime_failure_binding(
+                    item["failure"], run_id=item["run_id"], task_id=item["task_id"],
+                    task_revision=item["revision"], executor=item["executor"],
+                    base_sha=item["base"], candidate_sha=item["head"],
+                    modification_scope=root["task"].scope.modify,
+                    actual_descends_from_base=True, actual_changed_files=actual_paths,
+                )
+            except (TypeError, ValueError) as exc:
+                raise OperatorError("canonical REPAIR chain proof conflicting") from exc
+            predecessor = item["failure"].get("continuation_of")
+            if predecessor is not None:
+                parent = members[predecessor]
+                if item["base"] != parent["head"] or item["repair"] is None:
+                    raise OperatorError("canonical REPAIR chain proof conflicting")
+                try:
+                    authorization = resolve_remote_repair_authorization(
+                        observer, predecessor, remote=remote,
+                    )
+                except RemoteQueryError:
+                    raise
+                except ReviewTransportError as exc:
+                    reason = ("canonical REPAIR chain source unavailable"
+                              if str(exc).startswith(("remote REPAIR not found",
+                                                       "remote REPAIR JSON missing"))
+                              else "canonical REPAIR chain proof conflicting")
+                    raise OperatorError(reason) from exc
+                auth_patterns = (
+                    f"refs/heads/aios/repair/{predecessor}",
+                    f"{REPAIR_SUPERSESSION_PREFIX}{predecessor}/*",
+                )
+                auth_refs = _exact_remote_refs(observer, remote, *auth_patterns)
+                if authorization.commit_sha not in auth_refs.values():
+                    raise OperatorError("canonical REPAIR chain source unavailable")
+                refs.update(auth_refs)
+                patterns.extend(auth_patterns)
+        # The Runtime publication lineage validator checks every embedded RUN,
+        # FAILURE and repair authorization, including action-specific zero-delta
+        # phases and exact root/result bases, by recursively following the chain.
+        terminal = terminals[0]
+        try:
+            proven_base, _, _, _ = pub._repair_review_lineage(
+                observer, remote=remote, publication_run_id=terminal["run_id"],
+                child_run_data=terminal["run"],
+                child_run=_run_from_data(terminal["run"]),
+                child_head_sha=terminal["head"], lineage_bytes=terminal["repair"],
+                task=root["task"], historical_child_failure=terminal["failure"],
+                strict_source=True,
+            )
+        except (KeyError, TypeError, ValueError, ReviewTransportError) as exc:
+            raise OperatorError("canonical REPAIR chain proof conflicting") from exc
+        if proven_base != base:
+            raise OperatorError("canonical REPAIR chain proof conflicting")
+        # Every FAILURE on local-only ancestry belongs to this single closure.
+        for ref, sha in discovery.items():
+            if (ref.startswith("refs/heads/aios/failure/")
+                    and _git_is_ancestor(observer, sha, local_sha)
+                    and not _git_is_ancestor(observer, sha, target_sha)
+                    and ref.removeprefix("refs/heads/aios/failure/") not in members):
+                raise OperatorError("canonical REPAIR chain proof conflicting")
     if _exact_remote_refs(observer, remote, *patterns) != refs:
         raise OperatorError("canonical FAILURE preservation has conflicting or moved proof")
-    return base, refs, tuple(patterns)
+    return base, refs, tuple(patterns), proof_kind
 
 
 def _reconcile_primary_divergence(
     root: Path, *, remote: str, allow_restart: bool,
+    diagnostic: list[str] | None = None,
 ) -> bool | None:
     """Locked PRIMARY pre-RUN edge; one proven identity preserves full ancestry.
 
@@ -5350,8 +5487,9 @@ def _reconcile_primary_divergence(
                     observer, remote=remote, run_id=preserved_run_id, local_sha=local_sha,
                 )
             else:
-                base, proof_refs, proof_patterns = _prove_primary_failure_group(
+                base, proof_refs, proof_patterns, proof_kind = _prove_primary_failure_group(
                     observer, remote=remote, candidates=candidates, local_sha=local_sha,
+                    target_sha=target_sha, discovery=discovery,
                 )
             if any(discovery.get(ref) != sha for ref, sha in proof_refs.items()
                    if ref.startswith(("refs/heads/aios/failure/", "refs/heads/aios/failure-artifacts/",
@@ -5407,7 +5545,8 @@ def _reconcile_primary_divergence(
             else:
                 proof_matches = _prove_primary_failure_group(
                     observer, remote=remote, candidates=candidates, local_sha=local_sha,
-                ) == (base, proof_refs, proof_patterns)
+                    target_sha=target_sha, discovery=discovery,
+                ) == (base, proof_refs, proof_patterns, proof_kind)
             if not proof_matches:
                 raise OperatorError("canonical preservation identity drift")
             if (
@@ -5431,6 +5570,9 @@ def _reconcile_primary_divergence(
                 or _git(root, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all")
             ):
                 raise OperatorError("repository-integrity BLOCKED: reconciliation postconditions failed")
+            if (not reviewed and proof_kind == "PROVEN_REPAIR_CHAIN_RECOVERABLE"
+                    and diagnostic is not None):
+                diagnostic.append(proof_kind)
             return requires_restart
     except ReviewTransportError as exc:
         raise OperatorError(str(exc)) from exc
@@ -5441,6 +5583,7 @@ def _synchronize_primary_branch(
     *,
     allow_restart: bool = False,
     only_if_behind: bool = False,
+    diagnostic: list[str] | None = None,
 ) -> bool:
     """Align a clean attached main branch to its configured upstream main by exact native FF."""
 
@@ -5501,7 +5644,7 @@ def _synchronize_primary_branch(
     # Observe divergence before the ordinary fetch can change control refs.
     if not only_if_behind and remote != ".":
         reconciled = _reconcile_primary_divergence(
-            root, remote=remote, allow_restart=allow_restart,
+            root, remote=remote, allow_restart=allow_restart, diagnostic=diagnostic,
         )
         if reconciled is not None:
             return reconciled
@@ -5598,6 +5741,7 @@ def _synchronize_primary_branch(
 class PreflightResult:
     restart_code: int | None = None
     preflight_sha: str | None = None
+    diagnostic: str | None = None
 
 
 def _preflight_primary_sync(
@@ -5611,16 +5755,23 @@ def _preflight_primary_sync(
     _require_no_active_migration(root)
     with _active_restart_source(root) as restart_source:
         state = runtime_paths(root)
+        diagnostics: list[str] = []
         with RepositoryLock(state.lock):
             _require_no_active_migration(root)
-            needs_restart = _synchronize_primary_branch(root, allow_restart=True)
+            needs_restart = _synchronize_primary_branch(
+                root, allow_restart=True, diagnostic=diagnostics,
+            )
             preflight_sha = _git(root, "rev-parse", "HEAD")
+        if diagnostics:
+            print(f"PRIMARY_SYNCHRONIZATION_DIAGNOSTIC={diagnostics[0]}", file=sys.stderr)
         if needs_restart:
             with _restart_source_environment(restart_source):
                 return PreflightResult(
-                    restart_code=_restart_primary_invocation(root, argv=argv, runner=runner)
+                    restart_code=_restart_primary_invocation(root, argv=argv, runner=runner),
+                    diagnostic=diagnostics[0] if diagnostics else None,
                 )
-        return PreflightResult(preflight_sha=preflight_sha)
+        return PreflightResult(preflight_sha=preflight_sha,
+                               diagnostic=diagnostics[0] if diagnostics else None)
 
 
 def _preflight_continue_sync(
@@ -8079,6 +8230,8 @@ def _bounded_admission_message(failure: BaseException, *, phase: str | None = No
             "canonical FAILURE TASK affinity mismatch",
             "canonical FAILURE preservation has conflicting identity or lineage",
             "canonical FAILURE preservation has conflicting or moved proof",
+            "canonical REPAIR chain proof conflicting",
+            "canonical REPAIR chain source unavailable",
             "canonical preservation identity drift", "canonical reconciliation proof drift",
             "local-only history lacks complete canonical preservation",
             "reconciliation requires diverged common failure-base lineage",

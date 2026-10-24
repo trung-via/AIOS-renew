@@ -629,6 +629,79 @@ def test_task413_valid_multiple_proofs_cannot_rearm_rejected_dispatch(tmp_path: 
     assert not (clean / ".git/aios").exists() and journal.read_bytes() == original
 
 
+def test_task413_repair_chain_requires_fresh_dispatch_after_rejected_delivery(tmp_path: Path, monkeypatch) -> None:
+    from tests.test_operator import (
+        TASK_414_CHAIN_AUTHORIZATIONS, _task414_repair_chain_divergence,
+        _reconciliation_snapshot, git,
+    )
+
+    fixture = _task414_repair_chain_divergence(tmp_path)
+    missing_ref = "refs/heads/aios/repair/RUN-414-002"
+    git(fixture.remote, "update-ref", "-d", missing_ref)
+    profile = ResolvedExecutionProfile(
+        run_id="AUTHORIZATION", executor="codex", model="gpt-6-sol",
+        reasoning_effort="max", model_source="EXPLICIT", effort_source="EXPLICIT",
+    )
+    request = dict(repo=fixture.repo, state_root=fixture.state.root,
+                   task_id="TASK-414", task_revision=2, executor="codex",
+                   task_commit_sha=fixture.target,
+                   task_blob_sha=git(fixture.remote, "rev-parse", f"{fixture.target}:.ai/tasks/TASK-414.yaml"),
+                   execution_profile=profile)
+    calls = []
+
+    def reject_before_run():
+        calls.append("rejected")
+        with pytest.raises(operator_module.OperatorError):
+            operator_module._preflight_primary_sync(fixture.repo)
+        return DispatchInvocation(1)
+
+    old_id = "synthetic-414-rejected"
+    first = execute_dispatch(**request, dispatch_id=old_id, invoke_primary=reject_before_run)
+    assert first.status == "FAILED" and first.run_id is None
+    journal = next((fixture.state.root / "dispatches").glob("*.json"))
+    old_bytes = journal.read_bytes()
+    git(fixture.remote, "update-ref", missing_ref, TASK_414_CHAIN_AUTHORIZATIONS[1])
+    before, refs = _reconciliation_snapshot(fixture.repo), git(fixture.remote, "show-ref")
+
+    def forbidden():
+        pytest.fail("terminal rejected dispatch must not replay PRIMARY")
+
+    replay = execute_dispatch(**request, dispatch_id=old_id, invoke_primary=forbidden)
+    assert replay.replayed and replay.status == "FAILED" and replay.run_id is None
+    assert journal.read_bytes() == old_bytes and calls == ["rejected"]
+    assert _reconciliation_snapshot(fixture.repo) == before and git(fixture.remote, "show-ref") == refs
+
+    argv = ["wakeup", "synthetic-414-fresh", "TASK-414", "--task-revision", "2",
+            "--task-blob-sha", request["task_blob_sha"], "--task-commit-sha", fixture.target,
+            "--executor", "codex", "--model", "gpt-6-sol", "--reasoning-effort", "max"]
+
+    def restart(root, *, argv: list[str] | None, runner):
+        assert argv == expected_argv and git(root, "rev-parse", "HEAD") == fixture.target
+        return 0
+
+    expected_argv = argv
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", restart)
+
+    def fresh_before_run():
+        calls.append("fresh")
+        outcome = operator_module._preflight_primary_sync(fixture.repo, argv=argv)
+        assert outcome.restart_code == 0
+        assert outcome.diagnostic == "PROVEN_REPAIR_CHAIN_RECOVERABLE"
+        assert not list(fixture.state.runs.glob("RUN-414-*.json"))
+        return DispatchInvocation(1)
+
+    fresh = execute_dispatch(**request, dispatch_id="synthetic-414-fresh", invoke_primary=fresh_before_run)
+    assert fresh.status == "FAILED" and fresh.run_id is None and calls == ["rejected", "fresh"]
+    fresh_journal = [path for path in (fixture.state.root / "dispatches").glob("*.json")
+                     if path != journal]
+    assert len(fresh_journal) == 1
+    bound = json.loads(fresh_journal[0].read_bytes())
+    assert bound["task_blob_sha"] == request["task_blob_sha"]
+    assert bound["task_commit_sha"] == fixture.target and bound["executor"] == "codex"
+    assert bound["model"] == "gpt-6-sol" and bound["reasoning_effort"] == "max"
+    assert old_bytes == journal.read_bytes() and git(fixture.remote, "show-ref") == refs
+
+
 def test_duplicate_while_original_invocation_is_active_reports_in_progress(
     tmp_path: Path,
 ) -> None:

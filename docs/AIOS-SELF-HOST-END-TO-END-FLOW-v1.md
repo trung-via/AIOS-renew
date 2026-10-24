@@ -93,10 +93,17 @@ remains ineligible. The original verdict, findings and remote refs remain unchan
 Multiple canonical FAILURE refs at exactly the same local HEAD may form that one
 identity. Runtime sorts the candidate refs and independently validates **every**
 RUN/FAILURE artifact, including TASK/revision, base/head, public source digest and
-distinct immutable artifacts. The group must agree on exact TASK source bytes,
-base/candidate and execution/correction provenance. A shared SHA, copied artifact,
-arbitrary alias or a mixture of FAILURE and reviewed RESULT cannot supply this
-proof. Reviewed RESULT retains its single exact canonical candidate contract.
+distinct immutable artifacts. The original group remains eligible when exact TASK
+source bytes, base/candidate and execution/correction provenance all agree.
+Alternatively, distinct per-attempt bases are eligible only when the complete
+canonical FAILURE `continuation_of` pointers and per-run REPAIR execution artifacts
+prove one source-authenticated linear chain. Runtime verifies each current REPAIR
+authorization SHA and exact predecessor RUN/FAILURE, correction action and committed
+delta, original TASK bytes at each execution base, one root and all local-only
+ancestry. A zero-delta FINALIZE or CONTINUE failure does not fabricate a commit.
+A shared SHA, copied artifact, arbitrary alias, disconnected or forked predecessor,
+or a mixture of FAILURE and reviewed RESULT cannot supply this proof. Reviewed
+RESULT retains its single exact canonical candidate contract.
 
 At the mutation edge Runtime rechecks every member and the complete membership
 and values of the preservation refs, current remote main,
@@ -127,13 +134,17 @@ The bounded historical H1R case matrix is:
 | TASK-268 REVIEW bytes, closed by TASK-270 | Exact canonical REVIEW bytes retain LF, CRLF and trailing whitespace through validation. | Unequal metadata bytes remain unequal; normalization cannot repair a substitution. |
 | RUN-359-002 / TASK-360, closed by TASK-361 | Structurally complete CHANGES_REQUIRED or BLOCKED preserves history and original verdict/findings. | Deficient BLOCKED, invalid findings, changed decision, incomplete RESULT/EVIDENCE or lost journal continuity. |
 | TASK-412 six-FAILURE shape, addressed by TASK-413 | RUN-412-002 through RUN-412-007 independently prove the same candidate `9e589e74fe1bd714c6f4c41531372434284cfbf0`, with distinct artifacts and compatible source/base/lineage. | One invalid member, alias, differing source/revision/base/lineage, mixed proof families or added/removed/moved preservation refs blocks the entire group. |
+| TASK-414 r1 linear REPAIR continuation, addressed by TASK-413 r2 | RUN-414-001 at `6426570c789388ac9bebce428ce1e705fd29b909` and RUN-414-002 through RUN-414-006 at `e08bfec8d683ec6f4ec6c6d39209eb949662513f` prove one chain rooted at `c368e54b0c8a50a9c66316d7a3a56cc7be27b5cd`; the exact clean local tip can reconcile to canonical TASK-414 r2 main `7e090c91c396fbc67ef12c57a3dcdda2c89e9471`. | A missing or moved predecessor/authorization ref, forged embedded source, wrong TASK revision/base, branch/cycle/disconnection or extra unpreserved local history blocks before mutation. The earlier rejected dispatch remains terminal and cannot be replayed. |
 
 All rows retain tracked/untracked/hidden-edit, ignored-collision, submodule, lock,
 target-drift and safe-generation gates. A blocked pre-RUN case exposes the bounded
 admission reason (for example missing/conflicting FAILURE transport, TASK source
-drift or conflicting preservation identity) and the operational receipt's typed
+drift, conflicting REPAIR chain proof, source unavailable or unsafe worktree) and the operational receipt's typed
 PRIMARY_SYNCHRONIZATION_REJECTED boundary with `run_created=false` and
 `executor_invoked=false`. It does not create synthetic canonical FAILURE lineage.
+Successful chain reconciliation reports the bounded pre-RUN diagnostic
+`PROVEN_REPAIR_CHAIN_RECOVERABLE`; this is operational information, not a Runtime
+terminal verdict, REVIEW or permission to replay a rejected dispatch.
 
 Workflow `40064678027` refused synchronization before RUN/Executor; its refusal
 does not authenticate the six historical proofs. The Human-supplied one-off

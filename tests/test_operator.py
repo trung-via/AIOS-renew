@@ -13776,6 +13776,220 @@ def test_reconciliation_rechecks_proofs_before_any_reset(
 # historical Git candidate. They do not authenticate the production RUNs.
 TASK_412_FAILED_HEAD = "9e589e74fe1bd714c6f4c41531372434284cfbf0"
 
+# Immutable source objects are imported into an isolated bare origin. The
+# fixture proves their exact identities and bindings before exercising H1R;
+# no live journal, private log or production ref is used as a fixture verdict.
+TASK_414_CHAIN_ROOT = "c368e54b0c8a50a9c66316d7a3a56cc7be27b5cd"
+TASK_414_CHAIN_TARGET = "7e090c91c396fbc67ef12c57a3dcdda2c89e9471"
+TASK_414_CHAIN_HEADS = (
+    "6426570c789388ac9bebce428ce1e705fd29b909",
+    *("e08bfec8d683ec6f4ec6c6d39209eb949662513f",) * 5,
+)
+TASK_414_CHAIN_ARTIFACTS = (
+    "e2e0c6e8b715851e77975f353ae03272a3b0736b",
+    "98f16f5661642069f0f4965fb46e73da022bc40f",
+    "d3b9d09495bcd5cfd1c852a422227c4929ed5f7a",
+    "f5b5c07cab3545f48aad375cc1c2c287de88c7bd",
+    "3f74b67c904b97bc07b2128e9d1a99fc9ad9f18a",
+    "da642f7499a02cf702ca7ded2c5fa0b2eb714c71",
+)
+TASK_414_CHAIN_AUTHORIZATIONS = (
+    "fe48e1aed3afbe2161212dfbb1dda13005445055",
+    "326e511fa1c742a2861d9cae63e9e3756f992c91",
+    "6ae7d6b2d3dd79e9a4fa6e53cee9db6ce390b571",
+    "ecf44cfae2740a80afa0707d1b2ed8f9f6cb03cb",
+    "d592021f45e3a195aede72e5f8537c39fa121ca8",
+)
+
+
+def _task414_repair_chain_divergence(root: Path) -> SimpleNamespace:
+    repo = make_repo(root)
+    remote = root / "upstream.git"
+    source = Path(__file__).resolve().parents[1]
+    objects = (TASK_414_CHAIN_ROOT, TASK_414_CHAIN_TARGET,
+               *TASK_414_CHAIN_HEADS, *TASK_414_CHAIN_ARTIFACTS,
+               *TASK_414_CHAIN_AUTHORIZATIONS)
+    for sha in dict.fromkeys(objects):
+        git(repo, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
+            "--refmap=", str(source), sha)
+        assert git(repo, "rev-parse", f"{sha}^{{commit}}") == sha
+    assert git(repo, "rev-parse", f"{TASK_414_CHAIN_HEADS[1]}^") == TASK_414_CHAIN_HEADS[0]
+    assert git(repo, "rev-parse", f"{TASK_414_CHAIN_HEADS[0]}^") == TASK_414_CHAIN_ROOT
+    git(repo, "reset", "--hard", TASK_414_CHAIN_ROOT)
+    git(repo, "push", "--quiet", "--force", "origin",
+        f"{TASK_414_CHAIN_TARGET}:refs/heads/main")
+    members = []
+    for index, (head, artifact) in enumerate(zip(TASK_414_CHAIN_HEADS, TASK_414_CHAIN_ARTIFACTS), 1):
+        run_id = f"RUN-414-{index:03d}"
+        run = json.loads(git(repo, "show", f"{artifact}:.ai/transport/run.json"))
+        failure = json.loads(git(repo, "show", f"{artifact}:.ai/transport/failure.json"))
+        assert run["run_id"] == failure["run_id"] == run_id
+        assert run["task"] == failure["task"] == {"id": "TASK-414", "revision": 1}
+        assert failure["failed_head_sha"] == head
+        assert failure.get("continuation_of") == (None if index == 1 else f"RUN-414-{index-1:03d}")
+        assert run["base_sha"] == (TASK_414_CHAIN_ROOT if index == 1 else TASK_414_CHAIN_HEADS[index-2])
+        git(repo, "push", "--quiet", "origin",
+            f"{head}:refs/heads/aios/failure/{run_id}",
+            f"{artifact}:refs/heads/aios/failure-artifacts/{run_id}")
+        if index < 6:
+            authorization = TASK_414_CHAIN_AUTHORIZATIONS[index-1]
+            auth_data = json.loads(git(repo, "show", f"{authorization}:.ai/transport/repair.json"))
+            assert auth_data["failed_run_id"] == run_id and auth_data["failed_head_sha"] == head
+            git(repo, "push", "--quiet", "origin",
+                f"{authorization}:refs/heads/aios/repair/{run_id}")
+        members.append(SimpleNamespace(run_id=run_id, head=head, artifact=artifact,
+                                       run=run, failure=failure))
+    git(repo, "reset", "--hard", TASK_414_CHAIN_HEADS[-1])
+    state = runtime_paths(repo)
+    with RepositoryLock(state.lock):
+        pass
+    return SimpleNamespace(repo=repo, remote=remote, state=state,
+                           target=TASK_414_CHAIN_TARGET, candidate=TASK_414_CHAIN_HEADS[-1],
+                           members=members)
+
+
+def test_primary_reconciliation_exact_task414_repair_chain(tmp_path, monkeypatch):
+    fixture = _task414_repair_chain_divergence(tmp_path)
+    repo = fixture.repo
+    prior = _reconciliation_snapshot(repo)
+    remote_refs = git(fixture.remote, "show-ref")
+    calls = []
+    real_git = operator_module._git
+
+    def record(root, *args, **kwargs):
+        if Path(root) == repo and args[0] in {"reset", "merge", "rebase", "clean", "push", "update-ref"}:
+            calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    def restart(root, *, argv, runner):
+        assert git(root, "rev-parse", "HEAD") == fixture.target
+        return 0
+
+    monkeypatch.setattr(operator_module, "_git", record)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", restart)
+    outcome = operator_module._preflight_primary_sync(
+        repo, argv=["wakeup", "new-admitted-dispatch", "TASK-414", "--executor", "codex"],
+    )
+    assert outcome.restart_code == 0
+    assert outcome.diagnostic == "PROVEN_REPAIR_CHAIN_RECOVERABLE"
+    assert calls == [("reset", "--hard", fixture.target)]
+    assert git(repo, "rev-parse", "HEAD") == fixture.target
+    assert git(fixture.remote, "show-ref") == remote_refs
+    assert _reconciliation_snapshot(repo)[5] == prior[5]
+    for member in fixture.members:
+        assert git(fixture.remote, "rev-parse", f"refs/heads/aios/failure/{member.run_id}") == member.head
+        assert git(fixture.remote, "rev-parse", f"refs/heads/aios/failure-artifacts/{member.run_id}") == member.artifact
+
+
+@pytest.mark.parametrize("invalid", [
+    "missing-predecessor", "fork", "cycle", "independent-root", "wrong-revision",
+    "invalid-authorization", "wrong-root", "wrong-execution-base", "aliased-artifact",
+    "mixed-review", "extra-local-commit", "moved-authorization",
+])
+def test_primary_reconciliation_task414_chain_rejects_conflicting_source(
+    tmp_path, monkeypatch, invalid,
+):
+    fixture = _task414_repair_chain_divergence(tmp_path)
+    repo, remote = fixture.repo, fixture.remote
+    member = fixture.members[2]
+    artifact_ref = f"refs/heads/aios/failure-artifacts/{member.run_id}"
+    if invalid == "missing-predecessor":
+        git(remote, "update-ref", "-d", "refs/heads/aios/failure/RUN-414-001")
+    elif invalid in {"fork", "cycle", "independent-root", "wrong-revision"}:
+        selected = fixture.members[0] if invalid == "cycle" else member
+        failure = json.loads(json.dumps(selected.failure))
+        if invalid == "fork":
+            failure["continuation_of"] = "RUN-414-001"
+        elif invalid == "cycle":
+            failure["continuation_of"] = "RUN-414-006"
+        elif invalid == "independent-root":
+            failure.pop("continuation_of")
+        else:
+            failure["task"]["revision"] = 2
+        failure["public_projection"]["projection_digest"] = transport_module._failure_digest(
+            {key: value for key, value in failure.items() if key != "public_projection"}
+        )
+        replacement = _corrupt_preservation_artifact(
+            repo, selected.artifact, ".ai/transport/failure.json", json.dumps(failure).encode(),
+        )
+        git(remote, "fetch", "--quiet", str(repo), replacement)
+        git(remote, "update-ref", f"refs/heads/aios/failure-artifacts/{selected.run_id}", replacement)
+    elif invalid in {"invalid-authorization", "wrong-root", "wrong-execution-base"}:
+        repair = json.loads(git(repo, "show", f"{member.artifact}:.ai/transport/repair.json"))
+        if invalid == "invalid-authorization":
+            repair["repair_authorization_sha"] = "0" * 40
+        elif invalid == "wrong-root":
+            repair["root_base_sha"] = TASK_414_CHAIN_HEADS[0]
+        else:
+            repair["failed_head_sha"] = TASK_414_CHAIN_ROOT
+        replacement = _corrupt_preservation_artifact(
+            repo, member.artifact, ".ai/transport/repair.json", json.dumps(repair).encode(),
+        )
+        git(remote, "fetch", "--quiet", str(repo), replacement)
+        git(remote, "update-ref", artifact_ref, replacement)
+    elif invalid == "aliased-artifact":
+        git(remote, "update-ref", artifact_ref, fixture.members[1].artifact)
+    elif invalid == "mixed-review":
+        git(remote, "update-ref", "refs/heads/aios/review/RUN-414-006", fixture.candidate)
+    elif invalid == "extra-local-commit":
+        (repo / "UNPRESERVED.txt").write_text("unpreserved\n", encoding="utf-8")
+        commit_setup_state(repo, "UNPRESERVED.txt", message="unpreserved local commit")
+    else:
+        git(remote, "update-ref", "refs/heads/aios/repair/RUN-414-002",
+            TASK_414_CHAIN_AUTHORIZATIONS[0])
+    before = _reconciliation_snapshot(repo)
+    remote_refs = git(remote, "show-ref")
+    real_git = operator_module._git
+    mutations = []
+
+    def record(root, *args, **kwargs):
+        if Path(root) == repo and args[0] in {"reset", "merge", "rebase", "clean", "push", "update-ref"}:
+            mutations.append(args)
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("conflicting repair chain cannot restart or create a RUN")
+
+    monkeypatch.setattr(operator_module, "_git", record)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
+    reason = ("REPAIR chain source unavailable" if invalid == "missing-predecessor"
+              else "REPAIR chain proof conflicting" if invalid in {
+                  "fork", "cycle", "independent-root", "invalid-authorization",
+                  "wrong-root", "wrong-execution-base", "moved-authorization",
+              } else None)
+    with pytest.raises(OperatorError, match=reason):
+        operator_module._preflight_primary_sync(repo, runner=forbidden)
+    assert _reconciliation_snapshot(repo) == before and not mutations
+    assert git(remote, "show-ref") == remote_refs
+
+
+def test_primary_reconciliation_task414_chain_rechecks_authorization_at_reset(tmp_path, monkeypatch):
+    fixture = _task414_repair_chain_divergence(tmp_path)
+    repo, remote = fixture.repo, fixture.remote
+    before = _reconciliation_snapshot(repo)
+    original_worktree = operator_module._require_primary_reconciliation_worktree
+    original_git = operator_module._git
+    checks, resets = [], []
+
+    def move_authorization(*args):
+        checks.append(True)
+        original_worktree(*args)
+        if len(checks) == 2:
+            git(remote, "update-ref", "refs/heads/aios/repair/RUN-414-002",
+                TASK_414_CHAIN_AUTHORIZATIONS[0])
+
+    def record(root, *args, **kwargs):
+        if Path(root) == repo and args[0] == "reset":
+            resets.append(args)
+        return original_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_require_primary_reconciliation_worktree", move_authorization)
+    monkeypatch.setattr(operator_module, "_git", record)
+    with pytest.raises(OperatorError, match="canonical reconciliation proof drift"):
+        operator_module._preflight_primary_sync(repo)
+    assert len(checks) == 2 and not resets
+    assert _reconciliation_snapshot(repo) == before
+
 
 def _multiple_failure_primary_divergence(root: Path, *, historical: bool = False) -> SimpleNamespace:
     repo = make_repo(root)
@@ -14036,7 +14250,7 @@ def test_primary_reconciliation_multiple_failures_rejects_any_invalid_member(
     monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
     before, refs = _reconciliation_snapshot(repo), git(remote, "show-ref")
     reason = {"wrong-revision": "TASK revision mismatch", "wrong-affinity": "TASK affinity mismatch", "source-drift": "TASK source drift",
-              "conflicting-base": "conflicting identity or lineage", "conflicting-lineage": "conflicting identity or lineage"}.get(invalid)
+              "conflicting-base": "REPAIR chain proof conflicting", "conflicting-lineage": "REPAIR chain source unavailable"}.get(invalid)
     with pytest.raises(OperatorError, match=reason):
         operator_module._preflight_primary_sync(repo, runner=forbidden)
     assert _reconciliation_snapshot(repo) == before and not mutations
