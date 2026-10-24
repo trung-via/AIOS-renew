@@ -1,0 +1,10 @@
+{
+  "effort_source": "EXPLICIT",
+  "executor": "antigravity",
+  "format": "AIOS_EXECUTION_PROFILE",
+  "model": "gemini-3.8-flash",
+  "model_source": "EXPLICIT",
+  "reasoning_effort": "high",
+  "run_id": "RUN-418-003",
+  "version": 1
+}
