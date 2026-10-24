@@ -539,7 +539,11 @@ def test_historical_independence_is_a_required_source_bound_disanalogy(tmp_path)
 def test_only_selected_caa02_planning_and_exact_permitted_delta_preserve_policies():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
-    roadmap = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_text(encoding="utf-8"))
+    # These are TASK-410's historical assertions, bound to its exact independently
+    # reviewed source. A later Human selection must not rewrite that snapshot or
+    # cause these assertions to reinterpret the current HEAD as CAA-02's source.
+    source_sha = "8327f421df0c3e477e9a405b69bf7e5910cddca5"
+    roadmap = yaml.safe_load(git(root, "show", source_sha + ":.ai/roadmap-state.yaml"))
     live = [item for item in roadmap["sequence"] if item["status"] == "NEXT"]
     assert len(live) == 1 and live[0]["selected_slice"] == "CAA-02" and live[0]["task_id"] == "TASK-410"
     priority = roadmap["human_caa_v1_priority_20261023"]
@@ -550,12 +554,12 @@ def test_only_selected_caa02_planning_and_exact_permitted_delta_preserve_policie
     allowed = {".ai/roadmap-state.yaml", "docs/AIOS-CAA-V1-ROADMAP.md", "docs/AIOS-CAA-02-INTELLIGENT-REASONER.md",
                "src/aios_renew/caa_experience.py", "src/aios_renew/caa_reasoner.py",
                "tests/test_caa_experience.py", "tests/test_caa_reasoner.py"}
-    task = yaml.safe_load((root / ".ai/tasks/TASK-410.yaml").read_text(encoding="utf-8"))
+    task = yaml.safe_load(git(root, "show", source_sha + ":.ai/tasks/TASK-410.yaml"))
     assert set(task["scope"]["modify"]) == allowed
     assert task["verification"]["policy"] == "minimum-sufficient-v1"
-    changed = set(git(root, "diff", "--name-only", "cb16cdc191c123e62730ea7be4d2d25c792b16e9", "HEAD").splitlines())
+    changed = set(git(root, "diff", "--name-only", "cb16cdc191c123e62730ea7be4d2d25c792b16e9", source_sha).splitlines())
     assert changed == allowed
     # Byte-exact unchanged first-party policy, authoring and provider surfaces.
     for path in (".ai/brain-audit-profiles.yaml", ".ai/flow-cards.yaml", "src/aios_renew/brain_context.py",
                  "src/aios_renew/brain_provider.py", "src/aios_renew/brain_provider_protocol.py"):
-        assert git(root, "rev-parse", "HEAD:" + path) == git(root, "rev-parse", "cb16cdc191c123e62730ea7be4d2d25c792b16e9:" + path)
+        assert git(root, "rev-parse", source_sha + ":" + path) == git(root, "rev-parse", "cb16cdc191c123e62730ea7be4d2d25c792b16e9:" + path)

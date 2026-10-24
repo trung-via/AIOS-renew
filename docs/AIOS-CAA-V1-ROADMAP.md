@@ -1,12 +1,13 @@
 # CAA v1: finite advisory roadmap
 
-The newer explicit Human decision of 2026-10-23 selects **CAA-02 / TASK-410 r1**
-as the sole prospective NEXT in `.ai/roadmap-state.yaml`: implement CAA-02 deep
-research now as one finite package. It supersedes only the earlier CAA-01
-selection bookmark. That earlier approval is preserved under `previous_selection`.
-The four sequential packages below remain finite, separately authorized work;
-CAA-03 and CAA-04 are unselected, with no TASK IDs assigned. CAA-05 remains a
-conditional unselected option. A RUN, RESULT, REVIEW or publication cannot
+The explicit Human decision of 2026-10-24 selects **CAA-03 / TASK-412 r2**
+as the sole prospective NEXT in `.ai/roadmap-state.yaml`: option B, one minimal
+optional four-flow advisor. The new `human_caa03_optional_integration_20261024`
+record supersedes only the prospective CAA-02 selection. The original
+`human_caa_v1_priority_20261023` record preserves the 2026-10-23 CAA-02 / TASK-410 r1
+selection and its earlier CAA-01 approval unchanged as history. CAA-04 remains
+unselected without a TASK ID; CAA-05 remains conditional and unselected. The
+four packages remain finite, separately authorized work. A RUN, RESULT, REVIEW or publication cannot
 advance this plan. Only an explicit Human/Brain decision can select a package.
 
 The existing CAA-01 canonical reader reauthenticated TASK-409 r1 / RUN-409-002:
@@ -14,13 +15,25 @@ RESULT artifacts `33b5be48bc465558155caf84a9e72f43be51914d`, independent PRIMARY
 REVIEW-409-001 PASS at decision `3b22fbccd05120959aa5f1d646203bcf131de40f`, on exact
 reviewed source `4c5a961e17315aa6bdbea810e0fed803ef460e05`. That reviewed source is
 included on observed main `cb16cdc191c123e62730ea7be4d2d25c792b16e9`. These are
-engineering observations, not an automatic planning transition or a verdict on
-TASK-410. TASK-409 and every existing lifecycle record remain unchanged.
+engineering observations, not an automatic planning transition. TASK-409 and
+every existing lifecycle record remain unchanged.
 
-The selected implementation contract is
-[CAA-02 intelligent reasoner](AIOS-CAA-02-INTELLIGENT-REASONER.md). It supplies
-transient consultation only; CAA-03 hooks and CAA-04 shadow/rollout are not part
-of TASK-410.
+The exact accepted CAA-02 lineage is TASK-410 r1 / RUN-410-002, RESULT artifacts
+`149ca05de386bd929d2e432e9a24561c55cba9f4`, independent DELTA REVIEW-410-002 PASS
+at decision `bf7b3baf65fa45e056caac5e634543d387f5087e`, on reviewed source
+`8327f421df0c3e477e9a405b69bf7e5910cddca5`, included on main. The supplied
+architecture handoff observes main `749cd197e55eadb36e8876db104c333a021f4915`;
+Runtime reauthenticates source currentness. This records accepted predecessor
+lineage, without declaring TASK-412 complete or enabling production use.
+
+The selected contract is [CAA-03 integration and portability](AIOS-CAA-03-INTEGRATION-PORTABILITY.md).
+It wraps the existing [CAA-02 reasoner](AIOS-CAA-02-INTELLIGENT-REASONER.md), whose
+original TASK-410 scope still excludes flow integration and shadow/rollout.
+TASK-411 r2 Publisher root-cause work and all its historical/prospective lineage
+remain separate and unchanged; this plan makes no TASK-411 completion claim.
+TASK-412 r2 only adds permission for the exact-source historical CAA-02 fixture
+correction. RUN-412-001 through RUN-412-007 FAILURE history is immutable; the
+native Codex exit-1 technical root cause remains UNKNOWN.
 
 The objective is a portable, evidence-grounded intelligent advisor for
 Architecture, TASK, REPAIR and REMEDIATION. The foundation alone supplies data,
@@ -67,7 +80,9 @@ suspended prospective ROA R4 default plan and all prior RUN/FAILURE/REVIEW
 lineage remain history. PTE, Lean VP, KA-01 and downstream bookmarks do not
 advance. CAA adds no admission step, Flow Card, audit invocation or provider
 selection authority. CAA-02 can use one explicitly caller-supplied provider
-callable; it is not connected to ordinary authoring flows.
+callable. CAA-03 supplies an explicitly called optional binding for the four
+existing Brain flows; no ordinary authoring flow invokes it by default. Human
+priority/risk, soft AOA opt-out and Brain's final semantic judgment remain intact.
 
 ## CAA-01 read contract
 
@@ -119,6 +134,9 @@ python -m pytest -q tests/test_caa_experience.py tests/test_brain_sync.py tests/
 
 The command above remains the historical TASK-409 verification contract.
 Runtime alone executes TASK-410's authored minimum-sufficient-v1 verification;
-its exact commands remain in immutable TASK-410. Executor implementation-local
+its exact commands remain in immutable TASK-410. TASK-412's canonical checks
+also belong solely to Runtime. Its deterministic mapping/JSON fixtures are
+simulations, without live GPT/Claude/Gemini equivalence or superiority claims.
+CAA-04 holdout/shadow and CAA-05 training remain unselected. Executor implementation-local
 syntax/read sanity is not canonical verification or EVIDENCE. This roadmap records no CAA training, evaluation result, default
 activation, later package completion or production quality improvement.
