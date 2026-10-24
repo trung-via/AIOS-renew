@@ -382,7 +382,7 @@ class _AdmissionBudget:
                         or frame.lease is not self.lease or frame.profile != self.profile
                         or boundary._execution_profile != self.profile
                         or getattr(frame.adapter, "execution_profile", None) != frame.profile
-                        or getattr(frame.adapter, "confirm_local_feedback", None) != frame.callback):
+                        or (getattr(frame.adapter, "confirm_local_feedback", None) or getattr(frame.adapter, "confirm_native_feedback", None)) != frame.callback):
                     _deny("ORIGINAL_INVOCATION_LOST")
             self._clock()
         except BaseException:

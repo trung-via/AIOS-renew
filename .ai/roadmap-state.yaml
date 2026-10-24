@@ -1,4 +1,34 @@
 version: 1
+human_lean_vp_l3_06_task418_priority_20261025:
+  authority: EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION
+  approved_on: '2026-10-25'
+  planning_only: true
+  human_decision: RESUME_LEAN_VP_INTRA_L3_06_NATIVE_FEEDBACK_NOW
+  sole_high_level_next: lean-vp-intra-v13-budget-defaults-successor
+  planning_owner: lean-vp-intra-v13-budget-defaults-successor
+  planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  implementation_task: TASK-418
+  implementation_revision: 1
+  selected_slice: L3_06_NATIVE_CODEX_FEEDBACK_FOUNDATION
+  source_main_sha_at_authoring: c96a2977d1009c553900f4cec9cb975a39fc49c3
+  supersedes_prospective_selection_record: human_caa_ten_task_advisory_20261024
+  supersession: RESUME_LEAN_VP_NEXT_ONLY_PRESERVE_CAA_TEN_TASK_PILOT_ELIGIBILITY_PTE_INFO_AND_IMMUTABLE_LINEAGE
+  former_next:
+    planning_owner: caa-v1-20261023
+    task_id: TASK-417
+    task_revision: 1
+    priority_record: human_caa_ten_task_advisory_20261024
+    disposition: PRESERVED_HISTORICAL_PLANNING_RECORDS_PILOT_COHORT_ELIGIBILITY_RETAINED
+  caa_pilot:
+    pilot_id: CAA-10-TASK-20261024-TASK-417-r1
+    status: PRESERVED_ACTIVE_PILOT_POLICY
+    task418_cohort_eligibility: ELIGIBLE_UNDER_EXISTING_EXACT_POLICY
+  task416: PTE_INFORMATION_ONLY_POLICY_RETAINED_NOT_A_SECOND_NEXT
+  ka01_activation: NOT_ACTIVATED
+  completion: NO_RUNTIME_VERIFICATION_REVIEW_PUBLICATION_OR_C2_CLAIM
+  executor_delegation: NOT_GRANTED_BY_PLANNING
+  next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
+
 human_caa_ten_task_advisory_20261024:
   authority: EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION
   approved_on: '2026-10-24'
@@ -3038,7 +3068,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - caa-v1-20261023
+  - lean-vp-intra-v13-budget-defaults-successor
 effective_next_transitions: []
 historical_effective_next_transitions_task415:
   - from:
@@ -3052,12 +3082,26 @@ historical_effective_next_transitions_task415:
     to: {item_id: caa-v1-20261023, task_id: TASK-415, task_revision: 1}
     priority_record: human_auto_next_priority_20261024
 sequence:
-  - id: caa-v1-20261023
+  - id: lean-vp-intra-v13-budget-defaults-successor
     status: NEXT
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    planning_only: true
+    planning_owner: lean-vp-intra-v13-budget-defaults-successor
+    planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+    task_id: TASK-418
+    task_revision: 1
+    selected_slice: L3_06_NATIVE_CODEX_FEEDBACK_FOUNDATION
+    priority_record: human_lean_vp_l3_06_task418_priority_20261025
+    next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
+  - id: caa-v1-20261023
+    status: PAUSED
+    historical_status: NEXT
+    prospective_priority_owner: lean-vp-intra-v13-budget-defaults-successor
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     planning_only: true
     planning_owner: caa-v1-20261023
     planning_document: docs/AIOS-CAA-V1-ROADMAP.md
+    contract_document: docs/AIOS-CAA-10-TASK-ADVISORY-ACTIVATION.md
     task_id: TASK-417
     task_revision: 1
     selected_slice: CAA_TEN_TASK_OPTIONAL_ADVISORY_PILOT

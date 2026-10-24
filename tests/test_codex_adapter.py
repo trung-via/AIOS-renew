@@ -23,6 +23,9 @@ from aios_renew import (
 from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.review import RemediationExecution
 from aios_renew.codex_adapter import (
+    CodexNativeDeliveryError,
+    CodexNativeProbeAbsentError,
+    CodexNativeReceipt,
     FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH,
     REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
     REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
@@ -1449,4 +1452,44 @@ def test_codex_adapter_consumes_injected_profile_and_synthetic_future_model() ->
     )
     assert cmd_repair[cmd_repair.index("-m") + 1] == "gpt-7-sol"
     assert cmd_repair[cmd_repair.index("-c") + 1] == 'model_reasoning_effort="medium"'
+
+
+def test_codex_adapter_native_probe_absence_reported_explicitly() -> None:
+    adapter = CodexAdapter()
+    assert adapter.has_native_probe is False
+    assert adapter.native_probe is None
+    assert adapter.last_native_receipt is None
+
+    class FakeFeedback:
+        digest = "a" * 64
+        data = {
+            "binding": {
+                "run_id": "RUN-007-001",
+                "task_id": "TASK-007",
+                "checkpoint_ordinal": 1,
+            }
+        }
+
+    with pytest.raises(CodexNativeDeliveryError, match="outside native execution thread"):
+        adapter.confirm_local_feedback(feedback=FakeFeedback(), receipt_id="1" * 64)
+
+
+def test_codex_adapter_native_receipt_dataclass() -> None:
+    receipt = CodexNativeReceipt(
+        receipt_id="1" * 64,
+        feedback_digest="2" * 64,
+        run_id="RUN-007-001",
+        checkpoint_ordinal=1,
+        executor="codex",
+        delivery_mode="AUTHENTIC_NATIVE_RECIPIENT",
+        correlation_digest="3" * 64,
+    )
+    assert receipt.receipt_id == "1" * 64
+    assert receipt.feedback_digest == "2" * 64
+    assert receipt.run_id == "RUN-007-001"
+    assert receipt.checkpoint_ordinal == 1
+    assert receipt.executor == "codex"
+    assert receipt.delivery_mode == "AUTHENTIC_NATIVE_RECIPIENT"
+    assert receipt.correlation_digest == "3" * 64
+
 

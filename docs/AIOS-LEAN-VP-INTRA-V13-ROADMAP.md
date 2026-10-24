@@ -1,11 +1,13 @@
 # Lean VP Intra-RUN v1.3 — Resource Defaults and Remaining Delivery Roadmap
 
 **Human decision:** 2026-10-21; explicit prospective return on 2026-10-22 after
-separately reviewed/published TASK-397 L3-05.
-**Planning status:** **ACTIVE; single NEXT is L3-06/G3; not production activated**.
+separately reviewed/published TASK-397 L3-05; explicit resumption on 2026-10-25
+for Lean VP L3-06 native feedback foundation TASK-418 r1.
+**Planning status:** **ACTIVE; single NEXT is L3-06 TASK-418 r1; not production activated**.
 The sole current high-level NEXT and planning owner is
 `lean-vp-intra-v13-budget-defaults-successor`, with first remaining slice
-**L3-06 — integrated core G3 proof**.
+**L3-06 — integrated core G3 proof** (specifically establishing the native Codex
+feedback foundation via TASK-418 r1).
 **KA-01:** prospective document version **1.3**,
 **HUMAN_RATIFIED_PROSPECTIVE_SPEC**, **NOT_ACTIVATED**.
 
@@ -13,14 +15,17 @@ This remains the successor planning pointer to the
 [retired Lean VP planning source](AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md).
 The October 21 Human/Brain record is
 `.ai/roadmap-state.yaml:human_lean_vp_intra_v13_budget_defaults_successor_20261021`.
-That record, `human_git_guard_publish_priority_20261022` and
-`human_bounded_unresolved_handoff_priority_20261022` remain exact dated history.
+That record, `human_git_guard_publish_priority_20261022`,
+`human_bounded_unresolved_handoff_priority_20261022` and
+`human_lean_vp_l3_06_g3_return_reconciliation_20261022` remain exact dated history.
 The controlling prospective Human/Brain record is now
-`.ai/roadmap-state.yaml:human_lean_vp_l3_06_g3_return_reconciliation_20261022`.
+`.ai/roadmap-state.yaml:human_lean_vp_l3_06_task418_priority_20261025`.
 Root `next_items`, the sole sequence `status: NEXT`, `active_track` with status
 `ACTIVE`, root and selected-entry `planning_document`, planning owner and approved
-slice all select this plan and L3-06/G3. A stale selector or dual NEXT is a
+slice all select this plan and L3-06 TASK-418 r1. A stale selector or dual NEXT is a
 fail-closed conflict. The older retired Lean VP competitor stays retired.
+The former CAA NEXT (TASK-417 r1) remains preserved in historical planning with its
+ten-task optional advisory pilot cohort eligibility and PTE information-only policy intact.
 
 The original October 22 G1/TASK-398 priority in
 [Git Guard](AIOS-GIT-GUARD-PUBLISH-PRIORITY-v1.md) was superseded by the dated

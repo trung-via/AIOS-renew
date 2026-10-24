@@ -105,9 +105,12 @@ class ExecutorBoundary:
             if self._live is not None:
                 self._live.stopped = True
                 raise ExecutorBoundaryError("native invocation reentry is forbidden")
+            callback = getattr(adapter, "confirm_local_feedback", None)
+            if callback is None:
+                callback = getattr(adapter, "confirm_native_feedback", None)
             frame = _LiveInvocation(task, run, lease, adapter, get_ident(), uuid4().hex,
                 getattr(adapter, "execution_profile", None),
-                getattr(adapter, "confirm_local_feedback", None), self._prospective_runtime)
+                callback, self._prospective_runtime)
             self._live = frame
         try:
             self._prospective_runtime._begin_local_feedback_invocation(boundary=self, frame=frame)
@@ -132,7 +135,7 @@ class ExecutorBoundary:
                     or not _lease_matches_run(lease, run) or run.status != ACTIVE
                     or adapter.executor != run.executor or frame.owner is not owner
                     or getattr(adapter, "execution_profile", None) != frame.profile
-                    or getattr(adapter, "confirm_local_feedback", None) != frame.callback
+                    or (getattr(adapter, "confirm_local_feedback", None) or getattr(adapter, "confirm_native_feedback", None)) != frame.callback
                     or not callable(frame.callback)):
                 raise ExecutorBoundaryError("same current native invocation not established")
             from .execution_profile import ResolvedExecutionProfile

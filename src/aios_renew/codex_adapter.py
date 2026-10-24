@@ -103,6 +103,54 @@ class CodexOutputError(CodexExecutionError):
     """Raised when successful Codex output is not a canonical result package."""
 
 
+class CodexNativeProbeAbsentError(CodexExecutionError):
+    """Raised when source-bound native-probe is absent and live delivery cannot be proven."""
+
+    def __init__(
+        self,
+        message: str = "source-bound native-probe absent: live Codex delivery cannot be proven",
+        *,
+        stdout: bytes | str | None = None,
+        stderr: bytes | str | None = None,
+    ) -> None:
+        super().__init__(message, exit_code=None, stdout=stdout, stderr=stderr)
+
+
+class CodexNativeDeliveryError(CodexExecutionError):
+    """Raised when native Codex delivery fails or is rejected."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        exit_code: int | None = None,
+        stdout: bytes | str | None = None,
+        stderr: bytes | str | None = None,
+    ) -> None:
+        super().__init__(message, exit_code=exit_code, stdout=stdout, stderr=stderr)
+
+
+@dataclass(frozen=True, slots=True)
+class CodexNativeReceipt:
+    """Source-correlated receipt proving authentic native recipient delivery."""
+
+    receipt_id: str
+    feedback_digest: str
+    run_id: str
+    checkpoint_ordinal: int
+    executor: str = "codex"
+    delivery_mode: str = "AUTHENTIC_NATIVE_RECIPIENT"
+    correlation_digest: str = ""
+
+    def __post_init__(self) -> None:
+        from .verification_contract import _original_hash
+
+        _original_hash(self.receipt_id)
+        _original_hash(self.feedback_digest)
+        if self.correlation_digest:
+            _original_hash(self.correlation_digest)
+
+
 class CodexAdapter:
     """Invoke Codex CLI once and normalize its canonical output."""
 
@@ -115,6 +163,7 @@ class CodexAdapter:
         schema_path: str | Path = RESULT_PACKAGE_SCHEMA_PATH,
         execution_policy: ExecutionPolicy | None = None,
         execution_profile: ResolvedExecutionProfile | None = None,
+        native_probe: Any = None,
     ) -> None:
         self._runner = runner
         self._schema_path = Path(schema_path)
@@ -124,175 +173,325 @@ class CodexAdapter:
             else resolve_native_execution_policy(authorizes_mutation=False)
         )
         self._execution_profile = execution_profile
+        self._native_probe = native_probe
+        self._active_run: Run | None = None
+        self._active_task: Task | None = None
+        self._execution_thread: int | None = None
+        self._last_receipt: CodexNativeReceipt | None = None
+        self._receipt_history: list[CodexNativeReceipt] = []
 
     @property
     def execution_profile(self) -> ResolvedExecutionProfile | None:
         """Return the bound execution profile, if any."""
         return self._execution_profile
 
+    @property
+    def native_probe(self) -> Any:
+        """Return the bound native probe, if any."""
+        if self._native_probe is not None:
+            return self._native_probe
+        return getattr(self._runner, "native_probe", None)
+
+    @property
+    def has_native_probe(self) -> bool:
+        """Return whether an authentic native recipient probe is established."""
+        return self.native_probe is not None
+
+    @property
+    def last_native_receipt(self) -> CodexNativeReceipt | None:
+        """Return the latest source-correlated native delivery receipt, if any."""
+        return self._last_receipt
+
+    @property
+    def receipt_history(self) -> tuple[CodexNativeReceipt, ...]:
+        """Return all source-correlated native receipts recorded during execution."""
+        return tuple(self._receipt_history)
+
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute an unchanged TASK/RUN pair through native Codex CLI."""
 
-        command = self.command_for(
-            run,
-            schema_path=self._schema_path,
-            authorizes_mutation=self._execution_policy.authorizes_mutation,
-            execution_profile=self._execution_profile,
-        )
-        prompt = self.prompt_for(task=task, run=run)
+        import threading
+
+        self._active_run = run
+        self._active_task = task
+        self._execution_thread = threading.get_ident()
         try:
-            completed = self._runner(
-                command,
-                input=prompt.encode("utf-8", errors="strict"),
-                capture_output=True,
-                text=False,
-                check=False,
-                timeout=self._execution_policy.process_watchdog_seconds,
+            command = self.command_for(
+                run,
+                schema_path=self._schema_path,
+                authorizes_mutation=self._execution_policy.authorizes_mutation,
+                execution_profile=self._execution_profile,
             )
-            stdout = _decode_utf8(completed.stdout)
-            stderr = _decode_utf8(completed.stderr)
-        except subprocess.TimeoutExpired as exc:
-            raise CodexExecutionError(
-                "Codex CLI exceeded the "
-                f"{self._execution_policy.process_watchdog_seconds}-second "
-                "process watchdog "
-                f"({self._execution_policy.response_budget_minutes}-minute "
-                "native response budget)",
-                exit_code=None,
-                stdout=exc.stdout,
-                stderr=exc.stderr,
-            ) from exc
-        except (OSError, UnicodeError) as exc:
-            raise CodexExecutionError(
-                f"Codex CLI invocation failed: {exc}",
-                exit_code=None,
-            ) from exc
+            prompt = self.prompt_for(task=task, run=run)
+            try:
+                completed = self._runner(
+                    command,
+                    input=prompt.encode("utf-8", errors="strict"),
+                    capture_output=True,
+                    text=False,
+                    check=False,
+                    timeout=self._execution_policy.process_watchdog_seconds,
+                )
+                stdout = _decode_utf8(completed.stdout)
+                stderr = _decode_utf8(completed.stderr)
+            except subprocess.TimeoutExpired as exc:
+                raise CodexExecutionError(
+                    "Codex CLI exceeded the "
+                    f"{self._execution_policy.process_watchdog_seconds}-second "
+                    "process watchdog "
+                    f"({self._execution_policy.response_budget_minutes}-minute "
+                    "native response budget)",
+                    exit_code=None,
+                    stdout=exc.stdout,
+                    stderr=exc.stderr,
+                ) from exc
+            except (OSError, UnicodeError) as exc:
+                raise CodexExecutionError(
+                    f"Codex CLI invocation failed: {exc}",
+                    exit_code=None,
+                ) from exc
 
-        usage = extract_token_usage(stdout)
-        self._record_usage(usage, completed)
+            usage = extract_token_usage(stdout)
+            self._record_usage(usage, completed)
 
-        if completed.returncode != 0:
-            detail = stderr.strip() or stdout.strip()
-            message = f"Codex CLI exited with code {completed.returncode}"
-            if detail:
-                message = f"{message}: {detail}"
-            raise CodexExecutionError(
-                message,
-                exit_code=completed.returncode,
-                stdout=stdout,
-                stderr=stderr,
+            if completed.returncode != 0:
+                detail = stderr.strip() or stdout.strip()
+                message = f"Codex CLI exited with code {completed.returncode}"
+                if detail:
+                    message = f"{message}: {detail}"
+                raise CodexExecutionError(
+                    message,
+                    exit_code=completed.returncode,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+
+            return self._normalize(stdout, stderr=stderr)
+        finally:
+            self._active_run = None
+            self._active_task = None
+            self._execution_thread = None
+
+    def confirm_local_feedback(
+        self,
+        *,
+        feedback: Any,
+        receipt_id: str,
+    ) -> Any:
+        """Confirm feedback delivery to the live native Codex recipient."""
+        import hashlib
+        import threading
+        from .intra_run_proof_contract import LocalFeedbackConfirmation
+
+        current_thread = threading.get_ident()
+        if self._execution_thread is None or current_thread != self._execution_thread:
+            raise CodexNativeDeliveryError("feedback confirmation attempted outside native execution thread")
+
+        if self._active_run is None or self._active_task is None:
+            raise CodexNativeDeliveryError("no active live native invocation established")
+
+        probe = self.native_probe
+        if probe is None:
+            raise CodexNativeProbeAbsentError(
+                "source-bound native-probe absent: live Codex delivery cannot be proven"
             )
 
-        return self._normalize(stdout, stderr=stderr)
+        fb_data = getattr(feedback, "data", None)
+        if not isinstance(fb_data, Mapping):
+            raise CodexNativeDeliveryError("malformed feedback: data mapping required")
+
+        binding = fb_data.get("binding")
+        if not isinstance(binding, Mapping):
+            raise CodexNativeDeliveryError("malformed feedback: binding mapping required")
+
+        if binding.get("run_id") != self._active_run.run_id:
+            raise CodexNativeDeliveryError(
+                f"cross-RUN feedback rejected: {binding.get('run_id')} != {self._active_run.run_id}"
+            )
+        if binding.get("task_id") != self._active_task.task_id:
+            raise CodexNativeDeliveryError(
+                f"cross-TASK feedback rejected: {binding.get('task_id')} != {self._active_task.task_id}"
+            )
+
+        checkpoint_ordinal = binding.get("checkpoint_ordinal", 1)
+
+        if hasattr(probe, "confirm_native_delivery"):
+            probe_result = probe.confirm_native_delivery(feedback=feedback, receipt_id=receipt_id)
+        elif hasattr(probe, "confirm_local_feedback"):
+            probe_result = probe.confirm_local_feedback(feedback=feedback, receipt_id=receipt_id)
+        elif callable(probe):
+            probe_result = probe(feedback=feedback, receipt_id=receipt_id)
+        else:
+            raise CodexNativeDeliveryError("invalid native probe interface")
+
+        if probe_result is False or probe_result is None:
+            raise CodexNativeDeliveryError("native probe rejected delivery")
+
+        correlation_input = f"{self._active_run.run_id}:{checkpoint_ordinal}:{receipt_id}:{feedback.digest}"
+        correlation_digest = hashlib.sha256(correlation_input.encode("ascii")).hexdigest()
+
+        receipt = CodexNativeReceipt(
+            receipt_id=receipt_id,
+            feedback_digest=feedback.digest,
+            run_id=self._active_run.run_id,
+            checkpoint_ordinal=checkpoint_ordinal,
+            executor=self.executor,
+            delivery_mode="AUTHENTIC_NATIVE_RECIPIENT",
+            correlation_digest=correlation_digest,
+        )
+        self._last_receipt = receipt
+        self._receipt_history.append(receipt)
+
+        return LocalFeedbackConfirmation(receipt_id, feedback.digest)
+
+    confirm_native_feedback = confirm_local_feedback
+
+    def consume_same_executor_feedback(
+        self,
+        request: Any,
+        *,
+        boundary: Any,
+        lease: Any,
+        runtime: Any = None,
+    ) -> Any:
+        """Consume prospective same-executor feedback through Runtime."""
+        target_runtime = runtime
+        if target_runtime is None and hasattr(boundary, "_prospective_runtime"):
+            target_runtime = boundary._prospective_runtime
+        if target_runtime is None:
+            raise CodexExecutionError("no Runtime available for feedback consumption", exit_code=None)
+        return target_runtime.consume_same_executor_feedback(
+            request, boundary=boundary, lease=lease, adapter=self
+        )
 
     def execute_remediation(
         self, *, execution: RemediationExecution
     ) -> ResultPackage:
         """Execute one narrow remediation through one native Codex process."""
 
-        command = self.command_for(
-            execution.run,
-            schema_path=REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
-            authorizes_mutation=self._execution_policy.authorizes_mutation,
-            execution_profile=self._execution_profile,
-        )
+        import threading
+
+        self._active_run = execution.run
+        self._active_task = None
+        self._execution_thread = threading.get_ident()
         try:
-            completed = self._runner(
-                command,
-                input=self.remediation_prompt_for(execution=execution).encode(
-                    "utf-8", errors="strict"
-                ),
-                capture_output=True,
-                text=False,
-                check=False,
-                timeout=self._execution_policy.process_watchdog_seconds,
+            command = self.command_for(
+                execution.run,
+                schema_path=REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
+                authorizes_mutation=self._execution_policy.authorizes_mutation,
+                execution_profile=self._execution_profile,
             )
-            stdout = _decode_utf8(completed.stdout)
-            stderr = _decode_utf8(completed.stderr)
-        except subprocess.TimeoutExpired as exc:
-            raise CodexExecutionError(
-                "Codex CLI exceeded the "
-                f"{self._execution_policy.process_watchdog_seconds}-second "
-                "process watchdog "
-                f"({self._execution_policy.response_budget_minutes}-minute "
-                "native response budget)",
-                exit_code=None,
-                stdout=exc.stdout,
-                stderr=exc.stderr,
-            ) from exc
-        except (OSError, UnicodeError) as exc:
-            raise CodexExecutionError(
-                f"Codex CLI invocation failed: {exc}", exit_code=None
-            ) from exc
+            try:
+                completed = self._runner(
+                    command,
+                    input=self.remediation_prompt_for(execution=execution).encode(
+                        "utf-8", errors="strict"
+                    ),
+                    capture_output=True,
+                    text=False,
+                    check=False,
+                    timeout=self._execution_policy.process_watchdog_seconds,
+                )
+                stdout = _decode_utf8(completed.stdout)
+                stderr = _decode_utf8(completed.stderr)
+            except subprocess.TimeoutExpired as exc:
+                raise CodexExecutionError(
+                    "Codex CLI exceeded the "
+                    f"{self._execution_policy.process_watchdog_seconds}-second "
+                    "process watchdog "
+                    f"({self._execution_policy.response_budget_minutes}-minute "
+                    "native response budget)",
+                    exit_code=None,
+                    stdout=exc.stdout,
+                    stderr=exc.stderr,
+                ) from exc
+            except (OSError, UnicodeError) as exc:
+                raise CodexExecutionError(
+                    f"Codex CLI invocation failed: {exc}", exit_code=None
+                ) from exc
 
-        usage = extract_token_usage(stdout)
-        self._record_usage(usage, completed)
+            usage = extract_token_usage(stdout)
+            self._record_usage(usage, completed)
 
-        if completed.returncode != 0:
-            detail = stderr.strip() or stdout.strip()
-            message = f"Codex CLI exited with code {completed.returncode}"
-            if detail:
-                message = f"{message}: {detail}"
-            raise CodexExecutionError(
-                message,
-                exit_code=completed.returncode,
-                stdout=stdout,
-                stderr=stderr,
-            )
-        return self._normalize(stdout, stderr=stderr)
+            if completed.returncode != 0:
+                detail = stderr.strip() or stdout.strip()
+                message = f"Codex CLI exited with code {completed.returncode}"
+                if detail:
+                    message = f"{message}: {detail}"
+                raise CodexExecutionError(
+                    message,
+                    exit_code=completed.returncode,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+            return self._normalize(stdout, stderr=stderr)
+        finally:
+            self._active_run = None
+            self._active_task = None
+            self._execution_thread = None
 
     def execute_repair(self, *, execution: Mapping[str, Any]) -> ResultPackage:
         """Execute one bound pre-PASS continuation through one Codex process."""
+
+        import threading
 
         run = execution.get("run")
         if not isinstance(run, Run):
             raise CodexExecutionError("REPAIR execution has no bound RUN", exit_code=None)
         repair = execution.get("repair")
         action = repair.get("action") if isinstance(repair, Mapping) else None
-        command = self.command_for(
-            run,
-            schema_path=(
-                FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH
-                if action == "FINALIZE_CANDIDATE"
-                else REPAIR_RESULT_PACKAGE_SCHEMA_PATH
-            ),
-            authorizes_mutation=self._execution_policy.authorizes_mutation,
-            execution_profile=self._execution_profile,
-        )
-        prompt = self.repair_prompt_for(execution=execution)
+        self._active_run = run
+        self._active_task = None
+        self._execution_thread = threading.get_ident()
         try:
-            completed = self._runner(
-                command, input=prompt.encode("utf-8", errors="strict"),
-                capture_output=True, text=False, check=False,
-                timeout=self._execution_policy.process_watchdog_seconds,
+            command = self.command_for(
+                run,
+                schema_path=(
+                    FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH
+                    if action == "FINALIZE_CANDIDATE"
+                    else REPAIR_RESULT_PACKAGE_SCHEMA_PATH
+                ),
+                authorizes_mutation=self._execution_policy.authorizes_mutation,
+                execution_profile=self._execution_profile,
             )
-            stdout = _decode_utf8(completed.stdout)
-            stderr = _decode_utf8(completed.stderr)
-        except subprocess.TimeoutExpired as exc:
-            raise CodexExecutionError(
-                "Codex CLI exceeded the "
-                f"{self._execution_policy.process_watchdog_seconds}-second "
-                "process watchdog "
-                f"({self._execution_policy.response_budget_minutes}-minute "
-                "native response budget)",
-                exit_code=None,
-                stdout=exc.stdout,
-                stderr=exc.stderr,
-            ) from exc
-        except (OSError, UnicodeError) as exc:
-            raise CodexExecutionError(
-                f"Codex CLI invocation failed: {exc}", exit_code=None
-            ) from exc
+            prompt = self.repair_prompt_for(execution=execution)
+            try:
+                completed = self._runner(
+                    command, input=prompt.encode("utf-8", errors="strict"),
+                    capture_output=True, text=False, check=False,
+                    timeout=self._execution_policy.process_watchdog_seconds,
+                )
+                stdout = _decode_utf8(completed.stdout)
+                stderr = _decode_utf8(completed.stderr)
+            except subprocess.TimeoutExpired as exc:
+                raise CodexExecutionError(
+                    "Codex CLI exceeded the "
+                    f"{self._execution_policy.process_watchdog_seconds}-second "
+                    "process watchdog "
+                    f"({self._execution_policy.response_budget_minutes}-minute "
+                    "native response budget)",
+                    exit_code=None,
+                    stdout=exc.stdout,
+                    stderr=exc.stderr,
+                ) from exc
+            except (OSError, UnicodeError) as exc:
+                raise CodexExecutionError(
+                    f"Codex CLI invocation failed: {exc}", exit_code=None
+                ) from exc
 
-        usage = extract_token_usage(stdout)
-        self._record_usage(usage, completed)
+            usage = extract_token_usage(stdout)
+            self._record_usage(usage, completed)
 
-        if completed.returncode != 0:
-            raise CodexExecutionError(
-                f"Codex CLI exited with code {completed.returncode}",
-                exit_code=completed.returncode, stdout=stdout, stderr=stderr,
-            )
-        return self._normalize(stdout, stderr=stderr)
+            if completed.returncode != 0:
+                raise CodexExecutionError(
+                    f"Codex CLI exited with code {completed.returncode}",
+                    exit_code=completed.returncode, stdout=stdout, stderr=stderr,
+                )
+            return self._normalize(stdout, stderr=stderr)
+        finally:
+            self._active_run = None
+            self._active_task = None
+            self._execution_thread = None
 
     def _record_usage(
         self, usage: TokenUsage | None, completed: Any = None

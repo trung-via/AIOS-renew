@@ -283,6 +283,7 @@ def _native_dispatcher(
                 runner=native_runner,
                 execution_policy=execution_policy,
                 execution_profile=execution_profile,
+                native_probe=getattr(native_runner, "native_probe", None),
             ),
             "antigravity": lambda: AntigravityAdapter(
                 runner=native_runner,
