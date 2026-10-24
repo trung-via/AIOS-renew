@@ -1,4 +1,50 @@
 version: 1
+human_caa04_evaluation_shadow_20261024:
+  authority: EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION
+  approved_on: '2026-10-24'
+  planning_only: true
+  source_main_sha_at_authoring: 7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9
+  human_decision: SELECT_CAA04_B_FINITE_INDEPENDENT_EVALUATION_SHADOW_AND_HUMAN_ROLLOUT_REPORT
+  sole_high_level_next: caa-v1-20261023
+  planning_owner: caa-v1-20261023
+  planning_document: docs/AIOS-CAA-V1-ROADMAP.md
+  contract_document: docs/AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md
+  selected_slice: CAA-04
+  implementation_task: TASK-414
+  implementation_revision: 1
+  supersedes_prospective_selection_record: human_caa03_optional_integration_20261024
+  supersession: CAA03_PLANNING_SELECTION_ONLY_NO_ENGINEERING_LINEAGE_CHANGE
+  previous_selection:
+    record: human_caa03_optional_integration_20261024
+    selected_slice: CAA-03
+    implementation_task: TASK-412
+    implementation_revision: 2
+    approved_on: '2026-10-24'
+    disposition: HISTORICAL_SELECTION_PRESERVED_WITH_CAA01_CAA02_PREDECESSORS
+  observed_predecessor:
+    task: TASK-412
+    revision: 2
+    run: RUN-412-009
+    review_id: REVIEW-412-009
+    review_mode: PRIMARY
+    review_verdict: PASS
+    review_decision_sha: 6c6490fe41333842b5030e6f011cf07f11bf82b3
+    reviewed_source_sha: 7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9
+    inclusion: MAIN_INCLUSION
+    as_of_main_sha: 7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9
+    basis: SUPPLIED_EXACT_ACCEPTED_CAA03_LINEAGE_RUNTIME_REAUTHENTICATES
+  optional_package:
+    id: CAA-05
+    status: CONDITIONAL_NOT_SELECTED
+  activation: NO_DEFAULT_ADVISOR_SHADOW_SPEND_OR_PRODUCTION_ROLLOUT
+  evaluation_authority: SEPARATE_EXACT_AUTHENTICATED_HUMAN_PREREGISTRATION_BEFORE_DECISIVE_COLLECTION
+  authoring_policy: PRESERVE_TASK408_DIRECT_AUTHORING_HUMAN_ON_DEMAND_AND_SOFT_AOA_OPT_OUT
+  task411_task413: SEPARATE_UNCHANGED_LINEAGE_NO_COMPLETION_CLAIM
+  paused_bookmarks: PTE_LEAN_VP_KA01_AND_DOWNSTREAM_UNCHANGED
+  completion: NO_CAA04_RESULT_REVIEW_PUBLICATION_OR_QUALITY_UPLIFT_INFERRED_FROM_SELECTION
+  executor_delegation: NOT_GRANTED_BY_PLANNING
+  next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_RUN_REVIEW_PUBLISH_AUTO_ADVANCEMENT
+
 human_caa03_optional_integration_20261024:
   authority: EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION
   approved_on: '2026-10-24'
@@ -2883,10 +2929,10 @@ sequence:
     planning_only: true
     planning_owner: caa-v1-20261023
     planning_document: docs/AIOS-CAA-V1-ROADMAP.md
-    task_id: TASK-412
-    task_revision: 2
-    selected_slice: CAA-03
-    priority_record: human_caa03_optional_integration_20261024
+    task_id: TASK-414
+    task_revision: 1
+    selected_slice: CAA-04
+    priority_record: human_caa04_evaluation_shadow_20261024
     next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
   - id: human-audit-policy-direct-authoring-20261023
     status: PAUSED
