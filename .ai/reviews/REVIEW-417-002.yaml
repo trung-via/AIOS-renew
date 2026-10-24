@@ -1,0 +1,74 @@
+review_id: REVIEW-417-002
+reviewed_sha: cc531fd1e5bcc7034aabdddf41dfe2268da888a6
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+  AC11: PASS
+findings: []
+notes:
+- Independent PRIMARY semantic review of TASK-417 r1 / RUN-417-002 only. Failed RUN-417-001
+  is preserved as immutable VERIFICATION FAILURE (failed head 24ade747752602535156c8a4f3e7038dd2a70fe0,
+  artifacts f7053d9b955731104d1ae5943c320f62bc48a5db); authorized REPAIR-417-001-001
+  at a3c4238412a767fd6ebe09d81ebb9f07464a7d92, CODE_FIX. Reviewed RUN-417-002 source
+  cc531fd1e5bcc7034aabdddf41dfe2268da888a6 is one descendant commit from the failed
+  head; original authored TASK/main base f601676926bb35f90c09cd53f2f94243404a8378.
+- 'Runtime RESULT/EVIDENCE at refs/heads/aios/artifacts/RUN-417-002 -> af114200c6e377f4ec6bceff7c9ef7fbeab8c047:
+  evidence RUN-417-002-V001 binds the exact candidate SHA and the TASK-authored minimum-sufficient-v1
+  command python -m pytest -q tests/test_caa_integration.py tests/test_caa_evaluation.py
+  tests/test_brain_context.py tests/test_brain_sync.py, exit_code 0. C1-C8 cumulatively
+  cover AC1..AC11 with unresolved empty. Runtime verification, not Executor prose,
+  establishes exit 0. No full suite or live provider-quality efficacy was demonstrated.'
+- Correction delta touches only src/aios_renew/brain_context.py and src/aios_renew/caa_integration.py
+  within scope.modify; base-to-reviewed cumulative diff touches eleven TASK-417 permitted
+  paths only. The repair converts the authenticated in-process sealed CAA-01 cut's
+  tuple members to portable JSON arrays at the read-only activation, contemporaneous
+  receipt and reporting projections, retaining original sealed cut and strict native
+  provider parsing. No test expectation relaxed, no skipped tests, no verification
+  policy altered.
+- 'AC1,AC4: human_caa_ten_task_advisory_20261024 prospectively selects this pilot
+  as a unique NEXT, preserving former CAA/PTE/TASK-415/416 Human records and historical
+  selection as such. Cohort starts only after exact source reviewed PASS and included
+  on main; selects first ten distinct newly authored canonical TASK identities in
+  first-parent first-authoring order, TASK-417 excluded; repeat revisions, RUNs, failures
+  and corrections do not add members. Ambiguous simultaneous authoring fails contained;
+  after ten, no automatic continuation.'
+- 'AC2,AC3,AC11: supported first-party brain_provider.consult_advisory uses the existing
+  authenticated CAA-03 caller for four Brain flows, default disabled and explicit
+  opt-out; independent canonical source/flow/subject/candidate/fresh packet checks
+  remain mandatory. Missing lawful selected provider, independently authenticated
+  profile or atomic per-call charge reservation yields bounded unavailable/no material
+  advice. This is an opt-in supported caller, not a claim that a ChatGPT live host,
+  provider, charge permission or production traffic is already configured.'
+- 'AC5,AC6,AC10: sealed in-process observation at consultation time uses bound TASK/revision/subject/source-cut
+  and refuses forged, stale, cross-task and subsequently tampered receipts. The finite
+  report reauthenticates canonical Engineering Episodes, preserves protected/private
+  outputs, missing facts and UNKNOWN pre-outcome/cost/quality; it cannot backfill
+  missing advice or infer causal uplift. Focused source-backed adversarial and positive
+  tests are included in the authored Runtime verification. Source authenticity is
+  not replaced by a self-certified portable JSON digest.'
+- 'AC7,AC8: read-only ten-TASK evidence-gap handoff retains decisive_sample_count=0
+  and UNKNOWN quality/causal uplift. CAA-04 exact independent preregistration, population/period
+  limits, labels, provider/charge authorization and decisive phase boundaries remain
+  separate, no auto HOLDOUT/SHADOW; CAA-05 not selected or trained.'
+- 'AC9 and completion boundary: TASK-408 HUMAN_ON_DEMAND TCA/ROA/MOA with soft AOA
+  opt-out, Brain independent semantic ownership and Human risk/priority retained.
+  No generic router, new state database, provider selector, autonomous RUN/review/publication
+  or alternate Runtime verification. The Executor''s C8 statement concerns an implementation-local/worker-observer
+  check before canonical verification; it is not treated as canonical proof, which
+  is separately supplied by RUN-417-002-V001 exit 0.'
+- 'Reviewer closure: no material semantic defect established against AC1..AC11 for
+  this exact reviewed candidate. PASS binds only REVIEW-417-002 and source cc531fd1e5bcc7034aabdddf41dfe2268da888a6.
+  Publisher must independently verify current main/reservation, canonical RESULT/EVIDENCE
+  and reviewed SHA before publication. Neither REVIEW PASS nor publication alone attests
+  a live paid provider, pilot consultations, ten completed TASKs, or future CAA-04/05
+  selection.'
