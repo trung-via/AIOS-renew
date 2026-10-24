@@ -431,7 +431,9 @@ def test_timeout_has_one_outstanding_call_no_retry_and_still_checks_original_sub
     def slow(request):
         entered.set()
         try:
-            release.wait(2)
+            # Source checks can outlast a wall-clock delay under contention.
+            # Keep this call outstanding until the test explicitly releases it.
+            release.wait()
             return response(request)
         finally:
             finished.set()
@@ -439,8 +441,10 @@ def test_timeout_has_one_outstanding_call_no_retry_and_still_checks_original_sub
         result = case.ask(answer=slow)
         assert entered.is_set() and result["reason"] == "PROVIDER_TIMEOUT"
         assert result["authoring_policy"] == "UNCHANGED" and case.guard_calls == 2
+        assert not finished.is_set()
         busy = case.ask()
         assert busy["reason"] == "PROVIDER_BUSY" and len(case.calls) == 1
+        assert not release.is_set() and not finished.is_set()
     finally:
         release.set()
         assert finished.wait(2)
@@ -454,6 +458,21 @@ def test_cut_origin_is_never_replaced_or_enriched(tmp_path, fault):
     case = Case(tmp_path / "one", "TASK_AUTHORING")
     cut = case.cut
     answer = response
+
+    def move_result(claim):
+        # The two-episode fixture now points at its FAILURE run. Replace the
+        # RESULT actually pinned by this cut, retaining that RESULT's own RUN.
+        ref, original = next((ref, sha) for ref, sha in cut.refs
+                             if ref.startswith("refs/heads/aios/artifacts/"))
+        run = json.loads(git(case.fixture.repo, "show", original + ":.ai/transport/run.json"))
+        assert ref == "refs/heads/aios/artifacts/" + run["run_id"]
+        assert run["run_id"] != case.fixture.run_id
+        case.fixture.package["result"]["claims"][0]["claim"] = claim
+        replacement = case.fixture.artifact({"run.json": run, "result.json": case.fixture.package},
+                                            run_id=run["run_id"])
+        assert replacement != original
+        assert git(case.fixture.remote, "rev-parse", ref) == replacement
+
     if fault == "exported":
         cut = cut.as_dict()
     elif fault == "forged":
@@ -461,14 +480,13 @@ def test_cut_origin_is_never_replaced_or_enriched(tmp_path, fault):
     elif fault == "repository":
         cut = source(tmp_path / "two").cut()
     elif fault == "moved":
-        case.fixture.package["result"]["claims"][0]["claim"] = "later source"
-        case.fixture.replace_result()
+        move_result("later source")
     else:
         def answer(request):
-            case.fixture.package["result"]["claims"][0]["claim"] = "moved while transport failed"
-            case.fixture.replace_result()
+            move_result("moved while transport failed")
             raise RuntimeError("private failure")
-    with pytest.raises((integration.IntegrationContextError, experience.ExperienceError)):
+    expected_error = "SOURCE_MOVED" if fault in {"moved", "failed_transport"} else None
+    with pytest.raises((integration.IntegrationContextError, experience.ExperienceError), match=expected_error):
         case.ask(cut=cut, answer=answer)
     assert len(case.calls) == (1 if fault == "failed_transport" else 0)
 
