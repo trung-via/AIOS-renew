@@ -1,0 +1,155 @@
+task_id: TASK-416
+revision: 1
+goal: Prospectively canonicalize Human-approved PTE Information-Only architecture
+  aligned to TASK-408 direct authoring and CAA advisory, preserving all published
+  PTE evidence and independent AIOS lifecycle authorities; remove prospective mandatory
+  recovery/REPAIR/audit/TASK-401-r3 flow from PTE planning without modifying production
+  code or Runtime admission.
+problem: The canonical PTE roadmap dated 2026-10-22 still sequences PTE-04 immutable
+  workspace snapshot, PTE-05 recovery admission gate, PTE-06 repair continuation and
+  PTE-07 mandatory TASK-401 r3, and names historical TCA-2/ROA/MOA as mandatory. Human
+  now approves only PTE evidence/status/diagnostic/read-only workspace facts for Brain,
+  with no PTE workflow mandates. The old prospective planning statements conflict
+  with the current Human decision and TASK-408 HUMAN_ON_DEMAND / CAA optional advisory
+  policy. Keeping them active risks creating a duplicate planner, forcing audits,
+  and overstating recovery capability. Existing PTE-01/02/03 and their exact historical
+  TASK/RUN/REVIEW/PUBLISH remain unchanged.
+assumptions:
+- Current explicit Human request approves the PTE information-only refactor immediately;
+  this is new prospective planning intent, not a fix or reinterpretation of previously
+  published TASKs.
+- Canonical main is authenticated at ingress with expected_main_sha. At authoring
+  observation main b13fbef2d5af49787f6e7fffdaf179d799bb4957 includes TASK-415 reviewed-source
+  SHA, but RUN/RESULT/REVIEW/publication facts must still be reconstructed from exact
+  lineage by Runtime.
+- Standing Human route decision in canonical roadmap-state.yaml defaults new AIOS-renew
+  TASK identities to LEGACY_REPOSITORY_DEFAULT_ROUTE until a proven origin replacement
+  or explicit Human change.
+- Brain owns PTE semantic policy, scope, acceptance and rationale. Human owns priority/risk/delegation;
+  Executor owns implementation HOW; Runtime owns source/auth/admission/verification/evidence;
+  independent Reviewer and Publisher retain verdict/publication.
+- PTE-01/02/03 were previously accepted in their exact historical lineage; this TASK
+  does not declare any new live conformance, infrastructure availability, dirty-worktree
+  preservation, recovery capability, or production quality improvement.
+- CAA-01..04 are independent advisory program history; CAA remains optional, not a
+  prerequisite to PTE status reads or Brain direct judgment.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/brain-audit-profiles.yaml
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-PTE-POST-TASK-DIRTY-RECOVERY-ROADMAP-v1.md
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - .ai/tasks/TASK-415.yaml
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/caa_experience.py
+  - src/aios_renew/review_transport.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-PTE-INFORMATION-ONLY-v2.md
+  - docs/AIOS-PTE-POST-TASK-DIRTY-RECOVERY-ROADMAP-v1.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+non_goals:
+- No code modification, new PTE API/schema/state reducer/DB/router/agent/scheduler,
+  wake/dispatch wiring, Runtime recovery authority, snapshot mutation, automatic TASK/RUN/REPAIR/REMEDIATION,
+  or CAA provider/advisor activation.
+- No alteration to frozen Kernel, existing Runtime verification/admission guards,
+  source authenticity/privacy, Human risk/delegation, Reviewer, Publisher, or immutable
+  historical PTE/TASK-401/CAA/TASK-415 lineage.
+- No revival of R2.1 TCA/ROA/MOA default audit; no mandatory AOA or CAA override;
+  no automatic selecting/running CAA-05, PTE-04, TASK-401 r3 or downstream adoption.
+- No blanket claims of successful dirty-worktree recovery, performance gains, or complete
+  end-to-end live conformance; no full-suite testing by default.
+constraints:
+  hard:
+  - Append one new current Human/Brain PTE information-only planning record prospectively;
+    reconcile effective priority without rewriting TASK-415 history or fabricating
+    TASK-415 completion. Preserve existing roadmap plan lineage, unique NEXT semantics,
+    CAA-05 conditional state and paused tracks.
+  - Document exact PTE-01 terminal wake as information delivery, PTE-02 as read-only
+    canonical state projection and PTE-03 as safe source-bound technical diagnostic.
+    A Unified State next_action/authority remains observed Runtime data, never a PTE-owned
+    instruction to Brain.
+  - Replace prospective PTE-04 with read-only observational dirty-worktree inventory
+    ONLY if a lawful authenticated existing source supplies facts; otherwise report
+    UNKNOWN or unavailable. No snapshot creation, stash, reset, worktree modification
+    or promise of durable preservation.
+  - Retire prospective PTE-05 recovery-admission gate and PTE-06 automatic/special
+    repair route FROM PTE SCOPE; any future Runtime recovery work is independent Human/Brain
+    intent with independent authority and TASK, not automatically authorized here.
+  - Retire PTE-07 mandatory TASK-401 r3 chain; express conformance only as read-only
+    information/no-side-effects, source integrity, privacy and CAA-optional/Brain-judgment
+    independence; do not retroactively delete TASK-401 history.
+  - Preserve TASK-408 direct authoring and exact Human-on-demand TCA/ROA/MOA, AOA
+    soft opt-out; old PTE references to mandatory TCA-2/ROA-1 R3/MOA-1 must be labeled
+    historical superseded text, not active instructions.
+  - Use one minimal successor planning document and a conspicuous historical-supersession
+    pointer in the old PTE roadmap. Preserve exact previous rationale/historical approvals,
+    without copying whole Constitution, Runtime lifecycle truth or audit profiles
+    into the new document.
+  - 'Do not create a second technical truth source: the PTE projection reuses canonical
+    Git/Runtime readers, source SHA and privacy currentness. CAA is optional advice;
+    Brain may reason, defer or seek more evidence, but mutation still requires independent
+    lawful authorization.'
+  - Maintain bounded read-only verification and compatibility with existing PTE-01..03
+    and CAA consumers. Execution may report NO_CODE_CHANGE when the repository inspection
+    finds no production gap; do not invent one.
+  - Restrict all committed changes to scope.modify; do not modify code or tests to
+    make documentation pass.
+acceptance:
+- id: AC1
+  condition: A current prospective Human-approved PTE_INFORMATION_ONLY planning record
+    exists, with unique semantics reconciled against TASK-415 current NEXT and historical
+    CAA/PTE records, without inferring any missing Runtime outcome.
+- id: AC2
+  condition: New successor PTE document explicitly defines PTE as bounded authenticated
+    information projection and excludes workflow/audit/retry/dispatch/correction selection
+    or Brain semantic verdict authority.
+- id: AC3
+  condition: Published PTE-01..03 retain exact historical meaning, source auth/privacy
+    and compatibility; no retrospective PASS or retroactive TASK/RUN mutation is implied.
+- id: AC4
+  condition: PTE-04 is specified as conditional source-bound read-only worktree observation
+    with explicit UNKNOWN/unavailable and no snapshot/clean/reset/storage mutation.
+- id: AC5
+  condition: PTE-05/PTE-06 mandatory recovery authority/repair implementation sequence
+    is prospectively retired from PTE; actual dirty recovery remains a distinct separately
+    authorized workstream if Human later selects it.
+- id: AC6
+  condition: PTE-07 mandatory TASK-401 r3 live chain is prospectively retired and
+    replaced by bounded information-only conformance criteria that do not require
+    PTE-controlled workflow or CAA.
+- id: AC7
+  condition: TCA/ROA/MOA are not required by PTE. TASK-408 Human-on-demand direct
+    authoring and AOA soft opt-out are preserved without fallback/legacy default reactivation.
+- id: AC8
+  condition: Old PTE roadmap has a clear superseded-prospectively banner/pointer while
+    retaining original historical narrative and source identity intact.
+- id: AC9
+  condition: Any observed Unified State next_action/authority is explicitly contextualized
+    as Runtime observation, not a PTE imperative or Brain instruction. Missing/stale/forged/private
+    source remains correctly marked and not promoted to truth.
+- id: AC10
+  condition: PTE/CAA separation and Brain/Human/Runtime/Executor/Reviewer/Publisher
+    authority boundaries are explicit; CAA unavailable or opted out cannot block PTE
+    observational readers.
+- id: AC11
+  condition: Production implementation and verification source files are untouched;
+    targeted existing Brain Sync verification remains usable, with no required full-suite
+    or invented benchmark benefit.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_sync.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
