@@ -4875,6 +4875,12 @@ def _create_historical_workspace(repo: Path, failed_head: str) -> Path:
             str(workspace),
         )
         _git(workspace, "remote", "set-url", "origin", origin_url)
+        # The original source reader excludes global/system Git settings.
+        # Preserve the control checkout's effective text conversion locally so
+        # both readers and later commits agree on the historical subject.
+        for key, default in (("core.autocrlf", "false"), ("core.eol", "native")):
+            value = _git(repo, "config", "--get", "--default", default, key)
+            _git(workspace, "config", key, value)
         _git(workspace, "checkout", "--detach", failed_head)
         if not (workspace / ".git").is_dir():
             raise OperatorError("historical subject Git directory is unavailable")

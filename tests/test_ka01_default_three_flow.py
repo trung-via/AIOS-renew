@@ -18,6 +18,7 @@ from aios_renew.artifacts import ResultPackage, validate_structural_result
 from aios_renew.execution_profile import default_execution_profile
 from aios_renew.intra_run_proof_contract import parse_native_operation_checkpoint, parse_native_primary_checkpoint
 from aios_renew.run import Run
+from aios_renew.review_transport import transport_failure
 from aios_renew.runtime import RuntimeCompletion, persist_failure, persist_preverification_candidate, primary_completion_policy
 from aios_renew.verification_contract import VerificationContractError
 from tests.git_fixture_support import commit_fixture_state
@@ -44,7 +45,10 @@ class ThreeFlowFixture(ProductionFixture):
         super().__init__(root, monkeypatch, interactive=True, default=True, first_fail=first_fail,
             policy=policy, proof_source=proof_source, task_transform=with_original_guard,
             omit_files=omit_files,
-            extra_files={"tests/test_unrelated.py": "def test_unrelated():\n    assert True\n"})
+            extra_files={"tests/test_unrelated.py": "def test_unrelated():\n    assert True\n",
+                # Historical ordinary verification may write Python/pytest
+                # caches, just as in the real repository's ignored layout.
+                ".gitignore": "__pycache__/\n.pytest_cache/\n"})
         self.root, self.control = root, self.repo
         self.operation, self.action = operation, action
         self.reusable = reusable
@@ -107,12 +111,18 @@ class ThreeFlowFixture(ProductionFixture):
         path.write_bytes(ka01._bytes(asdict(prior)))
         if self.reusable:
             payload = static_payload()
-            payload["result"]["head_sha"] = self.subject
+            payload["result"].update(head_sha=self.subject, changed_files=["OUTPUT.txt"])
             persist_preverification_candidate(self.state.preverification / (self.source_id + ".json"),
                 task=self.task, run=prior, subject_sha=self.subject,
                 package=ResultPackage(validate_structural_result(payload["result"]), ()))
         persist_failure(self.repo, state=self.state, task=self.task, run=prior, run_path=path,
-            failure=operator.OperatorError("original completion interrupted"))
+            failure=operator.OperatorError("original completion interrupted"), transport=not self.reusable)
+        if self.reusable:
+            # Publish the exact preserved structure with its original failure.
+            # A local-only package cannot override an absent canonical sidecar.
+            transport_failure(self.repo, run_id=self.source_id, head_sha=self.subject,
+                run_path=path, failure_path=self.state.failures / (self.source_id + ".json"),
+                preverification_path=self.state.preverification / (self.source_id + ".json"))
         repair = dict(repair_id="REPAIR-101-DEFAULT", failed_run_id=self.source_id,
             failed_head_sha=self.subject, task=asdict(prior.task), action=self.action,
             modification_scope=[] if self.reusable else ["OUTPUT.txt"], instructions=[
@@ -130,7 +140,7 @@ class ThreeFlowFixture(ProductionFixture):
         path = self.state.runs / (self.source_id + ".json")
         path.write_bytes(ka01._bytes(asdict(prior)))
         payload = static_payload()
-        payload["result"]["head_sha"] = self.subject
+        payload["result"].update(head_sha=self.subject, changed_files=["OUTPUT.txt"])
         # Seed an already-admitted historical owner, using actual original
         # Runtime verification and transport rather than a fake PASS artifact.
         owner = RuntimeCompletion(repo=self.repo, state=self.state, task=self.task, run=prior,
@@ -338,7 +348,12 @@ def test_default_correction_cannot_escape_original_authority(tmp_path, monkeypat
         elif defect == "lease":
             budget.leases.release(budget.lease)
         elif defect == "source":
-            git(f.remote, "update-ref", "refs/heads/main", f.run.base_sha if operation != "PRIMARY" else git(f.repo, "rev-parse", "HEAD"))
+            if operation == "PRIMARY":
+                # Transfer the real candidate object before moving main; an
+                # invalid update-ref must not stand in for the source CAS guard.
+                git(f.repo, "push", "--quiet", "origin", "HEAD:refs/heads/main")
+            else:
+                git(f.remote, "update-ref", "refs/heads/main", f.run.base_sha)
         elif defect == "authorization":
             if operation == "PRIMARY":
                 path = f.repo / ".ai/tasks/TASK-101.yaml"
@@ -385,8 +400,11 @@ def test_default_finite_resources_stop_the_same_original_run(tmp_path, monkeypat
 
 @pytest.mark.parametrize("operation", ["PRIMARY", "REPAIR", "REMEDIATION"])
 def test_missing_native_observer_preflight_stops_before_coding(tmp_path, monkeypatch, operation):
+    # Historical minimum-sufficient-v1 proof can pass without a native observer.
+    # Omit its loader too, so seed verification is ordinary pytest; the newly
+    # admitted default must independently reject the missing complete observer.
     f = ThreeFlowFixture(tmp_path / "observer", monkeypatch, operation=operation,
-        omit_files=("tests/bp_v4_probe_plugin.py",))
+        omit_files=("tests/bp_v4_probe_plugin.py", "tests/conftest.py"))
     sessions = synthetic_session(f, monkeypatch)
     with pytest.raises(VerificationContractError, match="NATIVE_COMPLETE_OBSERVER_UNAVAILABLE"):
         f.execute()
