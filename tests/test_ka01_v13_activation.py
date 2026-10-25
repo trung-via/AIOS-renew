@@ -150,7 +150,8 @@ class ProductionFixture:
         if self.native_ack_only:
             return subprocess.CompletedProcess(command, 0, stdout=b'{"status":"ACK"}', stderr=b"")
         (self.repo / "OUTPUT.txt").write_text(self.output, encoding="utf-8")
-        head = commit_fixture_state(self.repo, paths=("OUTPUT.txt",), message="native fixture candidate")
+        head = commit_fixture_state(self.repo, paths=("OUTPUT.txt",), message="native fixture candidate",
+            user_name="KA01 activation fixture", user_email="ka01@example.invalid")
         payload = static_payload()
         payload["result"].update(head_sha=head, changed_files=["OUTPUT.txt"])
         self.package = payload
@@ -227,6 +228,18 @@ def test_ordinary_activation_freezes_independent_field_overrides(tmp_path, monke
     assert summary.ka01["checkpoints_spent"] == 1 and summary.ka01["corrections_spent"] == 0
 
 
+def test_ordinary_activation_rejects_redirected_runtime_storage(tmp_path, monkeypatch):
+    f = ProductionFixture(tmp_path / "storage-redirect", monkeypatch)
+    f.authorize()
+    state = replace(f.state, preverification=tmp_path / "unowned-pre-verification")
+    monkeypatch.setattr(operator, "runtime_paths", lambda repo: state)
+    with pytest.raises(VerificationContractError, match="CHECKPOINT_EXISTING_RUNTIME_OWNERSHIP_REQUIRED"):
+        f.execute()
+    assert f.native_calls == f.verification_calls == []
+    assert f.owner._ka01_budget is None and f.owner._local_feedback_stopped
+    assert not list(f.state.results.glob("*.json"))
+
+
 def test_selected_source_must_be_the_running_implementation(tmp_path, monkeypatch):
     f = ProductionFixture(tmp_path / "source-mismatch", monkeypatch, source_mismatch=True)
     f.authorize()
@@ -281,6 +294,7 @@ def test_ordinary_selection_rejects_untrusted_stale_or_mismatched_context_before
     elif defect == "moved-main":
         (f.repo / "later.txt").write_text("later source")
         commit_fixture_state(f.repo, paths=("later.txt",), message="main moved",
+            user_name="KA01 activation fixture", user_email="ka01@example.invalid",
             remote=f.remote, remote_ref="refs/heads/main")
     with pytest.raises((VerificationContractError, carrier.GitHubIssueIngressError)):
         f.execute(synchronize=False)

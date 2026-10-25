@@ -249,7 +249,10 @@ class RuntimeCompletion:
                 or self.state.verification.absolute() != root / "verification"
                 or self.state.results.absolute() != root / "results"
                 or self.state.failures.absolute() != root / "failures"
-                or self.state.preverification.absolute() != root / "preverification"
+                # Ordinary operator storage and the historical checkpoint
+                # layout both belong to this exact admitted Git owner.
+                or self.state.preverification.absolute() not in {
+                    root / "pre-verification", root / "preverification"}
                 or self.run_path.absolute() != root / "runs" / (self.run.run_id + ".json")):
             raise VerificationContractError("CHECKPOINT_EXISTING_RUNTIME_OWNERSHIP_REQUIRED")
         _checkpoint_safe_directory(root)
