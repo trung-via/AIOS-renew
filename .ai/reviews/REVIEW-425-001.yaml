@@ -1,0 +1,92 @@
+review_id: REVIEW-425-001
+reviewed_sha: fa51017f9ce9486ad041e214f1375aa03e9031c3
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings: []
+notes:
+- 'SEMANTIC VERDICT ON EXACT SOURCE: TASK-425 revision 1, after immutable original
+  RUN-425-001 FAILURE and exact CODE_FIX REPAIR chain through RUN-425-004 FAILURE,
+  reviewed repaired PRIMARY subject RUN-425-005 RESULT; latest REPAIR-425-004-001
+  canonical authorization 00398d5e302a0dbcde55521ad67cb2d0b1b3ef1e bound to failed
+  clean head 253eeaf1cda9d62a23bc7c7822de9a3bda4e3a03 / immutable FAILURE artifacts
+  600e2d370d2996e2007a9cd7087470c9f14b5443. Terminal RUN-425-005 RESULT artifact 118aa906a853456ee75e81be18635b42d4830c1c
+  and review ref point to exactly fa51017f9ce9486ad041e214f1375aa03e9031c3. Earlier
+  failures are not retroactive PASS.'
+- 'CANONICAL RUNTIME EVIDENCE: Original TASK-425 required first command ''python -m
+  pytest -q tests/test_ka01_default_three_flow.py tests/test_ka01_v13_intra_run_native.py''
+  is RUN-425-005-V001, original required second ''python -m pytest -q tests/test_repair_dispatch.py
+  tests/test_remediation_wakeup.py tests/test_ka01_v13_activation.py'' is RUN-425-005-V002;
+  both exit_code 0, exactly subject SHA fa51017f9ce9486ad041e214f1375aa03e9031c3.
+  Structurally bound RESULT contains nine C1..C9 claims satisfying exactly AC1..AC9,
+  original evidence references V001/V002, unresolved empty. The Executor''s earlier
+  local diagnostic exit 1 and own claims do not substitute for these later independent
+  Runtime proofs.'
+- 'AC1 PASS: Cumulative source adds planning-only human_lean_vp_default_three_flow_20261025
+  single-NEXT TASK-425 record and prospectively amends KA-01 D.1.2/D.4 and Lean VP
+  roadmap. Historical TASK-424 publication, TASK-418 failures, typed modes and retired
+  G3/G6/L4/pilot/shadow steps remain preserved; no follow-on activation TASK or automatic
+  planning transition.'
+- 'AC2 PASS: Original operator.run_task, run_repair and run_remediation perform independent
+  operation-specific admission first, then enroll new coding RUN through source-bound
+  default. The implementation reads authenticated canonical main normative/implementation
+  bytes, selected profile and operation source; no new v3 per-RUN consent Issue or
+  orphan selector; missing or stale default source STOPs rather than silently downgrading.'
+- 'AC3 PASS: Reuses first-party installed native Codex app-server process and original
+  Runtime preterminal checkpoint/factual-feedback/correction in the same RUN for PRIMARY,
+  CODE_FIX/CONTINUE_IMPLEMENTATION REPAIR and CODE_FIX REMEDIATION. The installed-native
+  positive test is not skipped or fake substituted, and V001 PASS confirms the focused
+  native integration under this self-host environment. Exact sticky selected Executor/model/effort,
+  original process/session/thread and lease are bound; no second generic verifier
+  or Executor.'
+- 'AC4 PASS: Dispatcher/Runtime operation-specific policy and result checking preserve
+  original TASK acceptance claim coverage, failed-head/root REPAIR authorization/scope
+  and cumulative claims, exact reviewed finding/source and affected verification for
+  REMEDIATION, and legitimate executorless reuse paths. Operation-specific fixture
+  tests exercise family isolation and authentic currentness rather than treating policy
+  default as a correction grant.'
+- 'AC5 PASS: Original KA-01 finite resource limits 2 improving corrections, 3 checkpoints,
+  240-minute RUN wall and 180-minute cumulative Runtime verification, distinct preterminal
+  proof, causal descendant, no-progress/stale feedback STOP and exact final checkpoint
+  terminal reuse are retained across three operations. No repeated final verification
+  after an already applicable complete checkpoint, no new terminal RUN manufactured
+  by an intermediate failure.'
+- 'AC6 PASS: Family grants, task/source/lease, native execution profile and original
+  selected executor are authenticated independently of the global default. Unsupported
+  Antigravity/MiniMax native channels and unsupported observers/noncoding actions
+  STOP pre-model without undocumented legacy fallback or fake universal provider conformance.
+  Do not infer rollout to another installed provider from V001.'
+- 'AC7 PASS: Previously admitted and terminal RUNs remain on their recorded source/typed
+  v1/v2/v3 semantics; latest isolated REPAIR changes just the historical test fixture
+  ResultPackage to include changed_files [''OUTPUT.txt''], consistent with the actual
+  committed OUTPUT.txt, without deleting or weakening its untouched legacy assertions
+  (historical RUN bytes, zero native calls, one legacy verification, no KA-01 enrollment).
+  Frozen kernel history, independent Reviewer/Publisher, downstream pins and prior
+  exact correction authorities remain intact.'
+- 'AC8 PASS: New dedicated test module covers ordinary three-operation default admission,
+  real installed Codex C1/F1/C2 original-session turns, wrong-source/session/profile/operation/feedback,
+  duplicates, no progress, budget exhaustion, crashes, unsupported providers, historical
+  compatibility and one terminal; previous v3 positive live test remains and is not
+  marked skip/xfail. Both original authored Runtime commands verify exact final source
+  exit 0; a prior failing local probe is not promoted to canonical success.'
+- 'AC9 PASS: Bounded per-operation observation facts on original RUN cover policy,
+  source, session, proof/feedback/correction counts and STOP, while review and publication
+  are explicitly NOT_OBSERVED until separately established; no measured ROI, automatic
+  NEXT, publication SUCCESS or downstream deployment claim is embedded.'
+- 'SCOPE AND REVIEW LIMITATION: Compare canonical TASK root/base 6ce7850446d0480c68c8d2c8555e04df5ff287bb
+  to reviewed candidate fa51017f9ce9486ad041e214f1375aa03e9031c3 is ahead 5 commits,
+  behind 0, cumulative 14 changed files exactly equal canonical RESULT changed_files
+  and are all within TASK-425 r1 scope.modify. Latest REPAIR changes only tests/test_ka01_v13_activation.py
+  fixture line (+1/-1) to truthfully include OUTPUT.txt, no production code modification
+  in that correction. Runtime verification proves this candidate in this self-host
+  environment, not arbitrary machine portability, future publication, or quantitative
+  cost savings. Publisher independently evaluates exact reviewed SHA.'
