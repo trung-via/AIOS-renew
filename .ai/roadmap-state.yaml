@@ -1,4 +1,27 @@
 version: 1
+human_lean_vp_activation_only_20261025:
+  authority: EXPLICIT_HUMAN_PROSPECTIVE_PRIORITY_AND_RISK_DIRECTION
+  approved_on: '2026-10-25'
+  planning_only: true
+  source_main_sha_at_decision: 25a6dfb32afecd929a34d743c02b9292bd43395d
+  decision: RETIRE_UNEXECUTED_LEAN_VP_AND_SELECT_ONE_KA01_V1_3_ACTIVATION_TASK
+  sole_high_level_next: lean-vp-v13-activation-only-20261025
+  planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  task_contract_draft: docs/AIOS-LEAN-VP-V13-ACTIVATION-ONLY-TASK-DRAFT.md
+  planned_new_task_count: 1
+  task_identity: NOT_CANONICALLY_AUTHORED
+  human_completion_target: ACTUAL_KA01_V1_3_ACTIVATION_OF_SUPPORTED_EXISTING_CAPABILITIES
+  retired_prospective_work: [TASK-418_FUTURE_RUNS, L3-06, G3_SEPARATE_PACKAGE, G6_SEPARATE_PACKAGE, L4-01, L4-02, L4-03, L4-04]
+  preserve_task418: TASK418_R2_AND_SEVEN_RUN_FAILURES_IMMUTABLE_NOT_PASSED
+  preserve_unrelated_inflight: [TASK-419, TASK-420]
+  retain_published: [TASK-391_R2, TASK-397_R1, TASK-396_R1]
+  no_additional_lean_vp_package_gates: true
+  normative_conflict: EXISTING_KA01_V1_3_D1_AND_D3_D4_REQUIRE_G1_G2_G3_G6_AND_L4
+  normative_resolution_required_in_same_task: true
+  state: HUMAN_PLANNING_PROPOSAL_NOT_ACTIVATED
+  mutation_authority: NORMAL_RUNTIME_INGRESS_AND_REVIEW_PUBLICATION_REQUIRED
+  historical_truth: NO_TASK_RUN_RESULT_FAILURE_REVIEW_OR_PUBLICATION_REWRITE
+
 human_caa_ten_task_advisory_20261024:
   authority: EXPLICIT_HUMAN_DECISION_AND_BRAIN_PROSPECTIVE_SELECTION
   approved_on: '2026-10-24'
@@ -853,9 +876,9 @@ human_lean_vp_l3_03_reconciliation_20261020:
     - NO_TASK_RUN_REVIEW_PUBLICATION_OR_DOWNSTREAM_LINEAGE_REWRITE
     - UNRESOLVED_INGRESS_PRODUCER_CONCURRENCY_REMAINS_SEPARATE_DIAGNOSTIC
 
-active_track: caa-v1-20261023
-active_track_status: ACTIVE
-planning_document: docs/AIOS-CAA-V1-ROADMAP.md
+active_track: lean-vp-v13-activation-only-20261025
+active_track_status: PLANNING_ONLY_NOT_ACTIVATED
+planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
 human_lean_vp_legacy_plan_retirement_and_task389_authoring_reconciliation_20261019:
   authority: EXPLICIT_HUMAN_BRAIN_ROADMAP_RECONCILIATION
   approved_on: "2026-10-19"
@@ -3038,7 +3061,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - caa-v1-20261023
+  - lean-vp-v13-activation-only-20261025
 effective_next_transitions: []
 historical_effective_next_transitions_task415:
   - from:
@@ -3052,8 +3075,21 @@ historical_effective_next_transitions_task415:
     to: {item_id: caa-v1-20261023, task_id: TASK-415, task_revision: 1}
     priority_record: human_auto_next_priority_20261024
 sequence:
-  - id: caa-v1-20261023
+  - id: lean-vp-v13-activation-only-20261025
     status: NEXT
+    authority: EXPLICIT_HUMAN_BRAIN_PROSPECTIVE_PLANNING
+    planning_only: true
+    planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+    planning_owner: lean-vp-v13-activation-only-20261025
+    selected_slice: SINGLE_KA01_V1_3_ACTIVATION_TASK
+    planned_new_task_count: 1
+    task_authoring_status: NOT_YET_CANONICALLY_AUTHORED
+    activation_status: NOT_ACTIVATED
+    priority_record: human_lean_vp_activation_only_20261025
+    next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY
+  - id: caa-v1-20261023
+    status: PAUSED_HUMAN_PRIORITY_20261025
+    historical_status: NEXT
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     planning_only: true
     planning_owner: caa-v1-20261023
@@ -4408,7 +4444,10 @@ sequence:
     legacy_vp03_resume: RECONCILE_AFTER_R21_NO_AUTOMATIC_RESUME
     measured_performance: UNKNOWN_REQUIRES_PAIRED_WHOLE_EPISODE_EVIDENCE
   - id: lean-vp-intra-v13-budget-defaults-successor
-    status: PAUSED_RESUMABLE_BY_HUMAN_PTE_PRIORITY_20261022
+    status: RETIRED_PROSPECTIVE_REMAINDER_20261025
+    superseded_by: lean-vp-v13-activation-only-20261025
+    remaining_prospective_scope: SINGLE_ACTIVATION_TASK_ONLY
+    historical_status_at_20261022: PAUSED_RESUMABLE_BY_HUMAN_PTE_PRIORITY_20261022
     current_priority_owner: post-task-dirty-recovery-pte-20261022
     current_next_effect: PAUSED_UNFINISHED_REQUIRES_EXPLICIT_RESUMPTION
     historical_status: PAUSED_BY_HUMAN_PRIORITY_20261022

@@ -1,3 +1,11 @@
+> **Superseding Human decision — 2026-10-25 (draft branch; not yet canonical):** Abandon all unimplemented remaining Lean VP work, including further TASK-418 RUN/REPAIR, remaining L3-06, the separately planned G3/G6 and L4 packages. The only prospective Lean VP item is **one TASK to actually activate existing supported KA-01 v1.3 capabilities**. No additional Lean VP research, rollout, testing or conformance package is selected. Preserve TASK-418 r2 and RUN-418-001..007 as unfinished immutable history; no deletion or false PASS.
+>
+> **Completion redefined prospectively:** Successful supported real activation of KA-01 v1.3, not completion of 16 historical slots, G3 or L4. The historical rows, gates and NEXT claims below are archival and no longer future Human planning obligations.
+>
+> **Explicit unresolved normative conflict:** Current ratified KA-01 v1.3 D.1/D.3/D.4 still require G1/G2/G3/G6 and L4. The single selected TASK must update the relevant normative contract and actual activation implementation together; neither this decision nor a merged planning file silently activates Runtime. Do not bypass frozen Kernel, fabricate missing native Codex feedback, or claim evidence from fixtures.
+>
+> **Independent scope:** In-flight TASK-419 and TASK-420 retain their current engineering lineage; this Human planning pivot does not cancel, publish or review them.
+
 # Lean VP Intra-RUN v1.3 — Resource Defaults and Remaining Delivery Roadmap
 
 **Human decision:** 2026-10-21; explicit prospective return on 2026-10-22 after
