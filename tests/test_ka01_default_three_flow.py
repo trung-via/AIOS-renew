@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import subprocess
 
+import jsonschema
 import pytest
 import yaml
 
@@ -188,6 +189,7 @@ class ThreeFlowFixture(ProductionFixture):
 class OperationFixtureSession(FixtureSession):
     """Synthetic guard fixture only; installed-native cases never use it."""
     def turn(self, **kwargs):
+        self.output_schemas.append(kwargs["output_schema"])
         turn = super().turn(**kwargs)
         data = turn.output
         if self.f.operation == "REMEDIATION":
@@ -204,6 +206,7 @@ def synthetic_session(f, monkeypatch, hook=None):
     sessions = []
     def construct(**kwargs):
         session = OperationFixtureSession(f, **kwargs)
+        session.output_schemas = []
         session.hook = hook
         sessions.append(session)
         return session
@@ -273,6 +276,15 @@ def test_ordinary_default_without_consent_uses_original_family_and_one_terminal(
     sessions = synthetic_session(f, monkeypatch)
     summary = f.execute()
     assert len(sessions) == 1 and sessions[0].calls == 2 and sessions[0].closed
+    # Both C1 and C2 must receive the original TASK's acceptance contract.
+    candidate = sessions[0].last_turn.output
+    for schema in sessions[0].output_schemas:
+        jsonschema.validate(candidate, schema)
+        if operation != "REMEDIATION":
+            invalid = json.loads(json.dumps(candidate))
+            invalid["package"]["result"]["claims"][0]["satisfies"].append("C-SCOPE")
+            with pytest.raises(jsonschema.ValidationError):
+                jsonschema.validate(invalid, schema)
     assert_original_completion(f, summary)
     terminal = summary.result_path.read_bytes()
     with pytest.raises(VerificationContractError):

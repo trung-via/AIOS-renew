@@ -740,6 +740,47 @@ def test_remediation_schema_requires_runtime_owned_arrays_to_be_empty() -> None:
             jsonschema.validate(instance=invalid_payload, schema=schema)
 
 
+@pytest.mark.parametrize("operation", ["PRIMARY", "REPAIR"])
+def test_default_live_schema_rejects_invented_acceptance_without_rewriting_claims(operation) -> None:
+    task = parse_task(TASK_SOURCE)
+    schema = CodexAdapter.live_output_schema(operation, task=task)
+    package = json.loads(successful_output("RUN-007-001"))
+    package["evidence"] = []
+    claim = package["result"]["claims"][0]
+    claim["evidence"] = []
+    claim["id"] = "C-SCOPE"
+    candidate = dict(package=package, feedback_receipt=None)
+    jsonschema.validate(candidate, schema)
+    # C-SCOPE may label a claim, but only the original AC1 can be satisfied.
+    claim["satisfies"] = ["AC1", "C-SCOPE"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(candidate, schema)
+    assert claim["satisfies"] == ["AC1", "C-SCOPE"]
+    # A different admitted TASK must not inherit this TASK's enum or cached schema.
+    other_task = parse_task(TASK_SOURCE.replace("id: AC1", "id: AC2"))
+    other_schema = CodexAdapter.live_output_schema(operation, task=other_task)
+    claim["satisfies"] = ["AC2"]
+    jsonschema.validate(candidate, other_schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(candidate, schema)
+    # Historical unbound schemas retain their existing structural semantics.
+    jsonschema.validate(candidate, CodexAdapter.live_output_schema(operation))
+
+
+def test_default_live_remediation_retains_empty_claims() -> None:
+    schema = CodexAdapter.live_output_schema("REMEDIATION", task=parse_task(TASK_SOURCE))
+    package = json.loads(successful_output("RUN-007-001"))
+    package["evidence"] = []
+    claim = package["result"]["claims"][0]
+    claim["evidence"] = []
+    package["result"]["claims"] = []
+    candidate = dict(package=package, feedback_receipt=None)
+    jsonschema.validate(candidate, schema)
+    package["result"]["claims"] = [claim]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(candidate, schema)
+
+
 def test_repair_schema_preserves_result_package_shape() -> None:
     assert REPAIR_RESULT_PACKAGE_SCHEMA_PATH.exists()
     schema = json.loads(

@@ -207,11 +207,15 @@ class CodexAdapter:
                 (budget.wall_limit_ns - (budget._clock() - budget.started_ns)) / 1_000_000_000)))
 
     @staticmethod
-    def live_output_schema(operation="PRIMARY"):
+    def live_output_schema(operation="PRIMARY", *, task: Task | None = None):
         path = {"PRIMARY": RESULT_PACKAGE_SCHEMA_PATH, "REPAIR": REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
             "REMEDIATION": REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH}[operation]
         package = json.loads(path.read_text(encoding="utf-8"))
         package.pop("$schema", None)
+        if task is not None and operation in ("PRIMARY", "REPAIR"):
+            # Native claim labels cannot introduce new TASK acceptance IDs.
+            satisfies = package["properties"]["result"]["properties"]["claims"]["items"]["properties"]["satisfies"]
+            satisfies["items"]["enum"] = sorted(criterion.id for criterion in task.acceptance)
         receipt = dict(type="object", additionalProperties=False,
             required=["receipt_id", "feedback_digest", "checkpoint_digest", "source_sha", "previous_turn_id"],
             properties={key: dict(type="string") for key in (

@@ -680,7 +680,8 @@ class RuntimeCompletion:
             budget.guard()
             self.interruption_phase = "EXECUTION"
             with self.observation_tracker.native_session_turn():
-                turn = session.turn(prompt=prompt, output_schema=adapter.live_output_schema(operation))
+                turn = session.turn(prompt=prompt, output_schema=adapter.live_output_schema(
+                    operation, task=task if budget.default else None))
             self.interruption_phase = "COMPLETION_GATE"
             budget.guard()
             package, receipt = adapter.normalize_live_candidate(turn)
