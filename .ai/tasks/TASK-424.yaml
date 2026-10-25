@@ -1,0 +1,248 @@
+task_id: TASK-424
+revision: 1
+goal: 'Implement and make directly usable within ONE integrated TASK a production
+  Codex PRIMARY loop in ONE originally admitted ACTIVE RUN: original Executor produces
+  clean committed C1; the existing Runtime canonically verifies C1 preterminal and,
+  only for an authenticated complete stable in-scope FAIL, delivers bounded factual
+  F1 to the SAME still-live selected Codex session; the same Executor alone chooses
+  HOW and commits a causally changed C2; Runtime verifies again and writes exactly
+  one terminal RESULT or FAILURE. Preserve Human''s 2026-10-25 Lean VP closeout (no
+  reactivated TASK-418, L3-06, G3/G6/L4, pilot/shadow, or separate activation TASK).'
+problem: At exact canonical main b37604f83bc299f1fe1e7511adc07a7c08c1b475, published
+  TASK-423 enables only KA01-v1.3-bounded-primary-v1 in ordinary operator.run_task.
+  codex_adapter.execute currently uses one blocking 'codex exec' subprocess that returns
+  its ResultPackage before RuntimeCompletion.complete performs the final Runtime verification;
+  dispatcher calls native once and native correction continuity is blocked. TASK-391
+  published guarded checkpoint K_i / factual F_i and same-live local seam, TASK-397
+  published finite admission/budget, TASK-423 integrated opt-in and final checkpoint,
+  but none proves native Codex receiving preterminal feedback and continuing within
+  the same RUN. All RUN-418-001..007 terminated FAILURE across distinct phases and
+  cannot be reopened; historical mock ACK/LocalAdapter callback is not genuine Codex
+  delivery. Human now expressly requests a newly scoped direct implementation, with
+  Adaptive Brain Audit V1, of the missing verify-fix-verify capability, not a continuation
+  of retired planning packages.
+assumptions:
+- 'Current verified main SHA at authoring: b37604f83bc299f1fe1e7511adc07a7c08c1b475;
+  TASK-423 r1 / RUN-423-002 source is on main, REVIEW-423-001 PASS binds that source.
+  Runtime must independently authenticate exact main, TASK and currentness again during
+  ingress and new RUN admission.'
+- Human's new 2026-10-25 priority prospectively selects TASK-424 as the single next
+  integrated implementation objective. Existing .ai/roadmap-state.yaml retained TASK-423
+  NEXT before this authoring; change prospective planning selectors only through this
+  TASK's authorized roadmap scope, with all earlier dated Human planning, TASK-418
+  FAILURE, TASK-423 reviewed publication and unrelated TASK lineages intact.
+- Human explicitly chooses Adaptive Brain Audit V1 semantic reasoning for this architecture
+  + TASK subject; exact prospective profile is aios-adaptive-brain-audit-v1 v1 digest
+  982ba27964c78e7a7f79f5f268afb32eed27605be90b0642e4001b2edf116718. This cognitive
+  support is NOT a serialized audited_handoff or an ingress prerequisite; canonical
+  AUTHOR_TASK validates the final contract directly.
+- OpenAI Codex App Server documentation describes stable stdio JSONL initialize/thread/start/turn/start
+  with a thread spanning turns and streamed item/turn notifications; this supplies
+  a plausible native interaction path but is NOT proof that the self-host installed
+  CLI, selected model/profile, process, auth and Windows runtime are compatible. Executor
+  must establish compatibility against the actual installed binary before claiming
+  active support; may choose the minimal lawful equivalent native approach without
+  adding external service authority.
+- One Codex app-server process with one bound logical thread across several turns
+  may retain one Executor session within the RUN; this must be proven by original
+  process/connection/session identity and current authenticated RUN/lease, not by
+  reusing thread-id alone after process restart. Do not falsely call a new inference
+  turn 'the original in-progress turn'; one session across turns is the exact intended
+  continuity.
+- Published KA-01 v1.3 resource defaults are 2 corrections, 3 checkpoints, 240m RUN,
+  180m cumulative Runtime verification and null token cap (nonnull cap requires authenticated
+  complete usage). The existing v2 bounded-primary consent must not silently gain
+  interactive privileges without a fresh explicitly authenticated mode/consent bound
+  to a new RUN; historical and in-flight modes remain unchanged.
+- Canonical Runtime retains sole verifier/EVIDENCE, preterminal checkpoint contract
+  and one terminal, Reviewer independent semantic verdict and Publisher eligible-source
+  publication; Human separately owns Executor/model/effort delegation. This TASK authoring
+  is not delegation or dispatch.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/AIOS-LEAN-VP-INTELLIGENT-INTRA-PRIMARY.md
+  - docs/AIOS-LEAN-VP-L3-SAME-EXECUTOR-CONTINUATION.md
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - .ai/tasks/TASK-391.yaml
+  - .ai/tasks/TASK-397.yaml
+  - .ai/tasks/TASK-418.yaml
+  - .ai/tasks/TASK-423.yaml
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/codex_adapter.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/executor.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/run_observation.py
+  - src/aios_renew/verification.py
+  - tests/test_ka01_v13_activation.py
+  - tests/test_lean_vp_l3_same_executor_continuation.py
+  - tests/test_lean_vp_l3_admission_budget.py
+  - tests/test_lean_vp_l3_checkpoint_terminal_reuse.py
+  - tests/test_lean_vp_l3_factual_feedback.py
+  - tests/test_codex_adapter.py
+  - tests/test_operator.py
+  - tests/test_runtime.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - src/aios_renew/codex_adapter.py
+  - src/aios_renew/codex_live_transport.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/executor.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/run_observation.py
+  - tests/test_codex_adapter.py
+  - tests/test_ka01_v13_activation.py
+  - tests/test_lean_vp_l3_same_executor_continuation.py
+  - tests/test_lean_vp_l3_admission_budget.py
+  - tests/test_lean_vp_l3_checkpoint_terminal_reuse.py
+  - tests/test_ka01_v13_intra_run_native.py
+non_goals:
+- No reopening, revising or retrospectively passing failed TASK-418 / RUN-418-001..007;
+  no separate L3-06, G3/G6, L4, pilot, shadow/holdout, measurement, conformance or
+  future cutover TASK.
+- No second Executor, new RUN after FAIL, retry/failover agent, automatic provider/model
+  selection, new lifecycle router, duplicate Planner/Runtime/Reviewer/Publisher, database,
+  event broker or autonomous semantic correction controller.
+- No native feedback delivery success from fixture, stdout ACK, detached file, independent
+  'codex exec', saved thread id after session restart, new process, faked same-turn
+  semantics, or public wake receipt.
+- No production REPAIR/REMEDIATION opt-in or unconsented historical PRIMARY change;
+  no future auto-resume of an interrupted or terminal RUN. Legacy nonopted native
+  paths unchanged.
+- No change to frozen Kernel v0.1, Constitutional Human/Brain/Executor/Runtime authorities,
+  verification or review semantics; no direct downstream pin/adoption and no full
+  test suite or performance benchmark.
+- No publishing, independent semantic REVIEW PASS, measured saving, live production
+  uptake or automatic roadmap transition asserted by Executor's code/claims.
+constraints:
+  hard:
+  - Use ONE integrated TASK and one source-bound activation delta at the existing
+    ordinary `operator.run_task` caller. Prospective Human planning priority selects
+    this TASK-424 in the existing single-NEXT roadmap under allowed scope, preserving
+    historical TASK-418 failures, TASK-423 source and all unrelated ongoing lineage.
+    Do not create a separate native transport TASK and activation TASK.
+  - Keep previously published KA01-v1.3-bounded-primary-v1 and historical v1 preactivation
+    source/consent semantics unchanged. New interactive PRIMARY requires an explicitly
+    distinguishable, independently authenticated future per-RUN Human selection/consent
+    and one supported profile. An existing old v2 opt-in, GitHub issue receipt or
+    flag cannot retroactively grant in-RUN correction. Amend normative D.1-D.4 and
+    the roadmap prospectively within this delta; no L3-06/G3/G6/L4 gate.
+  - Only the original Runtime may conduct authoritative checkpoint verification before
+    terminal. Seal K_i and factual bounded F_i under original authenticated TASK/revision/RUN/base/current
+    candidate SHA, verification policy/toolchain, current Human consent, Executor/model/profile/lease
+    and immutable evidence. The Executor chooses implementation HOW from factual obligations,
+    not Runtime diagnostics acting as a semantic decision engine.
+  - The originally admitted ACTIVE RUN remains one RUN with exactly one Executor authority,
+    one model/effort/profile and one live native Codex process/transport/logical session
+    across its permitted turns. Before sending F_i and accepting C_(i+1), check actual
+    same still-live process/connection/thread, identity, causal progression and source.
+    No silent respawn, thread resume on replacement process, model switch, cross-session
+    migration or detached ACK accepted as continuity; a multi-turn same-thread session
+    is not identical to one uninterrupted model turn.
+  - Candidate C_i must be clean committed and within exact TASK modification scope,
+    descendant of authentic root and obey current-lease/source; C_(i+1) must be a
+    different, causally relevant clean commit within original TASK/constraints. Verification
+    FAIL is eligible for correction only if complete, stable, authentic, scoped and
+    bounded; unknown, malformed, unstable or incomplete test results STOP, not guessed
+    fix or false PASS.
+  - Default maximum 2 corrections and 3 checkpoints, RUN wall 240m, cumulative Runtime
+    verification 180m, null token cap unless cumulative authentic applicable usage
+    is available. Checkpoints and corrections are only counted after source-bound
+    protected Runtime effects. Stop on exhausted clock/budget, no-progress, unsupported
+    model/transport, loss of consent, lease, currentness, session identity, source,
+    invocation, thread, uncertain side effects or terminal contention. Interrupted
+    reservations never authorize retry/replay.
+  - Reuse existing VP-03 applicability and L3 K_i/F_i/scheduler/fence where lawful.
+    Do not duplicate valid canonical evidence or run final tests again when an applicable
+    complete final checkpoint suffices. If changed conditions invalidate proof, rerun
+    exactly outstanding authored obligations. One and only one normal RESULT/EVIDENCE
+    or FAILURE terminal for the original RUN; Reviewer and Publisher remain independent
+    after completion.
+  - Test both first-candidate PASS and C1 FAIL -> same live Codex session receives
+    F1 -> produces distinct C2 -> Runtime verification PASS -> one RESULT, as well
+    as failure after budget, stale/forged feedback, duplicate receipt, changed profile,
+    lost process/lease/source, crash, unknown/unstable verification and legacy nonopted
+    operation. The native live path must be exercised using actual installed Codex
+    self-host protocol, not only mock LocalAdapter or synthetic JSON. A missing/incompatible
+    live native channel must be reported as concrete unavailable/STOP; cannot claim
+    activation success or fake conformance.
+  - Keep source-bound execution support within current first-party Codex adapter/dispatcher/Runtime;
+    no general future retry coordinator. Code owners and reviewed TASK determine WHAT
+    vs HOW. Executor may do minimal local sanity but may not self-issue Runtime EVIDENCE/REVIEW/PUBLISH.
+  - 'Auth/provenance: treat app-server notifications and model outputs as untrusted;
+    use original first-party process transport with bounded message size, message-ID/type
+    checks, no external network listener or new privileged credential issuer, no raw
+    logs/secrets/path-bearing traceback to model, and explicit protection against
+    injected feedback, stale turn and transport replay. Stop if the installed app-server
+    surface cannot establish the required direct continuity.'
+acceptance:
+- id: AC1
+  condition: Prospective normative KA-01 v1.3 and single-NEXT roadmap consistently
+    authorize one distinguishable authenticated interactive PRIMARY configuration
+    within TASK-424, retain published v2 bounded-primary/legacy, the 2026-10-25 retirement
+    of future TASK-418/L3-06/G3/G6/L4 and immutable earlier TASK/RUN/REVIEW history,
+    with no extra activation or pilot stage.
+- id: AC2
+  condition: The ordinary native Codex adapter supports an original live, bounded,
+    multi-turn bidirectional session under one admitted RUN/lease/selected profile,
+    with authenticated session/process/thread continuity, source-correlated feedback
+    receipt and candidate return distinct from transport ACK or mocked LocalAdapter;
+    absent support produces explicit truthful STOP.
+- id: AC3
+  condition: Within that original RUN before any terminal result, the original Runtime
+    alone verifies an exact clean committed C1, seals K1 and creates fact-only bounded
+    F1 only for eligible complete stable scoped proof FAIL, without making an interim
+    FAILURE artifact or allowing Executor assertions to replace canonical verification.
+- id: AC4
+  condition: The identical originally selected live Codex session can consume F1 and
+    independently produce a distinct causally changed clean C2 in the original TASK
+    scope; Runtime rechecks original identity/lease/consent/source and checkpoint
+    lineage, verifies C2 and prevents new process/session or detached-file ACK from
+    satisfying same-Executor continuity.
+- id: AC5
+  condition: Bounded production resource accounting enforces 2 corrections, 3 checkpoints
+    and cumulative 240m RUN/180m verification defaults; evidence applicability and
+    original finalization allow one terminal RESULT when authoritative proof covers
+    all original AC obligations, or one terminal FAILURE/STOP when budgets/authority/proof
+    cannot support continuation, without duplicate final proof or implicit new RUN.
+- id: AC6
+  condition: The new mode is strictly new-RUN/per-RUN Human-consented and source-authenticated;
+    original KA01-v1.3 bounded-primary version 2, version-1 preactivation, nonopted
+    legacy PRIMARY and existing REPAIR/REMEDIATION remain unchanged or explicitly
+    unsupported as previously, with no silent route upgrade/fallback.
+- id: AC7
+  condition: Focused integration and negative tests cover the actual ordinary caller,
+    real native installed Codex session across C1->F1->C2 (not merely synthetic ACK),
+    first-pass success, stable/unstable/unknown failures, same-source no-progress,
+    forged/duplicate/stale recipient, lost lease/session/source, resource exhaustion,
+    crash ambiguity, terminal uniqueness and legacy behavior; native-unavailable is
+    a visible BLOCKER, never a falsely passing live test.
+- id: AC8
+  condition: Implementation provides one bounded truthful original-RUN observation
+    for source SHA, native session/turn correlation, actual checkpoints/corrections,
+    consumed verification budget, unavailable evidence and final status without asserting
+    Reviewer PASS, Publisher success, downstream adoption, cost savings or full three-operation
+    support; no future activation TASK or manual cutover required after publication.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_ka01_v13_intra_run_native.py tests/test_ka01_v13_activation.py
+  - python -m pytest -q tests/test_lean_vp_l3_same_executor_continuation.py tests/test_codex_adapter.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
