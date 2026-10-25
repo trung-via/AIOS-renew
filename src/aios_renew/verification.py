@@ -11,6 +11,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import sys
 import yaml
 import tempfile
 import time
@@ -2832,9 +2833,104 @@ def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=N
     return plan, task, manifests
 
 
+_KERNEL_OBSERVER_BOOTSTRAP = r'''
+"""Load the existing original observer under private helper imports.
+
+Candidate modules remain ordinary test subjects, including verification_contract.
+Only observation hooks use the authenticated original helper namespace.
+"""
+import builtins
+import importlib.util
+from pathlib import Path
+import sys
+import types
+
+_root = Path(__file__).parent
+_package = types.ModuleType("_aios_kernel_original")
+_package.__path__ = [str(_root / "src" / "aios_renew")]
+sys.modules[_package.__name__] = _package
+_import = builtins.__import__
+
+def _original_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if not level and name.startswith("aios_renew."):
+        name = "_aios_kernel_original." + name.split(".", 1)[1]
+    elif not level and name == "tests.git_fixture_support":
+        name = "_aios_kernel_original.git_fixture_support"
+    return _import(name, globals, locals, fromlist, level)
+
+def _load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    module.__dict__["__builtins__"] = dict(vars(builtins), __import__=_original_import)
+    sys.modules[name] = module
+    exec(compile(path.read_bytes(), str(path), "exec"), module.__dict__)
+    return module
+
+_load("_aios_kernel_original.git_fixture_support", _root / "tests" / "git_fixture_support.py")
+_load("bp_v4_probe_plugin", _root / "tests" / "bp_v4_probe_plugin.py")
+_hooks = _load("_aios_kernel_original.conftest", _root / "tests" / "conftest.py")
+for _name, _value in vars(_hooks).items():
+    if (_name.startswith("pytest_") or hasattr(_value, "_pytestfixturefunction")
+            or hasattr(_value, "_fixture_function_marker")):
+        globals()[_name] = _value
+'''
+
+
+def _kernel_original_proof_files(source):
+    """Re-read original objects, never candidate helpers or disk declarations."""
+    from .ka01_admission import _KernelUpgradeSource, _digest, _deny, KERNEL_PROOF_PATHS
+    if type(source) is not _KernelUpgradeSource:
+        _deny("KERNEL_UPGRADE_ORIGINAL_SOURCE_REQUIRED")
+    facts = json.loads(source.content)
+    reader = _ApplicabilityReader(source.control)
+    tree, _ = reader.commit(facts["source_main_sha"])
+    if tree != facts["source_tree_sha"]:
+        _deny("KERNEL_UPGRADE_ORIGINAL_SOURCE_CHANGED")
+    files = {path: reader.blob(tree, path) for path in KERNEL_PROOF_PATHS}
+    if {path: _digest(raw) for path, raw in files.items()} != facts["proof_source"]:
+        _deny("KERNEL_UPGRADE_ORIGINAL_OBSERVER_CHANGED")
+    return files
+
+
+def _kernel_proof_binding(source, admission_sha256):
+    from .ka01_admission import _digest
+    facts = json.loads(source.content)
+    return dict(source_main_sha=facts["source_main_sha"], source_tree_sha=facts["source_tree_sha"],
+        original_source_sha256=_digest(source.content), admission_sha256=admission_sha256,
+        observer_launcher_sha256=_digest(_KERNEL_OBSERVER_BOOTSTRAP.encode("utf-8")))
+
+
+@contextmanager
+def _kernel_observer_subject(subject, source):
+    """Instrumentation of the same verifier, original hooks in every worker.
+
+    Keep the candidate Git tree intact. Original config/conftest/observer and
+    private proof helpers live beside the subject, outside its import namespace.
+    The original Runtime authenticates these bytes before and after execution.
+    """
+    from .ka01_admission import _deny
+    files = _kernel_original_proof_files(source)
+    directory = subject.parent / "original-proof"
+    directory.mkdir()
+    files["_aios_kernel_observer.py"] = _KERNEL_OBSERVER_BOOTSTRAP.encode("utf-8")
+    for name, content in files.items():
+        target = directory / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    def authenticate():
+        if any(_original_local(directory / name, MAX_ORIGINAL_PROOF_BYTES) != content for name, content in files.items()):
+            _deny("KERNEL_UPGRADE_OBSERVER_SUBSTITUTED")
+        if _kernel_original_proof_files(source) != {k: v for k, v in files.items() if k != "_aios_kernel_observer.py"}:
+            _deny("KERNEL_UPGRADE_ORIGINAL_OBSERVER_CHANGED")
+    authenticate()
+    yield directory, authenticate
+    authenticate()
+
+
 def _execute_checkpoint_verification(repository: Path, *, request, task, manifests,
                                      raw_directory: Path, start_order: int, runner, timeout_seconds: float,
-                                     capture_bytes_remaining: int, commands=None, operation="PRIMARY", modification_scope=None):
+                                     capture_bytes_remaining: int, commands=None, operation="PRIMARY", modification_scope=None,
+                                     kernel_upgrade_source=None, original_proof=None):
     """The existing verifier executes only the exact already-authored commands.
 
     This is observation instrumentation, not V2 derivation: no early probes,
@@ -2845,8 +2941,19 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
     commands = task.verification.required if commands is None else commands
     modification_scope = task.scope.modify if modification_scope is None else modification_scope
     evidence = []
-    with materialize_verification_subject(repository, run_id=request.scheduler.target.run_id,
-            subject_sha=request.scheduler.subject_sha) as subject:
+    with ExitStack() as subjects:
+        subject = subjects.enter_context(materialize_verification_subject(repository,
+            run_id=request.scheduler.target.run_id, subject_sha=request.scheduler.subject_sha))
+        original = None
+        if kernel_upgrade_source is not None:
+            original = subjects.enter_context(_kernel_observer_subject(subject, kernel_upgrade_source))
+            from .verification_contract import validate_kernel_original_proof
+            validate_kernel_original_proof(original_proof)
+            if original_proof != _kernel_proof_binding(
+                    kernel_upgrade_source, original_proof.get("admission_sha256")):
+                raise VerificationContractError("KA01_V13_KERNEL_UPGRADE_PROOF_SOURCE_MISMATCH")
+        elif original_proof is not None:
+            raise VerificationContractError("KA01_V13_KERNEL_UPGRADE_ORIGINAL_SOURCE_REQUIRED")
         for index, command in enumerate(commands):
             _, manifest, _ = next(v for v in manifests.values() if v[1]["command_index"] == index)
             profile, toolchain = manifest["profile"], manifest["toolchain"]
@@ -2866,7 +2973,23 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                 command_env["PYTEST_PLUGINS"] = ",".join(filter(None, (env.get("PYTEST_PLUGINS", ""), "bp_v4_probe_plugin")))
                 command_env["AIOS_V2_EXACT_COLLECTION"] = "1"
             started = time.monotonic()
+            if original is not None:
+                original_directory, authenticate = original
+                authenticate()
+                command_env["PYTHONPATH"] = os.pathsep.join((str(original_directory), str(subject / "src"), str(subject / "tests")))
+                command_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+                command_env["PYTEST_PLUGINS"] = "xdist.plugin,_aios_kernel_observer"
+                tokens = shlex.split(command)
+                arguments = tokens[3:] if tokens[:3] == ["python", "-m", "pytest"] else tokens[1:]
+                # No candidate config or conftest may replace observation. Test
+                # imports still resolve to this exact candidate's src and tests.
+                arguments.extend(("-c", str(original_directory / "pyproject.toml"),
+                    "--rootdir", str(subject), "--noconftest", "-o", "pythonpath="))
+                launcher = ("import sys; sys.path[:0] = " + repr(command_env["PYTHONPATH"].split(os.pathsep))
+                    + "; import pytest; raise SystemExit(pytest.main(" + repr(arguments) + "))")
             def bounded_runner(argv, **kwargs):
+                if original is not None:
+                    argv = (sys.executable, "-I", "-c", launcher)
                 return runner(argv, timeout=max(0.001, timeout_seconds), **kwargs)
             item = execute_verification((command,), run_id=request.scheduler.target.run_id,
                 subject_sha=request.scheduler.subject_sha, repository=subject, raw_directory=raw_directory,
@@ -2881,6 +3004,9 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                 changed_files_digest=verification_digest(sorted(filter(None, _git(repository, "diff", "--name-only",
                     "--no-renames", "-z", request.scheduler.target.base_sha, item.subject_sha).split("\0")))),
                 failure_set_digest=verification_digest([]))
+            if original is not None:
+                authenticate()
+                binding["original_proof"] = dict(original_proof)
             observation = _v2_observation(item, output, binding=binding, selected=command == SELECTED_FULL_SUITE_COMMAND)
             raw = _original_local(Path(item.raw_path), MAX_ORIGINAL_RAW_BYTES)
             record = dict(policy=MINIMUM_SUFFICIENT_V2, disposition="EXECUTED", binding=binding, candidate=observation,

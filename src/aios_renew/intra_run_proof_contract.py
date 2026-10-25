@@ -1340,7 +1340,8 @@ def _parse_native_checkpoint(content: bytes, *, default):
         raise VerificationContractError("KA01_NATIVE_CHECKPOINT_NONCANONICAL")
     expected_format = "AIOS_KA01_NATIVE_OPERATION_CHECKPOINT" if default else "AIOS_KA01_NATIVE_PRIMARY_CHECKPOINT"
     if (data["format"] != expected_format or type(data["version"]) is not int
-            or data["version"] != 1 or type(data["ordinal"]) is not int or not 1 <= data["ordinal"] <= 256):
+            or data["version"] not in ((1, 2) if default else (1,))
+            or type(data["ordinal"]) is not int or not 1 <= data["ordinal"] <= 256):
         raise VerificationContractError("KA01_NATIVE_CHECKPOINT_FORMAT")
     if data["predecessor_digest"] is not None:
         _original_hash(data["predecessor_digest"])
@@ -1348,7 +1349,11 @@ def _parse_native_checkpoint(content: bytes, *, default):
         _original_hash(data[key])
     binding = _app_exact(data["binding"], ("task", "run_id", "base_sha", "candidate_sha", "tree_sha",
         "admitted_run_sha256", "authority_sha256", "execution_profile_sha256", "session", "turn",
-        "commands_sha256", "scope_sha256", *(("operation", "operation_source_sha256", "completion_policy_sha256") if default else ())))
+        "commands_sha256", "scope_sha256", *(("operation", "operation_source_sha256", "completion_policy_sha256") if default else ()),
+        *(("original_proof",) if data["version"] == 2 else ())))
+    if data["version"] == 2:
+        from .verification_contract import validate_kernel_original_proof
+        validate_kernel_original_proof(binding["original_proof"])
     if default:
         if binding["operation"] not in {"PRIMARY", "REPAIR", "REMEDIATION"}:
             raise VerificationContractError("KA01_NATIVE_CHECKPOINT_OPERATION")
@@ -1381,6 +1386,9 @@ def _parse_native_checkpoint(content: bytes, *, default):
         raise VerificationContractError("KA01_NATIVE_CHECKPOINT_POPULATION")
     for index, (item, proof) in enumerate(zip(data["evidence"], data["proofs"])):
         evidence = validate_evidence(item)
+        if data["version"] == 2 and (evidence.verification is None
+                or evidence.verification.get("binding", {}).get("original_proof") != binding["original_proof"]):
+            raise VerificationContractError("KA01_KERNEL_ORIGINAL_PROOF_MISMATCH")
         _app_exact(proof, ("command_index", "command_sha256", "evidence_sha256", "raw_sha256", "native_sha256",
             "collection", "profile_sha256", "toolchain_sha256", "outcome", "failed_identities"))
         if (proof["command_index"] != index or type(proof["command_index"]) is not int

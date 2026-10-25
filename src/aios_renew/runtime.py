@@ -228,6 +228,7 @@ class RuntimeCompletion:
         self._ka01_default_source = None
         self._ka01_default_operation_source = None
         self._ka01_stop_reason = None
+        self._kernel_upgrade_source = None
         self.repo = repo
         self.state = state
         self.task = task
@@ -362,24 +363,37 @@ class RuntimeCompletion:
             binding.update(operation=budget.operation,
                 operation_source_sha256=_digest(json.loads(budget.authority)["source"]),
                 completion_policy_sha256=_digest(_policy_data(policy)))
+            if self._kernel_upgrade_source is not None:
+                binding["original_proof"] = self._interactive_original_proof()
         return binding
 
     def _interactive_commands(self):
         budget = self._ka01_budget
         if not budget.default:
             return self.task.verification.required
-        commands = budget.policy.verification_commands
-        if self.task.verification.policy == MINIMUM_SUFFICIENT_V2 and budget.policy.remediation_execution is not None:
-            commands = tuple(dict.fromkeys((*commands, *(
-                c for c in self.task.verification.required
-                if (coverage := parse_pytest_coverage(c)) is not None and coverage.is_full_suite
-            ))))
-        return commands
+        from .ka01_admission import _default_commands
+        return _default_commands(self.task, budget.policy)
+
+    def _interactive_original_proof(self):
+        from .ka01_admission import _digest
+        from .verification import _kernel_proof_binding
+        return _kernel_proof_binding(self._kernel_upgrade_source, _digest(self._ka01_budget.admission))
+
+    def _interactive_profile(self, command, subject_sha):
+        from .verification import _v2_profile
+        from .ka01_admission import _digest
+        original = self._kernel_upgrade_source
+        if original is None:
+            return _v2_profile(self.repo, subject_sha, command, os.environ)
+        facts = json.loads(original.content)
+        profile = _v2_profile(self.transport_repo, facts["source_main_sha"], command, os.environ)
+        return dict(profile, isolation_policy="original-runtime-observer-candidate-imports-v1",
+            original_proof_source_sha256=_digest(original.content))
 
     def _preflight_interactive_policy(self):
         """Reject unsupported complete proof before the first native model turn."""
         from .verification import _checkpoint_pytest_coverage, _v2_profile, _v2_toolchain
-        from .ka01_admission import _deny, DEFAULT_IMPLEMENTATION_PATHS
+        from .ka01_admission import _deny, _protected_kernel_scope
         commands = self._interactive_commands()
         if not commands or len(commands) > 256 or len(set(commands)) != len(commands):
             _deny("EXACT_NATIVE_COMMAND_POPULATION_REQUIRED")
@@ -387,14 +401,19 @@ class RuntimeCompletion:
             coverage = _checkpoint_pytest_coverage(command)
             if coverage is None or coverage.is_full_suite or coverage.measurement:
                 _deny("NATIVE_COMPLETE_OBSERVER_UNSUPPORTED")
-            profile = _v2_profile(self.repo, self.run.base_sha, command, os.environ)
+            profile = self._interactive_profile(command, self.run.base_sha)
             if (profile["collect_only"] or not profile["observer_blob"]
                     or not all(profile["repository_tool_blobs"].values())):
                 _deny("NATIVE_COMPLETE_OBSERVER_UNAVAILABLE")
             mutation_scope = self._ka01_budget.policy.mutation_scope if self._ka01_budget.operation == "REPAIR" else self._ka01_budget.policy.result_scope
-            protected = {*DEFAULT_IMPLEMENTATION_PATHS, *profile["repository_tool_blobs"], "tests/bp_v4_probe_plugin.py"}
-            if protected.intersection(mutation_scope):
-                _deny("NATIVE_BOUND_PROOF_CONSUMER_MUTATION_UNSUPPORTED")
+            if _protected_kernel_scope(mutation_scope):
+                if self._kernel_upgrade_source is None or not self._ka01_budget.default:
+                    _deny("NATIVE_BOUND_PROOF_CONSUMER_MUTATION_UNSUPPORTED")
+                from .ka01_admission import _kernel_upgrade_authority
+                expected = _kernel_upgrade_authority(self, self._ka01_budget.operation,
+                    self._ka01_budget.policy, self._ka01_budget.profile)
+                if expected != json.loads(self._ka01_budget.authority).get("kernel_upgrade"):
+                    _deny("KERNEL_UPGRADE_ORIGINAL_SOURCE_CHANGED")
         _v2_toolchain()
 
     def _parse_interactive_checkpoint(self, raw):
@@ -430,9 +449,12 @@ class RuntimeCompletion:
             binding = record["binding"]
             if (binding.get("base_sha") != self.run.base_sha or binding.get("subject_sha") != subject_sha
                     or binding.get("tree_sha") != self._git("rev-parse", subject_sha + "^{tree}")
-                    or binding.get("profile") != _v2_profile(self.repo, subject_sha, command, os.environ)
+                    or binding.get("profile") != self._interactive_profile(command, subject_sha)
                     or binding.get("toolchain") != _v2_toolchain()):
                 _deny("NATIVE_CONDITIONS_CHANGED")
+            original = self._interactive_original_proof() if self._kernel_upgrade_source is not None else None
+            if binding.get("original_proof") != original:
+                _deny("KERNEL_UPGRADE_PROOF_SOURCE_MISMATCH")
             if self._ka01_budget.default:
                 scope = self._ka01_budget.policy.mutation_scope if self._ka01_budget.operation == "REPAIR" else self._ka01_budget.policy.result_scope
                 if binding.get("envelope_digest") != _digest(dict(authored=list(commands),
@@ -535,8 +557,8 @@ class RuntimeCompletion:
             coverage = _checkpoint_pytest_coverage(command)
             if coverage is None or coverage.is_full_suite or coverage.measurement:
                 _deny("NATIVE_COMPLETE_OBSERVER_UNSUPPORTED")
-            profile = _v2_profile(self.repo, binding["candidate_sha"], command, os.environ)
-            if (profile["collect_only"] or profile != _v2_profile(self.repo, self.run.base_sha, command, os.environ)):
+            profile = self._interactive_profile(command, binding["candidate_sha"])
+            if (profile["collect_only"] or profile != self._interactive_profile(command, self.run.base_sha)):
                 _deny("NATIVE_EXECUTED_PROOF_REQUIRED")
             manifests[str(index)] = (None, dict(command_index=index, profile=profile, toolchain=_v2_toolchain()), None)
         ordinal = len(self._interactive_checkpoints) + 1
@@ -562,7 +584,9 @@ class RuntimeCompletion:
                     capture_bytes_remaining=32 * 1024 * 1024,
                     **(dict(commands=commands, operation=self._ka01_budget.operation,
                         modification_scope=self._ka01_budget.policy.mutation_scope if self._ka01_budget.operation == "REPAIR"
-                            else self._ka01_budget.policy.result_scope) if self._ka01_budget.default else {}))
+                            else self._ka01_budget.policy.result_scope) if self._ka01_budget.default else {}),
+                    **(dict(kernel_upgrade_source=self._kernel_upgrade_source,
+                        original_proof=self._interactive_original_proof()) if self._kernel_upgrade_source is not None else {}))
             finally:
                 self.observation_tracker.end_verification(started, cumulative=True)
             self.interruption_phase = "COMPLETION_GATE"
@@ -571,7 +595,7 @@ class RuntimeCompletion:
                 profile=p["profile_sha256"], toolchain=p["toolchain_sha256"]) for p in proofs])
             failed = sorted({f for p in proofs for f in p["failed_identities"]})
             content = _checkpoint_json(dict(format="AIOS_KA01_NATIVE_OPERATION_CHECKPOINT" if self._ka01_budget.default
-                else "AIOS_KA01_NATIVE_PRIMARY_CHECKPOINT", version=1, ordinal=ordinal,
+                else "AIOS_KA01_NATIVE_PRIMARY_CHECKPOINT", version=2 if self._kernel_upgrade_source is not None else 1, ordinal=ordinal,
                 predecessor_digest=intent["predecessor_digest"], binding=binding, package_sha256=intent["package_sha256"],
                 population_identity=population, evidence=[evidence_data(e) for e in evidence], proofs=proofs, failed_identities=failed))
             record = self._parse_interactive_checkpoint(content)

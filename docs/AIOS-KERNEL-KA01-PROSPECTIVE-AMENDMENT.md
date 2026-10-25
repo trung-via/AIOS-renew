@@ -20,6 +20,7 @@
 | v1.3 activation amendment | `TASK-423`, revision `1`; ordinary Runtime verification, independent exact-source review and Publisher publication govern this same implementation delta, without a later activation TASK. |
 | Human native interaction priority | **2026-10-25, TASK-424 r1** — one integrated original-RUN verify/fix/verify delta, new explicit consent and same original live Codex session across distinct turns; no extra activation stage. |
 | Human default policy decision | **2026-10-25, TASK-425 r1** — bounded same-RUN Runtime verification/correction is the prospective default after independent PRIMARY, REPAIR or REMEDIATION admission, without another KA-01 selection/consent Issue or selector. |
+| Human Kernel upgrade priority | **2026-10-25, TASK-427 r1** — original-source upgrade admission under D.1.3; implementation in an external isolated attempt is not an admitted RUN or activation. |
 
 ## A. Identity, authority and legal effect
 
@@ -1089,6 +1090,73 @@ An alternative must authenticate an exact supported fresh selection/consent or a
 reviewed canonical future policy amendment within existing authority; flags,
 provider output and earlier Issue bodies cannot supply that exception. Existing
 v1/v2/v3 decoders and originally admitted policies never gain default-mode rights.
+
+#### D.1.3 Original-source Kernel/proof-consumer upgrades (TASK-427)
+
+**KA01-v1.3-original-source-kernel-upgrade-v1** extends the existing default
+three-operation implementation prospectively, after exact Runtime verification,
+independent Reviewed PASS and ordinary Publisher publication. No second verifier,
+Planner, lifecycle route, per-RUN KA01 consent or unrelated activation TASK is
+introduced. Historical v1/v2/v3 selection and consent retain their exact meaning;
+they are not a bootstrap exception. Unaffected default work retains D.1.2.
+
+The original TASK/family admission must authorize the exact protected mutation.
+Before writing a coding RUN, the existing operator authenticates executable
+bootstrap facts: original current main and upstream, exact TASK bytes/revision,
+execution base, operation, mutation scope and authored commands, the running
+first-party implementation, original observer and transitive proof helpers,
+config and installed toolchain. Every running control consumer must reside
+outside the Executor's mutable subject. Directory scope cannot evade protection.
+Missing, stale, malformed or conflicting original source, an older implementation,
+or a mutable running Runtime refuses admission with a typed
+`KA01_V13_KERNEL_UPGRADE_*` cause in the existing pre-RUN
+`CANONICAL_CONTRACT_ADMISSION` diagnostic, before RUN
+reservation, Executor invocation or false terminal FAILURE. A source digest,
+carrier receipt, flag or candidate file cannot grant upgrade authority.
+
+After original admission, the same Runtime binds these pre-candidate facts to
+the exact ACTIVE RUN, original family authority, selected Executor/model/effort,
+live lease and original finite budget. Reauthentication at existing dispatch,
+checkpoint, feedback and completion boundaries rejects source/main/toolchain
+movement, scope expansion, lease or profile loss, and candidate substitution.
+REPAIR still requires its own exact failed RUN/root/head and new Human-authorized
+action/scope; REMEDIATION still requires its exact reviewed finding and scope.
+
+The existing checkpoint verifier materializes the exact candidate commit, while
+loading the original config/conftest/observer and their original helper imports
+in a private namespace in the controller and every worker. The candidate is the
+test import subject, including candidate verification code; it supplies no
+observer or proof-validation authority. Original proof bytes are authenticated
+before and after execution. The candidate Git tree remains intact. Version-2
+default native checkpoints explicitly bind original main/tree, original source,
+Runtime admission (including lease identity) and observer launcher digests;
+original verification records carry the same binding alongside the actual
+candidate SHA/tree, operation and scope. Historical version-1 checkpoints keep
+their decoding. Wrong-source, forged, cross-RUN and self-attesting proof STOP.
+No source-to-candidate proof reuse is inferred.
+
+The original Runtime's complete stable native proof, same live Codex session,
+strict scoped progress, at most 2 corrections / 3 checkpoints / 240-minute RUN /
+180-minute cumulative verification and one terminal writer remain unchanged.
+The exact final checkpoint is consumed once, then the existing independent
+Review/Publisher boundary determines eligibility; no self-review, publication,
+provider replacement or unadmitted continuation follows from local tests.
+
+**Bootstrap limitation:** the installed pre-TASK-427 Runtime rejects protected
+scope unconditionally in `_preflight_interactive_policy` before Codex. A normal
+wake cannot implement this extension into existence. TASK-426 r1's
+RUN-426-001 FAILURE `5dc493b72ee4fd3a6e29f1e355c019536a7a1e34` and
+RUN-426-002 FAILURE `12fd23186d3dcf427e0f601ced698351a52daacd` remain immutable.
+Human selected one external TASK-427 implementation attempt at authoring SHA
+`9056d2db9d1ba75c10b78d26c193f9c5396ce160`. It has no admitted RUN, canonical
+EVIDENCE/RESULT/REVIEW or publication authority. This implementation cannot
+lawfully certify or install itself. Canonical adoption still requires a further
+explicitly authorized Runtime bootstrap providing authentic independent
+original-source verification and the ordinary review/publication boundary.
+No supported installed bootstrap for that first adoption is asserted here.
+Once eligible published code is lawfully installed, the existing task/repair/
+remediation calls use this capability directly; TASK-426 can resume only through
+its own new lawful REPAIR authorization, never through TASK-427 lineage.
 
 ### D.2 Historical allocation and measurement truth
 

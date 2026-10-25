@@ -107,6 +107,7 @@ from .review_transport import (
     _exact_remote_refs,
 )
 from .run import Run, RunLeaseRegistry, RunTaskReference
+from .verification_contract import VerificationContractError
 from .run_observation import (
     MonotonicClock,
     RunObservationTracker,
@@ -2228,6 +2229,12 @@ def _run_task_impl(
             task = load_task(root, task_id)
         _bind_admission_task(admission, task)
         base_sha = current_sha
+        kernel_upgrade_source = None
+        if ka01_admission is None:
+            _set_admission_boundary(admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED")
+            from .ka01_admission import _kernel_upgrade_source
+            kernel_upgrade_source = _kernel_upgrade_source(root, root, task=task, base_sha=base_sha,
+                operation="PRIMARY", scope=task.scope.modify, commands=task.verification.required, executor=executor)
         _set_admission_boundary(
             admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT"
         )
@@ -2285,6 +2292,7 @@ def _run_task_impl(
             verification_runner=verification_runner, observation_tracker=observation_tracker,
             error_type=OperatorError,
         )
+        runtime_completion._kernel_upgrade_source = kernel_upgrade_source
         runtime_completion.interruption_phase = "EXECUTION"
         attempt.bind_completion(runtime_completion)
         if ka01_admission is not None:
@@ -3804,6 +3812,19 @@ def _run_repair_impl(
             base_sha=failed_head, workspace=str(subject_repo),
         )
         run_path = state.runs / f"{run_id}.json"
+        completion_policy = repair_completion_policy(
+            task, root_base_sha=root_base_sha, result_base_sha=result_base_sha,
+            failed_head_sha=failed_head, action=action, modification_scope=scope,
+            lineage_path=state.repairs / f"{run_id}.json",
+            origin_affected_verification=origin_affected_verification,
+        )
+        kernel_upgrade_source = None
+        if reusable_package is None:
+            _set_admission_boundary(admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED")
+            from .ka01_admission import _kernel_upgrade_source, _default_commands
+            kernel_upgrade_source = _kernel_upgrade_source(repo, subject_repo, task=task, base_sha=failed_head,
+                operation="REPAIR", scope=scope, commands=_default_commands(task, completion_policy), executor=run_executor)
+        _set_admission_boundary(admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT")
         execution = {
             "failed_run_id": failed_run_id,
             "root_base_sha": root_base_sha,
@@ -3848,17 +3869,12 @@ def _run_repair_impl(
                 source_repair_policy=_SOURCE_REPAIR_POLICY.get(),
             )
 
-        completion_policy = repair_completion_policy(
-            task, root_base_sha=root_base_sha, result_base_sha=result_base_sha,
-            failed_head_sha=failed_head, action=action, modification_scope=scope,
-            lineage_path=state.repairs / f"{run_id}.json",
-            origin_affected_verification=origin_affected_verification,
-        )
         runtime_completion = RuntimeCompletion(
             repo=subject_repo, state=state, task=task, run=run, run_path=run_path,
             verification_runner=verification_runner, observation_tracker=observation_tracker,
             error_type=OperatorError, transport_repo=repo,
         )
+        runtime_completion._kernel_upgrade_source = kernel_upgrade_source
         attempt.bind_completion(runtime_completion)
         if reusable_package is None:
             leases = RunLeaseRegistry()
@@ -8789,6 +8805,15 @@ def _run_remediation_impl(
             run_document.update(format="AIOS_BATCH_REMEDIATION_RUN", version=1)
         if resolved.cumulative:
             run_document["execution_base"] = execution_base_record
+        completion_policy = remediation_completion_policy(execution)
+        if resolved.cumulative:
+            completion_policy = replace(completion_policy, result_base_sha=run.base_sha)
+        _set_admission_boundary(admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED")
+        from .ka01_admission import _kernel_upgrade_source, _default_commands
+        kernel_upgrade_source = _kernel_upgrade_source(root, subject_repo, task=task, base_sha=run.base_sha,
+            operation="REMEDIATION", scope=completion_policy.result_scope,
+            commands=_default_commands(task, completion_policy), executor=executor)
+        _set_admission_boundary(admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT")
         _write_json(run_path, run_document)
         if attempt is not None:
             attempt.bind_run(run_path)
@@ -8822,11 +8847,9 @@ def _run_remediation_impl(
             verification_runner=verification_runner, observation_tracker=observation_tracker,
             error_type=OperatorError, transport_repo=root,
         )
+        runtime_completion._kernel_upgrade_source = kernel_upgrade_source
         if attempt is not None:
             attempt.bind_completion(runtime_completion)
-        completion_policy = remediation_completion_policy(execution)
-        if resolved.cumulative:
-            completion_policy = replace(completion_policy, result_base_sha=run.base_sha)
         leases = RunLeaseRegistry()
         lease = leases.acquire(run)
         runtime_completion.interruption_phase = "EXECUTION"
@@ -9899,7 +9922,7 @@ def run_approved_remediation_intent(
                     monotonic_clock=monotonic_clock,
                 )
                 return CorrectionInvocation(0, summary.run_id)
-            except OperatorError as exc:
+            except (OperatorError, VerificationContractError) as exc:
                 print(f"AIOS ERROR: {exc}", file=sys.stderr)
                 return CorrectionInvocation(1)
 
@@ -10202,7 +10225,7 @@ def run_repair_wakeup(
                     monotonic_clock=monotonic_clock,
                 )
                 return RepairInvocation(0, summary.run_id)
-            except (OperatorError, RepairDispatchError) as exc:
+            except (OperatorError, RepairDispatchError, VerificationContractError) as exc:
                 print(f"AIOS ERROR: {exc}", file=sys.stderr)
                 return RepairInvocation(1)
 
@@ -10787,7 +10810,7 @@ def main(
                         ),
                     )
                     return DispatchInvocation(0, summary.run_id)
-                except OperatorError as exc:
+                except (OperatorError, VerificationContractError) as exc:
                     print(f"AIOS ERROR: {exc}", file=sys.stderr)
                     return DispatchInvocation(1)
 
@@ -11009,7 +11032,7 @@ def main(
                                 monotonic_clock=monotonic_clock,
                             )
                             return CorrectionInvocation(0, summary.run_id)
-                        except OperatorError as exc:
+                        except (OperatorError, VerificationContractError) as exc:
                             print(f"AIOS ERROR: {exc}", file=sys.stderr)
                             return CorrectionInvocation(1)
 
@@ -11216,6 +11239,7 @@ def main(
         _CorrectionDispatchError,
         _RepairDispatchError,
         ExecutionProfileError,
+        VerificationContractError,
     ) as exc:
         print(f"AIOS ERROR: {exc}", file=sys.stderr)
         return 1

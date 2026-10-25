@@ -34,13 +34,15 @@ INTERACTIVE_IMPLEMENTATION = "KA01-v1.3-interactive-primary-v1"
 INTERACTIVE_MODE = "PRODUCTION_INTERACTIVE_PRIMARY"
 DEFAULT_IMPLEMENTATION = "KA01-v1.3-default-three-flow-v1"
 DEFAULT_MODE = "PRODUCTION_DEFAULT_THREE_FLOW"
+KERNEL_UPGRADE_IMPLEMENTATION = "KA01-v1.3-original-source-kernel-upgrade-v1"
 VERSION = "1.3"
 PROFILE = "KA01-v1.3-default-resource-profile"
 NORMATIVE_PATH = "docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md"
 HISTORICAL_NORMATIVE_SHA256 = "1381a4ef25a1b6877b8e6326767e8545eff17cdc49dfd6062090e630c8a5e84e"
 # Historical requests keep their original normative pin. A fresh explicit
 # exception may select current normative bytes without changing its old mode.
-DEFAULT_NORMATIVE_SHA256 = "52b7f7af908315608ab504e46fdcdcc6e671f157aab2d6a51104c7f83902ed27"
+PRE_UPGRADE_NORMATIVE_SHA256 = "52b7f7af908315608ab504e46fdcdcc6e671f157aab2d6a51104c7f83902ed27"
+DEFAULT_NORMATIVE_SHA256 = "72831e82cd58abb388d35e4efb3f28412e4b293f36604c7f18ed1b1164b9808d"
 NORMATIVE_SHA256 = DEFAULT_NORMATIVE_SHA256
 IMPLEMENTATION_PATHS = (
     "src/aios_renew/ka01_admission.py", "src/aios_renew/operator.py",
@@ -53,6 +55,15 @@ INTERACTIVE_IMPLEMENTATION_PATHS = (*IMPLEMENTATION_PATHS,
     "src/aios_renew/codex_live_transport.py", "src/aios_renew/run_observation.py")
 DEFAULT_IMPLEMENTATION_PATHS = (*INTERACTIVE_IMPLEMENTATION_PATHS,
     "src/aios_renew/antigravity_adapter.py", "src/aios_renew/antigravity_minimax_adapter.py")
+# These are the existing observer and its transitive first-party dependencies,
+# not a new verification owner. Their original bytes supply upgrade observation.
+KERNEL_PROOF_PATHS = (
+    "pyproject.toml", "tests/conftest.py", "tests/bp_v4_probe_plugin.py",
+    "tests/git_fixture_support.py", "src/aios_renew/verification_contract.py",
+    "src/aios_renew/proof_coverage_contract.py", "src/aios_renew/parallel_verification.py",
+)
+KERNEL_IMPLEMENTATION_PATHS = tuple(dict.fromkeys((*DEFAULT_IMPLEMENTATION_PATHS,
+    *(path for path in KERNEL_PROOF_PATHS if path.startswith("src/aios_renew/")))))
 OPERATIONS = frozenset({"PRIMARY", "REPAIR", "REMEDIATION"})
 DEFAULTS = dict(max_corrections=2, max_checkpoints=3, max_run_wall_minutes=240,
                 max_runtime_verification_minutes=180, max_tokens=None)
@@ -181,12 +192,12 @@ def production_gate(request, *, operation="PRIMARY"):
         _deny("PRODUCTION_OPERATION_UNSUPPORTED")
 
 
-def _production_source(owner, reader, tree, *, interactive=False, default=False):
+def _production_source(owner, reader, tree, *, interactive=False, default=False, kernel=False):
     """Bind the running first-party consumers to the exact selected main source."""
     import sys
     from .verification import _original_local, MAX_ORIGINAL_PROOF_BYTES
     blobs = {}
-    paths = DEFAULT_IMPLEMENTATION_PATHS if default else INTERACTIVE_IMPLEMENTATION_PATHS if interactive else IMPLEMENTATION_PATHS
+    paths = KERNEL_IMPLEMENTATION_PATHS if kernel else DEFAULT_IMPLEMENTATION_PATHS if default else INTERACTIVE_IMPLEMENTATION_PATHS if interactive else IMPLEMENTATION_PATHS
     for path in paths:
         module = sys.modules.get("aios_renew." + Path(path).stem)
         if module is None or not getattr(module, "__file__", None):
@@ -205,6 +216,130 @@ def _policy_data(policy):
     if data["lineage_path"] is not None:
         data["lineage_path"] = str(data["lineage_path"])
     return data
+
+
+def _protected_kernel_scope(scope):
+    """A directory grant cannot evade the protected-consumer boundary."""
+    return sorted(path for path in {*DEFAULT_IMPLEMENTATION_PATHS, *KERNEL_PROOF_PATHS}
+        if any(path == grant or path.startswith(grant.rstrip("/") + "/") for grant in scope))
+
+
+@dataclass(frozen=True)
+class _KernelUpgradeSource:
+    """Original process's pre-RUN facts; never decoded from a carrier or file."""
+    control: Path
+    subject: Path
+    content: bytes
+
+
+def _kernel_upgrade_source(control, subject, *, task, base_sha, operation, scope, commands, executor):
+    """Authenticate executability before reserving a protected coding RUN.
+
+    Original family admission is still required by the caller and rechecked by
+    _ka01_operation_source. A TASK, flag, hash or transport receipt cannot select
+    an old Runtime out of its unconditional guard. The installed original must
+    already implement this published source and remain outside the mutation tree.
+    """
+    import sys
+    from .task import parse_task
+    from .verification import _ApplicabilityReader, _original_remote, _app_refs, _v2_profile, _v2_toolchain
+    if not _protected_kernel_scope(scope):
+        return None
+    if operation not in OPERATIONS or executor != "codex" or not set(scope).issubset(task.scope.modify):
+        _deny("KERNEL_UPGRADE_OPERATION_OR_SCOPE_UNAUTHORIZED")
+    control, subject = control.absolute(), subject.absolute()
+    try:
+        url = _original_remote(control)
+        refs = dict(_app_refs(control, url, ("refs/heads/main",)))
+        if set(refs) != {"refs/heads/main"} or operation == "PRIMARY" and refs["refs/heads/main"] != base_sha:
+            _deny("KERNEL_UPGRADE_ORIGINAL_MAIN_MOVED")
+        main = refs["refs/heads/main"]
+        reader = _ApplicabilityReader(control)
+        tree, _ = reader.commit(main)
+        if _digest(reader.blob(tree, NORMATIVE_PATH)) != DEFAULT_NORMATIVE_SHA256:
+            _deny("KERNEL_UPGRADE_BOOTSTRAP_REQUIRED")
+        # Read the exact original TASK, including for historical corrections.
+        subject_reader = _ApplicabilityReader(subject)
+        base_tree, _ = subject_reader.commit(base_sha)
+        task_raw = subject_reader.blob(base_tree, ".ai/tasks/" + task.task_id + ".yaml")
+        if parse_task(task_raw.decode("utf-8")) != task:
+            _deny("KERNEL_UPGRADE_ORIGINAL_TASK_MISMATCH")
+        for path in KERNEL_IMPLEMENTATION_PATHS:
+            module = sys.modules.get("aios_renew." + Path(path).stem)
+            if module is None or not getattr(module, "__file__", None):
+                _deny("KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE")
+            if Path(module.__file__).resolve().is_relative_to(subject.resolve()):
+                _deny("KERNEL_UPGRADE_RUNTIME_SOURCE_IS_MUTABLE")
+            spec = getattr(module, "__spec__", None)
+            if spec is None or not spec.origin or Path(spec.origin).absolute() != Path(module.__file__).absolute():
+                _deny("KERNEL_UPGRADE_RUNNING_MODULE_SUBSTITUTED")
+        try:
+            implementation = _production_source(None, reader, tree, kernel=True)
+        except VerificationContractError:
+            _deny("KERNEL_UPGRADE_RUNNING_IMPLEMENTATION_SOURCE_MISMATCH")
+        try:
+            proof = {path: _digest(reader.blob(tree, path)) for path in KERNEL_PROOF_PATHS}
+        except VerificationContractError:
+            _deny("KERNEL_UPGRADE_ORIGINAL_OBSERVER_UNAVAILABLE")
+        if not commands or len(commands) > 256 or len(set(commands)) != len(commands):
+            _deny("EXACT_NATIVE_COMMAND_POPULATION_REQUIRED")
+        from .verification import _checkpoint_pytest_coverage
+        for command in commands:
+            coverage = _checkpoint_pytest_coverage(command)
+            if coverage is None or coverage.is_full_suite or coverage.measurement:
+                _deny("KERNEL_UPGRADE_COMPLETE_OBSERVER_UNSUPPORTED")
+            try:
+                profile = _v2_profile(control, main, command, os.environ)
+            except (RuntimeError, ValueError, TypeError):
+                _deny("KERNEL_UPGRADE_ORIGINAL_OBSERVER_UNAVAILABLE")
+            if profile["collect_only"] or not profile["observer_blob"] or not all(profile["repository_tool_blobs"].values()):
+                _deny("KERNEL_UPGRADE_ORIGINAL_OBSERVER_UNAVAILABLE")
+        try:
+            toolchain = _v2_toolchain()
+        except RuntimeError:
+            _deny("KERNEL_UPGRADE_TOOLCHAIN_UNAVAILABLE")
+        if dict(_app_refs(control, url, ("refs/heads/main",))) != refs:
+            _deny("KERNEL_UPGRADE_SOURCE_MOVED_DURING_PREFLIGHT")
+        return _KernelUpgradeSource(control, subject, _bytes(dict(
+            implementation=KERNEL_UPGRADE_IMPLEMENTATION, source_main_sha=main, source_tree_sha=tree,
+            remote_url=url, implementation_source=implementation, proof_source=proof,
+            task_sha256=_digest(asdict(task)), task_blob_sha256=_digest(task_raw), base_sha=base_sha,
+            operation=operation, executor=executor, modification_scope=sorted(scope),
+            commands=list(commands), toolchain=toolchain)))
+    except VerificationContractError as exc:
+        if str(exc).startswith("KA01_V13_KERNEL_UPGRADE_"):
+            raise
+        _deny("KERNEL_UPGRADE_BOOTSTRAP_SOURCE_UNAVAILABLE")
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+        _deny("KERNEL_UPGRADE_BOOTSTRAP_SOURCE_UNAVAILABLE")
+
+
+def _kernel_upgrade_authority(owner, operation, policy, profile):
+    scope = policy.mutation_scope if operation == "REPAIR" else policy.result_scope
+    original = owner._kernel_upgrade_source
+    if not _protected_kernel_scope(scope):
+        if original is not None:
+            _deny("KERNEL_UPGRADE_CONFLICTING_ADMISSION")
+        return None
+    if type(original) is not _KernelUpgradeSource:
+        _deny("KERNEL_UPGRADE_BOOTSTRAP_REQUIRED")
+    current = _kernel_upgrade_source(owner.transport_repo, owner.repo, task=owner.task,
+        base_sha=owner.run.base_sha, operation=operation, scope=scope,
+        commands=_default_commands(owner.task, policy), executor=owner.run.executor)
+    if original != current:
+        _deny("KERNEL_UPGRADE_ORIGINAL_SOURCE_CHANGED")
+    facts = json.loads(original.content)
+    return dict(facts, run_id=owner.run.run_id, execution_profile_sha256=_digest(profile.as_dict()))
+
+
+def _default_commands(task, policy):
+    from .verification_contract import MINIMUM_SUFFICIENT_V2, parse_pytest_coverage
+    commands = policy.verification_commands
+    if task.verification.policy == MINIMUM_SUFFICIENT_V2 and policy.remediation_execution is not None:
+        commands = tuple(dict.fromkeys((*commands, *(
+            c for c in task.verification.required
+            if (coverage := parse_pytest_coverage(c)) is not None and coverage.is_full_suite))))
+    return commands
 
 
 def _default_authority(owner, operation, profile, policy):
@@ -259,6 +394,7 @@ def _default_authority(owner, operation, profile, policy):
         _deny("DEFAULT_VERIFICATION_POLICY_UNSUPPORTED")
     if dict(_app_refs(control, url, ("refs/heads/main",))) != refs:
         _deny("SOURCE_MOVED_DURING_ADMISSION")
+    upgrade = _kernel_upgrade_authority(owner, operation, policy, profile)
     return dict(implementation=DEFAULT_IMPLEMENTATION, ka01_version=VERSION, profile=PROFILE,
         policy=owner.task.verification.policy,
         normative=dict(source_sha=main, path=NORMATIVE_PATH, sha256=DEFAULT_NORMATIVE_SHA256),
@@ -269,7 +405,8 @@ def _default_authority(owner, operation, profile, policy):
         implementation_main_sha=main, implementation_source=implementation_source,
         production_activation="DEFAULT_ENROLLED_NATIVE_CAPABILITY_REQUIRED",
         continuation="SAME_ORIGINAL_LIVE_SESSION_ONLY",
-        native_feedback_delivery="REQUIRES_ORIGINAL_NATIVE_COMPLETED_TURN")
+        native_feedback_delivery="REQUIRES_ORIGINAL_NATIVE_COMPLETED_TURN",
+        **(dict(kernel_upgrade=upgrade) if upgrade is not None else {}))
 
 
 def _authority(owner, request, operation, profile, policy):
@@ -381,7 +518,7 @@ def _authority(owner, request, operation, profile, policy):
             _deny("EXPLICIT_OPERATION_REQUIRED")
     operations(selection["operations"])
     normative = _exact(selection["normative"], ("source_sha", "path", "sha256"))
-    if normative["path"] != NORMATIVE_PATH or normative["sha256"] not in {HISTORICAL_NORMATIVE_SHA256, NORMATIVE_SHA256}:
+    if normative["path"] != NORMATIVE_PATH or normative["sha256"] not in {HISTORICAL_NORMATIVE_SHA256, PRE_UPGRADE_NORMATIVE_SHA256, NORMATIVE_SHA256}:
         _deny("EXACT_PUBLISHED_NORM_REQUIRED")
     source_tree = reader.anchors(main, {normative["source_sha"]})[normative["source_sha"]]
     norm = reader.blob(source_tree, NORMATIVE_PATH)
@@ -729,6 +866,10 @@ class _AdmissionBudget:
             configuration=DEFAULT_MODE if self.default else INTERACTIVE_MODE if self.interactive else PRODUCTION_MODE,
             operation=self.operation, run_id=self.owner.run.run_id,
             source_main_sha=authority.get("implementation_main_sha"),
+            **(dict(kernel_upgrade=dict(implementation=KERNEL_UPGRADE_IMPLEMENTATION,
+                source_main_sha=authority["kernel_upgrade"]["source_main_sha"],
+                original_source_sha256=_digest(self.owner._kernel_upgrade_source.content)))
+                if "kernel_upgrade" in authority else {}),
             selection_sha256=getattr(self.request, "selection_sha256", None),
             consent_sha256=getattr(self.request, "consent_sha256", None),
             **(dict(global_policy_sha256=_digest(authority["global_policy"]),

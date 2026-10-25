@@ -54,6 +54,18 @@ class VerificationContractError(ValueError):
     """Raised when verification declarations or canonical material are invalid."""
 
 
+def validate_kernel_original_proof(value):
+    """V2 native checkpoint source binding; shape alone grants no authority."""
+    _app_exact(value, ("source_main_sha", "source_tree_sha", "original_source_sha256",
+        "admission_sha256", "observer_launcher_sha256"))
+    for key in ("source_main_sha", "source_tree_sha"):
+        if type(value[key]) is not str or re.fullmatch(r"[0-9a-f]{40}", value[key]) is None:
+            raise VerificationContractError("KA01_KERNEL_ORIGINAL_PROOF_SOURCE")
+    for key in ("original_source_sha256", "admission_sha256", "observer_launcher_sha256"):
+        _original_hash(value[key])
+    return value
+
+
 @dataclass(frozen=True)
 class PytestCoverage:
     """Coverage proven from one command in the supported pytest grammar."""
@@ -951,6 +963,13 @@ def validate_evidence_binding(binding: object) -> dict:
             raise VerificationContractError("missing bound verification conditions")
     if not isinstance(binding.get("command"), str) or not binding["command"]:
         raise VerificationContractError("missing exact verification command")
+    profile = binding["profile"]
+    if ("original_proof" in binding or "original_proof_source_sha256" in profile
+            or profile.get("isolation_policy") == "original-runtime-observer-candidate-imports-v1"):
+        original = validate_kernel_original_proof(binding.get("original_proof"))
+        if (profile.get("isolation_policy") != "original-runtime-observer-candidate-imports-v1"
+                or profile.get("original_proof_source_sha256") != original["original_source_sha256"]):
+            raise VerificationContractError("KA01_KERNEL_VERIFICATION_SOURCE_BINDING_MISMATCH")
     verification_digest(binding)
     return binding
 

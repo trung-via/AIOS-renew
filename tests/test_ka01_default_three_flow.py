@@ -42,9 +42,10 @@ def with_original_guard(source):
 
 class ThreeFlowFixture(ProductionFixture):
     def __init__(self, root, monkeypatch, *, operation="PRIMARY", action="CODE_FIX", first_fail=True,
-                 historical=False, policy="minimum-sufficient-v1", reusable=False, proof_source=PROOF, omit_files=()):
+                 historical=False, policy="minimum-sufficient-v1", reusable=False, proof_source=PROOF, omit_files=(),
+                 task_transform=with_original_guard):
         super().__init__(root, monkeypatch, interactive=True, default=True, first_fail=first_fail,
-            policy=policy, proof_source=proof_source, task_transform=with_original_guard,
+            policy=policy, proof_source=proof_source, task_transform=task_transform,
             omit_files=omit_files,
             extra_files={"tests/test_unrelated.py": "def test_unrelated():\n    assert True\n",
                 # Historical ordinary verification may write Python/pytest
@@ -239,6 +240,11 @@ def assert_original_completion(f, summary, *, corrected=True):
         assert record.data["binding"]["operation_source_sha256"] == summary.ka01["operation_source_sha256"]
         with pytest.raises(VerificationContractError):
             parse_native_primary_checkpoint(record.content_json.encode("ascii"))
+        from aios_renew.artifacts import ArtifactValidationError, validate_evidence
+        malformed = record.data["evidence"][0]
+        malformed["verification"]["binding"]["original_proof"] = {}
+        with pytest.raises(ArtifactValidationError):
+            validate_evidence(malformed)
     expected_commands = (COMMAND,) if f.operation == "REMEDIATION" else (COMMAND, GUARD)
     assert len(f.verification_calls) == len(records) * len(expected_commands)
     package = json.loads(summary.result_path.read_bytes())
@@ -519,6 +525,282 @@ def test_default_duplicate_receipt_stops_before_another_checkpoint(tmp_path, mon
         f.execute()
     assert sessions[0].calls == 2 and len(f.owner._interactive_checkpoints) == 1
     assert f.owner._ka01_budget.corrections_spent == 1
+
+
+# TASK-427: synthetic family/native fixtures exercise real isolated Git and the
+# original verifier/observer. These local cases are never canonical AIOS proof.
+KERNEL_SCOPE = ("src/aios_renew/runtime.py", "src/aios_renew/operator.py",
+    "src/aios_renew/ka01_admission.py", "src/aios_renew/verification_contract.py")
+KERNEL_PROOF = ("from pathlib import Path\n"
+    "import aios_renew.verification_contract as candidate\n"
+    "def test_output():\n"
+    "    assert Path(candidate.__file__).resolve().is_relative_to(Path.cwd())\n"
+    "    if Path('OUTPUT.txt').read_text() == 'reviewed\\n':\n        return\n"
+    "    assert candidate.TASK427_CANDIDATE is True\n"
+    "    assert Path('OUTPUT.txt').read_text() == 'complete\\n'\n")
+
+
+class KernelUpgradeFixture(ThreeFlowFixture):
+    def __init__(self, root, monkeypatch, *, operation="PRIMARY", parallel=False, first_fail=True):
+        def contract(source):
+            data = yaml.safe_load(with_original_guard(source))
+            data["scope"]["modify"].extend(KERNEL_SCOPE)
+            data["constraints"]["hard"] = [c for c in data["constraints"]["hard"] if "Do not alter" not in c]
+            if parallel:
+                data["verification"]["required"][0] = COMMAND.replace("-n 0 --dist no", "-n 2 --dist load")
+            return yaml.safe_dump(data, sort_keys=False)
+        # The exact reviewed value alone may seed the historical predecessor;
+        # every upgrade candidate must exercise the changed candidate module.
+        super().__init__(root, monkeypatch, operation=operation, first_fail=first_fail,
+            task_transform=contract, proof_source=KERNEL_PROOF)
+
+    def author(self, ref, files):
+        for name, raw in tuple(files.items()):
+            if name.endswith("repair.json"):
+                data = json.loads(raw)
+                data["modification_scope"].extend(KERNEL_SCOPE)
+                files[name] = json.dumps(data)
+            elif name.startswith(".ai/remediations/"):
+                data = yaml.safe_load(raw)
+                data["modification_scope"].extend(KERNEL_SCOPE)
+                files[name] = yaml.safe_dump(data)
+        return super().author(ref, files)
+
+
+class KernelUpgradeSession(OperationFixtureSession):
+    def turn(self, **kwargs):
+        turn = super().turn(**kwargs)
+        if self.calls == 1:
+            for name in KERNEL_SCOPE:
+                path = self.f.repo / name
+                suffix = "\nTASK427_CANDIDATE = True\n"
+                if name.endswith("verification_contract.py"):
+                    # If the candidate supplies observer helpers, even a passing
+                    # test cannot finish observation. The original must be used.
+                    suffix += "def pytest_collection_identity(*args, **kwargs):\n    raise RuntimeError('candidate proof consumer substituted')\n"
+                path.write_text(path.read_text(encoding="utf-8") + suffix, encoding="utf-8")
+            head = commit_fixture_state(self.f.repo, paths=KERNEL_SCOPE, message="fixture protected Kernel upgrade",
+                user_name="Kernel upgrade fixture", user_email="kernel@example.invalid")
+            data = turn.output
+            data["package"]["result"].update(head_sha=head,
+                changed_files=[] if self.f.operation == "REPAIR" else ["OUTPUT.txt", *KERNEL_SCOPE])
+            turn = replace(turn, output_json=ka01._bytes(data))
+            self.last_turn = turn
+        elif self.f.operation != "REPAIR":
+            data = turn.output
+            data["package"]["result"]["changed_files"] = ["OUTPUT.txt", *KERNEL_SCOPE]
+            turn = replace(turn, output_json=ka01._bytes(data))
+            self.last_turn = turn
+        return turn
+
+
+def kernel_session(f, monkeypatch):
+    sessions = []
+    def construct(**kwargs):
+        session = KernelUpgradeSession(f, **kwargs)
+        session.output_schemas = []
+        sessions.append(session)
+        return session
+    monkeypatch.setattr(codex_adapter, "CodexLiveTransport", construct)
+    return sessions
+
+
+@pytest.mark.parametrize("operation,parallel", [("PRIMARY", False), ("PRIMARY", True),
+    ("REPAIR", False), ("REMEDIATION", False)])
+def test_kernel_upgrade_original_runtime_verifies_protected_candidate_and_returns_standard_terminal(
+        tmp_path, monkeypatch, operation, parallel):
+    f = KernelUpgradeFixture(tmp_path / "kernel", monkeypatch, operation=operation, parallel=parallel)
+    sessions = kernel_session(f, monkeypatch)
+    summary = f.execute()
+    budget = f.owner._ka01_budget
+    records = checkpoints(f)
+    assert len(sessions) == 1 and sessions[0].calls == 2 and sessions[0].closed
+    assert budget.default and budget.native_calls == 1 and budget.pending is None
+    assert summary.ka01["effective_limits"] == ka01.DEFAULTS
+    assert summary.ka01["checkpoints_spent"] == 2 and summary.ka01["corrections_spent"] == 1
+    assert summary.ka01["review"] == summary.ka01["publication"] == "NOT_OBSERVED"
+    authority = json.loads(budget.authority)["kernel_upgrade"]
+    assert authority["implementation"] == ka01.KERNEL_UPGRADE_IMPLEMENTATION
+    assert authority["source_main_sha"] == f.base and authority["run_id"] == summary.run_id
+    assert authority["execution_profile_sha256"] == ka01._digest(budget.profile.as_dict())
+    assert set(authority["implementation_source"]) == set(ka01.KERNEL_IMPLEMENTATION_PATHS)
+    assert set(authority["proof_source"]) == set(ka01.KERNEL_PROOF_PATHS)
+    for record in records:
+        assert record.data["version"] == 2
+        original = record.data["binding"]["original_proof"]
+        assert original["source_main_sha"] == f.base and original["admission_sha256"] == ka01._digest(budget.admission)
+        for evidence in record.data["evidence"]:
+            binding = evidence["verification"]["binding"]
+            assert binding["original_proof"] == original
+            assert binding["profile"]["isolation_policy"] == "original-runtime-observer-candidate-imports-v1"
+            assert binding["profile"]["repository_tool_blobs"]["src/aios_renew/verification_contract.py"] == git(
+                f.repo, "rev-parse", f.base + ":src/aios_renew/verification_contract.py")
+        forged = record.data
+        forged["binding"]["original_proof"]["source_main_sha"] = "0" * 40
+        with pytest.raises(VerificationContractError, match="ORIGINAL_PROOF_MISMATCH"):
+            parse_native_operation_checkpoint(ka01._bytes(forged))
+        with pytest.raises(VerificationContractError):
+            parse_native_primary_checkpoint(record.content_json.encode("ascii"))
+    assert records[0].data["failed_identities"] and not records[1].data["failed_identities"]
+    assert len(f.verification_calls) == 2 * f.commands_per_checkpoint
+    result = json.loads(summary.result_path.read_bytes())
+    assert set(result["result"]["changed_files"]) == {"OUTPUT.txt", *KERNEL_SCOPE}
+    assert {e["subject_sha"] for e in result["evidence"]} == {summary.head_sha}
+    assert git(f.remote, "rev-parse", "refs/heads/aios/review/" + summary.run_id) == summary.head_sha
+    assert git(f.remote, "rev-parse", "refs/heads/main") == f.base
+    assert not (f.state.failures / (summary.run_id + ".json")).exists()
+
+
+@pytest.mark.parametrize("defect,code", [
+    ("old-norm", "KERNEL_UPGRADE_BOOTSTRAP_REQUIRED"),
+    ("wrong-source", "KERNEL_UPGRADE_RUNNING_IMPLEMENTATION_SOURCE_MISMATCH"),
+    ("mutable-runtime", "KERNEL_UPGRADE_RUNTIME_SOURCE_IS_MUTABLE"),
+    ("missing-observer", "KERNEL_UPGRADE_ORIGINAL_OBSERVER_UNAVAILABLE"),
+    ("missing-toolchain", "KERNEL_UPGRADE_TOOLCHAIN_UNAVAILABLE"),
+    ("substituted-helper", "KERNEL_UPGRADE_RUNNING_MODULE_SUBSTITUTED"),
+])
+def test_kernel_upgrade_bootstrap_refuses_before_run_or_executor(tmp_path, monkeypatch, defect, code):
+    from aios_renew import runtime as runtime_module
+    f = KernelUpgradeFixture(tmp_path / "rejected", monkeypatch)
+    sessions = kernel_session(f, monkeypatch)
+    if defect == "mutable-runtime":
+        monkeypatch.setattr(runtime_module, "__file__", str(f.repo / "src/aios_renew/runtime.py"))
+    elif defect == "substituted-helper":
+        from aios_renew import parallel_verification
+        substituted = tmp_path / "parallel_verification.py"
+        substituted.write_bytes(Path(parallel_verification.__file__).read_bytes())
+        monkeypatch.setattr(parallel_verification, "__file__", str(substituted))
+    elif defect == "missing-toolchain":
+        from aios_renew import verification
+        def unavailable():
+            raise verification.ProbeError("fixture missing original toolchain")
+        monkeypatch.setattr(verification, "_v2_toolchain", unavailable)
+    else:
+        path = ka01.NORMATIVE_PATH if defect == "old-norm" else "src/aios_renew/runtime.py" if defect == "wrong-source" else "tests/bp_v4_probe_plugin.py"
+        if defect == "missing-observer":
+            git(f.repo, "rm", path)
+        else:
+            (f.repo / path).write_text("# unavailable original source\n", encoding="utf-8")
+            git(f.repo, "add", path)
+        git(f.repo, "commit", "--quiet", "-m", "fixture unavailable bootstrap")
+        git(f.repo, "push", "--quiet", "origin", "HEAD:refs/heads/main")
+    with pytest.raises(VerificationContractError, match=code):
+        f.execute()
+    assert not sessions and not f.verification_calls and f.owner is None
+    assert not list(f.state.runs.glob("*.json")) and not list(f.state.failures.glob("*.json"))
+    refusals = list(f.state.admission_failures.glob("*.json"))
+    assert len(refusals) == 1
+    refusal = json.loads(refusals[0].read_bytes())
+    assert refusal["phase"] == "CANONICAL_CONTRACT_ADMISSION"
+    assert code in str(refusal)
+
+
+@pytest.mark.parametrize("defect", ["wrong-source", "cross-run", "forged-checkpoint", "unauthorized-scope", "observer-substitution"])
+def test_kernel_upgrade_rejects_forged_or_unauthorized_proof_before_terminal(tmp_path, monkeypatch, defect):
+    from aios_renew import verification, runtime as runtime_module
+    f = KernelUpgradeFixture(tmp_path / "forged", monkeypatch, first_fail=defect != "observer-substitution")
+    sessions = kernel_session(f, monkeypatch)
+    changes = {}
+    original = verification._execute_checkpoint_verification
+    def corrupt(*args, **kwargs):
+        evidence = original(*args, **kwargs)
+        first = evidence[0]
+        record = json.loads(ka01._bytes(first.verification))
+        if defect == "wrong-source":
+            record["binding"]["original_proof"]["source_main_sha"] = first.subject_sha
+        elif defect == "cross-run":
+            record["binding"]["original_proof"]["admission_sha256"] = "0" * 64
+        else:
+            record["candidate"]["complete"] = True
+            record["candidate"]["reports"] = []
+        return (replace(first, verification=record), *evidence[1:])
+    if defect == "unauthorized-scope":
+        def widen(session, ordinal, prompt):
+            (f.repo / "UNAUTHORIZED.txt").write_text("forged permission", encoding="utf-8")
+            commit_fixture_state(f.repo, paths=("UNAUTHORIZED.txt",), message="fixture unauthorized mutation",
+                user_name="Kernel fixture", user_email="kernel@example.invalid")
+        # Attach after creation, before the first candidate.
+        construct = codex_adapter.CodexLiveTransport
+        def hooked(**kwargs):
+            session = construct(**kwargs)
+            session.hook = widen
+            return session
+        monkeypatch.setattr(codex_adapter, "CodexLiveTransport", hooked)
+    elif defect == "observer-substitution":
+        original_verify = f.verify
+        def substituted(command, **kwargs):
+            # Tampering outside the intact candidate tree must reject even
+            # an otherwise passing subprocess observation.
+            path = Path(kwargs["cwd"]).parent / "original-proof" / "tests/bp_v4_probe_plugin.py"
+            path.write_bytes(path.read_bytes() + b"\n# Substituted original observer.\n")
+            return original_verify(command, **kwargs)
+        changes = dict(verification_runner=substituted)
+    else:
+        monkeypatch.setattr(runtime_module, "_execute_checkpoint_verification", corrupt)
+    with pytest.raises((VerificationContractError, operator.OperatorError)):
+        f.execute(**changes)
+    assert len(sessions) == 1 and sessions[0].calls == 1 and sessions[0].closed
+    assert not list(f.state.results.glob("RUN-101-001.json"))
+    assert not f.owner._interactive_feedback
+
+
+def test_kernel_upgrade_retains_exact_task426_filename_guard_without_original_admission(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    actual = yaml.safe_load((Path(__file__).resolve().parents[1] / ".ai/tasks/TASK-426.yaml").read_text(encoding="utf-8"))
+    assert set(KERNEL_SCOPE) <= set(actual["scope"]["modify"])
+    f = ThreeFlowFixture(tmp_path / "original-guard", monkeypatch)
+    owner = RuntimeCompletion(repo=f.repo, state=f.state, task=f.task, run=f.run,
+        run_path=f.state.runs / (f.run.run_id + ".json"), verification_runner=f.verify,
+        observation_tracker=None, error_type=operator.OperatorError)
+    owner._ka01_budget = SimpleNamespace(default=True, operation="PRIMARY",
+        policy=replace(f.policy, result_scope=tuple(actual["scope"]["modify"])))
+    with pytest.raises(VerificationContractError, match="NATIVE_BOUND_PROOF_CONSUMER_MUTATION_UNSUPPORTED"):
+        owner._preflight_interactive_policy()
+    assert not f.native_calls and not f.verification_calls and not list(f.state.runs.glob("*.json"))
+
+
+def test_ordinary_task_cannot_mutate_protected_consumers_without_upgrade_scope(tmp_path, monkeypatch):
+    f = ThreeFlowFixture(tmp_path / "unadmitted-protected", monkeypatch)
+    def mutate(session, ordinal, prompt):
+        name = "src/aios_renew/runtime.py"
+        path = f.repo / name
+        path.write_text(path.read_text(encoding="utf-8") + "\n# Unauthorized protected mutation.\n", encoding="utf-8")
+        commit_fixture_state(f.repo, paths=(name,), message="fixture unauthorized protected mutation",
+            user_name="Kernel fixture", user_email="kernel@example.invalid")
+    sessions = synthetic_session(f, monkeypatch, hook=mutate)
+    with pytest.raises((VerificationContractError, operator.OperatorError)):
+        f.execute()
+    assert len(sessions) == 1 and sessions[0].calls == 1 and sessions[0].closed
+    assert not f.verification_calls and not list(f.state.results.glob("*.json"))
+
+
+@pytest.mark.parametrize("admissible", [False, True])
+def test_kernel_upgrade_exact_authoring_identity_and_existing_self_host_wake(tmp_path, monkeypatch, capsys, admissible):
+    f = KernelUpgradeFixture(tmp_path / "wake", monkeypatch, first_fail=False)
+    sessions = kernel_session(f, monkeypatch)
+    blob = git(f.repo, "rev-parse", f.base + ":.ai/tasks/" + f.task.task_id + ".yaml")
+    if not admissible:
+        from aios_renew import runtime as runtime_module
+        monkeypatch.setattr(runtime_module, "__file__", str(f.repo / "src/aios_renew/runtime.py"))
+    # The normal self-host consumer, with exact original authoring identity and
+    # Human-selected profile. No new selector, issuer or bootstrap bearer fields.
+    exit_code = operator.main(["wakeup", "task427-kernel-fixture", f.task.task_id,
+        "--task-revision", str(f.task.revision), "--task-blob-sha", blob, "--task-commit-sha", f.base,
+        "--executor", "codex", "--model", f.profile.model, "--reasoning-effort", f.profile.reasoning_effort,
+        "--repo", str(f.control)], native_runner=f.native, verification_runner=f.verify)
+    text = capsys.readouterr()
+    if not admissible:
+        assert exit_code != 0 and "KERNEL_UPGRADE_RUNTIME_SOURCE_IS_MUTABLE" in (text.out + text.err)
+        assert not sessions and not list(f.state.runs.glob("*.json")) and not list(f.state.failures.glob("*.json"))
+        dispatches = list((f.state.root / "dispatches").glob("*.json"))
+        assert len(dispatches) == 1
+        dispatch = json.loads(dispatches[0].read_bytes())
+        assert dispatch["status"] == "FAILED" and dispatch["run_id"] is None
+    else:
+        assert exit_code == 0, text.out + text.err
+        assert len(sessions) == 1 and sessions[0].calls == 1
+        assert len(list(f.state.results.glob("*.json"))) == 1
+        assert json.loads(f.owner._ka01_budget.authority)["kernel_upgrade"]["source_main_sha"] == f.base
 
 
 @pytest.mark.parametrize("operation", ["PRIMARY", "REPAIR", "REMEDIATION"])
