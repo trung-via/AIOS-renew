@@ -515,13 +515,13 @@ def test_hostile_candidate_prose_and_private_context_never_become_provider_instr
     assert result["source_text_is_instructions"] is False
 
 
-def test_four_flows_only_explicit_choice_and_strict_candidate(tmp_path):
+def test_four_flows_only_explicit_flow_and_strict_candidate(tmp_path):
     case = Case(tmp_path, "ARCHITECTURE")
     assert integration.FLOWS == frozenset(FLOWS)
     for value in (None, "AUTO", "SEMANTIC_REVIEW", "DIAGNOSTIC", "RESEARCH", "REPAIR_AUTHORING"):
         with pytest.raises(integration.IntegrationContextError):
             case.ask(flow=value)
-    for value in (1, "true", None):
+    for value in (1, "true", [], {}):
         with pytest.raises(integration.IntegrationContextError, match="CONSULTATION_CHOICE_INVALID"):
             case.ask(enabled=value)
     candidate = draft()
@@ -529,6 +529,14 @@ def test_four_flows_only_explicit_choice_and_strict_candidate(tmp_path):
     with pytest.raises(caa_reasoner.CandidateContextError):
         case.ask(candidate=candidate)
     assert not case.calls
+
+
+@pytest.mark.parametrize("enabled", (None, False, True))
+def test_legacy_enabled_argument_never_gates_normal_consultation(tmp_path, enabled):
+    case = Case(tmp_path, "ARCHITECTURE")
+    result = case.ask(enabled=enabled)
+    assert result["outcome"] == "ADVICE" and len(case.calls) == 1
+    assert result["brain_final_semantic_judgment"] is True
 
 
 def test_default_consults_and_repair_action_is_only_a_caller_binding(tmp_path):
@@ -915,11 +923,14 @@ def test_pilot_timeout_cannot_start_late_provider_after_trusted_gate_returns(tmp
     entered, release = Event(), Event()
     def reserve(*_args):
         entered.set()
-        release.wait(2)
+        # Release only after the caller has returned. A wall-clock timeout can
+        # expire during mandatory source rechecks on a loaded verification host,
+        # opening the gate before this test reaches its intended barrier.
+        release.wait()
         return True
     monkeypatch.setattr(caa_reasoner, "PROVIDER_SECONDS", .01)
-    result = ask_pilot(case, reserve_call=reserve)
     try:
+        result = ask_pilot(case, reserve_call=reserve)
         assert entered.is_set() and result.advisory["reason"] == "PROVIDER_TIMEOUT"
         assert not case.calls
     finally:

@@ -353,13 +353,18 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
                 candidate=draft, expected_candidate_fingerprint=candidate_fingerprint(draft),
                 fresh_packet_supplier=fresh_packet_supplier, provider=provider).advisory
         except IntegrationContextError as exc:
-            # Older direct-authoring integrations may not project a CAA subject.
-            # Lack of optional advice adds no new admission prerequisite. An
-            # actually supplied but invalid/stale subject still fails closed.
+            # Older integrations omit CAA repository/selection/correction
+            # projections accepted by their existing normative protocol. Missing
+            # optional projections cannot add an authoring prerequisite. The
+            # distinct missing-field codes never cover invalid supplied values;
+            # the existing protocol and fresh-packet guards still apply.
             facts = _packet(packet)["canonical_facts"]
             original, selected_task = facts.get("task_contract"), facts.get("selected_task")
             missing_legacy_projection = (
-                str(exc) == "MANDATORY_CORRECTION_SUBJECT_MISSING" and facts.get("correction_subject") is None
+                str(exc) in {"MANDATORY_REPOSITORY_MISSING", "MANDATORY_CORRECTION_PROJECTION_MISSING"}
+                or str(exc) == "MANDATORY_TASK_SUBJECT_MISSING" and selected_task is None
+                and "selection_status" not in facts
+                or str(exc) == "MANDATORY_CORRECTION_SUBJECT_MISSING" and facts.get("correction_subject") is None
                 or str(exc) == "MANDATORY_TASK_CONTRACT_MISSING" and type(original) is dict
                 and type(selected_task) is dict and original.get("task_id") == selected_task.get("id")
                 and original.get("revision") == selected_task.get("revision")

@@ -145,6 +145,34 @@ def test_default_attempt_composes_advisory_draft_without_an_extra_caller_require
     assert result.advisory["retrieval"]["complete"] is True
 
 
+@pytest.mark.parametrize("flow,field", (
+    ("TASK_AUTHORING", "repository"), ("TASK_AUTHORING", "selection_status"),
+    ("REPAIR_AUTHORING", "executor"), ("REMEDIATION_AUTHORING", "executor"),
+))
+def test_missing_projection_compatibility_rejects_invalid_supplied_context(
+        tmp_path, registry, aoa_package, flow, field):
+    case, contract, bindings, package, sources, _, _, _ = caa_attempt_inputs(
+        tmp_path, registry, flow, aoa_package)
+    body = case.packet.as_dict()
+    facts = body["canonical_facts"]
+    if field == "executor":
+        facts["correction_subject"][field] = "../foreign-executor"
+    elif field == "selection_status":
+        facts.update(selected_task=None, selection_status="SELECTED")
+    else:
+        facts[field] = ""
+    body["packet_fingerprint"] = digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+    supplied = DecisionPacket(body)
+    calls = []
+    provider = MappingBrainProvider("mapping", "one", lambda req: calls.append(req))
+    with pytest.raises(BrainAttemptError) as error:
+        attempt(provider, supplied, contract, bindings, package, lambda: supplied,
+            repo=case.fixture.repo, audit_policy=task408_policy(body),
+            selection_authenticator=lambda *_: True, **sources)
+    assert error.value.reason_code == "CAA_SOURCE_INVALID"
+    assert error.value.invocation_count == 0 and calls == []
+
+
 @pytest.fixture
 def profile_package(v1_only_package):
     # Exact V1 transport compatibility uses explicit isolated conformance.
@@ -527,7 +555,18 @@ def test_r5_simulated_canonical_cutover_invokes_only_the_selected_normative_proc
     result = attempt(adapter(kind, native(kind, callback), kind, kind), supplied, contract, bindings, package, fresh, **kwargs)
     count = 1 if active and flow == "REPAIR_AUTHORING" else 2
     assert len(calls) == len(result.attributions) == count
-    assert len(fresh_calls) == (1 if count == 1 else 2)
+    # Architecture has a complete CAA projection: pre/post consult guards plus
+    # the pre-decision check. Legacy TASK/correction packets lack CAA fields,
+    # so unavailable advice adds only the pre-decision check. Normative pass
+    # counts and their original currentness checks remain exact.
+    assert len(fresh_calls) == count + (3 if flow == "ARCHITECTURE" else 1)
+    assert result.advisory["outcome"] == "UNAVAILABLE"
+    if flow != "ARCHITECTURE":
+        assert result.advisory["reason"] == {
+            "TASK_AUTHORING": "MANDATORY_TASK_SUBJECT_MISSING",
+            "REPAIR_AUTHORING": "MANDATORY_REPOSITORY_MISSING",
+            "REMEDIATION_AUTHORING": "MANDATORY_CORRECTION_PROJECTION_MISSING",
+        }[flow]
     assert all(r["audit_profile_package"] == package and r["audit_selection"] == calls[0]["audit_selection"] for r in calls)
     if active:
         assert not any(r["request_mode"].startswith(("AUDIT_", "V1_OPTION_")) for r in calls)

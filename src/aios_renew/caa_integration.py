@@ -77,7 +77,9 @@ def _body(packet, flow):
         body = _packet(packet)
         _require(body["selected_flow"] == flow and body["authority_owner"] == "BRAIN", "CALLER_FLOW_MISMATCH")
         facts = body["canonical_facts"]
-        _require(type(facts) is dict and type(facts.get("repository")) is str and bool(facts["repository"]))
+        _require(type(facts) is dict)
+        _require("repository" in facts, "MANDATORY_REPOSITORY_MISSING")
+        _require(type(facts["repository"]) is str and bool(facts["repository"]))
         _sha(facts.get("main_sha"))
         _require(type(body["work_context_fingerprint"]) is str
                  and _DIGEST.fullmatch(body["work_context_fingerprint"]) is not None)
@@ -124,6 +126,8 @@ def _subject(body, supplied):
         lineage = facts.get("correction_subject")
         _require(type(lineage) is dict and lineage.get("policy") == "EXACT_CORRECTION_SUBJECT_LINEAGE_V1",
                  "MANDATORY_CORRECTION_SUBJECT_MISSING")
+        _require({"executor", "base_sha", "selectors"} <= set(lineage),
+                 "MANDATORY_CORRECTION_PROJECTION_MISSING")
         task = _task(lineage.get("task"))
         _require(task == facts.get("selected_task"))
         original = facts.get("task_contract")
