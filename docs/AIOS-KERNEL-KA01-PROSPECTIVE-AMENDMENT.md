@@ -3,9 +3,9 @@
 | Identity / status | Value |
 | --- | --- |
 | Amendment identity | **KA-01** |
-| Document version | **1.3 — resource profile; activation policy amended prospectively by TASK-423** |
+| Document version | **1.3 — resource profile; TASK-423 bounded activation retained; TASK-424 prospective native interactive PRIMARY** |
 | Normative status | **HUMAN_RATIFIED_PROSPECTIVE_SPEC** |
-| Runtime activation policy | **SUPPORTED_BOUNDED_PRIMARY** through the source-bound ordinary caller described in D.1; no production uptake or review/publication outcome asserted here. |
+| Runtime activation policy | **SUPPORTED_BOUNDED_PRIMARY** (v2) and separately consented **SUPPORTED_INTERACTIVE_PRIMARY** (v3) through the source-bound ordinary caller in D.1; no uptake or review/publication outcome asserted. |
 | Original Human ratification date | **2026-10-09** — KA-01 v1.0, sections A–D. |
 | Human activation-sequence decision | **2026-10-18** — v1.1 delta described in A.1 and D.1; no production activation. |
 | Human three-operation scope decision | **2026-10-19** — v1.2 delta described in A.1, C.1 and D.1; no production activation or per-RUN consent. |
@@ -18,6 +18,7 @@
 | Historical v1.2 publication | `TASK-386`, revision `1`; immutable published three-operation specification, with no default resource profile and no production activation. |
 | Historical v1.3 resource publication | `TASK-396`, revision `1`; exact reviewed/published specification retained in Git history. It did not authorize this activation delta. |
 | v1.3 activation amendment | `TASK-423`, revision `1`; ordinary Runtime verification, independent exact-source review and Publisher publication govern this same implementation delta, without a later activation TASK. |
+| Human native interaction priority | **2026-10-25, TASK-424 r1** — one integrated original-RUN verify/fix/verify delta, new explicit consent and same original live Codex session across distinct turns; no extra activation stage. |
 
 ## A. Identity, authority and legal effect
 
@@ -296,9 +297,9 @@ V1.2 retains its published limits-without-defaults contract; only exact v1.3
 selection can use C.8's resource profile.
 
 The three-operation design is not a claim of three implemented production
-adapters. D.1 currently enables only bounded Codex PRIMARY completion under
-minimum-sufficient-v1. REPAIR/REMEDIATION production opt-ins and native in-turn
-feedback/continuation STOP; their ordinary nonopted legacy routes retain their
+adapters. D.1 enables bounded v2 Codex PRIMARY completion and separately
+consented v3 native interactive PRIMARY under minimum-sufficient-v1.
+REPAIR/REMEDIATION production opt-ins STOP; their ordinary nonopted legacy routes retain their
 original authorization. The local preactivation codecs/callbacks retain their
 historical meaning and cannot provide remote delivery authority.
 
@@ -857,9 +858,11 @@ that remain unavailable. This document itself supplies no accounting facts.
 
 Human prospectively supersedes the former conjunctive staged G1/G2/G3/G6
 sequence and the future L4 G4/G5 duties for new supported v1.3 admissions.
-TASK-423 is the **one remaining Lean VP implementation-and-activation TASK**.
-It contains the contract change, focused integration/negative test definitions,
-minimum supported production enablement and bounded source observation. Its
+TASK-423 supplied the published bounded-primary foundation. The newer explicit
+Human priority selects **TASK-424 as the one integrated native interactive
+PRIMARY implementation-and-activation TASK**. It contains the native transport,
+contract change, ordinary caller integration, focused tests and bounded source
+observation. Its
 ordinary Runtime verification, independent semantic review and exact Publisher
 publication remain separate authorities over the same delta. They are not new
 Lean VP stages and do not trigger a second activation TASK, manual cutover,
@@ -867,7 +870,8 @@ pilot, shadow evaluation or automatic roadmap advancement. Earlier published
 specifications did not already permit this change; their exact sources remain
 immutable.
 
-The sole production configuration is **KA01-v1.3-bounded-primary-v1**:
+The retained v2 production configuration is **KA01-v1.3-bounded-primary-v1**;
+the following v2 restrictions remain exact and do not acquire v3 privileges:
 
 - Existing `operator.run_task(..., ka01_admission=AdmissionRequest(2, ...))`,
   Codex, PRIMARY, `minimum-sufficient-v1`, KA-01 version `1.3` and
@@ -929,6 +933,81 @@ reports native feedback unavailable and review/publication not observed.
 Those files and observations are not canonical EVIDENCE or live-session proof.
 Runtime owns canonical evidence; no current caller, measured benefit, Reviewer
 PASS, publication, uptake or downstream adoption is inferred by this source.
+
+#### D.1.1 Separately authenticated original live interactive PRIMARY (TASK-424)
+
+The distinguishable new configuration is **KA01-v1.3-interactive-primary-v1**.
+Use the same ordinary `operator.run_task` caller with **AdmissionRequest(3, ...)**,
+Codex PRIMARY, `minimum-sufficient-v1`, KA-01 `1.3` and the unchanged resource
+profile. The only native interaction profile is one first-party `openai` Codex
+app-server process over private stdio, one new logical thread, selected exact
+model/effort and distinct bounded inference turns. Native installed support must
+be observed; unsupported binary/model/protocol/observer is explicit BLOCKER/STOP.
+This does not describe one uninterrupted model turn.
+
+Version 3 uses the same exact orphan selector locator and independently
+authenticated current open Human Issue sources described above. The selection's
+`implementation` must equal the new identifier. Consent must use the new
+implementation and **PRODUCTION_INTERACTIVE_PRIMARY**, exact fresh RUN, admitted
+RUN digest, original TASK/revision/base, source operation, selected profile and
+merged limits. Pin normative bytes and running first-party implementation to
+exact current main at new-RUN admission, including native transport/observation
+consumers. An old v2 selection/consent, flag or receipt cannot authorize v3;
+changing the request alone fails authentication. No in-flight or historical
+RUN can upgrade, resume, switch model, respawn, migrate or silently fall back.
+
+Only the original Runtime may verify. At each clean committed scoped candidate,
+reauthenticate original Human consent/currentness, source/TASK/constraints,
+original lease/profile and live process/connection/thread. Execute the original
+authored commands with the existing verifier and complete exact native pytest
+observer, under the existing per-RUN mutation fence and cumulative budget.
+Observer and execution/configuration helper blobs must remain bound to the
+admitted base; changing those proof consumers is unsupported in this profile.
+Seal source-bound immutable native K_i, including original admission/authority,
+candidate/tree, actual process/session/request/turn/input/item correlation,
+proof policy/toolchain/profile/collection, evidence and raw/native digests.
+Versioned `AIOS_KA01_NATIVE_PRIMARY_CHECKPOINT` is distinct from historical
+review-mapping L3 records; parsing either never confers authority. No review or
+artifact ref is invented to impersonate the older preactivation mapping.
+
+Only complete, stable, authentic, scoped call-FAIL with passing setup/teardown
+and all original command obligations observed can produce factual bounded F_i.
+Collection/setup/teardown errors, skips, unknown/partial/malformed/unstable proof
+STOP. F_i contains source/checkpoint/recipient/correlation, acceptance and proof
+identities and observed outcomes only: no raw logs, secrets, paths, diagnostics,
+patches, semantic strategy or implementation advice. The original Executor
+alone chooses HOW. An eligible FAIL creates no interim FAILURE terminal.
+
+Before exposure, authenticate exact current K_i/F_i and original still-live
+process/pipes/thread/profile/lease. Before accepting C_(i+1), reauthenticate
+current authority and the source feedback/lineage, a completed correlated model
+turn with matching received input and receipt, and a different clean committed
+in-scope descendant tree. Persist consumption only as an original protected
+Runtime effect. A request ACK, detached-file receipt, mock callback, stdout ACK,
+reused thread on a new process or replacement inference session cannot satisfy
+receipt or continuity. Verify C_(i+1) and require strict reduction of failed
+native identities under the same complete population/conditions; no-progress STOPs.
+
+C.8 defaults remain **2 corrections, 3 checkpoints, 240m RUN wall, 180m
+cumulative Runtime verification, null tokens**. Count only protected source-bound
+effects. Reserve before effects; interrupted/uncertain reservations cannot retry,
+refund, replay or reconstruct authority. Inference uses RUN wall, verification
+uses both clocks. Nonnull token caps STOP without authentic complete applicable
+usage. This first native profile has no authenticated cross-candidate VP-03
+applicability: a changed source invalidates previous source-specific proof, so
+all original commands remain outstanding at that source. No final proof repeats:
+the exact complete final K_i is reauthenticated and consumed by the existing
+canonical evidence validator and sole original terminal writer. If applicability,
+authority, budgets, identity or proof cannot support continuation, use one
+FAILURE/STOP, retaining uncertainty and negative crash fences, never a new RUN.
+
+One bounded original Runtime observation reports exact source, selected session
+and actual turn correlations, checkpoints/corrections, consumed verification
+budget, unavailable evidence and final RESULT/FAILURE/STOP status. A session is
+reported only after actual initialization; startup failure remains unavailable.
+Observation, model assertions and parsed records never replace canonical EVIDENCE,
+Reviewer judgment or Publisher authority. Neither v3 nor one observation claims
+savings, uptake, full three-operation support or downstream adoption.
 
 ### D.2 Historical allocation and measurement truth
 
@@ -1017,9 +1096,11 @@ original duties in their immutable sources.
 | AC-36 | Legacy/downstream remain isolated without independent opt-in/adoption; no automatic roadmap transition. |
 
 Focused tests for D.1 exercise the ordinary caller's real admission,
-source/consent/profile/lease checks, original single invocation, finite
-Runtime completion, unsupported operations, stale/forged contexts and legacy
-behavior. Runtime runs those tests under this TASK's authored proof command;
+source/consent/profile/lease checks, original single process, first-pass success,
+live installed Codex C1→F1→C2, finite Runtime completion, unstable/unknown proof,
+resource/crash/terminal contention, stale/forged/duplicate recipients and legacy
+behavior. Missing native live support is a visible BLOCKER test failure, never
+skip/xfail or fixture-only live PASS. Runtime runs the authored focused tests;
 no full suite, fixture-only delivery claim or separate staged package follows.
 Historical failures retain their original outcomes and are not relabeled to
 close this ledger.
@@ -1029,6 +1110,10 @@ close this ledger.
 In the absence of an explicit supported prospective opt-in, the legacy
 admitted policy remains the default. Historical and already admitted work keeps
 its original policy, schema, identity, consent, budget and correction semantics.
+The v3 interactive consent is new-RUN only; the v2 bounded-primary interface
+and v1 controlled preactivation retain their own exact meanings. No prior v2
+opt-in can gain interaction privileges. Withdrawing new v3 consent cannot route
+an opted-in RUN through v2, a legacy process, REPAIR or REMEDIATION.
 Current minimum-sufficient V1 PRIMARY remains its exact authored-command direct
 path; REPAIR retains its TASK/origin-command combination and overlap rules,
 and REMEDIATION retains exact authorized affected verification. Historical V2

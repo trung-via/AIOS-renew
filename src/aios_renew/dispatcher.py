@@ -293,6 +293,9 @@ def _native_dispatcher(
                 runner=native_runner,
                 execution_policy=execution_policy,
                 execution_profile=execution_profile,
+                **({"interactive_runtime": prospective_runtime} if prospective_runtime is not None
+                    and prospective_runtime._ka01_budget is not None
+                    and prospective_runtime._ka01_budget.interactive else {}),
             ),
             "antigravity": lambda: AntigravityAdapter(
                 runner=native_runner,

@@ -16,6 +16,7 @@ from .artifacts import (
     validate_structural_result,
 )
 from .native_execution_policy import resolve_native_execution_policy
+from .codex_live_transport import CodexLiveTransport
 from .run import Run
 from .run_observation import TokenUsage
 from .review import RemediationExecution
@@ -115,6 +116,7 @@ class CodexAdapter:
         schema_path: str | Path = RESULT_PACKAGE_SCHEMA_PATH,
         execution_policy: ExecutionPolicy | None = None,
         execution_profile: ResolvedExecutionProfile | None = None,
+        interactive_runtime=None,
     ) -> None:
         self._runner = runner
         self._schema_path = Path(schema_path)
@@ -124,6 +126,8 @@ class CodexAdapter:
             else resolve_native_execution_policy(authorizes_mutation=False)
         )
         self._execution_profile = execution_profile
+        self._interactive_runtime = interactive_runtime
+        self._live_transport = None
 
     @property
     def execution_profile(self) -> ResolvedExecutionProfile | None:
@@ -132,6 +136,9 @@ class CodexAdapter:
 
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute an unchanged TASK/RUN pair through native Codex CLI."""
+
+        if self._interactive_runtime is not None:
+            return self._interactive_runtime._execute_interactive_primary(adapter=self, task=task, run=run)
 
         command = self.command_for(
             run,
@@ -184,6 +191,38 @@ class CodexAdapter:
             )
 
         return self._normalize(stdout, stderr=stderr)
+
+    def open_live_session(self, *, run, budget):
+        """Only the admitted v3 Runtime can bind the sole original process."""
+        if (self._interactive_runtime is not budget.owner or not budget.interactive
+                or budget.native_adapter is not self or self._live_transport is not None
+                or self._execution_profile != budget.profile):
+            raise CodexExecutionError("CODEX_LIVE_STOP_ORIGINAL_RUNTIME_REQUIRED", exit_code=None)
+        return budget.open_native_session(lambda: CodexLiveTransport(
+            workspace=run.workspace, profile=self._execution_profile,
+            authorizes_mutation=self._execution_policy.authorizes_mutation,
+            poll=budget.poll_native,
+            timeout_seconds=min(self._execution_policy.process_watchdog_seconds,
+                (budget.wall_limit_ns - (budget._clock() - budget.started_ns)) / 1_000_000_000)))
+
+    @staticmethod
+    def live_output_schema():
+        package = json.loads(RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
+        package.pop("$schema", None)
+        receipt = dict(type="object", additionalProperties=False,
+            required=["receipt_id", "feedback_digest", "checkpoint_digest", "source_sha", "previous_turn_id"],
+            properties={key: dict(type="string") for key in (
+                "receipt_id", "feedback_digest", "checkpoint_digest", "source_sha", "previous_turn_id")})
+        return dict(type="object", additionalProperties=False,
+            required=["package", "feedback_receipt"], properties=dict(
+                package=package, feedback_receipt={"anyOf": [receipt, {"type": "null"}]}))
+
+    def normalize_live_candidate(self, turn):
+        data = turn.output
+        if (set(data) != {"package", "feedback_receipt"} or type(data["package"]) is not dict
+                or set(data["package"]) != {"result", "evidence"}):
+            raise CodexOutputError("CODEX_LIVE_STOP_INVALID_CANDIDATE_ENVELOPE", exit_code=None)
+        return self._normalize(json.dumps(data["package"]), stderr=""), data["feedback_receipt"]
 
     def execute_remediation(
         self, *, execution: RemediationExecution

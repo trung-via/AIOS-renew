@@ -1938,6 +1938,12 @@ def run_task(
             )
         raise
 
+    finally:
+        # One original live native connection is retained through completion.
+        # Cleanup never launches/retries, changes a terminal, or masks its cause.
+        if ka01_admission is not None and ka01_admission.version == 3 and attempt.completion is not None:
+            attempt.completion._close_interactive_primary()
+
 
 def _bind_and_persist_execution_profile(
     *,

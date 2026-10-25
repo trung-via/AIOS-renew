@@ -58,6 +58,7 @@ from .intra_run_proof_contract import (
     format_runtime_feedback, parse_runtime_feedback, _checkpoint_factual_feedback, _blocked_runtime_feedback,
     FeedbackConsumptionRequest, format_feedback_consumption_request, LocalFeedbackConfirmation,
     RuntimeFeedbackConsumption, format_feedback_consumption, parse_feedback_consumption, _consumption_result,
+    NativePrimaryCheckpoint, parse_native_primary_checkpoint,
 )
 from .verification import (
     _checkpoint_reviewed_execution, _execute_checkpoint_verification, _checkpoint_native_facts,
@@ -241,6 +242,10 @@ class RuntimeCompletion:
         self._local_feedback_invocation_bytes: bytes | None = None
         self._local_feedback_stopped = False
         self._local_feedback_receipts: dict[int, bytes] = {}
+        self._interactive_checkpoints = []
+        self._interactive_turns = []
+        self._interactive_feedback = {}
+        self._interactive_receipts = {}
 
     def _checkpoint_directory(self) -> Path:
         """Derive storage from the existing admitted Git/Runtime owner only."""
@@ -297,6 +302,358 @@ class RuntimeCompletion:
         budget.guard(live=not budget.production)
         budget.remaining_seconds()
         return result
+
+    def _interactive_binding(self, package, turn):
+        """Reauthenticate original authority and exact committed scoped source."""
+        from .ka01_admission import _digest, _deny
+        from .verification import _ApplicabilityReader
+        budget = self._ka01_budget
+        budget.guard(live=budget.native_state == "EXECUTING")
+        session = budget.session
+        if (not budget.interactive or session is None or session.last_turn is not turn
+                or turn.connection_id != budget.session_identity["connection_id"]
+                or turn.thread_id != budget.session_identity["thread_id"]):
+            _deny("ORIGINAL_NATIVE_TURN_REQUIRED")
+        session.assert_live(budget.session_identity)
+        validate_structural_result_package(task=self.task, run=self.run, result=package.result, evidence=package.evidence)
+        self._require_executor_structure(package)
+        head = _original_git(self.repo, "rev-parse", "HEAD").decode("ascii").strip()
+        if package.result.head_sha != head or _original_git(self.repo, "status", "--porcelain"):
+            _deny("CLEAN_COMMITTED_CANDIDATE_REQUIRED")
+        self._require_task_result(package, budget.policy, actual_head=head)
+        reader = _ApplicabilityReader(self.repo)
+        if head == self.run.base_sha:
+            _deny("ORIGINAL_ROOT_DESCENDANT_REQUIRED")
+        reader.anchors(head, {self.run.base_sha})
+        changed = set(filter(None, _original_git(self.repo, "diff", "--name-only", "--no-renames", "-z",
+            self.run.base_sha, head).decode("utf-8").split("\0")))
+        if set(package.result.changed_files) != changed or changed.difference(self.task.scope.modify):
+            _deny("EXACT_ORIGINAL_SCOPE_REQUIRED")
+        turn_data = dict(connection_id=turn.connection_id, thread_id=turn.thread_id,
+            turn_id=turn.turn_id, request_id=turn.request_id, input_sha256=turn.input_sha256,
+            user_item_id=turn.user_item_id, output_item_id=turn.output_item_id,
+            output_sha256=_digest(turn.output_json))
+        return dict(task=asdict(self.run.task), run_id=self.run.run_id, base_sha=self.run.base_sha,
+            candidate_sha=head, tree_sha=reader.commit(head)[0],
+            admitted_run_sha256=_digest(_original_local(self.run_path, MAX_ORIGINAL_PROOF_BYTES)),
+            authority_sha256=_digest(budget.authority), execution_profile_sha256=_digest(budget.profile.as_dict()),
+            session=dict(budget.session_identity), turn=turn_data,
+            commands_sha256=_digest(list(self.task.verification.required)), scope_sha256=_digest(asdict(self.task.scope)))
+
+    def _interactive_native_proofs(self, evidence, raw_directory, subject_sha):
+        """Use the existing exact observer, complete phases and actual toolchain.
+
+        No stdout parsing, arbitrary exit-1 inference or Executor proof flags.
+        Collection, setup/teardown failure, skip, unstable and unknown STOP.
+        """
+        from .verification import _v2_observation, _v2_profile, _v2_toolchain
+        from .verification_contract import validate_observation, validate_exact_collection
+        from .ka01_admission import _digest, _deny
+        commands = self.task.verification.required
+        if len(evidence) != len(commands):
+            _deny("INCOMPLETE_NATIVE_PROOF")
+        proofs = []
+        for index, (item, command) in enumerate(zip(evidence, commands)):
+            order = int(item.evidence_id.rsplit("-V", 1)[1])
+            path = raw_directory / (item.evidence_id + ".raw")
+            native_path = raw_directory / f"observation-{order:03d}.json"
+            raw = _original_local(path, 32 * 1024 * 1024)
+            native = _original_local(native_path, 1024 * 1024)
+            record = item.verification
+            if (item.run_id != self.run.run_id or item.subject_sha != subject_sha
+                    or item.source.command != command or item.type != "VERIFICATION"
+                    or item.raw_path != str(path) or not raw.startswith(b"STDOUT\n") or b"\nSTDERR\n" not in raw
+                    or not record or record.get("disposition") != "EXECUTED"
+                    or record.get("raw_digest") != _digest(raw) or "reuse" in record or "early_probe" in record):
+                _deny("NATIVE_PROVENANCE_NOT_ESTABLISHED")
+            binding = record["binding"]
+            if (binding.get("base_sha") != self.run.base_sha or binding.get("subject_sha") != subject_sha
+                    or binding.get("tree_sha") != self._git("rev-parse", subject_sha + "^{tree}")
+                    or binding.get("profile") != _v2_profile(self.repo, subject_sha, command, os.environ)
+                    or binding.get("toolchain") != _v2_toolchain()):
+                _deny("NATIVE_CONDITIONS_CHANGED")
+            observed = _v2_observation(item, native_path, binding=binding, selected=False)
+            validate_observation(observed)
+            if (record.get("candidate") != observed or record.get("candidate_digest") != _digest(observed)
+                    or observed.get("errors") != []):
+                _deny("NATIVE_OBSERVATION_UNKNOWN")
+            nodes = validate_exact_collection(observed.get("collection"))
+            phases = {node: {} for node in nodes}
+            failures = []
+            for report in observed["reports"]:
+                if report["nodeid"] not in phases or report["phase"] not in {"setup", "call", "teardown"}:
+                    _deny("NATIVE_PHASE_POPULATION_UNKNOWN")
+                phases[report["nodeid"]][report["phase"]] = report["outcome"]
+                if report["outcome"] == "FAIL":
+                    failures.append(_digest(dict(command_index=index, nodeid=report["nodeid"], phase=report["phase"])))
+            if (not nodes or any(set(row) != {"setup", "call", "teardown"} for row in phases.values())
+                    or any(row["setup"] != "PASS" or row["teardown"] != "PASS"
+                           or row["call"] not in {"PASS", "FAIL"} for row in phases.values())
+                    or item.result.exit_code not in (0, 1) or bool(failures) != (item.result.exit_code == 1)):
+                _deny("INCOMPLETE_UNSTABLE_OR_INELIGIBLE_FAIL")
+            if (raw != _original_local(path, 32 * 1024 * 1024)
+                    or native != _original_local(native_path, 1024 * 1024)):
+                _deny("NATIVE_CAPTURE_CHANGED")
+            proofs.append(dict(command_index=index, command_sha256=_digest(command),
+                evidence_sha256=_digest(evidence_data(item)), raw_sha256=_digest(raw), native_sha256=_digest(native),
+                collection=observed["collection"], profile_sha256=_digest(binding["profile"]),
+                toolchain_sha256=_digest(binding["toolchain"]), outcome="FAIL" if failures else "PASS",
+                failed_identities=sorted(failures)))
+        return proofs
+
+    def _authenticate_interactive_history(self):
+        from .ka01_admission import _deny
+        directory = self._checkpoint_directory()
+        def inventory(path, bound):
+            names = set()
+            with os.scandir(path) as entries:
+                for index, entry in enumerate(entries):
+                    if index >= bound:
+                        _deny("NATIVE_CAPTURE_INVENTORY_BOUND")
+                    names.add(entry.name)
+            return names
+        expected_names = set()
+        previous = None
+        for record in self._interactive_checkpoints:
+            data = record.data
+            ordinal = data["ordinal"]
+            expected_names.update((f"n{ordinal:03d}.json", f"n{ordinal:03d}"))
+            raw = _original_local(directory / f"n{ordinal:03d}.json", MAX_ORIGINAL_PROOF_BYTES)
+            if (raw != record.content_json.encode("ascii") or parse_native_primary_checkpoint(raw) != record
+                    or data["predecessor_digest"] != (None if previous is None else previous.digest)):
+                _deny("ORIGINAL_CHECKPOINT_LINEAGE_CHANGED")
+            evidence = tuple(validate_evidence(e) for e in data["evidence"])
+            if self._interactive_native_proofs(evidence, directory / f"n{ordinal:03d}", data["binding"]["candidate_sha"]) != data["proofs"]:
+                _deny("ORIGINAL_NATIVE_PROOF_CHANGED")
+            captures = {e.evidence_id + ".raw" for e in evidence} | {
+                f"observation-{int(e.evidence_id.rsplit('-V', 1)[1]):03d}.json" for e in evidence}
+            _checkpoint_safe_directory(directory / f"n{ordinal:03d}")
+            if inventory(directory / f"n{ordinal:03d}", 512) != captures:
+                _deny("UNKNOWN_NATIVE_CAPTURE")
+            for suffix, retained in (("feedback", self._interactive_feedback), ("receipt", self._interactive_receipts)):
+                if ordinal in retained:
+                    name = f"n{ordinal:03d}.{suffix}.json"
+                    expected_names.add(name)
+                    if _original_local(directory / name, MAX_ORIGINAL_PROOF_BYTES) != retained[ordinal]:
+                        _deny("ORIGINAL_FEEDBACK_OR_RECEIPT_CHANGED")
+            previous = record
+        if directory.exists():
+            actual = inventory(directory, 1024)
+            if actual != expected_names:
+                _deny("UNKNOWN_NATIVE_CHECKPOINT_EFFECT")
+
+    @_ka01_guarded
+    def _seal_interactive_candidate(self, package, turn):
+        from types import SimpleNamespace
+        from .verification import _v2_profile, _v2_toolchain
+        from .ka01_admission import _digest, _deny
+        binding = self._interactive_binding(package, turn)
+        self._authenticate_interactive_history()
+        previous = self._interactive_checkpoints[-1] if self._interactive_checkpoints else None
+        if previous is not None:
+            from .verification import _ApplicabilityReader
+            prior = previous.data["binding"]
+            _ApplicabilityReader(self.repo).anchors(binding["candidate_sha"], {prior["candidate_sha"]})
+            if (binding["candidate_sha"] == prior["candidate_sha"] or binding["tree_sha"] == prior["tree_sha"]
+                    or not self._is_ancestor(prior["candidate_sha"], binding["candidate_sha"])
+                    or not self._committed_changed_files(prior["candidate_sha"], binding["candidate_sha"])
+                    or len(self._interactive_receipts) != len(self._interactive_checkpoints)):
+                _deny("NO_CAUSAL_COMMITTED_CORRECTION")
+        commands = self.task.verification.required
+        if not commands or len(commands) > 256 or len(set(commands)) != len(commands):
+            _deny("EXACT_NATIVE_COMMAND_POPULATION_REQUIRED")
+        manifests = {}
+        for index, command in enumerate(commands):
+            coverage = parse_pytest_coverage(command)
+            if coverage is None or coverage.is_full_suite or coverage.measurement:
+                _deny("NATIVE_COMPLETE_OBSERVER_UNSUPPORTED")
+            profile = _v2_profile(self.repo, binding["candidate_sha"], command, os.environ)
+            if (profile["collect_only"] or profile != _v2_profile(self.repo, self.run.base_sha, command, os.environ)):
+                _deny("NATIVE_EXECUTED_PROOF_REQUIRED")
+            manifests[str(index)] = (None, dict(command_index=index, profile=profile, toolchain=_v2_toolchain()), None)
+        ordinal = len(self._interactive_checkpoints) + 1
+        intent = dict(kind="NATIVE_CHECKPOINT", ordinal=ordinal, candidate_sha=binding["candidate_sha"],
+            predecessor_digest=None if previous is None else previous.digest, package_sha256=_digest(result_package_data(package)))
+        directory = self._checkpoint_directory()
+        with self._checkpoint_effect(directory, intent):
+            self._authenticate_interactive_history()
+            if self._interactive_binding(package, turn) != binding:
+                _deny("CANDIDATE_CHANGED_AT_CHECKPOINT")
+            target = SimpleNamespace(run_id=self.run.run_id, base_sha=self.run.base_sha,
+                candidate_sha=binding["candidate_sha"], tree_sha=binding["tree_sha"])
+            request = SimpleNamespace(scheduler=SimpleNamespace(target=target, subject_sha=binding["candidate_sha"]))
+            raw_directory = directory / f"n{ordinal:03d}"
+            raw_directory.mkdir()
+            self.interruption_phase = "VERIFICATION"
+            self.verification_subject_sha = binding["candidate_sha"]
+            started = self.observation_tracker.begin_verification()
+            try:
+                evidence = _execute_checkpoint_verification(self.repo, request=request, task=self.task, manifests=manifests,
+                    raw_directory=raw_directory, start_order=(ordinal - 1) * len(commands),
+                    runner=self._ka01_verification_runner, timeout_seconds=self._ka01_budget.remaining_seconds(),
+                    capture_bytes_remaining=32 * 1024 * 1024)
+            finally:
+                self.observation_tracker.end_verification(started, cumulative=True)
+            self.interruption_phase = "COMPLETION_GATE"
+            proofs = self._interactive_native_proofs(evidence, raw_directory, binding["candidate_sha"])
+            population = _digest([dict(command=p["command_sha256"], collection=p["collection"],
+                profile=p["profile_sha256"], toolchain=p["toolchain_sha256"]) for p in proofs])
+            failed = sorted({f for p in proofs for f in p["failed_identities"]})
+            content = _checkpoint_json(dict(format="AIOS_KA01_NATIVE_PRIMARY_CHECKPOINT", version=1, ordinal=ordinal,
+                predecessor_digest=intent["predecessor_digest"], binding=binding, package_sha256=intent["package_sha256"],
+                population_identity=population, evidence=[evidence_data(e) for e in evidence], proofs=proofs, failed_identities=failed))
+            record = parse_native_primary_checkpoint(content)
+            if (previous is not None and (population != previous.data["population_identity"]
+                    or not set(failed) < set(previous.data["failed_identities"]))):
+                _deny("NO_VERIFIED_SCOPED_PROGRESS")
+            if self._interactive_binding(package, turn) != binding:
+                _deny("CANDIDATE_CHANGED_DURING_VERIFICATION")
+            for path in raw_directory.iterdir():
+                _original_local(path, 32 * 1024 * 1024)
+                with path.open("r+b") as stream:
+                    os.fsync(stream.fileno())
+            _checkpoint_sync_directory(raw_directory)
+            _checkpoint_write_once(directory / f"n{ordinal:03d}.json", content)
+            self._interactive_checkpoints.append(record)
+            self._authenticate_interactive_history()
+            return record
+
+    @_ka01_guarded
+    def _prepare_interactive_feedback(self, record):
+        from .ka01_admission import _digest, _deny
+        self._authenticate_interactive_history()
+        if not self._interactive_checkpoints or self._interactive_checkpoints[-1] is not record or not record.data["failed_identities"]:
+            _deny("EXACT_ELIGIBLE_CURRENT_FAIL_REQUIRED")
+        data = record.data
+        receipt = dict(receipt_id=hashlib.sha256(os.urandom(32)).hexdigest(), feedback_digest="",
+            checkpoint_digest=record.digest, source_sha=data["binding"]["candidate_sha"],
+            previous_turn_id=data["binding"]["turn"]["turn_id"])
+        # Only factual bounded identities cross to the Executor. No commands,
+        # nodeids, logs, failure detail, user paths, diagnosis or patch advice.
+        feedback = dict(format="AIOS_KA01_NATIVE_FACTUAL_FEEDBACK", version=1,
+            task=asdict(self.run.task), run_id=self.run.run_id, checkpoint_digest=record.digest,
+            source_sha=receipt["source_sha"], session=self._ka01_budget.session_identity,
+            previous_turn_id=receipt["previous_turn_id"], acceptance_ids=sorted(a.id for a in self.task.acceptance),
+            proofs=[{k: p[k] for k in ("command_index", "command_sha256", "outcome", "failed_identities")} for p in data["proofs"]])
+        receipt["feedback_digest"] = _digest(feedback)
+        raw = _checkpoint_json(dict(feedback=feedback, receipt=receipt))
+        if len(raw) > 65536:
+            _deny("FACTUAL_FEEDBACK_BOUND")
+        intent = dict(kind="NATIVE_FACTUAL_FEEDBACK", checkpoint_digest=record.digest, feedback_digest=receipt["feedback_digest"])
+        with self._checkpoint_effect(self._checkpoint_directory(), intent):
+            self._authenticate_interactive_history()
+            if (_original_git(self.repo, "rev-parse", "HEAD").decode("ascii").strip() != receipt["source_sha"]
+                    or _original_git(self.repo, "status", "--porcelain")):
+                _deny("FEEDBACK_SOURCE_CHANGED")
+            if data["ordinal"] in self._interactive_feedback:
+                _deny("DUPLICATE_NATIVE_FEEDBACK")
+            _checkpoint_write_once(self._checkpoint_directory() / f"n{data['ordinal']:03d}.feedback.json", raw)
+            self._interactive_feedback[data["ordinal"]] = raw
+        return json.loads(raw)
+
+    @_ka01_guarded
+    def _accept_interactive_correction(self, *, record, envelope, package, receipt, turn):
+        from .ka01_admission import _digest, _deny
+        from .verification import _ApplicabilityReader
+        self._authenticate_interactive_history()
+        binding = self._interactive_binding(package, turn)
+        prior = record.data["binding"]
+        ordinal = record.data["ordinal"]
+        if (not self._interactive_checkpoints or self._interactive_checkpoints[-1] is not record
+                or envelope["feedback"]["checkpoint_digest"] != record.digest
+                or envelope["feedback"]["source_sha"] != prior["candidate_sha"]
+                or envelope["feedback"]["session"] != self._ka01_budget.session_identity
+                or receipt != envelope["receipt"] or type(receipt) is not dict
+                or _checkpoint_json(envelope) != self._interactive_feedback.get(ordinal)
+                or ordinal in self._interactive_receipts
+                or binding["candidate_sha"] == prior["candidate_sha"] or binding["tree_sha"] == prior["tree_sha"]
+                or not self._is_ancestor(prior["candidate_sha"], binding["candidate_sha"])
+                or turn.turn_id == prior["turn"]["turn_id"] or turn.request_id <= prior["turn"]["request_id"]):
+            _deny("FORGED_DUPLICATE_STALE_OR_NO_PROGRESS_RETURN")
+        _ApplicabilityReader(self.repo).anchors(binding["candidate_sha"], {prior["candidate_sha"]})
+        intent = dict(kind="NATIVE_FEEDBACK", checkpoint_digest=record.digest,
+            feedback_digest=receipt["feedback_digest"], candidate_sha=binding["candidate_sha"], turn=binding["turn"])
+        with self._checkpoint_effect(self._checkpoint_directory(), intent):
+            self._authenticate_interactive_history()
+            if binding != self._interactive_binding(package, turn):
+                _deny("CORRECTION_SOURCE_CHANGED")
+            raw = _checkpoint_json(dict(receipt=receipt, source_checkpoint=record.digest,
+                candidate_sha=binding["candidate_sha"], session=binding["session"], turn=binding["turn"],
+                package_sha256=_digest(result_package_data(package))))
+            _checkpoint_write_once(self._checkpoint_directory() / f"n{ordinal:03d}.receipt.json", raw)
+            self._interactive_receipts[ordinal] = raw
+
+    def _execute_interactive_primary(self, *, adapter, task, run):
+        from .ka01_admission import _deny
+        budget = self._ka01_budget
+        if (budget is None or not budget.interactive or budget.native_adapter is not adapter
+                or task != self.task or run != self.run):
+            _deny("ORIGINAL_INTERACTIVE_CALL_REQUIRED")
+        session = adapter.open_live_session(run=run, budget=budget)
+        prompt = (adapter.prompt_for(task=task, run=run) + "\nINTERACTIVE_RETURN: Return the same structural "
+            "ResultPackage inside {\"package\": ..., \"feedback_receipt\": null}. This is a candidate, "
+            "not terminal completion. Stay in this one session; Runtime alone verifies before deciding "
+            "whether to send factual feedback for a further turn. Do not launch another Executor or RUN.")
+        previous = envelope = None
+        while True:
+            budget.guard()
+            self.interruption_phase = "EXECUTION"
+            with self.observation_tracker.native_session_turn():
+                turn = session.turn(prompt=prompt, output_schema=adapter.live_output_schema())
+            self.interruption_phase = "COMPLETION_GATE"
+            budget.guard()
+            package, receipt = adapter.normalize_live_candidate(turn)
+            if previous is None:
+                if receipt is not None:
+                    _deny("UNSOLICITED_FEEDBACK_RECEIPT")
+            else:
+                self._accept_interactive_correction(record=previous, envelope=envelope,
+                    package=package, receipt=receipt, turn=turn)
+            record = self._seal_interactive_candidate(package, turn)
+            self._interactive_turns.append(record.data["binding"]["turn"])
+            if not record.data["failed_identities"]:
+                return package
+            envelope = self._prepare_interactive_feedback(record)
+            previous = record
+            prompt = ("Original Runtime factual failed-proof feedback follows. Continue the original TASK "
+                "and constraints in this same live session. Choose HOW independently; commit a changed, "
+                "clean scoped descendant candidate. Do not run canonical verification. Return the new "
+                "structural ResultPackage in package and echo exactly the supplied receipt object in "
+                "feedback_receipt. An ACK alone cannot satisfy this request.\n" + json.dumps(envelope, sort_keys=True))
+
+    def _complete_interactive_primary(self, package, policy, checkpoint, checkpoint_digest):
+        from .ka01_admission import _digest, _deny
+        budget = self._ka01_budget
+        if (checkpoint is not None or checkpoint_digest is not None or policy != budget.policy
+                or budget.native_state != "RETURNED" or budget.native_calls != 1
+                or budget.package_digest != _digest(result_package_data(package)) or not self._interactive_checkpoints):
+            _deny("ORIGINAL_INTERACTIVE_COMPLETION_REQUIRED")
+        record = self._interactive_checkpoints[-1]
+        self._authenticate_interactive_history()
+        if (record.data["failed_identities"] or record.data["package_sha256"] != budget.package_digest
+                or record.data["binding"] != self._interactive_binding(package, budget.session.last_turn)):
+            _deny("EXACT_COMPLETE_FINAL_CHECKPOINT_REQUIRED")
+        intent = dict(kind="NATIVE_TERMINAL", checkpoint_digest=record.digest, package_sha256=budget.package_digest)
+        with self._checkpoint_effect(self._checkpoint_directory(), intent):
+            return self._complete(package, policy, checkpoint_record=record)
+
+    def _close_interactive_primary(self):
+        """Bounded observation and irreversible cleanup, including STOP paths."""
+        budget = self._ka01_budget
+        if budget is None or not budget.interactive:
+            return
+        try:
+            if budget.terminal_digest is None:
+                budget.stop()
+            observation = budget.observation()
+            path = self.state.observations / (self.run.run_id + ".ka01.json")
+            _checkpoint_make_directory(path.parent)
+            _checkpoint_write_once(path, _checkpoint_json(observation))
+        except Exception:
+            pass  # Observation/cleanup cannot replace the original terminal cause.
+        finally:
+            if budget.session is not None:
+                budget.session.close()
 
     def _checkpoint_binding(self, request: ProofCheckpointRequest, *, terminal=False):
         format_checkpoint_request(request)
@@ -832,6 +1189,8 @@ class RuntimeCompletion:
                  checkpoint: ProofCheckpointRequest | None = None, checkpoint_digest: str | None = None) -> CompletionOutcome:
         """Keep the default V1/V2 path; explicit checkpoint proof uses this same writer."""
         if self._ka01_budget is not None and self._ka01_budget.production:
+            if self._ka01_budget.interactive:
+                return self._complete_interactive_primary(package, policy, checkpoint, checkpoint_digest)
             return self._complete_ka01_primary(package, policy, checkpoint, checkpoint_digest)
         if self._ka01_opted and (checkpoint is None or policy != self._ka01_budget.policy):
             raise VerificationContractError("KA01_V13_EXACT_CHECKPOINT_TERMINAL_REQUIRED")
@@ -997,7 +1356,7 @@ class RuntimeCompletion:
         self.verification_subject_sha = actual_head
         verification_started = (
             None
-            if self.observation_tracker is None
+            if self.observation_tracker is None or isinstance(checkpoint_record, NativePrimaryCheckpoint)
             else self.observation_tracker.begin_verification()
         )
         try:
@@ -1044,7 +1403,7 @@ class RuntimeCompletion:
         except RuntimeVerificationError as exc:
             self._raise(str(exc), cause=exc)
         finally:
-            if self.observation_tracker is not None:
+            if self.observation_tracker is not None and not isinstance(checkpoint_record, NativePrimaryCheckpoint):
                 self.observation_tracker.end_verification(verification_started)
         self.interruption_phase = "COMPLETION_GATE"
         if policy.remediation_execution is None:
@@ -1083,6 +1442,27 @@ class RuntimeCompletion:
                 budget.terminal_digest = _checkpoint_digest(content)
             else:
                 _write_json(result_path, result_package_data(canonical_package))
+        elif isinstance(checkpoint_record, NativePrimaryCheckpoint):
+            # The exact final native K_i already executed every authored proof.
+            # Authenticate its immutable captures and original session again;
+            # never repeat final verification or accept detached proof files.
+            from .ka01_admission import _digest, _deny
+            budget = self._ka01_budget
+            self._authenticate_interactive_history()
+            if (checkpoint_record is not self._interactive_checkpoints[-1]
+                    or checkpoint_record.data["binding"] != self._interactive_binding(package, budget.session.last_turn)
+                    or checkpoint_record.data["failed_identities"]):
+                _deny("FINAL_CHECKPOINT_CHANGED")
+            budget.guard(live=False)
+            budget.remaining_seconds()
+            _local_feedback_fence(self._checkpoint_directory(), dict(kind="NATIVE_TERMINAL",
+                checkpoint_digest=checkpoint_record.digest, package_sha256=budget.package_digest))
+            content = _checkpoint_json(result_package_data(canonical_package))
+            intent = dict(version=3, kind="NATIVE_PRIMARY_TERMINAL", checkpoint_digest=checkpoint_record.digest,
+                subject_sha=actual_head, package_sha256=budget.package_digest, result_sha256=_digest(content))
+            _checkpoint_write_once(self._checkpoint_directory() / "terminal-intent.json", _checkpoint_json(intent))
+            _checkpoint_write_once(result_path, content)
+            budget.terminal_digest = _digest(content)
         else:
             # Last native read before the single existing terminal effect.
             request = parse_checkpoint_request(_original_json(checkpoint_record.data["request"]).encode("ascii"))
@@ -2154,7 +2534,8 @@ def _local_feedback_contention(fence: Path):
     """
     try:
         current = json.loads(_original_local(fence / "intent.json", MAX_ORIGINAL_PROOF_BYTES))
-        if (type(current) is dict and current.get("kind") in {"LOCAL_FEEDBACK", "LOCAL_INVOCATION"}
+        if (type(current) is dict and current.get("kind") in {"LOCAL_FEEDBACK", "LOCAL_INVOCATION",
+                "NATIVE_CHECKPOINT", "NATIVE_FACTUAL_FEEDBACK", "NATIVE_FEEDBACK", "NATIVE_TERMINAL", "NATIVE_PROCESS"}
                 and not os.path.lexists(fence / "contested.json")):
             _checkpoint_write_once(fence / "contested.json",
                 _checkpoint_json(dict(version=1, kind="COMPETING_RUNTIME_MUTATION")))
@@ -2208,7 +2589,8 @@ def _runtime_effect(directory: Path, intent: dict, *, retain_ambiguity=True):
             _checkpoint_sync_directory(directory)
         raise
     else:
-        if intent.get("kind") in {"LOCAL_FEEDBACK", "LOCAL_INVOCATION"}:
+        if intent.get("kind") in {"LOCAL_FEEDBACK", "LOCAL_INVOCATION", "NATIVE_CHECKPOINT",
+                "NATIVE_FACTUAL_FEEDBACK", "NATIVE_FEEDBACK", "NATIVE_TERMINAL", "NATIVE_PROCESS"}:
             _local_feedback_fence(directory / "l3-02", intent)
         (fence / "intent.json").unlink()
         fence.rmdir()

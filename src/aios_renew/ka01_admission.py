@@ -1,8 +1,8 @@
 """KA-01 v1.3 admission and finite resources, subordinate to RuntimeCompletion.
 
-The version-2 ordinary PRIMARY path enables bounded one-shot completion only.
-Version 1 retains its controlled local preactivation meaning. Neither interface
-supplies a native feedback channel, issuer, proof runner or lease reconstruction.
+Version 3 separately consents to one live native multi-turn PRIMARY session.
+Version 2 remains bounded one-shot completion; version 1 remains controlled
+local preactivation. No interface reconstructs a session or lease from disk.
 Human authentication uses the existing ingress policy and Issue authenticator.
 Files are negative crash guards, never bearer authority.
 """
@@ -28,10 +28,12 @@ from .verification_contract import VerificationContractError
 IMPLEMENTATION = "KA01-L3-05-v1"
 PRODUCTION_IMPLEMENTATION = "KA01-v1.3-bounded-primary-v1"
 PRODUCTION_MODE = "PRODUCTION_BOUNDED_PRIMARY"
+INTERACTIVE_IMPLEMENTATION = "KA01-v1.3-interactive-primary-v1"
+INTERACTIVE_MODE = "PRODUCTION_INTERACTIVE_PRIMARY"
 VERSION = "1.3"
 PROFILE = "KA01-v1.3-default-resource-profile"
 NORMATIVE_PATH = "docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md"
-NORMATIVE_SHA256 = "9612271591b4dd591d3adff572512ce4c657b5a8caec14bcff707092112df21f"
+NORMATIVE_SHA256 = "1381a4ef25a1b6877b8e6326767e8545eff17cdc49dfd6062090e630c8a5e84e"
 IMPLEMENTATION_PATHS = (
     "src/aios_renew/ka01_admission.py", "src/aios_renew/operator.py",
     "src/aios_renew/runtime.py", "src/aios_renew/dispatcher.py",
@@ -39,6 +41,8 @@ IMPLEMENTATION_PATHS = (
     "src/aios_renew/verification_contract.py", "src/aios_renew/intra_run_proof_contract.py",
     "src/aios_renew/codex_adapter.py",
 )
+INTERACTIVE_IMPLEMENTATION_PATHS = (*IMPLEMENTATION_PATHS,
+    "src/aios_renew/codex_live_transport.py", "src/aios_renew/run_observation.py")
 OPERATIONS = frozenset({"PRIMARY", "REPAIR", "REMEDIATION"})
 DEFAULTS = dict(max_corrections=2, max_checkpoints=3, max_run_wall_minutes=240,
                 max_runtime_verification_minutes=180, max_tokens=None)
@@ -129,7 +133,7 @@ class AdmissionRequest:
     consent_sha256: str
 
     def __post_init__(self):
-        if type(self.version) is not int or self.version not in (1, 2):
+        if type(self.version) is not int or self.version not in (1, 2, 3):
             _deny("UNSUPPORTED_INTERFACE_VERSION")
         for number in (self.selection_issue, self.consent_issue):
             if type(number) is not int or not 0 < number < 10**12:
@@ -143,19 +147,19 @@ def production_gate(request, *, operation="PRIMARY"):
     if request is None:
         return
     # Preserve rejection of old bearer-like flags and historical v1 requests.
-    if type(request) is not AdmissionRequest or request.version != 2:
+    if type(request) is not AdmissionRequest or request.version not in (2, 3):
         _deny("NOT_ACTIVATED")
     request.__post_init__()
     if operation != "PRIMARY":
         _deny("PRODUCTION_OPERATION_UNSUPPORTED")
 
 
-def _production_source(owner, reader, tree):
+def _production_source(owner, reader, tree, *, interactive=False):
     """Bind the running first-party consumers to the exact selected main source."""
     import sys
     from .verification import _original_local, MAX_ORIGINAL_PROOF_BYTES
     blobs = {}
-    for path in IMPLEMENTATION_PATHS:
+    for path in INTERACTIVE_IMPLEMENTATION_PATHS if interactive else IMPLEMENTATION_PATHS:
         module = sys.modules.get("aios_renew." + Path(path).stem)
         if module is None or not getattr(module, "__file__", None):
             _deny("RUNNING_IMPLEMENTATION_SOURCE_UNAVAILABLE")
@@ -182,7 +186,9 @@ def _authority(owner, request, operation, profile, policy):
     profile.__post_init__()
     if (profile.run_id, profile.executor) != (owner.run.run_id, owner.run.executor):
         _deny("PROFILE_RUN_MISMATCH")
-    production = request.version == 2
+    production = request.version in (2, 3)
+    interactive = request.version == 3
+    implementation = INTERACTIVE_IMPLEMENTATION if interactive else PRODUCTION_IMPLEMENTATION if production else IMPLEMENTATION
     if production and (operation != "PRIMARY" or owner.run.executor != "codex"
             or owner.task.verification.policy != "minimum-sufficient-v1"):
         _deny("PRODUCTION_CONFIGURATION_UNSUPPORTED")
@@ -259,7 +265,7 @@ def _authority(owner, request, operation, profile, policy):
                        "task", "operations", "normative", "overrides", "remote_url"))
     task = dict(id=owner.task.task_id, revision=owner.task.revision)
     if (selection["format"] != "AIOS_KA01_V13_SELECTION" or type(selection["version"]) is not int
-            or selection["version"] != 1 or selection["implementation"] != (PRODUCTION_IMPLEMENTATION if production else IMPLEMENTATION)
+            or selection["version"] != 1 or selection["implementation"] != implementation
             or selection["ka01_version"] != VERSION or selection["profile"] != PROFILE
             or selection["policy"] not in {"minimum-sufficient-v1", "minimum-sufficient-v2"}
             or owner.task.verification.policy != selection["policy"] or _bytes(selection["task"]) != _bytes(task)
@@ -282,7 +288,7 @@ def _authority(owner, request, operation, profile, policy):
     if production:
         if normative["source_sha"] != main:
             _deny("EXACT_CURRENT_ACTIVATION_SOURCE_REQUIRED")
-        implementation_source = _production_source(owner, reader, tree)
+        implementation_source = _production_source(owner, reader, tree, interactive=interactive)
     overrides, override_sources = [], []
     if type(selection["overrides"]) is not list or len(selection["overrides"]) > 5:
         _deny("OVERRIDE_BOUND")
@@ -300,8 +306,8 @@ def _authority(owner, request, operation, profile, policy):
     source = _ka01_operation_source(owner, operation, policy, production=production)
     consent, consent_source = human(request.consent_issue, request.consent_sha256)
     expected = dict(format="AIOS_KA01_V13_RUN_CONSENT", version=1,
-        mode=PRODUCTION_MODE if production else "CONTROLLED_PREACTIVATION",
-        implementation=PRODUCTION_IMPLEMENTATION if production else IMPLEMENTATION, ka01_version=VERSION,
+        mode=INTERACTIVE_MODE if interactive else PRODUCTION_MODE if production else "CONTROLLED_PREACTIVATION",
+        implementation=implementation, ka01_version=VERSION,
         selection_sha256=request.selection_sha256, task=task, run_id=owner.run.run_id,
         admitted_run_sha256=source["admitted_run_sha256"], operation=operation,
         executor=owner.run.executor, execution_profile_sha256=_digest(profile.as_dict()),
@@ -310,17 +316,17 @@ def _authority(owner, request, operation, profile, policy):
         _deny("EXACT_FRESH_RUN_CONSENT_REQUIRED")
     if selected_refs() != refs:
         _deny("SOURCE_MOVED_DURING_ADMISSION")
-    authority = dict(implementation=PRODUCTION_IMPLEMENTATION if production else IMPLEMENTATION,
+    authority = dict(implementation=implementation,
         ka01_version=VERSION, profile=PROFILE,
         policy=selection["policy"], normative=normative, ingress_policy_sha256=_digest(ingress_bytes),
         selection=selected_source, overrides=override_sources, consent=consent_source,
         original_selector=dict(ref=selected_ref, sha=refs[selected_ref]),
         effective_limits=limits, operation=operation, execution_profile=profile.as_dict(), source=source,
-        production_activation="SUPPORTED_BOUNDED_PRIMARY" if production else "NOT_ACTIVATED",
-        continuation="NOT_AUTHORIZED")
+        production_activation="SUPPORTED_INTERACTIVE_PRIMARY" if interactive else "SUPPORTED_BOUNDED_PRIMARY" if production else "NOT_ACTIVATED",
+        continuation="SAME_ORIGINAL_LIVE_SESSION_ONLY" if interactive else "NOT_AUTHORIZED")
     if production:
         authority.update(implementation_main_sha=main, implementation_source=implementation_source,
-            native_feedback_delivery="UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE")
+            native_feedback_delivery="REQUIRES_ORIGINAL_NATIVE_COMPLETED_TURN" if interactive else "UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE")
     return authority
 
 
@@ -347,7 +353,9 @@ class _AdmissionBudget:
                 or leases.holder(owner.task.task_id) is not lease or not _lease_matches_run(lease, owner.run)):
             _deny("ORIGINAL_LIVE_LEASE_REQUIRED")
         self.owner, self.request, self.operation = owner, request, operation
-        self.production = request.version == 2
+        self.production = request.version in (2, 3)
+        self.interactive = request.version == 3
+        self.session = self.session_identity = None
         self.native_state, self.native_calls, self.package_digest = "NOT_STARTED", 0, None
         self.native_dispatcher = self.native_adapter = None
         self.profile, self.policy, self.leases, self.lease = profile, policy, leases, lease
@@ -392,12 +400,18 @@ class _AdmissionBudget:
             verification_reserved_ns=self.verification_reserved_ns, verification_spent_ns=self.verification_spent_ns,
             verification_settled_ns=self.verification_settled_ns, cleanup_spent_ns=self.cleanup_spent_ns,
             accounted_until_ns=self.accounted_until_ns, pending=self.pending, effects=self.effects,
-            production=self.production, native_state=self.native_state, native_calls=self.native_calls,
+            production=self.production, interactive=self.interactive,
+            session_identity=self.session_identity, native_state=self.native_state, native_calls=self.native_calls,
             package_digest=self.package_digest)
 
     def stop(self):
         self.stopped = True
         self.owner._local_feedback_stopped = True
+        if self.interactive and self.session is not None:
+            try:
+                self.session.close()
+            except Exception:
+                pass  # Preserve the original STOP/terminal cause.
 
     def _clock(self):
         now, real = time.monotonic_ns(), time.time_ns()
@@ -466,6 +480,14 @@ class _AdmissionBudget:
                         or getattr(frame.adapter, "execution_profile", None) != frame.profile
                         or getattr(frame.adapter, "confirm_local_feedback", None) != frame.callback):
                     _deny("ORIGINAL_INVOCATION_LOST")
+            if self.interactive and self.session_identity is not None:
+                if (self.session is None or self.native_adapter._live_transport is not self.session
+                        or self.native_adapter.execution_profile != self.profile
+                        or self.native_dispatcher._execution_profile != self.profile
+                        or self.native_dispatcher._prospective_runtime is not self.owner):
+                    _deny("ORIGINAL_NATIVE_SESSION_LOST")
+                self.session.assert_live(self.session_identity)
+                self.session.assert_idle()
             self._clock()
         except BaseException:
             self.stop()
@@ -497,7 +519,8 @@ class _AdmissionBudget:
                 self.accounted_until_ns = self._clock()
                 self._append(dict(state="NATIVE_RETURNED", package_sha256=self.package_digest,
                     wall_elapsed_ns=self.last_ns - self.started_ns,
-                    feedback_delivery="UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE"))
+                    feedback_delivery=("SOURCE_CORRELATED_CANDIDATE_RECEIVED" if self.corrections_spent else "NOT_REQUESTED")
+                        if self.interactive else "UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE"))
                 self._facts_seal = _bytes(self._facts())
         except BaseException:
             self.stop()
@@ -524,6 +547,51 @@ class _AdmissionBudget:
                 raise
         return invoke
 
+    def poll_native(self):
+        """Wall/lease/process checks while the Executor may have a dirty tree.
+
+        Full source and Human reauthentication occurs before/after each turn
+        and each protected Runtime effect, never against half-written work.
+        """
+        try:
+            if (self.stopped or self.owner._local_feedback_stopped or self.thread != get_ident()
+                    or self.owner._ka01_budget is not self
+                    or self.leases.holder(self.owner.task.task_id) is not self.lease
+                    or self.native_state != "EXECUTING"
+                    or getattr(self.native_adapter, "execution_profile", None) != self.profile):
+                _deny("ORIGINAL_SESSION_AUTHORITY_LOST")
+            self._clock()
+            if self.session is not None:
+                self.session.assert_live(self.session_identity)
+        except BaseException:
+            self.stop()
+            raise
+
+    def open_native_session(self, factory):
+        """Reserve before spawn; no exception permits replacement or replay."""
+        from .runtime import _checkpoint_mutation
+        self.guard()
+        if not self.interactive or self.native_calls or self.session is not None:
+            self.stop()
+            _deny("NATIVE_INVOCATION_ALREADY_RESERVED")
+        try:
+            with _checkpoint_mutation(self.owner._checkpoint_directory(), dict(kind="NATIVE_PROCESS")):
+                self.native_calls = 1
+                self._append(dict(state="NATIVE_PROCESS_RESERVED"))
+                self._facts_seal = _bytes(self._facts())
+                self.session = factory()
+                self.native_adapter._live_transport = self.session
+                self.session_identity = self.session.identity()
+                self._append(dict(state="NATIVE_SESSION_BOUND", session=self.session_identity))
+                self._facts_seal = _bytes(self._facts())
+            self.guard()
+            return self.session
+        except BaseException:
+            self.stop()
+            if self.session is not None:
+                self.session.close()
+            raise
+
     def returned_package(self, package):
         from .runtime import result_package_data
         self.guard()
@@ -542,7 +610,7 @@ class _AdmissionBudget:
         return dict(implementation=authority["implementation"], ka01_version=VERSION,
             status="COMPLETED_SUPPORTED_PRIMARY" if self.terminal_digest is not None and self.pending is None
                 else "STOPPED" if self.stopped else "ADMITTED_SUPPORTED_PRIMARY",
-            configuration=PRODUCTION_MODE, operation=self.operation, run_id=self.owner.run.run_id,
+            configuration=INTERACTIVE_MODE if self.interactive else PRODUCTION_MODE, operation=self.operation, run_id=self.owner.run.run_id,
             source_main_sha=authority.get("implementation_main_sha"),
             selection_sha256=self.request.selection_sha256, consent_sha256=self.request.consent_sha256,
             execution_profile_sha256=_digest(self.profile.as_dict()),
@@ -551,8 +619,20 @@ class _AdmissionBudget:
             native_invocations=self.native_calls,
             checkpoints_spent=self.checkpoints_spent, corrections_spent=self.corrections_spent,
             verification_spent_ns=self.verification_spent_ns,
-            native_feedback_delivery="UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE",
-            continuation="NOT_AUTHORIZED", review="NOT_OBSERVED", publication="NOT_OBSERVED")
+            native_feedback_delivery=("SOURCE_CORRELATED_CANDIDATE_RECEIVED" if self.corrections_spent
+                else "PREPARED_CONSUMPTION_NOT_ESTABLISHED" if self.owner._interactive_feedback
+                else "NOT_REQUESTED" if self.session_identity is not None else "BLOCKER_NATIVE_SESSION_UNAVAILABLE")
+                if self.interactive else "UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE",
+            continuation="SAME_ORIGINAL_LIVE_SESSION_ONLY" if self.interactive else "NOT_AUTHORIZED",
+            **(dict(native_session=self.session_identity,
+                    turns=list(getattr(self.session, "turn_observations", ())),
+                    checkpoints_reserved=self.checkpoints_reserved, corrections_reserved=self.corrections_reserved,
+                    verification_reserved_ns=self.verification_reserved_ns,
+                    verification_settled_ns=self.verification_settled_ns,
+                    unresolved_reservation=self.pending,
+                    unavailable_evidence=["AUTHENTICATED_CUMULATIVE_TOKENS", "CROSS_CANDIDATE_APPLICABILITY"],
+                    final_status="RESULT" if self.terminal_digest is not None else "STOP" if self.stopped else "ACTIVE")
+               if self.interactive else {}), review="NOT_OBSERVED", publication="NOT_OBSERVED")
 
     def bind(self, boundary, frame):
         self.guard(live=False)
@@ -622,8 +702,8 @@ class _AdmissionBudget:
         key = _digest(intent)
         replay = key in self.effects
         kind = intent["kind"]
-        checkpoints = int(kind in {"CHECKPOINT", "PRODUCTION_COMPLETION"} and not replay)
-        corrections = int(kind == "LOCAL_FEEDBACK" and not replay)
+        checkpoints = int(kind in {"CHECKPOINT", "PRODUCTION_COMPLETION", "NATIVE_CHECKPOINT"} and not replay)
+        corrections = int(kind in {"LOCAL_FEEDBACK", "NATIVE_FEEDBACK"} and not replay)
         started = self._clock()
         preparation = 0 if self.work_started is None else started - self.work_started
         if self.verification_spent_ns + preparation >= self.verification_limit_ns:
@@ -651,7 +731,7 @@ class _AdmissionBudget:
             else:
                 from .verification import _original_local, MAX_ORIGINAL_PROOF_BYTES
                 raw = _original_local(self.owner.state.results / (self.owner.run.run_id + ".json"), MAX_ORIGINAL_PROOF_BYTES)
-                if kind not in {"TERMINAL", "PRODUCTION_COMPLETION"} or _digest(raw) != self.terminal_digest:
+                if kind not in {"TERMINAL", "PRODUCTION_COMPLETION", "NATIVE_TERMINAL"} or _digest(raw) != self.terminal_digest:
                     _deny("TERMINAL_SETTLEMENT_CONFLICT")
             spent = self._clock() - started
             if spent > reserved or self.verification_spent_ns + spent >= self.verification_limit_ns:
@@ -702,9 +782,9 @@ class _AdmissionBudget:
         key = _digest(intent)
         replay = key in self.effects
         kind = intent["kind"]
-        checkpoints = int(kind in {"CHECKPOINT", "PRODUCTION_COMPLETION"} and not replay)
-        corrections = int(kind == "LOCAL_FEEDBACK" and not replay)
-        if kind == "FACTUAL_FEEDBACK" and not replay and self.corrections_reserved >= min(
+        checkpoints = int(kind in {"CHECKPOINT", "PRODUCTION_COMPLETION", "NATIVE_CHECKPOINT"} and not replay)
+        corrections = int(kind in {"LOCAL_FEEDBACK", "NATIVE_FEEDBACK"} and not replay)
+        if kind in {"FACTUAL_FEEDBACK", "NATIVE_FACTUAL_FEEDBACK"} and not replay and self.corrections_reserved >= min(
                 self.limits["max_corrections"], self.limits["max_checkpoints"] - 1):
             _deny("CORRECTION_CAPACITY_EXHAUSTED")
         if checkpoints and self.checkpoints_reserved >= min(self.limits["max_checkpoints"], self.limits["max_corrections"] + 1):
@@ -726,7 +806,8 @@ def guarded(method):
             return method(owner, *args, **kwargs)
         entered = False
         try:
-            if budget.production and method.__name__ != "complete":
+            if budget.production and method.__name__ != "complete" and (not budget.interactive
+                    or method.__name__ not in {"_seal_interactive_candidate", "_prepare_interactive_feedback", "_accept_interactive_correction"}):
                 _deny("NATIVE_FEEDBACK_UNSUPPORTED")
             if budget.work_started is not None:
                 if method.__name__ == "terminal_reuse" and budget.outer_method == "complete":

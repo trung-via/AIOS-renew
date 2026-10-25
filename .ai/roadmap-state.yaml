@@ -1,4 +1,30 @@
 version: 1
+human_lean_vp_native_primary_20261025:
+  authority: EXPLICIT_HUMAN_DECISION_IMPLEMENTED_WITHIN_ADMITTED_TASK424
+  approved_on: '2026-10-25'
+  planning_only: true
+  decision: ONE_INTEGRATED_NATIVE_INTERACTIVE_PRIMARY_TASK_NO_ADDITIONAL_ACTIVATION_STAGE
+  source_main_sha_at_authoring: b37604f83bc299f1fe1e7511adc07a7c08c1b475
+  sole_high_level_next: lean-vp-native-interactive-primary-20261025
+  planning_owner: lean-vp-native-interactive-primary-20261025
+  planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  contract_document: docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  implementation_task: TASK-424
+  implementation_revision: 1
+  remaining_task_count: 1
+  selected_slice: ORIGINAL_RUN_SAME_LIVE_CODEX_SESSION_VERIFY_FIX_VERIFY
+  supersedes_prospective_next_record: human_lean_vp_single_activation_closeout_20261025
+  retained_implementation: KA01-v1.3-bounded-primary-v1
+  new_implementation: KA01-v1.3-interactive-primary-v1
+  new_consent: VERSION_3_NEW_RUN_SEPARATELY_AUTHENTICATED_HUMAN_SELECTION_AND_CONSENT
+  task423_source: b37604f83bc299f1fe1e7511adc07a7c08c1b475
+  task423_review: REVIEW-423-001
+  retired_future_work: [TASK418_PRIMARY_REPAIR_CONTINUATION, L3-06, SEPARATE_G3, SEPARATE_G6, L4-01, L4-02, L4-03, L4-04]
+  historical_lineage: ALL_EARLIER_DATED_RECORDS_TASK_RUN_FAILURE_REVIEW_AND_PUBLICATION_IMMUTABLE
+  no_follow_on_gates: [L3_06, G3_PACKAGE, G6_PACKAGE, L4, PILOT, SHADOW, ACTIVATION_TASK, MANUAL_CUTOVER]
+  unavailable_native: EXPLICIT_BLOCKER_STOP_NEVER_SYNTHETIC_LIVE_PASS
+  lifecycle: ORIGINAL_RUNTIME_PROOF_AND_TERMINAL_REVIEWER_AND_PUBLISHER_INDEPENDENT_NO_OUTCOME_CLAIM
+  next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
 human_lean_vp_single_activation_closeout_20261025:
   authority: EXPLICIT_HUMAN_DECISION_EXECUTED_BY_ADMITTED_TASK423
   approved_on: '2026-10-25'
@@ -920,7 +946,7 @@ human_lean_vp_l3_03_reconciliation_20261020:
     - NO_TASK_RUN_REVIEW_PUBLICATION_OR_DOWNSTREAM_LINEAGE_REWRITE
     - UNRESOLVED_INGRESS_PRODUCER_CONCURRENCY_REMAINS_SEPARATE_DIAGNOSTIC
 
-active_track: lean-vp-intra-v13-activation-closeout-20261025
+active_track: lean-vp-native-interactive-primary-20261025
 active_track_status: ACTIVE
 planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
 human_lean_vp_legacy_plan_retirement_and_task389_authoring_reconciliation_20261019:
@@ -3105,7 +3131,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - lean-vp-intra-v13-activation-closeout-20261025
+  - lean-vp-native-interactive-primary-20261025
 effective_next_transitions: []
 historical_effective_next_transitions_task415:
   - from:
@@ -3119,8 +3145,23 @@ historical_effective_next_transitions_task415:
     to: {item_id: caa-v1-20261023, task_id: TASK-415, task_revision: 1}
     priority_record: human_auto_next_priority_20261024
 sequence:
-  - id: lean-vp-intra-v13-activation-closeout-20261025
+  - id: lean-vp-native-interactive-primary-20261025
     status: NEXT
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    planning_only: true
+    planning_owner: lean-vp-native-interactive-primary-20261025
+    planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+    task_id: TASK-424
+    task_revision: 1
+    selected_slice: ORIGINAL_RUN_SAME_LIVE_CODEX_SESSION_VERIFY_FIX_VERIFY
+    priority_record: human_lean_vp_native_primary_20261025
+    remaining_task_count: 1
+    successor_slices: NONE_REMAINING_LEAN_VP_WORK_RETIRED
+    next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
+  - id: lean-vp-intra-v13-activation-closeout-20261025
+    status: PAUSED
+    historical_status: NEXT
+    prospective_superseded_by: lean-vp-native-interactive-primary-20261025
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     planning_only: true
     planning_owner: lean-vp-intra-v13-activation-closeout-20261025

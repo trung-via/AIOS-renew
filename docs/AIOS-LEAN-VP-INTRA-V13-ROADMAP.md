@@ -1,4 +1,63 @@
-# Lean VP v1.3 ? single activation closeout
+# Lean VP v1.3 - original-RUN native interactive PRIMARY
+
+**Controlling prospective Human priority: 2026-10-25, TASK-424 r1.** The one
+NEXT/owner is `lean-vp-native-interactive-primary-20261025`, recorded in
+`.ai/roadmap-state.yaml:human_lean_vp_native_primary_20261025`. TASK-424 contains
+the native transport, ordinary caller integration, prospective D.1-D.4 contract,
+focused tests and bounded original-RUN observation in one source delta. Ordinary
+Runtime verification, independent review and eligible-source publication remain
+separate authorities. No future activation TASK or manual cutover follows.
+
+The new configuration is `KA01-v1.3-interactive-primary-v1`, explicitly selected
+through the existing `operator.run_task(..., ka01_admission=AdmissionRequest(3,
+selection_issue, selection_sha256, consent_issue, consent_sha256))`. It requires
+new-RUN Human consent with mode `PRODUCTION_INTERACTIVE_PRIMARY`, the exact new
+implementation, current source/TASK, original selected model/effort/profile and
+lease. The existing authenticated selector and Human Issue sources are retained;
+an old v2 consent or detached receipt cannot enroll a RUN. Only Codex PRIMARY,
+`minimum-sufficient-v1` and the first-party `openai` app-server stdio profile
+are supported. Complete exact pytest observer coverage is required; unsupported
+commands, models, installed binaries or channels produce explicit STOP.
+
+One original native process/connection/new thread spans distinct inference turns.
+Runtime authenticates clean scoped C1, verifies all original authored obligations
+preterminal and seals K1. Only complete stable scoped call-FAIL permits bounded
+fact-only F1. The same still-live session must return source-correlated receipt
+and a different clean descendant C2; Runtime rechecks identity/consent/source,
+verifies progress and seals K2. An ACK alone, replacement process, saved thread,
+mock callback or detached file never supplies this continuity. The exact complete
+final checkpoint supplies terminal evidence once, with no repeated final tests.
+Cross-candidate applicability is unavailable in this profile: changing the source
+invalidates all earlier source-specific proof, so original commands are outstanding
+again. Unknown/incomplete/unstable observations STOP rather than suggest a fix.
+
+The published limits remain 2 corrections, 3 checkpoints, 240 minutes RUN wall,
+180 minutes cumulative Runtime verification and null token cap. Nonnull caps
+STOP without authentic complete usage. Protected original Runtime effects count
+checkpoints/corrections; interrupted reservations never permit retry or resume.
+One normal RESULT or FAILURE/STOP uses the original RUN and terminal fence.
+`RunSummary.ka01` and an original Runtime `<RUN>.ka01.json` observation report source,
+native session/turn correlation, actual counts, verification cost, unavailable
+evidence and final status. They establish no Reviewer/PUBLISH result or savings.
+
+Published TASK-423 r1 / RUN-423-002 / REVIEW-423-001 and its source on main
+`b37604f83bc299f1fe1e7511adc07a7c08c1b475` retain their bounded v2 meaning.
+Version 1 preactivation, v2 bounded-primary, nonopted legacy and existing
+REPAIR/REMEDIATION remain isolated. TASK-418 and all seven failed RUNs remain
+immutable; no TASK-418/L3-06/G3/G6/L4 package is revived. There is no pilot,
+shadow, extra activation gate, downstream adoption or automatic roadmap change.
+The live installed Codex integration test is mandatory in the focused test
+population: native-unavailable is a visible BLOCKER failure, never skip/xfail or
+a fixture substituted for live conformance. Runtime owns executing that test.
+
+## Retained TASK-423 closeout record - historical prospective priority
+
+The following October 25 decision retains its exact earlier scope and unavailable
+claims for v2. Its NEXT pointer is superseded only by the new priority above;
+its TASK/RUN/REVIEW/publication history and retirement decision are unchanged.
+
+<details>
+<summary>Earlier bounded-primary activation and October 22 planning history</summary>
 
 **Controlling Human decision: 2026-10-25.** Exactly one prospective
 implementation-and-production-activation TASK remains: **TASK-423 r1**.
@@ -295,5 +354,7 @@ for TASK_AUTHORING, **ROA-1 R3 v3** for REPAIR_AUTHORING, unchanged **AOA-1** /
 mentions in archived planning are historical, not current profile selection.
 There is no automatic Executor selection, production activation, downstream
 pin change, later roadmap advancement or measurement claim here.
+
+</details>
 
 </details>

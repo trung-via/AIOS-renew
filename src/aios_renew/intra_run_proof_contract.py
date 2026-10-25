@@ -1298,3 +1298,87 @@ def _consumption_result(*, reason=None, binding=None, resources=None, progress="
         progress=progress, resources=resources, stop=dict(status="STOP", reason=stop_reason,
             c2_admission="NOT_AUTHORIZED", human_opt_in="NOT_ESTABLISHED", token_budget="NOT_ESTABLISHED"),
         authority=dict(FEEDBACK_AUTHORITY))).encode("ascii"))
+
+
+@dataclass(frozen=True, slots=True)
+class NativePrimaryCheckpoint:
+    """V3 original-RUN observation, distinct from historical reviewed L3 K_i.
+
+    A codec supplies no authority. Only its original live Runtime can seal or
+    authenticate it. Native observer evidence keeps its actual source subject.
+    """
+    content_json: str
+
+    @property
+    def digest(self):
+        return hashlib.sha256(self.content_json.encode("ascii")).hexdigest()
+
+    @property
+    def data(self):
+        return json.loads(self.content_json)
+
+
+def parse_native_primary_checkpoint(content: bytes) -> NativePrimaryCheckpoint:
+    from .verification_contract import _reuse_decode, _app_exact, _original_hash, _original_json, VerificationContractError
+    from .artifacts import validate_evidence
+    data = _app_exact(_reuse_decode(content), ("format", "version", "ordinal", "predecessor_digest",
+        "binding", "package_sha256", "population_identity", "evidence", "proofs", "failed_identities"))
+    if _original_json(data).encode("ascii") != content:
+        raise VerificationContractError("KA01_NATIVE_CHECKPOINT_NONCANONICAL")
+    if (data["format"] != "AIOS_KA01_NATIVE_PRIMARY_CHECKPOINT" or type(data["version"]) is not int
+            or data["version"] != 1 or type(data["ordinal"]) is not int or not 1 <= data["ordinal"] <= 256):
+        raise VerificationContractError("KA01_NATIVE_CHECKPOINT_FORMAT")
+    if data["predecessor_digest"] is not None:
+        _original_hash(data["predecessor_digest"])
+    for key in ("package_sha256", "population_identity"):
+        _original_hash(data[key])
+    binding = _app_exact(data["binding"], ("task", "run_id", "base_sha", "candidate_sha", "tree_sha",
+        "admitted_run_sha256", "authority_sha256", "execution_profile_sha256", "session", "turn",
+        "commands_sha256", "scope_sha256"))
+    for key in ("admitted_run_sha256", "authority_sha256", "execution_profile_sha256", "commands_sha256", "scope_sha256"):
+        _original_hash(binding[key])
+    for key in ("base_sha", "candidate_sha", "tree_sha"):
+        if type(binding[key]) is not str or re.fullmatch(r"[0-9a-f]{40}", binding[key]) is None:
+            raise VerificationContractError("KA01_NATIVE_CHECKPOINT_SOURCE")
+    session = _app_exact(binding["session"], ("connection_id", "process_id", "thread_id", "binary_sha256", "execution_profile_sha256"))
+    turn = _app_exact(binding["turn"], ("connection_id", "thread_id", "turn_id", "request_id", "input_sha256",
+        "user_item_id", "output_item_id", "output_sha256"))
+    for obj, names in ((session, ("connection_id", "thread_id")),
+                       (turn, ("connection_id", "thread_id", "turn_id", "user_item_id", "output_item_id"))):
+        for name in names:
+            if type(obj[name]) is not str or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", obj[name]) is None:
+                raise VerificationContractError("KA01_NATIVE_CHECKPOINT_SESSION")
+    for obj, names in ((session, ("binary_sha256", "execution_profile_sha256")),
+                       (turn, ("input_sha256", "output_sha256"))):
+        for name in names:
+            _original_hash(obj[name])
+    if (type(session["process_id"]) is not int or session["process_id"] <= 0
+            or type(turn["request_id"]) is not int or turn["request_id"] <= 0
+            or any(turn[k] != session[k] for k in ("connection_id", "thread_id"))
+            or session["execution_profile_sha256"] != binding["execution_profile_sha256"]):
+        raise VerificationContractError("KA01_NATIVE_CHECKPOINT_SESSION_CORRELATION")
+    if (type(data["evidence"]) is not list or not 1 <= len(data["evidence"]) <= 256
+            or type(data["proofs"]) is not list or len(data["proofs"]) != len(data["evidence"])):
+        raise VerificationContractError("KA01_NATIVE_CHECKPOINT_POPULATION")
+    for index, (item, proof) in enumerate(zip(data["evidence"], data["proofs"])):
+        evidence = validate_evidence(item)
+        _app_exact(proof, ("command_index", "command_sha256", "evidence_sha256", "raw_sha256", "native_sha256",
+            "collection", "profile_sha256", "toolchain_sha256", "outcome", "failed_identities"))
+        if (proof["command_index"] != index or type(proof["command_index"]) is not int
+                or proof["outcome"] not in ("PASS", "FAIL")
+                or (evidence.run_id, evidence.subject_sha) != (binding["run_id"], binding["candidate_sha"])):
+            raise VerificationContractError("KA01_NATIVE_CHECKPOINT_PROOF")
+        for key in ("command_sha256", "evidence_sha256", "raw_sha256", "native_sha256", "profile_sha256", "toolchain_sha256"):
+            _original_hash(proof[key])
+        if hashlib.sha256(_original_json(item).encode("ascii")).hexdigest() != proof["evidence_sha256"]:
+            raise VerificationContractError("KA01_NATIVE_CHECKPOINT_EVIDENCE")
+        if type(proof["failed_identities"]) is not list:
+            raise VerificationContractError("KA01_NATIVE_CHECKPOINT_FAILURES")
+        for identity in proof["failed_identities"]:
+            _original_hash(identity)
+        if (proof["failed_identities"] != sorted(set(proof["failed_identities"]))
+                or bool(proof["failed_identities"]) != (proof["outcome"] == "FAIL")):
+            raise VerificationContractError("KA01_NATIVE_CHECKPOINT_OUTCOME")
+    if data["failed_identities"] != sorted({v for p in data["proofs"] for v in p["failed_identities"]}):
+        raise VerificationContractError("KA01_NATIVE_CHECKPOINT_OUTSTANDING")
+    return NativePrimaryCheckpoint(content.decode("ascii"))

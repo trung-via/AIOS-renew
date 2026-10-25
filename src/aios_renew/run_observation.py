@@ -337,15 +337,35 @@ class RunObservationTracker:
 
         return self._read_clock()
 
-    def end_verification(self, started: float | None) -> None:
+    def end_verification(self, started: float | None, *, cumulative: bool = False) -> None:
         """Record attempted verification elapsed time on success or failure."""
 
         finished = self._read_clock()
         if started is None or finished is None:
             return
-        self._verification_elapsed = finished - started
+        elapsed = finished - started
+        self._verification_elapsed = ((self._verification_elapsed or 0) + elapsed) if cumulative else elapsed
         if not _is_elapsed(self._verification_elapsed):
             self._valid = False
+
+    def native_session_turn(self):
+        """Time only native inference, excluding Runtime's between-turn proof."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def observed():
+            self._executor_invoked = True
+            started = self._read_clock()
+            try:
+                yield
+            finally:
+                finished = self._read_clock()
+                self._token_usage = None  # Complete applicable usage is unavailable.
+                if started is not None and finished is not None:
+                    self._executor_elapsed = (self._executor_elapsed or 0) + finished - started
+                    if not _is_elapsed(self._executor_elapsed):
+                        self._valid = False
+        return observed()
 
     def finalize(self, terminal_kind: str) -> RunObservation | None:
         """Build the terminal observation, or omit it if trustworthy timing failed."""
