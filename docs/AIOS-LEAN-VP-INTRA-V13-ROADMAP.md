@@ -1,3 +1,103 @@
+# Lean VP v1.3 ? single activation closeout
+
+**Controlling Human decision: 2026-10-25.** Exactly one prospective
+implementation-and-production-activation TASK remains: **TASK-423 r1**.
+The sole planning NEXT/owner is `lean-vp-intra-v13-activation-closeout-20261025`,
+recorded in `.ai/roadmap-state.yaml:human_lean_vp_single_activation_closeout_20261025`.
+This is the Human-approved narrowing implemented in the admitted TASK, not a
+transition inferred from a RESULT, REVIEW, publication or PR #2592's draft.
+
+TASK-423 reconciles [KA-01 v1.3 D.1-D.4](AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md)
+and enables its supported ordinary production caller in the same delta. No
+future L3-06, separate G3/G6 package, L4 package, trial, pilot, shadow evaluation,
+full VP-07 package, second activation TASK or discretionary postpublication
+cutover is required. Per-RUN authorization and ordinary Runtime, Reviewer and
+Publisher authority still apply; this source claims no own PASS or publication.
+
+## Scope retired prospectively
+
+- Future TASK-418 PRIMARY/REPAIR continuation and the abandoned Codex native
+  same-live-recipient delivery feature. TASK-418 r2 and **RUN-418-001,
+  RUN-418-002, RUN-418-003, RUN-418-004, RUN-418-005, RUN-418-006,
+  RUN-418-007** remain immutable unfinished FAILURE history.
+- Every unimplemented L3-06, independent G3/G6 and L4 delivery/measurement/
+  conformance commitment. The original 16-slot L1-L4 plan is retained below
+  and in its original dated source. Retirement is not completion or a PASS.
+- Earlier Lean VP resume/authoring pointers, including the October 21 successor
+  and October 22 return, are historical. They supply no independent NEXT.
+
+The prior sole CAA planning priority is superseded **for the prospective NEXT
+only**. TASK-419 r2, TASK-420 r1, TASK-421 r1 and TASK-422 r2 and their current
+or in-flight RUN/REPAIR/REVIEW/publication authority remain independent and
+unaltered. Publisher residual G2 is unrelated to KA-01's historical gate names;
+this decision does not select or complete it or any other paused project.
+
+## Supported production configuration and observation
+
+Use the existing ordinary `operator.run_task` API with a typed
+`ka01_admission=AdmissionRequest(2, selection_issue, selection_sha256,
+consent_issue, consent_sha256)`. The **single supported configuration** is
+`KA01-v1.3-bounded-primary-v1`, KA-01 `1.3`, Codex PRIMARY,
+`minimum-sufficient-v1`, `KA01-v1.3-default-resource-profile`. The original
+Human-selected model/effort, Runtime admission, configured authoritative
+upstream, exact TASK/revision and live lease are retained. The selection and
+fresh RUN consent are independently authenticated Human Issue sources using
+the existing ingress policy, not task preferences or flags. D.1 describes the
+exact selector and consent schema. Normal per-RUN consent is not an additional
+Lean VP activation stage or a new manual postpublication cutover.
+
+Actual supported effects are C.8 default-fill/override/frozen finite admission,
+withdrawal/source/lease guards, one native invocation with remaining-wall
+watchdog, one final budgeted Runtime proof checkpoint over all exact authored
+commands, canonical Runtime evidence/validation, one terminal writer and
+ordinary post-PASS transport. The final checkpoint is a counted completion
+boundary; it is not a synthetic in-turn K_i or an evidence-reuse claim.
+
+| Resource | Published default |
+| --- | --- |
+| `max_corrections` | `2` |
+| `max_checkpoints` | `3` |
+| `max_run_wall_minutes` | `240` |
+| `max_runtime_verification_minutes` | `180`, cumulative and included in wall |
+| `max_tokens` | `null`; nonnull requires authenticated complete usage or STOP |
+
+The ordinary caller's bounded `RunSummary.ka01` reports source SHA, selection/
+consent/profile digests, effective limits and actual invocation/proof counts.
+Its original Runtime admission and resource events live under
+`verification/<RUN>/ka01-v13/`. These observations are not canonical EVIDENCE,
+Reviewer PASS, publication, production uptake or live feedback receipts.
+
+**Unavailable / STOP:** Codex native in-turn feedback/C2, production feedback/
+checkpoint-reuse APIs, opted-in REPAIR/REMEDIATION, other Executors/policies and
+unverifiable token caps. A synthetic LocalAdapter callback, native transport
+ACK, GitHub receipt or queued data never establishes remote delivery. The
+version-1 controlled offline preactivation path and all ordinary nonopted or
+historically admitted legacy behavior retain their original meaning. Failed
+opt-ins cannot downgrade, retry, relaunch or mint another RUN/lease/budget.
+
+TASK-391 r2 / RUN-391-015 / REVIEW-391-003 source
+`50dc508e7c2660c40319fb32b43ec5072ca59ce3` is the bounded L3-04 foundation;
+TASK-397 r1 / RUN-397-002 / REVIEW-397-001 source
+`60d47926448c1a537f3e9fcbf077c1aec75082f1` is bounded L3-05. TASK-396 r1 source
+`030c1acb582f71f0fdd0342d790aa54d0d9bdd7f` is the normative v1.3 predecessor.
+Their reviewed publications are not full three-operation production support.
+Their original sources, failed predecessors and side tracks remain unchanged.
+
+Focused integration and negative test definitions belong to this one TASK;
+Runtime owns their execution/EVIDENCE. Independent review and exact publication
+remain later lifecycle decisions over this delta. Measurement/conformance
+success and downstream adoption are unestablished, and downstream pins remain
+unchanged. No lifecycle event automatically advances the roadmap.
+
+## Historical October 22 planning snapshot ? superseded, not completed
+
+The following retained snapshot records the earlier decision and 16-slot
+baseline. Its former ACTIVE/NEXT, G3/G6 and mandatory L4 language is historical
+only and is superseded prospectively by the controlling decision above.
+
+<details>
+<summary>Original resource-defaults and remaining-delivery plan</summary>
+
 # Lean VP Intra-RUN v1.3 — Resource Defaults and Remaining Delivery Roadmap
 
 **Human decision:** 2026-10-21; explicit prospective return on 2026-10-22 after
@@ -195,3 +295,5 @@ for TASK_AUTHORING, **ROA-1 R3 v3** for REPAIR_AUTHORING, unchanged **AOA-1** /
 mentions in archived planning are historical, not current profile selection.
 There is no automatic Executor selection, production activation, downstream
 pin change, later roadmap advancement or measurement claim here.
+
+</details>

@@ -1,8 +1,10 @@
-"""KA-01 v1.3 preactivation admission, subordinate to RuntimeCompletion.
+"""KA-01 v1.3 admission and finite resources, subordinate to RuntimeCompletion.
 
-No production activation, issuer, dispatch, proof runner or lease reconstruction
-lives here. Human authentication uses the existing ingress policy and original
-Issue authenticator. Files are negative crash guards, never bearer authority.
+The version-2 ordinary PRIMARY path enables bounded one-shot completion only.
+Version 1 retains its controlled local preactivation meaning. Neither interface
+supplies a native feedback channel, issuer, proof runner or lease reconstruction.
+Human authentication uses the existing ingress policy and Issue authenticator.
+Files are negative crash guards, never bearer authority.
 """
 
 from __future__ import annotations
@@ -24,10 +26,19 @@ from .verification_contract import VerificationContractError
 
 
 IMPLEMENTATION = "KA01-L3-05-v1"
+PRODUCTION_IMPLEMENTATION = "KA01-v1.3-bounded-primary-v1"
+PRODUCTION_MODE = "PRODUCTION_BOUNDED_PRIMARY"
 VERSION = "1.3"
 PROFILE = "KA01-v1.3-default-resource-profile"
 NORMATIVE_PATH = "docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md"
-NORMATIVE_SHA256 = "474be079dd641690dbd44652efc54f6d80cc02557c6c8767d7ae0acb6841d280"
+NORMATIVE_SHA256 = "9612271591b4dd591d3adff572512ce4c657b5a8caec14bcff707092112df21f"
+IMPLEMENTATION_PATHS = (
+    "src/aios_renew/ka01_admission.py", "src/aios_renew/operator.py",
+    "src/aios_renew/runtime.py", "src/aios_renew/dispatcher.py",
+    "src/aios_renew/executor.py", "src/aios_renew/verification.py",
+    "src/aios_renew/verification_contract.py", "src/aios_renew/intra_run_proof_contract.py",
+    "src/aios_renew/codex_adapter.py",
+)
 OPERATIONS = frozenset({"PRIMARY", "REPAIR", "REMEDIATION"})
 DEFAULTS = dict(max_corrections=2, max_checkpoints=3, max_run_wall_minutes=240,
                 max_runtime_verification_minutes=180, max_tokens=None)
@@ -118,7 +129,7 @@ class AdmissionRequest:
     consent_sha256: str
 
     def __post_init__(self):
-        if type(self.version) is not int or self.version != 1:
+        if type(self.version) is not int or self.version not in (1, 2):
             _deny("UNSUPPORTED_INTERFACE_VERSION")
         for number in (self.selection_issue, self.consent_issue):
             if type(number) is not int or not 0 < number < 10**12:
@@ -127,17 +138,41 @@ class AdmissionRequest:
             _hash(digest)
 
 
-def production_gate(request):
-    """No G3/G6 activation reader exists in this prospective implementation."""
-    if request is not None:
+def production_gate(request, *, operation="PRIMARY"):
+    """Select only the supported interface; this is never authentication."""
+    if request is None:
+        return
+    # Preserve rejection of old bearer-like flags and historical v1 requests.
+    if type(request) is not AdmissionRequest or request.version != 2:
         _deny("NOT_ACTIVATED")
+    request.__post_init__()
+    if operation != "PRIMARY":
+        _deny("PRODUCTION_OPERATION_UNSUPPORTED")
+
+
+def _production_source(owner, reader, tree):
+    """Bind the running first-party consumers to the exact selected main source."""
+    import sys
+    from .verification import _original_local, MAX_ORIGINAL_PROOF_BYTES
+    blobs = {}
+    for path in IMPLEMENTATION_PATHS:
+        module = sys.modules.get("aios_renew." + Path(path).stem)
+        if module is None or not getattr(module, "__file__", None):
+            _deny("RUNNING_IMPLEMENTATION_SOURCE_UNAVAILABLE")
+        content = reader.blob(tree, path)
+        loaded = _original_local(Path(module.__file__).absolute(), MAX_ORIGINAL_PROOF_BYTES)
+        # Ordinary Git checkouts may convert text line endings on Windows.
+        if loaded.replace(b"\r\n", b"\n") != content.replace(b"\r\n", b"\n"):
+            _deny("RUNNING_IMPLEMENTATION_SOURCE_MISMATCH")
+        blobs[path] = _digest(content)
+    return blobs
 
 
 def _authority(owner, request, operation, profile, policy):
     from .github_issue_ingress import _decode_policy, _authenticate_selection_issue, _github_selection_json
     from .verification import _ApplicabilityReader, _original_remote, _original_git, _original_local, _app_refs
     from .operator import _ka01_operation_source
-    from .execution_profile import ResolvedExecutionProfile
+    from .execution_profile import ResolvedExecutionProfile, parse_execution_profile
     from .runtime import CompletionPolicy
 
     if type(operation) is not str or operation not in OPERATIONS or type(policy) is not CompletionPolicy or policy.kind != operation:
@@ -147,15 +182,25 @@ def _authority(owner, request, operation, profile, policy):
     profile.__post_init__()
     if (profile.run_id, profile.executor) != (owner.run.run_id, owner.run.executor):
         _deny("PROFILE_RUN_MISMATCH")
+    production = request.version == 2
+    if production and (operation != "PRIMARY" or owner.run.executor != "codex"
+            or owner.task.verification.policy != "minimum-sufficient-v1"):
+        _deny("PRODUCTION_CONFIGURATION_UNSUPPORTED")
+    if production:
+        profile_raw = _original_local(owner.run_path.parent.parent / "execution-profiles" /
+            (owner.run.run_id + ".json"), 65536)
+        if parse_execution_profile(profile_raw.decode("utf-8")) != profile:
+            _deny("ORIGINAL_EXECUTION_PROFILE_CHANGED")
     url = _original_remote(owner.repo)
-    # This nondefault interface accepts a real controlled local bare remote.
-    # It cannot turn an HTTP/SSH production source into a simulated live permit.
+    # The historical version-1 interface remains strictly controlled/offline.
+    # Version 2 uses the ordinary configured upstream, including HTTPS/SSH.
     remote = Path(url)
-    if (not remote.is_absolute() or not remote.is_dir() or remote.resolve() != remote.absolute()
-            or not (remote / "HEAD").is_file() or not (remote / "objects").is_dir()):
-        _deny("CONTROLLED_OFFLINE_SOURCE_REQUIRED")
-    if _original_git(owner.repo, "--git-dir=" + str(remote), "rev-parse", "--is-bare-repository").strip() != b"true":
-        _deny("CONTROLLED_OFFLINE_BARE_SOURCE_REQUIRED")
+    if not production:
+        if (not remote.is_absolute() or not remote.is_dir() or remote.resolve() != remote.absolute()
+                or not (remote / "HEAD").is_file() or not (remote / "objects").is_dir()):
+            _deny("CONTROLLED_OFFLINE_SOURCE_REQUIRED")
+        if _original_git(owner.repo, "--git-dir=" + str(remote), "rev-parse", "--is-bare-repository").strip() != b"true":
+            _deny("CONTROLLED_OFFLINE_BARE_SOURCE_REQUIRED")
     reader = _ApplicabilityReader(owner.repo)
     selected_ref = "refs/heads/aios/ka01-v13-consent/" + owner.run.run_id
     patterns = ("refs/heads/main", selected_ref, selected_ref + "/*")
@@ -166,7 +211,7 @@ def _authority(owner, request, operation, profile, policy):
         # controlled bare source must also reject that inconsistent storage;
         # packed bytes supply only a negative guard, never selection authority.
         packed = remote / "packed-refs"
-        if os.path.lexists(packed):
+        if remote.is_absolute() and remote.is_dir() and os.path.lexists(packed):
             prefix = (selected_ref + "/").encode("ascii")
             for line in _original_local(packed, 32768).splitlines():
                 if not line.startswith((b"#", b"^")) and line.partition(b" ")[2].startswith(prefix):
@@ -176,10 +221,21 @@ def _authority(owner, request, operation, profile, policy):
         return refs
 
     refs = selected_refs()
+    if production:
+        # Only the exact freshly observed selector object is fetched, using
+        # the existing bounded source transport. No ref is installed or trusted
+        # merely because its bytes were delivered.
+        from .review_transport import _l1_fetch
+        try:
+            _original_git(owner.repo, "cat-file", "-e", refs[selected_ref] + "^{commit}")
+        except VerificationContractError:
+            _l1_fetch(owner.repo, url, refs[selected_ref])
     selection_tree, parents = reader.commit(refs[selected_ref])
     if parents or reader.blob(selection_tree, ".ai/transport/ka01-v13.json") != _bytes(asdict(request)):
         _deny("ORIGINAL_FIRST_PARTY_SELECTION_MISMATCH")
     main = refs["refs/heads/main"]
+    if production and main != owner.run.base_sha:
+        _deny("ORIGINAL_MAIN_MOVED")
     tree, _ = reader.commit(main)
     ingress_bytes = reader.blob(tree, ".ai/brain-ingress-carriers.yaml")
     ingress = _decode_policy(ingress_bytes)
@@ -203,7 +259,7 @@ def _authority(owner, request, operation, profile, policy):
                        "task", "operations", "normative", "overrides", "remote_url"))
     task = dict(id=owner.task.task_id, revision=owner.task.revision)
     if (selection["format"] != "AIOS_KA01_V13_SELECTION" or type(selection["version"]) is not int
-            or selection["version"] != 1 or selection["implementation"] != IMPLEMENTATION
+            or selection["version"] != 1 or selection["implementation"] != (PRODUCTION_IMPLEMENTATION if production else IMPLEMENTATION)
             or selection["ka01_version"] != VERSION or selection["profile"] != PROFILE
             or selection["policy"] not in {"minimum-sufficient-v1", "minimum-sufficient-v2"}
             or owner.task.verification.policy != selection["policy"] or _bytes(selection["task"]) != _bytes(task)
@@ -222,6 +278,11 @@ def _authority(owner, request, operation, profile, policy):
     norm = reader.blob(source_tree, NORMATIVE_PATH)
     if _digest(norm) != NORMATIVE_SHA256 or reader.blob(tree, NORMATIVE_PATH) != norm:
         _deny("NORMATIVE_SOURCE_CHANGED")
+    implementation_source = None
+    if production:
+        if normative["source_sha"] != main:
+            _deny("EXACT_CURRENT_ACTIVATION_SOURCE_REQUIRED")
+        implementation_source = _production_source(owner, reader, tree)
     overrides, override_sources = [], []
     if type(selection["overrides"]) is not list or len(selection["overrides"]) > 5:
         _deny("OVERRIDE_BOUND")
@@ -236,10 +297,11 @@ def _authority(owner, request, operation, profile, policy):
         overrides.append(override["values"])
         override_sources.append(provenance)
     limits = resolve_limits(overrides)
-    source = _ka01_operation_source(owner, operation, policy)
+    source = _ka01_operation_source(owner, operation, policy, production=production)
     consent, consent_source = human(request.consent_issue, request.consent_sha256)
     expected = dict(format="AIOS_KA01_V13_RUN_CONSENT", version=1,
-        mode="CONTROLLED_PREACTIVATION", implementation=IMPLEMENTATION, ka01_version=VERSION,
+        mode=PRODUCTION_MODE if production else "CONTROLLED_PREACTIVATION",
+        implementation=PRODUCTION_IMPLEMENTATION if production else IMPLEMENTATION, ka01_version=VERSION,
         selection_sha256=request.selection_sha256, task=task, run_id=owner.run.run_id,
         admitted_run_sha256=source["admitted_run_sha256"], operation=operation,
         executor=owner.run.executor, execution_profile_sha256=_digest(profile.as_dict()),
@@ -248,12 +310,18 @@ def _authority(owner, request, operation, profile, policy):
         _deny("EXACT_FRESH_RUN_CONSENT_REQUIRED")
     if selected_refs() != refs:
         _deny("SOURCE_MOVED_DURING_ADMISSION")
-    return dict(implementation=IMPLEMENTATION, ka01_version=VERSION, profile=PROFILE,
+    authority = dict(implementation=PRODUCTION_IMPLEMENTATION if production else IMPLEMENTATION,
+        ka01_version=VERSION, profile=PROFILE,
         policy=selection["policy"], normative=normative, ingress_policy_sha256=_digest(ingress_bytes),
         selection=selected_source, overrides=override_sources, consent=consent_source,
         original_selector=dict(ref=selected_ref, sha=refs[selected_ref]),
         effective_limits=limits, operation=operation, execution_profile=profile.as_dict(), source=source,
-        production_activation="NOT_ACTIVATED", continuation="NOT_AUTHORIZED")
+        production_activation="SUPPORTED_BOUNDED_PRIMARY" if production else "NOT_ACTIVATED",
+        continuation="NOT_AUTHORIZED")
+    if production:
+        authority.update(implementation_main_sha=main, implementation_source=implementation_source,
+            native_feedback_delivery="UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE")
+    return authority
 
 
 class _AdmissionBudget:
@@ -279,6 +347,9 @@ class _AdmissionBudget:
                 or leases.holder(owner.task.task_id) is not lease or not _lease_matches_run(lease, owner.run)):
             _deny("ORIGINAL_LIVE_LEASE_REQUIRED")
         self.owner, self.request, self.operation = owner, request, operation
+        self.production = request.version == 2
+        self.native_state, self.native_calls, self.package_digest = "NOT_STARTED", 0, None
+        self.native_dispatcher = self.native_adapter = None
         self.profile, self.policy, self.leases, self.lease = profile, policy, leases, lease
         self.thread, self.boundary, self.frame = get_ident(), None, None
         self.started_ns, self.started_real_ns = owner._ka01_started_ns, owner._ka01_started_real_ns
@@ -320,7 +391,9 @@ class _AdmissionBudget:
             corrections_reserved=self.corrections_reserved, corrections_spent=self.corrections_spent,
             verification_reserved_ns=self.verification_reserved_ns, verification_spent_ns=self.verification_spent_ns,
             verification_settled_ns=self.verification_settled_ns, cleanup_spent_ns=self.cleanup_spent_ns,
-            accounted_until_ns=self.accounted_until_ns, pending=self.pending, effects=self.effects)
+            accounted_until_ns=self.accounted_until_ns, pending=self.pending, effects=self.effects,
+            production=self.production, native_state=self.native_state, native_calls=self.native_calls,
+            package_digest=self.package_digest)
 
     def stop(self):
         self.stopped = True
@@ -375,7 +448,16 @@ class _AdmissionBudget:
                     _deny("ORIGINAL_ACCOUNTING_CHANGED")
             if _bytes(_authority(self.owner, self.request, self.operation, self.profile, self.policy)) != self.authority:
                 _deny("ORIGINAL_AUTHORITY_WITHDRAWN_OR_CHANGED")
-            if live:
+            if live and self.production:
+                dispatcher, adapter = self.native_dispatcher, self.native_adapter
+                if (self.native_state != "EXECUTING" or dispatcher is None or not dispatcher._invoked
+                        or dispatcher._prospective_runtime is not self.owner
+                        or dispatcher._execution_profile != self.profile or dispatcher._operation != self.operation
+                        or dispatcher._selected_executor != self.owner.run.executor
+                        or getattr(adapter, "execution_profile", None) != self.profile
+                        or getattr(adapter, "executor", None) != self.owner.run.executor):
+                    _deny("ORIGINAL_INVOCATION_LOST")
+            elif live:
                 frame, boundary = self.frame, self.boundary
                 if (frame is None or boundary._live is not frame or not frame.executing or frame.stopped
                         or frame.thread != get_ident() or frame.owner is not self.owner
@@ -388,6 +470,89 @@ class _AdmissionBudget:
         except BaseException:
             self.stop()
             raise
+
+    @contextmanager
+    def production_invocation(self, dispatcher, adapter):
+        """One ordinary native call; no local callback is a delivery receipt."""
+        from .runtime import _checkpoint_mutation
+        self.guard(live=False)
+        if not self.production or self.native_state != "NOT_STARTED":
+            self.stop()
+            _deny("NATIVE_INVOCATION_ALREADY_RESERVED")
+        self.native_dispatcher, self.native_adapter = dispatcher, adapter
+        try:
+            with _checkpoint_mutation(self.owner._checkpoint_directory(), dict(kind="KA01_NATIVE_RESERVATION"),
+                    retain_ambiguity=False):
+                self.native_state = "EXECUTING"
+                self._append(dict(state="NATIVE_RESERVED", execution_profile_sha256=_digest(self.profile.as_dict())))
+                self._facts_seal = _bytes(self._facts())
+            self.guard()
+            yield
+            self.guard()
+            if self.native_calls != 1 or self.package_digest is None:
+                _deny("ORIGINAL_NATIVE_RESULT_REQUIRED")
+            with _checkpoint_mutation(self.owner._checkpoint_directory(), dict(kind="KA01_NATIVE_RETURN"),
+                    retain_ambiguity=False):
+                self.native_state = "RETURNED"
+                self.accounted_until_ns = self._clock()
+                self._append(dict(state="NATIVE_RETURNED", package_sha256=self.package_digest,
+                    wall_elapsed_ns=self.last_ns - self.started_ns,
+                    feedback_delivery="UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE"))
+                self._facts_seal = _bytes(self._facts())
+        except BaseException:
+            self.stop()
+            raise
+
+    def native_runner(self, runner):
+        """Clamp the existing provider watchdog to remaining RUN wall time."""
+        @wraps(runner)
+        def invoke(command, **kwargs):
+            try:
+                self.guard()
+                if self.native_calls:
+                    _deny("NATIVE_INVOCATION_ALREADY_RESERVED")
+                self.native_calls = 1  # Sticky before the only original process.
+                self._facts_seal = _bytes(self._facts())
+                remaining = min(self.wall_limit_ns - (self._clock() - self.started_ns), 10**300) / 1_000_000_000
+                current = kwargs.get("timeout")
+                kwargs["timeout"] = remaining if current is None else min(current, remaining)
+                result = runner(command, **kwargs)
+                self.guard()
+                return result
+            except BaseException:
+                self.stop()
+                raise
+        return invoke
+
+    def returned_package(self, package):
+        from .runtime import result_package_data
+        self.guard()
+        if self.package_digest is not None:
+            self.stop()
+            _deny("NATIVE_RESULT_ALREADY_RETURNED")
+        self.package_digest = _digest(result_package_data(package))
+        self._facts_seal = _bytes(self._facts())
+
+    def observation(self):
+        """Bounded original-caller facts, without review/publication inference."""
+        if not self.production:
+            _deny("PRODUCTION_OBSERVATION_UNAVAILABLE")
+        authority = json.loads(self.authority)
+        limits = dict(self.limits)
+        return dict(implementation=authority["implementation"], ka01_version=VERSION,
+            status="COMPLETED_SUPPORTED_PRIMARY" if self.terminal_digest is not None and self.pending is None
+                else "STOPPED" if self.stopped else "ADMITTED_SUPPORTED_PRIMARY",
+            configuration=PRODUCTION_MODE, operation=self.operation, run_id=self.owner.run.run_id,
+            source_main_sha=authority.get("implementation_main_sha"),
+            selection_sha256=self.request.selection_sha256, consent_sha256=self.request.consent_sha256,
+            execution_profile_sha256=_digest(self.profile.as_dict()),
+            effective_limits=limits if len(_bytes(limits)) <= 4096 else None,
+            effective_limits_sha256=_digest(limits), effective_limits_source="ORIGINAL_RUNTIME_ADMISSION",
+            native_invocations=self.native_calls,
+            checkpoints_spent=self.checkpoints_spent, corrections_spent=self.corrections_spent,
+            verification_spent_ns=self.verification_spent_ns,
+            native_feedback_delivery="UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE",
+            continuation="NOT_AUTHORIZED", review="NOT_OBSERVED", publication="NOT_OBSERVED")
 
     def bind(self, boundary, frame):
         self.guard(live=False)
@@ -452,12 +617,12 @@ class _AdmissionBudget:
 
     @contextmanager
     def effect(self, intent):
-        self.guard()
+        self.guard(live=not self.production)
         self.capacity(intent)
         key = _digest(intent)
         replay = key in self.effects
         kind = intent["kind"]
-        checkpoints = int(kind == "CHECKPOINT" and not replay)
+        checkpoints = int(kind in {"CHECKPOINT", "PRODUCTION_COMPLETION"} and not replay)
         corrections = int(kind == "LOCAL_FEEDBACK" and not replay)
         started = self._clock()
         preparation = 0 if self.work_started is None else started - self.work_started
@@ -482,11 +647,11 @@ class _AdmissionBudget:
         try:
             yield
             if self.terminal_digest is None:
-                self.guard()
+                self.guard(live=not self.production)
             else:
                 from .verification import _original_local, MAX_ORIGINAL_PROOF_BYTES
                 raw = _original_local(self.owner.state.results / (self.owner.run.run_id + ".json"), MAX_ORIGINAL_PROOF_BYTES)
-                if kind != "TERMINAL" or _digest(raw) != self.terminal_digest:
+                if kind not in {"TERMINAL", "PRODUCTION_COMPLETION"} or _digest(raw) != self.terminal_digest:
                     _deny("TERMINAL_SETTLEMENT_CONFLICT")
             spent = self._clock() - started
             if spent > reserved or self.verification_spent_ns + spent >= self.verification_limit_ns:
@@ -537,7 +702,7 @@ class _AdmissionBudget:
         key = _digest(intent)
         replay = key in self.effects
         kind = intent["kind"]
-        checkpoints = int(kind == "CHECKPOINT" and not replay)
+        checkpoints = int(kind in {"CHECKPOINT", "PRODUCTION_COMPLETION"} and not replay)
         corrections = int(kind == "LOCAL_FEEDBACK" and not replay)
         if kind == "FACTUAL_FEEDBACK" and not replay and self.corrections_reserved >= min(
                 self.limits["max_corrections"], self.limits["max_checkpoints"] - 1):
@@ -561,6 +726,8 @@ def guarded(method):
             return method(owner, *args, **kwargs)
         entered = False
         try:
+            if budget.production and method.__name__ != "complete":
+                _deny("NATIVE_FEEDBACK_UNSUPPORTED")
             if budget.work_started is not None:
                 if method.__name__ == "terminal_reuse" and budget.outer_method == "complete":
                     return method(owner, *args, **kwargs)
@@ -571,7 +738,7 @@ def guarded(method):
             entered = True
             budget.outer_method = method.__name__
             budget.remaining_ns()
-            budget.guard()
+            budget.guard(live=not budget.production)
             budget.remaining_ns()
             before = len(budget.records)
             value = method(owner, *args, **kwargs)

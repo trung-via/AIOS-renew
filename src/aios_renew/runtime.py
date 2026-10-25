@@ -286,12 +286,12 @@ class RuntimeCompletion:
     def _ka01_verification_runner(self, command, **kwargs):
         """Bound each existing verifier call by the original remaining time."""
         budget = self._ka01_budget
-        budget.guard()
+        budget.guard(live=not budget.production)
         remaining = budget.remaining_seconds()
         current = kwargs.get("timeout")
         kwargs["timeout"] = remaining if current is None else min(current, remaining)
         result = self.verification_runner(command, **kwargs)
-        budget.guard()
+        budget.guard(live=not budget.production)
         budget.remaining_seconds()
         return result
 
@@ -828,6 +828,8 @@ class RuntimeCompletion:
     def complete(self, package: ResultPackage, policy: CompletionPolicy, *,
                  checkpoint: ProofCheckpointRequest | None = None, checkpoint_digest: str | None = None) -> CompletionOutcome:
         """Keep the default V1/V2 path; explicit checkpoint proof uses this same writer."""
+        if self._ka01_budget is not None and self._ka01_budget.production:
+            return self._complete_ka01_primary(package, policy, checkpoint, checkpoint_digest)
         if self._ka01_opted and (checkpoint is None or policy != self._ka01_budget.policy):
             raise VerificationContractError("KA01_V13_EXACT_CHECKPOINT_TERMINAL_REQUIRED")
         if checkpoint is None:
@@ -868,6 +870,54 @@ class RuntimeCompletion:
             if len(actual) != len(package.result.claims) or actual != reviewed:
                 raise VerificationContractError("CHECKPOINT_EXACT_REVIEWED_RESULT_CLAIMS_REQUIRED")
             return self._complete(package, policy, checkpoint_record=record)
+
+    def _complete_ka01_primary(self, package, policy, checkpoint, checkpoint_digest):
+        """Budget the original authored proof and terminal writer once.
+
+        This supported production operation has no in-turn feedback/reuse loop.
+        It does not accept a synthetic checkpoint or an ACK as native proof.
+        """
+        from .ka01_admission import _digest, _deny
+        budget = self._ka01_budget
+        if (checkpoint is not None or checkpoint_digest is not None or policy != budget.policy
+                or policy != primary_completion_policy(self.task, base_sha=self.run.base_sha)
+                or budget.native_state != "RETURNED" or budget.native_calls != 1
+                or budget.package_digest != _digest(result_package_data(package))):
+            _deny("ORIGINAL_PRIMARY_COMPLETION_REQUIRED")
+        directory = self._checkpoint_directory()
+        if any(os.path.lexists(p) for p in (directory / "terminal-intent.json",
+                self.state.results / (self.run.run_id + ".json"), self.state.failures / (self.run.run_id + ".json"))):
+            _deny("TERMINAL_RUN")
+        intent = dict(kind="PRODUCTION_COMPLETION", package_sha256=budget.package_digest,
+            policy_sha256=_digest(asdict(policy)))
+        budget.capacity(intent)
+        # A caught completion failure may use the existing FAILURE writer.
+        # Reservations remain spent/unknown and this owner is STOP-latched;
+        # an actual process crash still retains its exclusive negative fence.
+        with _checkpoint_mutation(directory, intent, retain_ambiguity=False):
+            with budget.effect(intent):
+                return self._complete(package, policy)
+
+    def _transport_ka01_completion(self, outcome, policy):
+        """Existing post-PASS transport after finite accounting has settled."""
+        from .ka01_admission import _digest, _deny
+        budget = self._ka01_budget
+        expected_path = self.state.results / (self.run.run_id + ".json")
+        if (budget is None or not budget.production or budget.pending is not None
+                or not budget.stopped or budget.terminal_digest is None or policy != budget.policy
+                or outcome.result_path != expected_path):
+            _deny("EXACT_SETTLED_TERMINAL_REQUIRED")
+        raw = _original_local(expected_path, MAX_ORIGINAL_PROOF_BYTES)
+        if (_digest(raw) != budget.terminal_digest or json.loads(raw)["result"]["head_sha"] != outcome.head_sha
+                or _digest(_original_local(self.run_path, MAX_ORIGINAL_PROOF_BYTES)) !=
+                    json.loads(budget.authority)["source"]["admitted_run_sha256"]):
+            _deny("EXACT_SETTLED_TERMINAL_REQUIRED")
+        try:
+            transport_post_pass(self.transport_repo, run_id=self.run.run_id, head_sha=outcome.head_sha,
+                run_path=self.run_path, result_path=outcome.result_path, lineage_path=policy.lineage_path,
+                observation_path=outcome.observation_path)
+        except ReviewTransportError as exc:
+            self._raise(f"review transport failed: {exc}", cause=exc)
 
     def _reconcile_checkpoint_terminal(self, package, policy, request, digest, directory):
         from .verification_contract import _app_exact, _reuse_decode
@@ -978,8 +1028,10 @@ class RuntimeCompletion:
                         run_id=self.run.run_id,
                         subject_sha=actual_head,
                         repository=verification_subject,
-                        raw_directory=self.state.verification / self.run.run_id,
-                        runner=self.verification_runner,
+                        raw_directory=(self._checkpoint_directory() / "production" if self._ka01_budget is not None
+                            and self._ka01_budget.production else self.state.verification / self.run.run_id),
+                        runner=self._ka01_verification_runner if self._ka01_budget is not None
+                            and self._ka01_budget.production else self.verification_runner,
                     )
                     self._require_post_verification_state(
                         verification_subject,
@@ -1016,7 +1068,18 @@ class RuntimeCompletion:
             )
 
         if checkpoint_record is None:
-            _write_json(result_path, result_package_data(canonical_package))
+            if self._ka01_budget is not None and self._ka01_budget.production:
+                budget = self._ka01_budget
+                budget.guard(live=False)
+                budget.remaining_seconds()
+                content = _checkpoint_json(result_package_data(canonical_package))
+                intent = dict(version=2, kind="PRODUCTION_TERMINAL", subject_sha=actual_head,
+                    package_sha256=budget.package_digest, result_sha256=_checkpoint_digest(content))
+                _checkpoint_write_once(self._checkpoint_directory() / "terminal-intent.json", _checkpoint_json(intent))
+                _checkpoint_write_once(result_path, content)
+                budget.terminal_digest = _checkpoint_digest(content)
+            else:
+                _write_json(result_path, result_package_data(canonical_package))
         else:
             # Last native read before the single existing terminal effect.
             request = parse_checkpoint_request(_original_json(checkpoint_record.data["request"]).encode("ascii"))
@@ -1036,11 +1099,10 @@ class RuntimeCompletion:
         observation_path = persist_terminal_observation(
             self.state, self.observation_tracker, "RESULT"
         )
-        if checkpoint_record is not None:
-            # This explicit prospective boundary ends at the existing local
-            # terminal owner. Admission-ref/terminal transport cutover is a
-            # separate, unactivated integration; legacy completion below is
-            # unchanged and still owns its ordinary transport path.
+        if checkpoint_record is not None or (self._ka01_budget is not None and self._ka01_budget.production):
+            # Historical local checkpoint completion ends here. Production
+            # PRIMARY transports through this same owner after its accounting
+            # settles, without repeating proof or the terminal write.
             return CompletionOutcome(actual_head, result_path, observation_path)
         try:
             transport_post_pass(
@@ -2151,12 +2213,12 @@ def _runtime_effect(directory: Path, intent: dict, *, retain_ambiguity=True):
 
 
 @contextmanager
-def _checkpoint_mutation(directory: Path, intent: dict):
+def _checkpoint_mutation(directory: Path, intent: dict, *, retain_ambiguity=True):
     # No separate lock/reducer: legacy terminal writes and prospective effects
     # exclude one another at this same Runtime-owned per-RUN boundary.
     _checkpoint_make_directory(directory)
     _checkpoint_safe_directory(directory)
-    with _runtime_effect(directory.parent, intent):
+    with _runtime_effect(directory.parent, intent, retain_ambiguity=retain_ambiguity):
         yield
 
 

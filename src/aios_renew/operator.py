@@ -304,9 +304,10 @@ class RunSummary:
     base_sha: str
     head_sha: str
     result_path: Path
+    ka01: dict[str, Any] | None = None
 
     def render(self) -> str:
-        return (
+        rendered = (
             "AIOS RUN PASS\n"
             f"task: {self.task_id}\n"
             f"run: {self.run_id}\n"
@@ -315,6 +316,7 @@ class RunSummary:
             f"head_sha: {self.head_sha}\n"
             f"result: {self.result_path}"
         )
+        return rendered if self.ka01 is None else rendered + "\nka01: " + json.dumps(self.ka01, sort_keys=True)
 
 
 @dataclass(frozen=True)
@@ -1605,14 +1607,14 @@ def _validate_persisted_remediation_result(
     )
 
 
-def _ka01_operation_source(owner, operation, policy):
+def _ka01_operation_source(owner, operation, policy, *, production=False):
     """Reauthenticate the original admitted operation; never select a strategy.
 
     Correction selectors use the same current first-party lineage resolvers as
     the ordinary admissions. A PRIMARY receipt cannot stand in for either one.
     The returned digests locate facts and are never accepted as authentication.
     """
-    from .ka01_admission import _digest, _deny
+    from .ka01_admission import _bytes, _digest, _deny
     from .verification import _original_local, _original_git, MAX_ORIGINAL_PROOF_BYTES
 
     run, task = owner.run, owner.task
@@ -1649,6 +1651,17 @@ def _ka01_operation_source(owner, operation, policy):
         from .verification_contract import ApplicabilityTargetRequest
         url = _original_remote(owner.repo)
         refs = dict(_app_target_refs(owner.repo, url, run.run_id))
+        if production:
+            # This is the original ordinary run_task admission, before a first
+            # dispatch. Preterminal review/artifact refs are not invented just
+            # to satisfy the historical offline checkpoint fixture protocol.
+            if refs or raw != _bytes(asdict(run)):
+                _deny("FRESH_PRIMARY_ADMISSION_REQUIRED")
+            reader = _ApplicabilityReader(owner.repo)
+            head = _original_git(owner.repo, "rev-parse", "HEAD").decode("ascii").strip()
+            reader.anchors(head, {run.base_sha})
+            facts["admission_main_sha"] = run.base_sha
+            return facts
         artifact_ref = "refs/heads/aios/artifacts/" + run.run_id
         if artifact_ref not in refs:
             _deny("ORIGINAL_CANONICAL_ADMISSION_REQUIRED")
@@ -1752,12 +1765,14 @@ def preactivate_ka01_v13(*, runtime, request, operation, execution_profile, poli
 
     This entrypoint neither admits a RUN nor dispatches. The caller must still
     use the original Dispatcher and Runtime checkpoint/feedback/terminal APIs.
-    Production run_task/run_repair/run_remediation remain NOT_ACTIVATED.
+    Version 1 keeps its historical meaning; version 2 belongs to run_task.
     """
-    from .ka01_admission import _AdmissionBudget, _deny
+    from .ka01_admission import AdmissionRequest, _AdmissionBudget, _deny
     from .runtime import _checkpoint_mutation
     if type(runtime) is not RuntimeCompletion or runtime._ka01_opted:
         _deny("ORIGINAL_RUNTIME_ALREADY_SELECTED")
+    if type(request) is not AdmissionRequest or request.version != 1:
+        _deny("CONTROLLED_PREACTIVATION_INTERFACE_REQUIRED")
     runtime._ka01_opted = True  # Sticky even when authentication fails.
     try:
         directory = runtime._checkpoint_directory()
@@ -1771,6 +1786,27 @@ def preactivate_ka01_v13(*, runtime, request, operation, execution_profile, poli
         return dict(version=1, status="ADMITTED_PREACTIVATION", authority=authority,
             native_continuity="LOCAL_PRIMARY_ONLY" if operation == "PRIMARY" else "BLOCKED",
             production_activation="NOT_ACTIVATED", continuation="NOT_AUTHORIZED")
+    except BaseException:
+        runtime._local_feedback_stopped = True
+        if runtime._ka01_budget is not None:
+            runtime._ka01_budget.stop()
+        raise
+
+
+def _activate_ka01_primary(*, runtime, request, execution_profile, policy, leases, lease):
+    """Subordinate selection inside the ordinary, independently admitted RUN."""
+    from .ka01_admission import _AdmissionBudget, _deny, production_gate
+    from .runtime import _checkpoint_mutation
+    production_gate(request)
+    if request is None or type(runtime) is not RuntimeCompletion or runtime._ka01_opted:
+        _deny("FRESH_ORIGINAL_RUNTIME_REQUIRED")
+    runtime._ka01_opted = True
+    try:
+        directory = runtime._checkpoint_directory()
+        if os.path.lexists(directory) or os.path.lexists(directory.parent / "local-invocation.json"):
+            _deny("PREEXISTING_UNACCOUNTED_NATIVE_WORK")
+        with _checkpoint_mutation(directory, dict(version=2, kind="KA01_ADMISSION"), retain_ambiguity=False):
+            _AdmissionBudget(runtime, request, "PRIMARY", execution_profile, policy, leases, lease)
     except BaseException:
         runtime._local_feedback_stopped = True
         if runtime._ka01_budget is not None:
@@ -1860,6 +1896,7 @@ def run_task(
             admission=admission,
             migration_handoff=_migration_handoff,
             successor_transport=_successor_transport,
+            ka01_admission=ka01_admission,
         )
     except KeyboardInterrupt as original:
         if attempt.run_path is not None:
@@ -2067,6 +2104,7 @@ def _run_task_impl(
     effort_source: str | None = None,
     migration_handoff: str | None = None,
     successor_transport: str | None = None,
+    ka01_admission=None,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
@@ -2199,6 +2237,22 @@ def _run_task_impl(
             authorizes_mutation=bool(task.scope.modify)
         )
 
+        runtime_completion = None
+        leases = RunLeaseRegistry()
+        lease = leases.acquire(run)
+        completion_policy = primary_completion_policy(task, base_sha=base_sha)
+        if ka01_admission is not None:
+            runtime_completion = RuntimeCompletion(
+                repo=root, state=state, task=task, run=run, run_path=run_path,
+                verification_runner=verification_runner, observation_tracker=observation_tracker,
+                error_type=OperatorError,
+            )
+            runtime_completion.interruption_phase = "EXECUTION"
+            attempt.bind_completion(runtime_completion)
+            _activate_ka01_primary(runtime=runtime_completion, request=ka01_admission,
+                execution_profile=execution_profile, policy=completion_policy, leases=leases, lease=lease)
+            observed_native_runner = runtime_completion._ka01_budget.native_runner(observed_native_runner)
+
         dispatcher = primary_dispatcher(
             selected_executor=executor,
             repo=root,
@@ -2206,10 +2260,8 @@ def _run_task_impl(
             execution_policy=execution_policy,
             native_runner=observed_native_runner,
             execution_profile=execution_profile,
+            **({"prospective_runtime": runtime_completion} if ka01_admission is not None else {}),
         )
-
-        leases = RunLeaseRegistry()
-        lease = leases.acquire(run)
         try:
             package = dispatcher.dispatch_primary(
                 task=task,
@@ -2235,7 +2287,7 @@ def _run_task_impl(
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
-        runtime_completion = RuntimeCompletion(
+        runtime_completion = runtime_completion or RuntimeCompletion(
             repo=root,
             state=state,
             task=task,
@@ -2246,9 +2298,12 @@ def _run_task_impl(
             error_type=OperatorError,
         )
         attempt.bind_completion(runtime_completion)
+        runtime_completion.interruption_phase = "COMPLETION_GATE"
         completion = runtime_completion.complete(
-            package, primary_completion_policy(task, base_sha=base_sha)
+            package, completion_policy
         )
+        if ka01_admission is not None:
+            runtime_completion._transport_ka01_completion(completion, completion_policy)
 
         return RunSummary(
             task_id=task_id,
@@ -2257,6 +2312,7 @@ def _run_task_impl(
             base_sha=base_sha,
             head_sha=completion.head_sha,
             result_path=completion.result_path,
+            **({"ka01": runtime_completion._ka01_budget.observation()} if ka01_admission is not None else {}),
         )
 
 
@@ -2317,7 +2373,7 @@ def run_repair(
     """Accept and execute one GitHub-authored REPAIR as a continuation RUN."""
 
     from .ka01_admission import production_gate
-    production_gate(ka01_admission)
+    production_gate(ka01_admission, operation="REPAIR")
     root = resolve_repository(repo)
     if repair_dispatch_id is not None and required_repair_sha is None:
         raise OperatorError("repair dispatch requires the exact canonical REPAIR SHA")
@@ -7906,7 +7962,7 @@ def run_remediation(
     """Execute one remediation and persist deterministic pre-PASS failures."""
 
     from .ka01_admission import production_gate
-    production_gate(ka01_admission)
+    production_gate(ka01_admission, operation="REMEDIATION")
     root = resolve_repository(repo)
     state = runtime_paths(root)
     observation_tracker = RunObservationTracker(

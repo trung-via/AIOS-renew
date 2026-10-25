@@ -103,6 +103,12 @@ class Dispatcher:
                 budget.stop()
                 raise DispatcherError("KA01_V13_ORIGINAL_DISPATCH_BINDING_REQUIRED")
         adapter = self._claim_adapter(run=run, operation="PRIMARY")
+        if owner is not None and owner._ka01_budget is not None and owner._ka01_budget.production:
+            budget = owner._ka01_budget
+            with budget.production_invocation(self, adapter):
+                package = ExecutorBoundary(leases).invoke(task=task, run=run, lease=lease, adapter=adapter)
+                budget.returned_package(package)
+            return package
         if self._prospective_runtime is None:
             return ExecutorBoundary(leases).invoke(task=task, run=run, lease=lease, adapter=adapter)
         boundary = ExecutorBoundary(leases, execution_profile=self._execution_profile,
@@ -206,6 +212,7 @@ def primary_dispatcher(
     execution_policy: NativeExecutionPolicy,
     native_runner: NativeRunner,
     execution_profile: ResolvedExecutionProfile | None = None,
+    prospective_runtime=None,
 ) -> Dispatcher:
     """Bind one provider-neutral admitted PRIMARY execution."""
 
@@ -217,6 +224,7 @@ def primary_dispatcher(
         execution_policy=execution_policy,
         native_runner=native_runner,
         execution_profile=execution_profile,
+        prospective_runtime=prospective_runtime,
     )
 
 
@@ -273,11 +281,13 @@ def _native_dispatcher(
     execution_policy: NativeExecutionPolicy,
     native_runner: NativeRunner,
     execution_profile: ResolvedExecutionProfile | None = None,
+    prospective_runtime=None,
 ) -> Dispatcher:
     return Dispatcher(
         selected_executor=selected_executor,
         operation=operation,
         execution_profile=execution_profile,
+        prospective_runtime=prospective_runtime,
         adapter_factories={
             "codex": lambda: CodexAdapter(
                 runner=native_runner,
