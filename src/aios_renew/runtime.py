@@ -445,7 +445,7 @@ class RuntimeCompletion:
     @_ka01_guarded
     def _seal_interactive_candidate(self, package, turn):
         from types import SimpleNamespace
-        from .verification import _v2_profile, _v2_toolchain
+        from .verification import _checkpoint_pytest_coverage, _v2_profile, _v2_toolchain
         from .ka01_admission import _digest, _deny
         binding = self._interactive_binding(package, turn)
         self._authenticate_interactive_history()
@@ -464,7 +464,9 @@ class RuntimeCompletion:
             _deny("EXACT_NATIVE_COMMAND_POPULATION_REQUIRED")
         manifests = {}
         for index, command in enumerate(commands):
-            coverage = parse_pytest_coverage(command)
+            # Match the existing checkpoint verifier's bounded worker grammar;
+            # retain the exact authored command for profile binding and execution.
+            coverage = _checkpoint_pytest_coverage(command)
             if coverage is None or coverage.is_full_suite or coverage.measurement:
                 _deny("NATIVE_COMPLETE_OBSERVER_UNSUPPORTED")
             profile = _v2_profile(self.repo, binding["candidate_sha"], command, os.environ)

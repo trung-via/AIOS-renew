@@ -11,6 +11,7 @@ import json
 from dataclasses import asdict, replace
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -41,6 +42,10 @@ class ProductionFixture:
         files = {path: (SOURCE_ROOT / path).read_bytes() for path in (
             ka01.INTERACTIVE_IMPLEMENTATION_PATHS if interactive else ka01.IMPLEMENTATION_PATHS)}
         if interactive:
+            # pytest prepends src even when the editable install already adds
+            # it. Count each search entry once, as in the verifier subprocess,
+            # so metadata discovery observes the same installed toolchain.
+            monkeypatch.setattr(sys, "path", list(dict.fromkeys(sys.path)))
             task = task.replace("python check_output.py",
                 "python -m pytest tests/test_output.py -n 0 --dist no --max-worker-restart 0")
             task = task.replace("Exercise the thin operator without a real executor.",

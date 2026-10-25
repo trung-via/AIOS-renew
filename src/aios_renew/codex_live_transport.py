@@ -149,6 +149,9 @@ class CodexLiveTransport:
         self.turn_observations = []
         self._turns = set()
         self._request_id = 0
+        self._account_snapshot = None
+        self._account_notification = None
+        self._account_update_pending = False
         self._closed = False
         self._broken = threading.Event()
         self._messages = queue.Queue(maxsize=512)
@@ -194,6 +197,11 @@ class CodexLiveTransport:
             if type(initialized.get("userAgent")) is not str:
                 _stop("INITIALIZE_UNSUPPORTED")
             self._send(dict(method="initialized", params={}))
+            account = self._read_account()
+            # Keep provider identity private; no account data enters the model,
+            # checkpoint, feedback, observation or public session identity.
+            self._account_snapshot = _json(account)
+            self._account_notification = _json(dict(authMode="chatgpt", planType=account["account"]["planType"]))
             started = self._rpc("thread/start", dict(model=profile.model, modelProvider="openai",
                 cwd=self.workspace, approvalPolicy="never", sandbox=self._sandbox,
                 ephemeral=True, config={"model_reasoning_effort": profile.reasoning_effort,
@@ -348,8 +356,13 @@ class CodexLiveTransport:
                 _stop("INVALID_OR_FOREIGN_TURN")
         if handshake and method.startswith(("turn/", "item/")):
             _stop("UNSOLICITED_TURN")
-        if method == "account/updated" and not handshake:
-            _stop("ORIGINAL_AUTHENTICATED_ACCOUNT_CHANGED")
+        if method == "account/updated":
+            # The installed protocol reports auth mode/plan, not an account
+            # switch. Even an equal notification needs an identity reread at
+            # the next idle boundary, before accepting or sending a candidate.
+            if _json(params) != getattr(self, "_account_notification", None):
+                _stop("ORIGINAL_AUTHENTICATED_ACCOUNT_CHANGED")
+            self._account_update_pending = True
         # Deprecated codex/event notifications duplicate the v2 stream. They
         # never establish receipt or candidate identity.
         if method.startswith("codex/event/"):
@@ -391,13 +404,36 @@ class CodexLiveTransport:
                 _stop("LATE_OR_UNSOLICITED_TURN")
         _stop("NOTIFICATION_BOUND")
 
+    def _read_account(self):
+        account = self._rpc("account/read", dict(refreshToken=False))
+        identity = account.get("account")
+        if (account.get("requiresOpenaiAuth") is not True or type(identity) is not dict
+                or identity.get("type") != "chatgpt" or type(identity.get("email")) is not str
+                or not identity["email"] or type(identity.get("planType")) is not str or not identity["planType"]):
+            _stop("AUTHENTICATED_ACCOUNT_IDENTITY_UNSUPPORTED")
+        return account
+
     def assert_idle(self):
         self.assert_live(self._session_identity)
-        self._drain_idle()
+        for _ in range(4):
+            self._drain_idle()
+            if not self._account_update_pending:
+                return
+            if _json(self._read_account()) != self._account_snapshot:
+                _stop("ORIGINAL_AUTHENTICATED_ACCOUNT_CHANGED")
+            # These notifications preceded the reread response. Validate them
+            # before clearing only the update that this response authenticated.
+            pending, self._deferred = self._deferred, []
+            for message in pending:
+                method, _ = self._notification(message,
+                    turn_id=None if self.last_turn is None else self.last_turn.turn_id)
+                if "id" in message or method.startswith(("turn/", "item/")):
+                    _stop("LATE_OR_UNSOLICITED_TURN")
+            self._account_update_pending = False
+        _stop("ACCOUNT_UPDATE_BOUND")
 
     def turn(self, *, prompt, output_schema):
-        self.assert_live(self._session_identity)
-        self._drain_idle()
+        self.assert_idle()
         client_id = uuid4().hex
         started = self._rpc("turn/start", dict(threadId=self.thread_id,
             input=[dict(type="text", text=prompt, text_elements=[])],
@@ -458,6 +494,7 @@ class CodexLiveTransport:
                 self.last_turn = result
                 self.turn_observations[-1].update(status="COMPLETED", user_item_id=result.user_item_id,
                     output_item_id=result.output_item_id, output_sha256=hashlib.sha256(raw).hexdigest())
+                self.assert_idle()
                 return result
         _stop("EVENT_BOUND")
 

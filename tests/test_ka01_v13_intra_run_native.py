@@ -8,6 +8,7 @@ model turns and commits; unavailable native support is a failing BLOCKER.
 from dataclasses import replace
 import json
 from pathlib import Path
+import queue
 import subprocess
 
 import pytest
@@ -200,7 +201,7 @@ def test_fixture_loss_or_nonprogress_cannot_resume_or_create_result(tmp_path, mo
         session.hook = lose
         return session
     monkeypatch.setattr(codex_adapter, "CodexLiveTransport", construct)
-    with pytest.raises((RuntimeError, KeyboardInterrupt)):
+    with pytest.raises((RuntimeError, VerificationContractError, KeyboardInterrupt)):
         f.execute()
     assert len(sessions) == 1 and sessions[0].closed and sessions[0].calls == 2
     assert len(f.verification_calls) <= 2 and not list(f.state.results.glob("*.json"))
@@ -260,7 +261,7 @@ def test_fixture_transport_ack_alone_is_never_a_candidate(tmp_path, monkeypatch)
     assert sessions[0].calls == 1 and not f.verification_calls and not list(f.state.results.glob("*.json"))
 
 
-@pytest.mark.parametrize("defect", ["incomplete", "unstable", "unknown-exit", "setup-fail", "missing-native"])
+@pytest.mark.parametrize("defect", ["incomplete", "unstable", "unknown-exit", "setup-fail", "missing-native", "toolchain"])
 def test_fixture_ineligible_native_proof_stops_before_factual_feedback(tmp_path, monkeypatch, defect):
     f = ProductionFixture(tmp_path / "ineligible", monkeypatch, interactive=True)
     f.authorize()
@@ -281,6 +282,8 @@ def test_fixture_ineligible_native_proof_stops_before_factual_feedback(tmp_path,
                 canonical["complete"] = False
             elif defect == "unstable":
                 canonical["unstable"] = True
+            elif defect == "toolchain":
+                data["toolchain"]["installed_distributions_digest"] = "0" * 64
             else:
                 next(r for r in canonical["reports"] if r["outcome"] == "FAIL")["phase"] = "setup"
             path.write_bytes(ka01._bytes(data))
@@ -390,6 +393,51 @@ def test_native_protocol_duplicate_rpc_response_cannot_ack_another_turn():
     session._next = lambda: dict(id=10, result={})
     with pytest.raises(native.NativeSessionStop, match="REQUEST_RESPONSE_MISMATCH"):
         session._rpc("turn/start", {})
+
+
+@pytest.mark.parametrize("defect", ["none", "delayed-duplicate", "email", "plan", "logout"])
+def test_native_account_updates_require_original_private_identity(defect):
+    session = native.CodexLiveTransport.__new__(native.CodexLiveTransport)
+    account = dict(requiresOpenaiAuth=True,
+        account=dict(type="chatgpt", email="original@example.invalid", planType="pro"))
+    notification = dict(method="account/updated", params=dict(authMode="chatgpt", planType="pro"))
+    session.thread_id, session.last_turn = "original-thread", None
+    session._session_identity = {}
+    session._account_snapshot = native._json(account)
+    session._account_notification = native._json(notification["params"])
+    session._account_update_pending = False
+    session._messages, session._deferred = queue.Queue(), []
+    session.assert_live = lambda expected: None
+    reads = []
+    def read(method, params):
+        reads.append((method, params))
+        if defect == "delayed-duplicate":
+            session._deferred.append(notification)
+        elif defect in {"email", "plan"}:
+            account["account"]["email" if defect == "email" else "planType"] = "changed"
+        elif defect == "logout":
+            account["account"] = None
+        return account
+    session._rpc = read
+    session._notification(notification)
+    assert session._account_update_pending and not reads
+    if defect in {"none", "delayed-duplicate"}:
+        session.assert_idle()
+        assert not session._account_update_pending and not session._deferred
+    else:
+        with pytest.raises(native.NativeSessionStop, match="ACCOUNT"):
+            session.assert_idle()
+    assert reads == [("account/read", {"refreshToken": False})]
+
+
+@pytest.mark.parametrize("params", [dict(authMode="apikey", planType="pro"),
+    dict(authMode=None, planType=None), dict(authMode="chatgpt", planType="changed"), {}])
+def test_native_account_notification_cannot_change_bound_auth_mode_or_plan(params):
+    session = native.CodexLiveTransport.__new__(native.CodexLiveTransport)
+    session.thread_id = "original-thread"
+    session._account_notification = native._json(dict(authMode="chatgpt", planType="pro"))
+    with pytest.raises(native.NativeSessionStop, match="ORIGINAL_AUTHENTICATED_ACCOUNT_CHANGED"):
+        session._notification(dict(method="account/updated", params=params))
 
 
 def test_installed_native_codex_original_session_c1_f1_c2(tmp_path, monkeypatch):
