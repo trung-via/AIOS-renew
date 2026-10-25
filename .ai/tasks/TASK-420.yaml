@@ -1,0 +1,150 @@
+task_id: TASK-420
+revision: 1
+goal: Repair the existing Runtime-owned unattended H1R PRIMARY pre-RUN reconciliation
+  proof so one source-authenticated, linear REPAIR chain can be recovered when successive
+  RUNs use different explicitly admitted coding Executors (e.g., Antigravity then
+  Codex), without weakening individual RUN/repair/profile source proof or canonical
+  mutation guards. Specifically remove the TASK-419 r2 PRIMARY_SYNCHRONIZATION_REJECTED
+  obstruction without changing TASK-419 or its CAA implementation scope.
+problem: On canonical main 605f1aa22e653a98f69ec337313116aadbcaf85b, the TASK-419
+  r2 first PRIMARY wake caa-default-flow-task419-r2-605f1aa2-20261025-solmax was DISPATCH_ACCEPTED
+  but failed at self-host PRIMARY_SYNCHRONIZATION before RUN creation/Executor invocation.
+  Its exact remote delivery Admission Failure at refs/heads/aios/admission-failure-delivery/primary/cdad5a60f4e22f3c451ab7c1219c8accfd48dc6e06e502507317b7db4f1817f6
+  records 'canonical REPAIR chain proof conflicting'. Under src/aios_renew/operator.py
+  _prove_primary_failure_group, the H1R proof imposes item.executor == root.executor
+  for all continuation members. Canonical TASK-418 r2 chain has Antigravity RUN-418-002..004
+  and Codex RUN-418-005..007; individual RUNs have source-bound REPAIR transitions
+  and explicit execution profiles. Publication's _repair_review_lineage validates
+  each RUN against its own Executor rather than a homogeneous-root restriction. Thus
+  current H1R consistency predicate falsely blocks a transition that must be validated
+  per-run; other true conflict checks must remain. No RUN-419 exists. This is an infrastructural
+  pre-RUN defect and not a FAILURE or REPAIR of TASK-419.
+assumptions:
+- At authoring exact remote main and TASK-419 r2 content are 605f1aa22e653a98f69ec337313116aadbcaf85b
+  / blob b5d1b95013d833ffffac4b653dc52818e2c38e1e. Runtime must validate source and
+  identity independently. TASK-420 is a separate Human-authorized narrow H1R defect
+  fix; TASK-419 remains the authorized CAA change, not scope-widened or revised.
+- 'Source evidence is exact remote admission-failure record for dispatch caa-default-flow-task419-r2-605f1aa2-20261025-solmax:
+  phase PRIMARY_SYNCHRONIZATION, reason PRIMARY_SYNCHRONIZATION_REJECTED, error OperatorError
+  ''canonical REPAIR chain proof conflicting'', run_created false, executor_invoked
+  false. The self-host local HEAD and dirty state were not observed; do not assert
+  the mixed-Executor predicate is the only possible incompatibility without executing
+  a reproduction.'
+- Canonical refs refs/heads/aios/failure/RUN-418-002..007 and refs/heads/aios/failure-artifacts/RUN-418-002..007
+  bind exact per-RUN base/failed_head and continuation_of chain. RUN-418-003..004
+  are Antigravity, RUN-418-005..007 Codex, with respective persisted execution profiles.
+  The continuation pointers form 002->003->004->005->006->007; multiple terminal failure
+  refs can share the same commit, not authority by itself.
+- Existing H1R TASK-413 r2 was published to recover single linear multi-RUN correction
+  while preserving same-head compatible group and unsafe divergence stop cases. The
+  apparent homogoneous Executor equality is an overconstraint for properly admitted
+  cross-Executor handoff. No general automatic Executor failover or run reassignment
+  is requested.
+- Successful verification of this patch requires an Executor through a safe control
+  worktree/transport. Existing TASK-419 wake is blocked before RUN, so do not retry
+  it or claim source publication without first resolving the actual pre-RUN bootstrap
+  obstruction under an authorized, source-bound operational path.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-413.yaml
+  - .ai/tasks/TASK-418.yaml
+  - .ai/tasks/TASK-419.yaml
+  - src/aios_renew/operator.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/repair_dispatch.py
+  - src/aios_renew/dispatch_reconciliation.py
+  - src/aios_renew/execution_profile.py
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - tests/test_operator.py
+  - tests/test_dispatch_reconciliation.py
+  - tests/test_self_hosted_wakeup.py
+  modify:
+  - src/aios_renew/operator.py
+  - tests/test_operator.py
+non_goals:
+- No manual reset/clean/stash, destructive ref deletion, fabricated RUN, silent source
+  override, lax repair proof, adoption of missing/forged cross-Executor authority,
+  new generic recovery router/DB, new retry/failover or lifecycle authority.
+- No change to TASK-418/419 semantics, CAA-01/02/03/04, acceptance, executor profile
+  selection, Runtime verifier, Reviewer, Publisher, frozen Kernel, roadmap NEXT, or
+  unrelated tests.
+- No claim that GitHub dispatch acceptance or a two-file code patch is self-host production
+  proof; the actual rejected wakeup is historical and must not be overwritten or replayed
+  as a successful attempt.
+constraints:
+  hard:
+  - Prove an exact source-bound one-root one-terminal linear continuation closure
+    via existing canonical RUN, FAILURE, REPAIR authorization SHA, continuation pointer,
+    per-run Executor and its admitted execution-profile selectors. Preserve immutable
+    authenticated original TASK/revision/affinity and actual base/head ancestry, scope,
+    temporal identity, correct action semantics and complete local-only commit coverage.
+    Only retire homogeneity of executor across distinct RUNs, not per-RUN verification.
+  - Reuse existing publication/review_transport/correction proof, no new independent
+    source truth or Runtime bypass. A cross-Executor continuation must be accepted
+    only if the exact successive RUN's executor/profile/repair authorization and counterpart
+    FAIL/RUN pair are validated; a mere name change, same candidate SHA, preferred
+    Executor or user's current request is not proof.
+  - Preserve existing H1R lock, before-reset recheck, upstream SHA and ref-set proof,
+    worktree cleanliness/ignored content protection, reversible fail-closed stop,
+    no RUN pre-admission, prior single-FAILURE and same-executor six-RUN positive
+    cases.
+  - Reproduce observed TASK-418 002..007 chain in focused real-Git tests and verify
+    it is recoverable with a staged clean local main descendant and an independently
+    observed canonical target; inject missing/mismatched/wrong-executor execution
+    profile, forged REPAIR authorization, fork/cycle/cross-task/alias/stale ref/local-only
+    anomaly and prove each rejects without mutation.
+  - Do not require TASK-419 CAA changes or a user PowerShell recovery script as a
+    precondition for correctness. After an independently verified/published fix becomes
+    operationally available through an authorized path, allow a fresh exact TASK-419
+    wake with a new delivery id; never replay or reinterpret the original rejected
+    dispatch.
+  - 'Recognize bootstrap deadlock: the same faulty H1R synchronizer would reject ordinary
+    PRIMARY delivery of this fix. Do not repeatedly wake or claim resolution through
+    that path; report the exact minimal lawful bootstrap needed for Executor HOW if
+    no already available clean control/runner path can admit this TASK. Brain does
+    not directly implement the patch.'
+acceptance:
+- id: AC1
+  condition: "With fixed canonical source and persisted episode fields, an exact real-Git\
+    \ TASK-418 r2 REPAIR-continued chain RUN-418-002 through RUN-418-007 (Antigravity\
+    \ 002\u2013004, Codex 005\u2013007) passes the H1R reconciliation proof when and\
+    \ only when all individual admissions, repair authorities and source bindings\
+    \ verify. Mixed Executors alone cannot trigger 'canonical REPAIR chain proof conflicting'."
+- id: AC2
+  condition: Every continuation independently binds its actual Executor/profile, correct
+    predecessor failed RUN/candidate, exact source/task/return-affinity and authenticated
+    REPAIR authorization (including explicit changed Executor), reusing canonical
+    validators without invented cross-run sticky Executor authority.
+- id: AC3
+  condition: Adversarial tampered/missing RUN/profile/repair, unapproved Executor
+    switch, forged or moved refs, fork/cycle, cross-TASK/revision, aliases and extra
+    local-only ancestry reject before mutation/RUN creation; no blanket compatibility
+    bypass.
+- id: AC4
+  condition: H1R state mutation occurs only under existing lock and exact upstream-ref/source
+    SHA rechecks, same clean-worktree/no-overwrite safety, no lost local-only commits,
+    and no fake Runtime success. Prior successful TASK-413 single/same-Executor/group
+    recovery tests stay green.
+- id: AC5
+  condition: Focused regression of H1R and the exact pre-RUN rejection condition demonstrates
+    the minimal change in src/aios_renew/operator.py and tests/test_operator.py, no
+    other file modification, no full suite, and no change to TASK-419/CAA behavior.
+- id: AC6
+  condition: Return an exact bounded bootstrap plan/observation distinguishing an
+    authored TASK, a real Executor RUN, successful Runtime verification/review/publication
+    and the subsequent separately authorized fresh TASK-419 wake. If no safe bootstrap
+    path exists on the self-host runner, explicitly STOP rather than repeat the guaranteed-to-fail
+    ordinary PRIMARY.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_operator.py -k 'primary_reconciliation or primary_after_reconciliation'
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
