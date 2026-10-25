@@ -1,0 +1,158 @@
+task_id: TASK-427
+revision: 1
+goal: Provide an authenticated, reusable KA01 v1.3 Kernel self-upgrade execution path
+  that lets an authorized coding TASK change Runtime/proof-consumer implementation
+  files without the present unconditional pre-Executor NATIVE_BOUND_PROOF_CONSUMER_MUTATION_UNSUPPORTED
+  stop, while keeping verification and proof independent of the candidate being modified.
+  Make the capability usable by the already selected existing AIOS execution workflow
+  without another unrelated activation package, so TASK-426 can resume under its own
+  immutable lineage after eligible publication.
+problem: At exact canonical main ebe3c4e930732f5ec001681f3b27a6fadb7864cf, TASK-426
+  r1 requires modifying src/aios_renew/runtime.py, operator.py, ka01_admission.py
+  and related native proof consumers. RUN-426-001 terminal FAILURE 5dc493b72ee4fd3a6e29f1e355c019536a7a1e34
+  and REPAIR RUN-426-002 terminal FAILURE 12fd23186d3dcf427e0f601ced698351a52daacd
+  both stop at COMPLETION_GATE before Codex invocation or verification. Live execute-repair
+  traceback identifies RuntimeCompletion._preflight_interactive_policy rejecting DEFAULT_IMPLEMENTATION_PATHS
+  intersection with the authorized mutation scope using KA01_V13_NATIVE_BOUND_PROOF_CONSUMER_MUTATION_UNSUPPORTED.
+  The existing task/repair self-host paths unconditionally enter KA01 default, so
+  a new Kernel-upgrade TASK dispatched unchanged would fail the same preflight. Human
+  selects one narrowly scoped TASK to resolve this bootstrap conflict and Codex GPT-6.1
+  Sol Max for execution, not a repeat repair or an unsafe global verifier bypass.
+assumptions:
+- Exactly observed main is ebe3c4e930732f5ec001681f3b27a6fadb7864cf; Runtime must
+  reauthenticate current main and exact TASK on authoring and execution. TASK-427
+  is a new prospective Human-selected priority, not retroactive repair, PASS, or review
+  of RUN-426-001/002.
+- The original self-host wake path currently has no authenticated user-visible selector
+  for a safe KA01 exception. A normal default wake for this TASK cannot be counted
+  as proof of executability. Admission/bootstrapping must be independently resolved
+  before starting coding.
+- Existing historical explicit KA01 version-2/3 AdmissionRequest requires independent
+  original Human selection/consent and is not a general-purpose exception, nor inferred
+  from this TASK. Executor and Runtime determine lawful supported operation from authenticated
+  canonical state; do not invent credentials.
+- All changes to verifier or observer-dependent files must be verified against trusted
+  original source under original Runtime ownership. Work on the verifier cannot certify
+  itself merely because test output is positive.
+- User approved one task and selected Codex gpt-6.1-sol max. Runtime retains exact
+  execution profile and task/lease/currentness authority, independent review and publication.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - .ai/tasks/TASK-425.yaml
+  - .ai/tasks/TASK-426.yaml
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/codex_adapter.py
+  - scripts/aios_control_entry.py
+  - tests/test_ka01_v13_activation.py
+  - tests/test_ka01_default_three_flow.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_runtime.py
+  - tests/test_repair_dispatch.py
+  - tests/test_remediation_wakeup.py
+  modify:
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/codex_adapter.py
+  - tests/test_ka01_v13_activation.py
+  - tests/test_ka01_default_three_flow.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_runtime.py
+  - tests/test_repair_dispatch.py
+  - tests/test_remediation_wakeup.py
+non_goals:
+- No unconditional disable/remove of the protected proof-consumer guard, no reliance
+  on edited candidate verifier code to authenticate its own proof.
+- No new generic lifecycle router, alternate Planner, second Runtime or verifier,
+  database, separate publishing authority or side-channel executor selection.
+- No rewriting TASK-426, its two terminal FAILURE artifacts or historical TASK-423/424/425
+  and typed admission semantics.
+- No automatic retry of any terminal RUN, new repair without Human authorization,
+  extra pilot/shadow/full-suite requirement, or downstream adoption.
+constraints:
+  hard:
+  - Preserve frozen Kernel, Constitution, Human/Brain/Executor/Runtime/Reviewer/Publisher
+    separation; prospective KA01 policy change only after exact verified Reviewed
+    PASS publication.
+  - First determine and use a lawful bootstrap that actually reaches the Executor
+    despite currently installed preflight; a normal default TASK wake is known blocked.
+    No claimed success from an ingress, workflow dispatch, or transport receipt.
+  - Use original independently authenticated canonical source for Runtime-owned verification
+    and native proof consumers. Bind task/operation, current main/source, scope, lease,
+    selected profile and candidate SHA; reject forged, moved, unauthorized or self-attesting
+    evidence.
+  - Preserve original KA01 default three-flow behavior and 2 correction / 3 checkpoint
+    / 240m RUN / 180m cumulative verification defaults for supported non-upgrade cases,
+    with historical policy decoding unchanged.
+  - Bounded safety rejection remains on missing/malformed/stale/conflicting original
+    authority, candidate code substitution or source/observer mismatch; failure must
+    remain a typed cause rather than silent legacy fallthrough.
+  - Return the exact eligible published implementation to the existing task flow;
+    TASK-426 may only resume via its own new lawful REPAIR authorization based on
+    canonical failed RUN, not inherited from TASK-427.
+  - Minimum-sufficient Runtime verification only; do not add full suite or repeated
+    unchanged proof merely to exercise workflow.
+acceptance:
+- id: AC1
+  condition: KA01 distinguishes an authentically admitted Kernel/proof-consumer upgrade
+    from ordinary coding scope, avoiding the unconditional filename-only preflight
+    denial for the authorized upgrade while retaining negative denial for unauthorized
+    proof-consumer mutation.
+- id: AC2
+  condition: The supported self-host PRIMARY entry for this class authenticates an
+    executable bootstrap path before Executor invocation and does not just create
+    terminal failure due to reentering the known KA01 default preflight; missing bootstrap
+    evidence produces a precise pre-RUN refusal rather than an avoidable new FAILED
+    RUN.
+- id: AC3
+  condition: All upgrade candidate verification, observer/toolchain and source proof
+    derive from original trusted Runtime/control implementation and authenticated
+    pre-candidate identities, never from edited candidate proof consumers or Executor-declared
+    PASS.
+- id: AC4
+  condition: Authorized upgrade runs retain exact original TASK, SHA, profile, lease,
+    mutation scope and bounded resource/terminal authority, with no provider replacement
+    or unadmitted continuation.
+- id: AC5
+  condition: Existing ordinary PRIMARY, REPAIR, REMEDIATION native same-RUN Verify/Fix/Verify
+    paths and historical KA01 modes preserve their prior authorization, stop criteria
+    and bounded correction semantics.
+- id: AC6
+  condition: New focused regression cases reproduce the TASK-426 protected scope conflict,
+    exercise lawful upgraded admission/implementation, and deny forged/wrong-source/cross-RUN/unauthorized
+    verifier mutation before any false canonical PASS.
+- id: AC7
+  condition: Prospective KA01 contract and roadmap identify the new authorized upgrade
+    behavior and preserve all earlier TASK-426 FAILURE, original preflight constraints
+    for unaffected work and Human-only roadmap movement, with no unrelated activation
+    or pilot package.
+- id: AC8
+  condition: The authoring/dispatch/wake and source-binding consumer regression cases
+    demonstrate that a rejected bootstrap reports the exact blocker and that a lawful
+    upgrade implementation can return to standard Runtime completion/review/publication
+    eligibility without secondary verification owner.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_ka01_default_three_flow.py tests/test_ka01_v13_intra_run_native.py
+  - python -m pytest -q tests/test_ka01_v13_activation.py tests/test_repair_dispatch.py
+    tests/test_remediation_wakeup.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
