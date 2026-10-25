@@ -422,7 +422,7 @@ def test_previously_admitted_runtime_preserves_legacy_behavior_and_historical_ru
     head = commit_fixture_state(f.repo, paths=("OUTPUT.txt",), message="historical admitted candidate",
         user_name="Historical fixture", user_email="historical@example.invalid")
     f.package = static_payload()
-    f.package["result"]["head_sha"] = head
+    f.package["result"].update(head_sha=head, changed_files=["OUTPUT.txt"])
     (f.state.runs / (f.run.run_id + ".json")).write_bytes(ka01._bytes(asdict(f.run)))
     owner = RuntimeCompletion(repo=f.repo, state=f.state, task=f.task, run=f.run,
         run_path=f.state.runs / (f.run.run_id + ".json"), verification_runner=f.verify,
