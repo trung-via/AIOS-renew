@@ -1,6 +1,8 @@
 """KA-01 v1.3 admission and finite resources, subordinate to RuntimeCompletion.
 
-Version 3 separately consents to one live native multi-turn PRIMARY session.
+Prospective version 4 enrolls newly admitted coding operations from canonical
+source by default, after their independent original family admission. Version
+3 separately consents to one live native multi-turn PRIMARY session.
 Version 2 remains bounded one-shot completion; version 1 remains controlled
 local preactivation. No interface reconstructs a session or lease from disk.
 Human authentication uses the existing ingress policy and Issue authenticator.
@@ -30,10 +32,16 @@ PRODUCTION_IMPLEMENTATION = "KA01-v1.3-bounded-primary-v1"
 PRODUCTION_MODE = "PRODUCTION_BOUNDED_PRIMARY"
 INTERACTIVE_IMPLEMENTATION = "KA01-v1.3-interactive-primary-v1"
 INTERACTIVE_MODE = "PRODUCTION_INTERACTIVE_PRIMARY"
+DEFAULT_IMPLEMENTATION = "KA01-v1.3-default-three-flow-v1"
+DEFAULT_MODE = "PRODUCTION_DEFAULT_THREE_FLOW"
 VERSION = "1.3"
 PROFILE = "KA01-v1.3-default-resource-profile"
 NORMATIVE_PATH = "docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md"
-NORMATIVE_SHA256 = "1381a4ef25a1b6877b8e6326767e8545eff17cdc49dfd6062090e630c8a5e84e"
+HISTORICAL_NORMATIVE_SHA256 = "1381a4ef25a1b6877b8e6326767e8545eff17cdc49dfd6062090e630c8a5e84e"
+# Historical requests keep their original normative pin. A fresh explicit
+# exception may select current normative bytes without changing its old mode.
+DEFAULT_NORMATIVE_SHA256 = "52b7f7af908315608ab504e46fdcdcc6e671f157aab2d6a51104c7f83902ed27"
+NORMATIVE_SHA256 = DEFAULT_NORMATIVE_SHA256
 IMPLEMENTATION_PATHS = (
     "src/aios_renew/ka01_admission.py", "src/aios_renew/operator.py",
     "src/aios_renew/runtime.py", "src/aios_renew/dispatcher.py",
@@ -43,6 +51,8 @@ IMPLEMENTATION_PATHS = (
 )
 INTERACTIVE_IMPLEMENTATION_PATHS = (*IMPLEMENTATION_PATHS,
     "src/aios_renew/codex_live_transport.py", "src/aios_renew/run_observation.py")
+DEFAULT_IMPLEMENTATION_PATHS = (*INTERACTIVE_IMPLEMENTATION_PATHS,
+    "src/aios_renew/antigravity_adapter.py", "src/aios_renew/antigravity_minimax_adapter.py")
 OPERATIONS = frozenset({"PRIMARY", "REPAIR", "REMEDIATION"})
 DEFAULTS = dict(max_corrections=2, max_checkpoints=3, max_run_wall_minutes=240,
                 max_runtime_verification_minutes=180, max_tokens=None)
@@ -50,6 +60,13 @@ DEFAULTS = dict(max_corrections=2, max_checkpoints=3, max_run_wall_minutes=240,
 
 def _deny(code):
     raise VerificationContractError("KA01_V13_" + code)
+
+
+def _stop_reason(owner, exc):
+    """Retain only bounded first-party STOP codes, never provider diagnostics."""
+    import re
+    reason = str(exc)
+    owner._ka01_stop_reason = reason if re.fullmatch(r"(?:KA01_|CODEX_LIVE_STOP_)[A-Z0-9_]{1,150}", reason) else "KA01_DEFAULT_ORIGINAL_BOUNDARY_STOP"
 
 
 def _bytes(value):
@@ -142,6 +159,16 @@ class AdmissionRequest:
             _hash(digest)
 
 
+@dataclass(frozen=True)
+class _DefaultAdmission:
+    """Runtime selection after original family admission; no bearer fields."""
+    version: int = 4
+
+    def __post_init__(self):
+        if type(self.version) is not int or self.version != 4:
+            _deny("UNSUPPORTED_INTERFACE_VERSION")
+
+
 def production_gate(request, *, operation="PRIMARY"):
     """Select only the supported interface; this is never authentication."""
     if request is None:
@@ -154,12 +181,13 @@ def production_gate(request, *, operation="PRIMARY"):
         _deny("PRODUCTION_OPERATION_UNSUPPORTED")
 
 
-def _production_source(owner, reader, tree, *, interactive=False):
+def _production_source(owner, reader, tree, *, interactive=False, default=False):
     """Bind the running first-party consumers to the exact selected main source."""
     import sys
     from .verification import _original_local, MAX_ORIGINAL_PROOF_BYTES
     blobs = {}
-    for path in INTERACTIVE_IMPLEMENTATION_PATHS if interactive else IMPLEMENTATION_PATHS:
+    paths = DEFAULT_IMPLEMENTATION_PATHS if default else INTERACTIVE_IMPLEMENTATION_PATHS if interactive else IMPLEMENTATION_PATHS
+    for path in paths:
         module = sys.modules.get("aios_renew." + Path(path).stem)
         if module is None or not getattr(module, "__file__", None):
             _deny("RUNNING_IMPLEMENTATION_SOURCE_UNAVAILABLE")
@@ -172,7 +200,82 @@ def _production_source(owner, reader, tree, *, interactive=False):
     return blobs
 
 
+def _policy_data(policy):
+    data = asdict(policy)
+    if data["lineage_path"] is not None:
+        data["lineage_path"] = str(data["lineage_path"])
+    return data
+
+
+def _default_authority(owner, operation, profile, policy):
+    """Authenticate the current canonical default, subordinate to admission.
+
+    Only canonical main supplies this policy. Carrier fields, flags, old
+    Issues and orphan selectors do not participate in default enrollment.
+    Main's publication remains the existing Publisher's responsibility.
+    """
+    from .execution_profile import ResolvedExecutionProfile, parse_execution_profile
+    from .operator import _ka01_operation_source
+    from .runtime import CompletionPolicy
+    from .verification import _ApplicabilityReader, _original_local, _original_remote, _app_refs
+
+    if operation not in OPERATIONS or type(policy) is not CompletionPolicy or policy.kind != operation:
+        _deny("OPERATION_NOT_ADMITTED")
+    # This reauthenticates original TASK/failure/Review finding authority. A
+    # valid global policy can neither create nor widen any of those grants.
+    source = _ka01_operation_source(owner, operation, policy, production=True)
+    owner._ka01_default_operation_source = source
+    control = owner.transport_repo
+    url = _original_remote(control)
+    refs = dict(_app_refs(control, url, ("refs/heads/main",)))
+    if set(refs) != {"refs/heads/main"}:
+        _deny("DEFAULT_CANONICAL_MAIN_REQUIRED")
+    main = refs["refs/heads/main"]
+    owner._ka01_default_source = main
+    if operation == "PRIMARY" and main != owner.run.base_sha:
+        _deny("ORIGINAL_MAIN_MOVED")
+    reader = _ApplicabilityReader(control)
+    tree, _ = reader.commit(main)
+    norm = reader.blob(tree, NORMATIVE_PATH)
+    if _digest(norm) != DEFAULT_NORMATIVE_SHA256:
+        _deny("DEFAULT_GLOBAL_SOURCE_MISSING_OR_CHANGED")
+    implementation_source = _production_source(owner, reader, tree, interactive=True, default=True)
+    if owner.run.executor != "codex":
+        _deny("DEFAULT_NATIVE_CAPABILITY_UNSUPPORTED_" + owner.run.executor.upper().replace("-", "_"))
+    if type(profile) is not ResolvedExecutionProfile:
+        _deny("EXACT_SELECTED_PROFILE_REQUIRED")
+    profile.__post_init__()
+    if (profile.run_id, profile.executor) != (owner.run.run_id, owner.run.executor):
+        _deny("PROFILE_RUN_MISMATCH")
+    profile_raw = _original_local(owner.run_path.parent.parent / "execution-profiles" /
+        (owner.run.run_id + ".json"), 65536)
+    if parse_execution_profile(profile_raw.decode("utf-8")) != profile:
+        _deny("ORIGINAL_EXECUTION_PROFILE_CHANGED")
+    if (operation == "REPAIR" and policy.mutation_action not in {"CODE_FIX", "CONTINUE_IMPLEMENTATION"}
+            or operation == "REMEDIATION" and policy.mutation_action != "CODE_FIX"
+            or operation == "PRIMARY" and not owner.task.scope.modify):
+        _deny("DEFAULT_NONCODING_ACTION_UNSUPPORTED")
+    if owner.task.verification.policy not in {"minimum-sufficient-v1", "minimum-sufficient-v2"}:
+        _deny("DEFAULT_VERIFICATION_POLICY_UNSUPPORTED")
+    if dict(_app_refs(control, url, ("refs/heads/main",))) != refs:
+        _deny("SOURCE_MOVED_DURING_ADMISSION")
+    return dict(implementation=DEFAULT_IMPLEMENTATION, ka01_version=VERSION, profile=PROFILE,
+        policy=owner.task.verification.policy,
+        normative=dict(source_sha=main, path=NORMATIVE_PATH, sha256=DEFAULT_NORMATIVE_SHA256),
+        global_policy=dict(mode=DEFAULT_MODE, authority="HUMAN_RATIFIED_CANONICAL_SOURCE",
+            task="TASK-425", revision=1, operations=sorted(OPERATIONS), prospective_only=True),
+        selection=None, consent=None, original_selector=None, overrides=[], effective_limits=resolve_limits([]),
+        operation=operation, execution_profile=profile.as_dict(), source=source,
+        implementation_main_sha=main, implementation_source=implementation_source,
+        production_activation="DEFAULT_ENROLLED_NATIVE_CAPABILITY_REQUIRED",
+        continuation="SAME_ORIGINAL_LIVE_SESSION_ONLY",
+        native_feedback_delivery="REQUIRES_ORIGINAL_NATIVE_COMPLETED_TURN")
+
+
 def _authority(owner, request, operation, profile, policy):
+    if type(request) is _DefaultAdmission:
+        request.__post_init__()
+        return _default_authority(owner, operation, profile, policy)
     from .github_issue_ingress import _decode_policy, _authenticate_selection_issue, _github_selection_json
     from .verification import _ApplicabilityReader, _original_remote, _original_git, _original_local, _app_refs
     from .operator import _ka01_operation_source
@@ -278,11 +381,11 @@ def _authority(owner, request, operation, profile, policy):
             _deny("EXPLICIT_OPERATION_REQUIRED")
     operations(selection["operations"])
     normative = _exact(selection["normative"], ("source_sha", "path", "sha256"))
-    if normative["path"] != NORMATIVE_PATH or normative["sha256"] != NORMATIVE_SHA256:
+    if normative["path"] != NORMATIVE_PATH or normative["sha256"] not in {HISTORICAL_NORMATIVE_SHA256, NORMATIVE_SHA256}:
         _deny("EXACT_PUBLISHED_NORM_REQUIRED")
     source_tree = reader.anchors(main, {normative["source_sha"]})[normative["source_sha"]]
     norm = reader.blob(source_tree, NORMATIVE_PATH)
-    if _digest(norm) != NORMATIVE_SHA256 or reader.blob(tree, NORMATIVE_PATH) != norm:
+    if _digest(norm) != normative["sha256"] or reader.blob(tree, NORMATIVE_PATH) != norm:
         _deny("NORMATIVE_SOURCE_CHANGED")
     implementation_source = None
     if production:
@@ -338,7 +441,7 @@ class _AdmissionBudget:
         from .run import RunLease, RunLeaseRegistry
         from .run_observation import RunObservationTracker
         from .runtime import _checkpoint_write_once, _checkpoint_make_directory
-        if type(request) is not AdmissionRequest:
+        if type(request) not in {AdmissionRequest, _DefaultAdmission}:
             _deny("TYPED_REQUEST_REQUIRED")
         request.__post_init__()
         tracker = owner._ka01_original_tracker
@@ -353,8 +456,9 @@ class _AdmissionBudget:
                 or leases.holder(owner.task.task_id) is not lease or not _lease_matches_run(lease, owner.run)):
             _deny("ORIGINAL_LIVE_LEASE_REQUIRED")
         self.owner, self.request, self.operation = owner, request, operation
-        self.production = request.version in (2, 3)
-        self.interactive = request.version == 3
+        self.default = type(request) is _DefaultAdmission
+        self.production = request.version in (2, 3, 4)
+        self.interactive = request.version in (3, 4)
         self.session = self.session_identity = None
         self.native_state, self.native_calls, self.package_digest = "NOT_STARTED", 0, None
         self.native_dispatcher = self.native_adapter = None
@@ -400,7 +504,7 @@ class _AdmissionBudget:
             verification_reserved_ns=self.verification_reserved_ns, verification_spent_ns=self.verification_spent_ns,
             verification_settled_ns=self.verification_settled_ns, cleanup_spent_ns=self.cleanup_spent_ns,
             accounted_until_ns=self.accounted_until_ns, pending=self.pending, effects=self.effects,
-            production=self.production, interactive=self.interactive,
+            production=self.production, interactive=self.interactive, default=self.default,
             session_identity=self.session_identity, native_state=self.native_state, native_calls=self.native_calls,
             package_digest=self.package_digest)
 
@@ -489,7 +593,9 @@ class _AdmissionBudget:
                 self.session.assert_live(self.session_identity)
                 self.session.assert_idle()
             self._clock()
-        except BaseException:
+        except BaseException as exc:
+            if self.default:
+                _stop_reason(self.owner, exc)
             self.stop()
             raise
 
@@ -522,7 +628,9 @@ class _AdmissionBudget:
                     feedback_delivery=("SOURCE_CORRELATED_CANDIDATE_RECEIVED" if self.corrections_spent else "NOT_REQUESTED")
                         if self.interactive else "UNSUPPORTED_SAME_LIVE_RECIPIENT_CHANNEL_UNAVAILABLE"))
                 self._facts_seal = _bytes(self._facts())
-        except BaseException:
+        except BaseException as exc:
+            if self.default:
+                _stop_reason(self.owner, exc)
             self.stop()
             raise
 
@@ -560,6 +668,13 @@ class _AdmissionBudget:
                     or self.native_state != "EXECUTING"
                     or getattr(self.native_adapter, "execution_profile", None) != self.profile):
                 _deny("ORIGINAL_SESSION_AUTHORITY_LOST")
+            if self.default and (self.native_dispatcher is None
+                    or self.native_dispatcher._prospective_runtime is not self.owner
+                    or self.native_dispatcher._operation != self.operation
+                    or self.native_dispatcher._selected_executor != self.owner.run.executor
+                    or self.native_dispatcher._execution_profile != self.profile
+                    or getattr(self.native_adapter, "_interactive_runtime", None) is not self.owner):
+                _deny("ORIGINAL_SESSION_OPERATION_OR_EXECUTOR_LOST")
             self._clock()
             if self.session is not None:
                 self.session.assert_live(self.session_identity)
@@ -608,11 +723,18 @@ class _AdmissionBudget:
         authority = json.loads(self.authority)
         limits = dict(self.limits)
         return dict(implementation=authority["implementation"], ka01_version=VERSION,
-            status="COMPLETED_SUPPORTED_PRIMARY" if self.terminal_digest is not None and self.pending is None
-                else "STOPPED" if self.stopped else "ADMITTED_SUPPORTED_PRIMARY",
-            configuration=INTERACTIVE_MODE if self.interactive else PRODUCTION_MODE, operation=self.operation, run_id=self.owner.run.run_id,
+            status=("COMPLETED_" + self.operation if self.default else "COMPLETED_SUPPORTED_PRIMARY")
+                if self.terminal_digest is not None and self.pending is None
+                else "STOPPED" if self.stopped else "ADMITTED_" + self.operation if self.default else "ADMITTED_SUPPORTED_PRIMARY",
+            configuration=DEFAULT_MODE if self.default else INTERACTIVE_MODE if self.interactive else PRODUCTION_MODE,
+            operation=self.operation, run_id=self.owner.run.run_id,
             source_main_sha=authority.get("implementation_main_sha"),
-            selection_sha256=self.request.selection_sha256, consent_sha256=self.request.consent_sha256,
+            selection_sha256=getattr(self.request, "selection_sha256", None),
+            consent_sha256=getattr(self.request, "consent_sha256", None),
+            **(dict(global_policy_sha256=_digest(authority["global_policy"]),
+                operation_source_sha256=_digest(authority["source"]),
+                stop_reason=getattr(self.owner, "_ka01_stop_reason", None),
+                checkpoint_digests=[r.digest for r in self.owner._interactive_checkpoints]) if self.default else {}),
             execution_profile_sha256=_digest(self.profile.as_dict()),
             effective_limits=limits if len(_bytes(limits)) <= 4096 else None,
             effective_limits_sha256=_digest(limits), effective_limits_source="ORIGINAL_RUNTIME_ADMISSION",
@@ -831,7 +953,9 @@ def guarded(method):
                         pass
             budget.charge_cleanup()
             return value
-        except BaseException:
+        except BaseException as exc:
+            if budget.default:
+                _stop_reason(owner, exc)
             budget.stop()
             raise
         finally:

@@ -3,9 +3,9 @@
 | Identity / status | Value |
 | --- | --- |
 | Amendment identity | **KA-01** |
-| Document version | **1.3 — resource profile; TASK-423 bounded activation retained; TASK-424 prospective native interactive PRIMARY** |
+| Document version | **1.3 — historical typed modes retained; TASK-425 prospective default across three coding operations** |
 | Normative status | **HUMAN_RATIFIED_PROSPECTIVE_SPEC** |
-| Runtime activation policy | **SUPPORTED_BOUNDED_PRIMARY** (v2) and separately consented **SUPPORTED_INTERACTIVE_PRIMARY** (v3) through the source-bound ordinary caller in D.1; no uptake or review/publication outcome asserted. |
+| Runtime activation policy | **PRODUCTION_DEFAULT_THREE_FLOW** for newly admitted coding RUNs under D.1.2; historical v1/v2/v3 keep their exact semantics. Native support requires actual capability; no review/publication outcome asserted. |
 | Original Human ratification date | **2026-10-09** — KA-01 v1.0, sections A–D. |
 | Human activation-sequence decision | **2026-10-18** — v1.1 delta described in A.1 and D.1; no production activation. |
 | Human three-operation scope decision | **2026-10-19** — v1.2 delta described in A.1, C.1 and D.1; no production activation or per-RUN consent. |
@@ -19,10 +19,20 @@
 | Historical v1.3 resource publication | `TASK-396`, revision `1`; exact reviewed/published specification retained in Git history. It did not authorize this activation delta. |
 | v1.3 activation amendment | `TASK-423`, revision `1`; ordinary Runtime verification, independent exact-source review and Publisher publication govern this same implementation delta, without a later activation TASK. |
 | Human native interaction priority | **2026-10-25, TASK-424 r1** — one integrated original-RUN verify/fix/verify delta, new explicit consent and same original live Codex session across distinct turns; no extra activation stage. |
+| Human default policy decision | **2026-10-25, TASK-425 r1** — bounded same-RUN Runtime verification/correction is the prospective default after independent PRIMARY, REPAIR or REMEDIATION admission, without another KA-01 selection/consent Issue or selector. |
 
 ## A. Identity, authority and legal effect
 
 ### A.1 Separate prospective amendment
+
+**Prospective precedence (TASK-425):** D.1.2 and the current-policy paragraph in
+D.4 supersede this document's earlier optional enrollment, legacy-default and
+per-RUN KA-01 selection/consent requirements only for future newly admitted coding
+episodes. They include existing TASK IDs. Earlier A–C and D.1/D.1.1 opt-in text
+continues to describe the exact historical typed modes, not a requirement to
+create automatic per-RUN consent for the new mode. Independent Human TASK,
+REPAIR and REMEDIATION authority, selected Executor/profile and live lease remain
+mandatory. No previously admitted or terminal RUN is retargeted.
 
 KA-01 v1.3 records the separately Human-ratified prospective Kernel design for:
 
@@ -854,7 +864,12 @@ that remain unavailable. This document itself supplies no accounting facts.
 
 ## D. Publication, engineering, measurement, activation and rollback
 
-### D.1 Version 1.3 supported activation under the 2026-10-25 decision
+### D.1 Version 1.3 source-bound activation and prospective default
+
+The controlling new Human decision selects **TASK-425 r1** as the single NEXT
+implementation. D.1.2 introduces its distinct prospective policy. The TASK-423
+and TASK-424 decisions below remain exact historical activation records; they
+do not select another future implementation stage.
 
 Human prospectively supersedes the former conjunctive staged G1/G2/G3/G6
 sequence and the future L4 G4/G5 duties for new supported v1.3 admissions.
@@ -1009,6 +1024,72 @@ Observation, model assertions and parsed records never replace canonical EVIDENC
 Reviewer judgment or Publisher authority. Neither v3 nor one observation claims
 savings, uptake, full three-operation support or downstream adoption.
 
+#### D.1.2 Default bounded continuation across three coding operations (TASK-425)
+
+The distinct prospective implementation is **KA01-v1.3-default-three-flow-v1**,
+mode **PRODUCTION_DEFAULT_THREE_FLOW** (internal admission version 4). Human's
+explicit 2026-10-25 choice makes bounded Runtime Verify → Fix → Verify the default
+for every future newly admitted coding episode of an existing or new TASK, in
+PRIMARY, CODE_FIX/CONTINUE_IMPLEMENTATION REPAIR and CODE_FIX REMEDIATION. This
+same integrated TASK contains the policy, implementation and ordinary callers;
+there is no later activation, cutover, pilot, L3-06, G3/G6 or L4 stage.
+
+The original ordinary `run_task`, `run_repair` and `run_remediation` first perform
+their independent family admission. TASK admission, exact failed RUN/head/root
+and authorized REPAIR, or exact reviewed source/finding and authorized REMEDIATION
+must succeed before policy enrollment. The current canonical main's exact
+normative bytes and running first-party consumers authenticate the global policy.
+No fresh KA-01 selection Issue, consent Issue or orphan selector is required.
+Self-host/A1/H1R/remediation carriers need no new policy fields; they grant no
+execution, model selection or correction authority. Missing/malformed/stale global
+source, source drift, lost lease or changed family permission STOP; they never
+select legacy, reopen a RUN, manufacture consent or spawn a replacement Executor.
+
+Reuse TASK-424's original live Codex app-server process/stdio/thread and original
+Runtime checkpoint/observer/factual-feedback/terminal path. Preflight the complete
+original proof policy, observer/toolchain and actual native selected profile before
+the first coding turn. K_i, F_i, receipt and terminal bind operation, original
+admission and family source, completion policy, candidate, selected Executor/model/
+effort, lease and same live session. F_i contains only bounded factual identities;
+the Executor chooses HOW within the original authorization. No raw logs, paths,
+secrets, provider/account state, diagnosis or patch advice enter feedback.
+
+PRIMARY retains original TASK AC coverage. REPAIR retains exact failed candidate,
+root/result base, authorized mutation scope, cumulative complete TASK claims and
+original TASK/origin proof combination. REMEDIATION retains exact reviewed SHA,
+Review finding, authorized narrow affected proof and Delta Review basis; it
+returns empty claims. Original executorless reuse/no-change/direct-candidate
+completion stays executorless and does not invoke a model to manufacture feedback.
+Other coding actions/noncoding modes and batch findings without proven exact
+continuity STOP under this policy before model work. Supported V1/V2 completion
+obligations are not reduced: an unsupported complete observer yields STOP.
+
+The common defaults are at most **2 corrections**, **3 checkpoints**, **240 minutes
+original RUN wall**, **180 minutes cumulative Runtime verification** inside that
+wall, and **null token cap**. Authenticated complete stable scoped call-FAIL only
+may yield F_i. Each correction needs a new clean causal scoped descendant, an
+original-session receipt and strictly fewer failed identities in the same proof
+population. No progress, forged/stale/duplicate feedback, wrong operation/session,
+unknown/incomplete/unstable proof, changed source/toolchain, resource exhaustion,
+crash ambiguity or revoked family authority STOP. Intermediate FAIL creates no
+REVIEW/FAILURE or new REPAIR RUN. Exact final K_i supplies canonical evidence once;
+terminal completion does not rerun applicable final verification. There is one
+source-bound terminal and the ordinary independent Review/Publisher handoff.
+
+Codex support is conditional on the actual installed first-party live transport.
+Antigravity and Antigravity-MiniMax currently have no proven same-live recipient
+transport: each operation reports explicit UNSUPPORTED/STOP before coding work.
+Default enrollment does not assert universal provider capability. Bounded original
+RUN observations report effective policy/source, operation, session, proof and
+correction counts and STOP facts, with review/publication unobserved. They assert
+no Publisher PASS, measured saving, unrelated TASK admission or downstream uptake.
+
+Human-owned prospective exceptions remain separate from automatic enrollment.
+An alternative must authenticate an exact supported fresh selection/consent or a
+reviewed canonical future policy amendment within existing authority; flags,
+provider output and earlier Issue bodies cannot supply that exception. Existing
+v1/v2/v3 decoders and originally admitted policies never gain default-mode rights.
+
 ### D.2 Historical allocation and measurement truth
 
 The original **16 L1-L4 slots** remain an immutable planning baseline, not the
@@ -1105,7 +1186,19 @@ no full suite, fixture-only delivery claim or separate staged package follows.
 Historical failures retain their original outcomes and are not relabeled to
 close this ledger.
 
-### D.4 Legacy default, rollback and downstream isolation
+### D.4 Prospective default, historical isolation and Human rollback
+
+**Current prospective policy:** D.1.2 is default-on after independent family
+admission for every new coding RUN. Absence of KA-01 fields means this new mode,
+not legacy. Global-source or capability failure is bounded STOP. An explicit
+authenticated future Human policy exception may choose a supported alternative;
+closing an old selection/consent Issue cannot disable the global policy or
+silently downgrade future RUNs. Rollback of the global policy requires its own
+Human-owned reviewed canonical amendment and applies only prospectively.
+
+The following paragraphs retain the historical v1/v2/v3 selection, consent and
+withdrawal semantics. Their legacy-default and no-automatic-enrollment rules
+apply to those earlier modes and sources; D.1.2 governs new default-mode admission.
 
 In the absence of an explicit supported prospective opt-in, the legacy
 admitted policy remains the default. Historical and already admitted work keeps

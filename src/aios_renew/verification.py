@@ -2834,7 +2834,7 @@ def _checkpoint_reviewed_execution(repository: Path, request, *, expected_plan=N
 
 def _execute_checkpoint_verification(repository: Path, *, request, task, manifests,
                                      raw_directory: Path, start_order: int, runner, timeout_seconds: float,
-                                     capture_bytes_remaining: int):
+                                     capture_bytes_remaining: int, commands=None, operation="PRIMARY", modification_scope=None):
     """The existing verifier executes only the exact already-authored commands.
 
     This is observation instrumentation, not V2 derivation: no early probes,
@@ -2842,10 +2842,12 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
     Only RuntimeCompletion calls this after its durable effect reservation.
     """
     env = dict(os.environ)
+    commands = task.verification.required if commands is None else commands
+    modification_scope = task.scope.modify if modification_scope is None else modification_scope
     evidence = []
     with materialize_verification_subject(repository, run_id=request.scheduler.target.run_id,
             subject_sha=request.scheduler.subject_sha) as subject:
-        for index, command in enumerate(task.verification.required):
+        for index, command in enumerate(commands):
             _, manifest, _ = next(v for v in manifests.values() if v[1]["command_index"] == index)
             profile, toolchain = manifest["profile"], manifest["toolchain"]
             order = start_order + index + 1
@@ -2874,8 +2876,8 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                 raise RuntimeVerificationError("checkpoint time accounting exhausted", evidence=(*evidence, item))
             binding = dict(subject_sha=item.subject_sha, base_sha=request.scheduler.target.base_sha,
                 tree_sha=request.scheduler.target.tree_sha, command=command, profile=profile, toolchain=toolchain,
-                envelope_digest=verification_digest(dict(authored=list(task.verification.required), operation="PRIMARY",
-                                                        modification_scope=sorted(task.scope.modify))),
+                envelope_digest=verification_digest(dict(authored=list(commands), operation=operation,
+                                                        modification_scope=sorted(modification_scope))),
                 changed_files_digest=verification_digest(sorted(filter(None, _git(repository, "diff", "--name-only",
                     "--no-renames", "-z", request.scheduler.target.base_sha, item.subject_sha).split("\0")))),
                 failure_set_digest=verification_digest([]))

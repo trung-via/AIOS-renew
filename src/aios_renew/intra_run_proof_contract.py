@@ -1318,14 +1318,28 @@ class NativePrimaryCheckpoint:
         return json.loads(self.content_json)
 
 
+@dataclass(frozen=True, slots=True)
+class NativeOperationCheckpoint(NativePrimaryCheckpoint):
+    """Prospective default K_i, explicitly bound to the original operation."""
+
+
 def parse_native_primary_checkpoint(content: bytes) -> NativePrimaryCheckpoint:
+    return _parse_native_checkpoint(content, default=False)
+
+
+def parse_native_operation_checkpoint(content: bytes) -> NativeOperationCheckpoint:
+    return _parse_native_checkpoint(content, default=True)
+
+
+def _parse_native_checkpoint(content: bytes, *, default):
     from .verification_contract import _reuse_decode, _app_exact, _original_hash, _original_json, VerificationContractError
     from .artifacts import validate_evidence
     data = _app_exact(_reuse_decode(content), ("format", "version", "ordinal", "predecessor_digest",
         "binding", "package_sha256", "population_identity", "evidence", "proofs", "failed_identities"))
     if _original_json(data).encode("ascii") != content:
         raise VerificationContractError("KA01_NATIVE_CHECKPOINT_NONCANONICAL")
-    if (data["format"] != "AIOS_KA01_NATIVE_PRIMARY_CHECKPOINT" or type(data["version"]) is not int
+    expected_format = "AIOS_KA01_NATIVE_OPERATION_CHECKPOINT" if default else "AIOS_KA01_NATIVE_PRIMARY_CHECKPOINT"
+    if (data["format"] != expected_format or type(data["version"]) is not int
             or data["version"] != 1 or type(data["ordinal"]) is not int or not 1 <= data["ordinal"] <= 256):
         raise VerificationContractError("KA01_NATIVE_CHECKPOINT_FORMAT")
     if data["predecessor_digest"] is not None:
@@ -1334,7 +1348,12 @@ def parse_native_primary_checkpoint(content: bytes) -> NativePrimaryCheckpoint:
         _original_hash(data[key])
     binding = _app_exact(data["binding"], ("task", "run_id", "base_sha", "candidate_sha", "tree_sha",
         "admitted_run_sha256", "authority_sha256", "execution_profile_sha256", "session", "turn",
-        "commands_sha256", "scope_sha256"))
+        "commands_sha256", "scope_sha256", *(("operation", "operation_source_sha256", "completion_policy_sha256") if default else ())))
+    if default:
+        if binding["operation"] not in {"PRIMARY", "REPAIR", "REMEDIATION"}:
+            raise VerificationContractError("KA01_NATIVE_CHECKPOINT_OPERATION")
+        for key in ("operation_source_sha256", "completion_policy_sha256"):
+            _original_hash(binding[key])
     for key in ("admitted_run_sha256", "authority_sha256", "execution_profile_sha256", "commands_sha256", "scope_sha256"):
         _original_hash(binding[key])
     for key in ("base_sha", "candidate_sha", "tree_sha"):
@@ -1381,4 +1400,4 @@ def parse_native_primary_checkpoint(content: bytes) -> NativePrimaryCheckpoint:
             raise VerificationContractError("KA01_NATIVE_CHECKPOINT_OUTCOME")
     if data["failed_identities"] != sorted({v for p in data["proofs"] for v in p["failed_identities"]}):
         raise VerificationContractError("KA01_NATIVE_CHECKPOINT_OUTSTANDING")
-    return NativePrimaryCheckpoint(content.decode("ascii"))
+    return (NativeOperationCheckpoint if default else NativePrimaryCheckpoint)(content.decode("ascii"))

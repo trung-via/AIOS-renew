@@ -329,9 +329,10 @@ class RemediationSummary:
     reviewed_sha: str
     head_sha: str
     result_path: Path
+    ka01: dict[str, Any] | None = None
 
     def render(self) -> str:
-        return (
+        rendered = (
             "AIOS REMEDIATION PASS\n"
             f"task: {self.task_id}\n"
             f"review: {self.review_id}\n"
@@ -342,6 +343,7 @@ class RemediationSummary:
             f"head_sha: {self.head_sha}\n"
             f"result: {self.result_path}"
         )
+        return rendered if self.ka01 is None else rendered + "\nka01: " + json.dumps(self.ka01, sort_keys=True)
 
 
 @dataclass(frozen=True)
@@ -353,15 +355,17 @@ class RepairSummary:
     failed_head_sha: str
     head_sha: str
     result_path: Path
+    ka01: dict[str, Any] | None = None
 
     def render(self) -> str:
-        return (
+        rendered = (
             "AIOS REPAIR PASS\n"
             f"task: {self.task_id}\nfailed_run: {self.failed_run_id}\n"
             f"run: {self.run_id}\nexecutor: {self.executor}\n"
             f"failed_head_sha: {self.failed_head_sha}\nhead_sha: {self.head_sha}\n"
             f"result: {self.result_path}"
         )
+        return rendered if self.ka01 is None else rendered + "\nka01: " + json.dumps(self.ka01, sort_keys=True)
 
 
 from .correction_preflight import (
@@ -1718,6 +1722,10 @@ def _ka01_operation_source(owner, operation, policy, *, production=False):
         facts.update(predecessor=predecessor, original_execution_sha256=_digest(execution_raw),
                      failure_sha256=_digest(failure), authorization_sha=authorization.commit_sha,
                      affected_verification_sha256=_digest(list(policy.verification_commands)))
+        if getattr(owner, "_ka01_default_pending", False):
+            facts.update(root_base_sha=resolved.root_base_sha, failed_head_sha=failure["failed_head_sha"],
+                result_base_sha=resolved.result_base_sha, action=repair["action"],
+                correction_scope_sha256=_digest(repair["modification_scope"]))
         return facts
     if operation == "REMEDIATION":
         if (document.get("kind") != "REMEDIATION" or set(document) - {
@@ -1756,6 +1764,9 @@ def _ka01_operation_source(owner, operation, policy, *, production=False):
                      review_sha256=_digest(asdict(replace(review, acceptance=dict(review.acceptance)))),
                      finding_id=remediation.finding_id,
                      affected_verification_sha256=_digest(list(remediation.affected_verification)))
+        if getattr(owner, "_ka01_default_pending", False):
+            facts.update(reviewed_sha=review.reviewed_sha, review_id=review.review_id,
+                action=remediation.action, correction_scope_sha256=_digest(list(remediation.modification_scope)))
         return facts
     _deny("OPERATION_NOT_ADMITTED")
 
@@ -1809,6 +1820,29 @@ def _activate_ka01_primary(*, runtime, request, execution_profile, policy, lease
             _AdmissionBudget(runtime, request, "PRIMARY", execution_profile, policy, leases, lease)
     except BaseException:
         runtime._local_feedback_stopped = True
+        if runtime._ka01_budget is not None:
+            runtime._ka01_budget.stop()
+        raise
+
+
+def _activate_ka01_default(*, runtime, execution_profile, policy, leases, lease):
+    """Enroll only this freshly admitted coding operation under current source."""
+    from .ka01_admission import _AdmissionBudget, _DefaultAdmission, _deny
+    from .runtime import _checkpoint_mutation
+    if not isinstance(runtime, RuntimeCompletion) or runtime._ka01_opted:
+        _deny("FRESH_ORIGINAL_RUNTIME_REQUIRED")
+    runtime._ka01_opted = runtime._ka01_default_pending = True
+    try:
+        directory = runtime._checkpoint_directory()
+        if os.path.lexists(directory) or os.path.lexists(directory.parent / "local-invocation.json"):
+            _deny("PREEXISTING_UNACCOUNTED_NATIVE_WORK")
+        with _checkpoint_mutation(directory, dict(version=4, kind="KA01_DEFAULT_ADMISSION"), retain_ambiguity=False):
+            _AdmissionBudget(runtime, _DefaultAdmission(), policy.kind, execution_profile, policy, leases, lease)
+        runtime._preflight_interactive_policy()
+    except BaseException as exc:
+        runtime._local_feedback_stopped = True
+        reason = str(exc)
+        runtime._ka01_stop_reason = reason if re.fullmatch(r"[A-Z0-9_]{1,160}", reason) else "KA01_DEFAULT_ADMISSION_UNAVAILABLE"
         if runtime._ka01_budget is not None:
             runtime._ka01_budget.stop()
         raise
@@ -1941,7 +1975,7 @@ def run_task(
     finally:
         # One original live native connection is retained through completion.
         # Cleanup never launches/retries, changes a terminal, or masks its cause.
-        if ka01_admission is not None and ka01_admission.version == 3 and attempt.completion is not None:
+        if attempt.completion is not None:
             attempt.completion._close_interactive_primary()
 
 
@@ -2243,21 +2277,23 @@ def _run_task_impl(
             authorizes_mutation=bool(task.scope.modify)
         )
 
-        runtime_completion = None
         leases = RunLeaseRegistry()
         lease = leases.acquire(run)
         completion_policy = primary_completion_policy(task, base_sha=base_sha)
+        runtime_completion = RuntimeCompletion(
+            repo=root, state=state, task=task, run=run, run_path=run_path,
+            verification_runner=verification_runner, observation_tracker=observation_tracker,
+            error_type=OperatorError,
+        )
+        runtime_completion.interruption_phase = "EXECUTION"
+        attempt.bind_completion(runtime_completion)
         if ka01_admission is not None:
-            runtime_completion = RuntimeCompletion(
-                repo=root, state=state, task=task, run=run, run_path=run_path,
-                verification_runner=verification_runner, observation_tracker=observation_tracker,
-                error_type=OperatorError,
-            )
-            runtime_completion.interruption_phase = "EXECUTION"
-            attempt.bind_completion(runtime_completion)
             _activate_ka01_primary(runtime=runtime_completion, request=ka01_admission,
                 execution_profile=execution_profile, policy=completion_policy, leases=leases, lease=lease)
-            observed_native_runner = runtime_completion._ka01_budget.native_runner(observed_native_runner)
+        else:
+            _activate_ka01_default(runtime=runtime_completion, execution_profile=execution_profile,
+                policy=completion_policy, leases=leases, lease=lease)
+        observed_native_runner = runtime_completion._ka01_budget.native_runner(observed_native_runner)
 
         dispatcher = primary_dispatcher(
             selected_executor=executor,
@@ -2266,7 +2302,7 @@ def _run_task_impl(
             execution_policy=execution_policy,
             native_runner=observed_native_runner,
             execution_profile=execution_profile,
-            **({"prospective_runtime": runtime_completion} if ka01_admission is not None else {}),
+            prospective_runtime=runtime_completion,
         )
         try:
             package = dispatcher.dispatch_primary(
@@ -2293,23 +2329,11 @@ def _run_task_impl(
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
-        runtime_completion = runtime_completion or RuntimeCompletion(
-            repo=root,
-            state=state,
-            task=task,
-            run=run,
-            run_path=run_path,
-            verification_runner=verification_runner,
-            observation_tracker=observation_tracker,
-            error_type=OperatorError,
-        )
-        attempt.bind_completion(runtime_completion)
         runtime_completion.interruption_phase = "COMPLETION_GATE"
         completion = runtime_completion.complete(
             package, completion_policy
         )
-        if ka01_admission is not None:
-            runtime_completion._transport_ka01_completion(completion, completion_policy)
+        runtime_completion._transport_ka01_completion(completion, completion_policy)
 
         return RunSummary(
             task_id=task_id,
@@ -2318,7 +2342,7 @@ def _run_task_impl(
             base_sha=base_sha,
             head_sha=completion.head_sha,
             result_path=completion.result_path,
-            **({"ka01": runtime_completion._ka01_budget.observation()} if ka01_admission is not None else {}),
+            ka01=runtime_completion._ka01_budget.observation(),
         )
 
 
@@ -2441,6 +2465,8 @@ def run_repair(
             )
         raise
     finally:
+        if attempt.completion is not None:
+            attempt.completion._close_interactive_primary()
         _remove_historical_workspace(root, attempt.historical_workspace)
 
 
@@ -3822,10 +3848,28 @@ def _run_repair_impl(
                 source_repair_policy=_SOURCE_REPAIR_POLICY.get(),
             )
 
+        completion_policy = repair_completion_policy(
+            task, root_base_sha=root_base_sha, result_base_sha=result_base_sha,
+            failed_head_sha=failed_head, action=action, modification_scope=scope,
+            lineage_path=state.repairs / f"{run_id}.json",
+            origin_affected_verification=origin_affected_verification,
+        )
+        runtime_completion = RuntimeCompletion(
+            repo=subject_repo, state=state, task=task, run=run, run_path=run_path,
+            verification_runner=verification_runner, observation_tracker=observation_tracker,
+            error_type=OperatorError, transport_repo=repo,
+        )
+        attempt.bind_completion(runtime_completion)
         if reusable_package is None:
+            leases = RunLeaseRegistry()
+            lease = leases.acquire(run)
+            runtime_completion.interruption_phase = "EXECUTION"
+            _activate_ka01_default(runtime=runtime_completion, execution_profile=execution_profile,
+                policy=completion_policy, leases=leases, lease=lease)
             observed_native_runner = observation_tracker.wrap_native_runner(
                 native_runner
             )
+            observed_native_runner = runtime_completion._ka01_budget.native_runner(observed_native_runner)
             execution_policy = resolve_native_execution_policy(
                 authorizes_mutation=action in (
                     "CODE_FIX", "CONTINUE_IMPLEMENTATION"
@@ -3838,6 +3882,7 @@ def _run_repair_impl(
                 execution_policy=execution_policy,
                 native_runner=observed_native_runner,
                 execution_profile=execution_profile,
+                prospective_runtime=runtime_completion,
             )
             try:
                 package = dispatcher.dispatch_repair(execution=execution)
@@ -3859,36 +3904,15 @@ def _run_repair_impl(
         else:
             package = reusable_package
 
-        runtime_completion = RuntimeCompletion(
-            repo=subject_repo,
-            state=state,
-            task=task,
-            run=run,
-            run_path=run_path,
-            verification_runner=verification_runner,
-            observation_tracker=observation_tracker,
-            error_type=OperatorError,
-            transport_repo=repo,
-        )
-        attempt.bind_completion(runtime_completion)
         _prepare_historical_terminalization(repo, attempt)
-        completion = runtime_completion.complete(
-            package,
-            repair_completion_policy(
-                task,
-                root_base_sha=root_base_sha,
-                result_base_sha=result_base_sha,
-                failed_head_sha=failed_head,
-                action=action,
-                modification_scope=scope,
-                lineage_path=state.repairs / f"{run_id}.json",
-                origin_affected_verification=origin_affected_verification,
-            ),
-        )
+        completion = runtime_completion.complete(package, completion_policy)
+        if runtime_completion._ka01_budget is not None:
+            runtime_completion._transport_ka01_completion(completion, completion_policy)
         return RepairSummary(
             task_id=task.task_id, failed_run_id=failed_run_id, run_id=run_id,
             executor=run_executor, failed_head_sha=failed_head,
             head_sha=completion.head_sha, result_path=completion.result_path,
+            ka01=runtime_completion._ka01_budget.observation() if runtime_completion._ka01_budget is not None else None,
         )
 
 
@@ -8068,6 +8092,8 @@ def run_remediation(
             )
         raise
     finally:
+        if attempt.completion is not None:
+            attempt.completion._close_interactive_primary()
         _remove_historical_workspace(root, attempt.historical_workspace)
 
 
@@ -8785,6 +8811,22 @@ def _run_remediation_impl(
             native_runner
         )
 
+        runtime_completion = (_BatchRuntimeCompletion if isinstance(canonical_remediation, BatchRemediation) else RuntimeCompletion)(
+            repo=subject_repo, state=state, task=task, run=run, run_path=run_path,
+            verification_runner=verification_runner, observation_tracker=observation_tracker,
+            error_type=OperatorError, transport_repo=root,
+        )
+        if attempt is not None:
+            attempt.bind_completion(runtime_completion)
+        completion_policy = remediation_completion_policy(execution)
+        if resolved.cumulative:
+            completion_policy = replace(completion_policy, result_base_sha=run.base_sha)
+        leases = RunLeaseRegistry()
+        lease = leases.acquire(run)
+        runtime_completion.interruption_phase = "EXECUTION"
+        _activate_ka01_default(runtime=runtime_completion, execution_profile=execution_profile,
+            policy=completion_policy, leases=leases, lease=lease)
+        observed_native_runner = runtime_completion._ka01_budget.native_runner(observed_native_runner)
         execution_policy = resolve_native_execution_policy(
             authorizes_mutation=canonical_remediation.action == "CODE_FIX"
         )
@@ -8795,6 +8837,7 @@ def _run_remediation_impl(
             execution_policy=execution_policy,
             native_runner=observed_native_runner,
             execution_profile=execution_profile,
+            prospective_runtime=runtime_completion,
         )
 
         try:
@@ -8828,25 +8871,8 @@ def _run_remediation_impl(
                 raise OperatorError("historical remediation attempt is unavailable")
             _prepare_historical_terminalization(root, attempt)
 
-        runtime_completion = (_BatchRuntimeCompletion if isinstance(canonical_remediation, BatchRemediation) else RuntimeCompletion)(
-            repo=subject_repo,
-            state=state,
-            task=task,
-            run=run,
-            run_path=run_path,
-            verification_runner=verification_runner,
-            observation_tracker=observation_tracker,
-            error_type=OperatorError,
-            transport_repo=root,
-        )
-        if attempt is not None:
-            attempt.bind_completion(runtime_completion)
-        completion_policy = remediation_completion_policy(execution)
-        if resolved.cumulative:
-            completion_policy = replace(
-                completion_policy, result_base_sha=run.base_sha
-            )
         completion = runtime_completion.complete(package, completion_policy)
+        runtime_completion._transport_ka01_completion(completion, completion_policy)
         if historical:
             _require_control_checkout_unchanged(
                 root, head_sha=actual_baseline, branch=control_branch
@@ -8861,6 +8887,7 @@ def _run_remediation_impl(
             reviewed_sha=canonical_remediation.reviewed_sha,
             head_sha=completion.head_sha,
             result_path=completion.result_path,
+            ka01=runtime_completion._ka01_budget.observation(),
         )
 
 

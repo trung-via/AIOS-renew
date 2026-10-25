@@ -1,4 +1,30 @@
 version: 1
+human_lean_vp_default_three_flow_20261025:
+  authority: EXPLICIT_HUMAN_DECISION_IMPLEMENTED_WITHIN_ADMITTED_TASK425
+  approved_on: '2026-10-25'
+  planning_only: true
+  decision: DEFAULT_BOUNDED_SAME_RUN_VERIFY_FIX_VERIFY_AFTER_ORIGINAL_THREE_FAMILY_ADMISSION
+  source_main_sha_at_authoring: f11de22bf4b9f84b394f3b714e147d8274b3c575
+  sole_high_level_next: lean-vp-default-three-flow-20261025
+  planning_owner: lean-vp-default-three-flow-20261025
+  planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  contract_document: docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  implementation_task: TASK-425
+  implementation_revision: 1
+  remaining_task_count: 1
+  operations: [PRIMARY, REPAIR, REMEDIATION]
+  new_implementation: KA01-v1.3-default-three-flow-v1
+  per_run_ka01_selection_or_consent: NOT_REQUIRED_GLOBAL_SOURCE_IS_NOT_FAMILY_AUTHORITY
+  original_authority: INDEPENDENT_TASK_REPAIR_REMEDIATION_EXECUTOR_PROFILE_SOURCE_AND_LEASE_MANDATORY
+  supersedes_prospective_next_record: human_lean_vp_native_primary_20261025
+  task424: {revision: 1, run: RUN-424-002, review: REVIEW-424-001, reviewed_published_sha: f11de22bf4b9f84b394f3b714e147d8274b3c575}
+  historical_lineage: ALL_PREVIOUS_TASK_RUN_FAILURE_REVIEW_PUBLICATION_AND_TYPED_POLICIES_IMMUTABLE
+  retired_future_work: [TASK418_PRIMARY_REPAIR_CONTINUATION, L3-06, SEPARATE_G3, SEPARATE_G6, L4-01, L4-02, L4-03, L4-04]
+  no_follow_on_gates: [ACTIVATION_TASK, MANUAL_CUTOVER, PILOT, SHADOW, L3_06, G3_PACKAGE, G6_PACKAGE, L4]
+  native_capability: ORIGINAL_CODEX_LIVE_PATH_ONLY_WHEN_AUTHENTICATED_OTHER_PROVIDERS_EXPLICIT_PREWORK_STOP
+  human_future_override: SEPARATELY_AUTHENTICATED_PROSPECTIVE_POLICY_EXCEPTION_NOT_AUTOMATIC_CONSENT
+  lifecycle: ORIGINAL_RUNTIME_VERIFICATION_INDEPENDENT_REVIEW_AND_PUBLICATION_NO_OUTCOME_CLAIM
+  next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
 human_lean_vp_native_primary_20261025:
   authority: EXPLICIT_HUMAN_DECISION_IMPLEMENTED_WITHIN_ADMITTED_TASK424
   approved_on: '2026-10-25'
@@ -946,7 +972,7 @@ human_lean_vp_l3_03_reconciliation_20261020:
     - NO_TASK_RUN_REVIEW_PUBLICATION_OR_DOWNSTREAM_LINEAGE_REWRITE
     - UNRESOLVED_INGRESS_PRODUCER_CONCURRENCY_REMAINS_SEPARATE_DIAGNOSTIC
 
-active_track: lean-vp-native-interactive-primary-20261025
+active_track: lean-vp-default-three-flow-20261025
 active_track_status: ACTIVE
 planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
 human_lean_vp_legacy_plan_retirement_and_task389_authoring_reconciliation_20261019:
@@ -3131,7 +3157,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - lean-vp-native-interactive-primary-20261025
+  - lean-vp-default-three-flow-20261025
 effective_next_transitions: []
 historical_effective_next_transitions_task415:
   - from:
@@ -3145,8 +3171,23 @@ historical_effective_next_transitions_task415:
     to: {item_id: caa-v1-20261023, task_id: TASK-415, task_revision: 1}
     priority_record: human_auto_next_priority_20261024
 sequence:
-  - id: lean-vp-native-interactive-primary-20261025
+  - id: lean-vp-default-three-flow-20261025
     status: NEXT
+    authority: EXPLICIT_HUMAN_BRAIN_PLANNING
+    planning_only: true
+    planning_owner: lean-vp-default-three-flow-20261025
+    planning_document: docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+    task_id: TASK-425
+    task_revision: 1
+    selected_slice: DEFAULT_BOUNDED_SAME_RUN_CONTINUATION_THREE_OPERATIONS
+    priority_record: human_lean_vp_default_three_flow_20261025
+    remaining_task_count: 1
+    successor_slices: NONE_REMAINING_LEAN_VP_WORK_RETIRED
+    next_transition_authority: EXPLICIT_HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
+  - id: lean-vp-native-interactive-primary-20261025
+    status: PAUSED
+    historical_status: NEXT
+    prospective_superseded_by: lean-vp-default-three-flow-20261025
     authority: EXPLICIT_HUMAN_BRAIN_PLANNING
     planning_only: true
     planning_owner: lean-vp-native-interactive-primary-20261025

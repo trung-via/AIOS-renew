@@ -1,4 +1,40 @@
-# Lean VP v1.3 - original-RUN native interactive PRIMARY
+# Lean VP v1.3 - default bounded continuation across three coding operations
+
+**Controlling prospective Human priority: 2026-10-25, TASK-425 r1.** The single
+NEXT/owner is `lean-vp-default-three-flow-20261025`, recorded in
+`.ai/roadmap-state.yaml:human_lean_vp_default_three_flow_20261025`. Human explicitly
+selects default bounded Runtime verification/correction in each future admitted
+coding PRIMARY, REPAIR and REMEDIATION RUN, including future episodes of existing
+TASKs. This is one integrated policy and implementation TASK; no later activation,
+cutover, pilot, shadow, L3-06, G3/G6 or L4 package is selected.
+
+`KA01-v1.3-default-three-flow-v1` / `PRODUCTION_DEFAULT_THREE_FLOW` obtains its
+policy from exact canonical source after ordinary independent family admission.
+It requires no new KA-01 selection/consent Issue or orphan selector. Original
+TASK/REPAIR/REMEDIATION authorization, exact source/failed/reviewed lineage, chosen
+Executor/model/effort, lease, scope and proof obligations remain mandatory. The
+same original Runtime and live Codex process/thread implement K_i/F_i/correction
+and one terminal. REPAIR preserves cumulative TASK claims and failed/root bases;
+REMEDIATION preserves narrow affected proof and Delta Review; executorless reuse
+stays executorless. Unsupported native transports, including the current
+Antigravity variants, or incomplete proof observers STOP before model work.
+
+Limits remain 2 corrections, 3 checkpoints, 240m RUN wall and 180m cumulative
+Runtime verification, with null token cap absent complete authenticated usage.
+Final applicable proof is consumed once. No intermediate FAIL creates a new RUN.
+Original operation-specific observations report source, session, proof, correction
+and STOP facts; Runtime owns tests/EVIDENCE and independent Review/Publisher
+authority remains separate. No actual publication, savings or automatic roadmap
+transition is claimed. Human-owned future policy exceptions are separate from
+automatic per-RUN enrollment and cannot reinterpret old consent.
+
+TASK-424 r1 / RUN-424-002 / REVIEW-424-001 at reviewed/published source
+`f11de22bf4b9f84b394f3b714e147d8274b3c575` retains its exact v3 PRIMARY meaning.
+TASK-418's seven failed RUNs, all retired phase packages and historical typed
+policies remain immutable. The preceding planning record is retained below;
+only its prospective NEXT pointer is superseded by this explicit Human choice.
+
+## Retained TASK-424 original native PRIMARY priority
 
 **Controlling prospective Human priority: 2026-10-25, TASK-424 r1.** The one
 NEXT/owner is `lean-vp-native-interactive-primary-20261025`, recorded in

@@ -138,7 +138,8 @@ class CodexAdapter:
         """Execute an unchanged TASK/RUN pair through native Codex CLI."""
 
         if self._interactive_runtime is not None:
-            return self._interactive_runtime._execute_interactive_primary(adapter=self, task=task, run=run)
+            return self._interactive_runtime._execute_interactive_primary(adapter=self, task=task, run=run,
+                operation="PRIMARY", prompt=self.prompt_for(task=task, run=run))
 
         command = self.command_for(
             run,
@@ -206,8 +207,10 @@ class CodexAdapter:
                 (budget.wall_limit_ns - (budget._clock() - budget.started_ns)) / 1_000_000_000)))
 
     @staticmethod
-    def live_output_schema():
-        package = json.loads(RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
+    def live_output_schema(operation="PRIMARY"):
+        path = {"PRIMARY": RESULT_PACKAGE_SCHEMA_PATH, "REPAIR": REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
+            "REMEDIATION": REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH}[operation]
+        package = json.loads(path.read_text(encoding="utf-8"))
         package.pop("$schema", None)
         receipt = dict(type="object", additionalProperties=False,
             required=["receipt_id", "feedback_digest", "checkpoint_digest", "source_sha", "previous_turn_id"],
@@ -228,6 +231,11 @@ class CodexAdapter:
         self, *, execution: RemediationExecution
     ) -> ResultPackage:
         """Execute one narrow remediation through one native Codex process."""
+
+        if self._interactive_runtime is not None:
+            owner = self._interactive_runtime
+            return owner._execute_interactive_primary(adapter=self, task=owner.task, run=execution.run,
+                operation="REMEDIATION", prompt=self.remediation_prompt_for(execution=execution))
 
         command = self.command_for(
             execution.run,
@@ -286,6 +294,10 @@ class CodexAdapter:
         run = execution.get("run")
         if not isinstance(run, Run):
             raise CodexExecutionError("REPAIR execution has no bound RUN", exit_code=None)
+        if self._interactive_runtime is not None:
+            owner = self._interactive_runtime
+            return owner._execute_interactive_primary(adapter=self, task=owner.task, run=run,
+                operation="REPAIR", prompt=self.repair_prompt_for(execution=execution))
         repair = execution.get("repair")
         action = repair.get("action") if isinstance(repair, Mapping) else None
         command = self.command_for(

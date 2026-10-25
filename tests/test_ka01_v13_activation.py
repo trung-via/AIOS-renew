@@ -35,12 +35,13 @@ SOURCE_ROOT = Path(__file__).resolve().parents[1]
 
 class ProductionFixture:
     def __init__(self, root, monkeypatch, *, remote_url=False, policy="minimum-sufficient-v1", source_mismatch=False,
-                 interactive=False, first_fail=False, proof_source=None):
+                 interactive=False, first_fail=False, proof_source=None, default=False,
+                 extra_files=None, task_transform=None, omit_files=()):
         self.interactive = interactive
         task = TASK_SOURCE.replace("  required:\n", f"  policy: {policy}\n  required:\n")
         task = task.replace("git status --porcelain", "python check_output.py")
         files = {path: (SOURCE_ROOT / path).read_bytes() for path in (
-            ka01.INTERACTIVE_IMPLEMENTATION_PATHS if interactive else ka01.IMPLEMENTATION_PATHS)}
+            ka01.DEFAULT_IMPLEMENTATION_PATHS if default else ka01.INTERACTIVE_IMPLEMENTATION_PATHS if interactive else ka01.IMPLEMENTATION_PATHS)}
         if interactive:
             # pytest prepends src even when the editable install already adds
             # it. Count each search entry once, as in the verifier subprocess,
@@ -64,6 +65,9 @@ class ProductionFixture:
                 "tests/test_output.py": proof_source or "from pathlib import Path\ndef test_output():\n    assert Path('OUTPUT.txt').read_text() == 'complete\\n'\n"})
         if source_mismatch:
             files["src/aios_renew/runtime.py"] += b"\n# Different selected implementation.\n"
+        if task_transform is not None:
+            task = task_transform(task)
+        files.update(extra_files or {})
         files.update({
             ka01.NORMATIVE_PATH: (SOURCE_ROOT / ka01.NORMATIVE_PATH).read_bytes(),
             ".ai/tasks/TASK-101.yaml": task,
@@ -75,6 +79,8 @@ class ProductionFixture:
                     max_body_bytes=131072))),
             "check_output.py": "from pathlib import Path\nassert Path('OUTPUT.txt').read_text() == 'complete\\n'\n",
         })
+        for path in omit_files:
+            files.pop(path)
         self.repo, self.remote, self.base = materialize_git_baseline(root, files=files,
             user_name="KA01 activation fixture", user_email="ka01@example.invalid",
             commit_message="exact supported source", remote_head_main=True)
@@ -132,7 +138,7 @@ class ProductionFixture:
             implementation=ka01.INTERACTIVE_IMPLEMENTATION if self.interactive else ka01.PRODUCTION_IMPLEMENTATION,
             ka01_version="1.3", profile=ka01.PROFILE,
             policy=self.task.verification.policy, task=asdict(self.run.task), operations=["PRIMARY"],
-            normative=dict(source_sha=self.base, path=ka01.NORMATIVE_PATH, sha256=ka01.NORMATIVE_SHA256),
+            normative=dict(source_sha=self.base, path=ka01.NORMATIVE_PATH, sha256=ka01.DEFAULT_NORMATIVE_SHA256),
             overrides=pins, remote_url=self.url)
         if selection_change:
             selection_change(selection)
@@ -404,22 +410,33 @@ def test_unsupported_verification_policy_is_not_silently_downgraded(tmp_path, mo
     assert f.native_calls == f.verification_calls == []
 
 
-def test_nonopted_ordinary_primary_preserves_legacy_behavior_and_historical_run(tmp_path, monkeypatch):
+def test_previously_admitted_runtime_preserves_legacy_behavior_and_historical_run(tmp_path, monkeypatch):
     f = ProductionFixture(tmp_path / "legacy", monkeypatch)
     historical = f.state.runs / "RUN-101-000.json"
     historical.write_bytes(ka01._bytes(asdict(replace(f.run, run_id="RUN-101-000"))))
     before = historical.read_bytes()
-    summary = f.execute(opted=False)
-    assert summary.ka01 is None and "ka01:" not in summary.render()
-    assert f.owner is None and historical.read_bytes() == before
-    assert len(f.native_calls) == len(f.verification_calls) == 1
+    # Existing owners are never retrospectively enrolled by default admission.
+    from aios_renew.artifacts import ResultPackage, validate_structural_result
+    from aios_renew.runtime import RuntimeCompletion
+    (f.repo / "OUTPUT.txt").write_text("complete\n", encoding="utf-8")
+    head = commit_fixture_state(f.repo, paths=("OUTPUT.txt",), message="historical admitted candidate",
+        user_name="Historical fixture", user_email="historical@example.invalid")
+    f.package = static_payload()
+    f.package["result"]["head_sha"] = head
+    (f.state.runs / (f.run.run_id + ".json")).write_bytes(ka01._bytes(asdict(f.run)))
+    owner = RuntimeCompletion(repo=f.repo, state=f.state, task=f.task, run=f.run,
+        run_path=f.state.runs / (f.run.run_id + ".json"), verification_runner=f.verify,
+        observation_tracker=None, error_type=operator.OperatorError)
+    owner.complete(ResultPackage(validate_structural_result(f.package["result"]), ()), f.policy)
+    assert not owner._ka01_opted and owner._ka01_budget is None and historical.read_bytes() == before
+    assert not f.native_calls and len(f.verification_calls) == 1
     assert not (f.state.verification / f.run.run_id / "ka01-v13").exists()
 
 
 def test_current_planning_has_one_activation_task_and_preserves_original_failure_lineage():
     roadmap = yaml.safe_load((SOURCE_ROOT / ".ai/roadmap-state.yaml").read_text(encoding="utf-8"))
     next_entries = [e for e in roadmap["sequence"] if e["status"] == "NEXT"]
-    assert len(next_entries) == 1 and next_entries[0]["task_id"] == "TASK-424"
+    assert len(next_entries) == 1 and next_entries[0]["task_id"] == "TASK-425"
     assert roadmap["next_items"] == [next_entries[0]["id"]] == [roadmap["active_track"]]
     decision = roadmap["human_lean_vp_single_activation_closeout_20261025"]
     assert decision["remaining_task_count"] == 1 and decision["original_lean_vp_slot_count"] == 16
@@ -430,5 +447,5 @@ def test_current_planning_has_one_activation_task_and_preserves_original_failure
     assert current["retained_implementation"] == ka01.PRODUCTION_IMPLEMENTATION
     assert current["new_implementation"] == ka01.INTERACTIVE_IMPLEMENTATION
     normative = (SOURCE_ROOT / ka01.NORMATIVE_PATH).read_bytes()
-    assert hashlib.sha256(normative).hexdigest() == ka01.NORMATIVE_SHA256
+    assert hashlib.sha256(normative).hexdigest() == ka01.DEFAULT_NORMATIVE_SHA256
 

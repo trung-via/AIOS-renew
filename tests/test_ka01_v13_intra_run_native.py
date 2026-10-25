@@ -60,9 +60,9 @@ class FixtureSession:
             envelope = json.loads(prompt.rsplit("\n", 1)[1])
             # The fixture observes factual feedback only after exact C1 proof.
             assert envelope["feedback"]["checkpoint_digest"] == self.f.owner._interactive_checkpoints[-1].digest
-            assert not list(self.f.state.failures.glob("*.json"))
-            assert not list(self.f.state.results.glob("*.json"))
-            assert len(self.f.verification_calls) == ordinal - 1
+            assert not (self.f.state.failures / (self.f.run.run_id + ".json")).exists()
+            assert not (self.f.state.results / (self.f.run.run_id + ".json")).exists()
+            assert len(self.f.verification_calls) == (ordinal - 1) * getattr(self.f, "commands_per_checkpoint", 1)
             assert "traceback" not in prompt.lower() and str(self.f.repo) not in prompt
             receipt = envelope["receipt"]
             output = "complete\n"

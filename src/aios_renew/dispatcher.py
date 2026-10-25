@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable, Mapping
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -124,34 +125,60 @@ class Dispatcher:
     ) -> ResultPackage:
         """Invoke the selected adapter for one admitted REMEDIATION."""
 
-        self._require_native_continuity()
+        budget = self._require_native_continuity("REMEDIATION", execution.run, execution)
 
         adapter = self._claim_adapter(
             run=execution.run, operation="REMEDIATION"
         )
-        return self._require_package(
-            adapter.execute_remediation(execution=execution)
-        )
+        if budget is None:
+            return self._require_package(adapter.execute_remediation(execution=execution))
+        with budget.leases.held(budget.lease), budget.production_invocation(self, adapter):
+            package = self._require_package(adapter.execute_remediation(execution=execution))
+            budget.returned_package(package)
+            return package
 
     def dispatch_repair(
         self, *, execution: Mapping[str, Any]
     ) -> ResultPackage:
         """Invoke the selected adapter for one admitted REPAIR continuation."""
 
-        self._require_native_continuity()
-
         run = execution.get("run")
         if not isinstance(run, Run):
             raise DispatcherError("REPAIR execution has no bound RUN")
+        budget = self._require_native_continuity("REPAIR", run, execution)
         adapter = self._claim_adapter(run=run, operation="REPAIR")
-        return self._require_package(adapter.execute_repair(execution=execution))
+        if budget is None:
+            return self._require_package(adapter.execute_repair(execution=execution))
+        with budget.leases.held(budget.lease), budget.production_invocation(self, adapter):
+            package = self._require_package(adapter.execute_repair(execution=execution))
+            budget.returned_package(package)
+            return package
 
-    def _require_native_continuity(self):
+    def _require_native_continuity(self, operation, run, execution):
         if self._prospective_runtime is not None and getattr(self._prospective_runtime, "_ka01_opted", False):
-            budget = self._prospective_runtime._ka01_budget
-            if budget is not None:
+            from .ka01_admission import _digest
+            owner = self._prospective_runtime
+            budget = owner._ka01_budget
+            if budget is None or not budget.default:
+                if budget is not None:
+                    budget.stop()
+                raise DispatcherError("KA01_V13_CORRECTION_NATIVE_CONTINUITY_BLOCKED")
+            budget.guard(live=False)
+            valid = (budget.operation == operation == self._operation and run == owner.run
+                and self._execution_profile == budget.profile
+                and self._selected_executor == run.executor)
+            if operation == "REMEDIATION":
+                valid = valid and execution == budget.policy.remediation_execution
+            else:
+                data = dict(execution)
+                data["run"] = asdict(run)
+                import json
+                valid = valid and _digest(data) == json.loads(budget.authority)["source"]["original_execution_sha256"]
+            if not valid:
                 budget.stop()
-            raise DispatcherError("KA01_V13_CORRECTION_NATIVE_CONTINUITY_BLOCKED")
+                raise DispatcherError("KA01_V13_ORIGINAL_DISPATCH_BINDING_REQUIRED")
+            return budget
+        return None
 
     def _claim_adapter(
         self, *, run: Run, operation: Operation
@@ -236,6 +263,7 @@ def remediation_dispatcher(
     execution_policy: NativeExecutionPolicy,
     native_runner: NativeRunner,
     execution_profile: ResolvedExecutionProfile | None = None,
+    prospective_runtime=None,
 ) -> Dispatcher:
     """Bind one provider-neutral admitted REMEDIATION execution."""
 
@@ -247,6 +275,7 @@ def remediation_dispatcher(
         execution_policy=execution_policy,
         native_runner=native_runner,
         execution_profile=execution_profile,
+        prospective_runtime=prospective_runtime,
     )
 
 
@@ -258,6 +287,7 @@ def repair_dispatcher(
     execution_policy: NativeExecutionPolicy,
     native_runner: NativeRunner,
     execution_profile: ResolvedExecutionProfile | None = None,
+    prospective_runtime=None,
 ) -> Dispatcher:
     """Bind one provider-neutral admitted REPAIR continuation."""
 
@@ -269,6 +299,7 @@ def repair_dispatcher(
         execution_policy=execution_policy,
         native_runner=native_runner,
         execution_profile=execution_profile,
+        prospective_runtime=prospective_runtime,
     )
 
 
