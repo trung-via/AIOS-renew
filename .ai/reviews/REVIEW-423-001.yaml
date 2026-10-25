@@ -1,0 +1,58 @@
+review_id: REVIEW-423-001
+reviewed_sha: b37604f83bc299f1fe1e7511adc07a7c08c1b475
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- 'Independent PRIMARY semantic review of TASK-423 r1 / RUN-423-002 following failed
+  RUN-423-001 and authorized REPAIR-423-001-001. Reviewed exact source b37604f83bc299f1fe1e7511adc07a7c08c1b475:
+  one commit after immutable failed head 478c5f86e4416f5c09244f920b5580e6bf1bd0cc,
+  rooted at TASK base fed06a62366faef7fa61f00a93a42c5b54170cce. Canonical candidate
+  review ref binds to the source; correction is limited to src/aios_renew/runtime.py
+  and tests/test_ka01_v13_activation.py.'
+- "Runtime RESULT/EVIDENCE at artifacts ref 12b1e75f0b7d4bf5622f57ebe04bcd3286d33fe9\
+  \ for RUN-423-002 binds V001 to exactly reviewed source and original required 'python\
+  \ -m pytest -q tests/test_lean_vp_l3_admission_budget.py tests/test_ka01_v13_activation.py',\
+  \ exit_code 0 and unresolved []. Typed Runtime evidence\u2014not Executor claims\u2014\
+  is verification authority. Original RUN-423-001 FAILURE and repair authorization\
+  \ 179d3e097b7453523fd0f01a89bb6fbd9e1d2f6d remain immutable."
+- 'AC1: Single prospective Lean VP TASK-423 NEXT in .ai/roadmap-state.yaml and current
+  first section of docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md retires unfinished TASK-418
+  continuation, L3-06, G3/G6, L4 future delivery. Explicit historical October 22 snapshot
+  is clearly labeled superseded; TASK-418 failures and unrelated TASK-419/420/421/422
+  lineage are not reclassified.'
+- 'AC2: Prospective KA-01 v1.3 D.1-D.4 normative amendment replaces the former multi-package
+  activation gate only for technically supported operations. The activation code binds
+  the exact normative SHA and eligible ordinary operator path; neither G3/G6/L4 staging
+  nor historical preactivation-only status is an extra future activation task.'
+- 'AC3: Ordinary operator.run_task uses typed v2 AdmissionRequest, independently authenticated
+  Human Issue selection and fresh RUN consent, original Codex execution profile, authorized
+  operation, source, current main, lease, finite budget and original Dispatcher/Runtime.
+  Version 1 remains controlled preactivation. Production integration test covers actual
+  ordinary caller and source-bound native invocation, not an off-route toggle.'
+- 'AC4: Native feedback and in-turn Codex correction are expressly unsupported, with
+  opt-in REPAIR/REMEDIATION and unsuitable policy/Executor STOP; only bounded PRIMARY
+  completion is enabled. Existing one-terminal Runtime, identity, consent withdrawal,
+  lease, progress, budget and legacy guards remain; native ACK/local callbacks are
+  not treated as remote delivery proof.'
+- 'AC5: Repair resolves actual existing ordinary pre-verification storage spelling
+  by allowing only the two Git-owned pre-verification/preverification paths in runtime._checkpoint_directory,
+  while adding negative test for redirected storage and supplying deterministic fixture
+  Git authors. Focused authored two-module Runtime verification passes; tests cover
+  mismatched, forged, stale, unsupported, resource exhausted, single terminal and
+  nonopted legacy conditions. No broad suite or weakened assertions.'
+- 'AC6: Single reproducible KA01-v1.3-bounded-primary-v1 configuration exposes source-bound
+  RunSummary.ka01 budget/identity/counter observations, explicitly labels native feedback
+  unavailable and review/publication NOT_OBSERVED, with no second activation TASK,
+  downstream pin, production uptake or L4 effectiveness claim.'
+- The Executor's extra LOCAL_SANITY claim describes an earlier local pre-verification
+  test/toolchain episode and does not override or substitute for the later source-bound
+  Runtime V001 exit-0 verification. Reviewer judgment is limited to candidate semantics;
+  it does not itself establish publication, live adoption or downstream enablement.
