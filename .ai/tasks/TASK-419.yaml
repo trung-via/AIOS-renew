@@ -1,49 +1,49 @@
 task_id: TASK-419
-revision: 1
-goal: Replace the TASK-417 opt-in ten-task CAA pilot with a flow-triggered, always-attempted,
-  evidence-aware CAA advisory in all four existing Brain-owned flows, using search
-  across the complete authenticated canonical AIOS engineering history rather than
-  the eight-task reader window. CAA proactively provides source-grounded improvement
-  proposals or explicitly provisional evidence-acquisition hypotheses before Brain
-  independently makes the final semantic decision. No new lifecycle or provider/spend
-  authority.
-problem: 'Current published TASK-417 pilot sets roadmap enabled=true but brain_provider.consult_advisory(enabled=False)
-  is an uncalled optional helper; ordinary Brain authoring can bypass it silently.
-  TASK-418 r2 and REPAIR-418-002/003/004 were authored without CAA advice. CAA-01
-  MAX_TASKS=MAX_EPISODES=8 and 128 refs cap constrain per-query evidence reach; caller-supplied
-  provider/profile/atomic spend reservation and exact first-ten-new-TASK cohort often
-  yield UNAVAILABLE or zero proposals, including before a new TASK exists. Human 2026-10-25
-  expressly supersedes that default: always initiate CAA for ARCHITECTURE, TASK_AUTHORING,
-  REPAIR_AUTHORING, REMEDIATION_AUTHORING; remove pilot/cohort/per-call Human activation
-  dependencies and search all canonical history. Preserve source integrity/privacy,
-  Human spending authority and Brain final decision. The complete-history source is
-  canonical Git and exact lineage, never model memory.'
+revision: 2
+goal: Correct the existing CAA integration so that CAA consultation is initiated automatically
+  in each of four existing Brain-owned decision flows, remove the optional ten-TASK
+  pilot and special activation/eligibility/provider gates that suppress ordinary consultation,
+  and enable historical retrieval across the complete available authenticated canonical
+  AIOS engineering history rather than an eight-TASK/episode search window. Preserve
+  the existing CAA-01/02/03/04 advice/reasoning behavior and Brain final semantic
+  authority; change nothing beyond activation/access and necessary compatibility.
+problem: 'TASK-419 r1 at canonical main 603d920ea74af486945cbc9dc4c4362b99b3c3c7 was
+  prematurely authored before Human approval and overprescribed CAA outcomes: mandatory
+  1-3 material suggestions, forced provisional hypothesis without evidence, native
+  Brain/provider usage constraints, and cost assertions. Human 2026-10-25 explicitly
+  approved a strictly narrower correction: default-on CAA in ARCHITECTURE, TASK_AUTHORING,
+  REPAIR_AUTHORING and REMEDIATION_AUTHORING; remove prior Human-per-call activation,
+  TASK-417 ten-TASK cohort and canonical TASK identity eligibility, separate provider/profile/reserve_call
+  prerequisites as blockers to the default CAA consult, and the eight-TASK/episode
+  historical search ceiling; preserve ALL existing CAA mechanics and advisory semantics.
+  TASK-417 opt-in API is currently easily bypassed; ordinary Brain decisions, including
+  TASK-418 repairs, did not obtain CAA advisory. This r2 supersedes unexecuted r1
+  semantics prospectively, not the historical r1 identity. No RUN-419, PRIMARY wake
+  or implementation artifact was found on the canonical 603d... snapshot.'
 assumptions:
-- 'Fresh canonical main and authoritative root at authoring: c729ace821510116886b51958fb24149f6b72163
-  (task TASK-418 r2); TASK-417 r1 source on main from reviewed/published RUN-417-002.
-  TASK-418 RUN-418-001..004, authorized REPAIR branches and carrier issues retain
-  exact independent lifecycle truth; this new Human priority prospectively supersedes
-  only the Lean VP planning NEXT, not an in-flight RUN, old TASK contract or its repair/verification
-  authority.'
-- Current .ai/roadmap-state.yaml human_caa_ten_task_advisory_20261024 record is historically
-  approved but prospective 10-TASK/optional mode is now replaced by explicit 2026-10-25
-  Human decision. Original TASK-417 must not be modified or retrospectively reinterpreted;
-  CAA-04 independently registered evaluation and CAA-05 conditional training remain
-  unselected, not prerequisites for ordinary CAA recommendations.
-- 'Sources verified read-only: src/aios_renew/brain_context.py resolve_flow and DecisionPacket
-  composition; brain_provider.py attempt and consult_advisory; caa_integration.py
-  consult_flow/_consult_pilot; caa_reasoner.py consult A1/B1; caa_experience.py authenticated
-  ExperienceCut and MAX_TASKS=MAX_EPISODES=8. Flow Card ownership and existing Task/Repair/Remediation
-  ingress must remain unchanged.'
-- The selected active Brain host/invocation and the ChatGPT conversation UI are not
-  automatically the same as the Python first-party library. Test and document the
-  actual supported host call boundary; if this repo cannot control an external chat
-  host, do not invent automatic activation evidence on that host.
-- CAA reasoning is advisory and source-aware. A useful source-grounded change cannot
-  be guaranteed when canonical evidence is missing or contradicts the draft; a distinct
-  provisional hypothesis/evidence-acquisition recommendation may still be returned,
-  but never asserted as OBSERVED. No new external billable provider call is authorized
-  by this decision.
+- At revision authoring canonical main is 603d920ea74af486945cbc9dc4c4362b99b3c3c7
+  with exact TASK-419 r1 and published TASK-417 code. Runtime must reauthenticate
+  current main, original TASK root/revision, absence of an incompatible admitted RUN,
+  and revision authorization before mutation or execution.
+- Human's explicit latest consent is to execute the narrow correction only, not to
+  redesign CAA-02, prescribe suggestion count/format, change retrieval ranking/causal
+  grammar, select CAA-05, alter independent CAA-04 evaluation, activate a new model,
+  or add policy gates.
+- CAA code currently includes brain_provider.consult_advisory(enabled=False), caa_integration
+  consult_flow/_consult_pilot, CAA-01 capture_experience_cut/reconstruct_episodes
+  with MAX_TASKS=MAX_EPISODES=8; current roadmap preserves ten-TASK pilot selection
+  as Human planning history. These are evidence about pre-change access, not evidence
+  that any CAA advice was used.
+- Existing CAA-02 A1/B1 behavior, provider invocation semantics, evidence/citation/uncertainty
+  validation and legitimate abstention outcomes remain valid. Removing separate CAA-417
+  profile/reserve gates is not permission to fabricate a live model call or modify
+  CAA-02 outputs. Existing Brain provider resources may be reused through their established
+  lawful transport without a new selector.
+- Provenance is canonical Git/immutable engineering lineage, not chat summaries; candidate/subject
+  freshness, privacy, exact correction and Runtime identity checks still apply. CAA
+  remains advisory; Reviewer and Publisher maintain distinct authority. Actual ChatGPT
+  or other external host invocations are not assumed to be controlled by this repository's
+  Python modules.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -65,6 +65,7 @@ scope:
   - .ai/tasks/TASK-414.yaml
   - .ai/tasks/TASK-417.yaml
   - .ai/tasks/TASK-418.yaml
+  - .ai/tasks/TASK-419.yaml
   - src/aios_renew/caa_experience.py
   - src/aios_renew/caa_reasoner.py
   - src/aios_renew/caa_integration.py
@@ -73,7 +74,6 @@ scope:
   - src/aios_renew/brain_provider.py
   - src/aios_renew/brain_sync.py
   - src/aios_renew/decision_packet.py
-  - src/aios_renew/task.py
   - src/aios_renew/authoring_ingress.py
   - tests/test_caa_experience.py
   - tests/test_caa_reasoner.py
@@ -89,148 +89,109 @@ scope:
   - docs/AIOS-CAA-10-TASK-ADVISORY-ACTIVATION.md
   - docs/CHATGPT_PROJECT_CONTRACT.md
   - src/aios_renew/caa_experience.py
-  - src/aios_renew/caa_reasoner.py
   - src/aios_renew/caa_integration.py
   - src/aios_renew/brain_context.py
   - src/aios_renew/brain_provider.py
   - src/aios_renew/brain_sync.py
   - tests/test_caa_experience.py
-  - tests/test_caa_reasoner.py
   - tests/test_caa_integration.py
   - tests/test_brain_context.py
   - tests/test_brain_provider.py
   - tests/test_brain_sync.py
 non_goals:
-- No changes to frozen Kernel, no new Planner/Flow Card/second Brain/router/lifecycle
-  controller, independent model memory, writable DB or canonical truth store; no auto
-  TASK/REPAIR selection, executor assignment, dispatch, Runtime verification, semantic
-  Reviewer verdict, Publisher publication or automatic roadmap advancement.
-- No requirement to use CAA suggestions, CAA-issued approval/audit PASS, no CAA gate
-  or serialized advisory prerequisite for Runtime ingress. Human-on-demand TCA/ROA/MOA
-  and soft AOA remain independent.
-- No claim of full-history coverage from top-k retrieval, a first page, an unchecked
-  index or a failed traversal. No silent eight-TASK cap under a different constant;
-  no loading the entire corpus into a single provider prompt.
-- No secret/raw/private source to model, fabricated citations, fabricated technical
-  root cause, hindsight over pre-author history, forced confidence or guessed effect.
-  No unapproved additional external paid model calls/provider chooser or cross-provider
-  fallback.
-- No automatic CAA-04 decisive quality PASS/holdout, training/CAA-05, historical record
-  rewrite, PTE workflow constraint, Lean VP G3/G6/C2 activation, downstream pin changes
-  or full test suite.
+- No new or changed CAA-02 A1/B1 algorithm, ranking logic, model prompt, advice schema,
+  expected advice count, obligatory fallback hypothesis, quality grading, suggestion
+  selection rules, causal inference or abstention policy; preserve CAA-02 and CAA-04
+  implementation source unchanged.
+- No new Planner, Flow Card, generic execution/lifecycle router, provider/model chooser,
+  billable external service, persistent independent truth store, automatic repair/dispatch/review/publish,
+  new audit, training/CAA-05 or frozen Kernel change.
+- No rewrite of historic TASK-417/TASK-419 r1/RUN/FAILURE/REVIEW/publication identity;
+  no interruption, replacement or automatic completion of concurrently active TASK-418
+  repair; no automatic downstream pin update, KA-01 activation or full test suite.
 constraints:
   hard:
-  - Prospectively canonicalize one new dated Human/Brain CAA default-on planning record
-    selecting this CAA integration slice as the sole NEXT; supersede only the prospective
-    Lean VP TASK-418 r2 planning bookmark, which remains in-flight historical exact
-    engineering lineage, and supersede TASK-417 optional/cohort activation prospectively
-    while retaining its immutable TASK/RUN/REVIEW/publication evidence.
-  - For each eligible Brain-owned ARCHITECTURE, TASK_AUTHORING, REPAIR_AUTHORING and
-    REMEDIATION_AUTHORING decision, the existing supported first-party Brain flow
-    must automatically attempt one CAA consultation after canonical Brain Sync/flow/subject/candidate
-    composition and before final Brain judgment, without human re-activation, explicit
-    per-call enabled=True, caller remembering a helper or an audit selection. No mandatory
-    extra model round trip or CAA-created second flow/router; Brain explicitly independently
-    accepts, adapts or rejects the advice.
-  - Retire the ten-task admission cohort, TASK identity requirement for an unauthored
-    TASK/ARCHITECTURE subject, CAA-04 activation prerequisite and extra provider/profile/reserve_call
-    requirements as blockers to ordinary CAA advice. Reuse source-bound current Brain
-    cognitive capacity and existing deterministic retrieval/reasoner for best-effort
-    advice without acquiring a new paid external provider. Any additional paid external
-    model invocation still requires valid authorization; absence of such authorization
-    cannot suppress the ordinary native Brain/structured advisory path.
-  - Remove the fixed eight-TASK/eight-episode candidate search ceiling for CAA advisory
-    and build one read-only authenticated full-history traversal/index over all available
-    canonical TASK revisions and matching RUN/RESULT/FAILURE/REPAIR/REMEDIATION/REVIEW/publication
-    refs at a fixed source snapshot, with complete coverage/provenance representation.
-    Streaming/chunking and an integrity-checked rebuildable derived cache are allowed
-    only as performance mechanisms, never a new truth source. Select a relevance-ranked
-    finite working set from the *entire* searched corpus for Brain/model context;
-    no first-eight or first-page bias. Always distinguish full coverage from partial/error;
-    never claim full historical search when sources unavailable. Protect bounded memory/context/latency
-    via work batching and reuse without a fixed historical coverage exclusion.
-  - 'CAA returns a usable, source-bound advisory before final decision on every safely
-    authenticated supported flow: 1-3 material recommendations with evidence when
-    possible; when no historical support/provider is available, at least one clearly
-    PROVISIONAL diagnostic/falsifier/evidence-acquisition recommendation derived from
-    available authenticated subject facts, never invented OBSERVED facts. No blanket
-    early NO_MATERIAL_ADVICE or UNAVAILABLE merely because old pilot membership, per-call
-    flag, provider or 8-TASK ceiling fails. When authentic source identity/subject/currentness
-    cannot be proved, the existing original Brain authority guard still fails closed;
-    an ungrounded proposal cannot authorize mutation.'
-  - Retain strict correction identity/SHA/subject source and historical temporal isolation,
-    no source substitution, hidden raw diagnostic, private path, credential or untrusted
-    instruction forwarding; model recommendations are hypotheses not canonical evidence.
-    Human risk and spend authority are unchanged, and Executor HOW, Runtime verification,
-    Reviewer verdict and Publisher inclusion are untouched.
-  - Use the existing first-party Brain caller/transport; if this repository cannot
-    force an external ChatGPT session or another unmanaged host to call the CAA API,
-    report an explicit host-integration limitation and do not claim platform-global
-    activation from Python tests. The supported host path must be demonstrably exercised,
-    not only isolated consult_flow unit tests.
-  - Do not rerun old canonical verification or expand full suite; use a single focused
-    minimum-sufficient-v1 verification on the changed full-history reader, four-flow
-    automatic consultation, evidence/partial-source behavior, original direct-authoring/authority
-    and preserved unrelated paths.
+  - Prospectively record the Human-approved narrow CAA access/default decision as
+    the unique relevant planning commitment; retire the prior optional ten-TASK pilot
+    only for future CAA eligibility, preserving prior Human decisions and immutable
+    TASK-417 engineering history. Do not infer lifecycle completion or automatic roadmap
+    progression from authoring.
+  - Connect the EXISTING CAA-03 consultation at the current supported first-party
+    Brain decision boundary after canonical Brain Sync/flow and relevant subject/draft
+    composition, before the final Brain semantic decision, for each of four named
+    flows. Call should occur by default under the flow, not rely on manual Brain recollection,
+    enabled=True or per-case Human activation. Brain remains free to accept/adapt/reject,
+    and CAA output is neither an ingress authorization nor normative audit prerequisite.
+  - Remove pilot admission checks (ten TASK count/identity, pre-existing TASK exclusion,
+    per-call opt-in flag) and additional TASK-417 provider/profile/reserve_call gates
+    from normal consultation access. Do not introduce substitute gates with different
+    names. Continue to use the existing CAA-02 provider-neutral mechanism exactly
+    as published; do not mandate or fabricate a model call or additional proposal
+    under unsupported evidence. Genuine source/subject authentication remains authoritative.
+  - Expand CAA historical-search reach to all authenticated available canonical engineering
+    history, not just eight TASKs or episodes per consultation. Reuse the existing
+    CAA-01 validator/provenance source path, preserve snapshots and privacy, and allow
+    internal incremental/batched retrieval where necessary; selection of concise relevant
+    evidence for advisory must not silently exclude the remainder of searchable history.
+    No independent mutable truth database or source-inventing fallback.
+  - Keep CAA-02 implementation and its A1/B1 semantics, original suggestion count
+    limits as already published, relevance/evidence/citation/uncertainty rules, no-advice/abstain
+    outcomes, and CAA-04 independent evaluation untouched. Do not force 1-3 recommendations
+    or any provisional recommendation where existing CAA returns none; no rewriting
+    of what CAA thinks or how it makes suggestions.
+  - Authentic original Brain/Runtime/Reviewer/Publisher boundaries, exact historical
+    correction lineage, currentness and no private raw outputs survive. CAA failure
+    cannot become a new authoring admission gate; source authentication failure still
+    follows existing fail-closed policy.
+  - Only claim default-on operation for a host invocation path that is genuinely integrated
+    and demonstrated; a Python-only integration must not be claimed as automatic operation
+    within an uncontrolled remote chat host. Explicitly disclose any unintegrated
+    host boundary as evidence gap, not as fabricated success.
+  - Minimum-sufficient focused verification only; no full suite, ceremonial recheck
+    or unrelated implementation changes.
 acceptance:
 - id: AC1
-  condition: Exactly one prospective canonical planning NEXT selects default-on CAA
-    flow integration from explicit 2026-10-25 Human decision; old TASK-417 pilot/cohort
-    and TASK-418 Lean VP selection become preserved historical planning only, with
-    every immutable engineering lineage and no retroactive automatic transition.
+  condition: The Human-approved replacement of the TASK-417 opt-in ten-TASK CAA access
+    policy is recorded prospectively with one coherent roadmap NEXT, while TASK-417,
+    TASK-419 r1 and all prior lineage remain exact immutable history.
 - id: AC2
-  condition: On the first-party supported Brain entrypoint, each of ARCHITECTURE,
-    TASK_AUTHORING, REPAIR_AUTHORING and REMEDIATION_AUTHORING automatically performs
-    a source-bound CAA advisory attempt before Brain final semantic authoring, without
-    optional enable flag or user prompt; direct Brain judgment remains independent.
-    Show an integration-level test of that entrypoint, not just a manually called
-    consultation helper.
+  condition: In the actual supported first-party Brain decision invocation path, each
+    of ARCHITECTURE, TASK_AUTHORING, REPAIR_AUTHORING and REMEDIATION_AUTHORING automatically
+    initiates the existing CAA-03 advisory before Brain's final decision without manual
+    opt-in or enabled=True, while Brain remains free to accept, adapt or reject.
 - id: AC3
-  condition: CAA retrieval searches the complete enumerable authenticated canonical
-    AIOS engineering history across all TASK identities, revisions and available terminal/review/correction
-    lineage at a pinned snapshot, without an eight-TASK/episode ceiling; positive
-    tests place a decisive matching episode past the eighth task and prove its discoverability
-    with correct provenance and full-coverage accounting.
+  condition: CAA consultation eligibility no longer depends on TASK-417 ten-TASK cohort,
+    TASK first-authoring date or identity, Human per-consult activation, or separate
+    TASK-417 provider/profile/reserve_call gates. An unauthored TASK, an independent
+    ARCHITECTURE decision and a REPAIR of an older TASK can reach the ordinary CAA
+    consult path.
 - id: AC4
-  condition: An unauthored TASK and a standalone ARCHITECTURE flow receive best-effort
-    CAA proposals without pilot/cohort/task-identity gating; repeat REPAIR/REMEDIATION
-    of an older TASK remains eligible; no 10-task closure, extra Human activation,
-    separate live provider/profile/reserve gate or discretionary helper invocation
-    blocks default advisory.
+  condition: CAA historical retrieval can search the full available authenticated
+    canonical TASK/revision/RUN/terminal/correction/review/publication corpus without
+    an eight-TASK/eight-episode ceiling. A test demonstrates a relevant episode past
+    the previous window is discoverable with its original authenticated lineage and
+    temporal integrity.
 - id: AC5
-  condition: "For source-valid ordinary flows, CAA emits 1\u20133 materially specific\
-    \ proposals when cited evidence exists and at least one honest PROVISIONAL evidence-acquisition/falsifier\
-    \ proposal when no relevant history or additional provider exists, marking evidence\
-    \ status and uncertainty without claiming unsupported past outcomes. Canonical\
-    \ source-authentication failures never become fake grounded advice or mutation\
-    \ permission."
+  condition: CAA-02 B1/A1 reasoning semantics, existing bounded suggestion grammar/count,
+    evidence validators, uncertainty and abstention/no-material-advice behavior are
+    unchanged. No forced hypothetical/synthetic advice or new model-call contract,
+    provider selector or promise of a proposal is introduced; focused regressions
+    compare old and new advisory contracts.
 - id: AC6
-  condition: CAA provenance/citation and source snapshot checks reject forged/changed
-    subject, candidate, main, temporal leakage, private sources and injected commands;
-    full-history snapshots do not silently mix future lineage or provide a second
-    state store. Search resource pressure is transparently reported as partial instead
-    of falsely asserting complete coverage or dropping already grounded best-effort
-    advice.
+  condition: Genuine source/currentness/subject/candidate integrity and privacy controls
+    remain effective; advisory does not decide final TASK/REPAIR/REMEDIATION strategy,
+    issue lifecycle authorization, verify, review, publish or block otherwise valid
+    direct authoring merely because CAA advice is absent.
 - id: AC7
-  condition: Brain can expressly accept, modify or reject CAA advice; absent/invalid
-    material advice does not become a new Runtime gate, CAA review verdict, automatic
-    retry, dispatch or acceptance claim. Existing TCA/ROA/MOA on-demand and soft AOA,
-    Executor, Runtime, Reviewer, Publisher authority remain unchanged.
-- id: AC8
-  condition: No added billable external provider call occurs without existing authorization.
-    Default CAA path can produce useful structured/native Brain advice without trusted
-    external CAA provider. Tests prove no redundant external invocation and no misleading
-    live-provider success from fixture-only simulation.
-- id: AC9
-  condition: Focused regression checks exercise actual supported first-party host
-    call boundary, all four flows, entire-history indexing/relevance, source movement,
-    null history, privacy/partial-coverage outcomes and noninterference with direct
-    authoring; do not claim automatic operation on unintegrated ChatGPT/other external
-    hosts.
+  condition: Focused integration tests exercise actual four-flow auto-invocation and
+    full-history search while preserving CAA-02/CAA-04 behavior and original Human-on-demand
+    TCA/ROA/MOA and soft AOA policy; no false assertion that unrelated ChatGPT/host
+    sessions auto-execute Python code.
 verification:
   policy: minimum-sufficient-v1
   required:
-  - python -m pytest -q tests/test_caa_experience.py tests/test_caa_reasoner.py tests/test_caa_integration.py
-    tests/test_brain_provider.py tests/test_brain_context.py tests/test_brain_sync.py
+  - python -m pytest -q tests/test_caa_experience.py tests/test_caa_integration.py
+    tests/test_brain_context.py tests/test_brain_provider.py tests/test_brain_sync.py
+    tests/test_caa_reasoner.py
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
