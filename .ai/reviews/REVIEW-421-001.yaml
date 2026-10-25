@@ -1,0 +1,44 @@
+review_id: REVIEW-421-001
+reviewed_sha: 1a8ea0a96c775f635af805f69f7ec8ea3cada044
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- Exact TASK-421 r1 / RUN-421-001 PRIMARY semantic review. Reviewed immutable source
+  1a8ea0a96c775f635af805f69f7ec8ea3cada044 is one commit descendant of TASK base 42f4620b6cae9e7a857cb92a5b9595d7af4ff94c.
+  Candidate branch refs/heads/aios/review/RUN-421-001 resolves to this SHA; no canonical
+  decision existed at review preflight.
+- Runtime-owned RESULT/EVIDENCE refs/heads/aios/artifacts/RUN-421-001 at 1ecc7f837b2cf775e834235c7ecfa1251aa8e7a6
+  binds V001 verification command 'python -m pytest -q tests/test_brain_sync.py tests/test_authoring_ingress.py'
+  to the exact reviewed SHA; reported exit_code 0. RESULT claims C1-C6 cover AC1-AC6
+  exactly with unresolved empty. Verification evidence is a Runtime observation, not
+  semantic PASS by itself.
+- 'AC1: complete prospective Personal-First, Direct-Activation policy is in docs/CHATGPT_PROJECT_CONTRACT.md;
+  actual ordinary caller enablement is constrained to separately authorized implementation
+  and publication, not asserted by this document-only TASK.'
+- 'AC2: policy separates functional minimum-sufficient-v1 Runtime verification from
+  optional effectiveness studies and retains Reviewer/Publisher. No full suite or
+  effect measurement is introduced.'
+- 'AC3: proportional personal-use security removes low-risk enterprise ceremony while
+  expressly retaining secrets, identity/provenance, actor/origin authentication, CAS,
+  exact mutation scope and external/irreversible risk floors.'
+- 'AC4: docs/AIOS-CAA-V1-ROADMAP.md and docs/AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md
+  make CAA-04 research gates optional for normal activation while retaining the evaluation''s
+  own internal study integrity and unchanged CAA 02/03/04 algorithms.'
+- 'AC5: .ai/roadmap-state.yaml adds exactly one Human/Brain prospective policy record
+  and retains historical selections; no automatic roadmap advancement or rewritten
+  TASK-417/419/420 lineage. The policy record''s references to TASK-419 as the then-current
+  NEXT retain their dated planning meaning; later Human TASK-423 intent remains independently
+  authoritative and is not being reviewed or changed here.'
+- 'AC6: base-to-head diff changes only the four allowed files, with no production
+  Runtime or CAA code changes, no invented router, no unsupported production activation
+  claim and preserved separate authorities. REVIEW PASS applies solely to bounded
+  policy/document changes; no claim of finished KA-01 activation or successful TASK-423
+  recovery.'
