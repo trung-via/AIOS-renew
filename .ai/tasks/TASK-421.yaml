@@ -1,0 +1,146 @@
+task_id: TASK-421
+revision: 1
+goal: 'Prospectively adopt Human-approved Personal-First, Direct-Activation execution
+  policy for AIOS Renew personal use: deliver new upgrades through minimum-sufficient
+  implementation/Runtime functional verification, independent semantic review and
+  exact Publisher publication, then use the capability directly without any default
+  pilot cohort, shadow/holdout period, preactivation effectiveness measurement, quality-uplift
+  benchmark, enterprise security hardening ceremony or second activation TASK/approval
+  when Human authorization already covers enablement. Canonicalize one coherent policy
+  and update only the conflicting future planning/rollout documentation.'
+problem: Current canonical contract already makes performance measurement post-activation
+  and nonblocking, but scattered older CAA roadmap/evaluation and capability planning
+  rules still include trial, preregistration/threshold and rollout language that can
+  be misread or applied as activation blockers for personal upgrades. Human expressly
+  requests lighter security emphasis and direct activation, not dropping canonical
+  functional proof, attribution, exact authorization, Reviewer/Publisher authority
+  or safeguards against inadvertent destructive/privileged actions. The prospective
+  change must not fabricate an evaluation outcome, broaden Runtime authority, retroactively
+  rewrite TASK-417/419/420 history, activate CAA-05, or impose an additional mandatory
+  workflow.
+assumptions:
+- Current explicit Human decision 2026-10-25 authorizes one prospective personal-first
+  contract/policy change and implementation immediately; this is not permission to
+  fabricate Runtime verification, independent semantic PASS or publication, nor to
+  change frozen Kernel.
+- Observed canonical main at authoring is 0f55b80282f7edb33aa5a68419b90fd3eed4e81b.
+  Runtime must independently enforce expected-main SHA/CAS and identity/revision/transport
+  admission; concurrent unrelated TASK-419 review/publication and TASK-420 H1R work
+  are independent and untouched.
+- Published direct authoring under TASK-408, verification.policy minimum-sufficient-v1,
+  Runtime/Reviewer/Publisher boundaries and source/credentials/irreversible-mutation
+  safeguards remain controlling. Audit support including default CAA advice remains
+  cognitively optional/nonblocking, not a new implementation gate.
+- Current CAA-04 evaluator's exact plan/labels/thresholds are internal conditions
+  for choosing to run that optional evaluation; they must not be used as prerequisites
+  for deploying unrelated or already-authorized CAA-backed upgrades. CAA-05 remains
+  unselected.
+- The older Human planning decisions remain historical provenance. This explicit newer
+  planning priority supersedes only future default delivery/rollout constraints where
+  incompatible; it does not assert that a TASK or RUN has completed.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md
+  - docs/AIOS-CAA-03-INTEGRATION-PORTABILITY.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-419.yaml
+  - .ai/tasks/TASK-420.yaml
+  - tests/test_brain_sync.py
+  - tests/test_authoring_ingress.py
+  modify:
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - docs/AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md
+non_goals:
+- No production Python or Runtime verifier/security-code change, new fast-track lane,
+  replacement Router, activation controller, audit framework or alternate truth store.
+- No reduction of canonical identity/provenance, scope/CAS protections, secrets protection,
+  authorized mutation, immutable engineering lineage, Human risk acceptance, Executor
+  separation, Runtime evidence, independent Reviewer or Publisher.
+- No forced deletion/relabeling of historical pilot/evaluation records or weakening
+  the internal integrity rules of optional CAA-04 experiments; no automatic CAA-05
+  activation, downstream adoption or budget authorization.
+- No full test suite, mandatory before/after benchmark, trial-task quota, post-publish
+  trial before normal use, or new separate approval/activation task by default.
+constraints:
+  hard:
+  - Express explicit Human personal-use risk acceptance prospectively and distinguish
+    optional effectiveness/quality/performance testing from minimum functional correctness
+    verification; only the former loses default preactivation gate. Never claim success
+    without Runtime evidence and eligible review/publication.
+  - 'Declare one default delivery behavior for future authorized improvements: implementation
+    includes normal-caller enablement in the same TASK and is active when exact Runtime
+    verification, independent Reviewer PASS and Publisher inclusion plus any already-authorized
+    operational enablement complete. Do not require a further pilot/threshold/holdout/activation
+    decision merely for chronology; Human can select one by explicit exception.'
+  - 'Use proportional security posture: skip enterprise-style security review, speculative
+    threat model and hardening for low-risk local personal upgrades, while retaining
+    credentials/secrets protection, source integrity, actor/origin authentication,
+    bounded destructive actions, exact mutation permissions and relevant exposed-surface
+    risk floors. Human owns any broader specific risk acceptance.'
+  - Preserve CAA-02/03/04 algorithms, advisory semantics, no-advice, default four-flow
+    CAA access and exact CAA-04 evaluation-specific source/label/plan gating when
+    evaluation itself is requested. Explicitly state such evaluation is optional and
+    cannot block normal capability activation. Do not construe this policy as autonomous
+    provider billing/training permission.
+  - Update existing ChatGPT contract and only the minimum contradictory forward-looking
+    CAA planning/evaluation docs. Preserve historic text with explicit prospective
+    supersession; do not delete/renumber prior Human priority, TASK, RUN, RESULT,
+    REVIEW, publication or roadmap history.
+  - In roadmap, add one current Human/Brain policy/priority record for 2026-10-25
+    linking this TASK and the affected future policy, keeping precise single prospective
+    NEXT and preserving TASK-419/420 independent lifecycle. Do not auto-advance roadmap
+    on task publication or create a second canonical engineering truth.
+  - Keep the change intentionally document/planning-only. If existing production Runtime
+    code already applies an effectiveness/pilot gate to otherwise lawful capability
+    activation, identify the exact conflicting gate as a future separately-authorized
+    implementation gap, not silent edits outside scope.
+  - Use only focused verification and source-bound evidence. Completion claims in
+    TASK acceptance must be implementation properties the Executor can report before
+    Runtime verification; never author acceptance requiring later review or publication
+    outcome as Executor claims.
+acceptance:
+- id: AC1
+  condition: A clear prospective Personal-First, Direct-Activation policy is added
+    to the canonical ChatGPT Project Contract with personal-use rationale, one-task
+    activation and no mandatory preactivation pilot, shadow, quality-uplift evaluation,
+    performance benchmark or second activation decision.
+- id: AC2
+  condition: The policy explicitly separates minimal functional verification/valid
+    Runtime evidence from optional effectiveness evaluation, retaining the same minimum-sufficient-v1
+    family and preserving independent Reviewer and Publisher duties without full-suite/default
+    ceremonial rechecks.
+- id: AC3
+  condition: The default personal-use security posture drops enterprise audit/hardening
+    requirements for low-risk local changes but expressly preserves credential/security
+    essentials, authoritative identity/provenance/CAS, mutation boundaries and irreversible
+    or external-risk controls.
+- id: AC4
+  condition: CAA v1 roadmap and CAA-04 evaluation docs explicitly disambiguate optional
+    study-specific preregistration/threshold/holdout rules from normal production
+    capability activation; no change to evaluation implementation, no automatic CAA-05
+    or trial cohort prerequisite.
+- id: AC5
+  condition: One new prospective Human/Brain planning policy record documents exact
+    supersession of default rollout/effectiveness blockers, without rewriting TASK-417/419/420
+    and prior Human selections or manufacturing RESULT/REVIEW/publication; the effective
+    NEXT is not duplicated.
+- id: AC6
+  condition: The four permitted document/planning edits are internally consistent,
+    with no new independent planner/router/workflow or policy that accidentally makes
+    optional audit/CAA/evaluation a Runtime ingress prerequisite; focused existing
+    governance/Brain Sync tests remain compatible.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_sync.py tests/test_authoring_ingress.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
