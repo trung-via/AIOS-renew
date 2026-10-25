@@ -413,22 +413,67 @@ audit invocation, staged closure or ledger. Do not audit the entire repository i
 
 ### End-to-end improvement delivery
 
-Every future improvement plan and TASK must include both implementation and
-production activation in the same TASK's delivered scope and acceptance criteria.
-Delivery must reach the intended ordinary production caller through the existing
-Runtime verification, independent Reviewer PASS and Publisher publication gates,
-including the explicit canonical activation required by that capability. Prepared
-profiles, dormant implementations or documentation of a later activation step do
-not count as successful delivery. Do not defer activation to another TASK unless
-Human explicitly approves a phased plan with bounded activation scope and gates.
+**Personal-First, Direct-Activation — prospective Human policy, 2026-10-25
+(TASK-421 r1).** AIOS serves the Human's personal use. The Human explicitly accepts
+the residual risk of initially unmeasured effectiveness for low-risk local personal
+upgrades to reduce delivery time, token cost and Human effort. Actual use can inform
+later improvement; empirical quality uplift is not assumed. This decision governs
+future authorized work and preserves prior Human selections and engineering history.
 
-Performance measurements occur after production activation. They are nonblocking
-follow-up observations, never a prerequisite for activation or a benchmark gate
-before delivery. This ordering does not relax security, provenance, authorization,
-fail-closed currentness, Runtime verification, independent review, exact-source
-publication or explicit Human consent where required. Runtime owns verification
-and EVIDENCE; Reviewer judges semantics and Publisher alone publishes eligible
-source. Publication does not automatically advance the roadmap.
+Every future improvement plan and TASK must include implementation and normal-caller
+production enablement in the same TASK's scope. The capability is active when exact
+Runtime functional verification with valid RUN/subject-bound EVIDENCE, independent
+Reviewer PASS, Publisher inclusion of the exact eligible reviewed source and any
+operational enablement already covered by Human authorization are complete. Prepared
+profiles or dormant implementations alone do not deliver the improvement. Existing
+authorization covering enablement needs no second activation decision, approval or
+TASK merely because implementation and publication happened first. A pilot cohort,
+trial-task quota, shadow/holdout period, preactivation effectiveness or quality-uplift
+evaluation, performance benchmark and post-publication trial before normal use are
+not default gates. Human may explicitly select a bounded phased delivery or study as
+an exception. New external exposure or spend outside the existing authorization still
+requires its own exact permission.
+
+Minimal functional correctness verification and optional effectiveness evaluation are
+separate. Keep the existing `verification.policy: minimum-sufficient-v1` family and
+focused, authored checks sufficient for the changed behavior and relevant risk floor.
+Functional source/citation, authorization and failure-containment correctness remain
+required where relevant. Runtime alone executes canonical verification and constructs
+valid exact-command, RUN- and subject-bound EVIDENCE; missing, malformed, conflicting
+or failing required evidence remains blocking. Reuse valid evidence until relevant
+invalidation, with no default full suite, baseline run or ceremonial recheck. Optional
+effectiveness, quality, cost and performance observations may follow activation and
+remain nonblocking unless Human explicitly selects an evaluation exception. They
+cannot substitute for functional proof or establish an unmeasured benefit.
+
+TASK acceptance describes implementation properties the Executor can truthfully
+report before Runtime verification, including the intended caller's enablement path.
+Runtime verification, independent Reviewer judgment and Publisher publication retain
+their separate owners; an Executor implementation claim cannot assert their later
+success. This policy creates no fast-track lane or alternate completion authority.
+
+Use proportional security for personal work. Low-risk local upgrades skip
+enterprise-style security review, speculative threat modeling, audit ceremony and
+hardening unrelated to their exposed surface. Preserve credentials/secrets protection,
+source integrity, authoritative TASK/RUN identity and provenance, actor/origin
+authentication, expected-main currentness/CAS, exact scope and mutation permissions,
+bounded destructive actions and controls for irreversible or external-risk operations.
+Relevant exposed-surface safeguards still apply, and Human owns any broader specific
+risk acceptance. This policy grants no autonomous provider billing or training right.
+
+This policy prospectively supersedes incompatible default delivery/rollout blockers,
+including older CAA trial, effectiveness-threshold and separate-activation planning.
+CAA-04 preregistration, independent labels, source/plan authentication, thresholds,
+holdout/shadow and budget rules remain exact conditions of an explicitly requested
+optional evaluation; they cannot block normal capability activation. TASK-408 direct
+authoring, Human-on-demand audits, soft AOA/opt-out, CAA's four-flow advisory access
+and legitimate no-advice remain intact. Neither optional audit nor CAA/evaluation is
+a Runtime ingress prerequisite. CAA-05 remains unselected. The single planning record
+is `human_personal_first_direct_activation_20261025` in `.ai/roadmap-state.yaml`;
+TASK-417/419/420 and their independent lifecycles remain unchanged. Publication never
+advances the roadmap automatically. Any discovered production effectiveness gate
+conflicting with this policy requires separately authorized implementation work;
+TASK-421 changes documents/planning only, without changing the frozen Kernel.
 
 ## 12. Publication
 
@@ -677,6 +722,10 @@ retains its exact original sources, snapshots, temporal integrity and privacy.
 CAA-02 A1/B1 reasoning, existing suggestion limits and validators, uncertainty and
 legitimate abstention/no-advice remain unchanged; no proposal is guaranteed or
 fabricated. CAA-04 independent evaluation and all its gates remain unchanged.
+
+Under the newer TASK-421 personal-use policy in section 11, those CAA-04 gates
+apply only when the optional evaluation itself is requested. They are not
+prerequisites for normal production capability activation or default CAA access.
 
 Brain remains free to accept, adapt or reject advice and retains final semantic
 authority. CAA is neither an audit prerequisite nor ingress authorization; its

@@ -1,5 +1,23 @@
 # CAA-04: finite independent evaluation and Human rollout report
 
+## Prospective policy boundary (TASK-421, 2026-10-25)
+
+CAA-04 is an optional effectiveness study under the controlling
+[Personal-First, Direct-Activation policy](CHATGPT_PROJECT_CONTRACT.md#end-to-end-improvement-delivery).
+Its preregistration, source/plan authentication, independent labels, thresholds,
+holdout/shadow, provider and budget rules below remain exact conditions for
+choosing to run that evaluation. They are not prerequisites for normal capability
+activation, default four-flow CAA access or Runtime ingress. Future authorized
+upgrades include normal-caller enablement in the same TASK and become active after
+exact Runtime functional verification/EVIDENCE, independent Reviewer PASS,
+Publisher inclusion and any already-authorized operational enablement. No default
+trial cohort, shadow window, quality-uplift result or second activation decision is
+required. Human may explicitly choose a bounded study or phased rollout exception.
+The evaluator implementation and CAA-02/03 advisory/no-advice behavior stay unchanged;
+this policy grants no provider billing/training permission and selects no CAA-05.
+
+## Retained study selection
+
 Human selected option B on 2026-10-24 for TASK-414 r2. The accepted input is
 CAA-03 TASK-412 r2 / RUN-412-009, independent PRIMARY REVIEW-412-009 PASS on
 `7995c3048e2ca2c4606bf7bd352b03a0f8b5ffc9`, with decision commit
@@ -104,9 +122,17 @@ candidate prose or private source text are reported.
 `rollout_packet()` presents threshold observations, independent evaluator
 provenance, unknowns, alternatives, stop/disable gates and one of
 `PROPOSE_ROLLOUT`, `REEVALUATE`, `DEFER` or `STOP`. Its authority is `NONE`.
-Only a separate exact Human authorization, followed by the ordinary lawful
-process, can expose CAA advice in controlled production use. Stopping or
-disabling this evaluator cannot change RUN, REVIEW, publication or Git state.
+The original TASK-414 study selection imposed this rollout restriction:
+
+> Only a separate exact Human authorization, followed by the ordinary lawful
+> process, can expose CAA advice in controlled production use.
+
+TASK-421 prospectively supersedes that restriction as a default gate for production
+enablement already covered by Human authorization. The report's thresholds and
+recommendations cannot block such activation or supply mutation authority. A newly
+requested study rollout beyond existing permission still needs exact Human scope,
+spend and exposure authorization. Stopping or disabling this evaluator cannot
+change RUN, REVIEW, publication or Git state or disable ordinary CAA advice.
 
 The four-flow fixtures simulate mapping and JSON providers and adversarial
 source, citation, label, future-data, injection, false analogy, grader,

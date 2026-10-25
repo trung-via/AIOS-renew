@@ -1,5 +1,38 @@
 # CAA v1: finite advisory roadmap
 
+## Prospective personal-use policy (TASK-421, 2026-10-25)
+
+The controlling [Personal-First, Direct-Activation policy](CHATGPT_PROJECT_CONTRACT.md#end-to-end-improvement-delivery)
+is recorded once as `human_personal_first_direct_activation_20261025` in
+`.ai/roadmap-state.yaml`. Future authorized improvements include normal-caller
+enablement in the same TASK and become active after exact Runtime functional
+verification/EVIDENCE, independent Reviewer PASS, Publisher inclusion and any
+already-authorized operational enablement. No default pilot/trial quota,
+shadow/holdout, effectiveness or quality-uplift measurement, performance benchmark
+or second activation decision delays normal use. Human can explicitly select a
+bounded study or phased rollout. Functional source/citation, authorization and
+failure-containment checks remain within `minimum-sufficient-v1`; empirical
+effectiveness evaluation is optional and cannot become Runtime ingress authority.
+
+The original package table and study selections below retain historical scope.
+CAA-02's effectiveness exit, CAA-03's "No default activation" and CAA-04's
+threshold/separate-rollout gates are superseded only as future default capability
+activation blockers. TASK-419's four-flow default advisory access, CAA-02/03/04
+algorithms, legitimate no-advice and Brain judgment remain intact. Exact CAA-04
+preregistration, source/plan/label, threshold, holdout/shadow, provider and budget
+rules still apply when that optional evaluation is requested; they do not govern
+ordinary production activation. An optional study report can inform Human choices
+without requiring a new activation decision when enablement is already authorized.
+This policy grants no provider billing or training permission and selects no CAA-05.
+
+TASK-421 is a bounded policy amendment, not a second NEXT or an automatic successor.
+The existing single roadmap NEXT remains TASK-419 r2 in `caa-v1-20261023`; its exact
+review/publication lifecycle and TASK-420 H1R work remain independent. Prior Human
+records, TASK-417/419/420 and all immutable lineage keep their original meanings.
+No RESULT, REVIEW, publication, measured benefit or roadmap advancement is asserted.
+
+## Retained CAA selections and lineage
+
 The explicit Human decision of 2026-10-25 selects **TASK-419 r2** as the sole
 prospective implementation NEXT, under
 `human_caa_default_access_full_history_20261025`. It replaces future TASK-417
