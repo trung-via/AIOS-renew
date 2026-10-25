@@ -52,6 +52,7 @@ class ThreeFlowFixture(ProductionFixture):
         self.root, self.control = root, self.repo
         self.operation, self.action = operation, action
         self.reusable = reusable
+        self.first_fail = first_fail
         self.commands_per_checkpoint = 1 if operation == "REMEDIATION" else 2
         self.output = "incomplete\n" if first_fail else "complete\n"
         self.source_id = "RUN-101-000"
@@ -148,10 +149,22 @@ class ThreeFlowFixture(ProductionFixture):
             error_type=operator.OperatorError)
         owner.complete(ResultPackage(validate_structural_result(payload["result"]), ()),
             primary_completion_policy(self.task, base_sha=self.base))
+        expected = "Commit OUTPUT.txt containing complete followed by a newline."
+        if self.first_fail:
+            # The original TASK already has a reviewed candidate. Bind this
+            # exercise's C1 to the new narrow REMEDIATION rather than relying
+            # on the inherited TASK's ambiguous first-candidate constraint.
+            expected = (
+                "In this newly admitted REMEDIATION RUN, commit OUTPUT.txt containing "
+                "incomplete followed by a newline as C1 and return that committed "
+                "candidate without completing the correction. The already reviewed "
+                "TASK candidate is not C1 for this RUN. After factual Runtime feedback, "
+                "independently commit OUTPUT.txt containing complete followed by a "
+                "newline as C2 in the same original native session and RUN.")
         review = dict(review_id="REVIEW-101-001", reviewed_sha=self.subject, mode="PRIMARY",
             verdict="CHANGES_REQUIRED", acceptance={"AC1": "FAIL"}, findings=[dict(id="R1", basis="AC1",
                 action="CODE_FIX", location="OUTPUT.txt", issue="Output needs the approved complete value.",
-                expected="Commit OUTPUT.txt containing complete followed by a newline.")])
+                expected=expected)])
         remediation = dict(finding_id="R1", action="CODE_FIX", reviewed_sha=self.subject,
             modification_scope=["OUTPUT.txt"], verification=dict(policy=self.task.verification.policy, affected=[COMMAND]),
             constraints=dict(hard=list(self.task.constraints.hard)))
