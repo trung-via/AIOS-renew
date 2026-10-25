@@ -1,0 +1,158 @@
+task_id: TASK-422
+revision: 1
+goal: Prospectively retire superseded TASK-417 CAA pilot-only execution surfaces,
+  source-level callback/ten-TASK cohort gates and historical experimental launch-as-a-prerequisite
+  path, retaining exactly one default CAA-03 consultation path for the supported Python
+  Brain and one ChatGPT cognitive-adapter path that reads canonical evidence. Preserve
+  CAA-01/02/03 intelligence, optional independent CAA-04 capability, historical artifacts,
+  Brain's final judgment and all existing AIOS authority boundaries. Make live-vs-Python
+  execution distinctions unambiguous and stop claiming a GitHub-only authoring request
+  automatically invoked Python CAA.
+problem: The Human wants CAA actively used in AIOS Brain work, not a nominal TASK-419
+  implementation. TASK-419 r2 placed CAA consult in src/aios_renew/brain_provider.py
+  attempt() but the actual ChatGPT Brain authoring route can call GitHub directly
+  and never invokes that Python function. Separately, legacy TASK-417 pilot-only functions
+  (_consult_pilot, pilot_report, pilot profile and history-cohort controls) remain
+  in caa_integration.py/brain_context.py although TASK-419 prospectively superseded
+  them. This causes confusion and redundant paths. A private ChatGPT CAA cognitive
+  workflow plugin was created, but is not a verified remote execution of caa_reasoner.consult;
+  connector or ChatGPT skill use must not be called Python provider evidence.
+assumptions:
+- At authoring source main is 42f4620b6cae9e7a857cb92a5b9595d7af4ff94c; verify TASK-419
+  r2 source and exact current TASK-421 if concurrently active before mutation. Human's
+  explicit latest priority is retire useless CAA paths; this request is a distinct
+  CAA cleanup, does not revise/replace TASK-421 Personal-First contract scope or existing
+  exact TASK-419 execution history.
+- The supported Python path attempt()->consult_advisory()->consult_flow()->caa_reasoner.consult
+  remains useful, with current optional no-advice semantics and full authenticated
+  history. TASK-417 ten-TASK cohort and pilot-specific supplier/reservation gates
+  are already historically superseded; retirement removes remaining prospective/code
+  surface, not immutable lineage.
+- The separately created private ChatGPT cognitive-adapter plugin is only a model-side
+  host support surface reading canonical GitHub; it has no verified direct invocation
+  of existing Python CAA, cannot issue engineering truth, and may require user installation.
+  No project code can force ChatGPT product host to run Python automatically.
+- CAA-04 evaluation is a separate Human-selected optional capability, not a general
+  preactivation requirement; preserving its exact evaluator's own source/label integrity
+  is not retaining a normal authoring gate.
+- This TASK authoring grants no new Runtime, Publisher, Reviewer, execution profile
+  or automatic dispatch authority; Runtime must reauthenticate source/main/identity
+  and actual path usage.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - docs/AIOS-CAA-02-INTELLIGENT-REASONER.md
+  - docs/AIOS-CAA-03-INTEGRATION-PORTABILITY.md
+  - docs/AIOS-CAA-10-TASK-ADVISORY-ACTIVATION.md
+  - docs/AIOS-CAA-04-EVALUATION-SHADOW-ROLLOUT.md
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-417.yaml
+  - .ai/tasks/TASK-419.yaml
+  - .ai/tasks/TASK-421.yaml
+  - src/aios_renew/caa_integration.py
+  - src/aios_renew/brain_provider.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/caa_experience.py
+  - src/aios_renew/caa_evaluation.py
+  - tests/test_caa_integration.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_context.py
+  - tests/test_caa_evaluation.py
+  modify:
+  - src/aios_renew/caa_integration.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_provider.py
+  - tests/test_caa_integration.py
+  - tests/test_brain_provider.py
+  - tests/test_brain_context.py
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-CAA-03-INTEGRATION-PORTABILITY.md
+  - docs/AIOS-CAA-10-TASK-ADVISORY-ACTIVATION.md
+  - docs/AIOS-CAA-V1-ROADMAP.md
+  - .ai/roadmap-state.yaml
+non_goals:
+- No replacement or redesign of CAA-01/02/03 retrieval, A1/B1 algorithm, candidate/causal
+  validators, source truth, 0-3 advice limits or abstention. No new pilot, benchmark,
+  mandatory CAA-04, CAA-05 or model selection.
+- No new GitHub ingress flow, generic HTTP service, background process, second Planner,
+  provider router, lifecycle gate, semantic authority, DB, persistence or new TASK-to-RUN
+  mapping.
+- No unsupported claim that the private ChatGPT cognitive plugin invokes the real
+  Python caa_reasoner function; no unsupported automatic ChatGPT host integration
+  claims. No attempt to mutate ChatGPT project settings/installation from this repository.
+- No change to CAA-04 evaluator internal contract or retained historical frozen TASK-417/419/421
+  evidence; no unrelated Runtime/Reviewer/Publisher/Executor workflow or audit policy
+  changes.
+- No full test suite or multi-task rollout plan.
+constraints:
+  hard:
+  - 'Retire only code genuinely obsolete for current CAA normal entry: pilot-only
+    cohort / report / profile-reservation / duplicate consultation route. Prove before
+    deletion or de-export that a retained production caller or optional CAA04 does
+    not depend on the removed surface; if exact history requires it, keep isolated
+    read-only archival decoding but never select it for new decisions.'
+  - 'Keep one active Python path: normal first-party Brain attempt automatically consults
+    CAA in four flows before semantic decision, without per-use enable flag, TASK-417
+    eligibility, pilot callback or fresh redundant provider gate; advisory absent
+    remains nonblocking but genuine mandatory canonical source/subject failure remains
+    fail-closed.'
+  - 'Recognize distinct ChatGPT host boundary in canonical docs: connected GitHub
+    plus ChatGPT CAA skill/advisory is a model-side cognitive path and is not proof
+    of native Python consult. It may inform the Brain before authoring, but GitHub
+    AUTHOR_TASK alone cannot be asserted to have consumed CAA. Do not introduce project-local
+    user prompts as a false automatic hook.'
+  - Retire TASK-417's old future rollout requirements from prospective documentation,
+    preserve the immutable record and optional independent CAA-04 evaluator as an
+    opt-in research path. No default 10-TASK cohort, shadow, holdout, quality threshold,
+    preregistration or secondary human activation to use ordinary CAA.
+  - Record current Human retirement priority as a prospective CAA planning-policy
+    delta without falsely marking TASK-421, TASK-419 or RUN as completed, without
+    making a second active roadmap NEXT or rewriting earlier roadmap history. Existing
+    publication cannot auto-advance planning.
+  - Only minimal compatible source/test edits, with source-linked evidence of current
+    caller and targeted run; no Executor-authored semantic decision, source policy
+    change outside scope, or claims of live ChatGPT provider invocation.
+  - If the exact Python backend invocation inside native ChatGPT remains unintegrated,
+    return a precise UNINTEGRATED_HOST boundary; never repair the honesty gap by fabricating
+    CAA provider calls or adding an unused plugin invocation checklist.
+acceptance:
+- id: AC1
+  condition: "The normal Python four-flow attempt\u2192consult_advisory\u2192consult_flow\
+    \ consultation remains reachable and default-on, with source-authenticated history\
+    \ and unchanged CAA-02 advisory/no-advice behavior; no duplicate pilot caller\
+    \ is used."
+- id: AC2
+  condition: Pilot-only TASK-417 cohort/per-consult opt-in/profile/reservation and
+    obsolete helper/report routes are retired from prospective public code or demonstrably
+    isolated archival compatibility; tests establish that active Python callers and
+    optional CAA-04 evaluator remain intact.
+- id: AC3
+  condition: Canonical project/CAA docs state exactly which current ChatGPT-native
+    GitHub cognitive-adapter workflow may be used and that it is not the Python function,
+    while old pilot/shadow/holdout/preactivation effectiveness requirements do not
+    gate normal CAA.
+- id: AC4
+  condition: Existing canonical TASK-417/419 history and TASK-421 concurrent intent
+    stay unchanged; one prospective retirement decision is recorded without a second
+    lifecycle truth or competing NEXT.
+- id: AC5
+  condition: Focused positive and negative tests cover four-flow automatic consultation,
+    missing/provider-unavailable advice, source currentness, removal or isolation
+    of retired CAA routes, CAA-04 opt-in compatibility and no fake Runtime or provider
+    outcome; no full suite.
+- id: AC6
+  condition: No new generic orchestration, Python-to-ChatGPT automatic invocation
+    claim, audit profile or separate activation step; absent exact native ChatGPT
+    backend execution is stated as a concrete host limitation, not masked as PASS.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_caa_integration.py tests/test_brain_provider.py
+    tests/test_brain_context.py -k 'caa or advisory or pilot or task419'
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
