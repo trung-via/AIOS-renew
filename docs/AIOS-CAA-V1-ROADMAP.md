@@ -1,6 +1,27 @@
 # CAA v1: finite advisory roadmap
 
-The current explicit Human decision of 2026-10-24 selects **TASK-417 r1**, the
+The explicit Human decision of 2026-10-25 selects **TASK-419 r2** as the sole
+prospective implementation NEXT, under
+`human_caa_default_access_full_history_20261025`. It replaces future TASK-417
+pilot access with default CAA consultation in ARCHITECTURE, TASK_AUTHORING,
+REPAIR_AUTHORING and REMEDIATION_AUTHORING, and full authenticated history search.
+The existing first-party Python Brain `attempt()` invokes CAA-03 after flow,
+canonical policy and subject/draft composition, before the Brain decision calls.
+There is no cohort, TASK age/identity, Human per-consult activation, or separate
+TASK-417 provider/profile/reservation prerequisite. Existing lawful Brain
+transport is reused through the unchanged CAA-02/03 advisory protocol.
+
+CAA-02 A1/B1 reasoning, 0-3 suggestion grammar, evidence/citation/uncertainty
+validators and legitimate abstention remain unchanged. Brain can accept, adapt
+or reject advice. CAA absence cannot gate direct authoring. TASK-408 on-demand
+TCA/ROA/MOA, soft AOA and its opt-out, independent CAA-04 evaluation and CAA-05's
+unselected status remain unchanged. This authoring selects no successor, asserts
+no lifecycle completion or cost/quality benefit, and leaves TASK-418 repair alone.
+TASK-417, TASK-419 r1 and every prior TASK/RUN/correction/review/publication remain
+immutable history. The integration covers this Python invocation path; automatic
+execution in unrelated ChatGPT or host sessions is an unintegrated evidence gap.
+
+The historical explicit Human decision of 2026-10-24 selected **TASK-417 r1**, the
 [ten-TASK optional advisory pilot](AIOS-CAA-10-TASK-ADVISORY-ACTIVATION.md), as the
 sole prospective implementation NEXT. `human_caa_ten_task_advisory_20261024`
 supersedes only the prospective Auto-NEXT bookmark. It authorizes optional CAA-03
@@ -12,9 +33,9 @@ immutable lineages retain their meanings. The old effective transition is retain
 as `historical_effective_next_transitions_task415`, without a second effective NEXT.
 No successor follows automatically from this pilot or its report.
 
-The following Auto-NEXT and CAA-package selections are historical. Statements
+The following pilot, Auto-NEXT and CAA-package selections are historical. Statements
 about the then-current NEXT or lack of production activation describe those cuts;
-the current pilot amends prospective selection and optional controlled use only.
+the TASK-419 r2 decision amends future activation/access only.
 
 The earlier explicit Human decision of 2026-10-24 selected **Auto-NEXT / TASK-415 r1**
 as the sole prospective implementation NEXT in `.ai/roadmap-state.yaml`. The
@@ -118,11 +139,10 @@ suspended prospective ROA R4 default plan and all prior RUN/FAILURE/REVIEW
 lineage remain history. PTE, Lean VP, KA-01 and downstream bookmarks do not
 advance. CAA adds no admission step, Flow Card, audit invocation or provider
 selection authority. CAA-02 can use one explicitly caller-supplied provider
-callable. CAA-03 supplies an explicitly called optional binding for the four
-existing Brain flows; no ordinary authoring flow invokes it by default. The
-TASK-417 supported explicit Brain caller can now request the bounded pilot under
-its independent source/profile/charge guards; `consult_flow` itself stays disabled
-by default. Human
+callable. CAA-03 supplies a default advisory binding for the four existing Brain
+flows through `brain_provider.attempt`; explicit `consult_advisory` callers use
+the same path without the retired TASK-417 cohort/profile/charge gates. The old
+pilot reader/report remains historical observation support only. Human
 priority/risk, soft AOA opt-out and Brain's final semantic judgment remain intact.
 
 ## CAA-01 read contract
@@ -153,12 +173,22 @@ and provider traces are not exported. Retrieved text is data, never instructions
 Facts separate OBSERVED, INFERRED and UNKNOWN; observed exit codes, completion
 gate causes or test-summary shapes are not inferred technical root causes.
 
-Fixed ceilings are 8 TASKs, 8 episodes, 128 scoped refs, 256 KiB per document,
-4 MiB total source/command output, 24 input nesting levels, 32,768 input nodes,
-64 KiB output at depth 16, 512 Git commands and 60 seconds per call (at most
-10 seconds per command). Inputs exceeding a ceiling fail without truncating a
-success or retrying. Scope ranges contain at most 8 numeric TASKs; broad/system
-queries are unavailable. Equivalent reads of an unchanged cut are deterministic.
+Full-history retrieval uses `capture_available_history` and `iter_history_episodes`.
+It pages canonical main's TASK path/revision history, including deleted TASKs,
+and observes every available TASK's RUN/terminal/correction/review/publication
+pins. There is no eight-TASK or eight-episode search ceiling. Each episode uses
+the existing CAA-01 validators and its original RUN revision and source pointers.
+Historical revision-only cuts cannot acquire later outcomes. The entire searched
+snapshot is rechecked, including evidence omitted from the concise advisory.
+
+Individual reads retain 256 KiB/document, 4 MiB source/command output, 24 input
+nesting levels, 32,768 input nodes, 64 KiB output (128 KiB with semantics), 512 Git
+commands and 60 seconds, with at most 10 seconds/command. Scoped explicit capture
+retains its 128-ref metadata bound; full-history metadata and episode reads are
+batched. CAA-02's existing lexical/structured ordering selects concise evidence
+within its unchanged request byte budget after the complete search. Search and
+selection counts disclose the difference. A missing object or exhausted read is
+an explicit gap, never a silently shortened successful search or fabricated fact.
 
 CAA-02 adds opt-in `include_semantics=True` to this same authenticated reader.
 Its default output and 64 KiB bound remain unchanged. The opt-in view permits
@@ -180,5 +210,6 @@ also belong solely to Runtime. Its deterministic mapping/JSON fixtures are
 simulations, without live GPT/Claude/Gemini equivalence or superiority claims.
 Decisive CAA-04 evaluation is callable only under its separate plan and opt-in gates;
 CAA-05 training remains unselected. Executor implementation-local
-syntax/read sanity is not canonical verification or EVIDENCE. This roadmap records no CAA training, evaluation result, default
-activation, later package completion or production quality improvement.
+syntax/read sanity is not canonical verification or EVIDENCE. This roadmap records
+the Human default-access decision, without asserting training, evaluation results,
+later package completion, live host automation or production quality improvement.

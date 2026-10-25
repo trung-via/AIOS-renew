@@ -623,7 +623,10 @@ This change preserves the one admitted Executor, Runtime verification/EVIDENCE,
 independent Reviewer and Publisher, final ingress authentication/CAS, original
 TASK.scope.modify and current minimum-sufficient-v1 verification contract.
 
-## 19. TASK-417 prospective optional CAA pilot
+## 19. Historical TASK-417 optional CAA pilot
+
+Section 20 supersedes the following access/default policy for future work only.
+This section describes TASK-417's original selection and engineering cut.
 
 The current explicit Human decision and `human_caa_ten_task_advisory_20261024`
 select TASK-417 r1 as the sole prospective NEXT, superseding the old Auto-NEXT
@@ -650,3 +653,40 @@ decisive quality score, retrospective holdout, automatic CAA-04/05 action, train
 new memory store, router or lifecycle authority. CAA-04 preregistration/independent
 grading/provider/spending/time/population gates and TASK-408 HUMAN_ON_DEMAND remain
 effective. Human, Brain, Executor, Runtime, Reviewer and Publisher keep their roles.
+
+## 20. TASK-419 r2 default CAA access and full authenticated history
+
+Human's explicit 2026-10-25 narrow correction selects TASK-419 r2 as the single
+prospective NEXT in `human_caa_default_access_full_history_20261025`. TASK-417,
+TASK-419 r1 and every prior planning/engineering identity remain exact history.
+No TASK-418 repair is replaced, completed or advanced by this decision.
+
+The supported first-party Python Brain `attempt()` automatically initiates the
+existing CAA-03 consult for ARCHITECTURE, TASK_AUTHORING, REPAIR_AUTHORING and
+REMEDIATION_AUTHORING after canonical flow/policy and subject/draft composition,
+before the Brain semantic decision calls. Normal access needs no per-consult
+Human activation, `enabled=True`, TASK-417 cohort, TASK age/identity or separate
+TASK-417 provider profile/reservation callback. An unauthored TASK, independent
+Architecture decision or repair of an older TASK can consult. Existing lawful
+Brain resources use the unchanged CAA-02/03 provider-neutral transport.
+
+Default retrieval searches all available authenticated canonical TASK/revision,
+RUN, terminal, correction, independent review and publication history in bounded
+reads, without an eight-TASK/episode corpus ceiling. Concise selected evidence
+retains its exact original sources, snapshots, temporal integrity and privacy.
+CAA-02 A1/B1 reasoning, existing suggestion limits and validators, uncertainty and
+legitimate abstention/no-advice remain unchanged; no proposal is guaranteed or
+fabricated. CAA-04 independent evaluation and all its gates remain unchanged.
+
+Brain remains free to accept, adapt or reject advice and retains final semantic
+authority. CAA is neither an audit prerequisite nor ingress authorization; its
+absence cannot block otherwise lawful direct authoring. Genuine source/subject,
+candidate and currentness guards still fail closed. TASK-408 direct authoring,
+Human-on-demand TCA/ROA/MOA and soft AOA/opt-out remain unchanged. Runtime alone
+verifies; independent Reviewer and Publisher keep their distinct authority.
+
+This integration applies to repository Python invocations. Automatic execution
+inside unrelated ChatGPT or external host sessions is unintegrated and remains
+an evidence gap; prose instructions do not establish such automation. Authoring
+does not establish Runtime verification, review, publication, a cost/quality
+benefit, CAA-05 selection or automatic roadmap advancement.

@@ -1726,7 +1726,7 @@ def test_task415_missing_or_mixed_human_successor_never_projects_next():
     assert brain_sync._effective_next(root, main, mixed, candidate)[1] == "HUMAN_BRAIN_NEXT_REQUIRED"
 
 
-def test_task417_prospective_selection_preserves_all_prior_human_records_and_one_next():
+def test_task419_prospective_selection_preserves_all_prior_human_records_and_one_next():
     from aios_renew import brain_sync
     from aios_renew.brain_context import CAA_PILOT_RECORD, CAA_PILOT_ID
 
@@ -1741,13 +1741,15 @@ def test_task417_prospective_selection_preserves_all_prior_human_records_and_one
     assert current["sequence"][1:] == prior["sequence"][1:]
     candidates = brain_sync._extract_next_candidates(current)
     assert len(candidates) == 1 and current["next_items"] == prior["next_items"]
-    assert candidates[0]["task_id"] == "TASK-417" and candidates[0]["task_revision"] == 1
-    assert candidates[0]["priority_record"] == CAA_PILOT_RECORD
+    assert candidates[0]["task_id"] == "TASK-419" and candidates[0]["task_revision"] == 2
+    assert candidates[0]["priority_record"] == "human_caa_default_access_full_history_20261025"
+    pilot_cut = yaml.safe_load(git(root, "show", "603d920ea74af486945cbc9dc4c4362b99b3c3c7:.ai/roadmap-state.yaml"))
+    assert current[CAA_PILOT_RECORD] == pilot_cut[CAA_PILOT_RECORD]
     assert current[CAA_PILOT_RECORD]["pilot"]["pilot_id"] == CAA_PILOT_ID
     assert current[CAA_PILOT_RECORD]["optional_package"]["status"] == "CONDITIONAL_NOT_SELECTED"
 
 
-def test_task417_generic_brain_sync_does_not_invoke_advice_provider_or_evaluator(tmp_path, monkeypatch):
+def test_task419_brain_sync_stays_observation_only_before_subject_and_draft_composition(tmp_path, monkeypatch):
     from aios_renew import brain_context, caa_integration, caa_evaluation, brain_provider
 
     root = Path(__file__).resolve().parents[1]
@@ -1755,9 +1757,9 @@ def test_task417_generic_brain_sync_does_not_invoke_advice_provider_or_evaluator
     source = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
     source["sequence"] = [source["sequence"][0]]
     (repo / ".ai/roadmap-state.yaml").write_text(yaml.safe_dump(source), encoding="utf-8")
-    (repo / ".ai/tasks/TASK-417.yaml").write_bytes((root / ".ai/tasks/TASK-417.yaml").read_bytes())
-    git(repo, "add", ".ai/roadmap-state.yaml", ".ai/tasks/TASK-417.yaml")
-    git(repo, "commit", "-m", "synthetic pilot selection without activation")
+    (repo / ".ai/tasks/TASK-419.yaml").write_bytes((root / ".ai/tasks/TASK-419.yaml").read_bytes())
+    git(repo, "add", ".ai/roadmap-state.yaml", ".ai/tasks/TASK-419.yaml")
+    git(repo, "commit", "-m", "synthetic default CAA planning")
     git(repo, "push", "origin", "main")
     def forbidden(*_args, **_kwargs):
         pytest.fail("Brain Sync activated optional advice or decisive evaluation")
@@ -1767,7 +1769,7 @@ def test_task417_generic_brain_sync_does_not_invoke_advice_provider_or_evaluator
     monkeypatch.setattr(brain_provider, "consult_advisory", forbidden)
     before = git(repo, "show-ref"), git(repo, "status", "--porcelain")
     snapshot = observe_brain_sync(repo=repo)
-    assert snapshot.selected_task == dict(id="TASK-417", revision=1)
+    assert snapshot.selected_task == dict(id="TASK-419", revision=2)
     assert all(getattr(snapshot, key) is False for key in
                ("run_created", "executor_invoked", "verification_invoked", "state_mutated"))
     assert before == (git(repo, "show-ref"), git(repo, "status", "--porcelain"))

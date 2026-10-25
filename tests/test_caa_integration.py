@@ -77,9 +77,10 @@ class Case:
             material.update(task=fixture.task, subject_kind="UNIQUE_FINDING",
                             findings=[dict(source_run_id=run, review_id=review_id,
                                            reviewed_sha=fixture.candidate, finding=finding)])
+        main = git(fixture.remote, "rev-parse", "refs/heads/main")
         snapshot = BrainSyncSnapshot(
-            repository=dict(root=str(fixture.repo), name="fixture/CAA", main_sha=fixture.base, remote="origin"),
-            main_sha=fixture.base, roadmap=dict(next_items=[dict(task_id=task["id"], task_revision=task["revision"])]),
+            repository=dict(root=str(fixture.repo), name="fixture/CAA", main_sha=main, remote="origin"),
+            main_sha=main, roadmap=dict(next_items=[dict(task_id=task["id"], task_revision=task["revision"])]),
             selection_status="SELECTED", selected_task=task, unified_state=unified,
             lifecycle_state="READY", next_action=action, authority="BRAIN", blocker=None, correction_subject=lineage)
         request = dict(flow_selector=flow, human_input="Preserve the Human priority and risk decision.") if flow in FLOWS[:2] else None
@@ -255,16 +256,12 @@ def test_request_and_output_budgets_abstain_without_a_second_transport(tmp_path,
 
 
 @pytest.mark.parametrize("flow", FLOWS)
-@pytest.mark.parametrize("choice", ("off", "human_opt_out", "history_missing", "provider_missing", "no_advice"))
+@pytest.mark.parametrize("choice", ("human_opt_out", "provider_missing", "no_advice"))
 def test_optional_abstention_preserves_existing_authoring_policy(tmp_path, flow, choice):
     case = Case(tmp_path, flow)
     kwargs = dict()
-    if choice == "off":
-        kwargs.update(enabled=False, cut={"invalid optional cut is never read": True})
-    elif choice == "human_opt_out":
+    if choice == "human_opt_out":
         kwargs.update(human_opt_out=True, cut={})
-    elif choice == "history_missing":
-        kwargs.update(cut=None)
     elif choice == "provider_missing":
         kwargs.update(provider=None)
     else:
@@ -534,17 +531,90 @@ def test_four_flows_only_explicit_choice_and_strict_candidate(tmp_path):
     assert not case.calls
 
 
-def test_default_is_disabled_and_repair_action_is_only_a_caller_binding(tmp_path):
+def test_default_consults_and_repair_action_is_only_a_caller_binding(tmp_path):
     case = Case(tmp_path, "REPAIR_AUTHORING")
     result = integration.consult_flow(case.fixture.repo, flow=case.flow, packet=case.packet, subject=case.subject,
         candidate=case.candidate, expected_candidate_fingerprint=caa_reasoner.candidate_fingerprint(case.candidate),
         fresh_packet_supplier=case.fresh, cut=case.cut, provider=provider("mapping", calls=case.calls))
-    assert result["reason"] == "CONSULTATION_DISABLED" and not case.calls
+    assert result["outcome"] == "ADVICE" and len(case.calls) == 1
     for action in (None, "CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"):
         subject = dict(case.subject, requested_action=action)
         advisory = case.ask(subject=subject)
         assert advisory["binding"]["subject"]["requested_action"] == action
         assert advisory["authority"] == "NONE" and "action" not in advisory
+
+
+@pytest.mark.parametrize("flow", FLOWS)
+def test_normal_brain_caller_has_no_pilot_identity_activation_or_provider_profile_gates(tmp_path, monkeypatch, flow):
+    from aios_renew import brain_context, brain_provider
+
+    case = Case(tmp_path, flow)
+    if flow in {"ARCHITECTURE", "TASK_AUTHORING"}:
+        body = case.packet.as_dict()
+        body["canonical_facts"].update(selected_task=None, selection_status="NO_NEXT")
+        body["packet_fingerprint"] = experience._digest({k: v for k, v in body.items() if k != "packet_fingerprint"})
+        case.packet = case.fresh_packet = DecisionPacket(body)
+        case.subject = integration.decision_subject(case.packet)
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("retired pilot activation/profile/reservation path was called")
+    monkeypatch.setattr(brain_context, "canonical_caa_pilot_context", forbidden)
+    monkeypatch.setattr(integration, "_consult_pilot", forbidden)
+    result = brain_provider.consult_advisory(case.fixture.repo, flow=flow, packet=case.packet,
+        subject=case.subject, candidate=case.candidate,
+        expected_candidate_fingerprint=caa_reasoner.candidate_fingerprint(case.candidate),
+        fresh_packet_supplier=case.fresh, cut=case.cut, provider=provider("mapping", calls=case.calls),
+        # Legacy False is not a replacement opt-in requirement either.
+        enabled=False, profile_supplier=forbidden, reserve_call=forbidden)
+    assert result.advisory["outcome"] == "ADVICE" and len(case.calls) == 1
+    assert result.observation is None and "pilot" not in result.advisory
+    assert result.advisory["brain_final_semantic_judgment"] is True
+
+
+def test_default_history_search_can_cite_an_episode_beyond_both_old_windows(tmp_path):
+    from tests.test_caa_experience import full_history_fixture
+
+    fixture, main = full_history_fixture(tmp_path)
+    case = Case(tmp_path, "ARCHITECTURE", fixture=fixture)
+    def late_witness(request):
+        inner = deepcopy(request["consultation"])
+        inner["history"].sort(key=lambda h: h["selection"]["run_id"] != "RUN-990-013")
+        return dict(format="AIOS_CAA_FLOW_RESPONSE", version=1,
+            request_fingerprint=request["request_fingerprint"], binding=deepcopy(request["binding"]),
+            consultation=selection(inner))
+    result = case.ask(cut=None, answer=late_witness)
+    assert result["outcome"] == "ADVICE" and len(case.calls) == 1
+    assert result["retrieval"]["complete"] is True and result["retrieval"]["searched_episodes"] > 16
+    assert result["retrieval"]["omitted_from_advice"] >= 0
+    assert result["binding"]["source_cut"]["as_of_sha"] == main
+    support = result["consultation"]["suggestions"][0]["evidence_support"]["citations"]
+    assert any(s["commit_sha"] == fixture.history_result_run["base_sha"] for c in support for s in c["sources"])
+    assert any(h["selection"]["run_id"] == "RUN-990-013" for h in result["consultation"]["retrieved"])
+    assert "protected-runtime-raw" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("answer_kind", ("advice", "abstain", "invalid"))
+def test_new_access_path_preserves_the_published_caa03_caa02_advisory_contract(tmp_path, kind, answer_kind):
+    from aios_renew.brain_provider import consult_advisory
+
+    case = Case(tmp_path, "TASK_AUTHORING")
+    def answer(request):
+        value = response(request)
+        if answer_kind == "abstain":
+            value["consultation"].update(outcome="NO_MATERIAL_ADVICE", suggestions=[])
+        elif answer_kind == "invalid":
+            value["consultation"]["suggestions"][0]["source_path"][0] = "C-" + "0" * 64
+        return value
+    published = case.ask(kind=kind, answer=answer)
+    current = consult_advisory(case.fixture.repo, flow=case.flow, packet=case.packet, subject=case.subject,
+        candidate=case.candidate, expected_candidate_fingerprint=caa_reasoner.candidate_fingerprint(case.candidate),
+        fresh_packet_supplier=case.fresh, cut=case.cut, provider=provider(kind, answer)).advisory
+    assert portable(current) == portable(published)
+    expected = {"advice": "ADVICE", "abstain": "NO_MATERIAL_ADVICE", "invalid": "INSUFFICIENT_GROUNDED_EVIDENCE"}
+    assert current["outcome"] == expected[answer_kind]
+    assert len(current["consultation"]["suggestions"]) <= caa_reasoner.MAX_SUGGESTIONS
+    assert current["consultation"]["metrics"]["provider_calls"] == 1
+    assert current["authority"] == "NONE" and current["normative_policy"] == "UNKNOWN"
 
 
 @pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING"))
@@ -638,7 +708,9 @@ def pilot_profile(_binding):
 
 
 def ask_pilot(case, **changes):
-    from aios_renew.brain_provider import consult_advisory
+    # Retained TASK-417 contract regressions exercise only its historical path.
+    # Normal Brain consultation no longer goes through pilot admission.
+    from aios_renew.caa_integration import _consult_pilot
 
     kwargs = dict(flow=case.flow, packet=case.packet, subject=case.subject, candidate=case.candidate,
         expected_candidate_fingerprint=caa_reasoner.candidate_fingerprint(case.candidate),
@@ -646,7 +718,7 @@ def ask_pilot(case, **changes):
         provider=provider("mapping", calls=case.calls), profile_supplier=pilot_profile,
         reserve_call=lambda *_: True)
     kwargs.update(changes)
-    return consult_advisory(case.fixture.repo, **kwargs)
+    return _consult_pilot(case.fixture.repo, **kwargs)
 
 
 @pytest.mark.parametrize("flow", FLOWS)

@@ -34,6 +34,117 @@ DIRECT = {"proposal": "Investigate", "uncertainty": {"status": "NONE", "summary"
 TASK = {"task_id": "TASK-999", "revision": 1}
 
 
+def caa_attempt_inputs(tmp_path, registry, flow, aoa_package):
+    from aios_renew.brain_return_contract import select_return_contract
+    from tests.test_brain_audit import aoa_example, moa_candidate
+    from tests.test_caa_integration import Case
+
+    case = Case(tmp_path, flow)
+    body = case.packet.as_dict()
+    contract = select_return_contract(registry, case.packet)
+    sources, bindings, package = {}, {}, None
+    if flow == "TASK_AUTHORING":
+        candidate = deepcopy(case.fixture.task)
+        candidate["verification"]["policy"] = "minimum-sufficient-v1"
+        bindings = {k: candidate[k] for k in ("task_id", "revision")}
+    elif flow == "REPAIR_AUTHORING":
+        bindings = {"repair_id": "REPAIR-402-099"}
+        task = body["canonical_facts"]["task_contract"]
+        candidate = dict(**bindings, failed_run_id=body["subject"]["failed_run_id"],
+            failed_head_sha=body["subject"]["failed_head_sha"], task=body["canonical_facts"]["selected_task"],
+            action="CONTINUE_IMPLEMENTATION", modification_scope=task["scope"]["modify"],
+            instructions=["Brain independently chooses the existing lawful strategy."], constraints=task["constraints"]["hard"])
+    elif flow == "REMEDIATION_AUTHORING":
+        candidate = moa_candidate(body)
+    else:
+        _, context = aoa_example()
+        context["provenance"].update(repository=body["canonical_facts"]["repository"],
+            main_sha=body["canonical_facts"]["main_sha"], work_context_fingerprint=body["work_context_fingerprint"])
+        sources = dict(architecture_source_context=context)
+        candidate, package = {}, aoa_package
+    policy = task408_policy(body)
+    def authenticate(selection, _phase):
+        return (selection["policy"] == policy and selection["packet_fingerprint"] == body["packet_fingerprint"]
+                and selection["subject_fingerprint"] == digest(body["subject"]))
+    return case, contract, bindings, package, sources, candidate, policy, authenticate
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "TASK_AUTHORING", "REPAIR_AUTHORING", "REMEDIATION_AUTHORING"))
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("outcome", ("ADVICE", "NO_MATERIAL_ADVICE"))
+def test_ordinary_attempt_automatically_consults_before_decision_in_all_four_flows(
+        tmp_path, registry, aoa_package, monkeypatch, flow, kind, outcome):
+    from aios_renew import brain_context, caa_integration
+    from tests.test_caa_integration import provider as caa_provider, response as caa_response
+
+    case, contract, bindings, package, sources, candidate, policy, authenticate = caa_attempt_inputs(
+        tmp_path, registry, flow, aoa_package)
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("ordinary attempt used retired pilot admission")
+    monkeypatch.setattr(brain_context, "canonical_caa_pilot_context", forbidden)
+    monkeypatch.setattr(caa_integration, "_consult_pilot", forbidden)
+    calls, advisories = [], []
+    def callback(request):
+        calls.append(deepcopy(request))
+        if request["format"] == "AIOS_CAA_FLOW_REQUEST":
+            semantic = caa_response(request)
+            if outcome == "NO_MATERIAL_ADVICE":
+                semantic["consultation"].update(outcome=outcome, suggestions=[])
+            advisories.append(deepcopy(semantic))
+            return semantic
+        # Brain's existing transport has completed the advisory exchange before
+        # its semantic decision call, without an extension to either grammar.
+        assert advisories[0]["binding"]["packet_fingerprint"] == case.packet.packet_fingerprint
+        assert advisories[0]["consultation"]["outcome"] == outcome
+        assert "caa_advisory" not in request
+        # Stop at the actual decision transport boundary. This ordering test
+        # does not manufacture final strategy, strict return-family provenance
+        # or lifecycle authorization from an advisory-only CAA fixture.
+        raise RuntimeError("decision boundary observed")
+    provider = caa_provider(kind, callback)
+    # No enabled flag, Human per-consult choice, cohort, profile or reservation.
+    # These existing policy inputs exercise the supported trusted-caller path;
+    # the separate TASK-408 test also covers canonical first-party Git policy.
+    with pytest.raises(BrainAttemptError) as stopped:
+        attempt(provider, case.packet, contract, bindings, package, case.fresh,
+            repo=case.fixture.repo, advisory_candidate=case.candidate,
+            audit_policy=policy, selection_authenticator=authenticate, **sources)
+    assert stopped.value.reason_code == "PROVIDER_TRANSPORT_FAILURE"
+    assert stopped.value.invocation_count == 1
+    assert calls[0]["format"] == "AIOS_CAA_FLOW_REQUEST"
+    assert sum(r["format"] == "AIOS_CAA_FLOW_REQUEST" for r in calls) == 1
+    brain_calls = calls[1:]
+    expected = ["AOA_CONSTRUCT"] if flow == "ARCHITECTURE" else ["DIRECT"]
+    assert [r["request_mode"] for r in brain_calls] == expected
+    assert advisories[0]["consultation"]["outcome"] == outcome
+    if flow != "ARCHITECTURE":
+        assert brain_calls[0]["audit_profile_package"] is None
+
+
+def test_default_attempt_composes_advisory_draft_without_an_extra_caller_requirement(tmp_path, registry, aoa_package):
+    from tests.test_caa_integration import provider as caa_provider
+
+    case, contract, bindings, package, sources, candidate, policy, authenticate = caa_attempt_inputs(
+        tmp_path, registry, "TASK_AUTHORING", aoa_package)
+    calls = []
+    def callback(request):
+        calls.append(deepcopy(request))
+        if request["format"] == "AIOS_CAA_FLOW_REQUEST":
+            inner = request["consultation"]
+            return dict(format="AIOS_CAA_FLOW_RESPONSE", version=1, binding=request["binding"],
+                request_fingerprint=request["request_fingerprint"], consultation=dict(
+                    request_fingerprint=inner["request_fingerprint"], candidate_digest=inner["candidate_digest"],
+                    cut_digest=inner["source_cut"]["digest"], outcome="NO_MATERIAL_ADVICE", suggestions=[]))
+        return response(request, candidate)
+    result = attempt(caa_provider("mapping", callback), case.packet, contract, bindings,
+        fresh_packet_supplier=case.fresh, repo=case.fixture.repo,
+        audit_policy=policy, selection_authenticator=authenticate)
+    assert calls[-1]["request_mode"] == "DIRECT"
+    assert result.decision["semantic_value"] == candidate
+    assert result.advisory["outcome"] in {"NO_MATERIAL_ADVICE", "INSUFFICIENT_GROUNDED_EVIDENCE"}
+    assert result.advisory["retrieval"]["complete"] is True
+
+
 @pytest.fixture
 def profile_package(v1_only_package):
     # Exact V1 transport compatibility uses explicit isolated conformance.
@@ -1849,6 +1960,7 @@ def test_task408_ordinary_provider_direct_defaults_and_soft_architecture(registr
                          **(sources if flow == "ARCHITECTURE" else {}))
         modes = ["AOA_CONSTRUCT", "AOA_RECONCILE"] if flow == "ARCHITECTURE" else ["DIRECT"]
         assert [req["request_mode"] for req in calls] == modes
+        assert result.advisory is not None and result.advisory["authority"] == "NONE"
         assert revalidate_decision(result.decision, calls[-1]) == result.decision
         if flow != "ARCHITECTURE":
             assert result.decision["semantic_value"] == candidate

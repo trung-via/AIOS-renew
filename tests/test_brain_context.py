@@ -31,7 +31,9 @@ class PilotGit:
         self.fixture = f = EpisodeGit(tmp_path, task_id="TASK-417", run_id="RUN-417-001")
         self.repo, self.remote = f.repo, f.remote
         root = Path(__file__).resolve().parents[1]
-        current = yaml.safe_load((root / ".ai/roadmap-state.yaml").read_bytes())
+        # TASK-417's published policy is immutable history. Future planning is
+        # intentionally different and must not redefine this historical fixture.
+        current = yaml.safe_load(git(root, "show", "603d920ea74af486945cbc9dc4c4362b99b3c3c7:.ai/roadmap-state.yaml"))
         self.planning = {key: deepcopy(current[key]) for key in (
             CAA_PILOT_RECORD, "next_items", "effective_next_transitions")}
         self.planning["sequence"] = [deepcopy(current["sequence"][0])]

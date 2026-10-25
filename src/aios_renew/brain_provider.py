@@ -211,6 +211,25 @@ class JsonBrainProvider:
 class AttemptResult:
     decision: Mapping[str, Any]
     attributions: tuple[Mapping[str, str | None], ...]
+    advisory: Mapping[str, Any] | None = None
+
+
+def _advisory_draft(packet, *, task_source_context=None, architecture_source_context=None):
+    """Project the composed decision subject into the existing six-field draft.
+
+    This is source/draft composition, not a proposal from CAA. No advice, cause,
+    consumer declaration or missing obligation is synthesized here.
+    """
+    body = _packet(packet)
+    task = ((task_source_context or {}).get("task") or body["canonical_facts"].get("task_contract") or {})
+    architecture = architecture_source_context or {}
+    goal = task.get("goal") or architecture.get("objective") or body.get("human_input") or body["expected_return_shape"]
+    if type(goal) is not str:
+        goal = _json_bytes(goal).decode("utf-8")
+    return dict(goal=goal, invariants=deepcopy(task.get("constraints", {}).get("hard", [])),
+        acceptance=[entry["condition"] for entry in task.get("acceptance", [])],
+        scope=deepcopy(task.get("scope", dict(inspect=[], modify=[]))), consumers=[],
+        verification=deepcopy(task.get("verification", {}).get("required", [])))
 
 
 class BrainAttemptError(Exception):
@@ -237,7 +256,8 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             human_v1_deep_support: Mapping[str, Any] | None = None,
             human_audit_choice: Mapping[str, Any] | None = None,
             repo: str | Path | None = None,
-            human_choice_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None) -> AttemptResult:
+            human_choice_authenticator: Callable[[Mapping[str, Any], str], bool] | None = None,
+            advisory_candidate: Mapping[str, Any] | None = None) -> AttemptResult:
     """Invoke one normative procedure, or explicit isolated compatibility support.
 
     Canonical policy selects direct authoring, soft AOA, or a trusted Human's
@@ -316,6 +336,50 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
     if invalid_input:
         raise BrainAttemptError("PROTOCOL_INPUT_INVALID", phase, count)
 
+    advisory = None
+    if not conformance_only and flow in {"ARCHITECTURE", "TASK_AUTHORING", "REPAIR_AUTHORING", "REMEDIATION_AUTHORING"}:
+        from .caa_integration import IntegrationContextError, decision_subject
+        from .caa_reasoner import CandidateContextError, candidate_fingerprint
+        from .caa_experience import ExperienceError
+        try:
+            # Flow and canonical policy are already resolved, and the relevant
+            # subject/draft has been composed. No opt-in, pilot identity, profile
+            # supplier, charge-reservation callback or new provider is involved.
+            subject = decision_subject(packet)
+            draft = (deepcopy(dict(advisory_candidate)) if advisory_candidate is not None else
+                     _advisory_draft(packet, task_source_context=first_request.get("task_source_context", task_source_context),
+                                     architecture_source_context=first_request.get("architecture_source_context", architecture_source_context)))
+            advisory = consult_advisory(repo or Path.cwd(), flow=flow, packet=packet, subject=subject,
+                candidate=draft, expected_candidate_fingerprint=candidate_fingerprint(draft),
+                fresh_packet_supplier=fresh_packet_supplier, provider=provider).advisory
+        except IntegrationContextError as exc:
+            # Older direct-authoring integrations may not project a CAA subject.
+            # Lack of optional advice adds no new admission prerequisite. An
+            # actually supplied but invalid/stale subject still fails closed.
+            facts = _packet(packet)["canonical_facts"]
+            original, selected_task = facts.get("task_contract"), facts.get("selected_task")
+            missing_legacy_projection = (
+                str(exc) == "MANDATORY_CORRECTION_SUBJECT_MISSING" and facts.get("correction_subject") is None
+                or str(exc) == "MANDATORY_TASK_CONTRACT_MISSING" and type(original) is dict
+                and type(selected_task) is dict and original.get("task_id") == selected_task.get("id")
+                and original.get("revision") == selected_task.get("revision")
+                and not {"scope", "acceptance", "verification", "constraints"} <= set(original))
+            if not missing_legacy_projection:
+                raise BrainAttemptError("CAA_SOURCE_INVALID", "CAA_CONSULTATION", count) from None
+            advisory = dict(authority="NONE", outcome="UNAVAILABLE", reason=str(exc), consultation=None)
+        except CandidateContextError:
+            if advisory_candidate is not None:
+                raise BrainAttemptError("CAA_CANDIDATE_INVALID", "CAA_CONSULTATION", count) from None
+            # CAA's existing draft byte/list limits are not authoring limits.
+            advisory = dict(authority="NONE", outcome="UNAVAILABLE", reason="CAA_DRAFT_OVER_BUDGET", consultation=None)
+        except ExperienceError:
+            raise BrainAttemptError("CAA_SOURCE_INVALID", "CAA_CONSULTATION", count) from None
+        try:
+            if _packet(fresh_packet_supplier()) != _packet(packet):
+                raise ValueError
+        except Exception:
+            raise BrainAttemptError("STALE_BEFORE_DECISION", "FRESH_PACKET", count) from None
+
     def invoke(request: Mapping[str, Any], at_phase: str) -> tuple[Mapping[str, Any], Mapping[str, str | None]]:
         nonlocal count
         def identity_changed() -> bool:
@@ -328,6 +392,9 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             raise BrainAttemptError("PROVIDER_ATTRIBUTION_MISMATCH", at_phase, count)
         count += 1
         try:
+            # The same existing transport has already handled any eligible
+            # CAA-03 exchange. Keep the Brain request/response grammar exact;
+            # return bound advice separately for Brain's final disposition.
             result = provider.invoke(deepcopy(request))
         except ProviderAttributionMismatch:
             failed = "PROVIDER_ATTRIBUTION_MISMATCH"
@@ -373,7 +440,7 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
                     raise ValueError("changed direct authoring subject")
             except Exception:
                 raise BrainAttemptError("STALE_BEFORE_DIRECT_RETURN", "FRESH_PACKET", count) from None
-        return AttemptResult(first, (attribution1,))
+        return AttemptResult(first, (attribution1,), advisory)
     phase = "FRESH_PACKET"
     try:
         fresh = fresh_packet_supplier()
@@ -394,7 +461,7 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
             raise BrainAttemptError("FRESH_PACKET_INVALID", phase, count) from None
         if fresh_request["request_fingerprint"] != first_request["request_fingerprint"]:
             raise BrainAttemptError("STALE_BEFORE_ROA_RETURN", phase, count)
-        return AttemptResult(first, (attribution1,))
+        return AttemptResult(first, (attribution1,), advisory)
     if mode in {"MOA_CONSTRUCT", "TCA_CONSTRUCT", "AOA_CONSTRUCT", "V1_OPTION_CONSTRUCT"} or continuation:
         try:
             fresh_request = construct_request(fresh, first_request["return_contract_package"],
@@ -450,35 +517,27 @@ def attempt(provider: BrainProvider, packet: DecisionPacket,
                     "AOA_CONSTRUCT": "STALE_BEFORE_AOA_RETURN",
                     "V1_OPTION_CONSTRUCT": "STALE_BEFORE_V1_OPTION_RETURN"}.get(mode, "STALE_BEFORE_AUDIT_RETURN")
             raise BrainAttemptError(code, "FRESH_PACKET", count)
-    return AttemptResult(second, (attribution1, attribution2))
+    return AttemptResult(second, (attribution1, attribution2), advisory)
 
 
 def consult_advisory(repo: str | Path, *, flow: str, packet: DecisionPacket, subject: dict[str, Any],
                      candidate: dict[str, Any], expected_candidate_fingerprint: str,
                      fresh_packet_supplier: Callable[[], DecisionPacket], cut=None,
-                     enabled: bool = False, human_opt_out: bool = False,
+                     enabled: bool | None = None, human_opt_out: bool = False,
                      provider: MappingBrainProvider | JsonBrainProvider | None = None,
                      profile_supplier: Callable | None = None, reserve_call: Callable | None = None):
-    """Explicit supported Brain caller for the TASK-417 optional advisory pilot.
+    """Default CAA-03 caller, also invoked automatically by ordinary attempt().
 
-    Call after ordinary flow/subject composition and before Brain independently
-    finalizes its candidate. The fresh supplier must compose from the caller's
-    canonical sources, including original Human intent and correction lineage.
-    profile_supplier(binding) independently authenticates the already selected
-    lawful provider profile; reserve_call(profile, binding, charge) must atomically
-    authorize/enforce that exact per-call charge. An echo or model callback cannot
-    supply either authority. No configured profile means bounded unavailability.
-
-    This caller does not invoke attempt(), auditing, final authoring ingress or
-    any lifecycle operation. Ordinary attempts remain unchanged and opt-out is
-    explicit. Portable receipt dictionaries cannot be imported as observations.
+    The existing lawful Brain transport is reused through CAA-02/03 unchanged.
+    Legacy enabled/profile/reserve arguments are accepted for compatibility only
+    and impose no eligibility or provider gates. No pilot receipt is fabricated.
     """
-    from .caa_integration import _consult_pilot
+    from .caa_integration import PilotConsultation, consult_flow
 
-    return _consult_pilot(repo, flow=flow, packet=packet, subject=subject, candidate=candidate,
+    advisory = consult_flow(repo, flow=flow, packet=packet, subject=subject, candidate=candidate,
         expected_candidate_fingerprint=expected_candidate_fingerprint, fresh_packet_supplier=fresh_packet_supplier,
-        cut=cut, enabled=enabled, human_opt_out=human_opt_out, provider=provider,
-        profile_supplier=profile_supplier, reserve_call=reserve_call)
+        cut=cut, enabled=enabled, human_opt_out=human_opt_out, provider=provider)
+    return PilotConsultation(advisory)
 
 
 __all__ = ["BrainProvider", "ProviderInvocation", "AttemptResult", "BrainAttemptError",

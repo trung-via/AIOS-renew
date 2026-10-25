@@ -7,7 +7,7 @@ Portable dictionaries are output data, never authenticated source-cut inputs.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fnmatch import fnmatchcase
 import hashlib
 import json
@@ -35,7 +35,6 @@ from .task import validate_task
 from .terminal_attention import _load_yaml
 
 
-MAX_TASKS = MAX_EPISODES = 8
 MAX_REFS = 128
 MAX_DOCUMENT_BYTES = 262144
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
@@ -237,7 +236,7 @@ class _GitBudget:
         # No fetch, shell, external command, Runtime state or writable Git index.
         _require(bool(args) and args[0] in {
             "rev-parse", "symbolic-ref", "config", "remote", "ls-remote", "cat-file",
-            "ls-tree", "show", "rev-list", "diff-tree",
+            "ls-tree", "show", "rev-list", "diff-tree", "log",
         })
         env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0")
         limit = min(MAX_DOCUMENT_BYTES, MAX_SOURCE_BYTES - self.bytes)
@@ -308,9 +307,10 @@ def _patterns(task_ids: tuple[str, ...]) -> tuple[str, ...]:
                          "review-decision", "repair", "repair-supersession", "remediation")))
 
 
-def _refs(sources: GitSources, patterns: tuple[str, ...]) -> dict[str, str]:
+def _refs(sources: GitSources, patterns: tuple[str, ...], *, batched=False) -> dict[str, str]:
     values = sources.refs(*patterns)
-    _require(len(values) <= MAX_REFS, "LIMIT_EXHAUSTED")
+    if not batched:
+        _require(len(values) <= MAX_REFS, "LIMIT_EXHAUSTED")
     for ref, sha in values.items():
         _require(_SHA.fullmatch(sha) is not None and len(ref) <= 256
                  and any(fnmatchcase(ref, p) for p in patterns))
@@ -403,11 +403,17 @@ class ExperienceCut:
     _transport: tuple[str, str] = field(repr=False)
     _seal: object = field(repr=False, compare=False)
     _integrity: str = field(repr=False)
+    # Full-history retrieval may retain a canonical TASK whose path was later
+    # deleted. Its last authenticated main-ancestry blob is still history.
+    task_sources: tuple[tuple[str, str], ...] = ()
 
     def _material(self):
-        return dict(main_sha=self.main_sha, as_of_sha=self.as_of_sha, task_ids=self.task_ids,
+        material = dict(main_sha=self.main_sha, as_of_sha=self.as_of_sha, task_ids=self.task_ids,
                     run_ids=self.run_ids, task_only=self.task_only, refs=self.refs,
                     repository_id=_digest(self._transport[1]))
+        if self.task_sources:
+            material["task_sources"] = self.task_sources
+        return material
 
     def as_dict(self):
         _require(self._seal is _SEAL and _digest(self._material()) == self._integrity, "CUT_INVALID")
@@ -418,14 +424,14 @@ class ExperienceCut:
 
 def _selection(task_ids, task_range, run_ids):
     _require(isinstance(task_ids, (tuple, list)) and isinstance(run_ids, (tuple, list)), "SELECTION_INVALID")
-    _require(len(task_ids) <= MAX_TASKS and len(run_ids) <= MAX_EPISODES, "LIMIT_EXHAUSTED")
+    _require(len(task_ids) <= MAX_NODES and len(run_ids) <= MAX_NODES, "LIMIT_EXHAUSTED")
     if task_range is not None:
         _require(not task_ids and isinstance(task_range, (tuple, list)) and len(task_range) == 2,
                  "SELECTION_INVALID")
         start, end = task_range
         _require(type(start) is int and type(end) is int and 0 <= start <= end <= 99999999,
                  "SELECTION_INVALID")
-        _require(end - start < MAX_TASKS, "LIMIT_EXHAUSTED")
+        _require(end - start < MAX_NODES, "LIMIT_EXHAUSTED")
         task_ids = tuple(f"TASK-{n}" for n in range(start, end + 1))
     _require(bool(task_ids) and all(isinstance(t, str) and _TASK.fullmatch(t) for t in task_ids),
              "SELECTION_INVALID")
@@ -495,8 +501,187 @@ def _episode_selections(tasks, runs, pins, task_only):
             selections.append((task_id, None))
         else:
             selections.extend((task_id, run) for run in selected)
-    _require(len(selections) <= MAX_EPISODES, "LIMIT_EXHAUSTED")
     return selections
+
+
+def _sealed_cut(cut, **changes):
+    cut = replace(cut, **changes, _integrity="")
+    return replace(cut, _integrity=_digest(cut._material()))
+
+
+def _history_refs(root, transport, tasks):
+    """Read a TASK's metadata page; never cap the searchable corpus."""
+    git = _GitBudget()
+    return _refs(GitSources(root, git, transport[0]), _patterns(tasks), batched=True)
+
+
+def capture_available_history(repo: str | Path, *, expected_main_sha: str) -> tuple[ExperienceCut, ...]:
+    """Capture the full canonical corpus without exporting private read errors."""
+    try:
+        return _capture_available_history(repo, expected_main_sha=expected_main_sha)
+    except ExperienceError:
+        raise
+    except Exception:
+        raise ExperienceError("SOURCE_UNAVAILABLE_OR_INVALID") from None
+
+
+def _capture_available_history(repo: str | Path, *, expected_main_sha: str) -> tuple[ExperienceCut, ...]:
+    """Capture all available canonical TASK revisions and their engineering refs.
+
+    Read canonical main's path history in pages, not a latest-N TASK window.
+    Each TASK and each RUN will subsequently use the existing bounded validator.
+    No raw source text, mutable index, fetch, or inferred past ref cut is created.
+    A historical revision-only view has no later terminal facts. Full RUN views
+    use refs observed now and retain each RUN's own immutable TASK revision.
+    """
+    _require(type(expected_main_sha) is str and _SHA.fullmatch(expected_main_sha) is not None,
+             "SELECTION_INVALID")
+    root, git = Path(repo).resolve(), _GitBudget()
+    transport = _transport(root, git)
+    live = GitSources(root, git, transport[0])
+    _require(_refs(live, (_MAIN,)).get(_MAIN) == expected_main_sha, "MAIN_MOVED")
+    git(root, "cat-file", "-e", expected_main_sha + "^{commit}")
+    revisions, latest, seen = [], {}, set()
+    offset = 0
+    while True:
+        git = _GitBudget()
+        # --full-history includes canonical merged ancestry. No branch outside
+        # canonical main is searched for TASK identities or revision authority.
+        raw = git(root, "log", "--full-history", "--topo-order", "--format=%H", "--name-only", "--no-renames",
+                  "--max-count=64", f"--skip={offset}", expected_main_sha, "--", ".ai/tasks/")
+        if not raw:
+            break
+        commits, sha = 0, None
+        for line in raw.splitlines():
+            if _SHA.fullmatch(line):
+                sha = line
+                commits += 1
+                continue
+            match = re.fullmatch(r"\.ai/tasks/(TASK-[A-Za-z0-9_-]{1,90})\.yaml", line)
+            if match is None:
+                continue
+            _require(sha is not None, "TASK_SOURCE_MISMATCH")
+            task_id = match[1]
+            # A deletion is history, not a fabricated TASK document. Find the
+            # last existing canonical revision in the same authenticated DAG.
+            sources = _Sources(root, _GitBudget(), transport[0], {_MAIN: expected_main_sha})
+            if sources._entry(sha, line) is None:
+                continue
+            task = validate_task(sources.document(sha, line))
+            _require(task.task_id == task_id, "TASK_SOURCE_MISMATCH")
+            _require(sources.included(sha, expected_main_sha), "AS_OF_SOURCE_UNPROVEN")
+            blob = sources._entry(sha, line)
+            key = task_id, task.revision, blob
+            if key not in seen:
+                seen.add(key)
+                revisions.append((task_id, task.revision, sha, blob))
+            latest.setdefault(task_id, sha)
+        offset += commits
+        if commits < 64:
+            break
+    cuts = []
+    for task_id, sha in sorted(latest.items()):
+        # Prefer the current canonical root when it exists; a later deletion
+        # does not erase the authenticated original engineering lineage.
+        sources = _Sources(root, _GitBudget(), transport[0], {_MAIN: expected_main_sha})
+        name = f".ai/tasks/{task_id}.yaml"
+        if sources._entry(expected_main_sha, name) is not None:
+            sha = expected_main_sha
+        pins = _history_refs(root, transport, (task_id,))
+        _require(pins.get(_MAIN) == expected_main_sha, "MAIN_MOVED")
+        cut = ExperienceCut(expected_main_sha, expected_main_sha, (task_id,), (), False,
+                            tuple(sorted(pins.items())), transport, _SEAL, "", ((task_id, sha),))
+        cuts.append(_sealed_cut(cut))
+    for task_id, _, sha, _ in revisions:
+        cut = ExperienceCut(expected_main_sha, sha, (task_id,), (), True,
+                            ((_MAIN, expected_main_sha),), transport, _SEAL, "")
+        cuts.append(_sealed_cut(cut))
+    reauthenticate_history(repo, tuple(cuts), expected_main_sha=expected_main_sha)
+    return tuple(cuts)
+
+
+def reauthenticate_history(repo, cuts, *, expected_main_sha):
+    """Barrier for the whole searched snapshot, including unselected evidence."""
+    root = Path(repo).resolve()
+    git = _GitBudget()
+    transport = _transport(root, git)
+    live = GitSources(root, git, transport[0])
+    _require(_refs(live, (_MAIN,)).get(_MAIN) == expected_main_sha, "MAIN_MOVED")
+    for cut in cuts:
+        cut.as_dict()
+        _require(transport == cut._transport, "REPOSITORY_MISMATCH")
+        pins = ({_MAIN: expected_main_sha} if cut.task_only else _history_refs(root, transport, cut.task_ids))
+        _require(pins.get(_MAIN) == expected_main_sha, "MAIN_MOVED")
+        _require(tuple(sorted(pins.items())) == cut.refs, "SOURCE_MOVED")
+    git = _GitBudget()
+    _require(_transport(root, git) == transport and
+             _refs(GitSources(root, git, transport[0]), (_MAIN,)).get(_MAIN) == expected_main_sha, "SOURCE_MOVED")
+
+
+def iter_history_episodes(repo, cuts):
+    """Validate every episode/revision in finite reads, without a global ceiling."""
+    for cut in cuts:
+        cut.as_dict()
+        for task_id, run_id in _episode_selections(cut.task_ids, cut.run_ids, dict(cut.refs), cut.task_only):
+            part = _sealed_cut(cut, task_ids=(task_id,), run_ids=() if run_id is None else (run_id,))
+            if run_id is not None:
+                part = _episode_cut(repo, part, run_id)
+            yield part, reconstruct_episodes(repo, cut=part, include_semantics=True)
+
+
+def _episode_cut(repo, cut, run_id):
+    """Retain one RUN and its exact transitive correction sources for a read.
+
+    The full parent snapshot is rechecked separately, including every unselected
+    RUN. Paging must not make a long-lived TASK's ref manifest a context ceiling.
+    """
+    all_pins, pins, pending, seen = dict(cut.refs), {_MAIN: cut.main_sha}, [run_id], set()
+    while pending:
+        current = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        for ref, sha in all_pins.items():
+            if ref == _MAIN:
+                continue
+            namespace, name = ref.removeprefix(_ROOT).split("/", 1)
+            if (name == current or namespace == "repair-supersession" and name.startswith(current + "/")
+                    or namespace == "remediation" and name.startswith(current + "-")):
+                pins[ref] = sha
+        sources = _Sources(Path(repo).resolve(), _GitBudget(), cut._transport[0], all_pins)
+        for namespace in ("artifacts", "failure-artifacts"):
+            sha = all_pins.get(_ROOT + namespace + "/" + current)
+            if sha is None:
+                continue
+            run = sources.document(sha, ".ai/transport/run.json")
+            repair = sources.optional_document(sha, ".ai/transport/repair.json")
+            if repair is not None:
+                prior = repair.get("failed_run_id")
+                _require(type(prior) is str and _RUN.fullmatch(prior) is not None)
+                pending.append(prior)
+            if run.get("kind") == "REMEDIATION":
+                review_id = run["execution"]["review_id"]
+                _require(type(review_id) is str and review_id.startswith("REVIEW-"))
+                pending.append("RUN-" + review_id.removeprefix("REVIEW-"))
+    return _sealed_cut(cut, refs=tuple(sorted(pins.items())))
+
+
+def combine_history_cuts(cuts):
+    """Issue a concise evidence selection from already captured, sealed sources."""
+    _require(bool(cuts), "SELECTION_INVALID")
+    first = cuts[0]
+    for cut in cuts:
+        cut.as_dict()
+        _require((cut.main_sha, cut.as_of_sha, cut.task_only, cut._transport) ==
+                 (first.main_sha, first.as_of_sha, first.task_only, first._transport), "CUT_INVALID")
+    pins = {}
+    for cut in cuts:
+        for ref, sha in cut.refs:
+            _require(ref not in pins or pins[ref] == sha, "SOURCE_MOVED")
+            pins[ref] = sha
+    return _sealed_cut(first, task_ids=tuple(sorted({t for c in cuts for t in c.task_ids})),
+        run_ids=tuple(sorted({r for c in cuts for r in c.run_ids})), refs=tuple(sorted(pins.items())),
+        task_sources=tuple(sorted({entry for c in cuts for entry in c.task_sources})))
 
 
 def _observed(facts, name, value, *sources):
@@ -614,11 +799,11 @@ def _execution_correction_facts(sources, sha, ref, run_document, run, task, fact
     return False
 
 
-def _episode(sources, cut, task_id, run_id, canonical_task, include_semantics=False):
+def _episode(sources, cut, task_id, run_id, canonical_task, include_semantics=False, task_sha=None):
     episode = dict(selection=dict(task_id=task_id, run_id=run_id), observed=[], inferred=[], unknown=[])
     if include_semantics:
         episode["semantic_context"] = _task_semantics(canonical_task, sources.binding(
-            cut.as_of_sha, f".ai/tasks/{task_id}.yaml", ref=_MAIN), cut)
+            task_sha or cut.as_of_sha, f".ai/tasks/{task_id}.yaml", ref=_MAIN), cut)
     facts = episode["observed"]
     _unknown(episode, "technical_root_cause", "NO_SEMANTIC_CAUSE_INFERENCE")
     if run_id is None:
@@ -783,7 +968,7 @@ def reconstruct_episodes(repo: str | Path, *, cut: ExperienceCut,
         _require(_transport(root, git) == cut._transport, "REPOSITORY_MISMATCH")
         live = GitSources(root, git, cut._transport[0])
         patterns = tuple(sorted(set(dict(cut.refs)) | {_MAIN}))
-        before = _refs(live, patterns)
+        before = _refs(live, patterns, batched=bool(cut.task_sources))
         _require(all(before.get(ref) == sha for ref, sha in cut.refs if ref != _MAIN), "SOURCE_MOVED")
         _require(_MAIN in before, "MAIN_UNAVAILABLE")
         sources = _Sources(root, git, cut._transport[0], dict(cut.refs))
@@ -792,20 +977,24 @@ def reconstruct_episodes(repo: str | Path, *, cut: ExperienceCut,
         tasks, task_facts = {}, []
         for task_id in cut.task_ids:
             name = f".ai/tasks/{task_id}.yaml"
-            task = validate_task(sources.document(cut.as_of_sha, name))
+            task_sha = dict(cut.task_sources).get(task_id, cut.as_of_sha)
+            _require(sources.included(task_sha, cut.as_of_sha), "AS_OF_SOURCE_UNPROVEN")
+            task = validate_task(sources.document(task_sha, name))
             _require(task.task_id == task_id, "TASK_SOURCE_MISMATCH")
             tasks[task_id] = task
             facts = []
-            source = sources.binding(cut.as_of_sha, name, ref=_MAIN)
+            source = sources.binding(task_sha, name, ref=_MAIN)
             _observed(facts, "task", dict(id=task.task_id, revision=task.revision), source)
             _observed(facts, "acceptance_ids", _ids([a.id for a in task.acceptance], r"AC[A-Za-z0-9_-]{1,64}"), source)
             item = dict(task_id=task_id, observed=facts, inferred=[], unknown=[])
             if include_semantics:
                 item["semantic_context"] = _task_semantics(task, source, cut)
             task_facts.append(item)
-        episodes = [_episode(sources, cut, task_id, run_id, tasks[task_id], include_semantics)
+        episodes = [_episode(sources, cut, task_id, run_id, tasks[task_id], include_semantics,
+                             dict(cut.task_sources).get(task_id))
                     for task_id, run_id in _episode_selections(cut.task_ids, cut.run_ids, sources.pins, cut.task_only)]
-        _require(_refs(live, patterns) == before and _transport(root, git) == cut._transport, "SOURCE_MOVED")
+        _require(_refs(live, patterns, batched=bool(cut.task_sources)) == before
+                 and _transport(root, git) == cut._transport, "SOURCE_MOVED")
         body = dict(format="AIOS_CAA_EXPERIENCE", version=1, source_cut=portable_cut,
                     tasks=task_facts, episodes=episodes, authority="NONE", source_text_is_instructions=False,
                     run_created=False, executor_invoked=False, verification_invoked=False, state_mutated=False)

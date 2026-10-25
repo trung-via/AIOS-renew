@@ -1,5 +1,25 @@
 # TASK-417 r1: ten-TASK optional CAA advisory pilot
 
+## Historical contract; future access superseded by TASK-419 r2
+
+Human's 2026-10-25 narrow correction, recorded in
+`human_caa_default_access_full_history_20261025`, replaces this document's future
+access/default rules. Normal CAA-03 consultation now starts automatically in the
+supported first-party Python Brain `attempt()` for all four flows. Neither the
+ten-TASK cohort, first-authoring age, canonical TASK identity, per-consult opt-in,
+nor the separate TASK-417 profile/reservation gates controls normal access.
+Full authenticated history is searched in bounded reads, without an eight-TASK
+or eight-episode search window. See the current
+[CAA-03 contract](AIOS-CAA-03-INTEGRATION-PORTABILITY.md).
+
+Everything below describes the original TASK-417 r1 decision and implementation
+cut, retained as historical provenance. Its immutable TASK/RUN/review/publication
+and original planning record are unchanged. The private historical pilot reader
+and report do not govern normal consultation or manufacture new pilot receipts.
+TASK-419 r1 also remains exact history; its overprescribed advice requirements
+do not govern r2. No mandatory advice, synthetic proposal, provider selector,
+CAA-04 activation, CAA-05 selection or new lifecycle authority follows.
+
 The explicit Human decision of 2026-10-24 authorizes optional CAA-03 advice now,
 then exploratory observation of ten following distinct canonical TASK identities,
 before deciding about independent thresholds/holdout/shadow or CAA-05 research.
@@ -8,7 +28,7 @@ identity is `CAA-10-TASK-20261024-TASK-417-r1`. Source capture supplied main
 `5117cb2943e993132909dc1368f483e019674809`, including published TASK-416 and
 TASK-415. These supplied observations do not substitute for exact source readers.
 
-This is the sole new prospective selection. All original PTE, CAA and Auto-NEXT
+At that historical cut this was the sole new prospective selection. All original PTE, CAA and Auto-NEXT
 Human records remain unchanged. The former TASK-414-to-TASK-415 effective
 transition remains historical, under `historical_effective_next_transitions_task415`.
 PTE Information-Only v2 remains effective. TASK-417 does not rewrite TASK-415/416

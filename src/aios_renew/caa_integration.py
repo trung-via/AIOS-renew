@@ -1,4 +1,4 @@
-"""CAA-03: one opt-in, read-only binding around the existing CAA-02 consult.
+"""CAA-03: default read-only binding around the existing CAA-02 consult.
 
 The caller has already resolved its flow and authenticated its canonical subject.
 Its trusted fresh-packet supplier reuses those same source guards; it is never a
@@ -214,10 +214,77 @@ def _bridge(provider, binding):
     return cls(*configured, transport)
 
 
+def _search_history(repo, main, candidate):
+    """Search every authenticated episode, then fit evidence to CAA-02's budget.
+
+    Reuse CAA-02's existing lexical/structured ordering, without changing its
+    causal grammar, advice generation, validators, or single-call contract.
+    The remainder stays searchable, not hidden behind a latest-N window.
+    """
+    from .caa_experience import capture_available_history, iter_history_episodes, combine_history_cuts
+
+    cuts = capture_available_history(repo, expected_main_sha=main)
+    features = caa_reasoner._candidate_features(candidate, caa_reasoner.candidate_fingerprint(candidate))
+    ranked = []
+    for index, (part, view) in enumerate(iter_history_episodes(repo, cuts)):
+        catalog, history = caa_reasoner._history(view, features)
+        item = history[0]
+        ranked.append(((-item["lexical_score"], -item["structured_score"], f"E{index + 1}"), part,
+                       len(_encode(dict(citations=catalog, history=history)).encode("ascii"))))
+    ranked.sort(key=lambda entry: entry[0])
+    selected, size = [], 0
+    for _, part, weight in ranked:
+        if selected and (part.as_of_sha, part.task_only) != (selected[0].as_of_sha, selected[0].task_only):
+            continue
+        # Evidence is concise, while search reach has no TASK/episode count cap.
+        # Leave room for candidate features, pins and the unchanged CAA-02/03
+        # protocol. Oversize evidence is an explicit gap, never invented advice.
+        combined = combine_history_cuts((*selected, part))
+        pin_bytes = len(_encode(combined.as_dict()).encode("ascii"))
+        if size + weight + pin_bytes > 60000:
+            continue
+        selected.append(part)
+        size += weight
+    cut = combine_history_cuts(selected) if selected else None
+    return cut, cuts, dict(scope="ALL_AVAILABLE_AUTHENTICATED_CANONICAL_HISTORY", complete=True,
+        searched_episodes=len(ranked), selected_episodes=len(selected),
+        evidence_selection="EXISTING_CAA02_ORDER_WITHIN_REQUEST_BYTE_BUDGET",
+        omitted_from_advice=len(ranked) - len(selected), authority="NONE")
+
+
+def decision_subject(packet):
+    """Compose the existing CAA subject from the already compiled Brain flow."""
+    flow = packet.as_dict()["selected_flow"]
+    body = _body(packet, flow)
+    facts = body["canonical_facts"]
+    if flow == "ARCHITECTURE":
+        subject = dict(kind=flow, decision_fingerprint=body["packet_fingerprint"])
+    elif flow == "TASK_AUTHORING":
+        subject = dict(kind=flow, task=facts.get("selected_task"), decision_fingerprint=body["packet_fingerprint"])
+    else:
+        lineage = facts.get("correction_subject")
+        _require(type(lineage) is dict, "MANDATORY_CORRECTION_SUBJECT_MISSING")
+        subject = {k: lineage.get(k) for k in ("task", "artifacts_sha", "executor", "base_sha")}
+        subject["kind"] = flow
+        if flow == "REPAIR_AUTHORING":
+            subject.update(failed_run_id=lineage.get("failed_run_id"),
+                           failed_head_sha=lineage.get("failed_head_sha"), requested_action=None)
+        else:
+            subject.update({k: lineage.get(k) for k in (
+                "source_run_id", "review_id", "reviewed_sha", "review_decision_sha", "finding_id")})
+            canonical = body["subject"]
+            findings = [canonical] if canonical.get("kind") == "UNIQUE_FINDING" else canonical.get("findings", [])
+            matches = [f for f in findings if all(f.get(k) == subject[k] for k in (
+                "source_run_id", "review_id", "reviewed_sha", "finding_id"))]
+            _require(len(matches) == 1, "MANDATORY_CORRECTION_SUBJECT_MISSING")
+            subject["required_action"] = matches[0].get("action")
+    return _subject(body, subject)
+
+
 def consult_flow(repo: str | Path, *, flow: str, packet: DecisionPacket, subject: dict[str, Any],
                  candidate: dict[str, Any], expected_candidate_fingerprint: str,
                  fresh_packet_supplier: Callable[[], DecisionPacket], cut: ExperienceCut | None = None,
-                 enabled: bool = False, human_opt_out: bool = False,
+                 enabled: bool | None = None, human_opt_out: bool = False,
                  provider: MappingBrainProvider | JsonBrainProvider | None = None) -> dict[str, Any]:
     """Return optional advice for exactly one already-resolved Brain-owned flow.
 
@@ -225,11 +292,13 @@ def consult_flow(repo: str | Path, *, flow: str, packet: DecisionPacket, subject
     repo, including current Human choice and exact correction lineage. A packet
     digest or an exported cut is not authentication. The supplier must be bounded
     and read-only, just as in the existing Brain provider contract. No authoring
-    path requires this helper; the explicit TASK-417 Brain caller can opt in,
-    while final family validation/admission stays separate.
+    Normal Brain attempts call this automatically. ``enabled`` is accepted only
+    for source compatibility with CAA-03/04 callers; it is no longer an activation
+    or eligibility gate. Final family validation/admission stays separate.
     """
     _require(type(flow) is str and flow in FLOWS, "CALLER_FLOW_REQUIRED")
-    _require(type(enabled) is bool and type(human_opt_out) is bool, "CONSULTATION_CHOICE_INVALID")
+    _require((enabled is None or type(enabled) is bool) and type(human_opt_out) is bool,
+             "CONSULTATION_CHOICE_INVALID")
     body = _body(packet, flow)
     bound_subject = _subject(body, subject)
     fingerprint = caa_reasoner.candidate_fingerprint(candidate)
@@ -241,26 +310,33 @@ def consult_flow(repo: str | Path, *, flow: str, packet: DecisionPacket, subject
                    packet_fingerprint=body["packet_fingerprint"],
                    work_context_fingerprint=body["work_context_fingerprint"],
                    subject=bound_subject, candidate_digest=fingerprint, source_cut=None)
-    consultation = None
+    consultation, searched, retrieval = None, (), None
+    automatic_history = cut is None
     try:
-        if human_opt_out or not enabled:
-            outcome, reason = "NO_MATERIAL_ADVICE", "HUMAN_OPT_OUT" if human_opt_out else "CONSULTATION_DISABLED"
-        elif cut is None:
-            outcome, reason = "INSUFFICIENT_GROUNDED_EVIDENCE", "OPTIONAL_HISTORY_UNAVAILABLE"
+        if human_opt_out:
+            outcome, reason = "NO_MATERIAL_ADVICE", "HUMAN_OPT_OUT"
         else:
-            _require(type(cut) is ExperienceCut, "SEALED_EXPERIENCE_CUT_REQUIRED")
-            origin = cut.as_dict()
-            binding["source_cut"] = {k: origin[k] for k in ("digest", "repository_id", "main_sha", "as_of_sha", "mode")}
-            binding = _json(binding, MAX_BINDING_BYTES)
             try:
-                consultation = caa_reasoner.consult(repo, cut=cut, candidate=candidate,
-                    expected_candidate_fingerprint=fingerprint, mode="B1", provider=_bridge(provider, binding))
-                outcome, reason = consultation["outcome"], consultation["reason"]
+                if cut is None:
+                    cut, searched, retrieval = _search_history(repo, body["canonical_facts"]["main_sha"], candidate)
+                if cut is None:
+                    outcome, reason = "INSUFFICIENT_GROUNDED_EVIDENCE", "OPTIONAL_HISTORY_UNAVAILABLE"
+                else:
+                    _require(type(cut) is ExperienceCut, "SEALED_EXPERIENCE_CUT_REQUIRED")
+                    origin = cut.as_dict()
+                    binding["source_cut"] = {k: origin[k] for k in ("digest", "repository_id", "main_sha", "as_of_sha", "mode")}
+                    binding = _json(binding, MAX_BINDING_BYTES)
+                    consultation = caa_reasoner.consult(repo, cut=cut, candidate=candidate,
+                        expected_candidate_fingerprint=fingerprint, mode="B1", provider=_bridge(provider, binding))
+                    outcome, reason = consultation["outcome"], consultation["reason"]
             except ExperienceError as exc:
                 # Optional history objects/budgets are not authoring authority.
                 # Ambiguous/invalid identity errors still propagate. The final
                 # mandatory source guard runs independently in either case.
-                if str(exc) not in {"SOURCE_UNAVAILABLE", "LIMIT_EXHAUSTED"}:
+                optional_missing = {"SOURCE_UNAVAILABLE", "LIMIT_EXHAUSTED"}
+                if automatic_history:
+                    optional_missing.add("CANONICAL_TRANSPORT_UNAVAILABLE")
+                if str(exc) not in optional_missing:
                     raise
                 outcome, reason = "UNAVAILABLE", "OPTIONAL_HISTORY_UNAVAILABLE"
     finally:
@@ -270,12 +346,17 @@ def consult_flow(repo: str | Path, *, flow: str, packet: DecisionPacket, subject
         _require(_body(packet, flow) == body and _subject(body, subject) == bound_subject,
                  "CALLER_CONTEXT_CHANGED")
         _require(caa_reasoner.candidate_fingerprint(candidate) == fingerprint, "CANDIDATE_SUBSTITUTED")
+        if searched:
+            from .caa_experience import reauthenticate_history
+            reauthenticate_history(repo, searched, expected_main_sha=body["canonical_facts"]["main_sha"])
     result = dict(format="AIOS_CAA_FLOW_ADVISORY", version=1, authority="NONE", binding=binding,
         binding_fingerprint=_digest(binding), outcome=outcome, reason=reason, consultation=consultation,
         source_validity="RECHECKED_BY_CALLER_CANONICAL_GUARD", authoring_policy="UNCHANGED",
         brain_final_semantic_judgment=True, normative_policy="UNKNOWN", technical_root_cause="UNKNOWN",
         source_text_is_instructions=False, run_created=False, executor_invoked=False,
         verification_invoked=False, state_mutated=False)
+    if retrieval is not None:
+        result["retrieval"] = retrieval
     try:
         return _json(result, MAX_OUTPUT_BYTES)
     except (ValueError, TypeError, RecursionError):
@@ -348,7 +429,8 @@ def _consult_pilot(repo, *, flow, packet, subject, candidate, expected_candidate
     _require(type(enabled) is bool and type(human_opt_out) is bool, "CONSULTATION_CHOICE_INVALID")
     # Reuse all mandatory subject/candidate/currentness guards even when advice
     # is unavailable. Disabled traffic reads no optional source or profile.
-    result = consult_flow(repo, **common, enabled=False, human_opt_out=human_opt_out)
+    result = consult_flow(repo, **common, human_opt_out=True)
+    result["reason"] = "HUMAN_OPT_OUT" if human_opt_out else "CONSULTATION_DISABLED"
     if not enabled or human_opt_out:
         return PilotConsultation(result)
     body = _body(packet, flow)

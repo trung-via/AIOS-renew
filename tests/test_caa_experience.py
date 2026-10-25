@@ -382,8 +382,7 @@ def test_private_failure_projection_cannot_leak_protected_summary(tmp_path):
 
 @pytest.mark.parametrize("kwargs", (
     dict(task_ids=()), dict(task_ids=("TASK-1",) * 2), dict(task_ids=("../private",)),
-    dict(task_range=(1, 9)), dict(task_range=(-1, 2)), dict(task_range=(True, 2)),
-    dict(task_ids=("TASK-1",), run_ids=tuple(f"RUN-1-{i:03}" for i in range(9))),
+    dict(task_range=(-1, 2)), dict(task_range=(True, 2)),
     dict(task_ids=("TASK-1",), run_ids=("RUN-2-001",)),
 ))
 def test_selection_bounds_precede_any_git_query(tmp_path, monkeypatch, kwargs):
@@ -446,15 +445,81 @@ def test_missing_local_object_does_not_fetch_retry_or_consult_runtime(tmp_path, 
     assert sum(args == ("cat-file", "-e", fixture.artifact_sha + "^{commit}") for args in calls) == 1
 
 
-def test_source_cut_ref_and_episode_count_limits_do_not_truncate_success(tmp_path, monkeypatch):
+def test_source_cut_ref_budget_remains_bounded_without_an_eight_episode_ceiling(tmp_path, monkeypatch):
     fixture = EpisodeGit(tmp_path).result()
     with monkeypatch.context() as scoped:
         scoped.setattr(caa, "MAX_REFS", 1)
         with pytest.raises(caa.ExperienceError, match="LIMIT_EXHAUSTED"):
             fixture.cut()
     pins = {f"refs/heads/aios/artifacts/RUN-402-{i:03}": "a" * 40 for i in range(9)}
-    with pytest.raises(caa.ExperienceError, match="LIMIT_EXHAUSTED"):
-        caa._episode_selections(("TASK-402",), (), pins, False)
+    assert len(caa._episode_selections(("TASK-402",), (), pins, False)) == 9
+
+
+def full_history_fixture(tmp_path):
+    """More than eight canonical identities and RUNs; real disposable Git pins."""
+    from tests.test_caa_reasoner import SOURCE_RELATIONS
+
+    fixture = EpisodeGit(tmp_path, task_id="TASK-990", run_id="RUN-990-001")
+    for number in range(1, 10):
+        fixture.run_id = f"RUN-990-{number:03}"
+        fixture.run = dict(fixture.run, run_id=fixture.run_id)
+        fixture.failure_shape("MISSING_ACCEPTANCE_CLAIMS")
+    semantic_task(fixture, revision=2, goal="Authenticated source identity is required.", hard=SOURCE_RELATIONS)
+    fixture.run_id = "RUN-990-013"
+    fixture.run = dict(fixture.run, run_id=fixture.run_id)
+    fixture.result().review().publish()
+    result_run = deepcopy(fixture.run)
+    result_sha, result_head = fixture.artifact_sha, fixture.candidate
+    paths = []
+    for number in range(200, 212):
+        task = deepcopy(fixture.task)
+        task.update(task_id=f"TASK-{number}", revision=1, goal="Store widget values.")
+        task["constraints"]["hard"] = []
+        path = fixture.repo / f".ai/tasks/{task['task_id']}.yaml"
+        path.write_text(yaml.safe_dump(task), encoding="utf-8")
+        paths.append(str(path.relative_to(fixture.repo)))
+    main = commit_fixture_state(fixture.repo, paths=paths, message="canonical unrelated history",
+                                user_name="Fixture", user_email="fixture@example.invalid")
+    git(fixture.repo, "push", "origin", main + ":refs/heads/main")
+    fixture.history_result_run, fixture.history_result_sha = result_run, result_sha
+    fixture.history_result_head = result_head
+    return fixture, main
+
+
+def test_full_history_finds_past_eight_tasks_and_runs_with_original_authenticated_lineage(tmp_path):
+    fixture, main = full_history_fixture(tmp_path)
+    cuts = caa.capture_available_history(fixture.repo, expected_main_sha=main)
+    episodes = [(part, view["episodes"][0]) for part, view in caa.iter_history_episodes(fixture.repo, cuts)]
+    assert len({cut.task_ids[0] for cut in cuts}) > 8
+    matches = [(part, episode) for part, episode in episodes
+               if episode["selection"]["run_id"] == "RUN-990-013"]
+    assert len(matches) == 1
+    part, episode = matches[0]
+    assert [e["selection"]["run_id"] for _, e in episodes].index("RUN-990-013") > 8
+    facts = {f["name"]: f for f in episode["observed"]}
+    assert facts["task"]["value"] == {"id": "TASK-990", "revision": 2}
+    assert facts["terminal"]["value"] == {"kind": "RESULT", "subject_sha": fixture.history_result_head}
+    assert facts["terminal"]["sources"][0]["commit_sha"] == fixture.history_result_sha
+    assert facts["publication"]["value"]["state"] == "MAIN_INCLUSION"
+    assert facts["review"]["value"]["verdict"] == "PASS"
+    assert episode["semantic_context"]["relations"]
+    assert part.as_of_sha == main
+    assert any(c.task_only and c.as_of_sha != main for c in cuts)
+    assert all(not any(f["name"] == "terminal" for e in view["episodes"] for f in e["observed"])
+               for c, view in caa.iter_history_episodes(fixture.repo, cuts) if c.task_only)
+    caa.reauthenticate_history(fixture.repo, cuts, expected_main_sha=main)
+
+
+def test_full_history_snapshot_does_not_gain_future_refs_and_rechecks_unselected_pins(tmp_path):
+    fixture, main = full_history_fixture(tmp_path)
+    cuts = caa.capture_available_history(fixture.repo, expected_main_sha=main)
+    fixture.run_id = "RUN-990-099"
+    fixture.run = dict(fixture.run, run_id=fixture.run_id)
+    fixture.failure_shape("UNRESOLVED_ITEMS")
+    assert all(e["selection"]["run_id"] != fixture.run_id
+               for _, view in caa.iter_history_episodes(fixture.repo, cuts) for e in view["episodes"])
+    with pytest.raises(caa.ExperienceError, match="SOURCE_MOVED"):
+        caa.reauthenticate_history(fixture.repo, cuts, expected_main_sha=main)
 
 
 def test_immutable_versioned_repair_authorizations_and_past_cut_are_distinct(tmp_path):

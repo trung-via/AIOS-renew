@@ -1,4 +1,12 @@
-# CAA-03: optional four-flow integration and portability
+# CAA-03: four-flow advisory integration and portability
+
+TASK-419 r2 records Human's narrow 2026-10-25 replacement of TASK-417's future
+access/default rules. CAA now starts by default in the supported first-party
+Python `brain_provider.attempt()` for ARCHITECTURE, TASK_AUTHORING,
+REPAIR_AUTHORING and REMEDIATION_AUTHORING, after canonical policy/flow and
+subject/draft composition and before Brain's semantic decision calls. This does
+not make CAA an audit, authoring admission requirement, or lifecycle authority.
+TASK-417, TASK-419 r1 and all original engineering lineage remain immutable.
 
 Human on 2026-10-24 selected option B: one minimal optional advisor for the
 existing Brain-owned ARCHITECTURE, TASK_AUTHORING, REPAIR_AUTHORING and
@@ -25,7 +33,7 @@ technical root cause remains UNKNOWN.
 ```python
 consult_flow(
     repo, *, flow, packet, subject, candidate, expected_candidate_fingerprint,
-    fresh_packet_supplier, cut=None, enabled=False, human_opt_out=False,
+    fresh_packet_supplier, cut=None, human_opt_out=False,
     provider=None,
 )
 ```
@@ -35,8 +43,32 @@ consult_flow(
 tokens, supplied by the caller after the existing Flow Resolver and Flow Card
 have established its reasoning contract. The wrapper never invokes a resolver,
 guesses a flow, creates a Flow Card, selects a provider or calls an authoring
-ingress. Ordinary flows have no CAA hook or changed default. They can continue
-to author directly without calling this helper at all.
+ingress. Ordinary first-party Brain attempts call this boundary automatically.
+`brain_provider.consult_advisory` also exposes it directly, returning the existing
+consultation container without manufacturing a historical pilot observation.
+Legacy `enabled`, `profile_supplier` and `reserve_call` arguments are accepted
+for source compatibility only; they no longer gate normal consultation.
+
+The caller can supply the exact existing six-field `advisory_candidate` to
+`attempt()`. Otherwise the boundary composes that draft projection from the
+already authenticated TASK contract/source context or Architecture objective and
+Human request. It adds no advice, causal declaration or missing requirement.
+An absent or over-budget optional draft cannot become an authoring gate.
+For an old host packet lacking a CAA correction projection, the attempt reports
+unavailable advice; supplied incorrect/stale subjects still fail closed.
+
+The existing selected Brain transport handles the unchanged CAA-03 exchange
+before the unchanged Brain semantic calls. No request field, response grammar,
+model prompt, audit selection or stage lineage is added or rewritten.
+`AttemptResult.advisory` exposes the bound advisory separately from the family
+candidate for Brain's final accept/adapt/reject disposition. A transport may use
+its established conversation resources; this implementation makes no claim that
+a stateless remote model or unrelated host automatically retains that exchange.
+Empty/unavailable advice permits the existing authoring path to continue.
+
+Only this Python invocation path is integrated. Repository policy text cannot
+make an unrelated ChatGPT, remote chat or external host session execute Python;
+automatic operation at those host boundaries remains an evidence gap.
 
 `packet` is the existing compiled `DecisionPacket` for the exact caller-owned
 subject. Its integrity is checked by the existing Brain packet validator.
@@ -64,7 +96,7 @@ bounded source composition; arbitrary executable callbacks are not sandboxed.
 goal, invariants, acceptance, scope (`inspect`/`modify`), consumers and
 verification. `caa_reasoner.candidate_fingerprint(candidate)` binds every field,
 including excluded prose. It grants no source or authoring authority. Changed
-drafts require a new explicit consultation. Brain independently constructs and
+drafts require a new consultation. Brain independently constructs and
 revalidates the final TASK/REPAIR/REMEDIATION family candidate using its existing
 validators and direct ingress; no advisory field is such a candidate or token.
 
@@ -152,8 +184,8 @@ context. Supplied digests are bindings, not proof that model assertions are fact
 
 | Condition | Result | Effect on existing authoring |
 | --- | --- | --- |
-| `enabled=False` (default), or `human_opt_out=True` | NO_MATERIAL_ADVICE; disabled/opt-out reason, no cut read or provider call | Direct authoring and optional audit policy remain unchanged. |
-| No optional cut (`cut=None`), or no grounded history | INSUFFICIENT_GROUNDED_EVIDENCE, no provider call | No replacement audit or history gate. |
+| `human_opt_out=True` | NO_MATERIAL_ADVICE; opt-out reason, no cut read or provider call | Direct authoring and optional audit policy remain unchanged. |
+| `cut=None` | Search full available authenticated history; no grounded evidence yields INSUFFICIENT_GROUNDED_EVIDENCE | No replacement audit or history gate. |
 | Optional history objects unavailable or existing reader budget exhausted | UNAVAILABLE, no advice | Mandatory current subject guard still runs independently; no authoring gate or history retry. |
 | Valid no-advice response | NO_MATERIAL_ADVICE, empty recommendations | Brain can continue directly. |
 | Absent/busy provider, transport error or bounded timeout | UNAVAILABLE | No retry, mutation or mandatory consultation. |
@@ -173,7 +205,7 @@ verification flags. It is advice only, never a verdict on lawful final admission
 | Inner response / recommendations | Existing CAA-02 16 KiB / 0-3 |
 | Native adapter response | Existing 768 KiB, independently checked |
 | Provider wait | Existing CAA-02 10 seconds; at most one outstanding selected call, including a timed-out call |
-| Source reads | Existing CAA-01 bounds and CAA-02 initial read plus at most one reauthentication; no new scan or fetch |
+| Source reads | CAA-01 validators and per-read bounds; full history searched in batches; CAA-02 selected-cut read plus at most one reauthentication; no fetch |
 | Wrapped output | 112 KiB, depth 20; output excess becomes finite UNAVAILABLE without advice |
 
 Mapping and JSON fixtures are deterministic simulations, not live GPT, Claude or
@@ -187,3 +219,30 @@ a separate CAA-03 fixture checks the new current selection and six-file delta.
 No test is skipped, weakened, marked xfail or given fabricated historical state.
 Runtime alone runs TASK-412's canonical minimum-sufficient-v1 verification and
 constructs EVIDENCE. Independent Reviewer and Publisher retain their own roles.
+
+## Default history reach (TASK-419 r2)
+
+Without an explicit historical/evaluation cut, the ordinary consult pages all
+available authenticated canonical main TASK/revision history and each TASK's
+RUN, terminal, correction, independent review and publication sources. Deleted
+TASK roots retain their original authenticated main-ancestry source. Each RUN
+uses its own immutable revision; historical TASK-only views gain no later facts.
+No TASK number, first-authoring date or ten-TASK cohort controls this search.
+No eight-TASK/episode ceiling limits the corpus. Per-document/read resource and
+privacy bounds remain effective; missing/unavailable objects do not cause a
+source-inventing fallback or a successful partial-search assertion.
+
+CAA-02's existing lexical/structured evidence ordering is reused to choose a
+concise request only after every episode has been searched. The advisory reports
+searched, selected and omitted counts. The entire searched snapshot is checked
+again after consultation, including unselected pins. There is no independent
+mutable history database. Explicit sealed past/evaluation cuts keep their exact
+original semantics and are never silently enlarged.
+
+CAA-02 source, A1/B1 algorithms, prompts, 0-3 suggestion grammar, evidence and
+causal validators, uncertainty, no-material-advice and abstention behavior remain
+unchanged. Its single optional B1 provider call uses the existing lawful Brain
+transport; there is no separate TASK-417 profile/charge reservation prerequisite,
+new provider selector, forced model call, obligatory hypothesis or promise of
+advice. Independent CAA-04 source/plan/privacy/provider/spending/holdout gates are
+unchanged. TASK-408 Human-on-demand TCA/ROA/MOA and soft AOA policy are unchanged.
