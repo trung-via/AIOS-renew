@@ -1,0 +1,110 @@
+task_id: TASK-428
+revision: 1
+goal: Fix the diagnosed STDOUT_QUEUE_FULL failure in the original single-process Codex
+  live transport. Preserve a finite lossless FIFO event channel under burst outputDelta
+  traffic so temporary queue saturation does not falsely terminate a live original
+  session, while keeping existing source/identity/lease/protocol/transport STOP guards.
+problem: On main 096522f1129c22ab95645db4b4d74370e2a1429a, codex_live_transport.py
+  uses queue.Queue(maxsize=512) with put_nowait(_decode(raw)); queue.Full is swallowed
+  by except Exception which marks _broken and assert_live emits CODEX_LIVE_STOP_ORIGINAL_PROCESS_CONNECTION_SESSION_LOST.
+  Human-approved noncanonical V5 diagnostic replay of real TASK-427 r2 prompt and
+  selected gpt-6.1-sol max on disposable clone recorded first_break=STDOUT_QUEUE_FULL
+  at 25.504s, max_queue_depth=512, 710 item/commandExecution/outputDelta events; process
+  remained running, original pid/owner/session/profile/binary matched and all three
+  pipes remained open. This establishes the immediate V5 failure cause, strongly implicating
+  the corresponding public STOP in RUN-427-001 and prior RUN-426 failures without
+  proving those earlier runs have the same first cause. Canonical RUN-427-001 FAILURE
+  artifact is b379c26b7037045d22fb981c07119176e5552ac6.
+assumptions:
+- Human approved one small targeted TASK to resolve native transport saturation, not
+  an unbounded queue or Kernel trust bypass; selected Codex gpt-6.1-sol max remains
+  intended if independently admitted.
+- Canonical main and exact TASK must be reauthenticated at ingress and operation admission.
+  V5 is noncanonical diagnostic evidence, not Runtime verification/Reviewer PASS/publication.
+- codex_live_transport.py is inside KA01 protected DEFAULT_IMPLEMENTATION_PATHS. Kernel-upgrade
+  first-adoption bootstrap has no confirmed eligible published Runtime support; TASK-426
+  r2 was refused KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE. This TASK cannot
+  self-authorize a protected mutation or create a valid RUN merely by dispatch.
+- All TASK-426/427 historical RUN/FAILURE/REPAIR/RESULT and prospective TASK revisions
+  retain their exact meanings. No automatic roadmap movement.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - .ai/tasks/TASK-426.yaml
+  - .ai/tasks/TASK-427.yaml
+  - src/aios_renew/codex_live_transport.py
+  - src/aios_renew/codex_adapter.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/execution_profile.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_ka01_default_three_flow.py
+  - tests/test_codex_adapter.py
+  modify:
+  - src/aios_renew/codex_live_transport.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_codex_adapter.py
+non_goals:
+- No second Runtime, new executor, helper process, planner, lifecycle router, new
+  transport service or credential source; no bypass of original Kernel source admission.
+- No unbounded queue, dropping outputDelta or other events, reordered frames, arbitrary
+  global event cap inflation, reconnection or automatic retry, disabling deadlines,
+  process identity or authentication guards.
+- No raw stdout/stderr/prompt, local file paths or provider secrets in public diagnostics;
+  no changed TASK-426/427 history or unreviewed publication.
+- No full-suite pytest, pilot/shadow requirement, unnecessary additional activation
+  TASK or self-attesting Runtime verification.
+constraints:
+  hard:
+  - Use minimum sufficient finite backpressure on original _read_stdout channel under
+    temporary queue overflow. Retain bounded memory, FIFO order, original process
+    and pipe identity, account/profile, one live native owner, deadline and close
+    behavior.
+  - Maintain original JSONL decoding and per-frame/total-stream resource limits; EOF,
+    oversized/malformed input, unsupported server requests, wrong turn/owner/session,
+    binary change, stderr/stdin faults and actual process loss must still fail closed.
+  - Backpressure must release when consumer drains and must terminate under close,
+    original deadline or actual process failure; no stuck daemon reader, busy spin
+    or reentrant poll/Runtime verification on reader thread.
+  - Preserve correlated RPC/turn event delivery including thousands of small deltas
+    without silent dropping or raw output logging. If adding first-break diagnostics,
+    use only bounded safe reason categories, not secrets or a second lifecycle authority.
+  - Focused deterministic regressions must force >512 stdout events with intentionally
+    delayed consumer, exercise FIFO/liveness, interrupt/close, genuine reader/protocol
+    failure and no double turn/duplicate RUN. Optional installed-native regression
+    does not substitute for Runtime verification.
+  - Exactly one admitted Executor owns production implementation and final clean scoped
+    commit; Runtime independently runs only authored commands, Reviewer judges semantics
+    and Publisher governs eligible publication.
+acceptance:
+- id: AC1
+  condition: Original stdout transport handles a temporary >512-event burst via bounded
+    lossless FIFO/backpressure, without setting _broken merely because queue was temporarily
+    full or requiring an arbitrary capacity increase.
+- id: AC2
+  condition: After consumer resumes, a correlated original-session turn can progress
+    to completion; close/cancel, original deadline and actual process exit still terminate
+    or stop deterministically without indefinite reader hang.
+- id: AC3
+  condition: Protocol, profile, binary, process, owner, pipe, turn/session integrity
+    and malformed/EOF/oversize/unsupported notifications retain existing fail-closed
+    handling; no event is silently dropped or reordered.
+- id: AC4
+  condition: Focused tests reproduce old 512/512 saturation and validate burst processing,
+    FIFO and completion, consumer starvation/close, real broken-channel negatives
+    and no duplicate execution side effects.
+- id: AC5
+  condition: Final implementation and tests modify only the three permitted files,
+    retain PRIMARY/REPAIR/REMEDIATION native contracts and original Runtime verification/review/publication
+    boundaries, with a truthful clean Executor candidate.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_ka01_v13_intra_run_native.py
+  - python -m pytest -q tests/test_codex_adapter.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
