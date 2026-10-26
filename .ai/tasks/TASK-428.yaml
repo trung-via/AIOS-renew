@@ -1,46 +1,38 @@
 task_id: TASK-428
-revision: 3
-goal: Complete the single TASK-428 original KA01 native-session/observer reliability
-  correction while enabling a narrowly Human-authorized, original-source-authenticated
-  one-time reception of the exact pre-existing Codex candidate for the historical
-  TASK-428 r2 REPAIR, with Runtime-owned verification, independent review and Publisher
-  publication. The prospective r3 implementation must be produced and completed by
-  a duly admitted Executor under the existing original Runtime; it must not bootstrap
-  or certify itself.
-problem: Canonical TASK-428 r2 RUN-428-001 failed before an implementation candidate
-  was committed and REPAIR-428-001-001 authorizes CONTINUE_IMPLEMENTATION on the r2
-  lineage. Codex produced a complete external five-file draft at commit 2b3f1f9b29bd6abfcf1176eae95f9543a04b0d4f
-  (tree 2ca89156bad06cf4bf860db79f667afcb06d6559), based on f3e2980df8c1aa37f24f3355edfe68f8d657e26d.
-  External focused tests reported observer 19 PASS, adapter 84 PASS, native 87 PASS,
-  and one real installed-native PASS (181.37s) outside nested Codex sandbox; another
-  installed-native test failed inside nested sandbox with 'Could not find home directory'.
-  None is canonical Runtime proof. The current Runtime run_repair requires an admitted
-  native Executor and has no existing-candidate import for REPAIR; accept_candidate
-  applies only to reviewed REMEDIATION, not REPAIR. Blind repair wake risks repeating
-  pre-candidate native transport failure; a PowerShell cherry-pick/pytest script cannot
-  supply canonical RUN/EVIDENCE. Human on 2026-10-26 explicitly elects TASK-428 r3
-  scope expansion and previously approved only a one-time candidate-reception exception,
-  never a waiver of source or proof authority.
+revision: 4
+goal: Complete one prospective TASK-428 five-file correction of original KA01 Codex
+  native stdout FIFO/backpressure and nested original pytest observer/import isolation
+  under a genuinely admitted Executor and original Runtime-owned verification, followed
+  only by independent review and Publisher. Retire the incompatible r3 historical
+  REPAIR candidate-import objectives prospectively.
+problem: TASK-428 r2 produced an external Codex five-file candidate 2b3f1f9b29bd6abfcf1176eae95f9543a04b0d4f
+  (tree 2ca89156bad06cf4bf860db79f667afcb06d6559), not canonical PASS. R3 added historical
+  REPAIR existing-candidate intake and external r3 Codex staging explicitly rejected
+  even a valid intake request as REPAIR_CANDIDATE_KERNEL_AUTHORITY_CONFLICT. Workflow
+  40357499128 rejected r3 PRIMARY pre-RUN as KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE.
+  On 2026-10-27 Human host Python 3.14 verified all 15 original modules and then SHA-bound
+  _kernel_upgrade_source(root,root) returned PASS at main ec97b232f0204b48c8269aadba8ca50aedaf1643.
+  This is a read-only host preflight, not a workflow RUN or terminal evidence. Canonical
+  operator pre-sync can restart into python -m aios_renew.operator if TASK/source
+  changed; such a restart executes __main__ while admission insists on sys.modules['aios_renew.operator'],
+  a plausible but workflow-log-unconfirmed restart-only trigger. Human explicitly
+  approved simplifying TASK-428 to a new prospective five-file revision and removing
+  historical one-off intake semantics rather than repeating a known-blocked dispatch.
 assumptions:
-- Task r3 is a prospective task contract revision after TASK-428 r2, not an in-place
-  amendment of RUN-428-001 or REPAIR-428-001-001. Preserve all immutable r1/r2/RUN/FAILURE/REPAIR
-  records and TASK-429 history; new r3 implementation/execution owns its own exact
-  TASK revision and run lineage.
-- 'The existing draft PR #2671 / external/task-428-r2-codex-staged and five-file candidate
-  commit 2b3f1f9b29bd6abfcf1176eae95f9543a04b0d4f remain external unreviewed input,
-  not a canonical candidate, source of Runtime authority, reviewed PASS or authorization
-  to replace original running modules.'
-- Human authorized a strictly one-time optional acceptance path for the historical
-  r2 REPAIR, but its admissibility must be independently authenticated by original
-  Runtime after the new mechanism itself becomes lawfully reviewed and published.
-  Prior external Codex authorship is Human-attested only and cannot be retroactively
-  represented as ownership of an admitted RUN.
-- The r3 coding implementation itself must proceed by an already supported original-source-authorized
-  Executor run and can independently incorporate applicable five-file external work
-  in that implementation. If original-module bootstrap/admission is unavailable, report
-  a typed pre-RUN blocker; do not self-adopt the new candidate-import code.
-- Selected work remains the unique Human priority TASK-428 r3; no parallel TASK-429
-  or general Runtime acceptance framework is authorized.
+- 'Revision 4 is prospective TASK-428 intent, not an amendment to immutable r1/r2/r3,
+  RUN-428-001, FAILURE, REPAIR-428-001-001, TASK-429, or external draft PR #2671.
+  No r3 RUN was created by the failed PRIMARY dispatch.'
+- External Codex r2 and r3 source are untrusted implementation input only; the exactly
+  selected, duly admitted r4 Codex Executor independently validates reused work and
+  authors its own clean scoped candidate commit. External tests, PRs, scripts and
+  Human attestations do not create canonical RUN, EVIDENCE or PASS.
+- 'The isolated host preflight PASS at exact r3 main does not prove the future r4
+  workflow: resolve exact current upstream/main and source outside mutation before
+  dispatch, avoiding a known stale-code restart. Do not invoke an identical blocked
+  PRIMARY repeatedly.'
+- No new first-adoption bootstrap, historic REPAIR intake, TASK-429 work or historical
+  lineage mutation is authorized. Human r2 one-time exception remains an unimplemented
+  historical authorization, not a Runtime admission bypass.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -54,154 +46,98 @@ scope:
   - src/aios_renew/operator.py
   - src/aios_renew/runtime.py
   - src/aios_renew/ka01_admission.py
+  - src/aios_renew/codex_adapter.py
   - src/aios_renew/codex_live_transport.py
   - src/aios_renew/verification.py
-  - src/aios_renew/review_transport.py
-  - src/aios_renew/codex_adapter.py
-  - src/aios_renew/dispatcher.py
-  - src/aios_renew/execution_profile.py
-  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/parallel_verification.py
   - tests/test_ka01_v13_intra_run_native.py
   - tests/test_ka01_v13_activation.py
   - tests/test_codex_adapter.py
-  - tests/test_runtime.py
-  - tests/test_repair_dispatch.py
   - tests/test_ka01_original_observer_isolation.py
   - tests/conftest.py
   - tests/git_fixture_support.py
   modify:
-  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
   - src/aios_renew/codex_live_transport.py
   - src/aios_renew/verification.py
-  - src/aios_renew/operator.py
-  - src/aios_renew/runtime.py
-  - src/aios_renew/ka01_admission.py
+  - tests/test_ka01_v13_intra_run_native.py
   - tests/test_codex_adapter.py
   - tests/test_ka01_original_observer_isolation.py
-  - tests/test_ka01_v13_intra_run_native.py
-  - tests/test_repair_candidate_acceptance.py
-  - tests/test_ka01_v13_activation.py
-  - tests/test_repair_dispatch.py
 non_goals:
-- No general-purpose external candidate importer, new planner/router/database, generic
-  retry/failover, new Runtime/verifier, new independent execution authority or implicit
-  executor/model selection.
-- No rewriting old TASK-428 r1/r2, RUN-428-001, immutable FAILURE, REPAIR-428-001-001,
-  earlier historical status, TASK-429, roadmap state or frozen v0.1 kernel artifacts.
-  A current r3 RUN must never masquerade as a continuation of the old r2 RUN.
-- 'No authorization to merge draft PR #2671 directly to main, promote external host
-  pytest to canonical EVIDENCE, synthesize a RUN, substitute candidate verification
-  helpers for original trusted source, or let an external commit or GitHub comment
-  certify itself.'
-- No use of newly implemented acceptance behavior to admit, verify, review, activate
-  or publish its own r3 implementation. No pre-PASS publication, no implicit Human
-  constitutional change, no general trust floor reduction.
-- No full-suite pytest, arbitrary queue capacity increase, removal of original process
-  owner/session/close/deadline guards, loss of stdout events, disabling nested source
-  proof or skipping the native installed-session test.
+- No historic REPAIR existing-candidate intake, no new general Runtime admission/verification
+  capability, and no changes to operator.py, runtime.py, ka01_admission.py, Kernel
+  normative documents, TASK-427/429 or workflow restart code.
+- No alternate Planner/router/database, retry/failover, independent Executor/verifier,
+  automatic model selection or mutable original Runtime substitution.
+- 'No promotion of r2/r3 external tests, patch, PR or Human claims into canonical
+  RUN, EVIDENCE, RESULT, REVIEW or publication; no merge of draft PR #2671 as a substitute
+  for completion.'
+- No full-suite pytest, enlarged queue as a substitute for backpressure, stdout loss/reordering,
+  relaxed process-owner/session/deadline/cancel/EOF/JSONL/identity guards or wrong-source
+  observer.
 constraints:
   hard:
-  - Preserve r2 AC1-AC7 behavior of finite, lossless FIFO/backpressure for temporary
-    >512 Codex outputDelta bursts, same-session recovery, genuine dead-process/EOF/protocol
-    STOP and strict original nested pytest observer/plugin/import isolation. Reuse
-    externally authored five-file delta as an untrusted implementation input only;
-    the admitted r3 Executor must independently validate and commit any adopted bytes
-    within r3 scope.
-  - For the exceptional historic r2 candidate intake, original Runtime is sole admission,
-    candidate-identity, SHA/commit/tree/lineage/currentness/CAS, verification and
-    terminal RESULT/EVIDENCE authority. Authenticate exact r2 TASK bytes/revision,
-    original RUN/FAILURE, still-applicable REPAIR authorization SHA 976398ca6954090a110408508b3570d614077897,
-    failed/base SHA f3e2980df8c1aa37f24f3355edfe68f8d657e26d, and external candidate
-    commit 2b3f1f9b29bd6abfcf1176eae95f9543a04b0d4f/tree 2ca89156bad06cf4bf860db79f667afcb06d6559.
-    Only five r2 modification paths are eligible. Reject substitution, drift, competing
-    repair, invalid ancestry or source/proof mismatch before canonical RUN.
-  - The prospective one-time exception must explicitly distinguish Human-attested
-    prior external Executor authorship from an actual previously admitted native Executor.
-    Any supported no-invocation admission must be source-authenticated and transparently
-    recorded as that distinct provenance, not falsely report native Executor invocation,
-    session/checkpoints or lease. No retroactive alteration of an old RUN's evidence
-    or historical contract. On a conflicting frozen authority constraint, STOP with
-    a bounded blocker rather than laundering this r3 approval into a historical r2
-    override.
-  - Any exact-subject acceptance feature must be dormant until its r3 implementation
-    is independently Runtime-verified, reviewed PASS and published; original running
-    Runtime must reside outside mutable candidate subject and source/proof/toolchain
-    remain authenticated. No candidate can be its own bootstrap/verifier or issue
-    itself an admission permit.
-  - Maintain existing original pytest observer source attestation, exact toolchain/12-worker
-    profile, candidate/source isolation, deterministic status, permissions and no
-    replays; retain independent Reviewer semantic verdict and Publisher exclusive
-    exact reviewed candidate publication. A GitHub PR, external script and carrier
-    receipt are not engineering truth.
-  - One deterministic original Runtime verification pass uses the exact authored focused
-    commands in order against the complete r3 committed candidate. Check existing
-    three focused tests and the new one-off acceptance positive/negative conformance
-    test, without full-suite or duplicate unchanged checks.
-  - One future admissible historic r2 intake consumes at most one explicitly authorized
-    external commit and is idempotent for the exact canonical lineage; contradictory,
-    missing, mismatched, partially persisted or already consumed state rejects safely.
-    It must not turn a r2 REPAIR into REMEDIATION or authorize a new semantic REVIEW
-    by itself.
+  - Exactly one duly admitted Codex Executor owns HOW for a new r4 RUN. It may reuse
+    the external r2 five-file candidate as untrusted input, independently verifying
+    and committing its eligible bytes. No other Executor, model or implementation
+    authority is implicitly selected by this TASK.
+  - Preserve finite lossless FIFO under temporary >512 outputDelta burst with bounded
+    consumer backpressure, stable ordering, and deterministic same-session recovery,
+    while retaining real process-death, EOF, close/cancel, deadline, stream-size,
+    malformed JSONL and owner/identity STOPs.
+  - Isolate outer original-observer pytest plugin/import inheritance from the nested
+    ordinary Runtime verifier. Retain source-bound original -I proof, exact original
+    transitive helpers/conftest, 12-worker/toolchain profile and bounded attributable
+    STOP for missing, stale, wrong-source or substituted nested observation.
+  - Before an r4 RUN, independent original control source, current upstream/main and
+    exact TASK authority must pass original Runtime protected-scope admission. A host
+    preflight PASS is informational only; if workflow original source/bootstrap fails,
+    stop pre-RUN and surface exact failure, no blind retries or synthetic RUN.
+  - Runtime independently verifies the committed r4 candidate with the three exact
+    authored focused commands, collecting raw SHA-bound evidence including real installed-native
+    test coverage, without full-suite or ceremonial repetition. Independent Reviewer
+    and Publisher retain terminal authority.
+  - 'Maintain intact TASK-428 r1/r2/r3, RUN-428-001, immutable FAILURE and REPAIR,
+    TASK-429 and draft PR #2671. This revision introduces no historic REPAIR candidate
+    importer.'
 acceptance:
 - id: AC1
-  condition: Original native stdout transport handles a finite >512 outputDelta burst
-    with bounded FIFO/backpressure, event ordering and no event loss or false session-lost
-    STOP caused only by temporary saturation.
+  condition: Original native Codex transport sustains a finite temporary burst exceeding
+    512 outputDelta events with bounded lossless FIFO/backpressure, exact order, no
+    false session-lost STOP due solely to queue saturation.
 - id: AC2
-  condition: The correlated Codex session resumes through consumer backpressure; real
-    process exit, EOF, cancellation, close, deadline, oversized/malformed JSONL or
-    identity violation retains deterministic fail-closed behavior.
+  condition: The same correlated native session completes after consumer progress
+    and retains deterministic STOP for genuine process exit, EOF, cancellation, close,
+    deadline, malformed/oversized JSONL, stream limit or owner/identity breach.
 - id: AC3
-  condition: Focused native test fixtures reproduce queue saturation/recovery and
-    negative transport cases without busy spinning, unbounded growth or duplicate
-    turn side effects.
+  condition: Focused native regression tests exercise queue saturation/recovery, order,
+    starvation/close and real negative process/protocol conditions without busy spin,
+    unbounded growth or duplicate side effects.
 - id: AC4
-  condition: A source-authenticated outer original-observer pytest can invoke a nested
-    ordinary Runtime checkpoint while preserving the nested subject's own observer/conftest
-    and exact observation without inherited-plugin collision.
+  condition: Source-authenticated outer original pytest observer can invoke nested
+    ordinary Runtime verification with its own source-bound observer/conftest and
+    exact expected observation, without inherited plugin conflicts.
 - id: AC5
-  condition: The original -I proof path resolves source-bound tests.* imports while
-    keeping original config/observer/transitive helpers and 12-worker/toolchain proof
-    isolated from mutable candidate replacements.
+  condition: Original isolated -I proof resolves source-bound tests.* imports while
+    preserving protected original configuration, observer, helper sources and exact
+    worker/toolchain identity against candidate substitution.
 - id: AC6
-  condition: Wrong-source, stale, malformed, missing or substituted nested observation
-    and unexpected pytest exit produce bounded attributable STOP evidence instead
-    of an unrelated missing-file failure or false PASS.
+  condition: Wrong, missing, stale, malformed or substituted nested observation and
+    unexpected pytest exit STOP with bounded actionable primary-cause attribution,
+    not a masked file-not-found failure or false PASS.
 - id: AC7
-  condition: Focused native observer regressions exercise positive and negative nested
-    verification, original proof identity and queue behavior with no weakening of
-    original authority.
+  condition: Focused regression tests cover positive and negative nested verification/proof
+    identity, preserving owner/lease/source constraints and unchanged original Runtime
+    authority.
 - id: AC8
-  condition: An explicit one-time exceptional REPAIR existing-candidate admission
-    capability is available only under original trusted Runtime control and requires
-    exact Human-approved historical lineage, currentness, source/commit/tree and five-file
-    scope, rejecting unrelated TASKs or candidates before RUN.
-- id: AC9
-  condition: The exceptional route records prior external authorship as Human-attested
-    (not a falsely admitted native Executor), accepts no synthetic checkpoints, and
-    preserves Runtime-only verification/RESULT plus independent Reviewer/Publisher
-    role separation.
-- id: AC10
-  condition: Focused isolated original-source tests reject invalid or stale main/repair/task/commit/tree,
-    conflicting successor/duplicate request, dirty candidate, wrong changed files,
-    mutable original verifier, missing original observer and candidate self-adoption
-    with bounded pre-RUN attribution.
-- id: AC11
-  condition: Existing eligible REPAIR behavior and REMEDIATION-only DIRECT_CANDIDATE
-    remain unchanged, and the new exact-case behavior stays unactivated until its
-    own reviewed and published implementation, without changing historical r2 RUN/FAILURE/REPAIR
-    facts.
-- id: AC12
-  condition: The r3 Executor can deliver one complete clean scope-bounded commit incorporating
-    r2 transport/observer fixes and prospective one-off exception semantics with executable
-    focused tests; no later Runtime RESULT, REVIEW PASS or publication is claimed
-    as an Executor-authored acceptance fact.
+  condition: The r4 Executor can deliver one complete clean commit inside exactly
+    the five-file allowlist with executable focused regression tests; no Executor-authored
+    acceptance claim represents later Runtime RESULT, REVIEW PASS or publication.
 verification:
   policy: minimum-sufficient-v1
   required:
   - python -m pytest -q tests/test_ka01_original_observer_isolation.py
   - python -m pytest -q tests/test_codex_adapter.py
   - python -m pytest -q tests/test_ka01_v13_intra_run_native.py
-  - python -m pytest -q tests/test_repair_candidate_acceptance.py
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
