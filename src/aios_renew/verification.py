@@ -683,9 +683,7 @@ def _v2_observation(item: Evidence, output: Path, *, binding: dict, selected: bo
             valid_conditions = (valid_conditions and envelope["subject"].get("head_sha") == item.subject_sha
                                 and envelope["toolchain"] == observed_toolchain)
         else:
-            if output.stat().st_size > MAX_CANONICAL_BYTES:
-                raise VerificationContractError("canonical observation exceeds byte bound")
-            envelope = json.loads(output.read_text(encoding="utf-8"))
+            envelope = json.loads(_original_local(output.absolute(), MAX_CANONICAL_BYTES).decode("utf-8"))
             canonical = envelope["failure_diagnostics"]["canonical"]
             observed_profile, observed_toolchain = envelope["profile"], envelope["toolchain"]
             valid_exit = envelope["exit_status"] == item.result.exit_code
@@ -2918,7 +2916,12 @@ def _kernel_observer_subject(subject, source):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
     def authenticate():
-        if any(_original_local(directory / name, MAX_ORIGINAL_PROOF_BYTES) != content for name, content in files.items()):
+        try:
+            substituted = any(_original_local(directory / name, MAX_ORIGINAL_PROOF_BYTES) != content
+                              for name, content in files.items())
+        except (OSError, VerificationContractError):
+            _deny("KERNEL_UPGRADE_OBSERVER_SUBSTITUTED")
+        if substituted:
             _deny("KERNEL_UPGRADE_OBSERVER_SUBSTITUTED")
         if _kernel_original_proof_files(source) != {k: v for k, v in files.items() if k != "_aios_kernel_observer.py"}:
             _deny("KERNEL_UPGRADE_ORIGINAL_OBSERVER_CHANGED")
@@ -2959,24 +2962,31 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
             profile, toolchain = manifest["profile"], manifest["toolchain"]
             order = start_order + index + 1
             output = raw_directory / f"observation-{order:03d}.json"
+            if output.exists() or output.is_symlink():
+                raise RuntimeVerificationError("CHECKPOINT_NATIVE_OBSERVATION_ALREADY_EXISTS", evidence=evidence)
             command_env = dict(env)
             command_env.update(PYTHONDONTWRITEBYTECODE="1", AIOS_BP_V4_PLUGIN_OUTPUT=str(output),
                 AIOS_VERIFY_SUBJECT_SHA=request.scheduler.subject_sha,
                 AIOS_V2_PROFILE=json.dumps({k: profile[k] for k in (
                     "profile", "workers", "distribution", "max_worker_restart", "collect_only")}))
-            command_env["PYTHONPATH"] = os.pathsep.join((str(subject / "src"), str(subject / "tests"), env.get("PYTHONPATH", "")))
+            # A checkpoint owns its observer population and import subject. An
+            # outer original-proof pytest may be our caller, never our plugin
+            # source. Keep tests.* imports on this exact materialized subject.
+            subject_imports = (str(subject / "src"), str(subject / "tests"), str(subject))
+            command_env["PYTHONPATH"] = os.pathsep.join(subject_imports)
             if command != SELECTED_FULL_SUITE_COMMAND:
                 coverage = _checkpoint_pytest_coverage(command)
                 if coverage is None or coverage.measurement:
                     raise VerificationContractError("CHECKPOINT_NATIVE_COMPLETE_OBSERVER_REQUIRED")
                 command_env.pop("PYTEST_ADDOPTS", None)
-                command_env["PYTEST_PLUGINS"] = ",".join(filter(None, (env.get("PYTEST_PLUGINS", ""), "bp_v4_probe_plugin")))
+                command_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+                command_env["PYTEST_PLUGINS"] = "xdist.plugin,bp_v4_probe_plugin"
                 command_env["AIOS_V2_EXACT_COLLECTION"] = "1"
             started = time.monotonic()
             if original is not None:
                 original_directory, authenticate = original
                 authenticate()
-                command_env["PYTHONPATH"] = os.pathsep.join((str(original_directory), str(subject / "src"), str(subject / "tests")))
+                command_env["PYTHONPATH"] = os.pathsep.join((str(original_directory), *subject_imports))
                 command_env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
                 command_env["PYTEST_PLUGINS"] = "xdist.plugin,_aios_kernel_observer"
                 tokens = shlex.split(command)
@@ -2989,7 +2999,9 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                     + "; import pytest; raise SystemExit(pytest.main(" + repr(arguments) + "))")
             def bounded_runner(argv, **kwargs):
                 if original is not None:
-                    argv = (sys.executable, "-I", "-c", launcher)
+                    # -I ignores PYTHONDONTWRITEBYTECODE; keep instrumentation
+                    # from creating candidate bytecode even without .gitignore.
+                    argv = (sys.executable, "-I", "-B", "-c", launcher)
                 return runner(argv, timeout=max(0.001, timeout_seconds), **kwargs)
             item = execute_verification((command,), run_id=request.scheduler.target.run_id,
                 subject_sha=request.scheduler.subject_sha, repository=subject, raw_directory=raw_directory,
@@ -3005,7 +3017,12 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                     "--no-renames", "-z", request.scheduler.target.base_sha, item.subject_sha).split("\0")))),
                 failure_set_digest=verification_digest([]))
             if original is not None:
-                authenticate()
+                try:
+                    authenticate()
+                except VerificationContractError as exc:
+                    raise RuntimeVerificationError(
+                        "CHECKPOINT_ORIGINAL_OBSERVER_AUTHENTICATION_FAILED", evidence=(*evidence, item),
+                    ) from exc
                 binding["original_proof"] = dict(original_proof)
             observation = _v2_observation(item, output, binding=binding, selected=command == SELECTED_FULL_SUITE_COMMAND)
             raw = _original_local(Path(item.raw_path), MAX_ORIGINAL_RAW_BYTES)
@@ -3013,7 +3030,35 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                 candidate_digest=verification_digest(observation), evidence_id=item.evidence_id, run_id=item.run_id,
                 raw_path=item.raw_path, raw_digest=hashlib.sha256(raw).hexdigest())
             evidence.append(replace(item, verification=record))
-            native_size = len(raw) if command == SELECTED_FULL_SUITE_COMMAND else len(_original_local(output, MAX_CANONICAL_BYTES))
+            if command == SELECTED_FULL_SUITE_COMMAND:
+                native_size = len(raw)
+            else:
+                # Retain the first execution's raw capture and its bindings even
+                # if pytest stopped before the observer could write anything.
+                # No missing-file exception may hide that primary failure, and
+                # no malformed/stale observation may reach a checkpoint as PASS.
+                diagnostic = f"evidence={item.evidence_id} pytest_exit={item.result.exit_code}"
+                try:
+                    native_size = len(_original_local(output, MAX_CANONICAL_BYTES))
+                except (OSError, VerificationContractError):
+                    raise RuntimeVerificationError(
+                        "CHECKPOINT_NATIVE_OBSERVATION_UNAVAILABLE " + diagnostic, evidence=evidence,
+                    ) from None
+                if item.result.exit_code not in (0, 1):
+                    raise RuntimeVerificationError(
+                        "CHECKPOINT_UNEXPECTED_PYTEST_EXIT " + diagnostic, evidence=evidence,
+                    )
+                try:
+                    validate_observation(observation)
+                    validate_exact_collection(observation.get("collection"))
+                    if observation.get("errors") != []:
+                        raise VerificationContractError("unknown native observation")
+                except VerificationContractError:
+                    observation.update(complete=False, unstable=True)
+                    record["candidate_digest"] = verification_digest(observation)
+                    raise RuntimeVerificationError(
+                        "CHECKPOINT_NATIVE_OBSERVATION_INVALID " + diagnostic, evidence=evidence,
+                    ) from None
             capture_bytes_remaining -= len(raw) + native_size
             if capture_bytes_remaining < 0:
                 raise RuntimeVerificationError("checkpoint capture accounting exhausted", evidence=evidence)
