@@ -252,13 +252,30 @@ class CodexLiveTransport:
     def _read_stdout(self):
         total = 0
         try:
-            while not self._closed:
+            while not self._closed and not self._broken.is_set():
                 raw = self._pipes[1].readline(MAX_MESSAGE_BYTES + 1)
                 total += len(raw)
                 if not raw or len(raw) > MAX_MESSAGE_BYTES or not raw.endswith(b"\n") or total > MAX_STREAM_BYTES:
                     self._broken.set()
                     return
-                self._messages.put_nowait(_decode(raw))
+                message = _decode(raw)
+                # Keep this frame until the sole consumer makes room. Timed
+                # waits bound cancellation even when that consumer never returns;
+                # Runtime polling/owner checks remain on the owner thread.
+                while not self._closed and not self._broken.is_set():
+                    remaining = self._deadline - time.monotonic()
+                    if remaining <= 0:
+                        return
+                    if self._original_process.poll() is not None:
+                        self._broken.set()
+                        return
+                    try:
+                        self._messages.put(message, timeout=min(0.2, remaining))
+                        break
+                    except queue.Full:
+                        continue
+                else:
+                    return
         except Exception:
             self._broken.set()
 
