@@ -47,6 +47,18 @@ Explicit Human constitutional change is the only authority that may change const
 
 No Brain, Executor, Reviewer, Runtime, Router, transport, or model may silently expand its own authority or reinterpret constitutional boundaries into new authority.
 
+### 2.1. Supreme Human exception and recovery authority (Human decision, 2026-10-27)
+
+Human is the final authority over project priorities, risk acceptance, constitutional amendments, and **explicit exceptional execution or publication decisions**. An ordinary deterministic Runtime admission, verification, or publication-eligibility gate is not a constitutional veto over an authenticated and exact-scoped Human exception.
+
+For an exceptional recovery or deployment, Human may explicitly authorize an identified immutable source candidate to proceed despite specified unavailable or failed ordinary Runtime gates. The exceptional path must remain callable without invoking the malfunctioning Runtime or native Executor component that is itself being repaired. This power belongs to Human, not to an Executor, issue carrier, retry loop, model, or automatic policy.
+
+An exceptional decision must bind the exact repository, source commit/tree, intended target, purpose, bypassed ordinary gates, and accepted uncertainty. Git ref compare-and-swap or equivalent exact-source binding protects against substitution. Human may revoke or supersede a *prospective* authorization; immutable historical facts are not rewritten. No standing open-ended override, self-authorization, hidden fallback, or automatic bypass is created.
+
+**Decision authority is distinct from evidentiary truth.** An exceptional deployment must be explicitly identified as `HUMAN_OVERRIDE` / `NOT_RUNTIME_VERIFIED` when applicable. It must not be represented as a Runtime-created RUN, verification PASS, Reviewer PASS, ordinary Publisher eligibility, or proven engineering success if those events have not happened. Human can decide to accept that risk and deploy; no component may convert the decision into false technical evidence.
+
+This provision is prospective. It changes governance priority for later exceptional actions without altering historical TASK/RUN/RESULT/FAILURE/REVIEW/REPAIR/REMEDIATION artifacts or making a frozen Kernel version retroactively claim a feature it did not implement. For ordinary work, original Runtime verification, independent Reviewer and Publisher remain the normal evidence and publication route.
+
 ---
 
 ## 3. Constitutional Authority vs. Engineering Truth
@@ -57,7 +69,7 @@ Constitutional authority must remain explicitly distinguished from engineering-s
 - **Manifesto Intent**: Provides guiding purpose and the optimization North Star (`Verified Useful Work / (Time + Tokens + Human Effort)`), but is not execution-state truth, completion evidence, or an artifact that can override exact canonical lineage.
 - **Engineering-State Truth**: Established strictly by current canonical Git state, frozen specifications, and exact immutable TASK / RUN / RESULT / FAILURE / REVIEW / REMEDIATION / REPAIR lineage within their applicable scopes.
 
-This Constitution governs future authority and architectural constraints prospectively; it does not retroactively change frozen Kernel v0.1 semantics, historical artifacts, or already-established engineering facts. Any future constitutional/kernel conflict or desired semantic change requires explicit Human authority and a separate TASK rather than reinterpretation in place.
+This Constitution governs future authority and architectural constraints prospectively; it does not retroactively change frozen Kernel v0.1 semantics, historical artifacts, or already-established engineering facts. Ordinary future constitutional/kernel changes use explicit Human authority and a separate TASK. An exact authenticated Human exception under section 2.1 may instead authorize a bounded extraordinary recovery or deployment directly; that decision cannot masquerade as an ordinary Kernel RUN, verification, review or publication.
 
 ---
 
