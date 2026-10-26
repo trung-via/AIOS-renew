@@ -1,0 +1,125 @@
+task_id: TASK-429
+revision: 1
+goal: 'Repair the verified original KA01 Kernel-upgrade verification harness isolation
+  defect: allow an authenticated outer original-observer pytest to execute a nested
+  ordinary Runtime checkpoint verification using that nested subject''s own pytest
+  observer, without inherited-plugin/source conflicts, missing observation files,
+  or weakened original-proof ownership. Make original-source TASK-428 candidate verification
+  feasible without broadening TASK-428''s transport scope.'
+problem: 'Human-approved TASK-428 external bootstrap R4 on main 250b6ae52c6f4feae6f2d2059e4ee855e309e34b
+  and candidate 24a02cbcad5e662554f1613a555bace733137e8d authenticated original KA01
+  source and exact worktree/Git blob bytes, but focused original-observer group 1
+  returned 63 passed/25 failed. Independent nested raw envelopes RUN-101-001-V001.raw
+  from two fixture workers explicitly reported ''ERROR: conflicting pytest observer
+  source''. Original verification.py::_execute_checkpoint_verification inherits PYTEST_PLUGINS
+  and PYTHONPATH from the outer original-observer process and appends bp_v4_probe_plugin
+  for a nested ordinary verifier; tests/conftest.py rejects the inherited outer observer.
+  No nested observation-001.json is emitted, then _original_local throws FileNotFoundError,
+  hiding the first cause. The external diagnostic adjusted subject-root import paths;
+  the installed original -I launcher also omits subject root for tests.* namespace
+  imports. These facts are noncanonical diagnostics, not a TASK-428 RUN/EVIDENCE/REVIEW
+  or proof that the transport implementation is wrong.'
+assumptions:
+- 'Human explicitly authorized correcting this exact root cause on 2026-10-26. TASK-428
+  r1 and PR #2665 remain independent, unreviewed and unmerged; TASK-427 r2 and historical
+  TASK-426/427 RUN/FAILURE identities are unchanged.'
+- The current original Runtime may reject a protected verifier mutation before RUN
+  until the separately Human-authorized first-adoption bootstrap is independently
+  established; GitHub ingress or an external passing test is not that bootstrap. Fail
+  closed rather than creating a synthetic RUN or certifying this implementation itself.
+- Existing original observer, original conftest/proof helpers, candidate import subject,
+  worker profile and exact source checks remain the trust roots. Exactly one admitted
+  Executor owns implementation; Brain authors only outcomes and constraints.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - .ai/tasks/TASK-428.yaml
+  - .ai/tasks/TASK-427.yaml
+  - src/aios_renew/verification.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/parallel_verification.py
+  - tests/conftest.py
+  - tests/bp_v4_probe_plugin.py
+  - tests/git_fixture_support.py
+  - tests/test_ka01_v13_activation.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_ka01_default_three_flow.py
+  modify:
+  - src/aios_renew/verification.py
+  - tests/test_ka01_original_observer_isolation.py
+non_goals:
+- No change to TASK-428 transport candidate, codex_live_transport.py, its three-file
+  scope, TASK-427 control-entry objective or historical RUN/FAILURE/REVIEW; no direct
+  PR merge or retroactive PASS.
+- No candidate-authored replacement observer, disabling pytest source/conftest integrity
+  checks, accepting missing evidence, arbitrary plugin-filtering of caller-owned tests,
+  a second verifier or verification rerun/retry authority.
+- No provider/session changes, new services, lifecycle/router, database, elevated
+  credentials, full-suite pytest, shadow/pilot requirement or unrelated KA01 resource
+  policy modifications.
+- No public disclosure of private local paths, raw model output, stdout/stderr or
+  secrets; no automatic roadmap advancement.
+constraints:
+  hard:
+  - Confine the fix to existing first-party Runtime verification process/environment
+    construction. A nested ordinary verification invoked during authenticated outer
+    original-observer execution must not load the outer observer or use its private
+    proof directory as its own observer source; preserve exact bound nested candidate/fixture
+    conftest, pytest plugin and first-party original-proof provenance.
+  - Ensure isolated subprocesses inherit only the intended subject-specific pytest
+    plugin population and import roots. Original outer -I launcher must resolve candidate
+    tests.* imports from the exact immutable subject without making original-proof
+    helpers candidate-controlled. Do not globally mutate the Human host environment
+    or relax original source SHA, symlink/path, lease, worker or toolchain checks.
+  - Missing, incompatible or malformed nested observation must stop verification with
+    the original actionable and safely bounded error category/raw evidence retained
+    for Runtime diagnosis, never a generic FileNotFoundError hiding the first exception
+    and never a forged PASS or incomplete evidence treated as complete.
+  - Preserve ordered exact verification commands, authenticated original observer/proof
+    bindings, 12-worker settings where required, one checkpoint writer, current KA01
+    budgets and existing PRIMARY/REPAIR/REMEDIATION family authority and downstream
+    Reviewer/Publisher boundaries.
+  - Regression tests must reproduce nested pytest under the original proof launcher,
+    demonstrate conflicting observer rejection before the fix and independent own-subject
+    observer loading after correction, and include negative injected/stale/wrong-source
+    plugin cases, missing output, and no duplicate checkpoint or test execution. No
+    fixture mock PASS may substitute for original-source/native proof.
+  - Author only minimum-sufficient focused verification commands; Executor claims
+    code/test implementation properties, Runtime alone independently executes verification
+    and determines canonical EVIDENCE. Stop pre-RUN if protected-source bootstrap
+    authority is unavailable.
+acceptance:
+- id: AC1
+  condition: A nested ordinary checkpoint pytest initiated from within the authenticated
+    original-observer execution resolves the nested subject's designated pytest observer
+    and produces an exact expected observation without an inherited outer observer
+    conflict.
+- id: AC2
+  condition: The outer original -I observer launcher resolves exact candidate tests.*
+    namespace imports while original conftest, proof helpers, process source and observer
+    hooks remain authenticated and independent of mutable candidate code.
+- id: AC3
+  condition: Wrong, stale, injected, mismatched or missing observer/plugin sources
+    and absent/incomplete native observation retain typed fail-closed behavior with
+    source-proven diagnostic reasons and without falsely reporting successful verification.
+- id: AC4
+  condition: Focused regression cases reproduce the original nested-plugin failure
+    and confirm the fixed successful and negative paths, including preserved 12-worker
+    profile, checkpoint identity, original-source binding and no duplicated test or
+    lifecycle side effects.
+- id: AC5
+  condition: The committed implementation edits only verification.py plus the one
+    purpose-built test file; it leaves TASK-428/TASK-427 contracts and production
+    Codex transport untouched, with no self-attested Runtime evidence, review or publication.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_ka01_original_observer_isolation.py
+  - python -m pytest -q tests/test_ka01_v13_intra_run_native.py -k test_fixture_first_candidate_pass_needs_no_feedback_or_second_turn
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
