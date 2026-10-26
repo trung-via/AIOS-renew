@@ -30,6 +30,7 @@ from aios_renew.codex_adapter import (
 )
 from aios_renew.run_observation import TokenUsage
 from aios_renew.execution_profile import ResolvedExecutionProfile, load_execution_profile_policy
+from tests.test_ka01_v13_intra_run_native import native_stdout_session, _scripted_turn_session
 
 
 TASK_SOURCE = """
@@ -1491,3 +1492,38 @@ def test_codex_adapter_consumes_injected_profile_and_synthetic_future_model() ->
     assert cmd_repair[cmd_repair.index("-m") + 1] == "gpt-7-sol"
     assert cmd_repair[cmd_repair.index("-c") + 1] == 'model_reasoning_effort="medium"'
 
+
+@pytest.mark.parametrize("operation", ["PRIMARY", "REPAIR", "REMEDIATION"])
+def test_native_burst_correlates_two_turns_without_duplicate_execution(native_stdout_session, operation):
+    """Transport/adapter regression only; no admission or Runtime verification."""
+    session, candidate = _scripted_turn_session(native_stdout_session, operation=operation)
+    identity = session.identity()
+    sent, deltas = [], []
+    send, notify = session._send, session._notification
+
+    def observe_send(message):
+        sent.append(message)
+        send(message)
+
+    def observe_notification(message, **kwargs):
+        method, params = notify(message, **kwargs)
+        if method == "item/commandExecution/outputDelta":
+            deltas.append((params["turnId"], params["delta"]))
+        return method, params
+
+    session._send, session._notification = observe_send, observe_notification
+    schema = CodexAdapter.live_output_schema(operation, task=parse_task(TASK_SOURCE))
+    adapter = CodexAdapter()
+    for ordinal in (1, 2):
+        turn = session.turn(prompt=f"original input {ordinal}", output_schema=schema)
+        assert turn.turn_id == f"turn-{ordinal}" and turn.request_id == ordinal + 3
+        assert turn.user_item_id == f"user-{ordinal}" and turn.output_item_id == f"output-{ordinal}"
+        assert turn.output == candidate and turn.connection_id == identity["connection_id"]
+        jsonschema.validate(turn.output, schema)
+        package, receipt = adapter.normalize_live_candidate(turn)
+        assert package.result.head_sha == "def456" and receipt is None
+        assert session.identity() == identity and not session._broken.is_set()
+    assert deltas == [(f"turn-{ordinal}", str(index)) for ordinal in (1, 2) for index in range(2400)]
+    assert [(message["method"], message["id"]) for message in sent] == [("turn/start", 4), ("turn/start", 5)]
+    assert session._turns == {"turn-1", "turn-2"} and not session._deferred
+    assert [observation["status"] for observation in session.turn_observations] == ["COMPLETED", "COMPLETED"]
