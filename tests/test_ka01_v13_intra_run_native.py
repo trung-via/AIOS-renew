@@ -6,10 +6,15 @@ model turns and commits; unavailable native support is a failing BLOCKER.
 """
 
 from dataclasses import replace
+import io
 import json
 from pathlib import Path
 import queue
 import subprocess
+import sys
+import threading
+import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,11 +23,325 @@ from aios_renew import codex_live_transport as native
 from aios_renew import ka01_admission as ka01
 from aios_renew import operator
 from aios_renew.artifacts import ResultPackage, validate_structural_result
+from aios_renew.execution_profile import ResolvedExecutionProfile
 from aios_renew.intra_run_proof_contract import parse_native_primary_checkpoint
 from aios_renew.verification_contract import VerificationContractError
 from tests.git_fixture_support import commit_fixture_state
 from tests.operator_test_support import git, static_payload
 from tests.test_ka01_v13_activation import ProductionFixture
+
+
+class _ObservedStdoutQueue(queue.Queue):
+    def __init__(self, maxsize):
+        super().__init__(maxsize=maxsize)
+        self.saturated = threading.Event()
+        self.backpressured = threading.Event()
+
+    def put(self, item, block=True, timeout=None):
+        if self.full():
+            self.saturated.set()
+        try:
+            return super().put(item, block=block, timeout=timeout)
+        except queue.Full:
+            if block and timeout is not None:
+                self.backpressured.set()
+            raise
+
+
+_NATIVE_HANDSHAKE = """
+import json, sys
+while True:
+    request = json.loads(sys.stdin.buffer.readline())
+    method = request['method']
+    if method == 'initialized':
+        continue
+    if method == 'initialize':
+        result = dict(userAgent='local-protocol-fixture')
+    elif method == 'account/read':
+        result = dict(requiresOpenaiAuth=True,
+            account=dict(type='chatgpt', email='fixture@example.invalid', planType='pro'))
+    else:
+        assert method == 'thread/start'
+        params = request['params']
+        result = dict(thread=dict(id='original-thread'), model=params['model'],
+            modelProvider='openai', reasoningEffort='low', approvalPolicy='never',
+            cwd=params['cwd'], sandbox=dict(type='readOnly'))
+    print(json.dumps(dict(id=request['id'], result=result)), flush=True)
+    if method == 'thread/start':
+        break
+"""
+
+
+@pytest.fixture
+def native_stdout_session(tmp_path, monkeypatch):
+    """Real local pipes/process; synthetic protocol, no model or AIOS RUN."""
+    sessions = []
+
+    def start(script):
+        profile = ResolvedExecutionProfile(
+            run_id="RUN-007-001", executor="codex", model="test/native", reasoning_effort="low")
+        owner, polled_threads, readers = threading.get_ident(), [], {}
+        popen = subprocess.Popen
+
+        def poll():
+            polled_threads.append(threading.get_ident())
+            assert threading.get_ident() == owner
+
+        def process(command, **kwargs):
+            return popen([sys.executable, "-u", "-c", _NATIVE_HANDSHAKE + script], **kwargs)
+
+        def thread(*, target, **kwargs):
+            reader = threading.Thread(target=target, **kwargs)
+            readers[target.__name__] = reader
+            return reader
+
+        with monkeypatch.context() as patch:
+            patch.setattr(native.shutil, "which", lambda _: sys.executable)
+            patch.setattr(native.subprocess, "Popen", process)
+            patch.setattr(native, "queue", SimpleNamespace(
+                Queue=_ObservedStdoutQueue, Full=queue.Full, Empty=queue.Empty))
+            patch.setattr(native, "threading", SimpleNamespace(
+                Event=threading.Event, get_ident=threading.get_ident, Thread=thread))
+            session = native.CodexLiveTransport(workspace=tmp_path, profile=profile,
+                authorizes_mutation=False, poll=poll, timeout_seconds=15)
+        session.reader, session.stderr_reader = readers["_read_stdout"], readers["_drain_stderr"]
+        session.polled_threads = polled_threads
+        sessions.append(session)
+        return session
+
+    yield start
+    for session in sessions:
+        session.close()
+        session.reader.join(timeout=3)
+        session.stderr_reader.join(timeout=3)
+        assert not session.reader.is_alive() and not session.stderr_reader.is_alive()
+
+
+_STDOUT_BURST = """
+import json, sys, threading
+def burst():
+    for index in range(3000):
+        print(json.dumps(dict(method='item/commandExecution/outputDelta',
+            params=dict(threadId='original-thread', turnId='original-turn', delta=str(index)))))
+    sys.stdout.flush()
+threading.Thread(target=burst, daemon=True).start()
+if sys.stdin.buffer.readline().strip() == b'stderr':
+    sys.stderr.buffer.write(b'x' * 4096)
+    sys.stderr.flush()
+sys.stdin.buffer.readline()
+"""
+
+
+def _await_stdout_backpressure(session):
+    assert session._messages.saturated.wait(timeout=3)
+    # Wait through a full timed put with no consumer, not just a scheduling race.
+    assert session._messages.backpressured.wait(timeout=3)
+    assert session._messages.maxsize == session._messages.qsize() == 512
+    assert session.reader.is_alive() and not session._broken.is_set()
+    session.assert_live(session._session_identity)
+
+
+def test_native_stdout_burst_and_slow_consumer_preserve_bounded_lossless_fifo(native_stdout_session):
+    session = native_stdout_session(_STDOUT_BURST)
+    _await_stdout_backpressure(session)
+    received = []
+    for batch in range(3):
+        session._messages.backpressured.clear()
+        received.extend(session._next()["params"]["delta"] for _ in range(1000))
+        if batch < 2:
+            _await_stdout_backpressure(session)
+    assert received == [str(index) for index in range(3000)]
+    assert session._messages.empty() and not session._broken.is_set()
+    session.assert_live(session._session_identity)
+    assert set(session.polled_threads) == {session._owner_thread}
+
+
+@pytest.mark.parametrize("termination", ["close", "interrupt", "deadline", "exit", "stderr"])
+def test_native_stdout_starvation_releases_on_original_stop(
+    native_stdout_session, monkeypatch, termination,
+):
+    session = native_stdout_session(_STDOUT_BURST)
+    _await_stdout_backpressure(session)
+    deadline = session._deadline
+    if termination == "close":
+        session.close()
+        session.close()
+    elif termination == "interrupt":
+        poll = session._poll
+
+        def interrupted():
+            session.close()
+            raise KeyboardInterrupt()
+
+        session._poll = interrupted
+        with pytest.raises(KeyboardInterrupt):
+            session._next()
+        session._poll = poll
+    elif termination == "deadline":
+        monkeypatch.setattr(native, "time", SimpleNamespace(monotonic=lambda: deadline))
+    elif termination == "exit":
+        session._original_process.kill()
+        session._original_process.wait(timeout=3)
+    else:
+        # Only stderr can exceed the reduced limit while stdout is backpressured.
+        monkeypatch.setattr(native, "MAX_STREAM_BYTES", 4095)
+        session._pipes[0].write(b"stderr\n")
+        session._pipes[0].flush()
+    session.reader.join(timeout=3)
+    assert not session.reader.is_alive() and session._messages.qsize() == 512
+    assert session._deadline == deadline
+    if termination == "stderr":
+        assert session._broken.is_set() and session._original_process.poll() is None
+    code = "SESSION_DEADLINE_EXHAUSTED" if termination == "deadline" else "ORIGINAL_PROCESS_CONNECTION_SESSION_LOST"
+    with pytest.raises(native.NativeSessionStop, match=code):
+        session._next()
+
+
+@pytest.mark.parametrize("raw", [
+    b"", b"{}", b"not JSON\n", b'{"id":1,"id":1}\n', b'{"id":NaN}\n',
+    b"[]\n", b'"\xff"\n', b" " * native.MAX_MESSAGE_BYTES + b"\n",
+])
+def test_native_stdout_reader_rejects_eof_malformed_and_oversized_frames(raw):
+    session = native.CodexLiveTransport.__new__(native.CodexLiveTransport)
+    session._closed, session._broken = False, threading.Event()
+    session._messages = queue.Queue(maxsize=512)
+    session._pipes = (None, io.BytesIO(raw), None)
+    session._deadline = time.monotonic() + 3
+    session._original_process = SimpleNamespace(poll=lambda: None)
+    session._read_stdout()
+    assert session._broken.is_set() and session._messages.empty()
+
+
+def test_native_stdout_reader_io_error_fails_closed():
+    class BrokenStdout:
+        def readline(self, bound):
+            raise OSError()
+
+    session = native.CodexLiveTransport.__new__(native.CodexLiveTransport)
+    session._closed, session._broken = False, threading.Event()
+    session._messages = queue.Queue(maxsize=512)
+    session._pipes = (None, BrokenStdout(), None)
+    session._read_stdout()
+    assert session._broken.is_set() and session._messages.empty()
+
+
+def test_native_stdout_reader_retains_total_stream_bound(monkeypatch):
+    monkeypatch.setattr(native, "MAX_STREAM_BYTES", 5)
+    session = native.CodexLiveTransport.__new__(native.CodexLiveTransport)
+    session._closed, session._broken = False, threading.Event()
+    session._messages = queue.Queue(maxsize=512)
+    session._pipes = (None, io.BytesIO(b"{}\n{}\n"), None)
+    session._deadline = time.monotonic() + 3
+    session._original_process = SimpleNamespace(poll=lambda: None)
+    session._read_stdout()
+    assert session._broken.is_set() and session._messages.qsize() == 1
+    assert session._messages.get_nowait() == {}
+
+
+@pytest.mark.parametrize("defect", ["profile", "binary", "process", "owner", "pipe", "session"])
+def test_native_stdout_backpressure_preserves_original_identity_guards(native_stdout_session, monkeypatch, defect):
+    session = native_stdout_session(_STDOUT_BURST)
+    _await_stdout_backpressure(session)
+    expected = session.identity()
+    if defect == "profile":
+        monkeypatch.setattr(session, "profile", replace(session.profile, model="changed"))
+    elif defect == "binary":
+        monkeypatch.setattr(session, "_binary_stat", ())
+    elif defect == "process":
+        monkeypatch.setattr(session, "_process", SimpleNamespace(pid=session._pid))
+    elif defect == "owner":
+        monkeypatch.setattr(session, "_owner_thread", -1)
+    elif defect == "pipe":
+        monkeypatch.setattr(session._process, "stdin", io.BytesIO())
+    else:
+        expected["thread_id"] = "foreign-thread"
+    try:
+        with pytest.raises(native.NativeSessionStop, match="ORIGINAL_PROCESS_CONNECTION_SESSION_LOST"):
+            session.assert_live(expected)
+        assert not session._broken.is_set()
+    finally:
+        # Restore test substitutions before the fixture closes the real process.
+        monkeypatch.undo()
+
+
+_SCRIPTED_NATIVE_TURN = """
+import json, sys
+candidate, fault = CANDIDATE, FAULT
+def emit(message):
+    print(json.dumps(message), flush=True)
+for ordinal, line in enumerate(sys.stdin.buffer, 1):
+    request = json.loads(line)
+    assert request['method'] == 'turn/start'
+    turn_id = 'turn-' + str(ordinal)
+    params = dict(threadId='original-thread', turnId=turn_id)
+    emit(dict(id=request['id'], result=dict(turn=dict(id=turn_id, status='inProgress'))))
+    emit(dict(method='turn/started', params=dict(params, turn=dict(id=turn_id, status='inProgress'))))
+    user = dict(id='user-' + str(ordinal), type='userMessage',
+        clientId=request['params']['clientUserMessageId'], content=request['params']['input'])
+    emit(dict(method='item/completed', params=dict(params, item=user)))
+    for index in range(2400):
+        emit(dict(method='item/commandExecution/outputDelta', params=dict(params, delta=str(index))))
+    if fault == 'server-request':
+        emit(dict(id=900, method='item/commandExecution/requestApproval', params=params))
+    elif fault == 'foreign-thread':
+        emit(dict(method='item/commandExecution/outputDelta', params=dict(params, threadId='foreign')))
+    elif fault == 'foreign-turn':
+        emit(dict(method='item/commandExecution/outputDelta', params=dict(params, turnId='foreign')))
+    elif fault == 'unsupported':
+        emit(dict(method='unreviewed/notification', params=params))
+    elif fault == 'duplicate-response':
+        emit(dict(id=request['id'], result=dict(turn=dict(id=turn_id, status='inProgress'))))
+    elif fault == 'duplicate-item':
+        emit(dict(method='item/completed', params=dict(params, item=user)))
+    elif fault == 'malformed':
+        print('not JSON', flush=True)
+    elif fault == 'eof':
+        raise SystemExit(0)
+    emit(dict(method='item/completed', params=dict(params,
+        item=dict(id='output-' + str(ordinal), type='agentMessage', phase='final_answer',
+            text=json.dumps(candidate)))))
+    emit(dict(method='turn/completed', params=dict(params, turn=dict(id=turn_id, status='completed'))))
+"""
+
+
+def _scripted_turn_session(start, *, operation="PRIMARY", fault=None):
+    package = dict(result=dict(head_sha="def456", changed_files=["src/aios_renew/codex_adapter.py"],
+        claims=[dict(id="C1", satisfies=["AC1"], claim="Local protocol fixture candidate.", evidence=[])],
+        unresolved=[]), evidence=[])
+    if operation == "REMEDIATION":
+        package["result"]["claims"] = []
+    candidate = dict(package=package, feedback_receipt=None)
+    script = _SCRIPTED_NATIVE_TURN.replace("CANDIDATE", repr(candidate)).replace("FAULT", repr(fault))
+    session = start(script)
+    rpc = session._rpc
+
+    def delayed_consumer(method, params):
+        session._messages.backpressured.clear()
+        response = rpc(method, params)
+        _await_stdout_backpressure(session)
+        return response
+
+    session._rpc = delayed_consumer
+    return session, candidate
+
+
+@pytest.mark.parametrize("fault,code", [
+    ("server-request", "UNSUPPORTED_SERVER_REQUEST"),
+    ("foreign-thread", "FOREIGN_THREAD"),
+    ("foreign-turn", "STALE_OR_FOREIGN_TURN"),
+    ("unsupported", "UNSUPPORTED_NOTIFICATION"),
+    ("duplicate-response", "DUPLICATE_RESPONSE"),
+    ("duplicate-item", "DUPLICATE_ITEM"),
+    ("malformed", "ORIGINAL_PROCESS_CONNECTION_SESSION_LOST"),
+    ("eof", "ORIGINAL_PROCESS_CONNECTION_SESSION_LOST"),
+])
+def test_native_protocol_failure_after_saturation_cannot_complete_or_retry(native_stdout_session, fault, code):
+    session, _ = _scripted_turn_session(native_stdout_session, fault=fault)
+    with pytest.raises(native.NativeSessionStop, match=code):
+        session.turn(prompt="original input", output_schema={})
+    assert session.last_turn is None and session._request_id == 4
+    assert session._turns == {"turn-1"}
+    assert [observation["status"] for observation in session.turn_observations] == ["STARTED"]
 
 
 class FixtureSession:
