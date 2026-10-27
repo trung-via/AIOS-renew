@@ -1,5 +1,5 @@
 task_id: TASK-430
-revision: 2
+revision: 3
 goal: Implement and activate prospective project-wide General Self-Repair Governance
   Alignment v0.3 across the existing Project Contract, KA-01 normative contract and
   their necessary first-party Runtime consumers. Express general failure-state and
@@ -9,7 +9,10 @@ goal: Implement and activate prospective project-wide General Self-Repair Govern
   weakening mandatory proof. Resolve the newly scoped native Codex installed-original-process/session
   continuity failure only where authenticated diagnosis establishes a first-party
   transport defect; retain live original process, feedback and checkpoint continuity
-  without bypassing independent proof.
+  without bypassing independent proof. Align the original verifier's pre-bound Python
+  toolchain with the interpreter and package inventory actually used for native checkpoint
+  pytest in ordinary and protected original-source modes, without accepting mismatched
+  evidence or changing verification ownership.
 problem: "The Human-approved project-wide v0.3 audit at canonical main 6320e0b833abad54fe379bbaa405e0f76bbef6e6\
   \ found that subordinate ordinary activation/publication and protected-source KA-01\
   \ wording can be read as vetoing Constitution \xA72.1 self-repair exceptions; pre-RUN\
@@ -27,7 +30,16 @@ problem: "The Human-approved project-wide v0.3 audit at canonical main 6320e0b83
   \ The exact source-versus-provider cause of native loss is not established. Human\
   \ now expressly requests prospective revision 2 to admit bounded correction of the\
   \ existing codex_live_transport.py owner boundary while retaining TASK-428's independent\
-  \ source and historical lineage."
+  \ source and historical lineage. A new Human-host read-only V001 capture establishes\
+  \ a complete one-test C1 FAIL observation whose subject, profile, collection, schema\
+  \ and execution contract match, yet original validator rejects only python_executable\
+  \ and installed_distributions_digest. The r2 external Codex trace found the first-party\
+  \ original verifier's checkpoint launch policies can diverge: ordinary non-isolated\
+  \ execution may invoke bare python on PATH, whereas original/protected calls pin\
+  \ sys.executable -I -B. The exact host executable pair and package-discovery delta\
+  \ remain redacted/UNKNOWN. Executor stopped SCOPE_BLOCKER without changing the seven-file\
+  \ candidate because src/aios_renew/verification.py was outside r2 scope. Human explicitly\
+  \ approves r3 to add that one production file and preserve already authorized tests."
 assumptions:
 - Human explicitly accepted generalized governance draft v0.3 and authorized its implementation
   now; that is project-wide prospective policy direction, NOT separate exact-source
@@ -63,6 +75,21 @@ assumptions:
   failure or unavailable native session may be legitimate STOP, not a correctable
   first-party bug. The Executor must report evidence and precise BLOCKER if a first-party
   source defect cannot be established within scope.
+- 'The read-only external observation captures actual host C1 and V001 but is not
+  Runtime-owned canonical EVIDENCE. Baseline discrepancy fields: python_executable
+  and installed_distributions_digest only; all other toolchain fields matched. No
+  exact interpreter path or package delta is claimed as proven. C1''s single test
+  exit 1 is intentional, subject to authentic complete/stable observation.'
+- The exact r2 external Executor returned SCOPE_BLOCKER, no source changes, exit 0,
+  with preserved existing seven-file candidate HEAD 4814b195b539c41affc6e4257cb09fde565391b1
+  and SHA-256 patch 5aa1e047089687ab2d2f2cf174851fd2a1247dd6d73f47bbf2def3f2cff14f27.
+  Human prospectively authorizes precisely one additional production source file in
+  TASK-430 r3; this does not ratify prior candidate, establish original-source bootstrap,
+  RUN/PASS, review or publication.
+- This is a narrow continuation of TASK-430's v0.3 governance deliverable. Original
+  TASK-428 r5 and TASK-429 remain distinct and neither their unpublished candidate
+  nor their original-observer fixes are adopted by this revision. Original source
+  and reference test identities must be reauthenticated at execution.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -90,6 +117,9 @@ scope:
   - tests/test_codex_adapter.py
   - tests/test_ka01_original_observer_isolation.py
   - tests/conftest.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/parallel_verification.py
+  - tests/bp_v4_probe_plugin.py
   modify:
   - docs/CHATGPT_PROJECT_CONTRACT.md
   - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
@@ -100,6 +130,7 @@ scope:
   - tests/test_ka01_v13_activation.py
   - src/aios_renew/codex_live_transport.py
   - tests/test_codex_adapter.py
+  - src/aios_renew/verification.py
 non_goals:
 - No Constitution amendment, frozen Kernel retroactivity, historical source/lineage
   rewrite or new standing Human override. No specific TASK/RUN/model/SHA/date as a
@@ -108,11 +139,12 @@ non_goals:
 - No new Runtime, Reviewer, Publisher, rescue controller, Planner, database, lifecycle
   router, hidden failover, automated External Executor dispatch or automatic re-admission/retry
   after STOP.
-- No independent EGDF v1 implementation, second verification path, diagnostic store,
-  raw untrusted logs as authority, TASK-426 checkpoint feature, TASK-428 FIFO/backpressure/schema/observer
-  import or TASK-429 nested-verifier repair. Same file can be inspected by different
-  TASKs but no TASK-428 source candidate is implicitly adopted as TASK-430 proof or
-  publication eligibility.
+- No independent EGDF v1, second verifier, diagnostic data store, TASK-426 checkpoint
+  capability, TASK-428 FIFO/schema/native output-policy import, or TASK-429 unrelated
+  nested observer feature. Protected original observer and proof authenticity stay
+  binding, although the existing authorized verifier's Python invocation/coherence
+  boundary may be corrected within its new exact scope. No automatic adoption of TASK-428
+  candidate/lineage.
 - No default-on policy to bypass original family admission, original-source runtime/proof
   identity, actual selected executor/lease, authenticated source/hash, Git CAS, authorized
   scope, original trust and finite budgets.
@@ -125,6 +157,11 @@ non_goals:
   test skip/xfail, altered assertions, weakened original proof or programmatic retry
   until PASS. Windows temporary-directory shortening remains test invocation hygiene,
   not a production transport feature.
+- No manipulation of expected or observed toolchain fields after execution; no replacement
+  of originally bound identity with untrusted observations; no removal of strict executable,
+  installed-distribution, worker/collection, original-source or source-digest checks.
+  No fixture-only PATH hack masquerading as a verified production fix, arbitrary Python
+  HOME/PATH override or global verifier replacement.
 constraints:
   hard:
   - "Implement v0.3 project-wide normative clauses in Project Contract \xA72, \xA7\
@@ -169,13 +206,12 @@ constraints:
     positive and adversarial cases for non-monotonic test failures, malformed/stale
     proof, unchanged candidate, separate pre-admission refusal and Human exceptional
     labels (without automating bypass), normative SHA drift and historical compatibility.
-  - Treat CODEX_LIVE_STOP_ORIGINAL_PROCESS_CONNECTION_SESSION_LOST as a truthful symptom,
-    not itself proof of a transport coding defect. Establish the original native process/pipes/reader
-    ownership, bounded FIFO and event ordering, stderr/exit/cancel/deadline, session
-    identity and output schema evidence before modifying codex_live_transport.py.
-    If independent evidence indicates provider/environment termination, preserve STOP
-    and return a typed cause or bounded diagnostic; never report fixed without authentic
-    live evidence.
+  - Where a first-party native transport defect is independently established, correct
+    only the existing transport boundary within authorized files. Preserve lossless
+    bounded FIFO, original process/thread and session identity, lease, feedback, deadline
+    and STOP. Keep TASK-428's FIFO/schema and TASK-429's unrelated observer implementation
+    separate; do not relax proof ownership or change proof helpers outside the exact
+    new allowlist.
   - Where a first-party defect is established, correct only the existing native transport
     session/process boundary within authorized files. Preserve lossless bounded FIFO/backpressure,
     original process/thread ownership, actual live session, deadline, feedback receipt,
@@ -194,6 +230,30 @@ constraints:
     fake checkpoint success. Author minimum-sufficient verification of impacted code
     plus the two previously required groups; live failure remains a BLOCKER if it
     persists.
+  - The verifier's toolchain before the candidate checkpoint and original pytest observation
+    must be grounded in the same truthful interpreter/distribution-inventory semantics
+    for the invoked command. Reconcile ordinary interactive (including bare python/PATH)
+    and protected original-source -I startup without hiding environmental drift. If
+    the actual Python environment changes between sampling and execution, validation
+    continues to fail closed; no post-execution rebinding or synthesized equivalence
+    is permitted.
+  - Preserve the actual authenticated original observer and candidate isolation, -I
+    original protected source, per-subject original helper identities, worker population
+    and exact authored commands. A genuine expected C1 pytest exit=1 can produce factual
+    F1 only after the observation's complete stable phases, subject, toolchain and
+    collection prove valid; do not equate failure with PASS or falsify C1/F1/C2.
+  - No modifications to src/aios_renew/parallel_verification.py, src/aios_renew/verification_contract.py,
+    tests/bp_v4_probe_plugin.py, tests/conftest.py, tests/test_ka01_original_observer_isolation.py,
+    .ai/tasks/TASK-430.yaml, or any other path beyond the ten explicit modify paths.
+    Existing tests/test_ka01_v13_intra_run_native.py and tests/test_ka01_v13_activation.py
+    may carry new scoped regression; the existing original-observer isolation suite
+    is required as an unchanged consumer test.
+  - Regression must cover equivalent interpreter/package inventory in a controlled
+    ordinary launcher and protected original-source launcher, and negative drift or
+    substitution (e.g., PATH points at a different Python or installed distributions
+    differ) refusing authenticated proof. Preserve no_user_site/non-isolated and isolated
+    -I behavior; do not retrofit skip/xfail or assert a live provider completed F1/C2
+    from deterministic fixtures.
 acceptance:
 - id: AC1
   condition: "Project Contract contains prospective, general, consistent ordinary-versus-exception\
@@ -234,27 +294,40 @@ acceptance:
     verifier, and explicitly leaves separately authored EGDF capability inactive until
     separately lawfully implemented, with no unauthorized new mechanism.
 - id: AC9
-  condition: Implementation remains a clean scoped change confined to the nine explicitly
-    allowed governance/KA-01/Runtime/native-transport/test files, preserving independent
-    TASK-428/TASK-429 source and historical lineage without unsupported canonical
-    PASS, review, publication, emergency authorization or provider claims.
+  condition: The complete task deliverable stays confined to exactly ten declared
+    governance/KA-01/Runtime/verifier/native-transport/test modify paths; preserves
+    TASK-428/TASK-429 independent histories, existing verifier authority and scope-gated
+    source isolation; contains no invented RUN/PASS/REVIEW/PUBLISH/exception claim.
 - id: AC10
-  condition: Existing first-party Codex native transport handles an independently
-    demonstrated source-controlled original-process/session continuity defect, if
-    established, while retaining lossless bounded event delivery and accurate STOP
-    for authentic process/session loss, stale identity, EOF, deadline, cancellation
-    and malformed data; provider/environment loss is not misrepresented as fixed source
-    behavior.
+  condition: Native Codex transport remains lossless and bound to authentic original
+    process, thread, connection and session under expected liveness; an independently
+    demonstrated transport defect is corrected only when established, while true provider/environment
+    failure continues to STOP. No assertion that a provider/environment issue has
+    been fixed merely because initialization passed.
 - id: AC11
-  condition: Scoped Codex transport regression demonstrates the specific authenticated
-    cause and negative liveness/identity paths without skips, retries, invented reconnection,
-    fixture PASS substitution or cross-TASK source import; actual installed-native
-    failures remain observable and blocking until independently satisfied.
+  condition: Existing and scoped Codex native regressions preserve positive process/session
+    continuity and negative liveness, identity, EOF, deadline, cancellation and malformed
+    output rules, without skips, synthetic live success, cross-TASK patch import or
+    concealed failure.
+- id: AC12
+  condition: For ordinary and protected original-source interactive checkpoint verification,
+    the first-party verifier binds an interpreter and installed-distribution inventory
+    equivalent to the real pytest execution toolchain when conditions are unchanged;
+    it does not silently invoke a different PATH interpreter from the pre-bound original,
+    and independently rejects interpreter or distribution drift with a truthful invalid/unavailable
+    observation.
+- id: AC13
+  condition: Focused deterministic regression in the authorized test files establishes
+    faithful Python interpreter/package identity for ordinary and protected original-source
+    checkpoint execution and fail-closed negative mismatch, while retaining exact
+    original observer, committed candidate, scoped source, workers, collection, complete
+    C1 FAIL and subsequent factual F1/C2 eligibility; no missing native PASS is inferred.
 verification:
   policy: minimum-sufficient-v1
   required:
   - python -m pytest -q tests/test_ka01_default_three_flow.py tests/test_ka01_v13_activation.py
   - python -m pytest -q tests/test_ka01_v13_intra_run_native.py
   - python -m pytest -q tests/test_codex_adapter.py
+  - python -m pytest -q tests/test_ka01_original_observer_isolation.py
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
