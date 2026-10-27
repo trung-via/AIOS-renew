@@ -1,0 +1,247 @@
+task_id: TASK-431
+revision: 1
+goal: Implement and enable EGDF v1 (Evidence-Grounded Diagnostic Feedback) as the
+  prospective checkpoint-scoped information capability for the already admitted original
+  KA01 v1.3 Verify-Fix-Verify flow in PRIMARY, REPAIR and REMEDIATION. Reuse exact
+  authenticated PTE-03-grade source facts for useful first failed-proof feedback and
+  on-demand safe progressive reads in the same original native session, without an
+  aggregate diagnostic ceiling or a second verifier. Supersede the unfinished TASK-426
+  implementation intent prospectively while keeping all its historical canonical artifacts
+  unchanged and conforming to the actual TASK-427/428/430 source and current general
+  progress policy.
+problem: Human has expressly abandoned further TASK-426 execution on 2026-10-27 after
+  seven terminal r1 FAILURES and a separate TASK-426 r2 self-host wake refusal before
+  RUN (KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE, run_created=false, executor_invoked=false).
+  Reusing the same r2 TASK will not fix a pre-RUN original-source module availability
+  failure. The old r2 contract also mandates strict failed-identity-set decrease,
+  contradicted by source now on main under TASK-430 r3 general self-repair alignment.
+  Canonical TASK-427 r2 and TASK-428 r5 are authored but have no verified RESULT/review;
+  TASK-430 r3 was exceptionally adopted as HUMAN_OVERRIDE/NOT_RUNTIME_VERIFIED. New
+  EGDF implementation must be designed against real current source and truthful capability/lineage
+  state, not claim that all three historical repair packages achieved independent
+  PASS. EGDF source, checkpoint-diagnostic implementation and tests are not present
+  on canonical main.
+assumptions:
+- Human's present replacement decision retires TASK-426 as a prospective implementation/work-selection
+  target, not as a deletion or relabeling of its r1/r2 contracts, RUN-426-001..007,
+  terminal failures, repair/ref history or rejected r2 self-host wake. No TASK-426
+  dispatch/retry/resume is authorized by this TASK.
+- 'Canonical implementation baseline at authoring: trung-via/AIOS-renew main deb92f7400a067938cd3f6ce3397d5448e2135a4,
+  TASK-426 r2 blob e5e5e8a49cb723e7e90301f0aa1620cf5e7b6c06, TASK-427 r2 blob 5532e991432483afd2e3080cbb92d6822a963bcb,
+  TASK-428 r5 blob 5ab965add255f9027365add5acd2e3c92ae3eb88, TASK-430 r3 blob 964b49595828ed9642516339c3b14a206822a811.
+  All currentness and source must be reauthenticated by Runtime at execution.'
+- TASK-427 r2 and TASK-428 r5 remain unproven as independently Runtime-verified and
+  reviewed; TASK-430 r3 entered main by exact Human override and is NOT_RUNTIME_VERIFIED.
+  New EGDF source may reuse only implementation actually present on verified-current
+  main and existing authenticated original observers, not absent/unpublished presumed
+  patches.
+- Original self-host pre-RUN KA01 Kernel-upgrade source admission requires genuine
+  independent original loaded modules. The last TASK-426 r2 wake failed before RUN
+  with KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE. A new TASK ID or source
+  inclusion alone does not fix that gate. Do not dispatch this protected coding TASK
+  through a known unchanged failing admission; authenticate original control module
+  readiness or surface the exact pre-RUN blocker first. No synthetic RUN or invented
+  repair lineage.
+- EGDF remains information delivery only. The same admitted Executor chooses how to
+  correct within the existing TASK family/scope, same process, session and budgets.
+  Runtime owns original observation, verification and terminal evidence; independent
+  Reviewer and Publisher retain separate authorities.
+- Prior PTE-03 terminal diagnostic sources provide a safe information vocabulary and
+  bounded source extraction, not authority to deliver arbitrary private raw data or
+  to drive workflow. The new progressive channel's actual availability on the installed
+  native transport must be established from source; unsupported features stay UNAVAILABLE
+  instead of being invented.
+- The enabled progress rule on main from TASK-430 r3 uses candidate-proof-change-v1
+  rather than mandatory decrease in the failed-identity population. Retain complete
+  stable evidence, new causal scoped candidate, bounded budget and exact progress
+  without using failure-count reductions as a universal veto.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/tasks/TASK-425.yaml
+  - .ai/tasks/TASK-426.yaml
+  - .ai/tasks/TASK-427.yaml
+  - .ai/tasks/TASK-428.yaml
+  - .ai/tasks/TASK-429.yaml
+  - .ai/tasks/TASK-430.yaml
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - docs/AIOS-PTE-INFORMATION-ONLY-v2.md
+  - docs/AIOS-LEAN-VP-INTRA-V13-ROADMAP.md
+  - scripts/aios_control_entry.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/parallel_verification.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/codex_live_transport.py
+  - src/aios_renew/codex_adapter.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - tests/test_pte03_diagnostic_access.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_ka01_default_three_flow.py
+  - tests/test_runtime.py
+  - tests/test_codex_adapter.py
+  - tests/test_repair_dispatch.py
+  - tests/test_remediation_wakeup.py
+  modify:
+  - docs/AIOS-EGDF-v1.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - src/aios_renew/runtime.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/codex_live_transport.py
+  - src/aios_renew/codex_adapter.py
+  - src/aios_renew/dispatcher.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/checkpoint_diagnostic.py
+  - tests/test_egdf_intra_run.py
+  - tests/test_pte03_diagnostic_access.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_ka01_default_three_flow.py
+  - tests/test_runtime.py
+  - tests/test_codex_adapter.py
+  - tests/test_repair_dispatch.py
+  - tests/test_remediation_wakeup.py
+non_goals:
+- No new lifecycle router, Planner, second Runtime/verifier, background diagnostic
+  agent, database, external listener, fallback Executor, retry engine, automatic corrective
+  strategy, Reviewer or Publisher.
+- No resumption, re-admission or retroactive rewriting of TASK-426 RUN-426-001..007
+  or its r2 pre-RUN refusal; no adoption or recomputation of TASK-427/428 external
+  proof as canonical PASS, or retroactive conversion of TASK-430 Human override into
+  an ordinary REVIEW/PASS.
+- No relaxation of PTE-03 privacy, relative-path sanitization, anti-injection, source/identity/lease/anti-replay
+  checks; no raw private logs, secrets or provider-controlled file system reads.
+- No total 24KiB/64KiB/1MiB or fixed global count/token quota on safely releasable
+  diagnostic facts; finite per-frame/request, time and real resource limits may remain.
+- No reinstatement of strict failed-set or cardinality decrease as an all-corrections
+  gate, and no undocumented progress-based automatic acceptance of failing candidate
+  evidence.
+- No full pytest suite, pilot/shadow/effectiveness threshold, downstream adoption,
+  changing the already authored acceptance of TASK-427/428/430 or automatic roadmap
+  advancement.
+- No mutation of scripts/aios_control_entry.py or standalone repair of TASK-427's
+  original-module bootstrap in the EGDF implementation; pre-RUN failure of that original
+  source must be resolved through its rightful authority rather than an EGDF self-bypass.
+constraints:
+  hard:
+  - EGDF may operate only after the ordinary authenticated original PRIMARY/REPAIR/REMEDIATION
+    family admission and original KA01 source gate. No pre-AIOS operational event,
+    rejected dispatch or transport receipt creates RUN, FAILURE, continuation or review.
+    Before fresh dispatch independently establish original module/pre-RUN readiness
+    on exact current main; an unavailable original bootstrap must stop without rerunning
+    unchanged failing wake or creating a synthetic RUN.
+  - Use only existing Runtime-owned original checkpoint proof/observation and PTE-03-grade
+    safe extraction. Source-bind every technical fact to TASK revision, admitted RUN
+    and operation, exact candidate commit/tree, checkpoint/proof-source/feedback digest,
+    selected original native process/thread/session and active lease; terminal PTE-03
+    remains separately read-only information.
+  - The first factual feedback on an eligible complete stable checkpoint FAIL must
+    provide available safe node/phase/exception family/relative frame or line/assertion
+    signals plus proof/AC identifiers and immutable source/receipt. Distinguish AVAILABLE,
+    DELIVERED, WITHHELD, UNAVAILABLE, NOT_YET_DELIVERED and accurately report missing
+    or redacted data. Do not guess a root cause, imply semantic diagnosis or treat
+    incomplete/unstable evidence as correction eligibility.
+  - For additional safe facts, reuse only a supported authenticated channel to the
+    same live original Executor process/thread/session; bounded selective/progressive
+    reads may access cumulative safe captured evidence without arbitrary total output/data/node/page/token
+    limits. No new Runtime verification/checkpoint, Executor session, correction,
+    lease or RUN is triggered by read. Real time, frame and capture exhaustion must
+    be truthfully observable.
+  - Each read requires exact authenticated actor, original request/feedback/candidate/source/checkpoint
+    identity, active lease/session and freshness/replay controls. Reject foreign/stale/forged
+    and cross-RUN/operation/checkpoint/candidate selectors. Sanitize private paths,
+    secrets, raw stderr/stdout and injected instructions; avoid data-directed execution
+    or unrestricted file reads.
+  - 'Honor effective general self-repair candidate-proof-change-v1 on current main:
+    a correction may expose a new failure fingerprint or a different failed-set if
+    complete stable scoped proof and causal new candidate warrant it. Preserve observations
+    of all authored commands, verifiable progress, source/lease/identity truth and
+    exactly one canonical terminal Result/Failure; a changed identity alone or unchanged
+    factual proof does not grant progress.'
+  - Preserve original KA01 v1.3 budget of maximum 2 corrections, 3 checkpoints, 240-minute
+    RUN wall and 180-minute cumulative verifier work, plus null default token cap.
+    Preserve original -I observer/pytest/toolchain/worker/source bindings, selected
+    Executor, genuine process lifetime and proof ownership; unsupported provider/session
+    safely STOPs.
+  - Integrate the same EGDF semantics across existing PRIMARY, authorized CODE_FIX/CONTINUE_IMPLEMENTATION
+    REPAIR and CODE_FIX REMEDIATION, respecting the original scope, failed RUN/source
+    root or exact review finding, historical PTE-03 decoding, Result/Failure consumers
+    and independent Reviewer/Publisher. Do not broaden family eligibility or allow
+    provider choice of a new correction strategy.
+  - 'Keep actual modification minimum sufficient inside scope.modify: allowed paths
+    are a mutation ceiling not a mandatory edit checklist. Native transport and pre-existing
+    observer fixes from TASK-428/429/430 are inputs only if present and source-authenticated.
+    If an indispensable new path outside scope is needed, report SCOPE_BLOCKER; do
+    not silently extend.'
+  - Each final acceptance criterion is Executor CLAIM_NOW for source/doc/tests only.
+    Runtime executes exactly authored minimum-sufficient verification commands and
+    supplies canonical EVIDENCE; independent Reviewer determines semantic verdict;
+    Publisher alone governs ordinary eligible publication. No synthetic local provider
+    PASS, omitted acceptance claims or nonempty unresolved completion state.
+acceptance:
+- id: AC1
+  condition: A prospective EGDF v1 source contract and KA01 integration document describe
+    truthful three-family checkpoint feedback and progressive read semantics aligned
+    to the currently present original-source admission, candidate-proof-change-v1
+    governance and unchanged historical TASK-426/PTE-03 identities, without an extra
+    activation or policy-selection mechanism.
+- id: AC2
+  condition: Existing Runtime source derives authenticated source-bound technical
+    diagnostic facts from actual completed original checkpoint observations before
+    terminal FAILURE, reusing current PTE-03-grade safe diagnostics, with no second
+    verifier, new RUN or candidate-authored proof.
+- id: AC3
+  condition: Eligible original complete stable checkpoint FAIL feedback contains factual
+    available technical signals, exact proof/AC/source/checkpoint/receipt identity
+    and explicit incomplete/redacted/unavailable states; wrong or missing source cannot
+    be presented as eligible or successful.
+- id: AC4
+  condition: A supported same-session authenticated progressive/selective technical-fact
+    channel can retrieve captured safe data beyond former cumulative 24KiB and 64KiB
+    boundaries without re-verification, extra checkpoint, new process or global total
+    quota, and truthfully refuses unsupported channel/time/resource exhaustion.
+- id: AC5
+  condition: Additional reads reject mismatched source, actor, process/session, live
+    lease, checkpoint, candidate, operation or replayed selectors and prevent leakage
+    of private paths, credentials, raw logs and data-borne instruction text.
+- id: AC6
+  condition: Native EGDF integration covers ordinary PRIMARY, authorized REPAIR and
+    REMEDIATION on their existing one-terminal Runtime/Executor boundary, preserving
+    KA01 budgets, candidate-proof-change-v1 eligibility and historical PTE-03/RESULT/Reviewer/Publisher
+    behavior.
+- id: AC7
+  condition: Runtime and feedback source expose verifiable distinct diagnostic availability,
+    delivery, withholding, redaction, freshness and finite real read/resource accounting
+    without substituting parsing as semantic correction advice or inventing Runtime
+    evidence.
+- id: AC8
+  condition: Focused deterministic source regressions exercise original C1 FAIL/F1/additional
+    reads/C2 eligibility, cumulative safe data beyond former 24/64KiB limits, many
+    failed nodes/assertions, three-family bindings, malformed or missing diagnostic
+    source, stale/foreign cursors, injected/private data and no duplicate pytest or
+    session; unchanged original-native tests retain true positive and STOP behavior.
+- id: AC9
+  condition: Implementation changes are confined to explicitly authorized paths and
+    can be truthfully claimed before Runtime verification; unchanged current main
+    source and protected original bootstrap behavior are not bypassed, while historical
+    TASK-426/427/428/430 lineage and unrelated source consumers remain intact.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_egdf_intra_run.py tests/test_ka01_default_three_flow.py
+  - python -m pytest -q tests/test_pte03_diagnostic_access.py tests/test_ka01_v13_intra_run_native.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
