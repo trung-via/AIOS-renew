@@ -33,6 +33,228 @@ from tests.operator_test_support import TASK_SOURCE, git, static_payload
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 
 
+# A fresh interpreter executes the real control script and stops at the call to
+# the real Operator, before its body can allocate a RUN or invoke an Executor.
+# Deliberate faults are counterexamples, never a reconstruction of wake 40268076848.
+CONTROL_ENTRY_PROBE = r'''
+from pathlib import Path
+import importlib.util
+import json
+import runpy
+import sys
+
+control, subject = map(Path, sys.argv[1:3])
+base, operation, defect, protected = sys.argv[3:7]
+protected = protected == "protected"
+entry = control / "scripts/aios_control_entry.py"
+marker = control.parent / "foreign-executed"
+arguments = json.loads(sys.argv[7])
+report = {"operator_called": False, "defect": defect}
+
+if defect.startswith("bootstrap-cached-"):
+    sys.path.insert(0, str(control / "src"))
+    import aios_renew.operator
+    sys.path.pop(0)
+    import aios_renew.runtime as runtime
+    if defect == "bootstrap-cached-spec":
+        runtime.__spec__ = importlib.util.spec_from_file_location(runtime.__name__, subject / "src/aios_renew/runtime.py")
+    elif defect == "bootstrap-cached-origin":
+        runtime.__file__ = str(subject / "src/aios_renew/runtime.py")
+    elif defect == "bootstrap-cached-identity":
+        sys.modules[runtime.__name__] = sys.modules["aios_renew.operator"]
+    elif defect == "bootstrap-cached-package-path":
+        sys.modules["aios_renew"].__path__.append(str(subject / "src/aios_renew"))
+    elif defect == "bootstrap-cached-attribute":
+        sys.modules["aios_renew"].runtime = sys.modules["aios_renew.operator"]
+    elif defect == "bootstrap-cached-entry":
+        sys.modules["aios_renew.operator"].main = lambda argv: 0
+    elif defect == "bootstrap-cached-unavailable":
+        sys.modules[runtime.__name__] = None
+elif defect in ("bootstrap-foreign-package", "bootstrap-unsafe-spec"):
+    foreign = control.parent / "foreign/aios_renew/__init__.py"
+    foreign.parent.mkdir(parents=True)
+    foreign.write_text("from pathlib import Path\nPath(" + repr(str(marker)) + ").touch()\n")
+    class ForeignFinder:
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname == "aios_renew":
+                name = "other_package" if defect == "bootstrap-unsafe-spec" else fullname
+                origin = control / "src/aios_renew/__init__.py" if defect == "bootstrap-unsafe-spec" else foreign
+                return importlib.util.spec_from_file_location(name, origin)
+    sys.meta_path.insert(0, ForeignFinder())
+elif defect == "bootstrap-incomplete-source":
+    (control / "src/aios_renew/runtime.py").unlink()
+    (subject / "src/aios_renew/runtime.py").write_text(
+        "from pathlib import Path\nPath(" + repr(str(marker)) + ").touch()\n")
+    # Even an available editable subject must not supply a missing dependency.
+    sys.path.insert(0, str(subject / "src"))
+
+before = sys.path[:]
+class Observed(Exception):
+    pass
+
+def observe(frame, event, arg):
+    if (event != "call" or frame.f_code.co_name != "main"
+            or frame.f_globals.get("__name__") != "aios_renew.operator"):
+        return
+    sys.setprofile(None)
+    report.update(operator_called=True, arguments=frame.f_locals["argv"])
+    from aios_renew import ka01_admission as ka01, operator
+    from aios_renew.verification_contract import VerificationContractError
+    report["parsed_command"] = operator._parser().parse_args(frame.f_locals["argv"]).command
+    runtime = sys.modules["aios_renew.runtime"]
+    if defect == "gate-missing-original":
+        # Deliberately incomplete availability, after the authenticated bootstrap.
+        del sys.modules["aios_renew.proof_coverage_contract"]
+    elif defect == "gate-wrong-spec":
+        runtime.__spec__ = importlib.util.spec_from_file_location(runtime.__name__, subject / "src/aios_renew/runtime.py")
+    elif defect == "gate-wrong-origin":
+        runtime.__file__ = str(control.parent / "foreign-runtime.py")
+    elif defect == "gate-swapped-module":
+        sys.modules["aios_renew.runtime"] = sys.modules["aios_renew.operator"]
+    elif defect in ("gate-editable-subject", "gate-stale-source"):
+        path = subject / "src/aios_renew/runtime.py" if defect == "gate-editable-subject" else control.parent / "stale-runtime.py"
+        if defect == "gate-stale-source":
+            path.write_bytes(Path(runtime.__file__).read_bytes() + b"\n# Deliberately stale source.\n")
+        runtime.__file__ = str(path)
+        runtime.__spec__ = importlib.util.spec_from_file_location(runtime.__name__, path)
+    names = ["aios_renew." + Path(p).stem for p in ka01.KERNEL_IMPLEMENTATION_PATHS]
+    report["first_missing"] = next((n for n in names if sys.modules.get(n) is None), None)
+    report["module_count"] = len(names)
+    task = operator.load_task(subject, "TASK-101")
+    try:
+        source = ka01._kernel_upgrade_source(control, subject, task=task,
+            base_sha=base, operation=operation, scope=task.scope.modify if protected else ("OUTPUT.txt",),
+            commands=task.verification.required, executor="codex")
+        report["preflight"] = "authenticated" if source is not None else "ordinary"
+        report["limits"] = ka01.DEFAULTS
+        if source is not None:
+            authority = json.loads(source.content)
+            report["source_main_sha"] = authority["source_main_sha"]
+            report["operation"] = authority["operation"]
+            report["implementation_source"] = sorted(authority["implementation_source"])
+    except VerificationContractError as exc:
+        report["preflight"] = str(exc)
+    raise Observed
+
+sys.argv = [str(entry), str(subject if defect == "bootstrap-entry-root" else control), *arguments]
+sys.setprofile(observe)
+try:
+    runpy.run_path(str(entry), run_name="__main__")
+except Observed:
+    pass
+except (SystemExit, ImportError) as exc:
+    report["bootstrap_error"] = str(exc)
+finally:
+    sys.setprofile(None)
+    report["path_restored"] = sys.path == before
+    report["foreign_executed"] = marker.exists()
+print(json.dumps(report, sort_keys=True))
+'''
+
+
+def original_control_probe(tmp_path, *, operation="PRIMARY", defect="none", protected=True):
+    """Materialize the actual package, not a synthetic one-import Operator."""
+    from types import SimpleNamespace
+
+    files = {path.relative_to(SOURCE_ROOT).as_posix(): path.read_bytes()
+        for path in (SOURCE_ROOT / "src/aios_renew").rglob("*.py")}
+    files.update({path: (SOURCE_ROOT / path).read_bytes() for path in ka01.KERNEL_PROOF_PATHS})
+    files["scripts/aios_control_entry.py"] = (SOURCE_ROOT / "scripts/aios_control_entry.py").read_bytes()
+    files[".gitignore"] = "__pycache__/\n.pytest_cache/\n"
+    files[ka01.NORMATIVE_PATH] = (SOURCE_ROOT / ka01.NORMATIVE_PATH).read_bytes()
+    files["tests/__init__.py"] = b""
+    files["tests/test_output.py"] = (
+        "from pathlib import Path\ndef test_output():\n    assert Path('OUTPUT.txt').read_text() == 'complete\\n'\n")
+    task = yaml.safe_load(TASK_SOURCE)
+    task["scope"]["modify"].append("src/aios_renew/runtime.py")
+    task["verification"] = dict(policy="minimum-sufficient-v1",
+        required=["python -m pytest tests/test_output.py -n 0 --dist no --max-worker-restart 0"])
+    files[".ai/tasks/TASK-101.yaml"] = yaml.safe_dump(task, sort_keys=False)
+    repo, remote, base = materialize_git_baseline(tmp_path / "original-control", files=files,
+        user_name="Original control source fixture", user_email="control@example.invalid",
+        commit_message="bounded original control source", remote_head_main=True)
+    # This source fixture constructs no Run/RuntimeCompletion or native session.
+    fixture = SimpleNamespace(repo=repo, remote=remote, base=base,
+        task=operator.load_task(repo, "TASK-101"), state=operator.runtime_paths(repo))
+    subject = tmp_path / "editable-subject"
+    subprocess.run(("git", "clone", "--quiet", str(fixture.repo), str(subject)), check=True,
+        capture_output=True)
+    arguments = {
+        "PRIMARY": ["wakeup", "source-entry-fixture", "TASK-101", "--task-revision", str(fixture.task.revision),
+            "--task-blob-sha", git(fixture.repo, "rev-parse", fixture.base + ":.ai/tasks/TASK-101.yaml"),
+            "--task-commit-sha", fixture.base],
+        "REPAIR": ["repair-wakeup", "source-entry-fixture", "RUN-101-000", fixture.base],
+        "REMEDIATION": ["approved-remediation-wakeup", "source-entry-fixture", "RUN-101-000", "R1"],
+    }[operation] + ["--executor", "codex", "--model", "gpt-6.1-sol",
+        "--reasoning-effort", "max",
+        "--model-source", "EXPLICIT", "--effort-source", "EXPLICIT", "--repo", str(subject)]
+    completed = subprocess.run((sys.executable, "-I", "-B", "-c", CONTROL_ENTRY_PROBE,
+        str(fixture.repo), str(subject), fixture.base, operation, defect,
+        "protected" if protected else "ordinary", json.dumps(arguments)),
+        check=True, capture_output=True, text=True, timeout=60)
+    report = json.loads(completed.stdout)
+    assert report["path_restored"] and not report["foreign_executed"]
+    assert not list(fixture.state.runs.glob("*.json"))
+    assert not list(fixture.state.failures.glob("*.json"))
+    assert not list(fixture.state.results.glob("*.json"))
+    if report["operator_called"]:
+        assert report["arguments"] == arguments
+        assert report["parsed_command"] == arguments[0]
+    return fixture, report
+
+
+@pytest.mark.parametrize("operation", ["PRIMARY", "REPAIR", "REMEDIATION"])
+@pytest.mark.parametrize("protected", [False, True])
+def test_actual_original_control_entry_establishes_pre_run_modules_and_preserves_arguments(
+        tmp_path, operation, protected):
+    fixture, report = original_control_probe(tmp_path, operation=operation, protected=protected)
+    assert report["operator_called"] and "bootstrap_error" not in report
+    assert report["first_missing"] is None
+    assert report["module_count"] == len(ka01.KERNEL_IMPLEMENTATION_PATHS)
+    assert report["preflight"] == ("authenticated" if protected else "ordinary")
+    assert report["limits"] == ka01.DEFAULTS == dict(max_corrections=2, max_checkpoints=3,
+        max_run_wall_minutes=240, max_runtime_verification_minutes=180, max_tokens=None)
+    if protected:
+        assert report["source_main_sha"] == fixture.base and report["operation"] == operation
+        assert report["implementation_source"] == sorted(ka01.KERNEL_IMPLEMENTATION_PATHS)
+
+
+@pytest.mark.parametrize("defect,message", [
+    ("bootstrap-cached-spec", "module spec did not resolve"),
+    ("bootstrap-cached-origin", "module identity mismatch"),
+    ("bootstrap-cached-identity", "module spec did not resolve"),
+    ("bootstrap-cached-package-path", "module spec did not resolve"),
+    ("bootstrap-cached-attribute", "package module substituted"),
+    ("bootstrap-cached-entry", "Operator entry identity mismatch"),
+    ("bootstrap-cached-unavailable", "control module unavailable"),
+    ("bootstrap-foreign-package", "module spec did not resolve"),
+    ("bootstrap-unsafe-spec", "module spec did not resolve"),
+    ("bootstrap-entry-root", "does not own this entry"),
+    ("bootstrap-incomplete-source", "No module named 'aios_renew.runtime'"),
+])
+def test_actual_original_control_entry_refuses_unsafe_imports_before_operator(
+        tmp_path, defect, message):
+    _, report = original_control_probe(tmp_path, defect=defect)
+    assert not report["operator_called"]
+    assert message in report["bootstrap_error"]
+
+
+@pytest.mark.parametrize("defect,code", [
+    ("gate-missing-original", "ORIGINAL_RUNTIME_UNAVAILABLE"),
+    ("gate-wrong-origin", "RUNNING_MODULE_SUBSTITUTED"),
+    ("gate-wrong-spec", "RUNNING_MODULE_SUBSTITUTED"),
+    ("gate-swapped-module", "RUNNING_IMPLEMENTATION_SOURCE_MISMATCH"),
+    ("gate-editable-subject", "RUNTIME_SOURCE_IS_MUTABLE"),
+    ("gate-stale-source", "RUNNING_IMPLEMENTATION_SOURCE_MISMATCH"),
+])
+def test_actual_original_control_entry_keeps_protected_guard_fail_closed(
+        tmp_path, defect, code):
+    _, report = original_control_probe(tmp_path, defect=defect)
+    assert report["operator_called"] and "bootstrap_error" not in report
+    assert report["preflight"] == "KA01_V13_KERNEL_UPGRADE_" + code
+    assert report["first_missing"] == ("aios_renew.proof_coverage_contract" if defect == "gate-missing-original" else None)
+
+
 class ProductionFixture:
     def __init__(self, root, monkeypatch, *, remote_url=False, policy="minimum-sufficient-v1", source_mismatch=False,
                  interactive=False, first_fail=False, proof_source=None, default=False,

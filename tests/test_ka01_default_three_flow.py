@@ -658,6 +658,8 @@ def test_kernel_upgrade_original_runtime_verifies_protected_candidate_and_return
     ("missing-observer", "KERNEL_UPGRADE_ORIGINAL_OBSERVER_UNAVAILABLE"),
     ("missing-toolchain", "KERNEL_UPGRADE_TOOLCHAIN_UNAVAILABLE"),
     ("substituted-helper", "KERNEL_UPGRADE_RUNNING_MODULE_SUBSTITUTED"),
+    ("missing-original-module", "KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE"),
+    ("substituted-runtime-spec", "KERNEL_UPGRADE_RUNNING_MODULE_SUBSTITUTED"),
 ])
 def test_kernel_upgrade_bootstrap_refuses_before_run_or_executor(tmp_path, monkeypatch, defect, code):
     from aios_renew import runtime as runtime_module
@@ -665,6 +667,15 @@ def test_kernel_upgrade_bootstrap_refuses_before_run_or_executor(tmp_path, monke
     sessions = kernel_session(f, monkeypatch)
     if defect == "mutable-runtime":
         monkeypatch.setattr(runtime_module, "__file__", str(f.repo / "src/aios_renew/runtime.py"))
+    elif defect == "missing-original-module":
+        import sys
+        # This is an intentional missing-module counterexample. The cold-entry
+        # tests separately measure actual availability without pytest imports.
+        monkeypatch.setitem(sys.modules, "aios_renew.proof_coverage_contract", None)
+    elif defect == "substituted-runtime-spec":
+        import importlib.util
+        monkeypatch.setattr(runtime_module, "__spec__", importlib.util.spec_from_file_location(
+            runtime_module.__name__, f.repo / "src/aios_renew/runtime.py"))
     elif defect == "substituted-helper":
         from aios_renew import parallel_verification
         substituted = tmp_path / "parallel_verification.py"
