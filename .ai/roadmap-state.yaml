@@ -1,4 +1,24 @@
 version: 1
+human_task427_r3_single_bootstrap_20261028:
+  authority: EXPLICIT_HUMAN_SINGLE_TASK_PRIORITIZATION
+  approved_on: '2026-10-28'
+  planning_only: true
+  decision: RESOLVE_TASK431_ORIGINAL_SOURCE_BOOTSTRAP_PRE_RUN_BLOCKER_WITH_ONE_TASK
+  implementation_task: TASK-427
+  implementation_revision: 3
+  canonical_task_blob_sha: 7500d7e6ced05b990775f1615800e2b417f6afdd
+  task_authoring_main_sha: 89493a42f8bce7f05e7d4bd0e660bb0a6fbbaa69
+  supersedes_unexecuted_contract: TASK-427-r2
+  next_selected_work: TASK-427-r3-ORIGINAL_SOURCE_BOOTSTRAP_ADMISSION
+  after_bootstrap_readiness: TASK-431-r1-EGDF-v1
+  execution_status: AUTHOR_TASK_CANONICALIZED_NO_NEW_RUN_OR_RUNTIME_VERIFICATION
+  previous_self_host_blocker: KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE
+  original_module_cause: UNKNOWN_REQUIRE_ONE_SOURCE_BOUND_REPRODUCER
+  authorized_mode: ONE_EXISTING_TASK_CONTRACT_WITH_EXTERNAL_EXECUTOR_CANDIDATE_IF_ORIGINAL_PRE_RUN_UNAVAILABLE
+  no_auto_dispatch_of_unchanged_blocker: true
+  no_source_exception_preapproval: true
+  historical_truth: TASK-426_TASK-427_TASK-428_TASK-430_LINEAGE_UNCHANGED
+  next_transition_authority: HUMAN_BRAIN_ONLY_NO_AUTOMATIC_ADVANCEMENT
 human_task426_retirement_task431_successor_20261027:
   authority: EXPLICIT_HUMAN_PROSPECTIVE_PRIORITY_AND_BRAIN_PLANNING_TRANSCRIPTION
   approved_on: '2026-10-27'
