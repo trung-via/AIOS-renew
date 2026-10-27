@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -70,7 +71,9 @@ def _execute(case, raw_directory, *, runner=subprocess.run, source=None, proof=N
     arguments.update(changes)
     return verifier._execute_checkpoint_verification(case.repo,
         request=case.request, task=case.task,
-        manifests={"0": (None, dict(command_index=0, profile=profile, toolchain=verifier._v2_toolchain()), None)},
+        manifests={"0": (None, dict(command_index=0, profile=profile,
+            toolchain=verifier._v2_toolchain() if source is None
+                else verifier._kernel_isolated_toolchain(source)), None)},
         raw_directory=raw_directory, start_order=0, runner=runner, timeout_seconds=90,
         capture_bytes_remaining=32 * 1024 * 1024, **arguments)
 
@@ -92,6 +95,7 @@ def _assert_capture(error, raw_directory, *, exit_code):
 
 OUTER_TEST = r'''
 import os
+import sys
 from pathlib import Path
 import bp_v4_probe_plugin as observer
 from tests.subject_support import MARKER
@@ -99,12 +103,14 @@ from tests.test_ka01_v13_activation import ProductionFixture
 from tests.test_ka01_v13_intra_run_native import fixture_session, checkpoint
 
 def test_subject(tmp_path, monkeypatch):
+    assert sys.flags.isolated and sys.flags.no_user_site
     assert MARKER == 'exact subject'
     assert Path(observer.__file__).resolve().parent.parent.name == 'original-proof'
     assert observer._pytest_collection_identity.__module__.startswith('_aios_kernel_original.')
     outer_environment = {key: os.environ[key] for key in ('PYTHONPATH', 'PYTEST_PLUGINS')}
-    proof = ("from pathlib import Path\nimport bp_v4_probe_plugin as observer\n"
+    proof = ("import sys\nfrom pathlib import Path\nimport bp_v4_probe_plugin as observer\n"
         "def test_output():\n"
+        "    assert sys.flags.isolated and sys.flags.no_user_site\n"
         "    assert Path(observer.__file__).resolve() == Path.cwd() / 'tests/bp_v4_probe_plugin.py'\n"
         "    assert Path('OUTPUT.txt').read_text() == 'complete\\n'\n")
     fixture = ProductionFixture(tmp_path / 'nested', monkeypatch, interactive=True, proof_source=proof)
@@ -202,6 +208,106 @@ def test_ordinary_checkpoint_discards_inherited_plugin_and_import_roots(tmp_path
     assert os.environ["PYTHONPATH"] == str(wrong)
 
 
+@pytest.mark.parametrize("no_user_site", [False, True])
+@pytest.mark.parametrize("original", [False, True])
+def test_checkpoint_preserves_actual_startup_and_preexecution_frozen_toolchain(tmp_path, no_user_site, original):
+    # Ordinary callers retain their policy. Original execution always uses -I
+    # and freezes its actual authenticated toolchain before any test execution.
+    script = r'''
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+root, directory = map(Path, sys.argv[1:3])
+original, no_user_site = map(lambda value: value == 'True', sys.argv[3:5])
+sys.path[:0] = [str(root / 'src'), str(root)]
+from tests.test_ka01_original_observer_isolation import _case, _source, _execute, SERIAL
+from aios_renew import verification as verifier
+from aios_renew.verification_contract import validate_observation
+
+assert bool(sys.flags.no_user_site) is no_user_site
+expected = "Path.cwd().parent / 'original-proof'" if original else "Path.cwd()"
+test = ("import sys\nfrom pathlib import Path\nimport bp_v4_probe_plugin as observer\n"
+    "def test_subject():\n"
+    f"    assert bool(sys.flags.no_user_site) is {original or no_user_site}\n"
+    f"    assert bool(sys.flags.isolated) is {original or no_user_site}\n"
+    f"    assert Path(observer.__file__).resolve() == {expected} / 'tests/bp_v4_probe_plugin.py'\n"
+    + ("    assert observer._pytest_collection_identity.__module__.startswith('_aios_kernel_original.')\n"
+       if original else ""))
+case = _case(directory / 'candidate', files={'tests/test_subject.py': test})
+source = _source(_case(directory / 'control'), case) if original else None
+frozen = json.loads(json.dumps(verifier._kernel_isolated_toolchain(source)
+    if original else verifier._v2_toolchain()))
+
+def run(argv, **kwargs):
+    if not original and not no_user_site:
+        # Resolve the authored interpreter explicitly in this diagnostic harness.
+        argv = (sys.executable, '-B', '-m', 'pytest', *shlex.split(SERIAL)[3:])
+    return subprocess.run(argv, **kwargs)
+
+item, = _execute(case, directory / 'raw', runner=run, source=source)
+observed = json.loads((directory / 'raw/observation-001.json').read_bytes())
+assert item.result.exit_code == 0
+assert item.verification['binding']['toolchain'] == frozen == observed['toolchain']
+assert validate_observation(item.verification['candidate'])['toolchain'] == frozen
+assert not verifier._git(case.repo, 'status', '--porcelain')
+'''
+    environment = dict(os.environ)
+    for name in ("PYTHONPATH", "PYTHONNOUSERSITE", "PYTHONUSERBASE"):
+        environment.pop(name, None)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = subprocess.run((sys.executable, "-B", *(("-s",) if no_user_site else ()),
+        "-c", script, str(ROOT), str(tmp_path), str(original), str(no_user_site)),
+        env=environment, capture_output=True, text=True, check=False, timeout=90)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_original_frozen_toolchain_rejects_observed_inventory_substitution(tmp_path):
+    control = _case(tmp_path / "control")
+    case = _case(tmp_path / "candidate", files={"tests/test_subject.py": "def test_subject():\n    pass\n"})
+    source = _source(control, case)
+    frozen = verifier._kernel_isolated_toolchain(source)
+
+    def substitute(argv, **kwargs):
+        assert argv[1:4] == ("-I", "-B", "-c")
+        completed = subprocess.run(argv, **kwargs)
+        path = Path(kwargs["env"]["AIOS_BP_V4_PLUGIN_OUTPUT"])
+        observed = json.loads(path.read_bytes())
+        assert observed["toolchain"] == frozen
+        observed["toolchain"]["installed_distributions_digest"] = "0" * 64
+        path.write_bytes(ka01._bytes(observed))
+        return completed
+
+    raw = tmp_path / "raw"
+    with pytest.raises(verifier.RuntimeVerificationError, match="NATIVE_OBSERVATION_INVALID") as stopped:
+        _execute(case, raw, runner=substitute, source=source)
+    _assert_capture(stopped.value, raw, exit_code=0)
+    record = stopped.value.evidence[0].verification
+    assert record["binding"]["toolchain"] == frozen
+    assert record["candidate"]["observed_toolchain"]["installed_distributions_digest"] == "0" * 64
+    assert record["candidate"]["complete"] is False
+
+
+def test_original_observer_rejects_nonisolated_python_startup(tmp_path):
+    control = _case(tmp_path / "control")
+    case = _case(tmp_path / "candidate", files={"tests/test_subject.py": "def test_subject():\n    pass\n"})
+    source = _source(control, case)
+
+    def weaken_startup(argv, **kwargs):
+        assert argv[1:4] == ("-I", "-B", "-c")
+        return subprocess.run((argv[0], "-E", "-P", "-B", *argv[3:]), **kwargs)
+
+    raw = tmp_path / "raw"
+    with pytest.raises(verifier.RuntimeVerificationError, match="NATIVE_OBSERVATION_UNAVAILABLE") as stopped:
+        _execute(case, raw, runner=weaken_startup, source=source)
+    capture = _assert_capture(stopped.value, raw, exit_code=4)
+    assert b"original observer requires genuine isolated Python startup" in capture
+    assert not (raw / "observation-001.json").exists()
+
+
 @pytest.mark.parametrize("defect,reason,exit_code", [
     ("wrong-plugin", "UNAVAILABLE", 4),
     ("missing", "UNAVAILABLE", 0),
@@ -209,6 +315,7 @@ def test_ordinary_checkpoint_discards_inherited_plugin_and_import_roots(tmp_path
     ("wrong-subject", "INVALID", 0),
     ("wrong-profile", "INVALID", 0),
     ("wrong-toolchain", "INVALID", 0),
+    ("wrong-inventory", "INVALID", 0),
     ("incomplete", "INVALID", 0),
     ("missing-collection", "INVALID", 0),
     ("unexpected-exit", "UNEXPECTED_PYTEST_EXIT", 5),
@@ -230,7 +337,7 @@ def test_nested_observation_negatives_stop_once_with_bound_capture(tmp_path, def
             output.unlink()
         elif defect == "malformed":
             output.write_text("{invalid", encoding="utf-8")
-        elif defect in {"wrong-subject", "wrong-profile", "wrong-toolchain", "incomplete", "missing-collection"}:
+        elif defect in {"wrong-subject", "wrong-profile", "wrong-toolchain", "wrong-inventory", "incomplete", "missing-collection"}:
             value = json.loads(output.read_bytes())
             if defect == "wrong-subject":
                 value["subject_sha"] = "0" * 40
@@ -238,6 +345,8 @@ def test_nested_observation_negatives_stop_once_with_bound_capture(tmp_path, def
                 value["profile"]["workers"] = 12
             elif defect == "wrong-toolchain":
                 value["toolchain"]["pytest_version"] = "0.0.0"
+            elif defect == "wrong-inventory":
+                value["toolchain"]["installed_distributions_digest"] = "0" * 64
             elif defect == "incomplete":
                 value["failure_diagnostics"]["canonical"]["reports"].pop()
             else:

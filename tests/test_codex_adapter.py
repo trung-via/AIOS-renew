@@ -2,7 +2,7 @@ import json
 import copy
 import subprocess
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import jsonschema
 import pytest
@@ -742,21 +742,26 @@ def test_remediation_schema_requires_runtime_owned_arrays_to_be_empty() -> None:
 
 
 @pytest.mark.parametrize("operation", ["PRIMARY", "REPAIR"])
-def test_default_live_schema_rejects_invented_acceptance_without_rewriting_claims(operation) -> None:
+def test_task_bound_live_schema_rejects_invented_acceptance_without_rewriting_claims(operation) -> None:
     task = parse_task(TASK_SOURCE)
+    task = replace(task, acceptance=(*task.acceptance, replace(task.acceptance[0], id="AC9")))
     schema = CodexAdapter.live_output_schema(operation, task=task)
+    satisfies = schema["properties"]["package"]["properties"]["result"]["properties"]["claims"]["items"]["properties"]["satisfies"]
+    assert satisfies["items"]["enum"] == ["AC1", "AC9"]
     package = json.loads(successful_output("RUN-007-001"))
     package["evidence"] = []
     claim = package["result"]["claims"][0]
     claim["evidence"] = []
     claim["id"] = "C-SCOPE"
+    claim["satisfies"] = ["AC9", "AC1"]
     candidate = dict(package=package, feedback_receipt=None)
     jsonschema.validate(candidate, schema)
-    # C-SCOPE may label a claim, but only the original AC1 can be satisfied.
-    claim["satisfies"] = ["AC1", "C-SCOPE"]
-    with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(candidate, schema)
-    assert claim["satisfies"] == ["AC1", "C-SCOPE"]
+    # Claim labels, prose, foreign TASK IDs and malformed IDs cannot satisfy it.
+    for invalid_id in ("C-SCOPE", "... rest as specified above", "AC2", "", 9, None, {"id": "AC1"}):
+        claim["satisfies"] = ["AC1", invalid_id]
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(candidate, schema)
+        assert claim["satisfies"] == ["AC1", invalid_id]
     # A different admitted TASK must not inherit this TASK's enum or cached schema.
     other_task = parse_task(TASK_SOURCE.replace("id: AC1", "id: AC2"))
     other_schema = CodexAdapter.live_output_schema(operation, task=other_task)

@@ -2840,8 +2840,11 @@ Only observation hooks use the authenticated original helper namespace.
 import builtins
 import importlib.util
 from pathlib import Path
+import shlex
 import sys
 import types
+
+import pytest
 
 _root = Path(__file__).parent
 _package = types.ModuleType("_aios_kernel_original")
@@ -2871,6 +2874,22 @@ for _name, _value in vars(_hooks).items():
     if (_name.startswith("pytest_") or hasattr(_value, "_pytestfixturefunction")
             or hasattr(_value, "_fixture_function_marker")):
         globals()[_name] = _value
+
+_configure = pytest_configure
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config):
+    _configure(config)
+    if not sys.flags.isolated or not sys.flags.no_user_site:
+        raise pytest.UsageError("original observer requires genuine isolated Python startup")
+
+def pytest_xdist_setupnodes(config, specs):
+    # execnet otherwise starts fresh interpreters without the controller's -I.
+    # Keep the authored worker population; pin only its actual interpreter.
+    for spec in specs:
+        if not spec.popen or spec.python is not None:
+            raise pytest.UsageError("original observer requires local isolated workers")
+        spec.python = shlex.join((sys.executable, "-I", "-B"))
 '''
 
 
@@ -2930,6 +2949,53 @@ def _kernel_observer_subject(subject, source):
     authenticate()
 
 
+def _kernel_isolated_toolchain(source, *, timeout_seconds=30):
+    """Freeze actual -I conditions before making any execution manifest.
+
+    The admission snapshot remains caller truth. Execution uses the existing
+    authenticated original toolchain helper in the same startup mode as the
+    observer and its workers, never a candidate helper or a relabelled manifest.
+    This capability query runs no pytest session or collection.
+    """
+    root = Path(tempfile.mkdtemp(prefix="aios-kernel-toolchain-"))
+    primary = None
+    try:
+        subject = root / "subject"
+        subject.mkdir()
+        with _kernel_observer_subject(subject, source) as (original, authenticate):
+            launcher = ("import json, sys, types; "
+                "package = types.ModuleType('_aios_kernel_original'); package.__path__ = "
+                + repr([str(original / "src" / "aios_renew")])
+                + "; sys.modules[package.__name__] = package; "
+                "from _aios_kernel_original.parallel_verification import load_toolchain; "
+                "print(json.dumps(load_toolchain(), sort_keys=True))")
+            try:
+                completed = subprocess.run((sys.executable, "-I", "-B", "-c", launcher),
+                    cwd=root, capture_output=True, check=False,
+                    timeout=max(0.001, min(30, timeout_seconds)))
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise VerificationContractError("CHECKPOINT_ISOLATED_TOOLCHAIN_UNAVAILABLE") from exc
+            authenticate()
+            if completed.returncode or len(completed.stdout) > 65536:
+                error = VerificationContractError("CHECKPOINT_ISOLATED_TOOLCHAIN_UNAVAILABLE")
+                error.add_note("isolated helper exit=" + str(completed.returncode) + " "
+                    + completed.stderr[-2048:].decode("utf-8", errors="replace"))
+                raise error
+            try:
+                value = json.loads(completed.stdout)
+                if (not isinstance(value, dict) or not value
+                        or any(not isinstance(k, str) or not isinstance(v, str) for k, v in value.items())):
+                    raise ValueError("invalid isolated toolchain identity")
+            except (ValueError, UnicodeError) as exc:
+                raise VerificationContractError("CHECKPOINT_ISOLATED_TOOLCHAIN_INVALID") from exc
+            return value
+    except BaseException as exc:
+        primary = exc
+        raise
+    finally:
+        _cleanup_verification_root(root, primary=primary)
+
+
 def _execute_checkpoint_verification(repository: Path, *, request, task, manifests,
                                      raw_directory: Path, start_order: int, runner, timeout_seconds: float,
                                      capture_bytes_remaining: int, commands=None, operation="PRIMARY", modification_scope=None,
@@ -2983,6 +3049,7 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                 command_env["PYTEST_PLUGINS"] = "xdist.plugin,bp_v4_probe_plugin"
                 command_env["AIOS_V2_EXACT_COLLECTION"] = "1"
             started = time.monotonic()
+            launcher = None
             if original is not None:
                 original_directory, authenticate = original
                 authenticate()
@@ -2997,10 +3064,15 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
                     "--rootdir", str(subject), "--noconftest", "-o", "pythonpath="))
                 launcher = ("import sys; sys.path[:0] = " + repr(command_env["PYTHONPATH"].split(os.pathsep))
                     + "; import pytest; raise SystemExit(pytest.main(" + repr(arguments) + "))")
+            elif sys.flags.no_user_site:
+                # A nested ordinary checkpoint keeps the isolated caller's
+                # startup policy but imports only its own candidate subject.
+                tokens = shlex.split(command)
+                arguments = tokens[3:] if tokens[:3] == ["python", "-m", "pytest"] else tokens[1:]
+                launcher = ("import sys; sys.path[:0] = " + repr(list(subject_imports))
+                    + "; import pytest; raise SystemExit(pytest.main(" + repr(arguments) + "))")
             def bounded_runner(argv, **kwargs):
-                if original is not None:
-                    # -I ignores PYTHONDONTWRITEBYTECODE; keep instrumentation
-                    # from creating candidate bytecode even without .gitignore.
+                if launcher is not None:
                     argv = (sys.executable, "-I", "-B", "-c", launcher)
                 return runner(argv, timeout=max(0.001, timeout_seconds), **kwargs)
             item = execute_verification((command,), run_id=request.scheduler.target.run_id,

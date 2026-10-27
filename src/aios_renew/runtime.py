@@ -390,9 +390,16 @@ class RuntimeCompletion:
         return dict(profile, isolation_policy="original-runtime-observer-candidate-imports-v1",
             original_proof_source_sha256=_digest(original.content))
 
+    def _interactive_toolchain(self):
+        from .verification import _kernel_isolated_toolchain, _v2_toolchain
+        if self._kernel_upgrade_source is None:
+            return _v2_toolchain()
+        return _kernel_isolated_toolchain(self._kernel_upgrade_source,
+            timeout_seconds=self._ka01_budget.remaining_seconds())
+
     def _preflight_interactive_policy(self):
         """Reject unsupported complete proof before the first native model turn."""
-        from .verification import _checkpoint_pytest_coverage, _v2_profile, _v2_toolchain
+        from .verification import _checkpoint_pytest_coverage, _v2_profile
         from .ka01_admission import _deny, _protected_kernel_scope
         commands = self._interactive_commands()
         if not commands or len(commands) > 256 or len(set(commands)) != len(commands):
@@ -414,7 +421,7 @@ class RuntimeCompletion:
                     self._ka01_budget.policy, self._ka01_budget.profile)
                 if expected != json.loads(self._ka01_budget.authority).get("kernel_upgrade"):
                     _deny("KERNEL_UPGRADE_ORIGINAL_SOURCE_CHANGED")
-        _v2_toolchain()
+        self._interactive_toolchain()
 
     def _parse_interactive_checkpoint(self, raw):
         parser = parse_native_operation_checkpoint if self._ka01_budget.default else parse_native_primary_checkpoint
@@ -426,7 +433,7 @@ class RuntimeCompletion:
         No stdout parsing, arbitrary exit-1 inference or Executor proof flags.
         Collection, setup/teardown failure, skip, unstable and unknown STOP.
         """
-        from .verification import _v2_observation, _v2_profile, _v2_toolchain
+        from .verification import _v2_observation, _v2_profile
         from .verification_contract import validate_observation, validate_exact_collection
         from .ka01_admission import _digest, _deny
         commands = self._interactive_commands()
@@ -450,7 +457,7 @@ class RuntimeCompletion:
             if (binding.get("base_sha") != self.run.base_sha or binding.get("subject_sha") != subject_sha
                     or binding.get("tree_sha") != self._git("rev-parse", subject_sha + "^{tree}")
                     or binding.get("profile") != self._interactive_profile(command, subject_sha)
-                    or binding.get("toolchain") != _v2_toolchain()):
+                    or binding.get("toolchain") != self._interactive_toolchain()):
                 _deny("NATIVE_CONDITIONS_CHANGED")
             original = self._interactive_original_proof() if self._kernel_upgrade_source is not None else None
             if binding.get("original_proof") != original:
@@ -533,7 +540,7 @@ class RuntimeCompletion:
     @_ka01_guarded
     def _seal_interactive_candidate(self, package, turn):
         from types import SimpleNamespace
-        from .verification import _checkpoint_pytest_coverage, _v2_profile, _v2_toolchain
+        from .verification import _checkpoint_pytest_coverage, _v2_profile
         from .ka01_admission import _digest, _deny
         binding = self._interactive_binding(package, turn)
         self._authenticate_interactive_history()
@@ -560,7 +567,8 @@ class RuntimeCompletion:
             profile = self._interactive_profile(command, binding["candidate_sha"])
             if (profile["collect_only"] or profile != self._interactive_profile(command, self.run.base_sha)):
                 _deny("NATIVE_EXECUTED_PROOF_REQUIRED")
-            manifests[str(index)] = (None, dict(command_index=index, profile=profile, toolchain=_v2_toolchain()), None)
+            manifests[str(index)] = (None, dict(command_index=index, profile=profile,
+                toolchain=self._interactive_toolchain()), None)
         ordinal = len(self._interactive_checkpoints) + 1
         intent = dict(kind="NATIVE_CHECKPOINT", ordinal=ordinal, candidate_sha=binding["candidate_sha"],
             predecessor_digest=None if previous is None else previous.digest, package_sha256=_digest(result_package_data(package)))
@@ -587,6 +595,10 @@ class RuntimeCompletion:
                             else self._ka01_budget.policy.result_scope) if self._ka01_budget.default else {}),
                     **(dict(kernel_upgrade_source=self._kernel_upgrade_source,
                         original_proof=self._interactive_original_proof()) if self._kernel_upgrade_source is not None else {}))
+            except RuntimeVerificationError as exc:
+                # Preserve the verifier, its captures and original first cause
+                # through the same public boundary as terminal verification.
+                self._raise(str(exc), cause=exc)
             finally:
                 self.observation_tracker.end_verification(started, cumulative=True)
             self.interruption_phase = "COMPLETION_GATE"
@@ -704,8 +716,9 @@ class RuntimeCompletion:
             budget.guard()
             self.interruption_phase = "EXECUTION"
             with self.observation_tracker.native_session_turn():
+                # Bind every C1/C2 return to the admitted TASK in v3 and default.
                 turn = session.turn(prompt=prompt, output_schema=adapter.live_output_schema(
-                    operation, task=task if budget.default else None))
+                    operation, task=task))
             self.interruption_phase = "COMPLETION_GATE"
             budget.guard()
             package, receipt = adapter.normalize_live_candidate(turn)

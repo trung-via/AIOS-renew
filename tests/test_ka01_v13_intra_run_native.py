@@ -16,13 +16,14 @@ import threading
 import time
 from types import SimpleNamespace
 
+import jsonschema
 import pytest
 
 from aios_renew import codex_adapter
 from aios_renew import codex_live_transport as native
 from aios_renew import ka01_admission as ka01
 from aios_renew import operator
-from aios_renew.artifacts import ResultPackage, validate_structural_result
+from aios_renew.artifacts import ArtifactValidationError, ResultPackage, validate_structural_result
 from aios_renew.execution_profile import ResolvedExecutionProfile
 from aios_renew.intra_run_proof_contract import parse_native_primary_checkpoint
 from aios_renew.verification_contract import VerificationContractError
@@ -425,6 +426,148 @@ def fixture_session(f, monkeypatch):
 
 def checkpoint(f, ordinal):
     return parse_native_primary_checkpoint((f.owner._checkpoint_directory() / f"n{ordinal:03d}.json").read_bytes())
+
+
+@pytest.mark.parametrize("enrollment", ["v3", "default-primary", "default-repair"])
+@pytest.mark.parametrize("malicious_c2", [False, True])
+def test_fixture_admitted_task_schema_binds_c1_c2_and_runtime_rejects_unknown_ids(
+    tmp_path, monkeypatch, enrollment, malicious_c2,
+):
+    if enrollment == "v3":
+        f = ProductionFixture(tmp_path / "task-schema", monkeypatch, interactive=True)
+        f.authorize()
+        f.output = "incomplete\n"
+        sessions = fixture_session(f, monkeypatch)
+    else:
+        # The default factory owns its concrete OperationFixtureSession class.
+        from tests.test_ka01_default_three_flow import ThreeFlowFixture, synthetic_session
+        operation = "REPAIR" if enrollment == "default-repair" else "PRIMARY"
+        f = ThreeFlowFixture(tmp_path / "task-schema", monkeypatch, operation=operation)
+        sessions = synthetic_session(f, monkeypatch)
+    schemas, returns = [], []
+    original_factory = codex_adapter.CodexLiveTransport
+    invented = "... rest as specified above"
+
+    def construct(**kwargs):
+        # Pytest may load this file by basename and again as tests.*. Hook the
+        # actual factory instance, after its subclass has normalized the turn.
+        session = original_factory(**kwargs)
+        original_turn = session.turn
+
+        def turn(*, prompt, output_schema):
+            schemas.append(output_schema)
+            candidate = original_turn(prompt=prompt, output_schema=output_schema)
+            if malicious_c2 and session.calls == 2:
+                # A hostile provider ignores the enum; original Runtime must reject it.
+                data = candidate.output
+                data["package"]["result"]["claims"][0]["satisfies"].append(invented)
+                candidate = replace(candidate, output_json=ka01._bytes(data))
+                session.last_turn = candidate
+            returns.append(candidate.output)
+            return candidate
+
+        monkeypatch.setattr(session, "turn", turn)
+        return session
+
+    monkeypatch.setattr(codex_adapter, "CodexLiveTransport", construct)
+    if malicious_c2:
+        with pytest.raises(operator.OperatorError, match="unknown acceptance criteria") as rejected:
+            f.execute()
+        assert isinstance(rejected.value.__cause__, ArtifactValidationError)
+        assert str(rejected.value.__cause__) == "C1 references unknown acceptance criteria: " + invented
+        assert returns[-1]["package"]["result"]["claims"][0]["satisfies"] == ["AC1", invented]
+        assert len(f.owner._interactive_checkpoints) == 1
+        assert not list(f.state.results.glob("*.json"))
+    else:
+        summary = f.execute()
+        assert summary.ka01["checkpoints_spent"] == 2 and summary.ka01["corrections_spent"] == 1
+        assert len(f.owner._interactive_checkpoints) == 2
+    assert len(sessions) == 1 and sessions[0].calls == 2 and sessions[0].closed
+    assert f.owner._ka01_budget.session is sessions[0]
+    assert sessions[0].last_turn.output == returns[-1]
+    assert f.owner._ka01_budget.default is (enrollment != "v3")
+    commands = getattr(f, "commands_per_checkpoint", 1)
+    assert len(f.verification_calls) == commands * (1 if malicious_c2 else 2)
+    assert len(schemas) == len(returns) == 2
+    for ordinal, (schema, candidate) in enumerate(zip(schemas, returns), 1):
+        satisfies = schema["properties"]["package"]["properties"]["result"]["properties"]["claims"]["items"]["properties"]["satisfies"]
+        assert satisfies["items"]["enum"] == sorted(a.id for a in f.task.acceptance)
+        if malicious_c2 and ordinal == 2:
+            with pytest.raises(jsonschema.ValidationError):
+                jsonschema.validate(candidate, schema)
+        else:
+            jsonschema.validate(candidate, schema)
+
+
+@pytest.mark.parametrize("operation", ["PRIMARY", "REPAIR"])
+def test_original_observer_substitution_retains_verification_cause_at_operator_boundary(
+    tmp_path, monkeypatch, operation,
+):
+    from aios_renew.verification import RuntimeVerificationError
+    from tests.test_ka01_default_three_flow import KernelUpgradeFixture, kernel_session
+    f = KernelUpgradeFixture(tmp_path / "observer-substitution", monkeypatch,
+        operation=operation, first_fail=False)
+    sessions = kernel_session(f, monkeypatch)
+    captures = []
+
+    def substitute(argv, **kwargs):
+        intent = (f.owner._checkpoint_directory().parent / ".runtime-mutation/intent.json").read_bytes()
+        completed = f.verify(argv, **kwargs)
+        captures.append((intent, completed))
+        path = Path(kwargs["cwd"]).parent / "original-proof/tests/bp_v4_probe_plugin.py"
+        path.write_bytes(path.read_bytes() + b"\n# substituted original observer\n")
+        return completed
+
+    with pytest.raises(operator.OperatorError, match="CHECKPOINT_ORIGINAL_OBSERVER_AUTHENTICATION_FAILED") as stopped:
+        f.execute(verification_runner=substitute)
+    verification = stopped.value.__cause__
+    assert isinstance(verification, RuntimeVerificationError)
+    assert isinstance(verification.__cause__, VerificationContractError)
+    assert str(verification.__cause__) == "KA01_V13_KERNEL_UPGRADE_OBSERVER_SUBSTITUTED"
+    item, = verification.evidence
+    raw = Path(item.raw_path).read_bytes()
+    assert raw.startswith(b"STDOUT\n") and b"\nSTDERR\n" in raw
+    assert Path(item.raw_path).parent == f.owner._checkpoint_directory() / "n001"
+    (intent_raw, completed), = captures
+    assert raw == b"STDOUT\n" + completed.stdout + b"\nSTDERR\n" + completed.stderr
+    assert item.result.exit_code == completed.returncode == 0
+    assert (item.run_id, item.evidence_id, item.type, item.source.command) == (
+        f.run.run_id, f.run.run_id + "-V001", "VERIFICATION", f.policy.verification_commands[0])
+    assert item.subject_sha == f.owner.verification_subject_sha == sessions[0].last_turn.output["package"]["result"]["head_sha"]
+    assert item.verification is None  # Substituted observation never becomes authenticated proof.
+    assert f.owner.interruption_phase == "VERIFICATION"
+    assert len(sessions) == 1 and sessions[0].calls == 1 and sessions[0].closed
+    assert not f.owner._interactive_checkpoints and not f.owner._interactive_feedback
+    assert not list(f.state.results.glob("*.json"))
+    # _checkpoint_effect retains the first intent on an interrupted effect.
+    # Operator's real persist_failure call meets that fence before _persist_failure
+    # can write; its bookkeeping exception cannot replace the verification cause.
+    directory = f.owner._checkpoint_directory()
+    fence = directory.parent / ".runtime-mutation"
+    assert (fence / "intent.json").read_bytes() == intent_raw
+    assert json.loads(intent_raw) == dict(kind="NATIVE_CHECKPOINT", ordinal=1,
+        candidate_sha=item.subject_sha, predecessor_digest=None,
+        package_sha256=ka01._digest(sessions[0].last_turn.output["package"]))
+    assert {path.name for path in fence.iterdir()} == {"intent.json", "contested.json"}
+    assert json.loads((fence / "contested.json").read_bytes()) == dict(
+        version=1, kind="COMPETING_RUNTIME_MUTATION")
+    assert not (directory / "n001.json").exists()
+    assert not (directory / "terminal-intent.json").exists()
+    assert not (f.state.failures / (f.run.run_id + ".json")).exists()
+    budget = f.owner._ka01_budget
+    assert budget.stopped and budget.terminal_digest is None
+    assert budget.pending == ka01._digest(intent_raw)
+    assert budget.checkpoints_reserved == 1 and budget.checkpoints_spent == budget.corrections_spent == 0
+    interrupted = json.loads(budget.records[-1])
+    assert (interrupted["state"], interrupted["kind"], interrupted["key"], interrupted["reservation"]) == (
+        "INTERRUPTED", "NATIVE_CHECKPOINT", budget.pending, "OUTSTANDING_UNKNOWN_EFFECT")
+    observation = json.loads((f.state.observations / (f.run.run_id + ".ka01.json")).read_bytes())
+    assert (observation["run_id"], observation["operation"], observation["status"], observation["final_status"]) == (
+        f.run.run_id, operation, "STOPPED", "STOP")
+    assert observation["unresolved_reservation"] == budget.pending
+    assert observation["checkpoint_digests"] == [] and len(observation["turns"]) == 1
+    assert len(f.verification_calls) == 1
+    assert Path(item.raw_path).read_bytes() == raw
 
 
 def test_fixture_ordinary_c1_fail_feedback_c2_pass_one_terminal_and_no_final_rerun(tmp_path, monkeypatch):
