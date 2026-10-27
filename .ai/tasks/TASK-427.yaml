@@ -1,43 +1,57 @@
 task_id: TASK-427
-revision: 2
-goal: Complete the already Human-authorized KA01 v1.3 original-source Kernel-upgrade
-  bootstrap by making the actual existing self-host PRIMARY/REPAIR/REMEDIATION control
-  entry supply correctly authenticated original module availability before protected-scope
-  admission, without changing the protected consumer gate or its verification authority.
-  Permit TASK-426 r2 to reach its own lawful admission after independent Runtime verification/review/publication
-  of this revision.
-problem: 'At canonical main c7ff87be9a3ba00e2e019cae9b52d2a07133e3eb, TASK-427 r1
-  external candidate source is staged on main as an unreviewed implementation, without
-  a canonical RUN/RESULT/REVIEW or publication. TASK-426 r2 PRIMARY wake 40268076848
-  failed pre-RUN at KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE: run_created=false,
-  executor_invoked=false. Existing src/aios_renew/ka01_admission.py._kernel_upgrade_source
-  requires every original KERNEL_IMPLEMENTATION_PATHS module in sys.modules and rejects
-  missing modules; the existing scripts/aios_control_entry.py imports operator but
-  does not explicitly establish the complete original-module precondition. The exact
-  missing module is not in bounded receipt. This is an original source bootstrap/interface
-  mismatch to diagnose and remedy, not proof of a Codex native fault. Repeating TASK-426
-  wake or changing its ACs will not satisfy admission.'
+revision: 3
+goal: Resolve the actual pre-RUN original-source Kernel-upgrade bootstrap/admission
+  blocker end to end in ONE bounded TASK, across the existing GitHub self-host control
+  entry and KA01 original-module authority. Establish truthful source-authenticated
+  module availability, source/profile/proof preflight, and protected-scope admission
+  readiness for subsequent TASK-431 r1 PRIMARY, without restarting TASK-426 or weakening
+  original Runtime verification. Identify and correct the causal inconsistency between
+  control-entry preloading and KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE;
+  preserve PRIMARY/REPAIR/REMEDIATION original admission semantics.
+problem: Human's current priority is to solve the entire recurring TASK-431 pre-RUN
+  bootstrap blocker with a single existing TASK instead of another series of narrowly
+  failing tasks. TASK-427 r2 permits editing only scripts/aios_control_entry.py plus
+  two tests, but the exact source of the observed contradiction has not been established.
+  The self-host TASK-426 r2 workflow 40472613842 at control main 6320e0b833abad54fe379bbaa405e0f76bbef6e6
+  actually executed on TRUMP-LAPTOP, then rejected before RUN with KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE
+  (run_created=false, executor_invoked=false). Current scripts/aios_control_entry.py
+  has the SAME blob SHA 657d02d77c113b0aba56f1cba30409ad94bd8ee9 as that prior run,
+  and pre-checks all KERNEL_IMPLEMENTATION_PATHS; protected _kernel_upgrade_source
+  independently rejects a missing module in sys.modules. Repeating unchanged dispatch
+  or merely inserting another blind import does not explain or solve why the original
+  entry check and Runtime disagree. TASK-427 r2 is authored with no new verified RESULT/REVIEW.
+  TASK-431 r1 is now Human-selected EGDF successor of retired TASK-426, and its first
+  original-source admission depends on genuinely repairing this existing boundary.
+  TASK-428 r5 remains distinct and unverified; TASK-430 r3 was Human-adopted on main
+  as NOT_RUNTIME_VERIFIED and must not be converted to a fictitious PASS.
 assumptions:
-- Existing TASK-427 revision 1 and its Human-selected external candidate are immutable
-  historical source facts; source commit 5316dbd7236b0066aa8f0e1c2b00d5b2dd9ff179
-  is present in current main history but NOT a canonical reviewed/published eligible
-  TASK-427 RESULT. Task r2 is prospective and does not promote that commit or prior
-  external tests into Runtime verification.
-- Exactly current canonical main at r2 authoring is c7ff87be9a3ba00e2e019cae9b52d2a07133e3eb.
-  Runtime reauthenticates task revision and source at admission. TASK-426 r2 rejected
-  dispatch created no RUN/FAILURE and has no REPAIR eligibility.
-- Current original control entry is a runnable unprotected script sourced from pinned
-  control checkout. The original KA01 _kernel_upgrade_source guard remains unchanged
-  and must independently authenticate protected module source/identity. The first
-  unavailable module and effectiveness of a bootstrap improvement are hypotheses until
-  the live original process tests prove them.
-- Human approved audit and execution of the TASK-426 admission blocker, with continuing
-  Codex gpt-6.1-sol max selection for the existing TASK-427 objective. Exactly one
-  admitted Executor chooses HOW; Brain does not implement production source.
-- Existing protected external candidate code, KA01 resource defaults, verification
-  proof, and PTE-03/EGDF contracts remain unchanged; if source binding cannot be established,
-  stop with exact reason instead of importing from the editable candidate or bypassing
-  the guard.
+- The exact current canonical authoring main is 4c74e229ec1857f7c3086ec6ab4c725a7db78cd8;
+  original TASK-427 r2 blob 5532e991432483afd2e3080cbb92d6822a963bcb; successor TASK-431
+  r1 blob 40f852ccf8b7e591754a2a71bb2d03a5b5eeac96. Independently reauthenticate these
+  and actual remote state on execution.
+- TASK-427 r1 and r2 authoring history, RUN-427-001 FAILURE, Task-426 r1 seven FAILUREs
+  and rejected r2 pre-RUN wake, TASK-428 source history, and TASK-430 Human override
+  stay immutable. This r3 prospectively supersedes r2's unexecuted scope and obsolete
+  TASK-426 r2 follow-up, not those historical artifacts.
+- Observed blocker is exact public code KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE.
+  Which module, import source, process or invocation-order property is missing remains
+  UNKNOWN because bounded operational receipt lacks its exact witness; the existing
+  control entry appears to precheck the same declared module set. A generic diagnosis
+  of missing imports, Codex transport instability, or incomplete Runtime installation
+  is not established as root cause.
+- Read-only reproduction shall isolate actual original control entry and pinned task
+  subject, not mutate canonical RUN, self-host dispatch journal or emit bogus FAILURE.
+  The Executor can implement in one isolated candidate even when the broken original
+  admission cannot admit this protected task. An external implementation alone is
+  not Runtime PASS nor authorization to publish.
+- This TASK addresses only the original-source protected pre-RUN bootstrap/admission
+  family barrier needed for TASK-431; it does not implement EGDF, claim TASK-431 implementation
+  success or correct unrelated future provider failure.
+- Human selected Codex GPT-6.1 Sol max for the in-progress engineering effort, as
+  operational delegation external to provider-neutral TASK semantics. One admitted
+  Executor owns production HOW; Brain authors outcome/constraints, Runtime owns original
+  verification; Reviewer/Publisher stay distinct. Any exceptional exact-source deployment
+  later requires separately authenticated Human risk acceptance.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -45,101 +59,165 @@ scope:
   - docs/CHATGPT_PROJECT_CONTRACT.md
   - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
   - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
-  - .ai/tasks/TASK-425.yaml
-  - .ai/tasks/TASK-426.yaml
-  - src/aios_renew/ka01_admission.py
-  - src/aios_renew/runtime.py
-  - src/aios_renew/operator.py
-  - src/aios_renew/verification.py
-  - src/aios_renew/verification_contract.py
-  - src/aios_renew/intra_run_proof_contract.py
-  - src/aios_renew/dispatcher.py
-  - src/aios_renew/codex_adapter.py
-  - scripts/aios_control_entry.py
-  - tests/test_ka01_v13_activation.py
-  - tests/test_ka01_default_three_flow.py
-  - tests/test_ka01_v13_intra_run_native.py
-  - tests/test_runtime.py
-  - tests/test_repair_dispatch.py
-  - tests/test_remediation_wakeup.py
-  - src/aios_renew/proof_coverage_contract.py
-  - src/aios_renew/parallel_verification.py
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
   - .ai/roadmap-state.yaml
   - .ai/brain-audit-profiles.yaml
   - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+  - .ai/tasks/TASK-425.yaml
+  - .ai/tasks/TASK-426.yaml
+  - .ai/tasks/TASK-427.yaml
+  - .ai/tasks/TASK-428.yaml
+  - .ai/tasks/TASK-429.yaml
+  - .ai/tasks/TASK-430.yaml
+  - .ai/tasks/TASK-431.yaml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-brain-wakeup.yml
+  - scripts/aios_control_entry.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/verification.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/parallel_verification.py
+  - src/aios_renew/proof_coverage_contract.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/dispatcher.py
+  - tests/test_ka01_v13_activation.py
+  - tests/test_ka01_default_three_flow.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_self_hosted_wakeup.py
+  - tests/test_runtime.py
+  - tests/test_repair_dispatch.py
+  - tests/test_remediation_wakeup.py
   modify:
   - scripts/aios_control_entry.py
-  - tests/test_ka01_default_three_flow.py
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/verification.py
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - tests/test_ka01_original_control_entry.py
   - tests/test_ka01_v13_activation.py
+  - tests/test_ka01_default_three_flow.py
+  - tests/test_self_hosted_wakeup.py
+  - tests/test_runtime.py
+  - tests/test_repair_dispatch.py
+  - tests/test_remediation_wakeup.py
 non_goals:
-- No mutation of src/aios_renew/runtime.py, ka01_admission.py, verification.py or
-  other protected implementation/proof-consumer files; no bypass, deletion or weakening
-  of original _kernel_upgrade_source gates.
-- No second Runtime, alternate executor, auto retry, generic lifecycle router, data
-  store, credential source, or privileged transport; do not use an untrusted task
-  field to select imports.
-- No publication, review, RUN, RESULT or verified-pass inference from Task-427 r1's
-  external test, staged branch, commit in main, or GitHub receipt. No retrospective
-  changes to TASK-426 r1 RUNs or r2 rejected wake.
-- No full pytest suite, additional pilot/shadow or unrelated source churn. No fake
-  native provider tests or arbitrary independent attestation by candidate code.
+- No new TASK identity, multi-TASK bootstrap ladder, retried unchanged TASK-426 dispatch,
+  new generic lifecycle router, second verifier, Planner, Runtime, automated failover/repair,
+  background agent or data store.
+- No silent exception to the original protected admission, no disabling module availability/source/spec/immutability
+  checks, no mutable candidate/user-site Python substituting protected originals,
+  no changes to inherited current KA01 budgets or native process/session proof rules.
+- No authoring or implementing EGDF v1 here, no changes to TASK-431 contents, no rewritten
+  TASK-426 RUN/FAILURE/REPAIR, no imported unreviewed TASK-428 patch or retrospective
+  verification of Human-adopted TASK-430.
+- No full pytest suite, pilot/shadow/holdout/effectiveness threshold, duplicate independent
+  verification or automatic publication, and no permanent bypass flag for the original
+  self-host path.
+- No protected verification-contract/parser changes without a reproduced causal defect
+  in the specifically allowed original verification.py surface; no blanket authentication
+  permissiveness to clear an unexplained error.
 constraints:
   hard:
-  - Identify the exact original-module precondition failure in the existing original
-    control invocation, without leaking user-local paths, environment secrets or raw
-    private sources. Fix only the minimal existing control/bootstrap entry to make
-    original-source modules available under the original already-pinned control package,
-    not from mutable task subject, alternate site-packages or a mutable environment
-    path.
-  - Do not change KA01 _kernel_upgrade_source or existing protected code in this revision.
-    Its Runtime owner must independently verify exact KERNEL_IMPLEMENTATION_PATHS
-    source/loaded module identities, process owner and immutable original checkout,
-    preserving fail-closed rejection if missing, swapped, malformed or stale.
-  - Preserve existing `scripts/aios_control_entry.py` functionality, one control source
-    only, fail-closed import resolution, removal of transient sys.path override, no
-    transitive package substitution, no environment-wide PYTHONPATH or arbitrary data-directed
-    imports.
-  - Add focused tests for actual original entry ordering and protected upgrade admission
-    on supported source, plus negative missing, wrong-source, substituted-spec and
-    mutable candidate modules; tests must distinguish original candidate source bootstrap
-    from short synthetic single import. Keep ordinary non-upgrade PRIMARY/REPAIR/REMEDIATION
-    and old operation schemas working.
-  - Executor owns implementation and clean source commit, not canonical Runtime verification.
-    Runtime independently verifies the implementation with original source subject
-    and the specified two focused commands, followed by independent Reviewer and Publisher
-    if eligible. The isolated old TASK-427 candidate alone cannot prove successful
-    adoption.
-  - Maintain existing 2 corrections, 3 checkpoints, 240m run wall, 180m cumulative
-    verifier original KA01 policy, exact task/operation/scope/profile/lease bindings
-    and no new RUN from a pre-AIOS refusal. No unauthorized TASK-426 re-dispatch.
+  - Derive a source-bound reproducer from the actual self-host control-entry/script/module
+    source and original TASK-431 protected-scope admission (the TASK-426 r2 historic
+    failure is the immutable negative reference). Capture privately the FIRST missing
+    or wrong module, interpreter/import origin and control/subject process ordering
+    with exact source SHA and safe type-only public categories; avoid leaking user
+    paths, secrets, raw session or private logs.
+  - Reconcile the contradiction between scripts/aios_control_entry.py's prechecked
+    KERNEL_IMPLEMENTATION_PATHS and ka01_admission.py's live sys.modules check at
+    protected admission. A code change must fix the demonstrated causal original-source/process
+    boundary, not merely catch the error, preload unrelated modules, weaken guard
+    or swap in candidate-controlled code.
+  - Use one immutable trusted original self-host control source distinct from mutable
+    subject, and exact repository/task/main source authority. No environment-wide
+    PYTHONPATH, import from arbitrary site-packages, transitive proof-source substitution,
+    unchecked import side effects, mutable symlink traversal, or provider-controlled
+    source selection. Preserve fail-closed detection of missing, wrong-origin, wrong-spec,
+    stale or malformed original modules.
+  - Keep pre-RUN synchronisation, original module admission, GitHub workflow/Operator
+    invocation and family authority in their current owners. Any change to protected
+    ka01_admission.py/operator.py/verification.py is allowed only when a causal source
+    defect is evidenced in the actual boundary; retain identical check strength, task/operation/profile/lease
+    binding and complete original observer/toolchain/coverage proof. A pre-AIOS refusal
+    produces run_created=false, executor_invoked=false with an honest reason and never
+    a synthetic RUN/FAILURE.
+  - The corrected ORIGINAL CONTROL invocation must support an authorized protected
+    TASK-431-shaped PRIMARY from clean current main through the complete pre-RUN admission
+    decision while not calling Codex in the acceptance tests. A positive test must
+    use the real control-entry code and independently checked original package/helper
+    identities, not isolated mocked imports or a bypassed call. Real authenticated
+    local capability and Runtime may separately create a RUN only after admission.
+  - Regression covers original control program invocation, missing-module case, foreign/spec-substituted/mutable
+    source, stale TASK/current-main and profile mismatch; source-focused positive
+    and negative cases for PRIMARY/REPAIR/REMEDIATION, ordinary unprotected operation
+    and original workflow selector propagation. All necessary affected direct consumers/test
+    doubles must have edit authority in the declared allowlist; otherwise report a
+    typed SCOPE_BLOCKER, never silently broaden.
+  - Preserve KA01 v1.3 resources (2 corrections/3 checkpoints/240 min RUN/180 min
+    verifier), original C1/F1/C2 native session, prior TASK-430 candidate-proof-change-v1
+    policy, original PTE-03 evidence privacy, independent Reviewer/Publisher and all
+    historical lineages. Do not edit the normative KA01 document or its pinned hash
+    to hide an admission problem.
+  - "Single-TASK delivery is the scope boundary: external Codex may prepare a clean\
+    \ exact-source candidate in an isolated worktree if a pre-RUN original admission\
+    \ still cannot admit protected code. Such candidate and local tests are explicitly\
+    \ NOT_RUNTIME_VERIFIED; actual adoption follows ordinary Runtime/Reviewer/Publisher\
+    \ when possible or a separate exact Human \xA72.1 exception, never self-asserted.\
+    \ No direct or automatic main push by Executor."
+  - Acceptance IDs are all source/test properties Executor can claim at completion
+    without assuming future RUN, verification PASS, REVIEW or publication. Runtime
+    verification.required is exactly two scoped groups; no full suite or ceremonial
+    repeat of unchanged tests.
 acceptance:
 - id: AC1
-  condition: The existing control entry source is changed so an authenticated original
-    process invokes original Kernel-upgrade admission with the required genuine original
-    modules available in the correct environment, without changing protected gate
-    logic or loading mutable candidate/user-site substitutes.
+  condition: A deterministic source-bound reproducer distinguishes a genuinely missing
+    original module from control-process/import-identity mismatch using the actual
+    pinned self-host control entry and protected-scope TASK-431 admission path; it
+    preserves immutable negative TASK-426 trace and exposes only safe bounded diagnostic
+    reasons.
 - id: AC2
-  condition: At least one source-focused regression reproduces the previous pre-RUN
-    `KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE` failure and exercises the corrected
-    original control entry for an authorized protected-scope TASK, without fabricating
-    a RUN or implementation PASS.
+  condition: The corrected first-party control/bootstrap path authentically establishes
+    the complete required original module population and stable source/spec/process
+    binding through protected pre-RUN admission, without loading the editable subject
+    or arbitrary user-site content as original code.
 - id: AC3
-  condition: 'Negative tests exercise missing original module, wrong module origin
-    or spec, swapped and editable-subject source, stale source identity, and unsafe
-    import attempts: the gate continues to reject rather than falling back.'
+  condition: At least one realistic positive regression drives the actual control-entry
+    path through the complete original protected PRIMARY admission preconditions for
+    a TASK-431-shaped source, showing it no longer fails with KA01_V13_KERNEL_UPGRADE_ORIGINAL_RUNTIME_UNAVAILABLE
+    while not invoking Codex or manufacturing a RUN.
 - id: AC4
-  condition: Existing ordinary operation bootstrap, GitHub self-host original-source
-    control, scoped execution profile and package import hygiene are preserved; the
-    revision changes only the three allowed entry/test paths and produces a clean
-    descendant candidate with truthful claims.
+  condition: Negative regression tests preserve rejection of missing, wrong-spec,
+    foreign-origin, mutable-subject, stale original source, task or profile and incorrect
+    operation/lease authority, including attributable typed errors instead of a false
+    admission.
 - id: AC5
-  condition: Focused tests assert normal PRIMARY, REPAIR and REMEDIATION source paths
-    remain supported under existing original KA01 limits; no change to historical
-    PTE-03, EGDF, Runtime verification, Reviewer, Publisher, roadmap or TASK-426 artifacts.
+  condition: Existing original self-host workflow, PRIMARY/REPAIR/REMEDIATION entrypoints
+    and ordinary unprotected commands preserve exact selector/SHA/profile/source flow
+    and continue to use one Runtime with no new router, backup Executor, exception
+    bypass or inherited control import pollution.
+- id: AC6
+  condition: Where the authenticated failure is caused by protected first-party consumer
+    implementation, its repair changes only the minimum of the scoped ka01_admission.py/operator.py/verification.py
+    with original guards, observer/proof/worker identities and native checkpoint logic
+    intact; implementation adds a regression that fails before the causal fix.
+- id: AC7
+  condition: Source-focused tests for original control-entry and affected existing
+    test consumers are complete, deterministic and cover both successful and fail-closed
+    protected admission, without running full pytest, faking provider-native success
+    or inferring canonical Runtime EVIDENCE/REVIEW/PUBLISH.
+- id: AC8
+  condition: Final implementation and scoped claims preserve exact TASK-427 r3 source
+    lineage, earlier TASK-427 r1/r2 authoring and RUN-427-001 failure, TASK-426/428/430
+    historical outcomes, and untouched TASK-431 EGDF contract; there is no per-run
+    success claim merely from staging, dispatch or external tests.
 verification:
   policy: minimum-sufficient-v1
   required:
-  - python -m pytest -q tests/test_ka01_default_three_flow.py tests/test_ka01_v13_activation.py
-  - python -m pytest -q tests/test_repair_dispatch.py tests/test_remediation_wakeup.py
+  - python -m pytest -q tests/test_ka01_original_control_entry.py tests/test_ka01_v13_activation.py
+  - python -m pytest -q tests/test_ka01_default_three_flow.py tests/test_self_hosted_wakeup.py
+    tests/test_repair_dispatch.py tests/test_remediation_wakeup.py
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
