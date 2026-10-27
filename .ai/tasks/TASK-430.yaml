@@ -1,0 +1,185 @@
+task_id: TASK-430
+revision: 1
+goal: Implement and activate prospective project-wide General Self-Repair Governance
+  Alignment v0.3 across the existing Project Contract, KA-01 normative contract and
+  their necessary first-party Runtime consumers. Express general failure-state and
+  authority predicates, not TASK-specific triggers; keep ordinary evidence ownership
+  and exact Human exceptional recovery distinct, and remove the universal numerical
+  decrease-of-failed-identities bottleneck for eligible same-RUN corrections without
+  weakening mandatory proof.
+problem: "The Human-approved project-wide v0.3 audit at canonical main 6320e0b833abad54fe379bbaa405e0f76bbef6e6\
+  \ found that subordinate ordinary activation/publication and protected-source KA-01\
+  \ wording can be read as vetoing Constitution \xA72.1 self-repair exceptions; pre-RUN\
+  \ infrastructure inability, admitted RUN failure and diagnostic insufficiency are\
+  \ conflated; current Runtime._interactive_checkpoint insists failed-identity set\
+  \ strictly shrink even for a legitimate new in-scope candidate whose test phase/collection\
+  \ changes; bounded feedback exposes only failed identities. These rules create recurrent\
+  \ self-repair deadlocks. Constitution \xA72.1 already independently authorizes explicit\
+  \ exact-source Human exceptions. Do not make any specific historical TASK, RUN,\
+  \ SHA, model or incident the governing trigger, and do not duplicate the separately\
+  \ authored EGDF checkpoint diagnostic implementation work."
+assumptions:
+- Human explicitly accepted generalized governance draft v0.3 and authorized its implementation
+  now; that is project-wide prospective policy direction, NOT separate exact-source
+  Human exception/deployment risk acceptance, Executor/model selection, proof of an
+  installed bootstrap or permission to fabricate ordinary RUN/REVIEW/PUBLISH.
+- "Existing Constitution \xA72.1 remains authoritative without amendment; immutable\
+  \ historical TASK/RUN/RESULT/FAILURE/REVIEW and already admitted KA-01 policies\
+  \ retain their original exact meaning. Canonical currentness and source/hash bindings\
+  \ must be reauthenticated at execution."
+- Ordinary protected Runtime/proof-consumer modification may encounter the pre-RUN
+  original-source bootstrap gate. If original trusted capability is missing, report
+  a typed pre-RUN refusal rather than rerun a known blocked request. Human may later
+  independently authorize a precisely scoped external candidate/deployment; this TASK
+  does not itself authorize that exception.
+- TASK-426 r2 separately owns the EGDF v1 checkpoint diagnostic delivery capability.
+  This governance change defines general eligibility/accessibility and avoids a parallel
+  diagnostic service, separate verifier or duplicated EGDF implementation. Existing
+  native work on TASK-428 and observer TASK-429 remains distinct.
+- One admitted Executor owns HOW, with existing Runtime as canonical verifier and
+  independent Reviewer/Publisher gates; the task itself is model/provider neutral.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-SELF-HOST-END-TO-END-FLOW-v1.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - .ai/tasks/TASK-425.yaml
+  - .ai/tasks/TASK-426.yaml
+  - .ai/tasks/TASK-427.yaml
+  - .ai/tasks/TASK-428.yaml
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/runtime.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/verification_contract.py
+  - src/aios_renew/intra_run_proof_contract.py
+  - src/aios_renew/codex_live_transport.py
+  - tests/test_ka01_default_three_flow.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_ka01_v13_activation.py
+  - .ai/roadmap-state.yaml
+  modify:
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
+  - src/aios_renew/ka01_admission.py
+  - src/aios_renew/runtime.py
+  - tests/test_ka01_default_three_flow.py
+  - tests/test_ka01_v13_intra_run_native.py
+  - tests/test_ka01_v13_activation.py
+non_goals:
+- No Constitution amendment, frozen Kernel retroactivity, historical source/lineage
+  rewrite or new standing Human override. No specific TASK/RUN/model/SHA/date as a
+  normative policy activation predicate; retain such names only in clearly historical
+  non-normative sections.
+- No new Runtime, Reviewer, Publisher, rescue controller, Planner, database, lifecycle
+  router, hidden failover, automated External Executor dispatch or automatic re-admission/retry
+  after STOP.
+- No independent implementation of EGDF v1, no second verification path or diagnostic
+  data store, no raw untrusted log as command authority. Do not overlap TASK-426's
+  checkpoint selective-read feature, TASK-428 native FIFO/observer work or TASK-429
+  nested verifier repair.
+- No default-on policy to bypass original family admission, original-source runtime/proof
+  identity, actual selected executor/lease, authenticated source/hash, Git CAS, authorized
+  scope, original trust and finite budgets.
+- No fabricated PASS from external/local tests, false Reviewer PASS, ordinary Publisher
+  eligibility, bypass on mere Human phrase 'fix it', automatic roadmap progression
+  or downstream adoption.
+- No full pytest suite or shadow/pilot/evaluation gating added to activation.
+constraints:
+  hard:
+  - "Implement v0.3 project-wide normative clauses in Project Contract \xA72, \xA7\
+    7, \xA78, \xA711-12 and KA-01 C.3, C.4, D.1.1/D.1.2/D.1.3/D.4 consistently; keep\
+    \ Constitution \xA72.1 unchanged. Distinguish normal verified delivery from exact\
+    \ per-candidate Human exception. Preserve ordinary Reviewer and Publisher separation."
+  - Use general functional/failure-state predicates. Clearly separate pre-RUN refusal
+    (run_created=false, no RUN/FAILURE/REPAIR), admitted RUN STOP/terminal, and Reviewer
+    CHANGES_REQUIRED. Do not auto retry unchanged blockers or translate carrier/dispatch
+    into canonical execution.
+  - For newly admitted eligible KA-01 default same-RUN coding episodes, a genuinely
+    new committed clean scoped descendant with source-authenticated complete stable
+    proof must not be rejected solely because failed-identity cardinality/set is not
+    a strict subset after a causal test-phase/collection change. Keep a bounded verifiable
+    factual progress basis using existing authenticated candidate/proof/source material,
+    not an unimplementable deterministic semantic root-cause judge. Identical/empty/unrelated
+    deltas, forged/incomplete/unstable evidence, unknown continuation authority, lease
+    loss and exhausted budget still STOP; final proof must satisfy all authorized
+    requirements.
+  - Preserve the eligible FAIL prerequisite for correction. ERROR/UNKNOWN/UNAVAILABLE
+    are diagnostic outcomes, not continuation permission/PASS. Feedback and future
+    authorized progressive evidence reads preserve exact scope/session/lease/checkpoint/currentness,
+    privacy/secret filtering and untrusted-log boundary; no arbitrary aggregate diagnostic
+    ceiling may be interpreted as a governance limit. Avoid duplicate EGDF implementation
+    in this task.
+  - Changing KA-01 normative bytes must update the canonical source/digest consumer
+    in first-party KA-01 admission coherently, keeping historical version pins and
+    already admitted modes decodable. Do not make the current document unsourceable
+    to installed original Runtime without a truthful bootstrap/activation boundary.
+    Original proof validators and running control must remain outside the editable
+    candidate while being verified.
+  - Keep original limits 2 corrections, 3 checkpoints, 240-minute RUN wall, 180-minute
+    cumulative verification within RUN, null token cap, exact separate Human per-field
+    overrides; no automatic limit reset or new RUN to gain budget. Exact Human extraordinary
+    deployment outside an admitted RUN must not fake KA-01 accounting.
+  - Implementation and ordinary production activation form one deliverable under the
+    existing eligible original Runtime verification, independent review and Publisher
+    gates; an unavailable current bootstrap remains a reported BLOCKER, not permission
+    to self-verify or a reason to create an additional activation task.
+  - Executor claims implementation properties only. Runtime performs only the authored
+    focused commands once, tracks raw evidence and exact source identity. Tests include
+    positive and adversarial cases for non-monotonic test failures, malformed/stale
+    proof, unchanged candidate, separate pre-admission refusal and Human exceptional
+    labels (without automating bypass), normative SHA drift and historical compatibility.
+acceptance:
+- id: AC1
+  condition: "Project Contract contains prospective, general, consistent ordinary-versus-exception\
+    \ clauses aligned with Constitution \xA72.1, without TASK-specific applicability\
+    \ or blanket gate bypass."
+- id: AC2
+  condition: Project Contract distinguishes pre-RUN refusal, terminal admitted RUN
+    failure and independent semantic REVIEW findings and specifies read-only authenticated
+    diagnostic visibility without promoting untrusted evidence to instruction authority.
+- id: AC3
+  condition: KA-01 C.3/C.4 and prospective default-mode sections explicitly preserve
+    complete stable FAIL eligibility, source/session/lease/scope/budget and truthful
+    terminal protection while removing the unconditional strict numerical/set decrease
+    of failed identities as the sole progress test.
+- id: AC4
+  condition: First-party original Runtime continuation/checkpoint logic implements
+    the revised bounded factual candidate-progress condition for newly admitted eligible
+    default-mode corrections and rejects unchanged, out-of-scope, forged, incomplete
+    or stale changes without semantic repair selection or extra verification.
+- id: AC5
+  condition: "The functional protected-source self-upgrade contract describes ordinary\
+    \ independent original-source proof versus source-scoped Human extraordinary recovery\
+    \ as general rules, with task-specific historical notes explicitly non-normative;\
+    \ ordinary STOP does not veto Constitution \xA72.1."
+- id: AC6
+  condition: The current KA-01 normative-byte digest/source authentication and historical
+    admission decoders are coherent with revised policy text; source drift, false
+    original-module identity, unverified self-adoption and invalid CAS retain fail-closed
+    behavior.
+- id: AC7
+  condition: Focused regression cases cover stable complete FAIL with changed test
+    population/non-monotone failed set and lawful new in-scope candidate, alongside
+    negative identity, unchanged candidate, partial/ERROR/UNKNOWN, budget, source
+    and multi-operation cases.
+- id: AC8
+  condition: Feedback/diagnostic policy permits bounded authenticated progressive
+    factual inspection when available without aggregate arbitrary ceiling or additional
+    verifier, and explicitly leaves separately authored EGDF capability inactive until
+    separately lawfully implemented, with no unauthorized new mechanism.
+- id: AC9
+  condition: Implementation remains a clean scoped change to precisely allowed governance/KA-01/runtime/test
+    files, preserves original TASK histories and native/observer work separation,
+    and contains no unsupported canonical PASS, review, publication, emergency source
+    authorization or provider claims.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_ka01_default_three_flow.py tests/test_ka01_v13_activation.py
+  - python -m pytest -q tests/test_ka01_v13_intra_run_native.py
+return_affinity:
+  kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
