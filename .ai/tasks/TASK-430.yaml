@@ -1,12 +1,15 @@
 task_id: TASK-430
-revision: 1
+revision: 2
 goal: Implement and activate prospective project-wide General Self-Repair Governance
   Alignment v0.3 across the existing Project Contract, KA-01 normative contract and
   their necessary first-party Runtime consumers. Express general failure-state and
   authority predicates, not TASK-specific triggers; keep ordinary evidence ownership
   and exact Human exceptional recovery distinct, and remove the universal numerical
   decrease-of-failed-identities bottleneck for eligible same-RUN corrections without
-  weakening mandatory proof.
+  weakening mandatory proof. Resolve the newly scoped native Codex installed-original-process/session
+  continuity failure only where authenticated diagnosis establishes a first-party
+  transport defect; retain live original process, feedback and checkpoint continuity
+  without bypassing independent proof.
 problem: "The Human-approved project-wide v0.3 audit at canonical main 6320e0b833abad54fe379bbaa405e0f76bbef6e6\
   \ found that subordinate ordinary activation/publication and protected-source KA-01\
   \ wording can be read as vetoing Constitution \xA72.1 self-repair exceptions; pre-RUN\
@@ -17,7 +20,14 @@ problem: "The Human-approved project-wide v0.3 audit at canonical main 6320e0b83
   \ self-repair deadlocks. Constitution \xA72.1 already independently authorizes explicit\
   \ exact-source Human exceptions. Do not make any specific historical TASK, RUN,\
   \ SHA, model or incident the governing trigger, and do not duplicate the separately\
-  \ authored EGDF checkpoint diagnostic implementation work."
+  \ authored EGDF checkpoint diagnostic implementation work. After this r1 external\
+  \ candidate, a SHA-bound diagnostic preserved all seven changed paths and identified\
+  \ 55 filename-too-long test failures (two impacted synthetic fixtures passed under\
+  \ a short test root) plus three installed-native Codex cases stopping with CODEX_LIVE_STOP_ORIGINAL_PROCESS_CONNECTION_SESSION_LOST.\
+  \ The exact source-versus-provider cause of native loss is not established. Human\
+  \ now expressly requests prospective revision 2 to admit bounded correction of the\
+  \ existing codex_live_transport.py owner boundary while retaining TASK-428's independent\
+  \ source and historical lineage."
 assumptions:
 - Human explicitly accepted generalized governance draft v0.3 and authorized its implementation
   now; that is project-wide prospective policy direction, NOT separate exact-source
@@ -38,6 +48,21 @@ assumptions:
   native work on TASK-428 and observer TASK-429 remains distinct.
 - One admitted Executor owns HOW, with existing Runtime as canonical verifier and
   independent Reviewer/Publisher gates; the task itself is model/provider neutral.
+- Human 2026-10-27 explicitly chooses TASK-430 revision 2 to add narrow native Codex
+  process/session-loss diagnosis and source correction where proven. The already collected
+  external candidate diff SHA-256 5aa1e047089687ab2d2f2cf174851fd2a1247dd6d73f47bbf2def3f2cff14f27
+  is continuity input, not a canonical commit, RUN, PASS or unconditional permission
+  to publish.
+- TASK-428 revision 5 and its unmerged earlier external PR remain separate pending
+  implementation/lineage; this r2 owns only a prospectively scoped cause of the observed
+  installed-native loss in its own candidate, with no concurrent Executor mutation
+  of this r2 worktree and no implicit adoption, replay or overwriting of TASK-428
+  source. TASK-429 original-observer isolation ownership remains separate.
+- The three native connection-stop test outcomes and the 55 Windows long-path test
+  failures are independent categories. A real provider exit, cancellation, network
+  failure or unavailable native session may be legitimate STOP, not a correctable
+  first-party bug. The Executor must report evidence and precise BLOCKER if a first-party
+  source defect cannot be established within scope.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -61,6 +86,10 @@ scope:
   - tests/test_ka01_v13_intra_run_native.py
   - tests/test_ka01_v13_activation.py
   - .ai/roadmap-state.yaml
+  - src/aios_renew/codex_adapter.py
+  - tests/test_codex_adapter.py
+  - tests/test_ka01_original_observer_isolation.py
+  - tests/conftest.py
   modify:
   - docs/CHATGPT_PROJECT_CONTRACT.md
   - docs/AIOS-KERNEL-KA01-PROSPECTIVE-AMENDMENT.md
@@ -69,6 +98,8 @@ scope:
   - tests/test_ka01_default_three_flow.py
   - tests/test_ka01_v13_intra_run_native.py
   - tests/test_ka01_v13_activation.py
+  - src/aios_renew/codex_live_transport.py
+  - tests/test_codex_adapter.py
 non_goals:
 - No Constitution amendment, frozen Kernel retroactivity, historical source/lineage
   rewrite or new standing Human override. No specific TASK/RUN/model/SHA/date as a
@@ -77,10 +108,11 @@ non_goals:
 - No new Runtime, Reviewer, Publisher, rescue controller, Planner, database, lifecycle
   router, hidden failover, automated External Executor dispatch or automatic re-admission/retry
   after STOP.
-- No independent implementation of EGDF v1, no second verification path or diagnostic
-  data store, no raw untrusted log as command authority. Do not overlap TASK-426's
-  checkpoint selective-read feature, TASK-428 native FIFO/observer work or TASK-429
-  nested verifier repair.
+- No independent EGDF v1 implementation, second verification path, diagnostic store,
+  raw untrusted logs as authority, TASK-426 checkpoint feature, TASK-428 FIFO/backpressure/schema/observer
+  import or TASK-429 nested-verifier repair. Same file can be inspected by different
+  TASKs but no TASK-428 source candidate is implicitly adopted as TASK-430 proof or
+  publication eligibility.
 - No default-on policy to bypass original family admission, original-source runtime/proof
   identity, actual selected executor/lease, authenticated source/hash, Git CAS, authorized
   scope, original trust and finite budgets.
@@ -88,6 +120,11 @@ non_goals:
   eligibility, bypass on mere Human phrase 'fix it', automatic roadmap progression
   or downstream adoption.
 - No full pytest suite or shadow/pilot/evaluation gating added to activation.
+- No blanket reconnect, model/provider failover, new native session to replace a lost
+  admitted one, fabricated process liveness, suppression of real EOF/deadline/close/crash,
+  test skip/xfail, altered assertions, weakened original proof or programmatic retry
+  until PASS. Windows temporary-directory shortening remains test invocation hygiene,
+  not a production transport feature.
 constraints:
   hard:
   - "Implement v0.3 project-wide normative clauses in Project Contract \xA72, \xA7\
@@ -132,6 +169,31 @@ constraints:
     positive and adversarial cases for non-monotonic test failures, malformed/stale
     proof, unchanged candidate, separate pre-admission refusal and Human exceptional
     labels (without automating bypass), normative SHA drift and historical compatibility.
+  - Treat CODEX_LIVE_STOP_ORIGINAL_PROCESS_CONNECTION_SESSION_LOST as a truthful symptom,
+    not itself proof of a transport coding defect. Establish the original native process/pipes/reader
+    ownership, bounded FIFO and event ordering, stderr/exit/cancel/deadline, session
+    identity and output schema evidence before modifying codex_live_transport.py.
+    If independent evidence indicates provider/environment termination, preserve STOP
+    and return a typed cause or bounded diagnostic; never report fixed without authentic
+    live evidence.
+  - Where a first-party defect is established, correct only the existing native transport
+    session/process boundary within authorized files. Preserve lossless bounded FIFO/backpressure,
+    original process/thread ownership, actual live session, deadline, feedback receipt,
+    immutable source/lease/executor binding, legacy v3/default compatibility and terminal
+    STOP rules. Do not duplicate TASK-428's pending FIFO/schema repair or modify verifier/observer
+    proof helpers outside scope.
+  - Use a short, independently isolated Windows pytest/temp root when diagnosing known
+    MAX_PATH fixture failures; preserve recorded 55 external failures as external
+    evidence rather than relabel them PASS. Reuse already grounded narrow passing
+    evidence unless changed source invalidates it. Never use a path workaround to
+    mask genuine native process death.
+  - Add source-focused positive and negative transport regressions for the established
+    mechanism in tests/test_codex_adapter.py and, if pertinent, existing installed-native
+    tests. Exercise provider EOF, broken pipe, reader backpressure, deadline, real
+    process death and wrong session/owner without manufacturing model compliance or
+    fake checkpoint success. Author minimum-sufficient verification of impacted code
+    plus the two previously required groups; live failure remains a BLOCKER if it
+    persists.
 acceptance:
 - id: AC1
   condition: "Project Contract contains prospective, general, consistent ordinary-versus-exception\
@@ -172,14 +234,27 @@ acceptance:
     verifier, and explicitly leaves separately authored EGDF capability inactive until
     separately lawfully implemented, with no unauthorized new mechanism.
 - id: AC9
-  condition: Implementation remains a clean scoped change to precisely allowed governance/KA-01/runtime/test
-    files, preserves original TASK histories and native/observer work separation,
-    and contains no unsupported canonical PASS, review, publication, emergency source
-    authorization or provider claims.
+  condition: Implementation remains a clean scoped change confined to the nine explicitly
+    allowed governance/KA-01/Runtime/native-transport/test files, preserving independent
+    TASK-428/TASK-429 source and historical lineage without unsupported canonical
+    PASS, review, publication, emergency authorization or provider claims.
+- id: AC10
+  condition: Existing first-party Codex native transport handles an independently
+    demonstrated source-controlled original-process/session continuity defect, if
+    established, while retaining lossless bounded event delivery and accurate STOP
+    for authentic process/session loss, stale identity, EOF, deadline, cancellation
+    and malformed data; provider/environment loss is not misrepresented as fixed source
+    behavior.
+- id: AC11
+  condition: Scoped Codex transport regression demonstrates the specific authenticated
+    cause and negative liveness/identity paths without skips, retries, invented reconnection,
+    fixture PASS substitution or cross-TASK source import; actual installed-native
+    failures remain observable and blocking until independently satisfied.
 verification:
   policy: minimum-sufficient-v1
   required:
   - python -m pytest -q tests/test_ka01_default_three_flow.py tests/test_ka01_v13_activation.py
   - python -m pytest -q tests/test_ka01_v13_intra_run_native.py
+  - python -m pytest -q tests/test_codex_adapter.py
 return_affinity:
   kind: LEGACY_REPOSITORY_DEFAULT_ROUTE
