@@ -34,6 +34,7 @@ INTERACTIVE_IMPLEMENTATION = "KA01-v1.3-interactive-primary-v1"
 INTERACTIVE_MODE = "PRODUCTION_INTERACTIVE_PRIMARY"
 DEFAULT_IMPLEMENTATION = "KA01-v1.3-default-three-flow-v1"
 DEFAULT_MODE = "PRODUCTION_DEFAULT_THREE_FLOW"
+DEFAULT_PROGRESS_POLICY = "candidate-proof-change-v1"
 KERNEL_UPGRADE_IMPLEMENTATION = "KA01-v1.3-original-source-kernel-upgrade-v1"
 VERSION = "1.3"
 PROFILE = "KA01-v1.3-default-resource-profile"
@@ -42,7 +43,8 @@ HISTORICAL_NORMATIVE_SHA256 = "1381a4ef25a1b6877b8e6326767e8545eff17cdc49dfd6062
 # Historical requests keep their original normative pin. A fresh explicit
 # exception may select current normative bytes without changing its old mode.
 PRE_UPGRADE_NORMATIVE_SHA256 = "52b7f7af908315608ab504e46fdcdcc6e671f157aab2d6a51104c7f83902ed27"
-DEFAULT_NORMATIVE_SHA256 = "72831e82cd58abb388d35e4efb3f28412e4b293f36604c7f18ed1b1164b9808d"
+PRE_ALIGNMENT_NORMATIVE_SHA256 = "72831e82cd58abb388d35e4efb3f28412e4b293f36604c7f18ed1b1164b9808d"
+DEFAULT_NORMATIVE_SHA256 = "d2942d79b803bc23940d36bf73ee0dd859ed6d827f5e596447a94d9a925277bc"
 NORMATIVE_SHA256 = DEFAULT_NORMATIVE_SHA256
 IMPLEMENTATION_PATHS = (
     "src/aios_renew/ka01_admission.py", "src/aios_renew/operator.py",
@@ -199,9 +201,16 @@ def _production_source(owner, reader, tree, *, interactive=False, default=False,
     blobs = {}
     paths = KERNEL_IMPLEMENTATION_PATHS if kernel else DEFAULT_IMPLEMENTATION_PATHS if default else INTERACTIVE_IMPLEMENTATION_PATHS if interactive else IMPLEMENTATION_PATHS
     for path in paths:
-        module = sys.modules.get("aios_renew." + Path(path).stem)
+        name = "aios_renew." + Path(path).stem
+        module = sys.modules.get(name)
         if module is None or not getattr(module, "__file__", None):
             _deny("RUNNING_IMPLEMENTATION_SOURCE_UNAVAILABLE")
+        spec = getattr(module, "__spec__", None)
+        origin = getattr(spec, "origin", None)
+        if (getattr(module, "__name__", None) != name or getattr(spec, "name", None) != name
+                or type(origin) is not str or not origin
+                or Path(origin).absolute() != Path(module.__file__).absolute()):
+            _deny("RUNNING_IMPLEMENTATION_MODULE_SUBSTITUTED")
         content = reader.blob(tree, path)
         loaded = _original_local(Path(module.__file__).absolute(), MAX_ORIGINAL_PROOF_BYTES)
         # Ordinary Git checkouts may convert text line endings on Windows.
@@ -399,12 +408,13 @@ def _default_authority(owner, operation, profile, policy):
         policy=owner.task.verification.policy,
         normative=dict(source_sha=main, path=NORMATIVE_PATH, sha256=DEFAULT_NORMATIVE_SHA256),
         global_policy=dict(mode=DEFAULT_MODE, authority="HUMAN_RATIFIED_CANONICAL_SOURCE",
-            task="TASK-425", revision=1, operations=sorted(OPERATIONS), prospective_only=True),
+            operations=sorted(OPERATIONS), prospective_only=True),
         selection=None, consent=None, original_selector=None, overrides=[], effective_limits=resolve_limits([]),
         operation=operation, execution_profile=profile.as_dict(), source=source,
         implementation_main_sha=main, implementation_source=implementation_source,
         production_activation="DEFAULT_ENROLLED_NATIVE_CAPABILITY_REQUIRED",
         continuation="SAME_ORIGINAL_LIVE_SESSION_ONLY",
+        progress_policy=DEFAULT_PROGRESS_POLICY,
         native_feedback_delivery="REQUIRES_ORIGINAL_NATIVE_COMPLETED_TURN",
         **(dict(kernel_upgrade=upgrade) if upgrade is not None else {}))
 
@@ -518,7 +528,9 @@ def _authority(owner, request, operation, profile, policy):
             _deny("EXPLICIT_OPERATION_REQUIRED")
     operations(selection["operations"])
     normative = _exact(selection["normative"], ("source_sha", "path", "sha256"))
-    if normative["path"] != NORMATIVE_PATH or normative["sha256"] not in {HISTORICAL_NORMATIVE_SHA256, PRE_UPGRADE_NORMATIVE_SHA256, NORMATIVE_SHA256}:
+    if normative["path"] != NORMATIVE_PATH or normative["sha256"] not in {
+            HISTORICAL_NORMATIVE_SHA256, PRE_UPGRADE_NORMATIVE_SHA256,
+            PRE_ALIGNMENT_NORMATIVE_SHA256, NORMATIVE_SHA256}:
         _deny("EXACT_PUBLISHED_NORM_REQUIRED")
     source_tree = reader.anchors(main, {normative["source_sha"]})[normative["source_sha"]]
     norm = reader.blob(source_tree, NORMATIVE_PATH)

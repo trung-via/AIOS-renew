@@ -660,6 +660,8 @@ def test_current_planning_has_one_activation_task_and_preserves_original_failure
     next_entries = [e for e in roadmap["sequence"] if e["status"] == "NEXT"]
     assert len(next_entries) == 1 and next_entries[0]["task_id"] == "TASK-425"
     assert roadmap["next_items"] == [next_entries[0]["id"]] == [roadmap["active_track"]]
+    # Dated approvals explain the retained interfaces; they are not current
+    # roadmap selection or a TASK-specific normative activation predicate.
     decision = roadmap["human_lean_vp_single_activation_closeout_20261025"]
     assert decision["remaining_task_count"] == 1 and decision["original_lean_vp_slot_count"] == 16
     assert decision["task418"]["failed_runs"] == [f"RUN-418-{i:03d}" for i in range(1, 8)]
@@ -670,4 +672,82 @@ def test_current_planning_has_one_activation_task_and_preserves_original_failure
     assert current["new_implementation"] == ka01.INTERACTIVE_IMPLEMENTATION
     normative = (SOURCE_ROOT / ka01.NORMATIVE_PATH).read_bytes()
     assert hashlib.sha256(normative).hexdigest() == ka01.DEFAULT_NORMATIVE_SHA256
+    assert ka01.DEFAULT_NORMATIVE_SHA256 != ka01.PRE_ALIGNMENT_NORMATIVE_SHA256
+
+
+def test_older_interactive_interface_retains_its_strict_progress(tmp_path, monkeypatch):
+    from tests.test_ka01_v13_intra_run_native import fixture_session
+    proof = ("from pathlib import Path\nvalue = Path('OUTPUT.txt').read_text()\n"
+        "def test_first():\n    assert value != 'phase1'\n"
+        "def test_next():\n    assert value != 'phase2'\n")
+    f = ProductionFixture(tmp_path / "historical-interface", monkeypatch, interactive=True, proof_source=proof)
+    f.authorize()
+    f.candidates = ["phase1", "phase2", "complete\n"]
+    sessions = fixture_session(f, monkeypatch)
+    with pytest.raises(VerificationContractError, match="NO_VERIFIED_SCOPED_PROGRESS"):
+        f.execute()
+    authority = json.loads(f.owner._ka01_budget.authority)
+    assert authority["normative"]["sha256"] == ka01.DEFAULT_NORMATIVE_SHA256
+    assert "progress_policy" not in authority and not f.owner._ka01_budget.default
+    assert sessions[0].calls == len(f.verification_calls) == 2
+    assert not list(f.state.results.glob("*.json"))
+
+
+@pytest.mark.parametrize("pin", [ka01.HISTORICAL_NORMATIVE_SHA256,
+    ka01.PRE_UPGRADE_NORMATIVE_SHA256, ka01.PRE_ALIGNMENT_NORMATIVE_SHA256])
+def test_historical_normative_pins_are_recognized_but_cannot_authenticate_other_bytes(tmp_path, monkeypatch, pin):
+    # A supported historical pin reaches exact source validation, rather than
+    # becoming an unknown version or permission to use the current document.
+    # Keep this fixture independent of archived Git objects in isolated subjects.
+    f = ProductionFixture(tmp_path / "historical-pin", monkeypatch)
+    f.authorize(selection_change=lambda s: s["normative"].update(sha256=pin))
+    with pytest.raises(VerificationContractError, match="NORMATIVE_SOURCE_CHANGED"):
+        f.execute()
+    assert not f.native_calls and not f.verification_calls and not list(f.state.results.glob("*.json"))
+
+
+@pytest.mark.parametrize("defect", ["wrong-origin", "missing-spec"])
+def test_running_module_spec_cannot_impersonate_original_source(tmp_path, monkeypatch, defect):
+    import importlib.util
+    from aios_renew import runtime
+    f = ProductionFixture(tmp_path / "module-identity", monkeypatch)
+    f.authorize()
+    spec = None if defect == "missing-spec" else importlib.util.spec_from_file_location(
+        runtime.__name__, tmp_path / "substituted_runtime.py")
+    monkeypatch.setattr(runtime, "__spec__", spec)
+    with pytest.raises(VerificationContractError, match="RUNNING_IMPLEMENTATION_MODULE_SUBSTITUTED"):
+        f.execute()
+    assert not f.native_calls and not f.verification_calls and not list(f.state.results.glob("*.json"))
+
+
+@pytest.mark.parametrize("claim", ["HUMAN_OVERRIDE", "NOT_RUNTIME_VERIFIED", "fix it"])
+def test_exception_labels_are_not_ordinary_admission_credentials(claim):
+    with pytest.raises(VerificationContractError, match="NOT_ACTIVATED"):
+        ka01.production_gate({"authority": claim})
+
+
+def test_general_governance_preserves_exception_truth_and_diagnostic_boundaries():
+    contract = (SOURCE_ROOT / "docs/CHATGPT_PROJECT_CONTRACT.md").read_text(encoding="utf-8")
+    normative = (SOURCE_ROOT / ka01.NORMATIVE_PATH).read_text(encoding="utf-8")
+    def section(text, start, end):
+        return " ".join(text.split(start, 1)[1].split(end, 1)[0].split())
+    authority = section(contract, "**Ordinary and exceptional authority.**", "## 3.")
+    assert all(term in authority for term in ("Constitution §2.1", "source commit/tree", "destination",
+        "accepted uncertainty", "CAS", "HUMAN_OVERRIDE", "NOT_RUNTIME_VERIFIED", "unless those events actually occurred"))
+    taxonomy = section(contract, "## 7.", "## 8.")
+    assert all(term in taxonomy for term in ("run_created=false", "CHANGES_REQUIRED", "ERROR", "UNKNOWN",
+        "UNAVAILABLE", "another equivalent RUN or REPAIR"))
+    visibility = section(contract, "**Evidence visibility for repair.**", "## 9.")
+    assert all(term in visibility for term in ("read-only", "authenticated", "untrusted", "aggregate",
+        "requires its own lawful implementation"))
+    protected = section(normative, "#### D.1.3 Protected Runtime and Proof-Consumer Changes",
+        "##### Historical implementation and bootstrap evidence")
+    assert "TASK-" not in protected and "RUN-" not in protected
+    assert all(term in protected for term in ("independent", "outside the editable candidate", "Constitution §2.1",
+        "CAS", "HUMAN_OVERRIDE", "NOT_RUNTIME_VERIFIED", "Review/Publisher"))
+    diagnostics = section(normative, "**Bounded envelope and progressive evidence access.**", "### C.5")
+    assert all(term in diagnostics for term in ("no arbitrary fixed aggregate", "finite per-request",
+        "EGDF v1", "remain inactive", "no parallel read service"))
+    assert "Constitution §2.1" in section(contract, "## 11.", "## 12.")
+    assert "new factual events" in section(contract, "## 12.", "## 13.")
 

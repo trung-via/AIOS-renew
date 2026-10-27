@@ -3,7 +3,7 @@
 | Identity / status | Value |
 | --- | --- |
 | Amendment identity | **KA-01** |
-| Document version | **1.3 — historical typed modes retained; TASK-425 prospective default across three coding operations** |
+| Document version | **1.3 — prospective general self-repair alignment; historical typed modes and source pins retained** |
 | Normative status | **HUMAN_RATIFIED_PROSPECTIVE_SPEC** |
 | Runtime activation policy | **PRODUCTION_DEFAULT_THREE_FLOW** for newly admitted coding RUNs under D.1.2; historical v1/v2/v3 keep their exact semantics. Native support requires actual capability; no review/publication outcome asserted. |
 | Original Human ratification date | **2026-10-09** — KA-01 v1.0, sections A–D. |
@@ -26,14 +26,28 @@
 
 ### A.1 Separate prospective amendment
 
-**Prospective precedence (TASK-425):** D.1.2 and the current-policy paragraph in
-D.4 supersede this document's earlier optional enrollment, legacy-default and
+**Prospective precedence:** C.3/C.4, D.1.2/D.1.3 and D.4's current rules govern
+only newly admitted supported default-mode work. D.1.2 and the current-policy
+paragraph in D.4 supersede earlier optional enrollment, legacy-default and
 per-RUN KA-01 selection/consent requirements only for future newly admitted coding
 episodes. They include existing TASK IDs. Earlier A–C and D.1/D.1.1 opt-in text
 continues to describe the exact historical typed modes, not a requirement to
 create automatic per-RUN consent for the new mode. Independent Human TASK,
 REPAIR and REMEDIATION authority, selected Executor/profile and live lease remain
 mandatory. No previously admitted or terminal RUN is retargeted.
+
+**Ordinary authority and Human exception.** Constitution §2.1 remains supreme
+and unchanged. Ordinary admission, original Runtime proof, independent Reviewer
+and Publisher gates determine ordinary verified delivery, not the availability
+of an independently authenticated exact Human exceptional recovery. Such a
+decision binds repository, immutable source commit/tree, destination, purpose,
+named bypassed gates, accepted uncertainty and CAS. External preparation and
+exceptional deployment need their own precise authority; neither policy direction
+nor a general request to fix something supplies it. Use `HUMAN_OVERRIDE` /
+`NOT_RUNTIME_VERIFIED` where applicable, without synthetic RUN, proof PASS,
+REVIEW or ordinary Publisher eligibility. Historical source pins and already
+admitted policies retain their original meanings; publication alone cannot
+upgrade an active RUN or install a trusted original consumer.
 
 KA-01 v1.3 records the separately Human-ratified prospective Kernel design for:
 
@@ -491,16 +505,16 @@ checkpoint need not contain a FAIL: it may finalize through C.2.
    verification may exercise the implemented L3 core and its guards through the
    existing Runtime under that TASK's original policy/authority. Such proof
    neither grants its engineering RUN a new production continuation permission
-   nor authorizes preimplementation RUN mutation. The presently supported
-   production operation performs no in-turn continuation; an ACK, queued record
-   or local callback cannot satisfy the missing native channel. The retired
+   nor authorizes preimplementation RUN mutation. The selected interface must
+   actually support continuation; historical bounded one-shot interfaces do not
+   acquire it. An ACK, queued record or local callback cannot satisfy a missing native channel. The retired
    VP-06/VP-07 package sequence is not an activation prerequisite.
 2. Authenticated current TASK/RUN/base/contract/mapping/candidate/feedback
    bindings and trustworthy committed clean state are available. At least one
    complete, stable, decisive, non-conflicting FAIL of an approved **candidate**
    proof is established in a complete checkpoint observation with all required
    population/phase/condition facts. Partial, stale/ref-moving, flaky,
-   conflicting, ERROR or UNKNOWN observations cannot authorize continuation;
+   conflicting, ERROR, UNKNOWN or UNAVAILABLE observations cannot authorize continuation;
    an isolated failing item cannot hide those conditions. Raw pytest nonzero,
    a comparison failure alone or a caller FAIL label is insufficient.
 3. R's original authenticated finite Human opt-in/delegation, unchanged scope,
@@ -522,7 +536,7 @@ checkpoint need not contain a FAIL: it may finalize through C.2.
    `max_tokens=null` requires no mandatory token-cap input or finite KA-01 token
    ceiling. Costs include applicability/checkpoint/evidence/feedback/re-entry
    and infrastructure/cleanup work, not only test execution. Design-validator
-   ceilings from TASK-328 are not live Human consent. Exhaustion/overrun cannot
+   ceilings are not live Human consent. Exhaustion/overrun cannot
    enlarge limits or waive mandatory proof.
 6. The authenticated failed candidate obligation supplies the causal basis for
    continuation. At acceptance, the correction must be a new committed in-scope
@@ -533,12 +547,40 @@ checkpoint need not contain a FAIL: it may finalize through C.2.
    Runtime checks authorized identities and factual guards; it does not predict
    a successful fix, choose or semantically invent HOW.
 
+   **Prospective default-mode progress:** a strict decrease in failed-identity
+   count or set is supporting evidence, not a universal requirement. A changed
+   causal failure fingerprint, material test-stage outcome or newly observable
+   test population can establish bounded factual progress without fewer failures.
+   The supported first-party consumer compares existing authenticated complete
+   candidate observations: exact authored commands/profile/toolchain stay fixed,
+   previously collected identities remain observed, and at least one originating
+   failed phase's outcome/fingerprint or its command's complete collection changes.
+   A newly broken passing test alone is insufficient. Candidate/source/raw-digest
+   churn alone is insufficient. The clean
+   committed descendant and its nonempty authorized delta, original feedback's
+   single consumption, live actual Executor/lease and finite budget are still
+   required. All unchanged/new failures remain FAIL; none becomes semantic
+   success. Identical/empty/unrelated changes with unchanged proof facts STOP.
+   Runtime does not judge implementation strategy or infer root cause from text;
+   independent review still rejects irrelevant edits or weakened tests. Complete
+   original command/acceptance proof remains required for terminal RESULT.
+   Earlier modes retain their exact progress/continuation rules, including strict
+   failed-count/set reduction where applicable, without gaining these rights.
+
 Unknown, stale, uncommitted, dirty, malformed, incomplete, unstable, conflicting,
 tampered or invalid authority-bearing observations cannot enable continuation
 or PASS. Structural/infrastructure instability, unsupported worker state and
 interruption with unprovable currentness also stop safely. UNKNOWN applicability
 can undergo only already authorized bounded deterministic resolution as in
 C.5; it grants no Executor continuation. If it remains unresolved, fail closed.
+
+**Verification versus investigation.** ERROR/UNKNOWN, interrupted observation,
+missing lease or uncertain source grant neither proof PASS nor a Runtime-issued
+correction. Available failure evidence remains inspectable read-only under its
+existing authority and privacy/currentness controls; a failed mutation lease
+does not invent a new inspection or continuation grant. Human may separately
+authorize exact extraordinary recovery. Do not require repetition of a known
+unavailable capability; preserve original STOP and terminal/reconciliation rules.
 
 A STOP revokes permission for further mutation in this loop. For an
 authenticated admitted RUN it leads through the existing terminal failure
@@ -590,6 +632,23 @@ VALID flag or log content becomes a new trust root. Feedback/recovery performs
 no silent background repair or competing mutation. Hidden weakening or
 substitution of tests, fixtures, workers, environment or contract conditions
 cannot satisfy proof or evade the applicability checks in C.5.
+
+**Bounded envelope and progressive evidence access.** The protected authenticated
+control envelope remains bounded and contains no patch directives, secrets or
+untrusted instructions. A lawfully authorized original Executor may retrieve
+additional source-proven diagnostics using finite per-request/transport read-only
+reads retaining exact checkpoint/candidate/operation/session/lease/currentness
+bindings. There is no arbitrary fixed aggregate governance ceiling on safe
+evidence retrievable within the original time/resource bounds. Capture exhaustion,
+access denial, truncation or unavailable native channels remain explicit
+UNKNOWN/UNAVAILABLE. Reads perform no canonical verification, checkpoint,
+correction or semantic review and confer no new execution authority.
+
+This clause specifies accessibility, not an installed mechanism. Separately
+authored EGDF v1 selective/progressive reads remain inactive until separately
+lawfully implemented and adopted. The existing identities-only feedback stays
+bounded; this amendment adds no parallel read service, evidence store, verifier,
+native transport repair or observer repair.
 
 ### C.5 Authenticated source-to-target proof applicability
 
@@ -747,6 +806,11 @@ Historical v1.0/v1.1/v1.2 work never receives these defaults, including missing
 limits in an older admission. DIRECT_CANDIDATE, preadmission and terminal work
 remain excluded.
 
+An exact Human extraordinary decision outside an admitted RUN instead obeys
+that decision's own explicit limits. It neither inherits nor spends a fabricated
+KA-01 budget. No in-flight refill, automatic new RUN or artificial REPAIR may
+reset the original limits.
+
 #### C.8.2 Separately authenticated per-field override and admission binding
 
 Human may independently override any of the five fields for an **exact TASK id
@@ -867,10 +931,18 @@ that remain unavailable. This document itself supplies no accounting facts.
 
 ### D.1 Version 1.3 source-bound activation and prospective default
 
-The controlling new Human decision selects **TASK-425 r1** as the single NEXT
-implementation. D.1.2 introduces its distinct prospective policy. The TASK-423
-and TASK-424 decisions below remain exact historical activation records; they
-do not select another future implementation stage.
+Ordinary activation requires the eligible immutable implementation's original
+Runtime verification, independent exact-source Reviewer PASS and Publisher
+publication, with running first-party consumers authenticated to its normative
+bytes. D.1.2 defines the current prospective default after lawful original family
+admission. Missing original bootstrap capability is a reported blocker, not
+self-adoption permission or a reason to create a separate activation TASK.
+These ordinary gates do not veto Constitution §2.1's separate exact Human
+exception, and an exception does not manufacture any of their evidence.
+
+**Historical activation foundations — non-normative provenance.** The following
+dated implementation decisions explain the retained interfaces, not future
+TASK-specific eligibility conditions.
 
 Human prospectively supersedes the former conjunctive staged G1/G2/G3/G6
 sequence and the future L4 G4/G5 duties for new supported v1.3 admissions.
@@ -950,7 +1022,7 @@ Those files and observations are not canonical EVIDENCE or live-session proof.
 Runtime owns canonical evidence; no current caller, measured benefit, Reviewer
 PASS, publication, uptake or downstream adoption is inferred by this source.
 
-#### D.1.1 Separately authenticated original live interactive PRIMARY (TASK-424)
+#### D.1.1 Separately authenticated original live interactive PRIMARY
 
 The distinguishable new configuration is **KA01-v1.3-interactive-primary-v1**.
 Use the same ordinary `operator.run_task` caller with **AdmissionRequest(3, ...)**,
@@ -1001,8 +1073,10 @@ turn with matching received input and receipt, and a different clean committed
 in-scope descendant tree. Persist consumption only as an original protected
 Runtime effect. A request ACK, detached-file receipt, mock callback, stdout ACK,
 reused thread on a new process or replacement inference session cannot satisfy
-receipt or continuity. Verify C_(i+1) and require strict reduction of failed
-native identities under the same complete population/conditions; no-progress STOPs.
+receipt or continuity. The historical version-3 interface retains its strict
+reduction of failed native identities under the same complete population/conditions;
+no-progress STOPs. The revised C.3 factual progress rule applies only to newly
+admitted source-bound default mode, never retroactively to this interface.
 
 C.8 defaults remain **2 corrections, 3 checkpoints, 240m RUN wall, 180m
 cumulative Runtime verification, null tokens**. Count only protected source-bound
@@ -1025,14 +1099,14 @@ Observation, model assertions and parsed records never replace canonical EVIDENC
 Reviewer judgment or Publisher authority. Neither v3 nor one observation claims
 savings, uptake, full three-operation support or downstream adoption.
 
-#### D.1.2 Default bounded continuation across three coding operations (TASK-425)
+#### D.1.2 Default bounded continuation across three coding operations
 
 The distinct prospective implementation is **KA01-v1.3-default-three-flow-v1**,
-mode **PRODUCTION_DEFAULT_THREE_FLOW** (internal admission version 4). Human's
-explicit 2026-10-25 choice makes bounded Runtime Verify → Fix → Verify the default
-for every future newly admitted coding episode of an existing or new TASK, in
+mode **PRODUCTION_DEFAULT_THREE_FLOW** (internal admission version 4). The current
+source-bound policy makes bounded Runtime Verify → Fix → Verify the default
+for every future newly admitted eligible coding episode of an existing or new TASK, in
 PRIMARY, CODE_FIX/CONTINUE_IMPLEMENTATION REPAIR and CODE_FIX REMEDIATION. This
-same integrated TASK contains the policy, implementation and ordinary callers;
+same integrated change contains the policy, implementation and ordinary callers;
 there is no later activation, cutover, pilot, L3-06, G3/G6 or L4 stage.
 
 The original ordinary `run_task`, `run_repair` and `run_remediation` first perform
@@ -1046,7 +1120,15 @@ execution, model selection or correction authority. Missing/malformed/stale glob
 source, source drift, lost lease or changed family permission STOP; they never
 select legacy, reopen a RUN, manufacture consent or spawn a replacement Executor.
 
-Reuse TASK-424's original live Codex app-server process/stdio/thread and original
+Default-on is an ordinary admitted-RUN policy, not an alternative admission
+authority. If required original control/native/proof capability cannot be
+established before RUN creation, report a typed pre-admission blocker with
+`run_created=false`, no RUN/FAILURE/AUTHOR_REPAIR or terminal proof. After admission,
+unavailable capability preserves original STOP/terminal/reconciliation and distinct
+FAIL/ERROR/UNKNOWN/UNAVAILABLE facts. Do not automatically redispatch an unchanged
+blocker, admit another RUN or select another scheduler/provider/legacy path.
+
+Reuse the supported original live native process/stdio/thread and original
 Runtime checkpoint/observer/factual-feedback/terminal path. Preflight the complete
 original proof policy, observer/toolchain and actual native selected profile before
 the first coding turn. K_i, F_i, receipt and terminal bind operation, original
@@ -1069,8 +1151,14 @@ The common defaults are at most **2 corrections**, **3 checkpoints**, **240 minu
 original RUN wall**, **180 minutes cumulative Runtime verification** inside that
 wall, and **null token cap**. Authenticated complete stable scoped call-FAIL only
 may yield F_i. Each correction needs a new clean causal scoped descendant, an
-original-session receipt and strictly fewer failed identities in the same proof
-population. No progress, forged/stale/duplicate feedback, wrong operation/session,
+original-session receipt and C.3's bounded factual candidate/proof progress.
+The canonical normative digest and `candidate-proof-change-v1` admission binding
+select this revised rule for new default admissions. Strict failed-set/cardinality
+decrease is not mandatory: complete stable proof may expose new failures or a
+changed failure fingerprint at the same identity. All original commands remain
+mandatory and prior collected identities must remain observed. Candidate identity
+alone, raw/log churn or unrelated changes with unchanged proof facts are insufficient.
+No progress, forged/stale/duplicate feedback, wrong operation/session,
 unknown/incomplete/unstable proof, changed source/toolchain, resource exhaustion,
 crash ambiguity or revoked family authority STOP. Intermediate FAIL creates no
 REVIEW/FAILURE or new REPAIR RUN. Exact final K_i supplies canonical evidence once;
@@ -1085,13 +1173,20 @@ RUN observations report effective policy/source, operation, session, proof and
 correction counts and STOP facts, with review/publication unobserved. They assert
 no Publisher PASS, measured saving, unrelated TASK admission or downstream uptake.
 
-Human-owned prospective exceptions remain separate from automatic enrollment.
-An alternative must authenticate an exact supported fresh selection/consent or a
-reviewed canonical future policy amendment within existing authority; flags,
-provider output and earlier Issue bodies cannot supply that exception. Existing
+Human-owned prospective ordinary policy alternatives remain separate from automatic
+enrollment and require an exact supported fresh selection/consent or a reviewed
+canonical future policy amendment. Independently exact-scoped Human extraordinary
+recovery under Constitution §2.1 is outside KA-01 enrollment and requires neither
+a fabricated RUN nor self-verification by a broken candidate. Flags, provider
+output and earlier Issue bodies cannot supply either authority. Existing
 v1/v2/v3 decoders and originally admitted policies never gain default-mode rights.
 
-#### D.1.3 Original-source Kernel/proof-consumer upgrades (TASK-427)
+**Historical default implementation — non-normative provenance.** The original
+default policy was introduced through TASK-425. Its previously pinned normative
+source and strict-count behavior remain historical; new admissions use the
+current authenticated source, without retargeting an already admitted RUN.
+
+#### D.1.3 Protected Runtime and Proof-Consumer Changes
 
 **KA01-v1.3-original-source-kernel-upgrade-v1** extends the existing default
 three-operation implementation prospectively, after exact Runtime verification,
@@ -1135,14 +1230,39 @@ candidate SHA/tree, operation and scope. Historical version-1 checkpoints keep
 their decoding. Wrong-source, forged, cross-RUN and self-attesting proof STOP.
 No source-to-candidate proof reuse is inferred.
 
-The original Runtime's complete stable native proof, same live Codex session,
-strict scoped progress, at most 2 corrections / 3 checkpoints / 240-minute RUN /
+The original Runtime's complete stable native proof, same live supported session,
+applicable C.3 scoped progress, at most 2 corrections / 3 checkpoints / 240-minute RUN /
 180-minute cumulative verification and one terminal writer remain unchanged.
 The exact final checkpoint is consumed once, then the existing independent
 Review/Publisher boundary determines eligibility; no self-review, publication,
 provider replacement or unadmitted continuation follows from local tests.
 
-**Bootstrap limitation:** the installed pre-TASK-427 Runtime rejects protected
+**Protected self-upgrade and extraordinary recovery.** This boundary applies
+whenever a change affects Runtime, native transport, admission, verification,
+observer, proof validator or another consumer whose original authority is needed
+to admit or verify that change. The ordinary path must authenticate an independent
+immutable original control/proof source outside the editable candidate; candidate
+components are test subjects only. If that capability is unavailable, ordinary
+admission stops without execution or proof claims. A changed normative document
+requires its matching supported first-party consumer; Markdown or a candidate's
+digest alone cannot bootstrap trusted running code.
+
+Ordinary STOP does not veto Constitution §2.1. Human may independently authorize
+isolated external preparation against an immutable base and, by a separate exact
+source decision, exceptional deployment without requiring the malfunctioning or
+mutable candidate to attest to its own replacement. Require exact repository,
+commit/tree, destination, purpose, bypassed unavailable/failed gates, risk acceptance
+and CAS. Preserve `HUMAN_OVERRIDE` / `NOT_RUNTIME_VERIFIED` provenance where
+applicable. There is no standing bypass, automatic installation/adoption, second
+verifier or synthetic RUN/REVIEW/PUBLISH evidence. Later ordinary proof is a new
+fact, never retrospective laundering of an exception.
+
+##### Historical implementation and bootstrap evidence — non-normative
+
+The following dated identities explain an earlier source cut; they do not impose
+future eligibility conditions or assert current deployment status.
+
+**Historical bootstrap limitation:** the installed pre-TASK-427 Runtime rejects protected
 scope unconditionally in `_preflight_interactive_policy` before Codex. A normal
 wake cannot implement this extension into existence. TASK-426 r1's
 RUN-426-001 FAILURE `5dc493b72ee4fd3a6e29f1e355c019536a7a1e34` and
@@ -1150,9 +1270,10 @@ RUN-426-002 FAILURE `12fd23186d3dcf427e0f601ced698351a52daacd` remain immutable.
 Human selected one external TASK-427 implementation attempt at authoring SHA
 `9056d2db9d1ba75c10b78d26c193f9c5396ce160`. It has no admitted RUN, canonical
 EVIDENCE/RESULT/REVIEW or publication authority. This implementation cannot
-lawfully certify or install itself. Canonical adoption still requires a further
-explicitly authorized Runtime bootstrap providing authentic independent
-original-source verification and the ordinary review/publication boundary.
+lawfully certify or install itself. Ordinary canonical adoption still requires
+an explicitly authorized bootstrap providing authentic independent original-source
+verification and ordinary review/publication. Constitution §2.1 separately permits
+an exact Human exception, without relabeling that source cut's missing evidence.
 No supported installed bootstrap for that first adoption is asserted here.
 Once eligible published code is lawfully installed, the existing task/repair/
 remediation calls use this capability directly; TASK-426 can resume only through
@@ -1256,13 +1377,24 @@ close this ledger.
 
 ### D.4 Prospective default, historical isolation and Human rollback
 
-**Current prospective policy:** D.1.2 is default-on after independent family
-admission for every new coding RUN. Absence of KA-01 fields means this new mode,
-not legacy. Global-source or capability failure is bounded STOP. An explicit
-authenticated future Human policy exception may choose a supported alternative;
+**Current prospective policy:** D.1.2 is default-on only after lawful independent
+family admission and for supported authenticated original native/proof consumers.
+Absence of KA-01 fields selects this ordinary mode, not legacy. Before RUN creation,
+missing prerequisites are a typed `run_created=false` operational blocker with no
+RUN/FAILURE/REPAIR; once admitted, global-source or capability failure is original
+RUN STOP/terminal/reconciliation. Neither state permits automatic retry, new RUN,
+provider replacement, second scheduler or silent downgrade. An explicit
+authenticated future ordinary Human policy exception may choose a supported alternative;
 closing an old selection/consent Issue cannot disable the global policy or
 silently downgrade future RUNs. Rollback of the global policy requires its own
 Human-owned reviewed canonical amendment and applies only prospectively.
+
+Constitution §2.1 independently permits exact Human extraordinary preparation or
+deployment for the specified immutable source, target, bypassed gates and accepted
+risk with CAS. It is not automatically enrolled KA-01 work, cannot fabricate its
+accounting and creates no verification/Reviewer PASS or ordinary Publisher
+eligibility. Neither default-on nor rollback is a constitutional veto on that
+decision; neither grants a standing exception or downstream adoption.
 
 The following paragraphs retain the historical v1/v2/v3 selection, consent and
 withdrawal semantics. Their legacy-default and no-automatic-enrollment rules

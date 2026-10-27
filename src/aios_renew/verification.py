@@ -3074,6 +3074,14 @@ def _execute_checkpoint_verification(repository: Path, *, request, task, manifes
             def bounded_runner(argv, **kwargs):
                 if launcher is not None:
                     argv = (sys.executable, "-I", "-B", "-c", launcher)
+                elif command != SELECTED_FULL_SUITE_COMMAND:
+                    # The manifest binds this verifier's Python and installed
+                    # distributions. A PATH python/pytest may use another
+                    # environment; retain the authored pytest arguments while
+                    # pinning the same interpreter without adding isolation.
+                    tokens = shlex.split(command)
+                    arguments = tokens[3:] if tokens[:3] == ["python", "-m", "pytest"] else tokens[1:]
+                    argv = (sys.executable, "-B", "-m", "pytest", *arguments)
                 return runner(argv, timeout=max(0.001, timeout_seconds), **kwargs)
             item = execute_verification((command,), run_id=request.scheduler.target.run_id,
                 subject_sha=request.scheduler.subject_sha, repository=subject, raw_directory=raw_directory,

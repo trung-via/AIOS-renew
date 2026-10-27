@@ -363,7 +363,13 @@ def test_default_unproven_provider_stops_before_any_model_call(tmp_path, monkeyp
     "same-source", "no-progress", "checkpoint", "feedback", "wrong-executor"])
 @pytest.mark.parametrize("operation", ["PRIMARY", "REPAIR", "REMEDIATION"])
 def test_default_correction_cannot_escape_original_authority(tmp_path, monkeypatch, operation, defect):
-    f = ThreeFlowFixture(tmp_path / "counterexample", monkeypatch, operation=operation)
+    # A different irrelevant output must leave authenticated proof facts equal;
+    # interpolating the output into assertion detail would change its fingerprint.
+    proof = ("from pathlib import Path\n"
+        "def test_output():\n"
+        "    if Path('OUTPUT.txt').read_text() not in ('reviewed\\n', 'complete\\n'):\n"
+        "        raise AssertionError('required output is absent')\n") if defect == "no-progress" else PROOF
+    f = ThreeFlowFixture(tmp_path / "counterexample", monkeypatch, operation=operation, proof_source=proof)
     f.receipt_defect = "source_sha" if defect == "receipt" else None
     f.same_source, f.no_progress = defect == "same-source", defect == "no-progress"
     def corrupt(session, ordinal, prompt):
@@ -699,10 +705,12 @@ def test_kernel_upgrade_bootstrap_refuses_before_run_or_executor(tmp_path, monke
         f.execute()
     assert not sessions and not f.verification_calls and f.owner is None
     assert not list(f.state.runs.glob("*.json")) and not list(f.state.failures.glob("*.json"))
+    assert not list(f.state.results.glob("*.json"))
     refusals = list(f.state.admission_failures.glob("*.json"))
     assert len(refusals) == 1
     refusal = json.loads(refusals[0].read_bytes())
     assert refusal["phase"] == "CANONICAL_CONTRACT_ADMISSION"
+    assert refusal["executor_invoked"] is False
     assert code in str(refusal)
 
 
@@ -835,4 +843,130 @@ def test_default_exhausts_two_actual_improving_corrections_and_three_checkpoints
     assert sessions[0].calls == 3 and budget.native_calls == 1
     assert budget.checkpoints_spent == 3 and budget.corrections_spent == 2
     assert [len(r.data["failed_identities"]) for r in checkpoints(f)] == [3, 2, 1]
+    assert not (f.state.results / "RUN-101-001.json").exists()
+
+
+def nonmonotone_proof(kind):
+    prefix = "from pathlib import Path\nvalue = Path('OUTPUT.txt').read_text()\n"
+    if kind == "cause":
+        return prefix + ("def test_output():\n"
+            "    if value == 'phase1':\n        raise ValueError('first causal stage')\n"
+            "    if value == 'phase2':\n        raise TypeError('next causal stage')\n")
+    if kind == "outcomes":
+        return prefix + ("def test_first():\n    assert value != 'phase1'\n"
+            "def test_next():\n    assert value != 'phase2'\n")
+    return prefix + ("import pytest\n"
+        "@pytest.mark.parametrize('stage', ['first'] if value == 'phase1' else ['first', 'next', 'last'])\n"
+        "def test_output(stage):\n"
+        "    assert value != 'phase1'\n"
+        "    if value == 'phase2':\n        assert stage == 'first'\n")
+
+
+@pytest.mark.parametrize("operation", ["PRIMARY", "REPAIR", "REMEDIATION"])
+@pytest.mark.parametrize("kind", ["outcomes", "cause", "collection"])
+def test_default_nonmonotone_authenticated_progress_keeps_all_proof_and_one_terminal(
+        tmp_path, monkeypatch, operation, kind):
+    f = ThreeFlowFixture(tmp_path / "nonmonotone", monkeypatch, operation=operation,
+        proof_source=nonmonotone_proof(kind))
+    f.candidates = ["phase1", "phase2", "complete\n"]
+    sessions = synthetic_session(f, monkeypatch)
+    summary = f.execute()
+    records = checkpoints(f)
+    assert [len(r.data["failed_identities"]) for r in records] == [1, 2 if kind == "collection" else 1, 0]
+    first, second, final = [r.data for r in records]
+    assert not set(second["failed_identities"]) < set(first["failed_identities"])
+    assert (first["population_identity"] != second["population_identity"]) == (kind == "collection")
+    if kind == "cause":
+        assert first["failed_identities"] == second["failed_identities"]
+        def failure_fingerprints(data):
+            return [r["fingerprint"] for e in data["evidence"]
+                for r in e["verification"]["candidate"]["reports"] if r["outcome"] == "FAIL"]
+        assert failure_fingerprints(first) != failure_fingerprints(second)
+    assert sessions[0].calls == 3 and len(sessions) == 1 and sessions[0].closed
+    assert len(f.verification_calls) == 3 * f.commands_per_checkpoint
+    assert summary.ka01["checkpoints_spent"] == 3 and summary.ka01["corrections_spent"] == 2
+    assert summary.ka01["effective_limits"] == ka01.DEFAULTS
+    assert summary.ka01["review"] == summary.ka01["publication"] == "NOT_OBSERVED"
+    assert json.loads(f.owner._ka01_budget.authority)["progress_policy"] == ka01.DEFAULT_PROGRESS_POLICY
+    assert len(f.owner._interactive_feedback) == len(f.owner._interactive_receipts) == 2
+    assert records[1].data["predecessor_digest"] == records[0].digest
+    assert records[2].data["predecessor_digest"] == records[1].digest
+    package = json.loads(summary.result_path.read_bytes())
+    assert package["evidence"] == final["evidence"]
+    assert {e["subject_sha"] for e in package["evidence"]} == {summary.head_sha}
+    assert not (f.state.failures / (summary.run_id + ".json")).exists()
+    assert len(list(f.state.results.glob("*.json"))) == (2 if operation == "REMEDIATION" else 1)
+    assert git(f.remote, "rev-parse", "refs/heads/main") == f.base
+
+
+@pytest.mark.parametrize("defect", ["incomplete", "unstable", "unknown-exit", "error", "stale-source"])
+def test_default_nonmonotone_correction_cannot_use_ineligible_proof(tmp_path, monkeypatch, defect):
+    f = ThreeFlowFixture(tmp_path / "ineligible-progress", monkeypatch, proof_source=nonmonotone_proof("cause"))
+    f.candidates = ["phase1", "phase2", "complete\n"]
+    sessions = synthetic_session(f, monkeypatch)
+    def corrupt(command, **kwargs):
+        completed = f.verify(command, **kwargs)
+        if len(f.verification_calls) != 3:
+            return completed
+        if defect == "unknown-exit":
+            return subprocess.CompletedProcess(completed.args, 2, completed.stdout, completed.stderr)
+        path = Path(kwargs["env"]["AIOS_BP_V4_PLUGIN_OUTPUT"])
+        data = json.loads(path.read_bytes())
+        canonical = data["failure_diagnostics"]["canonical"]
+        if defect == "incomplete":
+            canonical["complete"] = False
+        elif defect == "unstable":
+            canonical["unstable"] = True
+        elif defect == "error":
+            canonical["errors"].append("observer unavailable")
+        else:
+            data["subject_sha"] = f.base
+        path.write_bytes(ka01._bytes(data))
+        return completed
+    with pytest.raises((RuntimeError, ValueError, OSError)):
+        f.execute(verification_runner=corrupt)
+    assert sessions[0].calls == 2 and sessions[0].closed and f.owner._ka01_budget.stopped
+    assert len(checkpoints(f)) == 1 and set(f.owner._interactive_feedback) == {1}
+    assert not (f.state.results / "RUN-101-001.json").exists()
+
+
+def test_default_new_source_with_unchanged_proof_facts_stops(tmp_path, monkeypatch):
+    proof = ("from pathlib import Path\n"
+        "def test_output():\n"
+        "    if Path('OUTPUT.txt').read_text():\n        raise AssertionError('unchanged obligation')\n")
+    f = ThreeFlowFixture(tmp_path / "unchanged-proof", monkeypatch, proof_source=proof)
+    f.candidates = ["different source one", "different source two", "complete\n"]
+    sessions = synthetic_session(f, monkeypatch)
+    with pytest.raises(VerificationContractError, match="NO_VERIFIED_SCOPED_PROGRESS"):
+        f.execute()
+    assert sessions[0].calls == 2 and len(checkpoints(f)) == 1
+    assert len(f.verification_calls) == 4 and len(f.owner._interactive_feedback) == 1
+    assert not (f.state.results / "RUN-101-001.json").exists()
+
+
+def test_default_collection_change_cannot_hide_previously_observed_failure(tmp_path, monkeypatch):
+    proof = ("from pathlib import Path\n"
+        "if Path('OUTPUT.txt').read_text() == 'phase1':\n"
+        "    def test_required():\n        raise AssertionError('must stay observed')\n"
+        "def test_guard():\n    assert True\n")
+    f = ThreeFlowFixture(tmp_path / "hidden-proof", monkeypatch, proof_source=proof)
+    f.candidates = ["phase1", "complete\n"]
+    sessions = synthetic_session(f, monkeypatch)
+    with pytest.raises(VerificationContractError, match="NO_VERIFIED_SCOPED_PROGRESS"):
+        f.execute()
+    assert sessions[0].calls == 2 and len(checkpoints(f)) == 1
+    assert not (f.state.results / "RUN-101-001.json").exists()
+
+
+def test_default_unrelated_new_failure_does_not_establish_progress(tmp_path, monkeypatch):
+    proof = ("from pathlib import Path\nvalue = Path('OUTPUT.txt').read_text()\n"
+        "def test_required():\n    raise AssertionError('original failure is unchanged')\n"
+        "def test_unrelated():\n    assert value != 'phase2'\n")
+    f = ThreeFlowFixture(tmp_path / "unrelated-progress", monkeypatch, proof_source=proof)
+    f.candidates = ["phase1", "phase2", "complete\n"]
+    sessions = synthetic_session(f, monkeypatch)
+    with pytest.raises(VerificationContractError, match="NO_VERIFIED_SCOPED_PROGRESS"):
+        f.execute()
+    assert sessions[0].calls == 2 and len(checkpoints(f)) == 1
+    assert len(f.verification_calls) == 4 and len(f.owner._interactive_feedback) == 1
     assert not (f.state.results / "RUN-101-001.json").exists()

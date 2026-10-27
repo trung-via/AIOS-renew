@@ -708,6 +708,53 @@ def test_fixture_duplicate_feedback_consumption_is_sticky_stop(tmp_path, monkeyp
     assert f.owner._ka01_budget.corrections_spent == 1 and not list(f.state.results.glob("*.json"))
 
 
+def test_default_nonmonotone_failures_cannot_reset_original_budget(tmp_path, monkeypatch):
+    from tests.test_ka01_default_three_flow import ThreeFlowFixture, synthetic_session, checkpoints
+    proof = ("from pathlib import Path\n"
+        "def test_output():\n    raise AssertionError(Path('OUTPUT.txt').read_text())\n")
+    f = ThreeFlowFixture(tmp_path / "nonmonotone-budget", monkeypatch, proof_source=proof)
+    f.candidates = ["first failure", "second failure", "third failure"]
+    sessions = synthetic_session(f, monkeypatch)
+    with pytest.raises(VerificationContractError, match="CORRECTION_CAPACITY_EXHAUSTED"):
+        f.execute()
+    records = checkpoints(f)
+    assert [len(r.data["failed_identities"]) for r in records] == [1, 1, 1]
+    assert len({tuple(r.data["failed_identities"]) for r in records}) == 1
+    budget = f.owner._ka01_budget
+    assert sessions[0].calls == 3 and len(f.verification_calls) == 6 and sessions[0].closed
+    assert budget.checkpoints_spent == 3 and budget.corrections_spent == 2 and budget.stopped
+    assert budget.limits == ka01.DEFAULTS and len(f.owner._interactive_feedback) == 2
+    assert not (f.state.results / "RUN-101-001.json").exists()
+
+
+def test_default_prior_candidate_tree_cannot_be_recycled_as_progress(tmp_path, monkeypatch):
+    from tests.test_ka01_default_three_flow import ThreeFlowFixture, synthetic_session, checkpoints, nonmonotone_proof
+    f = ThreeFlowFixture(tmp_path / "recycled-tree", monkeypatch, proof_source=nonmonotone_proof("outcomes"))
+    f.candidates = ["phase1", "phase2", "phase1"]
+    sessions = synthetic_session(f, monkeypatch)
+    with pytest.raises(VerificationContractError, match="FORGED_DUPLICATE_STALE_OR_NO_PROGRESS_RETURN"):
+        f.execute()
+    assert sessions[0].calls == 3 and len(f.verification_calls) == 4
+    assert len(checkpoints(f)) == 2 and f.owner._ka01_budget.corrections_spent == 1
+    assert sessions[0].closed and not (f.state.results / "RUN-101-001.json").exists()
+
+
+def test_default_empty_commit_cannot_create_correction_permission(tmp_path, monkeypatch):
+    from tests.test_ka01_default_three_flow import ThreeFlowFixture, synthetic_session, checkpoints
+    f = ThreeFlowFixture(tmp_path / "empty-commit", monkeypatch)
+    f.same_source = True
+    def empty_commit(session, ordinal, prompt):
+        if ordinal == 2:
+            git(f.repo, "-c", "user.name=Empty fixture", "-c", "user.email=empty@example.invalid",
+                "commit", "--quiet", "--allow-empty", "-m", "distinct SHA without changed source")
+    sessions = synthetic_session(f, monkeypatch, empty_commit)
+    with pytest.raises(VerificationContractError, match="FORGED_DUPLICATE_STALE_OR_NO_PROGRESS_RETURN"):
+        f.execute()
+    assert sessions[0].calls == 2 and len(f.verification_calls) == 2
+    assert len(checkpoints(f)) == 1 and f.owner._ka01_budget.corrections_spent == 0
+    assert not (f.state.results / "RUN-101-001.json").exists()
+
+
 def test_fixture_transport_ack_alone_is_never_a_candidate(tmp_path, monkeypatch):
     f = ProductionFixture(tmp_path / "ack", monkeypatch, interactive=True)
     f.authorize()
@@ -935,3 +982,154 @@ def test_installed_native_codex_original_session_c1_f1_c2(tmp_path, monkeypatch)
     assert summary.ka01["checkpoints_spent"] == 2 and summary.ka01["corrections_spent"] == 1
     assert 0 < summary.ka01["verification_spent_ns"] < 180 * 60 * 1_000_000_000
     assert summary.ka01["final_status"] == "RESULT" and summary.ka01["source_main_sha"] == f.base
+
+
+_CHECKPOINT_TOOLCHAIN_PROBE = r'''
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import sysconfig
+import venv
+
+root, directory = map(Path, sys.argv[1:3])
+original, defect, launcher = sys.argv[3:6]
+original = original == 'True'
+sys.path[:0] = [str(root / 'src'), str(root)]
+from aios_renew import verification as verifier
+from aios_renew.verification_contract import validate_observation, validate_exact_collection
+from tests.test_ka01_original_observer_isolation import _case, _source
+
+# A real second interpreter with the same dependencies and one extra inventory
+# entry. PATH substitution must never choose it for the prebound checkpoint.
+alternate = directory / 'alternate'
+venv.EnvBuilder(with_pip=False).create(alternate)
+binary = alternate / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+packages = alternate / ('Lib/site-packages' if os.name == 'nt' else
+    f'lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages')
+(packages / 'dependencies.pth').write_text(sysconfig.get_path('purelib') + '\n', encoding='utf-8')
+inventory = directory / 'inventory'
+metadata = inventory / 'task430_launch_probe-1.0.dist-info'
+metadata.mkdir(parents=True)
+(metadata / 'METADATA').write_text('Name: task430-launch-probe\nVersion: 1.0\n', encoding='utf-8')
+(packages / 'extra.pth').write_text(str(inventory) + '\n', encoding='utf-8')
+os.environ['PATH'] = str(binary.parent) + os.pathsep + os.environ.get('PATH', '')
+assert Path(shutil.which('python')).resolve() == binary.resolve()
+
+command = launcher + ' -q tests/test_subject.py -n 0 --dist no --max-worker-restart 0'
+expected_isolated = original or bool(sys.flags.no_user_site)
+test = ('import sys\nfrom pathlib import Path\nimport bp_v4_probe_plugin as observer\n'
+    'def test_subject():\n'
+    f'    assert bool(sys.flags.isolated) is {expected_isolated}\n'
+    f'    assert bool(sys.flags.no_user_site) is {expected_isolated}\n'
+    + ("    assert observer._pytest_collection_identity.__module__.startswith('_aios_kernel_original.')\n"
+       if original else "    assert Path(observer.__file__).resolve() == Path.cwd() / 'tests/bp_v4_probe_plugin.py'\n")
+    + "    assert False, 'intentional complete C1 FAIL'\n")
+case = _case(directory / 'candidate', command=command, files={'tests/test_subject.py': test})
+source = _source(_case(directory / 'control'), case) if original else None
+frozen = verifier._kernel_isolated_toolchain(source) if original else verifier._v2_toolchain()
+frozen = json.loads(json.dumps(frozen))
+flags = ('-I', '-B') if expected_isolated else ('-B',)
+query = ('import sys; sys.path.insert(0, ' + repr(str(root / 'src')) + '); '
+    'import json; from aios_renew.parallel_verification import load_toolchain; '
+    'print(json.dumps(load_toolchain()))')
+foreign = subprocess.run((str(binary), *flags, '-c', query), cwd=directory,
+    capture_output=True, text=True, check=False, timeout=30)
+assert foreign.returncode == 0, foreign.stdout + foreign.stderr
+foreign = json.loads(foreign.stdout)
+assert foreign['python_executable'] != frozen['python_executable']
+assert foreign['installed_distributions_digest'] != frozen['installed_distributions_digest']
+
+# Isolate the executable-only negative from package drift. Inventory drift is
+# instead introduced into the real pytest process below, before observation.
+if defect == 'executable':
+    (packages / 'extra.pth').unlink()
+    foreign = subprocess.run((str(binary), *flags, '-c', query), cwd=directory,
+        capture_output=True, text=True, check=False, timeout=30)
+    assert foreign.returncode == 0, foreign.stdout + foreign.stderr
+    assert json.loads(foreign.stdout)['installed_distributions_digest'] == frozen['installed_distributions_digest']
+
+profile = verifier._v2_profile(case.repo if source is None else source.control,
+    case.sha if source is None else json.loads(source.content)['source_main_sha'], command, os.environ)
+arguments = {}
+if original:
+    from aios_renew import ka01_admission as ka01
+    profile.update(isolation_policy='original-runtime-observer-candidate-imports-v1',
+        original_proof_source_sha256=ka01._digest(source.content))
+    arguments.update(kernel_upgrade_source=source, original_proof=verifier._kernel_proof_binding(source, 'a' * 64))
+manifests = {'0': (None, dict(command_index=0, profile=profile, toolchain=frozen), None)}
+calls = []
+def run(argv, **kwargs):
+    calls.append(tuple(argv))
+    if defect == 'executable':
+        assert argv[0] == sys.executable
+        argv = (str(binary), *argv[1:])
+    elif defect == 'inventory':
+        assert argv[0] == sys.executable
+        if argv[1:4] == ('-I', '-B', '-c'):
+            argv = (*argv[:-1], 'import sys; sys.path.insert(0, ' + repr(str(inventory)) + '); ' + argv[-1])
+        else:
+            kwargs['env']['PYTHONPATH'] += os.pathsep + str(inventory)
+    return subprocess.run(argv, **kwargs)
+
+raw = directory / 'raw'
+try:
+    item, = verifier._execute_checkpoint_verification(case.repo, request=case.request, task=case.task,
+        manifests=manifests, raw_directory=raw, start_order=0, runner=run, timeout_seconds=90,
+        capture_bytes_remaining=32 * 1024 * 1024, **arguments)
+except verifier.RuntimeVerificationError as exc:
+    assert defect != 'equivalent', str(exc)
+    assert 'CHECKPOINT_NATIVE_OBSERVATION_INVALID' in str(exc), str(exc)
+    item, = exc.evidence
+else:
+    assert defect == 'equivalent'
+assert len(calls) == 1 and calls[0][0] == sys.executable
+assert item.source.command == command and item.subject_sha == case.sha
+assert item.result.exit_code == 1
+assert item.verification['binding']['toolchain'] == frozen == manifests['0'][1]['toolchain']
+observed = json.loads((raw / 'observation-001.json').read_bytes())
+canonical = observed['failure_diagnostics']['canonical']
+assert canonical['complete'] and not canonical['unstable'] and canonical['failure_count'] == 1
+assert len(canonical['reports']) == 3 and observed['subject_sha'] == case.sha
+assert [(r['phase'], r['outcome']) for r in canonical['reports']] == [('setup', 'PASS'), ('call', 'FAIL'), ('teardown', 'PASS')]
+assert 'AssertionError: intentional complete C1 FAIL' in canonical['reports'][1]['detail']
+assert validate_exact_collection(observed['exact_collection']) == ('tests/test_subject.py::test_subject',)
+candidate = item.verification['candidate']
+if defect == 'equivalent':
+    assert observed['toolchain'] == frozen
+    assert validate_observation(candidate)['complete'] and not candidate['unstable']
+else:
+    key = 'python_executable' if defect == 'executable' else 'installed_distributions_digest'
+    assert observed['toolchain'][key] != frozen[key]
+    other = 'installed_distributions_digest' if defect == 'executable' else 'python_executable'
+    assert observed['toolchain'][other] == frozen[other]
+    assert candidate['observed_toolchain'] == observed['toolchain']
+    assert candidate['complete'] is False and candidate['unstable'] is True
+assert not verifier._git(case.repo, 'status', '--porcelain')
+'''
+
+
+@pytest.mark.parametrize("original", [False, True])
+@pytest.mark.parametrize("startup,launcher,defect", [
+    ((), "python -m pytest", "equivalent"),
+    ((), "pytest", "equivalent"),
+    (("-s",), "python -m pytest", "equivalent"),
+    (("-I",), "python -m pytest", "equivalent"),
+    ((), "python -m pytest", "executable"),
+    ((), "python -m pytest", "inventory"),
+])
+def test_checkpoint_python_launch_preserves_prebound_toolchain_and_rejects_drift(
+    tmp_path, original, startup, launcher, defect,
+):
+    """Real local pytest/observer; a failing subject is never native Codex proof."""
+    import os
+
+    environment = dict(os.environ)
+    for name in ("PYTHONPATH", "PYTHONHOME", "PYTHONNOUSERSITE", "PYTHONUSERBASE"):
+        environment.pop(name, None)
+    completed = subprocess.run((sys.executable, *startup, "-B", "-c", _CHECKPOINT_TOOLCHAIN_PROBE,
+        str(Path(__file__).resolve().parents[1]), str(tmp_path), str(original), defect, launcher),
+        env=environment, capture_output=True, text=True, check=False, timeout=120)
+    assert completed.returncode == 0, completed.stdout + completed.stderr

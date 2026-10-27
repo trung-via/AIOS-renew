@@ -520,6 +520,8 @@ class RuntimeCompletion:
             evidence = tuple(validate_evidence(e) for e in data["evidence"])
             if self._interactive_native_proofs(evidence, directory / f"n{ordinal:03d}", data["binding"]["candidate_sha"]) != data["proofs"]:
                 _deny("ORIGINAL_NATIVE_PROOF_CHANGED")
+            if previous is not None:
+                self._require_interactive_progress(previous, record)
             captures = {e.evidence_id + ".raw" for e in evidence} | {
                 f"observation-{int(e.evidence_id.rsplit('-V', 1)[1]):03d}.json" for e in evidence}
             _checkpoint_safe_directory(directory / f"n{ordinal:03d}")
@@ -537,6 +539,50 @@ class RuntimeCompletion:
             if actual != expected_names:
                 _deny("UNKNOWN_NATIVE_CHECKPOINT_EFFECT")
 
+    def _require_interactive_progress(self, previous, record):
+        """Compare authenticated proof facts, never source/raw digest churn or HOW.
+
+        Callers authenticate both complete stable observations first. The newer
+        default rule is pinned in live admission; historical v3 stays exact.
+        No extra execution, log interpretation or semantic repair choice occurs.
+        """
+        from .ka01_admission import DEFAULT_PROGRESS_POLICY, _deny
+        before, after = previous.data, record.data
+        if not self._ka01_budget.default:
+            if (before["population_identity"] != after["population_identity"]
+                    or not set(after["failed_identities"]) < set(before["failed_identities"])):
+                _deny("NO_VERIFIED_SCOPED_PROGRESS")
+            return
+        if json.loads(self._ka01_budget.authority).get("progress_policy") != DEFAULT_PROGRESS_POLICY:
+            _deny("AUTHENTICATED_PROGRESS_POLICY_REQUIRED")
+        changing = {"candidate_sha", "tree_sha", "turn"}
+        if (not before["failed_identities"] or len(before["proofs"]) != len(after["proofs"])
+                or {k: v for k, v in before["binding"].items() if k not in changing}
+                    != {k: v for k, v in after["binding"].items() if k not in changing}):
+            _deny("NO_VERIFIED_SCOPED_PROGRESS")
+        progressed = False
+        conditions = ("command_index", "command_sha256", "profile_sha256", "toolchain_sha256")
+        for old, new, old_item, new_item in zip(before["proofs"], after["proofs"],
+                before["evidence"], after["evidence"]):
+            if (any(old[k] != new[k] for k in conditions)
+                    or not set(old["collection"]["nodeids"]).issubset(new["collection"]["nodeids"])):
+                _deny("NO_VERIFIED_SCOPED_PROGRESS")
+            if old["outcome"] != "FAIL":
+                continue
+            # Candidate observations are already authenticated against original
+            # native capture. Exclude SHA, raw output, timing and evidence IDs.
+            def facts(item):
+                return {(r["nodeid"], r["phase"]): (r["outcome"],
+                    r["fingerprint"] if r["outcome"] == "FAIL" else None)
+                    for r in item["verification"]["candidate"]["reports"]}
+            old_facts, new_facts = facts(old_item), facts(new_item)
+            # A newly broken passing test alone says nothing about correction
+            # of the originating failure. Require a fact in that failed proof.
+            progressed |= old["collection"] != new["collection"] or any(
+                new_facts[key] != value for key, value in old_facts.items() if value[0] == "FAIL")
+        if not progressed:
+            _deny("NO_VERIFIED_SCOPED_PROGRESS")
+
     @_ka01_guarded
     def _seal_interactive_candidate(self, package, turn):
         from types import SimpleNamespace
@@ -552,6 +598,7 @@ class RuntimeCompletion:
             if (binding["candidate_sha"] == prior["candidate_sha"] or binding["tree_sha"] == prior["tree_sha"]
                     or not self._is_ancestor(prior["candidate_sha"], binding["candidate_sha"])
                     or not self._committed_changed_files(prior["candidate_sha"], binding["candidate_sha"])
+                    or any(binding["tree_sha"] == r.data["binding"]["tree_sha"] for r in self._interactive_checkpoints)
                     or len(self._interactive_receipts) != len(self._interactive_checkpoints)):
                 _deny("NO_CAUSAL_COMMITTED_CORRECTION")
         commands = self._interactive_commands()
@@ -611,9 +658,8 @@ class RuntimeCompletion:
                 predecessor_digest=intent["predecessor_digest"], binding=binding, package_sha256=intent["package_sha256"],
                 population_identity=population, evidence=[evidence_data(e) for e in evidence], proofs=proofs, failed_identities=failed))
             record = self._parse_interactive_checkpoint(content)
-            if (previous is not None and (population != previous.data["population_identity"]
-                    or not set(failed) < set(previous.data["failed_identities"]))):
-                _deny("NO_VERIFIED_SCOPED_PROGRESS")
+            if previous is not None:
+                self._require_interactive_progress(previous, record)
             if self._interactive_binding(package, turn) != binding:
                 _deny("CANDIDATE_CHANGED_DURING_VERIFICATION")
             for path in raw_directory.iterdir():
@@ -636,8 +682,9 @@ class RuntimeCompletion:
         receipt = dict(receipt_id=hashlib.sha256(os.urandom(32)).hexdigest(), feedback_digest="",
             checkpoint_digest=record.digest, source_sha=data["binding"]["candidate_sha"],
             previous_turn_id=data["binding"]["turn"]["turn_id"])
-        # Only factual bounded identities cross to the Executor. No commands,
-        # nodeids, logs, failure detail, user paths, diagnosis or patch advice.
+        # This control envelope carries bounded factual identities. Separately
+        # authorized progressive diagnostic reads need their own implementation;
+        # its size is not an aggregate governance limit on inspectable evidence.
         feedback = dict(format="AIOS_KA01_NATIVE_OPERATION_FACTUAL_FEEDBACK" if self._ka01_budget.default
             else "AIOS_KA01_NATIVE_FACTUAL_FEEDBACK", version=1,
             task=asdict(self.run.task), run_id=self.run.run_id, checkpoint_digest=record.digest,
@@ -684,6 +731,7 @@ class RuntimeCompletion:
                 or ordinal in self._interactive_receipts
                 or binding["candidate_sha"] == prior["candidate_sha"] or binding["tree_sha"] == prior["tree_sha"]
                 or not self._is_ancestor(prior["candidate_sha"], binding["candidate_sha"])
+                or any(binding["tree_sha"] == r.data["binding"]["tree_sha"] for r in self._interactive_checkpoints)
                 or turn.turn_id == prior["turn"]["turn_id"] or turn.request_id <= prior["turn"]["request_id"]):
             _deny("FORGED_DUPLICATE_STALE_OR_NO_PROGRESS_RETURN")
         _ApplicabilityReader(self.repo).anchors(binding["candidate_sha"], {prior["candidate_sha"]})
